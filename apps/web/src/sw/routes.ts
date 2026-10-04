@@ -12,16 +12,18 @@
  * The paths the Worker answers itself, which a page load must never be given the app
  * shell for.
  *
- * The same three prefixes `wrangler.toml` lists under `run_worker_first`, for the same
- * reason: each is a real server response rather than a route of the SPA. A shell for
+ * The same prefixes `wrangler.toml` lists under `run_worker_first`, for the same reason:
+ * each is a real server response rather than a route of the SPA. A shell for
  * `/api/auth/callback/google` would swallow a sign-in, and one for
  * `/api/notes/…/files/…?download=1` would open the app where a download was asked for.
+ * The last is a whole path rather than a prefix — the manifest, which the Worker renames
+ * per instance (`apps/api/src/lib/manifest.ts`) — and a path is its own prefix.
  *
  * `routes.test.ts` reads `wrangler.toml` and holds the two lists together: a prefix added
  * there and not here would have every device with the worker answer its page loads with
  * the app, and only another deploy could take that back.
  */
-export const WORKER_PREFIXES = ['/api/', '/.well-known/', '/ingest/'];
+export const WORKER_PREFIXES = ['/api/', '/.well-known/', '/ingest/', '/manifest.webmanifest'];
 
 /**
  * Whether a page load at this address should be answered with the app itself.

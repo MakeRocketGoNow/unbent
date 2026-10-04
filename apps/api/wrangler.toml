@@ -124,6 +124,10 @@ run_worker_first = [
   # unconditionally because this file cannot see POSTHOG_KEY; the route answers 404 on an
   # instance that has none, which is a truthful answer the SPA fallback could not give.
   "/ingest/*",
+  # The web manifest, which names and draws the installed app: renamed and recoloured on
+  # an instance that is not production, so its icon on a home screen is not mistaken for
+  # the real one, and passed through untouched on production. See src/lib/manifest.ts.
+  "/manifest.webmanifest",
 ]
 
 # Local development: what `pnpm dev` and `migrate:local` run.
@@ -177,6 +181,7 @@ run_worker_first = [
   "/api/*",
   "/.well-known/*",
   "/ingest/*",
+  "/manifest.webmanifest",
 ]
 
 # Preview instances, one per pull request. unbent.app's own; see the header.
@@ -291,6 +296,7 @@ run_worker_first = [
   "/api/*",
   "/.well-known/*",
   "/ingest/*",
+  "/manifest.webmanifest",
 ]
 
 [env.preview.observability]
@@ -367,6 +373,7 @@ run_worker_first = [
   "/api/*",
   "/.well-known/*",
   "/ingest/*",
+  "/manifest.webmanifest",
 ]
 
 [env.dev.observability]
