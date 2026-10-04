@@ -124,6 +124,10 @@ export class SearchIndex {
       /* The notes opened on this device, newest last to leave; their files' text is kept. */
       await this.db.execute(`CREATE TABLE opened (note_id TEXT PRIMARY KEY, at INTEGER NOT NULL)`);
       await this.db.execute(`INSERT INTO meta (key, value) VALUES ('version', ?1)`, [String(SEARCH_INDEX_VERSION)]);
+    }).catch((err: unknown) => {
+      // Not remembered: a file that was busy for the version check would otherwise fail every call until the tab reloads.
+      this.prepared = null;
+      throw err;
     });
     return this.prepared;
   }

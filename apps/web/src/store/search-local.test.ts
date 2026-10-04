@@ -206,6 +206,18 @@ describe('SearchIndex', () => {
     expect((await index.candidates('field', '"q"*', -1)).map((c) => c.id)).toEqual([a.fields[1]!.id]);
   });
 
+  it('tries again after a failed start, rather than remembering the failure', async () => {
+    const db = await openTestSearchDb();
+    let busy = true;
+    const index = new SearchIndex({
+      ...db,
+      execute: (sql, params) => (busy && sql.startsWith('BEGIN') ? Promise.reject(new Error('database is locked')) : db.execute(sql, params)),
+    });
+    await expect(index.stamps('note')).rejects.toThrow('locked');
+    busy = false;
+    expect(await index.stamps('note')).toEqual(new Map());
+  });
+
   it('keeps the last notes opened, and a newer index version starts empty', async () => {
     const db = await openTestSearchDb();
     const index = new SearchIndex(db);
