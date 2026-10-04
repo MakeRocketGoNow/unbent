@@ -936,6 +936,16 @@ function drained(lib: WritableLibrary, noteId: string, timeout: number): Promise
 }
 
 /**
+ * Resolves once this note's queued writes have reached the server — true — or have
+ * taken too long to — false. For a read of the server's history, which is only worth
+ * making once the save that may have just added to it has landed.
+ */
+export async function synced(noteId: string, timeout = RESTORE_DRAIN_MS): Promise<boolean> {
+  const lib = await resolve();
+  return lib ? drained(lib, noteId, timeout) : true;
+}
+
+/**
  * Puts a copy from a note's history back as its title and body, and answers with the
  * note as the server then has it.
  *

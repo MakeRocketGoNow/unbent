@@ -785,6 +785,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
      that, so closing it is the sheet's own exit and not an unmount.
   */
   const [historyMounted, setHistoryMounted] = useState(false);
+  /** The flush begun as the sheet opened, which its list waits on; see `HistorySheet`. */
+  const historyFlush = useRef<Promise<unknown>>(Promise.resolve());
   const overflowSlot = useRef<HTMLSpanElement>(null);
   // Workspace is reused across notes; a sheet left open would be showing the last one's.
   useEffect(() => setHistoryOpen(false), [noteId]);
@@ -1310,7 +1312,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
                     label: 'History',
                     disabled: frozen,
                     onSelect: () => {
-                      void flush();
+                      historyFlush.current = flush();
                       setHistoryMounted(true);
                       setHistoryOpen(true);
                     },
@@ -1344,6 +1346,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
           onClose={() => setHistoryOpen(false)}
           noteId={noteId}
           anchor={overflowSlot}
+          saved={() => historyFlush.current}
           onRestore={restoreFromHistory}
         />
       )}

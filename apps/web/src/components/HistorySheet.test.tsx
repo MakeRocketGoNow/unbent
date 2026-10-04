@@ -81,6 +81,39 @@ describe('HistorySheet', () => {
     expect(screen.getByText(/The last 20 are kept, for 90 days/)).toBeTruthy();
   });
 
+  it('asks for the list only once what was on screen has been saved', async () => {
+    vi.mocked(api.listRevisions).mockResolvedValue([typed]);
+    let saved: () => void = () => {};
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <HistorySheet open onClose={() => {}} noteId="n1" saved={() => new Promise<void>((r) => (saved = r))} onRestore={async () => {}} />
+      </QueryClientProvider>,
+    );
+    await new Promise((r) => setTimeout(r, 20));
+    expect(api.listRevisions).not.toHaveBeenCalled();
+    expect(screen.getByText('Loading…')).toBeTruthy();
+    saved();
+    expect(await screen.findByRole('button', { name: /1 character$/ })).toBeTruthy();
+  });
+
+  it('opens on Loading again after it has been closed, not on the list it last had', async () => {
+    vi.mocked(api.listRevisions).mockResolvedValueOnce([typed]);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const sheet = (open: boolean) => (
+      <QueryClientProvider client={client}>
+        <HistorySheet open={open} onClose={() => {}} noteId="n1" onRestore={async () => {}} />
+      </QueryClientProvider>
+    );
+    const view = render(sheet(true));
+    await screen.findByRole('button', { name: /1 character$/ });
+    view.rerender(sheet(false));
+    vi.mocked(api.listRevisions).mockReturnValueOnce(new Promise(() => {}));
+    view.rerender(sheet(true));
+    await waitFor(() => expect(screen.getByText('Loading…')).toBeTruthy());
+    expect(screen.queryByRole('button', { name: /1 character$/ })).toBeNull();
+  });
+
   it('says so when there are none, with the same explanation', async () => {
     vi.mocked(api.listRevisions).mockResolvedValue([]);
     mount();

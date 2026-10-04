@@ -1,7 +1,9 @@
 import { useEffect, useState, type RefObject } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { NoteRevisionSummary } from '@unbent/shared';
-import { revisionQuery, revisionsQuery } from '../queries.js';
+import * as api from '../notes-api.js';
+import { keys, revisionQuery, revisionsQuery } from '../queries.js';
+import * as actions from '../store/actions.js';
 import { Button } from './Button.js';
 import { formatRevisionWhen } from './format-when.js';
 import { RowChevronIcon } from './icons.js';
@@ -14,6 +16,11 @@ interface HistorySheetProps {
   noteId: string;
   /** The ⋯ menu it was opened from, which the desktop panel lines up under. */
   anchor?: RefObject<HTMLElement | null>;
+  /**
+   * Resolves when what was on screen as the sheet opened has been handed to the save —
+   * the workspace's flush. The list waits for it, and then for the outbox; see `list`.
+   */
+  saved?: () => Promise<unknown>;
   /**
    * Puts the copy back. Rejects with a message worth showing when it could not; the
    * sheet stays open on that and says so, and is closed by the caller on success.
@@ -64,12 +71,32 @@ export function describeRevision(revision: Pick<NoteRevisionSummary, 'cause' | '
  * is recognised by reading it. Its files resolve against the note as it is now, since
  * history keeps text and not files; one deleted since draws as a missing file would.
  */
-export function HistorySheet({ open, onClose, noteId, anchor, onRestore }: HistorySheetProps) {
+export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore }: HistorySheetProps) {
+  const queryClient = useQueryClient();
   const [picked, setPicked] = useState<NoteRevisionSummary | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
-  const list = useQuery({ ...revisionsQuery(noteId), enabled: open });
+  /*
+     The list is asked for only once this note's own writes have reached the server.
+
+     The sheet is opened most urgently straight after the mistake: paste over a note,
+     see it, open History. The save carrying that paste is the write that makes the
+     server keep the text from before it, and it is still in the autosave's delay or the
+     outbox when the sheet opens. Asked at once, the server answered without it, and the
+     sheet said "No earlier versions yet" about a note whose earlier version arrived a
+     moment later. A queue that will not drain is not waited out for ever (`synced`
+     gives up); the list is then whatever the server has.
+  */
+  const list = useQuery({
+    ...revisionsQuery(noteId),
+    queryFn: async () => {
+      await saved?.();
+      await actions.synced(noteId);
+      return api.listRevisions(noteId);
+    },
+    enabled: open,
+  });
   const copy = useQuery({ ...revisionQuery(noteId, picked?.id ?? 0), enabled: open && picked !== null });
 
   // Opens on the list each time, and never on a copy of the note that was open before.
@@ -78,7 +105,13 @@ export function HistorySheet({ open, onClose, noteId, anchor, onRestore }: Histo
     setPicked(null);
     setFailure(null);
     setRestoring(false);
-  }, [open, noteId]);
+    /*
+       And on "Loading…", not on the last opening's list. The sheet stays mounted, so its
+       query keeps what it last read whatever `gcTime` says, and a reopen drew that — the
+       list from before the restore that closed it — until the new answer landed.
+    */
+    queryClient.removeQueries({ queryKey: keys.revisions(noteId), exact: true });
+  }, [open, noteId, queryClient]);
 
   const restore = async () => {
     if (!picked || restoring) return;
