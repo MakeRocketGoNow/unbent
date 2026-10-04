@@ -85,6 +85,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     view: viewParam,
     from,
     to,
+    new: asked,
   } = Route.useSearch();
   /** The tag filter as a list, so the sidebar never has to care that it may be absent. */
   const selectedTags = tag ?? [];
@@ -696,7 +697,25 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         ? 'Loading…'
         : `${total ?? notes.length} notes`;
 
-  async function newNote() {
+  /*
+   * `?new=1` (see `filters`): the New button, pressed for whoever opened the address — an
+   * app's "New note" shortcut. Once per request: the ref holds while the note is being
+   * made, since the address still says `new` until the navigation below replaces it, and
+   * a render in between would otherwise make a second. Replaced rather than pushed, so
+   * Back from the note does not land on the request and make another.
+   */
+  const answering = useRef(false);
+  useEffect(() => {
+    if (asked !== 1 || answering.current) return;
+    answering.current = true;
+    void newNote({ replace: true }).finally(() => {
+      answering.current = false;
+    });
+    // `newNote` is a fresh closure every render; the request is what this follows.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asked]);
+
+  async function newNote({ replace = false }: { replace?: boolean } = {}) {
     try {
       // Carry the active filter onto the new note, otherwise it is created and then
       // immediately filtered out of the list the user is looking at.
@@ -722,9 +741,17 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       // body. Recorded here, before navigating, because it is a fact about this note's
       // creation and the workspace it opens has no other way to know it.
       markNewNote(created.id);
-      void navigate({ to: '/notes/$noteId', params: { noteId: created.id }, search: (p) => p });
+      void navigate({
+        to: '/notes/$noteId',
+        params: { noteId: created.id },
+        search: ({ new: _, ...p }) => p,
+        replace,
+      });
     } catch (err) {
       console.error(err);
+      // The request is answered either way: left in the address, the next render
+      // would try again, and a create that failed once would fail in a loop.
+      if (replace) void navigate({ to: '/notes', search: ({ new: _, ...p }) => p, replace: true });
     }
   }
 

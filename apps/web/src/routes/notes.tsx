@@ -130,6 +130,16 @@ export const filters = z.object({
   /** Inclusive `YYYY-MM-DD` bounds, filtering the column the sort uses. */
   from: dateOnlySchema.optional().catch(undefined),
   to: dateOnlySchema.optional().catch(undefined),
+  /**
+   * `?new=1`: make a note and open it, as the New button does. The address an app's
+   * "New note" shortcut opens, since the site has no other address that makes a note.
+   *
+   * A request rather than a filter, so it is never kept: `NotesLayout` acts on it once
+   * and replaces the entry with the note it made, and Back or a reload cannot make a
+   * second. The only accepted value is `1` — the router reads `?new=1` as the number —
+   * so `?new=0` or a stray `?new` is dropped rather than read as yes.
+   */
+  new: z.literal(1).optional().catch(undefined),
 });
 
 export const Route = createFileRoute('/notes')({

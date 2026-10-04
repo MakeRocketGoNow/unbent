@@ -69,6 +69,15 @@ describe('the notes route tag filter', () => {
     expect(parse({ tag: '' }).tag).toBeUndefined();
   });
 
+  /* `?new=1` is the one spelling of the New note request; anything else is no request. */
+  it('reads a request for a new note only as `new=1`', () => {
+    expect(parse({ new: 1 }).new).toBe(1);
+    expect(parse({ new: 0 }).new).toBeUndefined();
+    expect(parse({ new: '' }).new).toBeUndefined();
+    expect(parse({ new: 'yes' }).new).toBeUndefined();
+    expect(parse({}).new).toBeUndefined();
+  });
+
   it('reads a view it knows and drops one it does not', () => {
     expect(parse({ view: 'table' }).view).toBe('table');
     expect(parse({ view: 'list' }).view).toBe('list');
