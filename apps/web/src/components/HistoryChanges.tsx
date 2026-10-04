@@ -62,12 +62,15 @@ export function HistoryChanges({ current, version }: HistoryChangesProps) {
      on this page. A version from before these were kept has none to compare, and says
      so: silence there would read as "the fields are the same", and they may not be.
   */
+  // By value, like the text above: the workspace builds `current` afresh each render.
+  const filed = JSON.stringify([current.notebook, current.tags, current.fields]);
   const props = useMemo(
-    () =>
-      version.props
-        ? diffProps({ notebook: current.notebook, tags: current.tags, fields: current.fields }, version.props, version.unfit)
-        : [],
-    [current.notebook, current.tags, current.fields, version.props, version.unfit],
+    () => {
+      if (!version.props) return [];
+      const [notebook, tags, fields] = JSON.parse(filed) as [CurrentProps['notebook'], string[], PropValue[]];
+      return diffProps({ notebook, tags, fields }, version.props, version.unfit);
+    },
+    [filed, version.props, version.unfit],
   );
   const unrecorded = version.props === undefined && (
     <p className="history-diff-note small">

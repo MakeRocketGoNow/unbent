@@ -85,6 +85,9 @@ interface WorkspaceProps {
   backTo?: '/notes' | '/trash';
 }
 
+/** What the History sheet is handed while it is closed and compares nothing. */
+const CLOSED_HISTORY: HistoryCurrent = { title: '', body: '', notebook: null, tags: [], fields: [] };
+
 export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/notes' }: WorkspaceProps) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -807,8 +810,9 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
    * with each field value given the name and type that draw it. A definition this
    * session has loaded says those; a value carried from a notebook the note has left
    * says its own, as the property list draws it. An emptied value is no value, which is
-   * how the save reads it. A function, not a memo: it runs only while the sheet is
-   * mounted, and the comparison it feeds is memoised on what it holds.
+   * how the save reads it. Called only while the sheet is open, since the sheet stays
+   * mounted after its first opening and this would otherwise run on every keystroke;
+   * the comparison it feeds is memoised by value, so a new object each render is fine.
    */
   function historyCurrent(): HistoryCurrent {
     const defs = new Map(knownFieldDefs.map((def) => [def.id, def]));
@@ -872,11 +876,12 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       if (noteIdRef.current !== id) return;
       setHistoryFor(null);
       setSnackbar({
+        // Names, no reasons: Changes gave each reason beside the thing itself.
         message: except
-          ? `Nothing was restored: the rest of that version is what the note already says, and ${except} could not be put back.`
+          ? `Nothing to restore: ${except} could not be put back, and the rest already matches.`
           : 'That version is what the note already says.',
         tone: 'info',
-        duration: except ? 10_000 : 5000,
+        duration: except ? 8000 : 5000,
       });
       return;
     }
@@ -893,11 +898,11 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     setHistoryFor(null);
     setSnackbar({
       message: `Restored the version from ${formatRevisionWhen(revision.createdAt, Date.now(), { inSentence: true })}${
-        except ? `, except ${except}, which could not be put back` : ''
+        except ? `, except ${except}` : ''
       }`,
       tone: 'info',
       // Longer when there is an exception to read as well as an Undo to reach.
-      duration: except ? 12_000 : 8000,
+      duration: except ? 10_000 : 8000,
       action: { label: 'Undo', onClick: () => void undoRestore(id, kept, restored.updatedAt) },
     });
   }
@@ -1421,7 +1426,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
           anchor={overflowSlot}
           saved={() => historyFlush.current}
           onRestore={restoreFromHistory}
-          current={historyCurrent()}
+          current={historyOpen ? historyCurrent() : CLOSED_HISTORY}
         />
       )}
 
