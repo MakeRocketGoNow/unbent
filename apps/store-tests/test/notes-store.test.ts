@@ -978,8 +978,8 @@ describe('rows read on an archive-sized store', () => {
     const measure = async (label: string, run: () => Promise<unknown>) => {
       await stub.resetCounters();
       await run();
-      const { rowsRead } = await stub.counters();
-      return { label, rowsRead };
+      const { rowsRead, rowsWritten } = await stub.counters();
+      return { label, rowsRead, rowsWritten };
     };
     const sortField = (await stub.fieldById('amount'))!;
     const results = [
@@ -1067,7 +1067,7 @@ describe('rows read on an archive-sized store', () => {
       // A note with a full history, untouched above.
       await measure('history clear', () => stub.clearRevisions('n00022')),
     ];
-    console.log(results.map((r) => `${r.label}: ${r.rowsRead}`).join('\n'));
+    console.log(results.map((r) => `${r.label}: ${r.rowsRead} read, ${r.rowsWritten} written`).join('\n'));
     const bounds: Record<string, number> = {
       'first page': 400,
       'first page by title': 400,
@@ -1171,6 +1171,17 @@ describe('rows read on an archive-sized store', () => {
     };
     for (const r of results) {
       expect(r.rowsRead, r.label).toBeLessThanOrEqual(bounds[r.label]!);
+    }
+    // Rows written are metered too, and a bulk change now keeps a copy of each note
+    // outside its window: the copy, its index entry and the prune of the oldest, about
+    // three rows a note on top of what the verb itself writes (551 against 406 inside
+    // the window, measured 2026-10-04). Five hundred ids is ten times this.
+    const writeBounds: Record<string, number> = {
+      'bulk change that keeps fifty copies': 650,
+      'bulk change inside the window': 480,
+    };
+    for (const r of results) {
+      if (r.label in writeBounds) expect(r.rowsWritten, r.label).toBeLessThanOrEqual(writeBounds[r.label]!);
     }
   });
 });
