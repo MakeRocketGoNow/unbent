@@ -122,12 +122,20 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore }
      sheet said "No earlier versions yet" about a note whose earlier version arrived a
      moment later. A queue that will not drain is not waited out for ever (`synced`
      gives up); the list is then whatever the server has.
+
+     Once per opening, not once per ask. The query is retried on a failure, and every
+     retry waiting out a stuck queue again kept the sheet on "Loading…" for the better
+     part of half a minute before it said anything had gone wrong.
   */
+  const waited = useRef<Promise<unknown> | null>(null);
   const list = useQuery({
     ...revisionsQuery(noteId),
     queryFn: async () => {
-      await saved?.();
-      await actions.synced(noteId);
+      waited.current ??= (async () => {
+        await saved?.();
+        await actions.synced(noteId);
+      })();
+      await waited.current;
       return api.listRevisions(noteId);
     },
     enabled: open,
@@ -137,6 +145,7 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore }
   // Opens on the list each time, and never on a copy of the note that was open before.
   useEffect(() => {
     if (open) return;
+    waited.current = null;
     setPicked(null);
     setFailure(null);
     setRestoring(false);
