@@ -1183,8 +1183,9 @@ clear would bring the versions back with everything else. Emptying the trash
 takes a note's history with it, and deleting the account takes all of it.
 
 The API is `GET /api/notes/:id/revisions`, `GET /api/notes/:id/revisions/:revision`,
-`POST /api/notes/:id/revisions/:revision/restore` and `DELETE /api/notes/:id/revisions`. There is no MCP tool for it yet: an
-assistant can cause a version to be kept, but only a person can put one back.
+`POST /api/notes/:id/revisions/:revision/restore` and `DELETE /api/notes/:id/revisions`.
+There is no MCP tool for it yet: an assistant can cause a version to be kept, but only a
+person can put one back.
 
 ## Deleting notes
 
