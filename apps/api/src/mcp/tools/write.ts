@@ -379,7 +379,8 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
         'only the fields named change, null clears one, and a value must fit its field. All ' +
         'the notes must be in one notebook, and the fields must be that notebook\'s; notes ' +
         'from different notebooks, or in none, are refused, so group them first with ' +
-        'list_notes or move_notes. A note that already holds a value is left as it is. If ' +
+        'list_notes or move_notes. A note that already holds the value given is left alone ' +
+        'and not counted as changed; one holding a different value is overwritten. If ' +
         'any value is refused nothing is written. Answers with the notes it reached, how ' +
         'many changed, and any ids it could not find.',
       inputSchema: z.object({
