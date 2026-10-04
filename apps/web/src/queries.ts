@@ -544,6 +544,12 @@ async function search(q: string, filter: NoteFilter, rows: boolean): Promise<Sea
     }
   }
   const lib = await library();
+  /*
+   * The index opens behind the library (`searchReady`), so a search made in the first
+   * moments of a cold start waits for it rather than being told search needs a
+   * connection — an answer nothing would ever come back to correct.
+   */
+  await lib?.searchReady;
   if (!lib?.search) throw new OfflineError();
   const v = view(lib);
   const answer = await searchLocal({ index: lib.search.index, snapshot: v.snapshot, lookups: v.lookups, query: q, filter, rows });

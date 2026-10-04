@@ -39,9 +39,12 @@ export interface Library extends Collections {
    * The index a search reads with no connection, and what keeps it in step with the rows
    * (`search-index.ts`, `search-sync.ts`). Null when its file could not be opened: the
    * library is whole without it, and a search offline then says it needs a connection,
-   * as it did before there was an index.
+   * as it did before there was an index. Null too until it has opened, which is after
+   * the library has: see `searchReady`.
    */
-  search: Searching | null;
+  readonly search: Searching | null;
+  /** Settles once the search index has opened or failed to; never rejects. */
+  searchReady: Promise<void>;
   /** The engine's state, for the hydration line and the offline banner. */
   subscribe: (listener: (state: FeedState) => void) => () => void;
   state: () => FeedState;
@@ -55,7 +58,7 @@ export interface Searching {
 }
 
 /** What a reader of the library needs of it: the collections, the feed's state and the version — and the search index, where there is one. */
-export type ReadableLibrary = Pick<Library, 'notes' | 'notebooks' | 'tags' | 'attachments' | 'state' | 'version'> & Partial<Pick<Library, 'search'>>;
+export type ReadableLibrary = Pick<Library, 'notes' | 'notebooks' | 'tags' | 'attachments' | 'state' | 'version'> & Partial<Pick<Library, 'search' | 'searchReady'>>;
 
 /** The query roots a change to the library can reach; see `installLibraryQueries`. */
 export const LIBRARY_ROOTS: ReadonlySet<string> = new Set(['notes', 'note', 'trash', 'tags', 'notebooks', 'notebook-fields', 'attachments']);
@@ -157,7 +160,13 @@ export async function settleWrites(ms: number): Promise<number> {
  * here with no connection (`SearchSync.opened`). Nothing on a device with no index.
  */
 export function noteOpened(noteId: string): void {
-  void current?.library.then((lib) => lib.search?.sync.opened(noteId)).catch(() => {});
+  void current?.library
+    .then(async (lib) => {
+      // A note is often open before the index is: the first one after a cold start.
+      await lib.searchReady;
+      await lib.search?.sync.opened(noteId);
+    })
+    .catch(() => {});
 }
 
 /** Installs an in-memory library for a test to read; see `test-library.ts`. */
@@ -409,46 +418,68 @@ async function open(userId: string): Promise<Library> {
   listeners.add(() => keeper.nudge());
 
   /*
-   * The search index, in a file of its own. Opening it can fail where opening the
-   * library did not — storage that filled between the two — and the library is not held
-   * up for it or failed by it. Its passes run in the tab the keeper's do, and wait for
-   * the same thing: a library that is whole.
+   * The search index, in a file of its own, opened behind the library rather than
+   * before it. It is a second worker and a second copy of the engine to start, and in a
+   * second tab its file can be busy with the leading tab's write; none of that is
+   * something the note list should wait for, and it did, on every cold start. So the
+   * library is returned without it and `search` is filled in when it is ready; what
+   * needs the index meanwhile waits on `searchReady`. Opening it can also fail where
+   * opening the library did not — storage that filled between the two — and the library
+   * is not failed by it. Its passes run in the tab the keeper's do, and wait for the
+   * same thing: a library that is whole.
+   *
+   * `giveUp` ends an open still in hand when the library closes: a close is what a
+   * sign-out waits on, and it has to wait for this, since a file being opened cannot be
+   * removed.
    */
-  try {
-    const index = new SearchIndex(await openSearchDatabase(userId));
-    await index.ready();
-    search = {
-      index,
-      sync: createSearchSync({
+  const giveUp = new AbortController();
+  /** The feed said reset before there was an index to tell; it is told when it opens. */
+  let resetUnheard = false;
+  const searchReady = (async () => {
+    try {
+      const index = new SearchIndex(await openSearchDatabase(userId, giveUp.signal));
+      await index.ready();
+      if (giveUp.signal.aborted) {
+        await index.close().catch(() => {});
+        return;
+      }
+      search = {
         index,
-        snapshot: () => ({ notes: rows.notes.values(), notebooks: rows.notebooks.values(), tags: rows.tags.values(), attachments: rows.attachments.values() }),
-        settled,
-        leading,
-        kept: () => readKeptNotebooks(userId),
-        offline: offlineNow,
-        fetchTexts: async (ids, signal) => {
-          // A timeout as well as the signal: a request that never answers would otherwise hold the pass, and every pass after it.
-          const res = await request('/api/attachments/texts', { method: 'POST', signal, timeout: 30_000, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) });
-          if (!res.ok) throw new ApiError(res.status, `/api/attachments/texts answered ${res.status}`);
-          return (await res.json()) as AttachmentTexts;
-        },
-        isOffline: isOfflineError,
-        channel: `unbent-search-${userId}`,
-      }),
-    };
-  } catch (err) {
-    console.warn('[library] no search index on this device; searching needs a connection:', err);
-  }
-  const searching = search;
+        sync: createSearchSync({
+          index,
+          snapshot: () => ({ notes: rows.notes.values(), notebooks: rows.notebooks.values(), tags: rows.tags.values(), attachments: rows.attachments.values() }),
+          settled,
+          leading,
+          kept: () => readKeptNotebooks(userId),
+          offline: offlineNow,
+          fetchTexts: async (ids, signal) => {
+            // A timeout as well as the signal: a request that never answers would otherwise hold the pass, and every pass after it.
+            const res = await request('/api/attachments/texts', { method: 'POST', signal, timeout: 30_000, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids }) });
+            if (!res.ok) throw new ApiError(res.status, `/api/attachments/texts answered ${res.status}`);
+            return (await res.json()) as AttachmentTexts;
+          },
+          isOffline: isOfflineError,
+          channel: `unbent-search-${userId}`,
+        }),
+      };
+      if (resetUnheard) search.sync.startOver();
+    } catch (err) {
+      if (!giveUp.signal.aborted) console.warn('[library] no search index on this device; searching needs a connection:', err);
+    }
+  })();
   // The walk finishing is what makes a library whole, and a notebook kept or released
   // changes which files' text is wanted; the index looks again at both.
   // A library that starts over takes its index with it: see `SearchSync.startOver`.
-  if (searching) listeners.add((state) => (state.phase === 'reset' ? searching.sync.startOver() : searching.sync.wake()));
+  listeners.add((state) => {
+    if (state.phase !== 'reset') return search?.sync.wake();
+    if (search) search.sync.startOver();
+    else resetUnheard = true;
+  });
   let keptNow = keeper.status().kept;
   const stopKeptWatch = keeper.subscribe((status) => {
     if (status.kept === keptNow) return;
     keptNow = status.kept;
-    searching?.sync.touchFiles();
+    search?.sync.touchFiles();
   });
 
   return {
@@ -457,7 +488,10 @@ async function open(userId: string): Promise<Library> {
     engine,
     outbox,
     keeper,
-    search: searching,
+    get search() {
+      return search;
+    },
+    searchReady,
     version: () => version,
     subscribe: (listener) => {
       listeners.add(listener);
@@ -478,7 +512,9 @@ async function open(userId: string): Promise<Library> {
       stopKeeping();
       stopKeptWatch();
       keeper.stop();
-      await searching?.sync.stop();
+      giveUp.abort();
+      await searchReady;
+      await search?.sync.stop();
       await outbox.dispose();
       await engine.settled();
       for (const s of subscriptions) s.unsubscribe();
@@ -486,7 +522,7 @@ async function open(userId: string): Promise<Library> {
         await Promise.all(Object.values(collections).map((c) => c.cleanup()));
       }
       // After its sync has stopped: a pass in hand finishes its write, and the file is free for a wipe.
-      await searching?.index.close().catch(() => {});
+      await search?.index.close().catch(() => {});
       await closeLocalStore();
     },
   };
