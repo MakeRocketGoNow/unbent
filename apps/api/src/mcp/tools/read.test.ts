@@ -154,6 +154,34 @@ describe('list_tags with a notebook or tags', () => {
   });
 });
 
+describe('list_tags with a notebook that has no tags to show', () => {
+  function emptyRepo() {
+    const asked: string[] = [];
+    const repo = {
+      tagCounts: async () => [],
+      notebookByName: async (name: string) => {
+        asked.push(name);
+        return name === 'Coupons' ? { id: 'nb-1', name: 'Coupons', fields: [] } : null;
+      },
+    } as unknown as NotesRepo;
+    return { asked, tool: collect(repo).get('list_tags')! };
+  }
+
+  it('says a notebook does not exist rather than that its notes carry no tags', async () => {
+    const { tool } = emptyRepo();
+    const result = await tool({ notebook: 'Cupons' });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toBe('No such notebook: Cupons');
+  });
+
+  it('answers an empty list for a real notebook, and for notes in none without asking', async () => {
+    const { asked, tool } = emptyRepo();
+    expect(answer(await tool({ notebook: 'Coupons' }))).toEqual({ tags: [] });
+    expect(answer(await tool({ notebook: '[unfiled]' }))).toEqual({ tags: [] });
+    expect(asked).toEqual(['Coupons']);
+  });
+});
+
 describe('list_notes with untagged', () => {
   function pageRepo() {
     const pages: Array<{ list: Record<string, unknown>; count: Record<string, unknown> | null }> = [];

@@ -422,7 +422,14 @@ export function registerReadTools(
       // The unfiltered list is the stored per-tag counts, one row a tag; any filter has
       // to walk the notes in the set, so it only happens when one is asked for.
       if (notebook === undefined && !tag?.length) return jsonResult({ tags: await notes.listTags() });
-      return jsonResult({ tags: await notes.tagCounts({ notebook, tags: tag?.length ? tag : undefined }) });
+      const tags = await notes.tagCounts({ notebook, tags: tag?.length ? tag : undefined });
+      // An empty answer for a notebook that does not exist reads as "its notes have no
+      // tags", which is a finding an assistant would repeat. Checked only when the answer
+      // is empty, so the usual call stays one request.
+      if (tags.length === 0 && notebook !== undefined && notebook !== UNFILED) {
+        if (!(await notes.notebookByName(notebook))) return toolError(`No such notebook: ${notebook}`);
+      }
+      return jsonResult({ tags });
     },
   );
 }
