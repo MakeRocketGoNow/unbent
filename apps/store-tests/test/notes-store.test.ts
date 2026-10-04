@@ -916,7 +916,11 @@ describe('rows read on an archive-sized store', () => {
             1_000_000 + i,
             nb,
           );
-          if (i % 2 === 0) sql.exec(`INSERT INTO note_tags VALUES (?1, 'common')`, `n${String(i).padStart(5, '0')}`);
+          // Notebook 4 is the one that has nearly been tidied: all but three of its notes
+          // carry a tag. Looking for what is left there is the untagged filter's worst case
+          // and its real one — nothing lets a page stop before the end of the notebook.
+          const tidied = nb === 'nb4' && i > 14;
+          if (i % 2 === 0 || tidied) sql.exec(`INSERT INTO note_tags VALUES (?1, 'common')`, `n${String(i).padStart(5, '0')}`);
           if (i % 1000 === 0) sql.exec(`INSERT INTO note_tags VALUES (?1, 'rare')`, `n${String(i).padStart(5, '0')}`);
           if (i % 5 === 0) sql.exec(`INSERT INTO note_fields (note_id, field_id, value_text, value_num) VALUES (?1, 'amount', ?2, ?2)`, `n${String(i).padStart(5, '0')}`, i);
           if (i % 3 === 0) sql.exec(`INSERT INTO attachments (id, note_id, filename, content_type, size, r2_key, created_at) VALUES (?1, ?2, 'scan.pdf', 'application/pdf', 10, ?1, 1)`, `att-n${String(i).padStart(5, '0')}`, `n${String(i).padStart(5, '0')}`);
@@ -965,6 +969,7 @@ describe('rows read on an archive-sized store', () => {
       await measure('untagged count in a big notebook', () => stub.count({ untagged: true, notebook: 'Notebook 3' })),
       await measure('untagged count in a small notebook', () => stub.count({ untagged: true, notebook: 'Notebook 5' })),
       await measure('untagged count', () => stub.count({ untagged: true })),
+      await measure('untagged page where few are left', () => stub.list({ limit: 50, untagged: true, notebook: 'Notebook 4' })),
       await measure('compact page of 500', () => stub.list({ limit: 500, compact: true })),
       await measure('field targets for 500 notes', () => stub.fieldTargets(Array.from({ length: 500 }, (_, k) => `n${String(k * 5).padStart(5, '0')}`))),
       await measure('get', () => stub.get('n01500')),
@@ -1019,13 +1024,20 @@ describe('rows read on an archive-sized store', () => {
       // A note is read once and asked once of its links, so a count is a row and a half a
       // note in scope and a page stops after the first fifty that have no tag (measured
       // 2026-10-04: 313 and 97 for the pages, 893 and 46 in a notebook, 4,500 for all
-      // 3,000 notes). The account-wide count is the dear one, and why the tool's
-      // description tells a caller with a large archive to name a notebook.
+      // 3,000 notes; the account-wide count is 4,796 now that one notebook is nearly all
+      // tagged, a found link being a row where a missing one is not). The account-wide
+      // count is the dear one, and why the tool's description tells a caller with a
+      // large archive to name a notebook.
       'untagged page': 450,
       'untagged page in a small notebook': 150,
       'untagged count in a big notebook': 1200,
       'untagged count in a small notebook': 80,
       'untagged count': 5200,
+      // The page that cannot stop early: three untagged notes in a notebook of 597, so
+      // every note is read and asked for its links before the page comes back short —
+      // two rows a note (1,193, measured 2026-10-04). This is what the filter costs when
+      // it is used for what it is for.
+      'untagged page where few are left': 1400,
       // Three and a half rows a note: the note, its notebook, its tag links and their
       // names (1,749, measured 2026-10-04). The same page with its field values and files
       // read 2,885, and read every body into the object besides.

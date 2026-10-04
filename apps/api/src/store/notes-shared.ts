@@ -564,8 +564,13 @@ export function filterConditions(
    * notes are the way in — the notebook's index, or the `deleted_at` ones — and each is
    * asked once by the primary key of `note_tags`, one read a note. It is why this is never
    * a stored count and why it is not hidden behind `+`: the indexes on the notes' side
-   * are what let a page stop early. Beside a tag filter the two contradict and match
-   * nothing, which is the right answer; the MCP refuses the pair before it gets here.
+   * are what let a page stop early — when there is a page's worth to find. That is the
+   * cheap case and not the usual one: the filter is for finding what is left, and the
+   * nearer an account is to tidy, the further a page walks before it fills, until a
+   * notebook with three untagged notes is read to its end, two rows a note, to return
+   * them. Nothing here can make that cheaper.
+   * Beside a tag filter the two contradict and match nothing, which is the right answer;
+   * the MCP refuses the pair before it gets here.
    */
   if (opts.untagged) {
     conditions.push(`NOT EXISTS (SELECT 1 FROM note_tags nt4 WHERE nt4.note_id = n.id)`);
