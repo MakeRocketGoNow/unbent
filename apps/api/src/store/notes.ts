@@ -1162,7 +1162,13 @@ export class NotesStore {
         skipped.push({ what: 'field', id: was.fieldId, name: was.name, why: 'deleted' });
         continue;
       }
-      const encoded = encodeFieldValue(found.def, was.value);
+      // Under the definition the write itself reads the value under: a choice the field
+      // has retired is still the note's to hold while the note holds it
+      // (`withHeldOptions`), so a version with one of two such choices is not refused
+      // here and then accepted there.
+      const heldText =
+        stands === undefined ? undefined : Array.isArray(stands.value) ? JSON.stringify(stands.value) : String(stands.value);
+      const encoded = encodeFieldValue(withHeldOptions(found.def, heldText), was.value);
       if (encoded === null || encoded === 'clear') {
         const lostOption = found.def.type === was.type && fieldHasOptions(found.def.type);
         skipped.push({ what: 'field', id: was.fieldId, name: found.def.name, why: lostOption ? 'option' : 'type' });
