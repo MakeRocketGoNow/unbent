@@ -152,9 +152,19 @@ async function main() {
   process.stdout.write(`${created ? 'created' : 'signed in as'} ${EMAIL} on ${BASE}\n`);
   const authed = (path, init = {}) => request(path, { ...init, cookie });
 
-  if (process.argv.includes('--reset')) {
+  /*
+   * A just-made account is cleared as well as a `--reset` one. Every account is created
+   * holding a welcome note (apps/api/src/lib/welcome-note.ts), and the demo account is
+   * meant to hold the seed's notes and nothing else — the screenshots are of them, and
+   * the trash is the seed's too, which is why this purges rather than trashes. Cleared by
+   * the same route as `--reset` rather than looked for by title, so nothing here has to
+   * know what the welcome note is called: an account made a moment ago holds nothing else.
+   */
+  if (created || process.argv.includes('--reset')) {
     const removed = await clearNotes({ request: authed });
-    process.stdout.write(`removed ${removed} existing note(s)\n`);
+    process.stdout.write(
+      created ? `cleared the new account's ${removed} starting note(s)\n` : `removed ${removed} existing note(s)\n`,
+    );
   }
 
   const started = Date.now();
