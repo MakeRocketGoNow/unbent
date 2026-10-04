@@ -334,6 +334,18 @@ export function shouldApplyOnReturn(state: {
   return state.awayFor >= AWAY_FOR_UPDATE;
 }
 
+/**
+ * What a return into view does when it has not taken a waiting deploy in place: whether
+ * the page counts as untouched again, and whether to ask for a new worker. Both reasons
+ * are in the comment above.
+ */
+export function onReturn(state: { awayFor: number; sinceLastCheck: number }): { untouched: boolean; check: boolean } {
+  return {
+    untouched: state.awayFor >= AWAY_FOR_UPDATE,
+    check: state.sinceLastCheck >= UPDATE_CHECK_INTERVAL,
+  };
+}
+
 function checkForUpdatesOnReturn(worker: Workbox): void {
   let last = Date.now();
   let hiddenAt = Date.now();
@@ -354,8 +366,9 @@ function checkForUpdatesOnReturn(worker: Workbox): void {
       handOver(worker, location.href);
       return;
     }
-    if (awayFor >= AWAY_FOR_UPDATE) watchFirstTouch();
-    if (Date.now() - last < UPDATE_CHECK_INTERVAL) return;
+    const next = onReturn({ awayFor, sinceLastCheck: Date.now() - last });
+    if (next.untouched) watchFirstTouch();
+    if (!next.check) return;
     last = Date.now();
     void worker.update().catch(() => {});
   });
