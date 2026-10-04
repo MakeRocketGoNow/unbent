@@ -36,6 +36,7 @@
     "@zip.js/zip.js": "^2.22.0",
     "better-auth": "^1.7.7",
     "codemirror": "^6.0.2",
+    "diff": "^9.0.0",
     "downshift": "^9.4.0",
     "frimousse": "^0.4.0",
     "hono": "^4.13.12",
