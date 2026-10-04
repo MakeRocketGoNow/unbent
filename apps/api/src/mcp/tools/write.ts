@@ -370,6 +370,54 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
      what the assistant has just read.
   */
   server.registerTool(
+    'update_note_fields',
+    {
+      title: 'Set custom field values on several notes',
+      description:
+        'Set the same custom field values on one or more notes at once, by field name, ' +
+        'without touching anything else about them. The values follow update_note\'s rules: ' +
+        'only the fields named change, null clears one, and a value must fit its field. All ' +
+        'the notes must be in one notebook, and the fields must be that notebook\'s; notes ' +
+        'from different notebooks, or in none, are refused, so group them first with ' +
+        'list_notes or move_notes. A note that already holds a value is left as it is. If ' +
+        'any value is refused nothing is written. Answers with the notes it reached, how ' +
+        'many changed, and any ids it could not find.',
+      inputSchema: z.object({
+        noteIds: noteIdsSchema,
+        fields: fieldsSchema,
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ noteIds, fields }) => {
+      if (Object.keys(fields).length === 0) {
+        return toolError('Nothing to do: name at least one field and the value to set.');
+      }
+      // Names resolve against the notebook the notes are in, which only a note can say.
+      // An update that writes nothing is the one call that says which of the ids are
+      // live notes, so the first of them is read, rather than reading ids that may not exist.
+      const { matched } = await notes.updateMany(noteIds, {});
+      const first = matched[0] ? await notes.get(matched[0]) : null;
+      if (!first) return jsonResult({ noteIds: [], changed: 0, missing: noteIds });
+      const defs = first.notebookId ? ((await notes.listFields(first.notebookId)) ?? []) : [];
+      const resolved = resolveFieldNames(fields, defs, [], first.notebook ?? null);
+      if ('error' in resolved) return toolError(resolved.error);
+      try {
+        // The store checks that every note is in the notebook those fields belong to, and
+        // names the one that is not; its answer is passed on as it is.
+        const done = await notes.updateMany(noteIds, { fields: resolved.patch });
+        return jsonResult({
+          noteIds: done.matched,
+          changed: done.changed.length,
+          missing: noteIds.filter((id) => !done.matched.includes(id)),
+        });
+      } catch (err) {
+        if (err instanceof InvalidFieldValue) return toolError(`${err.fieldName} ${err.message}.`);
+        throw err;
+      }
+    },
+  );
+
+  server.registerTool(
     'rename_tag',
     {
       title: 'Rename or merge a tag',

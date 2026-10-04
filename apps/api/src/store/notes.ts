@@ -1138,10 +1138,27 @@ export class NotesStore {
    * over MCP. Tag rows are get-or-create as `setTags` has them; a tag removed from its
    * last note keeps its row, also as `setTags` leaves it, since `listTags` only counts
    * tags on live notes.
+   *
+   * `fields` sets the same values on every note, by field id, with `update`'s rules —
+   * merge, null clears, and each value validated against its definition by
+   * `prepareFieldWrites`, the one validator — and a note already holding a value keeps its
+   * date, as it does under `update`. What `update` leaves to its caller is made a rule
+   * here: every field must be one of the notebook the note will be in once this call has
+   * run. One note's editor offers only its own notebook's fields, so a value written by id
+   * to a note elsewhere is a mistake it cannot make; a set of notes is where a caller can
+   * make it by naming a field of one notebook over notes from two. That refuses the whole
+   * call, naming the note, rather than leaving values on notes that cannot show them. A
+   * bad value refuses the whole call too, and nothing is written: validation precedes the
+   * first write, and the transaction would take back anything before it.
    */
   updateMany(
     ids: string[],
-    patch: { notebook?: string | null | undefined; addTags?: string[] | undefined; removeTags?: string[] | undefined },
+    patch: {
+      notebook?: string | null | undefined;
+      addTags?: string[] | undefined;
+      removeTags?: string[] | undefined;
+      fields?: NoteFieldsPatch | undefined;
+    },
   ): { matched: string[]; changed: string[] } {
     const add = uniqueTags(patch.addTags ?? []);
     const remove = uniqueTags(patch.removeTags ?? []).filter((t) => !add.includes(t));
@@ -1171,6 +1188,19 @@ export class NotesStore {
       const notebookId =
         patch.notebook === undefined ? undefined : this.resolveNotebook(patch.notebook);
 
+      // Validated and built for every note before the first write, so a bad value or a
+      // field from the wrong notebook leaves nothing half done.
+      const fieldWrites =
+        patch.fields && Object.keys(patch.fields).length > 0
+          ? this.prepareBulkFieldWrites(
+              rows.map((r) => ({
+                id: r.id,
+                notebookId: notebookId === undefined ? r.notebook_id : notebookId,
+              })),
+              patch.fields,
+            )
+          : new Map<string, Statement[]>();
+
       const moving: string[] = [];
       /** Tag name → the notes that lack it, or that carry it. */
       const adding = new Map<string, string[]>();
@@ -1188,6 +1218,7 @@ export class NotesStore {
         const have = new Set(splitTags(row.tags));
         for (const tag of add) if (!have.has(tag)) note(adding, tag, row.id);
         for (const tag of remove) if (have.has(tag)) note(removing, tag, row.id);
+        if (fieldWrites.has(row.id)) changed.add(row.id);
       }
       if (changed.size === 0) return { matched, changed: [] };
 
@@ -1225,6 +1256,8 @@ export class NotesStore {
           );
         }
       }
+
+      for (const statements of fieldWrites.values()) this.run(statements);
 
       const now = Date.now();
       for (const run of runs([...changed])) {
@@ -2632,6 +2665,10 @@ export class NotesStore {
           : encodeFieldValue(withHeldOptions(def, stored), value);
       if (encoded === null) throw new InvalidFieldValue(def.name, expectedFieldValue(def));
       if (encoded !== 'clear' && encoded.text === stored) continue;
+      // A clear of a value the note does not hold writes nothing. `update` strips those
+      // before it gets here (`changedKeysOnly`); a bulk call does not, and without this
+      // every note it cleared a field on would be counted as changed and re-dated.
+      if (encoded === 'clear' && stored === undefined) continue;
 
       statements.push(
         encoded === 'clear'
@@ -2646,6 +2683,52 @@ export class NotesStore {
       );
     }
     return statements;
+  }
+
+  /**
+   * `prepareFieldWrites` for a set of notes: the statements for each note that has any,
+   * after checking that every field belongs to the notebook each note will be in.
+   *
+   * The membership check reads the definitions once for the set; the per-note read is
+   * `prepareFieldWrites`' own, so the validation and encoding stay one piece of code. A
+   * tombstoned definition is not a member — its notebook is gone — so bulk writes can
+   * neither set nor clear values left over from a deleted notebook, which a note's own
+   * editor can still do one at a time.
+   */
+  private prepareBulkFieldWrites(
+    notes: Array<{ id: string; notebookId: string | null }>,
+    patch: NoteFieldsPatch,
+  ): Map<string, Statement[]> {
+    const ids = Object.keys(patch);
+    if (ids.length > 100) throw new InvalidFieldValue('fields', 'Too many fields in one change');
+    const owners = new Map(
+      this.sql
+        .exec<{ id: string; notebook_id: string; name: string }>(
+          `SELECT id, notebook_id, name FROM notebook_fields
+            WHERE deleted_at IS NULL AND id IN (SELECT value FROM json_each(?1))`,
+          JSON.stringify(ids),
+        )
+        .map((r) => [r.id, r]),
+    );
+    for (const id of ids) if (!owners.has(id)) throw new InvalidFieldValue(id, 'No such field');
+
+    for (const n of notes) {
+      for (const id of ids) {
+        const owner = owners.get(id)!;
+        if (owner.notebook_id === n.notebookId) continue;
+        const where = n.notebookId
+          ? `the notebook "${this.sql.first<{ name: string }>(`SELECT name FROM notebooks WHERE id = ?1`, n.notebookId)?.name}", where note ${n.id} is filed`
+          : `any notebook note ${n.id} is in, since it is in none`;
+        throw new InvalidFieldValue(owner.name, `is not a field of ${where}`);
+      }
+    }
+
+    const writes = new Map<string, Statement[]>();
+    for (const n of notes) {
+      const statements = this.prepareFieldWrites(n.id, patch);
+      if (statements.length > 0) writes.set(n.id, statements);
+    }
+    return writes;
   }
 
   /** Runs statements built earlier, inside whatever transaction the caller holds. */

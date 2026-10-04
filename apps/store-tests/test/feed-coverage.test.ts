@@ -63,7 +63,9 @@ const WRITES: Record<string, (s: Seeded) => Promise<unknown>> = {
   removeMany: (s) => s.stub.removeMany([s.noteId]),
   restoreMany: (s) => s.stub.restoreMany([s.trashedId]),
   purgeMany: (s) => s.stub.purgeMany([s.trashedId]),
-  updateMany: (s) => s.stub.updateMany([s.noteId], { addTags: ['bulk'] }),
+  // A field value alone, the newest way for it to write: tags and notebooks are pinned
+  // in feed-writes.test.ts, and this is the one that a missing record would leave unnoticed.
+  updateMany: (s) => s.stub.updateMany([s.noteId], { fields: { [s.fieldId]: 'bulk value' } }),
   importNote: (s) => s.stub.importNote({ title: 'I', body: 'b', tags: [], createdAt: 1, updatedAt: 1, contentHash: 'h' }),
   setBody: (s) => s.stub.setBody(s.noteId, 'replaced'),
   purge: (s) => s.stub.purge('trashed'),

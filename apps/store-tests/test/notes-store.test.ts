@@ -396,6 +396,53 @@ describe('notes: bulk actions and purging', () => {
     expect((await stub.get(a.id))!.updatedAt).toBe(before);
   });
 
+  it('sets a field value across a selection, merging, leaving held values dated and refusing the wrong notebook', async () => {
+    const { stub } = freshStore('bulk-fields');
+    const store = (await stub.createField((await stub.createNotebook('Coupons'))!.id, { name: 'Store', type: 'text', options: [] })) as { id: string };
+    const kind = (await stub.createField((await stub.listNotebooks())[0]!.id, { name: 'Kind', type: 'select', options: ['food', 'fuel'] })) as { id: string };
+    const a = await stub.create(note({ notebook: 'Coupons', fields: { [store.id]: 'Acme', [kind.id]: 'food' } }));
+    const b = await stub.create(note({ notebook: 'Coupons' }));
+    const c = await stub.create(note({ notebook: 'Coupons', fields: { [store.id]: 'Acme' } }));
+    const elsewhere = await stub.create(note({ notebook: 'Taxes' }));
+    const unfiled = await stub.create(note({}));
+    const heldDate = (await stub.get(c.id))!.updatedAt;
+
+    // Only the named field changes; a note already holding the value is matched, not changed.
+    const done = await stub.updateMany([a.id, b.id, c.id, 'ghost'], { fields: { [store.id]: 'Acme' } });
+    expect(done.matched.sort()).toEqual([a.id, b.id, c.id].sort());
+    expect(done.changed).toEqual([b.id]);
+    expect((await stub.get(c.id))!.updatedAt).toBe(heldDate);
+    expect((await stub.get(a.id))!.fields!.map((v) => [v.name, v.value]).sort()).toEqual([['Kind', 'food'], ['Store', 'Acme']]);
+    expect((await stub.get(b.id))!.fields!.map((v) => [v.name, v.value])).toEqual([['Store', 'Acme']]);
+
+    // Null clears, but only where there is something to clear.
+    const cleared = await stub.updateMany([a.id, b.id, c.id], { fields: { [kind.id]: null } });
+    expect(cleared.changed).toEqual([a.id]);
+    expect((await stub.get(a.id))!.fields!.map((v) => v.name)).toEqual(['Store']);
+
+    // A value the field cannot hold refuses the call, and nothing before it lands.
+    await expect(stub.updateMany([a.id, b.id], { addTags: ['half'], fields: { [kind.id]: 'water' } })).rejects.toMatchObject({
+      name: 'InvalidFieldValue',
+      fieldName: 'Kind',
+    });
+    expect((await stub.get(a.id))!.tags).toEqual([]);
+
+    // Notes from another notebook, or none, refuse the whole call and say which note.
+    for (const stray of [elsewhere, unfiled]) {
+      await expect(stub.updateMany([a.id, stray.id], { fields: { [store.id]: 'Beta' } })).rejects.toMatchObject({
+        name: 'InvalidFieldValue',
+        fieldName: 'Store',
+        message: expect.stringContaining(stray.id),
+      });
+    }
+    expect((await stub.get(a.id))!.fields!.find((v) => v.name === 'Store')!.value).toBe('Acme');
+
+    // The destination counts: the same patch is fine alongside a move into the notebook.
+    const moved = await stub.updateMany([elsewhere.id], { notebook: 'Coupons', fields: { [store.id]: 'Beta' } });
+    expect(moved.changed).toEqual([elsewhere.id]);
+    await expect(stub.updateMany([a.id], { fields: { 'no-such-field': 'x' } })).rejects.toMatchObject({ name: 'InvalidFieldValue' });
+  });
+
   it('trashes, restores and purges many, skipping ids on the wrong side of the trash', async () => {
     const { stub } = freshStore('many');
     const a = await stub.create(note({ tags: ['only-here'] }));

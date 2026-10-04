@@ -126,6 +126,24 @@ describe('the feed records note writes', () => {
     expect(rows.slice(4).every((r) => r.deleted)).toBe(true);
   });
 
+  it('a field value set across notes: the notes it changed, and nothing for a refusal', async () => {
+    const { stub } = freshStore('feed-bulk-fields');
+    const nb = (await stub.createNotebook('Coupons'))!;
+    const field = (await stub.createField(nb.id, { name: 'Store', type: 'text', options: [] })) as { id: string };
+    const d = await stub.create(note({ notebook: 'Coupons', fields: { [field.id]: 'Acme' } }));
+    const e = await stub.create(note({ notebook: 'Coupons' }));
+    const stray = await stub.create(note());
+    const seq = await feedSeq(stub);
+    // Only the note that changed, and no row for the definition: a client reads the
+    // field's name off the definitions it holds.
+    expect((await stub.updateMany([d.id, e.id], { fields: { [field.id]: 'Acme' } })).changed).toEqual([e.id]);
+    expect(await feedRows(stub, seq)).toEqual([{ entity: 'note', id: e.id }]);
+    // Refused, so nothing recorded.
+    const seqRefused = await feedSeq(stub);
+    await expect(stub.updateMany([d.id, stray.id], { fields: { [field.id]: 'Beta' } })).rejects.toThrow();
+    expect(await feedRows(stub, seqRefused)).toEqual([]);
+  });
+
   it('import: the note once, nothing for a re-import that changes nothing, the note again when it refiles', async () => {
     const { stub } = freshStore('feed-import');
     const input = { title: 'T', body: 'b', tags: ['x'], notebook: 'Inbox', createdAt: 1, updatedAt: 1, contentHash: 'h1' };

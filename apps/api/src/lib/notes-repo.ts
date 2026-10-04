@@ -150,7 +150,12 @@ export class NotesRepo extends StoreRepo {
 
   updateMany(
     ids: string[],
-    patch: { notebook?: string | null | undefined; addTags?: string[] | undefined; removeTags?: string[] | undefined },
+    patch: {
+      notebook?: string | null | undefined;
+      addTags?: string[] | undefined;
+      removeTags?: string[] | undefined;
+      fields?: NoteFieldsPatch | undefined;
+    },
   ): Promise<{ matched: string[]; changed: string[] }> {
     return this.call((s) => s.updateMany(ids, patch));
   }
