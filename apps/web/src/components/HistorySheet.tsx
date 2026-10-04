@@ -17,7 +17,7 @@ import { usePersistentState } from '../usePersistentState.js';
 import { Button } from './Button.js';
 import { Confirm } from './Confirm.js';
 import { formatRevisionWhen } from './format-when.js';
-import { HistoryChanges, PropLine, shown, type HistoryCurrent } from './HistoryChanges.js';
+import { HistoryChanges, PropLine, formatPropValue, type HistoryCurrent } from './HistoryChanges.js';
 import { RowChevronIcon } from './icons.js';
 import { Preview } from './Preview.js';
 import { Sheet } from './Sheet.js';
@@ -140,7 +140,7 @@ function VersionProps({ props }: { props: NoteRevisionProps }) {
       {props.tags.length > 0 && <PropLine label="Tags">{props.tags.map((t) => t.name).join(', ')}</PropLine>}
       {props.fields.map((value) => (
         <PropLine key={value.fieldId} label={value.name}>
-          {shown(value)}
+          {formatPropValue(value)}
         </PropLine>
       ))}
     </dl>

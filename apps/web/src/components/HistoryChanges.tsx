@@ -171,14 +171,14 @@ function Swap({ from, to }: { from: string | null; to: string | null }) {
 }
 
 /** A field's value as the note's own rows draw it: stars, money, Yes and No. */
-export const shown = (v: PropValue) => formatFieldValue(v.type, v.value, v.scale, v.currency);
+export const formatPropValue = (v: PropValue) => formatFieldValue(v.type, v.value, v.scale, v.currency);
 
 /**
  * Why Restore would leave something as it is, in the words of what happened to it.
  * These are the server's three reasons (`RevisionSkip`), said before the press: the
  * snackbar after a restore says them again, but by then the person has pressed.
  */
-export function skipReason(skip: RevisionSkip, held?: string): string {
+function skipReason(skip: RevisionSkip, held?: string): string {
   if (skip.what === 'notebook') return `“${skip.name}” has been deleted, so the note stays where it is.`;
   const value = held === undefined ? 'its value' : `“${held}”`;
   if (skip.why === 'deleted') return `This field has been deleted, so ${value} is not put back.`;
@@ -219,7 +219,7 @@ function PropChangeLine({ change }: { change: PropChange }) {
   if (change.kind === 'field') {
     return (
       <PropLine label={change.name}>
-        <Swap from={change.from ? shown(change.from) : null} to={change.to ? shown(change.to) : null} />
+        <Swap from={change.from ? formatPropValue(change.from) : null} to={change.to ? formatPropValue(change.to) : null} />
       </PropLine>
     );
   }
@@ -243,8 +243,8 @@ function PropChangeLine({ change }: { change: PropChange }) {
         {/* The other way round: a value the version never had, which Restore would clear
             if its field still existed. Clearing it could not be undone, so it stays. */}
         {stays
-          ? `This field has been deleted, so “${shown(stays)}” stays on the note.`
-          : skipReason(skip, held ? shown(held) : undefined)}
+          ? `This field has been deleted, so “${formatPropValue(stays)}” stays on the note.`
+          : skipReason(skip, held ? formatPropValue(held) : undefined)}
       </span>
     </PropLine>
   );
