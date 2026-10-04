@@ -17,7 +17,12 @@ import {
   type SearchResult,
   fieldSortKey,
   fieldSortsNumerically,
+  NOTE_FTS_WEIGHTS,
+  toFtsQuery,
 } from '@unbent/shared';
+
+// The query builder is shared with the web's local index; re-exported for the importers it has always had here.
+export { toFtsQuery };
 
 /**
  * The pure half of the notes repository: row shapes, SQL fragments, the search tiers, the
@@ -313,7 +318,7 @@ export interface SearchTier {
 }
 
 export const SEARCH_TIERS: Record<'note' | 'tag' | 'field' | 'file', SearchTier> = {
-  note: { tier: 0, fts: 'notes_fts', snippet: 1, weights: '10.0, 1.0', matched: {} },
+  note: { tier: 0, fts: 'notes_fts', snippet: 1, weights: NOTE_FTS_WEIGHTS, matched: {} },
   tag: { tier: 1, fts: 'tags_fts', snippet: 0, weights: null, matched: { tag: 't.name' } },
   field: { tier: 2, fts: 'note_fields_fts', snippet: 0, weights: null, matched: { field: 'f.name' } },
   file: { tier: 3, fts: 'attachment_text_fts', snippet: 0, weights: null, matched: { file: 'at.filename' } },
@@ -440,32 +445,6 @@ export function scopeDrivenSearchSql(live: string, scoped: string): string {
            WHERE place = 1
            ORDER BY tier, rank, id
            LIMIT ?2`;
-}
-
-/**
- * Turns arbitrary user input into a valid FTS5 MATCH expression.
- *
- * FTS5 query syntax is a real grammar: a stray quote, a bare `*`, or a reserved word like
- * `AND` raises a SQL error rather than returning nothing. Users type search boxes, not
- * query languages, so every term is quoted as a literal phrase and the last one gets a
- * prefix `*` so results appear while typing.
- */
-export function toFtsQuery(raw: string): string {
-  const terms = raw
-    .replace(/["*()]/g, ' ')
-    .split(/\s+/)
-    .map((t) => t.trim())
-    .filter((t) => t.length > 0);
-
-  if (terms.length === 0) return '';
-
-  return terms
-    .map((term, i) => {
-      const quoted = `"${term}"`;
-      // Prefix-match only the final term: mid-query terms are complete words.
-      return i === terms.length - 1 ? `${quoted}*` : quoted;
-    })
-    .join(' AND ');
 }
 
 /**
