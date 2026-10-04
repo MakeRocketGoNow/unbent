@@ -1501,9 +1501,9 @@ export class NotesStore {
    * `update`'s rules and for `update`'s reasons (MAK-170): the same half-hour sitting
    * for a person's selection, and `by: 'assistant'` for the MCP batch tools, whose
    * refiling of two hundred notes is the edit someone most wants to be able to look
-   * back through. That is a read of each changed note and at most a row kept for it —
-   * a note per changed note, not per id sent, so the forty that already had the tag
-   * cost nothing here either. `by` is the caller's to say and is not in the HTTP
+   * back through. That is the newest copy asked for per changed note, and the note read
+   * whole only when a copy is going to be kept of it — a note per changed note, not per
+   * id sent, so the forty that already had the tag cost nothing here either. `by` is the caller's to say and is not in the HTTP
    * schema, as on `update`.
    */
   updateMany(
@@ -1521,11 +1521,11 @@ export class NotesStore {
 
     return this.sql.tx(() => {
       // What each note holds now: its notebook and its tags, one row per note.
-      const rows: Array<{ id: string; notebook_id: string | null; tags: string | null }> = [];
+      const rows: Array<{ id: string; notebook_id: string | null; updated_at: number; tags: string | null }> = [];
       for (const run of runs([...new Set(ids)])) {
         rows.push(
-          ...this.sql.exec<{ id: string; notebook_id: string | null; tags: string | null }>(
-            `SELECT n.id, n.notebook_id,
+          ...this.sql.exec<{ id: string; notebook_id: string | null; updated_at: number; tags: string | null }>(
+            `SELECT n.id, n.notebook_id, n.updated_at,
                     (SELECT group_concat(t.name, char(31)) FROM note_tags nt
                        JOIN tags t ON t.id = nt.tag_id
                       WHERE nt.note_id = n.id) AS tags
@@ -1583,14 +1583,21 @@ export class NotesStore {
       const now = Date.now();
       const moved = new Set(moving);
       const retagged = new Set([...adding.values(), ...removing.values()].flat());
-      for (const id of changed) {
-        const current = this.get(id);
-        if (!current) continue;
+      for (const row of rows) {
+        const id = row.id;
+        if (!changed.has(id)) continue;
         const parts: NoteRevisionChange[] = [];
         if (fieldWrites.has(id)) parts.push('fields');
         if (retagged.has(id)) parts.push('tags');
         if (moved.has(id)) parts.push('notebook');
-        this.revisions.keep(id, current, Math.max(now, current.updatedAt + 1), patch.by, parts, () => this.propsOf(current));
+        const stamp = Math.max(now, row.updated_at + 1);
+        // Asked with the date the first read already has, before the note is read whole:
+        // a selection of notes edited this half hour keeps nothing, and reading each
+        // one's body to find that out was most of what this loop did.
+        if (this.revisions.covers(id, row.updated_at, stamp, patch.by, parts)) continue;
+        const current = this.get(id);
+        if (!current) continue;
+        this.revisions.keep(id, current, stamp, patch.by, parts, () => this.propsOf(current), true);
       }
 
       for (const run of runs(moving)) {

@@ -1055,6 +1055,12 @@ describe('rows read on an archive-sized store', () => {
         'bulk change that keeps fifty copies',
         () => stub.updateMany(Array.from({ length: 50 }, (_, k) => `n${String(100 + k).padStart(5, '0')}`), { addTags: ['filed'] }),
       ),
+      // The same fifty again, now inside their window: nothing is kept, and no note is
+      // read whole to find that out.
+      await measure(
+        'bulk change inside the window',
+        () => stub.updateMany(Array.from({ length: 50 }, (_, k) => `n${String(100 + k).padStart(5, '0')}`), { addTags: ['refiled'] }),
+      ),
       await measure('history list', () => stub.listRevisions('n00021')),
       await measure('history copy', async () => stub.getRevision('n00021', (await stub.listRevisions('n00021'))![5]!.id)),
       await measure('history restore', async () => stub.restoreRevision('n00021', (await stub.listRevisions('n00021'))![5]!.id)),
@@ -1152,6 +1158,9 @@ describe('rows read on an archive-sized store', () => {
       // copies and are all outside their window; a selection of ordinary notes is
       // nearer 10,000.
       'bulk change that keeps fifty copies': 7000,
+      // About fifteen a note: the verb's own reads and feed rows, and each note's newest
+      // copy asked for. No note is read whole (766, measured 2026-10-04).
+      'bulk change inside the window': 900,
       // One note's fifty copies, of fifteen thousand (51 and 53).
       'history list': 65,
       'history copy': 70,

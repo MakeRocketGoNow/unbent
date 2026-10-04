@@ -93,6 +93,8 @@ export class Revisions {
     by: RevisionWriter,
     changed: readonly NoteRevisionChange[],
     props: () => NoteRevisionProps,
+    /** The caller has already asked `covers` for this write and been told no. */
+    asked = false,
   ): number | null {
     if (by !== 'restore') {
       // A note with no text and no values has nothing to lose. Every note made in the
@@ -104,21 +106,7 @@ export class Revisions {
       // under a tag filter that blank version. A restore still keeps an empty note: its
       // Undo needs that copy to put back.
       if (was.title === '' && was.body === '' && (was.fields?.length ?? 0) === 0) return null;
-      const newest = this.sql.first<NewestRow>(
-        `SELECT id, created_at, through, cause, changed FROM note_revisions
-          WHERE note_id = ?1 ORDER BY created_at DESC, id DESC LIMIT 1`,
-        noteId,
-      );
-      const recent = newest !== null && stamp - newest.created_at < REVISION_WINDOW_MS;
-      if (recent && by === undefined) {
-        this.alsoChanged(newest, changed);
-        return null;
-      }
-      if (recent && newest.cause === 'assistant' && newest.through === was.updatedAt) {
-        this.sql.exec(`UPDATE note_revisions SET through = ?1 WHERE id = ?2`, stamp, newest.id);
-        this.alsoChanged(newest, changed);
-        return null;
-      }
+      if (!asked && this.covers(noteId, was.updatedAt, stamp, by, changed)) return null;
     }
     const kept = this.sql.first<{ id: number }>(
       `INSERT INTO note_revisions (note_id, title, body, size, created_at, through, cause, props, changed)
@@ -134,6 +122,42 @@ export class Revisions {
     );
     this.prune(noteId, stamp);
     return kept?.id ?? null;
+  }
+
+  /**
+   * Whether the note's newest copy already stands for this write, so none need be kept:
+   * the half of `keep`'s decision that needs nothing of the note but its date. When it
+   * does, the copy is told what this write changed and, for an assistant's run, how far
+   * the run has got — so a caller that hears yes has nothing more to do.
+   *
+   * Apart from `keep` for the bulk verb, which would otherwise read every note it
+   * changes whole, body and all, to learn that most of them are inside their window and
+   * keep nothing. It asks this first, with the date it already has, and reads only the
+   * notes it will copy. Never asked for a restore, which always keeps.
+   */
+  covers(
+    noteId: string,
+    wasUpdatedAt: number,
+    stamp: number,
+    by: Exclude<RevisionWriter, 'restore'>,
+    changed: readonly NoteRevisionChange[],
+  ): boolean {
+    const newest = this.sql.first<NewestRow>(
+      `SELECT id, created_at, through, cause, changed FROM note_revisions
+        WHERE note_id = ?1 ORDER BY created_at DESC, id DESC LIMIT 1`,
+      noteId,
+    );
+    if (newest === null || stamp - newest.created_at >= REVISION_WINDOW_MS) return false;
+    if (by === undefined) {
+      this.alsoChanged(newest, changed);
+      return true;
+    }
+    if (newest.cause === 'assistant' && newest.through === wasUpdatedAt) {
+      this.sql.exec(`UPDATE note_revisions SET through = ?1 WHERE id = ?2`, stamp, newest.id);
+      this.alsoChanged(newest, changed);
+      return true;
+    }
+    return false;
   }
 
   /**
