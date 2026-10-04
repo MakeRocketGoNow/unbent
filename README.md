@@ -1365,9 +1365,8 @@ and previews, so passkeys made there work from the app too.
 The site, whole, in one web view, the way the Android app is, with native code only for
 what a page cannot do on an iPhone: sign-in, saving files where the phone keeps them, links
 that leave, and the app's own address and version. It is a port of the Android app's shell
-rather than a second design, and where the two differ it is because the platforms do. This
-is the first part of it: the share extension, sign-in through Apple, Google, a browser and
-passkeys, links that open in the app, and TestFlight are still to come.
+rather than a second design, and where the two differ it is because the platforms do.
+Links that open in the app, and TestFlight, are still to come.
 
 ```
 swift test --package-path apps/ios/Packages/UnbentCore   # unit tests, on the Mac, no simulator
@@ -1375,9 +1374,11 @@ pnpm ios:build      # build, install and launch the debug build on a simulator
 pnpm ios            # launch what is already installed
 ```
 
-**How it is laid out.** `apps/ios/Unbent.xcodeproj` is one app target whose sources are the
-`Unbent/` folder as it is on disk, so a file added there needs no change to the project.
-Two local Swift packages hold everything that is not the shell. `UnbentCore` is Foundation
+**How it is laid out.** `apps/ios/Unbent.xcodeproj` has two targets, the app and its Share
+Extension, whose sources are the `Unbent/` and `UnbentShare/` folders as they are on disk,
+with `Shared/` compiled into both; a file added to any of them needs no change to the
+project. Two local Swift packages hold everything that is not the shell or a sheet of the
+system's. `UnbentCore` is Foundation
 only and builds for the Mac, which is what lets its tests run without a simulator: the
 session cookie, where an address opens, the API, the Keychain store, the page's messages
 and the files the app saves, each a port of the Kotlin one with its tests. `UnbentUI` is
@@ -1385,7 +1386,8 @@ the native screens as SwiftUI views that take values and closures, apart from th
 the share extension can draw the same ones.
 
 Every build setting is in `apps/ios/Config/` — `Base.xcconfig`, with `Debug.xcconfig` and
-`Release.xcconfig` over it — and the project file holds none. `Info.plist` reads them, and
+`Release.xcconfig` over it, and `Share.xcconfig` for what the extension's build differs
+in — and the project file holds none. `Info.plist` reads them, and
 `BuildInfo.swift` reads `Info.plist`. The plist is run through the C preprocessor for the
 two blocks only the debug build has, which is why it has no DOCTYPE and no apostrophes: the
 preprocessor takes `//` for a comment and a lone `'` for an unfinished character.
@@ -1393,10 +1395,22 @@ preprocessor takes `//` for a comment and a lone `'` for an unfinished character
 The debug build is a second app, as on Android: bundle id `.debug`, the name "Unbent
 (debug)", an amber icon, and its own session and web data, so the two sit side by side.
 
-**How it signs in.** By what the instance offers, read from `GET /api/config`. This part
-has the two methods that are only requests: a code by email and a password, against Better
-Auth directly. The rest are drawn disabled in a debug build, so what the instance offers
-can be seen, and left out of a release build. Every path ends the same way as on Android:
+**How it signs in.** By what the instance offers, read from `GET /api/config`. Two methods
+are only requests: a code by email and a password, against Better Auth directly. Three put
+one of the system's sheets first. Apple's, which returns an identity token bound to a
+nonce: Apple is given the nonce's SHA-256 and the server the nonce itself, and the name
+Apple sends on a first authorization is set on the account afterwards. The passkey sheet,
+which signs the challenge from `/api/auth/passkey/generate-authenticate-options`; the
+cookie that response sets names the challenge and is sent back with the answer by hand,
+since the app's client keeps no cookie jar. And a browser at `/connect`
+(`ASWebAuthenticationSession`, sharing Safari's cookies) for Google and for any other
+provider the instance has, which comes back on `unbent://connect` with a one-time token —
+the Android app's flow, and the same two redirect schemes, since a scheme belongs to one
+platform's install. Google has no sheet of its own here: Google's SDK would be a
+dependency that ends in a web sheet anyway. Passkeys need the app to claim the instance's
+host (`webcredentials:` in `Config/Unbent.entitlements`) and the instance to vouch for the
+app, below; the debug build claims `dev.unbent.app` too, in developer mode, and a dev
+server on localhost cannot be claimed at all. Every path ends the same way as on Android:
 the session cookie the response set is kept per origin, here in the Keychain under the App
 Group so the share extension can read it, and is `AfterFirstUnlockThisDeviceOnly` — usable
 while the phone is locked in a pocket, and never restored onto another phone. Its value
@@ -1456,6 +1470,45 @@ the outbox in IndexedDB, and the library in the origin-private file system.
 `navigator.storage.persist()` answers false in the web view, so that storage is the
 system's to reclaim under pressure, like any app's caches; nothing the server has not heard
 of is kept only there for long, since the outbox drains whenever there is a connection.
+
+**How a capture is saved.** Sharing to Unbent from another app opens the extension's
+sheet — title, notebook, tags, prefilled as on Android — over a copy of what was shared,
+made in the App Group's container before the sheet has drawn (`CaptureStager`): what a
+share hands over lasts only as long as the sheet. A HEIC with no JPEG offered beside it
+is transcoded, since the server serves HEIC to nobody inline.
+
+Nothing is uploaded by the extension, or by the app in the ordinary sense. iOS ends an
+extension when its sheet closes and suspends the app seconds after it leaves the screen,
+so every request is handed to a background `URLSession`, which the system sends whether or
+not anything of the app's is running, launching the app in the background to hear each
+result (`CaptureQueue`). A background session promises no order, so the requests go a stage
+at a time: Save sends `POST /api/notes` and closes the sheet, and the files follow once
+the note is known to exist. Each result is applied to the capture's record, `.job.json`
+beside its files, by a pure function with the rules in it (`CaptureJob.handle`): four
+tries with a backoff, and none for a 4xx that will be the same next time; a file given up
+on is left out of a capture that is otherwise saved; a 503 with `Retry-After` waited
+out, up to fourteen times, without spending a try; a 401 for the session the phone still
+holds forgets the session and keeps the capture, which then waits for a sign-in like one
+made signed out. A retry is a request created at once with `earliestBeginDate`, so the
+wait is the system's to keep. The note's id is chosen on the phone, and each file's is
+sent as `X-Attachment-Id`, which is what makes any of this safe to send twice. An app the
+person force-quit is not relaunched for a result, so whatever is on disk is also looked
+at on every launch and every return to the app.
+
+The app has one background session; the extension has one per capture, named in the
+capture's record, which the app joins to collect what the extension started. Only one
+process may use a background session at a time, and a single shared name has a second
+share contending with the app woken for the first.
+
+Shared while signed out, a capture is staged all the same and sent after the next sign-in;
+it waits thirty days for one, and the notification says so if it is given up on. A sheet
+closed without Save or Cancel leaves no record, and its files go after three.
+Its one notification goes from "Saving…" to "Saved" in place and opens the note; delivery
+is asked for provisionally, so there is no prompt and the first one arrives quietly with
+the system's own Keep or Turn Off. A PDF or an image can also be opened in the app from
+another one ("Open in", Files, a scanner's app), which shows the same sheet over the same
+queue. Captured PDFs are not indexed on the phone, as Android's are: the server's own
+extraction covers unbent.app, and the site's pass when the note is opened covers the rest.
 
 **What iOS does that Android does not.** It suspends an app seconds after it leaves the
 screen, so the shell asks for a few seconds of background time for the page's save on
@@ -1554,9 +1607,6 @@ capability on the portal.
   it offers; there is no way to connect one read-only. Scopes exist in the protocol and are
   advertised, but nothing enforces a narrower grant yet, and a consent screen offering a
   choice nobody can act on would be worse than the honest sentence it shows instead.
-
-- **iOS has no share extension yet.** Safari does not implement Web Share Target, so an iOS
-  capture needs a real share extension and a paid Apple Developer account.
 
 ## Where your notes live
 

@@ -9,6 +9,15 @@ UNBENT_DISPLAY_NAME = Unbent (debug)
 UNBENT_CONNECT_SCHEME = unbent-debug
 ASSETCATALOG_COMPILER_APPICON_NAME = AppIconDebug
 
+// The debug build claims the dev instance's passkeys as well; the file says why it is one
+// of its own.
+CODE_SIGN_ENTITLEMENTS = Config/Unbent-Debug.entitlements
+
+// The second instance a debug build may be pointed at: bound to the web view beside the
+// build's own (Info.plist), and claimed for passkeys (the entitlements). A setting, like
+// the first, so a fork names its own in Local.xcconfig and edits no tracked file.
+UNBENT_DEV_INSTANCE_HOST = dev.unbent.app
+
 // Turns on the debug-only blocks of Info.plist: plain http to a dev server on this Mac,
 // and the extra hosts the web view may open.
 INFOPLIST_PREPROCESSOR_DEFINITIONS = UNBENT_DEBUG=1

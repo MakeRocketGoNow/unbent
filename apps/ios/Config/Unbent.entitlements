@@ -6,5 +6,18 @@
 	<array>
 		<string>$(UNBENT_APP_GROUP)</string>
 	</array>
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
+	<!--
+	  The hosts whose passkeys the system may offer this app. A claim, and only half of
+	  one: the instance has to list the app under webcredentials in its
+	  apple-app-site-association before a passkey for it appears in the sheet.
+	-->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>webcredentials:$(UNBENT_INSTANCE_HOST)</string>
+	</array>
 </dict>
 </plist>

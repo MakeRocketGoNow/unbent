@@ -72,7 +72,8 @@ public struct EmailOtpAuth: Sendable {
     }
 }
 
-private func post(_ origin: String, _ path: String, _ payload: [String: String]) throws -> URLRequest {
+/// A JSON POST to one of Better Auth's endpoints.
+func post(_ origin: String, _ path: String, _ payload: [String: Any]) throws -> URLRequest {
     guard let url = URL(string: origin + path) else { throw URLError(.badURL) }
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
@@ -84,14 +85,19 @@ private func post(_ origin: String, _ path: String, _ payload: [String: String])
     return request
 }
 
-private func signInCall(
+/// Posts `payload` and returns the session the response set. Shared with the sign-ins
+/// that put a native sheet in front of the same ending (`NativeSignIn.swift`).
+func signInCall(
     _ origin: String,
     _ path: String,
-    _ payload: [String: String],
+    _ payload: [String: Any],
     _ what: String,
-    _ session: URLSession
+    _ session: URLSession,
+    cookie: String? = nil
 ) async throws -> SessionCookie {
-    let (data, response) = try await session.data(for: post(origin, path, payload))
+    var request = try post(origin, path, payload)
+    if let cookie { request.setValue(cookie, forHTTPHeaderField: "Cookie") }
+    let (data, response) = try await session.data(for: request)
     let body = try UnbentApi.checked(data, response, what)
     guard
         let http = response as? HTTPURLResponse,

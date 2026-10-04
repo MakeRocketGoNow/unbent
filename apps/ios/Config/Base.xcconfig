@@ -11,7 +11,12 @@
 // all key on. A reverse-domain id has to be one you control.
 UNBENT_BUNDLE_ID_BASE = com.makerocketgonow.unbent
 UNBENT_BUNDLE_ID_SUFFIX =
-PRODUCT_BUNDLE_IDENTIFIER = $(UNBENT_BUNDLE_ID_BASE)$(UNBENT_BUNDLE_ID_SUFFIX)
+// The app's own id, named apart from PRODUCT_BUNDLE_IDENTIFIER because the Share Extension
+// is a second product: its id is this with `.share` on the end (Share.xcconfig), and
+// everything the two have in common — the App Group, the names of the upload sessions —
+// is keyed on this one.
+UNBENT_APP_ID = $(UNBENT_BUNDLE_ID_BASE)$(UNBENT_BUNDLE_ID_SUFFIX)
+PRODUCT_BUNDLE_IDENTIFIER = $(UNBENT_APP_ID)
 
 // The Unbent the app opens. Host and scheme are apart because `//` starts a comment in
 // this file, so an address cannot be written here whole. The host is also the web view's
@@ -24,7 +29,7 @@ UNBENT_INSTANCE_SCHEME = https
 UNBENT_CONNECT_SCHEME = unbent
 
 // Shared with the Share Extension: the instance, and the Keychain item holding the session.
-UNBENT_APP_GROUP = group.$(PRODUCT_BUNDLE_IDENTIFIER)
+UNBENT_APP_GROUP = group.$(UNBENT_APP_ID)
 
 UNBENT_DISPLAY_NAME = Unbent
 
@@ -63,6 +68,10 @@ ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon
 ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor
 
 ENABLE_USER_SCRIPT_SANDBOXING = YES
+// The Share Extension is signed before it is copied into the app, and stripping a signed
+// binary on the way is refused with a warning on every build. It is stripped as its own
+// product where a build strips at all.
+COPY_PHASE_STRIP = NO
 LD_RUNPATH_SEARCH_PATHS = $(inherited) @executable_path/Frameworks
 ALWAYS_SEARCH_USER_PATHS = NO
 CLANG_ENABLE_MODULES = YES

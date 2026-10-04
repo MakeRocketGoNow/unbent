@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<!-- The name in the share sheet. The debug build says so there too. -->
+	<key>CFBundleDisplayName</key>
+	<string>$(UNBENT_DISPLAY_NAME)</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+
+	<!-- The same keys the app has, for the same BuildInfo.swift to read. -->
+	<key>UnbentInstanceHost</key>
+	<string>$(UNBENT_INSTANCE_HOST)</string>
+	<key>UnbentInstanceScheme</key>
+	<string>$(UNBENT_INSTANCE_SCHEME)</string>
+	<key>UnbentAppGroup</key>
+	<string>$(UNBENT_APP_GROUP)</string>
+	<key>UnbentAppId</key>
+	<string>$(UNBENT_APP_ID)</string>
+
+#if UNBENT_DEBUG
+	<!-- Plain http, to a dev server on this Mac and nowhere else. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+#endif
+
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.share-services</string>
+		<key>NSExtensionPrincipalClass</key>
+		<string>$(PRODUCT_MODULE_NAME).ShareViewController</string>
+		<key>NSExtensionAttributes</key>
+		<dict>
+			<!--
+			  What Unbent appears in the share sheet for. A dictionary and not the
+			  predicate TRUEPREDICATE, which App Review refuses. Files covers PDFs and
+			  everything else, as the Android app takes any type; the counts are where
+			  a share stops being a capture and becomes an import.
+			-->
+			<key>NSExtensionActivationRule</key>
+			<dict>
+				<key>NSExtensionActivationSupportsImageWithMaxCount</key>
+				<integer>20</integer>
+				<key>NSExtensionActivationSupportsFileWithMaxCount</key>
+				<integer>20</integer>
+				<key>NSExtensionActivationSupportsMovieWithMaxCount</key>
+				<integer>5</integer>
+				<key>NSExtensionActivationSupportsText</key>
+				<true/>
+				<key>NSExtensionActivationSupportsWebURLWithMaxCount</key>
+				<integer>1</integer>
+			</dict>
+		</dict>
+	</dict>
+</dict>
+</plist>

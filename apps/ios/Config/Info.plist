@@ -33,6 +33,8 @@
 	<string>$(UNBENT_CONNECT_SCHEME)</string>
 	<key>UnbentAppGroup</key>
 	<string>$(UNBENT_APP_GROUP)</string>
+	<key>UnbentAppId</key>
+	<string>$(UNBENT_APP_ID)</string>
 
 	<!--
 	  The hosts the web view may open, and the reason it has a service worker at all:
@@ -45,7 +47,7 @@
 	<array>
 		<string>$(UNBENT_INSTANCE_HOST)</string>
 #if UNBENT_DEBUG
-		<string>dev.unbent.app</string>
+		<string>$(UNBENT_DEV_INSTANCE_HOST)</string>
 		<string>localhost</string>
 #endif
 	</array>
@@ -67,6 +69,39 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>$(UNBENT_CONNECT_SCHEME)</string>
+			</array>
+		</dict>
+	</array>
+
+	<!--
+	  "Open in Unbent", for a PDF or an image in another app: Files, a scanner. The app
+	  stages the file and shows the capture sheet the share extension shows. Alternate,
+	  so it is offered beside whatever already opens these and never becomes the default.
+	-->
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>PDF</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.adobe.pdf</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Image</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.image</string>
 			</array>
 		</dict>
 	</array>

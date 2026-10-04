@@ -2,16 +2,23 @@ import Foundation
 
 /// What this build was configured with, read out of Info.plist — which is where the
 /// values in `Config/*.xcconfig` end up. Swift has no `BuildConfig`; this is it.
+///
+/// In `Shared/`, which is compiled into the app and into the Share Extension: each reads
+/// its own Info.plist, and the two are written from the same settings.
 enum BuildInfo {
     /// The instance the app opens until told otherwise: `UNBENT_INSTANCE_SCHEME` and
     /// `UNBENT_INSTANCE_HOST`, put back together.
     static let defaultInstance = "\(string("UnbentInstanceScheme") ?? "https")://\(string("UnbentInstanceHost") ?? "unbent.app")"
 
-    /// The scheme a browser sign-in comes back on. Registered now; used by MAK-155.
+    /// The scheme a browser sign-in comes back on (`unbent://connect`).
     static let connectScheme = string("UnbentConnectScheme") ?? "unbent"
 
     /// The App Group, shared with the Share Extension. Also the Keychain access group.
     static let appGroup = string("UnbentAppGroup")
+
+    /// The app's bundle id, which the extension's own is not: what the two name their
+    /// upload sessions for (`CaptureQueue`).
+    static let appId = string("UnbentAppId") ?? Bundle.main.bundleIdentifier ?? "unbent"
 
     static let version = string("CFBundleShortVersionString") ?? "0"
     static let build = string("CFBundleVersion") ?? "0"
@@ -26,8 +33,7 @@ enum BuildInfo {
         return hosts.map { $0.lowercased() }.filter { !$0.isEmpty && seen.insert($0).inserted }
     }()
 
-    /// Whether this is the debug build: the one that may be pointed at another instance,
-    /// and that shows the sign-in methods it cannot use yet.
+    /// Whether this is the debug build: the one that may be pointed at another instance.
     static var isDebug: Bool {
         #if DEBUG
         true

@@ -9,7 +9,34 @@
 /* Begin PBXBuildFile section */
 		A1000000000000000000F001 /* UnbentCore in Frameworks */ = {isa = PBXBuildFile; productRef = A1000000000000000000D001 /* UnbentCore */; };
 		A1000000000000000000F002 /* UnbentUI in Frameworks */ = {isa = PBXBuildFile; productRef = A1000000000000000000D002 /* UnbentUI */; };
+		A1000000000000000000F011 /* UnbentCore in Frameworks */ = {isa = PBXBuildFile; productRef = A1000000000000000000D011 /* UnbentCore */; };
+		A1000000000000000000F012 /* UnbentUI in Frameworks */ = {isa = PBXBuildFile; productRef = A1000000000000000000D012 /* UnbentUI */; };
+		A1000000000000000000F020 /* UnbentShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A1000000000000000000A010 /* UnbentShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A1000000000000000000E030 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A1000000000000000000E000 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A1000000000000000000E002;
+			remoteInfo = UnbentShare;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A1000000000000000000C004 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A1000000000000000000F020 /* UnbentShare.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		A1000000000000000000A001 /* Unbent.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Unbent.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -18,6 +45,13 @@
 		A1000000000000000000A004 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 		A1000000000000000000A005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A1000000000000000000A006 /* Unbent.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Unbent.entitlements; sourceTree = "<group>"; };
+		A1000000000000000000A009 /* Unbent-Debug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Unbent-Debug.entitlements"; sourceTree = "<group>"; };
+		A1000000000000000000A010 /* UnbentShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = UnbentShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1000000000000000000A011 /* Share.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Share.xcconfig; sourceTree = "<group>"; };
+		A1000000000000000000A012 /* Share-Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Share-Debug.xcconfig"; sourceTree = "<group>"; };
+		A1000000000000000000A013 /* Share-Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "Share-Release.xcconfig"; sourceTree = "<group>"; };
+		A1000000000000000000A014 /* Share-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Share-Info.plist"; sourceTree = "<group>"; };
+		A1000000000000000000A015 /* UnbentShare.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = UnbentShare.entitlements; sourceTree = "<group>"; };
 		A1000000000000000000A007 /* UnbentCore */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = UnbentCore; path = Packages/UnbentCore; sourceTree = "<group>"; };
 		A1000000000000000000A008 /* UnbentUI */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = UnbentUI; path = Packages/UnbentUI; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -26,6 +60,16 @@
 		A1000000000000000000B001 /* Unbent */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Unbent;
+			sourceTree = "<group>";
+		};
+		A1000000000000000000B005 /* UnbentShare */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = UnbentShare;
+			sourceTree = "<group>";
+		};
+		A1000000000000000000B006 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -40,6 +84,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A1000000000000000000C012 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1000000000000000000F011 /* UnbentCore in Frameworks */,
+				A1000000000000000000F012 /* UnbentUI in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -47,6 +100,8 @@
 			isa = PBXGroup;
 			children = (
 				A1000000000000000000B001 /* Unbent */,
+				A1000000000000000000B005 /* UnbentShare */,
+				A1000000000000000000B006 /* Shared */,
 				A1000000000000000000B002 /* Config */,
 				A1000000000000000000B004 /* Packages */,
 				A1000000000000000000B003 /* Products */,
@@ -61,6 +116,12 @@
 				A1000000000000000000A004 /* Release.xcconfig */,
 				A1000000000000000000A005 /* Info.plist */,
 				A1000000000000000000A006 /* Unbent.entitlements */,
+				A1000000000000000000A009 /* Unbent-Debug.entitlements */,
+				A1000000000000000000A011 /* Share.xcconfig */,
+				A1000000000000000000A012 /* Share-Debug.xcconfig */,
+				A1000000000000000000A013 /* Share-Release.xcconfig */,
+				A1000000000000000000A014 /* Share-Info.plist */,
+				A1000000000000000000A015 /* UnbentShare.entitlements */,
 			);
 			path = Config;
 			sourceTree = "<group>";
@@ -69,6 +130,7 @@
 			isa = PBXGroup;
 			children = (
 				A1000000000000000000A001 /* Unbent.app */,
+				A1000000000000000000A010 /* UnbentShare.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -92,13 +154,16 @@
 				A1000000000000000000C001 /* Sources */,
 				A1000000000000000000C002 /* Frameworks */,
 				A1000000000000000000C003 /* Resources */,
+				A1000000000000000000C004 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				A1000000000000000000E031 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				A1000000000000000000B001 /* Unbent */,
+				A1000000000000000000B006 /* Shared */,
 			);
 			name = Unbent;
 			packageProductDependencies = (
@@ -108,6 +173,31 @@
 			productName = Unbent;
 			productReference = A1000000000000000000A001 /* Unbent.app */;
 			productType = "com.apple.product-type.application";
+		};
+		A1000000000000000000E002 /* UnbentShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1000000000000000000E012 /* Build configuration list for PBXNativeTarget "UnbentShare" */;
+			buildPhases = (
+				A1000000000000000000C011 /* Sources */,
+				A1000000000000000000C012 /* Frameworks */,
+				A1000000000000000000C013 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A1000000000000000000B005 /* UnbentShare */,
+				A1000000000000000000B006 /* Shared */,
+			);
+			name = UnbentShare;
+			packageProductDependencies = (
+				A1000000000000000000D011 /* UnbentCore */,
+				A1000000000000000000D012 /* UnbentUI */,
+			);
+			productName = UnbentShare;
+			productReference = A1000000000000000000A010 /* UnbentShare.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -120,6 +210,9 @@
 				LastUpgradeCheck = 2620;
 				TargetAttributes = {
 					A1000000000000000000E001 = {
+						CreatedOnToolsVersion = 26.2;
+					};
+					A1000000000000000000E002 = {
 						CreatedOnToolsVersion = 26.2;
 					};
 				};
@@ -139,12 +232,20 @@
 			projectRoot = "";
 			targets = (
 				A1000000000000000000E001 /* Unbent */,
+				A1000000000000000000E002 /* UnbentShare */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		A1000000000000000000C003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1000000000000000000C013 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -161,7 +262,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A1000000000000000000C011 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A1000000000000000000E031 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A1000000000000000000E002 /* UnbentShare */;
+			targetProxy = A1000000000000000000E030 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		A1000000000000000000E020 /* Debug */ = {
@@ -190,6 +306,20 @@
 			};
 			name = Release;
 		};
+		A1000000000000000000E024 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A1000000000000000000A012 /* Share-Debug.xcconfig */;
+			buildSettings = {
+			};
+			name = Debug;
+		};
+		A1000000000000000000E025 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A1000000000000000000A013 /* Share-Release.xcconfig */;
+			buildSettings = {
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -211,6 +341,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		A1000000000000000000E012 /* Build configuration list for PBXNativeTarget "UnbentShare" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1000000000000000000E024 /* Debug */,
+				A1000000000000000000E025 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -219,6 +358,14 @@
 			productName = UnbentCore;
 		};
 		A1000000000000000000D002 /* UnbentUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = UnbentUI;
+		};
+		A1000000000000000000D011 /* UnbentCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = UnbentCore;
+		};
+		A1000000000000000000D012 /* UnbentUI */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = UnbentUI;
 		};

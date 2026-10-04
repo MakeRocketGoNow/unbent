@@ -42,11 +42,11 @@ public struct ApiError: Error, Equatable, LocalizedError {
 
 /// The API, as the native screens and the share extension use it.
 ///
-/// Only `config` and `me` have a caller in the app so far. The note, notebook, tag and
-/// file calls are the Share Extension's (MAK-156), which files a capture without the web
-/// view; they are here already, with their tests, because they are one port of one Kotlin
-/// class and were checked against it together. The same goes for `AppPrefs.lastNotebook`
-/// and for the indexing fields of `BridgeMessage`. Not dead code — code ahead of its caller.
+/// `config` and `me` are the app's; `listNotebooks` and `listTags` fill the capture
+/// sheet. A capture's own requests are not here: they go through a background session,
+/// which takes a request and a file rather than a call that waits, so they are built by
+/// `CaptureRequests` instead. `BridgeMessage`'s indexing fields have no caller either,
+/// and are waiting on an indexer.
 ///
 /// The Android app's half is `UnbentApi.kt`. Calls are `async` on a `URLSession` with no
 /// cookie jar: the session is sent as a bearer by hand, and a jar would let a cookie from
@@ -90,18 +90,6 @@ public struct UnbentApi: Sendable {
         return me.user
     }
 
-    /// Creates a note. Notebook omitted means unfiled, which the UI calls the Inbox.
-    public func createNote(title: String, body: String = "", tags: [String] = [], notebook: String? = nil) async throws -> Note {
-        var payload: [String: Any] = ["title": title, "body": body]
-        if !tags.isEmpty { payload["tags"] = tags }
-        if let notebook { payload["notebook"] = notebook }
-        var request = authorized(url("/api/notes"))
-        request.httpMethod = "POST"
-        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
-        request.setValue(jsonType, forHTTPHeaderField: "Content-Type")
-        return try decode(await call(request, "Create note"))
-    }
-
     public func listNotebooks() async throws -> NotebookList {
         try await get("List notebooks", url("/api/notebooks"))
     }
@@ -111,45 +99,12 @@ public struct UnbentApi: Sendable {
         return list.tags ?? []
     }
 
-    /// Files already stored on a note, so a retried capture can skip ones that landed.
-    public func listAttachments(noteId: String) async throws -> [AttachmentInfo] {
-        let list: AttachmentList = try await get("List files", filesUrl(noteId))
-        return list.files ?? []
-    }
-
-    /// Streams one file to a note and asks the server to link it into the body.
-    ///
-    /// `link=1` exists because this client cannot write the markdown itself: it has no copy
-    /// of the note body and no cursor. The server appends the link atomically, which also
-    /// makes concurrent uploads to one note safe. From a file rather than from `Data`, so a
-    /// 90MB video goes up inside an extension's memory budget.
-    public func uploadFile(noteId: String, file: URL, filename: String, contentType: String) async throws -> UploadedFile {
-        var components = URLComponents(url: filesUrl(noteId), resolvingAgainstBaseURL: false)
-        components?.queryItems = [URLQueryItem(name: "link", value: "1")]
-        var request = authorized(components?.url ?? filesUrl(noteId))
-        request.httpMethod = "PUT"
-        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
-        // Percent-encoded because a header may not carry non-ASCII, and filenames do.
-        request.setValue(
-            filename.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? filename,
-            forHTTPHeaderField: "X-Filename"
-        )
-        let (data, response) = try await session.upload(for: request, fromFile: file)
-        return try decode(try Self.checked(data, response, "Upload"))
-    }
-
     // MARK: - Plumbing
-
-    private var jsonType: String { "application/json; charset=utf-8" }
 
     private func url(_ path: String) -> URL {
         // The origin is normalized before it is stored, so this only fails for an address
         // nobody could have signed in to; the request then fails as unreachable.
         URL(string: origin + path) ?? URL(fileURLWithPath: "/")
-    }
-
-    private func filesUrl(_ noteId: String) -> URL {
-        url("/api/notes").appendingPathComponent(noteId).appendingPathComponent("files")
     }
 
     /// Better Auth rejects requests without a trusted `Origin` as CSRF, so every call sends

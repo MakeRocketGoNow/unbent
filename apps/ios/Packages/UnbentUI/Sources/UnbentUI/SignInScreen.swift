@@ -18,7 +18,9 @@ public struct SignInScreen: View {
     private let status: String?
     private let busy: Bool
     private let codeSentTo: String?
-    private let showUnavailable: Bool
+    private let onApple: () -> Void
+    private let onBrowser: () -> Void
+    private let onPasskey: () -> Void
     private let onEmailCode: (_ email: String, _ code: String?) -> Void
     private let onPassword: (_ email: String, _ password: String, _ name: String?) -> Void
     private let onDifferentAddress: () -> Void
@@ -29,10 +31,8 @@ public struct SignInScreen: View {
     ///   - codeSentTo: the address a code has been sent to, once one has. The form shows
     ///     the code step for exactly as long as this is set, so a send the server refused
     ///     — a mistyped address — leaves the person at the address, beside the reason.
-    ///   - showUnavailable: draw the methods this build cannot use yet — Apple, Google, a
-    ///     browser, a passkey — as disabled buttons. For debug builds, where knowing what
-    ///     the instance offers matters more than a tidy screen; a release build leaves
-    ///     them out, since a button that can never be pressed is only a question.
+    ///   - onBrowser: the site's own sign-in in a browser, for Google and for any
+    ///     provider this app has no sheet for.
     ///   - onEmailCode: sends a code, then signs in with it. A nil code means "send one to
     ///     this address".
     ///   - onPassword: name is nil to sign in and present (possibly blank) to create an
@@ -45,7 +45,9 @@ public struct SignInScreen: View {
         status: String?,
         busy: Bool,
         codeSentTo: String?,
-        showUnavailable: Bool,
+        onApple: @escaping () -> Void,
+        onBrowser: @escaping () -> Void,
+        onPasskey: @escaping () -> Void,
         onEmailCode: @escaping (_ email: String, _ code: String?) -> Void,
         onPassword: @escaping (_ email: String, _ password: String, _ name: String?) -> Void,
         onDifferentAddress: @escaping () -> Void,
@@ -58,7 +60,9 @@ public struct SignInScreen: View {
         self.status = status
         self.busy = busy
         self.codeSentTo = codeSentTo
-        self.showUnavailable = showUnavailable
+        self.onApple = onApple
+        self.onBrowser = onBrowser
+        self.onPasskey = onPasskey
         self.onEmailCode = onEmailCode
         self.onPassword = onPassword
         self.onDifferentAddress = onDifferentAddress
@@ -89,7 +93,9 @@ public struct SignInScreen: View {
                             config: config,
                             busy: busy,
                             codeSentTo: codeSentTo,
-                            showUnavailable: showUnavailable,
+                            onApple: onApple,
+                            onBrowser: onBrowser,
+                            onPasskey: onPasskey,
                             onEmailCode: onEmailCode,
                             onPassword: onPassword,
                             onDifferentAddress: onDifferentAddress
@@ -128,46 +134,49 @@ private struct Methods: View {
     let config: AppConfig
     let busy: Bool
     let codeSentTo: String?
-    let showUnavailable: Bool
+    let onApple: () -> Void
+    let onBrowser: () -> Void
+    let onPasskey: () -> Void
     let onEmailCode: (String, String?) -> Void
     let onPassword: (String, String, String?) -> Void
     let onDifferentAddress: () -> Void
 
-    /// The methods this build cannot use yet, in the order the site shows them: social
-    /// first, because it is one tap and needs nothing typed; then the passkey, which is
-    /// faster still but only for someone who already has one.
-    private var unavailable: [String] {
-        var titles: [String] = []
-        if config.apple { titles.append("Continue with Apple") }
-        if config.google { titles.append("Continue with Google") }
-        if config.browserSocials > 0 { titles.append("Continue in a browser") }
-        if config.passkey { titles.append("Sign in with a passkey") }
-        return titles
-    }
-
     private var hasEmail: Bool { config.emailOtp || config.password }
+    private var hasSheets: Bool { config.apple || config.google || config.browserSocials > 0 || config.passkey }
 
     var body: some View {
-        let later = showUnavailable ? unavailable : []
-
-        if !later.isEmpty {
+        // The order the site shows them in: social first, because it is one tap and needs
+        // nothing typed; then the passkey, which is faster still but only for someone who
+        // already has one. Outlined and equal: filling one would say the app prefers it,
+        // and it does not — and Apple's rule is that its button is no quieter than the
+        // others. The email form's own submit is the filled button.
+        if hasSheets {
             VStack(alignment: .leading, spacing: Space.medium) {
-                ForEach(later, id: \.self) { title in
-                    // Outlined and equal: filling one would say the app prefers it, and it
-                    // does not. The email form's own submit is the filled button.
-                    Button(title) {}
-                        .buttonStyle(.unbent(.secondary))
-                        .disabled(true)
+                if config.apple {
+                    Button(action: onApple) {
+                        // The logo and one of the titles Apple allows beside it.
+                        Label("Continue with Apple", systemImage: "apple.logo")
+                    }
                 }
-                // Said once under the group rather than on every button.
-                Text("Not in this build yet. A debug build shows them so what the instance offers can be seen.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                // Google has no sheet of its own on an iPhone without Google's SDK, which
+                // is a dependency that ends in a web sheet anyway. So it is the site's
+                // own Google button, in a browser — named for where it leads, since
+                // "a browser" says nothing to someone looking for the word Google.
+                if config.google {
+                    Button("Continue with Google", action: onBrowser)
+                }
+                if config.browserSocials > 0 {
+                    Button("Continue in a browser", action: onBrowser)
+                }
+                if config.passkey {
+                    Button("Sign in with a passkey", action: onPasskey)
+                }
             }
+            .buttonStyle(.unbent(.secondary))
+            .disabled(busy)
         }
 
-        if !later.isEmpty && hasEmail {
+        if hasSheets && hasEmail {
             OrDivider()
                 .padding(.vertical, Space.large)
         }
@@ -184,12 +193,8 @@ private struct Methods: View {
             )
         }
 
-        if later.isEmpty && !hasEmail {
-            // Two different dead ends, said apart: one is the instance's to fix, the other
-            // is this build's.
-            Text(config.providers.isEmpty
-                ? "This Unbent has no sign-in method configured."
-                : "This Unbent offers no sign-in method this version of the app can use yet.")
+        if !hasSheets && !hasEmail {
+            Text("This Unbent has no sign-in method configured.")
                 .foregroundStyle(.secondary)
         }
     }
@@ -394,7 +399,9 @@ private struct InstanceLine: View {
         status: nil,
         busy: false,
         codeSentTo: nil,
-        showUnavailable: true,
+        onApple: {},
+        onBrowser: {},
+        onPasskey: {},
         onEmailCode: { _, _ in },
         onPassword: { _, _, _ in },
         onDifferentAddress: {},
@@ -411,7 +418,9 @@ private struct InstanceLine: View {
         status: nil,
         busy: false,
         codeSentTo: "me@example.com",
-        showUnavailable: false,
+        onApple: {},
+        onBrowser: {},
+        onPasskey: {},
         onEmailCode: { _, _ in },
         onPassword: { _, _, _ in },
         onDifferentAddress: {},
