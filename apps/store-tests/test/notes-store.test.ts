@@ -610,7 +610,9 @@ describe('custom fields', () => {
     expect((await stub.listFields(nb.id, { counts: true }))!.map((f) => f.valueCount)).toEqual([3, 2]);
 
     // Tightening the scale clears the 9; a preview says so first.
-    expect(await stub.previewConversion(nb.id, rating.id, 'number', { max: 5, step: 1 })).toEqual({ values: 2, incompatible: 1 });
+    expect(await stub.previewConversion(nb.id, rating.id, 'number', { max: 5, step: 1 })).toEqual({ values: 2, incompatible: 1, scale: { max: 5, step: 1 } });
+    // Asked to fit, the preview reads the scale from the values, and it keeps both.
+    expect(await stub.previewConversion(nb.id, rating.id, 'number', 'fit')).toEqual({ values: 2, incompatible: 0, scale: { max: 9, step: 1 } });
     const tightened = await stub.updateField(nb.id, rating.id, { scale: { max: 5, step: 1 } });
     expect(tightened).toMatchObject({ cleared: 1, field: { scale: { max: 5, step: 1 } } });
     expect((await stub.get(a.id))!.fields!.map((v) => v.name)).toEqual(['Grape']);
