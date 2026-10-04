@@ -68,6 +68,11 @@ export class Revisions {
     by: RevisionWriter,
   ): number | null {
     if (by !== 'restore') {
+      // Text that was never there has nothing to lose. Every note made in the app starts
+      // with an empty title and body, so without this its first save would leave an
+      // "Empty" version in every note's history, one that blanks the note if restored. A
+      // restore still keeps an empty note: its Undo needs that copy to put back.
+      if (was.title === '' && was.body === '') return null;
       const newest = this.sql.first<NewestRow>(
         `SELECT id, created_at, through, cause FROM note_revisions
           WHERE note_id = ?1 ORDER BY created_at DESC, id DESC LIMIT 1`,

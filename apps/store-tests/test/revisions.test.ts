@@ -73,6 +73,17 @@ describe('history: typing', () => {
     expect(await stub.listRevisions(id)).toEqual([]);
   });
 
+  it('keeps nothing for the first save of a note made empty, as the app makes them', async () => {
+    const { stub } = freshStore('new-note');
+    const { id } = await stub.create({ id: crypto.randomUUID(), title: '', body: '', tags: [] });
+    await stub.update(id, { title: 'Groceries', body: 'eggs' });
+    await stub.update(id, { body: 'eggs, milk', by: 'assistant' });
+    // The assistant's copy is of the text the person typed; the empty start is never one.
+    const revisions = (await stub.listRevisions(id))!;
+    expect(revisions).toHaveLength(1);
+    expect(revisions[0]).toMatchObject({ title: 'Groceries', cause: 'assistant' });
+  });
+
   it('keeps nothing for a save refused as stale', async () => {
     const { stub, id } = await seeded('stale');
     const refused = await stub.update(id, { body: 'written against an old copy', ifUpdatedAt: 1 });
