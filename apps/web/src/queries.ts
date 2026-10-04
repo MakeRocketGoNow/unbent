@@ -532,6 +532,18 @@ export const searchQuery = (q: string, filter: NoteFilter = {}, rows = false) =>
     placeholderData: keepPreviousData,
   });
 
+/**
+ * The notes changed most recently, newest first, for a picker that opens on them. From
+ * the library like every list, so it opens with no connection; asked of the server only
+ * on a device with no library.
+ */
+export async function recentNotes(limit: number): Promise<NoteSummary[]> {
+  const ordering: NoteOrdering = { sort: 'updated', order: 'desc' };
+  const lib = await library();
+  if (!lib) return (await api.listNotes({ limit, ...ordering })).items;
+  return summaries(rowsOf(lib, {}, ordering), 0, limit, view(lib).lookups);
+}
+
 /** A search's matches, and when the device answered rather than the server, what it could see. */
 export interface SearchAnswer {
   results: api.SearchHit[];
@@ -550,7 +562,7 @@ export interface SearchAnswer {
  * A device with no index — no library, or its file would not open — has nothing to
  * answer with, and the search fails as offline, which the list says in its own words.
  */
-async function search(q: string, filter: NoteFilter, rows: boolean, signal?: AbortSignal): Promise<SearchAnswer> {
+export async function search(q: string, filter: NoteFilter = {}, rows = false, signal?: AbortSignal): Promise<SearchAnswer> {
   if (!offlineNow()) {
     try {
       return { results: await api.searchNotes(q, filter, rows) };
