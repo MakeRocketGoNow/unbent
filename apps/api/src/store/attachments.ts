@@ -541,8 +541,11 @@ export class AttachmentsStore {
    * for the next call. An id with no text row — a file never read, or gone — is in
    * neither list, which is the answer: there is nothing to index for it.
    *
-   * By primary key, so a call reads six rows per file (measured: the id's JSON row and
-   * the text row, for each of the two statements) and nothing that grows with the account. The ids go in as
+   * The sizes are `octet_length`, which answers from the row's header: measuring with
+   * `length(CAST(text AS BLOB))` loaded every text whole, overflow pages and all, to
+   * decide which ones to then load. By primary key, so a call reads six rows per file as
+   * the meter counts them (measured, on the archive-sized store) and nothing that grows
+   * with the account. The ids go in as
    * one JSON array for the reason `textsForNotes` gives.
    */
   textsById(ids: string[], budget = TEXT_PAGE_BYTES): { texts: Array<{ id: string; text: string }>; left: string[] } {
@@ -550,7 +553,7 @@ export class AttachmentsStore {
     const sizes = new Map(
       this.sql
         .exec<{ id: string; bytes: number }>(
-          `SELECT attachment_id AS id, length(CAST(text AS BLOB)) AS bytes
+          `SELECT attachment_id AS id, octet_length(text) AS bytes
              FROM attachment_text
             WHERE attachment_id IN (SELECT value FROM json_each(?1))`,
           JSON.stringify(ids),

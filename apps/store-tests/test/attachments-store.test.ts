@@ -83,8 +83,8 @@ describe('attachments', () => {
     expect(await stub.textsById([])).toEqual({ texts: [], left: [] });
     const before = (await stub.counters()).rowsRead;
     await stub.textsById(['a1', 'a2']);
-    // Six rows a file: the id's JSON row and the text row by primary key, counted for
-    // the sizes and again for the texts. Nothing that grows with the account.
+    // Six rows a file as the meter counts them, by primary key; the archive-sized test
+    // in notes-store.test.ts is what shows it does not grow with the account.
     expect((await stub.counters()).rowsRead - before).toBeLessThanOrEqual(12);
     await stub.removeAttachment('n1', 'unread.pdf');
 
