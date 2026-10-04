@@ -819,6 +819,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     if (!(await savedFirst(id))) {
       throw new Error('This note has changes that could not be saved, so nothing was restored.');
     }
+    const flushed = draftRef.current;
     const { note: restored, kept } = await actions.restoreRevision(id, revision.id);
     /*
        The version was already what the note says — the one just restored, picked again,
@@ -834,7 +835,14 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     }
     void queryClient.invalidateQueries({ queryKey: ['search'] });
     if (noteIdRef.current !== id) return;
-    reseed(restored);
+    /*
+       Only over the draft that was saved. Nothing holds the sheet open while the request
+       is out — the platform's back gesture closes the dialog without asking — so the
+       person can be typing again by the time it lands, and a reseed would drop what is
+       still waiting for the autosave. That typing then saves against the note the restore
+       replaced, and comes back as a conflict, the way `undoRestore` leaves it.
+    */
+    if (JSON.stringify(draftRef.current) === JSON.stringify(flushed)) reseed(restored);
     setHistoryOpen(false);
     setSnackbar({
       // "from today, 4:12 PM": the label is capitalised to head a row, not to sit in a sentence.

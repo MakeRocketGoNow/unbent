@@ -211,6 +211,21 @@ describe('restoring a version from History', () => {
     expect((await screen.findByRole('alert', {}, { timeout: 3000 })).textContent).toContain('changed on another device');
   });
 
+  it('leaves on screen what is typed while the restore is on its way, with the sheet closed', async () => {
+    let land: (r: { note: Note; kept: number | null }) => void = () => {};
+    vi.mocked(api.restoreRevision).mockReturnValueOnce(new Promise((r) => (land = r)));
+    mount();
+    fireEvent.click(await openVersion());
+    await waitFor(() => expect(api.restoreRevision).toHaveBeenCalledTimes(1));
+
+    // Out of the sheet without waiting, and typing again.
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.change(await title(), { target: { value: 'Minutes, typed mid-restore' } });
+    land({ note: { ...note, body: earlier.body, updatedAt: 200 }, kept: 5 });
+    await new Promise((r) => setTimeout(r, 50));
+    expect((await title()).value).toBe('Minutes, typed mid-restore');
+  });
+
   it('says so, and offers no Undo, when the version is what the note already says', async () => {
     vi.mocked(api.restoreRevision).mockResolvedValueOnce({ note, kept: null });
     const client = mount();
