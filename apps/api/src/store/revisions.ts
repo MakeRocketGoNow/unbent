@@ -1,16 +1,15 @@
-import type { NoteRevision, NoteRevisionCause, NoteRevisionSummary } from '@unbent/shared';
+import {
+  REVISION_MAX_AGE_MS,
+  REVISION_WINDOW_MS,
+  REVISIONS_KEPT,
+  type NoteRevision,
+  type NoteRevisionCause,
+  type NoteRevisionSummary,
+} from '@unbent/shared';
 import type { Sql } from './sql.js';
 
-/**
- * How long one copy stands for the typing that follows it. The editor saves every second
- * or so while someone types, and a copy per save would be a row — with the whole body in
- * it — per keystroke pause. One per half hour is one per sitting.
- */
-export const REVISION_WINDOW_MS = 30 * 60 * 1000;
-/** Copies kept per note. The twenty-first write drops the oldest. */
-export const REVISIONS_KEPT = 20;
-/** And none older than this: a safety net for a recent mistake, not an archive. */
-export const REVISION_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
+// The three numbers are in `@unbent/shared`, where the History sheet reads them too.
+export { REVISION_MAX_AGE_MS, REVISION_WINDOW_MS, REVISIONS_KEPT };
 
 /** Who is replacing the text: nobody named is the editor, typing. */
 export type RevisionWriter = 'assistant' | 'restore' | undefined;
@@ -129,6 +128,15 @@ export class Revisions {
         REVISIONS_KEPT,
       )
       .map((r) => ({ id: r.id, title: r.title, size: r.size, createdAt: r.created_at, ...causeOf(r.cause) }));
+  }
+
+  /**
+   * Removes every copy of a note, and says how many went. All of them, including the
+   * ones past the age limit that `list` no longer shows and nothing has pruned yet: the
+   * person asking wants text gone, and "gone from the list" is not that.
+   */
+  clear(noteId: string): number {
+    return this.sql.exec<{ id: number }>(`DELETE FROM note_revisions WHERE note_id = ?1 RETURNING id`, noteId).length;
   }
 
   /** One copy, whole. Addressed under its note, so an id from another note reads as missing. */

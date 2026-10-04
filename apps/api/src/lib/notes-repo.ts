@@ -133,6 +133,11 @@ export class NotesRepo extends StoreRepo {
     return this.call((s) => s.getRevision(id, revisionId));
   }
 
+  /** Deletes a live note's whole history; how many copies went, or null for no such note. */
+  clearRevisions(id: string): Promise<number | null> {
+    return this.call((s) => s.clearRevisions(id));
+  }
+
   /** Puts a copy back, keeping what it replaces; see `NotesStore.restoreRevision`. */
   restoreRevision(id: string, revisionId: number, ifUpdatedAt?: number): Promise<Note | StaleNote | null> {
     return this.call(async (s) => s.restoreRevision(id, revisionId, ifUpdatedAt));

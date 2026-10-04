@@ -7502,6 +7502,12 @@ button.settings-nav-item {
   line-height: 1.45;
 }
 
+/* Clear history, at the end of its row: quiet, and out from under a thumb aiming at a version. */
+.history-clear {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .history-failed {
   display: flex;
   align-items: center;

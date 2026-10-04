@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { NoteRevisionSummary } from '@unbent/shared';
+import { REVISION_MAX_AGE_MS, REVISION_WINDOW_MS, REVISIONS_KEPT, type NoteRevisionSummary } from '@unbent/shared';
 import { useOffline } from '../connectivity.js';
 import * as api from '../notes-api.js';
 import { keys, revisionQuery, revisionsQuery } from '../queries.js';
 import * as actions from '../store/actions.js';
 import { Button } from './Button.js';
+import { Confirm } from './Confirm.js';
 import { formatRevisionWhen } from './format-when.js';
 import { RowChevronIcon } from './icons.js';
 import { Preview } from './Preview.js';
@@ -50,6 +51,19 @@ export function describeRevision(revision: Pick<NoteRevisionSummary, 'cause' | '
 }
 
 /**
+ * How history is kept, as a sentence, from the numbers the store enforces — so the
+ * sheet cannot explain a version's absence with a rule the server no longer follows.
+ * "Half hour" and "a year" are said the way a person would; any other value is counted.
+ */
+export function retentionSentence(): string {
+  const minutes = Math.round(REVISION_WINDOW_MS / 60_000);
+  const each = minutes === 30 ? 'half hour' : minutes === 60 ? 'hour' : `${minutes} minutes`;
+  const days = Math.round(REVISION_MAX_AGE_MS / 86_400_000);
+  const age = days === 365 ? 'a year' : `${days} days`;
+  return `A version is kept when this note’s text is changed: about one for each ${each} of typing, and one before any edit by a connected assistant. The last ${REVISIONS_KEPT} are kept, for ${age}.`;
+}
+
+/**
  * A note's history: the copies kept of what a write replaced, and a way to put one back
  * (MAK-119).
  *
@@ -66,6 +80,14 @@ export function describeRevision(revision: Pick<NoteRevisionSummary, 'cause' | '
  * is for what cannot be taken back, and the server keeps what a restore replaces as the
  * newest copy in this same list. The line beside the button says so, because a button
  * that overwrites a note should say why it is safe to press.
+ *
+ * Clear history is the other half of keeping what a write replaced: what was removed
+ * from a note on purpose is kept too, and someone who pasted a password in and took it
+ * out again needs it gone from here as well. It is the one thing in this sheet that
+ * cannot be taken back, so it goes through `Confirm`, in place of the button that
+ * asked, naming how many versions go and that the note does not. Quiet and at the foot
+ * of the list: it is not what the sheet is for, and it must not be what a hurried tap
+ * on a version lands on.
  *
  * The copy is drawn by `Preview`, as the note itself would read, rather than as its
  * Markdown source: the question on this page is "is this the version I want", and that
@@ -84,6 +106,7 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore }
   const [picked, setPicked] = useState<NoteRevisionSummary | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  const [clearing, setClearing] = useState<'asking' | 'busy' | null>(null);
 
   /*
      The list is asked for only once this note's own writes have reached the server.
@@ -113,6 +136,7 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore }
     setPicked(null);
     setFailure(null);
     setRestoring(false);
+    setClearing(null);
     /*
        And on "Loading…", not on the last opening's list. The sheet stays mounted, so its
        query keeps what it last read whatever `gcTime` says, and a reopen drew that — the
@@ -131,6 +155,20 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore }
       setFailure((err as Error).message.replace(/^\d{3}[^:]*: /, ''));
     } finally {
       setRestoring(false);
+    }
+  };
+
+  const clear = async () => {
+    setClearing('busy');
+    setFailure(null);
+    try {
+      await actions.clearHistory(noteId);
+      // The list, and every version read from it: none of them exist any more.
+      queryClient.removeQueries({ queryKey: keys.revisions(noteId) });
+      setClearing(null);
+    } catch (err) {
+      setFailure((err as Error).message.replace(/^\d{3}[^:]*: /, ''));
+      setClearing('asking');
     }
   };
 
@@ -249,12 +287,44 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore }
           )}
           {/* What the list is, under it in both states: it is the answer to "why is the
               version I want not here" as much as to "why is this empty". */}
-          {list.isSuccess && (
-            <p className="history-about muted small">
-              A version is kept when this note’s text is changed: about one for each half hour of typing, and
-              one before any edit by a connected assistant. The last 20 are kept, for 90 days.
+          {list.isSuccess && <p className="history-about muted small">{retentionSentence()}</p>}
+          {failure && (
+            <p className="bad small" role="alert">
+              {failure}
             </p>
           )}
+          {list.isSuccess &&
+            list.data.length > 0 &&
+            (clearing === null ? (
+              <div className="history-clear">
+                <Button
+                  variant="quiet"
+                  tone="danger"
+                  size="small"
+                  disabled={offline}
+                  title={offlineTitle}
+                  onClick={() => {
+                    setFailure(null);
+                    setClearing('asking');
+                  }}
+                >
+                  Clear history
+                </Button>
+              </div>
+            ) : (
+              <Confirm
+                label="Confirm clear history"
+                question="Clear this note’s history?"
+                detail={
+                  list.data.length === 1
+                    ? 'Its 1 earlier version is deleted for good, along with any text it holds that is no longer in the note. The note itself is not changed.'
+                    : `All ${list.data.length} earlier versions are deleted for good, along with any text they hold that is no longer in the note. The note itself is not changed.`
+                }
+                actions={[{ label: 'Clear history', busyLabel: 'Clearing…', tone: 'danger', onConfirm: clear }]}
+                busy={clearing === 'busy'}
+                onCancel={() => setClearing(null)}
+              />
+            ))}
         </div>
       )}
     </Sheet>

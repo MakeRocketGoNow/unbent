@@ -151,6 +151,18 @@ export const notes = new Hono<AppEnv>()
     return c.json({ revisions });
   })
 
+  /**
+   * Clears the note's history: every copy, for good. The note itself is not changed.
+   * The one destructive route here that needs no trip through the trash first, because
+   * what it destroys is the safety net and not the thing it protects; the client asks
+   * before calling it.
+   */
+  .delete('/notes/:id/revisions', async (c) => {
+    const cleared = await c.get('notes').clearRevisions(c.req.param('id'));
+    if (cleared === null) return c.json({ error: 'Not found' }, 404);
+    return c.json({ cleared });
+  })
+
   .get('/notes/:id/revisions/:revision', async (c) => {
     const revisionId = revisionIdOf(c.req.param('revision'));
     const revision = revisionId === null ? null : await c.get('notes').getRevision(c.req.param('id'), revisionId);

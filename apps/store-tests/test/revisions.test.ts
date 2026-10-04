@@ -193,6 +193,46 @@ describe('history: retention', () => {
   });
 });
 
+describe('history: clearing it', () => {
+  it('deletes every copy of the note, shown or not, and leaves the note and its neighbours alone', async () => {
+    const { stub, id } = await seeded('clear', 'the account number is 12345');
+    const other = await stub.create({ id: crypto.randomUUID(), title: 'Other', body: 'kept', tags: [] });
+    await stub.update(other.id, { body: 'kept, changed' });
+    await stub.update(id, { body: 'the account number is in the safe' });
+    // A copy past the age limit: hidden from the list, still on disk until now.
+    await age(stub, id, 91 * DAY);
+    await stub.update(id, { body: 'the account number is in the safe.' , by: 'assistant' });
+    await runInDurableObject(stub, (_i, state) => {
+      state.storage.sql.exec(
+        `INSERT INTO note_revisions (note_id, title, body, size, created_at, through) VALUES (?1, 'old', 'the account number is 12345', 27, 1, 1)`,
+        id,
+      );
+    });
+    expect(await stub.listRevisions(id)).toHaveLength(1);
+    expect(await countRevisions(stub)).toBe(3);
+    const note = await stub.get(id);
+    const before = await feedSeq(stub);
+
+    expect(await stub.clearRevisions(id)).toBe(2);
+    expect(await stub.listRevisions(id)).toEqual([]);
+    expect(await stub.get(id)).toEqual(note);
+    expect(await feedSeq(stub)).toBe(before);
+    expect(await stub.listRevisions(other.id)).toHaveLength(1);
+    // And the next change of text starts a new history rather than being suppressed.
+    await stub.update(id, { body: 'changed again' });
+    expect(await stub.listRevisions(id)).toHaveLength(1);
+  });
+
+  it('answers null for a note that is not live, and clears nothing', async () => {
+    const { stub, id } = await seeded('clear-trashed');
+    await stub.update(id, { body: 'changed' });
+    await stub.remove(id);
+    expect(await stub.clearRevisions(id)).toBeNull();
+    expect(await stub.clearRevisions('no-such-note')).toBeNull();
+    expect(await countRevisions(stub)).toBe(1);
+  });
+});
+
 describe('history: putting a copy back', () => {
   it('restores the title and body, keeps what it replaced, and records the note in the feed', async () => {
     const { stub, id } = await seeded('restore', 'a long and careful note');

@@ -898,6 +898,26 @@ export class NotesStore {
   }
 
   /**
+   * Deletes a live note's whole history: how many copies went, or null when there is no
+   * such live note.
+   *
+   * For text that should not be kept. History holds what was removed from a note as
+   * surely as what was lost from it, and a password pasted in by mistake and deleted a
+   * minute later would otherwise be readable in the sheet for as long as copies last.
+   * The note is untouched and nothing is recorded in the feed: history was never in it.
+   *
+   * What this does not reach is the store's own thirty days of point-in-time recovery,
+   * which an operator can wind an account back through. That is the platform's, and
+   * the README says so where it describes this.
+   */
+  clearRevisions(id: string): number | null {
+    return this.sql.tx(() => {
+      if (!this.liveNoteById(id)) return null;
+      return this.revisions.clear(id);
+    });
+  }
+
+  /**
    * Puts a copy from the note's history back as its title and body. Null when the note
    * is not live or the copy is not one of its own.
    *

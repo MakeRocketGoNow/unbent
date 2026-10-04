@@ -1,16 +1,18 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor, act, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { NoteRevision, NoteRevisionSummary } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { resetConnectivity, setReachableForTests } from '../connectivity.js';
-import { describeRevision, HistorySheet } from './HistorySheet.js';
+import { REVISIONS_KEPT } from '@unbent/shared';
+import { describeRevision, HistorySheet, retentionSentence } from './HistorySheet.js';
 import { formatRevisionWhen } from './format-when.js';
 
 vi.mock('../notes-api.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../notes-api.js')>()),
   listRevisions: vi.fn(),
   getRevision: vi.fn(),
+  clearRevisions: vi.fn(),
 }));
 
 // The version's text is drawn by Preview, which has its own tests and wants a PDF worker.
@@ -80,7 +82,8 @@ describe('HistorySheet', () => {
     expect(rows[1]!.textContent).toContain('1 character');
     expect(api.listRevisions).toHaveBeenCalledWith('n1');
     // And why a version someone expected may not be among them.
-    expect(screen.getByText(/The last 20 are kept, for 90 days/)).toBeTruthy();
+    expect(screen.getByText(retentionSentence())).toBeTruthy();
+    expect(retentionSentence()).toContain(`The last ${REVISIONS_KEPT} are kept`);
   });
 
   it('asks for the list only once what was on screen has been saved', async () => {
@@ -215,5 +218,51 @@ describe('HistorySheet', () => {
     mount();
     fireEvent.click(await screen.findByRole('button', { name: /Empty$/ }));
     expect(await screen.findByText('This version had no text.')).toBeTruthy();
+  });
+
+  it('clears the history only after asking, naming how many versions go and that the note stays', async () => {
+    vi.mocked(api.listRevisions).mockResolvedValueOnce([gutted, typed]);
+    vi.mocked(api.clearRevisions).mockResolvedValue(2);
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Clear history' }));
+    expect(api.clearRevisions).not.toHaveBeenCalled();
+
+    const confirm = screen.getByRole('group', { name: 'Confirm clear history' });
+    expect(confirm.textContent).toContain('All 2 earlier versions are deleted for good');
+    expect(confirm.textContent).toContain('The note itself is not changed.');
+    // Red, as every confirm of something that cannot be taken back is.
+    expect(confirm.className).toContain('confirm-danger');
+
+    vi.mocked(api.listRevisions).mockResolvedValueOnce([]);
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Clear history' }));
+    await waitFor(() => expect(api.clearRevisions).toHaveBeenCalledWith('n1'));
+    expect(await screen.findByText('No earlier versions yet.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Clear history' })).toBeNull();
+  });
+
+  it('leaves the history alone on Cancel', async () => {
+    vi.mocked(api.listRevisions).mockResolvedValue([gutted]);
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Clear history' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(api.clearRevisions).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Clear history' })).toBeTruthy();
+  });
+
+  it('keeps the question open and says why when the clear is refused', async () => {
+    vi.mocked(api.listRevisions).mockResolvedValue([gutted]);
+    vi.mocked(api.clearRevisions).mockRejectedValueOnce(new Error('503 Service Unavailable: The server is busy'));
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Clear history' }));
+    fireEvent.click(within(screen.getByRole('group', { name: 'Confirm clear history' })).getByRole('button', { name: 'Clear history' }));
+    expect((await screen.findByRole('alert')).textContent).toBe('The server is busy');
+    expect(screen.getByRole('group', { name: 'Confirm clear history' })).toBeTruthy();
+  });
+
+  it('has nothing to clear when there are no versions', async () => {
+    vi.mocked(api.listRevisions).mockResolvedValue([]);
+    mount();
+    await screen.findByText('No earlier versions yet.');
+    expect(screen.queryByRole('button', { name: 'Clear history' })).toBeNull();
   });
 });

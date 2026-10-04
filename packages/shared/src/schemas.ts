@@ -748,6 +748,22 @@ export interface StaleNote {
 }
 
 /**
+ * How a note's history is kept, in one place because two sides read it: the store, which
+ * enforces these, and the History sheet, which tells the person what to expect of it. A
+ * sheet that said "the last 20" beside a store keeping 50 would be explaining a version's
+ * absence wrongly.
+ *
+ * The window is how long one copy stands for the typing that follows it. The editor saves
+ * every second or so while someone types, and a copy per save would be a row — with the
+ * whole body in it — per pause. One per half hour is one per sitting.
+ */
+export const REVISION_WINDOW_MS = 30 * 60 * 1000;
+/** Copies kept per note. The next write past this drops the oldest. */
+export const REVISIONS_KEPT = 20;
+/** And none older than this: a safety net for a recent mistake, not an archive. */
+export const REVISION_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
+
+/**
  * What replaced a note's text when a copy of it was kept, when it was not typing in the
  * editor: an assistant's write over MCP, or an earlier copy put back from the history.
  */

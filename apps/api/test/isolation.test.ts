@@ -1739,12 +1739,20 @@ describe('cross-tenant access', () => {
       headers: { ...json, Cookie: bob.cookie },
     });
     expect(restore.status).toBe(404);
+    const clear = await fetch(`${BASE}/api/notes/${note.id}/revisions`, { method: 'DELETE', headers: { ...json, Cookie: bob.cookie } });
+    expect(clear.status).toBe(404);
+    expect(((await fetch(`${BASE}/api/notes/${note.id}/revisions`, asUser(alice)).then((r) => r.json())) as { revisions: unknown[] }).revisions).toHaveLength(1);
     // Nor under a note of his own: the id only means something under its note.
     const bobs = await createNote(bob, { title: 'Bob', body: 'bob' });
     expect((await fetch(`${BASE}/api/notes/${bobs.id}/revisions/${rev}`, asUser(bob))).status).toBe(404);
 
     const after = await fetch(`${BASE}/api/notes/${note.id}`, asUser(alice)).then((r) => r.json());
     expect(after.body).toBe('the text after');
+    // Alice can clear her own, and the note is as it was.
+    const cleared = await fetch(`${BASE}/api/notes/${note.id}/revisions`, { method: 'DELETE', headers: { ...json, Cookie: alice.cookie } });
+    expect(await cleared.json()).toEqual({ cleared: 1 });
+    expect(((await fetch(`${BASE}/api/notes/${note.id}/revisions`, asUser(alice)).then((r) => r.json())) as { revisions: unknown[] }).revisions).toEqual([]);
+    expect((await fetch(`${BASE}/api/notes/${note.id}`, asUser(alice)).then((r) => r.json())).body).toBe('the text after');
     // And an id that is not a number at all is a 404, not a 500.
     expect((await fetch(`${BASE}/api/notes/${note.id}/revisions/abc`, asUser(alice))).status).toBe(404);
   });

@@ -914,7 +914,7 @@ export async function duplicateNote(sourceId: string): Promise<{ id: string }> {
   return { id: copyId };
 }
 
-/** How long `restoreRevision` waits for a note's own queued writes to reach the server. */
+/** How long `restoreRevision` and `clearHistory` wait for a note's own queued writes to reach the server. */
 const RESTORE_DRAIN_MS = 5000;
 
 /** Resolves true once the outbox has nothing waiting for this note, false if that takes too long. */
@@ -943,6 +943,24 @@ function drained(lib: WritableLibrary, noteId: string, timeout: number): Promise
 export async function synced(noteId: string, timeout = RESTORE_DRAIN_MS): Promise<boolean> {
   const lib = await resolve();
   return lib ? drained(lib, noteId, timeout) : true;
+}
+
+/**
+ * Deletes a note's whole history on the server; how many versions went.
+ *
+ * It waits for the note's own queued writes, as a restore does, and for a sharper
+ * reason. This is pressed to be rid of text — a password pasted in and taken out again
+ * — and the save that took it out may still be in the outbox. Cleared first, the
+ * history would be empty when that save landed, and the server would keep a copy of
+ * what the save replaced: the very text, back in a history the person had just been
+ * told was clear. So a queue that will not drain refuses the clear.
+ */
+export async function clearHistory(noteId: string): Promise<number> {
+  const lib = await resolve();
+  if (lib && !(await drained(lib, noteId, RESTORE_DRAIN_MS))) {
+    throw new Error('This note has changes that have not synced yet. Try again in a moment.');
+  }
+  return api.clearRevisions(noteId);
 }
 
 /**

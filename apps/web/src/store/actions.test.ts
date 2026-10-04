@@ -176,6 +176,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
   uploadFile: vi.fn(),
   deleteAttachment: vi.fn(),
   restoreRevision: vi.fn(),
+  clearRevisions: vi.fn(),
 }));
 
 const { fakes, MemoryAdapter } = await h;
@@ -624,6 +625,26 @@ describe('a copy put back from a note’s history', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('clears a history only once the note’s own save has landed, so the save cannot refill it', async () => {
+    const { lib, fake, note } = library([row('n1', { body: 'the code is 12345' })]);
+    await lib.outbox.ready;
+    const base = note('n1');
+    // The save that takes the code out: the write whose landing keeps a copy with it in.
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), body: 'the code is in the safe' }, base });
+    await tick();
+    vi.mocked(api.clearRevisions).mockResolvedValueOnce(1);
+
+    const clearing = actions.clearHistory('n1');
+    await tick();
+    expect(api.clearRevisions).not.toHaveBeenCalled();
+    vi.mocked(api.updateNote).mockResolvedValueOnce({ ...base, body: 'the code is in the safe', updatedAt: 200 });
+    expect(await fake.replayOne()).toBe('done');
+    expect(await clearing).toBe(1);
+    expect(vi.mocked(api.updateNote).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(api.clearRevisions).mock.invocationCallOrder[0]!,
+    );
   });
 
   it('with no library, is the request and nothing else', async () => {

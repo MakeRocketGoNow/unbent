@@ -101,6 +101,7 @@ const EXEMPT: Record<string, string> = {
   restoreTo: 'winds the whole store back; the restore route changes the epoch afterwards',
   resetCounters: 'the metering, not data',
   feedRestored: 'is the epoch change itself',
+  clearRevisions: 'deletes note history, which is not in the feed and no client holds',
 };
 
 /** Reads, composites and the operator surface: nothing to record. */

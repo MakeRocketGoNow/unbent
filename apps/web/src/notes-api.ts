@@ -310,6 +310,12 @@ export async function listRevisions(noteId: string): Promise<NoteRevisionSummary
   return (await json<{ revisions: NoteRevisionSummary[] }>(res)).revisions;
 }
 
+/** Deletes a note's whole history, for good; how many versions went. The note is not changed. */
+export async function clearRevisions(noteId: string): Promise<number> {
+  const res = await request(`/api/notes/${encodeURIComponent(noteId)}/revisions`, { method: 'DELETE' });
+  return (await json<{ cleared: number }>(res)).cleared;
+}
+
 /** One copy from a note's history, with its body. */
 export async function getRevision(noteId: string, revisionId: number): Promise<NoteRevision> {
   return json<NoteRevision>(await request(`/api/notes/${encodeURIComponent(noteId)}/revisions/${revisionId}`));
