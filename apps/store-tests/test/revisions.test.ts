@@ -155,6 +155,14 @@ describe('history: fields, tags and the notebook', () => {
     expect(valuesOf((await stub.getRevision(id, later[0]!.id))!.props!)).toEqual({ Status: 'Watching', Year: 2001 });
   });
 
+  it('keeps nothing for the first save of a note made empty under a tag filter', async () => {
+    const { stub } = freshStore('new-tagged');
+    // As the list makes a note while it is filtered by a tag: empty, and tagged.
+    const { id } = await stub.create({ id: crypto.randomUUID(), title: '', body: '', tags: ['filtered'] });
+    await stub.update(id, { title: 'Groceries' });
+    expect(await stub.listRevisions(id)).toEqual([]);
+  });
+
   it('keeps nothing for the first fields of a note that held nothing, filed or not', async () => {
     const { stub } = freshStore('empty-filed');
     const nb = (await stub.createNotebook('Log'))!;

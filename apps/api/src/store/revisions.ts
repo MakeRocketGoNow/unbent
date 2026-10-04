@@ -18,14 +18,13 @@ export { REVISION_MAX_AGE_MS, REVISION_WINDOW_MS, REVISIONS_KEPT };
 export type RevisionWriter = 'assistant' | 'restore' | undefined;
 
 /**
- * The note a write is about to replace part of: its text and date, and how many tags and
- * field values it carries, which is all `keep` needs to decide. Any `Note` is one.
+ * The note a write is about to replace part of: its text and date, and how many field
+ * values it carries, which is all `keep` needs to decide. Any `Note` is one.
  */
 export interface NoteBefore {
   title: string;
   body: string;
   updatedAt: number;
-  tags: readonly unknown[];
   fields?: readonly unknown[] | undefined;
 }
 
@@ -96,13 +95,15 @@ export class Revisions {
     props: () => NoteRevisionProps,
   ): number | null {
     if (by !== 'restore') {
-      // A note that holds nothing has nothing to lose. Every note made in the app starts
-      // with an empty title and body, so without this its first save would leave an
-      // empty version in every note's history, one that blanks the note if restored. The
-      // notebook does not count: a note made inside one is filed from the start and is
-      // as empty as any other. A restore still keeps an empty note: its Undo needs that
-      // copy to put back.
-      if (was.title === '' && was.body === '' && was.tags.length === 0 && (was.fields?.length ?? 0) === 0) return null;
+      // A note with no text and no values has nothing to lose. Every note made in the
+      // app starts with an empty title and body, so without this its first save would
+      // leave an empty version in every note's history, one that blanks the note if
+      // restored. Where it is filed does not count, the notebook or the tags: a note
+      // made inside a notebook, or while the list is filtered by a tag, is filed from
+      // the start and is as empty as any other. Counting tags here gave every note made
+      // under a tag filter that blank version. A restore still keeps an empty note: its
+      // Undo needs that copy to put back.
+      if (was.title === '' && was.body === '' && (was.fields?.length ?? 0) === 0) return null;
       const newest = this.sql.first<NewestRow>(
         `SELECT id, created_at, through, cause, changed FROM note_revisions
           WHERE note_id = ?1 ORDER BY created_at DESC, id DESC LIMIT 1`,
