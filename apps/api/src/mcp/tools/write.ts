@@ -368,6 +368,69 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
     },
   );
 
+  /*
+     Tags are addressed by name here, as every other tool does, and resolved to the id the
+     repo wants from `listTags`. That list is live notes only, so a tag whose every note is
+     in the trash is "no such tag" to these two — the same answer list_tags gives, which is
+     what the assistant has just read.
+  */
+  server.registerTool(
+    'rename_tag',
+    {
+      title: 'Rename or merge a tag',
+      description:
+        'Rename a tag everywhere it is used. The current name matches exactly, case ' +
+        'included; list_tags has the spellings. If another tag already has the new name the ' +
+        'call is refused, since the two would become one: pass merge:true to fold this tag ' +
+        'into that one, so every note that carried it carries the other instead. A merge ' +
+        'cannot be undone, so confirm it with the person first. Notes\' own dates do not ' +
+        'change.',
+      inputSchema: z.object({
+        tag: tagNameSchema.describe('The tag to rename, by its current name.'),
+        name: tagNameSchema.describe('The new name.'),
+        merge: z
+          .boolean()
+          .default(false)
+          .describe('Fold the tag into the existing one with the new name instead of refusing.'),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ tag, name, merge }) => {
+      const existing = (await notes.listTags()).find((t) => t.name === tag);
+      if (!existing) return notFound('tag', tag);
+      const result = await notes.renameTag(existing.id, name, { merge });
+      if (result === 'missing') return notFound('tag', tag);
+      if (result === 'conflict') {
+        return toolError(
+          `A tag called "${name}" already exists, so renaming "${tag}" to it would merge the ` +
+            'two. Pass merge:true to fold this tag into it: every note carrying it will carry ' +
+            `"${name}" instead, and that cannot be undone. Or choose another name.`,
+        );
+      }
+      return jsonResult({ from: tag, name: result.name, merged: result.merged, notes: existing.count });
+    },
+  );
+
+  server.registerTool(
+    'delete_tag',
+    {
+      title: 'Delete a tag',
+      description:
+        'Delete a tag by its exact name, taking it off every note that carries it. The notes ' +
+        'themselves stay, with their other tags; only the label goes, and it cannot be ' +
+        'brought back except by tagging again. Answers with how many notes carried it.',
+      inputSchema: z.object({ tag: tagNameSchema.describe('The tag to delete, by name.') }),
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    },
+    async ({ tag }) => {
+      // The count is read first, since the delete is what removes the thing counted.
+      const existing = (await notes.listTags()).find((t) => t.name === tag);
+      if (!existing) return notFound('tag', tag);
+      if (!(await notes.deleteTag(existing.id))) return notFound('tag', tag);
+      return jsonResult({ tag, deleted: true, notes: existing.count });
+    },
+  );
+
   server.registerTool(
     'move_notes',
     {
