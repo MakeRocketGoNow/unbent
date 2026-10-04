@@ -327,15 +327,17 @@ describe('a replayed write', () => {
     expect(engine.pull).toHaveBeenCalled();
   });
 
-  it('ends for good on any 4xx and is kept for a lost connection', async () => {
+  it('ends for good on a 4xx the server would give again, and is kept for a lost connection, a lapsed session, a timeout and a rate limit', async () => {
     const { fake } = library([row('n1'), row('n2')]);
     await actions.trashNotes(['n1']);
     await actions.trashNotes(['n2']);
     await tick();
     expect(fake.queue).toHaveLength(2);
 
-    vi.mocked(api.deleteNotes).mockRejectedValueOnce(new OfflineError());
-    expect(await fake.replayOne()).toBe('kept');
+    for (const err of [new OfflineError(), new ApiError(401, 'Unauthorized'), new ApiError(408, 'Timeout'), new ApiError(429, 'Too Many Requests')]) {
+      vi.mocked(api.deleteNotes).mockRejectedValueOnce(err);
+      expect(await fake.replayOne()).toBe('kept');
+    }
     expect(fake.queue).toHaveLength(2);
 
     vi.mocked(api.deleteNotes).mockRejectedValueOnce(new ApiError(403, 'Forbidden'));
@@ -849,12 +851,18 @@ describe('a file added to a note', () => {
     await expect(actions.uploadFile('n1', photo())).rejects.toThrow('Not enough room on this device');
   });
 
-  it('keeps the file through a lost connection and a server that is down, and through a refused session', async () => {
+  it('keeps the file through a lost connection, a server that is down, a refused session, a timeout and a rate limit', async () => {
     const { fake } = library([row('n1')]);
     setReachableForTests(false);
     await actions.uploadFile('n1', photo());
     await tick();
-    for (const err of [new OfflineError(), new ApiError(503, 'Unavailable'), new ApiError(401, 'Unauthorized')]) {
+    for (const err of [
+      new OfflineError(),
+      new ApiError(503, 'Unavailable'),
+      new ApiError(401, 'Unauthorized'),
+      new ApiError(408, 'Timeout'),
+      new ApiError(429, 'Too Many Requests'),
+    ]) {
       vi.mocked(api.uploadFile).mockRejectedValueOnce(err);
       expect(await fake.replayOne()).toBe('kept');
       expect(root.paths()).toEqual(['unbent-files-u1/pending/n1/photo.jpg']);

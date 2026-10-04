@@ -28,9 +28,13 @@ import { outboxName } from './names.js';
  *
  * The outbox (`@tanstack/offline-transactions`) is one queue, replayed in order, one
  * entry at a time, with a growing wait between attempts. Two rules keep the queue from
- * sticking: every answer the server will give again gets `NonRetriableError` — a 4xx, a
- * refused precondition — so the entries behind it move, and the outbox holds at most one
- * save per note. Each save carries the whole draft, so a new save of a note supersedes the
+ * sticking: every answer the server will give again gets `NonRetriableError` — a 4xx
+ * that will not change on retry (a name it will not take, a file too large, a note that
+ * is gone), a refused precondition — so the entries behind it move, and the outbox holds
+ * at most one save per note. A lapsed session, a timeout and a rate limit are not that:
+ * they become a different answer after sign-in or a wait, and ending the entry on them
+ * deletes the only copy of an offline upload, or a save typed while the session was
+ * still good. Each save carries the whole draft, so a new save of a note supersedes the
  * one still waiting: the waiting entry is removed from storage when the new one is queued
  * and does nothing when its turn comes, and the new one carries the older base forward.
  * An hour of autosaves offline is one entry and one PATCH, not thousands of copies of the
@@ -204,10 +208,21 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
   const cancelled = new Set<string>();
   let sending: string | null = null;
 
-  /** The server refused the request for good, or for now: which, is the queue's whole question. */
+  /**
+   * The server refused the request for good, or for now: which, is the queue's whole question.
+   *
+   * A 4xx is usually the same answer however often it is asked — a name the route will
+   * not take, a file over the cap, a note that is gone — and ending the entry lets the
+   * ones behind it move. Three are not that: 401 is the session (the sign-in that
+   * follows should replay), 408 is a timeout, 429 is "later". The iOS capture queue
+   * carves out the same three (`CaptureJob.isPermanent`); treating them as a refusal
+   * here used to delete the only copy of a file added offline.
+   */
   const refusal = (err: unknown): never => {
     if (isOfflineError(err)) throw err;
-    if (err instanceof ApiError && err.status >= 400 && err.status < 500) throw new NonRetriableError(err.message);
+    if (err instanceof ApiError && err.status >= 400 && err.status < 500 && ![401, 408, 429].includes(err.status)) {
+      throw new NonRetriableError(err.message);
+    }
     throw err;
   };
 
