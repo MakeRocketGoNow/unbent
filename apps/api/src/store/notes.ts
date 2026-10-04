@@ -874,12 +874,12 @@ export class NotesStore {
         effective.fields !== undefined ? this.prepareFieldWrites(id, effective.fields) : [];
 
       // Before anything goes, and after everything that could still refuse the patch.
-      const changed: NoteRevisionChange[] = [];
-      if (effective.title !== undefined || effective.body !== undefined) changed.push('text');
-      if (fieldWrites.length > 0) changed.push('fields');
-      if (effective.tags !== undefined) changed.push('tags');
-      if (effective.notebook !== undefined) changed.push('notebook');
-      if (changed.length > 0) this.revisions.keep(id, current, stamp, by, changed, () => this.propsOf(current));
+      const parts: NoteRevisionChange[] = [];
+      if (effective.title !== undefined || effective.body !== undefined) parts.push('text');
+      if (fieldWrites.length > 0) parts.push('fields');
+      if (effective.tags !== undefined) parts.push('tags');
+      if (effective.notebook !== undefined) parts.push('notebook');
+      if (parts.length > 0) this.revisions.keep(id, current, stamp, by, parts, () => this.propsOf(current));
 
       const sets: string[] = [];
       const binds: Bind[] = [];
@@ -1014,17 +1014,17 @@ export class NotesStore {
       // refuse.
       const fieldWrites = Object.keys(plan.fields).length > 0 ? this.prepareFieldWrites(id, plan.fields) : [];
 
-      const changed: NoteRevisionChange[] = [];
-      if (revision.title !== current.title || revision.body !== current.body) changed.push('text');
-      if (fieldWrites.length > 0) changed.push('fields');
-      if (plan.tags !== undefined) changed.push('tags');
-      if (plan.notebookId !== undefined) changed.push('notebook');
+      const parts: NoteRevisionChange[] = [];
+      if (revision.title !== current.title || revision.body !== current.body) parts.push('text');
+      if (fieldWrites.length > 0) parts.push('fields');
+      if (plan.tags !== undefined) parts.push('tags');
+      if (plan.notebookId !== undefined) parts.push('notebook');
       // Said, not only done: `kept: null` is how the caller knows this was no restore.
-      if (changed.length === 0) return { note: current, kept: null, ...skipped };
+      if (parts.length === 0) return { note: current, kept: null, ...skipped };
 
       // Past the old date, always, as `update` has it: see the stamp there.
       const stamp = Math.max(Date.now(), current.updatedAt + 1);
-      const kept = this.revisions.keep(id, current, stamp, 'restore', changed, () => this.propsOf(current));
+      const kept = this.revisions.keep(id, current, stamp, 'restore', parts, () => this.propsOf(current));
       this.sql.exec(
         `UPDATE notes SET title = ?1, body = ?2, updated_at = ?3 WHERE id = ?4 AND deleted_at IS NULL`,
         revision.title,
