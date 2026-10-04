@@ -1843,10 +1843,15 @@ screen and another in the zip. There is no order (a directory tree has no order 
 choosing); `sort` is accepted only to say which column a date range applies to. The filename
 carries the scope, since several slices land in one downloads folder on the same day.
 
-This is the backup mechanism, not a convenience feature: `wrangler d1 export` fails on any
-database containing an FTS5 table and leaves the database wedged in a "processing export"
-state ([workers-sdk#9519](https://github.com/cloudflare/workers-sdk/issues/9519)). Do not
-run it.
+This is the backup mechanism, not a convenience feature: it is the only copy that holds
+both the notes and their files. An account's store dump (see
+[Where your notes live](#where-your-notes-live)) has no files in it, and D1 has held no
+notes since the cutover. `wrangler d1 export` works on D1 again, but what it exports is
+sign-in, connected apps, upload links and the account directory. It used to refuse the
+whole database because of the search tables, which have since moved into each account's
+store, and a refused export left D1 answering every query with "processing export"
+([workers-sdk#9519](https://github.com/cloudflare/workers-sdk/issues/9519)). So never put a
+virtual table — FTS5 or any other — back in D1.
 
 ### Restoring, or moving to another Unbent
 
