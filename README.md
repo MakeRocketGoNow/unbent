@@ -1170,7 +1170,12 @@ The newest twenty versions of a note are kept, and none for longer than ninety d
 a safety net for a recent mistake rather than an archive: versions are not in an export
 and are not copied to your devices, so the sheet needs a connection. They hold text
 only, so a version shows its pictures and files as they are now, and a file deleted since
-stays deleted. Tags, the notebook and field values are not versioned. Emptying the trash
+stays deleted. Tags, the notebook and field values are not versioned.
+
+It also means that text you delete from a note is not gone at once. A password pasted into
+a note and then removed is still in that note's History, for anyone signed in to the
+account, until the version ages out or the note itself is deleted and the trash emptied.
+There is no way yet to clear a note's history on its own. Emptying the trash
 takes a note's history with it, and deleting the account takes all of it.
 
 The API is `GET /api/notes/:id/revisions`, `GET /api/notes/:id/revisions/:revision` and
