@@ -780,7 +780,14 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   }
 
   /** The History sheet, and the ⋯ menu it opens from, which its desktop panel sits under. */
-  const [historyOpen, setHistoryOpen] = useState(false);
+  /*
+     Open for a note, not open: Workspace is reused across notes, and an effect that closed
+     the sheet when the note changed ran after the sheet's own, so for one commit the sheet
+     was open on the new note and asked the server for its history, and for the old note's
+     version by id. Compared here, it is shut in the very render the note changes.
+  */
+  const [historyFor, setHistoryFor] = useState<string | null>(null);
+  const historyOpen = historyFor === noteId;
   /*
      The sheet is not in the page until History has been chosen once. It is opened on few
      notes and its dialog would otherwise sit, closed, in every one; kept mounted after
@@ -790,8 +797,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   /** The flush begun as the sheet opened, which its list waits on; see `HistorySheet`. */
   const historyFlush = useRef<Promise<unknown>>(Promise.resolve());
   const overflowSlot = useRef<HTMLSpanElement>(null);
-  // Workspace is reused across notes; a sheet left open would be showing the last one's.
-  useEffect(() => setHistoryOpen(false), [noteId]);
+  // And forgotten, so coming back to that note does not open it again.
+  useEffect(() => setHistoryFor(null), [noteId]);
 
   /**
    * Saves what is on screen and says whether the server can be asked to replace it.
@@ -831,7 +838,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     */
     if (kept === null) {
       if (noteIdRef.current !== id) return;
-      setHistoryOpen(false);
+      setHistoryFor(null);
       setSnackbar({ message: 'That version is what the note already says.', tone: 'info', duration: 5000 });
       return;
     }
@@ -845,7 +852,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
        replaced, and comes back as a conflict, the way `undoRestore` leaves it.
     */
     if (JSON.stringify(draftRef.current) === JSON.stringify(flushed)) reseed(restored);
-    setHistoryOpen(false);
+    setHistoryFor(null);
     setSnackbar({
       message: `Restored the version from ${formatRevisionWhen(revision.createdAt, Date.now(), { inSentence: true })}`,
       tone: 'info',
@@ -1350,7 +1357,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
                     onSelect: () => {
                       historyFlush.current = flush();
                       setHistoryMounted(true);
-                      setHistoryOpen(true);
+                      setHistoryFor(noteId);
                     },
                   },
                   {
@@ -1368,7 +1375,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       {!readOnly && historyMounted && (
         <HistorySheet
           open={historyOpen}
-          onClose={() => setHistoryOpen(false)}
+          onClose={() => setHistoryFor(null)}
           noteId={noteId}
           anchor={overflowSlot}
           saved={() => historyFlush.current}
