@@ -18,6 +18,7 @@ import {
   fieldSortKey,
   fieldSortsNumerically,
   NOTE_FTS_WEIGHTS,
+  SNIPPET_ARGS,
   toFtsQuery,
 } from '@unbent/shared';
 
@@ -335,7 +336,7 @@ export function tierColumns(source: keyof typeof SEARCH_TIERS, row: 'n' | 's', r
   const t = SEARCH_TIERS[source];
   const score = rank === 'vtab' ? `${t.fts}.rank` : `bm25(${t.fts}${t.weights ? `, ${t.weights}` : ''})`;
   return `${row}.id, ${row}.title, ${row}.updated_at,
-                   snippet(${t.fts}, ${t.snippet}, '<<', '>>', '…', 24) AS snippet,
+                   snippet(${t.fts}, ${t.snippet}, ${SNIPPET_ARGS}) AS snippet,
                    ${t.matched.file ?? 'NULL'} AS matched_file,
                    ${t.matched.field ?? 'NULL'} AS matched_field,
                    ${t.matched.tag ?? 'NULL'} AS matched_tag,

@@ -39,3 +39,11 @@ export const FTS_TOKENIZE = 'porter unicode61 remove_diacritics 2';
 
 /** The bm25 weights of a note's title against its body, on the server and on a device. */
 export const NOTE_FTS_WEIGHTS = '10.0, 1.0';
+
+/**
+ * The arguments every search snippet is cut with, after the table and the column: the
+ * marks around a match, which the client turns into `<mark>` rather than trusting HTML
+ * from a note, the ellipsis, and the length in tokens. Shared for the reason the
+ * tokenizer is: a match should read the same with and without a connection.
+ */
+export const SNIPPET_ARGS = "'<<', '>>', '…', 24";

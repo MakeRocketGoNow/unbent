@@ -1,4 +1,4 @@
-import { FTS_TOKENIZE, NOTE_FTS_WEIGHTS } from '@unbent/shared';
+import { FTS_TOKENIZE, NOTE_FTS_WEIGHTS, SNIPPET_ARGS } from '@unbent/shared';
 
 /**
  * The index a device searches when it has no connection: four FTS5 tables in a SQLite
@@ -272,7 +272,7 @@ export class SearchIndex {
     await this.ready();
     const t = TABLES[kind];
     const rows = await this.db.execute<{ id: string; snippet: string }>(
-      `SELECT e.id AS id, snippet(${t.name}, ${t.snippet}, '<<', '>>', '…', 24) AS snippet
+      `SELECT e.id AS id, snippet(${t.name}, ${t.snippet}, ${SNIPPET_ARGS}) AS snippet
          FROM ${t.name}
          JOIN entries e ON e.rowid = ${t.name}.rowid
         WHERE ${t.name} MATCH ?1
