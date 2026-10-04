@@ -876,9 +876,11 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       if (noteIdRef.current !== id) return;
       setHistoryFor(null);
       setSnackbar({
-        // Names, no reasons: Changes gave each reason beside the thing itself.
+        // Names, no reasons: Changes gave each reason beside the thing itself. And not
+        // "could not be put back": a value under a deleted field is in this list for
+        // being left on the note, and the version never had it.
         message: except
-          ? `Nothing to restore: ${except} could not be put back, and the rest already matches.`
+          ? `Nothing to restore: the rest already matches, and ${except} stays as the note has it.`
           : 'That version is what the note already says.',
         tone: 'info',
         duration: except ? 8000 : 5000,
