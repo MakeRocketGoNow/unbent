@@ -970,6 +970,9 @@ describe('rows read on an archive-sized store', () => {
       await measure('untagged count in a small notebook', () => stub.count({ untagged: true, notebook: 'Notebook 5' })),
       await measure('untagged count', () => stub.count({ untagged: true })),
       await measure('untagged page where few are left', () => stub.list({ limit: 50, untagged: true, notebook: 'Notebook 4' })),
+      await measure('untagged page where few are left, with its total', () =>
+        stub.listPage({ limit: 50, untagged: true, notebook: 'Notebook 4' }, { untagged: true, notebook: 'Notebook 4' })),
+      await measure('untagged page with its total', () => stub.listPage({ limit: 50, untagged: true }, { untagged: true })),
       await measure('compact page of 500', () => stub.list({ limit: 500, compact: true })),
       await measure('field targets for 500 notes', () => stub.fieldTargets(Array.from({ length: 500 }, (_, k) => `n${String(k * 5).padStart(5, '0')}`))),
       await measure('get', () => stub.get('n01500')),
@@ -1038,6 +1041,12 @@ describe('rows read on an archive-sized store', () => {
       // two rows a note (1,193, measured 2026-10-04). This is what the filter costs when
       // it is used for what it is for.
       'untagged page where few are left': 1400,
+      // With its total it costs the same 1,193: a first page that came up short is its
+      // own count, where counting separately walked the notebook a second time.
+      'untagged page where few are left, with its total': 1400,
+      // A full first page still counts, since it cannot know what is past it: the page's
+      // 313 and the account's 4,796 (5,151 measured).
+      'untagged page with its total': 5600,
       // Three and a half rows a note: the note, its notebook, its tag links and their
       // names (1,749, measured 2026-10-04). The same page with its field values and files
       // read 2,885, and read every body into the object besides.

@@ -586,10 +586,17 @@ export class UserStore extends DurableObject<StoreEnv> {
   /** `GET /notes`: the page and, on the first page, the total. */
   listPage(list: ListOptions, count: CountOptions | null) {
     this.ready();
-    return this.sql.tx(() => ({
-      items: this.notes.list(list),
-      total: count ? this.notes.count(count) : null,
-    }));
+    return this.sql.tx(() => {
+      const items = this.notes.list(list);
+      // A first page that came up short has seen every match, so it is its own total.
+      // That saves the count where it costs most: a filter no stored number answers — a
+      // field value, a date range, notes with no tag — counts by walking every note in
+      // scope, and when few match, the page has just walked the same notes to find them.
+      // Both callers pass the count the page's own filters; one that counted something
+      // else beside a page would have to stop taking this path.
+      const whole = !list.cursor && items.length < list.limit;
+      return { items, total: count ? (whole ? items.length : this.notes.count(count)) : null };
+    });
   }
 
   /**

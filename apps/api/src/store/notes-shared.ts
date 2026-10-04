@@ -568,7 +568,8 @@ export function filterConditions(
    * cheap case and not the usual one: the filter is for finding what is left, and the
    * nearer an account is to tidy, the further a page walks before it fills, until a
    * notebook with three untagged notes is read to its end, two rows a note, to return
-   * them. Nothing here can make that cheaper.
+   * them. Nothing here can make that cheaper; what can be saved is counting the same
+   * notes again afterwards, which `listPage` does not do for a page that came up short.
    * Beside a tag filter the two contradict and match nothing, which is the right answer;
    * the MCP refuses the pair before it gets here.
    */
