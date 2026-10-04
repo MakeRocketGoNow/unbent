@@ -25,6 +25,10 @@ import { installMemoryOpfs, type MemoryDirectory } from './test-opfs.js';
 
 const h = vi.hoisted(async () => {
   const { createTransaction } = await import('@tanstack/db');
+  // The executor's own policy, which the fake asks as the executor does: it has views of
+  // its own about what ends an entry, and a fake that skipped it once hid one.
+  const { DefaultRetryPolicy } = await vi.importActual<typeof import('@tanstack/offline-transactions')>('@tanstack/offline-transactions');
+  const policy = new DefaultRetryPolicy(Number.POSITIVE_INFINITY, false);
 
   /** IndexedDB as the executor uses it: a database per name that outlives the adapter object. */
   const databases = new Map<string, Map<string, string>>();
@@ -121,7 +125,7 @@ const h = vi.hoisted(async () => {
       try {
         await this.config.mutationFns[e.mutationFnName]!({ transaction: { id: e.id, mutations: [], metadata: e.metadata } });
       } catch (err) {
-        if (err instanceof Error && err.name === 'NonRetriableError') {
+        if (!policy.shouldRetry(err as Error, 0)) {
           this.queue.shift();
           await this.config.storage.delete(`tx:${e.id}`);
           this.settle.get(e.id)?.reject(err);
@@ -334,13 +338,20 @@ describe('a replayed write', () => {
     await tick();
     expect(fake.queue).toHaveLength(2);
 
-    for (const err of [new OfflineError(), new ApiError(401, 'Unauthorized'), new ApiError(408, 'Timeout'), new ApiError(429, 'Too Many Requests')]) {
+    // Worded as `httpErrorMessage` words them, status first: the library reads the words.
+    for (const err of [
+      new OfflineError(),
+      new ApiError(401, '401: Unauthorized'),
+      new ApiError(408, '408: Request Timeout'),
+      new ApiError(429, '429: Too Many Requests'),
+      new ApiError(503, '503: Service Unavailable: try again in 400 ms'),
+    ]) {
       vi.mocked(api.deleteNotes).mockRejectedValueOnce(err);
       expect(await fake.replayOne()).toBe('kept');
     }
     expect(fake.queue).toHaveLength(2);
 
-    vi.mocked(api.deleteNotes).mockRejectedValueOnce(new ApiError(403, 'Forbidden'));
+    vi.mocked(api.deleteNotes).mockRejectedValueOnce(new ApiError(403, '403: Forbidden'));
     expect(await fake.replayOne()).toBe('refused');
     expect(fake.queue).toHaveLength(1);
     expect(fake.queue[0]?.metadata).toEqual({ ids: ['n2'] });
