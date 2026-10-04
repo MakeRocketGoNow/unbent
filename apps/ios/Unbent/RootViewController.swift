@@ -97,7 +97,16 @@ final class RootViewController: UIViewController {
     private var instance: String { Captures.instance(prefs) }
 
     /// Goes to `path` on the site: now if the site is up, and otherwise when it next is.
+    ///
+    /// Every caller is something from outside the app — a notification, a link, a quick
+    /// action — so the page is what should show: App settings, a Safari sheet or a preview
+    /// left open goes, or the page moved under it and the person saw nothing happen. Not
+    /// a capture sheet, which is someone partway through filing a file (see
+    /// `dismissForSignOut`).
     func open(path: String) {
+        if presentedViewController != nil, captureSheet?.presentingViewController == nil {
+            dismiss(animated: false)
+        }
         if let shell {
             shell.open(path: path)
         } else {
