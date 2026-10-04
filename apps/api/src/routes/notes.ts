@@ -38,7 +38,8 @@ function fieldError(err: InvalidFieldValue): string {
  * value crosses RPC into a bind, and `Number('abc')` there would be a NaN in a query.
  */
 function revisionIdOf(raw: string): number | null {
-  if (!/^[1-9]\d{0,15}$/.test(raw)) return null;
+  // Fifteen digits: every such number is a safe integer, which sixteen are not.
+  if (!/^[1-9]\d{0,14}$/.test(raw)) return null;
   return Number(raw);
 }
 
