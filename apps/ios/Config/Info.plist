@@ -127,8 +127,8 @@
 	<true/>
 
 	<!--
-	  Held on the Home Screen icon: the two things worth reaching without the list first,
-	  as the Android app's launcher shortcuts. The types are what `QuickAction` reads.
+	  Held on the Home Screen icon: the two things worth reaching without the list first.
+	  The Android launcher offers App settings alone. The types are what `QuickAction` reads.
 	-->
 	<key>UIApplicationShortcutItems</key>
 	<array>
