@@ -182,20 +182,18 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore }
   };
 
   /*
-     Focus follows the page. Choosing a row removes the row, and Back removes the page it
-     was on, so focus fell to the dialog and a keyboard or a screen reader was left
-     nowhere, on a page it had not been told had changed. Into a version, focus goes to
-     Back — the first control of the new page, and its name says there is a way out; out
-     of one, to the row that was opened, so the list is where it was left.
+     Focus follows the page. Back removes the page it was on, so focus fell to the dialog
+     and a keyboard or a screen reader was left nowhere, on a list it had not been told
+     was back. Out of a version, focus goes to the row that was opened, so the list is
+     where it was left. Into one, `Sheet` moves it to Back, as it does for every paged
+     sheet; only this knows which row to come back to.
   */
-  const page = useRef<HTMLDivElement>(null);
   const rows = useRef(new Map<number, HTMLButtonElement>());
   const cameFrom = useRef<number | null>(null);
   useEffect(() => {
     if (!open) return;
     if (picked) {
       cameFrom.current = picked.id;
-      page.current?.closest('dialog')?.querySelector<HTMLElement>('.sheet-back')?.focus();
     } else if (cameFrom.current !== null) {
       rows.current.get(cameFrom.current)?.focus();
       cameFrom.current = null;
@@ -212,7 +210,7 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore }
       {...(picked ? { onBack: back } : {})}
     >
       {picked ? (
-        <div className="history-page" ref={page}>
+        <div className="history-page">
           <p className="history-what muted small">{describeRevision(picked)}</p>
           <div className="history-copy">
             {copy.isPending ? (

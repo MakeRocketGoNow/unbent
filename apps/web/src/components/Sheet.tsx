@@ -239,6 +239,20 @@ export function Sheet({
     return () => window.removeEventListener('resize', follow);
   }, [open, anchor]);
 
+  /*
+   * Into a sub-page, focus goes to Back. The control that opened the page was on the page
+   * it replaced and is gone, so focus fell to the dialog and a keyboard or a screen reader
+   * was left nowhere, on a page it had not been told had changed. Back is the first
+   * control of the new page, and its name says there is a way out. Here rather than in
+   * each paged sheet, since this is what owns the button; where focus goes on the way
+   * back up depends on what the page was opened from, and stays the caller's.
+   */
+  const backRef = useRef<HTMLButtonElement>(null);
+  const paged = onBack !== undefined;
+  useEffect(() => {
+    if (open && paged) backRef.current?.focus();
+  }, [open, paged]);
+
   return (
     <dialog
       ref={ref}
@@ -279,7 +293,7 @@ export function Sheet({
         {/* The head is part of the handle: see the note on `useGripDrag`. */}
         <div className="sheet-head" {...grip}>
           {onBack && (
-            <button type="button" className="icon-btn sheet-back" aria-label="Back" onClick={onBack}>
+            <button ref={backRef} type="button" className="icon-btn sheet-back" aria-label="Back" onClick={onBack}>
               <BackArrow />
             </button>
           )}
