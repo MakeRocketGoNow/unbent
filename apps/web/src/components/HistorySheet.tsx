@@ -8,6 +8,7 @@ import {
   type NoteRevisionSummary,
   type RevisionSkip,
 } from '@unbent/shared';
+import { andList } from '../and-list.js';
 import { useOffline } from '../connectivity.js';
 import * as api from '../notes-api.js';
 import { keys, revisionQuery, revisionsQuery } from '../queries.js';
@@ -82,12 +83,8 @@ export function describeRevision(revision: Pick<NoteRevisionSummary, 'cause' | '
         ? 'Before a restore'
         : null;
   const parts = revision.changed ?? [];
-  const what = parts.some((p) => p !== 'text')
-    ? `${parts.length === 1 ? parts[0]! : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]!}`} changed`.replace(
-        /^./,
-        (c) => c.toUpperCase(),
-      )
-    : null;
+  const named = andList(parts);
+  const what = parts.some((p) => p !== 'text') ? `${named.charAt(0).toUpperCase()}${named.slice(1)} changed` : null;
   return [before, what, size].filter((part) => part !== null).join(' · ');
 }
 
@@ -123,9 +120,7 @@ export function retentionSentence(): string {
  */
 export function skippedPhrase(skipped: readonly RevisionSkip[]): string {
   const names = skipped.map((s) => (s.what === 'notebook' ? 'its notebook' : s.what === 'tag' ? `the tag “${s.name}”` : s.name));
-  if (names.length <= 1) return names[0] ?? '';
-  if (names.length <= 3) return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]!}`;
-  return `${names.slice(0, 2).join(', ')} and ${names.length - 2} more`;
+  return andList(names.length <= 3 ? names : [...names.slice(0, 2), `${names.length - 2} more`]);
 }
 
 /**
