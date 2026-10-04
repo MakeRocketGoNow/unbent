@@ -17,6 +17,7 @@ const arriving: FirstRun = {
   now,
   total: 1,
   alreadyOpened: false,
+  newRequested: false,
 };
 
 describe('shouldOpenFirstNote', () => {
@@ -47,6 +48,11 @@ describe('shouldOpenFirstNote', () => {
     expect(shouldOpenFirstNote({ ...arriving, total: null })).toBe(false);
     expect(shouldOpenFirstNote({ ...arriving, total: 0 })).toBe(false);
     expect(shouldOpenFirstNote({ ...arriving, total: 2 })).toBe(false);
+  });
+
+  /** `/notes?new=1` opens a note of its own; the two must not race for the address. */
+  it('stands down while a new note is being asked for', () => {
+    expect(shouldOpenFirstNote({ ...arriving, newRequested: true })).toBe(false);
   });
 
   it('happens once', () => {

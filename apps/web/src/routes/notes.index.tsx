@@ -30,7 +30,7 @@ function NoNoteOpen() {
   const isMobile = useMediaQuery(MOBILE_QUERY);
   const total = useLibraryTotal();
   const wholeAccount = showsWholeAccount(search);
-  const opening = useOpenFirstNote({ twoPane: !isMobile, wholeAccount, total });
+  const opening = useOpenFirstNote({ twoPane: !isMobile, wholeAccount, total, newRequested: search.new === 1 });
 
   if (!isMobile && total === 0 && wholeAccount) {
     return (
@@ -56,7 +56,12 @@ function NoNoteOpen() {
  * stop on it. Remembers that it did before navigating, so the list is left alone from
  * then on.
  */
-function useOpenFirstNote(where: { twoPane: boolean; wholeAccount: boolean; total: number | null }): boolean {
+function useOpenFirstNote(where: {
+  twoPane: boolean;
+  wholeAccount: boolean;
+  total: number | null;
+  newRequested: boolean;
+}): boolean {
   const { session } = useAppSession();
   const navigate = useNavigate();
   const userId = session?.user.id ?? null;
@@ -74,7 +79,15 @@ function useOpenFirstNote(where: { twoPane: boolean; wholeAccount: boolean; tota
   useEffect(() => {
     if (!noteId || !userId) return;
     rememberFirstNoteOpened(userId);
-    void navigate({ to: '/notes/$noteId', params: { noteId }, search: (p) => p, replace: true });
+    // Without `new`, whatever else the address carries: the predicate stands down while it
+    // is set, but the search is read again at the moment of navigating, and a request that
+    // arrived in between must not ride along onto the note and make one more on a reload.
+    void navigate({
+      to: '/notes/$noteId',
+      params: { noteId },
+      search: ({ new: _, ...p }) => p,
+      replace: true,
+    });
   }, [noteId, userId, navigate]);
   return wanted;
 }

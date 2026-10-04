@@ -24,6 +24,10 @@
  *   coming back to the list in the same ten minutes leaves the list alone.
  * - **All notes with nothing applied, at the two-pane width.** A link to a notebook or a
  *   search is somewhere the person chose to go.
+ * - **Not while a new note is being asked for** (`/notes?new=1`, the address an app's
+ *   "New note" shortcut opens). That request opens a note of its own, and two navigations
+ *   replacing the same entry race: the welcome note could win and carry `new=1` with it,
+ *   so the next reload would make another note.
  *
  * Why not "always select the first note", as some mail apps do: the list is sorted by
  * whatever the person picked and filtered by wherever they are, so the first row is a
@@ -46,6 +50,8 @@ export interface FirstRun {
   total: number | null;
   /** Whether this device has already opened it for this account. */
   alreadyOpened: boolean;
+  /** The address asks for a new note (`?new=1`, see `useNewNoteRequest`). */
+  newRequested: boolean;
 }
 
 /** Whether to open the account's one note in place of the empty workspace. See above. */
@@ -56,7 +62,8 @@ export function shouldOpenFirstNote(run: FirstRun): boolean {
     run.createdAt !== null &&
     run.now - run.createdAt < FIRST_RUN_WINDOW_MS &&
     run.total === 1 &&
-    !run.alreadyOpened
+    !run.alreadyOpened &&
+    !run.newRequested
   );
 }
 
