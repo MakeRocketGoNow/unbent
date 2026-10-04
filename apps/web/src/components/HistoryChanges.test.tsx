@@ -23,8 +23,9 @@ describe('HistoryChanges', () => {
       <HistoryChanges current={{ title: 'Acme', body: table(40) }} version={{ title: 'Acme', body: table(45) }} />,
     );
     const rows = container.querySelector('.history-diff-rows')!;
-    expect(rows.querySelector('del')!.textContent).toBe('40');
-    expect(rows.querySelector('ins')!.textContent).toBe('45');
+    // Each mark says which it is, so the old number and the new are not heard as one.
+    expect(rows.querySelector('del')!.textContent).toBe('removed 40');
+    expect(rows.querySelector('ins')!.textContent).toBe('added 45');
     const changed = rows.querySelector('.is-changed')!;
     expect(changed.textContent).toContain('| Acme bolts |');
     // The direction is said in words, in the same marks.

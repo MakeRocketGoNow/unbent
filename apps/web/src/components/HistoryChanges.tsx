@@ -104,7 +104,12 @@ function Row({ row }: { row: DiffRow }) {
       <span className="history-diff-text">
         <span className="visually-hidden">{SPOKEN[row.kind]}</span>
         {row.parts.map((part, i) => (
-          <Part key={i} part={part} abuts={i > 0 && row.parts[i - 1]!.kind !== 'same'} />
+          <Part
+            key={i}
+            part={part}
+            abuts={i > 0 && row.parts[i - 1]!.kind !== 'same'}
+            spoken={row.kind === 'changed'}
+          />
         ))}
       </span>
     </div>
@@ -128,11 +133,30 @@ function Same({ text }: { text: string }) {
    and not with `del + ins` in the stylesheet, which matches across the unchanged text
    between two marks as well: a sibling selector does not see text.
 */
-function Part({ part, abuts }: { part: DiffPart; abuts: boolean }) {
+function Part({ part, abuts, spoken }: { part: DiffPart; abuts: boolean; spoken: boolean }) {
   const className = abuts ? 'history-diff-abuts' : undefined;
-  if (part.kind === 'added') return <ins className={className}>{part.text}</ins>;
-  if (part.kind === 'removed') return <del className={className}>{part.text}</del>;
-  return <>{part.text}</>;
+  if (part.kind === 'same') return <>{part.text}</>;
+  /*
+     `spoken`: on a line that keeps some words, each mark says which it is. The line's own
+     "Restore changes:" does not say where the old text stops and the new starts, and a
+     screen reader heard 45 for 40 as one number, as the eye did before the gap above.
+     Not on a whole line added or removed, whose prefix has already said it.
+  */
+  const said = spoken && <span className="visually-hidden">{part.kind === 'added' ? 'added ' : 'removed '}</span>;
+  if (part.kind === 'added') {
+    return (
+      <ins className={className}>
+        {said}
+        {part.text}
+      </ins>
+    );
+  }
+  return (
+    <del className={className}>
+      {said}
+      {part.text}
+    </del>
+  );
 }
 
 /**
