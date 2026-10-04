@@ -20,6 +20,23 @@ export function applyInstanceMarker(config: Pick<AppConfig, 'instanceLabel' | 'i
   if (!label) return;
   document.title = instanceTitle(label, document.title);
   void badgeFavicon(config.instanceKind);
+  recolourTouchIcon(config.instanceKind);
+}
+
+/**
+ * The home-screen icon iOS takes when the page is added to it, in the kind's colour.
+ *
+ * Everywhere else an installed app is drawn from the manifest, which the Worker already
+ * answers with the kind's icons (`apps/api/src/lib/manifest.ts`); Safari reads this link
+ * instead, at the moment Add to Home Screen is pressed, so changing it here is in time. The
+ * same files, in `public/icons/<kind>/`, and for the same reason: a preview installed beside
+ * production was a second green icon nobody could tell apart. Its name comes from the
+ * title, which already leads with the label.
+ */
+function recolourTouchIcon(kind: AppConfig['instanceKind']): void {
+  if (!kind) return;
+  const link = document.querySelector<HTMLLinkElement>('link[rel="apple-touch-icon"]');
+  if (link) link.href = `/icons/${kind}/apple-touch-icon.png`;
 }
 
 /**
