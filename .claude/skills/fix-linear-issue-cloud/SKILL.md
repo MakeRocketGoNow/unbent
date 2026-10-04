@@ -211,6 +211,15 @@ does, how it was verified, then a `Fixes MAK-73` line and a markdown link to the
 issue so a reviewer can reach the original report and its screenshots. The same rule as
 commits applies to the body — describe the case that broke without quoting a real note.
 
+**Say what you saw and left alone.** While building, you will notice things next to the
+change that have the same problem and that you decide not to touch — a sibling component
+still doing it the old way, a caller outside the issue's scope. That decision is fine;
+making it silently is not. Put each one in the PR body under a "Not done" heading, with a
+line on why, so the user can disagree before review rather than a reviewer finding it
+after. A reviewer reads the diff; only the author knows what was noticed outside it.
+(MAK-142: the note picker still searched only the server, was seen during the build, was
+left out without a word, and came back as review feedback.)
+
 Offer to watch the PR afterwards (`subscribe_pr_activity`) so CI failures and review
 comments come back into the session.
 

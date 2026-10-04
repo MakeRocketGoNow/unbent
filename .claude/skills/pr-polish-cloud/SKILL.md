@@ -23,7 +23,8 @@ each on purpose:
   what was declined, what needs the user — is said in the conversation.
 - **Round one is wide.** By hand, later rounds mostly caught what the first one missed,
   not what the fixes broke. So the first round uses two reviewers with different lenses
-  on anything sizeable, and later rounds are cheap and incremental.
+  on anything sizeable, three on a large change, and later rounds are cheap and
+  incremental.
 
 ## 0. What is being reviewed
 
@@ -88,6 +89,22 @@ Size it: `git diff --shortstat origin/<base>...HEAD`.
     reinvented, duplication, the right layer, the UI bar at both breakpoints and in both
     themes, accessibility, comments and naming, and nothing from a real note in anything
     that gets pushed.
+- **Large** (over about 1,000 changed lines, or a change that adds a subsystem — a new
+  store, index, cache, queue or background job, whatever its size): the same two, plus a
+  third in the same message:
+  - **Lifecycle and scale** — what the change costs and how it behaves over time, as
+    opposed to whether a line is right. What now sits on the startup path, and what
+    waits on it. What teardown waits for (sign-out, closing the library, an account
+    switch), and whether each long step can be interrupted. What is computed once and
+    shown for a while, and what refreshes it when the thing it was computed from moves.
+    What each keystroke, each row and each page costs at the archive's real size, in
+    rows read on the server and in work on a phone.
+
+  When this lens runs, the Behaviour reviewer's prompt drops "rows read and performance
+  at the archive's real scale": that lens already carries seven concerns, and on a long
+  diff performance and lifecycle were what it ran out of attention for (MAK-142: a
+  2,000-line change where both lenses missed an index opened on the library's startup
+  path, an answer that never refreshed, and a per-keystroke read of every match).
 
 The prompt for each is short, because the agent already carries its instructions: the base
 ref, the head SHA, the PR number if any, `round 1`, and the lens. Do not describe the
@@ -95,7 +112,7 @@ change, explain your approach, or say what you expect it to find — that is the
 the separate agent exists to avoid. Run them with `run_in_background: false`; nothing
 useful happens until they return.
 
-Merge the two lists into one: drop duplicates, keep the higher severity where they
+Merge the lists into one: drop duplicates, keep the higher severity where they
 disagree, renumber. Show the merged list in the conversation before fixing, so the user
 can follow along — but do not wait for a go-ahead.
 
