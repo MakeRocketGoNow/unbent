@@ -5832,6 +5832,21 @@ button.settings-nav-item {
 .settings-section p { margin: 0 0 0.7rem; max-width: 46rem; }
 
 /*
+   Settings prose: one size, and not below 13px.
+
+   Every settings page explains itself in `.muted.small` paragraphs, and at the app-wide
+   0.78rem (12.5px) that explanation was smaller than the buttons it describes, which are
+   0.85rem. These pages are read rather than scanned — what a pass deletes, where a
+   passkey lives — so the copy is set at the buttons' size instead.
+
+   Scoped to the settings body rather than changed on `.small` itself, because `.small` is
+   also a note row's date and a chip's count, where 12.5px is the density the list needs.
+   Status lines and dates inside settings rise with the prose on purpose: beside a 13.6px
+   sentence, a 12.5px "Done." reads as a footnote rather than the outcome.
+*/
+.settings-body .small { font-size: 0.85rem; }
+
+/*
  * The MCP server URL and its copy button, inline in a paragraph.
  *
  * The wrap keeps them on one line — flex rather than inline-flex so the code can shrink
