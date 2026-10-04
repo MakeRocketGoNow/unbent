@@ -71,6 +71,21 @@ export interface FeedState {
   pulls: number;
 }
 
+/**
+ * Whether the library holds the whole account: a walk of it has finished, whether or not
+ * the latest pull did. A cursor in the state means exactly that — it is set from a stored
+ * position with no page left to resume, or at the end of a walk. Not "the last pull
+ * succeeded": a device opened on a plane never has one, and its copy is still whole. Not
+ * during a walk either, and not while a `reset` has emptied the collections to start one.
+ *
+ * One answer for everything that must not act on half a library: the keeper of files and
+ * the search index (`settled` in `library.ts`), and the list's empty state, which would
+ * otherwise tell someone mid-copy that they have no notes.
+ */
+export function isWhole(state: Pick<FeedState, 'cursor' | 'phase'>): boolean {
+  return state.cursor !== null && state.phase !== 'hydrating' && state.phase !== 'reset';
+}
+
 export interface FeedOptions {
   fetchJson: <T>(path: string) => Promise<T>;
   readCursor: () => Promise<Position | null>;

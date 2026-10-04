@@ -13,6 +13,7 @@ import type { LocalNote } from './store/collections.js';
 import { LIBRARY_ROOTS, currentLibrary, onLibraryChange, onSearchIndexed, type ReadableLibrary as Library } from './store/library.js';
 import { onDirectWrite } from './store/actions.js';
 import { searchLocal, type LocalCoverage } from './store/search-local.js';
+import { isWhole } from './store/feed.js';
 
 /**
  * Query definitions, colocated with their keys.
@@ -203,6 +204,8 @@ export const keys = {
   trashCount: () => ['trash', 'count'] as const,
   /** Under `notes`, so the invalidations that root gets on every create and trash reach it. */
   noteCount: () => ['notes', 'count'] as const,
+  /** Under `notes` like the count; `whole` is the feed's word on it, see `libraryTotalQuery`. */
+  libraryTotal: (whole: boolean | null) => ['notes', 'library-total', { whole }] as const,
   /**
    * Under `trash` for the trash and `notes` for the rest, so the invalidations those roots
    * already get on every trash, restore, move and save reach these too.
@@ -300,6 +303,39 @@ export const noteCountQuery = () =>
       const lib = await library();
       return lib ? count(view(lib).snapshot, {}, view(lib).lookups) : ((await api.listNotes({ limit: 1 })).total ?? 0);
     },
+  });
+
+/**
+ * How many live notes the account holds, but only once that is known: null while the
+ * library on this device is still arriving — opening, taking its first copy, or walking
+ * again after a reset — when the rows it holds are not yet the account's.
+ *
+ * What the empty state and the first-run opening of the welcome note read
+ * (`useLibraryTotal`). `noteCountQuery` answers a count for a page that only wants a
+ * number; this one answers whether the number is true, since "No notes yet" over a
+ * library that is a page away from arriving is the wrong thing to tell someone, and a
+ * welcome note opened for an account still copying would be the wrong note.
+ *
+ * Whether the library is whole is read here, from the library, in the same call that
+ * counts its rows, so the two can never come from different moments. `whole` in the key
+ * is the feed's state as the component last heard it: when it turns true the key changes
+ * and the count is taken afresh, rather than a count from before the last page was
+ * applied being read for one render as the answer. `gcTime: 0` so an entry nobody is
+ * watching — the one from before a reset — is not there to be read when the key comes
+ * back to it.
+ *
+ * A device with no library asks the server, whose count is always whole.
+ */
+export const libraryTotalQuery = (whole: boolean | null) =>
+  queryOptions({
+    queryKey: keys.libraryTotal(whole),
+    queryFn: async (): Promise<number | null> => {
+      const lib = await library();
+      if (!lib) return (await api.listNotes({ limit: 1 })).total ?? 0;
+      if (!isWhole(lib.state())) return null;
+      return count(view(lib).snapshot, {}, view(lib).lookups);
+    },
+    gcTime: 0,
   });
 
 /**

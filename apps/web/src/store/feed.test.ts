@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { FeedAttachment, FeedNote, FeedNotebook, FeedPage, FeedReset, FeedTag, SnapshotPage } from '@unbent/shared';
-import { FeedEngine, type Controls, type Position } from './feed.js';
+import { FeedEngine, isWhole, type Controls, type Position } from './feed.js';
 
 /**
  * The feed's reader against a fake server and fake collections: what a page does to the
@@ -275,5 +275,22 @@ describe('FeedEngine', () => {
     // Two requests: the one in flight, and the one the queued pulls collapsed into.
     expect(h.requests.filter((r) => r.startsWith('/api/changes?')).length).toBe(2);
     expect(h.engine.state.pulls).toBe(1);
+  });
+});
+
+describe('isWhole', () => {
+  const cursor = { seq: 3, epoch: 'e' };
+
+  it('is whole once a walk has finished, whether or not the last pull did', () => {
+    expect(isWhole({ cursor, phase: 'current' })).toBe(true);
+    expect(isWhole({ cursor, phase: 'failed' })).toBe(true);
+    expect(isWhole({ cursor, phase: 'starting' })).toBe(true);
+  });
+
+  it('is not whole before the first walk, during one, or after a reset', () => {
+    expect(isWhole({ cursor: null, phase: 'starting' })).toBe(false);
+    expect(isWhole({ cursor: null, phase: 'failed' })).toBe(false);
+    expect(isWhole({ cursor, phase: 'hydrating' })).toBe(false);
+    expect(isWhole({ cursor, phase: 'reset' })).toBe(false);
   });
 });

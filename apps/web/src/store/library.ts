@@ -4,7 +4,7 @@ import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
 import { openLocalStore, openSearchDatabase, closeLocalStore } from './db.js';
 import { createCollections, cursorStore, type Collections, type LocalNote } from './collections.js';
 import { createOutbox, provideLibrary, type Outbox } from './actions.js';
-import { FeedEngine, type FeedState } from './feed.js';
+import { FeedEngine, isWhole, type FeedState } from './feed.js';
 import { createKeeper, type Keeper } from './keep.js';
 import { askToPersist, readKeptNotebooks } from './files.js';
 import { SearchIndex } from './search-index.js';
@@ -410,17 +410,15 @@ async function open(userId: string): Promise<Library> {
    */
   const rows = collections;
   /*
-   * Whole once a walk has finished, which is what a cursor in the engine's state means:
-   * it is set from a stored position with no page left to resume, or at the end of a
-   * walk. Not "the last pull succeeded" — a device opened on a plane never has one, and
-   * that is exactly where someone looks to see their files are here (review of #236).
-   * Not during a walk either: a `reset` empties the collections before it starts one.
+   * Whole once a walk has finished — see `isWhole` for what that means and why. Not "the
+   * last pull succeeded": a device opened on a plane never has one, and that is exactly
+   * where someone looks to see their files are here (review of #236).
    *
    * One answer for everything that works over the library in the background — the
    * keeper of files and the search index — as is which tab does that work: the one that
    * holds the outbox.
    */
-  const settled = () => engine.state.cursor !== null && engine.state.phase !== 'hydrating' && engine.state.phase !== 'reset';
+  const settled = () => isWhole(engine.state);
   const leading = () => outbox.executor.isOfflineEnabled;
   const keeper = createKeeper({
     userId,
