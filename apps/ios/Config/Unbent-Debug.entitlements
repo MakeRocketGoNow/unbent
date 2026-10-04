@@ -11,9 +11,10 @@
 		<string>Default</string>
 	</array>
 	<!--
-	  The hosts whose passkeys the system may offer this app. A claim, and only half of
-	  one: the instance has to list the app under webcredentials in its
-	  apple-app-site-association before a passkey for it appears in the sheet.
+	  The hosts whose links open in this app (applinks) and whose passkeys the system may
+	  offer it (webcredentials). A claim, and only half of one: the instance has to list
+	  the app in its apple-app-site-association before either happens, and it is that
+	  document, not this file, that says which paths are the app's.
 
 	  The debug build's, which differs in two ways and is a file of its own because an
 	  entitlements file has no conditionals. It claims the dev instance too, since App
@@ -25,6 +26,8 @@
 	-->
 	<key>com.apple.developer.associated-domains</key>
 	<array>
+		<string>applinks:$(UNBENT_INSTANCE_HOST)?mode=developer</string>
+		<string>applinks:$(UNBENT_DEV_INSTANCE_HOST)?mode=developer</string>
 		<string>webcredentials:$(UNBENT_INSTANCE_HOST)?mode=developer</string>
 		<string>webcredentials:$(UNBENT_DEV_INSTANCE_HOST)?mode=developer</string>
 	</array>

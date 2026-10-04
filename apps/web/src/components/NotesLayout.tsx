@@ -22,6 +22,7 @@ import { NoteListItem } from './NoteListItem.js';
 import { useListKeys, enterList } from '../useListKeys.js';
 import { useFocusSearch } from '../useFocusSearch.js';
 import { markNewNote } from '../useNewNote.js';
+import { useNewNoteRequest } from '../useNewNoteRequest.js';
 import { SearchResults } from './SearchResults.js';
 import { IndexingStatus } from './IndexingStatus.js';
 import { SampleNotes } from './SampleNotes.js';
@@ -85,6 +86,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     view: viewParam,
     from,
     to,
+    new: asked,
   } = Route.useSearch();
   /** The tag filter as a list, so the sidebar never has to care that it may be absent. */
   const selectedTags = tag ?? [];
@@ -92,6 +94,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const fieldFilters = field ?? [];
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  useNewNoteRequest(asked);
   /*
    * The search field and the list, so the arrow keys can pass between them: Down in the
    * field enters the list on its first row, Up on that row returns to the field. The
