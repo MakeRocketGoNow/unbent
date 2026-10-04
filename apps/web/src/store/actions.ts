@@ -164,6 +164,9 @@ type Upload = { noteId: string; attachmentId: string; filename: string; contentT
 /** The key an upload's notice is kept under, beside the conflicts, for the same reason they are kept. */
 const noticeKey = (attachmentId: string) => `upload-notice:${attachmentId}`;
 
+/** What an outbox entry runs; the library does not export the name. */
+type MutationFn = Parameters<typeof startOfflineExecutor>[0]['mutationFns'][string];
+
 export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'>): Outbox {
   const conflicts = new Map<string, Conflict>();
   /** The notes each waiting entry is about, by entry id. */
@@ -227,6 +230,33 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     throw err;
   };
 
+  /**
+   * Every entry's attempt, with the keep-or-end decision left to this file alone.
+   *
+   * The library's own retry policy gives up on an error whose *message* contains "400",
+   * "401", "403" or "422" — wherever in the text, and whatever the status. Our messages
+   * start with the status (`httpErrorMessage`), so a queued save refused for a lapsed
+   * session read "401 …" and was ended there, before `refusal` had any say, and a 503
+   * whose page said "400 ms" was ended with it. The policy is fixed inside the executor
+   * and cannot be configured, so anything kept goes to it under a message with nothing in
+   * it to match, and the error it came from as its `cause`. `NonRetriableError` passes as
+   * it is: that is the one way an entry ends.
+   */
+  const decided = (fns: Record<string, MutationFn>): Record<string, MutationFn> =>
+    Object.fromEntries(
+      Object.entries(fns).map(([name, fn]) => [
+        name,
+        async (params) => {
+          try {
+            return await fn(params);
+          } catch (err) {
+            if (err instanceof NonRetriableError) throw err;
+            throw new Error('Not sent yet; it will be tried again', { cause: err });
+          }
+        },
+      ]),
+    );
+
   const adapter = new IndexedDBAdapter(outboxName(userId));
   const storage = watched(adapter, () => touch());
   const executor = startOfflineExecutor({
@@ -235,7 +265,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     storage,
     onlineDetector: connectivityDetector(),
     onLeadershipChange: () => touch(),
-    mutationFns: {
+    mutationFns: decided({
       saveNote: async ({ transaction }) => {
         const { noteId, value, base, against } = transaction.metadata as unknown as Save;
         try {
@@ -387,7 +417,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
         const { ids: which, add, remove } = transaction.metadata as unknown as { ids: string[]; add?: string[]; remove?: string[] };
         return run(transaction.id, () => api.updateNotes(which, { addTags: add, removeTags: remove }).then(() => undefined, refusal));
       },
-    },
+    }),
   });
 
   const id = (t: Transaction) => (t.metadata as { noteId: string }).noteId;
