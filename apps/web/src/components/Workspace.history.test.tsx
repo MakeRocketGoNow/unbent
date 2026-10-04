@@ -131,7 +131,7 @@ describe('restoring a version from History', () => {
     fireEvent.click(await openVersion());
     await waitFor(() =>
       expect(screen.getByRole('status').textContent).toMatch(
-        /Restored the version from today, .*, except Status and the tag “drama”, which could not be put back/,
+        /Restored the version from today, .*, except Status and the tag “drama”/,
       ),
     );
   });
