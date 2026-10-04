@@ -464,7 +464,9 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
       description:
         'Delete a tag by its exact name, taking it off every note that carries it. The notes ' +
         'themselves stay, with their other tags; only the label goes, and it cannot be ' +
-        'brought back except by tagging again. Answers with how many notes carried it.',
+        'brought back except by tagging again, so confirm it with the person first, saying ' +
+        'how many notes carry it (list_tags has the count). Answers with how many notes ' +
+        'carried it.',
       inputSchema: z.object({ tag: tagNameSchema.describe('The tag to delete, by name.') }),
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
@@ -644,12 +646,13 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
       description:
         'Delete a notebook by id; get the id from list_notebooks. By default its notes are ' +
         'kept and filed in no notebook. With trashNotes:true its live notes go to the trash ' +
-        'instead, where restore_notes brings them back, so nothing is destroyed either way. ' +
-        'The notebook itself, its purpose, emoji and field definitions are gone and cannot ' +
-        'be recovered; the values the notes hold in those fields stay on the notes and still ' +
-        'show on get_note, labelled with the notebook they came from. Prefer move_notes to ' +
-        'another notebook first when the notes belong somewhere. Answers with the notebook ' +
-        'and how many notes were unfiled or trashed.',
+        'instead, where restore_notes brings them back, filed in no notebook, so no note is ' +
+        'destroyed either way. The notebook itself, its purpose, emoji and field definitions ' +
+        'are gone and cannot be recovered, so confirm it with the person first, naming the ' +
+        'notebook and how many notes it holds; the values the notes hold in those fields ' +
+        'stay on the notes and still show on get_note, labelled with the notebook they came ' +
+        'from. Prefer move_notes to another notebook first when the notes belong somewhere. ' +
+        'Answers with the notebook and how many notes were unfiled or trashed.',
       inputSchema: z.object({
         notebookId: z.string().min(1),
         trashNotes: z
