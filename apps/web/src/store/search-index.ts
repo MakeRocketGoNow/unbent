@@ -205,11 +205,17 @@ export class SearchIndex {
    * Four statements a batch, whatever its size: every statement is a message to the
    * engine's worker and back, and an archive's first index is thirteen thousand notes,
    * so the rows travel as one JSON array and SQLite takes it apart (`json_each`).
+   *
+   * `shouldStop` is asked before each batch. A device's first index is the whole archive
+   * in one call, and closing the library — a sign-out, an account switch — waits for
+   * whoever is writing to let go. Stopping part-way loses nothing: each batch is its own
+   * transaction, and the next pass compares stamps and writes what is still missing.
    */
-  async put(kind: Kind, entries: Entry[]): Promise<void> {
+  async put(kind: Kind, entries: Entry[], shouldStop: () => boolean = () => false): Promise<void> {
     await this.ready();
     const t = TABLES[kind];
     for (const batch of batches(entries)) {
+      if (shouldStop()) return;
       const ids = JSON.stringify(batch.map((e) => e.id));
       const rows = JSON.stringify(batch.map((e) => ({ id: e.id, stamp: e.stamp, c: e.columns })));
       await this.write(async () => {
@@ -226,9 +232,10 @@ export class SearchIndex {
     }
   }
 
-  async drop(kind: Kind, ids: string[]): Promise<void> {
+  async drop(kind: Kind, ids: string[], shouldStop: () => boolean = () => false): Promise<void> {
     await this.ready();
     for (let i = 0; i < ids.length; i += 1000) {
+      if (shouldStop()) return;
       const run = JSON.stringify(ids.slice(i, i + 1000));
       await this.write(() => this.remove(kind, run));
     }

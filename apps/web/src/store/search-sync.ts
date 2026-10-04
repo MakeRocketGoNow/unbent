@@ -109,6 +109,8 @@ export function createSearchSync(opts: SearchSyncOptions): SearchSync {
   let emptyFirst = false;
 
   const yieldToPage = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+  /** Handed to every write to the index, which asks it between batches; see `SearchIndex.put`. */
+  const halted = () => stopped;
 
   /** Brings the notes' and their fields' entries to what the library holds: all of them, or the ones named. */
   async function notes(ids: Set<string> | null): Promise<void> {
@@ -137,18 +139,18 @@ export function createSearchSync(opts: SearchSyncOptions): SearchSync {
         if (stopped) return;
       }
     }
-    await index.drop('note', [...haveNotes.keys()].filter((id) => !live.has(id)));
-    await index.drop('field', [...haveFields.keys()].filter((id) => !wantedFields.has(id)));
-    await index.put('note', putNotes);
-    await index.put('field', putFields);
+    await index.drop('note', [...haveNotes.keys()].filter((id) => !live.has(id)), halted);
+    await index.drop('field', [...haveFields.keys()].filter((id) => !wantedFields.has(id)), halted);
+    await index.put('note', putNotes, halted);
+    await index.put('field', putFields, halted);
   }
 
   async function tags(): Promise<void> {
     const wanted = tagEntries(opts.snapshot());
     const have = await index.stamps('tag');
     const names = new Set(wanted.map((e) => e.id));
-    await index.drop('tag', [...have.keys()].filter((name) => !names.has(name)));
-    await index.put('tag', wanted.filter((e) => !have.has(e.id)));
+    await index.drop('tag', [...have.keys()].filter((name) => !names.has(name)), halted);
+    await index.put('tag', wanted.filter((e) => !have.has(e.id)), halted);
   }
 
   /** Answers whether the files' text is as the plan wants it, so the pass knows whether to come back. */
@@ -175,9 +177,9 @@ export function createSearchSync(opts: SearchSyncOptions): SearchSync {
         await index.opened(),
         new Map([...(await index.stamps('file'))].map(([id, stamp]) => [id, heldText(stamp)])),
       );
-      await index.drop('file', plan.remove);
+      await index.drop('file', plan.remove, halted);
       // Over the limit for opened notes: the text goes and the length is remembered; see `textPlan`.
-      await index.put('file', plan.shed.map((f) => ({ id: f.id, stamp: textStamp(f.chars, true), columns: [''] })));
+      await index.put('file', plan.shed.map((f) => ({ id: f.id, stamp: textStamp(f.chars, true), columns: [''] })), halted);
 
       if (plan.fetch.length === 0) return true;
       if (stopped || opts.offline()) return false;
@@ -200,6 +202,7 @@ export function createSearchSync(opts: SearchSyncOptions): SearchSync {
       await index.put(
         'file',
         asked.filter((id) => !left.has(id)).map((id) => ({ id, stamp: textStamp((got.get(id) ?? '').length), columns: [got.get(id) ?? ''] })),
+        halted,
       );
       // An answer that carried nothing and left everything would loop for ever; the server always answers one.
       if (left.size === asked.length) throw new Error('The server answered no text for any file asked for.');
@@ -248,6 +251,7 @@ export function createSearchSync(opts: SearchSyncOptions): SearchSync {
       if (stopped) return;
       if (doTags) await tags();
       // Until the first pass over a whole library has finished, a search says its results may be incomplete.
+      if (stopped) return;
       if (full) await index.setMeta(BUILT, '1');
       if (doFiles && !(await files())) filesDirty = true;
     } catch (err) {

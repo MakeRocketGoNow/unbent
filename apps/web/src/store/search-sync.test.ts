@@ -23,8 +23,10 @@ const file = (id: string, noteId: string, over: Partial<FeedAttachment> = {}): F
 class Offline extends Error {}
 
 /** A library a test can change, and a sync over it with every seam in the test's hands. */
-async function setup() {
-  const index = new SearchIndex(await openTestSearchDb());
+async function setup(onExecute?: (sql: string) => void) {
+  const db = await openTestSearchDb();
+  // A seam on the statements, for a test that has to act at a known point in a pass.
+  const index = new SearchIndex(onExecute ? { ...db, execute: (sql, params) => (onExecute(sql), db.execute(sql, params)) } : db);
   const lib = { notes: [] as LocalNote[], attachments: [] as FeedAttachment[], tags: [{ id: 't1', name: 'garden' }] };
   const world = { settled: true, leading: true, offline: false, kept: ['nb-kept'] as string[] | Error, texts: {} as Record<string, string>, asked: [] as string[][] };
   const snapshot = (): Snapshot => ({ notes: lib.notes, notebooks: [], tags: lib.tags, attachments: lib.attachments });
@@ -213,6 +215,29 @@ describe('SearchSync', () => {
     // What was opened here is the device's, not the library's, and stays.
     expect(await index.opened()).toEqual(['kept']);
     sync.stop();
+  });
+
+  it('stops between batches of a first index, and the next pass writes the rest', async () => {
+    // The moment the first batch of notes lands, the library is closed.
+    let stopping: Promise<void> | null = null;
+    const { index, lib, make } = await setup((sql) => {
+      if (sql.includes('INSERT INTO notes_fts')) stopping ??= sync.stop();
+    });
+    lib.notes = Array.from({ length: 1000 }, (_, i) => note(`n${String(i).padStart(4, '0')}`, { title: `Receipt ${i}` }));
+    const sync = make();
+    await sync.idle();
+    await stopping;
+    const written = (await index.stamps('note')).size;
+    expect(written).toBeGreaterThan(0);
+    expect(written).toBeLessThan(1000);
+    // A pass cut short has not built the index, and does not say it has.
+    expect(await index.meta(BUILT)).toBeNull();
+
+    const next = make();
+    await next.idle();
+    expect((await index.stamps('note')).size).toBe(1000);
+    expect(await index.meta(BUILT)).toBe('1');
+    next.stop();
   });
 
   it('stops at once with a request for text in flight, by ending the request', async () => {
