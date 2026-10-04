@@ -815,11 +815,16 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             ) : undefined
           }
           /* New is a floating button on a phone (below) and the end of this row on a
-             desktop, where a column has nothing for a button to float clear of. */
+             desktop, where a column has nothing for a button to float clear of.
+
+             Outlined rather than filled while the account is empty. The pane beside it
+             then draws `EmptyLibrary`, whose import is the view's one filled control —
+             it is the thing that screen is for — and two fills a column apart compete
+             for the same glance. New stays where it always is, only quieter. */
           action={
             isMobile ? undefined : (
               <Button
-                variant="primary"
+                variant={libraryEmpty ? 'secondary' : 'primary'}
                 onClick={() => void newNote()}
               >
                 New
