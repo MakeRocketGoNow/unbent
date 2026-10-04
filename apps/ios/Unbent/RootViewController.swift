@@ -24,8 +24,9 @@ final class RootViewController: UIViewController {
     private var shell: WebShellController?
     private var current: UIViewController?
 
-    /// The capture sheet, while one is up. See `dismissForSignOut`.
+    /// The capture sheet, while one is up, and what it is showing. See `dismissForSignOut`.
     private weak var captureSheet: UIViewController?
+    private weak var captureModel: CaptureModel?
 
     /// Files opened in the app before its first screen was up, held until it is.
     private var filesToCapture: [URL] = []
@@ -192,7 +193,7 @@ final class RootViewController: UIViewController {
             lastNotebook: prefs.lastNotebook,
             onSave: { [weak self] title, notebook, tags in
                 guard let self, let intake = model.intake else { return }
-                if session != nil { self.prefs.lastNotebook = notebook }
+                if session != nil, !model.signedOut { self.prefs.lastNotebook = notebook }
                 AppCaptures.queue?.submit(CaptureJob(
                     id: jobId, origin: origin, intake: intake, title: title, notebook: notebook, tags: tags
                 ))
@@ -211,6 +212,7 @@ final class RootViewController: UIViewController {
         while let presented = presenter.presentedViewController { presenter = presented }
         presenter.present(sheet, animated: true)
         captureSheet = sheet
+        captureModel = model
 
         guard let store, let directory = try? store.create(jobId) else {
             model.problem = CaptureModel.noRoom
@@ -239,9 +241,13 @@ final class RootViewController: UIViewController {
     /// That sheet is someone partway through filing a file, and it works signed out: its
     /// Save queues the capture for the next sign-in. Dismissing it from here skipped its
     /// Cancel, so the form vanished mid-word and the copied file was left behind for
-    /// the sweep. So it stays, over the sign-in screen, until Save or Cancel.
+    /// the sweep. So it stays, over the sign-in screen, until Save or Cancel, and is told
+    /// it is signed out now, so it says what Save will do.
     private func dismissForSignOut() {
-        if captureSheet?.presentingViewController != nil { return }
+        if captureSheet?.presentingViewController != nil {
+            captureModel?.signedOut = true
+            return
+        }
         dismiss(animated: false)
     }
 

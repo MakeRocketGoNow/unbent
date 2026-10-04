@@ -12,6 +12,11 @@ final class CaptureModel {
     var intake: CaptureIntake?
     /// Why there is nothing to save, when there is not.
     var problem: String?
+    /// Set when the app is signed out underneath a sheet that is already up. The sheet
+    /// was built with the session there was when it opened, and without this it went on
+    /// reading as signed in: no line saying the capture will wait for a sign-in, and
+    /// then nothing at all after Save, since there is nothing to say "Saving…" about.
+    var signedOut = false
 
     /// Records the copy, or that it came to nothing.
     func staged(_ intake: CaptureIntake) {
@@ -40,7 +45,7 @@ struct CaptureHost: View {
             summary: model.intake?.summary,
             suggestedTitle: model.intake?.title ?? "",
             problem: model.problem,
-            signedIn: session != nil,
+            signedIn: session != nil && !model.signedOut,
             lastNotebook: lastNotebook,
             load: { [origin, session] in await Self.choices(origin: origin, bearer: session?.bearer) },
             onSave: onSave,
