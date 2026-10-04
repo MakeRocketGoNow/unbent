@@ -4253,6 +4253,20 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   background: color-mix(in srgb, var(--fg) 9%, transparent);
 }
 
+.tb-seg:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* The History sheet's switch waits for its version to load; faded in place, never hidden,
+   so the row it sits in keeps its height. */
+.tb-seg:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.tb-seg:disabled:hover { color: var(--muted); }
+
 .tb-bold { font-weight: 700; }
 .tb-italic { font-style: italic; font-family: Georgia, serif; }
 .tb-strike { text-decoration: line-through; }
@@ -7585,6 +7599,25 @@ button.settings-nav-item {
   padding: 0;
   max-width: none;
 }
+
+/*
+   What a version is, and the Preview / Changes switch, on one row above the box. The
+   switch is the editor's own (`.tb-segmented`), so the two ways of looking at a note
+   look like one control wherever they appear. On one row so the box below starts at the
+   same height in both views and whether the version has loaded or not: the switch is
+   faded while it loads rather than left out. It wraps under the words on a phone too
+   narrow for both.
+*/
+.history-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+  min-height: 1.75rem;
+}
+
+.history-head .tb-segmented { margin-inline-start: auto; }
 
 /*
    Changes: the Markdown source, one column, with what Restore would add underlined and

@@ -29,11 +29,14 @@ const gutted: NoteRevisionSummary = { id: 3, title: 'Minutes', size: 1204, creat
 const typed: NoteRevisionSummary = { id: 2, title: 'Minutes (draft)', size: 1, createdAt: now - 3_600_000 };
 const whole: NoteRevision = { ...gutted, body: 'Agreed: ship on Friday.' };
 
-function mount(onRestore = vi.fn(async () => {}), onClose = vi.fn()) {
+/** The note as it is on screen, which Changes compares a version against. */
+const onScreen = { title: 'Minutes', body: 'Agreed: ship on Monday.' };
+
+function mount(onRestore = vi.fn(async () => {}), onClose = vi.fn(), current = onScreen) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const view = render(
     <QueryClientProvider client={client}>
-      <HistorySheet open onClose={onClose} noteId="n1" onRestore={onRestore} />
+      <HistorySheet open onClose={onClose} noteId="n1" onRestore={onRestore} current={current} />
     </QueryClientProvider>,
   );
   return { ...view, onRestore, onClose };
@@ -56,6 +59,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  localStorage.clear();
   resetConnectivity();
   vi.clearAllMocks();
   vi.unstubAllGlobals();
@@ -92,7 +96,7 @@ describe('HistorySheet', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <HistorySheet open onClose={() => {}} noteId="n1" saved={() => new Promise<void>((r) => (saved = r))} onRestore={async () => {}} />
+        <HistorySheet open onClose={() => {}} noteId="n1" saved={() => new Promise<void>((r) => (saved = r))} onRestore={async () => {}} current={onScreen} />
       </QueryClientProvider>,
     );
     await new Promise((r) => setTimeout(r, 20));
@@ -107,7 +111,7 @@ describe('HistorySheet', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const sheet = (open: boolean) => (
       <QueryClientProvider client={client}>
-        <HistorySheet open={open} onClose={() => {}} noteId="n1" onRestore={async () => {}} />
+        <HistorySheet open={open} onClose={() => {}} noteId="n1" onRestore={async () => {}} current={onScreen} />
       </QueryClientProvider>
     );
     const view = render(sheet(true));
@@ -264,5 +268,79 @@ describe('HistorySheet', () => {
     mount();
     await screen.findByText('No earlier versions yet.');
     expect(screen.queryByRole('button', { name: 'Clear history' })).toBeNull();
+  });
+
+  describe('Preview and Changes', () => {
+    async function openGutted() {
+      vi.mocked(api.listRevisions).mockResolvedValue([gutted]);
+      vi.mocked(api.getRevision).mockResolvedValue(whole);
+    }
+
+    it('opens a version on Preview, and shows what Restore would change on Changes', async () => {
+      await openGutted();
+      const { container } = mount();
+      fireEvent.click(await screen.findByRole('button', { name: /characters$/ }));
+      await screen.findByTestId('preview');
+      const preview = screen.getByRole('radio', { name: 'Preview' });
+      expect(preview.getAttribute('aria-checked')).toBe('true');
+
+      fireEvent.click(screen.getByRole('radio', { name: 'Changes' }));
+      expect(screen.queryByTestId('preview')).toBeNull();
+      // The note on screen says Monday; the version says Friday.
+      expect(container.querySelector('.history-diff-rows del')!.textContent).toBe('Monday');
+      expect(container.querySelector('.history-diff-rows ins')!.textContent).toBe('Friday');
+      // Restore is the same button in either view.
+      expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Restore this version' }).disabled).toBe(false);
+    });
+
+    it('remembers Changes for the next version opened, and the next time the sheet opens', async () => {
+      await openGutted();
+      mount();
+      fireEvent.click(await screen.findByRole('button', { name: /characters$/ }));
+      await screen.findByTestId('preview');
+      fireEvent.click(screen.getByRole('radio', { name: 'Changes' }));
+      cleanup();
+
+      mount();
+      fireEvent.click(await screen.findByRole('button', { name: /characters$/ }));
+      await waitFor(() => expect(screen.getByRole('radio', { name: 'Changes' }).getAttribute('aria-checked')).toBe('true'));
+      expect(screen.queryByTestId('preview')).toBeNull();
+      expect(localStorage.getItem('unbent.historyView')).toBe('"changes"');
+    });
+
+    it('says so on Changes when the version is the note as it is now', async () => {
+      await openGutted();
+      mount(undefined, undefined, { title: whole.title, body: whole.body });
+      fireEvent.click(await screen.findByRole('button', { name: /characters$/ }));
+      await screen.findByTestId('preview');
+      fireEvent.click(screen.getByRole('radio', { name: 'Changes' }));
+      expect(screen.getByText('This version is the same as the note now.')).toBeTruthy();
+    });
+
+    it('moves between the two with the arrow keys, as a radio group does', async () => {
+      await openGutted();
+      mount();
+      fireEvent.click(await screen.findByRole('button', { name: /characters$/ }));
+      await screen.findByTestId('preview');
+      const preview = screen.getByRole('radio', { name: 'Preview' });
+      expect(preview.tabIndex).toBe(0);
+      expect(screen.getByRole('radio', { name: 'Changes' }).tabIndex).toBe(-1);
+      fireEvent.keyDown(preview, { key: 'ArrowRight' });
+      const changes = screen.getByRole('radio', { name: 'Changes' });
+      expect(changes.getAttribute('aria-checked')).toBe('true');
+      expect(document.activeElement).toBe(changes);
+    });
+
+    it('fades the switch until the version has loaded, keeping its place', async () => {
+      vi.mocked(api.listRevisions).mockResolvedValue([gutted]);
+      let land: (r: NoteRevision) => void = () => {};
+      vi.mocked(api.getRevision).mockReturnValue(new Promise((r) => (land = r)));
+      mount();
+      fireEvent.click(await screen.findByRole('button', { name: /characters$/ }));
+      const changes = screen.getByRole<HTMLButtonElement>('radio', { name: 'Changes' });
+      expect(changes.disabled).toBe(true);
+      land(whole);
+      await waitFor(() => expect(changes.disabled).toBe(false));
+    });
   });
 });

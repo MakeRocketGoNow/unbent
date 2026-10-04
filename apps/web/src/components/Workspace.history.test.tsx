@@ -96,6 +96,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  localStorage.clear();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
@@ -235,5 +236,22 @@ describe('restoring a version from History', () => {
     expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
     await waitFor(() => expect(document.querySelector<HTMLDialogElement>('dialog.history-sheet')!.open).toBe(false));
     expect(client.getQueryData<Note>(keys.note('n1'))).toEqual(note);
+  });
+});
+
+describe('comparing a version with the note', () => {
+  it('compares the version with the note as it is on screen, typing included', async () => {
+    vi.mocked(api.updateNote).mockImplementation(async (_id, patch) => ({ ...note, ...patch, updatedAt: 150 }) as Note);
+    mount();
+    fireEvent.change(await title(), { target: { value: 'Minutes, typed a second ago' } });
+    await openVersion();
+    fireEvent.click(screen.getByRole('radio', { name: 'Changes' }));
+
+    const sheet = document.querySelector('dialog.history-sheet')!;
+    expect(sheet.querySelector('.history-diff-title del')!.textContent).toBe('Minutes, typed a second ago');
+    expect(sheet.querySelector('.history-diff-title ins')!.textContent).toBe('Minutes');
+    // The stored body is "TODO"; the version's is a sentence with nothing in common.
+    expect(sheet.querySelector('.history-diff-row.is-removed')!.textContent).toContain('TODO');
+    expect(sheet.querySelector('.history-diff-row.is-added')!.textContent).toContain('Agreed: ship on Friday.');
   });
 });

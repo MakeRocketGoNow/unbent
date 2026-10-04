@@ -1380,6 +1380,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
           anchor={overflowSlot}
           saved={() => historyFlush.current}
           onRestore={restoreFromHistory}
+          current={draft}
         />
       )}
 

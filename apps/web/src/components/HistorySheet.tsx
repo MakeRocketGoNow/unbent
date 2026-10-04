@@ -1,13 +1,15 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { REVISION_MAX_AGE_MS, REVISION_WINDOW_MS, REVISIONS_KEPT, type NoteRevisionSummary } from '@unbent/shared';
 import { useOffline } from '../connectivity.js';
 import * as api from '../notes-api.js';
 import { keys, revisionQuery, revisionsQuery } from '../queries.js';
 import * as actions from '../store/actions.js';
+import { usePersistentState } from '../usePersistentState.js';
 import { Button } from './Button.js';
 import { Confirm } from './Confirm.js';
 import { formatRevisionWhen } from './format-when.js';
+import { HistoryChanges } from './HistoryChanges.js';
 import { RowChevronIcon } from './icons.js';
 import { Preview } from './Preview.js';
 import { Sheet } from './Sheet.js';
@@ -28,7 +30,22 @@ interface HistorySheetProps {
    * sheet stays open on that and says so, and is closed by the caller on success.
    */
   onRestore: (revision: NoteRevisionSummary) => Promise<void>;
+  /**
+   * The note as it is on screen — the workspace's draft, which `saved` has handed to the
+   * save — for Changes to compare a version against. Not the stored row: what Restore
+   * replaces is what the person is looking at, and a row a save behind would show typing
+   * they can see as something Restore takes out, or miss it.
+   */
+  current: { title: string; body: string };
 }
+
+/** The two ways of looking at a version; see `HistoryChanges` for the second. */
+type HistoryView = 'preview' | 'changes';
+
+const VIEWS: { value: HistoryView; label: string; title: string }[] = [
+  { value: 'preview', label: 'Preview', title: 'This version as it would read' },
+  { value: 'changes', label: 'Changes', title: 'What restoring this version would change' },
+];
 
 /**
  * What a copy is, in a few words under its time: what replaced it, when that was not
@@ -97,8 +114,12 @@ export function retentionSentence(): string {
  * Markdown source: the question on this page is "is this the version I want", and that
  * is recognised by reading it. Its files resolve against the note as it is now, since
  * history keeps text and not files; one deleted since draws as a missing file would.
+ *
+ * Changes, beside Preview, is the next question — what will Restore do to my note — and
+ * is drawn by `HistoryChanges` against `current`, the note on screen (MAK-167). Restore
+ * is the same button under either.
  */
-export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore }: HistorySheetProps) {
+export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore, current }: HistorySheetProps) {
   const queryClient = useQueryClient();
   /*
      The connection can go while the sheet is open, though the menu it opened from fades
@@ -111,6 +132,16 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore }
   const [restoring, setRestoring] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [clearing, setClearing] = useState<'asking' | 'busy' | null>(null);
+  /*
+     Preview or Changes, remembered as the note's own view is (`noteView` in the
+     workspace): someone who compares versions compares every time. Preview by default,
+     because the first question on this page is still "is this the version I want", and
+     that is answered by reading it.
+  */
+  const [view, setView] = usePersistentState<HistoryView>('historyView', 'preview', (raw) =>
+    raw === 'preview' || raw === 'changes' ? raw : undefined,
+  );
+  const viewButtons = useRef(new Map<HistoryView, HTMLButtonElement>());
 
   /*
      The list is asked for only once this note's own writes have reached the server.
@@ -191,6 +222,27 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore }
   };
 
   /*
+     A radio group moves its choice with the arrow keys, and is one stop for Tab: the
+     chosen segment is the only one in the tab order. The editor's switch has neither,
+     because its buttons act on mouse-down to keep the editor's focus; nothing here has a
+     focus to keep, so these are ordinary clicks and the keyboard gets the full pattern.
+  */
+  const onViewKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    const step =
+      e.key === 'ArrowRight' || e.key === 'ArrowDown'
+        ? 1
+        : e.key === 'ArrowLeft' || e.key === 'ArrowUp'
+          ? -1
+          : 0;
+    if (!step) return;
+    e.preventDefault();
+    const at = VIEWS.findIndex((v) => v.value === view);
+    const next = VIEWS[(at + step + VIEWS.length) % VIEWS.length]!.value;
+    setView(next);
+    viewButtons.current.get(next)?.focus();
+  };
+
+  /*
      Focus follows the page. Back removes the page it was on, so focus fell to the dialog
      and a keyboard or a screen reader was left nowhere, on a list it had not been told
      was back. Out of a version, focus goes to the row that was opened, so the list is
@@ -220,14 +272,45 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore }
     >
       {picked ? (
         <div className="history-page">
-          <p className="history-what muted small">{describeRevision(picked)}</p>
-          <div className="history-copy">
+          <div className="history-head">
+            <p className="history-what muted small">{describeRevision(picked)}</p>
+            {/* The editor's view switch, in look and in role; see `onViewKey`. Faded until
+                there is a version to look at, not left out, so the box under it does not
+                move when the version lands. */}
+            <div className="tb-segmented" role="radiogroup" aria-label="Show" onKeyDown={onViewKey}>
+              {VIEWS.map(({ value, label, title }) => (
+                <button
+                  key={value}
+                  type="button"
+                  className="tb-seg"
+                  role="radio"
+                  aria-checked={view === value}
+                  tabIndex={view === value ? 0 : -1}
+                  title={title}
+                  disabled={!copy.isSuccess}
+                  ref={(el) => {
+                    if (el) viewButtons.current.set(value, el);
+                    else viewButtons.current.delete(value);
+                  }}
+                  onClick={() => setView(value)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* Keyed by the view, so switching starts the other at its top rather than at
+              however far down the first had been scrolled, which is a different place in
+              a differently laid-out text. */}
+          <div className="history-copy" key={view}>
             {copy.isPending ? (
               <p className="muted small">Loading…</p>
             ) : copy.isError ? (
               <p className="bad small" role="alert">
                 This version could not be loaded.
               </p>
+            ) : view === 'changes' ? (
+              <HistoryChanges current={current} version={copy.data} />
             ) : (
               <>
                 <h3 className="history-copy-title">{copy.data.title || 'Untitled'}</h3>
