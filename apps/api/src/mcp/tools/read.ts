@@ -419,8 +419,10 @@ export function registerReadTools(
         'the file is and shows, then any text on it. This is what makes a scanned document ' +
         'or a photo readable; the file itself is bytes a model cannot use. Reading happens ' +
         'in the background after upload, so a recently added file may have no text yet, ' +
-        'which is reported as such rather than as an empty document; read_attachment ' +
-        'asks for that read now.',
+        'which is reported as such rather than as an empty document. read says which, as ' +
+        'it does on get_note: "pending" for a file still to be read, which read_attachment ' +
+        'asks for now, and "none" for one that was read and had nothing, or that nothing ' +
+        'on this instance reads.',
       inputSchema: z.object({
         noteId: z.string().uuid(),
         filename: z.string().min(1).describe('As listed by get_note.'),
@@ -428,16 +430,23 @@ export function registerReadTools(
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ noteId, filename }) => {
-      const text = await attachments.textFor(noteId, filename);
-      if (text === null) return notFound('attachment', `${filename} on note ${noteId}`);
-      if (!text) {
+      const found = await attachments.textWithRead(noteId, filename, readers.vision);
+      if (!found) return notFound('attachment', `${filename} on note ${noteId}`);
+      const { read, text } = found;
+      // `indexed` stays beside `read`: it is what this tool has always answered, and a
+      // client written against it should not have to learn the new word to keep working.
+      if (text === null) {
         return jsonResult({
           filename,
           indexed: false,
-          note: 'This attachment has no extracted text. It may still be being processed, or it may be a file with no text layer, such as a photograph.',
+          read,
+          note:
+            read === 'pending'
+              ? 'This attachment has not been read yet. read_attachment asks for that now, on a note that is not in the trash.'
+              : 'This attachment has no text: it was read and nothing was found, or nothing on this instance reads this kind of file.',
         });
       }
-      return jsonResult({ filename, indexed: true, text });
+      return jsonResult({ filename, indexed: true, read, text });
     },
   );
 

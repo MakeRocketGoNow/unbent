@@ -213,6 +213,14 @@ describe('attachments', () => {
     expect((await stub.getWithFiles('n2', { vision: false }))!.files.find((f) => f.filename === 'new.png')!.read).toBe('none');
     expect((await stub.getWithFiles('n2'))!.files.find((f) => f.filename === 'new.png')!.read).toBe('pending');
 
+    // One file's text with the same status, for get_attachment_text: the whole text
+    // when it was read, and which kind of nothing when it was not.
+    expect(await stub.textWithRead('n1', 'bill.pdf')).toEqual({ read: 'text', text: expect.stringMatching(/^Globex Utilities\n\n  Statement  x{2000}$/) });
+    expect(await stub.textWithRead('n2', 'empty.pdf')).toEqual({ read: 'pending', text: null });
+    expect(await stub.textWithRead('n2', 'empty.pdf', false)).toEqual({ read: 'none', text: null });
+    expect(await stub.textWithRead('n2', 'seen.pdf')).toEqual({ read: 'none', text: null });
+    expect(await stub.textWithRead('n2', 'ghost.pdf')).toBeNull();
+
     // A search carries the same lines for its matches, in the one call.
     await stub.update('n1', { body: 'lunch with the team' });
     const found = await stub.searchWithFiles('lunch', 5);

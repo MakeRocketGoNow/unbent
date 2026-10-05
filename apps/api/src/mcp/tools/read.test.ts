@@ -17,7 +17,7 @@ type Handler = (args: Record<string, unknown>) => Promise<{
 /** A self-hosted instance's address, so a link that ignored it would show. */
 const APP_URL = 'https://notes.example.com';
 
-function collect(notes: NotesRepo): Map<string, Handler> {
+function collect(notes: NotesRepo, attachments: unknown = {}): Map<string, Handler> {
   const tools = new Map<string, Handler>();
   const server = {
     registerTool(name: string, _config: unknown, handler: Handler) {
@@ -25,7 +25,7 @@ function collect(notes: NotesRepo): Map<string, Handler> {
       return {} as never;
     },
   };
-  registerReadTools(server as never, notes, {} as never, appLinks(APP_URL), { vision: true });
+  registerReadTools(server as never, notes, attachments as never, appLinks(APP_URL), { vision: true });
   return tools;
 }
 
@@ -401,6 +401,25 @@ describe('file summaries on get_note and list_notes (MAK-172)', () => {
     expect(calls).toEqual(['search', 'searchWithFiles {"vision":true}']);
     expect(found.results[0].attachments).toEqual([{ filename: 'receipt.jpg', read: 'vision', summary: read.summary }]);
     expect(found.results[1].attachments).toEqual([]);
+  });
+
+  it('says on get_attachment_text whether an unread file is still to be read or never will be', async () => {
+    const files: Record<string, { read: string; text: string | null }> = {
+      'read.jpg': { read: 'vision', text: 'Acme Diner receipt' },
+      'waiting.pdf': { read: 'pending', text: null },
+      'blank.pdf': { read: 'none', text: null },
+    };
+    const text = collect({} as NotesRepo, {
+      textWithRead: async (_note: string, filename: string) => files[filename] ?? null,
+    }).get('get_attachment_text')!;
+    const ask = async (filename: string) => answer(await text({ noteId: 'n-1', filename }));
+
+    expect(await ask('read.jpg')).toEqual({ filename: 'read.jpg', indexed: true, read: 'vision', text: 'Acme Diner receipt' });
+    expect(await ask('waiting.pdf')).toMatchObject({ indexed: false, read: 'pending', note: expect.stringContaining('read_attachment') });
+    const blank = await ask('blank.pdf');
+    expect(blank).toMatchObject({ indexed: false, read: 'none' });
+    expect(blank.note).not.toContain('read_attachment');
+    expect((await text({ noteId: 'n-1', filename: 'ghost.pdf' })).isError).toBe(true);
   });
 
   it('refuses summaries on a compact page, which is for hundreds of ids', async () => {

@@ -553,6 +553,31 @@ export class AttachmentsStore {
   }
 
   /**
+   * `textFor`, with how the text came to be (`summarize`'s `read`), for MCP's
+   * `get_attachment_text`: an empty answer alone left the tool saying a file "may still be
+   * being processed, or may have no text layer", which is the guess `read` exists to
+   * settle. Null when there is no such file. `text` is null unless `read` is `vision` or
+   * `text`.
+   */
+  textWithRead(noteId: string, filename: string, vision = true): { read: FileRead; text: string | null } | null {
+    const row = this.sql.first<{ content_type: string; text: string | null; read_by: string | null }>(
+      `SELECT a.content_type, t.text, t.read_by
+         FROM attachments a
+         LEFT JOIN attachment_text t ON t.attachment_id = a.id
+        WHERE a.note_id = ?1 AND a.filename = ?2`,
+      noteId,
+      filename,
+    );
+    if (!row) return null;
+    // Only the head goes to `summarize`, which folds what it is given into a summary this
+    // caller does not want; trimmed first so a text that opens with blank lines is not
+    // taken for an empty one.
+    const head = row.text === null ? null : row.text.trim().slice(0, SUMMARY_SOURCE_CHARS);
+    const { read } = summarize(row.content_type, head, row.read_by, vision);
+    return { read, text: read === 'vision' || read === 'text' ? row.text : null };
+  }
+
+  /**
    * Every file on a live note with whatever text it has, for auto-fill to read the note
    * whole.
    *
