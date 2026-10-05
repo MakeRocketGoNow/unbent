@@ -3,7 +3,6 @@ import type { FieldDef } from '@unbent/shared';
 import { appLinks } from '../../lib/app-links.js';
 import { registerReadTools } from './read.js';
 import type { NotesRepo } from '../../lib/notes-repo.js';
-import type { AttachmentsRepo } from '../../lib/attachments-repo.js';
 
 /*
  * The read tools are thin over the repo; what is worth pinning is the part that is not:
@@ -18,7 +17,7 @@ type Handler = (args: Record<string, unknown>) => Promise<{
 /** A self-hosted instance's address, so a link that ignored it would show. */
 const APP_URL = 'https://notes.example.com';
 
-function collect(notes: NotesRepo, attachments: AttachmentsRepo = {} as never): Map<string, Handler> {
+function collect(notes: NotesRepo, attachments: unknown = {}): Map<string, Handler> {
   const tools = new Map<string, Handler>();
   const server = {
     registerTool(name: string, _config: unknown, handler: Handler) {
@@ -26,7 +25,7 @@ function collect(notes: NotesRepo, attachments: AttachmentsRepo = {} as never): 
       return {} as never;
     },
   };
-  registerReadTools(server as never, notes, attachments, appLinks(APP_URL), { vision: true });
+  registerReadTools(server as never, notes, attachments as never, appLinks(APP_URL), { vision: true });
   return tools;
 }
 
@@ -385,6 +384,44 @@ describe('file summaries on get_note and list_notes (MAK-172)', () => {
     expect(result.notes[1].moreFiles).toBeUndefined();
   });
 
+  it('gives search results their files only when asked, through the one call', async () => {
+    const hit = { id: 'n-1', title: 'Receipt', updatedAt: 2, snippet: 'Acme' };
+    const calls: string[] = [];
+    const repo = {
+      search: async () => (calls.push('search'), [hit]),
+      searchWithFiles: async (_q: string, _l: number, _f: unknown, opts: unknown) => {
+        calls.push(`searchWithFiles ${JSON.stringify(opts)}`);
+        return { results: [hit, { ...hit, id: 'n-2' }], summaries: { 'n-1': [read] } };
+      },
+    } as unknown as NotesRepo;
+    const search = collect(repo).get('search_notes')!;
+
+    expect(answer(await search({ query: 'acme', limit: 20 })).results[0].attachments).toBeUndefined();
+    const found = answer(await search({ query: 'acme', limit: 20, attachmentSummaries: true }));
+    expect(calls).toEqual(['search', 'searchWithFiles {"vision":true}']);
+    expect(found.results[0].attachments).toEqual([{ filename: 'receipt.jpg', read: 'vision', summary: read.summary }]);
+    expect(found.results[1].attachments).toEqual([]);
+  });
+
+  it('says on get_attachment_text whether an unread file is still to be read or never will be', async () => {
+    const files: Record<string, { read: string; text: string | null }> = {
+      'read.jpg': { read: 'vision', text: 'Acme Diner receipt' },
+      'waiting.pdf': { read: 'pending', text: null },
+      'blank.pdf': { read: 'none', text: null },
+    };
+    const text = collect({} as NotesRepo, {
+      textWithRead: async (_note: string, filename: string) => files[filename] ?? null,
+    }).get('get_attachment_text')!;
+    const ask = async (filename: string) => answer(await text({ noteId: 'n-1', filename }));
+
+    expect(await ask('read.jpg')).toEqual({ filename: 'read.jpg', indexed: true, read: 'vision', text: 'Acme Diner receipt' });
+    expect(await ask('waiting.pdf')).toMatchObject({ indexed: false, read: 'pending', note: expect.stringContaining('read_attachment') });
+    const blank = await ask('blank.pdf');
+    expect(blank).toMatchObject({ indexed: false, read: 'none' });
+    expect(blank.note).not.toContain('read_attachment');
+    expect((await text({ noteId: 'n-1', filename: 'ghost.pdf' })).isError).toBe(true);
+  });
+
   it('refuses summaries on a compact page, which is for hundreds of ids', async () => {
     const { asked, list } = listRepo({});
     const result = await list({ limit: 500, compact: true, attachmentSummaries: true });
@@ -401,14 +438,15 @@ describe('get_attachment_text with maxChars and offset (MAK-173)', () => {
 
   function read() {
     const repo = {
-      textFor: async (_noteId: string, filename: string) => (filename === 'receipt.pdf' ? TEXT : null),
-    } as unknown as AttachmentsRepo;
+      textWithRead: async (_noteId: string, filename: string) =>
+        filename === 'receipt.pdf' ? { read: 'text', text: TEXT } : null,
+    };
     return collect({} as NotesRepo, repo).get('get_attachment_text')!;
   }
 
   it('answers the whole text, with no paging keys, when neither is given', async () => {
     const result = answer(await read()({ noteId: NOTE, filename: 'receipt.pdf' }));
-    expect(result).toEqual({ filename: 'receipt.pdf', indexed: true, text: TEXT });
+    expect(result).toEqual({ filename: 'receipt.pdf', indexed: true, read: 'text', text: TEXT });
   });
 
   it('cuts the text and says how much there is and where to go on from', async () => {
@@ -416,6 +454,7 @@ describe('get_attachment_text with maxChars and offset (MAK-173)', () => {
     expect(result).toEqual({
       filename: 'receipt.pdf',
       indexed: true,
+      read: 'text',
       text: 'Acme Hardware\nTotal $42.00\n',
       totalChars: TEXT.length,
       truncated: true,

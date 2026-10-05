@@ -210,6 +210,17 @@ export class NotesRepo extends StoreRepo {
     return this.call((s) => s.search(rawQuery, limit, filters, max));
   }
 
+  /** A search with a line per file of each match, for MCP; see `UserStore.searchWithFiles`. */
+  searchWithFiles(
+    rawQuery: string,
+    limit: number,
+    filters: SearchFilters = {},
+    opts: { vision?: boolean } = {},
+  ): Promise<{ results: SearchResult[]; summaries: Record<string, FileSummary[]> }> {
+    const max = this.scopeDrivenSearchMax;
+    return this.call((s) => s.searchWithFiles(rawQuery, limit, filters, max, opts));
+  }
+
   /** A search with each match's list row, for a table; see `UserStore.searchRows`. */
   searchRows(rawQuery: string, limit: number, filters: SearchFilters = {}): Promise<SearchResultRow[]> {
     const max = this.scopeDrivenSearchMax;

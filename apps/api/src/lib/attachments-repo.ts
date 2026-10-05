@@ -1,6 +1,6 @@
 import type { AttachmentInfo } from '@unbent/shared';
 import { StoreRepo } from './store-client.js';
-import type { AttachmentRow, AttachmentsStore, PendingFile } from '../store/attachments.js';
+import type { AttachmentRow, AttachmentsStore, FileRead, PendingFile } from '../store/attachments.js';
 
 /**
  * Attachment metadata for one user, answered by that user's store.
@@ -107,6 +107,11 @@ export class AttachmentsRepo extends StoreRepo {
 
   textFor(noteId: string, filename: string): Promise<string | null> {
     return this.call((s) => s.textFor(noteId, filename));
+  }
+
+  /** A file's text and how it came to be, for MCP's `get_attachment_text`; see `AttachmentsStore.textWithRead`. */
+  textWithRead(noteId: string, filename: string, vision: boolean): Promise<{ read: FileRead; text: string | null } | null> {
+    return this.call((s) => s.textWithRead(noteId, filename, vision));
   }
 
   textsForNote(noteId: string): Promise<Array<{ filename: string; contentType: string; text: string | null; readBy: 'vision' | null }>> {

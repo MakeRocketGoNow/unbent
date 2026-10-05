@@ -579,6 +579,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   visionPending(noteId?: string) { this.ready(); return this.attachments.visionPending(noteId); }
   pendingTextCount(noteId?: string) { this.ready(); return this.attachments.pendingTextCount(noteId); }
   textFor(noteId: string, filename: string) { this.ready(); return this.attachments.textFor(noteId, filename); }
+  textWithRead(noteId: string, filename: string, vision?: boolean) { this.ready(); return this.attachments.textWithRead(noteId, filename, vision); }
   textsForNote(noteId: string) { this.ready(); return this.attachments.textsForNote(noteId); }
   textsForNotes(noteIds: string[]) { this.ready(); return this.attachments.textsForNotes(noteIds); }
   textsById(ids: string[]) { this.ready(); return this.attachments.textsById(ids); }
@@ -634,6 +635,23 @@ export class UserStore extends DurableObject<StoreEnv> {
       const note = rows.get(r.id);
       return note ? [{ ...r, note }] : [];
     });
+  }
+
+  /**
+   * MCP's `search_notes` with a line per file of each match (`summariesForNotes`), keyed
+   * by note id, in one call. A search result does not say whether its note has files, so
+   * every match is asked about: an index probe for a note with none.
+   */
+  searchWithFiles(
+    rawQuery: string,
+    limit: number,
+    filters: SearchFilters = {},
+    scopeDrivenSearchMax?: number,
+    opts: { vision?: boolean } = {},
+  ) {
+    this.ready();
+    const results = this.notes.search(rawQuery, limit, filters, scopeDrivenSearchMax);
+    return { results, summaries: this.attachments.summariesForNotes(results.map((r) => r.id), opts.vision) };
   }
 
   /**

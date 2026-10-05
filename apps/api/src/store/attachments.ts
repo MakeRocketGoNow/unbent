@@ -147,6 +147,7 @@ const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1
  *
  * The vision reading already has one: `formatReading` writes the file's name on the first
  * line and what it is and shows on the second, then a blank line, then the transcription.
+ * (`llm.test.ts` runs that layout through this cut, since nothing here imports it.)
  * Everything before that blank line is the summary — "Sushi A Go Go receipt — Receipt:
  * lunch for two, $17.27 by card" — and the transcription is what get_attachment_text is
  * for. A text layer has no such head, so its summary is the opening of the text with the
@@ -550,6 +551,31 @@ export class AttachmentsStore {
       filename,
     );
     return row?.text ?? null;
+  }
+
+  /**
+   * `textFor`, with how the text came to be (`summarize`'s `read`), for MCP's
+   * `get_attachment_text`: an empty answer alone left the tool saying a file "may still be
+   * being processed, or may have no text layer", which is the guess `read` exists to
+   * settle. Null when there is no such file. `text` is null unless `read` is `vision` or
+   * `text`.
+   */
+  textWithRead(noteId: string, filename: string, vision = true): { read: FileRead; text: string | null } | null {
+    const row = this.sql.first<{ content_type: string; text: string | null; read_by: string | null }>(
+      `SELECT a.content_type, t.text, t.read_by
+         FROM attachments a
+         LEFT JOIN attachment_text t ON t.attachment_id = a.id
+        WHERE a.note_id = ?1 AND a.filename = ?2`,
+      noteId,
+      filename,
+    );
+    if (!row) return null;
+    // Only the head goes to `summarize`, which folds what it is given into a summary this
+    // caller does not want; trimmed first so a text that opens with blank lines is not
+    // taken for an empty one.
+    const head = row.text === null ? null : row.text.trim().slice(0, SUMMARY_SOURCE_CHARS);
+    const { read } = summarize(row.content_type, head, row.read_by, vision);
+    return { read, text: read === 'vision' || read === 'text' ? row.text : null };
   }
 
   /**
