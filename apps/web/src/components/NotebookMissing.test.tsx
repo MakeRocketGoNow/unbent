@@ -29,7 +29,7 @@ describe('NotebookMissing', () => {
   /* The URL can name a notebook that no longer exists, and the empty list it produces
      must not look like a data problem. */
   it('says so in a labelled region, with the name in its line', async () => {
-    harness(<NotebookMissing notebook="Receipts" notebooks={loaded} />);
+    harness(<NotebookMissing notebook="Receipts" notebooks={loaded} whole />);
     const region = await screen.findByRole('region', { name: 'Notebook not found' });
     expect(screen.getByRole('heading', { level: 3, name: 'Notebook not found' })).toBeTruthy();
     expect(region.textContent).toContain(
@@ -39,7 +39,7 @@ describe('NotebookMissing', () => {
 
   /** The way out is navigation, so a real link — outlined, since leaving is not the view's point. */
   it('offers All notes as a link drawn as the outlined button', async () => {
-    harness(<NotebookMissing notebook="Receipts" notebooks={loaded} />);
+    harness(<NotebookMissing notebook="Receipts" notebooks={loaded} whole />);
     const out = await screen.findByRole('link', { name: 'Show all notes' });
     expect(out.getAttribute('href')).toBe('/notes');
     expect(out.className).toContain('btn-secondary');
@@ -48,7 +48,7 @@ describe('NotebookMissing', () => {
 
   /** Red was tried and was wrong: a stale link is nobody's fault. */
   it('draws nothing in the warning colour and is not an alert', async () => {
-    const { container } = harness(<NotebookMissing notebook="Receipts" notebooks={loaded} />);
+    const { container } = harness(<NotebookMissing notebook="Receipts" notebooks={loaded} whole />);
     await screen.findByRole('region', { name: 'Notebook not found' });
     expect(container.querySelector('.bad')).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
@@ -56,10 +56,10 @@ describe('NotebookMissing', () => {
 
   it('says nothing for a notebook that exists, the inbox, no notebook, or before the list has loaded', async () => {
     const cases = [
-      <NotebookMissing key="a" notebook="Coupons" notebooks={loaded} />,
-      <NotebookMissing key="b" notebook={UNFILED} notebooks={loaded} />,
-      <NotebookMissing key="c" notebook={undefined} notebooks={loaded} />,
-      <NotebookMissing key="d" notebook="Receipts" notebooks={loading} />,
+      <NotebookMissing key="a" notebook="Coupons" notebooks={loaded} whole />,
+      <NotebookMissing key="b" notebook={UNFILED} notebooks={loaded} whole />,
+      <NotebookMissing key="c" notebook={undefined} notebooks={loaded} whole />,
+      <NotebookMissing key="d" notebook="Receipts" notebooks={loading} whole />,
     ];
     for (const node of cases) {
       harness(node);
@@ -72,10 +72,22 @@ describe('NotebookMissing', () => {
 
 describe('isNotebookMissing', () => {
   it('is true only once the list has loaded without the name', () => {
-    expect(isNotebookMissing('Receipts', loaded)).toBe(true);
-    expect(isNotebookMissing('Receipts', loading)).toBe(false);
-    expect(isNotebookMissing('Coupons', loaded)).toBe(false);
-    expect(isNotebookMissing(UNFILED, loaded)).toBe(false);
-    expect(isNotebookMissing(undefined, loaded)).toBe(false);
+    expect(isNotebookMissing('Receipts', loaded, true)).toBe(true);
+    expect(isNotebookMissing('Receipts', loading, true)).toBe(false);
+    expect(isNotebookMissing('Coupons', loaded, true)).toBe(false);
+    expect(isNotebookMissing(UNFILED, loaded, true)).toBe(false);
+    expect(isNotebookMissing(undefined, loaded, true)).toBe(false);
+  });
+
+  /* The list's filter and the server match a notebook without case, so the link lists
+     Coupons' notes; saying there is no such notebook over them would be wrong. */
+  it('matches the name without case, as the list does', () => {
+    expect(isNotebookMissing('coupons', loaded, true)).toBe(false);
+    expect(isNotebookMissing('COUPONS', loaded, true)).toBe(false);
+  });
+
+  /* Mid-copy, or after a reset, the list lacks notebooks that exist. */
+  it('is false while the library is not whole', () => {
+    expect(isNotebookMissing('Receipts', loaded, false)).toBe(false);
   });
 });

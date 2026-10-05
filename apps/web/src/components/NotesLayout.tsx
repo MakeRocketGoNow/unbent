@@ -70,7 +70,7 @@ import { MoveSheet } from './MoveSheet.js';
 import { TagsSheet } from './TagsSheet.js';
 import { editOpenNoteFiling } from '../open-note-fields.js';
 import { useAppSession } from '../useAppSession.js';
-import { useLibraryArriving } from '../store/use-feed-state.js';
+import { useLibraryArriving, useLibraryWhole } from '../store/use-feed-state.js';
 import { ListRowsContext, showsWholeAccount, useLibraryTotal } from '../useLibraryTotal.js';
 import { useSignOut } from '../useSignOut.js';
 
@@ -733,7 +733,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * four controls, and the longer string was the one thing in it that truncated.
    */
   /** The URL names a notebook that does not exist; see `NotebookMissing`. */
-  const notebookMissing = isNotebookMissing(notebook, notebooks);
+  const libraryWhole = useLibraryWhole();
+  const notebookMissing = isNotebookMissing(notebook, notebooks, libraryWhole);
   /*
    * Drawn in the list's place only while nothing is being searched. A search is the person
    * looking for something, so its results, its count and the tags and notebooks whose names
@@ -1127,7 +1128,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
              same fact the state already says. Not the workspace pane, which may be
              holding an open note. */
           <div className="empty-state-slot">
-            <NotebookMissing notebook={notebook} notebooks={notebooks} />
+            <NotebookMissing notebook={notebook} notebooks={notebooks} whole={libraryWhole} />
           </div>
         ) : tableMode ? (
           <NoteTable
