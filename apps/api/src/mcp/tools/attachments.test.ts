@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { appLinks } from '../../lib/app-links.js';
 import { registerAttachmentTools } from './attachments.js';
 import type { AttachmentsRepo } from '../../lib/attachments-repo.js';
 import type { MarkdownConverter } from '../../lib/extract-text.js';
@@ -59,6 +60,7 @@ function collect(
       attachments: attachments as AttachmentsRepo,
       uploads: uploads as UploadGrantsRepo,
     },
+    appLinks('https://notes.example.com'),
   );
   return tools;
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { FieldDef } from '@unbent/shared';
+import { appLinks } from '../../lib/app-links.js';
 import { registerReadTools } from './read.js';
 import type { NotesRepo } from '../../lib/notes-repo.js';
 
@@ -13,6 +14,9 @@ type Handler = (args: Record<string, unknown>) => Promise<{
   content: Array<{ type: string; text: string }>;
 }>;
 
+/** A self-hosted instance's address, so a link that ignored it would show. */
+const APP_URL = 'https://notes.example.com';
+
 function collect(notes: NotesRepo): Map<string, Handler> {
   const tools = new Map<string, Handler>();
   const server = {
@@ -21,7 +25,7 @@ function collect(notes: NotesRepo): Map<string, Handler> {
       return {} as never;
     },
   };
-  registerReadTools(server as never, notes, {} as never);
+  registerReadTools(server as never, notes, {} as never, appLinks(APP_URL));
   return tools;
 }
 
@@ -266,5 +270,55 @@ describe('list_notes pages', () => {
     const result = await list({ limit: 101, compact: false });
     expect(result.isError).toBe(true);
     expect(pages).toHaveLength(0);
+  });
+});
+
+/*
+ * Every note a read tool returns carries the absolute address it opens at, on the
+ * instance's own origin, so an assistant can give the person a link rather than an id.
+ */
+describe('links in what the read tools return', () => {
+  const live = {
+    id: 'n-1',
+    title: 'Acme 10% off',
+    createdAt: 1,
+    updatedAt: 2,
+    tags: [],
+    notebook: 'Watch Later',
+    notebookId: 'nb-1',
+  };
+
+  it('gives each note in a page its link, and a trashed one the trash\'s', async () => {
+    const repo = {
+      listPage: async () => ({ items: [live, { ...live, id: 'n-2', deletedAt: 3 }], total: 2 }),
+    } as unknown as NotesRepo;
+    const result = answer(await collect(repo).get('list_notes')!({ limit: 25 }));
+    expect(result.notes.map((n: { url: string }) => n.url)).toEqual([
+      `${APP_URL}/notes/n-1`,
+      `${APP_URL}/trash/n-2`,
+    ]);
+  });
+
+  it('gives get_note and each search result the note\'s link', async () => {
+    const repo = {
+      getWithFiles: async (id: string) => (id === live.id ? { note: { ...live, body: '' }, files: [] } : null),
+      search: async () => [{ id: 'n-1', title: live.title, updatedAt: 2, snippet: 'Acme' }],
+    } as unknown as NotesRepo;
+    const tools = collect(repo);
+    expect(answer(await tools.get('get_note')!({ noteId: 'n-1' })).url).toBe(`${APP_URL}/notes/n-1`);
+    const found = answer(await tools.get('search_notes')!({ query: 'acme', limit: 20 }));
+    expect(found.results[0].url).toBe(`${APP_URL}/notes/n-1`);
+  });
+
+  it('links each notebook to the note list filtered to it', async () => {
+    const repo = {
+      notebooksOverview: async () => ({
+        notebooks: [{ id: 'nb-1', name: 'Watch Later', count: 1 }],
+        unfiled: 0,
+        fields: [],
+      }),
+    } as unknown as NotesRepo;
+    const result = answer(await collect(repo).get('list_notebooks')!({}));
+    expect(result.notebooks[0].url).toBe(`${APP_URL}/notes?notebook=Watch+Later`);
   });
 });

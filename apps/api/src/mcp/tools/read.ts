@@ -12,6 +12,7 @@ import {
   type FieldFilter,
 } from '@unbent/shared';
 import type { McpServer } from '@modelcontextprotocol/server';
+import type { AppLinks } from '../../lib/app-links.js';
 import type { AttachmentsRepo } from '../../lib/attachments-repo.js';
 import { nextCursor, type NotesRepo } from '../../lib/notes-repo.js';
 import { jsonResult, noteRef, notFound, toolError } from './result.js';
@@ -152,6 +153,7 @@ export function registerReadTools(
   server: McpServer,
   notes: NotesRepo,
   attachments: AttachmentsRepo,
+  links: AppLinks,
 ): void {
   server.registerTool(
     'search_notes',
@@ -183,6 +185,8 @@ export function registerReadTools(
         count: results.length,
         results: results.map((r) => ({
           id: r.id,
+          // Search reads live notes only, so a result always opens in the list.
+          url: links.note(r.id),
           title: r.title,
           updatedAt: new Date(r.updatedAt).toISOString(),
           snippet: r.snippet,
@@ -280,8 +284,11 @@ export function registerReadTools(
         returned: items.length,
         ...(cursorForNext ? { cursor: cursorForNext } : {}),
         notes: compact
-          ? items.map((n) => ({ id: n.id, title: n.title, notebook: n.notebook ?? null, tags: n.tags }))
-          : items.map(noteRef),
+          ? // No url: compact is for collecting up to five hundred ids for a batch write,
+            // where a link per row would double the page, and the batch's own answer
+            // carries the link of every note it changed.
+            items.map((n) => ({ id: n.id, title: n.title, notebook: n.notebook ?? null, tags: n.tags }))
+          : items.map((n) => noteRef(n, links)),
       });
     },
   );
@@ -303,7 +310,7 @@ export function registerReadTools(
       if (!found) return notFound('note', noteId);
       const { note, files } = found;
       return jsonResult({
-        ...noteRef(note),
+        ...noteRef(note, links),
         body: note.body,
         /**
          * With the path and the Markdown, so a model can put a file back in the body, or
@@ -378,6 +385,8 @@ export function registerReadTools(
         notebooks: notebooks.map((nb) => ({
           id: nb.id,
           name: nb.name,
+          // The note list filtered to this notebook, which is the only page a notebook has.
+          url: links.notebook(nb.name),
           count: nb.count,
           // Only when set, so a notebook without a purpose is silent rather than carrying a null.
           ...(nb.purpose ? { purpose: nb.purpose } : {}),

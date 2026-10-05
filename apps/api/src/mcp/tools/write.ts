@@ -25,8 +25,18 @@ import {
   type NoteFieldsPatch,
 } from '@unbent/shared';
 import type { McpServer } from '@modelcontextprotocol/server';
+import type { AppLinks } from '../../lib/app-links.js';
 import type { NotesRepo } from '../../lib/notes-repo.js';
-import { jsonResult, noteRef, notFound, staleNote, toolError } from './result.js';
+import {
+  SHARE_NOTE_LINK,
+  SHARE_NOTE_LINKS,
+  jsonResult,
+  noteRef,
+  noteUrls,
+  notFound,
+  staleNote,
+  toolError,
+} from './result.js';
 
 /**
  * Custom field values by field *name*, the way list_notebooks reports them and get_note
@@ -130,14 +140,15 @@ function normalizeNotebook(value: string | null | undefined): string | null | un
   return value;
 }
 
-export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
+export function registerWriteTools(server: McpServer, notes: NotesRepo, links: AppLinks): void {
   server.registerTool(
     'create_note',
     {
       title: 'Create a note',
       description:
         'Create a note with its body in one call. The body is Markdown — write the whole ' +
-        'note here rather than creating something empty and editing it afterwards.',
+        'note here rather than creating something empty and editing it afterwards.' +
+        SHARE_NOTE_LINK,
       inputSchema: z.object({
         title: z.string().max(MAX_TITLE_LENGTH).default(''),
         body: bodySchema.default(''),
@@ -168,7 +179,7 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
           notebook: target,
           ...(patch ? { fields: patch } : {}),
         });
-        return jsonResult(noteRef(note));
+        return jsonResult(noteRef(note, links));
       } catch (err) {
         if (err instanceof InvalidFieldValue) return toolError(`${err.fieldName} ${err.message}.`);
         throw err;
@@ -187,7 +198,8 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
         'names given change, and null clears one. To change part of a body without ' +
         'resending it, use edit_note. Pass the updatedAt get_note gave you as ' +
         'ifUpdatedAt and the update is refused if the note was saved since, rather than ' +
-        'overwriting someone else\'s edit.',
+        'overwriting someone else\'s edit.' +
+        SHARE_NOTE_LINK,
       inputSchema: z.object({
         noteId: z.string().uuid(),
         title: z.string().max(MAX_TITLE_LENGTH).optional(),
@@ -237,8 +249,8 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
           by: 'assistant',
         });
         if (!note) return notFound('note', noteId);
-        if ('stale' in note) return staleNote(note.stale);
-        return jsonResult(noteRef(note));
+        if ('stale' in note) return staleNote(note.stale, links);
+        return jsonResult(noteRef(note, links));
       } catch (err) {
         if (err instanceof InvalidFieldValue) return toolError(`${err.fieldName} ${err.message}.`);
         throw err;
@@ -255,7 +267,8 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
         'set off from the body by a blank line, or replace an exact span of text with ' +
         'another. Prefer this to update_note for anything but a wholesale rewrite: it is ' +
         'cheaper on a long note and it cannot accidentally discard the parts you did not ' +
-        'mean to touch.',
+        'mean to touch.' +
+        SHARE_NOTE_LINK,
       inputSchema: z.object({
         noteId: z.string().uuid(),
         mode: z.enum(['append', 'prepend', 'replace']),
@@ -292,7 +305,7 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
         const ok = await notes.appendToBody(noteId, content);
         if (!ok) return notFound('note', noteId);
         const note = await notes.get(noteId);
-        return note ? jsonResult(noteRef(note)) : notFound('note', noteId);
+        return note ? jsonResult(noteRef(note, links)) : notFound('note', noteId);
       }
 
       const current = await notes.get(noteId);
@@ -323,8 +336,8 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
       // that guts a note can be undone from the History sheet (MAK-119).
       const note = await notes.update(noteId, { body, ifUpdatedAt: current.updatedAt, by: 'assistant' });
       if (!note) return notFound('note', noteId);
-      if ('stale' in note) return staleNote(note.stale);
-      return jsonResult(noteRef(note));
+      if ('stale' in note) return staleNote(note.stale, links);
+      return jsonResult(noteRef(note, links));
     },
   );
 
@@ -348,7 +361,8 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
         'in both lists is added. Names match exactly, case included, so removing ' +
         '"receipts" leaves "Receipts" in place; list_tags has the spellings. Answers with the ' +
         'notes it reached, how many changed, and any ids it could not find; get_note shows ' +
-        "a note's tags afterwards.",
+        "a note's tags afterwards." +
+        SHARE_NOTE_LINKS,
       inputSchema: z.object({
         noteIds: noteIdsSchema,
         add: z.array(z.string().trim().min(1).max(MAX_TAG_LENGTH)).default([]),
@@ -367,6 +381,7 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
       });
       return jsonResult({
         noteIds: matched,
+        urls: noteUrls(matched, links),
         changed: changed.length,
         missing: noteIds.filter((id) => !matched.includes(id)),
       });
@@ -386,7 +401,8 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
         'list_notes or move_notes. A note that already holds the value given is left alone ' +
         'and not counted as changed; one holding a different value is overwritten. If ' +
         'any value is refused nothing is written. Answers with the notes it reached, how ' +
-        'many changed, and any ids it could not find.',
+        'many changed, and any ids it could not find.' +
+        SHARE_NOTE_LINKS,
       inputSchema: z.object({
         noteIds: noteIdsSchema,
         fields: fieldsSchema,
@@ -403,7 +419,9 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
       // and to create it. A set in two notebooks, or in none, is refused here by name,
       // before a field name is looked at.
       const target = await notes.fieldTargets(noteIds);
-      if (target.matched.length === 0) return jsonResult({ noteIds: [], changed: 0, missing: noteIds });
+      if (target.matched.length === 0) {
+        return jsonResult({ noteIds: [], urls: {}, changed: 0, missing: noteIds });
+      }
       const describe = (nb: (typeof target.notebooks)[number]) =>
         `${nb.name ? `"${nb.name}"` : 'no notebook'} (${nb.notes} ${nb.notes === 1 ? 'note' : 'notes'}, such as ${nb.example})`;
       if (target.notebooks.length > 1) {
@@ -429,6 +447,7 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
         const done = await notes.updateMany(noteIds, { fields: resolved.patch, by: 'assistant' });
         return jsonResult({
           noteIds: done.matched,
+          urls: noteUrls(done.matched, links),
           changed: done.changed.length,
           missing: noteIds.filter((id) => !done.matched.includes(id)),
         });
@@ -515,7 +534,9 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
         'name matches an existing notebook whatever its case, and one that does not exist ' +
         'is created. Custom field values stay on the note: those from the notebook it left ' +
         'still show on get_note and apply again if it moves back. Answers with the notes ' +
-        'it reached, how many actually moved, and any ids it could not find.',
+        'it reached, how many actually moved, and any ids it could not find, with notebookUrl ' +
+        'opening the notebook they are now in.' +
+        SHARE_NOTE_LINKS,
       inputSchema: z.object({
         noteIds: noteIdsSchema,
         notebook: notebookSchema,
@@ -528,9 +549,12 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
       // The notebook as stored, which is the name the assistant will see everywhere else:
       // a request for "coupons" lands in an existing "Coupons", and the answer says so.
       const first = matched[0] ? await notes.get(matched[0]) : null;
+      const filed = first ? (first.notebook ?? null) : target;
       return jsonResult({
-        notebook: first ? (first.notebook ?? null) : target,
+        notebook: filed,
+        ...(filed ? { notebookUrl: links.notebook(filed) } : {}),
         noteIds: matched,
+        urls: noteUrls(matched, links),
         changed: changed.length,
         missing: noteIds.filter((id) => !matched.includes(id)),
       });
@@ -543,14 +567,15 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
       title: 'Move a note to the trash',
       description:
         'Trash a note. This is reversible — the note stays in the trash until someone empties ' +
-        'it, and restore_note brings it back. There is no tool that deletes permanently.',
+        'it, and restore_note brings it back. There is no tool that deletes permanently. The ' +
+        'answer carries url, where the note now opens in the trash, to give the person.',
       inputSchema: z.object({ noteId: z.string().uuid() }),
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
     async ({ noteId }) => {
       const ok = await notes.remove(noteId);
       if (!ok) return notFound('note', noteId);
-      return jsonResult({ noteId, trashed: true });
+      return jsonResult({ noteId, url: links.note(noteId, { trashed: true }), trashed: true });
     },
   );
 
@@ -558,14 +583,15 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
     'restore_note',
     {
       title: 'Restore a note from the trash',
-      description: 'Bring a trashed note back. Find one with list_notes and trashed set to true.',
+      description:
+        'Bring a trashed note back. Find one with list_notes and trashed set to true.' + SHARE_NOTE_LINK,
       inputSchema: z.object({ noteId: z.string().uuid() }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async ({ noteId }) => {
       const ok = await notes.restore(noteId);
       if (!ok) return notFound('trashed note', noteId);
-      return jsonResult({ noteId, restored: true });
+      return jsonResult({ noteId, url: links.note(noteId), restored: true });
     },
   );
 
@@ -580,7 +606,8 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
       description:
         'Trash several notes at once. Reversible, as delete_note is: they stay in the trash ' +
         'until someone empties it, and restore_notes brings them back. Answers with the ' +
-        'notes it trashed and any ids it could not find or that were already in the trash.',
+        'notes it trashed and any ids it could not find or that were already in the trash, ' +
+        'and urls, where each now opens in the trash, keyed by id.',
       inputSchema: z.object({ noteIds: noteIdsSchema }),
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
@@ -588,6 +615,7 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
       const trashed = await notes.removeMany(noteIds);
       return jsonResult({
         noteIds: trashed,
+        urls: noteUrls(trashed, links, { trashed: true }),
         missing: noteIds.filter((id) => !trashed.includes(id)),
       });
     },
@@ -599,7 +627,7 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
       title: 'Restore several notes from the trash',
       description:
         'Bring several trashed notes back at once. Answers with the notes it restored and ' +
-        'any ids it could not find in the trash.',
+        'any ids it could not find in the trash.' + SHARE_NOTE_LINKS,
       inputSchema: z.object({ noteIds: noteIdsSchema }),
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
@@ -607,6 +635,7 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
       const restored = await notes.restoreMany(noteIds);
       return jsonResult({
         noteIds: restored,
+        urls: noteUrls(restored, links),
         missing: noteIds.filter((id) => !restored.includes(id)),
       });
     },
@@ -618,14 +647,15 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
       title: 'Create a notebook',
       description:
         'Make an empty notebook. Notebooks are also created on demand by move_notes and ' +
-        'create_note, so this is only needed to make one ahead of time.',
+        'create_note, so this is only needed to make one ahead of time. The answer carries ' +
+        'url, the notebook in Unbent, to give the person.',
       inputSchema: z.object({ name: notebookNameSchema }),
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     async ({ name }) => {
       const created = await notes.createNotebook(name);
       if (!created) return toolError(`A notebook called "${name}" already exists.`);
-      return jsonResult(created);
+      return jsonResult({ ...created, url: links.notebook(created.name) });
     },
   );
 
@@ -659,7 +689,8 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo): void {
       if (outcome === 'conflict') return toolError(`A notebook called "${name}" already exists.`);
       return jsonResult({
         id: notebookId,
-        ...(name !== undefined && { name }),
+        // The notebook's link is its name, so a rename is the one change that moves it.
+        ...(name !== undefined && { name, url: links.notebook(name) }),
         ...(purpose !== undefined && { purpose }),
         ...(emoji !== undefined && { emoji }),
       });
