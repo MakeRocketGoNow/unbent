@@ -738,7 +738,14 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    */
   /** The URL names a notebook that does not exist; see `NotebookMissing`. */
   const notebookMissing = isNotebookMissing(notebook, notebooks);
-  const countLabel = notebookMissing
+  /*
+   * Drawn in the list's place only while nothing is being searched. A search is the person
+   * looking for something, so its results, its count and the tags and notebooks whose names
+   * match (`ScopeMatches`, which can be the very notebook they meant) draw as they would
+   * anywhere; clearing the query brings the state back.
+   */
+  const showNotebookMissing = notebookMissing && results === null;
+  const countLabel = showNotebookMissing
     ? // A count of a notebook that does not exist would be a claim about nothing.
       null
     : results !== null
@@ -1119,7 +1126,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             <EmptyLibrary heading="h3" />
             {offerSampleNotes && <SampleNotes layout="empty" />}
           </div>
-        ) : notebookMissing ? (
+        ) : showNotebookMissing ? (
           /* In the list's place, at every width, and instead of "No notes in …" — the
              same fact the state already says. Not the workspace pane, which may be
              holding an open note. */

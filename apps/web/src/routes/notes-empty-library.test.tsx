@@ -50,6 +50,7 @@ vi.mock('../store/actions.js', async (importOriginal) => ({
 vi.mock('../notes-api.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../notes-api.js')>()),
   getConfig: vi.fn(),
+  searchNotes: vi.fn(),
 }));
 
 const note = (id: string, over: Partial<FeedNote> = {}): FeedNote => ({
@@ -270,6 +271,21 @@ describe('a link to a notebook that is not there', () => {
       lib = null;
       vi.mocked(actions.createNote).mockClear();
     }
+  });
+
+  /** A search is someone looking for something: its results win, and clearing it brings the state back. */
+  it('gives way to a search, and comes back when the query is cleared', async () => {
+    setWidth(false);
+    vi.mocked(api.searchNotes).mockResolvedValue([]);
+    lib = installTestLibrary({ notes: [note('a', { notebookId: 'nb1' })], notebooks: [coupons] });
+    const { router } = mount('/notes?notebook=Gone&q=coup');
+    // The notebook whose name matches is offered, the count says the matches, no state.
+    await screen.findByText('0 matches');
+    expect(document.querySelector('.note-list')?.textContent).toContain('Coupons');
+    expect(screen.queryByRole('region', { name: 'Notebook not found' })).toBeNull();
+
+    await router.navigate({ to: '/notes', search: { notebook: 'Gone' } });
+    await screen.findByRole('region', { name: 'Notebook not found' });
   });
 
   it('draws nothing of the kind for a notebook that exists', async () => {
