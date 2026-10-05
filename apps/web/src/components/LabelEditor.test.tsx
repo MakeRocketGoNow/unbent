@@ -279,6 +279,14 @@ describe('LabelEditor with a chooser', () => {
     await waitFor(() => expect(onCreate).toHaveBeenCalledWith('Coupons 2'));
   });
 
+  it('waits for the list before opening the chooser it was asked to open', () => {
+    chooserHarness(null, true);
+    expect(screen.queryByRole('button', { name: 'Blank' })).toBeNull();
+    cleanup();
+    chooserHarness(ITEMS, true);
+    expect(screen.getByRole('button', { name: 'Blank' })).toBeTruthy();
+  });
+
   it('says neither "none yet" nor the hint while an empty list has its chooser open', () => {
     chooserHarness([], true);
     expect(screen.queryByText('None.')).toBeNull();

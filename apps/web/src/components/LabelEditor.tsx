@@ -142,7 +142,12 @@ export function LabelEditor({
     setCreating('');
   };
 
-  const chooserOpen = Boolean(chooser?.open) && creating === null;
+  /*
+   * Open only once the list has arrived. What a chooser offers depends on what exists — a
+   * template's name may be taken — and one opened from the rail's New notebook on a cold
+   * load would otherwise be chosen from against a list it has not seen.
+   */
+  const chooserOpen = Boolean(chooser?.open) && creating === null && items !== null;
 
   const commitRename = async (item: LabelItem) => {
     const value = editing?.value.trim() ?? '';
