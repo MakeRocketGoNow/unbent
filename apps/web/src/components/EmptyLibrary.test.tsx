@@ -133,6 +133,27 @@ describe('EmptyLibrary', () => {
     errors.mockRestore();
   });
 
+  /**
+   * Two presses before the re-render that disables the button — a double tap on a slow
+   * phone — reach the handler twice; the action's own guard is what makes one note. Native
+   * clicks, not `fireEvent`, whose `act` would render the disabled button between them.
+   */
+  it('makes one note from two presses that land before the button is disabled', async () => {
+    let fail: (err: Error) => void = () => {};
+    vi.mocked(actions.createNote).mockImplementation(() => new Promise((_, reject) => (fail = reject)));
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mount();
+    const sample = await screen.findByRole<HTMLButtonElement>('button', { name: 'See a sample note' });
+    sample.click();
+    sample.click();
+    await waitFor(() => expect(sample.disabled).toBe(true));
+    expect(actions.createNote).toHaveBeenCalledTimes(1);
+    // Settled, so the action's guard is let go for whatever runs next.
+    fail(new Error('no room'));
+    await waitFor(() => expect(sample.disabled).toBe(false));
+    errors.mockRestore();
+  });
+
   it('draws its glyph for the eye only', async () => {
     mount();
     const region = await screen.findByRole('region', { name: 'No notes yet' });
