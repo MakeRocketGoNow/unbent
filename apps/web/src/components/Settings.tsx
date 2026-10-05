@@ -188,7 +188,7 @@ export function Settings({ onChanged, createRequested = false, onCreateRequested
               existing={notebooks ?? []}
               intro={
                 notebooks?.length === 0
-                  ? 'A notebook is one home for a note. Tags cut across them.'
+                  ? 'Each note lives in one notebook. Tags can cut across them.'
                   : undefined
               }
               onBlank={startBlank}

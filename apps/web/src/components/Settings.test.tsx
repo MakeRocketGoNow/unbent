@@ -30,7 +30,7 @@ describe('Settings, notebooks', () => {
   it('opens the chooser on an empty list, under one line on what a notebook is, with no hint', async () => {
     mount([]);
     expect(await screen.findByRole('button', { name: /^Blank/ })).toBeTruthy();
-    expect(screen.getByText('A notebook is one home for a note. Tags cut across them.')).toBeTruthy();
+    expect(screen.getByText('Each note lives in one notebook. Tags can cut across them.')).toBeTruthy();
     expect(screen.queryByText(/Open a notebook to change/)).toBeNull();
     expect(screen.queryByText('No notebooks yet.')).toBeNull();
   });
@@ -47,6 +47,6 @@ describe('Settings, notebooks', () => {
     expect(await screen.findByRole('button', { name: /^Blank/ })).toBeTruthy();
     await waitFor(() => expect(onCreateRequested).toHaveBeenCalled());
     // No line about what a notebook is: the list beside the chooser already shows one.
-    expect(screen.queryByText(/A notebook is one home/)).toBeNull();
+    expect(screen.queryByText(/Each note lives in one notebook/)).toBeNull();
   });
 });
