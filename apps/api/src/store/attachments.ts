@@ -115,6 +115,7 @@ export type FileRead = 'vision' | 'text' | 'pending' | 'none';
 export interface FileSummary {
   filename: string;
   contentType: string;
+  size: number;
   read: FileRead;
   summary: string | null;
 }
@@ -608,8 +609,8 @@ export class AttachmentsStore {
   summariesForNotes(noteIds: string[]): Record<string, FileSummary[]> {
     const out: Record<string, FileSummary[]> = {};
     if (noteIds.length === 0) return out;
-    for (const r of this.sql.exec<{ note_id: string; filename: string; content_type: string; head: string | null; read_by: string | null }>(
-      `SELECT a.note_id, a.filename, a.content_type, substr(t.text, 1, ?2) AS head, t.read_by
+    for (const r of this.sql.exec<{ note_id: string; filename: string; content_type: string; size: number; head: string | null; read_by: string | null }>(
+      `SELECT a.note_id, a.filename, a.content_type, a.size, substr(t.text, 1, ?2) AS head, t.read_by
          FROM attachments a
          LEFT JOIN attachment_text t ON t.attachment_id = a.id
         WHERE a.note_id IN (SELECT value FROM json_each(?1))
@@ -620,6 +621,7 @@ export class AttachmentsStore {
       (out[r.note_id] ??= []).push({
         filename: r.filename,
         contentType: r.content_type,
+        size: r.size,
         ...summarize(r.content_type, r.head, r.read_by),
       });
     }

@@ -19,7 +19,6 @@ import type {
   StaleNote,
 } from '@unbent/shared';
 import { StoreRepo } from './store-client.js';
-import type { AttachmentInfo } from '@unbent/shared';
 import type { FileSummary } from '../store/attachments.js';
 import type { CountOptions, ListOptions, SearchFilters } from '../store/notes.js';
 import {
@@ -395,7 +394,7 @@ export class NotesRepo extends StoreRepo {
   }
 
   /** A note with its files, for MCP's `get_note`. Null when there is no such live note. */
-  getWithFiles(id: string): Promise<{ note: Note; files: Array<AttachmentInfo & FileSummary> } | null> {
+  getWithFiles(id: string): Promise<{ note: Note; files: FileSummary[] } | null> {
     return this.call((s) => s.getWithFiles(id));
   }
 

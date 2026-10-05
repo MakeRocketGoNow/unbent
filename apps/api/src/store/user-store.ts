@@ -1,7 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 import {
   DEFAULT_NOTE_SORT,
-  type AttachmentInfo,
   type FieldDef,
   type FieldScale,
   type FieldType,
@@ -684,22 +683,15 @@ export class UserStore extends DurableObject<StoreEnv> {
   /**
    * `GET /notes/:id` with its files, as the MCP `get_note` tool wants them: each with its
    * size, and what it says in brief (`summariesForNotes`), so an assistant learns what a
-   * file is without a `get_attachment_text` per file.
+   * file is without a `get_attachment_text` per file. The summaries' own query carries
+   * everything `listForNote` would, so it is the only read of the note's files.
    */
-  getWithFiles(id: string): { note: Note; files: Array<AttachmentInfo & FileSummary> } | null {
+  getWithFiles(id: string): { note: Note; files: FileSummary[] } | null {
     this.ready();
     return this.sql.tx(() => {
       const note = this.notes.get(id);
       if (!note) return null;
-      const summaries = new Map((this.attachments.summariesForNotes([id])[id] ?? []).map((s) => [s.filename, s]));
-      return {
-        note,
-        files: this.attachments.listForNote(id).map((f) => ({
-          ...f,
-          read: summaries.get(f.filename)?.read ?? 'none',
-          summary: summaries.get(f.filename)?.summary ?? null,
-        })),
-      };
+      return { note, files: this.attachments.summariesForNotes([id])[id] ?? [] };
     });
   }
 
