@@ -5281,10 +5281,18 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /* The preview: one template, before anything is made. As wide as a form wants to be, not
-   the grid's full width, so the field list reads as a list and the actions sit under it. */
+   the grid's full width, so the field list reads as a list and the actions sit under it.
+
+   Several of its lines and buttons carry a notebook name that is the person's, not the
+   template's, and a name is unbounded: one long word would otherwise widen the panel past
+   a phone's edge. Breaking anywhere is the one rule that covers all of them, and a button
+   may be no wider than the form for the same reason. */
 .nb-preview {
   max-width: 34rem;
+  overflow-wrap: anywhere;
 }
+
+.nb-preview .btn { max-width: 100%; }
 
 .nb-preview-head {
   display: flex;
