@@ -46,12 +46,12 @@ export function EmptyLibrary({ heading: Heading = 'h2' }: { heading?: 'h2' | 'h3
             and copied — so it is a link, and it is the thing this state is for, so it is
             filled. `Button` deliberately renders no anchors; see its header. First, so it
             is first in the tab order as well as on the left. */}
-        <Link to="/settings/import" className="btn btn-primary empty-library-action">
+        <Link to="/settings/import" className="btn btn-primary btn-large empty-library-action">
           Import from Evernote or Notion
         </Link>
         {/* Exactly what New does from All notes, through the same action: the account is
             empty, so there is no notebook or tag on screen to file the note under. */}
-        <Button className="empty-library-action" onClick={() => void createNote({ tags: [], notebook: null })}>
+        <Button size="large" className="empty-library-action" onClick={() => void createNote({ tags: [], notebook: null })}>
           New note
         </Button>
       </div>

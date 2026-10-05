@@ -57,6 +57,7 @@ variant="secondary"   Outlined. A real action that isn't the main one. The defau
 variant="quiet"       No border until hover. For actions in dense rows and toolbars.
 tone="danger"         Destructive. Layers onto any variant.
 size="small"          Denser, for rows and toolbars.
+size="large"          44px tall, for the one or two actions of a state that stands alone.
 ```
 
 `variant` is how loud, `tone` is what it does — they are independent. "Delete forever" in a

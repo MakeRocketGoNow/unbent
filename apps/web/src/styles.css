@@ -794,6 +794,15 @@ button.link {
   font-size: 0.78rem;
 }
 
+/* A comfortable target under a thumb as well as a cursor, for a state whose one or two
+   actions are most of what is on screen (`EmptyLibrary`). Shared by a `Link` wearing
+   button classes, as `btn-primary` is. */
+.btn-large {
+  min-height: 2.75rem;
+  padding: 0.5rem 1.1rem;
+  font-size: 0.9rem;
+}
+
 .btn:disabled {
   opacity: 0.55;
   cursor: default;
@@ -1227,16 +1236,8 @@ button.link {
   gap: 0.5rem;
 }
 
-/* Sized for a state with two controls in it rather than a toolbar: 44px tall, which is a
-   comfortable target under a thumb as well as a cursor. */
-.empty-library-action {
-  min-height: 2.75rem;
-  padding: 0.5rem 1.1rem;
-  font-size: 0.9rem;
-}
-
 /* A phone held upright: the two actions one above the other, each the width of the
-   stack, the primary on top — the way the app's own primary actions sit under a thumb, and
+   stack (the 44px height is the buttons' own, `btn-large`), the primary on top — the way the app's own primary actions sit under a thumb, and
    how "Import from Evernote or Notion" fits at all at 320px. */
 @media (width < 480px) {
   .empty-library-actions {
