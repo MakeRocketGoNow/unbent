@@ -10,7 +10,6 @@ import { canSendEmail, sendEmail } from './lib/email.js';
 import { deleteKeys, deleteUserBlobs } from './lib/blobs.js';
 import { ensureDirectoryRow, tombstoneDirectoryRow } from './lib/directory.js';
 import { storeFor } from './lib/store-client.js';
-import { createWelcomeNote } from './lib/welcome-note.js';
 
 /**
  * Emails permitted to create an account, lowercased.
@@ -595,9 +594,6 @@ function createAuth(env: Env): AuthInstance {
            * its note store from the first day. The object itself is created lazily, by the
            * first request that names the user; nothing to do for it here. See
            * lib/directory.ts.
-           *
-           * Then the welcome note, the account's first note (lib/welcome-note.ts) — the
-           * call that creates the store's object, as it happens.
            */
           after: async (user: { id: string }) => {
             try {
@@ -606,23 +602,6 @@ function createAuth(env: Env): AuthInstance {
               // The sweep heals a missing row within the hour, so a failed write here must
               // not fail the sign-up the user row already succeeded at.
               console.error(`directory row for ${user.id} not written; the sweep will add it:`, err);
-            }
-            /*
-             * In a try of its own, after the directory row rather than beside it, so neither
-             * failure can cost the other. A failed welcome note must never fail a sign-up:
-             * the account exists by now, and an error here would show the person a failure
-             * for an account they then find they have.
-             *
-             * No retry, and nothing remembers that it failed, on purpose. It is a nicety and
-             * one row; a later attempt would need a record of who is still owed one, and
-             * would land a note in an account that may have filled with an import in the
-             * meantime. The web app's empty state is drawn for an account with no notes,
-             * which is exactly the account that did not get one.
-             */
-            try {
-              await createWelcomeNote(env, user.id);
-            } catch (err) {
-              console.error(`welcome note for ${user.id} not written; the account starts empty:`, err);
             }
           },
         },

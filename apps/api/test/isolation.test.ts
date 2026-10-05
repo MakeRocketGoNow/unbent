@@ -15,7 +15,6 @@
  * test/README.md.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
-import { emptyAccount } from './empty-account.js';
 
 const BASE = process.env['API_URL'] ?? 'http://localhost:8787';
 
@@ -45,18 +44,6 @@ async function signUp(email: string, password: string, name: string): Promise<Ac
 
   const body = (await res.json()) as { user: { id: string } };
   return { cookie, userId: body.user.id, email };
-}
-
-/**
- * An actor whose account holds nothing, not even the welcome note every account is created
- * with: for the cases below that count, page and sort, which are about the list and were
- * written for an account that starts at zero. See empty-account.ts. What a new account does
- * hold, and that it is its own, is pinned under "a new account".
- */
-async function signUpEmpty(email: string, password: string, name: string): Promise<Actor> {
-  const actor = await signUp(email, password, name);
-  await emptyAccount(BASE, ORIGIN, actor.cookie);
-  return actor;
 }
 
 function asUser(actor: Actor): RequestInit {
@@ -118,58 +105,6 @@ describe('public routes', () => {
     const res = await fetch(`${BASE}/api/health`);
     expect(res.status).toBe(200);
     expect((await res.json()).db).toBe('ok');
-  });
-});
-
-/**
- * Every account is created holding the welcome note (`src/lib/welcome-note.ts`), written
- * by the sign-up's own hook into the new account's store. A note written from a hook
- * rather than a request is the case worth pinning here: it reaches a store by the user id
- * the hook was handed, so the check is that it landed in that account and in no other.
- */
-describe('a new account', () => {
-  it('holds exactly the welcome note: in no notebook, untagged', async () => {
-    const fresh = await signUp(`welcome-${Date.now()}@example.test`, 'welcome-pass-123', 'W');
-    const page = await fetch(`${BASE}/api/notes`, asUser(fresh)).then((r) => r.json());
-    expect(page.total).toBe(1);
-    expect(page.items).toHaveLength(1);
-
-    const note = await fetch(`${BASE}/api/notes/${page.items[0].id}`, asUser(fresh)).then((r) => r.json());
-    expect(note.title).toBe('Welcome to Unbent');
-    expect(note.body.length).toBeGreaterThan(0);
-    expect(note.notebook).toBeNull();
-    expect(note.tags).toEqual([]);
-
-    // Nothing in the trash either: the account's one note is a live one.
-    const trash = await fetch(`${BASE}/api/notes?trashed=1`, asUser(fresh)).then((r) => r.json());
-    expect(trash.total).toBe(0);
-  });
-
-  it("keeps the welcome note out of every other account's reach", async () => {
-    const fresh = await signUp(`welcome-own-${Date.now()}@example.test`, 'welcome-pass-123', 'W');
-    const { items } = await fetch(`${BASE}/api/notes`, asUser(fresh)).then((r) => r.json());
-    const id: string = items[0].id;
-
-    expect((await fetch(`${BASE}/api/notes/${id}`, asUser(bob))).status).toBe(404);
-    const patched = await fetch(`${BASE}/api/notes/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Cookie: bob.cookie, Origin: ORIGIN },
-      body: JSON.stringify({ title: 'Taken' }),
-    });
-    expect(patched.status).toBe(404);
-    const deleted = await fetch(`${BASE}/api/notes/${id}`, {
-      method: 'DELETE',
-      headers: { Cookie: bob.cookie, Origin: ORIGIN },
-    });
-    expect(deleted.status).toBe(404);
-
-    // Bob's own list holds his welcome note, never this one.
-    const bobs = await fetch(`${BASE}/api/notes?limit=100`, asUser(bob)).then((r) => r.json());
-    expect(bobs.items.map((i: { id: string }) => i.id)).not.toContain(id);
-
-    // And the owner's copy is untouched by any of it.
-    const own = await fetch(`${BASE}/api/notes/${id}`, asUser(fresh)).then((r) => r.json());
-    expect(own.title).toBe('Welcome to Unbent');
   });
 });
 
@@ -344,7 +279,7 @@ describe('note CRUD', () => {
    * separately.
    */
   it('reports the true total, not the page size', async () => {
-    const actor = await signUpEmpty(`count-${Date.now()}@example.test`, 'count-pass-1234', 'C');
+    const actor = await signUp(`count-${Date.now()}@example.test`, 'count-pass-1234', 'C');
     for (let i = 0; i < 12; i += 1) {
       await createNote(actor, { title: `Note ${i}`, body: 'x' });
     }
@@ -356,7 +291,7 @@ describe('note CRUD', () => {
   });
 
   it('pages through every note with the cursor', async () => {
-    const actor = await signUpEmpty(`paging-${Date.now()}@example.test`, 'paging-pass-123', 'P');
+    const actor = await signUp(`paging-${Date.now()}@example.test`, 'paging-pass-123', 'P');
     for (let i = 0; i < 12; i += 1) {
       await createNote(actor, { title: `Paged ${i}`, body: 'x' });
     }
@@ -382,7 +317,7 @@ describe('note CRUD', () => {
      * ("Receipt"), and a cursor comparing the title alone would step over every row that
      * shares the boundary title rather than resuming inside the run.
      */
-    const actor = await signUpEmpty(`titlesort-${Date.now()}@example.test`, 'titlesort-pass-1', 'T');
+    const actor = await signUp(`titlesort-${Date.now()}@example.test`, 'titlesort-pass-1', 'T');
     for (let i = 0; i < 9; i += 1) {
       await createNote(actor, { title: 'Receipt', body: `x${i}` });
     }
@@ -404,7 +339,7 @@ describe('note CRUD', () => {
   });
 
   it('orders by title alphabetically, ignoring case', async () => {
-    const actor = await signUpEmpty(`alpha-${Date.now()}@example.test`, 'alpha-pass-123', 'A');
+    const actor = await signUp(`alpha-${Date.now()}@example.test`, 'alpha-pass-123', 'A');
     for (const title of ['banana', 'Apple', 'cherry']) {
       await createNote(actor, { title, body: 'x' });
     }
@@ -445,7 +380,7 @@ describe('note CRUD', () => {
   });
 
   it('reverses with order=asc', async () => {
-    const actor = await signUpEmpty(`ascending-${Date.now()}@example.test`, 'ascend-pass-12', 'A');
+    const actor = await signUp(`ascending-${Date.now()}@example.test`, 'ascend-pass-12', 'A');
     const older = await createNote(actor, { title: 'Older', body: 'x' });
     await createNote(actor, { title: 'Newer', body: 'x' });
 
@@ -549,7 +484,7 @@ describe('note CRUD', () => {
   });
 
   it('accepts an open-ended range', async () => {
-    const actor = await signUpEmpty(`openrange-${Date.now()}@example.test`, 'openrange-pass', 'O');
+    const actor = await signUp(`openrange-${Date.now()}@example.test`, 'openrange-pass', 'O');
     await importDated(actor, 'Old', '2019-05-05');
     const recent = await importDated(actor, 'Recent', '2023-05-05');
 
@@ -632,7 +567,7 @@ describe('note CRUD', () => {
   });
 
   it('excludes soft-deleted notes from the total', async () => {
-    const actor = await signUpEmpty(`delcount-${Date.now()}@example.test`, 'delcount-pass-1', 'D');
+    const actor = await signUp(`delcount-${Date.now()}@example.test`, 'delcount-pass-1', 'D');
     const gone = await createNote(actor, { title: 'Goes', body: 'x' });
     await createNote(actor, { title: 'Stays', body: 'x' });
 
@@ -649,10 +584,8 @@ describe('note CRUD', () => {
     const solo = await signUp(`solo-${Date.now()}@example.test`, 'solo-pass-12345', 'S');
     await createNote(alice, { title: 'Alice only', body: 'x' });
 
-    // One: solo's own welcome note, and nothing of Alice's beside it.
     const page = await fetch(`${BASE}/api/notes`, asUser(solo)).then((r) => r.json());
-    expect(page.total).toBe(1);
-    expect(page.items.map((i: { title: string }) => i.title)).toEqual(['Welcome to Unbent']);
+    expect(page.total).toBe(0);
   });
 
   it('normalizes duplicate and whitespace-only tags', async () => {

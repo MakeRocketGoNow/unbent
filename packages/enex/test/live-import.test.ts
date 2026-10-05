@@ -29,28 +29,7 @@ async function signUp(): Promise<string> {
     }),
   });
   if (!res.ok) throw new Error(`sign-up failed: ${res.status}`);
-  const cookie = (res.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
-  await emptyAccount(cookie);
-  return cookie;
-}
-
-/**
- * Purges the welcome note every account is created with (apps/api/src/lib/welcome-note.ts),
- * so the account holds exactly what the import put there — which is what the counts and the
- * "every note is in Quotes" check below are about. The API suites do the same through
- * apps/api/test/empty-account.ts; this package does not reach into that one.
- */
-async function emptyAccount(cookie: string): Promise<void> {
-  const headers = { 'Content-Type': 'application/json', Cookie: cookie, Origin: ORIGIN };
-  const { items } = (await fetch(`${BASE}/api/notes`, { headers }).then((r) => r.json())) as {
-    items: Array<{ id: string }>;
-  };
-  const ids = items.map((n) => n.id);
-  if (ids.length === 0) return;
-  for (const step of ['trash', 'purge']) {
-    const res = await fetch(`${BASE}/api/notes/${step}`, { method: 'POST', headers, body: JSON.stringify({ ids }) });
-    if (!res.ok) throw new Error(`${step} while emptying the account failed: ${res.status}`);
-  }
+  return (res.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
 }
 
 function liveClient(cookie: string): ImportClient {

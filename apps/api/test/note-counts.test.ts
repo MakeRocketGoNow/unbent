@@ -121,10 +121,7 @@ describe('stored note counts', () => {
     await expectCountsConsistent('creating notes, filed and unfiled');
     expect(await total('notebook=Coupons', false)).toBe(2);
     expect(await total('tag=red', false)).toBe(2);
-    // C, and the welcome note every account starts with (src/lib/welcome-note.ts) — kept
-    // here rather than purged, since a note the sign-up hook wrote has to be counted like
-    // any other.
-    expect(await total(UNFILED_QUERY, false)).toBe(2);
+    expect(await total(UNFILED_QUERY, false)).toBe(1);
 
     await call('PATCH', `/notes/${a.id}`, { body: 'edited' });
     await expectCountsConsistent('a body edit');
