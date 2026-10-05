@@ -715,7 +715,9 @@ async function textFieldValues(
   const document = comparable(corpus.text);
   asked.forEach((f, i) => {
     const value = answer[`field_${i}`] ?? '';
-    if (!value) return;
+    // A mark alone — "-", "—" — is a model saying "none" its own way, and has no word in
+    // it for the check below to anchor on.
+    if (!/[\p{L}\p{N}]/u.test(value)) return;
     // Whole words: "Rent" is in "Acme Rentals", and is not something the document says.
     const escaped = comparable(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const whole = new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'u');

@@ -459,7 +459,7 @@ describe('text fields the language model writes (MAK-174)', () => {
   it('drops a value the document does not contain, and Jev\u2019s pick stands', async () => {
     const line = 'Thank you for shopping at Acme Rentals Store #4471, 100 Example Rd';
     const { jev } = fake({ field_0: choice(line, 0.85) });
-    for (const invented of ['Acme Rentals LLC', 'Rent', 'ntals Sto', '44']) {
+    for (const invented of ['Acme Rentals LLC', 'Rent', 'ntals Sto', '44', '-', '—']) {
       const out = await autofill(jev, filed(), model({ field_0: invented, field_1: '' }));
       expect(out.fields).toEqual([{ field: rentals.fields[0], value: line, confidence: 0.85 }]);
     }
