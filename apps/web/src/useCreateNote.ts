@@ -33,20 +33,33 @@ export function useCreateNote(): (note: NewNote) => Promise<boolean> {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   return async (note) => {
+    // One at a time, decided here rather than by a disabled button: `disabled` arrives
+    // with the next render, and two presses that land before it — a double tap on a slow
+    // phone, a held Enter — would each make a note. The sample note made twice is two
+    // copies of the same text in an account that had none. A flag of its own rather than
+    // `creating`, and let go as soon as the note exists: `creating` lasts until the note
+    // is open, and a navigation that never settled would then refuse every New after it.
+    if (making) return false;
+    making = true;
     setCreating(+1);
     try {
-      const created = await actions.createNote({
-        // No name for a blank note, rather than the literal string "Untitled". The title
-        // field's placeholder already says that word, and a placeholder is not data: a
-        // stored "Untitled" is written into the frontmatter of the exported markdown,
-        // sorted under U by the title sort, and — titles being in the FTS index — returned
-        // by a search for "untitled", all to say the note has no name yet. Android has
-        // always created notes with an empty title; this is the web agreeing with it.
-        title: note.title ?? '',
-        body: note.body ?? '',
-        tags: note.tags,
-        notebook: note.notebook,
-      });
+      let created;
+      try {
+        created = await actions.createNote({
+          // No name for a blank note, rather than the literal string "Untitled". The title
+          // field's placeholder already says that word, and a placeholder is not data: a
+          // stored "Untitled" is written into the frontmatter of the exported markdown,
+          // sorted under U by the title sort, and — titles being in the FTS index — returned
+          // by a search for "untitled", all to say the note has no name yet. Android has
+          // always created notes with an empty title; this is the web agreeing with it.
+          title: note.title ?? '',
+          body: note.body ?? '',
+          tags: note.tags,
+          notebook: note.notebook,
+        });
+      } finally {
+        making = false;
+      }
       await queryClient.invalidateQueries({ queryKey: ['notes'] });
       invalidateNoteMembership(queryClient);
       // A blank note starts with its name, so the title takes the caret rather than the
@@ -74,6 +87,8 @@ export function useCreateNote(): (note: NewNote) => Promise<boolean> {
    button, and the pane or list that decides whether to draw the empty state at all.
 */
 let creating = 0;
+/** A note is being written, from the press until it exists; see the guard in `useCreateNote`. */
+let making = false;
 const listeners = new Set<() => void>();
 
 function setCreating(delta: number) {
