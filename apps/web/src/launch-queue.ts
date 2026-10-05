@@ -98,8 +98,10 @@ export function installLaunchQueue(handlers: LaunchHandlers): void {
  * puts on the clipboard (`attachment-clipboard.ts`) — is the Worker's, not a page of the
  * app, so it opens the note the file belongs to. Loading the file itself would put a bare
  * PDF where the app was, with no way back but the window's own; the note has the file one
- * tap away. Every other address is handed on whole, for the caller to open in place or
- * load.
+ * tap away. That holds only for a window already open: a captured file link with no
+ * window open is loaded into a new one, and the file is what it shows, since no page is
+ * there to read the queue. Every other address is handed on whole, for the caller to open
+ * in place or load.
  */
 export function launchPath(target: string, origin: string): string | undefined {
   let url: URL;
