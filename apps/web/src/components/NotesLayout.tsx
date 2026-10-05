@@ -642,11 +642,11 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const wholeAccount = showsWholeAccount({ notebook, tag, field, from, to, q });
   /*
    * Asked only while the answer can change what is drawn: everything below acts on an
-   * account of none or one, and on All notes the loaded rows are the account's, so a list
-   * of two or more has nothing to ask. Still asked while the list is empty for the
+   * account with no notes, and on All notes the loaded rows are the account's, so a list
+   * with a row in it has nothing to ask. Still asked while the list is empty for the
    * moment of its first load, which is when the empty state must already know.
    */
-  const libraryTotal = useLibraryTotal(wholeAccount && notes.length <= 1);
+  const libraryTotal = useLibraryTotal(wholeAccount && notes.length === 0);
   /**
    * The account holds no notes at all, and the list is the whole of it. On a phone the
    * list's empty line gives way to `EmptyLibrary`; on a desktop the workspace pane draws
@@ -685,17 +685,12 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
 
   /*
    * The preview-only offer of sample notes (`SampleNotes`), on a preview whose stores are
-   * its own. Only on All notes with nothing applied: an empty notebook or filter is not an
-   * empty account, and filling it from there would read as filling that notebook.
-   *
-   * "At most one note" rather than "none", because a new account is made holding the
-   * welcome note (apps/api/src/lib/welcome-note.ts): a fresh preview account has one, and
-   * an account signed in through the dev instance's relay, whose store here started empty,
-   * has none. Both are the empty account this offer is for. Not while the total is
-   * unknown, which is also while the library is still arriving.
+   * its own. Only on All notes with nothing applied, and only for an account known to be
+   * empty: an empty notebook or filter is not an empty account, and filling it from there
+   * would read as filling that notebook. Not while the total is unknown, which is also
+   * while the library is still arriving.
    */
-  const offerSampleNotes =
-    Boolean(config.data?.ownStores) && wholeAccount && results === null && libraryTotal !== null && libraryTotal <= 1;
+  const offerSampleNotes = Boolean(config.data?.ownStores) && libraryEmpty;
 
   /**
    * The same for a search drawn as a table, in the sidebar's words for each case. Nothing

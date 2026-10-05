@@ -73,7 +73,7 @@ describe('useLibraryTotal', () => {
   );
 
   it('is null until the count is in, then the count', async () => {
-    lib = installTestLibrary({ notes: [note('welcome')] });
+    lib = installTestLibrary({ notes: [note('only')] });
     const { result } = renderHook(() => useLibraryTotal(), { wrapper });
     // Unknown first, never zero: zero is what draws the empty state.
     expect(result.current).toBeNull();

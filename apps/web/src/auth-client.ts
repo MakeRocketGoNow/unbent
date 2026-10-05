@@ -92,18 +92,7 @@ export const oauth2 = authClient.oauth2 as unknown as ConsentClient;
  * not depend on directly, and TypeScript refuses to name that in an export (TS2742).
  */
 export interface Session {
-  user: {
-    id: string;
-    email: string;
-    name?: string;
-    /**
-     * When the account was made, as Better Auth's session answer carries it: a `Date`
-     * once its client has parsed the answer, an ISO string if not. Absent from the copy of
-     * the session this device remembers (`session-memory.ts`), which keeps only who it is.
-     * Read by the first-run opening of the welcome note (`first-run.ts`).
-     */
-    createdAt?: Date | string;
-  };
+  user: { id: string; email: string; name?: string };
 }
 
 /**

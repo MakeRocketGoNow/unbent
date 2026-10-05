@@ -310,11 +310,10 @@ export const noteCountQuery = () =>
  * library on this device is still arriving — opening, taking its first copy, or walking
  * again after a reset — when the rows it holds are not yet the account's.
  *
- * What the empty state and the first-run opening of the welcome note read
- * (`useLibraryTotal`). `noteCountQuery` answers a count for a page that only wants a
- * number; this one answers whether the number is true, since "No notes yet" over a
- * library that is a page away from arriving is the wrong thing to tell someone, and a
- * welcome note opened for an account still copying would be the wrong note.
+ * What the empty state reads (`useLibraryTotal`). `noteCountQuery` answers a count for a
+ * page that only wants a number; this one answers whether the number is true, since "No
+ * notes yet" over a library that is a page away from arriving is the wrong thing to tell
+ * someone.
  *
  * Whether the library is whole is read here, from the library, in the same call that
  * counts its rows, so the two can never come from different moments. `whole` in the key

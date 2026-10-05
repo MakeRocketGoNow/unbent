@@ -18,8 +18,8 @@ import { filters } from './notes.js';
 import { Route as IndexRoute } from './notes.index.js';
 
 /**
- * Where an empty account's empty state is drawn, and the first-run opening of the welcome
- * note, against a real router and the in-memory library.
+ * Where an empty account's empty state is drawn, and the missing-notebook state, against
+ * a real router and the in-memory library.
  *
  * The routes are rebuilt rather than taken from the generated tree, as the settings
  * routing test does, so no session gate, loaders or API stand in the way: `/notes` with
@@ -27,7 +27,7 @@ import { Route as IndexRoute } from './notes.index.js';
  * note route that only says which note it is.
  */
 
-let session: { user: { id: string; email: string; createdAt?: Date | string } } | null = null;
+let session: { user: { id: string; email: string } } | null = null;
 vi.mock('../useAppSession.js', () => ({
   useAppSession: () => ({ session, isPending: false, unreachable: false }),
 }));
@@ -121,42 +121,19 @@ let lib: TestLibrary | null = null;
 
 beforeEach(() => {
   vi.mocked(api.getConfig).mockResolvedValue({ providers: [] } as unknown as Awaited<ReturnType<typeof api.getConfig>>);
-  session = { user: { id: 'u1', email: 'someone@example.com', createdAt: new Date(Date.now() - 60_000) } };
+  session = { user: { id: 'u1', email: 'someone@example.com' } };
 });
 
 afterEach(() => {
   cleanup();
   lib?.uninstall();
   lib = null;
-  localStorage.clear();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
 });
 
 describe('the workspace pane with no note open, on a desktop', () => {
   beforeEach(() => setWidth(false));
-
-  it("opens a brand-new account's one note in place, and remembers that it did", async () => {
-    lib = installTestLibrary({ notes: [note('welcome')] });
-    const { router, history } = mount('/notes');
-    await screen.findByText('open note welcome');
-    expect(router.state.location.pathname).toBe('/notes/welcome');
-    // Replaced, not pushed: there is no `/notes` entry to go Back to.
-    expect(history.length).toBe(1);
-    const stored = JSON.parse(localStorage.getItem('unbent.firstNoteOpened')!);
-    expect(stored.map((e: { id: string }) => e.id)).toEqual(['u1']);
-  });
-
-  it('does it once: a second visit to the list leaves the pane alone', async () => {
-    lib = installTestLibrary({ notes: [note('welcome')] });
-    mount('/notes');
-    await screen.findByText('open note welcome');
-    cleanup();
-
-    const { router } = mount('/notes');
-    await screen.findByText('Select a note, or create one.');
-    expect(router.state.location.pathname).toBe('/notes');
-  });
 
   it('draws the empty state in the pane, and no line in the list column, for an empty account', async () => {
     lib = installTestLibrary({ notes: [] });
@@ -172,9 +149,9 @@ describe('the workspace pane with no note open, on a desktop', () => {
     expect(screen.getByRole('button', { name: 'New' }).className).toContain('btn-secondary');
   });
 
-  /** A big account must not recount on every change just because the pane is on screen. */
-  it('does not ask for the total once the column shows two notes or more', async () => {
-    lib = installTestLibrary({ notes: [note('a', { title: 'Alpha' }), note('b', { title: 'Beta' }), note('c', { title: 'Gamma' })] });
+  /** An account with notes must not recount on every change just because the pane is on screen. */
+  it('does not ask for the total once the column shows a note', async () => {
+    lib = installTestLibrary({ notes: [note('a', { title: 'Alpha' })] });
     const { router } = mount('/notes');
     await screen.findByText('Alpha');
     await screen.findByText('Select a note, or create one.');
@@ -219,10 +196,10 @@ describe('the list with an empty account, on a phone', () => {
     expect(screen.queryByText('No notes yet.')).toBeNull();
   });
 
-  it('leaves a phone on its list when the account has one note', async () => {
-    lib = installTestLibrary({ notes: [note('welcome', { title: 'Welcome to Unbent' })] });
+  it('draws the list, not the empty state, for an account with one note', async () => {
+    lib = installTestLibrary({ notes: [note('only', { title: 'Shopping list' })] });
     const { router } = mount('/notes');
-    await screen.findByText('Welcome to Unbent');
+    await screen.findByText('Shopping list');
     expect(region()).toBeNull();
     expect(router.state.location.pathname).toBe('/notes');
   });

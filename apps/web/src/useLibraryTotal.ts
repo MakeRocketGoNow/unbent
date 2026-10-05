@@ -8,8 +8,7 @@ import { useFeedState } from './store/use-feed-state.js';
  * How many live notes the account holds, or null while that is not known yet.
  *
  * The one place the notes view asks "is this account empty?" — the list's empty state on a
- * phone and the workspace's on a desktop both read it — and "is this the account's first
- * note?", which the first-run opening of the welcome note reads. Null whenever the answer
+ * phone and the workspace's on a desktop both read it. Null whenever the answer
  * would be a guess: the library still opening or taking its first copy, a count not taken
  * yet, a count that failed. Every caller treats null as "draw nothing new", which is what
  * keeps the empty state from flashing for an account whose notes are a page away.
@@ -26,8 +25,9 @@ import { useFeedState } from './store/use-feed-state.js';
  * `enabled` is the caller saying when the answer can matter, and every caller asks only
  * then. The query is re-run on every change to the library while it is watched, and on a
  * device with no library each run is a request to the server; but every caller only acts
- * on none or one, so a list showing two rows, or a scope that is not the whole account,
- * has nothing to ask. Off, the answer is null, the same "draw nothing new" as unknown.
+ * on an account with no notes, so a list showing a row, or a scope that is not the whole
+ * account, has nothing to ask. Off, the answer is null, the same "draw nothing new" as
+ * unknown.
  */
 export function useLibraryTotal(enabled = true): number | null {
   const feed = useFeedState();
@@ -37,9 +37,8 @@ export function useLibraryTotal(enabled = true): number | null {
 
 /**
  * Whether the notes view's address shows the whole account: All notes, with no notebook,
- * tag, field filter, date range or search applied. The scope the empty state and the
- * first-run opening are allowed in, because only there does "no notes here" mean "no
- * notes at all". The sort and the view are not scope and do not count.
+ * tag, field filter, date range or search applied. The scope the empty state is allowed
+ * in, because only there does "no notes here" mean "no notes at all". The sort and the view are not scope and do not count.
  */
 export function showsWholeAccount(search: {
   notebook?: string | undefined;
@@ -62,8 +61,8 @@ export function showsWholeAccount(search: {
 /**
  * How many rows the notes column has loaded, for the workspace pane beside it.
  *
- * The pane only acts on an account of none or one, so it asks for the total only while the
- * column shows one row or none — on All notes those rows are the account's. Read from the
+ * The pane only acts on an account with no notes, so it asks for the total only while the
+ * column shows no rows — on All notes those rows are the account's. Read from the
  * column rather than from a list query of the pane's own: the column's query is keyed by
  * its order, which on All notes is often a remembered one, so a query of `notesQuery({})`
  * here would be a second list to keep in step rather than the same one. `NotesLayout`
