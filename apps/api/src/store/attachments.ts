@@ -34,7 +34,7 @@ export interface PendingFile {
  * pictures, the other PDFs.
  *
  * The conditions repeat the indexes' WHERE clauses exactly, which is what lets SQLite use
- * them. The image types are the vision model's (`VISION_IMAGE_TYPES`), spelled out because
+ * them. The image types are the vision model's (`LLM_IMAGE_TYPES`), spelled out because
  * a query cannot take a Set.
  *
  * `noteParam` is the placeholder for a note id, for the callers that read one note. Those
@@ -133,7 +133,11 @@ const SUMMARY_SOURCE_CHARS = 600;
 const VISION_SUMMARY_CHARS = 400;
 const TEXT_SUMMARY_CHARS = 280;
 
-/** The PDF and picture types a reader here takes; anything else is never read. */
+/**
+ * The PDF and picture types a reader here takes; anything else is never read. The readers'
+ * own lists are `isExtractable` and `LLM_IMAGE_TYPES`, copied rather than imported because
+ * the store takes nothing from the readers' modules; change them together.
+ */
 const READ_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 
 const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s);
