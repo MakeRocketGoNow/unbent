@@ -147,6 +147,7 @@ const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1
  *
  * The vision reading already has one: `formatReading` writes the file's name on the first
  * line and what it is and shows on the second, then a blank line, then the transcription.
+ * (`llm.test.ts` runs that layout through this cut, since nothing here imports it.)
  * Everything before that blank line is the summary — "Sushi A Go Go receipt — Receipt:
  * lunch for two, $17.27 by card" — and the transcription is what get_attachment_text is
  * for. A text layer has no such head, so its summary is the opening of the text with the
