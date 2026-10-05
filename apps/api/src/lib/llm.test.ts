@@ -6,6 +6,7 @@ import {
   LLM_MODEL_DEFAULT,
   LlmError,
   canUseLlm,
+  fieldTokens,
   formatReading,
   isLlmAuthError,
   readableByLlm,
@@ -178,6 +179,9 @@ describe('vision', () => {
     expect(schema.required).toEqual(['field_0', 'field_1']);
     expect(schema.properties.field_0.description).toContain('Vendor');
     expect(body.system).toContain('never write one it does not contain');
+    // Room that grows with the fields asked, past a title's.
+    expect(body.max_tokens).toBe(fieldTokens(2));
+    expect(fieldTokens(10)).toBeGreaterThan(fieldTokens(2));
   });
 
   it('asks nothing for no fields, and answers null for a decline', async () => {

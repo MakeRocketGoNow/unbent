@@ -268,6 +268,15 @@ const FIELDS_SYSTEM = [
 /** Text field values are short; a model that answers with a paragraph is cut, then checked. */
 const MAX_FIELD_CHARS = 200;
 
+/**
+ * A title's room, for the thinking that shares the budget, plus room for each value at
+ * its longest. A business-card notebook has eight or ten text fields, and a budget sized
+ * for one title would run out on it and leave every one of them to Jev.
+ */
+export function fieldTokens(count: number): number {
+  return MAX_TITLE_TOKENS + count * Math.ceil(MAX_FIELD_CHARS / 2);
+}
+
 /** Titles have a length in the shared schema; a model that ignores "short" is cut, not refused. */
 const MAX_TITLE_CHARS = 200;
 
@@ -420,8 +429,7 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
       };
       const body = JSON.stringify({
         model,
-        // The same room as a title, for the same reason: thinking shares the budget.
-        max_tokens: MAX_TITLE_TOKENS,
+        max_tokens: fieldTokens(fields.length),
         system: FIELDS_SYSTEM,
         messages: [
           {
