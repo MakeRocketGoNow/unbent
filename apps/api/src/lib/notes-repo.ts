@@ -374,7 +374,7 @@ export class NotesRepo extends StoreRepo {
   listPage(
     list: ListOptions,
     count: CountOptions | null,
-    opts: { summaries?: boolean } = {},
+    opts: { summaries?: boolean; vision?: boolean } = {},
   ): Promise<{ items: NoteSummary[]; total: number | null; summaries?: Record<string, FileSummary[]> }> {
     return this.call((s) => s.listPage(list, count, opts));
   }
@@ -394,8 +394,8 @@ export class NotesRepo extends StoreRepo {
   }
 
   /** A note with its files, for MCP's `get_note`. Null when there is no such live note. */
-  getWithFiles(id: string): Promise<{ note: Note; files: FileSummary[] } | null> {
-    return this.call((s) => s.getWithFiles(id));
+  getWithFiles(id: string, opts: { vision?: boolean } = {}): Promise<{ note: Note; files: FileSummary[] } | null> {
+    return this.call((s) => s.getWithFiles(id, opts));
   }
 
   /** `GET /changes`: what changed after `since`, whole, or `reset`; see `UserStore.changesSince`. */

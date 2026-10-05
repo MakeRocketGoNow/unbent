@@ -106,8 +106,8 @@ const toPending = (r: PendingRow): PendingFile => ({
 /**
  * How a file's text came to be, as an assistant is told it beside the file (MAK-172):
  * `vision` when the language model read it, `text` from a PDF's text layer, `pending` while
- * a reader has still to look at it, and `none` when one looked and found nothing, or the
- * file is of a kind nothing here reads.
+ * a reader has still to look at it, and `none` when one looked and found nothing, or no
+ * reader this instance has will ever look.
  */
 export type FileRead = 'vision' | 'text' | 'pending' | 'none';
 
@@ -156,11 +156,26 @@ const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1
  * The statuses follow the readers' own rules (`visionPendingHalves`): no row at all is a
  * file not yet read, if it is a kind anything reads; an empty row from the text layer is
  * a scan the model has still to be asked about; an empty row from the model is final.
+ *
+ * `vision` is whether this instance has the model, which the store cannot see for itself
+ * (`canUseLlm` reads the Worker's env). Without it, a picture and a scan with an empty
+ * text layer wait for something that will never come, so they are `none` rather than an
+ * invitation to call read_attachment on each in turn and be told there is no reader. An
+ * unread PDF stays `pending` either way: the browser reads a text layer wherever the
+ * server does not.
  */
-export function summarize(contentType: string, head: string | null, readBy: string | null): Pick<FileSummary, 'read' | 'summary'> {
-  if (head === null) return { read: READ_TYPES.has(contentType) ? 'pending' : 'none', summary: null };
+export function summarize(
+  contentType: string,
+  head: string | null,
+  readBy: string | null,
+  vision = true,
+): Pick<FileSummary, 'read' | 'summary'> {
+  if (head === null) {
+    const readable = contentType === 'application/pdf' || (vision && READ_TYPES.has(contentType));
+    return { read: readable ? 'pending' : 'none', summary: null };
+  }
   if (head.trim() === '') {
-    const waiting = readBy !== 'vision' && contentType === 'application/pdf';
+    const waiting = vision && readBy !== 'vision' && contentType === 'application/pdf';
     return { read: waiting ? 'pending' : 'none', summary: null };
   }
   if (readBy === 'vision') {
@@ -610,7 +625,7 @@ export class AttachmentsStore {
    * nothing that grows with the account. The ids go in as one JSON array for the reason
    * `textsForNotes` gives.
    */
-  summariesForNotes(noteIds: string[]): Record<string, FileSummary[]> {
+  summariesForNotes(noteIds: string[], vision = true): Record<string, FileSummary[]> {
     const out: Record<string, FileSummary[]> = {};
     if (noteIds.length === 0) return out;
     for (const r of this.sql.exec<{ note_id: string; filename: string; content_type: string; size: number; head: string | null; read_by: string | null }>(
@@ -626,7 +641,7 @@ export class AttachmentsStore {
         filename: r.filename,
         contentType: r.content_type,
         size: r.size,
-        ...summarize(r.content_type, r.head, r.read_by),
+        ...summarize(r.content_type, r.head, r.read_by, vision),
       });
     }
     return out;

@@ -75,10 +75,10 @@ const ATTACHMENT_SUMMARY =
   'read says how the file\'s text came to be: "vision" when a vision model read it, and ' +
   'summary is its name and a line on what it shows (amounts, dates, who it is from); ' +
   '"text" from a PDF\'s text layer, and summary is the opening of that text; "pending" ' +
-  'when it has not been read yet (read_attachment reads it now); "none" when it was read ' +
-  'and nothing was found, or it is a kind of file nothing reads. summary is null unless ' +
-  'read is "vision" or "text", and is a few hundred characters at most: get_attachment_text ' +
-  'has the whole text.';
+  'when it has not been read yet but will be (read_attachment asks for that read now, on ' +
+  'a note not in the trash); "none" when it was read and nothing was found, or nothing on ' +
+  'this instance reads that kind of file. summary is null unless read is "vision" or ' +
+  '"text", and is a few hundred characters at most: get_attachment_text has the whole text.';
 
 const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD').optional();
 
@@ -169,6 +169,8 @@ export function registerReadTools(
   notes: NotesRepo,
   attachments: AttachmentsRepo,
   links: AppLinks,
+  /** Whether the instance has the vision model, which decides what a file is still `pending` for. */
+  readers: { vision: boolean } = { vision: true },
 ): void {
   server.registerTool(
     'search_notes',
@@ -308,7 +310,7 @@ export function registerReadTools(
         // notes of a three-thousand-note account read 48,000 rows, 45,000 of them counting.
         // The answer cannot have changed in a way the caller could use mid-walk anyway.
         cursor ? null : { tags: tag, notebook, fields: fieldFilters, untagged, trashed, from, to, sort },
-        { summaries: attachmentSummaries },
+        { summaries: attachmentSummaries, vision: readers.vision },
       );
       // The same helper the HTTP route uses, so a cursor means the same thing on both and
       // cannot disagree with the sort that produced the page.
@@ -355,7 +357,7 @@ export function registerReadTools(
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ noteId }) => {
-      const found = await notes.getWithFiles(noteId);
+      const found = await notes.getWithFiles(noteId, { vision: readers.vision });
       if (!found) return notFound('note', noteId);
       const { note, files } = found;
       return jsonResult({

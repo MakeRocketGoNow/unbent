@@ -199,6 +199,20 @@ describe('attachments', () => {
     // Nothing is asked about a note with no files, and nothing at all unless asked.
     expect(page.summaries!['bare']).toBeUndefined();
     expect((await stub.listPage({ limit: 10 }, null)).summaries).toBeUndefined();
+    // Without the vision model, what only it would read is never going to be read: a
+    // picture and a scan whose text layer was empty. An unread PDF still waits, for the
+    // browser reads text layers wherever the server does not.
+    const blind = await stub.listPage({ limit: 10 }, null, { summaries: true, vision: false });
+    expect(blind.summaries!['n2']!.map((f) => [f.filename, f.read])).toEqual([
+      ['unread.pdf', 'pending'],
+      ['empty.pdf', 'none'],
+      ['seen.pdf', 'none'],
+      ['notes.txt', 'none'],
+    ]);
+    await stub.recordAttachment(file('n2', { id: 'new-pic', filename: 'new.png', contentType: 'image/png' }));
+    expect((await stub.getWithFiles('n2', { vision: false }))!.files.find((f) => f.filename === 'new.png')!.read).toBe('none');
+    expect((await stub.getWithFiles('n2'))!.files.find((f) => f.filename === 'new.png')!.read).toBe('pending');
+
     // A compact page knows nothing of its notes' files, which must not read as "none".
     const compact = await stub.listPage({ limit: 10, compact: true }, null, { summaries: true });
     expect(Object.keys(compact.summaries!).sort()).toEqual(['n1', 'n2']);

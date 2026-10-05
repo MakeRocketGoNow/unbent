@@ -328,11 +328,19 @@ describe('file summaries on get_note and list_notes (MAK-172)', () => {
   const read = { filename: 'receipt.jpg', contentType: 'image/jpeg', read: 'vision', summary: 'Acme Diner receipt — Receipt: $17.27' };
   const waiting = { filename: 'scan.pdf', contentType: 'application/pdf', read: 'pending', summary: null };
 
-  it('gives every file on get_note its status and summary', async () => {
+  it('gives every file on get_note its status and summary, told whether there is a vision model', async () => {
+    const asked: unknown[] = [];
     const repo = {
-      getWithFiles: async () => ({ note: { ...note, body: '' }, files: [{ ...read, size: 9 }, { ...waiting, size: 4 }] }),
+      getWithFiles: async (_id: string, opts: unknown) => {
+        asked.push(opts);
+        return { note: { ...note, body: '' }, files: [{ ...read, size: 9 }, { ...waiting, size: 4 }] };
+      },
     } as unknown as NotesRepo;
-    const result = answer(await collect(repo).get('get_note')!({ noteId: 'n-1' }));
+    const tools = new Map<string, Handler>();
+    const server = { registerTool: (name: string, _c: unknown, h: Handler) => void tools.set(name, h) };
+    registerReadTools(server as never, repo, {} as never, appLinks(APP_URL), { vision: false });
+    const result = answer(await tools.get('get_note')!({ noteId: 'n-1' }));
+    expect(asked).toEqual([{ vision: false }]);
     expect(result.attachments.map((f: { read: string; summary: string | null }) => [f.read, f.summary])).toEqual([
       ['vision', read.summary],
       ['pending', null],
@@ -358,7 +366,7 @@ describe('file summaries on get_note and list_notes (MAK-172)', () => {
     expect(plain.notes[0].attachments).toBeUndefined();
 
     const withFiles = answer(await list({ limit: 25, attachmentSummaries: true }));
-    expect(asked[1]).toEqual({ summaries: true });
+    expect(asked[1]).toEqual({ summaries: true, vision: true });
     // Filename, status and summary only: the content type is get_note's.
     expect(withFiles.notes[0].attachments).toEqual([
       { filename: 'receipt.jpg', read: 'vision', summary: read.summary },

@@ -592,9 +592,10 @@ export class UserStore extends DurableObject<StoreEnv> {
    * `GET /notes` and MCP's `list_notes`: the page and, on the first page, the total. With
    * `summaries`, also a line per file of each note on the page (`summariesForNotes`), keyed
    * by note id, in the same call — `list_notes` asks for it when an assistant is filling
-   * fields from the files.
+   * fields from the files. `vision` is whether the instance has the vision model; see
+   * `summarize`.
    */
-  listPage(list: ListOptions, count: CountOptions | null, opts: { summaries?: boolean } = {}) {
+  listPage(list: ListOptions, count: CountOptions | null, opts: { summaries?: boolean; vision?: boolean } = {}) {
     this.ready();
     return this.sql.tx(() => {
       const items = this.notes.list(list);
@@ -615,7 +616,7 @@ export class UserStore extends DurableObject<StoreEnv> {
       return {
         items,
         total: count ? (whole ? items.length : this.notes.count(count)) : null,
-        ...(opts.summaries ? { summaries: this.attachments.summariesForNotes(withFiles) } : {}),
+        ...(opts.summaries ? { summaries: this.attachments.summariesForNotes(withFiles, opts.vision) } : {}),
       };
     });
   }
@@ -692,12 +693,12 @@ export class UserStore extends DurableObject<StoreEnv> {
    * file is without a `get_attachment_text` per file. The summaries' own query carries
    * everything `listForNote` would, so it is the only read of the note's files.
    */
-  getWithFiles(id: string): { note: Note; files: FileSummary[] } | null {
+  getWithFiles(id: string, opts: { vision?: boolean } = {}): { note: Note; files: FileSummary[] } | null {
     this.ready();
     return this.sql.tx(() => {
       const note = this.notes.get(id);
       if (!note) return null;
-      return { note, files: this.attachments.summariesForNotes([id])[id] ?? [] };
+      return { note, files: this.attachments.summariesForNotes([id], opts.vision)[id] ?? [] };
     });
   }
 
