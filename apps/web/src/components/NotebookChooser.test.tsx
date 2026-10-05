@@ -97,7 +97,7 @@ describe('NotebookChooser', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create notebook' }));
     await screen.findByRole('button', { name: 'Add these fields to Receipts' });
     expect((screen.getByLabelText('Notebook name') as HTMLInputElement).value).toBe('Receipts 2');
-    expect(screen.getByText(/“Receipts” was made on another device/)).toBeTruthy();
+    expect(screen.getByText(/“Receipts” was taken while you were choosing/)).toBeTruthy();
     expect(onDone).not.toHaveBeenCalled();
     // Nothing was written, but the list behind the preview is behind the server.
     expect(onApplied).toHaveBeenCalledOnce();
@@ -108,7 +108,7 @@ describe('NotebookChooser', () => {
     mount([{ name: 'Receipts' }]);
     fireEvent.click(screen.getByRole('button', { name: /^Receipts/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Create notebook' }));
-    await screen.findByText(/“Receipts 2” was made on another device/);
+    await screen.findByText(/“Receipts 2” was taken while you were choosing/);
     expect((screen.getByLabelText('Notebook name') as HTMLInputElement).value).toBe('Receipts 3');
     expect(screen.getByRole('button', { name: 'Add these fields to Receipts' })).toBeTruthy();
   });
@@ -119,7 +119,7 @@ describe('NotebookChooser', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Receipts/ }));
     fireEvent.change(screen.getByLabelText('Notebook name'), { target: { value: 'Receipts 2024' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create notebook' }));
-    await screen.findByText(/“Receipts 2024” was made on another device/);
+    await screen.findByText(/“Receipts 2024” was taken while you were choosing/);
     expect((screen.getByLabelText('Notebook name') as HTMLInputElement).value).toBe('Receipts 2024 2');
   });
 

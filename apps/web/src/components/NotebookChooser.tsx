@@ -163,7 +163,7 @@ function TemplatePreview({
 }) {
   /*
    * Names the server refused as taken, though the list did not have them: notebooks made
-   * on another device since it was read. Kept beside the list rather than instead of it,
+   * since it was read — on another device, in another tab, or by an assistant. Kept beside the list rather than instead of it,
    * so they count as taken until the refreshed list brings them in.
    */
   const [refused, setRefused] = useState<{ name: string }[]>([]);
@@ -345,7 +345,7 @@ function TemplatePreview({
 
       {renamed && (
         <p className="nb-preview-clash">
-          “{renamed.from}” was made on another device while you were choosing, so this one is “{renamed.to}”.
+          “{renamed.from}” was taken while you were choosing, so this one is “{renamed.to}”.
         </p>
       )}
       {clash && !renamed && (
