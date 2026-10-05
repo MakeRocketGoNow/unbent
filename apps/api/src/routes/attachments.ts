@@ -455,11 +455,14 @@ export const attachments = new Hono<AppEnv>()
     },
   )
 
+  /**
+   * Removes a file from a note. The object stays in R2 for thirty-five days under a
+   * tombstone the store writes with the row's deletion, and the hourly sweep deletes it
+   * then (`DeletedBlobs`), so a store wound back to before this finds the file whole.
+   */
   .delete('/notes/:id/files/:filename', async (c) => {
     const filename = c.req.param('filename');
     const key = await c.get('attachments').remove(c.req.param('id'), filename);
     if (!key) return c.json({ error: 'Not found' }, 404);
-
-    await c.env.BLOBS.delete(key);
     return c.body(null, 204);
   });

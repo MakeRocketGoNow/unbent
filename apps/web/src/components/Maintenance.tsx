@@ -180,8 +180,8 @@ export function Maintenance() {
         <h3>Empty trash</h3>
         <p className="muted small">
           Permanently deletes every note in the Trash, and their attachments. Deleting a
-          note normally only moves it here, so this is the step that actually frees the
-          storage.
+          note normally only moves it here, so this is the step that lets the storage go:
+          the notes at once, their files over the following 35 days.
         </p>
 
         {/*
@@ -272,9 +272,13 @@ export function Maintenance() {
               void run(async () => {
                 const r = await api.gcBlobs(false);
                 setSweep(r);
+                // A file deleted in the last 35 days is still stored and still accounted
+                // for — the server keeps it for a restore — so it is neither an orphan nor
+                // quite "referenced"; said separately, or the count would not add up.
+                const held = r.awaitingDeletion > 0 ? `, ${r.awaitingDeletion} deleted and waiting to leave storage` : '';
                 return r.orphaned === 0
-                  ? `Nothing to sweep — ${plural(r.stored, 'file')}, all referenced.`
-                  : `${r.orphaned} of ${plural(r.stored, 'file')} stored have no attachment record.`;
+                  ? `Nothing to sweep — ${plural(r.stored, 'file')}, all accounted for${held}.`
+                  : `${r.orphaned} of ${plural(r.stored, 'file')} stored have no attachment record${held}.`;
               });
             }}
           >

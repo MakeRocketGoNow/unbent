@@ -68,6 +68,18 @@ export const admin = new Hono<AppEnv>()
       if (page.nextRowid === null) break;
       after = page.nextRowid;
     }
+    // And every key of a file deleted in the last thirty-five days, which the store is
+    // keeping in R2 for a restore to find (`DeletedBlobs`). Referenced for this purpose:
+    // the hourly sweep deletes those on their day, and a sweep here that took them early
+    // would undo the one thing the tombstones are for.
+    let awaitingDeletion = 0;
+    for (let after = ''; ; ) {
+      const page = await c.get('attachments').tombstonedBlobKeys(after, 1000);
+      for (const key of page.keys) referenced.add(key);
+      awaitingDeletion += page.keys.length;
+      if (page.next === null) break;
+      after = page.next;
+    }
 
     const orphans: string[] = [];
     let stored = 0;
@@ -88,6 +100,7 @@ export const admin = new Hono<AppEnv>()
 
     return c.json({
       referenced: referenced.size,
+      awaitingDeletion,
       stored,
       orphaned: orphans.length,
       deleted: apply ? orphans.length : 0,
@@ -122,12 +135,11 @@ export const admin = new Hono<AppEnv>()
     }
 
     // A page of the scope per call, and how much is left; the client calls until that
-    // is zero. See `NotesRepo.purge` for why one call cannot do it all.
+    // is zero. See `NotesRepo.purge` for why one call cannot do it all. The files are
+    // not deleted here: the store tombstoned their keys with the rows, and the hourly
+    // sweep deletes the objects thirty-five days on (`DeletedBlobs`), so this account
+    // can still be wound back to before the purge with its files.
     const { notes, keys, remaining } = await c.get('notes').purge(scope);
-
-    // Blobs go after the rows: a failure here leaves orphans the sweep can reclaim, while
-    // the reverse would leave notes pointing at objects that no longer exist.
-    await deleteKeys(c.env.BLOBS, keys);
 
     return c.json({ scope, notesDeleted: notes, filesDeleted: keys.length, remaining });
   })

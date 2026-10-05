@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { env, evictDurableObject, runInDurableObject } from 'cloudflare:test';
-import { BATCH, sweepStores } from '@unbent/api/lib/sweep';
+import { BATCH, SUBREQUEST_BUDGET, mayExpire, sweepStores } from '@unbent/api/lib/sweep';
+import { DELETED_BLOB_RETENTION_MS } from '@unbent/api/store/deleted-blobs';
 
 /**
  * The sweep, against real objects and a local D1 carrying the three control-plane
@@ -191,6 +192,81 @@ describe('the store sweep', () => {
     expect((await stub(preview).usage()).notes).toBe(1);
     const cursorAfter = await env.DB.prepare(`SELECT value FROM _unbent_meta WHERE key = 'store_sweep_cursor'`).first<{ value: string }>();
     expect(cursorAfter?.value ?? null).toBe(cursorBefore?.value ?? null);
+  });
+
+  /**
+   * Deleted files leave R2 from here and nowhere else (MAK-171, part 1): the walk asks
+   * each store for the keys past thirty-five days, deletes them from the bucket, and has
+   * the store forget them. A file deleted yesterday stays in the bucket, with its
+   * tombstone, for a restore to find.
+   */
+  it('deletes the files past their retention from R2 and forgets them, and leaves the rest', async () => {
+    const id = uid('blobs');
+    await user(id);
+    await directory(id);
+    const s = stub(id);
+    const n = await s.create({ id: crypto.randomUUID(), title: 'Files', body: '', tags: [] });
+    const key = (name: string) => `users/${id}/notes/${n.id}/files/${name}`;
+    for (const name of ['due.pdf', 'fresh.pdf', 'kept.pdf']) {
+      await env.BLOBS.put(key(name), name);
+      await s.recordAttachment({ id: name, noteId: n.id, filename: name, contentType: 'application/pdf', size: 1, r2Key: key(name) });
+    }
+    await s.removeAttachment(n.id, 'due.pdf');
+    await s.removeAttachment(n.id, 'fresh.pdf');
+    // The first deletion was thirty-six days ago.
+    await runInDurableObject(s, (_i, state) => {
+      state.storage.sql.exec(`UPDATE deleted_blobs SET deleted_at = ?1 WHERE r2_key = ?2`, Date.now() - DELETED_BLOB_RETENTION_MS - 86_400_000, key('due.pdf'));
+    });
+    // Both objects are in the bucket until the sweep: deleting the rows deleted nothing.
+    expect(await env.BLOBS.head(key('due.pdf'))).not.toBeNull();
+    expect(await env.BLOBS.head(key('fresh.pdf'))).not.toBeNull();
+
+    const reports = await fullPass();
+    expect(reports.flatMap((r) => r.failed)).toEqual([]);
+    expect(reports.reduce((n, r) => n + r.blobsDeleted, 0)).toBeGreaterThanOrEqual(1);
+    expect(await env.BLOBS.head(key('due.pdf'))).toBeNull();
+    expect(await env.BLOBS.head(key('fresh.pdf'))).not.toBeNull();
+    expect(await env.BLOBS.head(key('kept.pdf'))).not.toBeNull();
+    const left = await runInDurableObject(s, (_i, state) =>
+      state.storage.sql.exec<{ r2_key: string }>(`SELECT r2_key FROM deleted_blobs`).toArray().map((r) => r.r2_key),
+    );
+    expect(left).toEqual([key('fresh.pdf')]);
+    // Measured as before, files or no files.
+    expect(await row(id)).toMatchObject({ note_count: 1 });
+  });
+
+  /**
+   * The expiry is two subrequests on top of a visit, and a batch is sized against the
+   * Free plan's fifty: an expiry runs only when the batch can still finish within the
+   * budget whatever the accounts ahead of it cost. The arithmetic the sweep relies on,
+   * pinned: a batch of twenty live accounts fits thirteen expiries, the first account of
+   * a batch fits one with nineteen unknowns ahead, and a batch of twenty deletions —
+   * which asks for none, a wiped store having no files — stays within the fifty.
+   */
+  it('budgets the expiry against the subrequests an invocation has', () => {
+    const d1 = 4;
+    // All live: each visit costs one; count how many expiries a batch can take.
+    let spent = d1;
+    let expiries = 0;
+    for (let i = 0; i < BATCH; i++) {
+      spent += 1;
+      if (mayExpire(spent, BATCH - i - 1)) {
+        spent += 2;
+        expiries += 1;
+      }
+    }
+    expect(expiries).toBe(13);
+    expect(spent).toBeLessThanOrEqual(SUBREQUEST_BUDGET);
+    // The first account of a batch, with nineteen unknown ahead that could each cost two:
+    // the budget leaves room for its expiry, and for nothing past the ten the arithmetic
+    // allows (4 D1 + 1 visit + 2 expiry + 38 reserved = 45; 50 - 40 = 10 is the ceiling).
+    expect(mayExpire(d1 + 1, BATCH - 1)).toBe(true);
+    expect(mayExpire(10, BATCH - 1)).toBe(true);
+    expect(mayExpire(11, BATCH - 1)).toBe(false);
+    // A batch that was all deletions spends forty-four, within the fifty.
+    expect(d1 + BATCH * 2).toBeLessThanOrEqual(SUBREQUEST_BUDGET);
+    // The last of a live batch with no expiries so far.
+    expect(mayExpire(d1 + BATCH, 0)).toBe(true);
   });
 
   it('counts one account\'s failure and carries on to the next', async () => {

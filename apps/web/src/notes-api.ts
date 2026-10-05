@@ -971,7 +971,10 @@ export async function purgeNotes(scope: 'trashed' | 'all'): Promise<PurgeResult>
 
 export interface GcResult {
   stored: number;
+  /** Rows' keys and the keys of files deleted in the last 35 days together. */
   referenced: number;
+  /** Of `referenced`, the files deleted in the last 35 days, kept for a restore and counted as referenced. */
+  awaitingDeletion: number;
   orphaned: number;
   deleted: number;
   dryRun: boolean;
