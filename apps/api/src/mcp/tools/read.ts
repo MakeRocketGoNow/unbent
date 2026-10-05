@@ -90,12 +90,12 @@ const ATTACHMENT_SUMMARY =
   '"text", and is a few hundred characters at most: get_attachment_text has the whole text.';
 
 /** The flag `list_notes` and `search_notes` share, so the two cannot describe it differently. */
-const attachmentSummariesFlag = (each: 'note' | 'result', also = '') =>
+const attachmentSummariesFlag = (whose: string, also = '') =>
   z
     .boolean()
     .default(false)
     .describe(
-      `Also list each ${each === 'note' ? "note's" : "result's note's"} files as attachments: [{filename, read, summary}]. ` +
+      `Also list ${whose} files as attachments: [{filename, read, summary}]. ` +
         ATTACHMENT_SUMMARY +
         ` At most ${LIST_FILES_PER_NOTE} files a note; moreFiles counts the rest, which ` +
         `get_note lists.${also}`,
@@ -220,7 +220,7 @@ export function registerReadTools(
       inputSchema: z.object({
         query: z.string().min(1).max(500).describe('Words to look for.'),
         limit: z.number().int().min(1).max(100).default(20),
-        attachmentSummaries: attachmentSummariesFlag('result'),
+        attachmentSummaries: attachmentSummariesFlag("each matching note's"),
         tag: tagFilter,
         notebook: notebookFilter,
         from: dateOnly.describe('Only notes created on or after this date (UTC).'),
@@ -285,7 +285,7 @@ export function registerReadTools(
               'large set to pass to move_notes, update_note_tags or update_note_fields, while ' +
               'still seeing what each note is and where it is filed.',
           ),
-        attachmentSummaries: attachmentSummariesFlag('note', ' Not with compact.'),
+        attachmentSummaries: attachmentSummariesFlag("each note's", ' Not with compact.'),
         tag: tagFilter,
         notebook: notebookFilter,
         fields: fieldFiltersSchema,
