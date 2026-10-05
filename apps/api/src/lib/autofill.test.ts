@@ -471,6 +471,21 @@ describe('text fields the language model writes (MAK-174)', () => {
     }
   });
 
+  it('is asked even when Jev has nothing to choose from, and fills the field alone', async () => {
+    // One paragraph as one long line: too long to offer, so Jev gets no question at all.
+    const prose =
+      'We were glad to welcome you at Acme Rentals today and hope the truck served you well on your move across town this weekend.';
+    const { jev, calls } = fake();
+    const vendorOnly = { ...rentals, fields: [rentals.fields[0]!] };
+    const out = await autofill(
+      jev,
+      filed({ attachments: [{ filename: 'letter.pdf', text: prose }], notebooks: [vendorOnly] }),
+      model({ field_0: 'Acme Rentals' }),
+    );
+    expect(calls).toHaveLength(1);
+    expect(out.fields).toEqual([{ field: rentals.fields[0], value: 'Acme Rentals' }]);
+  });
+
   it('is not asked when the notebook has no text fields', async () => {
     const { jev } = fake();
     const llm = model({});

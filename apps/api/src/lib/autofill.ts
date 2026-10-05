@@ -808,31 +808,31 @@ export async function autofill(
   if (target && target.fields.length > 0) {
     const asks = fieldAsks(target.fields, corpus);
     const questions = Object.assign({}, ...asks.map((ask) => ask.questions)) as Record<string, JevQuestion>;
-    if (Object.keys(questions).length > 0) {
-      // Jev is still asked the text fields, in the round it makes anyway: its pick is what
-      // stands wherever the model's value does not. The two requests overlap.
-      const [second, writtenFields] = await Promise.all([
-        jev.ask(corpus.state, questions),
-        llm ? textFieldValues(llm, corpus, target.fields) : new Map<string, string>(),
-      ]);
-      for (const ask of asks) {
-        const found = ask.read(second);
-        if (found) suggestion.fields.push(found);
-      }
-      // A written value replaces Jev's line, or fills a field Jev found no line for. No
-      // confidence on it, as on a written title: see `AutofillSuggestion`.
-      for (const def of target.fields) {
-        const value = writtenFields.get(def.id);
-        if (!value || encodeFieldValue(def, value) === null) continue;
-        const entry = { field: def, value };
-        const i = suggestion.fields.findIndex((f) => f.field.id === def.id);
-        if (i >= 0) suggestion.fields[i] = entry;
-        else suggestion.fields.push(entry);
-      }
-      // In the notebook's order, which is the order the fields are drawn and asked in.
-      const order = new Map(target.fields.map((f, i) => [f.id, i]));
-      suggestion.fields.sort((a, b) => order.get(a.field.id)! - order.get(b.field.id)!);
+    // Jev is still asked the text fields, in the round it makes anyway: its pick is what
+    // stands wherever the model's value does not. The two requests overlap. Either may
+    // have nothing to do — a document whose lines are all too long to offer leaves Jev
+    // no question for a text field, and that is when the model's value is worth most.
+    const [second, writtenFields] = await Promise.all([
+      Object.keys(questions).length > 0 ? jev.ask(corpus.state, questions) : {},
+      llm ? textFieldValues(llm, corpus, target.fields) : new Map<string, string>(),
+    ]);
+    for (const ask of asks) {
+      const found = ask.read(second);
+      if (found) suggestion.fields.push(found);
     }
+    // A written value replaces Jev's line, or fills a field Jev found no line for. No
+    // confidence on it, as on a written title: see `AutofillSuggestion`.
+    for (const def of target.fields) {
+      const value = writtenFields.get(def.id);
+      if (!value || encodeFieldValue(def, value) === null) continue;
+      const entry = { field: def, value };
+      const i = suggestion.fields.findIndex((f) => f.field.id === def.id);
+      if (i >= 0) suggestion.fields[i] = entry;
+      else suggestion.fields.push(entry);
+    }
+    // In the notebook's order, which is the order the fields are drawn and asked in.
+    const order = new Map(target.fields.map((f, i) => [f.id, i]));
+    suggestion.fields.sort((a, b) => order.get(a.field.id)! - order.get(b.field.id)!);
   }
 
   // Whichever wrote it, the title is offered in title case: a scan's line arrives in the
