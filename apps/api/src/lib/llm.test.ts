@@ -6,6 +6,7 @@ import {
   LLM_MODEL_DEFAULT,
   LlmError,
   canUseLlm,
+  fieldTokens,
   formatReading,
   isLlmAuthError,
   readableByLlm,
@@ -154,6 +155,43 @@ describe('vision', () => {
     const cut = llmFrom(env, answering(200, message('{"title": "Acme', 'max_tokens')) as unknown as typeof fetch);
     await expect(cut.title({ title: '', body: 'x', attachments: [] })).rejects.toBeInstanceOf(LlmError);
     await expect(cut.read(photo)).rejects.toMatchObject({ message: expect.stringContaining('ran out of room') });
+  });
+
+  it('writes the values of text fields, keyed as asked, from a schema of those keys', async () => {
+    const fetchImpl = answering(200, message(JSON.stringify({ field_0: '  Acme   Rentals ', field_1: '' })));
+    const llm = llmFrom(env, fetchImpl as unknown as typeof fetch);
+    const note = { title: '', body: '', attachments: [{ filename: 'sale.pdf', text: 'Acme Rentals\nOrder #: 112-0042' }] };
+    const fields = [
+      { key: 'field_0', name: 'Vendor' },
+      { key: 'field_1', name: 'Order number' },
+    ];
+    // Spacing collapsed; an empty string is the model saying the note does not say.
+    expect(await llm.textFields(note, fields)).toEqual({ field_0: 'Acme Rentals', field_1: '' });
+
+    const body = JSON.parse(fetchImpl.mock.calls[0]![1]!.body as string);
+    expect(JSON.parse(body.messages[0].content)).toEqual({
+      note,
+      fields: [
+        { key: 'field_0', field: 'Vendor' },
+        { key: 'field_1', field: 'Order number' },
+      ],
+    });
+    const { schema } = body.output_config.format;
+    expect(schema.required).toEqual(['field_0', 'field_1']);
+    expect(schema.properties.field_0.description).toContain('Vendor');
+    expect(body.system).toContain('never write one it does not contain');
+    // Room that grows with the fields asked, past a title's.
+    expect(body.max_tokens).toBe(fieldTokens(2));
+    expect(fieldTokens(10)).toBeGreaterThan(fieldTokens(2));
+  });
+
+  it('asks nothing for no fields, and answers null for a decline', async () => {
+    const fetchImpl = answering(200, message('', 'refusal'));
+    const llm = llmFrom(env, fetchImpl as unknown as typeof fetch);
+    const note = { title: '', body: 'x', attachments: [] };
+    expect(await llm.textFields(note, [])).toEqual({});
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(await llm.textFields(note, [{ key: 'field_0', name: 'Vendor' }])).toBeNull();
   });
 
   it('answers no title for a decline or an empty answer', async () => {

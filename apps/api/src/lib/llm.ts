@@ -16,7 +16,8 @@ import { z } from 'zod';
  * And writing a note's title. Jev can only pick a line off the document, which gets
  * "Invoice #4471"; a model that writes gets "Acme Hardware Invoice, March 2026", which is
  * what a person filing it would have typed. See `title`, and lib/autofill.ts for how the
- * two are combined.
+ * two are combined. The same goes for a text field's value, a few words copied out of a
+ * line Jev could only take whole; see `textFields`.
  *
  * Behind a seam (`LanguageModel`) so the model can be swapped: the one implementation is
  * Claude over the Messages API, with the model id an environment variable, and another
@@ -67,6 +68,12 @@ const MAX_TITLE_TOKENS = 1024;
 
 /** A long scan takes a while to read; this is for an outage, not a slow page. */
 const TIMEOUT_MS = 120_000;
+/**
+ * The text fields' call is shorter. It starts only once Jev has chosen the notebook, so
+ * unlike the title it overlaps one round rather than two, and the press waits for it.
+ * Giving up costs only the written values, which leaves Jev's picks standing.
+ */
+const FIELDS_TIMEOUT_MS = 20_000;
 
 /** Retried once, after a pause: the statuses the API documents as retryable. */
 const RETRY_STATUSES = new Set([429, 500, 529]);
@@ -119,6 +126,12 @@ export interface LanguageModel {
   read(file: { filename: string; contentType: string; bytes: ArrayBuffer }): Promise<FileReading | null>;
   /** The title a careful person would give the note. Null when the model declined. */
   title(note: NoteForTitle): Promise<string | null>;
+  /**
+   * The values of a notebook's text fields, as the note writes them: by each field's
+   * `key`, `''` where the note does not say. Null when the model declined. Only text
+   * fields: see `textFieldValues` in lib/autofill.ts for why the rest stay Jev's.
+   */
+  textFields(note: NoteForTitle, fields: Array<{ key: string; name: string }>): Promise<Record<string, string> | null>;
 }
 
 /** The API refused or failed. `status` is HTTP's, or 0 when no answer arrived at all. */
@@ -242,6 +255,34 @@ const TITLE_SCHEMA = {
 
 const titled = z.object({ title: z.string() });
 
+const FIELDS_SYSTEM = [
+  'You fill in fields on notes in a personal archive: scans, photographs and notes someone',
+  'kept. You are shown the note — its title, its body and the text of its files — and the',
+  'names of some fields. For each field, answer with its value exactly as the note writes',
+  'it: the value alone, without the label before it or the words around it. For a field',
+  'named "Vendor" on a receipt that says "Thank you for shopping at Acme Hardware Store',
+  '#12", the value is "Acme Hardware"; for "Order number" beside "Order #: 112-0042", it is',
+  '"112-0042".',
+  '',
+  'Copy the value from the note; never write one it does not contain. Name the party a',
+  'document is from, not a middleman that only handled it — a payment network, a card',
+  'brand, the software that printed it. When the note does not say, or you are not sure',
+  'which of several it means, answer with an empty string. An empty field is better than',
+  'a wrong one.',
+].join('\n');
+
+/** Text field values are short; a model that answers with a paragraph is cut, then checked. */
+const MAX_FIELD_CHARS = 200;
+
+/**
+ * A title's room, for the thinking that shares the budget, plus room for each value at
+ * its longest. A business-card notebook has eight or ten text fields, and a budget sized
+ * for one title would run out on it and leave every one of them to Jev.
+ */
+export function fieldTokens(count: number): number {
+  return MAX_TITLE_TOKENS + count * Math.ceil(MAX_FIELD_CHARS / 2);
+}
+
 /** Titles have a length in the shared schema; a model that ignores "short" is cut, not refused. */
 const MAX_TITLE_CHARS = 200;
 
@@ -266,7 +307,7 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
   const url = env.ANTHROPIC_API_URL?.trim() || ANTHROPIC_API_URL;
   const model = env.ANTHROPIC_MODEL?.trim() || LLM_MODEL_DEFAULT;
 
-  async function post(body: string): Promise<Response> {
+  async function post(body: string, timeout: number): Promise<Response> {
     try {
       return await fetchImpl(url, {
         method: 'POST',
@@ -276,7 +317,7 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
           'Content-Type': 'application/json',
         },
         body,
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        signal: AbortSignal.timeout(timeout),
       });
     } catch (err) {
       throw new LlmError(0, `Could not reach the language model: ${(err as Error).message}`);
@@ -291,11 +332,11 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
    * Both are "declined", and a file the model declines once it would decline again, so
    * the callers record that rather than retry it.
    */
-  async function ask(body: string): Promise<string | null> {
-    let res = await post(body);
+  async function ask(body: string, timeout = TIMEOUT_MS): Promise<string | null> {
+    let res = await post(body, timeout);
     if (RETRY_STATUSES.has(res.status)) {
       await new Promise((resolve) => setTimeout(resolve, RETRY_AFTER_MS));
-      res = await post(body);
+      res = await post(body, timeout);
     }
     if (!res.ok) {
       // The body says why — a bad key, a model this key cannot use, a file too large —
@@ -374,6 +415,49 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
         if (!result.success) return null;
         const title = result.data.title.trim().replace(/\s+/g, ' ').slice(0, MAX_TITLE_CHARS);
         return title || null;
+      } catch {
+        return null;
+      }
+    },
+
+    async textFields(note, fields) {
+      if (fields.length === 0) return {};
+      // One property per field, keyed by the caller's key rather than the field's name: a
+      // name is the owner's to write, and a schema key has rules a name need not follow.
+      // The name goes in each property's description, which the model reads.
+      const schema = {
+        type: 'object',
+        properties: Object.fromEntries(
+          fields.map((f) => [f.key, { type: 'string', description: `The value of the field "${f.name}"` }]),
+        ),
+        required: fields.map((f) => f.key),
+        additionalProperties: false,
+      };
+      const body = JSON.stringify({
+        model,
+        max_tokens: fieldTokens(fields.length),
+        system: FIELDS_SYSTEM,
+        messages: [
+          {
+            role: 'user',
+            content: JSON.stringify({ note, fields: fields.map((f) => ({ key: f.key, field: f.name })) }),
+          },
+        ],
+        output_config: {
+          ...(model === LLM_MODEL_DEFAULT ? { effort: 'low' } : {}),
+          format: { type: 'json_schema', schema },
+        },
+      });
+      const text = await ask(body, FIELDS_TIMEOUT_MS);
+      if (!text) return null;
+      try {
+        const result = z.record(z.string(), z.string()).safeParse(JSON.parse(text));
+        if (!result.success) return null;
+        const out: Record<string, string> = {};
+        for (const f of fields) {
+          out[f.key] = (result.data[f.key] ?? '').trim().replace(/\s+/g, ' ').slice(0, MAX_FIELD_CHARS);
+        }
+        return out;
       } catch {
         return null;
       }

@@ -362,8 +362,11 @@ export interface AutofillSuggestion {
    * Values for the fields of the notebook the note would end up in — the suggested one,
    * or the note's own when there is no suggestion. Each carries its definition, so a
    * client can write the value before it has loaded that notebook's fields.
+   *
+   * `confidence` is absent on a text field's value the language model wrote, for the
+   * title's reason; the server keeps such a value only when the document contains it.
    */
-  fields: Array<{ field: FieldDef; value: FieldValue; confidence: number }>;
+  fields: Array<{ field: FieldDef; value: FieldValue; confidence?: number }>;
   /** Which of the note's files were read, and which had no text to read yet. */
   read: { attachments: string[]; pending: string[] };
   /**

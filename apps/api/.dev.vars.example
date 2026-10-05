@@ -226,14 +226,16 @@ ALLOWED_EMAILS=
 # TYPESAFE_API_URL=
 
 # A language model: an Anthropic API key, which turns on reading pictures — and scans with
-# no text layer — with a vision model, and writing Auto-fill's titles. What a file is and
-# shows, then any text on it, becomes the file's text for search and Auto-fill; a title is
-# written from the note whole rather than picked off a line of it. Unset — the default —
+# no text layer — with a vision model, and writing Auto-fill's titles and text field
+# values. What a file is and shows, then any text on it, becomes the file's text for
+# search and Auto-fill; a title is written from the note whole rather than picked off a
+# line of it. Unset — the default —
 # means a picture has no text, as before, titles come from Jev's pick of a line, and
 # nothing is sent anywhere.
 #
 # Each file is read once, after its upload or from Maintenance's "Read N images", and the
-# bytes go to api.anthropic.com; a title is one small request per press of Auto-fill. See src/lib/llm.ts for exactly what is asked. A key of its own for development
+# bytes go to api.anthropic.com; a title is one small request per press of Auto-fill, and
+# a notebook's text fields one more. See src/lib/llm.ts for exactly what is asked. A key of its own for development
 # keeps its usage apart from production's.
 #
 #   https://console.anthropic.com/settings/keys

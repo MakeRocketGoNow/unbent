@@ -332,7 +332,8 @@ export const notes = new Hono<AppEnv>()
         })),
         tags: examples.tags.map((t) => ({ name: t.name, examples: t.examples })),
         },
-        // The language model writes the title where the instance has one; see `autofill`.
+        // The language model writes the title and the text fields' values where the
+        // instance has one; see `autofill`.
         canUseLlm(c.env) ? llmFrom(c.env) : undefined,
         // Only an operator is told when that model rejects its key — a fault they can fix.
         isOperator(c.env, c.get('user')?.email),

@@ -10,6 +10,7 @@ import {
   findNumbers,
   findPhones,
   findUrls,
+  labelledValues,
   type AutofillInput,
 } from './autofill.js';
 import type { Jev, JevAnswer, JevChoiceQuestion, JevEntry, JevQuestion } from './jev.js';
@@ -46,6 +47,8 @@ const choice = (choice: string, confidence = 0.9): JevAnswer => ({
   confidence,
 });
 const noul = (noul: number): JevAnswer => ({ type: 'noul', noul });
+/** A language model whose title is what a test is about, and which leaves the text fields to Jev. */
+const noFields = async () => ({});
 
 function field(over: Partial<FieldDef> & Pick<FieldDef, 'id' | 'name' | 'type'>): FieldDef {
   return { notebookId: 'nb-coupons', options: [], scale: null, currency: null, position: 0, ...over };
@@ -179,7 +182,7 @@ describe('what the model is asked', () => {
 });
 
 describe('the title', () => {
-  const written = { title: vi.fn(async () => 'Acme Hardware invoice, March 2026') };
+  const written = { textFields: noFields, title: vi.fn(async () => 'Acme Hardware invoice, March 2026') };
 
   it('is written by the language model when there is one, shown the note whole', async () => {
     const { jev } = fake({ title: choice('ACME HARDWARE', 0.9) });
@@ -211,7 +214,7 @@ describe('the title', () => {
 
   it('asks the fields before the title has come back, and collects the title last', async () => {
     let finish!: (title: string) => void;
-    const slow = { title: vi.fn(() => new Promise<string>((resolve) => (finish = resolve))) };
+    const slow = { textFields: noFields, title: vi.fn(() => new Promise<string>((resolve) => (finish = resolve))) };
     const { jev, calls } = fake({ notebook: choice('Receipts') });
     const running = autofill(jev, input(), slow);
     // Both rounds are asked while the title is still being written.
@@ -222,15 +225,15 @@ describe('the title', () => {
 
   it('falls back to Jev\u2019s pick of a line, in title case, when the model declines or fails', async () => {
     const { jev } = fake({ title: choice('ACME HARDWARE', 0.7) });
-    const declined = { title: vi.fn(async () => null) };
+    const declined = { textFields: noFields, title: vi.fn(async () => null) };
     expect((await autofill(jev, input(), declined)).title).toEqual({ value: 'Acme Hardware', confidence: 0.7 });
-    const failing = { title: vi.fn(async () => { throw new Error('down'); }) };
+    const failing = { textFields: noFields, title: vi.fn(async () => { throw new Error('down'); }) };
     expect((await autofill(jev, input(), failing)).title).toEqual({ value: 'Acme Hardware', confidence: 0.7 });
     expect((await autofill(jev, input())).title).toEqual({ value: 'Acme Hardware', confidence: 0.7 });
   });
 
   it('tells an operator when the title model rejected its key, and no one else', async () => {
-    const rejected = { title: vi.fn(async () => { throw new LlmError(401, 'invalid x-api-key'); }) };
+    const rejected = { textFields: noFields, title: vi.fn(async () => { throw new LlmError(401, 'invalid x-api-key'); }) };
     // The operator is told, alongside the fallback title \u2014 the fill still succeeds.
     const forOperator = await autofill(fake().jev, input(), rejected, true);
     expect(forOperator.titleModel).toBe('auth-failed');
@@ -243,10 +246,10 @@ describe('the title', () => {
     // A rate limit, a 5xx, a timeout (status 0): retrying would work, so Jev's pick stands
     // without crying wolf. Only 401/403 are the standing misconfiguration worth surfacing.
     for (const status of [429, 500, 529, 0]) {
-      const flaky = { title: vi.fn(async () => { throw new LlmError(status, 'busy'); }) };
+      const flaky = { textFields: noFields, title: vi.fn(async () => { throw new LlmError(status, 'busy'); }) };
       expect((await autofill(fake().jev, input(), flaky, true)).titleModel).toBeUndefined();
     }
-    const plain = { title: vi.fn(async () => { throw new Error('boom'); }) };
+    const plain = { textFields: noFields, title: vi.fn(async () => { throw new Error('boom'); }) };
     expect((await autofill(fake().jev, input(), plain, true)).titleModel).toBeUndefined();
   });
 
@@ -395,7 +398,130 @@ describe('the fields', () => {
   });
 });
 
+describe('text fields the language model writes (MAK-174)', () => {
+  // A letterhead the vendor is a few words of, and an order number behind its label.
+  const sale = [
+    'Thank you for shopping at Acme Rentals Store #4471, 100 Example Rd',
+    'Order number: 112-0042',
+    'Total $141.80',
+  ].join('\n');
+  const rentals: AutofillInput['notebooks'][number] = {
+    ...receipts,
+    fields: [
+      field({ id: 'f-vendor', name: 'Vendor', type: 'text', notebookId: 'nb-receipts' }),
+      field({ id: 'f-total', name: 'Total', type: 'number', notebookId: 'nb-receipts' }),
+      field({ id: 'f-order', name: 'Order number', type: 'text', notebookId: 'nb-receipts' }),
+    ],
+  };
+  const filed = (over: Partial<AutofillInput> = {}) =>
+    input({
+      note: { title: '', body: '', tags: [], notebookId: 'nb-receipts' },
+      attachments: [{ filename: 'sale.pdf', text: sale }],
+      notebooks: [rentals],
+      ...over,
+    });
+  const model = (answer: Record<string, string> | null | Error) => ({
+    title: vi.fn(async () => null),
+    textFields: vi.fn(async () => {
+      if (answer instanceof Error) throw answer;
+      return answer;
+    }),
+  });
+
+  it('asks the model for the text fields only, shown the note', async () => {
+    const { jev } = fake();
+    const llm = model({});
+    await autofill(jev, filed(), llm);
+    expect(llm.textFields).toHaveBeenCalledWith(
+      expect.objectContaining({ attachments: [{ filename: 'sale.pdf', text: sale }] }),
+      [
+        { key: 'field_0', name: 'Vendor' },
+        { key: 'field_1', name: 'Order number' },
+      ],
+    );
+  });
+
+  it('takes the part of a line that is the value, in place of Jev\u2019s whole line', async () => {
+    const { jev } = fake({
+      field_0: choice('Thank you for shopping at Acme Rentals Store #4471, 100 Example Rd', 0.85),
+      field_1: choice('141.8', 0.9),
+    });
+    const out = await autofill(jev, filed(), model({ field_0: 'ACME RENTALS', field_1: '112-0042' }));
+    expect(out.fields.map((f) => [f.field.name, f.value, f.confidence])).toEqual([
+      // As the model copied it; found in the document without regard to case.
+      ['Vendor', 'ACME RENTALS', undefined],
+      ['Total', 141.8, 0.9],
+      // Jev picked no line for it, and the written value fills it.
+      ['Order number', '112-0042', undefined],
+    ]);
+  });
+
+  it('drops a value the document does not contain, and Jev\u2019s pick stands', async () => {
+    const line = 'Thank you for shopping at Acme Rentals Store #4471, 100 Example Rd';
+    const { jev } = fake({ field_0: choice(line, 0.85) });
+    for (const invented of ['Acme Rentals LLC', 'Rent', 'ntals Sto', '44', '-', '—']) {
+      const out = await autofill(jev, filed(), model({ field_0: invented, field_1: '' }));
+      expect(out.fields).toEqual([{ field: rentals.fields[0], value: line, confidence: 0.85 }]);
+    }
+    // A value with marks of its own still matches whole: the escaping is not a filter.
+    const out = await autofill(jev, filed(), model({ field_0: 'Store #4471,', field_1: '' }));
+    expect(out.fields[0]?.value).toBe('Store #4471,');
+  });
+
+  it('falls back to Jev\u2019s picks when the model fails or declines', async () => {
+    for (const answer of [new Error('down'), null]) {
+      const { jev } = fake({ field_2: choice('112-0042', 0.8) });
+      const out = await autofill(jev, filed(), model(answer));
+      expect(out.fields).toEqual([{ field: rentals.fields[2], value: '112-0042', confidence: 0.8 }]);
+    }
+  });
+
+  it('is asked even when Jev has nothing to choose from, and fills the field alone', async () => {
+    // One paragraph as one long line: too long to offer, so Jev gets no question at all.
+    const prose =
+      'We were glad to welcome you at Acme Rentals today and hope the truck served you well on your move across town this weekend.';
+    const { jev, calls } = fake();
+    const vendorOnly = { ...rentals, fields: [rentals.fields[0]!] };
+    const out = await autofill(
+      jev,
+      filed({ attachments: [{ filename: 'letter.pdf', text: prose }], notebooks: [vendorOnly] }),
+      model({ field_0: 'Acme Rentals' }),
+    );
+    expect(calls).toHaveLength(1);
+    expect(out.fields).toEqual([{ field: rentals.fields[0], value: 'Acme Rentals' }]);
+  });
+
+  it('is not asked when the notebook has no text fields', async () => {
+    const { jev } = fake();
+    const llm = model({});
+    await autofill(jev, input({ note: { title: '', body: '', tags: [], notebookId: 'nb-receipts' }, notebooks: [{ ...receipts, fields: receipts.fields.filter((f) => f.type !== 'text') }] }), llm);
+    expect(llm.textFields).not.toHaveBeenCalled();
+  });
+});
+
 describe('the candidates the code finds', () => {
+  it('offers what follows a short label as a text value of its own', () => {
+    const lines = candidateLines([
+      { text: 'Order number: 112-0042\nhttps://acme.example/pay\nWe will be in touch about it: soon, we promise you, really', where: 'scan.pdf' },
+    ]);
+    const keys = labelledValues(lines).map((o) => o.key);
+    expect(keys).toEqual([
+      'Order number: 112-0042',
+      '112-0042',
+      'https://acme.example/pay',
+      'We will be in touch about it: soon, we promise you, really',
+      'soon, we promise you, really',
+    ]);
+    expect(labelledValues(lines)[1]?.description).toBe('After "Order number:" in Line 1 of scan.pdf');
+  });
+
+  it('never drops a line to make room for a value', () => {
+    const text = Array.from({ length: 80 }, (_, i) => `Item ${i}: thing ${i}`).join('\n');
+    const lines = candidateLines([{ text, where: 'scan.pdf' }]);
+    const keys = labelledValues(lines).map((o) => o.key);
+    for (const line of lines) expect(keys).toContain(line.key);
+  });
+
   it('reads dates however the document writes them, once each', () => {
     const found = findDates('Paid 2026-03-04, due 3/18/26 and again on March 18, 2026; 25.12.2025; 4th Feb 2026; 13/13/2026');
     expect(found.map((o) => o.key)).toEqual(['2026-03-04', '2026-03-18', '2025-12-25', '2026-02-04']);

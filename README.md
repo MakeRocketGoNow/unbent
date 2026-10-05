@@ -1051,7 +1051,7 @@ there; each file is read once, and a decline is recorded so it is not asked agai
 
 `ANTHROPIC_MODEL` picks the model. Unset means the most capable current one — a wrong digit in a
 transcribed total is copied into a field with full confidence — and `claude-sonnet-5` trades
-some of that for cost. The same model writes Auto-fill's titles (see
+some of that for cost. The same model writes Auto-fill's titles and text field values (see
 [Filing a note from what it says](#filing-a-note-from-what-it-says)). It sits behind one
 interface in `apps/api/src/lib/llm.ts`, so another model, or Workers AI for an instance that
 would rather keep images in place, is one more implementation of it.
@@ -1091,9 +1091,13 @@ candidates — every date the text writes for a date field, every amount for a n
 document's own lines for a text field — and the model picks one or says none of them. The
 title is written rather than chosen: where the instance has a language model, the same key
 that [reads images](#reading-images), it is asked for the title a careful person would give
-the note, and Jev's pick of the document's own lines stands where there is none. A value can still be wrong, but it is always something the document
-actually says, and anything the model is unsure of is left empty rather than guessed. Ratings
-are left alone: a document has no opinion to read.
+the note, and Jev's pick of the document's own lines stands where there is none. The same
+model writes a text field's value, so a Vendor gets "Acme Rentals" rather than the whole
+"Thank you for shopping at Acme Rentals Store #4471" line, and a value it writes is kept
+only when the document contains it. Without one, a line written as a label and a value,
+like "Order number: 112-0042", offers the value alone too. A value can still be wrong, but
+it is always something the document actually says, and anything the model is unsure of is
+left empty rather than guessed. Ratings are left alone: a document has no opinion to read.
 
 `POST /api/notes/:id/autofill` answers with the suggestions and applies nothing; the client
 does. The Android app is the site in a WebView, so it has the same control.
