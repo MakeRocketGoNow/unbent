@@ -10,6 +10,7 @@ import {
 import { Button } from './Button.js';
 import { FieldTypeIcon, PlusIcon } from './icons.js';
 import { applyNotebookTemplate } from '../store/actions.js';
+import { useOffline } from '../connectivity.js';
 import type { NotebookImportSkip } from '../notes-api.js';
 
 interface NotebookChooserProps {
@@ -185,6 +186,13 @@ function TemplatePreview({
   const clash = known.find((n) => sameName(n.name, template.name))?.name ?? null;
   const [name, setName] = useState(() => freeName(template.name, existing));
   const [busy, setBusy] = useState(false);
+  /*
+   * Making a notebook is a request (see `applyNotebookTemplate`), so Create and the add
+   * wait for a connection the way the note's server-bound controls do, and say so here
+   * rather than after a press. The preview itself is all on the device and stays open.
+   */
+  const offline = useOffline();
+  const offlineTitle = offline ? 'Not available offline' : undefined;
   const [error, setError] = useState<string | null>(null);
   /** What the server could not apply, when adding to a notebook that already had some of it. */
   const [skipped, setSkipped] = useState<{ name: string; items: NotebookImportSkip[] } | null>(null);
@@ -221,7 +229,7 @@ function TemplatePreview({
   });
 
   async function create() {
-    if (!trimmed || nameTaken || busy) return;
+    if (!trimmed || nameTaken || busy || offline) return;
     setBusy(true);
     setError(null);
     try {
@@ -367,13 +375,19 @@ function TemplatePreview({
       </ul>
 
       {error && <p className="bad small">{error}</p>}
+      {offline && <p className="muted small nb-preview-offline">Making a notebook needs a connection.</p>}
 
       <div className="nb-preview-actions">
-        <Button type="submit" variant="primary" disabled={busy || !trimmed || nameTaken}>
+        <Button
+          type="submit"
+          variant="primary"
+          disabled={busy || !trimmed || nameTaken || offline}
+          title={offlineTitle}
+        >
           Create notebook
         </Button>
         {clash && (
-          <Button disabled={busy} onClick={() => void addToExisting(clash)}>
+          <Button disabled={busy || offline} title={offlineTitle} onClick={() => void addToExisting(clash)}>
             Add these fields to {clash}
           </Button>
         )}

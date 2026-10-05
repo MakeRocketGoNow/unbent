@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, cleanup, fireEvent, waitFor, screen } from '@testing-library/react';
 import { NOTEBOOK_TEMPLATES } from '@unbent/shared';
 import * as actions from '../store/actions.js';
+import { resetConnectivity, setReachableForTests } from '../connectivity.js';
 import { NotebookChooser, describeField, freeName } from './NotebookChooser.js';
 
 vi.mock('../store/actions.js', async (importOriginal) => ({
@@ -149,6 +150,19 @@ describe('NotebookChooser', () => {
     answer({ id: 'nb', skipped: [] });
     await waitFor(() => expect(props.onApplied).toHaveBeenCalledOnce());
     expect(props.onDone).not.toHaveBeenCalled();
+  });
+
+  it('holds Create and the add while offline, and says why before the press', async () => {
+    setReachableForTests(false);
+    try {
+      mount([{ name: 'Receipts' }]);
+      fireEvent.click(screen.getByRole('button', { name: /^Receipts/ }));
+      expect(await screen.findByText('Making a notebook needs a connection.')).toBeTruthy();
+      expect((screen.getByRole('button', { name: 'Create notebook' }) as HTMLButtonElement).disabled).toBe(true);
+      expect((screen.getByRole('button', { name: 'Add these fields to Receipts' }) as HTMLButtonElement).disabled).toBe(true);
+    } finally {
+      resetConnectivity();
+    }
   });
 
   it('goes back a step on Escape from the preview, and out on Escape from the cards', () => {

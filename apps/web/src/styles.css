@@ -5368,7 +5368,8 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   color: var(--muted);
 }
 
-.nb-preview-done { margin: 0; }
+.nb-preview-done,
+.nb-preview-offline { margin: 0; }
 
 .nb-preview-skipped li { padding: 0.2rem 0; font-size: 0.9rem; }
 
