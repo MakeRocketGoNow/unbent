@@ -66,7 +66,9 @@ export function showsWholeAccount(search: {
  * column rather than from a list query of the pane's own: the column's query is keyed by
  * its order, which on All notes is often a remembered one, so a query of `notesQuery({})`
  * here would be a second list to keep in step rather than the same one. `NotesLayout`
- * provides it around the routed workspace; null where nothing does, which the pane reads
- * as "not known", and asks.
+ * provides it around the routed workspace. Null while the column's first load is pending,
+ * when its rows are empty for every account and say nothing, so the pane waits rather than
+ * counting an archive on every open. Zero where nothing provides it — a test mounting the
+ * pane alone — which the pane reads as a column with no rows, and asks.
  */
-export const ListRowsContext = createContext<number | null>(null);
+export const ListRowsContext = createContext<number | null>(0);

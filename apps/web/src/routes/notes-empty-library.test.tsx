@@ -174,6 +174,17 @@ describe('the workspace pane with no note open, on a desktop', () => {
     expect(totalAsked.every((enabled) => !enabled)).toBe(true);
   });
 
+  /** The list's first load is empty for every account; counting then would walk an archive on every open. */
+  it("does not ask for the total while a full account's list first loads", async () => {
+    lib = installTestLibrary({ notes: [note('a', { title: 'Alpha' })] });
+    totalAsked.length = 0;
+    mount('/notes');
+    await screen.findByText('Alpha');
+    await screen.findByText('Select a note, or create one.');
+    expect(totalAsked.length).toBeGreaterThan(0);
+    expect(totalAsked.every((enabled) => !enabled)).toBe(true);
+  });
+
   it('says "Select a note" inside a notebook, however empty the account', async () => {
     lib = installTestLibrary({ notes: [] });
     mount('/notes?notebook=Coupons');

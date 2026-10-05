@@ -29,8 +29,10 @@ function NoNoteOpen() {
   // Asked only where the answer can draw something: at the two-pane width, on the whole
   // account, and while the column beside shows no rows — a column with a row in it is an
   // account with a note, and an archive must not be recounted on every change for that.
+  // Not while the column's first load is pending either (null), when every account's
+  // rows are empty.
   const rows = useContext(ListRowsContext);
-  const total = useLibraryTotal(!isMobile && wholeAccount && (rows === null || rows === 0));
+  const total = useLibraryTotal(!isMobile && wholeAccount && rows === 0);
   // Held while a note asked for from it is being made, so "Select a note" does not flash
   // between the empty state and the note opening; see the hook.
   const empty = useHoldWhileCreating(!isMobile && total === 0 && wholeAccount);
