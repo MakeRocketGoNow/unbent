@@ -651,9 +651,10 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   /**
    * The account holds no notes at all, and the list is the whole of it. On a phone the
    * list's empty line gives way to `EmptyLibrary`; on a desktop the workspace pane draws
-   * it (`routes/notes.index.tsx`) and the line stays, so the two panes do not say the
-   * same thing twice with two sets of buttons. Never in the table, which needs a
-   * notebook, and so never in a scope this can be true of.
+   * it (`routes/notes.index.tsx`) and the list column says nothing, since a "No notes
+   * yet." line beside a "No notes yet" heading is the same fact twice, a column apart.
+   * Never in the table, which needs a notebook, and so never in a scope this can be true
+   * of.
    */
   const libraryEmpty = libraryTotal === 0 && wholeAccount && results === null && !error;
   const emptyLibraryInList = libraryEmpty && isMobile;
@@ -672,11 +673,13 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             ? 'Nothing in your inbox.'
             : notebook
               ? `No notes in ${notebook}.`
-              : // On All notes, not until the account is known to be empty: the list's
-                // rows can be empty for a moment while the account's are not, and "No
-                // notes yet" said then is the flash the empty state takes care not to make.
-                // A date range keeps the line it always had.
-                !wholeAccount || libraryTotal === 0
+              : // Never on All notes. Until the account is known to be empty the list's
+                // rows can be empty for a moment while the account's are not, and the
+                // line then is the flash the empty state takes care not to make; once it
+                // is known, `EmptyLibrary` says it — in place of the list on a phone, in
+                // the pane beside this column on a desktop. A date range keeps the line
+                // it always had.
+                !wholeAccount
                 ? 'No notes yet.'
                 : null
       : null;

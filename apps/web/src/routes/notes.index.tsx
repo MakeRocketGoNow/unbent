@@ -19,9 +19,10 @@ export const Route = createFileRoute('/notes/')({
  *
  * For an account with no notes at all, the pane is where the empty state goes on a
  * desktop (`EmptyLibrary`): it is the big, otherwise idle half of the screen, and the
- * list column beside it keeps its one quiet line. For a brand-new account it opens the
- * welcome note instead, once (`first-run.ts`). Anywhere else — an account with notes, or
- * a notebook, tag, filter or search that matched nothing — it is the line it always was.
+ * list column beside it says nothing rather than the same thing again. For a brand-new
+ * account it opens the welcome note instead, once (`first-run.ts`). Anywhere else — an
+ * account with notes, or a notebook, tag, filter or search that matched nothing — it is
+ * the line it always was.
  * On a phone this pane is hidden while the list shows, and the list draws the empty state
  * itself, so neither is done here.
  */

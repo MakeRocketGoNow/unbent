@@ -18,7 +18,7 @@ import { useCreateNote } from '../useCreateNote.js';
  * one-line message stays, since offering the import there would read as filling that
  * notebook. One drawing at each width, never two at once: in the list on a phone, where
  * the list is the whole screen, and in the workspace pane on a desktop, beside a list
- * column that keeps its quiet line rather than saying the same thing with its own buttons.
+ * column that then says nothing, rather than the same fact a second time.
  *
  * A labelled region rather than a bare heading: on a desktop it is a pane of its own
  * beside the list, and a screen reader's list of landmarks should name it, the way it
