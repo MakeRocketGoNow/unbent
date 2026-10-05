@@ -79,7 +79,8 @@ export interface FeedState {
  * during a walk either, and not while a `reset` has emptied the collections to start one.
  *
  * One answer for everything that must not act on half a library: the keeper of files and
- * the search index (`settled` in `library.ts`), and the list's empty state, which would
+ * the search index (`settled` in `library.ts`), the outbox's wait for a pull after a
+ * replayed write (`settled` in `actions.ts`), and the list's empty state, which would
  * otherwise tell someone mid-copy that they have no notes.
  */
 export function isWhole(state: Pick<FeedState, 'cursor' | 'phase'>): boolean {
