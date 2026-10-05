@@ -1107,8 +1107,15 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           * than the shell so the rule that hides the list when a note is open takes this
           * with it — a "new note" button floating over the note you are reading would make
           * one every time a thumb reached for the scroll bar.
+          *
+          * Not over an empty account's state, which has its own New note a thumb's reach
+          * away: the + beside it was a second filled control next to the import — the one
+          * the desktop steps its New down to avoid — and a second button named "New note"
+          * to a screen reader. It is back as soon as there is a note, which is when the
+          * list is. It stays over "Notebook not found", where it is the only way to start a
+          * note without leaving, and the note it makes goes to no notebook (`newNote`).
           */}
-        {isMobile && !selection.active && (
+        {isMobile && !selection.active && !emptyLibraryInList && (
           <button
             type="button"
             className="fab"
@@ -1121,7 +1128,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
 
         {emptyLibraryInList ? (
           /* In place of the list, which has nothing to list: centred in the room under the
-             header, with the floating + where it always is. `.note-list` is the column's
+             header, without the floating + (see above). `.note-list` is the column's
              scroller and claims its height; this claims the same. */
           <div className="empty-state-slot">
             <EmptyLibrary heading="h3" />

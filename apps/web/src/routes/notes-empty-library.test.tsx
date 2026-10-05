@@ -208,6 +208,16 @@ describe('the list with an empty account, on a phone', () => {
     expect(found.querySelector('h3')?.textContent).toBe('No notes yet');
   });
 
+  /* The state's own New note is the action; a floating + beside it is a second filled
+     control and a second "New note". */
+  it("draws one New note, the state's, without the floating +", async () => {
+    lib = installTestLibrary({ notes: [] });
+    mount('/notes');
+    await waitFor(() => expect(region()).not.toBeNull());
+    expect(screen.getAllByRole('button', { name: 'New note' })).toHaveLength(1);
+    expect(document.querySelector('.fab')).toBeNull();
+  });
+
   /** A library still arriving: the total is unknown, so neither the state nor the line. */
   it('says nothing on All notes while the total is unknown', async () => {
     lib = installTestLibrary({ notes: [], cursor: null });
