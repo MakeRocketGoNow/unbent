@@ -20,7 +20,7 @@ import { ResizeHandle } from './ResizeHandle.js';
 import { NoteListItem } from './NoteListItem.js';
 import { useListKeys, enterList } from '../useListKeys.js';
 import { useFocusSearch } from '../useFocusSearch.js';
-import { useCreateNote } from '../useCreateNote.js';
+import { useCreateNote, useHoldWhileCreating } from '../useCreateNote.js';
 import { useNewNoteRequest } from '../useNewNoteRequest.js';
 import { SearchResults } from './SearchResults.js';
 import { IndexingStatus } from './IndexingStatus.js';
@@ -655,7 +655,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * Never in the table, which needs a notebook, and so never in a scope this can be true
    * of.
    */
-  const libraryEmpty = libraryTotal === 0 && wholeAccount && results === null && !error;
+  /* Held while a note asked for from the empty state is being made; see the hook. */
+  const libraryEmpty = useHoldWhileCreating(libraryTotal === 0 && wholeAccount && results === null && !error);
   const emptyLibraryInList = libraryEmpty && isMobile;
   /** The list's empty state, in words; both renderings say the same thing. */
   const emptyMessage =

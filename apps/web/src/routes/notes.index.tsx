@@ -3,6 +3,7 @@ import { createFileRoute, useSearch } from '@tanstack/react-router';
 import { EmptyLibrary } from '../components/EmptyLibrary.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 import { ListRowsContext, showsWholeAccount, useLibraryTotal } from '../useLibraryTotal.js';
+import { useHoldWhileCreating } from '../useCreateNote.js';
 
 /** `/notes` with no note selected: the list is shown, the workspace is empty. */
 export const Route = createFileRoute('/notes/')({
@@ -30,8 +31,11 @@ function NoNoteOpen() {
   // account with a note, and an archive must not be recounted on every change for that.
   const rows = useContext(ListRowsContext);
   const total = useLibraryTotal(!isMobile && wholeAccount && (rows === null || rows === 0));
+  // Held while a note asked for from it is being made, so "Select a note" does not flash
+  // between the empty state and the note opening; see the hook.
+  const empty = useHoldWhileCreating(!isMobile && total === 0 && wholeAccount);
 
-  if (!isMobile && total === 0 && wholeAccount) {
+  if (empty) {
     return (
       <section className="workspace empty empty-state-pane">
         <EmptyLibrary />

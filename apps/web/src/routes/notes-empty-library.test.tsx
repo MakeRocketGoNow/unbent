@@ -13,9 +13,11 @@ import type { FeedNote, Note } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import * as actions from '../store/actions.js';
 import { installTestLibrary, type TestLibrary } from '../store/test-library.js';
+import { installLibraryQueries } from '../queries.js';
 import { NotesLayout } from '../components/NotesLayout.js';
 import { filters } from './notes.js';
 import { Route as IndexRoute } from './notes.index.js';
+import { WELCOME_TITLE } from '../welcome-note.js';
 
 /**
  * Where an empty account's empty state is drawn, and the missing-notebook state, against
@@ -95,6 +97,9 @@ function mount(initial: string) {
   const noteRoute = createRoute({
     getParentRoute: () => notesRoute,
     path: '$noteId',
+    // The real route loads the note before it commits; a moment's wait stands in for that,
+    // which is the moment a view must not fill with something else.
+    loader: () => new Promise((resolve) => setTimeout(resolve, 20)),
     component: function OpenNote() {
       return <p>open note {noteRoute.useParams().noteId}</p>;
     },
@@ -106,6 +111,8 @@ function mount(initial: string) {
     history,
   });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // As the app does: a change to the library re-runs the queries that read it.
+  stopLibraryQueries = installLibraryQueries(client);
   render(
     <QueryClientProvider client={client}>
       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
@@ -118,6 +125,7 @@ function mount(initial: string) {
 const region = () => screen.queryByRole('region', { name: 'No notes yet' });
 
 let lib: TestLibrary | null = null;
+let stopLibraryQueries: (() => void) | null = null;
 
 beforeEach(() => {
   vi.mocked(api.getConfig).mockResolvedValue({ providers: [] } as unknown as Awaited<ReturnType<typeof api.getConfig>>);
@@ -126,6 +134,8 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  stopLibraryQueries?.();
+  stopLibraryQueries = null;
   lib?.uninstall();
   lib = null;
   vi.unstubAllGlobals();
@@ -203,6 +213,57 @@ describe('the list with an empty account, on a phone', () => {
     expect(region()).toBeNull();
     expect(router.state.location.pathname).toBe('/notes');
   });
+});
+
+/**
+ * "See a sample note": one note, with the sample's title, made through the same action as
+ * New and opened, after which the account is not empty and the state is gone. The note
+ * lands in the in-memory library as a real create would put it in the local copy.
+ */
+describe('asking for the sample note', () => {
+  function makesNotes() {
+    vi.mocked(actions.createNote).mockImplementation(async (input) => {
+      lib!.upsert('note', note('sample', { title: input.title }));
+      return { id: 'sample' } as Note;
+    });
+  }
+
+  /** Every text the page showed while the note was being made, to catch a one-frame flash. */
+  function watchFor(text: string): () => boolean {
+    let seen = false;
+    // From the records rather than the page as it stands when the observer runs: a node
+    // added and removed again within one batch is gone by then, and that is the flash.
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) if (node.textContent?.includes(text)) seen = true;
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    return () => {
+      observer.disconnect();
+      return seen;
+    };
+  }
+
+  for (const phone of [false, true]) {
+    it(`makes one note and opens it, and the empty state is gone, on a ${phone ? 'phone' : 'desktop'}`, async () => {
+      setWidth(phone);
+      lib = installTestLibrary({ notes: [] });
+      makesNotes();
+      const { router } = mount('/notes');
+      const sample = await screen.findByRole('button', { name: 'See a sample note' });
+      const sawSelect = watchFor('Select a note, or create one.');
+      fireEvent.click(sample);
+      fireEvent.click(sample);
+      await screen.findByText('open note sample');
+      expect(router.state.location.pathname).toBe('/notes/sample');
+      expect(actions.createNote).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(actions.createNote).mock.calls[0]?.[0]).toMatchObject({ title: WELCOME_TITLE, notebook: null, tags: [] });
+      // No "Select a note" between the empty state and the note opening.
+      expect(sawSelect()).toBe(false);
+      await waitFor(() => expect(region()).toBeNull());
+    });
+  }
 });
 
 /** A link that names a notebook the account does not have: one statement, in the list's place. */

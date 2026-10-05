@@ -26,12 +26,19 @@ export function EmptyState({
   headingLevel: Heading = 'h2',
   lead,
   actions,
+  aside,
 }: {
   icon: ReactNode;
   heading: string;
   headingLevel?: 'h2' | 'h3';
   lead: ReactNode;
   actions: ReactNode;
+  /**
+   * A quieter action on a line of its own under the main ones — one that is on offer but
+   * is not one of the choices the state is about. At its own width, centred, never
+   * stretched with the actions on a phone.
+   */
+  aside?: ReactNode;
 }) {
   const headingId = useId();
   return (
@@ -44,6 +51,7 @@ export function EmptyState({
       </Heading>
       <p className="empty-state-lead">{lead}</p>
       <div className="empty-state-actions">{actions}</div>
+      {aside && <div className="empty-state-aside">{aside}</div>}
     </section>
   );
 }

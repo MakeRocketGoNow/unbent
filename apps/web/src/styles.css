@@ -1248,6 +1248,16 @@ button.link {
 /* An action never wider than the stack: its words wrap first. */
 .empty-state-action { max-width: 100%; }
 
+/* The quieter action under the main ones (`EmptyState`'s `aside`): its own line, at its
+   own width, centred by the stack, one gap below the actions like every other step. It is
+   left out of the phone's full-width rule below on purpose — stretched, a quiet button
+   reads as a third equal choice, which is the one thing it must not. */
+.empty-state-aside {
+  display: flex;
+  justify-content: center;
+  max-width: 100%;
+}
+
 /* A phone held upright: the actions one above the other, each the width of the stack
    (the 44px height is the buttons' own, `btn-large`), the primary on top — the way the
    app's own primary actions sit under a thumb, and how "Import from Evernote or Notion"
