@@ -322,3 +322,56 @@ describe('links in what the read tools return', () => {
     expect(result.notebooks[0].url).toBe(`${APP_URL}/notes?notebook=Watch+Later`);
   });
 });
+
+describe('file summaries on get_note and list_notes (MAK-172)', () => {
+  const note = { id: 'n-1', title: 'Receipt', createdAt: 1, updatedAt: 2, tags: [], notebook: 'Receipts', notebookId: 'nb-1' };
+  const read = { filename: 'receipt.jpg', contentType: 'image/jpeg', read: 'vision', summary: 'Acme Diner receipt — Receipt: $17.27' };
+  const waiting = { filename: 'scan.pdf', contentType: 'application/pdf', read: 'pending', summary: null };
+
+  it('gives every file on get_note its status and summary', async () => {
+    const repo = {
+      getWithFiles: async () => ({ note: { ...note, body: '' }, files: [{ ...read, size: 9 }, { ...waiting, size: 4 }] }),
+    } as unknown as NotesRepo;
+    const result = answer(await collect(repo).get('get_note')!({ noteId: 'n-1' }));
+    expect(result.attachments.map((f: { read: string; summary: string | null }) => [f.read, f.summary])).toEqual([
+      ['vision', read.summary],
+      ['pending', null],
+    ]);
+  });
+
+  function listRepo(summaries: Record<string, unknown[]> | undefined) {
+    const asked: Array<Record<string, unknown> | undefined> = [];
+    const repo = {
+      listPage: async (_list: unknown, _count: unknown, opts?: Record<string, unknown>) => {
+        asked.push(opts);
+        return { items: [note, { ...note, id: 'n-2' }], total: 2, ...(opts?.['summaries'] ? { summaries } : {}) };
+      },
+    } as unknown as NotesRepo;
+    return { asked, list: collect(repo).get('list_notes')! };
+  }
+
+  it('lists each note\'s files when asked, an empty list for a note with none, and nothing otherwise', async () => {
+    const { asked, list } = listRepo({ 'n-1': [read, waiting] });
+
+    const plain = answer(await list({ limit: 25 }));
+    expect(asked[0]?.['summaries']).toBeFalsy();
+    expect(plain.notes[0].attachments).toBeUndefined();
+
+    const withFiles = answer(await list({ limit: 25, attachmentSummaries: true }));
+    expect(asked[1]).toEqual({ summaries: true });
+    // Filename, status and summary only: the content type is get_note's.
+    expect(withFiles.notes[0].attachments).toEqual([
+      { filename: 'receipt.jpg', read: 'vision', summary: read.summary },
+      { filename: 'scan.pdf', read: 'pending', summary: null },
+    ]);
+    expect(withFiles.notes[1].attachments).toEqual([]);
+  });
+
+  it('refuses summaries on a compact page, which is for hundreds of ids', async () => {
+    const { asked, list } = listRepo({});
+    const result = await list({ limit: 500, compact: true, attachmentSummaries: true });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toMatch(/compact/);
+    expect(asked).toEqual([]);
+  });
+});

@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import {
   DEFAULT_NOTE_SORT,
+  type AttachmentInfo,
   type FieldDef,
   type FieldScale,
   type FieldType,
@@ -13,7 +14,7 @@ import {
   type NotebookDefinition,
   type SnapshotPage,
 } from '@unbent/shared';
-import { AttachmentsStore } from './attachments.js';
+import { AttachmentsStore, type FileSummary } from './attachments.js';
 import { cutByBytes, Feed, FEED_META, FEED_PAGE_BYTES, lastWordPerEntity, type FeedRow } from './feed.js';
 import { appliedMigrations, migrate } from './migrate.js';
 import { NotesStore, type CountOptions, type ListOptions, type SearchFilters } from './notes.js';
@@ -588,11 +589,17 @@ export class UserStore extends DurableObject<StoreEnv> {
 
   // --- Composites: what a route asks, in one request ------------------------------------
 
-  /** `GET /notes`: the page and, on the first page, the total. */
-  listPage(list: ListOptions, count: CountOptions | null) {
+  /**
+   * `GET /notes` and MCP's `list_notes`: the page and, on the first page, the total. With
+   * `summaries`, also a line per file of each note on the page (`summariesForNotes`), keyed
+   * by note id, in the same call — `list_notes` asks for it when an assistant is filling
+   * fields from the files.
+   */
+  listPage(list: ListOptions, count: CountOptions | null, opts: { summaries?: boolean } = {}) {
     this.ready();
     return this.sql.tx(() => {
       const items = this.notes.list(list);
+      const withFiles = opts.summaries ? items.filter((n) => n.attachments?.length).map((n) => n.id) : [];
       // A first page that came up short has seen every match, so it is its own total.
       // That saves the count where it costs most: a filter no stored number answers — a
       // field value, a date range, notes with no tag — counts by walking every note in
@@ -600,7 +607,11 @@ export class UserStore extends DurableObject<StoreEnv> {
       // Both callers pass the count the page's own filters; one that counted something
       // else beside a page would have to stop taking this path.
       const whole = !list.cursor && items.length < list.limit;
-      return { items, total: count ? (whole ? items.length : this.notes.count(count)) : null };
+      return {
+        items,
+        total: count ? (whole ? items.length : this.notes.count(count)) : null,
+        ...(opts.summaries ? { summaries: this.attachments.summariesForNotes(withFiles) } : {}),
+      };
     });
   }
 
@@ -670,13 +681,25 @@ export class UserStore extends DurableObject<StoreEnv> {
     });
   }
 
-  /** `GET /notes/:id` with its files, as the MCP `get_note` tool wants them. */
-  getWithFiles(id: string): { note: Note; files: ReturnType<AttachmentsStore['listForNote']> } | null {
+  /**
+   * `GET /notes/:id` with its files, as the MCP `get_note` tool wants them: each with its
+   * size, and what it says in brief (`summariesForNotes`), so an assistant learns what a
+   * file is without a `get_attachment_text` per file.
+   */
+  getWithFiles(id: string): { note: Note; files: Array<AttachmentInfo & FileSummary> } | null {
     this.ready();
     return this.sql.tx(() => {
       const note = this.notes.get(id);
       if (!note) return null;
-      return { note, files: this.attachments.listForNote(id) };
+      const summaries = new Map((this.attachments.summariesForNotes([id])[id] ?? []).map((s) => [s.filename, s]));
+      return {
+        note,
+        files: this.attachments.listForNote(id).map((f) => ({
+          ...f,
+          read: summaries.get(f.filename)?.read ?? 'none',
+          summary: summaries.get(f.filename)?.summary ?? null,
+        })),
+      };
     });
   }
 

@@ -65,6 +65,21 @@ const LIST_DATE_RANGE =
 const FULL_LIST_LIMIT = 100;
 const COMPACT_LIST_LIMIT = MAX_BATCH_NOTES;
 
+/**
+ * What `read` and `summary` mean on a file, said once for `get_note` and `list_notes`
+ * (MAK-172). The statuses are spelled out because "no summary" has two causes that call
+ * for different moves — ask for the read (`pending`) or stop asking (`none`) — and a
+ * model left to guess would call get_attachment_text on every one to find out which.
+ */
+const ATTACHMENT_SUMMARY =
+  'read says how the file\'s text came to be: "vision" when a vision model read it, and ' +
+  'summary is its name and a line on what it shows (amounts, dates, who it is from); ' +
+  '"text" from a PDF\'s text layer, and summary is the opening of that text; "pending" ' +
+  'when it has not been read yet (read_attachment reads it now); "none" when it was read ' +
+  'and nothing was found, or it is a kind of file nothing reads. summary is null unless ' +
+  'read is "vision" or "text", and is a few hundred characters at most: get_attachment_text ' +
+  'has the whole text.';
+
 const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD').optional();
 
 /**
@@ -206,9 +221,12 @@ export function registerReadTools(
         'List notes without searching, newest first by default. Use this to browse, to page ' +
         'through a notebook or tag, to narrow a notebook by its custom field values, or — with ' +
         'sort "updated" and a from date — to find what changed recently. Returns an excerpt ' +
-        'per note rather than the body; call get_note for that. When the response carries a ' +
-        'cursor there are more notes, and passing it back returns the next page. The total ' +
-        'comes with the first page only: a page asked for with a cursor does not repeat it.',
+        'per note rather than the body; call get_note for that. With attachmentSummaries, ' +
+        'each note also lists its files with a short summary of each, which is usually enough ' +
+        'to fill a notebook\'s fields from its scans without reading every file. When the ' +
+        'response carries a cursor there are more notes, and passing it back returns the next ' +
+        'page. The total comes with the first page only: a page asked for with a cursor does ' +
+        'not repeat it.',
       inputSchema: z.object({
         limit: z
           .number()
@@ -226,6 +244,14 @@ export function registerReadTools(
               `or excerpt, and up to ${COMPACT_LIST_LIMIT} a page. For collecting the ids of a ` +
               'large set to pass to move_notes, update_note_tags or update_note_fields, while ' +
               'still seeing what each note is and where it is filed.',
+          ),
+        attachmentSummaries: z
+          .boolean()
+          .default(false)
+          .describe(
+            'Also list each note\'s files as attachments: [{filename, read, summary}]. ' +
+              ATTACHMENT_SUMMARY +
+              ' Not with compact.',
           ),
         tag: tagFilter,
         notebook: notebookFilter,
@@ -252,7 +278,14 @@ export function registerReadTools(
       }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async ({ limit, cursor, compact, tag, notebook, fields, untagged, sort, order, from, to, trashed }) => {
+    async ({ limit, cursor, compact, attachmentSummaries, tag, notebook, fields, untagged, sort, order, from, to, trashed }) => {
+      if (attachmentSummaries && compact) {
+        return toolError(
+          'attachmentSummaries cannot be combined with compact: a compact page is up to ' +
+            `${COMPACT_LIST_LIMIT} notes, and a summary per file of each is no longer compact. ` +
+            `Page through with compact false, up to ${FULL_LIST_LIMIT} at a time.`,
+        );
+      }
       if (limit > FULL_LIST_LIMIT && !compact) {
         return toolError(
           `limit is at most ${FULL_LIST_LIMIT} unless compact is true, which allows ${COMPACT_LIST_LIMIT}.`,
@@ -267,7 +300,7 @@ export function registerReadTools(
         if ('error' in resolved) return toolError(resolved.error);
         fieldFilters = resolved.filters;
       }
-      const { items, total } = await notes.listPage(
+      const { items, total, summaries } = await notes.listPage(
         { limit, cursor, tags: tag, notebook, fields: fieldFilters, untagged, compact, sort, order, from, to, trashed },
         // Counted once, on the first page. A count that no stored number answers — a field
         // filter, a date range, `untagged` — reads every note in scope, and repeating it on
@@ -275,6 +308,7 @@ export function registerReadTools(
         // notes of a three-thousand-note account read 48,000 rows, 45,000 of them counting.
         // The answer cannot have changed in a way the caller could use mid-walk anyway.
         cursor ? null : { tags: tag, notebook, fields: fieldFilters, untagged, trashed, from, to, sort },
+        { summaries: attachmentSummaries },
       );
       // The same helper the HTTP route uses, so a cursor means the same thing on both and
       // cannot disagree with the sort that produced the page.
@@ -288,7 +322,20 @@ export function registerReadTools(
             // where a link per row would double the page, and the batch's own answer
             // carries the link of every note it changed.
             items.map((n) => ({ id: n.id, title: n.title, notebook: n.notebook ?? null, tags: n.tags }))
-          : items.map((n) => noteRef(n, links)),
+          : items.map((n) => ({
+              ...noteRef(n, links),
+              // Every note gets the key when it was asked for, an empty list included, so
+              // "no files" is an answer rather than a missing field.
+              ...(summaries
+                ? {
+                    attachments: (summaries[n.id] ?? []).map((f) => ({
+                      filename: f.filename,
+                      read: f.read,
+                      summary: f.summary,
+                    })),
+                  }
+                : {}),
+            })),
       });
     },
   );
@@ -299,9 +346,11 @@ export function registerReadTools(
       title: 'Get a note',
       description:
         'Read one note in full: its Markdown body, tags, notebook and timestamps, plus a list ' +
-        'of its attachments, each with the exact Markdown that shows it in the body. ' +
-        'Attachment bytes are not included — use get_attachment_text to read what a PDF ' +
-        'says, and add_attachment to give the note a new file.',
+        'of its attachments, each with the exact Markdown that shows it in the body and a ' +
+        'short summary of what it is. ' +
+        ATTACHMENT_SUMMARY +
+        ' Attachment bytes are not included — use get_attachment_text for the whole of what a ' +
+        'file says, and add_attachment to give the note a new file.',
       inputSchema: z.object({ noteId: z.string().uuid() }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
@@ -327,6 +376,8 @@ export function registerReadTools(
             markdown: formatAttachmentMarkdown(f.filename, path, {
               image: f.contentType.startsWith('image/'),
             }),
+            read: f.read,
+            summary: f.summary,
           };
         }),
       });

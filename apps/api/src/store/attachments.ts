@@ -103,6 +103,69 @@ const toPending = (r: PendingRow): PendingFile => ({
   r2Key: r.r2_key,
 });
 
+/**
+ * How a file's text came to be, as an assistant is told it beside the file (MAK-172):
+ * `vision` when the language model read it, `text` from a PDF's text layer, `pending` while
+ * a reader has still to look at it, and `none` when one looked and found nothing, or the
+ * file is of a kind nothing here reads.
+ */
+export type FileRead = 'vision' | 'text' | 'pending' | 'none';
+
+/** One file of a note, with what it says in brief. `summary` is null unless `read` is `vision` or `text`. */
+export interface FileSummary {
+  filename: string;
+  contentType: string;
+  read: FileRead;
+  summary: string | null;
+}
+
+/**
+ * The most of a file's text a summary is cut from, and the most a summary may be.
+ *
+ * Read with `substr` in the query, so a scan of half a million characters never leaves
+ * the database whole to be summarised: what crosses into the object is this much a file.
+ * Six hundred holds the vision reading's name and description line with room over; the
+ * summary is then cut to a few hundred, which is what keeps a page of a hundred notes
+ * with a few files each a read rather than an export.
+ */
+const SUMMARY_SOURCE_CHARS = 600;
+const VISION_SUMMARY_CHARS = 400;
+const TEXT_SUMMARY_CHARS = 280;
+
+/** The PDF and picture types a reader here takes; anything else is never read. */
+const READ_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+
+const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s);
+
+/**
+ * A file's summary from the head of its text, as `summariesForNotes` reads it.
+ *
+ * The vision reading already has one: `formatReading` writes the file's name on the first
+ * line and what it is and shows on the second, then a blank line, then the transcription.
+ * Everything before that blank line is the summary — "Sushi A Go Go receipt — Receipt:
+ * lunch for two, $17.27 by card" — and the transcription is what get_attachment_text is
+ * for. A text layer has no such head, so its summary is the opening of the text with the
+ * line breaks folded: on a receipt or a bill that is usually the sender and the date, and
+ * an excerpt is still better than making the caller fetch the file to learn what it is.
+ *
+ * The statuses follow the readers' own rules (`visionPendingHalves`): no row at all is a
+ * file not yet read, if it is a kind anything reads; an empty row from the text layer is
+ * a scan the model has still to be asked about; an empty row from the model is final.
+ */
+export function summarize(contentType: string, head: string | null, readBy: string | null): Pick<FileSummary, 'read' | 'summary'> {
+  if (head === null) return { read: READ_TYPES.has(contentType) ? 'pending' : 'none', summary: null };
+  if (head.trim() === '') {
+    const waiting = readBy !== 'vision' && contentType === 'application/pdf';
+    return { read: waiting ? 'pending' : 'none', summary: null };
+  }
+  if (readBy === 'vision') {
+    const lead = head.trim().split(/\n\s*\n/)[0]!;
+    const lines = lead.split('\n').map((l) => l.trim()).filter(Boolean);
+    return { read: 'vision', summary: clip(lines.join(' — '), VISION_SUMMARY_CHARS) };
+  }
+  return { read: 'text', summary: clip(head.replace(/\s+/g, ' ').trim(), TEXT_SUMMARY_CHARS) };
+}
+
 /** What one answer of `textsById` carries at most; a quarter of a feed page, since it is asked for in the background. */
 export const TEXT_PAGE_BYTES = 1024 * 1024;
 
@@ -528,6 +591,39 @@ export class AttachmentsStore {
         text: r.text,
         readBy: r.read_by === 'vision' ? 'vision' : null,
       }));
+  }
+
+  /**
+   * Every file of the given notes with what it says in brief (`summarize`), oldest first
+   * within a note, for MCP's `get_note` and `list_notes` (MAK-172). Filling a notebook's
+   * fields from its scans took a `get_note` and a `get_attachment_text` per note; with a
+   * line per file on the list, a page of a hundred receipts shows its merchants, dates and
+   * totals in one call.
+   *
+   * Only the head of each text is read (`SUMMARY_SOURCE_CHARS`), never the text whole.
+   * Through `idx_attachments_note` by note, then the text by its key: two rows a file and
+   * nothing that grows with the account. The ids go in as one JSON array for the reason
+   * `textsForNotes` gives.
+   */
+  summariesForNotes(noteIds: string[]): Record<string, FileSummary[]> {
+    const out: Record<string, FileSummary[]> = {};
+    if (noteIds.length === 0) return out;
+    for (const r of this.sql.exec<{ note_id: string; filename: string; content_type: string; head: string | null; read_by: string | null }>(
+      `SELECT a.note_id, a.filename, a.content_type, substr(t.text, 1, ?2) AS head, t.read_by
+         FROM attachments a
+         LEFT JOIN attachment_text t ON t.attachment_id = a.id
+        WHERE a.note_id IN (SELECT value FROM json_each(?1))
+        ORDER BY a.note_id, a.created_at, a.filename`,
+      JSON.stringify(noteIds),
+      SUMMARY_SOURCE_CHARS,
+    )) {
+      (out[r.note_id] ??= []).push({
+        filename: r.filename,
+        contentType: r.content_type,
+        ...summarize(r.content_type, r.head, r.read_by),
+      });
+    }
+    return out;
   }
 
   /**

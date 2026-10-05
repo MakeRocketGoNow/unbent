@@ -149,6 +149,58 @@ describe('attachments', () => {
     expect((await stub.needingVision(1)).length).toBe(1);
   });
 
+  it('says what each file is in brief, on a note and on a page of notes', async () => {
+    const { stub } = freshStore('summaries');
+    await stub.create({ id: 'n1', title: 'T', body: '', tags: [] });
+    await stub.create({ id: 'n2', title: 'T', body: '', tags: [] });
+    await stub.create({ id: 'bare', title: 'T', body: '', tags: [] });
+    // A reading as `formatReading` writes it: name, what it is, a blank line, the text.
+    await stub.recordAttachment(file('n1', { id: 'pic', filename: 'receipt.jpg', contentType: 'image/jpeg' }));
+    await stub.recordText({
+      attachmentId: 'pic',
+      noteId: 'n1',
+      filename: 'receipt.jpg',
+      text: 'Acme Diner receipt\nReceipt: lunch for two on 2026-09-21, $17.27 by card.\n\nACME DINER\n123 Main St\nTOTAL 17.27',
+      readBy: 'vision',
+    });
+    await stub.recordAttachment(file('n1', { id: 'layer', filename: 'bill.pdf' }));
+    await stub.recordText({ attachmentId: 'layer', noteId: 'n1', filename: 'bill.pdf', text: `Globex Utilities\n\n  Statement  ${'x'.repeat(2000)}` });
+    await stub.recordAttachment(file('n2', { id: 'unread', filename: 'unread.pdf' }));
+    await stub.recordAttachment(file('n2', { id: 'empty', filename: 'empty.pdf' }));
+    await stub.recordText({ attachmentId: 'empty', noteId: 'n2', filename: 'empty.pdf', text: '' });
+    await stub.recordAttachment(file('n2', { id: 'seen', filename: 'seen.pdf' }));
+    await stub.recordText({ attachmentId: 'seen', noteId: 'n2', filename: 'seen.pdf', text: '', readBy: 'vision' });
+    await stub.recordAttachment(file('n2', { id: 'other', filename: 'notes.txt', contentType: 'text/plain' }));
+
+    const one = await stub.getWithFiles('n1');
+    expect(one!.files.find((f) => f.filename === 'receipt.jpg')).toEqual({
+      filename: 'receipt.jpg',
+      contentType: 'image/jpeg',
+      size: 3,
+      read: 'vision',
+      summary: 'Acme Diner receipt — Receipt: lunch for two on 2026-09-21, $17.27 by card.',
+    });
+    // A text layer has no name or description, so its summary is its opening, folded
+    // onto one line and cut: never the whole text.
+    const layer = one!.files.find((f) => f.filename === 'bill.pdf')!;
+    expect(layer.read).toBe('text');
+    expect(layer.summary).toMatch(/^Globex Utilities Statement x+…$/);
+    expect(layer.summary!.length).toBeLessThanOrEqual(280);
+
+    const page = await stub.listPage({ limit: 10 }, null, { summaries: true });
+    expect(page.summaries!['n2']!.map((f) => [f.filename, f.read, f.summary])).toEqual([
+      ['unread.pdf', 'pending', null],
+      // The text layer found nothing and the model has not been asked: still waiting.
+      ['empty.pdf', 'pending', null],
+      ['seen.pdf', 'none', null],
+      ['notes.txt', 'none', null],
+    ]);
+    expect(page.summaries!['n1']!.map((f) => f.read)).toEqual(['vision', 'text']);
+    // Nothing is asked about a note with no files, and nothing at all unless asked.
+    expect(page.summaries!['bare']).toBeUndefined();
+    expect((await stub.listPage({ limit: 10 }, null)).summaries).toBeUndefined();
+  });
+
   it('pages every blob key by rowid', async () => {
     const { stub } = freshStore('keys');
     await stub.create({ id: 'n1', title: 'T', body: '', tags: [] });

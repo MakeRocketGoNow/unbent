@@ -20,6 +20,7 @@ import type {
 } from '@unbent/shared';
 import { StoreRepo } from './store-client.js';
 import type { AttachmentInfo } from '@unbent/shared';
+import type { FileSummary } from '../store/attachments.js';
 import type { CountOptions, ListOptions, SearchFilters } from '../store/notes.js';
 import {
   keysOfDeletedNotes,
@@ -35,7 +36,7 @@ import {
  * queries from the same code, and nothing importing them had to move.
  */
 export { keysOfDeletedNotes, nextCursor, toFtsQuery, type ExportedNote };
-export type { CountOptions, ListOptions, SearchFilters };
+export type { CountOptions, FileSummary, ListOptions, SearchFilters };
 
 /**
  * All note access for one user, answered by that user's store.
@@ -367,9 +368,16 @@ export class NotesRepo extends StoreRepo {
 
   // --- Composites ----------------------------------------------------------------------
 
-  /** `GET /notes`: the page and, when `count` is given, the total, in one call. */
-  listPage(list: ListOptions, count: CountOptions | null): Promise<{ items: NoteSummary[]; total: number | null }> {
-    return this.call((s) => s.listPage(list, count));
+  /**
+   * `GET /notes`: the page and, when `count` is given, the total, in one call; with
+   * `summaries`, a line per file of each note too (`UserStore.listPage`).
+   */
+  listPage(
+    list: ListOptions,
+    count: CountOptions | null,
+    opts: { summaries?: boolean } = {},
+  ): Promise<{ items: NoteSummary[]; total: number | null; summaries?: Record<string, FileSummary[]> }> {
+    return this.call((s) => s.listPage(list, count, opts));
   }
 
   /**
@@ -387,7 +395,7 @@ export class NotesRepo extends StoreRepo {
   }
 
   /** A note with its files, for MCP's `get_note`. Null when there is no such live note. */
-  getWithFiles(id: string): Promise<{ note: Note; files: AttachmentInfo[] } | null> {
+  getWithFiles(id: string): Promise<{ note: Note; files: Array<AttachmentInfo & FileSummary> } | null> {
     return this.call((s) => s.getWithFiles(id));
   }
 
