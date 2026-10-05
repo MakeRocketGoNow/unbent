@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { installLaunchQueue, launchPath } from './launch-queue.js';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { installLaunchQueue, launchPath, START_URL } from './launch-queue.js';
 
 const ORIGIN = 'https://app.example';
 const NOTE = '00000000-0000-4000-8000-000000000001';
@@ -72,6 +74,21 @@ describe('installLaunchQueue', () => {
     // A later launch to the same address is a click, and is followed.
     await launch({ targetURL: window.location.href });
     expect(handlers.link).toHaveBeenCalledTimes(1);
+  });
+
+  it("brings the window forward, and keeps its note, when the app's own launcher opens it", async () => {
+    const launch = stubQueue();
+    const handlers = install(`/notes/${NOTE}`);
+    await launch({ targetURL: at('/') }); // the cold launch, out of the way
+    await launch({ targetURL: at(START_URL) });
+    expect(handlers.link).not.toHaveBeenCalled();
+    await launch({ targetURL: at(`${START_URL}?view=table`) });
+    expect(handlers.link).toHaveBeenCalledWith(`${START_URL}?view=table`);
+  });
+
+  it('knows the start address the manifest launches with', () => {
+    const manifest = JSON.parse(readFileSync(resolve(__dirname, '../public/manifest.webmanifest'), 'utf8'));
+    expect(manifest.start_url).toBe(START_URL);
   });
 
   it('skips a link to the page already showing', async () => {

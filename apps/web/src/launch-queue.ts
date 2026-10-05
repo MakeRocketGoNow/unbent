@@ -36,6 +36,17 @@ declare global {
   }
 }
 
+/**
+ * The manifest's `start_url`. A launch from the app's own shortcut, Start menu or
+ * launcher into an open window arrives with this address and no files, and means "bring
+ * the app forward", not "go to the list": followed, every re-launch would close the note
+ * the window was on. So it is ignored, and the cost is that a clicked link to the bare
+ * list — `/notes`, nothing after it — only brings the window forward too. Any other
+ * address of the list, `/notes?view=table` say, is followed. `launch-queue.test.ts` holds
+ * this to the manifest.
+ */
+export const START_URL = '/notes';
+
 export interface LaunchHandlers {
   /** The files of one launch, already read; becomes a note. */
   files: (files: File[]) => Promise<void>;
@@ -75,7 +86,7 @@ export function installLaunchQueue(handlers: LaunchHandlers): void {
     }
     if (!params.targetURL || (cold && params.targetURL === loadedAt)) return;
     const path = launchPath(params.targetURL, window.location.origin);
-    if (path === undefined || path === handlers.showing()) return;
+    if (path === undefined || path === START_URL || path === handlers.showing()) return;
     handlers.link(path);
   });
 }
