@@ -23,9 +23,9 @@ interface NotebookMissingProps {
  * and the state replaces the very list that is about to fill. Never for the inbox, which
  * is a filter rather than a notebook. Names compare as the list's filter and the server
  * compare them, without case (`sameNotebookName`): `?notebook=work` lists Work's notes,
- * so it must not also say there is no Work. The layout reads this too, to put the state in the list's place and to
- * withhold the header's count, which would otherwise be "0 notes" of a notebook that
- * does not exist.
+ * so it must not also say there is no Work. The layout reads this too, to put the
+ * state in the list's place and to withhold the header's count, which would otherwise
+ * be "0 notes" of a notebook that does not exist.
  */
 export function isNotebookMissing(
   notebook: string | undefined,
