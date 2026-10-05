@@ -139,13 +139,6 @@ function sameName(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
-/** Whether `name` is `base` or `base` with a number after it, as `freeName` makes them. */
-function isNumberedFrom(name: string, base: string): boolean {
-  const n = name.trim().toLowerCase();
-  const b = base.trim().toLowerCase();
-  return n === b || (n.startsWith(`${b} `) && /^\d+$/.test(n.slice(b.length + 1)));
-}
-
 /** The next name not taken: `Receipts 2`, `Receipts 3`… compared the way the server does. */
 export function freeName(name: string, existing: readonly { name: string }[]): string {
   const taken = new Set(existing.map((n) => n.name.trim().toLowerCase()));
@@ -184,7 +177,13 @@ function TemplatePreview({
    * do not change which notebook it is about.
    */
   const clash = known.find((n) => sameName(n.name, template.name))?.name ?? null;
-  const [name, setName] = useState(() => freeName(template.name, existing));
+  /*
+   * The name the preview itself put in the field. A refusal of that one numbers on from
+   * the template's name; a refusal of one the person typed numbers from what they typed,
+   * even when it happens to end in a number of its own, like "Receipts 2024".
+   */
+  const offered = useRef<string | null>(null);
+  const [name, setName] = useState(() => (offered.current = freeName(template.name, existing)));
   const [busy, setBusy] = useState(false);
   /*
    * Making a notebook is a request (see `applyNotebookTemplate`), so Create and the add
@@ -243,8 +242,9 @@ function TemplatePreview({
          */
         onApplied();
         const now = [...known, { name: trimmed }];
-        const base = isNumberedFrom(trimmed, template.name) ? template.name : trimmed;
+        const base = offered.current !== null && sameName(trimmed, offered.current) ? template.name : trimmed;
         const next = freeName(base, now);
+        offered.current = next;
         setRefused((r) => [...r, { name: trimmed }]);
         setRenamed({ from: trimmed, to: next });
         setName(next);

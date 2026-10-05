@@ -113,6 +113,16 @@ describe('NotebookChooser', () => {
     expect(screen.getByRole('button', { name: 'Add these fields to Receipts' })).toBeTruthy();
   });
 
+  it('numbers a refused name the person typed from what they typed, number and all', async () => {
+    vi.mocked(actions.applyNotebookTemplate).mockResolvedValueOnce('taken');
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: /^Receipts/ }));
+    fireEvent.change(screen.getByLabelText('Notebook name'), { target: { value: 'Receipts 2024' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create notebook' }));
+    await screen.findByText(/“Receipts 2024” was made on another device/);
+    expect((screen.getByLabelText('Notebook name') as HTMLInputElement).value).toBe('Receipts 2024 2');
+  });
+
   it('offers adding to a notebook the list brings in after the preview opened', () => {
     const props = { onBlank: vi.fn(), onClose: vi.fn(), onApplied: vi.fn(), onDone: vi.fn() };
     const { rerender } = render(<NotebookChooser existing={[]} {...props} />);
