@@ -141,6 +141,23 @@ describe('vision', () => {
     expect(body.output_config.effort).toBe('low');
   });
 
+  it('gives a title twenty seconds and a reading two minutes', async () => {
+    // The press waits for the title, and Jev's pick stands in for one that never comes;
+    // a long scan has no stand-in and takes as long as it takes (MAK-175).
+    const timeout = vi.spyOn(AbortSignal, 'timeout');
+    try {
+      const titling = llmFrom(env, answering(200, message(JSON.stringify({ title: 'x' }))) as unknown as typeof fetch);
+      await titling.title({ title: '', body: 'x', attachments: [] });
+      expect(timeout).toHaveBeenLastCalledWith(20_000);
+
+      const reader = llmFrom(env, answering(200, message(JSON.stringify(said))) as unknown as typeof fetch);
+      await reader.read(photo);
+      expect(timeout).toHaveBeenLastCalledWith(120_000);
+    } finally {
+      timeout.mockRestore();
+    }
+  });
+
   it('sends a model the operator named the plain request', async () => {
     const fetchImpl = answering(200, message(JSON.stringify({ title: 'x' })));
     const llm = llmFrom({ ...env, ANTHROPIC_MODEL: 'claude-sonnet-5' }, fetchImpl as unknown as typeof fetch);

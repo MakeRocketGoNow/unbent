@@ -69,7 +69,16 @@ const MAX_TITLE_TOKENS = 1024;
 /** A long scan takes a while to read; this is for an outage, not a slow page. */
 const TIMEOUT_MS = 120_000;
 /**
- * The text fields' call is shorter. It starts only once Jev has chosen the notebook, so
+ * A title is one line, and the press that asked for it is waiting. The call runs beside
+ * both of Jev's rounds, but the press answers only once it has settled, so under the
+ * reading's two minutes a stuck model held the notebook, tags and fields Jev had already
+ * answered for as long (MAK-175). Giving up costs only the better title: Jev's pick of a
+ * line stands. Per attempt, so with the one retry the worst case is twice this and the
+ * pause.
+ */
+const TITLE_TIMEOUT_MS = 20_000;
+/**
+ * The text fields' call is as short. It starts only once Jev has chosen the notebook, so
  * unlike the title it overlaps one round rather than two, and the press waits for it.
  * Giving up costs only the written values, which leaves Jev's picks standing.
  */
@@ -408,7 +417,7 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
           format: { type: 'json_schema', schema: TITLE_SCHEMA },
         },
       });
-      const text = await ask(body);
+      const text = await ask(body, TITLE_TIMEOUT_MS);
       if (!text) return null;
       try {
         const result = titled.safeParse(JSON.parse(text));
