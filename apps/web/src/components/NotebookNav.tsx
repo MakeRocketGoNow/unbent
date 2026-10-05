@@ -254,9 +254,11 @@ export function NotebookNav({
             Making another notebook, as the last row of the notebooks rather than a control
             on the floor: it is about the list above it, and Keep ends its labels the same
             way. It navigates away, which is why it never calls `onNavigate`: a drawer is
-            unmounted by the route change and has nothing left to close.
+            unmounted by the route change and has nothing left to close. `?new=1` opens
+            the chooser of Blank and templates there, rather than leaving the person to
+            find the create row on a page they did not ask for.
         */}
-        <Link to="/settings/notebooks" className="drawer-item drawer-new">
+        <Link to="/settings/notebooks" search={{ new: 1 }} className="drawer-item drawer-new">
           <PlusRowIcon />
           <span className="drawer-item-label">New notebook</span>
         </Link>

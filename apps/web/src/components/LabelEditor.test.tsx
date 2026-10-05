@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import { useState } from 'react';
 import { render, cleanup, fireEvent, waitFor, screen } from '@testing-library/react';
 import {
   createRootRoute,
@@ -219,5 +220,70 @@ describe('LabelEditor navigational rows', () => {
     const { onDelete } = linkHarness();
     fireEvent.click(await screen.findByLabelText('Delete Receipts'));
     expect(onDelete).toHaveBeenCalledWith(ITEMS[1]);
+  });
+});
+
+describe('LabelEditor with a chooser', () => {
+  afterEach(cleanup);
+
+  /** A caller holding the chooser's open state, the way `Settings` does. */
+  function chooserHarness(items: LabelItem[] | null, initiallyOpen = false) {
+    const onCreate = vi.fn(async () => true);
+    function Host() {
+      const [open, setOpen] = useState(initiallyOpen);
+      return (
+        <LabelEditor
+          kind="notebook"
+          items={items}
+          busy={false}
+          onCreate={onCreate}
+          onRename={async () => true}
+          onDelete={() => {}}
+          chooser={{
+            open,
+            onOpenChange: setOpen,
+            render: (startBlank) => (
+              <button type="button" onClick={startBlank}>
+                Blank
+              </button>
+            ),
+          }}
+          emptyText="None."
+          hint={items?.length ? 'A hint.' : null}
+        />
+      );
+    }
+    render(<Host />);
+    return { onCreate };
+  }
+
+  it('opens the chooser from the create row, and closes it from the same row', () => {
+    chooserHarness(ITEMS);
+    const row = screen.getByRole('button', { name: 'Create new notebook' });
+    expect(row.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(row);
+    expect(row.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('button', { name: 'Blank' })).toBeTruthy();
+    fireEvent.click(row);
+    expect(screen.queryByRole('button', { name: 'Blank' })).toBeNull();
+  });
+
+  it('turns Blank into the name field creating always was', async () => {
+    const { onCreate } = chooserHarness(ITEMS, true);
+    fireEvent.click(screen.getByRole('button', { name: 'Blank' }));
+    expect(screen.queryByRole('button', { name: 'Blank' })).toBeNull();
+    const field = screen.getByLabelText('New notebook name');
+    expect(document.activeElement).toBe(field);
+    fireEvent.change(field, { target: { value: 'Coupons 2' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith('Coupons 2'));
+  });
+
+  it('says neither "none yet" nor the hint while an empty list has its chooser open', () => {
+    chooserHarness([], true);
+    expect(screen.queryByText('None.')).toBeNull();
+    expect(screen.queryByText('A hint.')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.getByText('None.')).toBeTruthy();
   });
 });

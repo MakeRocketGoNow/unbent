@@ -14,6 +14,7 @@ import type {
   NoteRevisionSummary,
   NoteSort,
   NoteSummary,
+  NotebookDefinition,
   NotebookSummary,
   RestoredNote,
   SearchResult,
@@ -530,6 +531,28 @@ export async function updateNotebook(
 
 export async function renameNotebook(id: string, name: string): Promise<void> {
   await updateNotebook(id, { name });
+}
+
+/** What applying a notebook definition could not do, by field; see `importNotebook` on the server. */
+export type NotebookImportSkip = { name: string; reason: string; kind?: 'emoji' | 'purpose' };
+
+/**
+ * Applies a notebook definition — a template's, here — through the archive import's own
+ * endpoint. `create` makes a new notebook or answers `'taken'` with nothing written;
+ * without it the definition is added to a notebook of that name, which is what the
+ * chooser's "Add these fields to …" asks for by name.
+ */
+export async function importNotebook(
+  definition: NotebookDefinition,
+  { create }: { create: boolean },
+): Promise<{ id: string; skipped: NotebookImportSkip[] } | 'taken'> {
+  const res = await request(`/api/import/notebook${create ? '?create=1' : ''}`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(definition),
+  });
+  if (res.status === 409) return 'taken';
+  return json(res);
 }
 
 /**

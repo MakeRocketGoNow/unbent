@@ -60,7 +60,20 @@ interface LabelEditorProps {
   editingId?: string | null;
   /** The find field, offered once a list is long enough to need one. */
   findable?: boolean;
+  /**
+   * What the create row opens instead of going straight to a name field: the notebook
+   * list's chooser of Blank and templates (`NotebookChooser`). Given `startBlank`, which
+   * closes it and turns the row into the name field it always was, so Blank ends where
+   * creating used to begin. Its open state is the caller's, because the caller opens it
+   * from outside the list: from the rail's New notebook, and on an empty list.
+   */
+  chooser?: {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    render: (startBlank: () => void) => ReactNode;
+  };
   emptyText: string;
+  /** Under the list, once it has arrived. Null says nothing, for a list with nothing to describe yet. */
   hint: ReactNode;
 }
 
@@ -101,6 +114,7 @@ export function LabelEditor({
   renderNameCount,
   editingId,
   findable = false,
+  chooser,
   emptyText,
   hint,
 }: LabelEditorProps) {
@@ -118,8 +132,17 @@ export function LabelEditor({
 
   const startRename = (item: LabelItem) => {
     setCreating(null);
+    chooser?.onOpenChange(false);
     setEditing({ id: item.id, value: item.name });
   };
+
+  const startCreate = () => {
+    setEditing(null);
+    chooser?.onOpenChange(false);
+    setCreating('');
+  };
+
+  const chooserOpen = Boolean(chooser?.open) && creating === null;
 
   const commitRename = async (item: LabelItem) => {
     const value = editing?.value.trim() ?? '';
@@ -192,23 +215,40 @@ export function LabelEditor({
               </button>
             </li>
           ) : (
-            <li className="label-row label-create">
+            <li className={chooserOpen ? 'label-row label-create editing' : 'label-row label-create'}>
               <span className="label-slot" aria-hidden="true">
                 <PlusRowIcon />
               </span>
+              {/* With a chooser the row opens it, and says so; the same row closes it. */}
               <button
                 type="button"
                 className="label-name"
                 disabled={busy}
+                aria-expanded={chooser ? chooserOpen : undefined}
                 onClick={() => {
+                  if (!chooser) return startCreate();
                   setEditing(null);
-                  setCreating('');
+                  chooser.onOpenChange(!chooserOpen);
                 }}
               >
                 Create new {noun}
               </button>
+              {/* A way out drawn where the check sits on an editing row, so the open
+                  chooser's row reads like any other row in its editing state. */}
+              {chooserOpen && (
+                <button
+                  type="button"
+                  className="icon-btn"
+                  aria-label="Close"
+                  onClick={() => chooser?.onOpenChange(false)}
+                >
+                  <CancelIcon />
+                </button>
+              )}
             </li>
           ))}
+
+        {chooser && chooserOpen && <li className="label-chooser">{chooser.render(startCreate)}</li>}
 
         {shown.map((item) =>
           rowHref ? (
@@ -308,7 +348,9 @@ export function LabelEditor({
           ),
         )}
 
-        {items !== null && items.length === 0 && (
+        {/* An open chooser on an empty list says what the list is for; "nothing yet"
+            under it would be a second, emptier answer to the same question. */}
+        {items !== null && items.length === 0 && !chooserOpen && (
           <li className="muted small label-empty">{emptyText}</li>
         )}
         {items !== null && items.length > 0 && shown.length === 0 && (
@@ -318,7 +360,7 @@ export function LabelEditor({
 
       {/* Nothing to say until the list is known: a hint under a list that has not arrived
           describes something the reader cannot see yet. */}
-      {items !== null && <p className="muted small">{hint}</p>}
+      {items !== null && hint && <p className="muted small">{hint}</p>}
     </div>
   );
 }

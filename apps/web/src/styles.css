@@ -5161,6 +5161,217 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   align-self: stretch;
 }
 
+/* ---------------------------------------------------------------------------------
+   The notebook chooser: Blank and the templates, opened from the create row. See
+   `NotebookChooser.tsx`.
+
+   It sits inside the list, under the row that opened it, so it appears where the control
+   was and the list's rows move down rather than something new covering them. The cards
+   are a grid that fills the panel's width — three or four across on a desktop, one on a
+   phone — because each one is read, not scanned: its line and its chips are the reason
+   it is there.
+   --------------------------------------------------------------------------------- */
+.label-chooser {
+  padding: 0.75rem 0 1rem;
+}
+
+.nb-chooser {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.nb-chooser-intro {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.nb-templates {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  /* `min()` so a phone narrower than a card's floor still gets one full-width column
+     rather than a card that overflows the panel. */
+  grid-template-columns: repeat(auto-fill, minmax(min(15rem, 100%), 1fr));
+  gap: 0.75rem;
+}
+
+/* The card is one button: the mark and the name on a line, what it is for under them,
+   and its fields as chips at the foot. A grid so the line and the chips start at the
+   card's edge rather than under the name. */
+.nb-template {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-content: start;
+  align-items: center;
+  column-gap: 0.6rem;
+  row-gap: 0.35rem;
+  width: 100%;
+  height: 100%;
+  padding: 0.85rem 1rem 1rem;
+  font: inherit;
+  text-align: left;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  cursor: pointer;
+}
+
+.nb-template:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+
+.nb-template:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.nb-template-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+/* Blank has no emoji to show, so it shows what it does, in the create row's muted plus. */
+.nb-template-blank .nb-template-mark { color: var(--muted); }
+
+.nb-template-name {
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.nb-template-line {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.nb-template-chips {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.2rem;
+}
+
+/* A field, as a chip: its type's glyph and its name, in the chip colours a chosen option
+   wears on a note, since these are the same words the note will later show. */
+.nb-template-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  max-width: 100%;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.78rem;
+  color: var(--chip-fg);
+  background: var(--chip-bg);
+  border-radius: 999px;
+}
+
+.nb-template-chip svg {
+  flex: 0 0 auto;
+  width: 0.95em;
+  height: 0.95em;
+}
+
+/* The preview: one template, before anything is made. As wide as a form wants to be, not
+   the grid's full width, so the field list reads as a list and the actions sit under it. */
+.nb-preview {
+  max-width: 34rem;
+}
+
+.nb-preview-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.nb-preview-name {
+  flex: 1;
+  min-width: 0;
+  padding: 0.45rem 0.6rem;
+  font: inherit;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+}
+
+.nb-preview-name:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+
+.nb-preview-name:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* Not red: a taken name is nobody's mistake, and the line says what was done about it. */
+.nb-preview-clash {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.nb-preview-label {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.nb-preview-fields,
+.nb-preview-skipped {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* A field per line: the glyph, then the name and what kind it is as one run of text, so
+   on a phone the kind wraps under the name rather than pushing the line wider. */
+.nb-preview-fields li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.nb-preview-field-text { min-width: 0; }
+
+.nb-preview-fields li:first-child { border-top: 1px solid var(--border); }
+
+.nb-preview-fields svg {
+  flex: 0 0 auto;
+  /* On the first line's centre, where the name is, when the text wraps to two. */
+  margin-top: 0.2em;
+  color: var(--muted);
+}
+
+.nb-preview-field-name { font-weight: 500; }
+
+.nb-preview-field-kind {
+  margin-left: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.nb-preview-done { margin: 0; }
+
+.nb-preview-skipped li { padding: 0.2rem 0; font-size: 0.9rem; }
+
+.nb-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.25rem;
+}
+
 /* Notebook management, inside the settings panel. */
 /*
  * The notebook's purpose, above its fields. Stretched to the panel width for the same

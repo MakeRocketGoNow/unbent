@@ -232,6 +232,13 @@ describe('NotebookNav', () => {
     expect((await findByRole('link', { name: 'New notebook' })).tagName).toBe('A');
   });
 
+  it('opens the chooser of templates from New notebook, not just the notebooks page', async () => {
+    const { findByRole } = harness();
+    expect((await findByRole('link', { name: 'New notebook' })).getAttribute('href')).toBe(
+      '/settings/notebooks?new=1',
+    );
+  });
+
   describe('tags', () => {
     beforeEach(() => localStorage.clear());
 
