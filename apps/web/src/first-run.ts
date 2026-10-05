@@ -76,30 +76,46 @@ export function createdAtMs(createdAt: Date | string | undefined): number | null
 
 /**
  * The accounts this device has opened the first note for, under the `unbent.` prefix the
- * app's other per-device preferences use. A list of ids rather than a key per account so
- * there is one entry to find; it grows by one per account ever signed in on this browser.
- * Every access guarded: storage can be off, full or throwing (Safari's private mode), and
- * a lost answer only means the note might open once more.
+ * app's other per-device preferences use. Each entry is kept only until its account's
+ * first-run window closes (`until`): after that the window says no on its own, so the
+ * entry has nothing left to decide, and an id kept past it would only be an account
+ * remembered on this browser after it signed out. Expired entries are dropped whenever the
+ * list is written, so it holds an account or two at most.
+ *
+ * A list rather than a key per account so there is one entry to find. Every access is
+ * guarded: storage can be off, full or throwing (Safari's private mode), and a lost answer
+ * only means the note might open once more. An entry of any other shape — the bare ids the
+ * first version of this wrote — is read as expired, which it would be by now anyway.
  */
 const KEY = 'unbent.firstNoteOpened';
 
-function opened(): string[] {
+interface Opened {
+  id: string;
+  until: number;
+}
+
+function opened(): Opened[] {
   try {
     const parsed: unknown = JSON.parse(localStorage.getItem(KEY) ?? '[]');
-    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (e): e is Opened =>
+        typeof e === 'object' && e !== null && typeof e.id === 'string' && typeof e.until === 'number',
+    );
   } catch {
     return [];
   }
 }
 
-export function firstNoteOpened(userId: string): boolean {
-  return opened().includes(userId);
+export function firstNoteOpened(userId: string, now: number): boolean {
+  return opened().some((e) => e.id === userId && e.until > now);
 }
 
-export function rememberFirstNoteOpened(userId: string): void {
+/** Remembers it for this account until `until`, the end of its first-run window. */
+export function rememberFirstNoteOpened(userId: string, until: number, now: number): void {
   try {
-    const ids = opened();
-    if (!ids.includes(userId)) localStorage.setItem(KEY, JSON.stringify([...ids, userId]));
+    const kept = opened().filter((e) => e.until > now && e.id !== userId);
+    localStorage.setItem(KEY, JSON.stringify([...kept, { id: userId, until }]));
   } catch {
     // Quota or private browsing: the note may open once more, which is all this costs.
   }

@@ -6,7 +6,13 @@ import { notesQuery } from '../queries.js';
 import { useAppSession } from '../useAppSession.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 import { showsWholeAccount, useLibraryTotal } from '../useLibraryTotal.js';
-import { createdAtMs, firstNoteOpened, rememberFirstNoteOpened, shouldOpenFirstNote } from '../first-run.js';
+import {
+  FIRST_RUN_WINDOW_MS,
+  createdAtMs,
+  firstNoteOpened,
+  rememberFirstNoteOpened,
+  shouldOpenFirstNote,
+} from '../first-run.js';
 import { Route as NotesRoute } from './notes.js';
 
 /** `/notes` with no note selected: the list is shown, the workspace is empty. */
@@ -67,20 +73,22 @@ function useOpenFirstNote(where: {
   const { session } = useAppSession();
   const navigate = useNavigate();
   const userId = session?.user.id ?? null;
+  const createdAt = createdAtMs(session?.user.createdAt);
+  const now = Date.now();
   const wanted =
     userId !== null &&
     shouldOpenFirstNote({
       ...where,
-      createdAt: createdAtMs(session?.user.createdAt),
-      now: Date.now(),
-      alreadyOpened: firstNoteOpened(userId),
+      createdAt,
+      now,
+      alreadyOpened: firstNoteOpened(userId, now),
     });
   // The account's one note, from the same unfiltered list the column beside this shows.
   const list = useInfiniteQuery({ ...notesQuery({}), enabled: wanted });
   const noteId = wanted ? list.data?.pages[0]?.items[0]?.id : undefined;
   useEffect(() => {
-    if (!noteId || !userId) return;
-    rememberFirstNoteOpened(userId);
+    if (!noteId || !userId || createdAt === null) return;
+    rememberFirstNoteOpened(userId, createdAt + FIRST_RUN_WINDOW_MS, Date.now());
     // Without `new`, whatever else the address carries: the predicate stands down while it
     // is set, but the search is read again at the moment of navigating, and a request that
     // arrived in between must not ride along onto the note and make one more on a reload.
@@ -90,7 +98,7 @@ function useOpenFirstNote(where: {
       search: ({ new: _, ...p }) => p,
       replace: true,
     });
-  }, [noteId, userId, navigate]);
+  }, [noteId, userId, createdAt, navigate]);
   // Blank only while the list can still hand over the note. A list that failed, or came
   // back without a row (the note went between the count and the list), has nothing to
   // open, and the pane goes back to its line rather than staying blank for good.

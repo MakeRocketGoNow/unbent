@@ -74,20 +74,37 @@ describe('createdAtMs', () => {
 
 describe('remembering it per account', () => {
   afterEach(() => localStorage.clear());
+  const until = now + FIRST_RUN_WINDOW_MS;
+  const stored = () => JSON.parse(localStorage.getItem('unbent.firstNoteOpened')!);
 
-  it('remembers each account on its own', () => {
-    expect(firstNoteOpened('a')).toBe(false);
-    rememberFirstNoteOpened('a');
-    rememberFirstNoteOpened('a');
-    expect(firstNoteOpened('a')).toBe(true);
-    expect(firstNoteOpened('b')).toBe(false);
-    expect(JSON.parse(localStorage.getItem('unbent.firstNoteOpened')!)).toEqual(['a']);
+  it('remembers each account on its own, until its window closes', () => {
+    expect(firstNoteOpened('a', now)).toBe(false);
+    rememberFirstNoteOpened('a', until, now);
+    rememberFirstNoteOpened('a', until, now);
+    expect(firstNoteOpened('a', now)).toBe(true);
+    expect(firstNoteOpened('b', now)).toBe(false);
+    expect(firstNoteOpened('a', until)).toBe(false);
+    expect(stored()).toEqual([{ id: 'a', until }]);
+  });
+
+  /** Nothing outlives its window: the list holds the accounts still arriving, no more. */
+  it('drops entries whose window has closed whenever it writes', () => {
+    rememberFirstNoteOpened('old', now + 1000, now);
+    rememberFirstNoteOpened('new', until + 5000, now + 2000);
+    expect(stored()).toEqual([{ id: 'new', until: until + 5000 }]);
+  });
+
+  it('reads the bare ids an earlier version wrote as expired, and replaces them', () => {
+    localStorage.setItem('unbent.firstNoteOpened', JSON.stringify(['a', 'b']));
+    expect(firstNoteOpened('a', now)).toBe(false);
+    rememberFirstNoteOpened('c', until, now);
+    expect(stored()).toEqual([{ id: 'c', until }]);
   });
 
   it('survives a value it did not write', () => {
     localStorage.setItem('unbent.firstNoteOpened', '{not json');
-    expect(firstNoteOpened('a')).toBe(false);
-    rememberFirstNoteOpened('a');
-    expect(firstNoteOpened('a')).toBe(true);
+    expect(firstNoteOpened('a', now)).toBe(false);
+    rememberFirstNoteOpened('a', until, now);
+    expect(firstNoteOpened('a', now)).toBe(true);
   });
 });
