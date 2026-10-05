@@ -221,9 +221,22 @@ export function LabelEditor({
             </li>
           ) : (
             <li className={chooserOpen ? 'label-row label-create editing' : 'label-row label-create'}>
-              <span className="label-slot" aria-hidden="true">
-                <PlusRowIcon />
-              </span>
+              {/* The way out takes the plus's slot, where the creating row's own Cancel
+                  sits, so the cross is in one place whether Blank has been chosen or not. */}
+              {chooserOpen ? (
+                <button
+                  type="button"
+                  className="icon-btn label-slot"
+                  aria-label="Close"
+                  onClick={() => chooser?.onOpenChange(false)}
+                >
+                  <CancelIcon />
+                </button>
+              ) : (
+                <span className="label-slot" aria-hidden="true">
+                  <PlusRowIcon />
+                </span>
+              )}
               {/* With a chooser the row opens it, and says so; the same row closes it. */}
               <button
                 type="button"
@@ -238,18 +251,6 @@ export function LabelEditor({
               >
                 Create new {noun}
               </button>
-              {/* A way out drawn where the check sits on an editing row, so the open
-                  chooser's row reads like any other row in its editing state. */}
-              {chooserOpen && (
-                <button
-                  type="button"
-                  className="icon-btn"
-                  aria-label="Close"
-                  onClick={() => chooser?.onOpenChange(false)}
-                >
-                  <CancelIcon />
-                </button>
-              )}
             </li>
           ))}
 
