@@ -185,6 +185,20 @@ describe('the workspace pane with no note open, on a desktop', () => {
     expect(totalAsked.every((enabled) => !enabled)).toBe(true);
   });
 
+  /* Back to All notes from an empty notebook, the list shows that notebook's empty rows
+     until its own arrive; those say nothing about the account either. */
+  it("does not ask for the total while All notes still shows an empty notebook's rows", async () => {
+    const coupons = { id: 'nb1', name: 'Coupons', purpose: null, emoji: null, fieldDefs: [] };
+    lib = installTestLibrary({ notes: [note('a', { title: 'Alpha' })], notebooks: [coupons] });
+    const { router } = mount('/notes?notebook=Coupons');
+    await screen.findByText('Select a note, or create one.');
+    totalAsked.length = 0;
+    await router.navigate({ to: '/notes', search: {} });
+    await screen.findByText('Alpha');
+    expect(totalAsked.length).toBeGreaterThan(0);
+    expect(totalAsked.every((enabled) => !enabled)).toBe(true);
+  });
+
   it('says "Select a note" inside a notebook, however empty the account', async () => {
     lib = installTestLibrary({ notes: [] });
     mount('/notes?notebook=Coupons');

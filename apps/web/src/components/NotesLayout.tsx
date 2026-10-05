@@ -643,14 +643,16 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   /*
    * Asked only while the answer can change what is drawn: everything below acts on an
    * account with no notes, and on All notes the loaded rows are the account's, so a list
-   * with a row in it has nothing to ask. Nor while the list's first load is pending: its
-   * rows are empty then for every account, and asking would count a whole archive — or,
-   * on a device with no library, send a second request beside the list's own — on every
-   * open, for an answer only an empty account can use. The empty state comes one count
-   * later for it, and nothing flashes in between: on All notes the list's empty line
-   * says nothing (`emptyMessage`).
+   * with a row in it has nothing to ask. Nor while the list's first load is pending, or
+   * while it still shows the rows of the place it came from (`stale`) — an empty notebook
+   * or a search that matched nothing, on the way back to All notes: its rows say nothing
+   * about the account then, and asking would count a whole archive — or, on a device
+   * with no library, send a second request beside the list's own — on every open, for an
+   * answer only an empty account can use. The empty state comes one count later for it,
+   * and nothing flashes in between: on All notes the list's empty line says nothing
+   * (`emptyMessage`).
    */
-  const libraryTotal = useLibraryTotal(wholeAccount && !list.isPending && notes.length === 0);
+  const libraryTotal = useLibraryTotal(wholeAccount && !list.isPending && !stale && notes.length === 0);
   /**
    * The account holds no notes at all, and the list is the whole of it. On a phone the
    * list's empty line gives way to `EmptyLibrary`; on a desktop the workspace pane draws
@@ -1316,7 +1318,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       />
 
       {/* The routed workspace hears how many rows the column holds; see `ListRowsContext`. */}
-      <ListRowsContext.Provider value={list.isPending ? null : notes.length}>{children}</ListRowsContext.Provider>
+      <ListRowsContext.Provider value={list.isPending || stale ? null : notes.length}>{children}</ListRowsContext.Provider>
     </div>
   );
 }
