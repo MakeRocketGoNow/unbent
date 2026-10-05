@@ -3377,12 +3377,26 @@ export class NotesStore {
    * had a decision made about it, and the archive's older one is reported rather than
    * written over it. Each comes back with a `kind` so the log can say which it was; a
    * skipped field has none, which is also what a server from before these keys sends.
+   *
+   * `create` turns the merge off: the notebook must be new, and a taken name answers
+   * `'conflict'` with nothing written. It is how a notebook template is applied. Adding a
+   * template's fields to a notebook someone already has is a different act from making
+   * one, and the page that offers templates asks for that one by name; checking the
+   * page's own list first would still merge into a notebook made on another device since
+   * the list was read. The check is here, in the transaction that makes the notebook, so
+   * there is no gap between the two.
    */
-  importNotebook(definition: NotebookDefinition): {
-    id: string;
-    skipped: Array<{ name: string; reason: string; kind?: 'emoji' | 'purpose' }>;
-  } {
+  importNotebook(
+    definition: NotebookDefinition,
+    opts: { create?: boolean } = {},
+  ):
+    | {
+        id: string;
+        skipped: Array<{ name: string; reason: string; kind?: 'emoji' | 'purpose' }>;
+      }
+    | 'conflict' {
     return this.sql.tx(() => {
+      if (opts.create && !this.createNotebook(definition.name)) return 'conflict';
       const notebookId = this.resolveNotebook(definition.name);
       if (!notebookId) throw new Error('Notebook name is empty');
 

@@ -261,6 +261,7 @@ describe('the feed records tag, notebook and field writes', () => {
   it('importing a notebook definition records the notebook once per change it makes', async () => {
     const { stub } = freshStore('feed-import-notebook');
     const first = await stub.importNotebook({ name: 'Podcast Bookmarks', emoji: '🎙️', fields: [{ name: 'Show', type: 'text' }] });
+    if (first === 'conflict') throw new Error('expected a new notebook');
     const rows = await feedRows(stub);
     // resolveNotebook created it, updateNotebook set the emoji, createField added the field.
     // resolveNotebook created it, updateNotebook set the emoji, createField added the
@@ -268,6 +269,11 @@ describe('the feed records tag, notebook and field writes', () => {
     expect(rows).toEqual([{ entity: 'notebook', id: first.id }]);
     const seq = await feedSeq(stub);
     await stub.importNotebook({ name: 'Podcast Bookmarks', emoji: '🎙️', fields: [{ name: 'Show', type: 'text' }] });
+    expect(await feedRows(stub, seq)).toEqual([]);
+    // A template refused over a taken name wrote nothing, so it records nothing either.
+    expect(
+      await stub.importNotebook({ name: 'podcast bookmarks', fields: [{ name: 'Host', type: 'text' }] }, { create: true }),
+    ).toBe('conflict');
     expect(await feedRows(stub, seq)).toEqual([]);
   });
 });

@@ -620,6 +620,7 @@ describe('notes: import', () => {
         { name: 'Value', type: 'number', currency: 'USD' },
       ],
     } as Parameters<typeof stub.importNotebook>[0]);
+    if (result === 'conflict') throw new Error('expected a new notebook');
     expect(result.skipped).toEqual([]);
     const nb = (await stub.listNotebooks())[0]!;
     expect(nb).toMatchObject({ name: 'Coupons', emoji: '🎟️', purpose: 'Deals', fields: 2 });
@@ -650,10 +651,30 @@ describe('notes: import', () => {
       emoji: '🧾',
       fields: [{ name: 'value', type: 'text' }],
     } as Parameters<typeof stub.importNotebook>[0]);
+    if (second === 'conflict') throw new Error('expected a merge');
     expect(second.skipped).toEqual([
       { kind: 'emoji', name: '🧾', reason: 'Already 🎟️ here; left as it is' },
       { name: 'value', reason: 'Already here as number, not text; left as it is' },
     ]);
+  });
+
+  it('creates a notebook from a definition only when told to, and never merges then', async () => {
+    const { stub } = freshStore('importnb-create');
+    const made = await stub.importNotebook(
+      { name: 'Coupons', emoji: '🎟️', fields: [{ name: 'Code', type: 'text' }, { name: 'Used', type: 'checkbox' }] },
+      { create: true },
+    );
+    if (made === 'conflict') throw new Error('expected a new notebook');
+    expect(made.skipped).toEqual([]);
+    const nb = (await stub.listNotebooks())[0]!;
+    expect(nb).toMatchObject({ id: made.id, name: 'Coupons', emoji: '🎟️', fields: 2 });
+
+    // The same name in other letters is taken: refused, and the notebook is as it was.
+    expect(
+      await stub.importNotebook({ name: 'coupons', emoji: '🧾', fields: [{ name: 'Store', type: 'text' }] }, { create: true }),
+    ).toBe('conflict');
+    expect(await stub.listNotebooks()).toEqual([expect.objectContaining({ name: 'Coupons', emoji: '🎟️', fields: 2 })]);
+    expect((await stub.listFields(nb.id))!.map((f) => f.name)).toEqual(['Code', 'Used']);
   });
 });
 

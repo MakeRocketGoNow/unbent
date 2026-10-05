@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
+import { z } from 'zod';
 import {
   MAX_BODY_BYTES,
   importEnmlSchema,
@@ -60,15 +61,25 @@ export const importRoutes = new Hono<AppEnv>().post(
  * `skipped` names each field the definition could not apply and why, so the client can
  * report a field that already exists here under another type rather than quietly leaving
  * the person to discover it on the notebook's settings page.
+ *
+ * `?create=1` is the same definition applied only to a notebook it makes: a name already
+ * taken answers 409 and changes nothing. A notebook template is created this way, so that
+ * choosing one can never add its fields to a notebook the person already has. Only `1` is
+ * read as yes, the way `?new=1` is on the notes page.
  */
 export const importNotebookRoutes = new Hono<AppEnv>().post(
   '/import/notebook',
   requireAuth,
   withRepos,
+  zValidator('query', z.object({ create: z.literal('1').optional() })),
   zValidator('json', notebookDefinitionSchema),
   async (c) => {
-    const { id, skipped } = await c.get('notes').importNotebook(c.req.valid('json'));
-    return c.json({ id, skipped });
+    const create = c.req.valid('query').create === '1';
+    const result = await c.get('notes').importNotebook(c.req.valid('json'), { create });
+    if (result === 'conflict') {
+      return c.json({ error: 'A notebook with that name already exists' }, 409);
+    }
+    return c.json({ id: result.id, skipped: result.skipped });
   },
 );
 
