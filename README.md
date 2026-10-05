@@ -1231,6 +1231,19 @@ Maintenance page:
 The API equivalents are `POST /api/admin/purge-notes?scope=trashed|all&confirm=DELETE` and
 `POST /api/admin/gc-blobs?apply=1`. Both are scoped to the caller's own data.
 
+**Deleted files follow the store for thirty-five days.** Emptying the trash, deleting a
+single note from it and deleting a file from a note remove the rows at once, but not the
+objects: the store writes each file's key to a table of deleted files (`deleted_blobs`,
+schema 0005) in the transaction that removes the row, and the hourly sweep deletes from R2
+only what has sat there for thirty-five days, then has the store forget it. Nothing a
+person can do brings a purged note back — this is for the operator. A store keeps thirty
+days of history, and [winding one back](#where-your-notes-live) winds the table of deleted
+files back with the rows, so a restored note finds its files still in the bucket; the five
+days on top are so a restore to the far end of the window still finds them. The account's
+own file sweep counts a file awaiting deletion as referenced for the same reason, and
+reports it as `awaitingDeletion`. Deleting an account is the exception: its files go at
+once, as they always did, because the account's deletion is what its owner asked for.
+
 For local development, `pnpm --filter @unbent/api reset:local` clears D1, R2 and the note
 stores entirely and rebuilds the schema, backing up D1 and the stores first. Use that rather
 than the in-app sweep to clear fixtures left by deleted test users — the scoped sweep cannot
@@ -1810,9 +1823,13 @@ would bring back notes its owner asked to have removed.
 
 The whole database goes back together, schema version included, so a restore to before a
 schema file is migrated again on the next wake. Files are in R2, not the store, and are
-not wound back: one uploaded since is an orphan, which the account's own
-[file sweep](#deleting-an-account) reclaims, and one deleted since comes back as a row
-with nothing behind it. Local development has no
+not wound back, but they follow it: a file deleted since the restored moment is still in
+the bucket, because a deleted file's object stays for thirty-five days under a tombstone
+the store keeps (see [Deleting notes](#deleting-notes)), and the restore winds that
+tombstone back with the row, so the file is simply the note's again. The five days past the
+thirty of history are the margin for a restore to the oldest moment it can reach. One
+uploaded since the restored moment is an orphan, which the account's own
+[file sweep](#deleting-an-account) reclaims. Local development has no
 history to restore from — Miniflare refuses, and the route answers 501 — so a restore is
 tried on a preview of a PR that touches `src/store/`, which has stores of its own.
 
