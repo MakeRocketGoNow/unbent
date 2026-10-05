@@ -91,6 +91,13 @@ describe('installLaunchQueue', () => {
     expect(manifest.start_url).toBe(START_URL);
   });
 
+  it("opens a launched file's address as its note", async () => {
+    const launch = stubQueue();
+    const handlers = install();
+    await launch({ targetURL: at(`/api/notes/${NOTE}/files/scan.pdf`) });
+    expect(handlers.link).toHaveBeenCalledWith(`/notes/${NOTE}`);
+  });
+
   it('skips a link to the page already showing', async () => {
     const launch = stubQueue();
     const handlers = install(`/notes/${NOTE}`);
