@@ -375,6 +375,15 @@ describe('file summaries on get_note and list_notes (MAK-172)', () => {
     expect(withFiles.notes[1].attachments).toEqual([]);
   });
 
+  it('lists ten files a note and counts the rest, which get_note has', async () => {
+    const many = Array.from({ length: 13 }, (_, i) => ({ ...waiting, filename: `page-${i}.pdf` }));
+    const { list } = listRepo({ 'n-1': many });
+    const result = answer(await list({ limit: 25, attachmentSummaries: true }));
+    expect(result.notes[0].attachments.map((f: { filename: string }) => f.filename)).toEqual(many.slice(0, 10).map((f) => f.filename));
+    expect(result.notes[0].moreFiles).toBe(3);
+    expect(result.notes[1].moreFiles).toBeUndefined();
+  });
+
   it('refuses summaries on a compact page, which is for hundreds of ids', async () => {
     const { asked, list } = listRepo({});
     const result = await list({ limit: 500, compact: true, attachmentSummaries: true });

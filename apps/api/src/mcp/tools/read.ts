@@ -14,7 +14,7 @@ import {
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { AppLinks } from '../../lib/app-links.js';
 import type { AttachmentsRepo } from '../../lib/attachments-repo.js';
-import { nextCursor, type NotesRepo } from '../../lib/notes-repo.js';
+import { nextCursor, type FileSummary, type NotesRepo } from '../../lib/notes-repo.js';
 import { jsonResult, noteRef, notFound, toolError } from './result.js';
 
 /**
@@ -64,6 +64,15 @@ const LIST_DATE_RANGE =
  */
 const FULL_LIST_LIMIT = 100;
 const COMPACT_LIST_LIMIT = MAX_BATCH_NOTES;
+
+/**
+ * How many files' summaries one note carries on a page of `list_notes`. The page is capped
+ * at a hundred notes, but a note is not capped in files, and a few notes with dozens of
+ * scans each would make a page of summaries the very context-filling read they are there
+ * to save. A receipt or a business card has one or two; ten covers what a page is for, and
+ * the rest are counted (`moreFiles`) and listed in full by get_note.
+ */
+const LIST_FILES_PER_NOTE = 10;
 
 /**
  * What `read` and `summary` mean on a file, said once for `get_note` and `list_notes`
@@ -164,6 +173,15 @@ async function resolveFieldFilters(
   return { filters: out };
 }
 
+/** A note's files as a page of `list_notes` carries them: the first few, and a count of the rest. */
+function filesOf(files: FileSummary[]) {
+  const shown = files.slice(0, LIST_FILES_PER_NOTE);
+  return {
+    attachments: shown.map((f) => ({ filename: f.filename, read: f.read, summary: f.summary })),
+    ...(files.length > shown.length ? { moreFiles: files.length - shown.length } : {}),
+  };
+}
+
 export function registerReadTools(
   server: McpServer,
   notes: NotesRepo,
@@ -253,7 +271,8 @@ export function registerReadTools(
           .describe(
             'Also list each note\'s files as attachments: [{filename, read, summary}]. ' +
               ATTACHMENT_SUMMARY +
-              ' Not with compact.',
+              ` At most ${LIST_FILES_PER_NOTE} files a note; moreFiles counts the rest, which ` +
+              'get_note lists. Not with compact.',
           ),
         tag: tagFilter,
         notebook: notebookFilter,
@@ -328,15 +347,7 @@ export function registerReadTools(
               ...noteRef(n, links),
               // Every note gets the key when it was asked for, an empty list included, so
               // "no files" is an answer rather than a missing field.
-              ...(summaries
-                ? {
-                    attachments: (summaries[n.id] ?? []).map((f) => ({
-                      filename: f.filename,
-                      read: f.read,
-                      summary: f.summary,
-                    })),
-                  }
-                : {}),
+              ...(summaries ? filesOf(summaries[n.id] ?? []) : {}),
             })),
       });
     },
