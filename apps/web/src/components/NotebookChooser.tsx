@@ -22,7 +22,7 @@ interface NotebookChooserProps {
   onBlank: () => void;
   /** Escape: the chooser closes, and the caller decides what that leaves on screen. */
   onClose: () => void;
-  /** A template was applied, whatever comes next: the caller's list is stale now. */
+  /** The caller's list may be behind: a template was applied, or the server refused a name it did not have. */
   onApplied: () => void;
   /** A notebook now has the template's fields; the caller opens it. */
   onDone: (name: string) => void;
