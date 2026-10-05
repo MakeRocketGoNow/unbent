@@ -427,7 +427,8 @@ export const admin = new Hono<AppEnv>()
    * reads slowly, which is what enqueuing every page from `start` would have allowed.
    * Big pages, cut by bytes inside the object: every
    * page is one store call and an invocation has fifty on Free, so a 13k-note archive with
-   * 4k files and 2.4k texts (about 22 MB of them) is roughly a dozen calls — the small
+   * 4k files and 2.4k texts (about 22 MB of them) is roughly a dozen calls, plus one per
+   * five thousand files awaiting deletion (`deleted_blobs`, usually one) — the small
    * tables one each, notes three, texts three or four by the byte cut — where five
    * hundred rows a page would have been sixty and failed partway through the texts.
    */

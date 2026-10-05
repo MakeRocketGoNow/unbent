@@ -63,7 +63,7 @@ export interface SweepReport {
   dropped: number;
   /** Deleted files whose retention was up and whose objects this batch removed from R2. */
   blobsDeleted: number;
-  /** Accounts with files due that this batch had no subrequests left to delete; the next pass takes them. */
+  /** Accounts with files due that this batch had no subrequests left to delete; the next walk of the directory takes them. */
   blobsDeferred: number;
   failed: string[];
   /** Accounts whose store asked to be called again; see `StoreUnavailable`. */
@@ -87,7 +87,9 @@ export const BATCH = 20;
  * — and a batch of twenty accounts that all had files due would be sixty-four. So the
  * expiry is budgeted: `mayExpire` is asked before each, against what the batch has spent
  * and the worst the accounts still ahead of it could cost, and an account that does not
- * fit is counted in `blobsDeferred` and asked again on the next pass. A live account
+ * fit is counted in `blobsDeferred` and asked again on the next walk of the directory —
+ * which, with the cursor moving twenty accounts an hour, is later than the next hour; a
+ * deletion that waits longer is the safe direction to err in. A live account
  * costs one, so slack grows as the batch proceeds: a batch of live accounts fits
  * thirteen expiries, late-weighted (pinned in sweep.test.ts). A deletion costs two and
  * asks for no expiry — a wiped store has no files — so the worst batch is forty-four.

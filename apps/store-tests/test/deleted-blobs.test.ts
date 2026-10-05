@@ -78,7 +78,7 @@ describe('deleted files', () => {
 
   it('gives the sweep only the keys past the retention, oldest first and one delete call at most, and forgets only those', async () => {
     const { stub } = freshStore('expiry');
-    const n = await stub.create({ id: 'n', title: 'N', body: '', tags: [] });
+    await stub.create({ id: 'n', title: 'N', body: '', tags: [] });
     const now = Date.now();
     // Three files deleted at known times: 40 days ago, 36 days ago, and today.
     await runInDurableObject(stub, (_i, state) => {
@@ -104,7 +104,6 @@ describe('deleted files', () => {
     expect(await stub.forgetBlobs(['k/oldest', 'k/old', 'k/never-here'], now)).toEqual({ forgotten: 1 });
     expect((await tombstones(stub)).map((t) => t.r2_key)).toEqual(['k/fresh', 'k/old']);
     expect((await stub.sweepVisit(now)).expiredBlobs).toEqual([]);
-    void n;
   });
 
   it('hands over at most one R2 delete call of keys a visit, and the rest on the next', async () => {

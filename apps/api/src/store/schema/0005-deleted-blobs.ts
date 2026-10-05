@@ -19,8 +19,9 @@
  * this index. The second index is the sweep's: "what has been here longer than the
  * retention" is a range on `deleted_at`, read from the index's first entry, so a store
  * with nothing due reads nothing — the sweep visits every account every hour, and a
- * query that scanned here would be the table scan AGENTS.md forbids a periodic job. Three
- * rows written per file deleted, and three more when it is forgotten.
+ * query that scanned here would be the table scan AGENTS.md forbids a periodic job. The
+ * row and its two index entries are written per file deleted, and read and removed when
+ * it is forgotten (four rows read a key, measured in the rows-read test).
  *
  * Not in the feed: a client holds no deleted files. Dumped with the data tables
  * (`DATA_TABLES`), so a store rebuilt from a dump knows which files it has still to let

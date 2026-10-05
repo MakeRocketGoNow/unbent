@@ -203,7 +203,8 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
         heading: 'How long it is kept',
         body: [
           'Your notes stay until you delete them. Deleting a note moves it to trash, where it stays ' +
-            'until you empty the trash — at which point the note and its files are gone for good. ' +
+            'until you empty the trash — at which point the note is gone for good, and its files ' +
+            'leave our storage within 35 days. ' +
             'Everything else is kept for as long as the account exists, and removed when it is ' +
             'deleted. Sent email may persist for a short period in our email provider’s own logs.',
         ],
