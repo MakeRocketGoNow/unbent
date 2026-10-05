@@ -25,7 +25,7 @@ function collect(notes: NotesRepo): Map<string, Handler> {
       return {} as never;
     },
   };
-  registerReadTools(server as never, notes, {} as never, appLinks(APP_URL));
+  registerReadTools(server as never, notes, {} as never, appLinks(APP_URL), { vision: true });
   return tools;
 }
 

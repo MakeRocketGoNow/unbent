@@ -188,7 +188,7 @@ export function registerReadTools(
   attachments: AttachmentsRepo,
   links: AppLinks,
   /** Whether the instance has the vision model, which decides what a file is still `pending` for. */
-  readers: { vision: boolean } = { vision: true },
+  readers: { vision: boolean },
 ): void {
   server.registerTool(
     'search_notes',
