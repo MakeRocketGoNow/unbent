@@ -86,7 +86,7 @@ describe('EmptyLibrary', () => {
   it('draws its glyph for the eye only', async () => {
     mount();
     const region = await screen.findByRole('region', { name: 'No notes yet' });
-    const mark = region.querySelector('.empty-library-mark');
+    const mark = region.querySelector('.empty-state-mark');
     expect(mark?.getAttribute('aria-hidden')).toBe('true');
   });
 });

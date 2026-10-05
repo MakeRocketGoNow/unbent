@@ -27,7 +27,7 @@ import { IndexingStatus } from './IndexingStatus.js';
 import { SampleNotes } from './SampleNotes.js';
 import { EmptyLibrary } from './EmptyLibrary.js';
 import { Button } from './Button';
-import { NotebookMissing } from './NotebookMissing.js';
+import { NotebookMissing, isNotebookMissing } from './NotebookMissing.js';
 import { ExportLink } from './ExportLink.js';
 import { TagPicker } from './TagPicker.js';
 import { FilterRow } from './FilterRow.js';
@@ -736,8 +736,12 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * the Load more button says it — see `loadMoreLabel`. The header shares its row with
    * four controls, and the longer string was the one thing in it that truncated.
    */
-  const countLabel =
-    results !== null
+  /** The URL names a notebook that does not exist; see `NotebookMissing`. */
+  const notebookMissing = isNotebookMissing(notebook, notebooks);
+  const countLabel = notebookMissing
+    ? // A count of a notebook that does not exist would be a claim about nothing.
+      null
+    : results !== null
       ? awaiting
         ? 'Searching…'
         : `${results.length} matches`
@@ -862,7 +866,6 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           <p className="muted small">That change wasn’t saved: the connection dropped.</p>
         )}
         {bulkError && <p className="bad small">{bulkError}</p>}
-        <NotebookMissing notebook={notebook} notebooks={notebooks} />
 
         {/*
             Under the header rather than only inside the sheet, so what is narrowing the
@@ -1107,9 +1110,16 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           /* In place of the list, which has nothing to list: centred in the room under the
              header, with the floating + where it always is. `.note-list` is the column's
              scroller and claims its height; this claims the same. */
-          <div className="empty-library-slot">
+          <div className="empty-state-slot">
             <EmptyLibrary heading="h3" />
             {offerSampleNotes && <SampleNotes layout="empty" />}
+          </div>
+        ) : notebookMissing ? (
+          /* In the list's place, at every width, and instead of "No notes in …" — the
+             same fact the state already says. Not the workspace pane, which may be
+             holding an open note. */
+          <div className="empty-state-slot">
+            <NotebookMissing notebook={notebook} notebooks={notebooks} />
           </div>
         ) : tableMode ? (
           <NoteTable

@@ -5,6 +5,7 @@ import {
   ArrowUp,
   ArrowUpDown,
   Book,
+  BookSearch,
   Bot,
   Calendar,
   Check,
@@ -334,6 +335,17 @@ export function MenuIcon() {
  */
 export function EmptyLibraryIcon() {
   return <NotebookPen size="2.5rem" strokeWidth={1.5} aria-hidden="true" focusable="false" />;
+}
+
+/**
+ * A book with a magnifier over it, for a link to a notebook that is not there
+ * (`NotebookMissing`). The drawer's book, because it is a notebook that is missing; the
+ * magnifier rather than a cross, because what happened is that it was looked for and not
+ * found — a cross reads as an error, and nothing here went wrong. Sized like
+ * `EmptyLibraryIcon`, since the two share a stack.
+ */
+export function NotebookMissingIcon() {
+  return <BookSearch size="2.5rem" strokeWidth={1.5} aria-hidden="true" focusable="false" />;
 }
 
 /**

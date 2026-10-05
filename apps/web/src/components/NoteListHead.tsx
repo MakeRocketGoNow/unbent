@@ -3,8 +3,13 @@ import { SearchIcon, FilterIcon, MenuIcon } from './icons.js';
 import { BackArrow } from './BackArrow.js';
 
 interface NoteListHeadProps {
-  /** "30 notes", "12 matches" — built by the caller, which knows what it is counting. */
-  count: string;
+  /**
+   * "30 notes", "12 matches" — built by the caller, which knows what it is counting. Null
+   * when there is nothing to count — a notebook the link names that does not exist — and
+   * the line is then kept empty rather than removed, so the title above it does not move
+   * when the notebooks finish loading and the count turns out not to apply.
+   */
+  count: string | null;
   /**
    * Where the list is: the notebook's name, "Inbox", or "All notes".
    *
@@ -242,7 +247,13 @@ export function NoteListHead({
             tooltip carries what the ellipsis drops. */}
         <div className="list-title">
           <h2 title={title}>{title}</h2>
-          <span className="count">{count}</span>
+          {count === null ? (
+            <span className="count" aria-hidden="true">
+              {'\u00a0'}
+            </span>
+          ) : (
+            <span className="count">{count}</span>
+          )}
         </div>
         {inToolbar && <div className="list-search">{input}</div>}
         <div className="list-head-actions">

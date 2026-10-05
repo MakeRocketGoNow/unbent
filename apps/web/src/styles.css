@@ -795,7 +795,7 @@ button.link {
 }
 
 /* A comfortable target under a thumb as well as a cursor, for a state whose one or two
-   actions are most of what is on screen (`EmptyLibrary`). Shared by a `Link` wearing
+   actions are most of what is on screen (`EmptyState`). Shared by a `Link` wearing
    button classes, as `btn-primary` is. */
 .btn-large {
   min-height: 2.75rem;
@@ -1153,20 +1153,21 @@ button.link {
 .sample-notes p { margin: 0; }
 
 /* ---------------------------------------------------------------------------------
-   An account with no notes at all — `EmptyLibrary`.
+   A state with nothing to list — `EmptyState`, which `EmptyLibrary` (an account with no
+   notes) and `NotebookMissing` (a link to a notebook that is not there) both draw.
 
    One centred stack: a glyph in a soft tile, the heading, a line saying what to do, and
-   the two things to do it with. One gap between every pair of them rather than a margin
+   the things to do it with. One gap between every pair of them rather than a margin
    tuned for each, so the stack keeps one rhythm and a change to any piece does not need
    the others re-spaced.
 
-   Drawn in the workspace pane on a desktop and in place of the list on a phone. Both
-   places are tall boxes, and the stack sits a little above the middle of them, where the
-   eye takes the centre to be: the free space is split two parts above to three below by
-   the container's own `::before` and `::after` (see `.empty-library-pane`), rather than
-   a margin guessed against one height.
+   Drawn in tall boxes — the desktop's workspace pane, or the list column in place of the
+   list — and the stack sits a little above the middle of them, where the eye takes the
+   centre to be: the free space is split two parts above to three below by the container's
+   own `::before` and `::after` (`.empty-state-pane`, `.empty-state-slot`), rather than a
+   margin guessed against one height.
    --------------------------------------------------------------------------------- */
-.empty-library {
+.empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1180,15 +1181,16 @@ button.link {
 
 /*
    Once, as it arrives: a fade with a few pixels of rise, so the state settles in rather
-   than snapping on when the account turns out to be empty. Nothing at all with reduced
-   motion asked for. It cannot play for an account with notes, because nothing draws this
-   until the account is known to hold none (`useLibraryTotal`).
+   than snapping on. Nothing at all with reduced motion asked for. Neither state can play
+   it for the wrong screen, because neither is drawn until it is known to be true — an
+   account known to hold no notes (`useLibraryTotal`), a notebook list that has loaded
+   without the name in it.
 */
 @media (prefers-reduced-motion: no-preference) {
-  .empty-library { animation: empty-library-in 0.24s ease-out both; }
+  .empty-state { animation: empty-state-in 0.24s ease-out both; }
 }
 
-@keyframes empty-library-in {
+@keyframes empty-state-in {
   from {
     opacity: 0;
     transform: translateY(6px);
@@ -1201,7 +1203,7 @@ button.link {
 
 /* The glyph's tile: a wash of the ink and the hairline every panel here is drawn with, so
    it reads as a quiet object in either theme without a colour of its own. */
-.empty-library-mark {
+.empty-state-mark {
   display: grid;
   place-items: center;
   width: 4.5rem;
@@ -1212,40 +1214,51 @@ button.link {
   border-radius: 1.25rem;
 }
 
-.empty-library-heading {
+/* `overflow-wrap: anywhere` on the heading and the line because either can carry a name
+   someone typed — a notebook's, which has no length limit a column can rely on — and a
+   long one must wrap inside the stack rather than widen it. Ordinary words never need it,
+   so the states without a name in them draw exactly as they would without it. */
+.empty-state-heading {
   margin: 0;
   font-size: 1.25rem;
   font-weight: 600;
   line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 /* Wraps to two even lines rather than one long one and a widow. */
-.empty-library-lead {
+.empty-state-lead {
   max-width: 34ch;
   margin: 0;
   font-size: 0.95rem;
   line-height: 1.45;
   color: var(--muted);
   text-wrap: balance;
+  overflow-wrap: anywhere;
 }
 
-.empty-library-actions {
+.empty-state-actions {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 0.5rem;
+  max-width: 100%;
 }
 
-/* A phone held upright: the two actions one above the other, each the width of the
-   stack (the 44px height is the buttons' own, `btn-large`), the primary on top — the way the app's own primary actions sit under a thumb, and
-   how "Import from Evernote or Notion" fits at all at 320px. */
+/* An action never wider than the stack: its words wrap first. */
+.empty-state-action { max-width: 100%; }
+
+/* A phone held upright: the actions one above the other, each the width of the stack
+   (the 44px height is the buttons' own, `btn-large`), the primary on top — the way the
+   app's own primary actions sit under a thumb, and how "Import from Evernote or Notion"
+   fits at all at 320px. */
 @media (width < 480px) {
-  .empty-library-actions {
+  .empty-state-actions {
     flex-direction: column;
     align-self: stretch;
   }
 
-  .empty-library-action { width: 100%; }
+  .empty-state-action { width: 100%; }
 }
 
 /*
@@ -1253,45 +1266,75 @@ button.link {
    `::before` and `::after` take the free height two to three, which puts the stack just
    above the middle. The plain `.empty` padding is the list line's, not this pane's.
 */
-.empty-library-pane {
+.empty-state-pane {
   flex-direction: column;
   align-items: center;
   padding: 0 1.5rem;
   overflow-y: auto;
 }
 
-.empty-library-pane::before,
-.empty-library-slot::before {
+.empty-state-pane::before,
+.empty-state-slot::before {
   content: '';
   flex: 2 1 0;
 }
 
-.empty-library-pane::after,
-.empty-library-slot::after {
+.empty-state-pane::after,
+.empty-state-slot::after {
   content: '';
   flex: 3 1 0;
 }
 
 /*
-   The phone's: in place of `.note-list`, with the list's claim on the column's height so
-   the header stays where it was and the stack is centred in the room under it. The
-   preview's sample-notes offer, when there is one, goes under the stack and in its
+   The list column's: in place of `.note-list`, with the list's claim on the column's
+   height so the header stays where it was and the stack is centred in the room under it.
+   The preview's sample-notes offer, when there is one, goes under the stack and in its
    alignment.
+
+   A size container, because the column is as narrow as the stack ever has to be: dragged
+   to its floor (`SIDEBAR_MIN`, 200px, less the sidebar's own inset) it leaves about 11rem
+   for a stack laid out for 28. The query below answers to that box rather than to the
+   window, since a wide window can hold the narrowest column.
 */
-.empty-library-slot {
+.empty-state-slot {
   display: flex;
   flex-direction: column;
   align-items: center;
   flex: 1 1 12rem;
   min-height: 0;
   overflow-y: auto;
+  container: empty-state-slot / inline-size;
 }
 
-.empty-library-slot > .sample-notes {
+.empty-state-slot > .sample-notes {
   max-width: 28rem;
   justify-items: center;
   padding: 0 1rem;
   text-align: center;
+}
+
+/* A narrow column: a smaller tile and heading and less inset, one step down the same
+   rhythm. Wider than any phone's column never reaches here — 18rem is under 320px. */
+@container empty-state-slot (width < 18rem) {
+  .empty-state {
+    gap: 0.75rem;
+    padding: 1rem 0.25rem;
+  }
+
+  .empty-state-mark {
+    width: 3.5rem;
+    height: 3.5rem;
+    border-radius: 1rem;
+  }
+
+  .empty-state-mark svg {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .empty-state-heading { font-size: 1.1rem; }
+
+  .empty-state-lead { font-size: 0.9rem; }
 }
 
 /* ---------------------------------------------------------------------------------
@@ -8393,7 +8436,7 @@ button.settings-nav-item {
   .note-list { padding-bottom: 5rem; }
 
   /* The same room under the empty state, which stands in for the list. */
-  .empty-library-slot { padding-bottom: 5rem; }
+  .empty-state-slot { padding-bottom: 5rem; }
 
   /*
      The title gets the room; what is left of the controls tucks in beside it.

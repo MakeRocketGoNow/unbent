@@ -43,7 +43,7 @@ function NoNoteOpen() {
 
   if (!isMobile && total === 0 && wholeAccount) {
     return (
-      <section className="workspace empty empty-library-pane">
+      <section className="workspace empty empty-state-pane">
         <EmptyLibrary />
       </section>
     );

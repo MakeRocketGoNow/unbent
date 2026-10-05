@@ -194,3 +194,31 @@ describe('the list with an empty account, on a phone', () => {
     expect(router.state.location.pathname).toBe('/notes');
   });
 });
+
+/** A link that names a notebook the account does not have: one statement, in the list's place. */
+describe('a link to a notebook that is not there', () => {
+  const coupons = { id: 'nb1', name: 'Coupons', purpose: null, emoji: null, fieldDefs: [] };
+
+  for (const phone of [false, true]) {
+    it(`says so in the list column, without the empty line or a count, on a ${phone ? 'phone' : 'desktop'}`, async () => {
+      setWidth(phone);
+      lib = installTestLibrary({ notes: [note('a', { notebookId: 'nb1' })], notebooks: [coupons] });
+      mount('/notes?notebook=Gone');
+      const found = await screen.findByRole('region', { name: 'Notebook not found' });
+      expect(found.closest('.sidebar')).not.toBeNull();
+      expect(screen.queryByText(/No notes in/)).toBeNull();
+      // The heading keeps the name the link asked for; its count line stays, empty.
+      expect(screen.getByRole('heading', { level: 2, name: 'Gone' })).toBeTruthy();
+      expect(document.querySelector('.list-title .count')?.textContent).toBe(' ');
+      expect(screen.queryByText('0 notes')).toBeNull();
+    });
+  }
+
+  it('draws nothing of the kind for a notebook that exists', async () => {
+    setWidth(false);
+    lib = installTestLibrary({ notes: [], notebooks: [coupons] });
+    mount('/notes?notebook=Coupons');
+    await screen.findByText('No notes in Coupons.');
+    expect(screen.queryByRole('region', { name: 'Notebook not found' })).toBeNull();
+  });
+});
