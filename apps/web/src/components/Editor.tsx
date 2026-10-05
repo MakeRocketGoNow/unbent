@@ -50,12 +50,13 @@ interface EditorProps {
    */
   onDeleteAttachment?: (filename: string) => Promise<void>;
   /**
-   * Opens a path on this site in place, for a link written from the root
-   * (`[Import](/settings/import)`), as the router would; true when it did. Absent, such a
-   * link is text to edit. A prop because the editor knows nothing of the router — the
-   * workspace hands over `openSitePath`.
+   * How to open a path on this site in place, for a link written from the root
+   * (`[Import](/settings/import)`), as the router would; undefined for a path the app has
+   * no page for, which stays text to edit, as does every such link when this is absent. A
+   * prop because the editor knows nothing of the router — the workspace hands over
+   * `sitePathOpener`.
    */
-  onOpenPath?: (path: string) => boolean;
+  pathOpener?: (path: string) => (() => void) | undefined;
   /** Style markdown inline instead of showing plain source. */
   rich?: boolean;
   /**
@@ -122,7 +123,7 @@ export function Editor({
   onCopyAttachments,
   onSaveRemoteImage,
   onDeleteAttachment,
-  onOpenPath,
+  pathOpener,
   rich = false,
   pdfFilenames,
   autoFocus = true,
@@ -153,8 +154,8 @@ export function Editor({
   onSaveRemoteImageRef.current = onSaveRemoteImage;
   const onDeleteAttachmentRef = useRef(onDeleteAttachment);
   onDeleteAttachmentRef.current = onDeleteAttachment;
-  const onOpenPathRef = useRef(onOpenPath);
-  onOpenPathRef.current = onOpenPath;
+  const pathOpenerRef = useRef(pathOpener);
+  pathOpenerRef.current = pathOpener;
   const onViewReadyRef = useRef(onViewReady);
   onViewReadyRef.current = onViewReady;
   // Read on every decoration rebuild rather than captured, so a list that arrives after
@@ -260,7 +261,7 @@ export function Editor({
                     : undefined,
                   // Read through the ref, like the handlers above: the view outlives the
                   // props. Offered on a read-only note too — following a link changes nothing.
-                  openPath: onOpenPath ? (path) => onOpenPathRef.current?.(path) ?? false : undefined,
+                  pathOpener: pathOpener ? (path) => pathOpenerRef.current?.(path) : undefined,
                 }),
               ]
             : []),

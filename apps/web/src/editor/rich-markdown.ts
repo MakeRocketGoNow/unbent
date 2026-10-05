@@ -1250,7 +1250,7 @@ const HANDOFF_SCHEME = /^(mailto|tel):/i;
  * A path from the root of this site — `/settings/import` — and not `//host`, which is an
  * address on another site spelled without its scheme.
  *
- * Followed inside the app, in place, through `openPath`: the sample note an empty account
+ * Followed inside the app, in place, through `pathOpener`: the sample note an empty account
  * can ask for (`welcome-note.ts`) links its settings pages this way, because an absolute
  * address would name one instance when every instance offers the same note, and would
  * point back at the old one after an export and an import elsewhere. In place rather than a new tab because the page it names is part
@@ -1258,7 +1258,10 @@ const HANDOFF_SCHEME = /^(mailto|tel):/i;
  * navigation, so the app is not loaded again — in the Android and iOS apps a navigation
  * would reload the whole site and drop an upload in flight, as `followInHost` explains.
  *
- * Without `openPath` (a test, or a host with no router) it stays text, as it always was.
+ * A path the app has no page for — `/Folder/Note.md` in a note imported from another
+ * tool, or a stored file's `/api/…` address — stays text, as every such link was before
+ * paths were followed: a new tab would only show the not-found page. So does every path
+ * without `pathOpener` (a test, or a host with no router).
  */
 const SITE_PATH = /^\/(?!\/)/;
 
@@ -1347,14 +1350,7 @@ function linkOpener(
   }
   if (WEB_SCHEME.test(url)) return () => followUrl(url, true);
   if (HANDOFF_SCHEME.test(url)) return () => followUrl(url, false);
-  if (SITE_PATH.test(url) && options.openPath) {
-    const open = options.openPath;
-    // A path the app has no page for — `/api/…`, which the Worker answers — is refused
-    // and goes to a new tab, as a same-origin address the app will not open in place does.
-    return () => {
-      if (!open(url)) followUrl(url, true);
-    };
-  }
+  if (SITE_PATH.test(url)) return options.pathOpener?.(url);
   return undefined;
 }
 
@@ -1573,11 +1569,11 @@ export interface RichMarkdownOptions {
    */
   deleteAttachment?: (filename: string) => Promise<void>;
   /**
-   * Opens a path on this site in place, for a link whose destination starts at the root
-   * (`/settings/import`) — see `SITE_PATH`. True when it did; false sends the link to a
-   * new tab instead. Absent, such a link is text, as it was before.
+   * How to open a path on this site in place, for a link whose destination starts at the
+   * root (`/settings/import`) — see `SITE_PATH`. Undefined for a path the app has no page
+   * for, which stays text; absent, every such link is text, as it was before.
    */
-  openPath?: (path: string) => boolean;
+  pathOpener?: (path: string) => (() => void) | undefined;
 }
 
 /**

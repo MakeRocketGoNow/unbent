@@ -41,7 +41,7 @@ describe('the sample note', () => {
   /**
    * Against the app's real route tree, through the rule a click on the link takes
    * (`openSitePath`): a page that is renamed or removed fails here, rather than every note
-   * made after it carrying a link that opens a new tab on the not-found page.
+   * made after it carrying a link that does nothing when clicked.
    */
   it('links only to pages the app has', () => {
     // Matching never runs a route's code, so the context is only there to satisfy the type.

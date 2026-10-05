@@ -1546,14 +1546,20 @@ describe('following links', () => {
    * goes to the router in place, the way a link in the sidebar would, and claims the press
    * like any link the editor opens.
    */
+  let opened: string[] = [];
+  beforeEach(() => {
+    opened = [];
+  });
   function mountWithOpenPath(doc: string, openPath: (path: string) => boolean): EditorView {
+    // `openPath` says whether the app has a page; the editor is handed the opener for it.
+    const pathOpener = (path: string) => (openPath(path) ? () => opened.push(path) : undefined);
     const parent = document.createElement('div');
     document.body.appendChild(parent);
     view = new EditorView({
       state: EditorState.create({
         doc,
         selection: EditorSelection.cursor(doc.length),
-        extensions: [markdown({ extensions: [GFM] }), richMarkdown({ openPath })],
+        extensions: [markdown({ extensions: [GFM] }), richMarkdown({ pathOpener })],
       }),
       parent,
     });
@@ -1562,34 +1568,31 @@ describe('following links', () => {
   }
 
   it('opens a path on this site in place', () => {
-    const opened: string[] = [];
     const doc = '[Import](/settings/import)\n\nplain';
-    const v = mountWithOpenPath(doc, (path) => {
-      opened.push(path);
-      return true;
-    });
+    const v = mountWithOpenPath(doc, () => true);
     const { pressClaimed } = clickLabel(v);
     expect(opened).toEqual(['/settings/import']);
     expect(followed).toEqual([]);
     expect(pressClaimed).toBe(true);
   });
 
-  it('opens a path the app refuses in a new tab instead', () => {
-    const doc = '[File](/api/notes/n1/files/a.txt)\n\nplain';
-    const v = mountWithOpenPath(doc, () => false);
-    clickLabel(v);
-    expect(followed).toEqual([
-      { href: '/api/notes/n1/files/a.txt', target: '_blank', rel: 'noopener noreferrer' },
-    ]);
+  /**
+   * A path with no page — a link carried over from another tool's export, or a stored
+   * file's address — is text, as before: a new tab would only show the not-found page.
+   */
+  it('leaves a path the app has no page for as text', () => {
+    for (const doc of ['[Note](/Folder/Note.md)\n\nplain', '[File](/api/notes/n1/files/a.txt)\n\nplain']) {
+      const v = mountWithOpenPath(doc, () => false);
+      clickLabel(v);
+      expect(opened, doc).toEqual([]);
+      expect(followed, doc).toEqual([]);
+      v.destroy();
+    }
   });
 
   it('never takes an address on another site for a path', () => {
-    const opened: string[] = [];
     const doc = '[Elsewhere](//example.com/x)\n\nplain';
-    const v = mountWithOpenPath(doc, (path) => {
-      opened.push(path);
-      return true;
-    });
+    const v = mountWithOpenPath(doc, () => true);
     clickLabel(v);
     expect(opened).toEqual([]);
     expect(followed).toEqual([]);
