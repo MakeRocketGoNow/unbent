@@ -38,7 +38,8 @@ export function useLibraryTotal(enabled = true): number | null {
 /**
  * Whether the notes view's address shows the whole account: All notes, with no notebook,
  * tag, field filter, date range or search applied. The scope the empty state is allowed
- * in, because only there does "no notes here" mean "no notes at all". The sort and the view are not scope and do not count.
+ * in, because only there does "no notes here" mean "no notes at all". The sort and the
+ * view are not scope and do not count.
  */
 export function showsWholeAccount(search: {
   notebook?: string | undefined;

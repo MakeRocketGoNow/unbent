@@ -1253,10 +1253,11 @@ const HANDOFF_SCHEME = /^(mailto|tel):/i;
  * Followed inside the app, in place, through `pathOpener`: the sample note an empty account
  * can ask for (`welcome-note.ts`) links its settings pages this way, because an absolute
  * address would name one instance when every instance offers the same note, and would
- * point back at the old one after an export and an import elsewhere. In place rather than a new tab because the page it names is part
- * of this app, the way a link in the sidebar is; and through the router rather than a
- * navigation, so the app is not loaded again — in the Android and iOS apps a navigation
- * would reload the whole site and drop an upload in flight, as `followInHost` explains.
+ * point back at the old one after an export and an import elsewhere. In place rather
+ * than a new tab because the page it names is part of this app, the way a link in the
+ * sidebar is; and through the router rather than a navigation, so the app is not loaded
+ * again — in the Android and iOS apps a navigation would reload the whole site and drop
+ * an upload in flight, as `followInHost` explains.
  *
  * A path the app has no page for — `/Folder/Note.md` in a note imported from another
  * tool, or a stored file's `/api/…` address — stays text, as every such link was before
