@@ -65,7 +65,8 @@ export const importRoutes = new Hono<AppEnv>().post(
  * `?create=1` is the same definition applied only to a notebook it makes: a name already
  * taken answers 409 and changes nothing. A notebook template is created this way, so that
  * choosing one can never add its fields to a notebook the person already has. Only `1` is
- * read as yes, the way `?new=1` is on the notes page.
+ * accepted: any other value is a 400 rather than quietly read as no, since a caller that
+ * meant "create" and misspelt it would otherwise merge, the very thing it asked to avoid.
  */
 export const importNotebookRoutes = new Hono<AppEnv>().post(
   '/import/notebook',
