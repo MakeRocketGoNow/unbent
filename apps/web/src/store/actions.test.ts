@@ -333,6 +333,19 @@ describe('a replayed write', () => {
     expect(engine.pull).toHaveBeenCalled();
   });
 
+  it('does not wait for a first copy that was cut short, either', async () => {
+    // A walk stopped by a failed page is `failed`, not `hydrating`, and has no cursor:
+    // the next pull resumes the whole walk, which the entry must not sit behind.
+    const { fake, engine } = library([row('n1')]);
+    engine.state.phase = 'failed';
+    engine.state.cursor = null;
+    vi.mocked(api.deleteNote).mockResolvedValueOnce(undefined);
+    await actions.trashNote('n1');
+    await tick();
+    expect(await fake.replayOne()).toBe('done');
+    expect(engine.pull).toHaveBeenCalled();
+  });
+
   it('ends for good on a 4xx the server would give again, and is kept for one that may change', async () => {
     const { fake } = library([row('n1'), row('n2')]);
     await actions.trashNotes(['n1']);

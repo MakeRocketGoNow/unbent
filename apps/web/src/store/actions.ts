@@ -9,7 +9,7 @@ import { availableFilename, lookups, toNote, type Snapshot } from './derive.js';
 import type { Collections, LocalNote } from './collections.js';
 import { askToPersist, filesSupported, readFile, removeFile, writeFile } from './files.js';
 import { FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE } from '../sw/routes.js';
-import type { FeedEngine } from './feed.js';
+import { isWhole, type FeedEngine } from './feed.js';
 import { outboxName } from './names.js';
 
 /**
@@ -478,14 +478,17 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
    * When the answer could not be written in: the copy, brought here by a pull before the
    * entry ends. `pull` never rejects and waits out a queued second run.
    *
-   * Not during the first copy. A pull then is the whole snapshot walk — minutes on a
-   * phone — and an entry that waited for it held the queue behind it, kept "syncing" up
-   * and timed a sign-out's drain out (review of #232). The walk ends by following the
-   * feed from the `seq` it began at, which carries this write too; the pull is asked for
-   * so a walk already over picks it up, and not waited for.
+   * Not while the library is not whole (`isWhole`). A pull then is the whole snapshot
+   * walk — minutes on a phone — and an entry that waited for it held the queue behind
+   * it, kept "syncing" up and timed a sign-out's drain out (review of #232). That is a
+   * walk cut short as much as one under way: a failed page leaves `failed` with no
+   * cursor, and the next pull resumes the walk, so testing for `hydrating` alone let
+   * those entries wait for it again. The walk ends by following the feed from the `seq`
+   * it began at, which carries this write too; the pull is asked for so a walk already
+   * over picks it up, and not waited for.
    */
   const settled = () => {
-    if (lib.engine.state.phase !== 'hydrating') return lib.engine.pull();
+    if (isWhole(lib.engine.state)) return lib.engine.pull();
     void lib.engine.pull();
     return Promise.resolve();
   };
