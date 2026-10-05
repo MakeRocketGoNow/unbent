@@ -3,6 +3,7 @@ import type { FieldDef } from '@unbent/shared';
 import { appLinks } from '../../lib/app-links.js';
 import { registerReadTools } from './read.js';
 import type { NotesRepo } from '../../lib/notes-repo.js';
+import type { AttachmentsRepo } from '../../lib/attachments-repo.js';
 
 /*
  * The read tools are thin over the repo; what is worth pinning is the part that is not:
@@ -17,7 +18,7 @@ type Handler = (args: Record<string, unknown>) => Promise<{
 /** A self-hosted instance's address, so a link that ignored it would show. */
 const APP_URL = 'https://notes.example.com';
 
-function collect(notes: NotesRepo): Map<string, Handler> {
+function collect(notes: NotesRepo, attachments: AttachmentsRepo = {} as never): Map<string, Handler> {
   const tools = new Map<string, Handler>();
   const server = {
     registerTool(name: string, _config: unknown, handler: Handler) {
@@ -25,7 +26,7 @@ function collect(notes: NotesRepo): Map<string, Handler> {
       return {} as never;
     },
   };
-  registerReadTools(server as never, notes, {} as never, appLinks(APP_URL), { vision: true });
+  registerReadTools(server as never, notes, attachments, appLinks(APP_URL), { vision: true });
   return tools;
 }
 
@@ -390,5 +391,47 @@ describe('file summaries on get_note and list_notes (MAK-172)', () => {
     expect(result.isError).toBe(true);
     expect(result.content[0]!.text).toMatch(/compact/);
     expect(asked).toEqual([]);
+  });
+});
+
+describe('get_attachment_text with maxChars and offset (MAK-173)', () => {
+  const NOTE = '00000000-0000-4000-8000-000000000001';
+  // An opening worth reading, then the terms a receipt spends its other pages on.
+  const TEXT = 'Acme Hardware\nTotal $42.00\n' + 'Terms and conditions. '.repeat(20);
+
+  function read() {
+    const repo = {
+      textFor: async (_noteId: string, filename: string) => (filename === 'receipt.pdf' ? TEXT : null),
+    } as unknown as AttachmentsRepo;
+    return collect({} as NotesRepo, repo).get('get_attachment_text')!;
+  }
+
+  it('answers the whole text, with no paging keys, when neither is given', async () => {
+    const result = answer(await read()({ noteId: NOTE, filename: 'receipt.pdf' }));
+    expect(result).toEqual({ filename: 'receipt.pdf', indexed: true, text: TEXT });
+  });
+
+  it('cuts the text and says how much there is and where to go on from', async () => {
+    const result = answer(await read()({ noteId: NOTE, filename: 'receipt.pdf', maxChars: 27 }));
+    expect(result).toEqual({
+      filename: 'receipt.pdf',
+      indexed: true,
+      text: 'Acme Hardware\nTotal $42.00\n',
+      totalChars: TEXT.length,
+      truncated: true,
+      nextOffset: 27,
+    });
+  });
+
+  it('reads on from an offset, and says when it reached the end', async () => {
+    const result = answer(await read()({ noteId: NOTE, filename: 'receipt.pdf', offset: 27, maxChars: 10_000 }));
+    expect(result.text).toBe(TEXT.slice(27));
+    expect(result).toMatchObject({ offset: 27, totalChars: TEXT.length, truncated: false });
+    expect(result).not.toHaveProperty('nextOffset');
+  });
+
+  it('says not truncated when maxChars covers the text', async () => {
+    const result = answer(await read()({ noteId: NOTE, filename: 'receipt.pdf', maxChars: TEXT.length }));
+    expect(result).toMatchObject({ text: TEXT, totalChars: TEXT.length, truncated: false });
   });
 });
