@@ -384,6 +384,25 @@ describe('file summaries on get_note and list_notes (MAK-172)', () => {
     expect(result.notes[1].moreFiles).toBeUndefined();
   });
 
+  it('gives search results their files only when asked, through the one call', async () => {
+    const hit = { id: 'n-1', title: 'Receipt', updatedAt: 2, snippet: 'Acme' };
+    const calls: string[] = [];
+    const repo = {
+      search: async () => (calls.push('search'), [hit]),
+      searchWithFiles: async (_q: string, _l: number, _f: unknown, opts: unknown) => {
+        calls.push(`searchWithFiles ${JSON.stringify(opts)}`);
+        return { results: [hit, { ...hit, id: 'n-2' }], summaries: { 'n-1': [read] } };
+      },
+    } as unknown as NotesRepo;
+    const search = collect(repo).get('search_notes')!;
+
+    expect(answer(await search({ query: 'acme', limit: 20 })).results[0].attachments).toBeUndefined();
+    const found = answer(await search({ query: 'acme', limit: 20, attachmentSummaries: true }));
+    expect(calls).toEqual(['search', 'searchWithFiles {"vision":true}']);
+    expect(found.results[0].attachments).toEqual([{ filename: 'receipt.jpg', read: 'vision', summary: read.summary }]);
+    expect(found.results[1].attachments).toEqual([]);
+  });
+
   it('refuses summaries on a compact page, which is for hundreds of ids', async () => {
     const { asked, list } = listRepo({});
     const result = await list({ limit: 500, compact: true, attachmentSummaries: true });

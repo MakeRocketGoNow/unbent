@@ -114,7 +114,7 @@ const READS = new Set([
   'resolveAttachment', 'listAttachments', 'ownsNote', 'availableFilename', 'needingText', 'needingVision',
   'visionPending', 'pendingTextCount', 'textFor', 'textsForNote', 'textsForNotes', 'textsById', 'attachmentIdFor',
   'keysForNote', 'allBlobKeys',
-  'listPage', 'searchRows', 'exportPage', 'getWithFiles', 'filesForNote', 'notebooksOverview', 'pendingText',
+  'listPage', 'searchRows', 'searchWithFiles', 'exportPage', 'getWithFiles', 'filesForNote', 'notebooksOverview', 'pendingText',
   'autofillPrelude', 'autofillContext', 'attachmentReadPrelude', 'uploadPrelude',
   'changesSince', 'snapshotPage',
   'listRevisions', 'getRevision',

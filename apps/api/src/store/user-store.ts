@@ -637,6 +637,23 @@ export class UserStore extends DurableObject<StoreEnv> {
   }
 
   /**
+   * MCP's `search_notes` with a line per file of each match (`summariesForNotes`), keyed
+   * by note id, in one call. A search result does not say whether its note has files, so
+   * every match is asked about: an index probe for a note with none.
+   */
+  searchWithFiles(
+    rawQuery: string,
+    limit: number,
+    filters: SearchFilters = {},
+    scopeDrivenSearchMax?: number,
+    opts: { vision?: boolean } = {},
+  ) {
+    this.ready();
+    const results = this.notes.search(rawQuery, limit, filters, scopeDrivenSearchMax);
+    return { results, summaries: this.attachments.summariesForNotes(results.map((r) => r.id), opts.vision) };
+  }
+
+  /**
    * `GET /export/notes`: whole notes, the texts held for their files, the total on the
    * first page, and the cursor to continue from.
    *

@@ -66,7 +66,7 @@ const FULL_LIST_LIMIT = 100;
 const COMPACT_LIST_LIMIT = MAX_BATCH_NOTES;
 
 /**
- * How many files' summaries one note carries on a page of `list_notes`. The page is capped
+ * How many files' summaries one note carries on a page of `list_notes` or `search_notes`. The page is capped
  * at a hundred notes, but a note is not capped in files, and a few notes with dozens of
  * scans each would make a page of summaries the very context-filling read they are there
  * to save. A receipt or a business card has one or two; ten covers what a page is for, and
@@ -88,6 +88,18 @@ const ATTACHMENT_SUMMARY =
   'a note not in the trash); "none" when it was read and nothing was found, or nothing on ' +
   'this instance reads that kind of file. summary is null unless read is "vision" or ' +
   '"text", and is a few hundred characters at most: get_attachment_text has the whole text.';
+
+/** The flag `list_notes` and `search_notes` share, so the two cannot describe it differently. */
+const attachmentSummariesFlag = (each: 'note' | 'result', also = '') =>
+  z
+    .boolean()
+    .default(false)
+    .describe(
+      `Also list each ${each === 'note' ? "note's" : "result's note's"} files as attachments: [{filename, read, summary}]. ` +
+        ATTACHMENT_SUMMARY +
+        ` At most ${LIST_FILES_PER_NOTE} files a note; moreFiles counts the rest, which ` +
+        `get_note lists.${also}`,
+    );
 
 const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD').optional();
 
@@ -173,7 +185,7 @@ async function resolveFieldFilters(
   return { filters: out };
 }
 
-/** A note's files as a page of `list_notes` carries them: the first few, and a count of the rest. */
+/** A note's files as `list_notes` and `search_notes` carry them: the first few, and a count of the rest. */
 function filesOf(files: FileSummary[]) {
   const shown = files.slice(0, LIST_FILES_PER_NOTE);
   return {
@@ -203,10 +215,12 @@ export function registerReadTools(
         'matchedField matched in that custom field\'s value; one with matchedFile matched ' +
         'inside that attachment. Terms are matched literally and ANDed; there is no operator ' +
         'syntax, so narrow with the tag, notebook and date arguments rather than by writing ' +
-        'filters into the query.',
+        'filters into the query. With attachmentSummaries, each result also lists its ' +
+        'note\'s files with a short summary of each, as list_notes does.',
       inputSchema: z.object({
         query: z.string().min(1).max(500).describe('Words to look for.'),
         limit: z.number().int().min(1).max(100).default(20),
+        attachmentSummaries: attachmentSummariesFlag('result'),
         tag: tagFilter,
         notebook: notebookFilter,
         from: dateOnly.describe('Only notes created on or after this date (UTC).'),
@@ -214,8 +228,13 @@ export function registerReadTools(
       }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async ({ query, limit, tag, notebook, from, to }) => {
-      const results = await notes.search(query, limit, { tags: tag, notebook, from, to });
+    async ({ query, limit, attachmentSummaries, tag, notebook, from, to }) => {
+      const filters = { tags: tag, notebook, from, to };
+      // The plain search when the files were not asked for: the composite reads the files
+      // of every match, which a search that only wants its hits should not pay for.
+      const { results, summaries } = attachmentSummaries
+        ? await notes.searchWithFiles(query, limit, filters, { vision: readers.vision })
+        : { results: await notes.search(query, limit, filters), summaries: undefined };
       return jsonResult({
         count: results.length,
         results: results.map((r) => ({
@@ -228,6 +247,7 @@ export function registerReadTools(
           ...(r.matchedFile ? { matchedFile: r.matchedFile } : {}),
           ...(r.matchedField ? { matchedField: r.matchedField } : {}),
           ...(r.matchedTag ? { matchedTag: r.matchedTag } : {}),
+          ...(summaries ? filesOf(summaries[r.id] ?? []) : {}),
         })),
       });
     },
@@ -265,15 +285,7 @@ export function registerReadTools(
               'large set to pass to move_notes, update_note_tags or update_note_fields, while ' +
               'still seeing what each note is and where it is filed.',
           ),
-        attachmentSummaries: z
-          .boolean()
-          .default(false)
-          .describe(
-            'Also list each note\'s files as attachments: [{filename, read, summary}]. ' +
-              ATTACHMENT_SUMMARY +
-              ` At most ${LIST_FILES_PER_NOTE} files a note; moreFiles counts the rest, which ` +
-              'get_note lists. Not with compact.',
-          ),
+        attachmentSummaries: attachmentSummariesFlag('note', ' Not with compact.'),
         tag: tagFilter,
         notebook: notebookFilter,
         fields: fieldFiltersSchema,

@@ -795,8 +795,9 @@ Three are worth knowing about:
   for one file the first tool reports unread — a picture stored before the instance could
   read one, or a scan nothing has looked at. That one costs a request when the vision model
   is used, and reads the one file only. See [Searching inside PDFs](#searching-inside-pdfs).
-  Before either, `get_note` — and `list_notes` with `attachmentSummaries` — already give
-  each file a line of what it is: the vision model's name and description for a picture or
+  Before either, `get_note` — and `list_notes` or `search_notes` with
+  `attachmentSummaries` — already give each file a line of what it is: the vision model's
+  name and description for a picture or
   a text-less scan, the opening of a text layer otherwise, or whether it is still waiting.
   Filling a notebook's fields from its receipts is then a page of a hundred notes read in
   one call, rather than two calls for every note.

@@ -213,6 +213,12 @@ describe('attachments', () => {
     expect((await stub.getWithFiles('n2', { vision: false }))!.files.find((f) => f.filename === 'new.png')!.read).toBe('none');
     expect((await stub.getWithFiles('n2'))!.files.find((f) => f.filename === 'new.png')!.read).toBe('pending');
 
+    // A search carries the same lines for its matches, in the one call.
+    await stub.update('n1', { body: 'lunch with the team' });
+    const found = await stub.searchWithFiles('lunch', 5);
+    expect(found.results.map((r) => r.id)).toEqual(['n1']);
+    expect(found.summaries['n1']!.map((f) => f.read)).toEqual(['vision', 'text']);
+
     // A compact page knows nothing of its notes' files, which must not read as "none".
     const compact = await stub.listPage({ limit: 10, compact: true }, null, { summaries: true });
     expect(Object.keys(compact.summaries!).sort()).toEqual(['n1', 'n2']);
