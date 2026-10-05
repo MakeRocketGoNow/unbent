@@ -772,6 +772,10 @@ Things about working on the store that are easy to get wrong:
   loops over accounts or pages D1 needs the same shape. CPU is a budget too — ten
   milliseconds an invocation on Free, thirty seconds inside an object — so work over a big
   result, like turning a dump page into SQL text, is done in the object and forwarded.
+  unbent.app itself is on Workers Paid (ten thousand subrequests, thirty seconds of CPU a
+  cron run), but a fork deploys this same Worker on Free, so anything every instance runs
+  keeps to Free's numbers. Only a feature an operator has to switch on may be sized for
+  Paid, and it says so where it is switched on.
 - **Nothing periodic may scan a table.** The sweep reads `usage()` — the one `note_counts`
   row and the database size — never `stats()`, which counts every table and is the
   operator's. An hourly `stats()` on an archive-sized account would read every row of it
@@ -884,9 +888,11 @@ Rules that hold it together, each with a test:
 
 ## Rows read are still the budget
 
-Production runs on Workers Free, where the rows a Durable Object's SQLite reads and writes
-are metered as D1's were, and the shared database ran out of its daily reads twice in one
-week before the query plans were fixed. So a change to a query is judged by the rows it
+The rows a Durable Object's SQLite reads and writes are metered as D1's were. Production
+ran on Workers Free until October 2026, and the shared database ran out of its daily reads
+twice in one week before the query plans were fixed. It is on Workers Paid now, where the
+same rows are a bill rather than a wall, and a fork is on Free until its operator decides
+otherwise, so the rule did not move with the plan. A change to a query is judged by the rows it
 reads on an archive-sized store, not by whether it returns the right rows. The accounting
 is the `[store]` log line the `Sql` seam writes for any statement over two thousand rows,
 with the user id and the statement; `POST /api/admin/store/sql` runs `EXPLAIN QUERY PLAN`
