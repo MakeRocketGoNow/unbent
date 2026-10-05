@@ -33,6 +33,12 @@ import { titleCase } from './title-case.js';
  * question rides in a request that is being made anyway — and its pick is what stands
  * where there is no language model, or when that model declines or fails.
  *
+ * A text field's value is the same case at a smaller size: the vendor is a few words in
+ * the middle of a letterhead's line, and only a model that writes can copy those words
+ * out. That model writes the text fields too, and a value it writes is kept only when the
+ * document contains it — so the promise above holds for every field. See
+ * `textFieldValues`.
+ *
  * Two round trips. The fields to fill are the chosen notebook's, and the choice has to
  * come back first; every question in a round shares one state, so each round is one
  * request. What goes to the API is the note's own content — title, body, the text of its
@@ -224,6 +230,9 @@ export function candidateLines(sources: Array<{ text: string; where: string }>):
  * number, but the line is not it, and a field filled with the whole line is one the
  * person has to clean up. So a line written as a label and a value offers the value too.
  * Short labels only — a colon forty characters in is a sentence, not a label.
+ *
+ * Where the instance has a language model, it writes these values instead; this is what
+ * an instance without one gets, and what stands when that model fails.
  */
 export function labelledValues(lines: Option[]): Option[] {
   const out: Option[] = [];
@@ -657,6 +666,58 @@ function fieldAsks(fields: FieldDef[], corpus: Corpus): Ask[] {
   return asks;
 }
 
+/** For finding a value in the text: case and runs of whitespace are not a difference. */
+const comparable = (text: string) => text.toLowerCase().replace(/\s+/g, ' ').trim();
+
+/**
+ * The text fields' values as the language model writes them, where the instance has one.
+ *
+ * Jev chooses among the document's lines, so a text field could only ever be filled with
+ * a whole line: "Thank you for shopping at Acme Rentals Store #4471, 100 Example Rd" for
+ * a Vendor, "Order number: 112-0042" for an order number. `labelledValues` rescues the
+ * second; nothing a finder can do rescues the first, because the value is a few words in
+ * the middle of a sentence. A model that writes can copy those few words out.
+ *
+ * A model that writes can also write something the document never says, which is the
+ * thing this file was built to rule out. So a value is kept only when the document
+ * contains it, ignoring case and spacing; anything else is dropped and Jev's pick stands
+ * for that field. That keeps the promise at the top of this file — a value is always
+ * something the document says — while letting the value be the part of a line that is
+ * the answer.
+ *
+ * Only text fields. A date, an amount, an address or an option is already a value Jev
+ * picks from candidates that are exactly that, and a model writing them would be one more
+ * way to get a digit wrong. Map from field id to value; a field the model left empty, or
+ * answered with something not in the document, is not in it. A failure is logged and
+ * answered with nothing, so every field falls back to Jev's pick.
+ */
+async function textFieldValues(
+  llm: Pick<LanguageModel, 'textFields'>,
+  corpus: Corpus,
+  fields: FieldDef[],
+): Promise<Map<string, string>> {
+  const found = new Map<string, string>();
+  const asked = fields.filter((f) => f.type === 'text');
+  if (asked.length === 0) return found;
+  let answer: Record<string, string> | null;
+  try {
+    answer = await llm.textFields(
+      corpus.note,
+      asked.map((f, i) => ({ key: `field_${i}`, name: f.name })),
+    );
+  } catch (err) {
+    console.error('autofill fields:', (err as Error).message);
+    return found;
+  }
+  if (!answer) return found;
+  const document = comparable(corpus.text);
+  asked.forEach((f, i) => {
+    const value = answer[`field_${i}`] ?? '';
+    if (value && document.includes(comparable(value))) found.set(f.id, value);
+  });
+  return found;
+}
+
 /**
  * The name the language model already wrote for a note that is one picture and nothing
  * else — the most common capture, a photo shared from a phone.
@@ -694,7 +755,7 @@ function nameFromReading(input: AutofillInput): string | null {
 export async function autofill(
   jev: Jev,
   input: AutofillInput,
-  llm?: Pick<LanguageModel, 'title'>,
+  llm?: Pick<LanguageModel, 'title' | 'textFields'>,
   operator = false,
 ): Promise<AutofillSuggestion> {
   const corpus = gather(input);
@@ -748,11 +809,29 @@ export async function autofill(
     const asks = fieldAsks(target.fields, corpus);
     const questions = Object.assign({}, ...asks.map((ask) => ask.questions)) as Record<string, JevQuestion>;
     if (Object.keys(questions).length > 0) {
-      const second = await jev.ask(corpus.state, questions);
+      // Jev is still asked the text fields, in the round it makes anyway: its pick is what
+      // stands wherever the model's value does not. The two requests overlap.
+      const [second, writtenFields] = await Promise.all([
+        jev.ask(corpus.state, questions),
+        llm ? textFieldValues(llm, corpus, target.fields) : new Map<string, string>(),
+      ]);
       for (const ask of asks) {
         const found = ask.read(second);
         if (found) suggestion.fields.push(found);
       }
+      // A written value replaces Jev's line, or fills a field Jev found no line for. No
+      // confidence on it, as on a written title: see `AutofillSuggestion`.
+      for (const def of target.fields) {
+        const value = writtenFields.get(def.id);
+        if (!value || encodeFieldValue(def, value) === null) continue;
+        const entry = { field: def, value };
+        const i = suggestion.fields.findIndex((f) => f.field.id === def.id);
+        if (i >= 0) suggestion.fields[i] = entry;
+        else suggestion.fields.push(entry);
+      }
+      // In the notebook's order, which is the order the fields are drawn and asked in.
+      const order = new Map(target.fields.map((f, i) => [f.id, i]));
+      suggestion.fields.sort((a, b) => order.get(a.field.id)! - order.get(b.field.id)!);
     }
   }
 

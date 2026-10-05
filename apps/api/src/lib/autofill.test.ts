@@ -47,6 +47,8 @@ const choice = (choice: string, confidence = 0.9): JevAnswer => ({
   confidence,
 });
 const noul = (noul: number): JevAnswer => ({ type: 'noul', noul });
+/** A language model whose title is what a test is about, and which leaves the text fields to Jev. */
+const noFields = async () => ({});
 
 function field(over: Partial<FieldDef> & Pick<FieldDef, 'id' | 'name' | 'type'>): FieldDef {
   return { notebookId: 'nb-coupons', options: [], scale: null, currency: null, position: 0, ...over };
@@ -180,7 +182,7 @@ describe('what the model is asked', () => {
 });
 
 describe('the title', () => {
-  const written = { title: vi.fn(async () => 'Acme Hardware invoice, March 2026') };
+  const written = { textFields: noFields, title: vi.fn(async () => 'Acme Hardware invoice, March 2026') };
 
   it('is written by the language model when there is one, shown the note whole', async () => {
     const { jev } = fake({ title: choice('ACME HARDWARE', 0.9) });
@@ -212,7 +214,7 @@ describe('the title', () => {
 
   it('asks the fields before the title has come back, and collects the title last', async () => {
     let finish!: (title: string) => void;
-    const slow = { title: vi.fn(() => new Promise<string>((resolve) => (finish = resolve))) };
+    const slow = { textFields: noFields, title: vi.fn(() => new Promise<string>((resolve) => (finish = resolve))) };
     const { jev, calls } = fake({ notebook: choice('Receipts') });
     const running = autofill(jev, input(), slow);
     // Both rounds are asked while the title is still being written.
@@ -223,15 +225,15 @@ describe('the title', () => {
 
   it('falls back to Jev\u2019s pick of a line, in title case, when the model declines or fails', async () => {
     const { jev } = fake({ title: choice('ACME HARDWARE', 0.7) });
-    const declined = { title: vi.fn(async () => null) };
+    const declined = { textFields: noFields, title: vi.fn(async () => null) };
     expect((await autofill(jev, input(), declined)).title).toEqual({ value: 'Acme Hardware', confidence: 0.7 });
-    const failing = { title: vi.fn(async () => { throw new Error('down'); }) };
+    const failing = { textFields: noFields, title: vi.fn(async () => { throw new Error('down'); }) };
     expect((await autofill(jev, input(), failing)).title).toEqual({ value: 'Acme Hardware', confidence: 0.7 });
     expect((await autofill(jev, input())).title).toEqual({ value: 'Acme Hardware', confidence: 0.7 });
   });
 
   it('tells an operator when the title model rejected its key, and no one else', async () => {
-    const rejected = { title: vi.fn(async () => { throw new LlmError(401, 'invalid x-api-key'); }) };
+    const rejected = { textFields: noFields, title: vi.fn(async () => { throw new LlmError(401, 'invalid x-api-key'); }) };
     // The operator is told, alongside the fallback title \u2014 the fill still succeeds.
     const forOperator = await autofill(fake().jev, input(), rejected, true);
     expect(forOperator.titleModel).toBe('auth-failed');
@@ -244,10 +246,10 @@ describe('the title', () => {
     // A rate limit, a 5xx, a timeout (status 0): retrying would work, so Jev's pick stands
     // without crying wolf. Only 401/403 are the standing misconfiguration worth surfacing.
     for (const status of [429, 500, 529, 0]) {
-      const flaky = { title: vi.fn(async () => { throw new LlmError(status, 'busy'); }) };
+      const flaky = { textFields: noFields, title: vi.fn(async () => { throw new LlmError(status, 'busy'); }) };
       expect((await autofill(fake().jev, input(), flaky, true)).titleModel).toBeUndefined();
     }
-    const plain = { title: vi.fn(async () => { throw new Error('boom'); }) };
+    const plain = { textFields: noFields, title: vi.fn(async () => { throw new Error('boom'); }) };
     expect((await autofill(fake().jev, input(), plain, true)).titleModel).toBeUndefined();
   });
 
@@ -393,6 +395,87 @@ describe('the fields', () => {
     const { jev } = fake({ notebook: choice('Receipts'), field_3: choice('Sundries'), field_1: choice('lots') });
     const out = await autofill(jev, input());
     expect(out.fields).toEqual([]);
+  });
+});
+
+describe('text fields the language model writes (MAK-174)', () => {
+  // A letterhead the vendor is a few words of, and an order number behind its label.
+  const sale = [
+    'Thank you for shopping at Acme Rentals Store #4471, 100 Example Rd',
+    'Order number: 112-0042',
+    'Total $141.80',
+  ].join('\n');
+  const rentals: AutofillInput['notebooks'][number] = {
+    ...receipts,
+    fields: [
+      field({ id: 'f-vendor', name: 'Vendor', type: 'text', notebookId: 'nb-receipts' }),
+      field({ id: 'f-total', name: 'Total', type: 'number', notebookId: 'nb-receipts' }),
+      field({ id: 'f-order', name: 'Order number', type: 'text', notebookId: 'nb-receipts' }),
+    ],
+  };
+  const filed = (over: Partial<AutofillInput> = {}) =>
+    input({
+      note: { title: '', body: '', tags: [], notebookId: 'nb-receipts' },
+      attachments: [{ filename: 'sale.pdf', text: sale }],
+      notebooks: [rentals],
+      ...over,
+    });
+  const model = (answer: Record<string, string> | null | Error) => ({
+    title: vi.fn(async () => null),
+    textFields: vi.fn(async () => {
+      if (answer instanceof Error) throw answer;
+      return answer;
+    }),
+  });
+
+  it('asks the model for the text fields only, shown the note', async () => {
+    const { jev } = fake();
+    const llm = model({});
+    await autofill(jev, filed(), llm);
+    expect(llm.textFields).toHaveBeenCalledWith(
+      expect.objectContaining({ attachments: [{ filename: 'sale.pdf', text: sale }] }),
+      [
+        { key: 'field_0', name: 'Vendor' },
+        { key: 'field_1', name: 'Order number' },
+      ],
+    );
+  });
+
+  it('takes the part of a line that is the value, in place of Jev\u2019s whole line', async () => {
+    const { jev } = fake({
+      field_0: choice('Thank you for shopping at Acme Rentals Store #4471, 100 Example Rd', 0.85),
+      field_1: choice('141.8', 0.9),
+    });
+    const out = await autofill(jev, filed(), model({ field_0: 'ACME RENTALS', field_1: '112-0042' }));
+    expect(out.fields.map((f) => [f.field.name, f.value, f.confidence])).toEqual([
+      // As the model copied it; found in the document without regard to case.
+      ['Vendor', 'ACME RENTALS', undefined],
+      ['Total', 141.8, 0.9],
+      // Jev picked no line for it, and the written value fills it.
+      ['Order number', '112-0042', undefined],
+    ]);
+  });
+
+  it('drops a value the document does not contain, and Jev\u2019s pick stands', async () => {
+    const line = 'Thank you for shopping at Acme Rentals Store #4471, 100 Example Rd';
+    const { jev } = fake({ field_0: choice(line, 0.85) });
+    const out = await autofill(jev, filed(), model({ field_0: 'Acme Rentals LLC', field_1: '' }));
+    expect(out.fields).toEqual([{ field: rentals.fields[0], value: line, confidence: 0.85 }]);
+  });
+
+  it('falls back to Jev\u2019s picks when the model fails or declines', async () => {
+    for (const answer of [new Error('down'), null]) {
+      const { jev } = fake({ field_2: choice('112-0042', 0.8) });
+      const out = await autofill(jev, filed(), model(answer));
+      expect(out.fields).toEqual([{ field: rentals.fields[2], value: '112-0042', confidence: 0.8 }]);
+    }
+  });
+
+  it('is not asked when the notebook has no text fields', async () => {
+    const { jev } = fake();
+    const llm = model({});
+    await autofill(jev, input({ note: { title: '', body: '', tags: [], notebookId: 'nb-receipts' }, notebooks: [{ ...receipts, fields: receipts.fields.filter((f) => f.type !== 'text') }] }), llm);
+    expect(llm.textFields).not.toHaveBeenCalled();
   });
 });
 

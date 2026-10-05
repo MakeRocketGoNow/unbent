@@ -16,7 +16,8 @@ import { z } from 'zod';
  * And writing a note's title. Jev can only pick a line off the document, which gets
  * "Invoice #4471"; a model that writes gets "Acme Hardware Invoice, March 2026", which is
  * what a person filing it would have typed. See `title`, and lib/autofill.ts for how the
- * two are combined.
+ * two are combined. The same goes for a text field's value, a few words copied out of a
+ * line Jev could only take whole; see `textFields`.
  *
  * Behind a seam (`LanguageModel`) so the model can be swapped: the one implementation is
  * Claude over the Messages API, with the model id an environment variable, and another
@@ -119,6 +120,12 @@ export interface LanguageModel {
   read(file: { filename: string; contentType: string; bytes: ArrayBuffer }): Promise<FileReading | null>;
   /** The title a careful person would give the note. Null when the model declined. */
   title(note: NoteForTitle): Promise<string | null>;
+  /**
+   * The values of a notebook's text fields, as the note writes them: by each field's
+   * `key`, `''` where the note does not say. Null when the model declined. Only text
+   * fields: see `textFieldValues` in lib/autofill.ts for why the rest stay Jev's.
+   */
+  textFields(note: NoteForTitle, fields: Array<{ key: string; name: string }>): Promise<Record<string, string> | null>;
 }
 
 /** The API refused or failed. `status` is HTTP's, or 0 when no answer arrived at all. */
@@ -241,6 +248,25 @@ const TITLE_SCHEMA = {
 } as const;
 
 const titled = z.object({ title: z.string() });
+
+const FIELDS_SYSTEM = [
+  'You fill in fields on notes in a personal archive: scans, photographs and notes someone',
+  'kept. You are shown the note — its title, its body and the text of its files — and the',
+  'names of some fields. For each field, answer with its value exactly as the note writes',
+  'it: the value alone, without the label before it or the words around it. For a field',
+  'named "Vendor" on a receipt that says "Thank you for shopping at Acme Hardware Store',
+  '#12", the value is "Acme Hardware"; for "Order number" beside "Order #: 112-0042", it is',
+  '"112-0042".',
+  '',
+  'Copy the value from the note; never write one it does not contain. Name the party a',
+  'document is from, not a middleman that only handled it — a payment network, a card',
+  'brand, the software that printed it. When the note does not say, or you are not sure',
+  'which of several it means, answer with an empty string. An empty field is better than',
+  'a wrong one.',
+].join('\n');
+
+/** Text field values are short; a model that answers with a paragraph is cut, then checked. */
+const MAX_FIELD_CHARS = 200;
 
 /** Titles have a length in the shared schema; a model that ignores "short" is cut, not refused. */
 const MAX_TITLE_CHARS = 200;
@@ -374,6 +400,50 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
         if (!result.success) return null;
         const title = result.data.title.trim().replace(/\s+/g, ' ').slice(0, MAX_TITLE_CHARS);
         return title || null;
+      } catch {
+        return null;
+      }
+    },
+
+    async textFields(note, fields) {
+      if (fields.length === 0) return {};
+      // One property per field, keyed by the caller's key rather than the field's name: a
+      // name is the owner's to write, and a schema key has rules a name need not follow.
+      // The name goes in each property's description, which the model reads.
+      const schema = {
+        type: 'object',
+        properties: Object.fromEntries(
+          fields.map((f) => [f.key, { type: 'string', description: `The value of the field "${f.name}"` }]),
+        ),
+        required: fields.map((f) => f.key),
+        additionalProperties: false,
+      };
+      const body = JSON.stringify({
+        model,
+        // The same room as a title, for the same reason: thinking shares the budget.
+        max_tokens: MAX_TITLE_TOKENS,
+        system: FIELDS_SYSTEM,
+        messages: [
+          {
+            role: 'user',
+            content: JSON.stringify({ note, fields: fields.map((f) => ({ key: f.key, field: f.name })) }),
+          },
+        ],
+        output_config: {
+          ...(model === LLM_MODEL_DEFAULT ? { effort: 'low' } : {}),
+          format: { type: 'json_schema', schema },
+        },
+      });
+      const text = await ask(body);
+      if (!text) return null;
+      try {
+        const result = z.record(z.string(), z.string()).safeParse(JSON.parse(text));
+        if (!result.success) return null;
+        const out: Record<string, string> = {};
+        for (const f of fields) {
+          out[f.key] = (result.data[f.key] ?? '').trim().replace(/\s+/g, ' ').slice(0, MAX_FIELD_CHARS);
+        }
+        return out;
       } catch {
         return null;
       }
