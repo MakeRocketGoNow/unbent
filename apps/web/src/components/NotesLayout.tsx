@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { DEFAULT_NOTE_SORT, UNFILED, type FieldDef, type FieldValue } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import * as actions from '../store/actions.js';
 import { isOfflineError } from '../notes-api.js';
-import { Route } from '../routes/notes.js';
 import {
   notesQuery,
   tagsQuery,
@@ -89,7 +88,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     from,
     to,
     new: asked,
-  } = Route.useSearch();
+  } = useSearch({ from: '/notes' });
   /** The tag filter as a list, so the sidebar never has to care that it may be absent. */
   const selectedTags = tag ?? [];
   /** Likewise the field filters, as the wire strings the URL carries. */

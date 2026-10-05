@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { EmptyLibrary } from '../components/EmptyLibrary.js';
 import { notesQuery } from '../queries.js';
@@ -13,7 +13,6 @@ import {
   rememberFirstNoteOpened,
   shouldOpenFirstNote,
 } from '../first-run.js';
-import { Route as NotesRoute } from './notes.js';
 
 /** `/notes` with no note selected: the list is shown, the workspace is empty. */
 export const Route = createFileRoute('/notes/')({
@@ -33,7 +32,9 @@ export const Route = createFileRoute('/notes/')({
  * itself, so neither is done here.
  */
 function NoNoteOpen() {
-  const search = NotesRoute.useSearch();
+  // By the route's id rather than its object, so a test can mount this under a `/notes`
+  // route of its own (see notes-empty-library.test.tsx); the search is the same either way.
+  const search = useSearch({ from: '/notes' });
   const isMobile = useMediaQuery(MOBILE_QUERY);
   const wholeAccount = showsWholeAccount(search);
   // Both things this pane does with the total are desktop-only and need the whole account.
