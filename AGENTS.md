@@ -57,6 +57,7 @@ variant="secondary"   Outlined. A real action that isn't the main one. The defau
 variant="quiet"       No border until hover. For actions in dense rows and toolbars.
 tone="danger"         Destructive. Layers onto any variant.
 size="small"          Denser, for rows and toolbars.
+size="large"          44px tall, for the few actions of a state that stands alone.
 ```
 
 `variant` is how loud, `tone` is what it does — they are independent. "Delete forever" in a
@@ -65,6 +66,14 @@ the same `tone` vocabulary `Confirm` uses for its actions.
 
 Genuine navigation stays a `<Link>` or `<a>` and should look like one. `Button` deliberately
 does not render anchors.
+
+The one exception is a view's or a state's single call to action that navigates: it may
+be a `<Link>` wearing the button classes — `btn btn-primary` when it is the thing the view
+is for, `btn btn-secondary` when it is only the way out. It is still a real link — it
+middle-clicks, opens in a new tab and copies — and only borrows the button's shape.
+`FrontPage`'s sign-up and `EmptyLibrary`'s import are filled; `NotebookMissing`'s "Show all
+notes" is outlined. That is the stylesheet lending a link a shape, not a reason for
+`Button` to render anchors.
 
 Older filled buttons still use the bare `.primary` class. It is the same shape and radius as
 `.btn-primary` on purpose; convert callers to `Button` opportunistically when you are already

@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { useQuery, useInfiniteQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { DEFAULT_NOTE_SORT, UNFILED, type FieldDef, type FieldValue } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import * as actions from '../store/actions.js';
 import { isOfflineError } from '../notes-api.js';
-import { Route } from '../routes/notes.js';
 import {
   notesQuery,
   tagsQuery,
@@ -21,13 +20,14 @@ import { ResizeHandle } from './ResizeHandle.js';
 import { NoteListItem } from './NoteListItem.js';
 import { useListKeys, enterList } from '../useListKeys.js';
 import { useFocusSearch } from '../useFocusSearch.js';
-import { markNewNote } from '../useNewNote.js';
+import { useCreateNote, useHoldWhileCreating } from '../useCreateNote.js';
 import { useNewNoteRequest } from '../useNewNoteRequest.js';
 import { SearchResults } from './SearchResults.js';
 import { IndexingStatus } from './IndexingStatus.js';
 import { SampleNotes } from './SampleNotes.js';
+import { EmptyLibrary } from './EmptyLibrary.js';
 import { Button } from './Button';
-import { NotebookMissing } from './NotebookMissing.js';
+import { NotebookMissing, isNotebookMissing } from './NotebookMissing.js';
 import { ExportLink } from './ExportLink.js';
 import { TagPicker } from './TagPicker.js';
 import { FilterRow } from './FilterRow.js';
@@ -70,7 +70,9 @@ import { MoveSheet } from './MoveSheet.js';
 import { TagsSheet } from './TagsSheet.js';
 import { editOpenNoteFiling } from '../open-note-fields.js';
 import { useAppSession } from '../useAppSession.js';
-import { useLibraryArriving } from '../store/use-feed-state.js';
+import { useLibraryArriving, useLibraryWhole } from '../store/use-feed-state.js';
+import { sameNotebookName } from '../store/derive.js';
+import { ListRowsContext, showsWholeAccount, useLibraryTotal } from '../useLibraryTotal.js';
 import { useSignOut } from '../useSignOut.js';
 
 /** Sidebar plus the routed workspace. Filters come from the URL; nothing here is mirrored into state. */
@@ -87,7 +89,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     from,
     to,
     new: asked,
-  } = Route.useSearch();
+  } = useSearch({ from: '/notes' });
   /** The tag filter as a list, so the sidebar never has to care that it may be absent. */
   const selectedTags = tag ?? [];
   /** Likewise the field filters, as the wire strings the URL carries. */
@@ -157,12 +159,15 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * The selected notebook's field definitions, which name the field chips and are what
    * the sheet's Fields page offers. Field definitions belong to a notebook, so with no
    * notebook selected there is nothing to ask for and the query stays disabled; the id
-   * is looked up from the name, because the URL carries the name.
+   * is looked up from the name, because the URL carries the name — without case, as the
+   * list's filter and the server match it (`sameNotebookName`).
    */
   const notebookId =
     notebook && notebook !== UNFILED
-      ? notebooks.data?.notebooks.find((nb) => nb.name === notebook)?.id
+      ? notebooks.data?.notebooks.find((nb) => sameNotebookName(nb.name, notebook))?.id
       : undefined;
+  /** The notebook list is the whole account's; see `useLibraryWhole`. */
+  const libraryWhole = useLibraryWhole();
   const fieldDefs = useQuery(notebookFieldsQuery(notebookId));
   const config = useQuery(configQuery());
   /** The definition behind a sort by a field, once the notebook's fields have loaded. */
@@ -171,11 +176,12 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * A sort by a field the notebook does not have — or by any field outside a notebook —
    * is a stale or hand-edited link. Dropped once that is known rather than sent, since the
    * API refuses the whole list for it and a link should still open. Replaced, not pushed:
-   * Back should not return to the broken order.
+   * Back should not return to the broken order. A notebook missing from a library still
+   * arriving is not known to be missing — and dropping the sort then forgets it for good.
    */
   const sortFieldStale =
     sortField !== undefined &&
-    ((notebooks.isSuccess && notebookId === undefined) ||
+    ((libraryWhole && notebooks.isSuccess && notebookId === undefined) ||
       (fieldDefs.isSuccess && sortFieldDef === undefined));
   useEffect(() => {
     if (!sortFieldStale) return;
@@ -633,6 +639,36 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * the wrong answer to the wrong question.
    */
   const arriving = useLibraryArriving();
+  /**
+   * How many notes the whole account holds, once that is known (`useLibraryTotal`), and
+   * whether the list on screen is the whole account. Together they are what tells an
+   * empty account from an empty notebook or a search with no matches.
+   */
+  const wholeAccount = showsWholeAccount({ notebook, tag, field, from, to, q });
+  /*
+   * Asked only while the answer can change what is drawn: everything below acts on an
+   * account with no notes, and on All notes the loaded rows are the account's, so a list
+   * with a row in it has nothing to ask. Nor while the list's first load is pending, or
+   * while it still shows the rows of the place it came from (`stale`) — an empty notebook
+   * or a search that matched nothing, on the way back to All notes: its rows say nothing
+   * about the account then, and asking would count a whole archive — or, on a device
+   * with no library, send a second request beside the list's own — on every open, for an
+   * answer only an empty account can use. The empty state comes one count later for it,
+   * and nothing flashes in between: on All notes the list's empty line says nothing
+   * (`emptyMessage`).
+   */
+  const libraryTotal = useLibraryTotal(wholeAccount && !list.isPending && !stale && notes.length === 0);
+  /**
+   * The account holds no notes at all, and the list is the whole of it. On a phone the
+   * list's empty line gives way to `EmptyLibrary`; on a desktop the workspace pane draws
+   * it (`routes/notes.index.tsx`) and the list column says nothing, since a "No notes
+   * yet." line beside a "No notes yet" heading is the same fact twice, a column apart.
+   * Never in the table, which needs a notebook, and so never in a scope this can be true
+   * of. Held while a note asked for from the empty state is being made; see
+   * `useHoldWhileCreating`.
+   */
+  const libraryEmpty = useHoldWhileCreating(libraryTotal === 0 && wholeAccount && results === null && !error);
+  const emptyLibraryInList = libraryEmpty && isMobile;
   /** The list's empty state, in words; both renderings say the same thing. */
   const emptyMessage =
     notes.length === 0 && !error && !list.isPending && arriving
@@ -648,8 +684,25 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             ? 'Nothing in your inbox.'
             : notebook
               ? `No notes in ${notebook}.`
-              : 'No notes yet.'
+              : // Never on All notes. Until the account is known to be empty the list's
+                // rows can be empty for a moment while the account's are not, and the
+                // line then is the flash the empty state takes care not to make; once it
+                // is known, `EmptyLibrary` says it — in place of the list on a phone, in
+                // the pane beside this column on a desktop. A date range keeps the line
+                // it always had.
+                !wholeAccount
+                ? 'No notes yet.'
+                : null
       : null;
+
+  /*
+   * The preview-only offer of sample notes (`SampleNotes`), on a preview whose stores are
+   * its own. Only on All notes with nothing applied, and only for an account known to be
+   * empty: an empty notebook or filter is not an empty account, and filling it from there
+   * would read as filling that notebook. Not while the total is unknown, which is also
+   * while the library is still arriving.
+   */
+  const offerSampleNotes = Boolean(config.data?.ownStores) && libraryEmpty;
 
   /**
    * The same for a search drawn as a table, in the sidebar's words for each case. Nothing
@@ -690,8 +743,19 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * the Load more button says it — see `loadMoreLabel`. The header shares its row with
    * four controls, and the longer string was the one thing in it that truncated.
    */
-  const countLabel =
-    results !== null
+  /** The URL names a notebook that does not exist; see `NotebookMissing`. */
+  const notebookMissing = isNotebookMissing(notebook, notebooks, libraryWhole);
+  /*
+   * Drawn in the list's place only while nothing is being searched. A search is the person
+   * looking for something, so its results, its count and the tags and notebooks whose names
+   * match (`ScopeMatches`, which can be the very notebook they meant) draw as they would
+   * anywhere; clearing the query brings the state back.
+   */
+  const showNotebookMissing = notebookMissing && results === null;
+  const countLabel = showNotebookMissing
+    ? // A count of a notebook that does not exist would be a claim about nothing.
+      null
+    : results !== null
       ? awaiting
         ? 'Searching…'
         : `${results.length} matches`
@@ -699,37 +763,24 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         ? 'Loading…'
         : `${total ?? notes.length} notes`;
 
-  async function newNote() {
-    try {
-      // Carry the active filter onto the new note, otherwise it is created and then
-      // immediately filtered out of the list the user is looking at.
-      const created = await actions.createNote({
-        // No name, rather than the literal string "Untitled". The title field's
-        // placeholder already says that word, and a placeholder is not data: a stored
-        // "Untitled" is written into the frontmatter of the exported markdown, sorted
-        // under U by the title sort, and — titles being in the FTS index — returned by a
-        // search for "untitled", all to say the note has no name yet. Android has always
-        // created notes with an empty title; this is the web agreeing with it.
-        title: '',
-        body: '',
-        // Every active tag, not just one: with two tags filtered, a note carrying only
-        // the first is still filtered out of the list it was created in.
-        tags: tag ?? [],
-        // UNFILED is a filter sentinel, not a notebook name — a note created while
-        // viewing it belongs in no notebook.
-        notebook: notebook === UNFILED ? null : (notebook ?? null),
-      });
-      await queryClient.invalidateQueries({ queryKey: ['notes'] });
-      invalidateNoteMembership(queryClient);
-      // A new note starts with its name, so the title takes the caret rather than the
-      // body. Recorded here, before navigating, because it is a fact about this note's
-      // creation and the workspace it opens has no other way to know it.
-      markNewNote(created.id);
-      void navigate({ to: '/notes/$noteId', params: { noteId: created.id }, search: (p) => p });
-    } catch (err) {
-      console.error(err);
-    }
-  }
+  const createNote = useCreateNote();
+  /**
+   * The New button and the phone's +. Carries the active filter onto the new note,
+   * otherwise it is created and then immediately filtered out of the list the user is
+   * looking at.
+   */
+  const newNote = () =>
+    createNote({
+      // Every active tag, not just one: with two tags filtered, a note carrying only
+      // the first is still filtered out of the list it was created in.
+      tags: tag ?? [],
+      // UNFILED is a filter sentinel, not a notebook name — a note created while
+      // viewing it belongs in no notebook. Nor does one made beside "Notebook not found":
+      // filing it under the name would have the server create the notebook the screen has
+      // just said does not exist, on the strength of a stale link. It goes where it would
+      // from All notes, which is where "Show all notes" leads.
+      notebook: notebook === UNFILED || notebookMissing ? null : (notebook ?? null),
+    });
 
   return (
     <div className={layout.className} style={layout.style} ref={layout.containerRef}>
@@ -793,11 +844,18 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             ) : undefined
           }
           /* New is a floating button on a phone (below) and the end of this row on a
-             desktop, where a column has nothing for a button to float clear of. */
+             desktop, where a column has nothing for a button to float clear of.
+
+             Outlined rather than filled while the account is empty. The pane beside it
+             then draws `EmptyLibrary`, whose import is the view's one filled control —
+             it is the thing that screen is for — and two fills a column apart compete
+             for the same glance. New stays where it always is, only quieter. Outlined too
+             beside "Notebook not found": a filled New there reads as the answer to a
+             missing notebook, and the note it makes goes to no notebook (see `newNote`). */
           action={
             isMobile ? undefined : (
               <Button
-                variant="primary"
+                variant={libraryEmpty || notebookMissing ? 'secondary' : 'primary'}
                 onClick={() => void newNote()}
               >
                 New
@@ -827,7 +885,6 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           <p className="muted small">That change wasn’t saved: the connection dropped.</p>
         )}
         {bulkError && <p className="bad small">{bulkError}</p>}
-        <NotebookMissing notebook={notebook} notebooks={notebooks} />
 
         {/*
             Under the header rather than only inside the sheet, so what is narrowing the
@@ -1056,8 +1113,15 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           * than the shell so the rule that hides the list when a note is open takes this
           * with it — a "new note" button floating over the note you are reading would make
           * one every time a thumb reached for the scroll bar.
+          *
+          * Not over an empty account's state, which has its own New note a thumb's reach
+          * away: the + beside it was a second filled control next to the import — the one
+          * the desktop steps its New down to avoid — and a second button named "New note"
+          * to a screen reader. It is back as soon as there is a note, which is when the
+          * list is. It stays over "Notebook not found", where it is the only way to start a
+          * note without leaving, and the note it makes goes to no notebook (`newNote`).
           */}
-        {isMobile && !selection.active && (
+        {isMobile && !selection.active && !emptyLibraryInList && (
           <button
             type="button"
             className="fab"
@@ -1068,7 +1132,22 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           </button>
         )}
 
-        {tableMode ? (
+        {emptyLibraryInList ? (
+          /* In place of the list, which has nothing to list: centred in the room under the
+             header, without the floating + (see above). `.note-list` is the column's
+             scroller and claims its height; this claims the same. */
+          <div className="empty-state-slot">
+            <EmptyLibrary heading="h3" />
+            {offerSampleNotes && <SampleNotes layout="empty" />}
+          </div>
+        ) : showNotebookMissing ? (
+          /* In the list's place, at every width, and instead of "No notes in …" — the
+             same fact the state already says. Not the workspace pane, which may be
+             holding an open note. */
+          <div className="empty-state-slot">
+            <NotebookMissing notebook={notebook} notebooks={notebooks} whole={libraryWhole} />
+          </div>
+        ) : tableMode ? (
           <NoteTable
             notes={tableRows ?? notes}
             columns={columns}
@@ -1163,19 +1242,11 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           {results === null && emptyMessage && (
             <li className="muted small empty">{emptyMessage}</li>
           )}
-          {/* Only on All notes with nothing applied: an empty notebook or filter is not an
-              empty account, and filling it from there would read as filling that notebook. */}
-          {results === null &&
-            emptyMessage &&
-            !arriving &&
-            config.data?.ownStores &&
-            !notebook &&
-            !tag &&
-            fieldFilters.length === 0 && (
-              <li>
-                <SampleNotes layout="empty" />
-              </li>
-            )}
+          {offerSampleNotes && (
+            <li>
+              <SampleNotes layout="empty" />
+            </li>
+          )}
         </ul>
         )}
 
@@ -1250,7 +1321,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         onCommit={layout.onResizeCommit}
       />
 
-      {children}
+      {/* The routed workspace hears how many rows the column holds; see `ListRowsContext`. */}
+      <ListRowsContext.Provider value={list.isPending || stale ? null : notes.length}>{children}</ListRowsContext.Provider>
     </div>
   );
 }

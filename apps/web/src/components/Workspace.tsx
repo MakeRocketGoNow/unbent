@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { noteOpened } from '../store/library.js';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { openSitePath, sitePathOpener } from '../useHostApp.js';
+import { Link, useNavigate, useRouter } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EditorView } from '@codemirror/view';
 import type { FieldDef, FieldType, FieldValue, Note, NoteRevisionSummary } from '@unbent/shared';
@@ -90,6 +91,10 @@ const CLOSED_HISTORY: HistoryCurrent = { title: '', body: '', notebook: null, ta
 
 export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/notes' }: WorkspaceProps) {
   const navigate = useNavigate();
+  const router = useRouter();
+  /** A link in the note written from the root of the site, followed in place; see `sitePathOpener`. */
+  const openPath = (path: string) => openSitePath(router, path);
+  const pathOpener = (path: string) => sitePathOpener(router, path);
   const queryClient = useQueryClient();
   const { data: note, error, refetch } = useQuery(noteQuery(noteId));
   /*
@@ -1696,6 +1701,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
                     void queryClient.invalidateQueries({ queryKey: keys.attachments(note.id) });
                   }
             }
+            pathOpener={pathOpener}
             rich={noteView === 'rich'}
             /*
                Stands down for a note that was just created: the title has the caret, and
@@ -1743,7 +1749,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
         )}
         {showPreviewPane && (
           <div className="pane preview-pane">
-            <Preview markdown={draft.body} noteId={note.id} />
+            <Preview markdown={draft.body} noteId={note.id} onOpenPath={openPath} />
           </div>
         )}
       </div>

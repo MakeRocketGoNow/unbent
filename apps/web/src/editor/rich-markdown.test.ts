@@ -1541,6 +1541,71 @@ describe('following links', () => {
     expect(followed).toEqual([]);
   });
 
+  /**
+   * A path from the root of the site — the sample note's links to its settings pages —
+   * goes to the router in place, the way a link in the sidebar would, and claims the press
+   * like any link the editor opens.
+   */
+  let opened: string[] = [];
+  beforeEach(() => {
+    opened = [];
+  });
+  function mountWithOpenPath(doc: string, openPath: (path: string) => boolean): EditorView {
+    // `openPath` says whether the app has a page; the editor is handed the opener for it.
+    const pathOpener = (path: string) => (openPath(path) ? () => opened.push(path) : undefined);
+    const parent = document.createElement('div');
+    document.body.appendChild(parent);
+    view = new EditorView({
+      state: EditorState.create({
+        doc,
+        selection: EditorSelection.cursor(doc.length),
+        extensions: [markdown({ extensions: [GFM] }), richMarkdown({ pathOpener })],
+      }),
+      parent,
+    });
+    focusAt(view, doc.length);
+    return view;
+  }
+
+  it('opens a path on this site in place', () => {
+    const doc = '[Import](/settings/import)\n\nplain';
+    const v = mountWithOpenPath(doc, () => true);
+    const { pressClaimed } = clickLabel(v);
+    expect(opened).toEqual(['/settings/import']);
+    expect(followed).toEqual([]);
+    expect(pressClaimed).toBe(true);
+  });
+
+  /**
+   * A path with no page — a link carried over from another tool's export, or a stored
+   * file's address — is text, as before: a new tab would only show the not-found page.
+   */
+  it('leaves a path the app has no page for as text', () => {
+    for (const doc of ['[Note](/Folder/Note.md)\n\nplain', '[File](/api/notes/n1/files/a.txt)\n\nplain']) {
+      const v = mountWithOpenPath(doc, () => false);
+      clickLabel(v);
+      expect(opened, doc).toEqual([]);
+      expect(followed, doc).toEqual([]);
+      v.destroy();
+    }
+  });
+
+  it('never takes an address on another site for a path', () => {
+    const doc = '[Elsewhere](//example.com/x)\n\nplain';
+    const v = mountWithOpenPath(doc, () => true);
+    clickLabel(v);
+    expect(opened).toEqual([]);
+    expect(followed).toEqual([]);
+  });
+
+  /** With nothing to open it with, a path is text, as it was before paths were followed. */
+  it('leaves a path as text when there is no way to open it', () => {
+    const doc = '[Import](/settings/import)\n\nplain';
+    const v = mount(doc, doc.length);
+    clickLabel(v);
+    expect(followed).toEqual([]);
+  });
+
   it('opens a stored PDF in the viewer', () => {
     const doc = '[Report (final) v2.pdf](<files/Report (final) v2.pdf>)\n\nplain';
     const v = mountWithAttachments(doc, doc.length);

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { currentLibrary, subscribeLibrary } from './library.js';
 import { useLibraryPresence } from './use-outbox.js';
-import type { FeedState } from './feed.js';
+import { isWhole, type FeedState } from './feed.js';
 
 /**
  * How long the store may take to open before the line says it is opening. A warm open on
@@ -38,6 +38,19 @@ export function useLibraryArriving(): { stage: 'opening' | 'copying'; applied: n
   if (presence === 'open' && state?.phase === 'hydrating') return { stage: 'copying', applied: state.applied, total: state.total };
   if (opening && openingLong) return { stage: 'opening', applied: 0, total: null };
   return null;
+}
+
+/**
+ * Whether what the views read from this device is the whole account: a library whose walk
+ * has finished (`isWhole`), or no library at all, where every read is the server's and so
+ * whole. False while the store opens and while its first copy, or a copy after a `reset`,
+ * is under way — when a notebook not in the list yet is still on its way, not missing.
+ */
+export function useLibraryWhole(): boolean {
+  const presence = useLibraryPresence();
+  const state = useFeedState();
+  if (presence === 'none') return true;
+  return presence === 'open' && state !== null && isWhole(state);
 }
 
 type Subscribable = { subscribe: (fn: (s: FeedState) => void) => () => void; state: () => FeedState };

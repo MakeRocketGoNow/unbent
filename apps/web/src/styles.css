@@ -794,6 +794,15 @@ button.link {
   font-size: 0.78rem;
 }
 
+/* A comfortable target under a thumb as well as a cursor, for a state whose few actions
+   are most of what is on screen (`EmptyState`), the quiet one under them included.
+   Shared by a `Link` wearing button classes, as `btn-primary` is. */
+.btn-large {
+  min-height: 2.75rem;
+  padding: 0.5rem 1.1rem;
+  font-size: 0.9rem;
+}
+
 .btn:disabled {
   opacity: 0.55;
   cursor: default;
@@ -1142,6 +1151,202 @@ button.link {
   padding: 0 0.7rem 0.6rem;
 }
 .sample-notes p { margin: 0; }
+
+/* ---------------------------------------------------------------------------------
+   A state with nothing to list — `EmptyState`, which `EmptyLibrary` (an account with no
+   notes) and `NotebookMissing` (a link to a notebook that is not there) both draw.
+
+   One centred stack: a glyph in a soft tile, the heading, a line saying what to do, and
+   the things to do it with. One gap between every pair of them rather than a margin
+   tuned for each, so the stack keeps one rhythm and a change to any piece does not need
+   the others re-spaced.
+
+   Drawn in tall boxes — the desktop's workspace pane, or the list column in place of the
+   list — and the stack sits a little above the middle of them, where the eye takes the
+   centre to be: the free space is split two parts above to three below by the container's
+   own `::before` and `::after` (`.empty-state-pane`, `.empty-state-slot`), rather than a
+   margin guessed against one height.
+   --------------------------------------------------------------------------------- */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 28rem;
+  padding: 1.5rem 1rem;
+  text-align: center;
+}
+
+/*
+   Once, as it arrives: a fade with a few pixels of rise, so the state settles in rather
+   than snapping on. Nothing at all with reduced motion asked for. Neither state can play
+   it for the wrong screen, because neither is drawn until it is known to be true — an
+   account known to hold no notes (`useLibraryTotal`), a notebook list that has loaded
+   without the name in it.
+*/
+@media (prefers-reduced-motion: no-preference) {
+  .empty-state { animation: empty-state-in 0.24s ease-out both; }
+}
+
+@keyframes empty-state-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The glyph's tile: a wash of the ink and the hairline every panel here is drawn with, so
+   it reads as a quiet object in either theme without a colour of its own. */
+.empty-state-mark {
+  display: grid;
+  place-items: center;
+  width: 4.5rem;
+  height: 4.5rem;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--fg) 4%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 1.25rem;
+}
+
+/* `overflow-wrap: anywhere` on the heading and the line because either can carry a name
+   someone typed — a notebook's, which has no length limit a column can rely on — and a
+   long one must wrap inside the stack rather than widen it. Ordinary words never need it,
+   so the states without a name in them draw exactly as they would without it. */
+.empty-state-heading {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+/* Wraps to two even lines rather than one long one and a widow. */
+.empty-state-lead {
+  max-width: 34ch;
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: var(--muted);
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+
+.empty-state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  max-width: 100%;
+}
+
+/* An action never wider than the stack: its words wrap first. */
+.empty-state-action { max-width: 100%; }
+
+/* The quieter action under the main ones (`EmptyState`'s `aside`): its own line, at its
+   own width, centred by the stack, one gap below the actions like every other step. It is
+   left out of the phone's full-width rule below on purpose — stretched, a quiet button
+   reads as a third equal choice, which is the one thing it must not. */
+.empty-state-aside {
+  display: flex;
+  justify-content: center;
+  max-width: 100%;
+}
+
+/* A phone held upright: the actions one above the other, each the width of the stack
+   (the 44px height is the buttons' own, `btn-large`), the primary on top — the way the
+   app's own primary actions sit under a thumb, and how "Import from Evernote or Notion"
+   fits at all at 320px. */
+@media (width < 480px) {
+  .empty-state-actions {
+    flex-direction: column;
+    align-self: stretch;
+  }
+
+  .empty-state-action { width: 100%; }
+}
+
+/*
+   The desktop's pane. A column so the stack can be centred across it and placed down it;
+   `::before` and `::after` take the free height two to three, which puts the stack just
+   above the middle. The plain `.empty` padding is the list line's, not this pane's.
+*/
+.empty-state-pane {
+  flex-direction: column;
+  align-items: center;
+  padding: 0 1.5rem;
+  overflow-y: auto;
+}
+
+.empty-state-pane::before,
+.empty-state-slot::before {
+  content: '';
+  flex: 2 1 0;
+}
+
+.empty-state-pane::after,
+.empty-state-slot::after {
+  content: '';
+  flex: 3 1 0;
+}
+
+/*
+   The list column's: in place of `.note-list`, with the list's claim on the column's
+   height so the header stays where it was and the stack is centred in the room under it.
+   The preview's sample-notes offer, when there is one, goes under the stack and in its
+   alignment.
+
+   A size container, because the column is as narrow as the stack ever has to be: dragged
+   to its floor (`SIDEBAR_MIN`, 200px, less the sidebar's own inset) it leaves about 11rem
+   for a stack laid out for 28. The query below answers to that box rather than to the
+   window, since a wide window can hold the narrowest column.
+*/
+.empty-state-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1 1 12rem;
+  min-height: 0;
+  overflow-y: auto;
+  container: empty-state-slot / inline-size;
+}
+
+.empty-state-slot > .sample-notes {
+  max-width: 28rem;
+  justify-items: center;
+  padding: 0 1rem;
+  text-align: center;
+}
+
+/* A narrow column: a smaller tile and heading and less inset, one step down the same
+   rhythm. A phone's column never reaches this step, since even at 320px it is wider than
+   18rem; it is for a desktop column dragged toward its floor. */
+@container empty-state-slot (width < 18rem) {
+  .empty-state {
+    gap: 0.75rem;
+    padding: 1rem 0.25rem;
+  }
+
+  .empty-state-mark {
+    width: 3.5rem;
+    height: 3.5rem;
+    border-radius: 1rem;
+  }
+
+  .empty-state-mark svg {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .empty-state-heading { font-size: 1.1rem; }
+
+  .empty-state-lead { font-size: 0.9rem; }
+}
 
 /* ---------------------------------------------------------------------------------
    The list as a table — `NoteTable`, inside a notebook at desktop width.
@@ -8240,6 +8445,9 @@ button.settings-nav-item {
      end.
   */
   .note-list { padding-bottom: 5rem; }
+
+  /* The same room under the empty state, which stands in for the list. */
+  .empty-state-slot { padding-bottom: 5rem; }
 
   /*
      The title gets the room; what is left of the controls tucks in beside it.

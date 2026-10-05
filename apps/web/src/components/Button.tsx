@@ -32,8 +32,15 @@ export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement
   /** Defaults to `secondary` — the safe choice for an action that is not the view's point. */
   variant?: ButtonVariant;
   tone?: ButtonTone;
-  /** Denser padding and smaller text, for rows and toolbars. */
-  size?: 'default' | 'small';
+  /**
+   * `small`: denser padding and smaller text, for rows and toolbars.
+   * `large`: 44px tall, for the few actions of a state that stands on its own — the
+   * empty state's import, New note and its quiet sample note — where the controls are
+   * most of what is on screen and a toolbar's height would make them look an
+   * afterthought. The class is `btn-large`, which a `Link` wearing button classes can
+   * share the way it shares `btn-primary`.
+   */
+  size?: 'default' | 'small' | 'large';
   /** Escape hatch for layout only (margins, grid placement) — never for restyling. */
   className?: string;
 }
@@ -70,6 +77,7 @@ export function Button({
     tone === 'danger' ? 'btn-danger' : '',
     tone === 'neutral' ? 'btn-neutral' : '',
     size === 'small' ? 'btn-small' : '',
+    size === 'large' ? 'btn-large' : '',
     className ?? '',
   ]
     .filter(Boolean)

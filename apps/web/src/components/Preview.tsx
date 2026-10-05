@@ -9,6 +9,13 @@ import { collectPreviewTargets } from './preview-targets.js';
 interface PreviewProps {
   markdown: string;
   noteId: string;
+  /**
+   * Opens a path on this site in place, for a link written from the root
+   * (`[Import](/settings/import)`); true when it did. The rich editor takes the same
+   * callback, so the two panes follow such a link the same way. Absent, the anchor does
+   * what an anchor does, which for a path is to load the whole app again at it.
+   */
+  onOpenPath?: (path: string) => boolean;
 }
 
 /** One PDF viewer pulled out of the rendered HTML, with the HTML that preceded it. */
@@ -61,8 +68,21 @@ function splitOnPdfLinks(html: string): Segment[] {
  * the viewer, and a modified one — middle, ⌘, ctrl, shift — is left to the browser, which
  * is what those modifiers mean on any link.
  */
-function onPreviewClick(event: MouseEvent<HTMLDivElement>) {
+function onPreviewClick(event: MouseEvent<HTMLDivElement>, openPath: PreviewProps['onOpenPath']) {
   if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+    return;
+  }
+  /*
+   * A link to a page of this app, written from the root, goes through the router rather
+   * than loading the site again: the same rule as the rich editor's `SITE_PATH`, read off
+   * the attribute as written rather than `href`, which the browser has already made
+   * absolute. A modified click is left to the browser above, so a new tab still works.
+   * A path the router refuses — a stored file's `/api/…` address, which is also what a
+   * picture's zoom link points at — falls through to the handling below.
+   */
+  const sitePath = (event.target as Element).closest<HTMLAnchorElement>('a[href^="/"]:not([href^="//"])');
+  if (sitePath && openPath && event.currentTarget.contains(sitePath) && openPath(sitePath.getAttribute('href')!)) {
+    event.preventDefault();
     return;
   }
   const link = (event.target as Element).closest<HTMLAnchorElement>(`a.${IMAGE_ZOOM_CLASS}`);
@@ -87,7 +107,7 @@ function onPreviewClick(event: MouseEvent<HTMLDivElement>) {
  * the HTML string, because the sanitizer must keep rejecting embed elements from note
  * content: the only way a viewer appears is if this component puts one there.
  */
-export function Preview({ markdown, noteId }: PreviewProps) {
+export function Preview({ markdown, noteId, onOpenPath }: PreviewProps) {
   // Shared with the rich editor, so the two panes agree on what is a document.
   const pdfFilenames = usePdfAttachments(noteId);
 
@@ -133,7 +153,7 @@ export function Preview({ markdown, noteId }: PreviewProps) {
   };
 
   return (
-    <div className="preview" onClick={onPreviewClick} onErrorCapture={onPreviewImageError}>
+    <div className="preview" onClick={(event) => onPreviewClick(event, onOpenPath)} onErrorCapture={onPreviewImageError}>
       {segments.map((seg, i) => (
         <Fragment key={i}>
           {seg.html && <div dangerouslySetInnerHTML={{ __html: seg.html }} />}

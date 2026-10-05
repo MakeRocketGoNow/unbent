@@ -30,6 +30,7 @@ export interface TestLibrary extends ReadableLibrary {
   /** Puts a row in, as a feed page would. */
   upsert: (entity: FeedEntity, row: FeedNote | FeedNotebook | FeedTag | FeedAttachment) => void;
   remove: (entity: FeedEntity, id: string) => void;
+  subscribe: (listener: (state: FeedState) => void) => () => void;
   uninstall: () => void;
 }
 
@@ -63,6 +64,10 @@ export function installTestLibrary(rows: Rows = {}): TestLibrary {
   const test: TestLibrary = {
     ...lib,
     state: () => state,
+    // The real library's, for `useFeedState`: without it the test library reads as one that
+    // keeps no feed, and nothing that waits for a whole library (`useLibraryWhole`) would
+    // ever see one. The state never moves here, so there is nothing to hear.
+    subscribe: () => () => {},
     version: () => version,
     upsert: (entity, row) => {
       const c = controls.get(entity)!;

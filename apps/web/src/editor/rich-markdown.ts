@@ -1230,8 +1230,9 @@ function linkDestination(raw: string): string {
  *
  * The same set the preview pane's sanitizer lets through as an `href` (rehype-sanitize's
  * default `http`, `https`, `mailto`, `tel`), so the two modes agree on what is a working
- * link. Anything else — `javascript:`, `data:`, a bare relative path — is text that
- * happens to be in brackets, and a click on it does what a click on text does.
+ * link. Anything else — `javascript:`, `data:`, a relative path like `notes.md` — is text
+ * that happens to be in brackets, and a click on it does what a click on text does. A path
+ * from the root of this site is the exception, below (`SITE_PATH`).
  *
  * A web page opens in a new tab: the note is what the reader was in, and a link that
  * replaced it would unmount the editor mid-thought. Mail and phone stay in this window
@@ -1244,6 +1245,26 @@ function linkDestination(raw: string): string {
  */
 const WEB_SCHEME = /^https?:\/\//i;
 const HANDOFF_SCHEME = /^(mailto|tel):/i;
+
+/**
+ * A path from the root of this site — `/settings/import` — and not `//host`, which is an
+ * address on another site spelled without its scheme.
+ *
+ * Followed inside the app, in place, through `pathOpener`: the sample note an empty account
+ * can ask for (`welcome-note.ts`) links its settings pages this way, because an absolute
+ * address would name one instance when every instance offers the same note, and would
+ * point back at the old one after an export and an import elsewhere. In place rather
+ * than a new tab because the page it names is part of this app, the way a link in the
+ * sidebar is; and through the router rather than a navigation, so the app is not loaded
+ * again — in the Android and iOS apps a navigation would reload the whole site and drop
+ * an upload in flight, as `followInHost` explains.
+ *
+ * A path the app has no page for — `/Folder/Note.md` in a note imported from another
+ * tool, or a stored file's `/api/…` address — stays text, as every such link was before
+ * paths were followed: a new tab would only show the not-found page. So does every path
+ * without `pathOpener` (a test, or a host with no router).
+ */
+const SITE_PATH = /^\/(?!\/)/;
 
 /**
  * Follows a URL the way a real anchor would, from inside a click handler.
@@ -1330,6 +1351,7 @@ function linkOpener(
   }
   if (WEB_SCHEME.test(url)) return () => followUrl(url, true);
   if (HANDOFF_SCHEME.test(url)) return () => followUrl(url, false);
+  if (SITE_PATH.test(url)) return options.pathOpener?.(url);
   return undefined;
 }
 
@@ -1547,6 +1569,12 @@ export interface RichMarkdownOptions {
    * markdown, as it does for a remote image.
    */
   deleteAttachment?: (filename: string) => Promise<void>;
+  /**
+   * How to open a path on this site in place, for a link whose destination starts at the
+   * root (`/settings/import`) — see `SITE_PATH`. Undefined for a path the app has no page
+   * for, which stays text; absent, every such link is text, as it was before.
+   */
+  pathOpener?: (path: string) => (() => void) | undefined;
 }
 
 /**

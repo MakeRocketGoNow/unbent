@@ -5,6 +5,7 @@ import {
   ArrowUp,
   ArrowUpDown,
   Book,
+  BookSearch,
   Bot,
   Calendar,
   Check,
@@ -29,6 +30,7 @@ import {
   Mail,
   Maximize2,
   Menu,
+  NotebookPen,
   Music,
   PanelLeftClose,
   PanelLeftOpen,
@@ -316,6 +318,40 @@ export function SettingsIcon() {
  */
 export function MenuIcon() {
   return <HeaderIcon icon={Menu} />;
+}
+
+/**
+ * An empty state's picture: drawn alone above a heading (`EmptyState`), rather than beside
+ * a word or in a button, which makes it the one size here that is not a control's.
+ *
+ * Sized in rem, not em: it should not grow with the heading's type, and 2.5rem is where it
+ * reads as a picture rather than a control without becoming clip art. Thinner than the
+ * house 2 to match — a lucide icon scales its stroke with its box, so at 40px the usual
+ * weight comes out over 3px and looks bold beside the heading's text; 1.5 lands it near
+ * the 2.5px a heading's strokes have.
+ */
+function IllustrationIcon({ icon: Icon }: { icon: LucideIcon }) {
+  return <Icon size="2.5rem" strokeWidth={1.5} aria-hidden="true" focusable="false" />;
+}
+
+/**
+ * A notebook with a pen across it, for the empty state of an account with no notes
+ * (`EmptyLibrary`). The notebook-with-pen rather than a sticky note or a page: the
+ * drawer's notebooks are books, and the pen says "write something", which is one of the
+ * two things the state offers.
+ */
+export function EmptyLibraryIcon() {
+  return <IllustrationIcon icon={NotebookPen} />;
+}
+
+/**
+ * A book with a magnifier over it, for a link to a notebook that is not there
+ * (`NotebookMissing`). The drawer's book, because it is a notebook that is missing; the
+ * magnifier rather than a cross, because what happened is that it was looked for and not
+ * found — a cross reads as an error, and nothing here went wrong.
+ */
+export function NotebookMissingIcon() {
+  return <IllustrationIcon icon={BookSearch} />;
 }
 
 /**

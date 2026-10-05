@@ -11,7 +11,7 @@ import {
   type RouterHistory,
 } from '@tanstack/react-router';
 import { openAttachmentViewer } from './attachment-viewer.js';
-import { back, useHostApp } from './useHostApp.js';
+import { back, openSitePath, useHostApp } from './useHostApp.js';
 
 // `HOME` comes from the gate, which imports the auth client; nothing here signs in.
 vi.mock('./auth-client.js', () => ({ ensureSession: vi.fn() }));
@@ -35,6 +35,51 @@ afterEach(() => {
   delete window.UnbentApp;
   delete window.__unbent;
   vi.unstubAllGlobals();
+});
+
+describe('openSitePath', () => {
+  /**
+   * A real router over a few of the app's real shapes — a settings page, a note by id —
+   * so "has a page" is the router's own matching, as it is in the app. `navigate` is
+   * watched rather than followed: what matters is whether it was asked.
+   */
+  function siteRouter() {
+    const rootRoute = createRootRoute({ component: Outlet });
+    const settings = createRoute({ getParentRoute: () => rootRoute, path: '/settings' });
+    const importPage = createRoute({ getParentRoute: () => settings, path: 'import' });
+    const notes = createRoute({ getParentRoute: () => rootRoute, path: '/notes' });
+    const note = createRoute({ getParentRoute: () => notes, path: '$noteId' });
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([settings.addChildren([importPage]), notes.addChildren([note])]),
+      history: createMemoryHistory({ initialEntries: ['/notes'] }),
+    });
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(undefined);
+    return { router, navigate };
+  }
+
+  it('navigates to a page of the app, in place', () => {
+    const { router, navigate } = siteRouter();
+    expect(openSitePath(router, '/settings/import')).toBe(true);
+    expect(navigate).toHaveBeenCalledWith({ href: '/settings/import' });
+    expect(openSitePath(router, '/notes/abc?view=table')).toBe(true);
+    expect(navigate).toHaveBeenLastCalledWith({ href: '/notes/abc?view=table' });
+  });
+
+  /** A link carried over from another tool's export: no page, so the caller falls back. */
+  it('refuses a path the app has no page for', () => {
+    const { router, navigate } = siteRouter();
+    expect(openSitePath(router, '/Folder/Note.md')).toBe(false);
+    expect(openSitePath(router, '/settings/nowhere')).toBe(false);
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it('refuses another site, a relative path, and what the Worker answers', () => {
+    const { router, navigate } = siteRouter();
+    for (const path of ['//example.com/x', 'settings/import', 'https://example.com/', '/api/notes/n1/files/a.txt']) {
+      expect(openSitePath(router, path), path).toBe(false);
+    }
+    expect(navigate).not.toHaveBeenCalled();
+  });
 });
 
 describe('back', () => {
