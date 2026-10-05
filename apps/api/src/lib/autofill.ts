@@ -744,11 +744,14 @@ function nameFromReading(input: AutofillInput): string | null {
  * Asks, and answers with what cleared the floors. Throws `NothingToRead` before asking
  * anything when the note is empty; a Jev failure surfaces as the client's own error.
  *
- * `llm` is the language model, when the instance has one, asked for the title. The call
- * is started before Jev's first round and collected after the second, so the seconds it
- * takes overlap both rounds rather than delaying the fields. Its failure is not the
- * suggestion's: a title is the one part with a fallback, so the error is logged and
- * Jev's pick stands.
+ * `llm` is the language model, when the instance has one, asked for the title and for the
+ * text fields' values. The title call is started before Jev's first round and collected
+ * after the second, so the seconds it takes overlap both rounds rather than delaying the
+ * fields. The text fields' call can start only once the first round has chosen the
+ * notebook, so it runs alongside the second and the press waits for both; its timeout is
+ * shorter for that reason (see `textFields` in lib/llm.ts). Neither failure is the
+ * suggestion's: each part has Jev's pick to fall back on, so the error is logged and the
+ * pick stands.
  *
  * `operator` is whether the caller runs this instance. It changes nothing about the
  * suggestion except one thing only they can act on: a title model that fails on auth is a
@@ -756,6 +759,12 @@ function nameFromReading(input: AutofillInput): string | null {
  * better title (see `titleModel` on the suggestion). The signal is set only for them, so
  * a note filed on a misconfigured instance reads the same for everyone else as it did
  * before — Jev's picked title, no error — while the person who can fix it is told.
+ *
+ * Only the title call reports this. The text fields' call uses the same key and fails
+ * the same way, so in nearly every press the title has already said it. The exception
+ * is a lone picture, whose title comes from its reading with no call made (see
+ * `nameFromReading`). Accepted: a picture's reading needs the same key, so a rejected key
+ * shows on the next upload, and adding a second flag for this one case was not worth it.
  */
 export async function autofill(
   jev: Jev,
