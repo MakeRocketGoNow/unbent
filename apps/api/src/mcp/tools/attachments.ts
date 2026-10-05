@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { MAX_ATTACHMENT_BYTES, filenameSchema, normalizeContentType } from '@unbent/shared';
 import type { McpServer } from '@modelcontextprotocol/server';
+import type { AppLinks } from '../../lib/app-links.js';
 import type { AttachmentsRepo } from '../../lib/attachments-repo.js';
 import {
   checkSourceUrl,
@@ -53,6 +54,7 @@ export function registerAttachmentTools(
   >,
   ctx: { waitUntil(promise: Promise<unknown>): void },
   repos: { notes: NotesRepo; attachments: AttachmentsRepo; uploads: UploadGrantsRepo },
+  links: AppLinks,
 ): void {
   /*
      The counterpart of get_attachment_text, for the file that tool reports unread. A
@@ -148,7 +150,8 @@ export function registerAttachmentTools(
         'to the end of the body; pass link false and place it yourself with edit_note when ' +
         'it belongs somewhere in particular. A PDF becomes searchable once its text is ' +
         'extracted, which happens in the background. For a file with no URL — one on your ' +
-        'own disk or in your sandbox — use prepare_attachment_upload instead.',
+        'own disk or in your sandbox — use prepare_attachment_upload instead. The answer ' +
+        'also carries url, the note in Unbent: give it to the person as a link.',
       inputSchema: z.object({
         noteId: z.string().uuid(),
         url: z.string().min(1).max(8192).describe('An http or https URL the file can be fetched from.'),
@@ -197,7 +200,7 @@ export function registerAttachmentTools(
           body: source.body,
           link,
         });
-        return jsonResult({ noteId, ...stored, linked: link });
+        return jsonResult({ noteId, url: links.note(noteId), ...stored, linked: link });
       } catch (err) {
         // A transfer that fails midway — the source sent fewer bytes than it declared, say
         // — is the model's to retry, not an exception to end the conversation on.
@@ -225,7 +228,7 @@ export function registerAttachmentTools(
         'the sandbox where you run commands, such as a screenshot the person gave you. ' +
         'Returns a one-time upload URL. Send the raw bytes to it with an HTTP PUT, for ' +
         'example curl -T "photo.png" "<uploadUrl>"; the reply to that request is the same ' +
-        'JSON add_attachment returns, with the filename the file was stored under ' +
+        'JSON add_attachment returns, with the note\'s url to give the person, the filename the file was stored under ' +
         '(suffixed if the note already had one by that name) and the Markdown that shows ' +
         `it. The URL works once, for this note, for ${UPLOAD_GRANT_TTL_MS / 60_000} ` +
         `minutes, for a file up to ${Math.floor(MAX_ATTACHMENT_BYTES / 1024 / 1024)} MB; ` +

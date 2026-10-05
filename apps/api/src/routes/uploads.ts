@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { MAX_ATTACHMENT_BYTES } from '@unbent/shared';
+import { appLinks } from '../lib/app-links.js';
 import { chooseContentType } from '../lib/fetch-attachment.js';
 import { reposFor } from '../lib/repos.js';
 import { storeAttachment } from '../lib/store-attachment.js';
@@ -76,7 +77,12 @@ export const uploads = new Hono<AppEnv>().put('/uploads/:token', async (c) => {
         link: grant.link,
       },
     );
-    return c.json({ noteId: grant.noteId, ...stored, linked: grant.link }, 201);
+    // add_attachment's answer, url included, since prepare_attachment_upload promises the
+    // assistant the same JSON from here.
+    return c.json(
+      { noteId: grant.noteId, url: appLinks(c.env.APP_URL).note(grant.noteId), ...stored, linked: grant.link },
+      201,
+    );
   } catch (err) {
     // A transfer cut short: the link is spent, and nothing was attached.
     console.error('Upload through a prepared link failed:', err);

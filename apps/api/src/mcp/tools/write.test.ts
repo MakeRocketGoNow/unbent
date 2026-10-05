@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { InvalidFieldValue, type FieldDef, type NoteFieldValue } from '@unbent/shared';
+import { appLinks } from '../../lib/app-links.js';
 import { registerWriteTools } from './write.js';
 import type { NotesRepo } from '../../lib/notes-repo.js';
 
@@ -21,6 +22,9 @@ interface Registered {
   }>;
 }
 
+/** A self-hosted instance's address, so a link that ignored it would show. */
+const APP_URL = 'https://notes.example.com';
+
 /** Collects the tools instead of serving them, so a handler can be called directly. */
 function collect(notes: NotesRepo): Map<string, Registered['handler']> {
   const tools = new Map<string, Registered['handler']>();
@@ -30,7 +34,7 @@ function collect(notes: NotesRepo): Map<string, Registered['handler']> {
       return {} as never;
     },
   };
-  registerWriteTools(server as never, notes);
+  registerWriteTools(server as never, notes, appLinks(APP_URL));
   return tools;
 }
 
@@ -327,7 +331,14 @@ describe('the batch tools', () => {
     // assistant's batch is exactly the change someone may want to undo.
     expect(calls).toEqual([{ method: 'updateMany', ids: [noteId, other], patch: { notebook: 'coupons', by: 'assistant' } }]);
     // The name as stored, not as typed.
-    expect(result).toEqual({ notebook: 'Coupons', noteIds: [noteId], changed: 1, missing: [other] });
+    expect(result).toEqual({
+      notebook: 'Coupons',
+      notebookUrl: `${APP_URL}/notes?notebook=Coupons`,
+      noteIds: [noteId],
+      urls: { [noteId]: `${APP_URL}/notes/${noteId}` },
+      changed: 1,
+      missing: [other],
+    });
   });
 
   it('treats the unfiled sentinel as no notebook', async () => {
@@ -346,7 +357,12 @@ describe('the batch tools', () => {
       ids: [noteId, other],
       patch: { addTags: ['later'], removeTags: ['deals'], by: 'assistant' },
     });
-    expect(result).toEqual({ noteIds: [noteId], changed: 1, missing: [other] });
+    expect(result).toEqual({
+      noteIds: [noteId],
+      urls: { [noteId]: `${APP_URL}/notes/${noteId}` },
+      changed: 1,
+      missing: [other],
+    });
 
     const refused = await tag({ noteIds: [noteId], add: [], remove: [] });
     expect(refused.isError).toBe(true);
@@ -357,12 +373,15 @@ describe('the batch tools', () => {
     const { calls, repo } = batchRepo();
     const tools = collect(repo);
 
+    // A trashed note opens in the trash, not the list it left.
     expect(answer(await tools.get('delete_notes')!({ noteIds: [noteId, other] }))).toEqual({
       noteIds: [noteId],
+      urls: { [noteId]: `${APP_URL}/trash/${noteId}` },
       missing: [other],
     });
     expect(answer(await tools.get('restore_notes')!({ noteIds: [other] }))).toEqual({
       noteIds: [],
+      urls: {},
       missing: [other],
     });
     expect(calls.map((c) => c.method)).toEqual(['removeMany', 'restoreMany']);
@@ -566,7 +585,12 @@ describe('update_note_fields', () => {
     const { calls, tool } = fieldsRepo();
     const result = answer(await tool({ noteIds: [noteId, other], fields: { store: 'Acme' } }));
     expect(calls.map((c) => c.patch)).toEqual([{ fields: { 'f-store': 'Acme' }, by: 'assistant' }]);
-    expect(result).toEqual({ noteIds: [noteId], changed: 1, missing: [other] });
+    expect(result).toEqual({
+      noteIds: [noteId],
+      urls: { [noteId]: `${APP_URL}/notes/${noteId}` },
+      changed: 1,
+      missing: [other],
+    });
   });
 
   it('refuses an unknown name with the notebook\'s real ones, writing nothing', async () => {
@@ -614,12 +638,81 @@ describe('update_note_fields', () => {
   it('answers with everything missing when no id is a live note', async () => {
     const { calls, tool } = fieldsRepo();
     const result = answer(await tool({ noteIds: [other], fields: { Store: 'Acme' } }));
-    expect(result).toEqual({ noteIds: [], changed: 0, missing: [other] });
+    expect(result).toEqual({ noteIds: [], urls: {}, changed: 0, missing: [other] });
     expect(calls).toHaveLength(0);
   });
 
   it('needs at least one field', async () => {
     const { tool } = fieldsRepo();
     expect((await tool({ noteIds: [noteId], fields: {} })).isError).toBe(true);
+  });
+});
+
+/*
+ * The point of `url`: an assistant that creates or changes a note can hand the person a
+ * link to it. Pinned on the answers, and on the descriptions, which are what tell the
+ * assistant to pass it on.
+ */
+describe('links in what the write tools return', () => {
+  const answer = (r: { content: Array<{ text: string }> }) => JSON.parse(r.content[0]!.text);
+
+  it('answers create_note with the new note\'s absolute link on this instance', async () => {
+    const repo = {
+      create: async (input: { id: string; title: string }) => ({
+        ...input,
+        body: '',
+        tags: [],
+        notebook: null,
+        createdAt: 0,
+        updatedAt: 0,
+      }),
+    } as unknown as NotesRepo;
+    const result = answer(await collect(repo).get('create_note')!({ title: 'Coyote vs. Acme', body: '', tags: [] }));
+    expect(result.url).toBe(`${APP_URL}/notes/${result.id}`);
+    expect(new URL(result.url).origin).toBe(APP_URL);
+  });
+
+  it('answers update_note, edit_note and a refused write with the note\'s link', async () => {
+    const { note, repo } = fakeNotes('Buy milk');
+    const tools = collect(repo);
+    const url = `${APP_URL}/notes/${noteId}`;
+
+    expect(answer(await tools.get('update_note')!({ noteId, title: 'Groceries' })).url).toBe(url);
+    expect(answer(await tools.get('edit_note')!({ noteId, mode: 'append', content: 'Buy bread' })).url).toBe(url);
+
+    // A stale write sends the note back so the change can be redone; its link comes too.
+    const stale = await tools.get('update_note')!({ noteId, title: 'x', ifUpdatedAt: new Date(note.updatedAt - 1).toISOString() });
+    expect(stale.isError).toBe(true);
+    expect(stale.content[0]!.text).toContain(`"url": "${url}"`);
+  });
+
+  it('links a note trashed by delete_note to the trash, and a restored one back to the list', async () => {
+    const repo = { remove: async () => true, restore: async () => true } as unknown as NotesRepo;
+    const tools = collect(repo);
+    expect(answer(await tools.get('delete_note')!({ noteId })).url).toBe(`${APP_URL}/trash/${noteId}`);
+    expect(answer(await tools.get('restore_note')!({ noteId })).url).toBe(`${APP_URL}/notes/${noteId}`);
+  });
+
+  it('answers create_notebook with the notebook\'s link', async () => {
+    const repo = { createNotebook: async (name: string) => ({ id: 'nb-1', name }) } as unknown as NotesRepo;
+    const result = answer(await collect(repo).get('create_notebook')!({ name: 'Watch Later' }));
+    expect(result.url).toBe(`${APP_URL}/notes?notebook=Watch+Later`);
+  });
+
+  it('tells the assistant, in each note-changing tool\'s description, to share the link', () => {
+    const descriptions = new Map<string, string>();
+    const server = {
+      registerTool(name: string, config: { description: string }) {
+        descriptions.set(name, config.description);
+        return {} as never;
+      },
+    };
+    registerWriteTools(server as never, {} as NotesRepo, appLinks(APP_URL));
+    for (const name of ['create_note', 'update_note', 'edit_note', 'restore_note']) {
+      expect(descriptions.get(name), name).toMatch(/carries url\b.*give it to the person/);
+    }
+    for (const name of ['update_note_tags', 'update_note_fields', 'move_notes', 'restore_notes']) {
+      expect(descriptions.get(name), name).toMatch(/carries urls\b.*give the person those links/);
+    }
   });
 });

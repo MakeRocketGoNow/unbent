@@ -1,4 +1,5 @@
 import { fieldsByName, type Note, type NoteSummary } from '@unbent/shared';
+import type { AppLinks } from '../../lib/app-links.js';
 
 /**
  * How every tool here answers.
@@ -21,10 +22,15 @@ export function jsonResult(value: unknown) {
  * Custom field values go out keyed by field name as typed JSON — `{"Merchant": "Acme",
  * "Amount": 12.5}` — for the same reason: that needs no explanation, where a list of
  * `{fieldId, type, value}` records would. The names are also what the write tools take.
+ *
+ * `url` is the address the note opens at in the web app, absolute, so an assistant can
+ * hand the person a link instead of an id they cannot use; see lib/app-links.ts. Every
+ * note a tool returns goes through here, which is what keeps it from being missed on one.
  */
-export function noteRef(note: NoteSummary) {
+export function noteRef(note: NoteSummary, links: AppLinks) {
   return {
     id: note.id,
+    url: links.note(note.id, { trashed: Boolean(note.deletedAt) }),
     title: note.title,
     createdAt: new Date(note.createdAt).toISOString(),
     updatedAt: new Date(note.updatedAt).toISOString(),
@@ -65,10 +71,34 @@ export function toolError(message: string) {
  * error, so the model can redo its change against the current text in one more call
  * rather than reading the note again first.
  */
-export function staleNote(current: Note) {
+export function staleNote(current: Note, links: AppLinks) {
   return toolError(
     `The note changed after you read it (it was saved at ${new Date(current.updatedAt).toISOString()}), ` +
       'so nothing was written. Redo the change against the note as it is now:\n\n' +
-      JSON.stringify({ ...noteRef(current), body: current.body }, null, 2),
+      JSON.stringify({ ...noteRef(current, links), body: current.body }, null, 2),
   );
 }
+
+/**
+ * The link each note in a set opens at, keyed by id, for the tools that act on many notes
+ * and answer with ids rather than notes. A map rather than a list beside `noteIds`, so the
+ * pairing cannot be read off by position and get one wrong.
+ */
+export function noteUrls(ids: string[], links: AppLinks, opts?: { trashed?: boolean }) {
+  return Object.fromEntries(ids.map((id) => [id, links.note(id, opts)]));
+}
+
+/**
+ * Said in the description of every tool that changes a note, since the description is
+ * what an assistant reads: a link in the answer that nothing asks it to pass on is a link
+ * the person never sees.
+ */
+export const SHARE_NOTE_LINK =
+  ' The answer carries url, the absolute address the note opens at in Unbent: give it to ' +
+  'the person as a link whenever you create or change a note, so they can open it.';
+
+/** The same, for the tools that answer with `urls` by id. */
+export const SHARE_NOTE_LINKS =
+  ' The answer carries urls, the absolute address each note it reached opens at in Unbent, ' +
+  'keyed by id: give the person those links when you tell them what changed, or for a ' +
+  'large set a few of them and the count.';

@@ -193,6 +193,19 @@ beforeAll(async () => {
 }, 60_000);
 
 describe('mcp endpoint', () => {
+  it('answers get_note and create_note with a link to the note on the instance\'s own origin', async () => {
+    // APP_URL is the SPA's origin, not the Worker's port the call was made on: the link
+    // has to open the app, which in development is served by Vite.
+    const read = await mcp(alice.token, 'tools/call', { name: 'get_note', arguments: { noteId: aliceNoteId } });
+    expect(JSON.parse(toolText(read.body)).url).toBe(`${ORIGIN}/notes/${aliceNoteId}`);
+    const created = await mcp(alice.token, 'tools/call', {
+      name: 'create_note',
+      arguments: { title: 'Coyote vs. Acme', body: '' },
+    });
+    const note = JSON.parse(toolText(created.body));
+    expect(note.url).toBe(`${ORIGIN}/notes/${note.id}`);
+  });
+
   it('refuses an unauthenticated call and says where to authorize', async () => {
     const res = await fetch(`${BASE}/api/mcp`, {
       method: 'POST',
@@ -529,7 +542,12 @@ describe('a write through MCP that changes nothing', () => {
       arguments: { noteIds: [before.id], add: ['deals'], remove: ['absent'] },
     });
     const result = JSON.parse(toolText(after.body));
-    expect(result).toEqual({ noteIds: [before.id], changed: 0, missing: [] });
+    expect(result).toEqual({
+      noteIds: [before.id],
+      urls: { [before.id]: `${ORIGIN}/notes/${before.id}` },
+      changed: 0,
+      missing: [],
+    });
 
     const read = JSON.parse(
       toolText(
@@ -550,7 +568,9 @@ describe('a write through MCP that changes nothing', () => {
     });
     expect(JSON.parse(toolText(after.body))).toEqual({
       notebook: 'Podcast Bookmarks',
+      notebookUrl: `${ORIGIN}/notes?notebook=Podcast+Bookmarks`,
       noteIds: [before.id],
+      urls: { [before.id]: `${ORIGIN}/notes/${before.id}` },
       changed: 0,
       missing: [],
     });
@@ -1125,7 +1145,12 @@ describe('reorganising notebooks and tags through MCP', () => {
 
     // The second call re-sends what is there, and says so rather than re-dating the notes.
     const set = await call('update_note_fields', { noteIds: [a.id, b.id], fields: { Year: 2025 } });
-    expect(set).toEqual({ noteIds: expect.arrayContaining([a.id, b.id]), changed: 2, missing: [] });
+    expect(set).toEqual({
+      noteIds: expect.arrayContaining([a.id, b.id]),
+      urls: { [a.id]: `${ORIGIN}/notes/${a.id}`, [b.id]: `${ORIGIN}/notes/${b.id}` },
+      changed: 2,
+      missing: [],
+    });
     const again = await call('update_note_fields', { noteIds: [a.id, b.id], fields: { Year: 2025 } });
     expect(again.changed).toBe(0);
 
