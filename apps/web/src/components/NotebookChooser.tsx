@@ -189,6 +189,19 @@ function TemplatePreview({
   /** What the server could not apply, when adding to a notebook that already had some of it. */
   const [skipped, setSkipped] = useState<{ name: string; items: NotebookImportSkip[] } | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
+  /*
+   * Whether the preview is still on screen. A request outlives it when the person leaves
+   * the page while Create waits; the list still wants refreshing then, but taking them
+   * into the new notebook from wherever they went would be a jump they did not ask for.
+   */
+  const live = useRef(true);
+  useEffect(() => {
+    // Set on mount as well as cleared on unmount: StrictMode mounts twice in development.
+    live.current = true;
+    return () => {
+      live.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     const el = nameRef.current;
@@ -230,7 +243,7 @@ function TemplatePreview({
         return;
       }
       onApplied();
-      onDone(trimmed);
+      if (live.current) onDone(trimmed);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -248,6 +261,7 @@ function TemplatePreview({
       // would come back as "left as it was" on every add.
       const out = await applyNotebookTemplate({ name: target, fields: template.fields }, { create: false });
       onApplied();
+      if (!live.current) return;
       // Never 'taken' without `create`; the type allows it, so it is answered anyway.
       if (out !== 'taken' && out.skipped.length > 0) {
         setSkipped({ name: target, items: out.skipped });
@@ -295,9 +309,10 @@ function TemplatePreview({
       }}
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
-          // The preview is a step inside the chooser; Escape goes back a step, not out.
+          // The preview is a step inside the chooser; Escape goes back a step, not out —
+          // and not at all while Create waits, as Back does not.
           e.stopPropagation();
-          onBack();
+          if (!busy) onBack();
         }
       }}
     >

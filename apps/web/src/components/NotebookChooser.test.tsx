@@ -135,6 +135,22 @@ describe('NotebookChooser', () => {
     expect(onDone).toHaveBeenCalledWith('Receipts');
   });
 
+  it('stays put on Escape while Create waits, and does not navigate once the preview is gone', async () => {
+    let answer: (v: { id: string; skipped: [] }) => void = () => {};
+    vi.mocked(actions.applyNotebookTemplate).mockReturnValueOnce(new Promise((r) => (answer = r)));
+    const props = { existing: [], onBlank: vi.fn(), onClose: vi.fn(), onApplied: vi.fn(), onDone: vi.fn() };
+    const { unmount } = render(<NotebookChooser {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Receipts/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create notebook' }));
+    fireEvent.keyDown(screen.getByLabelText('Notebook name'), { key: 'Escape' });
+    expect(screen.getByLabelText('Notebook name')).toBeTruthy();
+
+    unmount();
+    answer({ id: 'nb', skipped: [] });
+    await waitFor(() => expect(props.onApplied).toHaveBeenCalledOnce());
+    expect(props.onDone).not.toHaveBeenCalled();
+  });
+
   it('goes back a step on Escape from the preview, and out on Escape from the cards', () => {
     const { onClose } = mount();
     fireEvent.click(screen.getByRole('button', { name: /^Receipts/ }));
