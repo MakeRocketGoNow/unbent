@@ -657,9 +657,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * it (`routes/notes.index.tsx`) and the list column says nothing, since a "No notes
    * yet." line beside a "No notes yet" heading is the same fact twice, a column apart.
    * Never in the table, which needs a notebook, and so never in a scope this can be true
-   * of.
+   * of. Held while a note asked for from the empty state is being made; see
+   * `useHoldWhileCreating`.
    */
-  /* Held while a note asked for from the empty state is being made; see the hook. */
   const libraryEmpty = useHoldWhileCreating(libraryTotal === 0 && wholeAccount && results === null && !error);
   const emptyLibraryInList = libraryEmpty && isMobile;
   /** The list's empty state, in words; both renderings say the same thing. */
