@@ -212,7 +212,11 @@ function TemplatePreview({
     setBusy(true);
     setError(null);
     try {
-      const out = await applyNotebookTemplate(definition(target), { create: false });
+      // Fields only, which is what the button says. The template's emoji and purpose are
+      // for a notebook it makes; on one the person already has, a purpose would quietly
+      // become what Auto-fill reads to file notes there, and one the notebook already has
+      // would come back as "left as it was" on every add.
+      const out = await applyNotebookTemplate({ name: target, fields: template.fields }, { create: false });
       onApplied();
       // Never 'taken' without `create`; the type allows it, so it is answered anyway.
       if (out !== 'taken' && out.skipped.length > 0) {

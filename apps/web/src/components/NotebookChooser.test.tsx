@@ -74,7 +74,11 @@ describe('NotebookChooser', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Add these fields to receipts' }));
     await waitFor(() => expect(onDone).toHaveBeenCalledWith('receipts'));
-    expect(vi.mocked(actions.applyNotebookTemplate).mock.calls[0]![1]).toEqual({ create: false });
+    // The fields alone: the existing notebook's emoji and purpose stay the person's.
+    expect(actions.applyNotebookTemplate).toHaveBeenCalledWith(
+      { name: 'receipts', fields: receipts.fields },
+      { create: false },
+    );
   });
 
   it('refuses a name typed back onto one that is taken, rather than sending it', () => {
