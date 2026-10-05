@@ -89,15 +89,36 @@ describe('NotebookChooser', () => {
     expect(screen.getByText(/There is already a notebook called/)).toBeTruthy();
   });
 
-  it('turns a name taken since the list was read into the same choice, with nothing written', async () => {
+  it('turns a name taken since the list was read into the same choice, and refreshes the list', async () => {
     vi.mocked(actions.applyNotebookTemplate).mockResolvedValueOnce('taken');
     const { onDone, onApplied } = mount();
     fireEvent.click(screen.getByRole('button', { name: /^Receipts/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Create notebook' }));
     await screen.findByRole('button', { name: 'Add these fields to Receipts' });
     expect((screen.getByLabelText('Notebook name') as HTMLInputElement).value).toBe('Receipts 2');
+    expect(screen.getByText(/“Receipts” was made on another device/)).toBeTruthy();
     expect(onDone).not.toHaveBeenCalled();
-    expect(onApplied).not.toHaveBeenCalled();
+    // Nothing was written, but the list behind the preview is behind the server.
+    expect(onApplied).toHaveBeenCalledOnce();
+  });
+
+  it('numbers on from the template name when a numbered name is refused, and keeps the first offer', async () => {
+    vi.mocked(actions.applyNotebookTemplate).mockResolvedValueOnce('taken');
+    mount([{ name: 'Receipts' }]);
+    fireEvent.click(screen.getByRole('button', { name: /^Receipts/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create notebook' }));
+    await screen.findByText(/“Receipts 2” was made on another device/);
+    expect((screen.getByLabelText('Notebook name') as HTMLInputElement).value).toBe('Receipts 3');
+    expect(screen.getByRole('button', { name: 'Add these fields to Receipts' })).toBeTruthy();
+  });
+
+  it('offers adding to a notebook the list brings in after the preview opened', () => {
+    const props = { onBlank: vi.fn(), onClose: vi.fn(), onApplied: vi.fn(), onDone: vi.fn() };
+    const { rerender } = render(<NotebookChooser existing={[]} {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Receipts/ }));
+    expect(screen.queryByRole('button', { name: /^Add these fields/ })).toBeNull();
+    rerender(<NotebookChooser existing={[{ name: 'Receipts' }]} {...props} />);
+    expect(screen.getByRole('button', { name: 'Add these fields to Receipts' })).toBeTruthy();
   });
 
   it('says what an add left alone before leaving', async () => {

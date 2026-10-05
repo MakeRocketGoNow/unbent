@@ -133,6 +133,18 @@ export function NotebookChooser({ existing, intro, onBlank, onClose, onApplied, 
   );
 }
 
+/** Two notebook names are the same name the way the server compares them: trimmed, any case. */
+function sameName(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+/** Whether `name` is `base` or `base` with a number after it, as `freeName` makes them. */
+function isNumberedFrom(name: string, base: string): boolean {
+  const n = name.trim().toLowerCase();
+  const b = base.trim().toLowerCase();
+  return n === b || (n.startsWith(`${b} `) && /^\d+$/.test(n.slice(b.length + 1)));
+}
+
 /** The next name not taken: `Receipts 2`, `Receipts 3`… compared the way the server does. */
 export function freeName(name: string, existing: readonly { name: string }[]): string {
   const taken = new Set(existing.map((n) => n.name.trim().toLowerCase()));
@@ -156,13 +168,21 @@ function TemplatePreview({
   onDone: (name: string) => void;
 }) {
   /*
-   * The notebook the template's own name would land on, if there is one. Fixed for the
-   * preview: it is what "Add these fields to …" names, and the person's edits to the
-   * name field below do not change which notebook that offer is about.
+   * Names the server refused as taken, though the list did not have them: notebooks made
+   * on another device since it was read. Kept beside the list rather than instead of it,
+   * so they count as taken until the refreshed list brings them in.
    */
-  const [clash, setClash] = useState(() =>
-    existing.find((n) => n.name.trim().toLowerCase() === template.name.toLowerCase())?.name ?? null,
-  );
+  const [refused, setRefused] = useState<{ name: string }[]>([]);
+  /** Set when a refusal renamed the notebook, to say why the name changed. */
+  const [renamed, setRenamed] = useState<{ from: string; to: string } | null>(null);
+  const known = [...existing, ...refused];
+  /*
+   * The notebook the template's own name would land on, if there is one: what "Add these
+   * fields to …" names. Derived, not kept: the list can arrive, or be refreshed, after the
+   * preview opened, and the offer should follow it. The person's edits to the name field
+   * do not change which notebook it is about.
+   */
+  const clash = known.find((n) => sameName(n.name, template.name))?.name ?? null;
   const [name, setName] = useState(() => freeName(template.name, existing));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -178,7 +198,7 @@ function TemplatePreview({
   }, []);
 
   const trimmed = name.trim();
-  const nameTaken = existing.some((n) => n.name.trim().toLowerCase() === trimmed.toLowerCase());
+  const nameTaken = known.some((n) => sameName(n.name, trimmed));
 
   const definition = (as: string) => ({
     name: as,
@@ -194,9 +214,19 @@ function TemplatePreview({
     try {
       const out = await applyNotebookTemplate(definition(trimmed), { create: true });
       if (out === 'taken') {
-        // Made elsewhere since the list was read: the same state as a clash known up front.
-        setClash((c) => c ?? trimmed);
-        setName(freeName(trimmed, [...existing, { name: trimmed }]));
+        /*
+         * Made elsewhere since the list was read. Nothing was written, but the list is
+         * behind the server, so it is refreshed. A name numbered from the template's goes
+         * on numbering from it — `Receipts 3`, not `Receipts 2 2` — and one the person
+         * typed is numbered from what they typed.
+         */
+        onApplied();
+        const now = [...known, { name: trimmed }];
+        const base = isNumberedFrom(trimmed, template.name) ? template.name : trimmed;
+        const next = freeName(base, now);
+        setRefused((r) => [...r, { name: trimmed }]);
+        setRenamed({ from: trimmed, to: next });
+        setName(next);
         return;
       }
       onApplied();
@@ -281,17 +311,26 @@ function TemplatePreview({
           value={name}
           aria-label="Notebook name"
           disabled={busy}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => {
+            setName(e.target.value);
+            // The sentence about the name the server chose is stale once it is edited.
+            setRenamed(null);
+          }}
         />
       </div>
       <p className="nb-template-line">{template.description}</p>
 
-      {clash && (
+      {renamed && (
+        <p className="nb-preview-clash">
+          “{renamed.from}” was made on another device while you were choosing, so this one is “{renamed.to}”.
+        </p>
+      )}
+      {clash && !renamed && (
         <p className="nb-preview-clash">
           You already have a notebook called “{clash}”, so this one gets a name of its own.
         </p>
       )}
-      {nameTaken && trimmed.toLowerCase() !== clash?.toLowerCase() && (
+      {nameTaken && !renamed && !(clash && sameName(trimmed, clash)) && (
         <p className="nb-preview-clash">There is already a notebook called “{trimmed}”. Choose another name.</p>
       )}
 
