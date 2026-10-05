@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { useState } from 'react';
-import { render, cleanup, fireEvent, waitFor, screen } from '@testing-library/react';
+import { render, cleanup, fireEvent, waitFor, screen, act } from '@testing-library/react';
 import {
   createRootRoute,
   createRouter,
@@ -229,8 +229,10 @@ describe('LabelEditor with a chooser', () => {
   /** A caller holding the chooser's open state, the way `Settings` does. */
   function chooserHarness(items: LabelItem[] | null, initiallyOpen = false) {
     const onCreate = vi.fn(async () => true);
+    const control: { open?: (open: boolean) => void } = {};
     function Host() {
       const [open, setOpen] = useState(initiallyOpen);
+      control.open = setOpen;
       return (
         <LabelEditor
           kind="notebook"
@@ -259,7 +261,7 @@ describe('LabelEditor with a chooser', () => {
       );
     }
     render(<Host />);
-    return { onCreate };
+    return { onCreate, control };
   }
 
   it('opens the chooser from the create row, and closes it from the same row', () => {
@@ -293,6 +295,15 @@ describe('LabelEditor with a chooser', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(screen.queryByRole('button', { name: 'Blank' })).toBeNull();
     expect(document.activeElement).toBe(row);
+  });
+
+  it('opens the chooser when asked from outside, even with Blank\'s name field out', () => {
+    const { control } = chooserHarness(ITEMS, true);
+    fireEvent.click(screen.getByRole('button', { name: 'Blank' }));
+    expect(screen.getByLabelText('New notebook name')).toBeTruthy();
+    act(() => control.open!(true));
+    expect(screen.queryByLabelText('New notebook name')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Blank' })).toBeTruthy();
   });
 
   it('waits for the list before opening the chooser it was asked to open', () => {

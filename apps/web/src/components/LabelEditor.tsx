@@ -150,6 +150,16 @@ export function LabelEditor({
   const chooserOpen = Boolean(chooser?.open) && creating === null && items !== null;
 
   /*
+   * Asked open from outside — the rail's New notebook pressed again while Blank's name
+   * field is out — the chooser wins: that press is a request to choose again, and it
+   * would otherwise vanish, its `?new=1` already dropped from the address.
+   */
+  const askedOpen = Boolean(chooser?.open);
+  useEffect(() => {
+    if (askedOpen) setCreating(null);
+  }, [askedOpen]);
+
+  /*
    * Closing the chooser hands focus back to the row that opened it. Whatever held focus —
    * a card, the cross — is gone with it, and a keyboard or screen reader would otherwise
    * start again from the top of the page.
