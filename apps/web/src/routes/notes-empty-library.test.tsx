@@ -9,7 +9,7 @@ import {
   Outlet,
   RouterProvider,
 } from '@tanstack/react-router';
-import type { FeedNote, Note } from '@unbent/shared';
+import type { FeedNote, FeedNotebook, Note } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import * as actions from '../store/actions.js';
 import { installTestLibrary, type TestLibrary } from '../store/test-library.js';
@@ -367,5 +367,43 @@ describe('a link to a notebook that is not there', () => {
     mount('/notes?notebook=Coupons');
     await screen.findByText('No notes in Coupons.');
     expect(screen.queryByRole('region', { name: 'Notebook not found' })).toBeNull();
+  });
+});
+
+/**
+ * A sort by a field is dropped — and forgotten — when its notebook is not there. Only once
+ * that is known: the name matches without case, as the list's filter does, and a library
+ * still arriving has not said which notebooks exist.
+ */
+describe('a sort by a field of the notebook in the link', () => {
+  beforeEach(() => setWidth(false));
+  const field = '0f0f0ae3-5038-432b-aafd-bb4043f5743b';
+  const coupons: FeedNotebook = {
+    id: 'nb1',
+    name: 'Coupons',
+    purpose: null,
+    emoji: null,
+    fieldDefs: [{ id: field, notebookId: 'nb1', name: 'Expires', type: 'date', position: 0 } as FeedNotebook['fieldDefs'][number]],
+  };
+
+  it('is kept when the link names the notebook in other letters', async () => {
+    lib = installTestLibrary({ notes: [note('a', { title: 'Alpha', notebookId: 'nb1' })], notebooks: [coupons] });
+    const { router } = mount(`/notes?notebook=coupons&sortField=${field}`);
+    await screen.findByText('Alpha');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(router.state.location.search).toMatchObject({ sortField: field });
+  });
+
+  it('is kept while the library is still arriving', async () => {
+    lib = installTestLibrary({ notes: [], notebooks: [], cursor: null });
+    const { router } = mount(`/notes?notebook=Coupons&sortField=${field}`);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(router.state.location.search).toMatchObject({ sortField: field });
+  });
+
+  it('is dropped once a whole library has no such notebook', async () => {
+    lib = installTestLibrary({ notes: [note('a', { title: 'Alpha' })], notebooks: [] });
+    const { router } = mount(`/notes?notebook=Coupons&sortField=${field}`);
+    await waitFor(() => expect(router.state.location.search).not.toHaveProperty('sortField'));
   });
 });

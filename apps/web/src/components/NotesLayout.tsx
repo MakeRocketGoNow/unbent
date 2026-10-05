@@ -71,6 +71,7 @@ import { TagsSheet } from './TagsSheet.js';
 import { editOpenNoteFiling } from '../open-note-fields.js';
 import { useAppSession } from '../useAppSession.js';
 import { useLibraryArriving, useLibraryWhole } from '../store/use-feed-state.js';
+import { sameNotebookName } from '../store/derive.js';
 import { ListRowsContext, showsWholeAccount, useLibraryTotal } from '../useLibraryTotal.js';
 import { useSignOut } from '../useSignOut.js';
 
@@ -158,12 +159,15 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * The selected notebook's field definitions, which name the field chips and are what
    * the sheet's Fields page offers. Field definitions belong to a notebook, so with no
    * notebook selected there is nothing to ask for and the query stays disabled; the id
-   * is looked up from the name, because the URL carries the name.
+   * is looked up from the name, because the URL carries the name — without case, as the
+   * list's filter and the server match it (`sameNotebookName`).
    */
   const notebookId =
     notebook && notebook !== UNFILED
-      ? notebooks.data?.notebooks.find((nb) => nb.name === notebook)?.id
+      ? notebooks.data?.notebooks.find((nb) => sameNotebookName(nb.name, notebook))?.id
       : undefined;
+  /** The notebook list is the whole account's; see `useLibraryWhole`. */
+  const libraryWhole = useLibraryWhole();
   const fieldDefs = useQuery(notebookFieldsQuery(notebookId));
   const config = useQuery(configQuery());
   /** The definition behind a sort by a field, once the notebook's fields have loaded. */
@@ -172,11 +176,12 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * A sort by a field the notebook does not have — or by any field outside a notebook —
    * is a stale or hand-edited link. Dropped once that is known rather than sent, since the
    * API refuses the whole list for it and a link should still open. Replaced, not pushed:
-   * Back should not return to the broken order.
+   * Back should not return to the broken order. A notebook missing from a library still
+   * arriving is not known to be missing — and dropping the sort then forgets it for good.
    */
   const sortFieldStale =
     sortField !== undefined &&
-    ((notebooks.isSuccess && notebookId === undefined) ||
+    ((libraryWhole && notebooks.isSuccess && notebookId === undefined) ||
       (fieldDefs.isSuccess && sortFieldDef === undefined));
   useEffect(() => {
     if (!sortFieldStale) return;
@@ -739,7 +744,6 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * four controls, and the longer string was the one thing in it that truncated.
    */
   /** The URL names a notebook that does not exist; see `NotebookMissing`. */
-  const libraryWhole = useLibraryWhole();
   const notebookMissing = isNotebookMissing(notebook, notebooks, libraryWhole);
   /*
    * Drawn in the list's place only while nothing is being searched. A search is the person
