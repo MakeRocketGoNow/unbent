@@ -713,7 +713,10 @@ async function textFieldValues(
   const document = comparable(corpus.text);
   asked.forEach((f, i) => {
     const value = answer[`field_${i}`] ?? '';
-    if (value && document.includes(comparable(value))) found.set(f.id, value);
+    if (!value) return;
+    // Whole words: "Rent" is in "Acme Rentals", and is not something the document says.
+    const escaped = comparable(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'u').test(document)) found.set(f.id, value);
   });
   return found;
 }
