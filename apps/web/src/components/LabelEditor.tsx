@@ -64,13 +64,13 @@ interface LabelEditorProps {
    * What the create row opens instead of going straight to a name field: the notebook
    * list's chooser of Blank and templates (`NotebookChooser`). Given `startBlank`, which
    * closes it and turns the row into the name field it always was, so Blank ends where
-   * creating used to begin. Its open state is the caller's, because the caller opens it
+   * creating used to begin, and `close`, for the chooser's own way out. Its open state is the caller's, because the caller opens it
    * from outside the list: from the rail's New notebook, and on an empty list.
    */
   chooser?: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
-    render: (startBlank: () => void) => ReactNode;
+    render: (startBlank: () => void, close: () => void) => ReactNode;
   };
   emptyText: string;
   /** Under the list, once it has arrived. Null says nothing, for a list with nothing to describe yet. */
@@ -148,6 +148,17 @@ export function LabelEditor({
    * load would otherwise be chosen from against a list it has not seen.
    */
   const chooserOpen = Boolean(chooser?.open) && creating === null && items !== null;
+
+  /*
+   * Closing the chooser hands focus back to the row that opened it. Whatever held focus —
+   * a card, the cross — is gone with it, and a keyboard or screen reader would otherwise
+   * start again from the top of the page.
+   */
+  const createRef = useRef<HTMLButtonElement>(null);
+  const closeChooser = () => {
+    chooser?.onOpenChange(false);
+    createRef.current?.focus();
+  };
 
   const commitRename = async (item: LabelItem) => {
     const value = editing?.value.trim() ?? '';
@@ -228,7 +239,7 @@ export function LabelEditor({
                   type="button"
                   className="icon-btn label-slot"
                   aria-label="Close"
-                  onClick={() => chooser?.onOpenChange(false)}
+                  onClick={closeChooser}
                 >
                   <CancelIcon />
                 </button>
@@ -239,6 +250,7 @@ export function LabelEditor({
               )}
               {/* With a chooser the row opens it, and says so; the same row closes it. */}
               <button
+                ref={createRef}
                 type="button"
                 className="label-name"
                 disabled={busy}
@@ -254,7 +266,7 @@ export function LabelEditor({
             </li>
           ))}
 
-        {chooser && chooserOpen && <li className="label-chooser">{chooser.render(startCreate)}</li>}
+        {chooser && chooserOpen && <li className="label-chooser">{chooser.render(startCreate, closeChooser)}</li>}
 
         {shown.map((item) =>
           rowHref ? (

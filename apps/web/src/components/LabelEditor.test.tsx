@@ -242,10 +242,15 @@ describe('LabelEditor with a chooser', () => {
           chooser={{
             open,
             onOpenChange: setOpen,
-            render: (startBlank) => (
-              <button type="button" onClick={startBlank}>
-                Blank
-              </button>
+            render: (startBlank, close) => (
+              <>
+                <button type="button" onClick={startBlank}>
+                  Blank
+                </button>
+                <button type="button" onClick={close}>
+                  Leave
+                </button>
+              </>
             ),
           }}
           emptyText="None."
@@ -277,6 +282,17 @@ describe('LabelEditor with a chooser', () => {
     fireEvent.change(field, { target: { value: 'Coupons 2' } });
     fireEvent.keyDown(field, { key: 'Enter' });
     await waitFor(() => expect(onCreate).toHaveBeenCalledWith('Coupons 2'));
+  });
+
+  it('hands focus back to the create row when the chooser closes, from either way out', () => {
+    chooserHarness(ITEMS, true);
+    const row = screen.getByRole('button', { name: 'Create new notebook' });
+    fireEvent.click(screen.getByRole('button', { name: 'Leave' }));
+    expect(document.activeElement).toBe(row);
+    fireEvent.click(row);
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('button', { name: 'Blank' })).toBeNull();
+    expect(document.activeElement).toBe(row);
   });
 
   it('waits for the list before opening the chooser it was asked to open', () => {

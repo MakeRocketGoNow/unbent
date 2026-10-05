@@ -183,7 +183,7 @@ export function Settings({ onChanged, createRequested = false, onCreateRequested
         chooser={{
           open: chooserOpen,
           onOpenChange: setChooserChoice,
-          render: (startBlank) => (
+          render: (startBlank, close) => (
             <NotebookChooser
               existing={notebooks ?? []}
               intro={
@@ -192,7 +192,7 @@ export function Settings({ onChanged, createRequested = false, onCreateRequested
                   : undefined
               }
               onBlank={startBlank}
-              onClose={() => setChooserChoice(false)}
+              onClose={close}
               onApplied={() => {
                 void refresh();
                 onChanged();
