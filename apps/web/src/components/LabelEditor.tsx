@@ -64,8 +64,9 @@ interface LabelEditorProps {
    * What the create row opens instead of going straight to a name field: the notebook
    * list's chooser of Blank and templates (`NotebookChooser`). Given `startBlank`, which
    * closes it and turns the row into the name field it always was, so Blank ends where
-   * creating used to begin, and `close`, for the chooser's own way out. Its open state is the caller's, because the caller opens it
-   * from outside the list: from the rail's New notebook, and on an empty list.
+   * creating used to begin, and `close`, for the chooser's own way out. Its open state is
+   * the caller's, because the caller opens it from outside the list: from the rail's New
+   * notebook, and on an empty list.
    */
   chooser?: {
     open: boolean;
