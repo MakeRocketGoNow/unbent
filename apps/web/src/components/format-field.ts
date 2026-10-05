@@ -63,6 +63,35 @@ export function formatCurrency(n: number, currency: string): string {
   }
 }
 
+/**
+ * An amount as it sits in its input: `141.80` for a stored `141.8`, as a price is
+ * written, and the digits the person typed beyond that left alone.
+ *
+ * Padded to the currency's own minor unit — two places for dollars, none for yen — and
+ * never rounded: a stored `12.345` reads `12.345`, because an input that showed less
+ * than the value would save less the next time it was touched. Without the symbol or the
+ * separators of `formatCurrency`, since this is the text being edited, and a `1,234.50`
+ * typed back would not parse. A string that is not a plain decimal — one still being
+ * typed, `12.` — is returned as it is.
+ */
+export function amountText(value: FieldValue, currency: string): string {
+  const text = String(value);
+  if (!/^-?\d+(\.\d+)?$/.test(text)) return text;
+  const decimals = text.split('.')[1]?.length ?? 0;
+  const digits = currencyDigits(currency);
+  return decimals >= digits ? text : Number(text).toFixed(digits);
+}
+
+/** How many places a currency's amounts are written to: 2 for USD, 0 for JPY. */
+function currencyDigits(currency: string): number {
+  try {
+    return new Intl.NumberFormat(undefined, { style: 'currency', currency }).resolvedOptions()
+      .minimumFractionDigits ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
 /** The symbol a currency draws with — `$`, `€`, `£` — or the code where it has none. */
 export function currencySymbol(currency: string): string {
   try {
