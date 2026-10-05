@@ -217,6 +217,35 @@ export function candidateLines(sources: Array<{ text: string; where: string }>):
   return out;
 }
 
+/**
+ * The lines, each followed by what comes after its label, for a text field to choose from.
+ *
+ * A text field's value is usually half a line: "Order number: 112-0042" holds the order
+ * number, but the line is not it, and a field filled with the whole line is one the
+ * person has to clean up. So a line written as a label and a value offers the value too.
+ * Short labels only — a colon forty characters in is a sentence, not a label.
+ */
+export function labelledValues(lines: Option[]): Option[] {
+  const out: Option[] = [];
+  const seen = new Set<string>();
+  const add = (option: Option) => {
+    const key = option.key.toLowerCase();
+    if (out.length >= MAX_CANDIDATES || seen.has(key) || key === NONE) return;
+    seen.add(key);
+    out.push(option);
+  };
+  for (const line of lines) {
+    add(line);
+    // A space after the colon, so a link is not split at "https:".
+    const m = /^([^:]{1,40}):\s+(.+)$/.exec(line.key);
+    if (m && /\p{L}/u.test(m[1]!)) {
+      const value = m[2]!.trim();
+      add({ key: value, value, description: `After "${m[1]!.trim()}:" in ${String(line.description)}` });
+    }
+  }
+  return out;
+}
+
 const MONTHS = [
   'january',
   'february',
@@ -567,7 +596,7 @@ function fieldAsks(fields: FieldDef[], corpus: Corpus): Ask[] {
               'Choose the line that is the value itself — not a label for it, and not a ' +
               'sentence that mentions it.',
           },
-          corpus.lines,
+          labelledValues(corpus.lines),
           'No line is this value, or the document does not say',
         );
         return;

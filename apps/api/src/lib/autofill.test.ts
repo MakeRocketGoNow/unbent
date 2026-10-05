@@ -10,6 +10,7 @@ import {
   findNumbers,
   findPhones,
   findUrls,
+  labelledValues,
   type AutofillInput,
 } from './autofill.js';
 import type { Jev, JevAnswer, JevChoiceQuestion, JevEntry, JevQuestion } from './jev.js';
@@ -396,6 +397,21 @@ describe('the fields', () => {
 });
 
 describe('the candidates the code finds', () => {
+  it('offers what follows a short label as a text value of its own', () => {
+    const lines = candidateLines([
+      { text: 'Order number: 112-0042\nhttps://acme.example/pay\nWe will be in touch about it: soon, we promise you, really', where: 'scan.pdf' },
+    ]);
+    const keys = labelledValues(lines).map((o) => o.key);
+    expect(keys).toEqual([
+      'Order number: 112-0042',
+      '112-0042',
+      'https://acme.example/pay',
+      'We will be in touch about it: soon, we promise you, really',
+      'soon, we promise you, really',
+    ]);
+    expect(labelledValues(lines)[1]?.description).toBe('After "Order number:" in Line 1 of scan.pdf');
+  });
+
   it('reads dates however the document writes them, once each', () => {
     const found = findDates('Paid 2026-03-04, due 3/18/26 and again on March 18, 2026; 25.12.2025; 4th Feb 2026; 13/13/2026');
     expect(found.map((o) => o.key)).toEqual(['2026-03-04', '2026-03-18', '2025-12-25', '2026-02-04']);
