@@ -1542,7 +1542,7 @@ describe('following links', () => {
   });
 
   /**
-   * A path from the root of the site — the welcome note's links to its settings pages —
+   * A path from the root of the site — the sample note's links to its settings pages —
    * goes to the router in place, the way a link in the sidebar would, and claims the press
    * like any link the editor opens.
    */

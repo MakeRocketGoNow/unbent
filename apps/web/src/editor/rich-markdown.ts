@@ -1250,10 +1250,10 @@ const HANDOFF_SCHEME = /^(mailto|tel):/i;
  * A path from the root of this site — `/settings/import` — and not `//host`, which is an
  * address on another site spelled without its scheme.
  *
- * Followed inside the app, in place, through `openPath`: the welcome note links its
- * settings pages this way, because an absolute address would name one instance and the same
- * note is written by every instance, and would point back at the old one after an export
- * and an import elsewhere. In place rather than a new tab because the page it names is part
+ * Followed inside the app, in place, through `openPath`: the sample note an empty account
+ * can ask for (`welcome-note.ts`) links its settings pages this way, because an absolute
+ * address would name one instance when every instance offers the same note, and would
+ * point back at the old one after an export and an import elsewhere. In place rather than a new tab because the page it names is part
  * of this app, the way a link in the sidebar is; and through the router rather than a
  * navigation, so the app is not loaded again — in the Android and iOS apps a navigation
  * would reload the whole site and drop an upload in flight, as `followInHost` explains.

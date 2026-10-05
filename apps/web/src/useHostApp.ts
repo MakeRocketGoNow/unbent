@@ -128,7 +128,7 @@ function servedByWorker(path: string): boolean {
  *
  * One rule for every caller that is handed a path from outside the router: the app's
  * `open` above, and a link in a note written from the root (`[Import](/settings/import)`,
- * which the welcome note uses — see `SITE_PATH` in the rich editor). Only a path from the
+ * which the sample note uses — see `SITE_PATH` in the rich editor). Only a path from the
  * root, never `//host`, never one the Worker answers, and only one the router has a page
  * for; each caller falls back to what it did before when this refuses — the editor and
  * the preview to a new tab, the app to loading the address.

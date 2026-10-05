@@ -34,11 +34,11 @@ export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement
   tone?: ButtonTone;
   /**
    * `small`: denser padding and smaller text, for rows and toolbars.
-   * `large`: 44px tall, for the one or two actions of a state that stands on its own —
-   * the empty state's import and New note — where the control is most of what is on
-   * screen and a toolbar's height would make it look an afterthought. The class is
-   * `btn-large`, which a `Link` wearing button classes can share the way it shares
-   * `btn-primary`.
+   * `large`: 44px tall, for the few actions of a state that stands on its own — the
+   * empty state's import, New note and its quiet sample note — where the controls are
+   * most of what is on screen and a toolbar's height would make them look an
+   * afterthought. The class is `btn-large`, which a `Link` wearing button classes can
+   * share the way it shares `btn-primary`.
    */
   size?: 'default' | 'small' | 'large';
   /** Escape hatch for layout only (margins, grid placement) — never for restyling. */

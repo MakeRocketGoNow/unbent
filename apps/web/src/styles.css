@@ -794,8 +794,8 @@ button.link {
   font-size: 0.78rem;
 }
 
-/* A comfortable target under a thumb as well as a cursor, for a state whose one or two
-   actions are most of what is on screen (`EmptyState`). Shared by a `Link` wearing
+/* A comfortable target under a thumb as well as a cursor, for a state whose few actions
+   are most of what is on screen (`EmptyState`), the quiet one under them included. Shared by a `Link` wearing
    button classes, as `btn-primary` is. */
 .btn-large {
   min-height: 2.75rem;
