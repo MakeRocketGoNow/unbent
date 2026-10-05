@@ -30,6 +30,18 @@ let session: { user: { id: string; email: string; createdAt?: Date | string } } 
 vi.mock('../useAppSession.js', () => ({
   useAppSession: () => ({ session, isPending: false, unreachable: false }),
 }));
+/** Every `enabled` the notes view asked `useLibraryTotal` with, to see who counts when. */
+const totalAsked: boolean[] = [];
+vi.mock('../useLibraryTotal.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../useLibraryTotal.js')>();
+  return {
+    ...real,
+    useLibraryTotal: (enabled?: boolean) => {
+      totalAsked.push(enabled ?? true);
+      return real.useLibraryTotal(enabled);
+    },
+  };
+});
 vi.mock('../notes-api.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../notes-api.js')>()),
   getConfig: vi.fn(),
@@ -152,6 +164,21 @@ describe('the workspace pane with no note open, on a desktop', () => {
     expect(screen.queryByText('No notes yet.')).toBeNull();
     // The header's New is outlined while the pane's import is the one filled control.
     expect(screen.getByRole('button', { name: 'New' }).className).toContain('btn-secondary');
+  });
+
+  /** A big account must not recount on every change just because the pane is on screen. */
+  it('does not ask for the total once the column shows two notes or more', async () => {
+    lib = installTestLibrary({ notes: [note('a', { title: 'Alpha' }), note('b', { title: 'Beta' }), note('c', { title: 'Gamma' })] });
+    const { router } = mount('/notes');
+    await screen.findByText('Alpha');
+    await screen.findByText('Select a note, or create one.');
+    // A change of order re-renders both the column and the pane over the same rows.
+    totalAsked.length = 0;
+    await router.navigate({ to: '/notes', search: { sort: 'title' } });
+    await waitFor(() => expect(router.state.location.href).toContain('sort=title'));
+    await screen.findByText('Alpha');
+    expect(totalAsked.length).toBeGreaterThan(0);
+    expect(totalAsked.every((enabled) => !enabled)).toBe(true);
   });
 
   it('says "Select a note" inside a notebook, however empty the account', async () => {

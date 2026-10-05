@@ -71,7 +71,7 @@ import { TagsSheet } from './TagsSheet.js';
 import { editOpenNoteFiling } from '../open-note-fields.js';
 import { useAppSession } from '../useAppSession.js';
 import { useLibraryArriving } from '../store/use-feed-state.js';
-import { showsWholeAccount, useLibraryTotal } from '../useLibraryTotal.js';
+import { ListRowsContext, showsWholeAccount, useLibraryTotal } from '../useLibraryTotal.js';
 import { useSignOut } from '../useSignOut.js';
 
 /** Sidebar plus the routed workspace. Filters come from the URL; nothing here is mirrored into state. */
@@ -1295,7 +1295,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         onCommit={layout.onResizeCommit}
       />
 
-      {children}
+      {/* The routed workspace hears how many rows the column holds; see `ListRowsContext`. */}
+      <ListRowsContext.Provider value={notes.length}>{children}</ListRowsContext.Provider>
     </div>
   );
 }

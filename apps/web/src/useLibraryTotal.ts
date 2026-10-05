@@ -1,3 +1,4 @@
+import { createContext } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { libraryTotalQuery } from './queries.js';
 import { isWhole } from './store/feed.js';
@@ -57,3 +58,16 @@ export function showsWholeAccount(search: {
     !search.q?.trim()
   );
 }
+
+/**
+ * How many rows the notes column has loaded, for the workspace pane beside it.
+ *
+ * The pane only acts on an account of none or one, so it asks for the total only while the
+ * column shows one row or none — on All notes those rows are the account's. Read from the
+ * column rather than from a list query of the pane's own: the column's query is keyed by
+ * its order, which on All notes is often a remembered one, so a query of `notesQuery({})`
+ * here would be a second list to keep in step rather than the same one. `NotesLayout`
+ * provides it around the routed workspace; null where nothing does, which the pane reads
+ * as "not known", and asks.
+ */
+export const ListRowsContext = createContext<number | null>(null);

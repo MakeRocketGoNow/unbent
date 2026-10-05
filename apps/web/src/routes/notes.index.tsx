@@ -1,11 +1,11 @@
-import { useEffect } from 'react';
+import { useContext, useEffect } from 'react';
 import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { EmptyLibrary } from '../components/EmptyLibrary.js';
 import { notesQuery } from '../queries.js';
 import { useAppSession } from '../useAppSession.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
-import { showsWholeAccount, useLibraryTotal } from '../useLibraryTotal.js';
+import { ListRowsContext, showsWholeAccount, useLibraryTotal } from '../useLibraryTotal.js';
 import {
   FIRST_RUN_WINDOW_MS,
   createdAtMs,
@@ -37,8 +37,10 @@ function NoNoteOpen() {
   const search = useSearch({ from: '/notes' });
   const isMobile = useMediaQuery(MOBILE_QUERY);
   const wholeAccount = showsWholeAccount(search);
-  // Both things this pane does with the total are desktop-only and need the whole account.
-  const total = useLibraryTotal(!isMobile && wholeAccount);
+  // Both things this pane does with the total are desktop-only, need the whole account,
+  // and need it to hold none or one — so not while the column beside already shows two.
+  const rows = useContext(ListRowsContext);
+  const total = useLibraryTotal(!isMobile && wholeAccount && (rows === null || rows <= 1));
   const opening = useOpenFirstNote({ twoPane: !isMobile, wholeAccount, total, newRequested: search.new === 1 });
 
   if (!isMobile && total === 0 && wholeAccount) {
