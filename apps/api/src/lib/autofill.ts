@@ -718,7 +718,8 @@ async function textFieldValues(
     if (!value) return;
     // Whole words: "Rent" is in "Acme Rentals", and is not something the document says.
     const escaped = comparable(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    if (new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'u').test(document)) found.set(f.id, value);
+    const whole = new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, 'u');
+    if (whole.test(document)) found.set(f.id, value);
   });
   return found;
 }

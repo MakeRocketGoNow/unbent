@@ -226,9 +226,10 @@ ALLOWED_EMAILS=
 # TYPESAFE_API_URL=
 
 # A language model: an Anthropic API key, which turns on reading pictures — and scans with
-# no text layer — with a vision model, and writing Auto-fill's titles and text field values. What a file is and
-# shows, then any text on it, becomes the file's text for search and Auto-fill; a title is
-# written from the note whole rather than picked off a line of it. Unset — the default —
+# no text layer — with a vision model, and writing Auto-fill's titles and text field
+# values. What a file is and shows, then any text on it, becomes the file's text for
+# search and Auto-fill; a title is written from the note whole rather than picked off a
+# line of it. Unset — the default —
 # means a picture has no text, as before, titles come from Jev's pick of a line, and
 # nothing is sent anywhere.
 #

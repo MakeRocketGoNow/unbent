@@ -1086,9 +1086,9 @@ the note, and Jev's pick of the document's own lines stands where there is none.
 model writes a text field's value, so a Vendor gets "Acme Rentals" rather than the whole
 "Thank you for shopping at Acme Rentals Store #4471" line, and a value it writes is kept
 only when the document contains it. Without one, a line written as a label and a value,
-like "Order number: 112-0042", offers the value alone too. A value can still be wrong, but it is always something the document
-actually says, and anything the model is unsure of is left empty rather than guessed. Ratings
-are left alone: a document has no opinion to read.
+like "Order number: 112-0042", offers the value alone too. A value can still be wrong, but
+it is always something the document actually says, and anything the model is unsure of is
+left empty rather than guessed. Ratings are left alone: a document has no opinion to read.
 
 `POST /api/notes/:id/autofill` answers with the suggestions and applies nothing; the client
 does. The Android app is the site in a WebView, so it has the same control.
