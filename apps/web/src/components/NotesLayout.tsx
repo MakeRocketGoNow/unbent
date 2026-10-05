@@ -761,8 +761,11 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       // the first is still filtered out of the list it was created in.
       tags: tag ?? [],
       // UNFILED is a filter sentinel, not a notebook name — a note created while
-      // viewing it belongs in no notebook.
-      notebook: notebook === UNFILED ? null : (notebook ?? null),
+      // viewing it belongs in no notebook. Nor does one made beside "Notebook not found":
+      // filing it under the name would have the server create the notebook the screen has
+      // just said does not exist, on the strength of a stale link. It goes where it would
+      // from All notes, which is where "Show all notes" leads.
+      notebook: notebook === UNFILED || notebookMissing ? null : (notebook ?? null),
     });
 
   return (
@@ -832,11 +835,13 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
              Outlined rather than filled while the account is empty. The pane beside it
              then draws `EmptyLibrary`, whose import is the view's one filled control —
              it is the thing that screen is for — and two fills a column apart compete
-             for the same glance. New stays where it always is, only quieter. */
+             for the same glance. New stays where it always is, only quieter. Outlined too
+             beside "Notebook not found": a filled New there reads as the answer to a
+             missing notebook, and the note it makes goes to no notebook (see `newNote`). */
           action={
             isMobile ? undefined : (
               <Button
-                variant={libraryEmpty ? 'secondary' : 'primary'}
+                variant={libraryEmpty || notebookMissing ? 'secondary' : 'primary'}
                 onClick={() => void newNote()}
               >
                 New

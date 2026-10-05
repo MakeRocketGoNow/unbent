@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
-import { render, screen, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   createRootRoute,
@@ -9,8 +9,9 @@ import {
   Outlet,
   RouterProvider,
 } from '@tanstack/react-router';
-import type { FeedNote } from '@unbent/shared';
+import type { FeedNote, Note } from '@unbent/shared';
 import * as api from '../notes-api.js';
+import * as actions from '../store/actions.js';
 import { installTestLibrary, type TestLibrary } from '../store/test-library.js';
 import { NotesLayout } from '../components/NotesLayout.js';
 import { filters } from './notes.js';
@@ -42,6 +43,10 @@ vi.mock('../useLibraryTotal.js', async (importOriginal) => {
     },
   };
 });
+vi.mock('../store/actions.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../store/actions.js')>()),
+  createNote: vi.fn(),
+}));
 vi.mock('../notes-api.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../notes-api.js')>()),
   getConfig: vi.fn(),
@@ -240,6 +245,32 @@ describe('a link to a notebook that is not there', () => {
       expect(screen.queryByText('0 notes')).toBeNull();
     });
   }
+
+  /**
+   * New beside "Notebook not found" files the note nowhere — filing it under the name
+   * would make the server create the notebook the screen says is not there — and the
+   * desktop's New is outlined there, as it is for an empty account.
+   */
+  it("makes New's note in no notebook, from the desktop's outlined New and the phone's +", async () => {
+    vi.mocked(actions.createNote).mockResolvedValue({ id: 'made' } as Note);
+    for (const phone of [false, true]) {
+      setWidth(phone);
+      lib = installTestLibrary({ notes: [note('a', { notebookId: 'nb1' })], notebooks: [coupons] });
+      mount('/notes?notebook=Gone');
+      await screen.findByRole('region', { name: 'Notebook not found' });
+      const control = phone
+        ? screen.getByRole('button', { name: 'New note' })
+        : screen.getByRole('button', { name: 'New' });
+      if (!phone) expect(control.className).toContain('btn-secondary');
+      fireEvent.click(control);
+      await waitFor(() => expect(actions.createNote).toHaveBeenCalled());
+      expect(vi.mocked(actions.createNote).mock.calls.at(-1)?.[0]).toMatchObject({ notebook: null });
+      cleanup();
+      lib.uninstall();
+      lib = null;
+      vi.mocked(actions.createNote).mockClear();
+    }
+  });
 
   it('draws nothing of the kind for a notebook that exists', async () => {
     setWidth(false);
