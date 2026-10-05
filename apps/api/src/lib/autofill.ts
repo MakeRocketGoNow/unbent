@@ -239,7 +239,9 @@ export function labelledValues(lines: Option[]): Option[] {
   const seen = new Set<string>();
   const add = (option: Option) => {
     const key = option.key.toLowerCase();
-    if (out.length >= MAX_CANDIDATES || seen.has(key) || key === NONE) return;
+    // Twice the lines' cap, still well inside the API's 255: `candidateLines` stops at
+    // `MAX_CANDIDATES`, and a value offered beside each must never push a line out.
+    if (out.length >= 2 * MAX_CANDIDATES || seen.has(key) || key === NONE) return;
     seen.add(key);
     out.push(option);
   };

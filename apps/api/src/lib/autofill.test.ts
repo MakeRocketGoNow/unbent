@@ -515,6 +515,13 @@ describe('the candidates the code finds', () => {
     expect(labelledValues(lines)[1]?.description).toBe('After "Order number:" in Line 1 of scan.pdf');
   });
 
+  it('never drops a line to make room for a value', () => {
+    const text = Array.from({ length: 80 }, (_, i) => `Item ${i}: thing ${i}`).join('\n');
+    const lines = candidateLines([{ text, where: 'scan.pdf' }]);
+    const keys = labelledValues(lines).map((o) => o.key);
+    for (const line of lines) expect(keys).toContain(line.key);
+  });
+
   it('reads dates however the document writes them, once each', () => {
     const found = findDates('Paid 2026-03-04, due 3/18/26 and again on March 18, 2026; 25.12.2025; 4th Feb 2026; 13/13/2026');
     expect(found.map((o) => o.key)).toEqual(['2026-03-04', '2026-03-18', '2025-12-25', '2026-02-04']);
