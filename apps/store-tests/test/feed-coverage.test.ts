@@ -104,16 +104,17 @@ const EXEMPT: Record<string, string> = {
   resetCounters: 'the metering, not data',
   feedRestored: 'is the epoch change itself',
   clearRevisions: 'deletes note history, which is not in the feed and no client holds',
+  forgetBlobs: 'drops the tombstones of deleted files the sweep has removed from R2; a client holds no deleted files',
 };
 
 /** Reads, composites and the operator surface: nothing to record. */
 const READS = new Set([
-  'ping', 'stats', 'usage', 'readOnlySql', 'dumpPage', 'schemaSql', 'counters',
+  'ping', 'stats', 'usage', 'sweepVisit', 'readOnlySql', 'dumpPage', 'schemaSql', 'counters',
   'list', 'listFull', 'count', 'get', 'search', 'listTags', 'tagCounts', 'fieldTargets', 'notebookByName', 'sampleTitles', 'countUnfiledNotes',
   'listNotebooks', 'listFields', 'fieldById', 'listAllFields', 'previewConversion', 'countOptionUsage',
   'resolveAttachment', 'listAttachments', 'ownsNote', 'availableFilename', 'needingText', 'needingVision',
   'visionPending', 'pendingTextCount', 'textFor', 'textWithRead', 'textsForNote', 'textsForNotes', 'textsById', 'attachmentIdFor',
-  'keysForNote', 'allBlobKeys',
+  'keysForNote', 'allBlobKeys', 'tombstonedBlobKeys',
   'listPage', 'searchRows', 'searchWithFiles', 'exportPage', 'getWithFiles', 'filesForNote', 'notebooksOverview', 'pendingText',
   'autofillPrelude', 'autofillContext', 'attachmentReadPrelude', 'uploadPrelude',
   'changesSince', 'snapshotPage',

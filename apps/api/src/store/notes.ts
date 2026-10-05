@@ -37,6 +37,7 @@ import {
   type StaleNote,
   DEFAULT_NOTE_SORT,
 } from '@unbent/shared';
+import { DeletedBlobs } from './deleted-blobs.js';
 import type { Change, Feed } from './feed.js';
 import { Revisions } from './revisions.js';
 import type { Bind, Sql } from './sql.js';
@@ -173,10 +174,18 @@ export class NotesStore {
     private readonly feed: Feed,
   ) {
     this.revisions = new Revisions(sql);
+    this.deletedBlobs = new DeletedBlobs(sql);
   }
 
   /** The copies kept of what a write replaced; see `Revisions.keep`. */
   private readonly revisions: Revisions;
+
+  /**
+   * The files a purge lets go of, kept in R2 for the retention; see `DeletedBlobs`. Every
+   * method here that deletes a note row tombstones its files' keys in the same
+   * transaction, and that is the only way a note's files are ever let go of.
+   */
+  private readonly deletedBlobs: DeletedBlobs;
 
   /**
    * A page of notes, ordered by the requested sort. Keyset pagination keeps deep pages
@@ -1342,12 +1351,15 @@ export class NotesStore {
   }
 
   /**
-   * Permanently deletes one trashed note, returning its R2 keys so the blobs can go too.
+   * Permanently deletes one trashed note. Its files' R2 keys are tombstoned
+   * (`DeletedBlobs`) in the same transaction, for the hourly sweep to delete from R2 once
+   * the retention is out, and returned so the caller can say how many files went — not
+   * for the caller to delete, which would take back the thirty-five days a store restore
+   * relies on.
    *
    * The keys are read and the row deleted in one transaction, so the keys are exactly
    * those of the note that went: a restore cannot land between the two and leave the
-   * route deleting the files of a note that is live again. The singular route still
-   * checks `deleted` before it sweeps, as it did when the two were separate statements.
+   * tombstones naming the files of a note that is live again.
    */
   purgeOne(id: string): { deleted: boolean; keys: string[] } {
     return this.sql.tx(() => {
@@ -1366,6 +1378,7 @@ export class NotesStore {
       // This note may have held the last value a tombstoned definition was keeping alive.
       const deleted = gone.length > 0;
       if (deleted) this.sweepTombstonedFields();
+      if (deleted) this.deletedBlobs.tombstone(keys, Date.now());
       this.feed.record(gone.map((r) => ({ entity: 'note', id: r.id, deleted: true })));
       return { deleted, keys: deleted ? keys : [] };
     });
@@ -1425,14 +1438,17 @@ export class NotesStore {
   }
 
   /**
-   * Permanently deletes several trashed notes, returning their R2 keys so the blobs can go
-   * too. Only ones already in the trash, as `purgeOne`: a live note named here is left
-   * alone, because the two-step delete is the safety property.
+   * Permanently deletes several trashed notes, tombstoning their files' R2 keys as
+   * `purgeOne` does and returning them for the count. Only ones already in the trash, as
+   * `purgeOne`: a live note named here is left alone, because the two-step delete is the
+   * safety property.
    *
    * Keys are only those of notes this actually deleted. Inside one transaction the SELECT
    * and the DELETE see the same rows, but the DELETE still re-checks `deleted_at` and the
    * keys are still matched against what it returned — the property is worth stating in
-   * the code, not only in the isolation the transaction happens to give.
+   * the code, not only in the isolation the transaction happens to give. It matters more
+   * now that the keys become tombstones: one for a live note's file would have the sweep
+   * delete that file in thirty-five days.
    *
    * Sweeps what `purge` sweeps afterwards — tag rows nothing references any more, and
    * field definitions these notes were the last to hold a value for — since a selection
@@ -1462,6 +1478,7 @@ export class NotesStore {
       }
 
       if (deleted > 0) this.sweepAfterPurge();
+      this.deletedBlobs.tombstone(keys, Date.now());
       return { deleted, keys };
     });
   }
@@ -1990,9 +2007,10 @@ export class NotesStore {
    * them, whichever the index yields first, and says how many the scope still holds.
    *
    * Distinct from `remove`, which is a soft delete the user can undo. This is the
-   * irreversible one, so it returns the R2 keys it orphaned rather than deleting blobs
-   * itself — the caller sweeps them, and a failure there leaves recoverable garbage
-   * rather than a half-deleted note.
+   * irreversible one — for the person. For the operator it is not, for thirty-five days:
+   * the files' keys are tombstoned here (`DeletedBlobs`) rather than handed to the caller
+   * to delete, so a store wound back to before the purge finds its files still in the
+   * bucket. The keys are still returned, for the count the route reports.
    *
    * `scope: 'trashed'` empties the trash; `scope: 'all'` wipes the account's notes.
    *
@@ -2048,6 +2066,8 @@ export class NotesStore {
       }
 
       this.feed.record(deletedIds.map((id) => ({ entity: 'note', id, deleted: true })));
+      const keys = keysOfDeletedNotes(keyRows, deletedIds);
+      this.deletedBlobs.tombstone(keys, Date.now());
 
       // Whether the scope is exhausted comes from what this page saw, not from the stored
       // counts. A short page means the query ran out of notes; a full one means there may be
@@ -2063,7 +2083,7 @@ export class NotesStore {
       // walk the whole table, and neither is needed until the end.
       if (remaining === 0) this.sweepAfterPurge();
 
-      return { notes: deletedIds.length, keys: keysOfDeletedNotes(keyRows, deletedIds), remaining };
+      return { notes: deletedIds.length, keys, remaining };
     });
   }
 

@@ -14,6 +14,7 @@ import {
   type SnapshotPage,
 } from '@unbent/shared';
 import { AttachmentsStore, type FileSummary } from './attachments.js';
+import { DeletedBlobs } from './deleted-blobs.js';
 import { cutByBytes, Feed, FEED_META, FEED_PAGE_BYTES, lastWordPerEntity, type FeedRow } from './feed.js';
 import { appliedMigrations, migrate } from './migrate.js';
 import { NotesStore, type CountOptions, type ListOptions, type SearchFilters } from './notes.js';
@@ -137,6 +138,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   private feed: Feed;
   private notes: NotesStore;
   private attachments: AttachmentsStore;
+  private deletedBlobs: DeletedBlobs;
   private wiped = false;
 
   constructor(ctx: DurableObjectState, env: StoreEnv) {
@@ -151,6 +153,7 @@ export class UserStore extends DurableObject<StoreEnv> {
     this.feed = new Feed(this.sql);
     this.notes = new NotesStore(this.sql, this.feed);
     this.attachments = new AttachmentsStore(this.sql, this.feed);
+    this.deletedBlobs = new DeletedBlobs(this.sql);
     ctx.blockConcurrencyWhile(async () => {
       // Pings on the feed's sockets are answered at the edge, without waking the object;
       // object-wide and idempotent, so set once here rather than on every handshake.
@@ -244,6 +247,34 @@ export class UserStore extends DurableObject<StoreEnv> {
   }
 
   /**
+   * The sweep's one call on a live account: its usage, and the deleted files whose
+   * thirty-five days are up as of `now` — at most `EXPIRED_BLOBS_PER_VISIT`, one R2
+   * `delete()`'s worth. One call rather than two because every account is visited every
+   * hour and each call is a billable request, and the sweep's batch is sized against the
+   * Free plan's fifty subrequests an invocation (`lib/sweep.ts`). `now` is the Worker's,
+   * and the same `now` goes to `forgetBlobs` afterwards, so the two agree on what was due.
+   *
+   * The read is a range on `idx_deleted_blobs_due`: an account with nothing due reads one
+   * index entry at most, so this stays a periodic read that scans nothing. A wiped object
+   * answers without rebuilding its schema, as `usage` does.
+   */
+  sweepVisit(now: number): StoreUsage & { expiredBlobs: string[] } {
+    const usage = this.usage();
+    if (usage.wiped) return { ...usage, expiredBlobs: [] };
+    return { ...usage, expiredBlobs: this.deletedBlobs.expired(now) };
+  }
+
+  /**
+   * The sweep's second call, after it has deleted `keys` from R2: drop their tombstones.
+   * Only those still due as of `now` go; see `DeletedBlobs.forget`. Not a feed write — a
+   * client holds no deleted files — so it does not go through `writing()`.
+   */
+  forgetBlobs(keys: string[], now: number): { forgotten: number } {
+    this.ready();
+    return this.sql.tx(() => ({ forgotten: this.deletedBlobs.forget(keys, now) }));
+  }
+
+  /**
    * Deletes everything: every table, the schema, the `_meta` row. For account deletion and
    * for the test fixtures' purge.
    *
@@ -299,8 +330,10 @@ export class UserStore extends DurableObject<StoreEnv> {
    * version, `_meta`, the wiped mark in key-value storage. A restore to before a schema
    * file was applied is migrated again on the wake that follows. R2 is not the object's
    * and is untouched, so files uploaded after the restored time are orphans the
-   * account's own blob sweep reclaims, and files deleted since come back as rows pointing
-   * at nothing.
+   * account's own blob sweep reclaims. Files deleted since come back whole: a deleted
+   * file's object stays in the bucket for thirty-five days (`DeletedBlobs`), five more
+   * than the history reaches, and its tombstone is wound back with the row that replaces
+   * it, so nothing deletes the object afterwards.
    */
   async restoreTo(target: { at: number } | { bookmark: string }): Promise<void> {
     // A failure here is before anything is scheduled, and is marked so: the route answers
@@ -586,6 +619,8 @@ export class UserStore extends DurableObject<StoreEnv> {
   attachmentIdFor(noteId: string, filename: string) { this.ready(); return this.attachments.idFor(noteId, filename); }
   keysForNote(noteId: string) { this.ready(); return this.attachments.keysForNote(noteId); }
   allBlobKeys(afterRowid?: number, limit?: number) { this.ready(); return this.attachments.blobKeys(afterRowid, limit); }
+  /** The keys awaiting deletion, paged by key, for the account's own blob sweep to count as referenced. */
+  tombstonedBlobKeys(after?: string, limit?: number) { this.ready(); return this.deletedBlobs.keys(after, limit); }
 
   // --- Composites: what a route asks, in one request ------------------------------------
 

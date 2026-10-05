@@ -981,6 +981,11 @@ describe('rows read on an archive-sized store', () => {
           sql.exec(`INSERT INTO changes (seq, entity, id, deleted, at) VALUES (?1, 'note', ?2, 0, ?3)`, i + 1, `n${String(i < 3000 ? i : i % 100).padStart(5, '0')}`, now);
         }
         sql.exec(`UPDATE _meta SET value = '4000' WHERE key = 'seq'`);
+        // Five hundred files let go of in the last month, none yet due, and five from
+        // before it: what the hourly visit must find without reading the five hundred.
+        for (let i = 0; i < 505; i++) {
+          sql.exec(`INSERT INTO deleted_blobs (r2_key, deleted_at) VALUES (?1, ?2)`, `users/u/gone/${i}`, i < 5 ? now - 40 * 86_400_000 : now - (i % 30) * 86_400_000);
+        }
         // A full history on the first three hundred notes, the newest copy an hour old, so
         // a read of one note's copies that walked the table would show as fifteen thousand.
         for (let i = 0; i < 300; i++) {
@@ -1003,6 +1008,7 @@ describe('rows read on an archive-sized store', () => {
       return { label, rowsRead, rowsWritten };
     };
     const sortField = (await stub.fieldById('amount'))!;
+    const now = Date.now();
     const results = [
       await measure('first page', () => stub.list({ limit: 50 })),
       await measure('first page by title', () => stub.list({ limit: 50, sort: 'title', order: 'asc' })),
@@ -1054,6 +1060,9 @@ describe('rows read on an archive-sized store', () => {
       await measure('search rows in a notebook', () => stub.searchRows('receipt', 50, { notebook: 'Notebook 0' })),
       // What the sweep reads every hour, for every account: it must never scan a table.
       await measure('usage', () => stub.usage()),
+      await measure('sweep visit', () => stub.sweepVisit(now)),
+      await measure('forget expired files', () => stub.forgetBlobs(Array.from({ length: 5 }, (_, i) => `users/u/gone/${i}`), now)),
+      await measure('sweep visit with nothing due', () => stub.sweepVisit(now)),
       await measure('trash one', () => stub.remove('n00010')),
       await measure('trash many', () => stub.removeMany(['n00011', 'n00012', 'n00013'])),
       // The trash opening a note: the same read without `deleted_at`, which must stay a
@@ -1157,6 +1166,14 @@ describe('rows read on an archive-sized store', () => {
       'page of 100 with file summaries': 950,
       'stored counts': 10,
       usage: 4,
+      // The counts row and the five due keys off the retention index; the five hundred
+      // tombstones not yet due are never read (7, measured 2026-10-05), and with nothing
+      // due the visit is the counts row and one index entry (2). The hourly sweep makes
+      // this read on every account. Forgetting is four rows a key, the row and its two
+      // index entries (20 for five); a thousand keys is four thousand, never the table.
+      'sweep visit': 12,
+      'forget expired files': 30,
+      'sweep visit with nothing due': 4,
       'search common word': 2500,
       // The search's own 502 and the files of its fifty matches, each asked by the note's
       // index whether it has any (670, measured 2026-10-05).
