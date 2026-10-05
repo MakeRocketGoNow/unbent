@@ -870,7 +870,7 @@ describe('composites', () => {
 
     const got = await stub.getWithFiles(a.id);
     expect(got!.note.id).toBe(a.id);
-    expect(got!.files).toEqual([{ filename: 'scan.pdf', contentType: 'application/pdf', size: 1 }]);
+    expect(got!.files).toEqual([{ filename: 'scan.pdf', contentType: 'application/pdf', size: 1, read: 'pending', summary: null }]);
     expect(await stub.getWithFiles('ghost')).toBeNull();
 
     const overview = await stub.notebooksOverview({ fields: true });
@@ -1033,6 +1033,11 @@ describe('rows read on an archive-sized store', () => {
       await measure('notebook by name', () => stub.notebookByName('notebook 0')),
       await measure('field targets for 500 notes', () => stub.fieldTargets(Array.from({ length: 500 }, (_, k) => `n${String(k * 5).padStart(5, '0')}`))),
       await measure('get', () => stub.get('n01500')),
+      // MCP's get_note and list_notes with a line per file (MAK-172): every third note has
+      // a scan with text, so a hundred-note page carries thirty-four.
+      await measure('get with files', () => stub.getWithFiles('n01500')),
+      await measure('page of 100', () => stub.listPage({ limit: 100 }, null)),
+      await measure('page of 100 with file summaries', () => stub.listPage({ limit: 100 }, null, { summaries: true })),
       await measure('stored counts', async () => {
         await stub.count();
         await stub.count({ notebook: 'Notebook 1' });
@@ -1041,6 +1046,8 @@ describe('rows read on an archive-sized store', () => {
       }),
       await measure('search common word', () => stub.search('receipt', 50)),
       // One letter is sent as typed now; its prefix walk is the index's, not the meter's.
+      // MCP's search with a line per file of each match (MAK-172): fifty matches, a third with a scan.
+      await measure('search common word with file summaries', () => stub.searchWithFiles('receipt', 50)),
       await measure('search one letter', () => stub.search('r', 50)),
       await measure('search in a small tag', () => stub.search('receipt', 50, { tags: ['rare'] })),
       // A table's search: the page above, plus the rows the list would draw for its matches.
@@ -1140,9 +1147,20 @@ describe('rows read on an archive-sized store', () => {
       // Joined to its notebook per note it was 1,502.
       'field targets for 500 notes': 1200,
       get: 10,
+      // The note, its files by the note's index and each one's text by key (17, measured
+      // 2026-10-05).
+      'get with files': 30,
+      // A full page, then the same page with a line per file: about six rows for each of
+      // its thirty-four files and nothing that grows with the account (600 and 797,
+      // measured 2026-10-05). A summary that walked the text table would be thousands.
+      'page of 100': 700,
+      'page of 100 with file summaries': 950,
       'stored counts': 10,
       usage: 4,
       'search common word': 2500,
+      // The search's own 502 and the files of its fifty matches, each asked by the note's
+      // index whether it has any (670, measured 2026-10-05).
+      'search common word with file summaries': 800,
       'search one letter': 2500,
       'search in a small tag': 80,
       'search rows in a notebook': 1500,

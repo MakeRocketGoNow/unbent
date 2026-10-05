@@ -19,7 +19,7 @@ import type {
   StaleNote,
 } from '@unbent/shared';
 import { StoreRepo } from './store-client.js';
-import type { AttachmentInfo } from '@unbent/shared';
+import type { FileSummary } from '../store/attachments.js';
 import type { CountOptions, ListOptions, SearchFilters } from '../store/notes.js';
 import {
   keysOfDeletedNotes,
@@ -35,7 +35,7 @@ import {
  * queries from the same code, and nothing importing them had to move.
  */
 export { keysOfDeletedNotes, nextCursor, toFtsQuery, type ExportedNote };
-export type { CountOptions, ListOptions, SearchFilters };
+export type { CountOptions, FileSummary, ListOptions, SearchFilters };
 
 /**
  * All note access for one user, answered by that user's store.
@@ -210,6 +210,17 @@ export class NotesRepo extends StoreRepo {
     return this.call((s) => s.search(rawQuery, limit, filters, max));
   }
 
+  /** A search with a line per file of each match, for MCP; see `UserStore.searchWithFiles`. */
+  searchWithFiles(
+    rawQuery: string,
+    limit: number,
+    filters: SearchFilters = {},
+    opts: { vision?: boolean } = {},
+  ): Promise<{ results: SearchResult[]; summaries: Record<string, FileSummary[]> }> {
+    const max = this.scopeDrivenSearchMax;
+    return this.call((s) => s.searchWithFiles(rawQuery, limit, filters, max, opts));
+  }
+
   /** A search with each match's list row, for a table; see `UserStore.searchRows`. */
   searchRows(rawQuery: string, limit: number, filters: SearchFilters = {}): Promise<SearchResultRow[]> {
     const max = this.scopeDrivenSearchMax;
@@ -367,9 +378,16 @@ export class NotesRepo extends StoreRepo {
 
   // --- Composites ----------------------------------------------------------------------
 
-  /** `GET /notes`: the page and, when `count` is given, the total, in one call. */
-  listPage(list: ListOptions, count: CountOptions | null): Promise<{ items: NoteSummary[]; total: number | null }> {
-    return this.call((s) => s.listPage(list, count));
+  /**
+   * `GET /notes`: the page and, when `count` is given, the total, in one call; with
+   * `summaries`, a line per file of each note too (`UserStore.listPage`).
+   */
+  listPage(
+    list: ListOptions,
+    count: CountOptions | null,
+    opts: { summaries?: boolean; vision?: boolean } = {},
+  ): Promise<{ items: NoteSummary[]; total: number | null; summaries?: Record<string, FileSummary[]> }> {
+    return this.call((s) => s.listPage(list, count, opts));
   }
 
   /**
@@ -387,8 +405,8 @@ export class NotesRepo extends StoreRepo {
   }
 
   /** A note with its files, for MCP's `get_note`. Null when there is no such live note. */
-  getWithFiles(id: string): Promise<{ note: Note; files: AttachmentInfo[] } | null> {
-    return this.call((s) => s.getWithFiles(id));
+  getWithFiles(id: string, opts: { vision?: boolean } = {}): Promise<{ note: Note; files: FileSummary[] } | null> {
+    return this.call((s) => s.getWithFiles(id, opts));
   }
 
   /** `GET /changes`: what changed after `since`, whole, or `reset`; see `UserStore.changesSince`. */

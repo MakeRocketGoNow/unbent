@@ -13,7 +13,7 @@ import {
   type NotebookDefinition,
   type SnapshotPage,
 } from '@unbent/shared';
-import { AttachmentsStore } from './attachments.js';
+import { AttachmentsStore, type FileSummary } from './attachments.js';
 import { cutByBytes, Feed, FEED_META, FEED_PAGE_BYTES, lastWordPerEntity, type FeedRow } from './feed.js';
 import { appliedMigrations, migrate } from './migrate.js';
 import { NotesStore, type CountOptions, type ListOptions, type SearchFilters } from './notes.js';
@@ -579,6 +579,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   visionPending(noteId?: string) { this.ready(); return this.attachments.visionPending(noteId); }
   pendingTextCount(noteId?: string) { this.ready(); return this.attachments.pendingTextCount(noteId); }
   textFor(noteId: string, filename: string) { this.ready(); return this.attachments.textFor(noteId, filename); }
+  textWithRead(noteId: string, filename: string, vision?: boolean) { this.ready(); return this.attachments.textWithRead(noteId, filename, vision); }
   textsForNote(noteId: string) { this.ready(); return this.attachments.textsForNote(noteId); }
   textsForNotes(noteIds: string[]) { this.ready(); return this.attachments.textsForNotes(noteIds); }
   textsById(ids: string[]) { this.ready(); return this.attachments.textsById(ids); }
@@ -588,11 +589,24 @@ export class UserStore extends DurableObject<StoreEnv> {
 
   // --- Composites: what a route asks, in one request ------------------------------------
 
-  /** `GET /notes`: the page and, on the first page, the total. */
-  listPage(list: ListOptions, count: CountOptions | null) {
+  /**
+   * `GET /notes` and MCP's `list_notes`: the page and, on the first page, the total. With
+   * `summaries`, also a line per file of each note on the page (`summariesForNotes`), keyed
+   * by note id, in the same call — `list_notes` asks for it when an assistant is filling
+   * fields from the files. `vision` is whether the instance has the vision model; see
+   * `summarize`.
+   */
+  listPage(list: ListOptions, count: CountOptions | null, opts: { summaries?: boolean; vision?: boolean } = {}) {
     this.ready();
     return this.sql.tx(() => {
       const items = this.notes.list(list);
+      // A compact row does not select its files, so it cannot say which notes have none:
+      // every note on a compact page is asked about, rather than none of them.
+      const withFiles = !opts.summaries
+        ? []
+        : list.compact
+          ? items.map((n) => n.id)
+          : items.filter((n) => n.attachments?.length).map((n) => n.id);
       // A first page that came up short has seen every match, so it is its own total.
       // That saves the count where it costs most: a filter no stored number answers — a
       // field value, a date range, notes with no tag — counts by walking every note in
@@ -600,7 +614,11 @@ export class UserStore extends DurableObject<StoreEnv> {
       // Both callers pass the count the page's own filters; one that counted something
       // else beside a page would have to stop taking this path.
       const whole = !list.cursor && items.length < list.limit;
-      return { items, total: count ? (whole ? items.length : this.notes.count(count)) : null };
+      return {
+        items,
+        total: count ? (whole ? items.length : this.notes.count(count)) : null,
+        ...(opts.summaries ? { summaries: this.attachments.summariesForNotes(withFiles, opts.vision) } : {}),
+      };
     });
   }
 
@@ -617,6 +635,23 @@ export class UserStore extends DurableObject<StoreEnv> {
       const note = rows.get(r.id);
       return note ? [{ ...r, note }] : [];
     });
+  }
+
+  /**
+   * MCP's `search_notes` with a line per file of each match (`summariesForNotes`), keyed
+   * by note id, in one call. A search result does not say whether its note has files, so
+   * every match is asked about: an index probe for a note with none.
+   */
+  searchWithFiles(
+    rawQuery: string,
+    limit: number,
+    filters: SearchFilters = {},
+    scopeDrivenSearchMax?: number,
+    opts: { vision?: boolean } = {},
+  ) {
+    this.ready();
+    const results = this.notes.search(rawQuery, limit, filters, scopeDrivenSearchMax);
+    return { results, summaries: this.attachments.summariesForNotes(results.map((r) => r.id), opts.vision) };
   }
 
   /**
@@ -670,13 +705,18 @@ export class UserStore extends DurableObject<StoreEnv> {
     });
   }
 
-  /** `GET /notes/:id` with its files, as the MCP `get_note` tool wants them. */
-  getWithFiles(id: string): { note: Note; files: ReturnType<AttachmentsStore['listForNote']> } | null {
+  /**
+   * `GET /notes/:id` with its files, as the MCP `get_note` tool wants them: each with its
+   * size, and what it says in brief (`summariesForNotes`), so an assistant learns what a
+   * file is without a `get_attachment_text` per file. The summaries' own query carries
+   * everything `listForNote` would, so it is the only read of the note's files.
+   */
+  getWithFiles(id: string, opts: { vision?: boolean } = {}): { note: Note; files: FileSummary[] } | null {
     this.ready();
     return this.sql.tx(() => {
       const note = this.notes.get(id);
       if (!note) return null;
-      return { note, files: this.attachments.listForNote(id) };
+      return { note, files: this.attachments.summariesForNotes([id], opts.vision)[id] ?? [] };
     });
   }
 

@@ -1,5 +1,6 @@
 import { McpServer, createMcpHandler } from '@modelcontextprotocol/server';
 import { appLinks } from '../lib/app-links.js';
+import { canUseLlm } from '../lib/llm.js';
 import { reposFor } from '../lib/repos.js';
 import { UploadGrantsRepo } from '../lib/upload-grants.js';
 import type { Env } from '../types.js';
@@ -32,7 +33,7 @@ export function createUnbentMcpHandler(
   return createMcpHandler(() => {
     const server = new McpServer({ name: 'unbent', version: '1.0.0' });
     const { notes, attachments } = reposFor(env, userId);
-    registerReadTools(server, notes, attachments, links);
+    registerReadTools(server, notes, attachments, links, { vision: canUseLlm(env) });
     registerWriteTools(server, notes, links);
     // Upload links stay in D1: the token is looked up before anyone knows whose it is.
     const uploads = new UploadGrantsRepo(env.DB, userId);

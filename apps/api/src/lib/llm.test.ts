@@ -11,6 +11,7 @@ import {
   readableByLlm,
   llmFrom,
 } from './llm.js';
+import { summarize } from '../store/attachments.js';
 
 const env = { ANTHROPIC_API_KEY: 'sk-test' };
 const bytes = new TextEncoder().encode('not really a jpeg').buffer as ArrayBuffer;
@@ -170,5 +171,27 @@ describe('vision', () => {
         'ACME PLUMBING\nJane Doe, Owner\n(612) 555-0148',
     );
     expect(formatReading({ name: 'Lunch', kind: '', description: 'A plate of pasta.', text: '' })).toBe('Lunch\nA plate of pasta.');
+  });
+
+  /*
+   * The store cuts a file's summary out of this layout (`summarize`, MAK-172) without
+   * importing it: everything before the first blank line is the name and the description,
+   * and the transcription after it is left out. This runs the real layout through the real
+   * cut, so a reading laid out differently fails here rather than quietly putting a
+   * receipt's every line, or nothing, into list_notes.
+   */
+  it('lays the reading out so the store can cut its summary from the head', () => {
+    const head = (reading: Parameters<typeof formatReading>[0]) => summarize('image/jpeg', formatReading(reading), 'vision');
+    expect(head(said)).toEqual({
+      read: 'vision',
+      summary:
+        'Acme Plumbing business card — Business card: A business card for a plumber at Acme Plumbing, with a phone number and email.',
+    });
+    // No transcription, no kind, no name: each still leaves a summary and never the text.
+    expect(head({ ...said, text: '' }).summary).toBe(head(said).summary);
+    expect(head({ name: 'Lunch', kind: '', description: 'A plate of pasta.', text: 'MENU' }).summary).toBe('Lunch — A plate of pasta.');
+    expect(head({ ...said, name: '' }).summary).toBe(
+      'Business card: A business card for a plumber at Acme Plumbing, with a phone number and email.',
+    );
   });
 });

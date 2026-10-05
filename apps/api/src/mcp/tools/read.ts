@@ -14,7 +14,7 @@ import {
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { AppLinks } from '../../lib/app-links.js';
 import type { AttachmentsRepo } from '../../lib/attachments-repo.js';
-import { nextCursor, type NotesRepo } from '../../lib/notes-repo.js';
+import { nextCursor, type FileSummary, type NotesRepo } from '../../lib/notes-repo.js';
 import { jsonResult, noteRef, notFound, toolError } from './result.js';
 
 /**
@@ -64,6 +64,42 @@ const LIST_DATE_RANGE =
  */
 const FULL_LIST_LIMIT = 100;
 const COMPACT_LIST_LIMIT = MAX_BATCH_NOTES;
+
+/**
+ * How many files' summaries one note carries on a page of `list_notes` or `search_notes`. The page is capped
+ * at a hundred notes, but a note is not capped in files, and a few notes with dozens of
+ * scans each would make a page of summaries the very context-filling read they are there
+ * to save. A receipt or a business card has one or two; ten covers what a page is for, and
+ * the rest are counted (`moreFiles`) and listed in full by get_note.
+ */
+const LIST_FILES_PER_NOTE = 10;
+
+/**
+ * What `read` and `summary` mean on a file, said once for `get_note` and `list_notes`
+ * (MAK-172). The statuses are spelled out because "no summary" has two causes that call
+ * for different moves — ask for the read (`pending`) or stop asking (`none`) — and a
+ * model left to guess would call get_attachment_text on every one to find out which.
+ */
+const ATTACHMENT_SUMMARY =
+  'read says how the file\'s text came to be: "vision" when a vision model read it, and ' +
+  'summary is its name and a line on what it shows (amounts, dates, who it is from); ' +
+  '"text" from a PDF\'s text layer, and summary is the opening of that text; "pending" ' +
+  'when it has not been read yet but will be (read_attachment asks for that read now, on ' +
+  'a note not in the trash); "none" when it was read and nothing was found, or nothing on ' +
+  'this instance reads that kind of file. summary is null unless read is "vision" or ' +
+  '"text", and is a few hundred characters at most: get_attachment_text has the whole text.';
+
+/** The flag `list_notes` and `search_notes` share, so the two cannot describe it differently. */
+const attachmentSummariesFlag = (whose: string, also = '') =>
+  z
+    .boolean()
+    .default(false)
+    .describe(
+      `Also list ${whose} files as attachments: [{filename, read, summary}]. ` +
+        ATTACHMENT_SUMMARY +
+        ` At most ${LIST_FILES_PER_NOTE} files a note; moreFiles counts the rest, which ` +
+        `get_note lists.${also}`,
+    );
 
 const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD').optional();
 
@@ -149,11 +185,22 @@ async function resolveFieldFilters(
   return { filters: out };
 }
 
+/** A note's files as `list_notes` and `search_notes` carry them: the first few, and a count of the rest. */
+function filesOf(files: FileSummary[]) {
+  const shown = files.slice(0, LIST_FILES_PER_NOTE);
+  return {
+    attachments: shown.map((f) => ({ filename: f.filename, read: f.read, summary: f.summary })),
+    ...(files.length > shown.length ? { moreFiles: files.length - shown.length } : {}),
+  };
+}
+
 export function registerReadTools(
   server: McpServer,
   notes: NotesRepo,
   attachments: AttachmentsRepo,
   links: AppLinks,
+  /** Whether the instance has the vision model, which decides what a file is still `pending` for. */
+  readers: { vision: boolean },
 ): void {
   server.registerTool(
     'search_notes',
@@ -168,10 +215,12 @@ export function registerReadTools(
         'matchedField matched in that custom field\'s value; one with matchedFile matched ' +
         'inside that attachment. Terms are matched literally and ANDed; there is no operator ' +
         'syntax, so narrow with the tag, notebook and date arguments rather than by writing ' +
-        'filters into the query.',
+        'filters into the query. With attachmentSummaries, each result also lists its ' +
+        'note\'s files with a short summary of each, as list_notes does.',
       inputSchema: z.object({
         query: z.string().min(1).max(500).describe('Words to look for.'),
         limit: z.number().int().min(1).max(100).default(20),
+        attachmentSummaries: attachmentSummariesFlag("each matching note's"),
         tag: tagFilter,
         notebook: notebookFilter,
         from: dateOnly.describe('Only notes created on or after this date (UTC).'),
@@ -179,8 +228,13 @@ export function registerReadTools(
       }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async ({ query, limit, tag, notebook, from, to }) => {
-      const results = await notes.search(query, limit, { tags: tag, notebook, from, to });
+    async ({ query, limit, attachmentSummaries, tag, notebook, from, to }) => {
+      const filters = { tags: tag, notebook, from, to };
+      // The plain search when the files were not asked for: the composite reads the files
+      // of every match, which a search that only wants its hits should not pay for.
+      const { results, summaries } = attachmentSummaries
+        ? await notes.searchWithFiles(query, limit, filters, { vision: readers.vision })
+        : { results: await notes.search(query, limit, filters), summaries: undefined };
       return jsonResult({
         count: results.length,
         results: results.map((r) => ({
@@ -193,6 +247,7 @@ export function registerReadTools(
           ...(r.matchedFile ? { matchedFile: r.matchedFile } : {}),
           ...(r.matchedField ? { matchedField: r.matchedField } : {}),
           ...(r.matchedTag ? { matchedTag: r.matchedTag } : {}),
+          ...(summaries ? filesOf(summaries[r.id] ?? []) : {}),
         })),
       });
     },
@@ -206,9 +261,12 @@ export function registerReadTools(
         'List notes without searching, newest first by default. Use this to browse, to page ' +
         'through a notebook or tag, to narrow a notebook by its custom field values, or — with ' +
         'sort "updated" and a from date — to find what changed recently. Returns an excerpt ' +
-        'per note rather than the body; call get_note for that. When the response carries a ' +
-        'cursor there are more notes, and passing it back returns the next page. The total ' +
-        'comes with the first page only: a page asked for with a cursor does not repeat it.',
+        'per note rather than the body; call get_note for that. With attachmentSummaries, ' +
+        'each note also lists its files with a short summary of each, which is usually enough ' +
+        'to fill a notebook\'s fields from its scans without reading every file. When the ' +
+        'response carries a cursor there are more notes, and passing it back returns the next ' +
+        'page. The total comes with the first page only: a page asked for with a cursor does ' +
+        'not repeat it.',
       inputSchema: z.object({
         limit: z
           .number()
@@ -227,6 +285,7 @@ export function registerReadTools(
               'large set to pass to move_notes, update_note_tags or update_note_fields, while ' +
               'still seeing what each note is and where it is filed.',
           ),
+        attachmentSummaries: attachmentSummariesFlag("each note's", ' Not with compact.'),
         tag: tagFilter,
         notebook: notebookFilter,
         fields: fieldFiltersSchema,
@@ -252,7 +311,14 @@ export function registerReadTools(
       }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async ({ limit, cursor, compact, tag, notebook, fields, untagged, sort, order, from, to, trashed }) => {
+    async ({ limit, cursor, compact, attachmentSummaries, tag, notebook, fields, untagged, sort, order, from, to, trashed }) => {
+      if (attachmentSummaries && compact) {
+        return toolError(
+          'attachmentSummaries cannot be combined with compact: a compact page is up to ' +
+            `${COMPACT_LIST_LIMIT} notes, and a summary per file of each is no longer compact. ` +
+            `Page through with compact false, up to ${FULL_LIST_LIMIT} at a time.`,
+        );
+      }
       if (limit > FULL_LIST_LIMIT && !compact) {
         return toolError(
           `limit is at most ${FULL_LIST_LIMIT} unless compact is true, which allows ${COMPACT_LIST_LIMIT}.`,
@@ -267,7 +333,7 @@ export function registerReadTools(
         if ('error' in resolved) return toolError(resolved.error);
         fieldFilters = resolved.filters;
       }
-      const { items, total } = await notes.listPage(
+      const { items, total, summaries } = await notes.listPage(
         { limit, cursor, tags: tag, notebook, fields: fieldFilters, untagged, compact, sort, order, from, to, trashed },
         // Counted once, on the first page. A count that no stored number answers — a field
         // filter, a date range, `untagged` — reads every note in scope, and repeating it on
@@ -275,6 +341,7 @@ export function registerReadTools(
         // notes of a three-thousand-note account read 48,000 rows, 45,000 of them counting.
         // The answer cannot have changed in a way the caller could use mid-walk anyway.
         cursor ? null : { tags: tag, notebook, fields: fieldFilters, untagged, trashed, from, to, sort },
+        { summaries: attachmentSummaries, vision: readers.vision },
       );
       // The same helper the HTTP route uses, so a cursor means the same thing on both and
       // cannot disagree with the sort that produced the page.
@@ -288,7 +355,12 @@ export function registerReadTools(
             // where a link per row would double the page, and the batch's own answer
             // carries the link of every note it changed.
             items.map((n) => ({ id: n.id, title: n.title, notebook: n.notebook ?? null, tags: n.tags }))
-          : items.map((n) => noteRef(n, links)),
+          : items.map((n) => ({
+              ...noteRef(n, links),
+              // Every note gets the key when it was asked for, an empty list included, so
+              // "no files" is an answer rather than a missing field.
+              ...(summaries ? filesOf(summaries[n.id] ?? []) : {}),
+            })),
       });
     },
   );
@@ -299,14 +371,16 @@ export function registerReadTools(
       title: 'Get a note',
       description:
         'Read one note in full: its Markdown body, tags, notebook and timestamps, plus a list ' +
-        'of its attachments, each with the exact Markdown that shows it in the body. ' +
-        'Attachment bytes are not included — use get_attachment_text to read what a PDF ' +
-        'says, and add_attachment to give the note a new file.',
+        'of its attachments, each with the exact Markdown that shows it in the body and a ' +
+        'short summary of what it is. ' +
+        ATTACHMENT_SUMMARY +
+        ' Attachment bytes are not included — use get_attachment_text for the whole of what a ' +
+        'file says, and add_attachment to give the note a new file.',
       inputSchema: z.object({ noteId: z.string().uuid() }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ noteId }) => {
-      const found = await notes.getWithFiles(noteId);
+      const found = await notes.getWithFiles(noteId, { vision: readers.vision });
       if (!found) return notFound('note', noteId);
       const { note, files } = found;
       return jsonResult({
@@ -327,6 +401,8 @@ export function registerReadTools(
             markdown: formatAttachmentMarkdown(f.filename, path, {
               image: f.contentType.startsWith('image/'),
             }),
+            read: f.read,
+            summary: f.summary,
           };
         }),
       });
@@ -343,8 +419,10 @@ export function registerReadTools(
         'the file is and shows, then any text on it. This is what makes a scanned document ' +
         'or a photo readable; the file itself is bytes a model cannot use. Reading happens ' +
         'in the background after upload, so a recently added file may have no text yet, ' +
-        'which is reported as such rather than as an empty document; read_attachment ' +
-        'asks for that read now.',
+        'which is reported as such rather than as an empty document. read says which, as ' +
+        'it does on get_note: "pending" for a file still to be read, which read_attachment ' +
+        'asks for now, and "none" for one that was read and had nothing, or that nothing ' +
+        'on this instance reads.',
       inputSchema: z.object({
         noteId: z.string().uuid(),
         filename: z.string().min(1).describe('As listed by get_note.'),
@@ -352,16 +430,23 @@ export function registerReadTools(
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     async ({ noteId, filename }) => {
-      const text = await attachments.textFor(noteId, filename);
-      if (text === null) return notFound('attachment', `${filename} on note ${noteId}`);
-      if (!text) {
+      const found = await attachments.textWithRead(noteId, filename, readers.vision);
+      if (!found) return notFound('attachment', `${filename} on note ${noteId}`);
+      const { read, text } = found;
+      // `indexed` stays beside `read`: it is what this tool has always answered, and a
+      // client written against it should not have to learn the new word to keep working.
+      if (text === null) {
         return jsonResult({
           filename,
           indexed: false,
-          note: 'This attachment has no extracted text. It may still be being processed, or it may be a file with no text layer, such as a photograph.',
+          read,
+          note:
+            read === 'pending'
+              ? 'This attachment has not been read yet. read_attachment asks for that now, on a note that is not in the trash.'
+              : 'This attachment has no text: it was read and nothing was found, or nothing on this instance reads this kind of file.',
         });
       }
-      return jsonResult({ filename, indexed: true, text });
+      return jsonResult({ filename, indexed: true, read, text });
     },
   );
 
