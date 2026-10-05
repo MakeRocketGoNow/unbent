@@ -1314,7 +1314,8 @@ button.link {
 }
 
 /* A narrow column: a smaller tile and heading and less inset, one step down the same
-   rhythm. Wider than any phone's column never reaches here — 18rem is under 320px. */
+   rhythm. A phone's column never reaches this step, since even at 320px it is wider than
+   18rem; it is for a desktop column dragged toward its floor. */
 @container empty-state-slot (width < 18rem) {
   .empty-state {
     gap: 0.75rem;
