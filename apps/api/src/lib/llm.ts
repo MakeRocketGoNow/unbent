@@ -68,6 +68,12 @@ const MAX_TITLE_TOKENS = 1024;
 
 /** A long scan takes a while to read; this is for an outage, not a slow page. */
 const TIMEOUT_MS = 120_000;
+/**
+ * The text fields' call is shorter. It starts only once Jev has chosen the notebook, so
+ * unlike the title it overlaps one round rather than two, and the press waits for it.
+ * Giving up costs only the written values, which leaves Jev's picks standing.
+ */
+const FIELDS_TIMEOUT_MS = 20_000;
 
 /** Retried once, after a pause: the statuses the API documents as retryable. */
 const RETRY_STATUSES = new Set([429, 500, 529]);
@@ -301,7 +307,7 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
   const url = env.ANTHROPIC_API_URL?.trim() || ANTHROPIC_API_URL;
   const model = env.ANTHROPIC_MODEL?.trim() || LLM_MODEL_DEFAULT;
 
-  async function post(body: string): Promise<Response> {
+  async function post(body: string, timeout: number): Promise<Response> {
     try {
       return await fetchImpl(url, {
         method: 'POST',
@@ -311,7 +317,7 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
           'Content-Type': 'application/json',
         },
         body,
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        signal: AbortSignal.timeout(timeout),
       });
     } catch (err) {
       throw new LlmError(0, `Could not reach the language model: ${(err as Error).message}`);
@@ -326,11 +332,11 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
    * Both are "declined", and a file the model declines once it would decline again, so
    * the callers record that rather than retry it.
    */
-  async function ask(body: string): Promise<string | null> {
-    let res = await post(body);
+  async function ask(body: string, timeout = TIMEOUT_MS): Promise<string | null> {
+    let res = await post(body, timeout);
     if (RETRY_STATUSES.has(res.status)) {
       await new Promise((resolve) => setTimeout(resolve, RETRY_AFTER_MS));
-      res = await post(body);
+      res = await post(body, timeout);
     }
     if (!res.ok) {
       // The body says why — a bad key, a model this key cannot use, a file too large —
@@ -442,7 +448,7 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
           format: { type: 'json_schema', schema },
         },
       });
-      const text = await ask(body);
+      const text = await ask(body, FIELDS_TIMEOUT_MS);
       if (!text) return null;
       try {
         const result = z.record(z.string(), z.string()).safeParse(JSON.parse(text));
