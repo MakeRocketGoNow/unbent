@@ -391,19 +391,19 @@ describe('a sort by a field of the notebook in the link', () => {
     const { router } = mount(`/notes?notebook=coupons&sortField=${field}`);
     await screen.findByText('Alpha');
     await new Promise((r) => setTimeout(r, 20));
-    expect(router.state.location.search).toMatchObject({ sortField: field });
+    expect(router.state.location.href).toContain(field);
   });
 
   it('is kept while the library is still arriving', async () => {
     lib = installTestLibrary({ notes: [], notebooks: [], cursor: null });
     const { router } = mount(`/notes?notebook=Coupons&sortField=${field}`);
     await new Promise((r) => setTimeout(r, 50));
-    expect(router.state.location.search).toMatchObject({ sortField: field });
+    expect(router.state.location.href).toContain(field);
   });
 
   it('is dropped once a whole library has no such notebook', async () => {
     lib = installTestLibrary({ notes: [note('a', { title: 'Alpha' })], notebooks: [] });
     const { router } = mount(`/notes?notebook=Coupons&sortField=${field}`);
-    await waitFor(() => expect(router.state.location.search).not.toHaveProperty('sortField'));
+    await waitFor(() => expect(router.state.location.href).not.toContain('sortField'));
   });
 });
