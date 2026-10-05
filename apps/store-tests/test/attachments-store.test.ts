@@ -199,6 +199,9 @@ describe('attachments', () => {
     // Nothing is asked about a note with no files, and nothing at all unless asked.
     expect(page.summaries!['bare']).toBeUndefined();
     expect((await stub.listPage({ limit: 10 }, null)).summaries).toBeUndefined();
+    // A compact page knows nothing of its notes' files, which must not read as "none".
+    const compact = await stub.listPage({ limit: 10, compact: true }, null, { summaries: true });
+    expect(Object.keys(compact.summaries!).sort()).toEqual(['n1', 'n2']);
   });
 
   it('pages every blob key by rowid', async () => {

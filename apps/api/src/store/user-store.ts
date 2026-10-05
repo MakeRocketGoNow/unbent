@@ -598,7 +598,13 @@ export class UserStore extends DurableObject<StoreEnv> {
     this.ready();
     return this.sql.tx(() => {
       const items = this.notes.list(list);
-      const withFiles = opts.summaries ? items.filter((n) => n.attachments?.length).map((n) => n.id) : [];
+      // A compact row does not select its files, so it cannot say which notes have none:
+      // every note on a compact page is asked about, rather than none of them.
+      const withFiles = !opts.summaries
+        ? []
+        : list.compact
+          ? items.map((n) => n.id)
+          : items.filter((n) => n.attachments?.length).map((n) => n.id);
       // A first page that came up short has seen every match, so it is its own total.
       // That saves the count where it costs most: a filter no stored number answers — a
       // field value, a date range, notes with no tag — counts by walking every note in
