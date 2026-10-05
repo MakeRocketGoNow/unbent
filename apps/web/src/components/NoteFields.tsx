@@ -14,7 +14,7 @@ import {
 import { Button } from './Button';
 import { FieldTypeIcon, PlusRowIcon } from './icons.js';
 import { FieldCellInput } from './FieldCellInput.js';
-import { currencySymbol, formatFieldValue } from './format-field.js';
+import { amountText, currencySymbol, formatFieldValue } from './format-field.js';
 import { usePersistentState } from '../usePersistentState.js';
 
 export interface NoteFieldsProps {
@@ -229,6 +229,8 @@ interface FieldRowProps {
 }
 
 function FieldRow({ def, value, readOnly, onChange }: FieldRowProps) {
+  // An amount's text while its input has focus; see the `number` case below.
+  const [typing, setTyping] = useState<string | null>(null);
   const id = `field-${def.id}`;
   const text = value === null ? '' : String(value);
   const setText = (next: string) => onChange(next === '' ? null : next);
@@ -290,6 +292,29 @@ function FieldRow({ def, value, readOnly, onChange }: FieldRowProps) {
       // written, so the row reads as money without the input having to format what is
       // being typed. The input itself stays the plain number.
       if (isCurrencyField(def) && def.currency) {
+        /*
+           Written to the currency's cents at rest — `141.80`, not the `141.8` a stored
+           number prints as — but exactly as typed while it has focus. Padding as the
+           person types would turn "141.8" into "141.80" under the cursor, between the 8
+           and the 5 they were about to press. So focus takes a copy of the text shown,
+           typing edits that copy, and blur lets the padded form back.
+        */
+        const shown = typing ?? (value === null ? '' : amountText(value, def.currency));
+        control = (
+          <input
+            {...common}
+            {...blank}
+            type="text"
+            inputMode="decimal"
+            value={shown}
+            onFocus={() => setTyping(shown)}
+            onBlur={() => setTyping(null)}
+            onChange={(e) => {
+              setTyping(e.target.value);
+              setText(e.target.value);
+            }}
+          />
+        );
         control = (
           <span className="note-field-money">
             <span className="note-field-affix" aria-hidden="true">

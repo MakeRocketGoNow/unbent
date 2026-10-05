@@ -180,7 +180,7 @@ describe('the Auto-fill control', () => {
     expect((screen.getByLabelText('Notebook') as unknown as HTMLSelectElement).value).toBe('Receipts');
     expect(document.querySelector('.tag-input')?.textContent).toContain('home');
     // The suggested notebook's field, with the value, once its definitions are on screen.
-    await waitFor(() => expect((screen.getByLabelText('Amount') as HTMLInputElement).value).toBe('12.5'));
+    await waitFor(() => expect((screen.getByLabelText('Amount') as HTMLInputElement).value).toBe('12.50'));
     expect(screen.getByText('Filled in the title, the notebook, a tag and Amount')).toBeTruthy();
     expect(document.querySelector('.confirm')).toBeNull();
   });
@@ -196,7 +196,7 @@ describe('the Auto-fill control', () => {
     // The title is kept until asked; the tag and the field were empty, so they landed.
     expect((screen.getByPlaceholderText('Untitled') as HTMLInputElement).value).toBe('My own title');
     expect(document.querySelector('.tag-input')?.textContent).toContain('home');
-    expect((screen.getByLabelText('Amount') as HTMLInputElement).value).toBe('12.5');
+    expect((screen.getByLabelText('Amount') as HTMLInputElement).value).toBe('12.50');
 
     fireEvent.click(screen.getByRole('button', { name: 'Replace' }));
     expect((screen.getByPlaceholderText('Untitled') as HTMLInputElement).value).toBe('Acme Hardware');

@@ -169,6 +169,33 @@ describe('NoteFields', () => {
     expect(onChange).toHaveBeenLastCalledWith('f-price', '30');
   });
 
+  it('writes an amount to its cents at rest, and leaves what is typed alone while it has focus', () => {
+    const { onChange, rerender } = mount({ definitions: [price], values: { 'f-price': 141.8 } });
+    expect(input('Price').value).toBe('141.80');
+
+    // Focus does not reformat, and typing is taken as typed, with no cents added under
+    // the cursor even when the draft comes back holding the typed text.
+    fireEvent.focus(input('Price'));
+    expect(input('Price').value).toBe('141.80');
+    fireEvent.change(input('Price'), { target: { value: '141.8' } });
+    expect(onChange).toHaveBeenLastCalledWith('f-price', '141.8');
+    const again = (value: string) => (
+      <NoteFields
+        definitions={[price]}
+        values={{ 'f-price': value }}
+        carried={[]}
+        notebookId="nb1"
+        onChange={onChange}
+        onAddField={vi.fn(async () => {})}
+      />
+    );
+    rerender(again('141.8'));
+    expect(input('Price').value).toBe('141.8');
+
+    fireEvent.blur(input('Price'));
+    expect(input('Price').value).toBe('141.80');
+  });
+
   it('draws a read-only multi-select as its chips alone', () => {
     mount({ definitions: [multi], values: { 'f-multi': ['PC'] }, readOnly: true });
     expect(screen.getByText('PC')).toBeTruthy();

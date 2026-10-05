@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { currencySymbol, formatCurrency, formatFieldValue } from './format-field.js';
+import { amountText, currencySymbol, formatCurrency, formatFieldValue } from './format-field.js';
 
 describe('formatFieldValue', () => {
   it('reads a checkbox as Yes or No', () => {
@@ -69,5 +69,27 @@ describe('a rating', () => {
   it('leaves a plain number alone', () => {
     expect(formatFieldValue('number', 3.5)).toBe((3.5).toLocaleString());
     expect(formatFieldValue('number', 3.5, null)).toBe((3.5).toLocaleString());
+  });
+});
+
+describe('an amount in its input', () => {
+  it('is written to the currency\u2019s cents', () => {
+    expect(amountText(141.8, 'USD')).toBe('141.80');
+    expect(amountText(412, 'USD')).toBe('412.00');
+    expect(amountText('141.8', 'USD')).toBe('141.80');
+    expect(amountText(-3.5, 'EUR')).toBe('-3.50');
+    // Yen has no minor unit.
+    expect(amountText(1200, 'JPY')).toBe('1200');
+  });
+
+  it('never rounds away a digit the value has', () => {
+    expect(amountText(12.345, 'USD')).toBe('12.345');
+    expect(amountText(1234.5, 'JPY')).toBe('1234.5');
+  });
+
+  it('leaves text that is not a plain decimal as it is', () => {
+    expect(amountText('12.', 'USD')).toBe('12.');
+    expect(amountText('-', 'USD')).toBe('-');
+    expect(amountText('', 'USD')).toBe('');
   });
 });
