@@ -39,8 +39,8 @@ export function useCreateNote(): (note: NewNote) => Promise<boolean> {
     // copies of the same text in an account that had none. A flag of its own rather than
     // `creating`, and let go as soon as the note exists: `creating` lasts until the note
     // is open, and a navigation that never settled would then refuse every New after it.
-    if (making) return false;
-    making = true;
+    if (writing) return false;
+    writing = true;
     setCreating(+1);
     try {
       let created;
@@ -58,7 +58,7 @@ export function useCreateNote(): (note: NewNote) => Promise<boolean> {
           notebook: note.notebook,
         });
       } finally {
-        making = false;
+        writing = false;
       }
       await queryClient.invalidateQueries({ queryKey: ['notes'] });
       invalidateNoteMembership(queryClient);
@@ -88,7 +88,7 @@ export function useCreateNote(): (note: NewNote) => Promise<boolean> {
 */
 let creating = 0;
 /** A note is being written, from the press until it exists; see the guard in `useCreateNote`. */
-let making = false;
+let writing = false;
 const listeners = new Set<() => void>();
 
 function setCreating(delta: number) {
