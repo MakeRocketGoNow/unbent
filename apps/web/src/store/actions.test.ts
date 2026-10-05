@@ -181,6 +181,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
   deleteAttachment: vi.fn(),
   restoreRevision: vi.fn(),
   clearRevisions: vi.fn(),
+  importNotebook: vi.fn(),
 }));
 
 const { fakes, MemoryAdapter } = await h;
@@ -1068,5 +1069,40 @@ describe('a file added to a note', () => {
     vi.mocked(api.uploadFile).mockRejectedValueOnce(new OfflineError());
     await expect(actions.uploadFile('n1', photo())).rejects.toBeInstanceOf(OfflineError);
     expect(root.paths()).toEqual([]);
+  });
+});
+
+describe('applying a notebook template', () => {
+  const definition = { name: 'Receipts', fields: [{ name: 'Vendor', type: 'text' as const }] };
+
+  it('waits for the library to hold the notebook before answering, when the copy is whole', async () => {
+    vi.mocked(api.importNotebook).mockResolvedValueOnce({ id: 'nb', skipped: [] });
+    const { engine, landPull } = library([]);
+    let answered = false;
+    const done = actions.applyNotebookTemplate(definition, { create: true }).then(() => (answered = true));
+    await tick();
+    await tick();
+    expect(engine.pull).toHaveBeenCalledOnce();
+    expect(answered).toBe(false);
+    landPull();
+    await done;
+    expect(api.importNotebook).toHaveBeenCalledWith(definition, { create: true });
+  });
+
+  it('asks for the pull without waiting on it while the copy is not whole', async () => {
+    vi.mocked(api.importNotebook).mockResolvedValueOnce({ id: 'nb', skipped: [] });
+    const { engine } = library([]);
+    // A first copy cut short: the pull would resume the whole walk.
+    engine.state.phase = 'failed';
+    engine.state.cursor = null;
+    await expect(actions.applyNotebookTemplate(definition, { create: true })).resolves.toEqual({ id: 'nb', skipped: [] });
+    expect(engine.pull).toHaveBeenCalledOnce();
+  });
+
+  it('pulls nothing for a name the server refused, since nothing was written', async () => {
+    vi.mocked(api.importNotebook).mockResolvedValueOnce('taken');
+    const { engine } = library([]);
+    await expect(actions.applyNotebookTemplate(definition, { create: true })).resolves.toBe('taken');
+    expect(engine.pull).not.toHaveBeenCalled();
   });
 });

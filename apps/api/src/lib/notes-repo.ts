@@ -352,11 +352,17 @@ export class NotesRepo extends StoreRepo {
     return this.call((s) => s.removeFieldOption(notebookId, fieldId, option, clear));
   }
 
-  importNotebook(definition: NotebookDefinition): Promise<{
-    id: string;
-    skipped: Array<{ name: string; reason: string; kind?: 'emoji' | 'purpose' }>;
-  }> {
-    return this.call((s) => s.importNotebook(definition));
+  importNotebook(
+    definition: NotebookDefinition,
+    opts: { create?: boolean } = {},
+  ): Promise<
+    | {
+        id: string;
+        skipped: Array<{ name: string; reason: string; kind?: 'emoji' | 'purpose' }>;
+      }
+    | 'conflict'
+  > {
+    return this.call(async (s) => s.importNotebook(definition, opts));
   }
 
   // --- Composites ----------------------------------------------------------------------

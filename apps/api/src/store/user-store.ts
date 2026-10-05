@@ -556,7 +556,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   removeFieldOption(notebookId: string, fieldId: string, option: string, clear: boolean) {
     return this.writing(() => this.notes.removeFieldOption(notebookId, fieldId, option, clear));
   }
-  importNotebook(definition: NotebookDefinition) { return this.writing(() => this.notes.importNotebook(definition)); }
+  importNotebook(definition: NotebookDefinition, opts: { create?: boolean } = {}) { return this.writing(() => this.notes.importNotebook(definition, opts)); }
 
   // --- Attachments: the repository, one for one -----------------------------------------
   //

@@ -5,6 +5,7 @@ export * from './markdown.js';
 export * from './content-type.js';
 export * from './filenames.js';
 export * from './notebook-file.js';
+export * from './notebook-templates.js';
 export * from './export-format.js';
 export * from './feed.js';
 export * from './search.js';

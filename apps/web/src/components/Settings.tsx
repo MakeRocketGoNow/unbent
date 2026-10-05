@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from '@tanstack/react-router';
 import * as api from '../notes-api.js';
 import { LabelEditor, type LabelItem } from './LabelEditor.js';
+import { NotebookChooser } from './NotebookChooser.js';
+import { rememberedSort } from '../notebook-sort.js';
 import { DeleteNotebookConfirm } from './DeleteNotebookConfirm.js';
 import { DownloadIcon, FieldsIcon } from './icons.js';
 import { startExport, useExportRunning } from '../export-archive.js';
@@ -8,6 +11,14 @@ import { startExport, useExportRunning } from '../export-archive.js';
 interface SettingsProps {
   /** Called after any change, so the note list and sidebar refetch. */
   onChanged: () => void;
+  /**
+   * Set when the page was opened to make a notebook — the rail's New notebook, which
+   * links here with `?new=1` — so the chooser is open on arrival. Each request is acted
+   * on once and handed back through `onCreateRequested`, which drops it from the URL, so
+   * the rail's row opens the chooser again when the page is already here.
+   */
+  createRequested?: boolean;
+  onCreateRequested?: () => void;
 }
 
 /**
@@ -33,13 +44,28 @@ interface SettingsProps {
  * read as part of "Fields"; grey beside the pencil it reads as what it is, one of the
  * row's two actions, with Fields left alone as the row's one navigation.
  */
-export function Settings({ onChanged }: SettingsProps) {
+export function Settings({ onChanged, createRequested = false, onCreateRequested }: SettingsProps) {
   const exportRunning = useExportRunning();
+  const navigate = useNavigate();
+  /*
+   * Whether the chooser is open. Null until someone opens or closes it, and while it is
+   * null an empty list has it open: with no notebooks, the chooser is what the page is
+   * for. Derived rather than set by an effect when the list arrives, so it is open in the
+   * first frame that knows the list is empty and never flickers shut first.
+   */
+  const [chooserChoice, setChooserChoice] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!createRequested) return;
+    setChooserChoice(true);
+    onCreateRequested?.();
+  }, [createRequested, onCreateRequested]);
   const [notebooks, setNotebooks] = useState<api.Notebook[] | null>(null);
   /** Notebook awaiting an explicit delete choice. */
   const [pendingDelete, setPendingDelete] = useState<api.Notebook | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const chooserOpen = chooserChoice ?? notebooks?.length === 0;
 
   const refresh = useCallback(async () => {
     try {
@@ -154,8 +180,43 @@ export function Settings({ onChanged }: SettingsProps) {
             </>
           );
         }}
+        chooser={{
+          open: chooserOpen,
+          onOpenChange: setChooserChoice,
+          render: (startBlank, close) => (
+            <NotebookChooser
+              existing={notebooks ?? []}
+              intro={
+                notebooks?.length === 0
+                  ? 'Each note lives in one notebook. Tags can cut across them.'
+                  : undefined
+              }
+              onBlank={startBlank}
+              onClose={close}
+              onApplied={() => {
+                void refresh();
+                onChanged();
+              }}
+              /* The new notebook, as its table: the columns are its fields, which is what
+                 the template was for. On a phone the table cannot be drawn and the URL's
+                 `view` is ignored, so the list opens instead. */
+              onDone={(name) => {
+                void navigate({
+                  to: '/notes',
+                  search: { notebook: name, view: 'table', ...rememberedSort(name) },
+                });
+              }}
+            />
+          ),
+        }}
         emptyText="No notebooks yet."
-        hint="Open a notebook to change its name and emoji, its purpose, or its fields. Deleting one leaves its notes unfiled unless you choose to move them to Trash."
+        /* Hidden while there are none: it describes rows that do not exist yet, and returns
+           with the first one. */
+        hint={
+          notebooks?.length
+            ? 'Open a notebook to change its name and emoji, its purpose, or its fields. Deleting one leaves its notes unfiled unless you choose to move them to Trash.'
+            : null
+        }
       />
 
       {pendingDelete && (

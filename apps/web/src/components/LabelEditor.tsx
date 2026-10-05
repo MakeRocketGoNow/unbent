@@ -60,7 +60,21 @@ interface LabelEditorProps {
   editingId?: string | null;
   /** The find field, offered once a list is long enough to need one. */
   findable?: boolean;
+  /**
+   * What the create row opens instead of going straight to a name field: the notebook
+   * list's chooser of Blank and templates (`NotebookChooser`). Given `startBlank`, which
+   * closes it and turns the row into the name field it always was, so Blank ends where
+   * creating used to begin, and `close`, for the chooser's own way out. Its open state is
+   * the caller's, because the caller opens it from outside the list: from the rail's New
+   * notebook, and on an empty list.
+   */
+  chooser?: {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    render: (startBlank: () => void, close: () => void) => ReactNode;
+  };
   emptyText: string;
+  /** Under the list, once it has arrived. Null says nothing, for a list with nothing to describe yet. */
   hint: ReactNode;
 }
 
@@ -101,6 +115,7 @@ export function LabelEditor({
   renderNameCount,
   editingId,
   findable = false,
+  chooser,
   emptyText,
   hint,
 }: LabelEditorProps) {
@@ -118,7 +133,42 @@ export function LabelEditor({
 
   const startRename = (item: LabelItem) => {
     setCreating(null);
+    chooser?.onOpenChange(false);
     setEditing({ id: item.id, value: item.name });
+  };
+
+  const startCreate = () => {
+    setEditing(null);
+    chooser?.onOpenChange(false);
+    setCreating('');
+  };
+
+  /*
+   * Open only once the list has arrived. What a chooser offers depends on what exists — a
+   * template's name may be taken — and one opened from the rail's New notebook on a cold
+   * load would otherwise be chosen from against a list it has not seen.
+   */
+  const chooserOpen = Boolean(chooser?.open) && creating === null && items !== null;
+
+  /*
+   * Asked open from outside — the rail's New notebook pressed again while Blank's name
+   * field is out — the chooser wins: that press is a request to choose again, and it
+   * would otherwise vanish, its `?new=1` already dropped from the address.
+   */
+  const askedOpen = Boolean(chooser?.open);
+  useEffect(() => {
+    if (askedOpen) setCreating(null);
+  }, [askedOpen]);
+
+  /*
+   * Closing the chooser hands focus back to the row that opened it. Whatever held focus —
+   * a card, the cross — is gone with it, and a keyboard or screen reader would otherwise
+   * start again from the top of the page.
+   */
+  const createRef = useRef<HTMLButtonElement>(null);
+  const closeChooser = () => {
+    chooser?.onOpenChange(false);
+    createRef.current?.focus();
   };
 
   const commitRename = async (item: LabelItem) => {
@@ -192,23 +242,42 @@ export function LabelEditor({
               </button>
             </li>
           ) : (
-            <li className="label-row label-create">
-              <span className="label-slot" aria-hidden="true">
-                <PlusRowIcon />
-              </span>
+            <li className={chooserOpen ? 'label-row label-create editing' : 'label-row label-create'}>
+              {/* The way out takes the plus's slot, where the creating row's own Cancel
+                  sits, so the cross is in one place whether Blank has been chosen or not. */}
+              {chooserOpen ? (
+                <button
+                  type="button"
+                  className="icon-btn label-slot"
+                  aria-label="Close"
+                  onClick={closeChooser}
+                >
+                  <CancelIcon />
+                </button>
+              ) : (
+                <span className="label-slot" aria-hidden="true">
+                  <PlusRowIcon />
+                </span>
+              )}
+              {/* With a chooser the row opens it, and says so; the same row closes it. */}
               <button
+                ref={createRef}
                 type="button"
                 className="label-name"
                 disabled={busy}
+                aria-expanded={chooser ? chooserOpen : undefined}
                 onClick={() => {
+                  if (!chooser) return startCreate();
                   setEditing(null);
-                  setCreating('');
+                  chooser.onOpenChange(!chooserOpen);
                 }}
               >
                 Create new {noun}
               </button>
             </li>
           ))}
+
+        {chooser && chooserOpen && <li className="label-chooser">{chooser.render(startCreate, closeChooser)}</li>}
 
         {shown.map((item) =>
           rowHref ? (
@@ -308,7 +377,9 @@ export function LabelEditor({
           ),
         )}
 
-        {items !== null && items.length === 0 && (
+        {/* An open chooser on an empty list says what the list is for; "nothing yet"
+            under it would be a second, emptier answer to the same question. */}
+        {items !== null && items.length === 0 && !chooserOpen && (
           <li className="muted small label-empty">{emptyText}</li>
         )}
         {items !== null && items.length > 0 && shown.length === 0 && (
@@ -318,7 +389,7 @@ export function LabelEditor({
 
       {/* Nothing to say until the list is known: a hint under a list that has not arrived
           describes something the reader cannot see yet. */}
-      {items !== null && <p className="muted small">{hint}</p>}
+      {items !== null && hint && <p className="muted small">{hint}</p>}
     </div>
   );
 }

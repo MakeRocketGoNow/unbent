@@ -1,6 +1,6 @@
 import { IndexedDBAdapter, NonRetriableError, startOfflineExecutor, type OfflineExecutor, type OnlineDetector, type StorageAdapter } from '@tanstack/offline-transactions';
 import type { Transaction } from '@tanstack/db';
-import { MAX_ATTACHMENT_BYTES, filenameSchema, type FeedNote, type FieldDef, type FieldValue, type Note, type NoteFieldValue, type RestoredNote } from '@unbent/shared';
+import { MAX_ATTACHMENT_BYTES, filenameSchema, type FeedNote, type FieldDef, type FieldValue, type Note, type NoteFieldValue, type NotebookDefinition, type RestoredNote } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { ApiError, isNoteChanged, isOfflineError } from '../notes-api.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
@@ -9,7 +9,7 @@ import { availableFilename, lookups, toNote, type Snapshot } from './derive.js';
 import type { Collections, LocalNote } from './collections.js';
 import { askToPersist, filesSupported, readFile, removeFile, writeFile } from './files.js';
 import { FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE } from '../sw/routes.js';
-import type { FeedEngine } from './feed.js';
+import { isWhole, type FeedEngine } from './feed.js';
 import { outboxName } from './names.js';
 
 /**
@@ -1284,4 +1284,31 @@ export async function setNoteField(noteId: string, def: FieldDef, value: FieldVa
   const value_ = { ...seedFrom(shown), fields: { ...seedFrom(shown).fields, [def.id]: value } };
   await saveNote({ noteId, value: value_, base });
   return toNote(lib.notes.get(noteId) ?? row, lookups(snapshot(lib)));
+}
+
+/**
+ * Makes a notebook from a template, or adds a template's fields to one that exists, and
+ * waits for the library to hold the result.
+ *
+ * A request, like every notebook and field change (see the module comment): its rules are
+ * the server's, and it needs a connection. What it adds over `pulled` is the wait. The
+ * chooser opens the notebook's table straight after, and a library that had not heard of
+ * the notebook yet would draw that as "Notebook not found" until the socket's nudge
+ * arrived. So the pull is awaited here — but only while the library is whole. Without a
+ * whole copy (a first copy walking, or one cut short and about to resume), the pull is
+ * the rest of the walk, minutes on a phone, and the notebook is already made; the walk
+ * ends by following the feed past this write, and nothing reports a notebook missing
+ * while the library is not whole. It is asked for then, not waited on.
+ */
+export async function applyNotebookTemplate(
+  definition: NotebookDefinition,
+  opts: { create: boolean },
+): Promise<{ id: string; skipped: api.NotebookImportSkip[] } | 'taken'> {
+  const out = await api.importNotebook(definition, opts);
+  if (out === 'taken') return out;
+  directListeners.forEach((l) => l());
+  const lib = await resolve();
+  if (lib && isWhole(lib.engine.state)) await lib.engine.pull();
+  else if (lib) void lib.engine.pull();
+  return out;
 }

@@ -606,6 +606,25 @@ describe('notebook definitions across an import', () => {
     expect(await notebookOf(bob, notebook)).toMatchObject({ emoji: '📦', purpose: 'Shipping labels.' });
   });
 
+  it('create a notebook from a definition with ?create=1, and refuse a name already taken', async () => {
+    const notebook = `Warranties ${Date.now()}`;
+    const create = (name: string, field: string) =>
+      api(bob, '/api/import/notebook?create=1', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, emoji: '🛠️', fields: [{ name: field, type: 'text' }] }),
+      });
+    const made = await create(notebook, 'Model');
+    expect(made.status).toBe(200);
+    expect(((await made.json()) as { skipped: unknown[] }).skipped).toEqual([]);
+    expect((await fieldsOf(bob, notebook)).map((f) => f.name)).toEqual(['Model']);
+
+    // Taken in other letters too: 409, and nothing added to what is there.
+    const again = await create(notebook.toLowerCase(), 'Store');
+    expect(again.status).toBe(409);
+    expect((await fieldsOf(bob, notebook)).map((f) => f.name)).toEqual(['Model']);
+  });
+
   it('make a multi-select from a list value, and add the options a later value needs', async () => {
     const notebook = `Games ${Date.now()}`;
     const first = await importNote(bob, { title: 'One', body: '', notebook, fields: { Platforms: ['PC', 'PS5'] } });
