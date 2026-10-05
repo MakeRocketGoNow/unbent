@@ -800,7 +800,10 @@ Three are worth knowing about:
   name and description for a picture or a text-less scan, the opening of a text layer
   otherwise, or whether it is still waiting.
   Filling a notebook's fields from its receipts is then a page of a hundred notes read in
-  one call, rather than two calls for every note.
+  one call, rather than two calls for every note. Where the line is not enough,
+  `get_attachment_text` takes `maxChars` to return only the opening of the text, the part
+  a receipt's merchant and total are in, rather than the pages of terms after it. A cut
+  answer says how long the whole text is, and `offset` reads on from where it stopped.
 - **`add_attachment`** takes a URL, not bytes. A tool call is JSON the model writes token by
   token, so a file cannot ride in one — a scan as base64 is millions of characters, past
   what any client carries. What an assistant can hand over is the download link another

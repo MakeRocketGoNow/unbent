@@ -422,14 +422,31 @@ export function registerReadTools(
         'which is reported as such rather than as an empty document. read says which, as ' +
         'it does on get_note: "pending" for a file still to be read, which read_attachment ' +
         'asks for now, and "none" for one that was read and had nothing, or that nothing ' +
-        'on this instance reads.',
+        'on this instance reads. A receipt or a statement usually says what it is in its ' +
+        'first page and spends the rest on terms: pass maxChars to read only the opening, ' +
+        'and offset to read on from where a cut answer stopped.',
       inputSchema: z.object({
         noteId: z.string().uuid(),
         filename: z.string().min(1).describe('As listed by get_note.'),
+        maxChars: z
+          .number()
+          .int()
+          .min(1)
+          .optional()
+          .describe(
+            'The most characters of text to return. Omitted, the whole text is returned. ' +
+              'When the text is longer, the answer says truncated, totalChars and nextOffset.',
+          ),
+        offset: z
+          .number()
+          .int()
+          .min(0)
+          .optional()
+          .describe('Where in the text to start, in characters; 0 by default. Pass a nextOffset here.'),
       }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async ({ noteId, filename }) => {
+    async ({ noteId, filename, maxChars, offset = 0 }) => {
       const found = await attachments.textWithRead(noteId, filename, readers.vision);
       if (!found) return notFound('attachment', `${filename} on note ${noteId}`);
       const { read, text } = found;
@@ -446,7 +463,25 @@ export function registerReadTools(
               : 'This attachment has no text: it was read and nothing was found, or nothing on this instance reads this kind of file.',
         });
       }
-      return jsonResult({ filename, indexed: true, read, text });
+      /*
+         A call that asks for neither gets the answer it always got, with no new keys:
+         the paging fields appear only once the caller has asked for a part of the text.
+         Cut here rather than in the store: the store's read is the same row either way,
+         and what the cut saves is the model's context, not the object's rows.
+      */
+      if (maxChars === undefined && offset === 0) return jsonResult({ filename, indexed: true, read, text });
+      const end = maxChars === undefined ? text.length : Math.min(text.length, offset + maxChars);
+      const truncated = end < text.length;
+      return jsonResult({
+        filename,
+        indexed: true,
+        read,
+        text: text.slice(offset, end),
+        totalChars: text.length,
+        ...(offset > 0 ? { offset } : {}),
+        truncated,
+        ...(truncated ? { nextOffset: end } : {}),
+      });
     },
   );
 
