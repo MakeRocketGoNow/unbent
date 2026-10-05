@@ -5,10 +5,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { routeTree } from './routeTree.gen.js';
 import { installErrorReporting } from './report-error.js';
 import { installPosthog } from './posthog.js';
-import { installLaunchFiles } from './launch-files.js';
+import { launchFiles } from './launch-files.js';
+import { installLaunchQueue } from './launch-queue.js';
 import { configQuery, installLibraryQueries } from './queries.js';
 import { applyInstanceMarker } from './instance-marker.js';
 import { adoptHostLayout } from './app-bridge.js';
+import { openSitePath } from './useHostApp.js';
 import { registerServiceWorker } from './sw-register.js';
 import { installConnectivity } from './connectivity.js';
 import { installSessionRecheck } from './auth-client.js';
@@ -140,11 +142,19 @@ const router = createRouter({
 });
 
 /*
- * Files the operating system opened with the installed app; see `launch-files.ts`. After
- * the router exists, because the note that results is opened through it.
+ * Files and links the browser launched the installed app with; see `launch-queue.ts`.
+ * After the router exists, because both are opened through it. A link the router has no
+ * page for — one of the Worker's own addresses — is loaded, which is what the browser would
+ * have done with it had the app not been open.
  */
-installLaunchFiles(queryClient, (noteId) => {
-  void router.navigate({ to: '/notes/$noteId', params: { noteId } });
+installLaunchQueue({
+  files: launchFiles(queryClient, (noteId) => {
+    void router.navigate({ to: '/notes/$noteId', params: { noteId } });
+  }),
+  link: (path) => {
+    if (!openSitePath(router, path)) window.location.assign(path);
+  },
+  showing: () => router.history.location.href,
 });
 
 /*
