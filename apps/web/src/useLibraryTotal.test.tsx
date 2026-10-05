@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react';
+import { cleanup, renderHook, waitFor } from '@testing-library/react';
 import type { FeedNote } from '@unbent/shared';
 import * as api from './notes-api.js';
 import { libraryTotalQuery } from './queries.js';
@@ -63,6 +63,9 @@ describe('libraryTotalQuery', () => {
 describe('useLibraryTotal', () => {
   let lib: TestLibrary | null = null;
   afterEach(() => {
+    // Unmounted before the library goes, or the hook hears it go, counts again from the
+    // server, and the next test sees that request as its own.
+    cleanup();
     lib?.uninstall();
     lib = null;
     vi.clearAllMocks();
