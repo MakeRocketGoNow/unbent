@@ -231,7 +231,6 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
-      deployments: write
     concurrency:
       group: preview-${{ github.event.pull_request.number }}
       cancel-in-progress: true
@@ -462,33 +461,13 @@ jobs:
               await github.rest.issues.createComment({ owner, repo, issue_number, body });
             }
 
-      # Puts the URL in the PR's own Deployments box, next to the checks, rather than only
-      # in a comment that scrolls away. `transient_environment` tells GitHub this one is
-      # disposable, so it presents it as a preview and not as somewhere releases go.
-      - name: Record the deployment
-        if: steps.configured.outputs.ready == 'true'
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const { owner, repo } = context.repo;
-            const deployment = await github.rest.repos.createDeployment({
-              owner, repo,
-              ref: context.payload.pull_request.head.sha,
-              environment: `pr-${context.payload.pull_request.number}`,
-              description: 'Preview Worker',
-              transient_environment: true,
-              // Both default to on and would have this return a merge commit or a
-              // "waiting on required contexts" object instead of a deployment.
-              auto_merge: false,
-              required_contexts: [],
-            });
-            await github.rest.repos.createDeploymentStatus({
-              owner, repo,
-              deployment_id: deployment.data.id,
-              state: 'success',
-              environment_url: process.env.PREVIEW_URL,
-              log_url: `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`,
-            });
+      # The comment above is the only place the URL goes. A GitHub Deployment used to be
+      # recorded as well, for the "View deployment" button in the PR's Deployments box, but
+      # a deployment needs an environment, GitHub makes one per name on first use and the
+      # workflow token can never delete one (`permissions:` has no `administration` key),
+      # so Settings → Environments grew a `pr-N` row for every PR ever opened — close to two
+      # hundred before anyone noticed, and nobody had noticed the button either. The
+      # comment is edited in place on every push, so it does not scroll away.
 
   # Gated on the same variable as the preview job: a repository that never deploys previews
   # has nothing to tear down.
@@ -500,9 +479,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      # Deleting an environment is a repository-settings change, which GitHub puts under
-      # `administration`; `deployments: write` only reaches the deployments inside one.
-      administration: write
     concurrency:
       group: preview-${{ github.event.pull_request.number }}
       cancel-in-progress: true
@@ -548,25 +524,3 @@ jobs:
             fi
             exit "$status"
           fi
-
-      # The preview job's `createDeployment` names an environment `pr-N`, and GitHub makes
-      # the environment on first use. Nothing unmakes it: this step used to mark the PR's
-      # deployments inactive, which is what the Deployments box wants to hear but leaves the
-      # environment itself behind, and Settings → Environments had one row per PR ever
-      # opened — close to two hundred — before anyone noticed. Deleting the environment
-      # takes its deployments with it, so there is nothing left to deactivate.
-      #
-      # A PR that never deployed has no environment, so 404 is forgiven for the same reason
-      # 10007 is above.
-      - name: Delete the PR's environment
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const { owner, repo } = context.repo;
-            const environment_name = `pr-${context.payload.pull_request.number}`;
-            try {
-              await github.rest.repos.deleteAnEnvironment({ owner, repo, environment_name });
-            } catch (error) {
-              if (error.status !== 404) throw error;
-              core.notice(`No environment named ${environment_name} — this PR never deployed a preview.`);
-            }
