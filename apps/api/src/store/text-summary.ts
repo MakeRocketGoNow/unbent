@@ -192,7 +192,7 @@ function amountsIn(text: string): FoundNumber[] {
   for (const line of text.split('\n')) {
     for (const n of findNumbers(line).sort((a, b) => a.index - b.index)) {
       if (!n.amount) continue;
-      const kind = /^[$€£]/.test(n.raw) ? 'marked' : 'fractions';
+      const kind = /^-?[$€£]/.test(n.raw) ? 'marked' : 'fractions';
       if (seen[kind].has(n.value)) continue;
       seen[kind].add(n.value);
       lists[kind].push(n);

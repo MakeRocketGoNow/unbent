@@ -76,6 +76,8 @@ describe('a text layer’s summary', () => {
     // A plain "3" earlier hides nothing: a receipt's "ITEM 3" once took the value 3 and
     // the "$3.00" further down with it.
     expect(textSummary('Acme\nITEM 3 WIDGET 8.99\nRefund $8.99\nCredit $3.00')).toBe('Acme ITEM 3 WIDGET 8.99 Refund $8.99 Credit $3.00 · Amounts: $8.99, $3.00');
+    // A refund written with its sign first is as marked as any other.
+    expect(textSummary('Acme\nRefund -$5.00\nFee $2.00')).toMatch(/ · Amounts: -\$5\.00, \$2\.00$/);
     expect(textSummary('Globex Savings Plan\nPeriod 2026-01-01 to 2026-03-31\nContributions $1,200.00\nBalance $14,350.10')).toBe(
       'Globex Savings Plan Period 2026-01-01 to 2026-03-31 Contributions $1,200.00 Balance $14,350.10 · Dates: 2026-01-01, 2026-03-31 · Amounts: $1,200.00, $14,350.10',
     );
