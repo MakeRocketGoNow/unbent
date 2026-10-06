@@ -262,6 +262,7 @@ describe('UserStore lifecycle', () => {
     const texts = (bytes: Uint8Array) => [...text(bytes).matchAll(/INSERT INTO attachment_text .*?VALUES \('(a\d)'/g)].map((m) => m[1]);
     const textTable = DUMP_TABLES.indexOf('attachment_text');
 
+    await stub.resetCounters();
     const start = await stub.dumpBegin();
     if (start.unchanged) throw new Error('a first dump is never unchanged');
     expect(start.schema).toEqual(expect.arrayContaining([expect.stringContaining('CREATE TABLE notes')]));
@@ -275,6 +276,23 @@ describe('UserStore lifecycle', () => {
     expect(texts(third.bytes)).toEqual(['a2']);
     expect(tables(third.bytes)).toEqual(['attachment_text', 'deleted_blobs']);
     expect(third.next).toBeNull();
+
+    // Each row read once across the three calls, but the row each cut stopped at, which
+    // the next call reads again — a row a call, at most; plus the schema's entries, the
+    // feed's two rows for the mark, and one for each table SQLite probes and finds empty.
+    // Exact, measured 2026-10-05 at 118, so a slice that re-read anything else fails here.
+    // The rows-read test on the big store pins the same for one slice.
+    const { held, empty, schema } = await runInDurableObject(stub, (_i, state) => {
+      const counts = DUMP_TABLES.map((table) => state.storage.sql.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table}`).one().n);
+      return {
+        held: counts.reduce((a, b) => a + b, 0),
+        empty: counts.filter((n) => n === 0).length,
+        schema: state.storage.sql.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM sqlite_master`).one().n,
+      };
+    });
+    const { rowsRead } = await stub.counters();
+    expect(rowsRead).toBeGreaterThanOrEqual(held + 2);
+    expect(rowsRead).toBeLessThanOrEqual(held + 2 + schema + 3 + empty);
   });
 
   /*
