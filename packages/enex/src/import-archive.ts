@@ -1,6 +1,8 @@
 import { BlobReader, TextWriter, Uint8ArrayWriter, ZipReader, type Entry } from '@zip.js/zip.js';
 import {
   DESCRIBED_DIR,
+  WRITTEN_DIR,
+  type ReadBy,
   NOTEBOOKS_DIR,
   TEXT_DIR,
   parse,
@@ -43,7 +45,7 @@ import { contentHash } from './note-body.js';
  * back as text and a rating as a plain number. An archive without that directory (an
  * older export, or a vault someone assembled by hand) imports exactly as before.
  *
- * Beside `files/`, a note may have `text/` and `described/`: each file's text as the
+ * Beside `files/`, a note may have `text/`, `described/` and `written/`: each file's text as the
  * exporting instance held it, from the file's own text layer or from the vision model. A
  * file that has one is uploaded with its text rather than read again — no extraction, no
  * paid vision request, and the same words search and Auto-fill were built on. A file
@@ -65,8 +67,8 @@ interface NoteFileSource {
   /** Compressed size, which is what the progress bar counts. */
   size: number;
   bytes: () => Promise<Uint8Array>;
-  /** The file's `text/` or `described/` sidecar, when the archive has one. */
-  text?: { size: number; readBy: 'vision' | null; read: () => Promise<string> };
+  /** The file's `text/`, `described/` or `written/` sidecar, when the archive has one. */
+  text?: { size: number; readBy: ReadBy | null; read: () => Promise<string> };
 }
 
 interface NoteSource {
@@ -339,7 +341,7 @@ type FileEntry = Extract<Entry, { directory: false }>;
 interface EntryGroup {
   notes: FileEntry[];
   files: Array<{ name: string; entry: FileEntry }>;
-  texts: Map<string, { entry: FileEntry; readBy: 'vision' | null }>;
+  texts: Map<string, { entry: FileEntry; readBy: ReadBy | null }>;
 }
 
 /** What the archive holds, sorted: note directories, and the definitions files. */
@@ -360,7 +362,7 @@ interface ArchiveEntries {
  * order: this app's own export writes a note's markdown before its files, but a zip
  * someone re-packed after unpacking may list them any way the tool felt like. A directory
  * with markdown and no `files/` is a note without attachments; `files/` with no markdown
- * beside it belongs to nothing and is skipped. A `.txt` under `text/` or `described/` is
+ * beside it belongs to nothing and is skipped. A `.txt` under `text/`, `described/` or `written/` is
  * the text of the file of the same name less `.txt`, and is skipped when there is no such
  * file.
  *
@@ -400,12 +402,12 @@ function groupEntries(entries: Entry[], progress: ImportProgress): ArchiveEntrie
     const parent = segments[segments.length - 1];
     if (parent === 'files') {
       groupFor(segments.slice(0, -1).join('/')).files.push({ name, entry });
-    } else if ((parent === TEXT_DIR || parent === DESCRIBED_DIR) && /\.txt$/i.test(name)) {
+    } else if ((parent === TEXT_DIR || parent === DESCRIBED_DIR || parent === WRITTEN_DIR) && /\.txt$/i.test(name)) {
       // The export never writes both for one file; if a hand-made archive does, the first wins.
       const texts = groupFor(segments.slice(0, -1).join('/')).texts;
       const of = name.slice(0, -'.txt'.length);
       if (texts.has(of)) progress.bytesRead += entry.compressedSize;
-      else texts.set(of, { entry, readBy: parent === DESCRIBED_DIR ? 'vision' : null });
+      else texts.set(of, { entry, readBy: parent === DESCRIBED_DIR ? 'vision' : parent === WRITTEN_DIR ? 'assistant' : null });
     } else if (segments[segments.length - 1] === NOTEBOOKS_DIR && /\.ya?ml$/i.test(name)) {
       notebooks.push(entry);
     } else if (/\.(md|markdown)$/i.test(name)) {

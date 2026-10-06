@@ -1,4 +1,4 @@
-import { type AttachmentInfo, type FeedAttachment, splitExt } from '@unbent/shared';
+import { type AttachmentInfo, type FeedAttachment, type ReadBy, splitExt } from '@unbent/shared';
 import type { DeletedBlobs } from './deleted-blobs.js';
 import type { Feed } from './feed.js';
 import { placeholders, runs } from './notes-shared.js';
@@ -21,13 +21,21 @@ export interface PendingFile {
   contentType: string;
   size: number;
   r2Key: string;
+  /**
+   * `assistant` when the file already has text an assistant wrote over MCP, which the
+   * press is offered so the model can read the file itself. Only `needingVision` sets it.
+   */
+  writtenBy?: 'assistant' | null;
 }
 
 /**
  * The files of one note the vision model has still to read, as two queries whose union
  * is the answer: behind `needingVision`, which is Auto-fill's. Pictures with no text row,
- * and PDFs whose text layer came back empty and that the model has not been asked about.
- * The halves cannot overlap: one is pictures, the other PDFs.
+ * PDFs whose text layer came back empty and that the model has not been asked about, and
+ * of either kind a file whose text an assistant wrote over MCP (`read_by = 'assistant'`):
+ * those words are a hint for search until a press has the model read the file itself, so
+ * the press is offered them and overwrites them. The halves cannot overlap: one is
+ * pictures, the other PDFs.
  *
  * Always one note's. This also listed the account's whole backlog, for a bulk pass a
  * person ran from Maintenance; that pass went with MAK-179, when the model was confined
@@ -41,20 +49,21 @@ export interface PendingFile {
  * query cannot take a Set. `noteParam` is the placeholder the caller binds the note id to.
  */
 function visionPendingHalves(noteParam: string): { pictures: string; pdfs: string } {
-  const columns = 'a.id, a.note_id, a.filename, a.content_type, a.size, a.r2_key, a.created_at';
+  const columns = 'a.id, a.note_id, a.filename, a.content_type, a.size, a.r2_key, a.created_at, t.read_by';
   return {
     pictures: `SELECT ${columns}
                  FROM attachments a INDEXED BY idx_attachments_note
                  JOIN notes n ON n.id = a.note_id
+                 LEFT JOIN attachment_text t ON t.attachment_id = a.id
                 WHERE a.content_type IN ('image/jpeg', 'image/png', 'image/gif', 'image/webp')
-                  AND a.has_text = 0
+                  AND (a.has_text = 0 OR t.read_by = 'assistant')
                   AND n.deleted_at IS NULL
                   AND a.note_id = ${noteParam}`,
     pdfs: `SELECT ${columns}
              FROM attachment_text t INDEXED BY idx_attachment_text_note
              JOIN attachments a ON a.id = t.attachment_id
              JOIN notes n ON n.id = a.note_id
-            WHERE t.text = '' AND t.read_by IS NULL
+            WHERE ((t.text = '' AND t.read_by IS NULL) OR t.read_by = 'assistant')
               AND t.note_id = ${noteParam}
               AND a.content_type = 'application/pdf'
               AND n.deleted_at IS NULL`,
@@ -106,9 +115,24 @@ const toPending = (r: PendingRow): PendingFile => ({
  * a reader has still to look at it, and `none` when one looked and found nothing, or no
  * reader this instance has will ever look.
  */
-export type FileRead = 'vision' | 'text' | 'pending' | 'none';
+export type FileRead = 'vision' | 'text' | 'assistant' | 'pending' | 'none';
 
-/** One file of a note, with what it says in brief. `summary` is null unless `read` is `vision` or `text`. */
+/**
+ * What `writeAssistantText` answers: written, or why not — the file is not on a live
+ * note, or holds its own text layer, or the model's reading.
+ */
+export interface AssistantWrite {
+  ok: boolean;
+  /** Why not, when `ok` is false; null when it was written. One shape rather than a union, which the RPC stub's types do not carry. */
+  reason: 'missing' | 'layer' | 'vision' | null;
+}
+
+/** The row's `read_by` as the three values it may hold; anything else reads as a text layer. */
+function textWriter(readBy: string | null): ReadBy | null {
+  return readBy === 'vision' || readBy === 'assistant' ? readBy : null;
+}
+
+/** One file of a note, with what it says in brief. `summary` is null unless `read` is `vision`, `text` or `assistant`. */
 export interface FileSummary {
   filename: string;
   contentType: string;
@@ -187,7 +211,9 @@ export function summarize(
   const cut = head.length >= TEXT_SUMMARY_SOURCE_CHARS ? head.lastIndexOf('\n') : -1;
   const whole = cut > 0 ? head.slice(0, cut) : head;
   const found = textSummary(whole) || whole.replace(/\s+/g, ' ').trim();
-  return { read: 'text', summary: clip(found, SUMMARY_CHARS) };
+  // An assistant's words have no fixed shape, so they are summarised as a text layer is:
+  // the opening, and whatever facts the patterns find. Only the marker differs.
+  return { read: readBy === 'assistant' ? 'assistant' : 'text', summary: clip(found, SUMMARY_CHARS) };
 }
 
 /** What one answer of `textsById` carries at most; a quarter of a feed page, since it is asked for in the background. */
@@ -391,10 +417,12 @@ export class AttachmentsStore {
     filename: string;
     text: string;
     /**
-     * `'vision'` when the vision model wrote the row, whatever it found. Absent or null
-     * for a text layer, which is what every row was before.
+     * `'vision'` when the vision model wrote the row, whatever it found; `'assistant'`
+     * when an assistant wrote it over MCP (`writeAssistantText` is the only writer of
+     * that, bar an archive restoring it). Absent or null for a text layer, which is what
+     * every row was before.
      */
-    readBy?: 'vision' | null | undefined;
+    readBy?: ReadBy | null | undefined;
   }): void {
     this.sql.tx(() => {
       this.sql.exec(
@@ -436,6 +464,37 @@ export class AttachmentsStore {
         fromAttachmentId,
       );
       this.feed.record(copied.map((r) => ({ entity: 'attachment', id: r.attachment_id })));
+    });
+  }
+
+  /**
+   * Takes the text an assistant read off a file, over MCP, where nothing better is held.
+   *
+   * Three things may stand in the row and only one of them yields: nothing, or an empty
+   * row — a text layer or the model that looked and found nothing — or the assistant's
+   * own earlier words, which it may revise. A text layer is the file's own words and the
+   * model's reading is the instance's; an assistant overwriting either would put a model
+   * nobody here chose in front of both, so those are refused, by name, for the tool to
+   * explain. What is written is marked `assistant`, and `needingVision` offers it to the
+   * next Auto-fill press, which has the model read the file itself and replaces it: the
+   * attachment stays the source of truth, and the assistant's words bridge the gap until
+   * someone presses. The note must be live, as every other write to a file requires.
+   */
+  writeAssistantText(noteId: string, filename: string, text: string): AssistantWrite {
+    return this.sql.tx(() => {
+      const row = this.sql.first<{ id: string; text: string | null; read_by: string | null }>(
+        `SELECT a.id, t.text, t.read_by
+           FROM attachments a
+           JOIN notes n ON n.id = a.note_id
+           LEFT JOIN attachment_text t ON t.attachment_id = a.id
+          WHERE a.note_id = ?1 AND a.filename = ?2 AND n.deleted_at IS NULL`,
+        noteId,
+        filename,
+      );
+      if (!row) return { ok: false, reason: 'missing' };
+      if (row.text && row.read_by !== 'assistant') return { ok: false, reason: row.read_by === 'vision' ? 'vision' : 'layer' };
+      this.recordText({ attachmentId: row.id, noteId, filename, text, readBy: 'assistant' });
+      return { ok: true, reason: null };
     });
   }
 
@@ -491,15 +550,15 @@ export class AttachmentsStore {
     // `created_at` is selected although nothing reads it: a compound SELECT can only be
     // ordered by a column of its result.
     return this.sql
-      .exec<PendingRow>(
-        `SELECT id, note_id, filename, content_type, size, r2_key, created_at
+      .exec<PendingRow & { read_by: string | null }>(
+        `SELECT id, note_id, filename, content_type, size, r2_key, created_at, read_by
            FROM (${pictures} UNION ALL ${pdfs})
           ORDER BY created_at
           LIMIT ?1`,
         limit,
         noteId,
       )
-      .map(toPending);
+      .map((r) => ({ ...toPending(r), writtenBy: r.read_by === 'assistant' ? ('assistant' as const) : null }));
   }
 
   /**
@@ -572,7 +631,7 @@ export class AttachmentsStore {
     // taken for an empty one.
     const head = row.text === null ? null : row.text.trim().slice(0, SUMMARY_SOURCE_CHARS);
     const { read } = summarize(row.content_type, head, row.read_by, vision);
-    return { read, text: read === 'vision' || read === 'text' ? row.text : null };
+    return { read, text: read === 'vision' || read === 'text' || read === 'assistant' ? row.text : null };
   }
 
   /**
@@ -585,7 +644,7 @@ export class AttachmentsStore {
    * nothing here reads" needs to know which it is looking at, and `readBy` because text
    * the language model wrote opens with a name for the file, which auto-fill can use.
    */
-  textsForNote(noteId: string): Array<{ filename: string; contentType: string; text: string | null; readBy: 'vision' | null }> {
+  textsForNote(noteId: string): Array<{ filename: string; contentType: string; text: string | null; readBy: ReadBy | null }> {
     return this.sql
       .exec<{ filename: string; content_type: string; text: string | null; read_by: string | null }>(
         `SELECT a.filename, a.content_type, t.text, t.read_by
@@ -600,7 +659,7 @@ export class AttachmentsStore {
         filename: r.filename,
         contentType: r.content_type,
         text: r.text,
-        readBy: r.read_by === 'vision' ? 'vision' : null,
+        readBy: textWriter(r.read_by),
       }));
   }
 
@@ -617,7 +676,7 @@ export class AttachmentsStore {
    * a page may be a hundred notes. The caller chunks by note so the answer stays under
    * the RPC payload ceiling.
    */
-  textsForNotes(noteIds: string[]): Array<{ noteId: string; filename: string; text: string; readBy: 'vision' | null }> {
+  textsForNotes(noteIds: string[]): Array<{ noteId: string; filename: string; text: string; readBy: ReadBy | null }> {
     if (noteIds.length === 0) return [];
     return this.sql
       .exec<{ note_id: string; filename: string; text: string; read_by: string | null }>(
@@ -632,7 +691,7 @@ export class AttachmentsStore {
         noteId: r.note_id,
         filename: r.filename,
         text: r.text,
-        readBy: r.read_by === 'vision' ? 'vision' : null,
+        readBy: textWriter(r.read_by),
       }));
   }
 

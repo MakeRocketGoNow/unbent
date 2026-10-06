@@ -1,6 +1,7 @@
+import type { ReadBy } from '@unbent/shared';
 import type { AttachmentInfo } from '@unbent/shared';
 import { StoreRepo } from './store-client.js';
-import type { AttachmentRow, AttachmentsStore, FileRead, PendingFile } from '../store/attachments.js';
+import type { AttachmentRow, AttachmentsStore, FileRead, PendingFile, AssistantWrite } from '../store/attachments.js';
 
 /**
  * Attachment metadata for one user, answered by that user's store.
@@ -75,13 +76,18 @@ export class AttachmentsRepo extends StoreRepo {
     noteId: string;
     filename: string;
     text: string;
-    readBy?: 'vision' | null | undefined;
+    readBy?: ReadBy | null | undefined;
   }): Promise<void> {
     return this.call((s) => s.recordText(input));
   }
 
   copyText(fromAttachmentId: string, to: { attachmentId: string; noteId: string; filename: string }): Promise<void> {
     return this.call((s) => s.copyText(fromAttachmentId, to));
+  }
+
+  /** An assistant's reading of a file, over MCP; see `AttachmentsStore.writeAssistantText` for what yields to it. */
+  writeAssistantText(noteId: string, filename: string, text: string): Promise<AssistantWrite> {
+    return this.call((s) => s.writeAssistantText(noteId, filename, text));
   }
 
   needingText(limit: number, noteId?: string): Promise<PendingFile[]> {
@@ -106,7 +112,7 @@ export class AttachmentsRepo extends StoreRepo {
     return this.call((s) => s.textWithRead(noteId, filename, vision));
   }
 
-  textsForNote(noteId: string): Promise<Array<{ filename: string; contentType: string; text: string | null; readBy: 'vision' | null }>> {
+  textsForNote(noteId: string): Promise<Array<{ filename: string; contentType: string; text: string | null; readBy: ReadBy | null }>> {
     return this.call((s) => s.textsForNote(noteId));
   }
 
@@ -121,8 +127,8 @@ export class AttachmentsRepo extends StoreRepo {
    * a few scans each is asked for in pieces. The export page uses `exportPage` instead,
    * which budgets by bytes; this is for callers that already hold the note ids.
    */
-  async textsForNotes(noteIds: string[]): Promise<Array<{ noteId: string; filename: string; text: string; readBy: 'vision' | null }>> {
-    const out: Array<{ noteId: string; filename: string; text: string; readBy: 'vision' | null }> = [];
+  async textsForNotes(noteIds: string[]): Promise<Array<{ noteId: string; filename: string; text: string; readBy: ReadBy | null }>> {
+    const out: Array<{ noteId: string; filename: string; text: string; readBy: ReadBy | null }> = [];
     for (let i = 0; i < noteIds.length; i += 10) {
       const chunk = noteIds.slice(i, i + 10);
       out.push(...(await this.call((s) => s.textsForNotes(chunk))));

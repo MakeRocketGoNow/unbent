@@ -169,6 +169,17 @@ describe('a pass over files already chosen', () => {
     quiet.mockRestore();
   });
 
+  it('leaves an assistant’s words standing when the model declines, and replaces them when it reads', async () => {
+    const declined = repo();
+    const counts = await readPendingFiles(blobs, { llm: vision(null) }, declined, [{ ...photo, pending: 'vision', writtenBy: 'assistant' }]);
+    expect(counts).toEqual({ read: 0, empty: 1, failed: 0, unread: 0 });
+    expect(declined.recordText).not.toHaveBeenCalled();
+
+    const read = repo();
+    await readPendingFiles(blobs, { llm: vision(said) }, read, [{ ...photo, pending: 'vision', writtenBy: 'assistant' }]);
+    expect(read.recordText).toHaveBeenCalledWith(expect.objectContaining({ attachmentId: 'a2', readBy: 'vision' }));
+  });
+
   it('leaves every file alone where no reader here takes it', async () => {
     const r = repo();
     const counts = await readPendingFiles(blobs, {}, r, [

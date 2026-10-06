@@ -323,7 +323,9 @@ export const notes = new Hono<AppEnv>()
             isExtractable(f.contentType) || (canUseLlm(c.env) && LLM_IMAGE_TYPES.has(f.contentType))
               ? f.text
               : '',
-          readBy: f.readBy,
+          // Only the model's reading opens with a name for the file. An assistant's words
+          // reach here only when the press's own read declined to replace them.
+          readBy: f.readBy === 'vision' ? 'vision' : null,
         })),
         notebooks: notebooks.map((nb) => ({
           id: nb.id,

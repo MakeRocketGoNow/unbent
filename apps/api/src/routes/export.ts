@@ -1,3 +1,4 @@
+import type { ReadBy } from '@unbent/shared';
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { exportPageQuerySchema, noteDirName, noteMarkdown } from '@unbent/shared';
@@ -43,7 +44,7 @@ export const exportRoutes = new Hono<AppEnv>()
       .get('notes')
       .exportPage({ limit, cursor, ...filter }, cursor ? null : filter);
 
-    const texts = new Map<string, { text: string; readBy: 'vision' | null }>();
+    const texts = new Map<string, { text: string; readBy: ReadBy | null }>();
     for (const t of held) texts.set(`${t.noteId}/${t.filename}`, t);
     for (const note of notes) {
       if (!note.attachments?.length) continue;

@@ -93,6 +93,7 @@ const WRITES: Record<string, (s: Seeded) => Promise<unknown>> = {
   removeAttachment: (s) => s.stub.removeAttachment(s.noteId, 'scan.pdf'),
   recordText: (s) => s.stub.recordText({ attachmentId: 'a2', noteId: s.noteId, filename: 'bare.pdf', text: 'read' }),
   copyText: (s) => s.stub.copyText('a1', { attachmentId: 'a2', noteId: s.noteId, filename: 'bare.pdf' }),
+  writeAssistantText: (s) => s.stub.writeAssistantText(s.noteId, 'bare.pdf', 'what an assistant read'),
 };
 
 /** Methods that write without the feed needing to know, each with its reason. */

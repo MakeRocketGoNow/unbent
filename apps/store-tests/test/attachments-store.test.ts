@@ -147,6 +147,41 @@ describe('attachments', () => {
     expect(await forVision('n2')).toEqual(['pic']);
     expect(await forVision('trashed')).toEqual([]);
     expect((await stub.autofillPrelude('n1', 1))!.forVision.length).toBe(1);
+
+    // An assistant's words over MCP are a hint, not the model's reading: the press is
+    // offered the file again, told whose words stand, so it can have the model read it.
+    await stub.recordAttachment(file('n2', { id: 'told', filename: 'told.jpg', contentType: 'image/jpeg' }));
+    expect(await stub.writeAssistantText('n2', 'told.jpg', 'A card for a plumber')).toEqual({ ok: true, reason: null });
+    const offered = (await stub.autofillPrelude('n2', 10))!.forVision.map((f) => [f.id, f.writtenBy ?? null]).sort();
+    expect(offered).toEqual([['pic', null], ['told', 'assistant']]);
+  });
+
+  it('takes an assistant’s text where nothing or only its own words stand, and says whose it is', async () => {
+    const { stub } = freshStore('assistant');
+    await stub.create({ id: 'n1', title: 'T', body: '', tags: [] });
+    await stub.recordAttachment(file('n1', { id: 'pic', filename: 'card.jpg', contentType: 'image/jpeg' }));
+    await stub.recordAttachment(file('n1', { id: 'layer', filename: 'bill.pdf' }));
+    await stub.recordText({ attachmentId: 'layer', noteId: 'n1', filename: 'bill.pdf', text: 'Total due 84.12' });
+    await stub.recordAttachment(file('n1', { id: 'seen', filename: 'seen.jpg', contentType: 'image/jpeg' }));
+    await stub.recordText({ attachmentId: 'seen', noteId: 'n1', filename: 'seen.jpg', text: 'A plate\nMeal: lasagna.\n\n', readBy: 'vision' });
+    await stub.recordAttachment(file('n1', { id: 'declined', filename: 'declined.jpg', contentType: 'image/jpeg' }));
+    await stub.recordText({ attachmentId: 'declined', noteId: 'n1', filename: 'declined.jpg', text: '', readBy: 'vision' });
+
+    // Nothing there, its own earlier words, or a row the model left empty: all yield.
+    expect(await stub.writeAssistantText('n1', 'card.jpg', 'Plumber card\nJane Doe, Acme Plumbing, 555-0100')).toEqual({ ok: true, reason: null });
+    expect(await stub.writeAssistantText('n1', 'card.jpg', 'Jane Doe, Acme Plumbing')).toEqual({ ok: true, reason: null });
+    expect(await stub.writeAssistantText('n1', 'declined.jpg', 'A receipt the model would not read')).toEqual({ ok: true, reason: null });
+    // The file's own text layer and the model's reading do not.
+    expect(await stub.writeAssistantText('n1', 'bill.pdf', 'x')).toEqual({ ok: false, reason: 'layer' });
+    expect(await stub.writeAssistantText('n1', 'seen.jpg', 'x')).toEqual({ ok: false, reason: 'vision' });
+    expect(await stub.writeAssistantText('n1', 'ghost.jpg', 'x')).toEqual({ ok: false, reason: 'missing' });
+
+    // Read back as the assistant's, summarised as a text layer is, and found by search.
+    expect(await stub.textWithRead('n1', 'card.jpg')).toEqual({ read: 'assistant', text: 'Jane Doe, Acme Plumbing' });
+    const card = (await stub.getWithFiles('n1'))!.files.find((f) => f.filename === 'card.jpg');
+    expect(card).toMatchObject({ read: 'assistant', summary: 'Jane Doe, Acme Plumbing' });
+    expect((await stub.search('plumbing', 5)).map((r) => r.matchedFile)).toEqual(['card.jpg']);
+    expect((await stub.textsForNote('n1')).find((f) => f.filename === 'card.jpg')!.readBy).toBe('assistant');
   });
 
   it('says what each file is in brief, on a note and on a page of notes', async () => {

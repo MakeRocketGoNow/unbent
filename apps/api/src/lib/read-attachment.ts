@@ -154,7 +154,11 @@ export async function readAttachment(
  * browser read and found empty — which goes to the model alone. The two are what the
  * store's `needingText` and `needingVision` list, respectively.
  */
-export type PendingFile = StoredFile & { pending: 'text' | 'vision' };
+export type PendingFile = StoredFile & {
+  pending: 'text' | 'vision';
+  /** `assistant` when the text an assistant wrote over MCP is what a press is re-reading past. */
+  writtenBy?: 'assistant' | null;
+};
 
 /** What a pass over pending files did, for the caller to report or count. */
 export interface ReadCounts {
@@ -227,10 +231,14 @@ export async function readPendingFile(
 async function readWithLlm(
   llm: Pick<LanguageModel, 'read'>,
   attachments: Pick<AttachmentsRepo, 'recordText'>,
-  file: StoredFile,
+  file: StoredFile & { writtenBy?: 'assistant' | null },
   bytes: ArrayBuffer,
 ): Promise<Reading> {
   const reading = await llm.read({ filename: file.filename, contentType: file.contentType, bytes });
+  // A decline over an assistant's words leaves them standing: the model gave nothing to
+  // put in their place, and an empty row would take text search and summaries were using.
+  // The file stays offered to the next press, the one case a press may pay twice for.
+  if (!reading && file.writtenBy === 'assistant') return 'empty';
   await attachments.recordText({
     attachmentId: file.id,
     noteId: file.noteId,

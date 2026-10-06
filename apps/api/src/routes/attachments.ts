@@ -278,10 +278,12 @@ export const attachments = new Hono<AppEnv>()
    * client after the bytes are already sent, and because it is optional — an attachment
    * with no usable text simply never gets one.
    *
-   * `readBy: 'vision'` records that the vision model wrote the text, which is only ever
-   * true of text restored from an archive's `described/`: the model runs on the server,
-   * and every other caller here sends a text layer. Anything else is refused rather than
-   * stored as a layer, so a typo cannot quietly change what the row claims.
+   * `readBy` records who wrote the text when it was not a text layer — `vision` for the
+   * model, `assistant` for an assistant over MCP — and here it is only ever true of text
+   * restored from an archive's `described/` or `written/`: the model runs on the server,
+   * an assistant writes through its own tool, and every other caller here sends a text
+   * layer. Anything else is refused rather than stored as a layer, so a typo cannot
+   * quietly change what the row claims.
    */
   .put('/notes/:id/files/:filename/text', async (c) => {
     const noteId = c.req.param('id');
@@ -291,8 +293,8 @@ export const attachments = new Hono<AppEnv>()
     if (!attachmentId) return c.json({ error: 'Not found' }, 404);
 
     const body = await c.req.json<{ text?: string; unusable?: boolean; readBy?: unknown }>();
-    if (body.readBy !== undefined && body.readBy !== 'vision') {
-      return c.json({ error: "readBy must be 'vision' when given" }, 400);
+    if (body.readBy !== undefined && body.readBy !== 'vision' && body.readBy !== 'assistant') {
+      return c.json({ error: "readBy must be 'vision' or 'assistant' when given" }, 400);
     }
 
     /**
@@ -322,7 +324,7 @@ export const attachments = new Hono<AppEnv>()
       filename,
       // D1 caps a row at 2MB; long scans are truncated rather than rejected.
       text: body.text.slice(0, 500_000),
-      readBy: body.readBy === 'vision' ? 'vision' : null,
+      readBy: body.readBy === 'vision' || body.readBy === 'assistant' ? body.readBy : null,
     });
 
     return c.body(null, 204);

@@ -1,3 +1,4 @@
+import type { ReadBy } from '@unbent/shared';
 import type {
   FeedPage,
   FeedReset,
@@ -398,7 +399,7 @@ export class NotesRepo extends StoreRepo {
   exportPage(list: ListOptions, count: CountOptions | null): Promise<{
     notes: ExportedNote[];
     total: number | null;
-    texts: Array<{ noteId: string; filename: string; text: string; readBy: 'vision' | null }>;
+    texts: Array<{ noteId: string; filename: string; text: string; readBy: ReadBy | null }>;
     cursor: string | null;
   }> {
     return this.call((s) => s.exportPage(list, count));
