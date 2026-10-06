@@ -338,7 +338,9 @@ export function registerAttachmentTools(
         'host. Returns a one-time upload URL. Send the raw bytes to it with an HTTP PUT, for ' +
         'example curl -T "photo.png" "<uploadUrl>", or from a script in a page on any ' +
         "site, fetch(uploadUrl, { method: 'PUT', body: blob }) — the URL accepts requests " +
-        'from any origin and needs no cookies or other credentials. The reply to that request is the same ' +
+        'from any origin and needs no cookies or other credentials. If the page blocks ' +
+        "the request (its Content-Security-Policy), open the file's own URL in the tab and " +
+        'run the script there. The reply to that request is the same ' +
         'JSON add_attachment returns, with the note\'s url to give the person, the filename the file was stored under ' +
         '(suffixed if the note already had one by that name) and the Markdown that shows ' +
         `it. The URL works once, for this note, for ${UPLOAD_GRANT_TTL_MS / 60_000} ` +

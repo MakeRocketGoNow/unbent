@@ -465,8 +465,9 @@ function refusal(host: string, status: number, statusText: string): string {
     'browsers, and retrying from here will not help. Fetch the file yourself — in a ' +
     'browser tab on the page it came from, or with your own tools — then call ' +
     'prepare_attachment_upload and PUT the bytes to the URL it returns; that URL ' +
-    'accepts a PUT from a page on any site. If this was a signed link, it may instead ' +
-    'have expired: read the source again for a fresh one.'
+    'accepts a PUT from a page on any site, and if the page\'s Content-Security-Policy ' +
+    "blocks it, open the file's own URL in the tab and send it from there. If this was a " +
+    'signed link, it may instead have expired: read the source again for a fresh one.'
   );
 }
 
