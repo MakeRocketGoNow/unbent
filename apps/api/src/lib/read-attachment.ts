@@ -126,7 +126,16 @@ export async function readAttachment(
   */
   return withReaderSlot(async () => {
     if (readers.converter && canExtractOnServer({ AI: readers.converter }, file.contentType, file.size)) {
-      const extracted = await extractOnServer(readers.converter, file.filename, new Blob([await load()]));
+      /*
+         A conversion that throws is let through, not treated like an error answer. An
+         error answer is about the file; a throw is about the service — an untyped blob
+         (see `extractOnServer`), a capacity limit mid-import, an outage — and it says so
+         for every file at once. Handing those to the vision model was tried, and on the
+         upload path it would have sent every text-layer PDF of an import to the paid
+         reader for the length of the fault. Thrown, the file stays pending and the
+         caller reports it: the backfill counts it failed, MCP says try again.
+      */
+      const extracted = await extractOnServer(readers.converter, file.filename, await load(), file.contentType);
       if (extracted?.quality.usable) {
         await record(extracted.text, null);
         return 'text';

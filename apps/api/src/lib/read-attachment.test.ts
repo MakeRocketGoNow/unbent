@@ -18,10 +18,14 @@ const prose =
   'Your diagnosis based on what you shared about how you are feeling is allergic rhinitis, ' +
   'also known as hay fever, and the plan is an antihistamine each morning for two weeks.';
 
+/** Throws on an untyped blob, as Workers AI's conversion does. */
 function converter(data: string | null): MarkdownConverter {
   return {
     toMarkdown: () => ({
-      transform: async () => (data === null ? { format: 'error', error: 'unreadable' } : { format: 'markdown', data }),
+      transform: async ({ blob }) => {
+        if (!blob.type) throw new Error('Too small: expected string to have >=1 characters');
+        return data === null ? { format: 'error', error: 'unreadable' } : { format: 'markdown', data };
+      },
     }),
   };
 }
@@ -108,6 +112,21 @@ describe('reading a file', () => {
     expect(await readAttachment(blobs, { converter: converter('# x\n## Metadata\n- a=b\n') }, r, pdf)).toBe('empty');
     expect(r.recordText).toHaveBeenCalledWith(expect.objectContaining({ text: '', readBy: null }));
     expect(await readAttachment(blobs, { converter: converter(null) }, repo(), pdf)).toBe('unread');
+  });
+
+  it('lets a conversion that throws fail the read, and never pays the model for it', async () => {
+    const throwing: MarkdownConverter = {
+      toMarkdown: () => ({
+        transform: async () => {
+          throw new Error('binding fault');
+        },
+      }),
+    };
+    const eyes = vision(said);
+    const r = repo();
+    await expect(readAttachment(blobs, { converter: throwing, llm: eyes }, r, pdf)).rejects.toThrow('binding fault');
+    expect(eyes.read).not.toHaveBeenCalled();
+    expect(r.recordText).not.toHaveBeenCalled();
   });
 
   it('reads a picture with the model, and records a decline so it is not asked again', async () => {

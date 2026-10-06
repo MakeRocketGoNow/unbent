@@ -39,7 +39,7 @@ describe('server-side extraction', () => {
   });
 
   it('finds nothing in a scan with no text layer, so the row can be closed', async () => {
-    const extracted = await extractOnServer(converter({ format: 'markdown', data: preamble }), 'scan.pdf', new Blob());
+    const extracted = await extractOnServer(converter({ format: 'markdown', data: preamble }), 'scan.pdf', new ArrayBuffer(0), 'application/pdf');
     expect(extracted?.quality.usable).toBe(false);
   });
 
@@ -47,14 +47,29 @@ describe('server-side extraction', () => {
     const extracted = await extractOnServer(
       converter({ format: 'markdown', data: `${preamble}S t a t e m e n t ${prose}` }),
       'scan.pdf',
-      new Blob(),
+      new ArrayBuffer(0),
+      'application/pdf',
     );
     expect(extracted?.quality.usable).toBe(true);
     expect(extracted?.text.startsWith('Statement ')).toBe(true);
   });
 
+  it('hands the conversion a typed blob, which it refuses without one', async () => {
+    let seen = '';
+    const strict: MarkdownConverter = {
+      toMarkdown: () => ({
+        transform: async ({ blob }) => {
+          seen = blob.type;
+          return { format: 'markdown', data: preamble };
+        },
+      }),
+    };
+    await extractOnServer(strict, 'scan.pdf', new ArrayBuffer(0), 'application/pdf');
+    expect(seen).toBe('application/pdf');
+  });
+
   it('reports a file it could not read as null, so the row stays pending', async () => {
-    expect(await extractOnServer(converter({ format: 'error', error: 'unsupported' }), 'x.pdf', new Blob())).toBeNull();
+    expect(await extractOnServer(converter({ format: 'error', error: 'unsupported' }), 'x.pdf', new ArrayBuffer(0), 'application/pdf')).toBeNull();
   });
 
   it('only takes PDFs, under the cap, where the binding exists', () => {
