@@ -111,14 +111,18 @@ describe('get_attachment', () => {
 });
 
 describe('set_attachment_text', () => {
-  it('records what the assistant read, marked as its own, and says a press will replace it', async () => {
+  it('records what the assistant read, marked as its own, and says a press will replace it where a model exists', async () => {
     const { repo, written } = pictured();
-    const set = collect({}, repo).get('set_attachment_text')!;
+    const set = collect({ ANTHROPIC_API_KEY: 'k' }, repo).get('set_attachment_text')!;
     const result = await set({ noteId, filename: 'card.png', text: '  Plumber card\nJane Doe, Acme Plumbing\n\n555-0100  ' });
     expect(result.isError).toBeFalsy();
     expect(parse(result)).toMatchObject({ filename: 'card.png', read: 'assistant' });
     expect(parse(result).note).toMatch(/Auto-fill/);
     expect(written).toEqual([{ filename: 'card.png', text: 'Plumber card\nJane Doe, Acme Plumbing\n\n555-0100' }]);
+
+    // Without a model key nothing will ever replace the words, and the tool says so.
+    const bare = await collect({}, pictured().repo).get('set_attachment_text')!({ noteId, filename: 'card.png', text: 'A card' });
+    expect(parse(bare).note).toMatch(/no vision model/);
   });
 
   it("refuses to replace a text layer or the model's reading, and says why", async () => {

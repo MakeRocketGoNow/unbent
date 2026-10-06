@@ -9,7 +9,7 @@ import {
   chooseFilename,
   fetchSource,
 } from '../../lib/fetch-attachment.js';
-import { LLM_IMAGE_TYPES, toBase64 } from '../../lib/llm.js';
+import { canUseLlm, LLM_IMAGE_TYPES, toBase64 } from '../../lib/llm.js';
 import type { NotesRepo } from '../../lib/notes-repo.js';
 import { storeAttachment } from '../../lib/store-attachment.js';
 import { UPLOAD_GRANT_TTL_MS, type UploadGrantsRepo } from '../../lib/upload-grants.js';
@@ -41,8 +41,10 @@ const MAX_ASSISTANT_TEXT_CHARS = 100_000;
  * a picture except an Auto-fill press, so an assistant that wants to know what a photo
  * shows reads it itself, on its own bill, by the person's choice in connecting it — and
  * `set_attachment_text` records what it read, marked as the assistant's, so search and
- * the summaries have it until a press has the model read the file (see
- * `writeAssistantText` in the store for what yields to it and what does not).
+ * the summaries have it until a press has the model read the file, where the instance
+ * has one (see `writeAssistantText` in the store for what yields to it and what does not).
+ * The descriptions say which it is, since on an instance with no key the assistant's words
+ * are the text the file will have and should be written as such.
  *
  * No tool takes the bytes as an argument, and not because one was forgotten. A tool call
  * is JSON the model writes, so the only way bytes could arrive through one is base64 in an
@@ -61,7 +63,7 @@ const MAX_ASSISTANT_TEXT_CHARS = 100_000;
  */
 export function registerAttachmentTools(
   server: McpServer,
-  env: Pick<Env, 'APP_URL' | 'BLOBS' | 'AI' | 'ALLOW_TEST_CREDENTIALS'>,
+  env: Pick<Env, 'APP_URL' | 'BLOBS' | 'AI' | 'ALLOW_TEST_CREDENTIALS' | 'ANTHROPIC_API_KEY'>,
   ctx: { waitUntil(promise: Promise<unknown>): void },
   repos: { notes: NotesRepo; attachments: AttachmentsRepo; uploads: UploadGrantsRepo },
   links: AppLinks,
@@ -70,6 +72,8 @@ export function registerAttachmentTools(
   // flagged the same way. Deployed, this is false, so neither server-side fetcher can be
   // pointed at the Worker's own network.
   const allowLoopback = env.ALLOW_TEST_CREDENTIALS === '1';
+  // Whether a press will ever have the model read what an assistant writes here.
+  const vision = canUseLlm(env);
 
   server.registerTool(
     'get_attachment',
@@ -78,12 +82,15 @@ export function registerAttachmentTools(
       description:
         'The picture itself, returned as an image for you to read: a JPEG, PNG, GIF or WebP ' +
         'attachment under about 3.7 MB. For a picture that get_attachment_text, get_note or a ' +
-        'summary reports as "pending": nothing on this instance reads a picture on its own ' +
-        '— an Auto-fill press by the person does, and so can you. Read it, then record what ' +
-        'you read with set_attachment_text, so search, the summaries and the next session ' +
-        'have it without looking again. The bytes come to you and to no model the instance ' +
-        "runs. PDFs are not returned: a PDF's text layer is read for free on upload and " +
-        'get_attachment_text has it, and a scan with no layer waits for an Auto-fill press.',
+        'summary reports as "pending": nothing on this instance reads a picture on its own' +
+        (vision
+          ? ' — an Auto-fill press by the person does, and so can you. '
+          : ' — this instance has no vision model, so you are the only reader it has. ') +
+        'Read it, then record what you read with set_attachment_text, so search, the ' +
+        'summaries and the next session have it without looking again. The bytes come to ' +
+        "you and to no model the instance runs. PDFs are not returned: a PDF's text layer is " +
+        'read for free on upload and get_attachment_text has it' +
+        (vision ? ', and a scan with no layer waits for an Auto-fill press.' : '.'),
       inputSchema: z.object({
         noteId: z.string().uuid(),
         filename: z.string().min(1).describe('As listed by get_note.'),
@@ -152,10 +159,14 @@ export function registerAttachmentTools(
         'reading order. Allowed where the file has no text, an empty row, or text you ' +
         "recorded before, which you may revise; refused over a PDF's own text layer or what " +
         "the instance's vision model read, since neither is yours to replace. What you " +
-        'record is marked as yours (read "assistant"), and the next time the person presses ' +
-        'Auto-fill on the note the instance has its model read the file itself and replaces ' +
-        'it — so write it for search in the meantime, not as the last word. If the model ' +
-        'declines the file, your words stay and it is offered again on later presses.',
+        'record is marked as yours (read "assistant")' +
+        (vision
+          ? ', and the next time the person presses Auto-fill on the note the instance has ' +
+            'its model read the file itself and replaces it — so write it for search in the ' +
+            'meantime, not as the last word. If the model declines the file, your words stay ' +
+            'and it is offered again on later presses.'
+          : '. This instance has no vision model, so what you record is the text the file ' +
+            'will have: write it as carefully as the file deserves.'),
       inputSchema: z.object({
         noteId: z.string().uuid(),
         filename: z.string().min(1).describe('As listed by get_note.'),
@@ -200,7 +211,9 @@ export function registerAttachmentTools(
         filename,
         read: 'assistant',
         chars: trimmed.length,
-        note: 'Recorded. The next Auto-fill press on this note has the model read the file itself and replaces this.',
+        note: vision
+          ? 'Recorded. The next Auto-fill press on this note has the model read the file itself and replaces this.'
+          : 'Recorded. This instance has no vision model, so this is the text the file has.',
       });
     },
   );
