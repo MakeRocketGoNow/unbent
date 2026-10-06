@@ -154,6 +154,15 @@ describe('attachments', () => {
     expect(await stub.writeAssistantText('n2', 'told.jpg', 'A card for a plumber')).toEqual({ ok: true, reason: null });
     const offered = (await stub.autofillPrelude('n2', 10))!.forVision.map((f) => [f.id, f.writtenBy ?? null]).sort();
     expect(offered).toEqual([['pic', null], ['told', 'assistant']]);
+
+    // Untouched files first, whatever their age: a file the model declined over an
+    // assistant's words comes back on every press, and must not take the slots of files
+    // nothing has read. The newest picture, untouched, still comes before the older told one.
+    await stub.recordAttachment(file('n2', { id: 'newer', filename: 'newer.jpg', contentType: 'image/jpeg' }));
+    const order = (await stub.autofillPrelude('n2', 10))!.forVision.map((f) => f.id);
+    expect(order.indexOf('newer')).toBeLessThan(order.indexOf('told'));
+    expect(order.indexOf('told')).toBe(order.length - 1);
+    expect(['pic', 'newer']).toContain((await stub.autofillPrelude('n2', 1))!.forVision[0]!.id);
   });
 
   it('takes an assistant’s text where nothing or only its own words stand, and says whose it is', async () => {

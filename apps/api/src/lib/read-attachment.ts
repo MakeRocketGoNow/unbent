@@ -237,7 +237,9 @@ async function readWithLlm(
   const reading = await llm.read({ filename: file.filename, contentType: file.contentType, bytes });
   // A decline over an assistant's words leaves them standing: the model gave nothing to
   // put in their place, and an empty row would take text search and summaries were using.
-  // The file stays offered to the next press, the one case a press may pay twice for.
+  // The file stays offered to later presses — after anything nothing has read, which is
+  // how `needingVision` orders them — so it is the one case a press pays for more than
+  // once. The tool that writes those words says so.
   if (!reading && file.writtenBy === 'assistant') return 'empty';
   await attachments.recordText({
     attachmentId: file.id,

@@ -154,7 +154,8 @@ export function registerAttachmentTools(
         "the instance's vision model read, since neither is yours to replace. What you " +
         'record is marked as yours (read "assistant"), and the next time the person presses ' +
         'Auto-fill on the note the instance has its model read the file itself and replaces ' +
-        'it — so write it for search in the meantime, not as the last word.',
+        'it — so write it for search in the meantime, not as the last word. If the model ' +
+        'declines the file, your words stay and it is offered again on later presses.',
       inputSchema: z.object({
         noteId: z.string().uuid(),
         filename: z.string().min(1).describe('As listed by get_note.'),

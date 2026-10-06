@@ -549,16 +549,20 @@ export class AttachmentsStore {
    *
    * Only ever one note's, never the account's backlog: every file here is a paid request,
    * and since MAK-179 the model reads only what a press asks about.
+   *
+   * Files nothing has read come first, whatever their age. A file the model declined over
+   * an assistant's words keeps those words and is offered again on every press, and five
+   * such files on one note would otherwise fill every slot of a press's cap for good.
    */
   needingVision(limit: number, noteId: string): PendingFile[] {
     const { pictures, pdfs } = visionPendingHalves('?2');
-    // `created_at` is selected although nothing reads it: a compound SELECT can only be
-    // ordered by a column of its result.
+    // `created_at` and `read_by` are selected although the caller reads neither: the
+    // ordering is on them, over the compound, and the outer SELECT may order by anything.
     return this.sql
       .exec<PendingRow & { read_by: string | null }>(
         `SELECT id, note_id, filename, content_type, size, r2_key, created_at, read_by
            FROM (${pictures} UNION ALL ${pdfs})
-          ORDER BY created_at
+          ORDER BY (read_by IS 'assistant'), created_at
           LIMIT ?1`,
         limit,
         noteId,
