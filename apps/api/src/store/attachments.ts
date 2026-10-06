@@ -648,8 +648,8 @@ export class AttachmentsStore {
    * whole.
    *
    * The same three answers `textFor` gives, per file: `null` while no text has been
-   * recorded — a PDF still being read, or never read — and `''` for one read and found
-   * empty. The type rides along because a caller telling "still being read" from "a file
+   * recorded — a PDF not read yet, or whose read failed — and `''` for one read and found
+   * empty. The type rides along because a caller telling "couldn't read" from "a file
    * nothing here reads" needs to know which it is looking at, and `readBy` because text
    * the language model wrote opens with a name for the file, which auto-fill can use.
    */

@@ -3,6 +3,7 @@ import {
   findDates,
   findNumbers,
   isRatingField,
+  unreadFiles,
   type AutofillSuggestion,
   type FieldDef,
   type FieldValue,
@@ -94,7 +95,7 @@ export interface AutofillInput {
   };
   /**
    * The note's files with their extracted text: `null` while none has been recorded — the
-   * scan is still being read — and `''` for a file that was read and held none, or is a
+   * file is unread — and `''` for a file that was read and held none, or is a
    * kind of file nothing here can read. `readBy` is `'vision'` when the language model
    * wrote the text, which then opens with a name for the file; see `nameFromReading`.
    */
@@ -129,15 +130,21 @@ export function attachmentTextFor(
 /**
  * The note has nothing for the model to read.
  *
- * Told apart from a note whose scan is still being read: right after an upload the text
- * may be seconds away, and "try again in a moment" is the right answer there, where
- * "there is nothing here" is the right answer to an empty note holding a photograph.
+ * Told apart from a note whose file could not be read: "try again later" is the right
+ * answer there, where "there is nothing here" is the right answer to an empty note holding
+ * a photograph. It says "couldn't read", not "still being read": on a deployed instance
+ * the press has already tried to read the note's files itself (see the route), so a file
+ * still without text is usually one that read failed on, and "still being read" promised
+ * a read in progress where there was none. "Couldn't read" stays true in the other two
+ * cases, where it is this press that could not: a file past the press's cap, which the
+ * next press reads, and an instance with no converter, where the browser reads PDFs and
+ * one uploaded seconds ago may still be in its hands.
  */
 export class NothingToRead extends Error {
   constructor(readonly pending: string[]) {
     super(
       pending.length > 0
-        ? `Nothing to read yet: ${pending.length === 1 ? `${pending[0]} is` : `${pending.length} files are`} still being read. Try again in a moment.`
+        ? `Couldn't read ${unreadFiles(pending)}, so there's nothing to fill in from. Try again later.`
         : 'Nothing to read: the note is empty and its files have no text.',
     );
     this.name = 'NothingToRead';
@@ -166,7 +173,7 @@ interface Corpus {
 
 /**
  * The note's text within budget: the body first, capped at its share, then each file in
- * turn until the budget is spent. A file still being read is noted rather than waited for;
+ * turn until the budget is spent. A file still unread is noted rather than waited for;
  * a file read and found empty is simply not there.
  */
 function gather(input: AutofillInput): Corpus {

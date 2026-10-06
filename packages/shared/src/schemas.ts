@@ -358,7 +358,11 @@ export interface AutofillSuggestion {
    * title's reason; the server keeps such a value only when the document contains it.
    */
   fields: Array<{ field: FieldDef; value: FieldValue; confidence?: number }>;
-  /** Which of the note's files were read, and which had no text to read yet. */
+  /**
+   * Which of the note's files were read, and which had no text for this press — usually
+   * a read the press tried that failed, but also a file past its cap, or a PDF the
+   * browser has yet to read on an instance with no converter.
+   */
   read: { attachments: string[]; pending: string[] };
   /**
    * A standing fault in the language model the title is written by, surfaced only to an
@@ -372,6 +376,15 @@ export interface AutofillSuggestion {
    * declined, or failed only for a moment; see the API's `lib/autofill.ts`.
    */
   titleModel?: 'auth-failed';
+}
+
+/**
+ * The files Auto-fill had no text for, as both its answers name them: the file when there
+ * is one, a count when there are several. One phrase for the server's error and the
+ * client's result line, so the two cannot drift apart.
+ */
+export function unreadFiles(pending: readonly string[]): string {
+  return pending.length === 1 ? pending[0]! : `${pending.length} files`;
 }
 
 export const noteIdSchema = z.string().uuid();

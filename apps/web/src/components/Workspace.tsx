@@ -5,7 +5,7 @@ import { Link, useNavigate, useRouter } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EditorView } from '@codemirror/view';
 import type { FieldDef, FieldType, FieldValue, Note, NoteRevisionSummary } from '@unbent/shared';
-import { localizeImageLinks, remoteImageUrls } from '@unbent/shared';
+import { localizeImageLinks, remoteImageUrls, unreadFiles } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { isOfflineError, isStatus } from '../notes-api.js';
 import * as actions from '../store/actions.js';
@@ -1087,7 +1087,15 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     setWebImagesStatus(null);
   }, [noteId]);
 
-  /** A success snackbar that clears itself after a few seconds, with an optional Undo. */
+  /**
+   * A success snackbar that clears itself after a few seconds, with an optional Undo.
+   *
+   * Always on the timer, even when the line names a file Auto-fill couldn't read, which
+   * would otherwise deserve to stay up the way the same news does as an error. The Undo is
+   * why: it puts back the whole draft as it stood before the fill, so an Undo left on
+   * screen would also take back everything typed since. Keeping the line and dropping the
+   * Undo at the five seconds would need a second timer; not worth it for one line.
+   */
   function showFillResult(message: string, action?: { label: string; onClick: () => void }) {
     setSnackbar({ message, tone: 'info', action, duration: 5000 });
   }
@@ -1132,15 +1140,23 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
         suggestion,
         files.map((f) => f.filename),
       );
-      const stillReading = suggestion.read.pending.length > 0 ? ' — a file is still being read' : '';
+      /*
+         A file this press had no text for, named so the person knows which. It said "a
+         file is still being read", which promised a read in progress where there was
+         none — a deployed server reads the note's files before it answers, so a file
+         still pending is usually one whose read failed — and gave no file to look at.
+         See `NothingToRead` for the cases where "couldn't read" means something milder.
+      */
+      const { pending } = suggestion.read;
+      const unread = pending.length === 0 ? '' : ` — couldn't read ${unreadFiles(pending)}`;
       if (isEmptyChanges(plan.fill)) {
-        showFillResult(`Nothing empty to fill in${stillReading}`);
+        showFillResult(`Nothing empty to fill in${unread}`);
       } else {
         // The draft as it stood, captured before the fill lands, so Undo is one assignment
         // back to it — `applyAutofill` returns a new object and never touches this one.
         const before = draftRef.current;
         setDraft((d) => applyAutofill(d, plan.fill));
-        showFillResult(`Filled in ${describeChanges(plan.fill)}${stillReading}`, {
+        showFillResult(`Filled in ${describeChanges(plan.fill)}${unread}`, {
           label: 'Undo',
           onClick: () => setDraft(before),
         });
