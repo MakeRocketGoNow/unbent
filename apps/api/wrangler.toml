@@ -87,17 +87,26 @@ class_name = "UserStore"
 tag = "v1"
 new_sqlite_classes = ["UserStore"]
 
-# The walk over every account's note store (src/lib/sweep.ts): wakes each object so a
-# pending migration runs and fails in the log rather than in front of its owner, records
-# each account's size in the directory, and finishes any deletion that was interrupted.
-# Hourly, and a batch of twenty accounts per run rather than all of them: every store call
-# and D1 query counts against an invocation's subrequests, fifty on Workers Free, so the
-# walk keeps its place in D1 and continues each hour until a pass is done, then starts
-# over. Inherited by the named environments, which is right for `dev` and wrong for a
-# preview that lives for one pull request; `[env.preview.triggers]` below switches it off
-# there. The minute is arbitrary.
+# Two hourly jobs on one trigger, told apart by the minute (`scheduled` in src/index.ts).
+#
+# At :17, the walk over every account's note store (src/lib/sweep.ts): wakes each object
+# so a pending migration runs and fails in the log rather than in front of its owner,
+# records each account's size in the directory, finishes any deletion that was
+# interrupted, and deletes the files whose thirty-five days are up. A batch of twenty
+# accounts per run rather than all of them: every store call and D1 query counts against
+# an invocation's subrequests, fifty on Workers Free, so the walk keeps its place in D1
+# and continues each hour until a pass is done, then starts over.
+#
+# At :47, the daily dumps of every changed account into the backups bucket
+# (src/lib/backups.ts), which do nothing at all where no `BACKUPS` bucket is bound — at
+# this level, so on every fork. Half an hour from the sweep, and its own invocation, so
+# each has the whole fifty to itself.
+#
+# Inherited by the named environments, which is right for `dev` and wrong for a preview
+# that lives for one pull request; `[env.preview.triggers]` below switches it off there.
+# The minutes are arbitrary; that they are thirty apart is not.
 [triggers]
-crons = ["17 * * * *"]
+crons = ["17,47 * * * *"]
 
 # The SPA is served by this same Worker, so "same-origin" is structural rather than a
 # routing rule that has to be kept correct in a dashboard. Session cookies and OAuth
@@ -339,6 +348,14 @@ migrations_dir = "migrations"
 [[env.dev.r2_buckets]]
 binding = "BLOBS"
 bucket_name = "unbent-dev-blobs"
+
+# The daily dumps (src/lib/backups.ts, MAK-171), so the backup and its restore can be
+# rehearsed on dev's accounts before production depends on them. The bucket and its
+# fourteen-day lifecycle rule on `stores/` were made by hand, like production's. Previews
+# get no binding and dump nothing: they share dev's directory, and dev's own run walks it.
+[[env.dev.r2_buckets]]
+binding = "BACKUPS"
+bucket_name = "unbent-dev-backups"
 
 [[env.dev.durable_objects.bindings]]
 name = "USER_STORE"

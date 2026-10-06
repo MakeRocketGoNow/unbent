@@ -7,6 +7,15 @@ export interface Env {
   DB: D1Database;
   BLOBS: R2Bucket;
   /**
+   * Where the daily dumps of every account's store go (MAK-171; lib/backups.ts), and the
+   * switch that turns them on: unbound, the dump run at :47 returns before it makes a
+   * call. Bound on unbent.app's production (by the deploy workflow, when the repository
+   * names a bucket in `BACKUPS_BUCKET`) and on its dev instance (`[env.dev]` in
+   * wrangler.toml), and nowhere else — not at the top level, which a fork deploys, so a
+   * self-hoster's instance never starts dumping into a bucket they did not ask for.
+   */
+  BACKUPS?: R2Bucket;
+  /**
    * The built web app (`[assets]` in wrangler.toml). Most of it is served without the
    * Worker; the manifest is read through this so it can be renamed per instance
    * (lib/manifest.ts).

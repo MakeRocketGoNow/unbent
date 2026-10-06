@@ -1775,6 +1775,23 @@ the sweep until it is done, and fails the deploy if any account's
 store did not wake. Without the secret the step skips and the cron gets there within the
 day.
 
+**Daily dumps.** Where a backups bucket is bound as `BACKUPS`, the same cron at :47 dumps
+every account whose store has changed into it, as `stores/<user>/<YYYY-MM-DD>.sql` — the
+file `GET …/dump` below writes. An account is tried once a day; it is dumped when its change
+feed has moved since its last dump, and in any case once that dump is a week old, so a
+bucket whose lifecycle rule deletes dumps after fourteen days always holds one of every
+account. A big store is read in several calls, so a write can land partway; such a dump
+says so in its last lines, and the account is dumped again the next day. The account directory records each one's last dump, and every run writes
+`status/dumps.json` to the bucket: what it did, and which accounts failed or have gone
+forty-eight hours without a dump found current. Nothing is bound at the top level of
+`wrangler.toml`, so a fork's instance never dumps; unbent.app's production deploy binds the
+bucket its `BACKUPS_BUCKET` repository variable names, and the dev instance binds
+`unbent-dev-backups`. A run keeps to fifty subrequests, the Free plan's, which caps a dump
+near 170 MB of SQL; an account past that is recorded as failed rather than dumped, and
+is tried again each day after every other account, which spends that run's budget. On
+Workers Free a large account may not finish a scheduled dump well before that, since a
+run's CPU time is limited too. A self-hoster arranges their own backups.
+
 **The change feed.** Every write records what it touched, numbered by the store's own
 counter, and `GET /api/changes?since=N` answers "what changed since N?" with the changed
 notes whole — body, tags, values, files — the changed notebooks and tags, and a tombstone
@@ -1796,7 +1813,8 @@ browser syncs from; see [Your library on the device](#your-library-on-the-device
 - `POST …/sql` — one `SELECT` (or `EXPLAIN`) against a store, always rolled back.
 - `GET …/dump` — the store as SQL text, `sqlite3 account.db < dump.sql` rebuilds it: what
   `d1 export` was, and how a migration is rehearsed against a real account before it
-  ships — dump, load, run the new schema file's SQL against the copy.
+  ships — dump, load, run the new schema file's SQL against the copy. The daily dumps
+  (above) are the same file.
 - `POST …/restore` — winds one store back to a moment in the last thirty days; see below.
 - `POST …/feed-epoch` — makes every device of an account resync its local copy, by
   naming a new history for its change feed. The restore does this itself.

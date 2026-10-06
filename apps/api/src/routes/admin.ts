@@ -6,14 +6,14 @@ import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import { deleteKeys } from '../lib/blobs.js';
 import { directoryRow, dropDirectoryRow } from '../lib/directory.js';
+import { beginDump } from '../lib/dump.js';
 import { isOperator } from '../lib/instance.js';
 import { userPrefix } from '../lib/repo.js';
 import { storeFor } from '../lib/store-client.js';
 import { sweepStores } from '../lib/sweep.js';
 import { SWEEP_TOKEN_HEADER, sweepTokenMatches } from '../lib/sweep-token.js';
-import { DUMP_TABLES } from '../store/tables.js';
 import { BOOKMARK_PATTERN, RESTORE_WINDOW_MS, isRestoreUnsupported, readRestoreAbort, readRestoreRefusal } from '../store/restore.js';
-import type { StoreStats, UserStore } from '../store/user-store.js';
+import type { StoreStats } from '../store/user-store.js';
 import type { AppEnv } from '../types.js';
 
 /**
@@ -412,30 +412,20 @@ export const admin = new Hono<AppEnv>()
    * One store as SQL text: `sqlite3 account.db < dump.sql` rebuilds it, with nothing from
    * this repository needed. What `d1 export` was for the shared database, and how a
    * migration is rehearsed against a real account before it ships: dump, load, run the
-   * new schema file's SQL against the copy.
+   * new schema file's SQL against the copy. The file and its order are `lib/dump.ts`'s,
+   * shared with the daily backup.
    *
-   * The order is what makes the file loadable rather than merely complete. Tables and
-   * indexes come first, then every row, then the triggers and the FTS tables, then a
-   * rebuild of each FTS index from the rows. Rows before triggers, because the count
-   * triggers would otherwise add every note a second time to counts the notebook and tag
-   * rows already carry, and the FTS insert triggers would index each row on the way in
-   * only to have `rebuild` do it again. `_migrations` and `_meta` travel too, so the
-   * copy says which schema files it is at and whose it was.
-   *
-   * Paged out of the object by rowid as it streams, one page per pull, so an archive's
-   * worth of texts never sits in the Worker's memory at once — not even for a client that
-   * reads slowly, which is what enqueuing every page from `start` would have allowed.
-   * Big pages, cut by bytes inside the object: every
-   * page is one store call and an invocation has fifty on Free, so a 13k-note archive with
-   * 4k files and 2.4k texts (about 22 MB of them) is roughly a dozen calls, plus one per
-   * five thousand files awaiting deletion (`deleted_blobs`, usually one) — the small
-   * tables one each, notes three, texts three or four by the byte cut — where five
-   * hundred rows a page would have been sixty and failed partway through the texts.
+   * Streamed a slice per pull, so an archive's worth of texts never sits in the Worker's
+   * memory at once — not even for a client that reads slowly, which is what enqueuing
+   * every slice from `start` would have allowed. Every slice is one store call, and an
+   * invocation has fifty on Free: a 13k-note archive with 4k files and 2.4k texts (about
+   * 31 MB of SQL) is about five.
    */
   .get('/admin/store/dump', requireAuth, async (c) => {
     const target = await operatorTarget(c);
     if (target instanceof Response) return target;
-    const chunks = dumpChunks(storeFor(c.env, target), target);
+    // Asked for no mark, so the store always answers with its rows.
+    const chunks = (await beginDump(storeFor(c.env, target), target)).chunks!;
     const body = new ReadableStream<Uint8Array>({
       async pull(controller) {
         const next = await chunks.next();
@@ -486,43 +476,6 @@ function restoreRefused(c: Context<AppEnv>, message: string): Response {
     return c.json({ error: 'This runtime keeps no history to restore from. Restores work on a deployed instance only.' }, 501);
   }
   return c.json({ error: message }, 400);
-}
-
-/**
- * The dump as chunks: the header and the tables, then each page of each table as the
- * object formats and encodes it, then the triggers, the FTS tables and their rebuild. A
- * generator so the stream above fetches one chunk per pull and a page is only read from
- * the object once the client has taken the last one. Bytes throughout: the pages arrive
- * encoded, and the Worker touches none of their content (see `dumpPage`).
- */
-async function* dumpChunks(store: DurableObjectStub<UserStore>, target: string): AsyncGenerator<Uint8Array> {
-  const encoder = new TextEncoder();
-  const schema = await store.schemaSql();
-  const later = (s: string) => /^CREATE (VIRTUAL TABLE|TRIGGER)\b/i.test(s);
-  const head = [
-    `-- Unbent note store of account ${target}, dumped ${new Date().toISOString()}`,
-    `-- Rebuild with: sqlite3 account.db < this-file.sql`,
-    'PRAGMA foreign_keys = OFF;',
-    'BEGIN;',
-    ...schema.filter((s) => !later(s)).map((s) => `${s};`),
-  ];
-  yield encoder.encode(`${head.join('\n')}\n`);
-  for (const table of DUMP_TABLES) {
-    for (let after = 0; ; ) {
-      // Formatted and encoded inside the object, where the CPU budget is; see `dumpPage`.
-      const page = await store.dumpPage(table, after, 5000);
-      if (page.rows > 0) yield page.bytes;
-      if (page.nextRowid === null) break;
-      after = page.nextRowid;
-    }
-  }
-  const tail = schema.filter(later).map((s) => `${s};`);
-  for (const fts of schema.filter((s) => /^CREATE VIRTUAL TABLE/i.test(s))) {
-    const name = /^CREATE VIRTUAL TABLE\s+(\S+)/i.exec(fts)![1];
-    tail.push(`INSERT INTO ${name}(${name}) VALUES ('rebuild');`);
-  }
-  tail.push('COMMIT;', 'PRAGMA foreign_keys = ON;');
-  yield encoder.encode(`${tail.join('\n')}\n`);
 }
 
 /**

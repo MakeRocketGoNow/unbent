@@ -48,6 +48,9 @@ function migration(name: string): string {
 
 const files = readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql')).sort();
 const DROP = '0036_drop_note_tables.sql';
+/** The migrations either side of the drop: the ones that built the note tables, and the ones written since. */
+const BEFORE = files.slice(0, files.indexOf(DROP));
+const AFTER = files.slice(files.indexOf(DROP) + 1);
 const NOTE_TABLES = `('notes', 'notebooks', 'notebook_fields', 'tags', 'note_tags', 'note_fields', 'attachments', 'attachment_text', 'note_counts', 'notes_fts', 'tags_fts', 'note_fields_fts', 'attachment_text_fts')`;
 
 describe.skipIf(!sqlite3)('the D1 migrations', () => {
@@ -58,8 +61,8 @@ describe.skipIf(!sqlite3)('the D1 migrations', () => {
 
   it('apply in order to a real SQLite, up to the drop', () => {
     const { run } = db(file);
-    expect(files[files.length - 1]).toBe(DROP);
-    for (const f of files) if (f !== DROP) run(migration(f));
+    expect(files).toContain(DROP);
+    for (const f of BEFORE) run(migration(f));
     expect(run(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ${NOTE_TABLES}`)).toBe('13');
   });
 
@@ -98,6 +101,9 @@ describe.skipIf(!sqlite3)('the D1 migrations', () => {
     const { run } = db(file);
     run(`UPDATE account_directory SET copied_at = 2 WHERE user_id = 'noteless'`);
     run(migration(DROP));
+    // And every migration since applies on top of the dropped schema.
+    for (const f of AFTER) run(migration(f));
+    expect(run(`SELECT COUNT(*) FROM pragma_table_info('account_directory') WHERE name LIKE 'dump_%'`)).toBe('6');
     // Tables, their triggers and indexes, the FTS shadow tables and the guard: all gone.
     expect(
       run(

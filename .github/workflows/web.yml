@@ -102,6 +102,14 @@ jobs:
       # values above, so the two ends cannot disagree. Unset, the step skips and the hourly
       # cron is what reaches every account after a deploy. `openssl rand -hex 32`.
       SWEEP_TOKEN: ${{ secrets.SWEEP_TOKEN }}
+      # Optional, and a repository *variable*, not a secret: the R2 bucket the daily dumps
+      # of every account's store go to (apps/api/src/lib/backups.ts). Set, the deploy binds
+      # it as `BACKUPS` and the :47 cron starts dumping; unset, nothing is bound and the
+      # run does nothing. Here rather than in wrangler.toml because the top level of that
+      # file is what every fork deploys, and a fork must not start dumping into a bucket
+      # its first deploy provisions without asking. Make the bucket first, with a lifecycle
+      # rule on `stores/`; unbent.app's is `unbent-backups`, fourteen days.
+      BACKUPS_BUCKET: ${{ vars.BACKUPS_BUCKET }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -179,10 +187,28 @@ jobs:
           if [ -n "$SWEEP_TOKEN" ]; then
             printf 'SWEEP_TOKEN=%s\n' "$SWEEP_TOKEN" >> "$RUNNER_TEMP/secrets.env"
           fi
+          # The backups bucket, when one is named, as one more top-level binding in a copy
+          # of the config written beside it, so its relative paths still resolve — the
+          # same way the previews make their own-stores config. An array-of-tables entry
+          # may follow any table in TOML, so appending it is enough.
+          config=wrangler.toml
+          if [ -n "$BACKUPS_BUCKET" ]; then
+            # Pasted into TOML, so a stray quote or newline would fail as a parse error that
+            # names neither the variable nor the problem. Bash's own match, on the whole
+            # value: `grep` would pass a value with a newline in it whose last line looked
+            # like a name.
+            if ! [[ "$BACKUPS_BUCKET" =~ ^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$ ]]; then
+              echo "::error::BACKUPS_BUCKET is not a valid R2 bucket name: $BACKUPS_BUCKET"
+              exit 1
+            fi
+            config=wrangler.backups.toml
+            cp wrangler.toml "$config"
+            printf '\n[[r2_buckets]]\nbinding = "BACKUPS"\nbucket_name = "%s"\n' "$BACKUPS_BUCKET" >> "$config"
+          fi
           if [ -s "$RUNNER_TEMP/secrets.env" ]; then
-            pnpm exec wrangler deploy --env "" --secrets-file "$RUNNER_TEMP/secrets.env"
+            pnpm exec wrangler deploy --config "$config" --env "" --secrets-file "$RUNNER_TEMP/secrets.env"
           else
-            pnpm exec wrangler deploy --env ""
+            pnpm exec wrangler deploy --config "$config" --env ""
           fi
           rm -f "$RUNNER_TEMP/secrets.env"
 

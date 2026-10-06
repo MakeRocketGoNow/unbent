@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { runInDurableObject } from 'cloudflare:test';
 import { REVISIONS_KEPT, UNFILED } from '@unbent/shared';
+import { beginDump } from '@unbent/api/lib/dump';
+import { DUMP_TABLES } from '@unbent/api/store/tables';
 import { freshStore } from './helpers.js';
 
 /**
@@ -1009,6 +1011,7 @@ describe('rows read on an archive-sized store', () => {
     };
     const sortField = (await stub.fieldById('amount'))!;
     const now = Date.now();
+    let held = 0;
     const results = [
       await measure('first page', () => stub.list({ limit: 50 })),
       await measure('first page by title', () => stub.list({ limit: 50, sort: 'title', order: 'asc' })),
@@ -1063,6 +1066,16 @@ describe('rows read on an archive-sized store', () => {
       await measure('sweep visit', () => stub.sweepVisit(now)),
       await measure('forget expired files', () => stub.forgetBlobs(Array.from({ length: 5 }, (_, i) => `users/u/gone/${i}`), now)),
       await measure('sweep visit with nothing due', () => stub.sweepVisit(now)),
+      // The daily backup's dump (MAK-171): every row of every table, by design. Bounded
+      // below against the store's own row count, not here.
+      await measure('dump', async () => {
+        // The rows it should read, counted on the raw storage, which the meter does not see.
+        held = await runInDurableObject(stub, (_i, state) =>
+          DUMP_TABLES.reduce((sum, table) => sum + state.storage.sql.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table}`).one().n, 0),
+        );
+        const { chunks } = await beginDump(stub, 'scale');
+        for await (const _ of chunks!);
+      }),
       await measure('trash one', () => stub.remove('n00010')),
       await measure('trash many', () => stub.removeMany(['n00011', 'n00012', 'n00013'])),
       // The trash opening a note: the same read without `deleted_at`, which must stay a
@@ -1226,8 +1239,18 @@ describe('rows read on an archive-sized store', () => {
       'history clear': 180,
     };
     for (const r of results) {
+      if (r.label === 'dump') continue;
       expect(r.rowsRead, r.label).toBeLessThanOrEqual(bounds[r.label]!);
     }
+    // A dump reads every row; what it must not do is read any of them twice, which a
+    // slice that restarted its table, or a page by OFFSET, would. Every row once, plus
+    // the schema's entries in `sqlite_master`, the feed's two `_meta` rows for the mark
+    // and one row per slice cut (here none: this store is one slice). Measured
+    // 2026-10-05: 27,008 read for 26,917 held.
+    const dump = results.find((r) => r.label === 'dump')!;
+    expect(dump.rowsRead).toBeGreaterThanOrEqual(held);
+    expect(dump.rowsRead).toBeLessThanOrEqual(held + 150);
+    expect(dump.rowsWritten).toBe(0);
     // Rows written are metered too, and a bulk change now keeps a copy of each note
     // outside its window: the copy, its index entry and the prune of the oldest, about
     // three rows a note on top of what the verb itself writes (551 against 406 inside

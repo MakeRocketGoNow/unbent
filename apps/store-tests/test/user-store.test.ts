@@ -202,32 +202,91 @@ describe('UserStore lifecycle', () => {
     expect(await woke.stats()).toMatchObject({ wiped: false, migrations: ['0001-init', '0002-changes', '0003-revisions', '0004-revision-props', '0005-deleted-blobs'] });
   });
 
-  it('dumpPage pages a table by rowid and stops with a null cursor', async () => {
+  it('dumpSlice writes each row as one INSERT, in rowid order, without the paging column', async () => {
     const { stub } = freshStore('dump');
     await runInDurableObject(stub, (_i, state) => {
       for (let i = 0; i < 5; i++) {
         state.storage.sql.exec(`INSERT INTO notes (id, title, body, created_at, updated_at) VALUES (?1, 'T', 'b', 1, 1)`, `n${i}`);
       }
     });
-    // Pages come back as INSERT statements, one a line, already encoded; see `dumpPage`
-    // for why the object formats and encodes them rather than the Worker.
+    const text = new TextDecoder().decode((await stub.dumpSlice({ table: DUMP_TABLES.indexOf('notes'), after: 0 })).bytes);
+    expect([...text.matchAll(/^INSERT INTO notes \(id, .*VALUES \('(n\d)'/gm)].map((m) => m[1])).toEqual(['n0', 'n1', 'n2', 'n3', 'n4']);
+    expect(text).not.toContain('_rowid');
+    // Past the last table there is nothing left to read.
+    expect(await stub.dumpSlice({ table: DUMP_TABLES.length, after: 0 })).toMatchObject({ rows: 0, next: null });
+  });
+
+  it('dumpBegin answers unchanged for its own mark, and a write or a new epoch moves the mark', async () => {
+    const { stub } = freshStore('dump-mark');
+    const first = await stub.dumpBegin();
+    expect(first.unchanged).toBe(false);
+    expect(await stub.dumpBegin(first.mark)).toEqual({ mark: first.mark, unchanged: true });
+    await stub.create({ id: crypto.randomUUID(), title: 'New', body: 'b', tags: [] });
+    const written = await stub.dumpBegin(first.mark);
+    expect(written.unchanged).toBe(false);
+    expect(written.mark).not.toBe(first.mark);
+    // A restore gives the feed a new epoch and winds the seq back, so a store can come
+    // back to a seq it had with other rows under it; the mark carries the epoch for that.
+    await stub.feedRestored();
+    const restored = await stub.dumpBegin(written.mark);
+    expect(restored.unchanged).toBe(false);
+    expect(restored.mark.split(':')[1]).toBe(written.mark.split(':')[1]);
+  });
+
+  it('dumpSlice crosses tables, cuts at the byte budget, and picks up from the cut', async () => {
+    const { stub } = freshStore('dump-slice');
+    // Three texts of five megabytes: the first slice holds every table up to the texts
+    // and the first of them; the second the next text alone; the third the last one and
+    // every table after it.
+    await runInDurableObject(stub, (_i, state) => {
+      const sql = state.storage.sql;
+      sql.exec(`INSERT INTO notes (id, title, body, created_at, updated_at) VALUES ('n1', 'T', 'b', 1, 1)`);
+      for (let i = 0; i < 3; i++) {
+        sql.exec(`INSERT INTO attachments (id, note_id, filename, content_type, size, r2_key, created_at) VALUES (?1, 'n1', ?2, 'application/pdf', 1, ?1, 1)`, `a${i}`, `f${i}.pdf`);
+        sql.exec(`INSERT INTO attachment_text (attachment_id, note_id, filename, text, created_at) VALUES (?1, 'n1', ?2, ?3, 1)`, `a${i}`, `f${i}.pdf`, 'x'.repeat(5 * 1024 * 1024));
+      }
+      sql.exec(`INSERT INTO deleted_blobs (r2_key, deleted_at) VALUES ('users/u/x', 42)`);
+    });
     const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
-    const ids = (bytes: Uint8Array) => [...text(bytes).matchAll(/^INSERT INTO notes \(id, .*VALUES \('(n\d)'/gm)].map((m) => m[1]);
-    const first = await stub.dumpPage('notes', 0, 2);
-    expect(first.rows).toBe(2);
-    expect(ids(first.bytes)).toEqual(['n0', 'n1']);
-    expect(text(first.bytes)).not.toContain('_rowid');
-    expect(first.nextRowid).not.toBeNull();
-    const second = await stub.dumpPage('notes', first.nextRowid!, 2);
-    expect(ids(second.bytes)).toEqual(['n2', 'n3']);
-    const third = await stub.dumpPage('notes', second.nextRowid!, 2);
-    expect(ids(third.bytes)).toEqual(['n4']);
-    expect(third.nextRowid).toBeNull();
-    await expect(stub.dumpPage('notes_fts' as 'notes')).rejects.toThrow(/not a data table/);
+    const tables = (bytes: Uint8Array) => [...new Set([...text(bytes).matchAll(/^INSERT INTO (\w+) /gm)].map((m) => m[1]))];
+    const texts = (bytes: Uint8Array) => [...text(bytes).matchAll(/INSERT INTO attachment_text .*?VALUES \('(a\d)'/g)].map((m) => m[1]);
+    const textTable = DUMP_TABLES.indexOf('attachment_text');
+
+    await stub.resetCounters();
+    const start = await stub.dumpBegin();
+    if (start.unchanged) throw new Error('a first dump is never unchanged');
+    expect(start.schema).toEqual(expect.arrayContaining([expect.stringContaining('CREATE TABLE notes')]));
+    expect(tables(start.bytes)).toEqual(['_migrations', '_meta', 'note_counts', 'notes', 'attachments', 'attachment_text']);
+    expect(texts(start.bytes)).toEqual(['a0']);
+    expect(start.next).toMatchObject({ table: textTable });
+    const second = await stub.dumpSlice(start.next!);
+    expect(texts(second.bytes)).toEqual(['a1']);
+    expect(second.next).toMatchObject({ table: textTable });
+    const third = await stub.dumpSlice(second.next!);
+    expect(texts(third.bytes)).toEqual(['a2']);
+    expect(tables(third.bytes)).toEqual(['attachment_text', 'deleted_blobs']);
+    expect(third.next).toBeNull();
+
+    // Each row read once across the three calls, but the row each cut stopped at, which
+    // the next call reads again — a row a call, at most; plus the schema's entries, the
+    // feed's two rows for the mark at each end, and one for each table SQLite probes and
+    // finds empty. Exact, so a slice that re-read anything else fails here.
+    // The rows-read test on the big store pins the same for one slice.
+    const { held, empty, schema } = await runInDurableObject(stub, (_i, state) => {
+      const counts = DUMP_TABLES.map((table) => state.storage.sql.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table}`).one().n);
+      return {
+        held: counts.reduce((a, b) => a + b, 0),
+        empty: counts.filter((n) => n === 0).length,
+        schema: state.storage.sql.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM sqlite_master`).one().n,
+      };
+    });
+    const { rowsRead } = await stub.counters();
+    expect(rowsRead).toBeGreaterThanOrEqual(held + 2);
+    expect(rowsRead).toBeLessThanOrEqual(held + 4 + schema + 3 + empty);
   });
 
   /*
-   * The dump pages the tables `DUMP_TABLES` names, not the ones the schema has, so a
+   * The dump reads the tables `DUMP_TABLES` names, not the ones the schema has, so a
    * schema file that adds a table and forgets the list would ship a dump that rebuilds a
    * store without it — silently, since a missing table is just one less `INSERT` run. Read
    * the schema the way the object holds it and hold the list to it. The search tables and
@@ -273,29 +332,6 @@ describe('UserStore lifecycle', () => {
     const capped = await stub.readOnlySql('SELECT attachment_id FROM attachment_text ORDER BY rowid', [], 2);
     expect(capped.rows.map((r) => r.attachment_id)).toEqual(['a0', 'a1']);
     expect(capped.truncated).toBe(true);
-  });
-
-  it('dumpPage cuts a page at its byte budget and keeps paging from the cut', async () => {
-    const { stub } = freshStore('dumpbytes');
-    // Three texts of five megabytes each: two fit the eight-megabyte budget only one at a
-    // time, so a page of five hundred still hands back one row and a cursor.
-    await runInDurableObject(stub, (_i, state) => {
-      const sql = state.storage.sql;
-      sql.exec(`INSERT INTO notes (id, title, body, created_at, updated_at) VALUES ('n1', 'T', 'b', 1, 1)`);
-      for (let i = 0; i < 3; i++) {
-        sql.exec(`INSERT INTO attachments (id, note_id, filename, content_type, size, r2_key, created_at) VALUES (?1, 'n1', ?2, 'application/pdf', 1, ?1, 1)`, `a${i}`, `f${i}.pdf`);
-        sql.exec(`INSERT INTO attachment_text (attachment_id, note_id, filename, text, created_at) VALUES (?1, 'n1', ?2, ?3, 1)`, `a${i}`, `f${i}.pdf`, 'x'.repeat(5 * 1024 * 1024));
-      }
-    });
-    const ids = (bytes: Uint8Array) => [...new TextDecoder().decode(bytes).matchAll(/VALUES \('(a\d)'/g)].map((m) => m[1]);
-    const first = await stub.dumpPage('attachment_text', 0, 500);
-    expect(ids(first.bytes)).toEqual(['a0']);
-    expect(first.nextRowid).not.toBeNull();
-    const second = await stub.dumpPage('attachment_text', first.nextRowid!, 500);
-    expect(ids(second.bytes)).toEqual(['a1']);
-    const third = await stub.dumpPage('attachment_text', second.nextRowid!, 500);
-    expect(ids(third.bytes)).toEqual(['a2']);
-    expect(third.nextRowid).toBeNull();
   });
 
   it('nested transactions commit once and a throw unwinds all of it', async () => {
