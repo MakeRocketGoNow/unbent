@@ -797,8 +797,11 @@ Three are worth knowing about:
   is used, and reads the one file only. See [Searching inside PDFs](#searching-inside-pdfs).
   Before either, `get_note` — and `list_notes` or `search_notes` with
   `attachmentSummaries` — already give each file a line of what it is: the vision model's
-  name and description for a picture or a text-less scan, the opening of a text layer
-  otherwise, or whether it is still waiting.
+  name and description for a picture or a text-less scan; for a text layer, its opening
+  and then the total, dates, order number and amounts found in it by pattern, so a
+  receipt's total at the foot of the page is in the line; or whether it is still waiting.
+  No language model writes a text layer's line: the summary is worked out from the text
+  each time it is asked for, so every file has one and there is nothing to backfill.
   Filling a notebook's fields from its receipts is then a page of a hundred notes read in
   one call, rather than two calls for every note. Where the line is not enough,
   `get_attachment_text` takes `maxChars` to return only the opening of the text, the part

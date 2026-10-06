@@ -3,6 +3,7 @@ import type { DeletedBlobs } from './deleted-blobs.js';
 import type { Feed } from './feed.js';
 import { placeholders, runs } from './notes-shared.js';
 import type { Sql } from './sql.js';
+import { textSummary, TEXT_SUMMARY_SOURCE_CHARS } from './text-summary.js';
 
 export interface AttachmentRow {
   id: string;
@@ -126,13 +127,13 @@ export interface FileSummary {
  *
  * Read with `substr` in the query, so a scan of half a million characters never leaves
  * the database whole to be summarised: what crosses into the object is this much a file.
- * Six hundred holds the vision reading's name and description line with room over; the
- * summary is then cut to a few hundred, which is what keeps a page of a hundred notes
- * with a few files each a read rather than an export.
+ * Six hundred holds the vision reading's name and description line with room over. A
+ * text layer's summary is found in more of it (`TEXT_SUMMARY_SOURCE_CHARS`), since a
+ * receipt's total is at its foot. Either is then cut to a few hundred, which is what
+ * keeps a page of a hundred notes with a few files each a read rather than an export.
  */
 const SUMMARY_SOURCE_CHARS = 600;
-const VISION_SUMMARY_CHARS = 400;
-const TEXT_SUMMARY_CHARS = 280;
+const SUMMARY_CHARS = 400;
 
 /**
  * The PDF and picture types a reader here takes; anything else is never read. The readers'
@@ -151,9 +152,10 @@ const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1
  * (`llm.test.ts` runs that layout through this cut, since nothing here imports it.)
  * Everything before that blank line is the summary — "Sushi A Go Go receipt — Receipt:
  * lunch for two, $17.27 by card" — and the transcription is what get_attachment_text is
- * for. A text layer has no such head, so its summary is the opening of the text with the
- * line breaks folded: on a receipt or a bill that is usually the sender and the date, and
- * an excerpt is still better than making the caller fetch the file to learn what it is.
+ * for. A text layer has no such head, so its summary is found in the text by pattern
+ * (`textSummary`): what it opens with, then its total, dates, order number and amounts.
+ * Where it finds nothing at all — a text with no word, date or amount in it — the text
+ * itself, folded and cut, is the summary, as every text layer's was before (MAK-177).
  *
  * The statuses follow the readers' own rules (`visionPendingHalves`): no row at all is a
  * file not yet read, if it is a kind anything reads; an empty row from the text layer is
@@ -183,9 +185,14 @@ export function summarize(
   if (readBy === 'vision') {
     const lead = head.trim().split(/\n\s*\n/)[0]!;
     const lines = lead.split('\n').map((l) => l.trim()).filter(Boolean);
-    return { read: 'vision', summary: clip(lines.join(' — '), VISION_SUMMARY_CHARS) };
+    return { read: 'vision', summary: clip(lines.join(' — '), SUMMARY_CHARS) };
   }
-  return { read: 'text', summary: clip(head.replace(/\s+/g, ' ').trim(), TEXT_SUMMARY_CHARS) };
+  // A head that filled the query's cut may end partway through a line — "TOTAL $12" of
+  // "TOTAL $121.39" — so its last line is not read for facts.
+  const cut = head.length >= TEXT_SUMMARY_SOURCE_CHARS ? head.lastIndexOf('\n') : -1;
+  const whole = cut > 0 ? head.slice(0, cut) : head;
+  const found = textSummary(whole) || whole.replace(/\s+/g, ' ').trim();
+  return { read: 'text', summary: clip(found, SUMMARY_CHARS) };
 }
 
 /** What one answer of `textsById` carries at most; a quarter of a feed page, since it is asked for in the background. */
@@ -660,7 +667,9 @@ export class AttachmentsStore {
    * line per file on the list, a page of a hundred receipts shows its merchants, dates and
    * totals in one call.
    *
-   * Only the head of each text is read (`SUMMARY_SOURCE_CHARS`), never the text whole.
+   * Only the head of each text is read, never the text whole: `SUMMARY_SOURCE_CHARS` of a
+   * vision reading, whose summary is its first lines, and `TEXT_SUMMARY_SOURCE_CHARS` of
+   * a text layer, whose total is usually at the foot of its first page.
    * Through `idx_attachments_note` by note, then the text by its key: two rows a file and
    * nothing that grows with the account. The ids go in as one JSON array for the reason
    * `textsForNotes` gives.
@@ -669,13 +678,15 @@ export class AttachmentsStore {
     const out: Record<string, FileSummary[]> = {};
     if (noteIds.length === 0) return out;
     for (const r of this.sql.exec<{ note_id: string; filename: string; content_type: string; size: number; head: string | null; read_by: string | null }>(
-      `SELECT a.note_id, a.filename, a.content_type, a.size, substr(t.text, 1, ?2) AS head, t.read_by
+      `SELECT a.note_id, a.filename, a.content_type, a.size,
+              substr(t.text, 1, CASE WHEN t.read_by = 'vision' THEN ?2 ELSE ?3 END) AS head, t.read_by
          FROM attachments a
          LEFT JOIN attachment_text t ON t.attachment_id = a.id
         WHERE a.note_id IN (SELECT value FROM json_each(?1))
         ORDER BY a.note_id, a.created_at, a.filename`,
       JSON.stringify(noteIds),
       SUMMARY_SOURCE_CHARS,
+      TEXT_SUMMARY_SOURCE_CHARS,
     )) {
       (out[r.note_id] ??= []).push({
         filename: r.filename,

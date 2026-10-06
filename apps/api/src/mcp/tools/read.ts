@@ -83,7 +83,10 @@ const LIST_FILES_PER_NOTE = 10;
 const ATTACHMENT_SUMMARY =
   'read says how the file\'s text came to be: "vision" when a vision model read it, and ' +
   'summary is its name and a line on what it shows (amounts, dates, who it is from); ' +
-  '"text" from a PDF\'s text layer, and summary is the opening of that text; "pending" ' +
+  '"text" from a PDF\'s text layer, and summary is the opening of that text, then the ' +
+  'total, dates and order or invoice number found in it ("Total: $18.67 · Date: ' +
+  '2026-03-02 · Order #112-0042"), or up to three amounts in place of a total when none is ' +
+  'labelled ("Amounts: $1,200.00, $14,350.10"), each left out when the text has none; "pending" ' +
   'when it has not been read yet but will be (read_attachment asks for that read now, on ' +
   'a note not in the trash); "none" when it was read and nothing was found, or nothing on ' +
   'this instance reads that kind of file. summary is null unless read is "vision" or ' +
