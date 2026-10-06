@@ -56,6 +56,17 @@ const MAX_REDIRECTS = 5;
  * Not the honest `Unbent (+https://unbent.app)` the web-image fetch sends. That fetch is
  * a link preview, which hosts expect from servers; this one stands in for the person
  * saving a picture they were looking at, and hosts that check hand that only to a browser.
+ *
+ * Dressing as a browser is a decision, not an oversight, and so is the Referer that
+ * `requestHeaders` sends when the caller names no page. Both exist to get past a plain
+ * hotlink check, which is a host's own access rule; the cost is that an instance's fetch
+ * claims to be something it is not, and a fork inherits that. It was weighed against
+ * sending nothing but the honest UA and a caller's referer, and kept because the person
+ * is entitled to the picture they were looking at, the gain is a picture they asked for,
+ * and it stops at headers — anything a host means seriously (bot management, TLS
+ * fingerprints, the `CF-Worker` header every Worker request carries) still refuses, and
+ * the refusal points to the browser upload instead. Undo it by changing this decision,
+ * not by trimming a header.
  */
 export const DEFAULT_FETCH_USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) ' +
