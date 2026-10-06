@@ -87,8 +87,8 @@ const ATTACHMENT_SUMMARY =
   'total, dates and order or invoice number found in it ("Total: $18.67 · Date: ' +
   '2026-03-02 · Order #112-0042"), or up to three amounts in place of a total when none is ' +
   'labelled ("Amounts: $1,200.00, $14,350.10"), each left out when the text has none; "pending" ' +
-  'when it has not been read yet but will be (read_attachment asks for that read now, on ' +
-  'a note not in the trash); "none" when it was read and nothing was found, or nothing on ' +
+  'when it has not been read yet — pressing Auto-fill on the note in the app reads it; no ' +
+  'tool asks for that read; "none" when it was read and nothing was found, or nothing on ' +
   'this instance reads that kind of file. summary is null unless read is "vision" or ' +
   '"text", and is a few hundred characters at most: get_attachment_text has the whole text.';
 
@@ -423,8 +423,8 @@ export function registerReadTools(
         'or a photo readable; the file itself is bytes a model cannot use. Reading happens ' +
         'in the background after upload, so a recently added file may have no text yet, ' +
         'which is reported as such rather than as an empty document. read says which, as ' +
-        'it does on get_note: "pending" for a file still to be read, which read_attachment ' +
-        'asks for now, and "none" for one that was read and had nothing, or that nothing ' +
+        'it does on get_note: "pending" for a file still to be read, which pressing Auto-fill ' +
+        'on the note in the app does, and "none" for one that was read and had nothing, or that nothing ' +
         'on this instance reads. A receipt or a statement usually says what it is in its ' +
         'first page and spends the rest on terms: pass maxChars to read only the opening, ' +
         'and offset to read on from where a cut answer stopped.',
@@ -462,7 +462,7 @@ export function registerReadTools(
           read,
           note:
             read === 'pending'
-              ? 'This attachment has not been read yet. read_attachment asks for that now, on a note that is not in the trash.'
+              ? 'This attachment has not been read yet. Pressing Auto-fill on the note in the app reads it; no tool asks for that read.'
               : 'This attachment has no text: it was read and nothing was found, or nothing on this instance reads this kind of file.',
         });
       }

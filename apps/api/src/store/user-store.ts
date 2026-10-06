@@ -894,22 +894,6 @@ export class UserStore extends DurableObject<StoreEnv> {
     return { live: this.attachments.noteIsLive(noteId), existing: this.attachments.byId(attachmentId) };
   }
 
-  /**
-   * What MCP's `read_attachment` asks before it reads: whether the note is live, the text
-   * the file already has, and the note's files still waiting for either reader.
-   */
-  attachmentReadPrelude(noteId: string, filename: string, filesPerNote: number) {
-    this.ready();
-    return this.sql.tx(() => {
-      if (!this.attachments.noteIsLive(noteId)) return null;
-      return {
-        text: this.attachments.textFor(noteId, filename),
-        forText: this.attachments.needingText(filesPerNote, noteId),
-        forVision: this.attachments.needingVision(filesPerNote, noteId),
-      };
-    });
-  }
-
   // --- Push ------------------------------------------------------------------------------
 
   /**

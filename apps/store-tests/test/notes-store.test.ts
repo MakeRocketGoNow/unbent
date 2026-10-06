@@ -896,10 +896,6 @@ describe('composites', () => {
     expect(context.examples.notebooks).toBeInstanceOf(Map);
     expect(context.examples.notebooks.get(nb.id)).toEqual([]);
     expect(context.examples.tags).toEqual([{ id: expect.any(String), name: 'x', examples: [] }]);
-
-    const read = await stub.attachmentReadPrelude(a.id, 'scan.pdf', 5);
-    expect(read).toEqual({ text: '', forText: [expect.objectContaining({ id: 'a1' })], forVision: [] });
-    expect(await stub.attachmentReadPrelude('ghost', 'scan.pdf', 5)).toBeNull();
   });
 
   it('exports a page with its texts, and cuts a page that would be too large with its own cursor', async () => {

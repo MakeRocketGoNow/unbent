@@ -163,8 +163,8 @@ const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1
  *
  * `vision` is whether this instance has the model, which the store cannot see for itself
  * (`canUseLlm` reads the Worker's env). Without it, a picture and a scan with an empty
- * text layer wait for something that will never come, so they are `none` rather than an
- * invitation to call read_attachment on each in turn and be told there is no reader. An
+ * text layer wait for something that will never come, so they are `none` rather than a
+ * `pending` that invites a press on each in turn for a read nothing offers. An
  * unread PDF stays `pending` either way: the browser reads a text layer wherever the
  * server does not.
  */

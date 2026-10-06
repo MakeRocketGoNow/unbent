@@ -415,10 +415,10 @@ describe('file summaries on get_note and list_notes (MAK-172)', () => {
     const ask = async (filename: string) => answer(await text({ noteId: 'n-1', filename }));
 
     expect(await ask('read.jpg')).toEqual({ filename: 'read.jpg', indexed: true, read: 'vision', text: 'Acme Diner receipt' });
-    expect(await ask('waiting.pdf')).toMatchObject({ indexed: false, read: 'pending', note: expect.stringContaining('read_attachment') });
+    expect(await ask('waiting.pdf')).toMatchObject({ indexed: false, read: 'pending', note: expect.stringContaining('Auto-fill') });
     const blank = await ask('blank.pdf');
     expect(blank).toMatchObject({ indexed: false, read: 'none' });
-    expect(blank.note).not.toContain('read_attachment');
+    expect(blank.note).not.toContain('Auto-fill');
     expect((await text({ noteId: 'n-1', filename: 'ghost.pdf' })).isError).toBe(true);
   });
 
