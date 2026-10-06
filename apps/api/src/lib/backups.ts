@@ -24,10 +24,11 @@ import type { Env } from '../types.js';
  * the second account's copy of `stores/` is under a retention lock and refuses an
  * overwrite. That holds because a dump's directory row is written the moment its upload
  * completes, not with the rest of the run's writes at the end, so a run that dies partway
- * — the CPU limit, an evicted isolate — has recorded every dump it finished. The one
- * window left is between those two calls: a dump whose row then fails to write is dumped
- * again next hour, over its own key, and if the night's mirror copied it in between, the
- * mirror's run fails on the locked copy, loudly. A failure is recorded and waits for tomorrow, rather than
+ * — the CPU limit, an evicted isolate — has recorded every dump it finished. A dump whose
+ * row then fails to write is recorded as failed instead, by the closing batch, and waits
+ * for tomorrow's key. Only if that batch is lost too, or the run dies in the moment
+ * between the two calls, is the account dumped again next hour over its own key; if the
+ * night's mirror copied it in between, the mirror's run fails on the locked copy, loudly. A failure is recorded and waits for tomorrow, rather than
  * being retried every hour ahead of everyone else; a transient one, which the runtime
  * marks `retryable`, is left untried and comes back on the next run.
  *
@@ -49,9 +50,9 @@ import type { Env } from '../types.js';
  * records the rest and reads the status back, and the status file. An unchanged account
  * is one store call; a small changed one is that call, one `put` and its directory row;
  * an archive of 31 MB is about five slices, a multipart upload's create, four parts and
- * its completion, and the row. The row's call is held back for the whole dump. A dump
- * that would pass the budget is stopped and its upload aborted, with one call held back
- * for the abort. If the dump had the whole budget to itself it can never fit, and is
+ * its completion, and the row, whose call is held back once the store says it changed. A
+ * dump that would pass the budget is stopped and its upload aborted, with one call held
+ * back for the abort. If the dump had the whole budget to itself it can never fit, and is
  * recorded as failed, so it is in the status and is tried again tomorrow rather than in
  * every run; otherwise the run stops there, and the next one, an hour later, starts with
  * that account and the whole budget. There is no cursor across runs: a dump is whole in
@@ -188,11 +189,7 @@ export async function dumpStores(
     reached += 1;
     const whole = budget.spent === FIXED_COST;
     try {
-      // The dumped account's directory row, kept back from the first call on.
-      budget.held += 1;
-      const outcome = await dumpOne(env, bucket, row, now, budget, opts.partBytes ?? PART_BYTES).finally(() => {
-        budget.held -= 1;
-      });
+      const outcome = await dumpOne(env, bucket, row, now, budget, opts.partBytes ?? PART_BYTES);
       if (outcome.unchanged) {
         report.unchanged += 1;
         writes.push(
@@ -310,8 +307,15 @@ async function dumpOne(
     beforeSlice: () => budget.take(),
   });
   if (!dump.chunks) return { unchanged: true };
-  const bytes = await upload(bucket, dumpKey(row.user_id, now), dump.chunks, budget, partBytes);
-  return { unchanged: false, mark: dump.mark, bytes };
+  // The account's directory row, kept back for the whole upload and spent by the caller
+  // the moment it returns.
+  budget.held += 1;
+  try {
+    const bytes = await upload(bucket, dumpKey(row.user_id, now), dump.chunks, budget, partBytes);
+    return { unchanged: false, mark: dump.mark, bytes };
+  } finally {
+    budget.held -= 1;
+  }
 }
 
 /**
