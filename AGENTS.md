@@ -514,8 +514,8 @@ hold it together, and most are easy to break from code that never mentions it.
 **Every read a view makes comes from the local copy.** `queries.ts` keeps its keys and
 shapes; each query function derives its answer from the four collections (`store/derive.ts`,
 which mirrors the server's filters and sorts, test for test), and `installLibraryQueries`
-re-runs the queries when a collection changes. The instance's config, the vision
-backlog and a note's history are the reads that still go to the server, and search while
+re-runs the queries when a collection changes. The instance's config and a note's history
+are the reads that still go to the server, and search while
 there is a connection (see the search index, below); a new read of notes, notebooks, tags or
 files belongs in `derive.ts` with a case in its test, never in a request. A device whose
 browser has no file system to keep the copy in (`PersistenceUnavailableError`) falls back to

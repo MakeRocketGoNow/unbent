@@ -239,7 +239,7 @@ says otherwise; `pnpm exec wrangler secret put NAME` from `apps/api`, or the das
 | `AUTH_PASSWORD`, `AUTH_PASSKEY` | forcing a method on or off | rarely needed; the defaults are explained in the sign-in section |
 | `POSTHOG_KEY`, `POSTHOG_HOST` | error tracking | see [Errors in the browser](#errors-in-the-browser) |
 | `TYPESAFE_API_KEY` | filing a note from what it says | see [Filing a note from what it says](#filing-a-note-from-what-it-says); `DEV_TYPESAFE_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
-| `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | reading images and text-less scans, and writing titles | see [Reading images](#reading-images); `DEV_ANTHROPIC_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
+| `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | Auto-fill's language model: reading a note's pictures and text-less scans on a press, and writing its title and text fields | see [Reading images](#reading-images); `DEV_ANTHROPIC_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
 | `ANDROID_ASSET_LINKS` | an Android build of your own | see [Android app](#android-app) |
 | `APPLE_APP_SITE_ASSOCIATION` | an iOS build of your own | see [iOS app](#ios-app) |
 | `APPLE_BUNDLE_ID` | Sign in with Apple from an iOS build of your own | comma-separated bundle ids, beside `APPLE_CLIENT_ID`; see [iOS app](#ios-app) |
@@ -615,7 +615,7 @@ summary rather than failing.
 | `DEV_INSTANCE_ORIGIN` | variable, optional | where a preview's sign-in relay sends people; defaults to `https://dev.unbent.app`. Set it only if your dev instance has a different name |
 | `DEV_GOOGLE_CLIENT_ID`, `DEV_GOOGLE_CLIENT_SECRET` | secret, optional | Google on the dev instance, so the relay can sign in with it; both or neither, and the client must list `dev.unbent.app` — see [Google on the dev instance](#google-on-the-dev-instance) |
 | `DEV_TYPESAFE_API_KEY` | secret, optional | Auto-fill on the dev instance and every preview; a key of its own, so what they spend stays apart from production's — see [Filing a note from what it says](#filing-a-note-from-what-it-says) |
-| `DEV_ANTHROPIC_API_KEY` | secret, optional | Reading images on the dev instance and every preview; a key of its own, for the same reason — see [Reading images](#reading-images) |
+| `DEV_ANTHROPIC_API_KEY` | secret, optional | Auto-fill's language model on the dev instance and every preview; a key of its own, for the same reason — see [Reading images](#reading-images) |
 | `DEV_OPERATOR_EMAILS` | secret, optional | who is an operator on the dev instance and every preview, sent as their `OPERATOR_EMAILS`. Not implied by `DEV_ALLOWED_EMAILS`; unset, nobody is, and anything operator-only cannot be tried outside production. Removing it later leaves the dev instance's last list in place until `wrangler secret delete OPERATOR_EMAILS --env dev` |
 | `DEV_SWEEP_TOKEN` | secret, optional | the dev instance's `SWEEP_TOKEN`, so its deploy ends with a sweep of its note stores as production's does; its own value, not production's. Previews get none and never sweep |
 
@@ -790,17 +790,17 @@ Three are worth knowing about:
   changing one line of a long note does not mean resending it. A `find` matching more than
   once is refused with the count rather than guessed at.
 - **`get_attachment_text`** returns the text already extracted from a PDF, which is what
-  makes a scanned bill answerable, and **`read_attachment`** asks for that extraction now,
-  for one file the first tool reports unread — a picture stored before the instance could
-  read one, or a scan nothing has looked at. That one costs a request when the vision model
-  is used, and reads the one file only. See [Searching inside PDFs](#searching-inside-pdfs).
-  Before either, `get_note` — and `list_notes` or `search_notes` with
-  `attachmentSummaries` — already give each file a line of what it is: the vision model's
-  name and description for a picture or a text-less scan; for a text layer, its opening
-  and then the total, dates, order number and amounts found in it by pattern, so a
-  receipt's total at the foot of the page is in the line; or whether it is still waiting.
-  No language model writes a text layer's line: the summary is worked out from the text
-  each time it is asked for, so every file has one and there is nothing to backfill.
+  makes a scanned bill answerable, and what the vision model read off a picture or a
+  text-less scan when someone pressed Auto-fill on its note. A file nothing has read yet is
+  reported as waiting, and no tool asks for that read: the model runs only inside a press
+  (MAK-179). See [Searching inside PDFs](#searching-inside-pdfs). Before it, `get_note` —
+  and `list_notes` or `search_notes` with `attachmentSummaries` — already give each file a
+  line of what it is: the vision model's name and description for a picture or a text-less
+  scan; for a text layer, its opening and then the total, dates, order number and amounts
+  found in it by pattern, so a receipt's total at the foot of the page is in the line; or
+  whether it is still waiting. No language model writes a text layer's line: the summary is
+  worked out from the text each time it is asked for, so every file has one and there is
+  nothing to backfill.
   Filling a notebook's fields from its receipts is then a page of a hundred notes read in
   one call, rather than two calls for every note. Where the line is not enough,
   `get_attachment_text` takes `maxChars` to return only the opening of the text, the part
@@ -1018,8 +1018,8 @@ one note with `?note=`, which is how the phone asks for its own capture and noth
 
 A text layer is the only text a file had, so a photo of a receipt, a business card, a plate
 of food or a whiteboard was nothing to search and nothing for Auto-fill to read, and so was
-a scan that was never OCR'd. With an Anthropic API key the instance reads those with a
-vision model:
+a scan that was never OCR'd. With an Anthropic API key, Auto-fill reads those with a vision
+model:
 
 ```bash
 cd apps/api
@@ -1037,19 +1037,21 @@ same row search indexes and Auto-fill reads, so a photo of a card fills a Contac
 fields the way a scan fills Receipts, and "lasagna" finds the plate. `get_attachment_text`
 over MCP returns it too.
 
-**When it runs.** After an upload, in the same slot where a PDF's text layer is read, for
-pictures, and for a scan whose text layer turned out empty — whether the server's conversion
-found nothing or the browser's did. Never for a PDF that has a text layer: the free reader
-goes first, and the paid one only gets what it leaves. Pressing **Auto-fill** reads the
-note's own unread files first, a few at most, so a picture stored before the instance had a
-key is read by the press that asks about it rather than staying unreadable for good. For
-everything else already here, the Maintenance page has a second button beside **Index
-existing PDFs**: **Read N images**, with the count of what waits on it
-(`GET /api/attachments/pending-vision`, which is free to ask). It reads a few per request
-until none are left, and Stop ends it between requests. It is never part of the PDF pass or
-of the pass a tab opening starts, because each file read is a request the instance pays for,
-and a paid pass is one a person chooses by name. The bytes go to Anthropic and are not kept
-there; each file is read once, and a decline is recorded so it is not asked again.
+**When it runs: only when someone presses Auto-fill.** The press reads the note's own
+unread files first — its pictures, and a scan whose text layer turned out empty, whether
+the server's conversion found nothing or the browser's did — up to five at a press, with
+the rest reported as still waiting, and then suggests from what they say. That is the one
+place the instance calls the model to read a file, and the press is the person asking for
+it. Never for a PDF that has a text layer: the free reader goes first, and the paid one only
+gets what it leaves. The bytes go to Anthropic and are not kept there; each file is read
+once, and a decline is recorded so it is not asked again.
+
+A picture nobody presses Auto-fill for stays unsearchable, and that is the trade, made in
+MAK-178. Until then every picture was read as it arrived — from the editor, the phone, an
+import or an assistant — and a bulk pass on the Maintenance page read the backlog: on a
+real archive thousands of paid requests nobody asked for, and every one of them a photo
+leaving the instance that its owner never chose to send. Cost that grows with uploads cannot
+be covered by a flat price, and a press is consent where an upload is not.
 
 `ANTHROPIC_MODEL` picks the model. Unset means the most capable current one — a wrong digit in a
 transcribed total is copied into a field with full confidence — and `claude-sonnet-5` trades
@@ -1080,8 +1082,8 @@ usage apart from production's.
 
 **What is sent, on each press.** The note's title and body, the text already extracted from
 its PDFs (see [Searching inside PDFs](#searching-inside-pdfs) — a scan that has not been read
-yet is reported as such rather than guessed at, and a photograph has text only where the
-instance [reads images](#reading-images)), and
+yet is reported as such rather than guessed at, and a photograph's text is what the press
+itself reads first, where the instance [reads images](#reading-images)), and
 the names of your notebooks, tags and fields, with a few recent titles from each notebook and
 tag as examples of what belongs there. Nothing else in the archive. Nothing is sent until the
 button is pressed.
