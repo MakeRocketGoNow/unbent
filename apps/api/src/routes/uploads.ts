@@ -12,21 +12,6 @@ import type { AppEnv } from '../types.js';
 const ASK_AGAIN = 'Ask for a new one with prepare_attachment_upload.';
 
 /**
- * Where a file goes that an assistant holds on its own machine: the other half of the MCP
- * tool prepare_attachment_upload, which mints the link this route is reached by.
- *
- * Authorized by the token in the path and nothing else — no cookie, no bearer token. That
- * is the point of it: the request comes from curl in an agent's shell, or from a page in a
- * browser, which has the file but should never hold the OAuth token its client signed in with. The token names one note
- * of one user's and works once; see lib/upload-grants.ts and migration 0029.
- *
- * The link stores and links the file itself, rather than waiting for a third step that
- * confirms it. Object stores that hand out presigned URLs need that step because nothing of
- * theirs runs when the bytes land; here the Worker is the thing receiving them, so the
- * answer to the PUT is already the answer add_attachment gives, and there is no half-done
- * upload for anyone to forget to finish.
- */
-/**
  * Any origin may send the PUT, so an assistant working inside a browser — on the page a
  * picture came from, say, after `add_attachment` was refused by the host — can hand over
  * bytes it already holds. Without this the preflight fails and the browser never sends
@@ -51,6 +36,22 @@ const anyOrigin = cors({
   credentials: false,
 });
 
+/**
+ * Where a file goes that an assistant holds on its own machine: the other half of the MCP
+ * tool prepare_attachment_upload, which mints the link this route is reached by.
+ *
+ * Authorized by the token in the path and nothing else — no cookie, no bearer token. That
+ * is the point of it: the request comes from curl in an agent's shell, or from a page in a
+ * browser, which has the file but should never hold the OAuth token its client signed in
+ * with. The token names one note of one user's and works once; see lib/upload-grants.ts
+ * and migration 0029.
+ *
+ * The link stores and links the file itself, rather than waiting for a third step that
+ * confirms it. Object stores that hand out presigned URLs need that step because nothing of
+ * theirs runs when the bytes land; here the Worker is the thing receiving them, so the
+ * answer to the PUT is already the answer add_attachment gives, and there is no half-done
+ * upload for anyone to forget to finish.
+ */
 export const uploads = new Hono<AppEnv>().use('/uploads/*', anyOrigin).put('/uploads/:token', async (c) => {
   /*
      The request's own faults first, before the link is claimed: a curl invocation that
