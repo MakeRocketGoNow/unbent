@@ -452,8 +452,13 @@ export async function fetchSource(
  * 401 and 403 are a host deciding not to serve this server, most often because it can
  * tell a server from a browser however the request is dressed, and asking again from here
  * will not change its mind. So the message leads with what will: the assistant fetching
- * the bytes where the host does serve them — a browser tab on the page, or its own tools
- * — and sending them with prepare_attachment_upload. An expired signed link answers 403
+ * the bytes where the host does serve them — a browser tab with the file's own URL open,
+ * or its own tools — and sending them with prepare_attachment_upload. The file's own URL
+ * comes before the page it was found on because a shop's page is full of other people's
+ * scripts, and session replay records requests: the upload URL is a live credential
+ * until it is used, and an image opened on its own runs no script but the assistant's.
+ * The page is the fallback, for a host whose hotlink check refuses the file opened alone.
+ * An expired signed link answers 403
  * too, and gets a clause rather than the lead, since it is the rarer case for a picture
  * found on a page.
  *
@@ -474,11 +479,11 @@ function refusal(host: string, status: number, statusText: string): string {
       ? ''
       : ' If this was a signed link, it may instead have expired: read the source again for a fresh one.';
   return (
-    `${answered} ${why} Fetch the file yourself — in a browser tab on the page it came ` +
-    'from, or with your own tools — then call prepare_attachment_upload and PUT the bytes ' +
-    "to the URL it returns; that URL accepts a PUT from a page on any site, and if the page's " +
-    "Content-Security-Policy blocks it, open the file's own URL in the tab and send it from " +
-    `there.${expired}`
+    `${answered} ${why} Fetch the file yourself — in a browser tab with the file's own URL ` +
+    'open, or with your own tools — then call prepare_attachment_upload and PUT the bytes ' +
+    'to the URL it returns, which accepts a PUT from any origin. Opened on its own the file ' +
+    "runs no page's scripts, so nothing else sees that URL; use the page the file came " +
+    `from only if the file will not open alone.${expired}`
   );
 }
 

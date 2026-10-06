@@ -12,8 +12,8 @@ import type { AppEnv } from '../types.js';
 const ASK_AGAIN = 'Ask for a new one with prepare_attachment_upload.';
 
 /**
- * Any origin may send the PUT, so an assistant working inside a browser — on the page a
- * picture came from, say, after `add_attachment` was refused by the host — can hand over
+ * Any origin may send the PUT, so an assistant working inside a browser — with a picture
+ * open in a tab, say, after `add_attachment` was refused by its host — can hand over
  * bytes it already holds. Without this the preflight fails and the browser never sends
  * the request at all.
  *

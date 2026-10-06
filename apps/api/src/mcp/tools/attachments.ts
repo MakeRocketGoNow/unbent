@@ -244,9 +244,9 @@ export function registerAttachmentTools(
         'it belongs somewhere in particular. A PDF becomes searchable once its text is ' +
         'extracted, which happens in the background. For a file with no URL — one on your ' +
         'own disk or in your sandbox — use prepare_attachment_upload instead. If the host ' +
-        'refuses this server (401, 403 or 429), fetch the file yourself, in a browser tab on ' +
-        'its page or with your own tools, and send the bytes with prepare_attachment_upload, ' +
-        'whose URL accepts a PUT from a page on any site. The answer ' +
+        'refuses this server (401, 403 or 429), fetch the file yourself — in a browser tab ' +
+        "with the file's own URL open, or with your own tools — and send the bytes with " +
+        'prepare_attachment_upload, whose URL accepts a PUT from any origin. The answer ' +
         'also carries url, the note in Unbent: give it to the person as a link.',
       inputSchema: z.object({
         noteId: z.string().uuid(),
@@ -336,11 +336,13 @@ export function registerAttachmentTools(
         'the sandbox where you run commands, such as a screenshot the person gave you, or ' +
         "bytes you fetched in a browser tab when add_attachment was refused by the file's " +
         'host. Returns a one-time upload URL. Send the raw bytes to it with an HTTP PUT, for ' +
-        'example curl -T "photo.png" "<uploadUrl>", or from a script in a page on any ' +
-        "site, fetch(uploadUrl, { method: 'PUT', body: blob }) — the URL accepts requests " +
-        'from any origin and needs no cookies or other credentials. If the page blocks ' +
-        "the request (its Content-Security-Policy), open the file's own URL in the tab and " +
-        'run the script there. The reply to that request is the same ' +
+        'example curl -T "photo.png" "<uploadUrl>", or from a script in a browser, ' +
+        "fetch(uploadUrl, { method: 'PUT', body: blob }) — the URL accepts requests from " +
+        'any origin and needs no cookies or other credentials. In a browser, run it with ' +
+        "the file's own URL open in the tab, where no page's scripts can see the upload URL " +
+        '(trackers on a shop page can record requests, and claim the URL first); run it on ' +
+        'the page the file came from only if the file will not open on its own. The reply ' +
+        'to that request is the same ' +
         'JSON add_attachment returns, with the note\'s url to give the person, the filename the file was stored under ' +
         '(suffixed if the note already had one by that name) and the Markdown that shows ' +
         `it. The URL works once, for this note, for ${UPLOAD_GRANT_TTL_MS / 60_000} ` +
