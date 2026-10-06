@@ -276,6 +276,38 @@ describe('the daily dumps', () => {
     expect(await directory(failing.id)).toMatchObject({ dump_error: 'too big', dump_tried_at: NOON - DAY - 12 * 3_600_000 });
   });
 
+  it('put a store that keeps asking to be retried behind an account that needs the whole budget', async () => {
+    const flaky = await account('a-flaky');
+    const big = await account('b-big');
+    await bigStore(big.stub);
+    // The first account's store refuses every dump with the runtime's transient mark.
+    const refusing = new Proxy(env.USER_STORE, {
+      get(target, key) {
+        if (key === 'get') {
+          return (storeId: DurableObjectId) => {
+            const real = target.get(storeId);
+            if (!storeId.equals(target.idFromName(flaky.id))) return real;
+            return { dumpBegin: () => Promise.reject(Object.assign(new Error('overloaded'), { retryable: true })) };
+          };
+        }
+        const value = Reflect.get(target, key) as unknown;
+        return typeof value === 'function' ? (value as (...a: unknown[]) => unknown).bind(target) : value;
+      },
+    });
+    const over = { ...backups(), USER_STORE: refusing };
+    // Fourteen is exactly what the big dump needs with the whole budget: the thirteen calls
+    // it makes (see the multipart test above), and one kept back for an abort until its
+    // upload completes. The first run spends one call on the flaky store first.
+    const first = await dumpStores(over, { now: NOON, budget: 14, partBytes: 5 * 1024 * 1024 });
+    expect(first).toMatchObject({ dumped: 0, failed: [], deferred: [flaky.id, big.id] });
+    expect(await directory(flaky.id)).toMatchObject({ dump_tried_at: null, dump_error: 'overloaded' });
+    // The next run starts with the big one, which fits, and the flaky one waits behind it.
+    const second = await dumpStores(over, { now: NOON + 3_600_000, budget: 14, partBytes: 5 * 1024 * 1024 });
+    expect(second).toMatchObject({ dumped: 1, failed: [] });
+    expect(await env.BLOBS.head(dumpKey(big.id, NOON))).not.toBeNull();
+    expect((await status()).failing).toEqual([expect.objectContaining({ userId: flaky.id, error: 'overloaded' })]);
+  });
+
   it('stop at an account the budget ran out on, and start the next run with it', async () => {
     // Ids sort the small one first, so it spends part of the budget before the big one.
     const small = await account('a-small');

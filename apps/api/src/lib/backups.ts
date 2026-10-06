@@ -31,7 +31,8 @@ import type { Env } from '../types.js';
  * between the two calls, is the account dumped again next hour over its own key; if the
  * night's mirror copied it in between, the mirror's run fails on the locked copy, loudly. A failure is recorded and waits for tomorrow, rather than
  * being retried every hour ahead of everyone else; a transient one, which the runtime
- * marks `retryable`, is left untried and comes back on the next run.
+ * marks `retryable`, is left untried and comes back on the next run, after the accounts
+ * that did not fail.
  *
  * Only accounts that changed, and every account at least weekly. The store answers its
  * feed's mark first (`dumpBegin`), and when that is the mark of the newest dump the
@@ -223,7 +224,14 @@ export async function dumpStores(
         break;
       }
       if (!uploaded && isDeferral(err)) {
+        // Retried on the next run, but after every account that did not fail: with no
+        // mark of its own, a store that kept failing this way would stay first in line
+        // and spend a call ahead of everyone, and an account behind it that needs the
+        // whole budget would never have it. So the error is recorded, and the attempt is
+        // not; the status shows it until a run gets through.
         report.deferred.push(row.user_id);
+        const message = err instanceof Error ? err.message : String(err);
+        writes.push(env.DB.prepare(`UPDATE account_directory SET dump_error = ?2 WHERE user_id = ?1`).bind(row.user_id, message.slice(0, ERROR_LENGTH)));
         continue;
       }
       const message =
