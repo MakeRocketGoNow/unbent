@@ -534,6 +534,11 @@ describe('the candidates the code finds', () => {
     // A sign on either side of the mark is a refund, not a charge.
     expect(numberCandidates('Refund -$5.00, credit $-2.50, owed -7').map((o) => o.value)).toEqual([-5, -2.5, -7]);
     expect(numberCandidates('and --7').map((o) => o.value)).toEqual([]);
+    expect(numberCandidates('Fees $5, $3.50, and $12.').map((o) => o.description)).toEqual([
+      'As written: $5',
+      'As written: $3.50',
+      'As written: $12',
+    ]);
   });
 
   it('reads addresses, links and phone numbers', () => {
