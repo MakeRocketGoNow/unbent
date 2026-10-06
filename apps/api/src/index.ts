@@ -5,6 +5,7 @@ import { withAppUrl } from './lib/app-url.js';
 import { MANIFEST_PATH, serveManifest } from './lib/manifest.js';
 import { StoreUnavailable } from './lib/store-client.js';
 import { dumpStores } from './lib/backups.js';
+import { cronJob } from './lib/cron.js';
 import { sweepStores } from './lib/sweep.js';
 import { sessionMiddleware } from './lib/session.js';
 import { health } from './routes/health.js';
@@ -111,12 +112,11 @@ export default {
    * into the backups bucket, which do nothing where no bucket is bound (lib/backups.ts).
    * One trigger rather than two so that both run on every instance from one line, and
    * each is its own invocation with its own subrequests, so neither can spend the
-   * other's. Told apart by the minute the run was scheduled for, not the one it started
-   * in, which a late start could push past the half hour. `waitUntil` so neither is cut
-   * off at the handler's return, and nothing here needs `APP_URL` settled.
+   * other's. Told apart by the minute the run was scheduled for (`cronJob`). `waitUntil`
+   * so neither is cut off at the handler's return, and nothing here needs `APP_URL`
+   * settled.
    */
   scheduled(controller: ScheduledController, env: RawEnv, ctx: ExecutionContext): void {
-    const minute = new Date(controller.scheduledTime).getUTCMinutes();
-    ctx.waitUntil(minute < 30 ? sweepStores(env) : dumpStores(env));
+    ctx.waitUntil(cronJob(controller.scheduledTime) === 'sweep' ? sweepStores(env) : dumpStores(env));
   },
 };
