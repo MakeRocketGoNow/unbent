@@ -768,7 +768,9 @@ Things about working on the store that are easy to get wrong:
   way.
 - **Subrequests are the budget inside one invocation.** Fifty on Free, and every D1 query
   and every store call counts. The sweep walks twenty accounts a run at two store calls
-  each; the operator's `dump` route makes forty store calls at most; anything new that
+  each; a dump is one store call per eight-megabyte slice (`dumpSlice`), so one for a
+  small account and about five for an archive; the daily dumps at :47 count every call
+  and stop an account's dump rather than pass fifty (`lib/backups.ts`); anything new that
   loops over accounts or pages D1 needs the same shape. CPU is a budget too — ten
   milliseconds an invocation on Free, thirty seconds inside an object — so work over a big
   result, like turning a dump page into SQL text, is done in the object and forwarded.
@@ -779,7 +781,11 @@ Things about working on the store that are easy to get wrong:
 - **Nothing periodic may scan a table.** The sweep reads `usage()` — the one `note_counts`
   row and the database size — never `stats()`, which counts every table and is the
   operator's. An hourly `stats()` on an archive-sized account would read every row of it
-  twenty-four times a day. The rows-read test bounds `usage` at a handful.
+  twenty-four times a day. The rows-read test bounds `usage` at a handful. The daily
+  dumps are the one periodic read of whole stores, by design, and only of accounts whose
+  feed moved since their last dump or whose dump is a week old: an unchanged account costs
+  `dumpBegin` two `_meta` rows, and a dump reads each row once, which the rows-read test
+  pins.
 - **A new D1 index changes other statements' plans, not only the one it was added for.**
   The planner has no statistics, so an index is taken by every statement on its table
   that can use its first column: at the cutover, a plain `user_id` index added for the
