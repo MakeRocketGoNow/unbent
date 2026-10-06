@@ -47,12 +47,20 @@ const DATES_NAMED = 2;
 const AMOUNTS_NAMED = 3;
 
 /**
- * A line that labels a total. "Subtotal" never matches `\btotal`, and the second pattern
- * turns away the totals that are not the amount paid: "Sub total", "Total tax", "Total
- * savings", "Total items 5".
+ * A line that labels a total. "Subtotal" never matches `\btotal`, and `NOT_TOTAL` turns
+ * away the totals that are not the amount paid: "Sub total", "Total tax", "Total savings",
+ * "Total items 5", and a statement's period summary — "Total fees charged this period",
+ * "Total interest charged", "Minimum amount due", "Past due".
+ *
+ * `PAID` is the labels that say outright the figure is what was owed or paid, and one of
+ * them beats a bare "Total" wherever the two fall: a card statement prints its "New
+ * balance" near the top and its period's totals below, and the last bare total there is
+ * a fee line's $0.00.
  */
-const TOTAL = /\b(?:grand\s+total|total(?:\s+(?:due|amount|paid|charged|price|cost))?|amount\s+(?:due|paid)|balance\s+due)\b/i;
-const NOT_TOTAL = /\b(?:sub\s*-?\s*total|savings?|saved|discounts?|tax(?:es)?|items?|qty|quantity|tip|points)\b/i;
+const TOTAL = /\b(?:grand\s+total|total(?:\s+(?:due|amount|paid|charged|price|cost))?|amount\s+(?:due|paid)|balance\s+due|new\s+balance)\b/i;
+const PAID = /\b(?:grand\s+total|total\s+(?:amount\s+)?(?:due|paid|charged)|amount\s+(?:due|paid)|balance\s+due|new\s+balance)\b/i;
+const NOT_TOTAL =
+  /\b(?:sub\s*-?\s*total|savings?|saved|discounts?|tax(?:es)?|items?|qty|quantity|tip|points|fees?|interest|minimum|min\.|past|payments?|credits?|purchases?|advances?|transactions?)(?:\b|(?<=\.))/i;
 
 /**
  * An order or invoice number: after a marker that says it is one — `#`, "no.", "number",
@@ -107,24 +115,27 @@ const lastAmount = (line: string): FoundNumber | undefined =>
 
 /**
  * The amount a total line labels. The last such line in the text wins, because a receipt
- * prints its subtotal, its tax and then what was paid. A label with its figure on the
- * line below — how some conversions lay out a two-column table — takes that figure when
- * the line holds nothing else.
+ * prints its subtotal, its tax and then what was paid — the last `PAID` line when there
+ * is one, the last bare total otherwise. A label with its figure on the line below — how
+ * some conversions lay out a two-column table — takes that figure when the line holds
+ * nothing else.
  */
 function totalIn(text: string): FoundNumber | undefined {
   const lines = text.split('\n');
+  let paid: FoundNumber | undefined;
   let total: FoundNumber | undefined;
   lines.forEach((line, i) => {
     if (!TOTAL.test(line) || NOT_TOTAL.test(line)) return;
-    const here = lastAmount(line);
-    if (here) {
-      total = here;
-      return;
+    let found = lastAmount(line);
+    if (!found) {
+      const next = lines.slice(i + 1).find((l) => l.trim() !== '');
+      if (next && next.replace(/[\s|*_]/g, '').length <= 20) found = lastAmount(next);
     }
-    const next = lines.slice(i + 1).find((l) => l.trim() !== '');
-    if (next && next.replace(/[\s|*_]/g, '').length <= 20) total = lastAmount(next) ?? total;
+    if (!found) return;
+    if (PAID.test(line)) paid = found;
+    else total = found;
   });
-  return total;
+  return paid ?? total;
 }
 
 /**

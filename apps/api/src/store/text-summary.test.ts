@@ -29,6 +29,21 @@ describe('a text layer’s summary', () => {
     expect(summary).not.toContain('000000000001 ·');
   });
 
+  it('names what a statement says is owed, not a fee line or the minimum payment', () => {
+    const statement = [
+      'Acme Card Statement',
+      'New Balance $1,234.56',
+      'Minimum Payment Due $35.00',
+      'Minimum Amount Due $35.00',
+      'Payment Due Date 04/02/2026',
+      'Total fees charged this period $0.00',
+      'Total interest charged this period $0.00',
+    ].join('\n');
+    expect(textSummary(statement)).toMatch(/ · Total: \$1,234\.56 · Date: 2026-04-02$/);
+    // A labelled "due" beats a bare "Total" printed after it.
+    expect(textSummary('Acme\nTotal amount due $90.00\nTotal $12.00')).toMatch(/ · Total: \$90\.00$/);
+  });
+
   it('drops a printed page’s address header and keeps its words', () => {
     const page = '2/9/2014 Transaction Receipt [https://orders.example.com/pay;jsessionid=AB12](<https://orders.example.com/pay;jsessionid=AB12>)\n\nAcme Tickets\nOrder Number: AT-55120\nAmount paid: $45.00';
     expect(textSummary(page)).toBe(
