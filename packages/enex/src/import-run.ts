@@ -1,3 +1,4 @@
+import type { ReadBy } from '@unbent/shared';
 import type { FieldValue, NotebookDefinition } from '@unbent/shared';
 import { isExtractable } from './ocr-text.js';
 import { extractPdfText } from './pdf-text.js';
@@ -196,7 +197,7 @@ export interface ImportClient {
     noteId: string,
     filename: string,
     text: string,
-    readBy?: 'vision' | 'assistant',
+    readBy?: ReadBy,
   ) => Promise<void>;
 
   /**
@@ -448,7 +449,7 @@ export interface ImportFile {
    * The text an Unbent archive carried beside the file, and who read it. Only that
    * importer sets it; see `textSidecarPath` in `@unbent/shared`.
    */
-  text?: { text: string; readBy: 'vision' | 'assistant' | null };
+  text?: { text: string; readBy: ReadBy | null };
 }
 
 /**
