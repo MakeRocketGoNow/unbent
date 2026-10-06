@@ -181,7 +181,7 @@ export function Maintenance() {
         <p className="muted small">
           Permanently deletes every note in the Trash, and their attachments. Deleting a
           note normally only moves it here, so this is the step that lets the storage go:
-          the notes at once, their files over the following 35 days.
+          the notes at once, their files 35 days later.
         </p>
 
         {/*
