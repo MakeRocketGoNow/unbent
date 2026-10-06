@@ -107,15 +107,21 @@ function input(over: Partial<AutofillInput> = {}): AutofillInput {
 }
 
 describe('what the model is asked', () => {
-  it('refuses an empty note, and says so differently while its scan is still being read', async () => {
+  it('refuses an empty note, and says so differently when its scan could not be read', async () => {
     const empty = autofill(fake().jev, input({ attachments: [] }));
     await expect(empty).rejects.toBeInstanceOf(NothingToRead);
     await expect(empty).rejects.toThrow(/nothing to read/i);
 
     const pending = autofill(fake().jev, input({ attachments: [{ filename: 'scan.pdf', text: null }] }));
-    await expect(pending).rejects.toThrow(/scan\.pdf is still being read/);
+    await expect(pending).rejects.toThrow(/couldn't read scan\.pdf/i);
 
-    // A photograph read and found empty is not "still being read".
+    const several = autofill(
+      fake().jev,
+      input({ attachments: [{ filename: 'a.pdf', text: null }, { filename: 'b.pdf', text: null }] }),
+    );
+    await expect(several).rejects.toThrow(/couldn't read 2 files/i);
+
+    // A photograph read and found empty is not an unread file.
     const photo = autofill(fake().jev, input({ attachments: [{ filename: 'photo.jpg', text: '' }] }));
     await expect(photo).rejects.toThrow(/nothing to read:/i);
   });
@@ -166,7 +172,7 @@ describe('what the model is asked', () => {
     expect(asked.some((text) => text.includes('home'))).toBe(false);
   });
 
-  it('reports which files it read and which are still being read', async () => {
+  it('reports which files it read and which are still unread', async () => {
     const { jev } = fake();
     const out = await autofill(
       jev,

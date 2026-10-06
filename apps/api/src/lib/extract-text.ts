@@ -60,13 +60,23 @@ export function stripConversionPreamble(markdown: string): string {
 /**
  * Converts and cleans. Null when the service could not read the file at all, which is
  * different from a file it read and found nothing in: that is `usable: false`, and gets
- * the empty row that stops a later pass from trying it again.
+ * the empty row that stops a later pass from trying it again. A throw is a fault in the
+ * service rather than an answer about the file, and is the caller's to handle.
+ *
+ * Takes the bytes and their type rather than a blob, because the blob must be typed: the
+ * conversion refuses one with no type outright — it throws "expected string to have >=1
+ * characters" rather than answering an error — and an untyped one is what
+ * `new Blob([bytes])` makes. That went unnoticed long enough for every PDF read on the
+ * server to stay pending, and for Auto-fill to title notes from their files' names
+ * because it had nothing else to read. Built here, nobody can hand it one untyped again.
  */
 export async function extractOnServer(
   ai: MarkdownConverter,
   name: string,
-  blob: Blob,
+  bytes: ArrayBuffer,
+  contentType: string,
 ): Promise<CleanedText | null> {
+  const blob = new Blob([bytes], { type: contentType });
   const result = await ai.toMarkdown().transform({ name, blob });
   if (result.format === 'error' || typeof result.data !== 'string') return null;
   return cleanExtractedText(stripConversionPreamble(result.data));

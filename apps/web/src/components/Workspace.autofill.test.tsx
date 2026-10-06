@@ -203,13 +203,35 @@ describe('the Auto-fill control', () => {
     expect(document.querySelector('.confirm')).toBeNull();
   });
 
+  it('names the file it could not read beside what it filled', async () => {
+    vi.mocked(api.autofillNote).mockResolvedValue({
+      ...suggestion,
+      read: { attachments: ['scan.pdf'], pending: ['back.pdf'] },
+    });
+    mount(fresh);
+    fireEvent.click(await screen.findByRole('button', { name: 'Auto-fill' }));
+    expect(
+      await screen.findByText("Filled in the title, the notebook, a tag and Amount — couldn't read back.pdf"),
+    ).toBeTruthy();
+  });
+
+  it('counts the files it could not read when there are several', async () => {
+    vi.mocked(api.autofillNote).mockResolvedValue({
+      ...suggestion,
+      read: { attachments: [], pending: ['a.pdf', 'b.pdf'] },
+    });
+    mount(fresh);
+    fireEvent.click(await screen.findByRole('button', { name: 'Auto-fill' }));
+    expect(await screen.findByText(/— couldn't read 2 files$/)).toBeTruthy();
+  });
+
   it('shows the server’s sentence when there is nothing to read', async () => {
     vi.mocked(api.autofillNote).mockRejectedValue(
-      new api.ApiError(422, '422: Nothing to read yet: scan.pdf is still being read. Try again in a moment.'),
+      new api.ApiError(422, "422: Couldn't read scan.pdf, so there's nothing to fill in from. Try again later."),
     );
     mount(fresh);
     fireEvent.click(await screen.findByRole('button', { name: 'Auto-fill' }));
-    const message = await screen.findByText(/still being read/);
+    const message = await screen.findByText(/couldn't read scan\.pdf/i);
     expect(message.textContent).not.toMatch(/^422/);
     // An error rides in the snackbar's error tone, and stays until dismissed rather than
     // fading — so there is a close button and no auto-clear.
