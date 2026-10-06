@@ -1807,6 +1807,24 @@ is tried again each day after every other account, which spends that run's budge
 Workers Free a large account may not finish a scheduled dump well before that, since a
 run's CPU time is limited too. A self-hoster arranges their own backups.
 
+**Nightly mirror.** unbent.app keeps a copy of all of it in a second Cloudflare account,
+pulled from outside by `.github/workflows/mirror.yml` each night at 05:23 UTC with
+`rclone`: the live files bucket to `blobs/`, the dumps bucket's `stores/` to `stores/`, and
+a `wrangler d1 export` to `d1/<date>.sql`. Those three prefixes are under a thirty-day
+retention lock in that account, so nothing can overwrite or delete a copy younger than
+that, and lifecycle rules delete dumps and D1 exports after ninety days. Files are pruned
+by the workflow instead: a key in the mirror and not in live is gone, the date it was
+first seen gone is written to `state/prune.json`, and its copy is deleted once it has been
+gone fifty-five days (`scripts/mirror/prune-plan.mjs`, a pure function with a test; a
+live listing that comes back empty fails the run rather than planning against it). The
+run then reads the Worker's `status/dumps.json` and fails if a dump failed, an account has
+no dump found current in forty-eight hours, or the status is older than that, so the
+Worker's half of the backup fails loudly too; and it writes `status/mirror.json` back to
+the dumps bucket — when it ran, what it copied and pruned, the export's size — for the
+operator's page. It runs only where the repository has the nine secrets it names, read-only
+on the live bucket, and skips itself otherwise; a fork names its own buckets at the top of
+the file. The first copy, and any rerun, is started by hand from the Actions tab.
+
 **The change feed.** Every write records what it touched, numbered by the store's own
 counter, and `GET /api/changes?since=N` answers "what changed since N?" with the changed
 notes whole — body, tags, values, files — the changed notebooks and tags, and a tombstone
