@@ -81,16 +81,19 @@ const LIST_FILES_PER_NOTE = 10;
  * model left to guess would call get_attachment_text on every one to find out which.
  */
 const ATTACHMENT_SUMMARY =
-  'read says how the file\'s text came to be: "vision" when a vision model read it, and ' +
-  'summary is its name and a line on what it shows (amounts, dates, who it is from); ' +
+  'read says how the file\'s text came to be: "vision" when the instance\'s vision model read ' +
+  'it, on an Auto-fill press, and summary is its name and a line on what it shows (amounts, ' +
+  'dates, who it is from); "assistant" when an assistant recorded what it read with ' +
+  'set_attachment_text, and summary is the opening of that; ' +
   '"text" from a PDF\'s text layer, and summary is the opening of that text, then the ' +
   'total, dates and order or invoice number found in it ("Total: $18.67 · Date: ' +
   '2026-03-02 · Order #112-0042"), or up to three amounts in place of a total when none is ' +
   'labelled ("Amounts: $1,200.00, $14,350.10"), each left out when the text has none; "pending" ' +
-  'when it has not been read yet but will be (read_attachment asks for that read now, on ' +
-  'a note not in the trash); "none" when it was read and nothing was found, or nothing on ' +
-  'this instance reads that kind of file. summary is null unless read is "vision" or ' +
-  '"text", and is a few hundred characters at most: get_attachment_text has the whole text.';
+  'when it has not been read yet — for a picture, get_attachment hands you the file and ' +
+  'set_attachment_text records what you read; otherwise pressing Auto-fill on the note in ' +
+  'the app reads it; "none" when it was read and nothing was found, or nothing on ' +
+  'this instance reads that kind of file. summary is null unless read is "vision", "text" ' +
+  'or "assistant", and is a few hundred characters at most: get_attachment_text has the whole text.';
 
 /** The flag `list_notes` and `search_notes` share, so the two cannot describe it differently. */
 const attachmentSummariesFlag = (whose: string, also = '') =>
@@ -417,15 +420,16 @@ export function registerReadTools(
     {
       title: 'Read an attachment as text',
       description:
-        "The text extracted from an attachment: a PDF's text layer, or, where the instance " +
-        'has a vision model, what it read off a picture or a text-less scan — a name, what ' +
-        'the file is and shows, then any text on it. This is what makes a scanned document ' +
-        'or a photo readable; the file itself is bytes a model cannot use. Reading happens ' +
-        'in the background after upload, so a recently added file may have no text yet, ' +
-        'which is reported as such rather than as an empty document. read says which, as ' +
-        'it does on get_note: "pending" for a file still to be read, which read_attachment ' +
-        'asks for now, and "none" for one that was read and had nothing, or that nothing ' +
-        'on this instance reads. A receipt or a statement usually says what it is in its ' +
+        "The text held for an attachment: a PDF's text layer; what the instance's vision " +
+        'model read off a picture or a text-less scan when someone pressed Auto-fill on its ' +
+        'note — a name, what the file is and shows, then any text on it; or what an ' +
+        'assistant recorded with set_attachment_text. This is what makes a scanned document ' +
+        "or a photo readable. A PDF's layer is read after upload and a picture only on a " +
+        'press, so a file may have no text yet, which is reported as such rather than as an ' +
+        'empty document. read says which, as it does on get_note: "pending" for a file still ' +
+        'to be read — a picture you can read yourself with get_attachment and record with ' +
+        'set_attachment_text — and "none" for one that was read and had nothing, or that ' +
+        'nothing on this instance reads. A receipt or a statement usually says what it is in its ' +
         'first page and spends the rest on terms: pass maxChars to read only the opening, ' +
         'and offset to read on from where a cut answer stopped.',
       inputSchema: z.object({
@@ -462,7 +466,7 @@ export function registerReadTools(
           read,
           note:
             read === 'pending'
-              ? 'This attachment has not been read yet. read_attachment asks for that now, on a note that is not in the trash.'
+              ? 'This attachment has not been read yet. If it is a picture, get_attachment returns it for you to read and set_attachment_text records what you read; otherwise pressing Auto-fill on the note in the app reads it.'
               : 'This attachment has no text: it was read and nothing was found, or nothing on this instance reads this kind of file.',
         });
       }

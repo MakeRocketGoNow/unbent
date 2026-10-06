@@ -679,9 +679,10 @@ export class UserStore extends DurableObject<StoreEnv> {
   copyText(fromAttachmentId: string, to: { attachmentId: string; noteId: string; filename: string }) {
     return this.writing(() => this.attachments.copyText(fromAttachmentId, to));
   }
+  writeAssistantText(noteId: string, filename: string, text: string) {
+    return this.writing(() => this.attachments.writeAssistantText(noteId, filename, text));
+  }
   needingText(limit: number, noteId?: string) { this.ready(); return this.attachments.needingText(limit, noteId); }
-  needingVision(limit: number, noteId?: string) { this.ready(); return this.attachments.needingVision(limit, noteId); }
-  visionPending(noteId?: string) { this.ready(); return this.attachments.visionPending(noteId); }
   pendingTextCount(noteId?: string) { this.ready(); return this.attachments.pendingTextCount(noteId); }
   textFor(noteId: string, filename: string) { this.ready(); return this.attachments.textFor(noteId, filename); }
   textWithRead(noteId: string, filename: string, vision?: boolean) { this.ready(); return this.attachments.textWithRead(noteId, filename, vision); }
@@ -892,22 +893,6 @@ export class UserStore extends DurableObject<StoreEnv> {
   uploadPrelude(noteId: string, attachmentId: string) {
     this.ready();
     return { live: this.attachments.noteIsLive(noteId), existing: this.attachments.byId(attachmentId) };
-  }
-
-  /**
-   * What MCP's `read_attachment` asks before it reads: whether the note is live, the text
-   * the file already has, and the note's files still waiting for either reader.
-   */
-  attachmentReadPrelude(noteId: string, filename: string, filesPerNote: number) {
-    this.ready();
-    return this.sql.tx(() => {
-      if (!this.attachments.noteIsLive(noteId)) return null;
-      return {
-        text: this.attachments.textFor(noteId, filename),
-        forText: this.attachments.needingText(filesPerNote, noteId),
-        forVision: this.attachments.needingVision(filesPerNote, noteId),
-      };
-    });
   }
 
   // --- Push ------------------------------------------------------------------------------

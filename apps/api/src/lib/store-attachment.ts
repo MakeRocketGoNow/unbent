@@ -6,7 +6,7 @@ import {
 } from '@unbent/shared';
 import type { AttachmentsRepo } from './attachments-repo.js';
 import type { NotesRepo } from './notes-repo.js';
-import { readAttachment, readersFrom, serverCanRead } from './read-attachment.js';
+import { readAttachment, serverCanRead, uploadReaders } from './read-attachment.js';
 import type { Env } from '../types.js';
 
 /** One attachment after it is stored: what it is called now and how to link it. */
@@ -73,7 +73,7 @@ export interface StoreAttachmentInput {
  * received, and that is what the row records.
  */
 export async function storeAttachment(
-  env: Pick<Env, 'BLOBS' | 'AI' | 'ANTHROPIC_API_KEY' | 'ANTHROPIC_API_URL' | 'ANTHROPIC_MODEL'>,
+  env: Pick<Env, 'BLOBS' | 'AI'>,
   ctx: { waitUntil(promise: Promise<unknown>): void },
   repos: { attachments: AttachmentsRepo; notes: NotesRepo },
   input: StoreAttachmentInput,
@@ -114,21 +114,27 @@ export async function storeAttachment(
   const path = `files/${filename}`;
 
   /**
-   * Read the file here, where the deployment can.
+   * Read the file's text layer here, where the deployment can.
    *
-   * Every client then gets a searchable file without doing anything: the editor, the
+   * Every client then gets a searchable PDF without doing anything: the editor, the
    * phone, the import, an assistant, and whatever comes next. After the response rather
    * than before it, because the caller should return the moment the bytes are safe and a
    * reader is seconds of waiting on another service; `waitUntil` gives it thirty. A
-   * failure of any kind leaves the row pending, and the passes over pending files remain
-   * the fallback — only a reader that looked and found nothing writes the empty row. The
-   * result says which way it went, so a client that would extract on its own knows not
-   * to. Which readers run, and in what order, is lib/read-attachment.ts's business.
+   * failure of any kind leaves the row pending, and the browser's pass over pending files
+   * remains the fallback — only a reader that looked and found nothing writes the empty
+   * row. The result says which way it went, so a client that would extract on its own
+   * knows not to.
+   *
+   * Only the layer, never the model: `uploadReaders` is the free reader alone. A picture,
+   * or a scan the layer has nothing for, waits for an Auto-fill press on its note, since
+   * MAK-179 made that the one place the model runs. Until then every picture was read as
+   * it arrived, a paid request nobody asked for and an import's worth of them at once.
+   * Which readers run, and in what order, is lib/read-attachment.ts's business.
    */
   const indexing =
     !input.textSupplied && serverCanRead(env, contentType, object.size) ? 'server' : 'client';
   if (indexing === 'server') {
-    const readers = readersFrom(env);
+    const readers = uploadReaders(env);
     ctx.waitUntil(
       readAttachment(env.BLOBS, readers, attachments, {
         id,

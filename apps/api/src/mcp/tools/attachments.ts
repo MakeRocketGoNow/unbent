@@ -9,21 +9,42 @@ import {
   chooseFilename,
   fetchSource,
 } from '../../lib/fetch-attachment.js';
+import { canUseLlm, LLM_IMAGE_TYPES, toBase64 } from '../../lib/llm.js';
 import type { NotesRepo } from '../../lib/notes-repo.js';
-import { readPendingFile, readersFrom } from '../../lib/read-attachment.js';
 import { storeAttachment } from '../../lib/store-attachment.js';
 import { UPLOAD_GRANT_TTL_MS, type UploadGrantsRepo } from '../../lib/upload-grants.js';
 import type { Env } from '../../types.js';
 import { jsonResult, notFound, toolError } from './result.js';
 
 /**
- * How far into one note's files the read tool looks for the one it was asked about. A
- * note has a handful; this is a bound on the query, not a limit anyone should meet.
+ * The most of a picture `get_attachment` hands over, as bytes on disk. The model's
+ * platforms cap an image by the length of its base64 — 10 MiB on the Claude API, 5 MiB on
+ * Bedrock and Vertex — and which one the assistant's client talks to is unknown here, so
+ * the lower bound rules: three quarters of 5 MiB, less a little for the JSON around it. A
+ * phone photo fits; a scan at print resolution does not, and the refusal names the size so
+ * the person can resize it. MAK-185 is downscaling on the server, which would retire this.
  */
-const FILES_PER_NOTE = 100;
+const MAX_MCP_IMAGE_BYTES = Math.floor((5 * 1024 * 1024 * 3) / 4) - 64 * 1024;
 
 /**
- * The tools that give a note a file.
+ * The most text `set_attachment_text` takes. A transcription of a stack of pages is tens
+ * of thousands of characters; anything past this is not a reading of one file. Well under
+ * the route's own cap on a stored text.
+ */
+const MAX_ASSISTANT_TEXT_CHARS = 100_000;
+
+/**
+ * The tools that give a note a file, and the two that let an assistant read one.
+ *
+ * Bytes flow out here and never in. `get_attachment` returns a picture as an image block
+ * for the assistant's own model to look at — since MAK-179 nothing on the instance reads
+ * a picture except an Auto-fill press, so an assistant that wants to know what a photo
+ * shows reads it itself, on its own bill, by the person's choice in connecting it — and
+ * `set_attachment_text` records what it read, marked as the assistant's, so search and
+ * the summaries have it until a press has the model read the file, where the instance
+ * has one (see `writeAssistantText` in the store for what yields to it and what does not).
+ * The descriptions say which it is, since on an instance with no key the assistant's words
+ * are the text the file will have and should be written as such.
  *
  * No tool takes the bytes as an argument, and not because one was forgotten. A tool call
  * is JSON the model writes, so the only way bytes could arrive through one is base64 in an
@@ -42,48 +63,119 @@ const FILES_PER_NOTE = 100;
  */
 export function registerAttachmentTools(
   server: McpServer,
-  env: Pick<
-    Env,
-    | 'APP_URL'
-    | 'BLOBS'
-    | 'AI'
-    | 'ALLOW_TEST_CREDENTIALS'
-    | 'ANTHROPIC_API_KEY'
-    | 'ANTHROPIC_API_URL'
-    | 'ANTHROPIC_MODEL'
-  >,
+  env: Pick<Env, 'APP_URL' | 'BLOBS' | 'AI' | 'ALLOW_TEST_CREDENTIALS' | 'ANTHROPIC_API_KEY'>,
   ctx: { waitUntil(promise: Promise<unknown>): void },
   repos: { notes: NotesRepo; attachments: AttachmentsRepo; uploads: UploadGrantsRepo },
   links: AppLinks,
 ): void {
-  /*
-     The counterpart of get_attachment_text, for the file that tool reports unread. A
-     file is read once, at upload, and never again on its own, so one stored before the
-     instance could read it — every picture on an archive imported before the vision
-     model had a key — stays unread until something asks. This is the asking, for one
-     file at a time: what a model doing a pass over a notebook's cards needs, and the
-     only shape that keeps the cost legible. The account-wide backfill stays the Import
-     panel's, where a person watches the count fall.
+  // Loopback is fetchable only where the web-image route allows it too: local development,
+  // flagged the same way. Deployed, this is false, so neither server-side fetcher can be
+  // pointed at the Worker's own network.
+  const allowLoopback = env.ALLOW_TEST_CREDENTIALS === '1';
+  // Whether a press will ever have the model read what an assistant writes here.
+  const vision = canUseLlm(env);
 
-     Not a flag on get_attachment_text: that tool is read-only and free, and this one is
-     neither. A model that treats a read as safe to repeat must be told, in the tool's
-     own annotations, that this one costs a request — though a second call for the same
-     file finds the text recorded and pays nothing, which is what idempotent means here.
-  */
   server.registerTool(
-    'read_attachment',
+    'get_attachment',
     {
-      title: 'Read an attachment now',
+      title: 'See a picture',
       description:
-        'Ask the instance to read one attachment now, so its text can be had from ' +
-        'get_attachment_text: a PDF through its text layer, then, where the instance has ' +
-        "a vision model, a picture or a scan the layer had nothing for through that model. " +
-        'For a file get_attachment_text reports as having no text. Costs a request when ' +
-        'the model is used; a file already read is returned as it is, at no cost. Reads ' +
-        'this one file only — never the rest of the note or the account.',
+        'The picture itself, returned as an image for you to read: a JPEG, PNG, GIF or WebP ' +
+        'attachment under about 3.7 MB. For a picture that get_attachment_text, get_note or a ' +
+        'summary reports as "pending": nothing on this instance reads a picture on its own' +
+        (vision
+          ? ' — an Auto-fill press by the person does, and so can you. '
+          : ' — this instance has no vision model, so you are the only reader it has. ') +
+        'Read it, then record what you read with set_attachment_text, so search, the ' +
+        'summaries and the next session have it without looking again. The bytes come to ' +
+        "you and to no model the instance runs. PDFs are not returned: a PDF's text layer is " +
+        'read for free on upload and get_attachment_text has it' +
+        (vision ? ', and a scan with no layer waits for an Auto-fill press.' : '.'),
       inputSchema: z.object({
         noteId: z.string().uuid(),
         filename: z.string().min(1).describe('As listed by get_note.'),
+      }),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ noteId, filename }) => {
+      // Scoped to the caller's store, so another person's note reads as missing; and
+      // never from the trash, like every other read of a file that is not a page load.
+      const row = await repos.attachments.resolve(noteId, filename);
+      if (!row) return notFound('attachment', `${filename} on note ${noteId}`);
+      if (!LLM_IMAGE_TYPES.has(row.content_type)) {
+        return toolError(
+          `Only a picture is returned (JPEG, PNG, GIF or WebP); this file is ${row.content_type}. ` +
+            (row.content_type === 'application/pdf'
+              ? "A PDF's text layer is in get_attachment_text; a scan with no layer waits for an Auto-fill press."
+              : 'Nothing on this instance reads it.'),
+        );
+      }
+      if (row.size > MAX_MCP_IMAGE_BYTES) {
+        const mb = (n: number) => `${(n / (1024 * 1024)).toFixed(1)} MB`;
+        return toolError(
+          `This picture is ${mb(row.size)}, over the ${mb(MAX_MCP_IMAGE_BYTES)} this tool returns. ` +
+            'A smaller copy of it, attached beside it, could be read.',
+        );
+      }
+      const object = await env.BLOBS.get(row.r2_key);
+      if (!object) return toolError('The bytes of this file could not be found; try again later.');
+      const data = toBase64(await object.arrayBuffer());
+      return {
+        content: [
+          { type: 'image' as const, data, mimeType: row.content_type },
+          {
+            type: 'text' as const,
+            text: JSON.stringify(
+              {
+                filename: row.filename,
+                contentType: row.content_type,
+                size: row.size,
+                next: 'Record what you read with set_attachment_text, so it is searchable and the next session has it.',
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.registerTool(
+    'set_attachment_text',
+    {
+      title: 'Record what you read off a file',
+      description:
+        'Record the text of a file you have read yourself, usually a picture from ' +
+        'get_attachment, so search, the summaries on get_note and list_notes, and ' +
+        'get_attachment_text have it. Write what the file says, not what you make of it: ' +
+        'a short first line naming it, a line saying what it is and shows (who it is from, ' +
+        'the amounts, the dates), a blank line, then every legible word transcribed in ' +
+        'reading order. Allowed where the file has no text, an empty row, or text you ' +
+        "recorded before, which you may revise; refused over a PDF's own text layer or what " +
+        "the instance's vision model read, since neither is yours to replace. What you " +
+        'record is marked as yours (read "assistant")' +
+        (vision
+          ? ', and for a picture or a scan the next time the person presses Auto-fill on the ' +
+            'note the instance has its model read the file itself and replaces it — so write ' +
+            'it for search in the meantime, not as the last word. If the model declines the ' +
+            'file, your words stay and it is offered again on later presses. For any other ' +
+            'kind of file what you record stands.'
+          : '. This instance has no vision model, so what you record is the text the file ' +
+            'will have: write it as carefully as the file deserves.'),
+      inputSchema: z.object({
+        noteId: z.string().uuid(),
+        filename: z.string().min(1).describe('As listed by get_note.'),
+        text: z
+          .string()
+          .min(1)
+          .max(MAX_ASSISTANT_TEXT_CHARS)
+          .describe('What the file says: a name line, a line on what it is, a blank line, then the transcription.'),
       }),
       annotations: {
         readOnlyHint: false,
@@ -92,47 +184,41 @@ export function registerAttachmentTools(
         openWorldHint: false,
       },
     },
-    async ({ noteId, filename }) => {
-      const prelude = await repos.attachments.readPrelude(noteId, filename, FILES_PER_NOTE);
-      if (!prelude) return notFound('note', noteId);
-      const { text, forText, forVision } = prelude;
-      if (text === null) return notFound('attachment', `${filename} on note ${noteId}`);
-
-      // Which reader the file is waiting for, if any; `textFor` alone cannot tell a scan
-      // nothing has looked at from one the model looked at and found empty.
-      const waitingForText = forText.find((f) => f.filename === filename);
-      const waitingForVision = forVision.find((f) => f.filename === filename);
-      const pending = waitingForText
-        ? { ...waitingForText, pending: 'text' as const }
-        : waitingForVision
-          ? { ...waitingForVision, pending: 'vision' as const }
-          : null;
-      if (!pending) return jsonResult({ filename, read: false, indexed: text !== '', text });
-
-      const readers = readersFrom(env);
-      let outcome;
-      try {
-        outcome = await readPendingFile(env.BLOBS, readers, repos.attachments, pending);
-      } catch (err) {
-        return toolError(
-          `Reading the file failed: ${err instanceof Error ? err.message : String(err)}. ` +
-            'It stays unread; try again later.',
-        );
+    async ({ noteId, filename, text }) => {
+      const trimmed = text.trim();
+      if (!trimmed) return toolError('Nothing to record: the text is blank.');
+      const result = await repos.attachments.writeAssistantText(noteId, filename, trimmed);
+      if (!result.ok) {
+        switch (result.reason) {
+          case 'missing':
+            return notFound('attachment', `${filename} on note ${noteId}`);
+          case 'unread':
+            return toolError(
+              "This PDF's text layer has not been read yet. It is read for free, and get_attachment_text " +
+                'will have it; nothing of yours is needed.',
+            );
+          case 'layer':
+            return toolError(
+              'This PDF has its own text layer, which is not yours to replace; get_attachment_text has it.',
+            );
+          default:
+            return toolError(
+              "The instance's vision model has read this file, and its reading is not yours to replace; " +
+                'get_attachment_text has it.',
+            );
+        }
       }
-      if (outcome === 'unread') {
-        return toolError(
-          'This instance has no reader for that file' +
-            (pending.pending === 'text' ? ' — its text layer is read in the browser here.' : '.'),
-        );
-      }
-      const after = await repos.attachments.textFor(noteId, filename);
-      return jsonResult({ filename, read: true, outcome, indexed: Boolean(after), text: after ?? '' });
+      return jsonResult({
+        filename,
+        read: 'assistant',
+        chars: trimmed.length,
+        note: vision
+          ? 'Recorded. The next Auto-fill press on this note has the model read the file itself and replaces this.'
+          : 'Recorded. This instance has no vision model, so this is the text the file has.',
+      });
     },
   );
-  // Loopback is fetchable only where the web-image route allows it too: local development,
-  // flagged the same way. Deployed, this is false, so neither server-side fetcher can be
-  // pointed at the Worker's own network.
-  const allowLoopback = env.ALLOW_TEST_CREDENTIALS === '1';
+
   server.registerTool(
     'add_attachment',
     {

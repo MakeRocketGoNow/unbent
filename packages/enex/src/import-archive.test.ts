@@ -283,7 +283,7 @@ describe('the library archive', () => {
 });
 
 /**
- * `text/` and `described/` beside `files/` hold what the exporting instance had read from
+ * `text/`, `described/` and `written/` beside `files/` hold what the exporting instance had read from
  * each file. A file that has one arrives with it and is read by nobody: not the server,
  * which is told before the bytes land, and not the importer's own PDF extraction.
  */
@@ -312,21 +312,25 @@ describe('text carried beside the files', () => {
       'paperwork-0191c2a0/files/statement.pdf': bytes('%PDF-1.4 not really'),
       'paperwork-0191c2a0/files/receipt.jpg': new Uint8Array([0xff, 0xd8, 0xff, 0xe0]),
       'paperwork-0191c2a0/files/plain.jpg': new Uint8Array([0xff, 0xd8, 0xff, 0xe0]),
+      'paperwork-0191c2a0/files/card.jpg': new Uint8Array([0xff, 0xd8, 0xff, 0xe0]),
       'paperwork-0191c2a0/text/statement.pdf.txt': 'Balance due 42.00',
       'paperwork-0191c2a0/described/receipt.jpg.txt': 'Receipt from Acme',
+      'paperwork-0191c2a0/written/card.jpg.txt': 'A plumber’s card, as an assistant read it',
       // About no file in the archive, so about nothing.
       'paperwork-0191c2a0/text/missing.pdf.txt': 'orphan',
     });
 
     const progress = await importArchive(zip, client, { extractText: true });
 
-    expect(progress).toMatchObject({ created: 1, failed: 0, filesUploaded: 3, filesIndexed: 2 });
+    expect(progress).toMatchObject({ created: 1, failed: 0, filesUploaded: 4, filesIndexed: 3 });
     expect(uploads.sort((a, b) => a.filename.localeCompare(b.filename))).toEqual([
+      { filename: 'card.jpg', textSupplied: true },
       { filename: 'plain.jpg', textSupplied: false },
       { filename: 'receipt.jpg', textSupplied: true },
       { filename: 'statement.pdf', textSupplied: true },
     ]);
     expect(saved.sort((a, b) => a.filename.localeCompare(b.filename))).toEqual([
+      { noteId: '0191c2a0-0000-7000-8000-000000000001', filename: 'card.jpg', text: 'A plumber’s card, as an assistant read it', readBy: 'assistant' },
       { noteId: '0191c2a0-0000-7000-8000-000000000001', filename: 'receipt.jpg', text: 'Receipt from Acme', readBy: 'vision' },
       { noteId: '0191c2a0-0000-7000-8000-000000000001', filename: 'statement-2.pdf', text: 'Balance due 42.00' },
     ]);

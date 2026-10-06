@@ -2,17 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { appLinks } from '../../lib/app-links.js';
 import { registerAttachmentTools } from './attachments.js';
 import type { AttachmentsRepo } from '../../lib/attachments-repo.js';
-import type { MarkdownConverter } from '../../lib/extract-text.js';
 import type { NotesRepo } from '../../lib/notes-repo.js';
 import type { UploadGrantsRepo } from '../../lib/upload-grants.js';
 
 /**
- * The read tool's one piece of logic worth pinning: telling a file that is waiting for a
- * reader from one already read, and from one this instance cannot read at all. Each of
- * those is a different answer, and two of them cost nothing — a model that is told "read
- * this" for a file already read must not be charged for a second look, and one asking
- * about a file nobody here can read must be told so rather than handed an empty string
- * that looks like a blank page.
+ * The upload link, minted on the instance's own address for the caller's note only, with
+ * the type left to the extension when none is given; and the pair that lets an assistant
+ * read a picture itself since MAK-179 confined the instance's model to an Auto-fill press:
+ * the bytes out as an image, and what the assistant read back in, marked as its own.
  */
 
 interface Registered {
@@ -25,18 +22,6 @@ interface Registered {
 
 const noteId = '11111111-1111-4111-8111-111111111111';
 const otherNote = '22222222-2222-4222-8222-222222222222';
-
-const prose =
-  'Your diagnosis based on what you shared about how you are feeling is allergic rhinitis, ' +
-  'also known as hay fever, and the plan is an antihistamine each morning for two weeks.';
-
-function converter(data: string): MarkdownConverter {
-  return { toMarkdown: () => ({ transform: async () => ({ format: 'markdown', data }) }) };
-}
-
-const blobs = {
-  get: async () => ({ arrayBuffer: async () => new TextEncoder().encode('bytes').buffer as ArrayBuffer }),
-};
 
 /** Collects the tools instead of serving them, so a handler can be called directly. */
 function collect(
@@ -65,81 +50,97 @@ function collect(
   return tools;
 }
 
-/**
- * One note with one scan on it, in whichever state a test needs: `text` is what the repo
- * has recorded (null for no such file), and the two flags say which pending list the file
- * would appear in.
- */
-function fakeAttachments(state: { text: string | null; pendingText?: boolean; pendingVision?: boolean }) {
-  const file = { id: 'a1', noteId, filename: 'scan.pdf', contentType: 'application/pdf', size: 100, r2Key: 'k' };
-  const recorded: Array<{ text: string; readBy: 'vision' | null }> = [];
+/** The one thing the upload-link tool asks of the attachments repo: whose note this is. */
+function fakeAttachments() {
+  return { repo: { ownsNote: async (id: string) => id === noteId } };
+}
+
+const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/** A note with a small picture, a big one and a PDF on it, and a record of what an assistant wrote. */
+function pictured() {
+  const rows: Record<string, { id: string; filename: string; content_type: string; size: number; r2_key: string }> = {
+    'card.png': { id: 'a1', filename: 'card.png', content_type: 'image/png', size: png.length, r2_key: 'k/card' },
+    'poster.jpg': { id: 'a2', filename: 'poster.jpg', content_type: 'image/jpeg', size: 9 * 1024 * 1024, r2_key: 'k/poster' },
+    'scan.pdf': { id: 'a3', filename: 'scan.pdf', content_type: 'application/pdf', size: 10, r2_key: 'k/scan' },
+    'fresh.pdf': { id: 'a4', filename: 'fresh.pdf', content_type: 'application/pdf', size: 10, r2_key: 'k/fresh' },
+  };
+  const written: Array<{ filename: string; text: string }> = [];
+  const refuse: Record<string, 'unread' | 'layer' | 'vision'> = { 'scan.pdf': 'layer', 'poster.jpg': 'vision', 'fresh.pdf': 'unread' };
   return {
-    recorded,
+    written,
     repo: {
-      ownsNote: async (id: string) => id === noteId,
-      textFor: async (id: string, filename: string) => (id === noteId && filename === 'scan.pdf' ? state.text : null),
-      // What the store answers in one call: nothing for a note that is not live, else the
-      // text held and the note's files each reader is still waiting on.
-      readPrelude: async (id: string, filename: string) =>
-        id === noteId
-          ? {
-              text: filename === 'scan.pdf' ? state.text : null,
-              forText: state.pendingText ? [file] : [],
-              forVision: state.pendingVision ? [file] : [],
-            }
-          : null,
-      recordText: async ({ text, readBy }: { text: string; readBy: 'vision' | null }) => {
-        recorded.push({ text, readBy });
-        state.text = text;
+      resolve: async (id: string, filename: string) => (id === noteId ? (rows[filename] ?? null) : null),
+      writeAssistantText: async (id: string, filename: string, text: string) => {
+        if (id !== noteId || !rows[filename]) return { ok: false, reason: 'missing' };
+        if (refuse[filename]) return { ok: false, reason: refuse[filename] };
+        written.push({ filename, text });
+        return { ok: true, reason: null };
       },
     },
+    blobs: { get: async (key: string) => (key === 'k/card' ? { arrayBuffer: async () => png.buffer as ArrayBuffer } : null) },
   };
 }
 
 const parse = (result: { content: Array<{ text: string }> }) => JSON.parse(result.content[0]!.text) as Record<string, unknown>;
 
-describe('read_attachment', () => {
-  it('reads a scan nothing has looked at through its layer and answers with the text', async () => {
-    const { recorded, repo } = fakeAttachments({ text: '', pendingText: true });
-    const read = collect({ BLOBS: blobs, AI: converter(`# scan.pdf\n## Contents\n${prose}`) }, repo).get('read_attachment')!;
-
-    const result = await read({ noteId, filename: 'scan.pdf' });
-
+describe('get_attachment', () => {
+  it('hands a picture over as an image, with what to do next', async () => {
+    const { repo, blobs } = pictured();
+    const get = collect({ BLOBS: blobs }, repo).get('get_attachment')!;
+    const result = await get({ noteId, filename: 'card.png' });
     expect(result.isError).toBeFalsy();
-    expect(parse(result)).toMatchObject({ filename: 'scan.pdf', read: true, outcome: 'text', indexed: true });
-    expect(parse(result).text).toContain('allergic');
-    expect(recorded).toEqual([{ text: expect.stringContaining('allergic'), readBy: null }]);
+    const [image, text] = result.content as Array<{ type: string; data?: string; mimeType?: string; text?: string }>;
+    expect(image).toEqual({ type: 'image', data: btoa(String.fromCharCode(...png)), mimeType: 'image/png' });
+    expect(JSON.parse(text!.text!)).toMatchObject({ filename: 'card.png', contentType: 'image/png', size: png.length });
+    expect(text!.text).toContain('set_attachment_text');
   });
 
-  it('hands back a file already read as it is, without a second look', async () => {
-    const { recorded, repo } = fakeAttachments({ text: 'ACME' });
-    const read = collect({ BLOBS: blobs, AI: converter('should not be called') }, repo).get('read_attachment')!;
+  it('refuses a PDF, a picture past the cap, and a file that is not there', async () => {
+    const { repo, blobs } = pictured();
+    const get = collect({ BLOBS: blobs }, repo).get('get_attachment')!;
+    const pdf = await get({ noteId, filename: 'scan.pdf' });
+    expect(pdf.isError).toBe(true);
+    expect(pdf.content[0]!.text).toMatch(/text layer/);
+    const big = await get({ noteId, filename: 'poster.jpg' });
+    expect(big.isError).toBe(true);
+    expect(big.content[0]!.text).toMatch(/9\.0 MB, over the 3\.7 MB/);
+    expect((await get({ noteId, filename: 'ghost.png' })).isError).toBe(true);
+    expect((await get({ noteId: otherNote, filename: 'card.png' })).isError).toBe(true);
+  });
+});
 
-    const result = await read({ noteId, filename: 'scan.pdf' });
-
+describe('set_attachment_text', () => {
+  it('records what the assistant read, marked as its own, and says a press will replace it where a model exists', async () => {
+    const { repo, written } = pictured();
+    const set = collect({ ANTHROPIC_API_KEY: 'k' }, repo).get('set_attachment_text')!;
+    const result = await set({ noteId, filename: 'card.png', text: '  Plumber card\nJane Doe, Acme Plumbing\n\n555-0100  ' });
     expect(result.isError).toBeFalsy();
-    expect(parse(result)).toEqual({ filename: 'scan.pdf', read: false, indexed: true, text: 'ACME' });
-    expect(recorded).toEqual([]);
+    expect(parse(result)).toMatchObject({ filename: 'card.png', read: 'assistant' });
+    expect(parse(result).note).toMatch(/Auto-fill/);
+    expect(written).toEqual([{ filename: 'card.png', text: 'Plumber card\nJane Doe, Acme Plumbing\n\n555-0100' }]);
+
+    // Without a model key nothing will ever replace the words, and the tool says so.
+    const bare = await collect({}, pictured().repo).get('set_attachment_text')!({ noteId, filename: 'card.png', text: 'A card' });
+    expect(parse(bare).note).toMatch(/no vision model/);
   });
 
-  it('says so when this instance has no reader for the file, rather than answering blank', async () => {
-    const { recorded, repo } = fakeAttachments({ text: '', pendingText: true });
-    // No Workers AI and no model key: a PDF's layer is the browser's to read here.
-    const read = collect({ BLOBS: blobs }, repo).get('read_attachment')!;
-
-    const result = await read({ noteId, filename: 'scan.pdf' });
-
-    expect(result.isError).toBe(true);
-    expect(result.content[0]!.text).toMatch(/no reader/);
-    expect(recorded).toEqual([]);
-  });
-
-  it('reports a note that is not the caller’s, and a file the note does not have', async () => {
-    const { repo } = fakeAttachments({ text: null });
-    const read = collect({ BLOBS: blobs }, repo).get('read_attachment')!;
-
-    expect((await read({ noteId: otherNote, filename: 'scan.pdf' })).isError).toBe(true);
-    expect((await read({ noteId, filename: 'other.pdf' })).isError).toBe(true);
+  it("refuses to replace a text layer or the model's reading, and says why", async () => {
+    const { repo, written } = pictured();
+    const set = collect({}, repo).get('set_attachment_text')!;
+    const layer = await set({ noteId, filename: 'scan.pdf', text: 'x' });
+    expect(layer.isError).toBe(true);
+    expect(layer.content[0]!.text).toMatch(/text layer/);
+    const vision = await set({ noteId, filename: 'poster.jpg', text: 'x' });
+    expect(vision.isError).toBe(true);
+    expect(vision.content[0]!.text).toMatch(/vision model/);
+    // A PDF the free reader has not reached yet keeps its turn.
+    const unread = await set({ noteId, filename: 'fresh.pdf', text: 'x' });
+    expect(unread.isError).toBe(true);
+    expect(unread.content[0]!.text).toMatch(/not been read yet/);
+    expect((await set({ noteId, filename: 'ghost.png', text: 'x' })).isError).toBe(true);
+    expect((await set({ noteId, filename: 'card.png', text: '   ' })).isError).toBe(true);
+    expect(written).toEqual([]);
   });
 });
 
@@ -158,7 +159,7 @@ describe('prepare_attachment_upload', () => {
   }
 
   it('mints a link on the instance\'s own address for the caller\'s note', async () => {
-    const { repo: attachments } = fakeAttachments({ text: null });
+    const { repo: attachments } = fakeAttachments();
     const { minted, repo } = fakeUploads();
     const prepare = collect({ APP_URL: 'https://notes.example.com' }, attachments, repo).get(
       'prepare_attachment_upload',
@@ -183,7 +184,7 @@ describe('prepare_attachment_upload', () => {
   });
 
   it('leaves the type to the extension when none is given', async () => {
-    const { repo: attachments } = fakeAttachments({ text: null });
+    const { repo: attachments } = fakeAttachments();
     const { minted, repo } = fakeUploads();
     const prepare = collect({ APP_URL: 'https://notes.example.com' }, attachments, repo).get(
       'prepare_attachment_upload',
@@ -195,7 +196,7 @@ describe('prepare_attachment_upload', () => {
   });
 
   it('mints nothing for a note that is not the caller\'s', async () => {
-    const { repo: attachments } = fakeAttachments({ text: null });
+    const { repo: attachments } = fakeAttachments();
     const { minted, repo } = fakeUploads();
     const prepare = collect({ APP_URL: 'https://notes.example.com' }, attachments, repo).get(
       'prepare_attachment_upload',

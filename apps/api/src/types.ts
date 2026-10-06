@@ -272,11 +272,12 @@ export interface Env {
    */
   TYPESAFE_API_URL?: string;
   /**
-   * An Anthropic API key, which turns on the language model: reading images and text-less
-   * scans — what a file shows, and any text on it, recorded as the file's text for search
-   * and auto-fill — and writing auto-fill's titles. Read by lib/llm.ts. Unset, pictures
-   * have no text and titles are Jev's pick of a line, as before.
-   * `wrangler secret put ANTHROPIC_API_KEY`, or .dev.vars locally.
+   * An Anthropic API key, which turns on the language model inside Auto-fill: reading the
+   * note's pictures and text-less scans — what a file shows, and any text on it, recorded
+   * as the file's text for search and auto-fill — and writing the title and the text
+   * fields. Only inside a press; nothing reads a file with it on upload (MAK-179). Read by
+   * lib/llm.ts. Unset, pictures have no text and titles are Jev's pick of a line, as
+   * before. `wrangler secret put ANTHROPIC_API_KEY`, or .dev.vars locally.
    */
   ANTHROPIC_API_KEY?: string;
   /** Where those requests go instead of Anthropic's endpoint; a stand-in for development. */

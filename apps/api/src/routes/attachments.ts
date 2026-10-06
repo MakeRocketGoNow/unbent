@@ -11,8 +11,7 @@ import {
 } from '@unbent/shared';
 import { z } from 'zod';
 import { copyAttachments } from '../lib/copy-attachments.js';
-import { readPendingFiles, readWithLlm, readersFrom, serverCanRead } from '../lib/read-attachment.js';
-import { canUseLlm, readableByLlm } from '../lib/llm.js';
+import { serverCanRead } from '../lib/read-attachment.js';
 import { fetchWebImage } from '../lib/web-image.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
@@ -279,10 +278,12 @@ export const attachments = new Hono<AppEnv>()
    * client after the bytes are already sent, and because it is optional — an attachment
    * with no usable text simply never gets one.
    *
-   * `readBy: 'vision'` records that the vision model wrote the text, which is only ever
-   * true of text restored from an archive's `described/`: the model runs on the server,
-   * and every other caller here sends a text layer. Anything else is refused rather than
-   * stored as a layer, so a typo cannot quietly change what the row claims.
+   * `readBy` records who wrote the text when it was not a text layer — `vision` for the
+   * model, `assistant` for an assistant over MCP — and here it is only ever true of text
+   * restored from an archive's `described/` or `written/`: the model runs on the server,
+   * an assistant writes through its own tool, and every other caller here sends a text
+   * layer. Anything else is refused rather than stored as a layer, so a typo cannot
+   * quietly change what the row claims.
    */
   .put('/notes/:id/files/:filename/text', async (c) => {
     const noteId = c.req.param('id');
@@ -292,44 +293,24 @@ export const attachments = new Hono<AppEnv>()
     if (!attachmentId) return c.json({ error: 'Not found' }, 404);
 
     const body = await c.req.json<{ text?: string; unusable?: boolean; readBy?: unknown }>();
-    if (body.readBy !== undefined && body.readBy !== 'vision') {
-      return c.json({ error: "readBy must be 'vision' when given" }, 400);
+    if (body.readBy !== undefined && body.readBy !== 'vision' && body.readBy !== 'assistant') {
+      return c.json({ error: "readBy must be 'vision' or 'assistant' when given" }, 400);
     }
 
     /**
      * `unusable: true` records that extraction was attempted and produced nothing worth
-     * indexing. The row exists so a backfill pass does not retry the same failing scan
-     * forever, but it holds no text, so it can never match a search.
+     * indexing. The row exists so the browser's pass does not retry the same failing
+     * scan forever, but it holds no text, so it can never match a search.
      *
-     * Unless the vision model can read it: a scan with no text layer is exactly what that
-     * reader is for, and this is the moment the browser says the layer had nothing. Read
-     * after the response, as an upload's server-side read is; a failure leaves the empty
-     * row standing, which the backfill offers to the model again.
+     * A scan with no text layer is the vision model's to read, and the model runs only
+     * inside an Auto-fill press (MAK-179). The empty row with no `read_by` is exactly what
+     * puts the file on that press's list (`needingVision`), where it is told apart from a
+     * scan the model already looked at. Until MAK-179 this was the moment the file was
+     * sent to the model, after the response: a paid request that the browser's finding
+     * started on its own.
      */
     if (body.unusable) {
-      const repo = c.get('attachments');
-      await repo.recordText({ attachmentId, noteId, filename, text: '' });
-      const { llm } = readersFrom(c.env);
-      const row = await repo.resolve(noteId, filename);
-      if (llm && row && readableByLlm(row.content_type, row.size)) {
-        c.executionCtx.waitUntil(
-          (async () => {
-            try {
-              const stored = await c.env.BLOBS.get(row.r2_key);
-              if (!stored) return;
-              await readWithLlm(
-                llm,
-                repo,
-                { id: row.id, noteId, filename, contentType: row.content_type, size: row.size, r2Key: row.r2_key },
-                await stored.arrayBuffer(),
-              );
-            } catch (err) {
-              // Left for the backfill, and logged by id for the reason the upload gives.
-              console.error('read after empty layer:', row.id, (err as Error).message);
-            }
-          })(),
-        );
-      }
+      await c.get('attachments').recordText({ attachmentId, noteId, filename, text: '' });
       return c.body(null, 204);
     }
 
@@ -343,7 +324,7 @@ export const attachments = new Hono<AppEnv>()
       filename,
       // D1 caps a row at 2MB; long scans are truncated rather than rejected.
       text: body.text.slice(0, 500_000),
-      readBy: body.readBy === 'vision' ? 'vision' : null,
+      readBy: body.readBy === 'vision' || body.readBy === 'assistant' ? body.readBy : null,
     });
 
     return c.body(null, 204);
@@ -395,65 +376,6 @@ export const attachments = new Hono<AppEnv>()
   .post('/attachments/texts', requireAuth, withRepos, zValidator('json', attachmentTextsSchema), async (c) => {
     return c.json(await c.get('attachments').textsById(c.req.valid('json').ids));
   })
-
-  /**
-   * How many files wait for the vision model, and nothing else.
-   *
-   * Maintenance's button names this number as its price before anyone presses it:
-   * every file the pass below reads is a paid request, and on a real archive the count is
-   * in the thousands. The count is the one thing about that pass that is free to ask for,
-   * so it is a GET of its own rather than a field on `pending-text`, which the browser's
-   * pass calls once per page and would pay the extra query for each time.
-   */
-  .get('/attachments/pending-vision', requireAuth, withRepos, async (c) => {
-    return c.json({ remaining: await c.get('attachments').visionPending() });
-  })
-
-  /**
-   * Reads a few of the files still waiting for the vision model, and says how many wait.
-   *
-   * The counterpart of `pending-text` for the reader that lives on the server: pictures,
-   * and PDFs the text layer had nothing for. The browser's pass fetches bytes to run
-   * pdf.js on; this one runs here, where the bytes and the key are, and the client only
-   * asks again until nothing is left. A few per call because each is seconds and a
-   * request per file, and a person watching a count go down can stop.
-   *
-   * A POST although it changes nothing a client sees directly: every file read is a
-   * paid request, so nothing that treats GET as safe may start one on its own. It is
-   * what Maintenance's "Read N images" runs, never the PDF pass or the pass a tab
-   * opening starts — see `readImages` in the web app's `index-files.ts`.
-   *
-   * `note` narrows the pass to one note's files, as `pending-text` narrows the browser's,
-   * and `remaining` then counts only that note's. `count: false` leaves `remaining` out:
-   * the pass calls this once per three files and counting reads the whole backlog, so it
-   * counts on its first call and keeps the number itself after that. Unscoped, this walks the whole account
-   * oldest first, which on a real archive is a thousand paid requests — the right thing
-   * for a person who pressed the button to see the count fall, and the wrong thing for
-   * anything that only wanted the note in front of it.
-   */
-  .post(
-    '/attachments/read',
-    requireAuth,
-    withRepos,
-    zValidator(
-      'json',
-      z.object({
-        limit: z.number().int().min(1).max(10).default(3),
-        note: z.string().min(1).max(128).optional(),
-        count: z.boolean().default(true),
-      }),
-    ),
-    async (c) => {
-      if (!canUseLlm(c.env)) {
-        return c.json({ error: 'Reading images is not set up on this instance' }, 503);
-      }
-      const repo = c.get('attachments');
-      const { limit, note, count } = c.req.valid('json');
-      const files = (await repo.needingVision(limit, note)).map((f) => ({ ...f, pending: 'vision' as const }));
-      const { read, empty, failed } = await readPendingFiles(c.env.BLOBS, readersFrom(c.env), repo, files);
-      return c.json({ read, empty, failed, ...(count ? { remaining: await repo.visionPending(note) } : {}) });
-    },
-  )
 
   /**
    * Removes a file from a note. The object stays in R2 for thirty-five days under a

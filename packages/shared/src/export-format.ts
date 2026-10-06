@@ -65,13 +65,21 @@ export function noteMarkdown(note: Note): string {
 }
 
 /**
+ * Who wrote a file's text when it was not the file's own text layer: the vision model, on
+ * an Auto-fill press, or an assistant over MCP, writing what it read off the file itself.
+ * Null, or absent, is the text layer. The row's `read_by` holds the same three values.
+ */
+export type ReadBy = 'vision' | 'assistant';
+
+/**
  * One of a note's files as an export page names it, with the text this instance holds for
- * it when there is any: what the file's own text layer gave, or what the vision model read
- * from it (`readBy: 'vision'`). Both are absent for a file with no text, or an empty row.
+ * it when there is any: what the file's own text layer gave, what the vision model read
+ * from it (`readBy: 'vision'`), or what an assistant wrote about it (`readBy:
+ * 'assistant'`). Both are absent for a file with no text, or an empty row.
  */
 export interface ExportedAttachment extends Pick<AttachmentInfo, 'filename' | 'contentType'> {
   text?: string;
-  readBy?: 'vision';
+  readBy?: ReadBy;
 }
 
 /** A whole note with the names of its files: what one export page carries. */
@@ -89,15 +97,20 @@ export interface ExportedNote extends Note {
  * `<filename>.txt` a person can `grep` in the unpacked folder.
  *
  * The directory says who wrote it — `text/` for the file's own text layer, `described/`
- * for the vision model — which is the one other thing the row records. That keeps the
- * filename exactly the file's, needs no index, and leaves a hand-unpacked archive readable.
- * A file never has both; the export writes one or neither.
+ * for the vision model, `written/` for an assistant over MCP — which is the one other
+ * thing the row records. That keeps the filename exactly the file's, needs no index, and
+ * leaves a hand-unpacked archive readable. A file never has two; the export writes one or
+ * none. The marker matters on the way back in: an Auto-fill press re-reads what an
+ * assistant wrote and never what the model did, so an archive that lost the difference
+ * would turn an assistant's words into the model's.
  */
 export const TEXT_DIR = 'text';
 export const DESCRIBED_DIR = 'described';
+export const WRITTEN_DIR = 'written';
 
-export function textSidecarPath(filename: string, readBy: 'vision' | null | undefined): string {
-  return `${readBy === 'vision' ? DESCRIBED_DIR : TEXT_DIR}/${filename}.txt`;
+export function textSidecarPath(filename: string, readBy: ReadBy | null | undefined): string {
+  const dir = readBy === 'vision' ? DESCRIBED_DIR : readBy === 'assistant' ? WRITTEN_DIR : TEXT_DIR;
+  return `${dir}/${filename}.txt`;
 }
 
 /** One page of `GET /api/export/notes`. */

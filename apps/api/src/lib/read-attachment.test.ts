@@ -1,9 +1,14 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import type { MarkdownConverter } from './extract-text.js';
 import {
+  autofillReaders,
   readAttachment,
   readPendingFiles,
   serverCanRead,
+  uploadReaders,
   type BlobStore,
   type StoredFile,
 } from './read-attachment.js';
@@ -39,13 +44,42 @@ const photo: StoredFile = { ...pdf, id: 'a2', filename: 'card.jpg', contentType:
 const said: FileReading = { name: 'A card', kind: 'business card', description: 'A plumber’s card.', text: 'ACME' };
 
 describe('what the server reads after an upload', () => {
-  it('reads a PDF only where the conversion is bound, and a picture only where the model is', () => {
+  it('reads a PDF only where the conversion is bound, and never a picture', () => {
     expect(serverCanRead({ AI: {} }, 'application/pdf', 10)).toBe(true);
     expect(serverCanRead({}, 'application/pdf', 10)).toBe(false);
-    expect(serverCanRead({ ANTHROPIC_API_KEY: 'k' }, 'application/pdf', 10)).toBe(false);
-    expect(serverCanRead({ ANTHROPIC_API_KEY: 'k' }, 'image/png', 10)).toBe(true);
-    expect(serverCanRead({}, 'image/png', 10)).toBe(false);
-    expect(serverCanRead({ ANTHROPIC_API_KEY: 'k' }, 'text/plain', 10)).toBe(false);
+    expect(serverCanRead({ AI: {} }, 'image/png', 10)).toBe(false);
+    expect(serverCanRead({ AI: {} }, 'text/plain', 10)).toBe(false);
+  });
+
+  it('hands an upload the free reader alone, and a press the model as well where there is a key', () => {
+    const ai = converter('x');
+    expect(uploadReaders({ AI: ai, ANTHROPIC_API_KEY: 'k' } as { AI: MarkdownConverter })).toEqual({ converter: ai });
+    expect(Object.keys(autofillReaders({ AI: ai, ANTHROPIC_API_KEY: 'k' })).sort()).toEqual(['converter', 'llm']);
+    expect(autofillReaders({ AI: ai })).toEqual({ converter: ai });
+    expect(uploadReaders({})).toEqual({});
+  });
+
+  /**
+   * The rule of MAK-179, held against the source: the model is built for reading in one
+   * place, and only the Auto-fill route builds it at all. A new caller of either fails
+   * here by name, and has to argue for a model call nobody pressed for.
+   */
+  it('builds the model in one place, which only the Auto-fill route calls', () => {
+    // `.href`: the runtime's URL type and node's disagree on a detail, and the string is enough.
+    const src = fileURLToPath(new URL('..', import.meta.url).href);
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) walk(path);
+        else if (path.endsWith('.ts') && !path.endsWith('.test.ts')) files.push(path);
+      }
+    };
+    walk(src);
+    const callers = (needle: string) =>
+      files.filter((f) => readFileSync(f, 'utf8').includes(needle)).map((f) => relative(src, f)).sort();
+    expect(callers('llmFrom(')).toEqual(['lib/llm.ts', 'lib/read-attachment.ts', 'routes/notes.ts']);
+    expect(callers('autofillReaders(')).toEqual(['lib/read-attachment.ts', 'routes/notes.ts']);
   });
 });
 
@@ -89,8 +123,8 @@ describe('reading a file', () => {
   it('leaves a picture alone where there is no model, and a PDF alone where there is only a model', async () => {
     const r = repo();
     expect(await readAttachment(blobs, {}, r, photo)).toBe('unread');
-    // A PDF's text layer is the browser's to read here; the model gets it only once the
-    // browser says the layer was empty, which is a different entry point (`readWithLlm`).
+    // A PDF's text layer is the browser's to read here; a scan the browser finds empty
+    // waits for an Auto-fill press, which is a different entry point (`readPendingFile`).
     const eyes = vision(said);
     expect(await readAttachment(blobs, { llm: eyes }, r, pdf)).toBe('unread');
     expect(eyes.read).not.toHaveBeenCalled();
@@ -133,6 +167,17 @@ describe('a pass over files already chosen', () => {
     // The id is what gets logged, never the filename.
     expect(quiet).toHaveBeenCalledWith('read:', 'lost', expect.any(String));
     quiet.mockRestore();
+  });
+
+  it('leaves an assistant’s words standing when the model declines, and replaces them when it reads', async () => {
+    const declined = repo();
+    const counts = await readPendingFiles(blobs, { llm: vision(null) }, declined, [{ ...photo, pending: 'vision', writtenBy: 'assistant' }]);
+    expect(counts).toEqual({ read: 0, empty: 1, failed: 0, unread: 0 });
+    expect(declined.recordText).not.toHaveBeenCalled();
+
+    const read = repo();
+    await readPendingFiles(blobs, { llm: vision(said) }, read, [{ ...photo, pending: 'vision', writtenBy: 'assistant' }]);
+    expect(read.recordText).toHaveBeenCalledWith(expect.objectContaining({ attachmentId: 'a2', readBy: 'vision' }));
   });
 
   it('leaves every file alone where no reader here takes it', async () => {

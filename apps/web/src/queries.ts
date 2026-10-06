@@ -32,8 +32,8 @@ import { isWhole } from './store/feed.js';
  * route used to answer with (`store/derive.ts`), so every component reads what it always
  * read and a warm open draws the list with no request. The change feed keeps the copy
  * current, and `installLibraryQueries` below re-runs these queries when it moves. What
- * still goes to the server is what the copy cannot answer: the instance's config, the
- * vision backlog, every write (`store/actions.ts`) — and search while there is a
+ * still goes to the server is what the copy cannot answer: the instance's config, every
+ * write (`store/actions.ts`) — and search while there is a
  * connection, since the server holds every file's text and a device only some.
  */
 
@@ -221,7 +221,6 @@ export const keys = {
    */
   revisions: (noteId: string) => ['revisions', noteId] as const,
   revision: (noteId: string, revisionId: number) => ['revisions', noteId, revisionId] as const,
-  pendingImages: () => ['pending-images'] as const,
 };
 
 /**
@@ -438,17 +437,6 @@ export const revisionQuery = (noteId: string, revisionId: number) =>
     queryFn: () => api.getRevision(noteId, revisionId),
     staleTime: Infinity,
   });
-
-/**
- * How many files wait for the vision model — the count on Maintenance's button.
- *
- * Never considered fresh, because what changes it runs outside the panel: a pass started
- * here keeps going after the panel is closed, and an upload from the editor adds to it.
- * So the panel fetches on every mount and again when a pass ends, rather than trusting a
- * number from the last visit.
- */
-export const pendingImagesQuery = () =>
-  queryOptions({ queryKey: keys.pendingImages(), queryFn: () => api.pendingImages(), staleTime: 0 });
 
 /**
  * Which user each cache currently holds rows for.

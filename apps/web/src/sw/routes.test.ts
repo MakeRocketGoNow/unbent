@@ -71,7 +71,6 @@ describe('classify', () => {
     // Nothing offline could use.
     '/api/search?q=invoice',
     '/api/export/notes',
-    '/api/attachments/pending-vision',
     '/api/health',
     '/api/auth/get-session',
     '/api/admin/store/stats',

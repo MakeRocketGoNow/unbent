@@ -36,6 +36,8 @@ async function seeded(label: string): Promise<Seeded> {
   await stub.recordAttachment({ id: 'a1', noteId: n.id, filename: 'scan.pdf', contentType: 'application/pdf', size: 3, r2Key: 'k/a1' });
   await stub.recordText({ attachmentId: 'a1', noteId: n.id, filename: 'scan.pdf', text: 'acme' });
   await stub.recordAttachment({ id: 'a2', noteId: n.id, filename: 'bare.pdf', contentType: 'application/pdf', size: 3, r2Key: 'k/a2' });
+  // A picture with no text: what an assistant may write for (a PDF nothing has read yet, like bare.pdf, is refused).
+  await stub.recordAttachment({ id: 'a3', noteId: n.id, filename: 'card.jpg', contentType: 'image/jpeg', size: 3, r2Key: 'k/a3' });
   const tags = await stub.listTags();
   return {
     stub,
@@ -93,6 +95,7 @@ const WRITES: Record<string, (s: Seeded) => Promise<unknown>> = {
   removeAttachment: (s) => s.stub.removeAttachment(s.noteId, 'scan.pdf'),
   recordText: (s) => s.stub.recordText({ attachmentId: 'a2', noteId: s.noteId, filename: 'bare.pdf', text: 'read' }),
   copyText: (s) => s.stub.copyText('a1', { attachmentId: 'a2', noteId: s.noteId, filename: 'bare.pdf' }),
+  writeAssistantText: (s) => s.stub.writeAssistantText(s.noteId, 'card.jpg', 'what an assistant read'),
 };
 
 /** Methods that write without the feed needing to know, each with its reason. */
@@ -112,11 +115,11 @@ const READS = new Set([
   'ping', 'stats', 'usage', 'sweepVisit', 'readOnlySql', 'dumpBegin', 'dumpSlice', 'schemaSql', 'counters',
   'list', 'listFull', 'count', 'get', 'search', 'listTags', 'tagCounts', 'fieldTargets', 'notebookByName', 'sampleTitles', 'countUnfiledNotes',
   'listNotebooks', 'listFields', 'fieldById', 'listAllFields', 'previewConversion', 'countOptionUsage',
-  'resolveAttachment', 'listAttachments', 'ownsNote', 'availableFilename', 'needingText', 'needingVision',
-  'visionPending', 'pendingTextCount', 'textFor', 'textWithRead', 'textsForNote', 'textsForNotes', 'textsById', 'attachmentIdFor',
+  'resolveAttachment', 'listAttachments', 'ownsNote', 'availableFilename', 'needingText',
+  'pendingTextCount', 'textFor', 'textWithRead', 'textsForNote', 'textsForNotes', 'textsById', 'attachmentIdFor',
   'keysForNote', 'allBlobKeys', 'tombstonedBlobKeys',
   'listPage', 'searchRows', 'searchWithFiles', 'exportPage', 'getWithFiles', 'filesForNote', 'notebooksOverview', 'pendingText',
-  'autofillPrelude', 'autofillContext', 'attachmentReadPrelude', 'uploadPrelude',
+  'autofillPrelude', 'autofillContext', 'uploadPrelude',
   'changesSince', 'snapshotPage',
   'listRevisions', 'getRevision',
 ]);
