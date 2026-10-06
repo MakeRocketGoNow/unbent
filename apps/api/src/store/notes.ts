@@ -37,7 +37,7 @@ import {
   type StaleNote,
   DEFAULT_NOTE_SORT,
 } from '@unbent/shared';
-import { DeletedBlobs } from './deleted-blobs.js';
+import type { DeletedBlobs } from './deleted-blobs.js';
 import type { Change, Feed } from './feed.js';
 import { Revisions } from './revisions.js';
 import type { Bind, Sql } from './sql.js';
@@ -169,23 +169,22 @@ type Statement = [sql: string, binds: Bind[]];
 export type WholeNote = Omit<FeedNote, 'files'>;
 
 export class NotesStore {
+  /**
+   * `deletedBlobs` is the object's one `DeletedBlobs`, shared with `AttachmentsStore`
+   * and the sweep's methods: the files a purge lets go of, kept in R2 for the retention.
+   * Every method here that deletes a note row tombstones its files' keys in the same
+   * transaction, and that is the only way a note's files are ever let go of.
+   */
   constructor(
     private readonly sql: Sql,
     private readonly feed: Feed,
+    private readonly deletedBlobs: DeletedBlobs,
   ) {
     this.revisions = new Revisions(sql);
-    this.deletedBlobs = new DeletedBlobs(sql);
   }
 
   /** The copies kept of what a write replaced; see `Revisions.keep`. */
   private readonly revisions: Revisions;
-
-  /**
-   * The files a purge lets go of, kept in R2 for the retention; see `DeletedBlobs`. Every
-   * method here that deletes a note row tombstones its files' keys in the same
-   * transaction, and that is the only way a note's files are ever let go of.
-   */
-  private readonly deletedBlobs: DeletedBlobs;
 
   /**
    * A page of notes, ordered by the requested sort. Keyset pagination keeps deep pages

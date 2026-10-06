@@ -151,9 +151,12 @@ export class UserStore extends DurableObject<StoreEnv> {
     this.userId = name;
     this.sql = instrumentedSql(ctx.storage, name);
     this.feed = new Feed(this.sql);
-    this.notes = new NotesStore(this.sql, this.feed);
-    this.attachments = new AttachmentsStore(this.sql, this.feed);
+    // One, shared: the stores write it and the sweep's methods here read and clear it,
+    // so "every row deletion tombstones" is a property of one object, not of three
+    // agreeing.
     this.deletedBlobs = new DeletedBlobs(this.sql);
+    this.notes = new NotesStore(this.sql, this.feed, this.deletedBlobs);
+    this.attachments = new AttachmentsStore(this.sql, this.feed, this.deletedBlobs);
     ctx.blockConcurrencyWhile(async () => {
       // Pings on the feed's sockets are answered at the edge, without waking the object;
       // object-wide and idempotent, so set once here rather than on every handshake.
@@ -249,9 +252,10 @@ export class UserStore extends DurableObject<StoreEnv> {
   /**
    * The sweep's one call on a live account: its usage, and the deleted files whose
    * thirty-five days are up as of `now` — at most `EXPIRED_BLOBS_PER_VISIT`, one R2
-   * `delete()`'s worth. One call rather than two because every account is visited every
-   * hour and each call is a billable request, and the sweep's batch is sized against the
-   * Free plan's fifty subrequests an invocation (`lib/sweep.ts`). `now` is the Worker's,
+   * `delete()`'s worth. One call rather than two because every account is visited on
+   * every walk of the directory and each call is a billable request, and the sweep's
+   * batch is sized against the Free plan's fifty subrequests an invocation
+   * (`lib/sweep.ts`). `now` is the Worker's,
    * and the same `now` goes to `forgetBlobs` afterwards, so the two agree on what was due.
    *
    * The read is a range on `idx_deleted_blobs_due`: an account with nothing due reads one
