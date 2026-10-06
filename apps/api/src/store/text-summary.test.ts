@@ -47,6 +47,7 @@ describe('a text layer’s summary', () => {
   it('takes a total that mentions tax or a tip, and not the tax’s own total', () => {
     expect(textSummary('Acme Diner\nTax total $0.41\nTotal (incl. tax) $4.95')).toMatch(/ · Total: \$4\.95$/);
     expect(textSummary('Acme Diner\nTotal with tip $48.00')).toMatch(/ · Total: \$48\.00$/);
+    expect(textSummary('Acme Diner\nTotal due -$5.00')).toMatch(/ · Total: -\$5\.00$/);
     expect(textSummary('Acme Diner\nTotal tax included $4.95')).toMatch(/ · Total: \$4\.95$/);
     expect(textSummary('Acme Diner\nTotal $40.00\nTotal tax $3.20\nTotal number of items sold 4')).toMatch(/ · Total: \$40\.00$/);
   });

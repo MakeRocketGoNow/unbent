@@ -100,7 +100,9 @@ export function findDates(text: string): FoundDate[] {
 
 /**
  * Every number the text writes that could be an amount: digits with optional thousands
- * separators and fraction, an optional sign, an optional currency mark. Anything glued
+ * separators and fraction, an optional sign on either side of an optional currency mark
+ * (`-$5.00` and `$-5.00` are both a refund, and the first used to lose its sign and its
+ * mark both, read as `5.00`). Anything glued
  * to a slash, dash, colon or letter is left alone — that is a date, a time, an id or a
  * phone number — and so is a run of more than nine digits, which is an account number.
  *
@@ -111,14 +113,15 @@ export function findNumbers(text: string): FoundNumber[] {
   const amounts: FoundNumber[] = [];
   const plain: FoundNumber[] = [];
   const seen = new Set<number>();
-  const re = /(?<![\w./:-])(?:[$€£]\s?)?-?\d[\d,]*(?:\.\d+)?(?![\w/:-])/g;
+  const re = /(?<![\w./:-])-?(?:[$€£]\s?)?-?\d[\d,]*(?:\.\d+)?(?![\w/:-])/g;
   for (const m of text.matchAll(re)) {
     const raw = m[0].trim();
-    const marked = /^[$€£]/.test(raw);
-    const digits = raw.replace(/^[$€£]\s?/, '').replace(/,/g, '');
-    if (!/^-?\d+(\.\d+)?$/.test(digits)) continue;
-    if (digits.replace(/^-/, '').split('.')[0]!.length > 9) continue;
-    const value = Number(digits);
+    const marked = /^-?[$€£]/.test(raw);
+    const negative = /^-|^[$€£]\s?-/.test(raw);
+    const digits = raw.replace(/^-?(?:[$€£]\s?)?-?/, '').replace(/,/g, '');
+    if (!/^\d+(\.\d+)?$/.test(digits)) continue;
+    if (digits.split('.')[0]!.length > 9) continue;
+    const value = negative ? -Number(digits) : Number(digits);
     if (!Number.isFinite(value) || seen.has(value)) continue;
     seen.add(value);
     const amount = marked || digits.includes('.');

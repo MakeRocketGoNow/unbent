@@ -531,6 +531,8 @@ describe('the candidates the code finds', () => {
   it('reads numbers that could be amounts, and not the ones that are something else', () => {
     const found = findNumbers('Total $1,333.32 on 03/04/2026 at 10:30, ref 1234567890123, qty 3, tax 98.76, tel 612-555-0148');
     expect(found.map((o) => o.value)).toEqual([1333.32, 98.76, 3]);
+    // A sign on either side of the mark is a refund, not a charge.
+    expect(findNumbers('Refund -$5.00, credit $-2.50, owed -7').map((o) => o.value)).toEqual([-5, -2.5, -7]);
   });
 
   it('reads addresses, links and phone numbers', () => {
