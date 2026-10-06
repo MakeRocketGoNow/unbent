@@ -222,7 +222,19 @@ describe('the daily dumps', () => {
     const young = await account('young', { createdAt: NOON - 3_600_000 });
     // A budget that reaches nobody: the status is still written, and says who is waiting.
     await dumpStores(backups(), { now: NOON, budget: 4 });
-    expect(await status()).toMatchObject({ accounts: 2, staleCount: 1, stale: [old.id], staleAfterHours: 48 });
+    expect(await status()).toMatchObject({ accounts: 2, staleCount: 1, stale: [old.id], staleAfterHours: 48, run: { done: false } });
     expect((await status()).stale).not.toContain(young.id);
+  });
+
+  it('list at most fifty failing or stale accounts in the status, and count them all', async () => {
+    const ids: string[] = [];
+    for (let i = 0; i < 55; i++) ids.push((await account(`many-${String(i).padStart(2, '0')}`, { createdAt: NOON - 10 * DAY })).id);
+    await env.DB.prepare(`UPDATE account_directory SET dump_error = 'refused', dump_tried_at = ?1`).bind(NOON).run();
+    await dumpStores(backups(), { now: NOON });
+    const s = await status();
+    expect(s).toMatchObject({ accounts: 55, failingCount: 55, staleCount: 55 });
+    expect(s.failing).toHaveLength(50);
+    expect(s.failing[0]).toMatchObject({ error: 'refused', triedAt: new Date(NOON).toISOString() });
+    expect(s.stale).toHaveLength(50);
   });
 });

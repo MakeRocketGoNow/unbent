@@ -235,22 +235,27 @@ export async function dumpStores(
       );
     }
   }
-  // Every account due was reached when the query came back short of its limit and the
-  // loop got through all of it.
-  report.done = reached === due.length && due.length < Math.max(0, budget.limit - FIXED_COST);
+  // Done when the query came back short of its limit, the loop got through all of it, and
+  // nothing it reached was put off: a status that says `done` means nothing is waiting.
+  report.done = reached === due.length && due.length < Math.max(0, budget.limit - FIXED_COST) && report.deferred.length === 0;
 
   // The writes, then the status read back in the same call, so it says what this run did.
+  // The lists are cut in the query, not after it: a failure that hits every account at
+  // once — a bucket that refuses writes — is when they would be longest.
   const stale = now - STALE_MS;
   const statusQuery = env.DB.prepare(
-    `SELECT COUNT(*) AS accounts,
-            COUNT(d.dump_error) AS failing_count,
-            SUM(COALESCE(d.dump_checked_at, d.created_at) < ?1) AS stale_count,
-            json_group_array(json_object('userId', d.user_id, 'error', d.dump_error, 'triedAt', d.dump_tried_at))
-              FILTER (WHERE d.dump_error IS NOT NULL) AS failing,
-            json_group_array(d.user_id) FILTER (WHERE COALESCE(d.dump_checked_at, d.created_at) < ?1) AS stale
-       FROM account_directory d JOIN user u ON u.id = d.user_id
-      WHERE d.deleted_at IS NULL`,
-  ).bind(stale);
+    `WITH live AS (
+       SELECT d.user_id, d.dump_error, d.dump_tried_at, COALESCE(d.dump_checked_at, d.created_at) < ?1 AS stale
+         FROM account_directory d JOIN user u ON u.id = d.user_id
+        WHERE d.deleted_at IS NULL)
+     SELECT (SELECT COUNT(*) FROM live) AS accounts,
+            (SELECT COUNT(*) FROM live WHERE dump_error IS NOT NULL) AS failing_count,
+            (SELECT COUNT(*) FROM live WHERE stale) AS stale_count,
+            (SELECT json_group_array(json_object('userId', user_id, 'error', dump_error, 'triedAt', dump_tried_at))
+               FROM (SELECT * FROM live WHERE dump_error IS NOT NULL ORDER BY dump_tried_at DESC, user_id LIMIT ?2)) AS failing,
+            (SELECT json_group_array(user_id)
+               FROM (SELECT user_id FROM live WHERE stale ORDER BY user_id LIMIT ?2)) AS stale`,
+  ).bind(stale, STATUS_LIST);
   const results = await env.DB.batch<StatusRow>([...writes, statusQuery]);
   const summary = results[results.length - 1]!.results[0]!;
 
@@ -260,12 +265,13 @@ export async function dumpStores(
     ranAt: new Date(now).toISOString(),
     run: { ...report, failed: report.failed.length, deferred: report.deferred.length },
     accounts: summary.accounts,
-    failing: (JSON.parse(summary.failing ?? '[]') as Array<{ userId: string; error: string; triedAt: number | null }>)
-      .slice(0, STATUS_LIST)
-      .map((f) => ({ ...f, triedAt: f.triedAt === null ? null : new Date(f.triedAt).toISOString() })),
+    failing: (JSON.parse(summary.failing) as Array<{ userId: string; error: string; triedAt: number | null }>).map((f) => ({
+      ...f,
+      triedAt: f.triedAt === null ? null : new Date(f.triedAt).toISOString(),
+    })),
     failingCount: summary.failing_count,
-    stale: (JSON.parse(summary.stale ?? '[]') as string[]).slice(0, STATUS_LIST),
-    staleCount: summary.stale_count ?? 0,
+    stale: JSON.parse(summary.stale) as string[],
+    staleCount: summary.stale_count,
     staleAfterHours: STALE_MS / 3_600_000,
   };
   await bucket.put(STATUS_KEY, JSON.stringify(status, null, 2), { httpMetadata: { contentType: 'application/json' } });
@@ -279,9 +285,10 @@ export async function dumpStores(
 interface StatusRow {
   accounts: number;
   failing_count: number;
-  stale_count: number | null;
-  failing: string | null;
-  stale: string | null;
+  stale_count: number;
+  /** JSON arrays, `[]` when nothing matches. */
+  failing: string;
+  stale: string;
 }
 
 /**
