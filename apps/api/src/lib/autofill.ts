@@ -6,9 +6,11 @@ import {
   type AutofillSuggestion,
   type FieldDef,
   type FieldValue,
+  type ReadBy,
 } from '@unbent/shared';
 import type { Jev, JevAnswer, JevChoiceQuestion, JevEntry, JevQuestion } from './jev.js';
-import { isLlmAuthError, type LanguageModel, type NoteForTitle } from './llm.js';
+import { isLlmAuthError, LLM_IMAGE_TYPES, type LanguageModel, type NoteForTitle } from './llm.js';
+import { isExtractable } from '@unbent/enex/ocr-text';
 import { titleCase } from './title-case.js';
 
 /**
@@ -107,6 +109,21 @@ export interface AutofillInput {
   }>;
   /** Most used first; only the first `MAX_TAGS_ASKED` are asked about. */
   tags: Array<{ name: string; examples: string[] }>;
+}
+
+/**
+ * A file's text as Auto-fill is shown it. `null` means "still being read" and `''` means
+ * "nothing there", and a file no reader here will ever take has to read as the second: a
+ * PDF always has a reader, a picture only where the vision model is. Words an assistant
+ * recorded over MCP count wherever they stand — on an instance without a model they are
+ * the only text a picture has, and they are what the person's own assistant chose to leave.
+ */
+export function attachmentTextFor(
+  file: { contentType: string; text: string | null; readBy: ReadBy | null },
+  vision: boolean,
+): string | null {
+  if (isExtractable(file.contentType) || file.readBy === 'assistant') return file.text;
+  return vision && LLM_IMAGE_TYPES.has(file.contentType) ? file.text : '';
 }
 
 /**

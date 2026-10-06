@@ -10,11 +10,10 @@ import {
   updateNoteSchema,
   updateNotesSchema,
 } from '@unbent/shared';
-import { isExtractable } from '@unbent/enex/ocr-text';
-import { autofill, EXAMPLES_PER_OPTION, MAX_TAGS_ASKED, NothingToRead } from '../lib/autofill.js';
+import { attachmentTextFor, autofill, EXAMPLES_PER_OPTION, MAX_TAGS_ASKED, NothingToRead } from '../lib/autofill.js';
 import { copyAttachments } from '../lib/copy-attachments.js';
 import { canAutofill, JevError, jevFrom } from '../lib/jev.js';
-import { canUseLlm, LLM_IMAGE_TYPES, llmFrom } from '../lib/llm.js';
+import { canUseLlm, llmFrom } from '../lib/llm.js';
 import { isOperator } from '../lib/instance.js';
 import { nextCursor } from '../lib/notes-repo.js';
 import { autofillReaders, readPendingFiles } from '../lib/read-attachment.js';
@@ -315,16 +314,11 @@ export const notes = new Hono<AppEnv>()
         jevFrom(c.env),
         {
         note: { title: note.title, body: note.body, tags: note.tags, notebookId: note.notebookId ?? null },
-        // A file no reader here takes is "nothing there" rather than "still being read":
-        // a PDF always has a reader, a picture only where the vision model is.
         attachments: files.map((f) => ({
           filename: f.filename,
-          text:
-            isExtractable(f.contentType) || (canUseLlm(c.env) && LLM_IMAGE_TYPES.has(f.contentType))
-              ? f.text
-              : '',
-          // Only the model's reading opens with a name for the file. An assistant's words
-          // reach here only when the press's own read declined to replace them.
+          text: attachmentTextFor(f, canUseLlm(c.env)),
+          // Only the model's reading opens with a name for the file; an assistant's words
+          // are plain text to Auto-fill, wherever they came from.
           readBy: f.readBy === 'vision' ? 'vision' : null,
         })),
         notebooks: notebooks.map((nb) => ({

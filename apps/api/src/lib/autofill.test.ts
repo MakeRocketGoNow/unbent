@@ -1,3 +1,4 @@
+import { attachmentTextFor } from './autofill.js';
 import { describe, expect, it, vi } from 'vitest';
 import type { FieldDef } from '@unbent/shared';
 import {
@@ -561,5 +562,23 @@ describe('the candidates the code finds', () => {
     ]);
     expect(lines.map((o) => o.key)).toEqual(['Acme Hardware', 'Invoice** 4471']);
     expect(lines[0]?.description).toBe('Line 1 of the note');
+  });
+});
+
+describe('what Auto-fill is shown of a file', () => {
+  const pdf = { contentType: 'application/pdf', text: 'Total 12.00', readBy: null };
+  const photo = { contentType: 'image/jpeg', text: null, readBy: null };
+  const told = { contentType: 'image/jpeg', text: 'Jane Doe, Acme Plumbing', readBy: 'assistant' as const };
+
+  it('reads a text layer anywhere, and a picture only where the model is', () => {
+    expect(attachmentTextFor(pdf, false)).toBe('Total 12.00');
+    // Still being read where the model will get to it; nothing there where it never will.
+    expect(attachmentTextFor(photo, true)).toBeNull();
+    expect(attachmentTextFor(photo, false)).toBe('');
+  });
+
+  it("keeps an assistant's words on an instance with no model, where they are all the picture has", () => {
+    expect(attachmentTextFor(told, false)).toBe('Jane Doe, Acme Plumbing');
+    expect(attachmentTextFor(told, true)).toBe('Jane Doe, Acme Plumbing');
   });
 });
