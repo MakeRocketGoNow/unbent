@@ -300,8 +300,8 @@ const answer = z.object({
   content: z.array(z.object({ type: z.string(), text: z.string().optional() })),
 });
 
-/** Chunked, because `String.fromCharCode(...bytes)` overflows the call stack on a photo. */
-function toBase64(bytes: ArrayBuffer): string {
+/** Chunked, because `String.fromCharCode(...bytes)` overflows the call stack on a photo. Shared with MCP's `get_attachment`. */
+export function toBase64(bytes: ArrayBuffer): string {
   const view = new Uint8Array(bytes);
   let binary = '';
   for (let i = 0; i < view.length; i += 0x8000) {

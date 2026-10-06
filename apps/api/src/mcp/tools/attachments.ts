@@ -9,6 +9,7 @@ import {
   chooseFilename,
   fetchSource,
 } from '../../lib/fetch-attachment.js';
+import { LLM_IMAGE_TYPES, toBase64 } from '../../lib/llm.js';
 import type { NotesRepo } from '../../lib/notes-repo.js';
 import { storeAttachment } from '../../lib/store-attachment.js';
 import { UPLOAD_GRANT_TTL_MS, type UploadGrantsRepo } from '../../lib/upload-grants.js';
@@ -16,7 +17,30 @@ import type { Env } from '../../types.js';
 import { jsonResult, notFound, toolError } from './result.js';
 
 /**
- * The tools that give a note a file.
+ * The most of a picture `get_attachment` hands over. Base64 inflates it by a third, and
+ * the result rides in the assistant's context beside everything else it holds, so this
+ * sits under the model's own cap (`MAX_LLM_IMAGE_BYTES`): a phone photo fits, a scan at
+ * print resolution does not, and the refusal names the size so the person can resize it.
+ */
+const MAX_MCP_IMAGE_BYTES = 4 * 1024 * 1024;
+
+/**
+ * The most text `set_attachment_text` takes. A transcription of a stack of pages is tens
+ * of thousands of characters; anything past this is not a reading of one file. Well under
+ * the route's own cap on a stored text.
+ */
+const MAX_ASSISTANT_TEXT_CHARS = 100_000;
+
+/**
+ * The tools that give a note a file, and the two that let an assistant read one.
+ *
+ * Bytes flow out here and never in. `get_attachment` returns a picture as an image block
+ * for the assistant's own model to look at — since MAK-179 nothing on the instance reads
+ * a picture except an Auto-fill press, so an assistant that wants to know what a photo
+ * shows reads it itself, on its own bill, by the person's choice in connecting it — and
+ * `set_attachment_text` records what it read, marked as the assistant's, so search and
+ * the summaries have it until a press has the model read the file (see
+ * `writeAssistantText` in the store for what yields to it and what does not).
  *
  * No tool takes the bytes as an argument, and not because one was forgotten. A tool call
  * is JSON the model writes, so the only way bytes could arrive through one is base64 in an
@@ -44,6 +68,135 @@ export function registerAttachmentTools(
   // flagged the same way. Deployed, this is false, so neither server-side fetcher can be
   // pointed at the Worker's own network.
   const allowLoopback = env.ALLOW_TEST_CREDENTIALS === '1';
+
+  server.registerTool(
+    'get_attachment',
+    {
+      title: 'See a picture',
+      description:
+        'The picture itself, returned as an image for you to read: a JPEG, PNG, GIF or WebP ' +
+        'attachment under 4 MB. For a picture that get_attachment_text, get_note or a ' +
+        'summary reports as "pending": nothing on this instance reads a picture on its own ' +
+        '— an Auto-fill press by the person does, and so can you. Read it, then record what ' +
+        'you read with set_attachment_text, so search, the summaries and the next session ' +
+        'have it without looking again. The bytes come to you and to no model the instance ' +
+        "runs. PDFs are not returned: a PDF's text layer is read for free on upload and " +
+        'get_attachment_text has it, and a scan with no layer waits for an Auto-fill press.',
+      inputSchema: z.object({
+        noteId: z.string().uuid(),
+        filename: z.string().min(1).describe('As listed by get_note.'),
+      }),
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ noteId, filename }) => {
+      // Scoped to the caller's store, so another person's note reads as missing; and
+      // never from the trash, like every other read of a file that is not a page load.
+      const row = await repos.attachments.resolve(noteId, filename);
+      if (!row) return notFound('attachment', `${filename} on note ${noteId}`);
+      if (!LLM_IMAGE_TYPES.has(row.content_type)) {
+        return toolError(
+          `Only a picture is returned (JPEG, PNG, GIF or WebP); this file is ${row.content_type}. ` +
+            (row.content_type === 'application/pdf'
+              ? "A PDF's text layer is in get_attachment_text; a scan with no layer waits for an Auto-fill press."
+              : 'Nothing on this instance reads it.'),
+        );
+      }
+      if (row.size > MAX_MCP_IMAGE_BYTES) {
+        const mb = (n: number) => `${(n / (1024 * 1024)).toFixed(1)} MB`;
+        return toolError(
+          `This picture is ${mb(row.size)}, over the ${mb(MAX_MCP_IMAGE_BYTES)} this tool returns. ` +
+            'A smaller copy of it, attached beside it, could be read.',
+        );
+      }
+      const object = await env.BLOBS.get(row.r2_key);
+      if (!object) return toolError('The bytes of this file could not be found; try again later.');
+      const data = toBase64(await object.arrayBuffer());
+      return {
+        content: [
+          { type: 'image' as const, data, mimeType: row.content_type },
+          {
+            type: 'text' as const,
+            text: JSON.stringify(
+              {
+                filename: row.filename,
+                contentType: row.content_type,
+                size: row.size,
+                next: 'Record what you read with set_attachment_text, so it is searchable and the next session has it.',
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    },
+  );
+
+  server.registerTool(
+    'set_attachment_text',
+    {
+      title: 'Record what you read off a file',
+      description:
+        'Record the text of a file you have read yourself, usually a picture from ' +
+        'get_attachment, so search, the summaries on get_note and list_notes, and ' +
+        'get_attachment_text have it. Write what the file says, not what you make of it: ' +
+        'a short first line naming it, a line saying what it is and shows (who it is from, ' +
+        'the amounts, the dates), a blank line, then every legible word transcribed in ' +
+        'reading order. Allowed where the file has no text, an empty row, or text you ' +
+        "recorded before, which you may revise; refused over a PDF's own text layer or what " +
+        "the instance's vision model read, since neither is yours to replace. What you " +
+        'record is marked as yours (read "assistant"), and the next time the person presses ' +
+        'Auto-fill on the note the instance has its model read the file itself and replaces ' +
+        'it — so write it for search in the meantime, not as the last word.',
+      inputSchema: z.object({
+        noteId: z.string().uuid(),
+        filename: z.string().min(1).describe('As listed by get_note.'),
+        text: z
+          .string()
+          .min(1)
+          .max(MAX_ASSISTANT_TEXT_CHARS)
+          .describe('What the file says: a name line, a line on what it is, a blank line, then the transcription.'),
+      }),
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    async ({ noteId, filename, text }) => {
+      const trimmed = text.trim();
+      if (!trimmed) return toolError('Nothing to record: the text is blank.');
+      const result = await repos.attachments.writeAssistantText(noteId, filename, trimmed);
+      if (!result.ok) {
+        switch (result.reason) {
+          case 'missing':
+            return notFound('attachment', `${filename} on note ${noteId}`);
+          case 'layer':
+            return toolError(
+              'This PDF has its own text layer, which is not yours to replace; get_attachment_text has it.',
+            );
+          default:
+            return toolError(
+              "The instance's vision model has read this file, and its reading is not yours to replace; " +
+                'get_attachment_text has it.',
+            );
+        }
+      }
+      return jsonResult({
+        filename,
+        read: 'assistant',
+        chars: trimmed.length,
+        note: 'Recorded. The next Auto-fill press on this note has the model read the file itself and replaces this.',
+      });
+    },
+  );
+
   server.registerTool(
     'add_attachment',
     {
