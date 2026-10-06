@@ -117,13 +117,19 @@ const ERROR_LENGTH = 500;
 /** A dump stopped because the invocation could not afford its next call. */
 class OutOfSubrequests extends Error {}
 
-/** The subrequests the run may still make, with `held` kept back for aborting an open upload. */
+/**
+ * The subrequests the run may still make, with `held` kept back for aborting an open
+ * upload. `take(reserve)` refuses a call that would leave fewer than `reserve` behind it:
+ * the call that opens an upload takes one, so the abort it may need is affordable from
+ * the moment the upload exists (an open that took the last call left nothing to abort
+ * with, found in review).
+ */
 class Budget {
   spent = FIXED_COST;
   held = 0;
   constructor(readonly limit: number) {}
-  take(): void {
-    if (this.spent + 1 + this.held > this.limit) throw new OutOfSubrequests();
+  take(reserve = 0): void {
+    if (this.spent + 1 + this.held + reserve > this.limit) throw new OutOfSubrequests();
     this.spent += 1;
   }
   get left(): number {
@@ -312,7 +318,7 @@ async function upload(bucket: R2Bucket, key: string, chunks: AsyncGenerator<Uint
       total += chunk.byteLength;
       while (pendingBytes >= partBytes) {
         if (!multipart) {
-          budget.take();
+          budget.take(1);
           multipart = await bucket.createMultipartUpload(key, { httpMetadata });
           budget.held = 1;
         }

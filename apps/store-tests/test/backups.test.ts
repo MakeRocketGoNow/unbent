@@ -167,6 +167,19 @@ describe('the daily dumps', () => {
     expect(await dumpStores(backups(), { now: NOON + 3_600_000, budget: 8 })).toMatchObject({ failed: [], subrequests: 3 });
   });
 
+  it('never open an upload with the last call it may make, so the abort is always affordable', async () => {
+    const { id, stub } = await account('edge');
+    await bigStore(stub);
+    // The fixed three and `dumpBegin` leave one call: enough to open the upload, not to
+    // abort it after. So it is never opened.
+    for (const budget of [5, 6, 7, 8]) {
+      await env.DB.prepare(`UPDATE account_directory SET dump_tried_at = NULL, dump_error = NULL WHERE user_id = ?1`).bind(id).run();
+      const report = await dumpStores(backups(), { now: NOON, budget, partBytes: 5 * 1024 * 1024 });
+      expect(report!.subrequests, `budget ${budget}`).toBeLessThanOrEqual(budget);
+      expect(report, `budget ${budget}`).toMatchObject({ failed: [id] });
+    }
+  });
+
   it('stop at an account the budget ran out on, and start the next run with it', async () => {
     // Ids sort the small one first, so it spends part of the budget before the big one.
     const small = await account('a-small');
