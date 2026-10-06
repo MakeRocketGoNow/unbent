@@ -5,12 +5,12 @@ import {
   NothingToRead,
   autofill,
   candidateLines,
-  findDates,
+  dateCandidates,
   findEmails,
-  findNumbers,
   findPhones,
   findUrls,
   labelledValues,
+  numberCandidates,
   type AutofillInput,
 } from './autofill.js';
 import type { Jev, JevAnswer, JevChoiceQuestion, JevEntry, JevQuestion } from './jev.js';
@@ -523,16 +523,16 @@ describe('the candidates the code finds', () => {
   });
 
   it('reads dates however the document writes them, once each', () => {
-    const found = findDates('Paid 2026-03-04, due 3/18/26 and again on March 18, 2026; 25.12.2025; 4th Feb 2026; 13/13/2026');
+    const found = dateCandidates('Paid 2026-03-04, due 3/18/26 and again on March 18, 2026; 25.12.2025; 4th Feb 2026; 13/13/2026');
     expect(found.map((o) => o.key)).toEqual(['2026-03-04', '2026-03-18', '2025-12-25', '2026-02-04']);
     expect(found[1]?.description).toBe('As written: 3/18/26');
   });
 
   it('reads numbers that could be amounts, and not the ones that are something else', () => {
-    const found = findNumbers('Total $1,333.32 on 03/04/2026 at 10:30, ref 1234567890123, qty 3, tax 98.76, tel 612-555-0148');
+    const found = numberCandidates('Total $1,333.32 on 03/04/2026 at 10:30, ref 1234567890123, qty 3, tax 98.76, tel 612-555-0148');
     expect(found.map((o) => o.value)).toEqual([1333.32, 98.76, 3]);
     // A sign on either side of the mark is a refund, not a charge.
-    expect(findNumbers('Refund -$5.00, credit $-2.50, owed -7').map((o) => o.value)).toEqual([-5, -2.5, -7]);
+    expect(numberCandidates('Refund -$5.00, credit $-2.50, owed -7').map((o) => o.value)).toEqual([-5, -2.5, -7]);
   });
 
   it('reads addresses, links and phone numbers', () => {

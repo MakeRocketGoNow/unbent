@@ -1,7 +1,7 @@
 import {
   encodeFieldValue,
-  findDates as findDatesIn,
-  findNumbers as findNumbersIn,
+  findDates,
+  findNumbers,
   isRatingField,
   type AutofillSuggestion,
   type FieldDef,
@@ -264,8 +264,8 @@ export function labelledValues(lines: Option[]): Option[] {
  * described by how the document wrote it. The finding is `@unbent/shared`'s, which the
  * store's file summaries share.
  */
-export function findDates(text: string): Option[] {
-  return findDatesIn(text)
+export function dateCandidates(text: string): Option[] {
+  return findDates(text)
     .slice(0, MAX_CANDIDATES)
     .map(({ iso, raw }) => ({ key: iso, value: iso, description: `As written: ${raw}` }));
 }
@@ -275,8 +275,8 @@ export function findDates(text: string): Option[] {
  * Amounts with a mark or a fraction come first, so that they are what survives the cap;
  * the order is lost once they are keys of the criteria object, and does not matter there.
  */
-export function findNumbers(text: string): Option[] {
-  return findNumbersIn(text)
+export function numberCandidates(text: string): Option[] {
+  return findNumbers(text)
     .slice(0, MAX_CANDIDATES)
     .map(({ value, raw }) => ({ key: String(value), value, description: `As written: ${raw}` }));
 }
@@ -506,7 +506,7 @@ function fieldAsks(fields: FieldDef[], corpus: Corpus): Ask[] {
               def.currency ? 'The field is an amount of money.' : ''
             }`.trim(),
           },
-          findNumbers(corpus.text),
+          numberCandidates(corpus.text),
           notSaid,
         );
         return;
@@ -516,7 +516,7 @@ function fieldAsks(fields: FieldDef[], corpus: Corpus): Ask[] {
             question: `Which of these dates is the ${label} of this note?`,
             guidance: 'These are every date the text writes, each shown as written.',
           },
-          findDates(corpus.text),
+          dateCandidates(corpus.text),
           notSaid,
         );
         return;
