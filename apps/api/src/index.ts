@@ -4,6 +4,7 @@ import type { AppEnv, RawEnv } from './types.js';
 import { withAppUrl } from './lib/app-url.js';
 import { MANIFEST_PATH, serveManifest } from './lib/manifest.js';
 import { StoreUnavailable } from './lib/store-client.js';
+import { dumpStores } from './lib/backups.js';
 import { sweepStores } from './lib/sweep.js';
 import { sessionMiddleware } from './lib/session.js';
 import { health } from './routes/health.js';
@@ -105,11 +106,17 @@ export default {
     return app.fetch(request, withAppUrl(env, request), ctx);
   },
   /**
-   * The walk over every account's note store, one batch an hour; see lib/sweep.ts.
-   * `[triggers]` in wrangler.toml is when. `waitUntil` so the walk is not cut off at the
-   * handler's return, and nothing else here needs `APP_URL` settled.
+   * Two jobs on one trigger, `17,47 * * * *` in wrangler.toml: at :17 the walk over every
+   * account's note store, one batch an hour (lib/sweep.ts), and at :47 the daily dumps
+   * into the backups bucket, which do nothing where no bucket is bound (lib/backups.ts).
+   * One trigger rather than two so that both run on every instance from one line, and
+   * each is its own invocation with its own subrequests, so neither can spend the
+   * other's. Told apart by the minute the run was scheduled for, not the one it started
+   * in, which a late start could push past the half hour. `waitUntil` so neither is cut
+   * off at the handler's return, and nothing here needs `APP_URL` settled.
    */
-  scheduled(_controller: ScheduledController, env: RawEnv, ctx: ExecutionContext): void {
-    ctx.waitUntil(sweepStores(env));
+  scheduled(controller: ScheduledController, env: RawEnv, ctx: ExecutionContext): void {
+    const minute = new Date(controller.scheduledTime).getUTCMinutes();
+    ctx.waitUntil(minute < 30 ? sweepStores(env) : dumpStores(env));
   },
 };

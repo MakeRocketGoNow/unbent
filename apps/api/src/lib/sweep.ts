@@ -218,7 +218,7 @@ export async function sweepStores(
 }
 
 /** The runtime's transient failures carry `retryable` as an own property, which RPC keeps. */
-function isDeferral(err: unknown): boolean {
+export function isDeferral(err: unknown): boolean {
   return typeof err === 'object' && err !== null && (err as { retryable?: unknown }).retryable === true;
 }
 
