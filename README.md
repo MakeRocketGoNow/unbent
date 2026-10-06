@@ -789,11 +789,17 @@ Three are worth knowing about:
 - **`edit_note`** takes `append`, `prepend`, or `replace` with an exact `find` string, so
   changing one line of a long note does not mean resending it. A `find` matching more than
   once is refused with the count rather than guessed at.
-- **`get_attachment_text`** returns the text already extracted from a PDF, which is what
-  makes a scanned bill answerable, and what the vision model read off a picture or a
-  text-less scan when someone pressed Auto-fill on its note. A file nothing has read yet is
-  reported as waiting, and no tool asks for that read: the model runs only inside a press
-  (MAK-179). See [Searching inside PDFs](#searching-inside-pdfs). Before it, `get_note` —
+- **`get_attachment_text`** returns the text held for a file: a PDF's text layer, which is
+  what makes a scanned bill answerable; what the vision model read off a picture or a
+  text-less scan when someone pressed Auto-fill on its note; or what an assistant recorded
+  itself. A picture nothing has read yet is reported as waiting, and no tool makes the
+  instance's model read it — that runs only inside a press (MAK-179). Instead
+  **`get_attachment`** hands the assistant the picture itself, as an image under 4 MB, to
+  read with its own model on its own bill, and **`set_attachment_text`** records what it
+  read, marked `assistant`, so search and the summaries have it. It may fill a file that
+  has no text, an empty row or its own earlier words, and never a text layer or the model's
+  reading; the next Auto-fill press on the note has the model read the file itself and
+  replaces it. See [Searching inside PDFs](#searching-inside-pdfs). Before any of that, `get_note` —
   and `list_notes` or `search_notes` with `attachmentSummaries` — already give each file a
   line of what it is: the vision model's name and description for a picture or a text-less
   scan; for a text layer, its opening and then the total, dates, order number and amounts
@@ -1052,6 +1058,14 @@ import or an assistant — and a bulk pass on the Maintenance page read the back
 real archive thousands of paid requests nobody asked for, and every one of them a photo
 leaving the instance that its owner never chose to send. Cost that grows with uploads cannot
 be covered by a flat price, and a press is consent where an upload is not.
+
+**An assistant can read a picture itself.** Over MCP, `get_attachment` returns a picture as
+an image for the assistant's own model, and `set_attachment_text` records what it read,
+marked `assistant` beside the layer's and the model's text. Those words are a hint for
+search and the summaries, not the document: the next Auto-fill press on the note has the
+instance's model read the file and replaces them, and an assistant may never write over a
+text layer or the model's reading. The instance calls no model for any of it, and the
+bytes go to the assistant the person connected, nowhere else.
 
 `ANTHROPIC_MODEL` picks the model. Unset means the most capable current one — a wrong digit in a
 transcribed total is copied into a field with full confidence — and `claude-sonnet-5` trades
@@ -1913,10 +1927,11 @@ markdown repeats it so a search of the unpacked tree finds one file per title ra
 thousand `note.md`s. Standard `unzip` reads it; no part of this app is needed to get your
 notes back.
 
-Beside `files/`, `text/` and `described/` hold the text this instance has read from each
+Beside `files/`, `text/`, `described/` and `written/` hold the text this instance holds for each
 file, as a plain `<filename>.txt`: `text/` for what the file's own text layer gave,
-`described/` for what the vision model read from a picture or a scan with no layer. A file
-with no text has neither. They are what makes a scanned bill answerable, so they are also
+`described/` for what the vision model read from a picture or a scan with no layer,
+`written/` for what an assistant recorded over MCP after reading the picture itself. A file
+with no text has none. They are what makes a scanned bill answerable, so they are also
 what a person would want to `grep` in the unpacked folder — and without them a restore read
 every file again, a PDF extraction or a paid vision request per file, and got different
 words than search and Auto-fill had been built on.
@@ -1991,8 +2006,8 @@ fresh live copy under a new id.
 The archive is read in the browser, one note and one attachment at a time, by the same
 worker that reads ENEX files — the requests, the resumability and the per-note failure log
 are all the ENEX import's. Attachment types are recovered from the bytes and then the
-extension, since a zip carries neither. A file that arrives with a `text/` or `described/`
-sidecar is uploaded with `?text=supplied`, which stops the Worker reading it, and its text is
+extension, since a zip carries neither. A file that arrives with a `text/`, `described/` or
+`written/` sidecar is uploaded with `?text=supplied`, which stops the Worker reading it, and its text is
 recorded as it was, under the reader that wrote it; nothing is extracted, nothing goes back
 to pending, and no vision request is made. A file without one — from an older export — is
 read as any upload is, so search works after that restore too. Only the layout is assumed: markdown with frontmatter, and a `files/` directory
