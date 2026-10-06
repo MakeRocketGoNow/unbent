@@ -449,25 +449,36 @@ export async function fetchSource(
 /**
  * What to say when the host answers with an error.
  *
- * 401, 403 and 429 are a host deciding not to serve this server, most often because it
- * can tell a server from a browser however the request is dressed, and asking again from
- * here will not change its mind. So the message leads with what will: the assistant
- * fetching the bytes where the host does serve them — a browser tab on the page, or its
- * own tools — and sending them with prepare_attachment_upload. An expired signed link
- * answers 403 too, and gets a clause rather than the lead, since it is the rarer case for
- * a picture found on a page.
+ * 401 and 403 are a host deciding not to serve this server, most often because it can
+ * tell a server from a browser however the request is dressed, and asking again from here
+ * will not change its mind. So the message leads with what will: the assistant fetching
+ * the bytes where the host does serve them — a browser tab on the page, or its own tools
+ * — and sending them with prepare_attachment_upload. An expired signed link answers 403
+ * too, and gets a clause rather than the lead, since it is the rarer case for a picture
+ * found on a page.
+ *
+ * 429 gets the same way round, but not the same verdict: a rate limit can be the host
+ * spacing out a bot, and can be one that clears, so it says a later try may work.
  */
 function refusal(host: string, status: number, statusText: string): string {
   const answered = `${host} answered ${status}${statusText ? ` ${statusText}` : ''}.`;
   if (status !== 401 && status !== 403 && status !== 429) return answered;
+  const why =
+    status === 429
+      ? 'The host is limiting how often this server may ask, and a try after a pause may ' +
+        'work; it may also only serve browsers.'
+      : "The host refused this server's request, likely because it only serves browsers, " +
+        'and retrying from here will not help.';
+  const expired =
+    status === 429
+      ? ''
+      : ' If this was a signed link, it may instead have expired: read the source again for a fresh one.';
   return (
-    `${answered} The host refused this server's request, likely because it only serves ` +
-    'browsers, and retrying from here will not help. Fetch the file yourself — in a ' +
-    'browser tab on the page it came from, or with your own tools — then call ' +
-    'prepare_attachment_upload and PUT the bytes to the URL it returns; that URL ' +
-    'accepts a PUT from a page on any site, and if the page\'s Content-Security-Policy ' +
-    "blocks it, open the file's own URL in the tab and send it from there. If this was a " +
-    'signed link, it may instead have expired: read the source again for a fresh one.'
+    `${answered} ${why} Fetch the file yourself — in a browser tab on the page it came ` +
+    'from, or with your own tools — then call prepare_attachment_upload and PUT the bytes ' +
+    "to the URL it returns; that URL accepts a PUT from a page on any site, and if the page's " +
+    "Content-Security-Policy blocks it, open the file's own URL in the tab and send it from " +
+    `there.${expired}`
   );
 }
 
