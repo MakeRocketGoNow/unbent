@@ -44,6 +44,13 @@ describe('a text layer’s summary', () => {
     expect(textSummary('Acme\nTotal amount due $90.00\nTotal $12.00')).toMatch(/ · Total: \$90\.00$/);
   });
 
+  it('takes a total that mentions tax or a tip, and not the tax’s own total', () => {
+    expect(textSummary('Acme Diner\nTax total $0.41\nTotal (incl. tax) $4.95')).toMatch(/ · Total: \$4\.95$/);
+    expect(textSummary('Acme Diner\nTotal with tip $48.00')).toMatch(/ · Total: \$48\.00$/);
+    expect(textSummary('Acme Diner\nTotal tax included $4.95')).toMatch(/ · Total: \$4\.95$/);
+    expect(textSummary('Acme Diner\nTotal $40.00\nTotal tax $3.20\nTotal number of items sold 4')).toMatch(/ · Total: \$40\.00$/);
+  });
+
   it('drops a printed page’s address header and keeps its words', () => {
     const page = '2/9/2014 Transaction Receipt [https://orders.example.com/pay;jsessionid=AB12](<https://orders.example.com/pay;jsessionid=AB12>)\n\nAcme Tickets\nOrder Number: AT-55120\nAmount paid: $45.00';
     expect(textSummary(page)).toBe(

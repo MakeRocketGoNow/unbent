@@ -59,8 +59,25 @@ const AMOUNTS_NAMED = 3;
  */
 const TOTAL = /\b(?:grand\s+total|total(?:\s+(?:due|amount|paid|charged|price|cost))?|amount\s+(?:due|paid)|balance\s+due|new\s+balance)\b/i;
 const PAID = /\b(?:grand\s+total|total\s+(?:amount\s+)?(?:due|paid|charged)|amount\s+(?:due|paid)|balance\s+due|new\s+balance)\b/i;
-const NOT_TOTAL =
-  /\b(?:sub\s*-?\s*total|savings?|saved|discounts?|tax(?:es)?|items?|qty|quantity|tip|points|fees?|interest|minimum|min\.|past|payments?|credits?|purchases?|advances?|transactions?)(?:\b|(?<=\.))/i;
+/**
+ * What a total line can be a total *of* without being the amount paid. Turned away only
+ * when the word qualifies "total" — "Total tax", "Tax total", "Total number of items" —
+ * and not anywhere on the line, which refused "Total (incl. tax) $4.95" and "Total with
+ * tip $48.00", the very lines a restaurant receipt ends on. "Total tax included" is the
+ * one reading of "total tax" that is the amount paid.
+ */
+const TOTAL_OF =
+  'tax(?:es)?|tips?|discounts?|savings?|items?|qty|quantity|points|fees?|interest|payments?|credits?|purchases?|advances?|transactions?';
+const NOT_TOTAL = new RegExp(
+  [
+    String.raw`\bsub\s*-?\s*total\b`,
+    String.raw`\b(?:minimum|past|saved|savings)\b`,
+    String.raw`\bmin\.`,
+    String.raw`\btotal\s+(?:number\s+of\s+)?(?:${TOTAL_OF})\b(?!\s+incl)`,
+    String.raw`\b(?:${TOTAL_OF})\s+total\b`,
+  ].join('|'),
+  'i',
+);
 
 /**
  * An order or invoice number: after a marker that says it is one — `#`, "no.", "number",
