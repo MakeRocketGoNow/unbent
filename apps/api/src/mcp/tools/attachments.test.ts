@@ -63,9 +63,10 @@ function pictured() {
     'card.png': { id: 'a1', filename: 'card.png', content_type: 'image/png', size: png.length, r2_key: 'k/card' },
     'poster.jpg': { id: 'a2', filename: 'poster.jpg', content_type: 'image/jpeg', size: 9 * 1024 * 1024, r2_key: 'k/poster' },
     'scan.pdf': { id: 'a3', filename: 'scan.pdf', content_type: 'application/pdf', size: 10, r2_key: 'k/scan' },
+    'fresh.pdf': { id: 'a4', filename: 'fresh.pdf', content_type: 'application/pdf', size: 10, r2_key: 'k/fresh' },
   };
   const written: Array<{ filename: string; text: string }> = [];
-  const refuse: Record<string, 'layer' | 'vision'> = { 'scan.pdf': 'layer', 'poster.jpg': 'vision' };
+  const refuse: Record<string, 'unread' | 'layer' | 'vision'> = { 'scan.pdf': 'layer', 'poster.jpg': 'vision', 'fresh.pdf': 'unread' };
   return {
     written,
     repo: {
@@ -129,6 +130,10 @@ describe('set_attachment_text', () => {
     const vision = await set({ noteId, filename: 'poster.jpg', text: 'x' });
     expect(vision.isError).toBe(true);
     expect(vision.content[0]!.text).toMatch(/vision model/);
+    // A PDF the free reader has not reached yet keeps its turn.
+    const unread = await set({ noteId, filename: 'fresh.pdf', text: 'x' });
+    expect(unread.isError).toBe(true);
+    expect(unread.content[0]!.text).toMatch(/not been read yet/);
     expect((await set({ noteId, filename: 'ghost.png', text: 'x' })).isError).toBe(true);
     expect((await set({ noteId, filename: 'card.png', text: '   ' })).isError).toBe(true);
     expect(written).toEqual([]);

@@ -177,6 +177,11 @@ export function registerAttachmentTools(
         switch (result.reason) {
           case 'missing':
             return notFound('attachment', `${filename} on note ${noteId}`);
+          case 'unread':
+            return toolError(
+              "This PDF's text layer has not been read yet. It is read for free, and get_attachment_text " +
+                'will have it; nothing of yours is needed.',
+            );
           case 'layer':
             return toolError(
               'This PDF has its own text layer, which is not yours to replace; get_attachment_text has it.',

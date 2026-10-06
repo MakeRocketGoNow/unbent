@@ -166,11 +166,19 @@ describe('attachments', () => {
     await stub.recordText({ attachmentId: 'seen', noteId: 'n1', filename: 'seen.jpg', text: 'A plate\nMeal: lasagna.\n\n', readBy: 'vision' });
     await stub.recordAttachment(file('n1', { id: 'declined', filename: 'declined.jpg', contentType: 'image/jpeg' }));
     await stub.recordText({ attachmentId: 'declined', noteId: 'n1', filename: 'declined.jpg', text: '', readBy: 'vision' });
+    await stub.recordAttachment(file('n1', { id: 'fresh', filename: 'fresh.pdf' }));
+    await stub.recordAttachment(file('n1', { id: 'blank', filename: 'blank.pdf' }));
+    await stub.recordText({ attachmentId: 'blank', noteId: 'n1', filename: 'blank.pdf', text: '' });
 
     // Nothing there, its own earlier words, or a row the model left empty: all yield.
     expect(await stub.writeAssistantText('n1', 'card.jpg', 'Plumber card\nJane Doe, Acme Plumbing, 555-0100')).toEqual({ ok: true, reason: null });
     expect(await stub.writeAssistantText('n1', 'card.jpg', 'Jane Doe, Acme Plumbing')).toEqual({ ok: true, reason: null });
     expect(await stub.writeAssistantText('n1', 'declined.jpg', 'A receipt the model would not read')).toEqual({ ok: true, reason: null });
+    // A PDF whose layer came back empty yields; one the free reader has not reached does
+    // not, or it would never be reached and the next press would pay the model for it.
+    expect(await stub.writeAssistantText('n1', 'blank.pdf', 'A scan with no layer, read by eye')).toEqual({ ok: true, reason: null });
+    expect(await stub.writeAssistantText('n1', 'fresh.pdf', 'x')).toEqual({ ok: false, reason: 'unread' });
+    expect((await stub.autofillPrelude('n1', 10))!.forText.map((f) => f.id)).toEqual(['fresh']);
     // The file's own text layer and the model's reading do not.
     expect(await stub.writeAssistantText('n1', 'bill.pdf', 'x')).toEqual({ ok: false, reason: 'layer' });
     expect(await stub.writeAssistantText('n1', 'seen.jpg', 'x')).toEqual({ ok: false, reason: 'vision' });

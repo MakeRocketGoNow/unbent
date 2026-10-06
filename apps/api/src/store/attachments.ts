@@ -124,7 +124,7 @@ export type FileRead = 'vision' | 'text' | 'assistant' | 'pending' | 'none';
 export interface AssistantWrite {
   ok: boolean;
   /** Why not, when `ok` is false; null when it was written. One shape rather than a union, which the RPC stub's types do not carry. */
-  reason: 'missing' | 'layer' | 'vision' | null;
+  reason: 'missing' | 'unread' | 'layer' | 'vision' | null;
 }
 
 /** The row's `read_by` as the three values it may hold; anything else reads as a text layer. */
@@ -475,15 +475,19 @@ export class AttachmentsStore {
    * own earlier words, which it may revise. A text layer is the file's own words and the
    * model's reading is the instance's; an assistant overwriting either would put a model
    * nobody here chose in front of both, so those are refused, by name, for the tool to
-   * explain. What is written is marked `assistant`, and `needingVision` offers it to the
+   * explain. Nor does a PDF nothing has looked at yet: a row here would set `has_text`
+   * and take it off `needingText`, so its layer would never be read and the next press
+   * would pay the model for a scan that had one — the guarantee lib/read-attachment.ts
+   * keeps. It is refused as `unread` until the free reader has had its turn; a layer that
+   * came back empty is a row, and yields. What is written is marked `assistant`, and `needingVision` offers it to the
    * next Auto-fill press, which has the model read the file itself and replaces it: the
    * attachment stays the source of truth, and the assistant's words bridge the gap until
    * someone presses. The note must be live, as every other write to a file requires.
    */
   writeAssistantText(noteId: string, filename: string, text: string): AssistantWrite {
     return this.sql.tx(() => {
-      const row = this.sql.first<{ id: string; text: string | null; read_by: string | null }>(
-        `SELECT a.id, t.text, t.read_by
+      const row = this.sql.first<{ id: string; content_type: string; text: string | null; read_by: string | null }>(
+        `SELECT a.id, a.content_type, t.text, t.read_by
            FROM attachments a
            JOIN notes n ON n.id = a.note_id
            LEFT JOIN attachment_text t ON t.attachment_id = a.id
@@ -492,6 +496,7 @@ export class AttachmentsStore {
         filename,
       );
       if (!row) return { ok: false, reason: 'missing' };
+      if (row.content_type === 'application/pdf' && row.text === null) return { ok: false, reason: 'unread' };
       if (row.text && row.read_by !== 'assistant') return { ok: false, reason: row.read_by === 'vision' ? 'vision' : 'layer' };
       this.recordText({ attachmentId: row.id, noteId, filename, text, readBy: 'assistant' });
       return { ok: true, reason: null };
