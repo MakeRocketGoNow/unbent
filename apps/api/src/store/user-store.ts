@@ -74,6 +74,8 @@ export interface DumpSlice {
   bytes: Uint8Array;
   rows: number;
   next: DumpPosition | null;
+  /** On the last slice only: the feed's mark as that slice was read. See `dumpSlice`. */
+  endMark?: string;
 }
 
 /**
@@ -473,7 +475,7 @@ export class UserStore extends DurableObject<StoreEnv> {
    */
   dumpBegin(unless: string | null = null): DumpStart {
     this.ready();
-    const mark = `${this.feed.epoch()}:${this.feed.seq()}`;
+    const mark = this.dumpMark();
     if (mark === unless) return { mark, unchanged: true };
     return { mark, unchanged: false, schema: this.schemaSql(), ...this.dumpSlice({ table: 0, after: 0 }) };
   }
@@ -489,8 +491,11 @@ export class UserStore extends DurableObject<StoreEnv> {
    *
    * A slice is not a snapshot of the store with the one before it. Nothing can hold a
    * read open across two calls to the object, so a write between two slices lands in
-   * whichever tables have not been read yet. The backup records the mark taken before
-   * the first slice, so such an account is dumped again on the next day's run.
+   * whichever tables have not been read yet — and the gaps include a multipart upload's
+   * parts, seconds rather than milliseconds. Such a file still loads, since it loads with
+   * foreign keys off, which is why it must say so: the last slice carries the mark as it
+   * is then (`endMark`), the file ends with both marks, and the backup records no mark
+   * for a dump whose two differ, so the account is dumped again on the next day's run.
    */
   dumpSlice(from: DumpPosition): DumpSlice {
     this.ready();
@@ -502,7 +507,12 @@ export class UserStore extends DurableObject<StoreEnv> {
       chars += page.chars;
       if (page.cut) return { bytes: encodeLines(lines), rows: lines.length, next: { table: t, after: page.last } };
     }
-    return { bytes: encodeLines(lines), rows: lines.length, next: null };
+    return { bytes: encodeLines(lines), rows: lines.length, next: null, endMark: this.dumpMark() };
+  }
+
+  /** The feed's epoch and seq, as `dumpBegin` and the last slice report them. */
+  private dumpMark(): string {
+    return `${this.feed.epoch()}:${this.feed.seq()}`;
   }
 
   /**

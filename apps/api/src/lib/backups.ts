@@ -303,7 +303,7 @@ async function dumpOne(
   now: number,
   budget: Budget,
   partBytes: number,
-): Promise<{ unchanged: true } | { unchanged: false; mark: string; bytes: number }> {
+): Promise<{ unchanged: true } | { unchanged: false; mark: string | null; bytes: number }> {
   const fresh = row.dump_at !== null && row.dump_at > now - REFRESH_MS;
   budget.take();
   const dump = await beginDump(storeFor(env, row.user_id), row.user_id, {
@@ -316,6 +316,14 @@ async function dumpOne(
   budget.held += 1;
   try {
     const bytes = await upload(bucket, dumpKey(row.user_id, now), dump.chunks, budget, partBytes);
+    // A write landed while the store was being read, so the file's rows may be from either
+    // side of it (`UserStore.dumpSlice`; the file says so in its last lines). No mark is
+    // recorded, so the next day's run dumps the account whatever its mark then. Not this
+    // day's: that would write the same key again, which the mirror's lock refuses.
+    if (dump.endMark !== dump.mark) {
+      console.warn(`[backup] user=${row.user_id} was written to while it was dumped (${dump.mark} to ${dump.endMark}); dumping it again tomorrow`);
+      return { unchanged: false, mark: null, bytes };
+    }
     return { unchanged: false, mark: dump.mark, bytes };
   } finally {
     budget.held -= 1;

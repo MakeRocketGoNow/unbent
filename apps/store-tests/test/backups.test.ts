@@ -90,7 +90,8 @@ describe('the daily dumps', () => {
     expect(object!.httpMetadata?.contentType).toContain('application/sql');
     expect(sql).toMatch(new RegExp(`^-- Unbent note store of account ${id}, dumped `));
     expect(sql).toContain("'Kept'");
-    expect(sql.trimEnd().endsWith('PRAGMA foreign_keys = ON;')).toBe(true);
+    expect(sql).toContain('PRAGMA foreign_keys = ON;\n-- Change feed at the start of the dump: ');
+    expect(sql.trimEnd().endsWith('-- Nothing was written while the store was read: the rows are one moment.')).toBe(true);
 
     expect(await directory(id)).toMatchObject({ dump_at: NOON, dump_bytes: object!.size, dump_checked_at: NOON, dump_tried_at: NOON, dump_error: null });
     expect((await directory(id))!.dump_mark).toMatch(/:\d+$/);
@@ -190,10 +191,48 @@ describe('the daily dumps', () => {
     expect(object!.size).toBeGreaterThan(3 * partBytes);
     expect(object!.size).toBe(report!.bytes);
     expect([...sql.matchAll(/^INSERT INTO attachment_text /gm)]).toHaveLength(3);
-    expect(sql.trimEnd().endsWith('PRAGMA foreign_keys = ON;')).toBe(true);
+    expect(sql).toContain('PRAGMA foreign_keys = ON;\n-- Change feed at the start of the dump: ');
     // The fixed three; `dumpBegin` and two more slices; the upload's create, four parts
     // and completion; the account's directory row.
     expect(report!.subrequests).toBe(13);
+  });
+
+  it('say in the file and the directory when a write landed while the store was read', async () => {
+    const { id, stub } = await account('crossed');
+    await bigStore(stub);
+    // A note written just before each slice after the first, as a person typing during
+    // a multi-slice dump would.
+    const writing = new Proxy(env.USER_STORE, {
+      get(target, key) {
+        if (key === 'get') {
+          return (storeId: DurableObjectId) => {
+            const real = target.get(storeId);
+            return new Proxy(real, {
+              get(r, k) {
+                if (k === 'dumpSlice') {
+                  return async (from: Parameters<typeof real.dumpSlice>[0]) => {
+                    await real.create({ id: crypto.randomUUID(), title: 'Typed meanwhile', body: 'b', tags: [] });
+                    return real.dumpSlice(from);
+                  };
+                }
+                // A stub's methods are RPC calls, `bind` included, so call through rather than bind.
+                return (...args: unknown[]) => (r as unknown as Record<PropertyKey, (...a: unknown[]) => unknown>)[k]!(...args);
+              },
+            });
+          };
+        }
+        const value = Reflect.get(target, key) as unknown;
+        return typeof value === 'function' ? (value as (...a: unknown[]) => unknown).bind(target) : value;
+      },
+    });
+    const report = await dumpStores({ ...backups(), USER_STORE: writing }, { now: NOON, partBytes: 5 * 1024 * 1024 });
+    expect(report).toMatchObject({ dumped: 1, failed: [] });
+    const sql = await (await env.BLOBS.get(dumpKey(id, NOON)))!.text();
+    expect(sql.trimEnd().endsWith('-- The store was written to while it was read: rows read after the write may be from after it.')).toBe(true);
+    // No mark, so tomorrow's run dumps it again even though nothing more is written.
+    expect(await directory(id)).toMatchObject({ dump_at: NOON, dump_mark: null });
+    expect(await dumpStores(backups(), { now: NOON + DAY })).toMatchObject({ dumped: 1, unchanged: 0 });
+    expect((await directory(id))!.dump_mark).not.toBeNull();
   });
 
   it('record a dump that cannot fit one invocation as failed, and leave no half-written file', async () => {

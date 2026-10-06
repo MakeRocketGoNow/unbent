@@ -1777,7 +1777,8 @@ every account whose store has changed into it, as `stores/<user>/<YYYY-MM-DD>.sq
 file `GET …/dump` below writes. An account is tried once a day; it is dumped when its change
 feed has moved since its last dump, and in any case once that dump is a week old, so a
 bucket whose lifecycle rule deletes dumps after fourteen days always holds one of every
-account. The account directory records each one's last dump, and every run writes
+account. A big store is read in several calls, so a write can land partway; such a dump
+says so in its last lines, and the account is dumped again the next day. The account directory records each one's last dump, and every run writes
 `status/dumps.json` to the bucket: what it did, and which accounts failed or have gone
 forty-eight hours without a dump found current. Nothing is bound at the top level of
 `wrangler.toml`, so a fork's instance never dumps; unbent.app's production deploy binds the

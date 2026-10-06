@@ -24,6 +24,12 @@ import type { DumpSlice, UserStore } from '../store/user-store.js';
 export interface Dump {
   /** The feed's mark when the dump began; see `UserStore.dumpBegin`. */
   mark: string;
+  /**
+   * The mark as the last slice was read, once `chunks` has been read to its end; null
+   * before. Different from `mark` when a write landed while the dump was being read, and
+   * the file's rows may then be from either side of it (`UserStore.dumpSlice`).
+   */
+  endMark: string | null;
   /** The file, a chunk per pull: the head and first slice, each later slice, the tail. Null when the store's mark was the one the caller already had. */
   chunks: AsyncGenerator<Uint8Array> | null;
 }
@@ -38,11 +44,12 @@ type DumpStub = Pick<DurableObjectStub<UserStore>, 'dumpBegin' | 'dumpSlice'>;
  */
 export async function beginDump(store: DumpStub, userId: string, opts: { unless?: string | null; beforeSlice?: () => void } = {}): Promise<Dump> {
   const start = await store.dumpBegin(opts.unless ?? null);
-  if (start.unchanged) return { mark: start.mark, chunks: null };
-  return { mark: start.mark, chunks: chunks(store, userId, start.schema, start, opts.beforeSlice) };
+  const dump: Dump = { mark: start.mark, endMark: null, chunks: null };
+  if (!start.unchanged) dump.chunks = chunks(store, userId, dump, start.schema, start, opts.beforeSlice);
+  return dump;
 }
 
-async function* chunks(store: DumpStub, userId: string, schema: string[], first: DumpSlice, beforeSlice?: () => void): AsyncGenerator<Uint8Array> {
+async function* chunks(store: DumpStub, userId: string, dump: Dump, schema: string[], first: DumpSlice, beforeSlice?: () => void): AsyncGenerator<Uint8Array> {
   const encoder = new TextEncoder();
   const later = (s: string) => /^CREATE (VIRTUAL TABLE|TRIGGER)\b/i.test(s);
   const head = [
@@ -54,17 +61,26 @@ async function* chunks(store: DumpStub, userId: string, schema: string[], first:
   ];
   yield encoder.encode(`${head.join('\n')}\n`);
   if (first.rows > 0) yield first.bytes;
-  for (let next = first.next; next; ) {
+  let last = first;
+  while (last.next) {
     beforeSlice?.();
-    const slice = await store.dumpSlice(next);
-    if (slice.rows > 0) yield slice.bytes;
-    next = slice.next;
+    last = await store.dumpSlice(last.next);
+    if (last.rows > 0) yield last.bytes;
   }
+  dump.endMark = last.endMark ?? null;
   const tail = schema.filter(later).map((s) => `${s};`);
   for (const fts of schema.filter((s) => /^CREATE VIRTUAL TABLE/i.test(s))) {
     const name = /^CREATE VIRTUAL TABLE\s+(\S+)/i.exec(fts)![1];
     tail.push(`INSERT INTO ${name}(${name}) VALUES ('rebuild');`);
   }
   tail.push('COMMIT;', 'PRAGMA foreign_keys = ON;');
+  // Comments, so the file loads as it always has, and whoever restores from it can tell
+  // whether its rows are one moment of the store.
+  tail.push(
+    `-- Change feed at the start of the dump: ${dump.mark}; at the end: ${dump.endMark ?? 'unknown'}.`,
+    dump.endMark === dump.mark
+      ? '-- Nothing was written while the store was read: the rows are one moment.'
+      : '-- The store was written to while it was read: rows read after the write may be from after it.',
+  );
   yield encoder.encode(`${tail.join('\n')}\n`);
 }

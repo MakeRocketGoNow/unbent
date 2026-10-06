@@ -279,8 +279,8 @@ describe('UserStore lifecycle', () => {
 
     // Each row read once across the three calls, but the row each cut stopped at, which
     // the next call reads again — a row a call, at most; plus the schema's entries, the
-    // feed's two rows for the mark, and one for each table SQLite probes and finds empty.
-    // Exact, measured 2026-10-05 at 118, so a slice that re-read anything else fails here.
+    // feed's two rows for the mark at each end, and one for each table SQLite probes and
+    // finds empty. Exact, so a slice that re-read anything else fails here.
     // The rows-read test on the big store pins the same for one slice.
     const { held, empty, schema } = await runInDurableObject(stub, (_i, state) => {
       const counts = DUMP_TABLES.map((table) => state.storage.sql.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table}`).one().n);
@@ -292,7 +292,7 @@ describe('UserStore lifecycle', () => {
     });
     const { rowsRead } = await stub.counters();
     expect(rowsRead).toBeGreaterThanOrEqual(held + 2);
-    expect(rowsRead).toBeLessThanOrEqual(held + 2 + schema + 3 + empty);
+    expect(rowsRead).toBeLessThanOrEqual(held + 4 + schema + 3 + empty);
   });
 
   /*
