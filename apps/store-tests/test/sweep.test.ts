@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { env, evictDurableObject, runInDurableObject } from 'cloudflare:test';
-import { BATCH, SUBREQUEST_BUDGET, mayExpire, sweepStores } from '@unbent/api/lib/sweep';
+import { BATCH, SUBREQUEST_BUDGET, pickExpiries, sweepStores } from '@unbent/api/lib/sweep';
 import { DELETED_BLOB_RETENTION_MS } from '@unbent/api/store/deleted-blobs';
 
 /**
@@ -237,36 +237,32 @@ describe('the store sweep', () => {
 
   /**
    * The expiry is two subrequests on top of a visit, and a batch is sized against the
-   * Free plan's fifty: an expiry runs only when the batch can still finish within the
-   * budget whatever the accounts ahead of it cost. The arithmetic the sweep relies on,
-   * pinned: a batch of twenty live accounts fits thirteen expiries, the first account of
-   * a batch fits one with nineteen unknowns ahead, and a batch of twenty deletions —
-   * which asks for none, a wiped store having no files — stays within the fifty.
+   * Free plan's fifty: once every account is visited, what is left buys as many expiries
+   * as fit, from a start that rotates with the hour so the same accounts are not put off
+   * on every walk. The arithmetic the sweep relies on, pinned: a batch of twenty live
+   * accounts fits thirteen, one of twenty deletions asks for none and stays within the
+   * fifty, and the accounts chosen move round the list as the hours pass.
    */
-  it('budgets the expiry against the subrequests an invocation has', () => {
+  it('budgets the expiry against the subrequests an invocation has, and rotates who gets it', () => {
     const d1 = 4;
-    // All live: each visit costs one; count how many expiries a batch can take.
-    let spent = d1;
-    let expiries = 0;
-    for (let i = 0; i < BATCH; i++) {
-      spent += 1;
-      if (mayExpire(spent, BATCH - i - 1)) {
-        spent += 2;
-        expiries += 1;
-      }
-    }
-    expect(expiries).toBe(13);
-    expect(spent).toBeLessThanOrEqual(SUBREQUEST_BUDGET);
-    // The first account of a batch, with nineteen unknown ahead that could each cost two:
-    // the budget leaves room for its expiry, and for nothing past the ten the arithmetic
-    // allows (4 D1 + 1 visit + 2 expiry + 38 reserved = 45; 50 - 40 = 10 is the ceiling).
-    expect(mayExpire(d1 + 1, BATCH - 1)).toBe(true);
-    expect(mayExpire(10, BATCH - 1)).toBe(true);
-    expect(mayExpire(11, BATCH - 1)).toBe(false);
-    // A batch that was all deletions spends forty-four, within the fifty.
+    const due = Array.from({ length: BATCH }, (_, i) => `a${i}`);
+    // All twenty live and all with files due: twenty-four spent, thirteen fit.
+    const first = pickExpiries(due, d1 + BATCH, 0);
+    expect(first.length).toBe(13);
+    expect(d1 + BATCH + first.length * 2).toBeLessThanOrEqual(SUBREQUEST_BUDGET);
+    expect(first).toEqual(due.slice(0, 13));
+    // The next hour starts one further on, and wraps: the seven put off come first.
+    expect(pickExpiries(due, d1 + BATCH, 1)).toEqual([...due.slice(1, 14)]);
+    expect(pickExpiries(due, d1 + BATCH, 13)).toEqual([...due.slice(13), ...due.slice(0, 6)]);
+    // A batch that was all deletions spends forty-four, within the fifty, and asks for
+    // nothing; if it did, three would fit.
     expect(d1 + BATCH * 2).toBeLessThanOrEqual(SUBREQUEST_BUDGET);
-    // The last of a live batch with no expiries so far.
-    expect(mayExpire(d1 + BATCH, 0)).toBe(true);
+    expect(pickExpiries([], d1 + BATCH * 2, 5)).toEqual([]);
+    expect(pickExpiries(due, d1 + BATCH * 2, 5).length).toBe(3);
+    // Nothing left: nothing chosen, however many are due.
+    expect(pickExpiries(due, SUBREQUEST_BUDGET - 1, 0)).toEqual([]);
+    // Fewer due than slots: all of them, whatever the hour.
+    expect(pickExpiries(['x', 'y'], d1 + BATCH, 7)).toEqual(['y', 'x']);
   });
 
   it('counts one account\'s failure and carries on to the next', async () => {
