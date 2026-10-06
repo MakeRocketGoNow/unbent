@@ -161,10 +161,11 @@ export function registerAttachmentTools(
         "the instance's vision model read, since neither is yours to replace. What you " +
         'record is marked as yours (read "assistant")' +
         (vision
-          ? ', and the next time the person presses Auto-fill on the note the instance has ' +
-            'its model read the file itself and replaces it — so write it for search in the ' +
-            'meantime, not as the last word. If the model declines the file, your words stay ' +
-            'and it is offered again on later presses.'
+          ? ', and for a picture or a scan the next time the person presses Auto-fill on the ' +
+            'note the instance has its model read the file itself and replaces it — so write ' +
+            'it for search in the meantime, not as the last word. If the model declines the ' +
+            'file, your words stay and it is offered again on later presses. For any other ' +
+            'kind of file what you record stands.'
           : '. This instance has no vision model, so what you record is the text the file ' +
             'will have: write it as carefully as the file deserves.'),
       inputSchema: z.object({
