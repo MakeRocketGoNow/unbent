@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { textSummary } from './text-summary.js';
+import { textSummary, TEXT_SUMMARY_SOURCE_CHARS } from './text-summary.js';
 import { summarize } from './attachments.js';
 
 /**
@@ -91,6 +91,13 @@ describe('a text layer’s summary', () => {
     const alone = textSummary('Acme '.repeat(100));
     expect(alone.length).toBeGreaterThan(250);
     expect(alone.length).toBeLessThanOrEqual(280);
+  });
+
+  it('does not read a figure the query cut in half', () => {
+    // The query hands over the first 8,000 characters, and those can end mid-figure.
+    const filled = `Acme\nTotal $40.00\n${'x'.repeat(TEXT_SUMMARY_SOURCE_CHARS)}`.slice(0, TEXT_SUMMARY_SOURCE_CHARS - 10) + '\nTOTAL $12';
+    expect(filled.length).toBe(TEXT_SUMMARY_SOURCE_CHARS);
+    expect(summarize('application/pdf', filled, null).summary).toMatch(/ · Total: \$40\.00$/);
   });
 
   it('is the folded text, cut, when it finds nothing to name', () => {

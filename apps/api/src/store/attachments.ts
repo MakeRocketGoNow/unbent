@@ -187,7 +187,11 @@ export function summarize(
     const lines = lead.split('\n').map((l) => l.trim()).filter(Boolean);
     return { read: 'vision', summary: clip(lines.join(' — '), SUMMARY_CHARS) };
   }
-  const found = textSummary(head) || head.replace(/\s+/g, ' ').trim();
+  // A head that filled the query's cut may end partway through a line — "TOTAL $12" of
+  // "TOTAL $121.39" — so its last line is not read for facts.
+  const cut = head.length >= TEXT_SUMMARY_SOURCE_CHARS ? head.lastIndexOf('\n') : -1;
+  const whole = cut > 0 ? head.slice(0, cut) : head;
+  const found = textSummary(whole) || whole.replace(/\s+/g, ' ').trim();
   return { read: 'text', summary: clip(found, SUMMARY_CHARS) };
 }
 
