@@ -18,8 +18,9 @@
  * tombstone away when it records a row, and the probe it makes to do so is one read on
  * this index. The second index is the sweep's: "what has been here longer than the
  * retention" is a range on `deleted_at`, read from the index's first entry, so a store
- * with nothing due reads nothing — the sweep visits every account every hour, and a
- * query that scanned here would be the table scan AGENTS.md forbids a periodic job. The
+ * with nothing due reads nothing — the sweep visits every account on every walk of the
+ * directory, twenty accounts an hour, and a query that scanned here would be the table
+ * scan AGENTS.md forbids a periodic job. The
  * row and its two index entries are written per file deleted, and read and removed when
  * it is forgotten (four rows read a key, measured in the rows-read test).
  *

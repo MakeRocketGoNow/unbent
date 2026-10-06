@@ -78,7 +78,7 @@ export class DeletedBlobs {
    * The keys that have waited the retention out as of `now`, oldest first, at most `limit`
    * of them. A range on `idx_deleted_blobs_due` read from its first entry: a store with
    * nothing due reads one index entry at most, which is what lets the sweep ask every
-   * account every hour.
+   * account on every walk of the directory (twenty accounts an hour, `lib/sweep.ts`).
    */
   expired(now: number, limit = EXPIRED_BLOBS_PER_VISIT): string[] {
     return this.sql
@@ -96,6 +96,14 @@ export class DeletedBlobs {
    * uploaded and deleted again between the two calls has a newer tombstone, which must
    * stay: its object is in the bucket again and owes the person the full retention.
    * Returns how many went.
+   *
+   * One race is accepted rather than closed: a replayed upload that revives a key
+   * between the sweep's `expired` and its R2 delete puts an object the sweep then
+   * deletes, with the row live and no tombstone left for this guard to see. It takes an
+   * upload replayed thirty-five days after its first copy was deleted, landing in the
+   * milliseconds between two calls of one sweep; closing it would mean the store
+   * arbitrating R2 deletes, which rule 1 forbids. Named so nobody relies on this method
+   * for it.
    */
   forget(keys: string[], now: number): number {
     let forgotten = 0;
