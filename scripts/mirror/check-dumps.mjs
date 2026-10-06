@@ -6,14 +6,17 @@
 // a hole in the backup that nothing else would make visible: the mirror workflow fails on
 // it so the hole is a red run in GitHub rather than a line in a file nobody opens.
 //
-//   node scripts/mirror/check-dumps.mjs dumps.json
+//   node scripts/mirror/check-dumps.mjs dumps.json out.json
 //
-// Prints one JSON line — ok, what was read, and the reasons when not ok — and exits 1
-// when the run should fail. A missing file is a reason too (the Worker has never run with
-// a backups bucket bound, or the bucket is the wrong one), so the caller fetches the file
-// without failing on absence and lets this say so.
+// Writes the result to `out.json` — ok, what was read, and the reasons when not ok — for
+// `status/mirror.json`, logs the counts, and exits 1 when the run should fail. The reasons
+// name accounts and quote the Worker's error text, so they go to the file and not to the
+// log: the run log of an open-source repository is public, and a dump's error can carry
+// anything. A missing file is a reason too (the Worker has never run with a backups bucket
+// bound, or the bucket is the wrong one), so the caller fetches the file without failing
+// on absence and lets this say so.
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 
 /**
  * How old the last run may be before the status itself is stale: the issue's 48 hours,
@@ -22,8 +25,8 @@ import { readFileSync } from 'node:fs';
  */
 const STALE_HOURS = 48;
 
-const path = process.argv[2];
-if (!path) throw new Error('Usage: check-dumps.mjs <dumps.json>');
+const [path, out] = process.argv.slice(2);
+if (!path || !out) throw new Error('Usage: check-dumps.mjs <dumps.json> <out.json>');
 
 /** @type {string[]} */
 const reasons = [];
@@ -75,5 +78,10 @@ const result = {
   staleCount: status?.staleCount ?? null,
   reasons,
 };
-console.log(JSON.stringify(result));
+writeFileSync(out, `${JSON.stringify(result)}\n`);
+console.log(
+  result.ok
+    ? `The Worker's dumps are healthy: last run ${result.ageHours} hours ago, ${result.accounts} accounts, none failing or stale.`
+    : `The Worker's dumps are not healthy: ${result.reasons.length} reason(s), ${result.failingCount ?? '?'} failing, ${result.staleCount ?? '?'} stale, last run ${result.ageHours ?? '?'} hours ago. The reasons are in status/mirror.json.`,
+);
 if (!result.ok) process.exit(1);

@@ -7,23 +7,27 @@
 // the file must report, and a step that never ran leaves its file missing, which reads
 // here as `null` rather than as an error.
 //
-//   node scripts/mirror/write-status.mjs <dir> <out.json>
+//   node scripts/mirror/write-status.mjs <dir> <out.json> <summary.md>
 //
 // With, in <dir>, whichever of these the run got as far as writing:
 //   blobs.log, stores.log   rclone's JSON log of each copy (--use-json-log); the last line
 //                           carrying a `stats` object is the final tally
 //   d1.json                 { key, bytes, written } from the D1 export step
 //   prune.json              the summary `prune.mjs` printed
-//   dumps-check.json        the result `check-dumps.mjs` printed
+//   dumps-check.json        the result `check-dumps.mjs` wrote
+//   failed                  one line per step that failed, written by each step's ERR trap
 // and the run's identity and outcome in the environment: MIRROR_RAN_AT, MIRROR_OK
-// ("true"/"false"), MIRROR_FAILED_STEP (the step the run was in when it failed, if it
-// did), MIRROR_EVENT, MIRROR_RUN_ID and MIRROR_RUN_URL.
+// ("true"/"false"), MIRROR_EVENT, MIRROR_RUN_ID and MIRROR_RUN_URL.
+//
+// The summary is the counts alone, for the run page. The file has the account ids and
+// error text the operator page needs; the run page of an open-source repository is
+// public, so those stay in the bucket.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const [dir, out] = process.argv.slice(2);
-if (!dir || !out) throw new Error('Usage: write-status.mjs <dir> <out.json>');
+const [dir, out, summary] = process.argv.slice(2);
+if (!dir || !out || !summary) throw new Error('Usage: write-status.mjs <dir> <out.json> <summary.md>');
 
 /** @param {string} name */
 function readJson(name) {
@@ -63,10 +67,14 @@ function copyStats(name) {
 }
 
 const prune = readJson('prune.json');
+const failedPath = join(dir, 'failed');
+const failedSteps = existsSync(failedPath)
+  ? readFileSync(failedPath, 'utf8').split('\n').filter((line) => line.length > 0)
+  : [];
 const status = {
   ranAt: process.env.MIRROR_RAN_AT ?? new Date().toISOString(),
   ok: process.env.MIRROR_OK === 'true',
-  failedStep: process.env.MIRROR_OK === 'true' ? null : (process.env.MIRROR_FAILED_STEP || null),
+  failedSteps,
   run: {
     event: process.env.MIRROR_EVENT ?? null,
     id: process.env.MIRROR_RUN_ID ?? null,
@@ -84,4 +92,18 @@ const status = {
 };
 
 writeFileSync(out, `${JSON.stringify(status, null, 2)}\n`);
-console.log(JSON.stringify(status, null, 2));
+
+/** @param {unknown} n */
+const count = (n) => (typeof n === 'number' ? String(n) : '?');
+const lines = [
+  `## Mirror ${status.ok ? 'ran' : 'failed'} (${status.run.event})`,
+  '',
+  status.ok ? '' : `Failed steps: ${failedSteps.join(', ') || 'none recorded'}`,
+  `- Files: ${count(status.blobs.copied)} copied, ${count(status.blobs.live)} live, ${count(status.blobs.mirror)} mirrored`,
+  `- Dumps: ${count(status.stores.copied)} copied`,
+  `- D1: ${status.d1 ? `${status.d1.key}, ${count(status.d1.bytes)} bytes${status.d1.written ? '' : ' (already there)'}` : 'not exported'}`,
+  `- Prune: ${count(status.prune?.gone)} gone, ${count(status.prune?.pruned)} pruned`,
+  `- Worker's dumps: ${status.dumps ? (status.dumps.ok ? 'healthy' : `${status.dumps.reasons.length} reason(s) in status/mirror.json`) : 'not checked'}`,
+].filter((line) => line !== '');
+writeFileSync(summary, `${lines.join('\n')}\n`);
+console.log(lines.join('\n'));
