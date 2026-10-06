@@ -150,6 +150,7 @@ describe('attachments', () => {
   });
 
   it('says what each file is in brief, on a note and on a page of notes', async () => {
+    const BILL = `Globex Utilities\n\n  Statement  ${'x'.repeat(2000)}\nStatement date: 03/02/2026\nTotal amount due $84.12\n`;
     const { stub } = freshStore('summaries');
     await stub.create({ id: 'n1', title: 'T', body: '', tags: [] });
     await stub.create({ id: 'n2', title: 'T', body: '', tags: [] });
@@ -164,7 +165,7 @@ describe('attachments', () => {
       readBy: 'vision',
     });
     await stub.recordAttachment(file('n1', { id: 'layer', filename: 'bill.pdf' }));
-    await stub.recordText({ attachmentId: 'layer', noteId: 'n1', filename: 'bill.pdf', text: `Globex Utilities\n\n  Statement  ${'x'.repeat(2000)}` });
+    await stub.recordText({ attachmentId: 'layer', noteId: 'n1', filename: 'bill.pdf', text: BILL });
     await stub.recordAttachment(file('n2', { id: 'unread', filename: 'unread.pdf' }));
     await stub.recordAttachment(file('n2', { id: 'empty', filename: 'empty.pdf' }));
     await stub.recordText({ attachmentId: 'empty', noteId: 'n2', filename: 'empty.pdf', text: '' });
@@ -180,12 +181,13 @@ describe('attachments', () => {
       read: 'vision',
       summary: 'Acme Diner receipt — Receipt: lunch for two on 2026-09-21, $17.27 by card.',
     });
-    // A text layer has no name or description, so its summary is its opening, folded
-    // onto one line and cut: never the whole text.
+    // A text layer has no name or description, so its summary is its opening, cut, and
+    // the facts found in the text — here a total and a date two thousand characters in,
+    // past the head a vision reading is cut from (MAK-177). Never the whole text.
     const layer = one!.files.find((f) => f.filename === 'bill.pdf')!;
     expect(layer.read).toBe('text');
-    expect(layer.summary).toMatch(/^Globex Utilities Statement x+…$/);
-    expect(layer.summary!.length).toBeLessThanOrEqual(280);
+    expect(layer.summary).toMatch(/^Globex Utilities Statement x+… · Total: \$84\.12 · Date: 2026-03-02$/);
+    expect(layer.summary!.length).toBeLessThanOrEqual(400);
 
     const page = await stub.listPage({ limit: 10 }, null, { summaries: true });
     expect(page.summaries!['n2']!.map((f) => [f.filename, f.read, f.summary])).toEqual([
@@ -215,7 +217,7 @@ describe('attachments', () => {
 
     // One file's text with the same status, for get_attachment_text: the whole text
     // when it was read, and which kind of nothing when it was not.
-    expect(await stub.textWithRead('n1', 'bill.pdf')).toEqual({ read: 'text', text: expect.stringMatching(/^Globex Utilities\n\n  Statement  x{2000}$/) });
+    expect(await stub.textWithRead('n1', 'bill.pdf')).toEqual({ read: 'text', text: BILL });
     expect(await stub.textWithRead('n2', 'empty.pdf')).toEqual({ read: 'pending', text: null });
     expect(await stub.textWithRead('n2', 'empty.pdf', false)).toEqual({ read: 'none', text: null });
     expect(await stub.textWithRead('n2', 'seen.pdf')).toEqual({ read: 'none', text: null });
