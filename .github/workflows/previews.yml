@@ -500,7 +500,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      deployments: write
+      # Deleting an environment is a repository-settings change, which GitHub puts under
+      # `administration`; `deployments: write` only reaches the deployments inside one.
+      administration: write
     concurrency:
       group: preview-${{ github.event.pull_request.number }}
       cancel-in-progress: true
@@ -547,18 +549,24 @@ jobs:
             exit "$status"
           fi
 
-      - name: Deactivate the deployment
+      # The preview job's `createDeployment` names an environment `pr-N`, and GitHub makes
+      # the environment on first use. Nothing unmakes it: this step used to mark the PR's
+      # deployments inactive, which is what the Deployments box wants to hear but leaves the
+      # environment itself behind, and Settings → Environments had one row per PR ever
+      # opened — close to two hundred — before anyone noticed. Deleting the environment
+      # takes its deployments with it, so there is nothing left to deactivate.
+      #
+      # A PR that never deployed has no environment, so 404 is forgiven for the same reason
+      # 10007 is above.
+      - name: Delete the PR's environment
         uses: actions/github-script@v9
         with:
           script: |
             const { owner, repo } = context.repo;
-            const deployments = await github.paginate(github.rest.repos.listDeployments, {
-              owner, repo,
-              environment: `pr-${context.payload.pull_request.number}`,
-              per_page: 100,
-            });
-            for (const deployment of deployments) {
-              await github.rest.repos.createDeploymentStatus({
-                owner, repo, deployment_id: deployment.id, state: 'inactive',
-              });
+            const environment_name = `pr-${context.payload.pull_request.number}`;
+            try {
+              await github.rest.repos.deleteAnEnvironment({ owner, repo, environment_name });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              core.notice(`No environment named ${environment_name} — this PR never deployed a preview.`);
             }
