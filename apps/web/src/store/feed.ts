@@ -316,10 +316,20 @@ export class FeedEngine {
   }
 }
 
-/** A 4xx: the server will answer the same request the same way again. */
+/**
+ * A 4xx the snapshot will answer the same way again, so a stored resume that produced
+ * it has to be dropped or every pull would fail the same way forever.
+ *
+ * Three 4xx are not that, the same three the outbox carves out (`refusal` in
+ * `actions.ts`): 401 is the session (the sign-in that follows should resume the walk),
+ * 408 is a timeout, 429 is "later". Treating them as a dead cursor used to empty the
+ * copy a first walk had already applied — minutes of pages on a phone — and clear the
+ * resume, so a refused session's store came back empty instead of picking up where it
+ * stopped.
+ */
 function refusedForGood(err: unknown): boolean {
   const status = (err as { status?: unknown } | null)?.status;
-  return typeof status === 'number' && status >= 400 && status < 500;
+  return typeof status === 'number' && status >= 400 && status < 500 && ![401, 408, 429].includes(status);
 }
 
 function count(rows: Iterable<unknown> | undefined): number {

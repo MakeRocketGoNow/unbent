@@ -177,6 +177,30 @@ describe('FeedEngine', () => {
     stop.forEach((s) => s());
   });
 
+  it('keeps a stored position through a lapsed session, a timeout and a rate limit', async () => {
+    // The same three 4xx the outbox retries: a dead cursor they are not, and emptying
+    // the copy on them used to throw away a first walk's progress (and its resume).
+    for (const status of [401, 408, 429]) {
+      const later = Object.assign(new Error(`${status}`), { status });
+      const h = harness({
+        '/api/changes/snapshot?limit=2&cursor=b': [later, { seq: 12, epoch: 'e1', notes: [note('c')], next: null } satisfies SnapshotPage],
+      });
+      h.c.note.rows.set('a', note('a'));
+      h.c.note.rows.set('b', note('b'));
+      h.setCursor({ seq: 10, epoch: 'e1', resume: 'b', total: 3 });
+      const stop = Object.entries(h.c).map(([k, c]) => h.engine.register(k as 'note', c as never));
+      await h.engine.settled();
+      expect(h.engine.state.phase, `${status} should not end the walk`).toBe('failed');
+      expect(h.cursor()).toEqual({ seq: 10, epoch: 'e1', resume: 'b', total: 3 });
+      expect([...h.c.note.rows.keys()]).toEqual(['a', 'b']);
+      expect(h.c.note.log).not.toContain('truncate');
+      await h.engine.pull();
+      expect(h.engine.state).toMatchObject({ phase: 'current', cursor: { seq: 10, epoch: 'e1' } });
+      expect([...h.c.note.rows.keys()]).toEqual(['a', 'b', 'c']);
+      stop.forEach((s) => s());
+    }
+  });
+
   it('on a fresh start, picks a stored position up and reads only the pages left', async () => {
     const h = harness({
       '/api/changes/snapshot?limit=2&cursor=b': { seq: 12, epoch: 'e1', notes: [note('c')], next: null } satisfies SnapshotPage,
