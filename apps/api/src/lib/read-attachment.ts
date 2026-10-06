@@ -1,5 +1,6 @@
 import { isExtractable } from '@unbent/enex/ocr-text';
 import type { AttachmentsRepo } from './attachments-repo.js';
+import type { PendingFile as StoredPending } from '../store/attachments.js';
 import { canExtractOnServer, extractOnServer, type MarkdownConverter } from './extract-text.js';
 import { canUseLlm, formatReading, readableByLlm, llmFrom, type LlmEnv, type LanguageModel } from './llm.js';
 import { withReaderSlot } from './reader-gate.js';
@@ -152,13 +153,11 @@ export async function readAttachment(
  * at, which takes the whole path (`readAttachment` — the layer, then the model for what
  * the layer lacks); `vision` for a file already past the layer — a picture, or a scan the
  * browser read and found empty — which goes to the model alone. The two are what the
- * store's `needingText` and `needingVision` list, respectively.
+ * store's `needingText` and `needingVision` list, respectively, and `writtenBy` is the
+ * store's too: `assistant` when the text an assistant wrote over MCP is what a press is
+ * re-reading past.
  */
-export type PendingFile = StoredFile & {
-  pending: 'text' | 'vision';
-  /** `assistant` when the text an assistant wrote over MCP is what a press is re-reading past. */
-  writtenBy?: 'assistant' | null;
-};
+export type PendingFile = StoredFile & Pick<StoredPending, 'writtenBy'> & { pending: 'text' | 'vision' };
 
 /** What a pass over pending files did, for the caller to report or count. */
 export interface ReadCounts {
@@ -231,7 +230,7 @@ export async function readPendingFile(
 async function readWithLlm(
   llm: Pick<LanguageModel, 'read'>,
   attachments: Pick<AttachmentsRepo, 'recordText'>,
-  file: StoredFile & { writtenBy?: 'assistant' | null },
+  file: StoredFile & Pick<StoredPending, 'writtenBy'>,
   bytes: ArrayBuffer,
 ): Promise<Reading> {
   const reading = await llm.read({ filename: file.filename, contentType: file.contentType, bytes });
