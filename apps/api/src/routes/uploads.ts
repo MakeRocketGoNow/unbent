@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 import { MAX_ATTACHMENT_BYTES } from '@unbent/shared';
 import { appLinks } from '../lib/app-links.js';
 import { chooseContentType } from '../lib/fetch-attachment.js';
@@ -11,13 +12,39 @@ import type { AppEnv } from '../types.js';
 const ASK_AGAIN = 'Ask for a new one with prepare_attachment_upload.';
 
 /**
+ * Any origin may send the PUT, so an assistant working inside a browser — with a picture
+ * open in a tab, say, after `add_attachment` was refused by its host — can hand over
+ * bytes it already holds. Without this the preflight fails and the browser never sends
+ * the request at all.
+ *
+ * A wildcard widens nothing, because the token is the whole of the authority: whoever
+ * holds the link can already use it from curl, and whoever does not cannot use it from
+ * any origin. What must never ride along is a cookie, so credentials stay off — `*` and
+ * credentials cannot be combined anyway, and the route reads no session. The CORS rule is
+ * on this path alone; every other route answers with the session and must keep refusing
+ * other origins.
+ *
+ * Content-Length is listed though a browser sets it itself, since a client that names it
+ * should not fail the preflight over it. Nothing is exposed: the answer is JSON in the
+ * body, which a CORS-allowed response can already read.
+ */
+const anyOrigin = cors({
+  origin: '*',
+  allowMethods: ['PUT', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Content-Length'],
+  maxAge: 600,
+  credentials: false,
+});
+
+/**
  * Where a file goes that an assistant holds on its own machine: the other half of the MCP
  * tool prepare_attachment_upload, which mints the link this route is reached by.
  *
  * Authorized by the token in the path and nothing else — no cookie, no bearer token. That
- * is the point of it: the request comes from curl in an agent's shell, which has the file
- * but should never hold the OAuth token its client signed in with. The token names one note
- * of one user's and works once; see lib/upload-grants.ts and migration 0029.
+ * is the point of it: the request comes from curl in an agent's shell, or from a page in a
+ * browser, which has the file but should never hold the OAuth token its client signed in
+ * with. The token names one note of one user's and works once; see lib/upload-grants.ts
+ * and migration 0029.
  *
  * The link stores and links the file itself, rather than waiting for a third step that
  * confirms it. Object stores that hand out presigned URLs need that step because nothing of
@@ -25,7 +52,7 @@ const ASK_AGAIN = 'Ask for a new one with prepare_attachment_upload.';
  * answer to the PUT is already the answer add_attachment gives, and there is no half-done
  * upload for anyone to forget to finish.
  */
-export const uploads = new Hono<AppEnv>().put('/uploads/:token', async (c) => {
+export const uploads = new Hono<AppEnv>().use('/uploads/*', anyOrigin).put('/uploads/:token', async (c) => {
   /*
      The request's own faults first, before the link is claimed: a curl invocation that
      sent no length, or a file over the limit, should cost the assistant a corrected

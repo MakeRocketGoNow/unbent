@@ -4,6 +4,7 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import type { AppLinks } from '../../lib/app-links.js';
 import type { AttachmentsRepo } from '../../lib/attachments-repo.js';
 import {
+  checkReferer,
   checkSourceUrl,
   chooseContentType,
   chooseFilename,
@@ -56,14 +57,18 @@ const MAX_ASSISTANT_TEXT_CHARS = 100_000;
  * What a model can hand over instead is a URL, in one of two directions. add_attachment
  * takes a URL the server fetches: what every system that holds files offers when read, a
  * signed download link. prepare_attachment_upload gives a URL the other way, for a file
- * that has no link because it is on the assistant's own disk: the assistant's shell PUTs
- * the bytes there (routes/uploads.ts). Either way the bytes never pass through the model,
+ * that has no link because it is on the assistant's own disk, or that only a browser could
+ * fetch: the assistant's shell, or a script in that browser's page, PUTs the bytes there
+ * (routes/uploads.ts). Either way the bytes never pass through the model,
  * and they end in lib/store-attachment.ts, the same thing that happens to an upload from
  * the editor.
  */
 export function registerAttachmentTools(
   server: McpServer,
-  env: Pick<Env, 'APP_URL' | 'BLOBS' | 'AI' | 'ALLOW_TEST_CREDENTIALS' | 'ANTHROPIC_API_KEY'>,
+  env: Pick<
+    Env,
+    'APP_URL' | 'BLOBS' | 'AI' | 'ALLOW_TEST_CREDENTIALS' | 'ANTHROPIC_API_KEY' | 'ATTACHMENT_FETCH_USER_AGENT'
+  >,
   ctx: { waitUntil(promise: Promise<unknown>): void },
   repos: { notes: NotesRepo; attachments: AttachmentsRepo; uploads: UploadGrantsRepo },
   links: AppLinks,
@@ -228,7 +233,9 @@ export function registerAttachmentTools(
         'gets, so the bytes never pass through the conversation: to bring a file over from ' +
         'another system, read that system for a download link — usually a signed URL that ' +
         'is valid for an hour or so — and pass it here. Only http and https can be fetched; ' +
-        'a file: or other internal reference is not a download link. Give a filename when ' +
+        'a file: or other internal reference is not a download link. For a picture or file ' +
+        'found on a web page, pass that page as referer: the request is made as a browser on ' +
+        'that page would make it, which some hosts require. Give a filename when ' +
         'you know a better one than the URL offers, since download URLs often end in a ' +
         'generic name like upload.pdf. The result carries the filename the file was stored ' +
         'under (suffixed if the note already had one by that name), its relative path, and ' +
@@ -236,11 +243,22 @@ export function registerAttachmentTools(
         'to the end of the body; pass link false and place it yourself with edit_note when ' +
         'it belongs somewhere in particular. A PDF becomes searchable once its text is ' +
         'extracted, which happens in the background. For a file with no URL — one on your ' +
-        'own disk or in your sandbox — use prepare_attachment_upload instead. The answer ' +
+        'own disk or in your sandbox — use prepare_attachment_upload instead. If the host ' +
+        'refuses this server (401, 403 or 429), fetch the file yourself — in a browser tab ' +
+        "with the file's own URL open, or with your own tools — and send the bytes with " +
+        'prepare_attachment_upload, whose URL accepts a PUT from any origin. The answer ' +
         'also carries url, the note in Unbent: give it to the person as a link.',
       inputSchema: z.object({
         noteId: z.string().uuid(),
         url: z.string().min(1).max(8192).describe('An http or https URL the file can be fetched from.'),
+        referer: z
+          .string()
+          .min(1)
+          .max(8192)
+          .optional()
+          .describe(
+            "The address of the page the file was found on, such as a product page. Without it no page is named.",
+          ),
         filename: filenameSchema
           .optional()
           .describe('What to call the file. Defaults to what the source names it.'),
@@ -256,17 +274,21 @@ export function registerAttachmentTools(
         openWorldHint: true,
       },
     },
-    async ({ noteId, url: raw, filename, link }) => {
+    async ({ noteId, url: raw, referer: rawReferer, filename, link }) => {
       // Ownership first, before a byte is fetched: nothing is downloaded for a caller who
       // has no note to put it on, and a note that is not theirs reads as missing.
       if (!(await repos.attachments.ownsNote(noteId))) return notFound('note', noteId);
 
       const checked = checkSourceUrl(raw, { allowLoopback });
       if ('error' in checked) return toolError(checked.error);
+      const referer = rawReferer === undefined ? undefined : checkReferer(rawReferer);
+      if (referer && 'error' in referer) return toolError(referer.error);
 
       const source = await fetchSource(checked.url, {
         maxBytes: MAX_ATTACHMENT_BYTES,
         allowLoopback,
+        ...(referer ? { referer: referer.url } : {}),
+        ...(env.ATTACHMENT_FETCH_USER_AGENT ? { userAgent: env.ATTACHMENT_FETCH_USER_AGENT } : {}),
       });
       if (!source.ok) return toolError(source.error);
 
@@ -311,9 +333,16 @@ export function registerAttachmentTools(
       title: 'Upload a file from your own machine',
       description:
         'Attach a file that you hold rather than one at a URL: a file on the machine or in ' +
-        'the sandbox where you run commands, such as a screenshot the person gave you. ' +
-        'Returns a one-time upload URL. Send the raw bytes to it with an HTTP PUT, for ' +
-        'example curl -T "photo.png" "<uploadUrl>"; the reply to that request is the same ' +
+        'the sandbox where you run commands, such as a screenshot the person gave you, or ' +
+        "bytes you fetched in a browser tab when add_attachment was refused by the file's " +
+        'host. Returns a one-time upload URL. Send the raw bytes to it with an HTTP PUT, for ' +
+        'example curl -T "photo.png" "<uploadUrl>", or from a script in a browser, ' +
+        "fetch(uploadUrl, { method: 'PUT', body: blob }) — the URL accepts requests from " +
+        'any origin and needs no cookies or other credentials. In a browser, run it with ' +
+        "the file's own URL open in the tab, where no page's scripts can see the upload URL " +
+        '(trackers on a shop page can record requests, and claim the URL first); run it on ' +
+        'the page the file came from only if the file will not open on its own. The reply ' +
+        'to that request is the same ' +
         'JSON add_attachment returns, with the note\'s url to give the person, the filename the file was stored under ' +
         '(suffixed if the note already had one by that name) and the Markdown that shows ' +
         `it. The URL works once, for this note, for ${UPLOAD_GRANT_TTL_MS / 60_000} ` +
