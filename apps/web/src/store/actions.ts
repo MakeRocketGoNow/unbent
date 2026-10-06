@@ -9,7 +9,7 @@ import { availableFilename, lookups, toNote, type Snapshot } from './derive.js';
 import type { Collections, LocalNote } from './collections.js';
 import { askToPersist, filesSupported, readFile, removeFile, writeFile } from './files.js';
 import { FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE } from '../sw/routes.js';
-import { isWhole, type FeedEngine } from './feed.js';
+import { isWhole, refusedForGood, type FeedEngine } from './feed.js';
 import { outboxName } from './names.js';
 
 /**
@@ -223,14 +223,12 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
    *
    * A 4xx is usually the same answer however often it is asked — a name the route will
    * not take, a file over the cap, a note that is gone — and ending the entry lets the
-   * ones behind it move. Three are not that: 401 is the session (the sign-in that
-   * follows should replay), 408 is a timeout, 429 is "later". The iOS capture queue
-   * carves out the same three (`CaptureJob.isPermanent`); treating them as a refusal
-   * here used to delete the only copy of a file added offline.
+   * ones behind it move. Three are not that, and `refusedForGood` in `feed.ts` names
+   * them for the walk and the queue alike: 401 replays after the sign-in that follows.
    */
   const refusal = (err: unknown): never => {
     if (isOfflineError(err)) throw err;
-    if (err instanceof ApiError && err.status >= 400 && err.status < 500 && ![401, 408, 429].includes(err.status)) {
+    if (err instanceof ApiError && refusedForGood(err.status)) {
       throw new NonRetriableError(err.message);
     }
     throw err;
