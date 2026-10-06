@@ -341,14 +341,14 @@ async function upload(bucket: R2Bucket, key: string, chunks: AsyncGenerator<Uint
           multipart = await bucket.createMultipartUpload(key, { httpMetadata });
           budget.held += 1;
         }
-        const part = join(pending, partBytes);
-        pending = rest(pending, partBytes);
+        const part = takeBytes(pending, partBytes);
+        pending = dropBytes(pending, partBytes);
         pendingBytes -= partBytes;
         budget.take();
         parts.push(await multipart.uploadPart(parts.length + 1, part));
       }
     }
-    const last = join(pending, pendingBytes);
+    const last = takeBytes(pending, pendingBytes);
     if (!multipart) {
       budget.take();
       await bucket.put(key, last, { httpMetadata });
@@ -374,8 +374,8 @@ async function upload(bucket: R2Bucket, key: string, chunks: AsyncGenerator<Uint
   }
 }
 
-/** The first `length` bytes of `chunks`, as one array. */
-function join(chunks: Uint8Array[], length: number): Uint8Array {
+/** The first `length` bytes of `chunks`, as one array. Exported for its test. */
+export function takeBytes(chunks: Uint8Array[], length: number): Uint8Array {
   const out = new Uint8Array(length);
   let at = 0;
   for (const chunk of chunks) {
@@ -387,8 +387,8 @@ function join(chunks: Uint8Array[], length: number): Uint8Array {
   return out;
 }
 
-/** What is left of `chunks` after the first `length` bytes. */
-function rest(chunks: Uint8Array[], length: number): Uint8Array[] {
+/** What is left of `chunks` after the first `length` bytes. Exported for its test. */
+export function dropBytes(chunks: Uint8Array[], length: number): Uint8Array[] {
   const out: Uint8Array[] = [];
   let skip = length;
   for (const chunk of chunks) {
