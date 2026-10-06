@@ -1782,11 +1782,10 @@ account. The account directory records each one's last dump, and every run write
 forty-eight hours without a dump found current. Nothing is bound at the top level of
 `wrangler.toml`, so a fork's instance never dumps; unbent.app's production deploy binds the
 bucket its `BACKUPS_BUCKET` repository variable names, and the dev instance binds
-`unbent-dev-backups`. A run keeps to fifty subrequests, the Free plan's, which is enough for
-a dump of about 170 MB of SQL; an account past that is recorded as failed rather than
-dumped, and on Workers Free a large account may not finish a scheduled dump sooner than
-that, on the ten milliseconds of CPU a run has there. A self-hoster arranges their own
-backups.
+`unbent-dev-backups`. A run keeps to fifty subrequests, the Free plan's, which caps a dump
+near 170 MB of SQL; an account past that is recorded as failed rather than dumped. On
+Workers Free a large account may not finish a scheduled dump well before that, since a
+run's CPU time is limited too. A self-hoster arranges their own backups.
 
 **The change feed.** Every write records what it touched, numbered by the store's own
 counter, and `GET /api/changes?since=N` answers "what changed since N?" with the changed
