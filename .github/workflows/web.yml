@@ -193,6 +193,14 @@ jobs:
           # may follow any table in TOML, so appending it is enough.
           config=wrangler.toml
           if [ -n "$BACKUPS_BUCKET" ]; then
+            # Pasted into TOML, so a stray quote or newline would fail as a parse error that
+            # names neither the variable nor the problem. Bash's own match, on the whole
+            # value: `grep` would pass a value with a newline in it whose last line looked
+            # like a name.
+            if ! [[ "$BACKUPS_BUCKET" =~ ^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$ ]]; then
+              echo "::error::BACKUPS_BUCKET is not a valid R2 bucket name: $BACKUPS_BUCKET"
+              exit 1
+            fi
             config=wrangler.backups.toml
             cp wrangler.toml "$config"
             printf '\n[[r2_buckets]]\nbinding = "BACKUPS"\nbucket_name = "%s"\n' "$BACKUPS_BUCKET" >> "$config"
