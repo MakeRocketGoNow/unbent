@@ -141,10 +141,10 @@ export function Maintenance() {
         <h3>Files not yet searchable</h3>
         <p className="muted small">
           Search reads the text inside attachments. Files added before that existed, or
-          uploaded from the phone, may not have theirs yet; these passes catch up. Nothing
-          is changed or deleted, and a pass can be stopped and run again.
+          uploaded from the phone, may not have theirs yet; this pass catches up. Nothing is
+          changed or deleted, and it can be stopped and run again.
         </p>
-        <Backfill vision={config.data?.vision === true} />
+        <Backfill />
       </section>
 
       {/* After the indexing passes, which the page's opening line calls the first, and

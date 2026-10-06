@@ -24,43 +24,38 @@ export interface PendingFile {
 }
 
 /**
- * The files the vision model has still to read, as two queries whose union is the answer:
- * behind both `needingVision` and `visionPending`, written once so the count and the list
- * cannot disagree about what is pending.
+ * The files of one note the vision model has still to read, as two queries whose union
+ * is the answer: behind `needingVision`, which is Auto-fill's. Pictures with no text row,
+ * and PDFs whose text layer came back empty and that the model has not been asked about.
+ * The halves cannot overlap: one is pictures, the other PDFs.
  *
- * Pictures with no text row, and PDFs whose text layer came back empty and that the model
- * has not been asked about. This was one predicate over a LEFT JOIN of every attachment to
- * its text, which SQLite could only answer by walking every attachment the account has.
- * Split, each half reads its own partial index, so each costs a row per file still
- * waiting and nothing once the backlog is read. The halves cannot overlap: one is
- * pictures, the other PDFs.
+ * Always one note's. This also listed the account's whole backlog, for a bulk pass a
+ * person ran from Maintenance; that pass went with MAK-179, when the model was confined
+ * to Auto-fill, and the partial indexes it walked stay in the schema, which is
+ * append-only. The per-note indexes are named outright: left to itself the planner
+ * prefers those partial indexes, which are account-wide, and walks the whole backlog to
+ * find the one note's files. `INDEXED BY` also makes a missing index an error rather than
+ * a quiet walk of the archive.
  *
- * The conditions repeat the indexes' WHERE clauses exactly, which is what lets SQLite use
- * them. The image types are the vision model's (`LLM_IMAGE_TYPES`), spelled out because
- * a query cannot take a Set.
- *
- * `noteParam` is the placeholder for a note id, for the callers that read one note. Those
- * name the per-note indexes outright: left to itself the planner prefers the partial
- * indexes, which are account-wide, and walks the whole backlog to find the one note's
- * files. `INDEXED BY` also makes a missing index an error rather than a quiet walk of the
- * archive.
+ * The image types are the vision model's (`LLM_IMAGE_TYPES`), spelled out because a
+ * query cannot take a Set. `noteParam` is the placeholder the caller binds the note id to.
  */
-function visionPendingHalves(noteParam: string | null): { pictures: string; pdfs: string } {
+function visionPendingHalves(noteParam: string): { pictures: string; pdfs: string } {
   const columns = 'a.id, a.note_id, a.filename, a.content_type, a.size, a.r2_key, a.created_at';
   return {
     pictures: `SELECT ${columns}
-                 FROM attachments a${noteParam ? ' INDEXED BY idx_attachments_note' : ''}
+                 FROM attachments a INDEXED BY idx_attachments_note
                  JOIN notes n ON n.id = a.note_id
                 WHERE a.content_type IN ('image/jpeg', 'image/png', 'image/gif', 'image/webp')
                   AND a.has_text = 0
                   AND n.deleted_at IS NULL
-                  ${noteParam ? `AND a.note_id = ${noteParam}` : ''}`,
+                  AND a.note_id = ${noteParam}`,
     pdfs: `SELECT ${columns}
-             FROM attachment_text t${noteParam ? ' INDEXED BY idx_attachment_text_note' : ''}
+             FROM attachment_text t INDEXED BY idx_attachment_text_note
              JOIN attachments a ON a.id = t.attachment_id
              JOIN notes n ON n.id = a.note_id
             WHERE t.text = '' AND t.read_by IS NULL
-              ${noteParam ? `AND t.note_id = ${noteParam}` : ''}
+              AND t.note_id = ${noteParam}
               AND a.content_type = 'application/pdf'
               AND n.deleted_at IS NULL`,
   };
@@ -479,28 +474,22 @@ export class AttachmentsStore {
   }
 
   /**
-   * Files still waiting for the vision model: a picture with no text row, or a PDF whose
-   * text layer was read and found empty and that the model has not been asked about.
+   * One note's files still waiting for the vision model: a picture with no text row, or a
+   * PDF whose text layer was read and found empty and that the model has not been asked
+   * about. What an Auto-fill press reads before it suggests (`autofillPrelude`), capped
+   * by the caller.
    *
    * The second half is what `read_by` exists for. An empty row from a text layer and an
    * empty row from the model look the same in `text`, and only one of them should be
    * offered to a reader that costs a request per file.
    *
-   * `noteId` narrows to one note, for the same reason it does in `needingText`: auto-fill
-   * reads the note in front of the person before it suggests, and must never be handed the
-   * account's backlog — every file here is a paid request, and the backlog is the Import
-   * panel's to run on purpose.
+   * Only ever one note's, never the account's backlog: every file here is a paid request,
+   * and since MAK-179 the model reads only what a press asks about.
    */
-  needingVision(limit: number, noteId?: string): PendingFile[] {
-    const { pictures, pdfs } = visionPendingHalves(noteId ? '?2' : null);
-    /*
-       `created_at` is selected although nothing reads it. SQLite only runs a compound
-       subquery as a merge of its halves when the outer ORDER BY names one of the outer
-       result columns; without it the union was materialised and the whole backlog sorted
-       in a temp B-tree to hand back three files — 9.4k rows per call of Maintenance's
-       "Read N images" at 13k notes. With it, each half walks its partial index in
-       `created_at` order and the LIMIT stops them: 283 rows.
-    */
+  needingVision(limit: number, noteId: string): PendingFile[] {
+    const { pictures, pdfs } = visionPendingHalves('?2');
+    // `created_at` is selected although nothing reads it: a compound SELECT can only be
+    // ordered by a column of its result.
     return this.sql
       .exec<PendingRow>(
         `SELECT id, note_id, filename, content_type, size, r2_key, created_at
@@ -508,22 +497,9 @@ export class AttachmentsStore {
           ORDER BY created_at
           LIMIT ?1`,
         limit,
-        ...(noteId ? [noteId] : []),
+        noteId,
       )
       .map(toPending);
-  }
-
-  /**
-   * How many files `needingVision` would still offer, for a pass to say what is left —
-   * on one note when `noteId` is given, as `pendingTextCount` scopes its count.
-   */
-  visionPending(noteId?: string): number {
-    const { pictures, pdfs } = visionPendingHalves(noteId ? '?1' : null);
-    const row = this.sql.first<{ pending: number }>(
-      `SELECT (SELECT COUNT(*) FROM (${pictures})) + (SELECT COUNT(*) FROM (${pdfs})) AS pending`,
-      ...(noteId ? [noteId] : []),
-    );
-    return row?.pending ?? 0;
   }
 
   /**

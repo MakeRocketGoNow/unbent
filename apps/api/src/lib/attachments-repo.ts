@@ -88,14 +88,6 @@ export class AttachmentsRepo extends StoreRepo {
     return this.call((s) => s.needingText(limit, noteId));
   }
 
-  needingVision(limit: number, noteId?: string): Promise<PendingFile[]> {
-    return this.call((s) => s.needingVision(limit, noteId));
-  }
-
-  visionPending(noteId?: string): Promise<number> {
-    return this.call((s) => s.visionPending(noteId));
-  }
-
   pendingTextCount(noteId?: string): Promise<number> {
     return this.call((s) => s.pendingTextCount(noteId));
   }

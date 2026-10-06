@@ -290,15 +290,6 @@ export interface AppConfig {
    */
   autofill?: boolean;
   /**
-   * Whether this instance reads images — and scans with no text layer — with a vision
-   * model, so they can be searched and auto-filled.
-   *
-   * On when the operator has set `ANTHROPIC_API_KEY` in the API. Maintenance offers its
-   * "Read N images" pass only when this is true, since each file read is a paid
-   * request the instance has to be able to make.
-   */
-  vision?: boolean;
-  /**
    * This instance is a pull-request preview with note stores of its own, because its PR
    * changes the store and only its own stores run that code. They start empty, so the
    * page offers to fill them with sample notes; and the files bucket is shared with the

@@ -113,7 +113,7 @@ describe('attachments', () => {
     expect(flags).toEqual([{ id: 'a2', has_text: 1 }]);
   });
 
-  it('lists what each reader still has to read, account-wide and for one note', async () => {
+  it('lists what each reader still has to read: PDFs for the account or one note, pictures for one note only', async () => {
     const { stub } = freshStore('pending');
     await stub.create({ id: 'n1', title: 'T', body: '', tags: [] });
     await stub.create({ id: 'n2', title: 'T', body: '', tags: [] });
@@ -140,13 +140,13 @@ describe('attachments', () => {
 
     // Vision: the picture without text and the PDF whose text layer was empty and that
     // the model has not seen; not the one it has, not the read picture, not the trash.
-    expect((await stub.needingVision(10)).map((f) => f.id).sort()).toEqual(['pdf-empty', 'pic']);
-    expect(await stub.visionPending()).toBe(2);
-    expect((await stub.needingVision(10, 'n1')).map((f) => f.id)).toEqual(['pdf-empty']);
-    expect(await stub.visionPending('n1')).toBe(1);
-    expect((await stub.needingVision(10, 'n2')).map((f) => f.id)).toEqual(['pic']);
-    expect(await stub.visionPending('n2')).toBe(1);
-    expect((await stub.needingVision(1)).length).toBe(1);
+    // Only through the press that asks (`autofillPrelude`), one note at a time: the model
+    // has had no account-wide list to read from since MAK-179.
+    const forVision = async (id: string) => (await stub.autofillPrelude(id, 10))?.forVision.map((f) => f.id) ?? [];
+    expect(await forVision('n1')).toEqual(['pdf-empty']);
+    expect(await forVision('n2')).toEqual(['pic']);
+    expect(await forVision('trashed')).toEqual([]);
+    expect((await stub.autofillPrelude('n1', 1))!.forVision.length).toBe(1);
   });
 
   it('says what each file is in brief, on a note and on a page of notes', async () => {

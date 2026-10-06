@@ -424,11 +424,9 @@ describe('the text read from files, across an import', () => {
       expect(res.ok).toBe(true);
     }
 
-    const pending = async (actor: Actor) => ({
-      text: (await json<{ remaining: number }>(await api(actor, '/api/attachments/pending-text'))).remaining,
-      vision: (await json<{ remaining: number }>(await api(actor, '/api/attachments/pending-vision'))).remaining,
-    });
-    expect(await pending(source)).toEqual({ text: 0, vision: 0 });
+    const pending = async (actor: Actor) =>
+      (await json<{ remaining: number }>(await api(actor, '/api/attachments/pending-text'))).remaining;
+    expect(await pending(source)).toBe(0);
 
     const zip = { name: 'unbent-paperwork.zip', blob: await exportNotebook(source, notebook) };
     const indexing: string[] = [];
@@ -438,7 +436,7 @@ describe('the text read from files, across an import', () => {
     // The Worker was told before the bytes landed that the text would follow, so it started
     // no read of its own — no extraction, and no vision request — and nothing waits.
     expect(indexing).toEqual(['client', 'client']);
-    expect(await pending(target)).toEqual({ text: 0, vision: 0 });
+    expect(await pending(target)).toBe(0);
 
     const read = async (actor: Actor) => {
       const [note] = (await json<{ notes: Array<{ attachments?: Array<Record<string, string>> }> }>(

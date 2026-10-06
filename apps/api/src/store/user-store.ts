@@ -680,8 +680,6 @@ export class UserStore extends DurableObject<StoreEnv> {
     return this.writing(() => this.attachments.copyText(fromAttachmentId, to));
   }
   needingText(limit: number, noteId?: string) { this.ready(); return this.attachments.needingText(limit, noteId); }
-  needingVision(limit: number, noteId?: string) { this.ready(); return this.attachments.needingVision(limit, noteId); }
-  visionPending(noteId?: string) { this.ready(); return this.attachments.visionPending(noteId); }
   pendingTextCount(noteId?: string) { this.ready(); return this.attachments.pendingTextCount(noteId); }
   textFor(noteId: string, filename: string) { this.ready(); return this.attachments.textFor(noteId, filename); }
   textWithRead(noteId: string, filename: string, vision?: boolean) { this.ready(); return this.attachments.textWithRead(noteId, filename, vision); }

@@ -138,8 +138,8 @@ export async function readAttachment(
  * A file still waiting for a reader, and which one: `text` for a PDF nothing has looked
  * at, which takes the whole path (`readAttachment` — the layer, then the model for what
  * the layer lacks); `vision` for a file already past the layer — a picture, or a scan the
- * browser read and found empty — which goes to the model alone. The two are what
- * `AttachmentsRepo.needingText` and `needingVision` list, respectively.
+ * browser read and found empty — which goes to the model alone. The two are what the
+ * store's `needingText` and `needingVision` list, respectively.
  */
 export type PendingFile = StoredFile & { pending: 'text' | 'vision' };
 
