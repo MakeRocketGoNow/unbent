@@ -1,5 +1,5 @@
 /**
- * The data tables of a per-account store, in dependency order: what `dumpPage` pages,
+ * The data tables of a per-account store, in dependency order: what `dumpSlice` reads,
  * `stats` counts, and the copy from D1 fills. A module of its own, with no import of
  * `cloudflare:workers`, so the Worker's routes can name the tables without pulling the
  * object class into a module graph the Node-run unit tests reach.

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { REVISION_MAX_AGE_MS, REVISIONS_KEPT, type RestoredNote } from '@unbent/shared';
 import { runInDurableObject } from 'cloudflare:test';
+import { DUMP_TABLES } from '@unbent/api/store/tables';
 import { feedRows, feedSeq, freshStore } from './helpers.js';
 
 /**
@@ -421,9 +422,9 @@ describe('history: retention', () => {
   it('travels in the operator dump, so a store rebuilt from one can still undo an edit', async () => {
     const { stub, id } = await seeded('dump', 'before');
     await stub.update(id, { body: 'after' });
-    const page = await stub.dumpPage('note_revisions');
-    expect(page.rows).toBe(1);
-    expect(new TextDecoder().decode(page.bytes)).toContain(`INSERT INTO note_revisions`);
+    const page = await stub.dumpSlice({ table: DUMP_TABLES.indexOf('note_revisions'), after: 0 });
+    // The tables after it come in the same slice; the copy is the one line of its own.
+    expect([...new TextDecoder().decode(page.bytes).matchAll(/^INSERT INTO note_revisions /gm)]).toHaveLength(1);
   });
 
   it('goes with everything else when the account is wiped', async () => {

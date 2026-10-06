@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { runInDurableObject } from 'cloudflare:test';
 import { DELETED_BLOB_RETENTION_MS, EXPIRED_BLOBS_PER_VISIT } from '@unbent/api/store/deleted-blobs';
+import { DUMP_TABLES } from '@unbent/api/store/tables';
 import { freshStore } from './helpers.js';
 
 /**
@@ -157,7 +158,8 @@ describe('deleted files', () => {
     await runInDurableObject(stub, (_i, state) => {
       state.storage.sql.exec(`INSERT INTO deleted_blobs (r2_key, deleted_at) VALUES ('users/u/x', 42)`);
     });
-    const page = await stub.dumpPage('deleted_blobs');
+    // The last table, so its slice holds nothing else.
+    const page = await stub.dumpSlice({ table: DUMP_TABLES.indexOf('deleted_blobs'), after: 0 });
     expect(new TextDecoder().decode(page.bytes)).toBe(`INSERT INTO deleted_blobs (r2_key, deleted_at) VALUES ('users/u/x', 42);\n`);
     expect(await stub.schemaSql()).toEqual(expect.arrayContaining([expect.stringContaining('CREATE TABLE deleted_blobs'), expect.stringContaining('idx_deleted_blobs_due')]));
   });

@@ -119,7 +119,7 @@ export interface StoreUsage {
 export const EXPORT_PAGE_BYTES = 8 * 1024 * 1024;
 
 /**
- * The same budget for a dump page or slice, in characters of the SQL it carries:
+ * The same budget for a dump slice, in characters of the SQL it carries:
  * `attachment_text` rows are up to half a million characters each, and five hundred of
  * them would pass the RPC ceiling many times over.
  */
@@ -433,36 +433,6 @@ export class UserStore extends DurableObject<StoreEnv> {
   }
 
   /**
-   * One page of a table's rows, by rowid, as INSERT statements: the dump route's unit
-   * before the dump crossed tables (`dumpSlice`), kept because a page of one table is
-   * what a test asks when it wants to know how a table's rows come out. The FTS tables
-   * are not dumped; the file rebuilds them from the rows at the end.
-   *
-   * The rows are turned into SQL here rather than in the Worker because of where the CPU
-   * is. A Worker invocation on the Free plan has ten milliseconds of it, and quoting
-   * eight megabytes of text takes more than that; an object request has thirty seconds.
-   * Encoded to bytes here too, for the same reason: a string crossing RPC is decoded on
-   * the Worker's side and would be encoded again for the response, both linear in the
-   * page, where a byte array crosses as a copy and is written out as it is.
-   *
-   * A page is at most `limit` rows and, past the first row, at most `DUMP_PAGE_BYTES` of
-   * them; see `dumpPageOf` for how the cut is made.
-   */
-  dumpPage(table: DumpTable, afterRowid = 0, limit = 5000): { bytes: Uint8Array; rows: number; nextRowid: number | null } {
-    this.ready();
-    if (!DUMP_TABLES.includes(table)) throw new Error(`not a data table: ${table}`);
-    const lines: string[] = [];
-    const page = this.dumpPageOf(table, afterRowid, limit, DUMP_PAGE_BYTES, lines);
-    // More may follow when the page was cut, or was full; a short page that was not cut
-    // is the end of the table.
-    return {
-      bytes: encodeLines(lines),
-      rows: lines.length,
-      nextRowid: (page.cut || lines.length === limit) && lines.length > 0 ? page.last : null,
-    };
-  }
-
-  /**
    * The start of a dump, in one call: the feed's counter as a `mark`, and — unless the
    * mark is `unless`, which is how the daily backup asks "has anything changed since the
    * dump I already have?" — the schema and the first slice of rows. An account that has
@@ -503,7 +473,7 @@ export class UserStore extends DurableObject<StoreEnv> {
     let chars = 0;
     for (let t = from.table; t < DUMP_TABLES.length; t++) {
       const after = t === from.table ? from.after : 0;
-      const page = this.dumpPageOf(DUMP_TABLES[t]!, after, -1, DUMP_PAGE_BYTES - chars, lines);
+      const page = this.dumpTableOnto(DUMP_TABLES[t]!, after, DUMP_PAGE_BYTES - chars, lines);
       chars += page.chars;
       if (page.cut) return { bytes: encodeLines(lines), rows: lines.length, next: { table: t, after: page.last } };
     }
@@ -516,11 +486,18 @@ export class UserStore extends DurableObject<StoreEnv> {
   }
 
   /**
-   * Reads `table`'s rows after `after` by rowid onto `lines` as INSERT statements, at
-   * most `limit` of them (-1 for no limit), and stops before the row that would take the
-   * text past `budget` characters — unless `lines` is still empty, or a single row larger
-   * than the budget could never be dumped. `last` is the rowid of the last row taken
-   * (`after` when none was), and `cut` whether the budget, not the table, ended the read.
+   * Reads `table`'s rows after `after` by rowid onto `lines` as INSERT statements, and
+   * stops before the row that would take the text past `budget` characters — unless
+   * `lines` is still empty, or a single row larger than the budget could never be dumped.
+   * `last` is the rowid of the last row taken (`after` when none was), and `cut` whether
+   * the budget, not the table, ended the read.
+   *
+   * The rows are turned into SQL here rather than in the Worker because of where the CPU
+   * is. A Worker invocation on the Free plan has ten milliseconds of it, and quoting
+   * eight megabytes of text takes more than that; an object request has thirty seconds.
+   * Encoded to bytes here too (`encodeLines`), for the same reason: a string crossing RPC
+   * is decoded on the Worker's side and would be encoded again for the response, both
+   * linear in the slice, where a byte array crosses as a copy and is written out as it is.
    *
    * The cut is by the statements' own length as they are made, off the raw cursor, row
    * by row, so it bounds the object's memory and not only the result — the result crosses
@@ -531,11 +508,10 @@ export class UserStore extends DurableObject<StoreEnv> {
    * row the budget stopped at was read and is read again by the next call: one row per
    * slice, which is what that test allows over one read of every row.
    */
-  private dumpPageOf(table: DumpTable, after: number, limit: number, budget: number, lines: string[]): { chars: number; last: number; cut: boolean } {
+  private dumpTableOnto(table: DumpTable, after: number, budget: number, lines: string[]): { chars: number; last: number; cut: boolean } {
     const cursor = this.ctx.storage.sql.exec<Row & { _rowid: number }>(
-      `SELECT rowid AS _rowid, * FROM ${table} WHERE rowid > ?1 ORDER BY rowid LIMIT ?2`,
+      `SELECT rowid AS _rowid, * FROM ${table} WHERE rowid > ?1 ORDER BY rowid`,
       after,
-      limit,
     );
     let chars = 0;
     let last = after;
