@@ -82,10 +82,13 @@ describe('a text layer’s summary', () => {
     expect(textSummary('Order total: $9.00\nInvoice date: 2026-03-02\nOrder 12 items')).not.toMatch(/Order #|Invoice #/);
   });
 
-  it('cuts the opening at a word', () => {
-    const opening = textSummary(`${'Acme '.repeat(50)}\nTotal $5.00`).split(' · ')[0]!;
+  it('cuts the opening at a word, and gives it the whole line when there are no facts', () => {
+    const opening = textSummary(`${'Acme '.repeat(100)}\nTotal $5.00`).split(' · ')[0]!;
     expect(opening.length).toBeLessThanOrEqual(150);
     expect(opening).toMatch(/Acme…$/);
+    const alone = textSummary('Acme '.repeat(100));
+    expect(alone.length).toBeGreaterThan(250);
+    expect(alone.length).toBeLessThanOrEqual(280);
   });
 
   it('is the folded text, cut, when it finds nothing to name', () => {

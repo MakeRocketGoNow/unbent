@@ -35,8 +35,14 @@ import { findDates, findNumbers, type FoundNumber } from '@unbent/shared';
  */
 export const TEXT_SUMMARY_SOURCE_CHARS = 8_000;
 
-/** The opening's share of the line. Enough for a letterhead and a heading. */
+/**
+ * The opening's share of the line beside the facts: enough for a letterhead and a
+ * heading. Alone — a letter, a policy, anything with no total, date or amount — it has the
+ * room every text layer's summary had before the facts were added, so such a document's
+ * line is no shorter than it was.
+ */
 const OPENING_CHARS = 150;
+const OPENING_ALONE_CHARS = 280;
 /**
  * How many dates are named, and how many amounts when no total is labelled; more is a
  * list, not a summary. Once a total is found the other amounts are left out: on a receipt
@@ -103,7 +109,7 @@ function clipWords(s: string, max: number): string {
  * header is what a printed web page opens with, and it names nothing — and lines with no
  * word in them skipped, which is a scan's run of rules and stray digits.
  */
-function openingOf(text: string): string {
+function openingOf(text: string, max: number): string {
   return clipWords(
     text
       .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
@@ -119,7 +125,7 @@ function openingOf(text: string): string {
       .join(' ')
       .replace(/\s+/g, ' ')
       .trim(),
-    OPENING_CHARS,
+    max,
   );
 }
 
@@ -199,13 +205,14 @@ export function textSummary(text: string): string {
   const order = orderIn(text);
   const named = total ? [] : amountsIn(text).slice(0, AMOUNTS_NAMED).map((n) => n.raw);
 
-  return [
-    openingOf(text),
+  const facts = [
     total && `Total: ${total.raw}`,
     dates.length > 0 && `${dates.length === 1 ? 'Date' : 'Dates'}: ${dates.join(', ')}`,
     order,
     named.length > 0 && `Amounts: ${named.join(', ')}`,
-  ]
+  ].filter((f): f is string => Boolean(f));
+
+  return [openingOf(text, facts.length > 0 ? OPENING_CHARS : OPENING_ALONE_CHARS), ...facts]
     .filter(Boolean)
     .join(' · ');
 }
