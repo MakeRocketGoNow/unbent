@@ -188,7 +188,9 @@ export async function dumpStores(
   const writes: D1PreparedStatement[] = [];
   let reached = 0;
   for (const row of due) {
-    // An account costs at least its `dumpBegin`, and one that changed its upload and its row.
+    // Two, not one: an unchanged account costs only its `dumpBegin`, but which it is is
+    // not known until that call is made, and with one call left a changed account would
+    // spend it and be put off. Stopping here leaves the account first for the next run.
     if (budget.left < 2) break;
     reached += 1;
     const whole = budget.spent === FIXED_COST;
