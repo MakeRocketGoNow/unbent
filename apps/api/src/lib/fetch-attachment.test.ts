@@ -210,8 +210,8 @@ describe('requestHeaders', () => {
     expect(requestHeaders(new URL('https://files.example.com/download?id=7'))['Accept']).toBe('*/*');
   });
 
-  it("names the file's own site when no page is given", () => {
-    expect(requestHeaders(picture)['Referer']).toBe('https://cdn.example.com/');
+  it('sends no page when none is given, as a direct visit does', () => {
+    expect(requestHeaders(picture)).not.toHaveProperty('Referer');
   });
 
   it('tells another site only the origin of the page', () => {

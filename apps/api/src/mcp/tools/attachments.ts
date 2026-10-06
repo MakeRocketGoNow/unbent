@@ -257,7 +257,7 @@ export function registerAttachmentTools(
           .max(8192)
           .optional()
           .describe(
-            "The address of the page the file was found on, such as a product page. Defaults to the file's own site.",
+            "The address of the page the file was found on, such as a product page. Without it no page is named.",
           ),
         filename: filenameSchema
           .optional()

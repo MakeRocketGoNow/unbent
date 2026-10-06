@@ -57,16 +57,20 @@ const MAX_REDIRECTS = 5;
  * a link preview, which hosts expect from servers; this one stands in for the person
  * saving a picture they were looking at, and hosts that check hand that only to a browser.
  *
- * Dressing as a browser is a decision, not an oversight, and so is the Referer that
- * `requestHeaders` sends when the caller names no page. Both exist to get past a plain
- * hotlink check, which is a host's own access rule; the cost is that an instance's fetch
- * claims to be something it is not, and a fork inherits that. It was weighed against
- * sending nothing but the honest UA and a caller's referer, and kept because the person
- * is entitled to the picture they were looking at, the gain is a picture they asked for,
- * and it stops at headers — anything a host means seriously (bot management, TLS
- * fingerprints, the `CF-Worker` header every Worker request carries) still refuses, and
- * the refusal points to the browser upload instead. Undo it by changing this decision,
- * not by trimming a header.
+ * Dressing as a browser is a decision, not an oversight. It exists to get past a host
+ * that refuses anything but a browser, and the cost is that an instance's fetch claims
+ * to be something it is not, which a fork inherits. It was kept because the person is
+ * entitled to the picture they were looking at, and because it stops at headers —
+ * anything a host means seriously (bot management, TLS fingerprints, the `CF-Worker`
+ * header every Worker request carries) still refuses, and the refusal points to the
+ * browser upload instead. Undo it by changing this decision, not by trimming a header.
+ *
+ * The Referer went the other way. Defaulting it to the file's own site was tried and
+ * dropped: an empty Referer already passes the usual hotlink rule, which blocks a foreign
+ * page and lets a direct visit through; a shop's pictures are mostly on a CDN host its
+ * allowlist does not name, so the invented one seldom matched; and unlike a UA it is a
+ * specific claim about a page the server never visited. One is sent only when the caller
+ * names the page, and then it is true.
  */
 export const DEFAULT_FETCH_USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) ' +
@@ -86,15 +90,16 @@ const ANY_ACCEPT = '*/*';
 const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'svg', 'heic', 'bmp', 'ico']);
 
 /**
- * The headers a browser would send for this URL, from a page at `referer`.
+ * The headers a browser would send for this URL, from a page at `referer` when the
+ * caller names one, and as a direct visit when it does not.
  *
  * The URL's extension decides between an image's Accept and any type at all: the
  * request a browser makes for a picture says so, and a CDN that serves several formats
  * from one path picks one from it.
  *
- * The Referer is the page the caller says the file came from, else the file's own
- * origin, which is what a hotlink check is usually looking for — a request from the
- * site's own pages. It is trimmed as Chrome's default policy
+ * The Referer is the page the caller says the file came from, and absent otherwise (see
+ * `DEFAULT_FETCH_USER_AGENT` for why nothing is made up). It is trimmed as Chrome's
+ * default policy
  * (`strict-origin-when-cross-origin`) trims it, so a host is told no more of the page than
  * a browser would tell it: the whole address to the same origin, the origin alone to
  * another, and nothing from https to http. The policy is applied per hop, since a
@@ -110,7 +115,8 @@ export function requestHeaders(
     Accept: IMAGE_EXTENSIONS.has(ext) ? IMAGE_ACCEPT : ANY_ACCEPT,
     'Accept-Language': 'en-US,en;q=0.9',
   };
-  const from = opts.referer ?? new URL(`${url.origin}/`);
+  const from = opts.referer;
+  if (!from) return headers;
   if (from.protocol === 'https:' && url.protocol === 'http:') return headers;
   if (from.origin === url.origin) {
     // A fragment is never sent, by a browser or here.
@@ -352,7 +358,7 @@ export async function fetchSource(
 ): Promise<FetchedSource> {
   // The page the file came from is the same page on every hop; only how much of it each
   // host is told changes (`requestHeaders`).
-  const referer = limits.referer ?? new URL(`${url.origin}/`);
+  const referer = limits.referer;
   let current = url;
   let res: Response;
   for (let hop = 0; ; hop += 1) {
