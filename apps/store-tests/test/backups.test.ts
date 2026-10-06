@@ -100,7 +100,7 @@ describe('the daily dumps', () => {
 
     expect(await status()).toMatchObject({
       ranAt: new Date(NOON).toISOString(),
-      run: { dumped: 1, failed: 0, deferred: 0, bytes: object!.size, subrequests: 5 },
+      run: { dumped: 1, failed: 0, deferred: 0, bytes: object!.size, subrequests: 6 },
       accounts: 1,
       failing: [],
       failingCount: 0,
@@ -137,6 +137,22 @@ describe('the daily dumps', () => {
     expect(await directory(id)).toMatchObject({ dump_at: week });
   });
 
+  it('record each dump as it finishes, so a run that dies after it does not dump it again', async () => {
+    const { id, stub } = await account('dies');
+    await stub.create({ id: crypto.randomUUID(), title: 'One', body: 'b', tags: [] });
+    const dying = new Proxy(env.DB, {
+      get(target, key) {
+        if (key === 'batch') return () => Promise.reject(new Error('the isolate went away'));
+        const value = Reflect.get(target, key) as unknown;
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    await expect(dumpStores({ ...backups(), DB: dying }, { now: NOON })).rejects.toThrow('went away');
+    expect(await directory(id)).toMatchObject({ dump_at: NOON, dump_tried_at: NOON });
+    // So the next run, the same day, finds it done rather than writing its key again.
+    expect(await dumpStores(backups(), { now: NOON + 3_600_000 })).toMatchObject({ dumped: 0, subrequests: 3 });
+  });
+
   it('stream a dump bigger than a part as a multipart upload of equal parts', async () => {
     const { id, stub } = await account('big');
     await bigStore(stub);
@@ -150,8 +166,8 @@ describe('the daily dumps', () => {
     expect([...sql.matchAll(/^INSERT INTO attachment_text /gm)]).toHaveLength(3);
     expect(sql.trimEnd().endsWith('PRAGMA foreign_keys = ON;')).toBe(true);
     // The fixed three; `dumpBegin` and two more slices; the upload's create, four parts
-    // and completion.
-    expect(report!.subrequests).toBe(12);
+    // and completion; the account's directory row.
+    expect(report!.subrequests).toBe(13);
   });
 
   it('record a dump that cannot fit one invocation as failed, and leave no half-written file', async () => {

@@ -20,9 +20,14 @@ import type { Env } from '../types.js';
  * account's last dump (migration 0037), and the run takes the accounts not yet tried
  * since midnight UTC, never-tried first, then the longest waiting. So the first run after
  * midnight starts the day's pass and each hourly run continues it, and a key's date is
- * one per account per day by construction: a dump is never written twice to one key,
- * which matters because the second account's copy of `stores/` is under a retention lock
- * and refuses an overwrite. A failure is recorded and waits for tomorrow, rather than
+ * one per account per day: a dump is not written twice to one key, which matters because
+ * the second account's copy of `stores/` is under a retention lock and refuses an
+ * overwrite. That holds because a dump's directory row is written the moment its upload
+ * completes, not with the rest of the run's writes at the end, so a run that dies partway
+ * — the CPU limit, an evicted isolate — has recorded every dump it finished. The one
+ * window left is between those two calls: a dump whose row then fails to write is dumped
+ * again next hour, over its own key, and if the night's mirror copied it in between, the
+ * mirror's run fails on the locked copy, loudly. A failure is recorded and waits for tomorrow, rather than
  * being retried every hour ahead of everyone else; a transient one, which the runtime
  * marks `retryable`, is left untried and comes back on the next run.
  *
@@ -41,9 +46,10 @@ import type { Env } from '../types.js';
  * subrequests, fifty on Workers Free, and this keeps to that even on unbent.app, which
  * is on Paid — the sweep's budget at :17 is a separate invocation's, so the two never
  * compete. The run's own cost is three: the query for the accounts due, the `batch` that
- * records them and reads the status back, and the status file. An unchanged account is
- * one store call; a small changed one is that call and one `put`; an archive of 31 MB is
- * about five slices, a multipart upload's create, four parts and its completion. A dump
+ * records the rest and reads the status back, and the status file. An unchanged account
+ * is one store call; a small changed one is that call, one `put` and its directory row;
+ * an archive of 31 MB is about five slices, a multipart upload's create, four parts and
+ * its completion, and the row. The row's call is held back for the whole dump. A dump
  * that would pass the budget is stopped and its upload aborted, with one call held back
  * for the abort. If the dump had the whole budget to itself it can never fit, and is
  * recorded as failed, so it is in the status and is tried again tomorrow rather than in
@@ -177,27 +183,33 @@ export async function dumpStores(
   const writes: D1PreparedStatement[] = [];
   let reached = 0;
   for (const row of due) {
-    // An account costs at least its `dumpBegin` and, if it changed, one `put`.
+    // An account costs at least its `dumpBegin`, and one that changed its upload and its row.
     if (budget.left < 2) break;
     reached += 1;
     const whole = budget.spent === FIXED_COST;
     try {
-      const outcome = await dumpOne(env, bucket, row, now, budget, opts.partBytes ?? PART_BYTES);
+      // The dumped account's directory row, kept back from the first call on.
+      budget.held += 1;
+      const outcome = await dumpOne(env, bucket, row, now, budget, opts.partBytes ?? PART_BYTES).finally(() => {
+        budget.held -= 1;
+      });
       if (outcome.unchanged) {
         report.unchanged += 1;
         writes.push(
           env.DB.prepare(`UPDATE account_directory SET dump_checked_at = ?2, dump_tried_at = ?2, dump_error = NULL WHERE user_id = ?1`).bind(row.user_id, now),
         );
       } else {
+        // At once, not in the closing batch; see "not written twice" above.
+        budget.take();
+        await env.DB.prepare(
+          `UPDATE account_directory
+              SET dump_at = ?2, dump_bytes = ?3, dump_mark = ?4, dump_checked_at = ?2, dump_tried_at = ?2, dump_error = NULL
+            WHERE user_id = ?1`,
+        )
+          .bind(row.user_id, now, outcome.bytes, outcome.mark)
+          .run();
         report.dumped += 1;
         report.bytes += outcome.bytes;
-        writes.push(
-          env.DB.prepare(
-            `UPDATE account_directory
-                SET dump_at = ?2, dump_bytes = ?3, dump_mark = ?4, dump_checked_at = ?2, dump_tried_at = ?2, dump_error = NULL
-              WHERE user_id = ?1`,
-          ).bind(row.user_id, now, outcome.bytes, outcome.mark),
-        );
       }
     } catch (err) {
       if (err instanceof OutOfSubrequests && !whole) {
@@ -320,7 +332,7 @@ async function upload(bucket: R2Bucket, key: string, chunks: AsyncGenerator<Uint
         if (!multipart) {
           budget.take(1);
           multipart = await bucket.createMultipartUpload(key, { httpMetadata });
-          budget.held = 1;
+          budget.held += 1;
         }
         const part = join(pending, partBytes);
         pending = rest(pending, partBytes);
@@ -341,11 +353,12 @@ async function upload(bucket: R2Bucket, key: string, chunks: AsyncGenerator<Uint
     }
     budget.take();
     await multipart.complete(parts);
-    budget.held = 0;
+    budget.held -= 1;
+    multipart = null;
     return total;
   } catch (err) {
     if (multipart) {
-      budget.held = 0;
+      budget.held -= 1;
       budget.spent += 1;
       await multipart.abort().catch((abortErr: unknown) => console.error(`[backup] abort failed for ${key}:`, abortErr));
     }
