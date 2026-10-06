@@ -205,9 +205,9 @@ describe('requestHeaders', () => {
     expect(headers['Accept-Language']).toBe('en-US,en;q=0.9');
   });
 
-  it('asks for anything else as a followed link', () => {
-    expect(requestHeaders(new URL('https://files.example.com/report.pdf'))['Accept']).toMatch(/^text\/html/);
-    expect(requestHeaders(new URL('https://files.example.com/download?id=7'))['Accept']).toMatch(/^text\/html/);
+  it('asks for anything else as fetch() does, never HTML first', () => {
+    expect(requestHeaders(new URL('https://files.example.com/report.pdf'))['Accept']).toBe('*/*');
+    expect(requestHeaders(new URL('https://files.example.com/download?id=7'))['Accept']).toBe('*/*');
   });
 
   it("names the file's own site when no page is given", () => {

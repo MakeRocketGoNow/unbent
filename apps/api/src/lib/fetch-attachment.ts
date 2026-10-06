@@ -64,17 +64,22 @@ export const DEFAULT_FETCH_USER_AGENT =
 /** What Chrome asks for when an `<img>` loads. */
 const IMAGE_ACCEPT = 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8';
 
-/** What Chrome asks for when a link is followed: a download is usually that. */
-const DOCUMENT_ACCEPT = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8';
+/**
+ * What Chrome's `fetch()` asks for: anything. Not the Accept of a followed link, which puts
+ * HTML first — a download endpoint that chooses by Accept would answer that with its page
+ * for the file, stored as the attachment without an error. Hotlink checks look at the
+ * Referer and the User-Agent, so nothing is lost by asking plainly.
+ */
+const ANY_ACCEPT = '*/*';
 
 const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'svg', 'heic', 'bmp', 'ico']);
 
 /**
  * The headers a browser would send for this URL, from a page at `referer`.
  *
- * The URL's extension decides between an image's Accept and a link's: the request a
- * browser makes for a picture says so, and a host that serves both from one path can
- * pick the format from it.
+ * The URL's extension decides between an image's Accept and any type at all: the
+ * request a browser makes for a picture says so, and a CDN that serves several formats
+ * from one path picks one from it.
  *
  * The Referer is the page the caller says the file came from, else the file's own
  * origin, which is what a hotlink check is usually looking for — a request from the
@@ -91,7 +96,7 @@ export function requestHeaders(
   const ext = splitExt(url.pathname)[1].slice(1).toLowerCase();
   const headers: Record<string, string> = {
     'User-Agent': opts.userAgent || DEFAULT_FETCH_USER_AGENT,
-    Accept: IMAGE_EXTENSIONS.has(ext) ? IMAGE_ACCEPT : DOCUMENT_ACCEPT,
+    Accept: IMAGE_EXTENSIONS.has(ext) ? IMAGE_ACCEPT : ANY_ACCEPT,
     'Accept-Language': 'en-US,en;q=0.9',
   };
   const from = opts.referer ?? new URL(`${url.origin}/`);
