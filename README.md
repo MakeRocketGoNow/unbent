@@ -530,8 +530,7 @@ so the production session is kept rather than overwritten, and switching back fi
 Every pull request that touches the web app or the API gets a URL of its own —
 `https://unbent-pr-<N>.<subdomain>.workers.dev` — where the branch can be used rather than
 read. `.github/workflows/previews.yml` deploys it on each push to the PR and deletes it when the
-PR closes, and posts the URL both as a comment it edits in place and as a deployment in the
-PR's own Deployments box.
+PR closes, and posts the URL as a comment it edits in place on every push.
 
 A preview is a whole Worker, not a static copy of the SPA, because one Worker serves both
 halves and `auth.ts` derives its baseURL, trusted origins, cookie security and passkey
