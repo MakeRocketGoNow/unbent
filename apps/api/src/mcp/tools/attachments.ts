@@ -35,16 +35,7 @@ import { jsonResult, notFound, toolError } from './result.js';
  */
 export function registerAttachmentTools(
   server: McpServer,
-  env: Pick<
-    Env,
-    | 'APP_URL'
-    | 'BLOBS'
-    | 'AI'
-    | 'ALLOW_TEST_CREDENTIALS'
-    | 'ANTHROPIC_API_KEY'
-    | 'ANTHROPIC_API_URL'
-    | 'ANTHROPIC_MODEL'
-  >,
+  env: Pick<Env, 'APP_URL' | 'BLOBS' | 'AI' | 'ALLOW_TEST_CREDENTIALS'>,
   ctx: { waitUntil(promise: Promise<unknown>): void },
   repos: { notes: NotesRepo; attachments: AttachmentsRepo; uploads: UploadGrantsRepo },
   links: AppLinks,

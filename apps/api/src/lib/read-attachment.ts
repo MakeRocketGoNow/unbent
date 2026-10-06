@@ -13,9 +13,13 @@ import { withReaderSlot } from './reader-gate.js';
  * found empty — at a request per file. The order is what keeps a text-layer PDF from ever
  * being sent to the paid reader, and a scan from being read twice.
  *
- * One place, because three paths need the same steps in the same order: the upload
- * (after the response, see `storeAttachment`), the browser reporting a PDF it read and
- * found empty (routes/attachments.ts), and the backfill over everything still pending.
+ * Who gets which reader is decided here too, and it is the one rule of MAK-179: the
+ * layer reads anything, since it is free, and the model reads only inside an Auto-fill
+ * press, since a person asked. An upload gets `uploadReaders`, the layer alone; the press
+ * gets `autofillReaders`, both. Until then every picture was read as it arrived — from
+ * the editor, the phone, an import or an assistant, a paid request nobody asked for and
+ * an archive's worth of them at once on an import — and a scan the browser found empty
+ * was sent to the model the moment it said so. Both now wait, pending, for the press.
  */
 
 /** The file as the repo knows it, which is what both readers need. */
@@ -35,9 +39,23 @@ export interface Readers {
   llm?: Pick<LanguageModel, 'read'>;
 }
 
-export function readersFrom(env: LlmEnv & { AI?: MarkdownConverter }): Readers {
+/**
+ * The readers an upload may use: the text layer, and nothing that costs a request. What
+ * `storeAttachment` hands `readAttachment` after the response.
+ */
+export function uploadReaders(env: { AI?: MarkdownConverter }): Readers {
+  return env.AI ? { converter: env.AI } : {};
+}
+
+/**
+ * The readers an Auto-fill press may use: the layer, and the model where the instance
+ * has a key. The one place the model is built for reading — a test in
+ * read-attachment.test.ts greps the source to keep it so — and `POST /notes/:id/autofill`
+ * is its one caller.
+ */
+export function autofillReaders(env: LlmEnv & { AI?: MarkdownConverter }): Readers {
   return {
-    ...(env.AI ? { converter: env.AI } : {}),
+    ...uploadReaders(env),
     ...(canUseLlm(env) ? { llm: llmFrom(env) } : {}),
   };
 }
@@ -46,18 +64,13 @@ export function readersFrom(env: LlmEnv & { AI?: MarkdownConverter }): Readers {
  * Whether the server will read this file after storing it, so the client knows not to.
  *
  * A PDF is the server's only where the conversion is bound: without it the text layer is
- * the browser's to read, as it always was, and the vision model is asked only for what
- * the browser then reports empty — sending every text-layer scan to the paid reader
- * because a laptop lacked a binding would be the wrong economy. A picture has no text
- * layer, so it is the server's wherever the vision model is.
+ * the browser's to read, as it always was. A picture is never the server's here: it has
+ * no layer, and the model that could read it runs only inside an Auto-fill press
+ * (MAK-179). So `client`, and the browser, which knows a picture has no text to extract,
+ * leaves it pending for that press.
  */
-export function serverCanRead(
-  env: LlmEnv & { AI?: unknown },
-  contentType: string,
-  size: number,
-): boolean {
-  if (canExtractOnServer(env, contentType, size)) return true;
-  return canUseLlm(env) && !isExtractable(contentType) && readableByLlm(contentType, size);
+export function serverCanRead(env: { AI?: unknown }, contentType: string, size: number): boolean {
+  return canExtractOnServer(env, contentType, size);
 }
 
 /** Where the bytes come from; R2's binding, or a stand-in. */
@@ -93,10 +106,10 @@ export async function readAttachment(
   /*
      A PDF never goes to the paid reader from here without the conversion having looked
      first. Where the conversion is not bound, the text layer is the browser's to read,
-     and the model is asked only once the browser has reported that layer empty, through
-     `readWithLlm` from that route. `serverCanRead` keeps such a PDF from reaching this
-     function at all; this keeps the guarantee that a text-layer scan is never paid for
-     in the one function that could break it.
+     and a scan it reports empty waits for an Auto-fill press, which reads it through
+     `readPendingFile`. `serverCanRead` keeps such a PDF from reaching this function at
+     all; this keeps the guarantee that a text-layer scan is never paid for in the one
+     function that could break it.
 
      Decided before the slot, because it reads nothing: a file no reader here can take must
      not wait behind ones that are holding memory.
@@ -157,14 +170,14 @@ export interface ReadCounts {
 
 /**
  * Reads the files a caller has already chosen, one after another, and says what became
- * of each. One place, because three callers need the same loop with the same rules: the
- * backfill Maintenance runs over the account, auto-fill reading the note in front of the
- * person before it suggests, and the MCP tool reading one file on request.
+ * of each. Auto-fill's, reading the note in front of the person before it suggests; it
+ * was also the loop behind Maintenance's bulk pass and MCP's read tool until MAK-179
+ * confined the model to a press.
  *
- * The rules are the backfill's, which this was lifted from. One unreadable file must not
- * stop the pass — it is counted and the rest go on. A file past the model's size caps is
- * recorded as the model's empty answer rather than skipped, or every pass would offer it
- * again. The id is what gets logged, never the name, which comes from the archive and
+ * The rules are that bulk pass's, which this was lifted from. One unreadable file must
+ * not stop the pass — it is counted and the rest go on. A file past the model's size caps
+ * is recorded as the model's empty answer rather than skipped, or every pass would offer
+ * it again. The id is what gets logged, never the name, which comes from the archive and
  * can say too much.
  */
 export async function readPendingFiles(
@@ -208,10 +221,10 @@ export async function readPendingFile(
 
 /**
  * The vision model alone, for a file that is past the text layer: a picture, or a scan
- * the layer had nothing for. Whatever it says is recorded under its name, so a backfill
- * never pays for the same file twice — a decline included.
+ * the layer had nothing for. Whatever it says is recorded under its name, so a later
+ * press never pays for the same file twice — a decline included.
  */
-export async function readWithLlm(
+async function readWithLlm(
   llm: Pick<LanguageModel, 'read'>,
   attachments: Pick<AttachmentsRepo, 'recordText'>,
   file: StoredFile,

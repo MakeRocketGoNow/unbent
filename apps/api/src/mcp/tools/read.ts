@@ -420,9 +420,10 @@ export function registerReadTools(
         "The text extracted from an attachment: a PDF's text layer, or, where the instance " +
         'has a vision model, what it read off a picture or a text-less scan — a name, what ' +
         'the file is and shows, then any text on it. This is what makes a scanned document ' +
-        'or a photo readable; the file itself is bytes a model cannot use. Reading happens ' +
-        'in the background after upload, so a recently added file may have no text yet, ' +
-        'which is reported as such rather than as an empty document. read says which, as ' +
+        "or a photo readable; the file itself is bytes a model cannot use. A PDF's layer is " +
+        'read after upload, and a picture when someone presses Auto-fill on its note, so a ' +
+        'file may have no text yet, which is reported as such rather than as an empty ' +
+        'document. read says which, as ' +
         'it does on get_note: "pending" for a file still to be read, which pressing Auto-fill ' +
         'on the note in the app does, and "none" for one that was read and had nothing, or that nothing ' +
         'on this instance reads. A receipt or a statement usually says what it is in its ' +

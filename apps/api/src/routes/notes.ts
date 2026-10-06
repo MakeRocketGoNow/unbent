@@ -17,7 +17,7 @@ import { canAutofill, JevError, jevFrom } from '../lib/jev.js';
 import { canUseLlm, LLM_IMAGE_TYPES, llmFrom } from '../lib/llm.js';
 import { isOperator } from '../lib/instance.js';
 import { nextCursor } from '../lib/notes-repo.js';
-import { readPendingFiles, readersFrom } from '../lib/read-attachment.js';
+import { autofillReaders, readPendingFiles } from '../lib/read-attachment.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import type { AppEnv } from '../types.js';
@@ -257,10 +257,11 @@ export const notes = new Hono<AppEnv>()
   .post('/notes/:id/autofill', async (c) => {
     const id = c.req.param('id');
     /*
-       How many of the note's unread files one press will read. Above a card and its
-       back, a note with a stack of scans is a job to run from Maintenance, where
-       the count is shown and the person can stop; a press that silently paid for twenty
-       files would be the surprise this cap exists to prevent.
+       How many of the note's unread files one press will read. A card and its back fit;
+       a note with a stack of twenty scans is read five at a press, with the rest reported
+       as still waiting, since a press that silently paid for the whole stack would be the
+       surprise this cap exists to prevent. Maintenance offered the rest as a pass of its
+       own until MAK-179; the press is the only reader now.
     */
     const OWN_FILES_TO_READ = 5;
     const notes = c.get('notes');
@@ -273,21 +274,22 @@ export const notes = new Hono<AppEnv>()
     if (!canAutofill(c.env)) return c.json({ error: 'Auto-fill is not set up on this instance' }, 503);
 
     /*
-       The note's own files first, before anything is suggested. A file is read once, at
-       upload, and never again on its own — so a picture stored before this instance had
-       a vision model, or a scan whose read failed that day, stayed unreadable for good,
-       and pressing Auto-fill on it only ever answered "a file is still being read". The
-       press is the person asking for exactly this read, so it happens here, awaited: a
-       few seconds for a card is what the button costs anyway, and the text it records is
-       what the suggestion is then built from.
+       The note's own files first, before anything is suggested. This is the one place
+       the model reads a file (MAK-179): a picture, or a scan whose text layer had
+       nothing, is not read when it arrives but here, when a person presses — so the press
+       is the person asking for exactly this read, and it happens awaited. A few seconds
+       for a card is what the button costs anyway, and the text it records is what the
+       suggestion is then built from. Before that rule a file was read once, at upload,
+       and a press on one whose read had failed that day only ever answered "a file is
+       still being read".
 
        Scoped to this note and capped, never the account's backlog: that is a thousand paid
-       requests on a real archive, and Maintenance's to run on purpose. A file this
-       instance has no reader for stays as it was and is reported in `read.pending`, as
-       before. A read that fails is logged and left pending rather than failing the press —
-       the suggestion still comes from whatever text there is.
+       requests on a real archive, and nothing runs it. A file this instance has no reader
+       for stays as it was and is reported in `read.pending`, as before. A read that fails
+       is logged and left pending rather than failing the press — the suggestion still
+       comes from whatever text there is.
     */
-    const readers = readersFrom(c.env);
+    const readers = autofillReaders(c.env);
     if (readers.converter || readers.llm) {
       const pending = [
         ...forText.map((f) => ({ ...f, pending: 'text' as const })),
