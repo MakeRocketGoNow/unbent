@@ -226,6 +226,83 @@ describe('UserStore lifecycle', () => {
     await expect(stub.dumpPage('notes_fts' as 'notes')).rejects.toThrow(/not a data table/);
   });
 
+  it('dumpBegin answers unchanged for its own mark, and a write or a new epoch moves the mark', async () => {
+    const { stub } = freshStore('dump-mark');
+    const first = await stub.dumpBegin();
+    expect(first.unchanged).toBe(false);
+    expect(await stub.dumpBegin(first.mark)).toEqual({ mark: first.mark, unchanged: true });
+    await stub.create({ id: crypto.randomUUID(), title: 'New', body: 'b', tags: [] });
+    const written = await stub.dumpBegin(first.mark);
+    expect(written.unchanged).toBe(false);
+    expect(written.mark).not.toBe(first.mark);
+    // A restore gives the feed a new epoch and winds the seq back, so a store can come
+    // back to a seq it had with other rows under it; the mark carries the epoch for that.
+    await stub.feedRestored();
+    const restored = await stub.dumpBegin(written.mark);
+    expect(restored.unchanged).toBe(false);
+    expect(restored.mark.split(':')[1]).toBe(written.mark.split(':')[1]);
+  });
+
+  it('dumpSlice crosses tables, cuts at the byte budget, and picks up from the cut', async () => {
+    const { stub } = freshStore('dump-slice');
+    // Three texts of five megabytes: the first slice holds every table up to the texts
+    // and the first of them; the second the next text alone; the third the last one and
+    // every table after it.
+    await runInDurableObject(stub, (_i, state) => {
+      const sql = state.storage.sql;
+      sql.exec(`INSERT INTO notes (id, title, body, created_at, updated_at) VALUES ('n1', 'T', 'b', 1, 1)`);
+      for (let i = 0; i < 3; i++) {
+        sql.exec(`INSERT INTO attachments (id, note_id, filename, content_type, size, r2_key, created_at) VALUES (?1, 'n1', ?2, 'application/pdf', 1, ?1, 1)`, `a${i}`, `f${i}.pdf`);
+        sql.exec(`INSERT INTO attachment_text (attachment_id, note_id, filename, text, created_at) VALUES (?1, 'n1', ?2, ?3, 1)`, `a${i}`, `f${i}.pdf`, 'x'.repeat(5 * 1024 * 1024));
+      }
+      sql.exec(`INSERT INTO deleted_blobs (r2_key, deleted_at) VALUES ('users/u/x', 42)`);
+    });
+    const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
+    const tables = (bytes: Uint8Array) => [...new Set([...text(bytes).matchAll(/^INSERT INTO (\w+) /gm)].map((m) => m[1]))];
+    const texts = (bytes: Uint8Array) => [...text(bytes).matchAll(/INSERT INTO attachment_text .*?VALUES \('(a\d)'/g)].map((m) => m[1]);
+    const textTable = DUMP_TABLES.indexOf('attachment_text');
+
+    const start = await stub.dumpBegin();
+    if (start.unchanged) throw new Error('a first dump is never unchanged');
+    expect(start.schema).toEqual(expect.arrayContaining([expect.stringContaining('CREATE TABLE notes')]));
+    expect(tables(start.bytes)).toEqual(['_migrations', '_meta', 'note_counts', 'notes', 'attachments', 'attachment_text']);
+    expect(texts(start.bytes)).toEqual(['a0']);
+    expect(start.next).toMatchObject({ table: textTable });
+    const second = await stub.dumpSlice(start.next!);
+    expect(texts(second.bytes)).toEqual(['a1']);
+    expect(second.next).toMatchObject({ table: textTable });
+    const third = await stub.dumpSlice(second.next!);
+    expect(texts(third.bytes)).toEqual(['a2']);
+    expect(tables(third.bytes)).toEqual(['attachment_text', 'deleted_blobs']);
+    expect(third.next).toBeNull();
+  });
+
+  /*
+   * Slices are how the dump is read now, and the file has to be the one it was: the same
+   * statements, in the same order, as every table paged on its own. Concatenated, the two
+   * must be the same bytes.
+   */
+  it('dumpSlice writes the same statements as paging each table on its own', async () => {
+    const { stub } = freshStore('dump-same');
+    await stub.create({ id: crypto.randomUUID(), title: "It's quoted", body: 'b', tags: ['one', 'two'] });
+    await stub.create({ id: crypto.randomUUID(), title: 'Second', body: 'b', tags: ['two'] });
+    const byTable: Uint8Array[] = [];
+    for (const table of DUMP_TABLES) {
+      for (let after = 0; ; ) {
+        const page = await stub.dumpPage(table, after, 5000);
+        byTable.push(page.bytes);
+        if (page.nextRowid === null) break;
+        after = page.nextRowid;
+      }
+    }
+    const start = await stub.dumpBegin();
+    if (start.unchanged) throw new Error('a first dump is never unchanged');
+    // Small enough for one slice: the whole account is the one call.
+    expect(start.next).toBeNull();
+    const join = (parts: Uint8Array[]) => parts.map((p) => new TextDecoder().decode(p)).join('');
+    expect(join([start.bytes])).toBe(join(byTable));
+  });
+
   /*
    * The dump pages the tables `DUMP_TABLES` names, not the ones the schema has, so a
    * schema file that adds a table and forgets the list would ship a dump that rebuilds a

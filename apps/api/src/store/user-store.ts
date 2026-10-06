@@ -63,6 +63,25 @@ const WIPED_KEY = 'wiped';
 export type Row = Record<string, SqlStorageValue>;
 
 
+/** Where a dump got to: an index into `DUMP_TABLES`, and the last rowid written from that table. */
+export interface DumpPosition {
+  table: number;
+  after: number;
+}
+
+/** A run of the dump's INSERT statements, encoded, and where the next run starts (null at the end). */
+export interface DumpSlice {
+  bytes: Uint8Array;
+  rows: number;
+  next: DumpPosition | null;
+}
+
+/**
+ * What `dumpBegin` answers: the feed's mark, and either that it is the mark the caller
+ * already has a dump of, or the schema's CREATE statements and the first slice.
+ */
+export type DumpStart = { mark: string; unchanged: true } | ({ mark: string; unchanged: false; schema: string[] } & DumpSlice);
+
 /** What `stats` reports: the shape the ops route and the sweep read. */
 export interface StoreStats {
   userId: string;
@@ -98,8 +117,9 @@ export interface StoreUsage {
 export const EXPORT_PAGE_BYTES = 8 * 1024 * 1024;
 
 /**
- * The same budget for a dump page: `attachment_text` rows are up to half a million
- * characters each, and five hundred of them would pass the RPC ceiling many times over.
+ * The same budget for a dump page or slice, in characters of the SQL it carries:
+ * `attachment_text` rows are up to half a million characters each, and five hundred of
+ * them would pass the RPC ceiling many times over.
  */
 export const DUMP_PAGE_BYTES = 8 * 1024 * 1024;
 
@@ -411,10 +431,10 @@ export class UserStore extends DurableObject<StoreEnv> {
   }
 
   /**
-   * One page of a table's rows, by rowid, as INSERT statements for the dump route: the
-   * operator pages every table in `DUMP_TABLES` order and writes the pages out between
-   * the schema's tables and its triggers, which is a file `sqlite3` rebuilds an account
-   * from. The FTS tables are not dumped; the file rebuilds them from the rows at the end.
+   * One page of a table's rows, by rowid, as INSERT statements: the dump route's unit
+   * before the dump crossed tables (`dumpSlice`), kept because a page of one table is
+   * what a test asks when it wants to know how a table's rows come out. The FTS tables
+   * are not dumped; the file rebuilds them from the rows at the end.
    *
    * The rows are turned into SQL here rather than in the Worker because of where the CPU
    * is. A Worker invocation on the Free plan has ten milliseconds of it, and quoting
@@ -424,45 +444,107 @@ export class UserStore extends DurableObject<StoreEnv> {
    * page, where a byte array crosses as a copy and is written out as it is.
    *
    * A page is at most `limit` rows and, past the first row, at most `DUMP_PAGE_BYTES` of
-   * them: the result crosses RPC, which is capped at 32 MiB, and a page of scans' texts
-   * would pass that at five hundred rows. The cut is by the rows' own sizes as they are
-   * read — off the raw cursor, row by row, so the cut bounds the object's memory and not
-   * only the result, and the caller may ask for thousands of rows a page and get as many
-   * as fit. That matters because every page is one store call, and an invocation has
-   * fifty on Free: a dump of an archive-sized account has to be a dozen pages, not a
-   * hundred. The one query here that bypasses the `Sql` seam's metering, for that reason.
+   * them; see `dumpPageOf` for how the cut is made.
    */
   dumpPage(table: DumpTable, afterRowid = 0, limit = 5000): { bytes: Uint8Array; rows: number; nextRowid: number | null } {
     this.ready();
     if (!DUMP_TABLES.includes(table)) throw new Error(`not a data table: ${table}`);
-    const cursor = this.ctx.storage.sql.exec<Row & { _rowid: number }>(
-      `SELECT rowid AS _rowid, * FROM ${table} WHERE rowid > ?1 ORDER BY rowid LIMIT ?2`,
-      afterRowid,
-      limit,
-    );
     const lines: string[] = [];
-    let bytes = 0;
-    let cut = false;
-    let last: number | null = null;
-    for (const row of cursor) {
-      for (const v of Object.values(row)) bytes += typeof v === 'string' ? v.length : v instanceof ArrayBuffer ? v.byteLength : 8;
-      // Always at least one row, or a single oversized row could never be dumped.
-      if (bytes > DUMP_PAGE_BYTES && lines.length > 0) {
-        cut = true;
-        break;
-      }
-      const { _rowid, ...columns } = row;
-      last = _rowid;
-      const names = Object.keys(columns);
-      lines.push(`INSERT INTO ${table} (${names.join(', ')}) VALUES (${names.map((n) => sqlLiteral(columns[n])).join(', ')});`);
-    }
+    const page = this.dumpPageOf(table, afterRowid, limit, DUMP_PAGE_BYTES, lines);
     // More may follow when the page was cut, or was full; a short page that was not cut
     // is the end of the table.
     return {
-      bytes: new TextEncoder().encode(lines.length ? `${lines.join('\n')}\n` : ''),
+      bytes: encodeLines(lines),
       rows: lines.length,
-      nextRowid: (cut || lines.length === limit) && last !== null ? last : null,
+      nextRowid: (page.cut || lines.length === limit) && lines.length > 0 ? page.last : null,
     };
+  }
+
+  /**
+   * The start of a dump, in one call: the feed's counter as a `mark`, and — unless the
+   * mark is `unless`, which is how the daily backup asks "has anything changed since the
+   * dump I already have?" — the schema and the first slice of rows. An account that has
+   * not changed costs the backup this call and nothing else; a small one that has is
+   * dumped whole by it, since a slice crosses tables. See `lib/dump.ts`.
+   *
+   * The mark is the feed's epoch and seq together. The seq alone would not do: a restore
+   * winds it back and the restore route gives the feed a new epoch, so a store wound back
+   * and written to again can come to the same seq with different rows under it.
+   */
+  dumpBegin(unless: string | null = null): DumpStart {
+    this.ready();
+    const mark = `${this.feed.epoch()}:${this.feed.seq()}`;
+    if (mark === unless) return { mark, unchanged: true };
+    return { mark, unchanged: false, schema: this.schemaSql(), ...this.dumpSlice({ table: 0, after: 0 }) };
+  }
+
+  /**
+   * The dump's rows from `from` on, across tables in `DUMP_TABLES` order, until the slice
+   * reaches `DUMP_PAGE_BYTES` of SQL text; `next` is where the following call starts, and
+   * null once every table is done. One call per slice rather than per table, because
+   * every call is a billable request and a subrequest of the Worker that makes it: a
+   * per-table page made every dump at least fourteen calls, which is most of the Free
+   * plan's fifty for an account with one note in it. An archive is about as many calls
+   * as it has eight-megabyte slices.
+   *
+   * A slice is not a snapshot of the store with the one before it. Nothing can hold a
+   * read open across two calls to the object, so a write between two slices lands in
+   * whichever tables have not been read yet. The backup records the mark taken before
+   * the first slice, so such an account is dumped again on the next day's run.
+   */
+  dumpSlice(from: DumpPosition): DumpSlice {
+    this.ready();
+    const lines: string[] = [];
+    let chars = 0;
+    for (let t = from.table; t < DUMP_TABLES.length; t++) {
+      const after = t === from.table ? from.after : 0;
+      const page = this.dumpPageOf(DUMP_TABLES[t]!, after, -1, DUMP_PAGE_BYTES - chars, lines);
+      chars += page.chars;
+      if (page.cut) return { bytes: encodeLines(lines), rows: lines.length, next: { table: t, after: page.last } };
+    }
+    return { bytes: encodeLines(lines), rows: lines.length, next: null };
+  }
+
+  /**
+   * Reads `table`'s rows after `after` by rowid onto `lines` as INSERT statements, at
+   * most `limit` of them (-1 for no limit), and stops before the row that would take the
+   * text past `budget` characters — unless `lines` is still empty, or a single row larger
+   * than the budget could never be dumped. `last` is the rowid of the last row taken
+   * (`after` when none was), and `cut` whether the budget, not the table, ended the read.
+   *
+   * The cut is by the statements' own length as they are made, off the raw cursor, row
+   * by row, so it bounds the object's memory and not only the result — the result crosses
+   * RPC, which is capped at 32 MiB. A character is at most three bytes of UTF-8 in a
+   * statement, so eight million of them stay inside the cap. It is the one read here that
+   * bypasses the `Sql` seam, for that row-by-row cut; its rows are added to the seam's
+   * counters by hand, so the rows-read test sees a dump as it sees any other read. The
+   * row the budget stopped at was read and is read again by the next call: one row per
+   * slice, which is what that test allows over one read of every row.
+   */
+  private dumpPageOf(table: DumpTable, after: number, limit: number, budget: number, lines: string[]): { chars: number; last: number; cut: boolean } {
+    const cursor = this.ctx.storage.sql.exec<Row & { _rowid: number }>(
+      `SELECT rowid AS _rowid, * FROM ${table} WHERE rowid > ?1 ORDER BY rowid LIMIT ?2`,
+      after,
+      limit,
+    );
+    let chars = 0;
+    let last = after;
+    let cut = false;
+    for (const row of cursor) {
+      const { _rowid, ...columns } = row;
+      const names = Object.keys(columns);
+      const line = `INSERT INTO ${table} (${names.join(', ')}) VALUES (${names.map((n) => sqlLiteral(columns[n])).join(', ')});`;
+      if (chars + line.length > budget && lines.length > 0) {
+        cut = true;
+        break;
+      }
+      lines.push(line);
+      chars += line.length + 1;
+      last = _rowid;
+    }
+    this.sql.counters.rowsRead += cursor.rowsRead;
+    this.sql.counters.statements += 1;
+    return { chars, last, cut };
   }
 
   /**
@@ -1023,6 +1105,11 @@ export class UserStore extends DurableObject<StoreEnv> {
     this.tell(this.feed.seq());
     return { epoch };
   }
+}
+
+/** A page of the dump's statements as the bytes the file holds: one a line, each line ended. */
+function encodeLines(lines: string[]): Uint8Array {
+  return new TextEncoder().encode(lines.length ? `${lines.join('\n')}\n` : '');
 }
 
 /** One SQLite value as a literal in the dump. The four types the engine has, and nothing else. */
