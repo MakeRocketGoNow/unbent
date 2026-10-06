@@ -232,7 +232,7 @@ export class FeedEngine {
          * its `seq`, and kept it would have stayed on the device for good (review of
          * #232). Refused for now, the position is kept and tried again.
          */
-        if (from && cursor && refusedForGood(err)) {
+        if (from && cursor && deadCursor(err)) {
           await this.truncateAll();
           await this.snapshot(null);
           return;
@@ -317,19 +317,25 @@ export class FeedEngine {
 }
 
 /**
- * A 4xx the snapshot will answer the same way again, so a stored resume that produced
- * it has to be dropped or every pull would fail the same way forever.
+ * A status the server would answer the same way however often it is asked: a 4xx, but
+ * not 401 (the session — the sign-in that follows should carry on), 408 (a timeout) or
+ * 429 ("later"). The outbox ends an entry on one (`refusal` in `actions.ts`) and the walk
+ * drops a stored resume on one; both read this, so a status added for one is added for
+ * the other. The iOS capture queue carves out the same three (`CaptureJob.isPermanent`).
  *
- * Three 4xx are not that, the same three the outbox carves out (`refusal` in
- * `actions.ts`): 401 is the session (the sign-in that follows should resume the walk),
- * 408 is a timeout, 429 is "later". Treating them as a dead cursor used to empty the
- * copy a first walk had already applied — minutes of pages on a phone — and clear the
- * resume, so a refused session's store came back empty instead of picking up where it
- * stopped.
+ * Counting those three as for good is what this exists to prevent: in the outbox it
+ * deleted the only copy of a file added offline, and in the walk it emptied the copy a
+ * first walk had already applied — minutes of pages on a phone — so a refused session's
+ * store came back empty instead of picking up where it stopped.
  */
-function refusedForGood(err: unknown): boolean {
+export function refusedForGood(status: number): boolean {
+  return status >= 400 && status < 500 && ![401, 408, 429].includes(status);
+}
+
+/** The engine is given its fetch, so the error is read for a status rather than typed. */
+function deadCursor(err: unknown): boolean {
   const status = (err as { status?: unknown } | null)?.status;
-  return typeof status === 'number' && status >= 400 && status < 500 && ![401, 408, 429].includes(status);
+  return typeof status === 'number' && refusedForGood(status);
 }
 
 function count(rows: Iterable<unknown> | undefined): number {
