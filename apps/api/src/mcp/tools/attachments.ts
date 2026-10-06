@@ -56,8 +56,9 @@ const MAX_ASSISTANT_TEXT_CHARS = 100_000;
  * What a model can hand over instead is a URL, in one of two directions. add_attachment
  * takes a URL the server fetches: what every system that holds files offers when read, a
  * signed download link. prepare_attachment_upload gives a URL the other way, for a file
- * that has no link because it is on the assistant's own disk: the assistant's shell PUTs
- * the bytes there (routes/uploads.ts). Either way the bytes never pass through the model,
+ * that has no link because it is on the assistant's own disk, or that only a browser could
+ * fetch: the assistant's shell, or a script in that browser's page, PUTs the bytes there
+ * (routes/uploads.ts). Either way the bytes never pass through the model,
  * and they end in lib/store-attachment.ts, the same thing that happens to an upload from
  * the editor.
  */
@@ -311,9 +312,12 @@ export function registerAttachmentTools(
       title: 'Upload a file from your own machine',
       description:
         'Attach a file that you hold rather than one at a URL: a file on the machine or in ' +
-        'the sandbox where you run commands, such as a screenshot the person gave you. ' +
-        'Returns a one-time upload URL. Send the raw bytes to it with an HTTP PUT, for ' +
-        'example curl -T "photo.png" "<uploadUrl>"; the reply to that request is the same ' +
+        'the sandbox where you run commands, such as a screenshot the person gave you, or ' +
+        "bytes you fetched in a browser tab when add_attachment was refused by the file's " +
+        'host. Returns a one-time upload URL. Send the raw bytes to it with an HTTP PUT, for ' +
+        'example curl -T "photo.png" "<uploadUrl>", or from a script in a page on any ' +
+        "site, fetch(uploadUrl, { method: 'PUT', body: blob }) — the URL accepts requests " +
+        'from any origin and needs no cookies or other credentials. The reply to that request is the same ' +
         'JSON add_attachment returns, with the note\'s url to give the person, the filename the file was stored under ' +
         '(suffixed if the note already had one by that name) and the Markdown that shows ' +
         `it. The URL works once, for this note, for ${UPLOAD_GRANT_TTL_MS / 60_000} ` +

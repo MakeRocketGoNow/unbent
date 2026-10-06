@@ -1057,6 +1057,59 @@ describe('prepare_attachment_upload', () => {
     expect(res.status).toBe(404);
   });
 
+  /*
+     A browser on any page can send the bytes, so an assistant in a tab can hand over a
+     picture it fetched there. The preflight is what a browser sends first; without the
+     right answer to it the PUT never leaves the page.
+
+     These go to the Worker, not through the SPA origin the link is built on: in
+     development that origin is Vite, whose own CORS layer answers every preflight before
+     its proxy sees it — and is there to keep other sites from reading the dev server's
+     source, so it stays. In production the Worker is the SPA origin and answers itself.
+  */
+  const viaWorker = (uploadUrl: string) => uploadUrl.replace(ORIGIN, BASE);
+
+  it('answers a preflight from any origin, without credentials', async () => {
+    const res = await fetch(`${BASE}/api/uploads/any-token`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://shop.example.com',
+        'Access-Control-Request-Method': 'PUT',
+        'Access-Control-Request-Headers': 'content-type',
+      },
+    });
+    expect(res.status).toBe(204);
+    expect(res.headers.get('access-control-allow-origin')).toBe('*');
+    expect(res.headers.get('access-control-allow-methods')).toBe('PUT,OPTIONS');
+    expect(res.headers.get('access-control-allow-headers')?.toLowerCase()).toContain('content-type');
+    expect(res.headers.get('access-control-max-age')).toBe('600');
+    expect(res.headers.get('access-control-allow-credentials')).toBeNull();
+  });
+
+  it('lets another origin read the answer to a PUT, and to a refused one', async () => {
+    const uploadUrl = viaWorker(
+      (await prepare(erin.token, { noteId: erinNoteId, filename: 'from-a-page.png', link: false })).json().uploadUrl,
+    );
+    const headers = { Origin: 'https://shop.example.com', 'Content-Type': 'image/png' };
+
+    const res = await fetch(uploadUrl, { method: 'PUT', headers, body: PNG });
+    expect(res.status).toBe(201);
+    expect(res.headers.get('access-control-allow-origin')).toBe('*');
+    expect(await res.json()).toMatchObject({ filename: 'from-a-page.png', contentType: 'image/png' });
+
+    const again = await fetch(uploadUrl, { method: 'PUT', headers, body: PNG });
+    expect(again.status).toBe(404);
+    expect(again.headers.get('access-control-allow-origin')).toBe('*');
+  });
+
+  it('opens no other route to other origins', async () => {
+    const res = await fetch(`${BASE}/api/notes`, {
+      method: 'OPTIONS',
+      headers: { Origin: 'https://shop.example.com', 'Access-Control-Request-Method': 'GET' },
+    });
+    expect(res.headers.get('access-control-allow-origin')).toBeNull();
+  });
+
   it('mints nothing for a note that is not the caller\'s', async () => {
     const result = await prepare(frank.token, { noteId: erinNoteId, filename: 'intruder.png' });
     expect(result.isError).toBe(true);
