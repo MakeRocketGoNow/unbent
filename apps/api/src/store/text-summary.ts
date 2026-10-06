@@ -29,9 +29,14 @@ import { findDates, findNumbers, type FoundNumber } from '@unbent/shared';
  * The most of a text layer the summary is found in. The facts are on the first page or
  * two of a receipt, an invoice or a statement; reading further finds more of a long
  * statement's line items, which only lengthen the list. Read with `substr` in the query,
- * so a long scan never crosses into the object whole, and bounded for the page: a page of
- * summaries is a hundred notes at ten files each at most, and this times that is what the
- * object holds while it answers.
+ * so a long scan never crosses into the object whole.
+ *
+ * The bound is per file, not per page. `summariesForNotes` reads every file of the notes
+ * it is given, and the ten-a-note cap on a page of summaries is MCP's, applied to its
+ * answer (`LIST_FILES_PER_NOTE`), so the object holds this much for each file of each
+ * note while it answers: thirteen times the vision head's six hundred. That is a couple of
+ * megabytes for a note with three hundred files, inside an object's memory, and the rows
+ * read are the same two a file as before.
  */
 export const TEXT_SUMMARY_SOURCE_CHARS = 8_000;
 
