@@ -10,6 +10,7 @@ declare global {
     interface Env {
       USER_STORE: DurableObjectNamespace<UserStore>;
       DB: D1Database;
+      BLOBS: R2Bucket;
     }
   }
 }

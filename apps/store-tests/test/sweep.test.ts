@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { env, evictDurableObject, runInDurableObject } from 'cloudflare:test';
-import { BATCH, sweepStores } from '@unbent/api/lib/sweep';
+import { BATCH, SUBREQUEST_BUDGET, pickExpiries, sweepStores } from '@unbent/api/lib/sweep';
+import { DELETED_BLOB_RETENTION_MS } from '@unbent/api/store/deleted-blobs';
 
 /**
  * The sweep, against real objects and a local D1 carrying the three control-plane
@@ -191,6 +192,77 @@ describe('the store sweep', () => {
     expect((await stub(preview).usage()).notes).toBe(1);
     const cursorAfter = await env.DB.prepare(`SELECT value FROM _unbent_meta WHERE key = 'store_sweep_cursor'`).first<{ value: string }>();
     expect(cursorAfter?.value ?? null).toBe(cursorBefore?.value ?? null);
+  });
+
+  /**
+   * Deleted files leave R2 from here and nowhere else (MAK-171, part 1): the walk asks
+   * each store for the keys past thirty-five days, deletes them from the bucket, and has
+   * the store forget them. A file deleted yesterday stays in the bucket, with its
+   * tombstone, for a restore to find.
+   */
+  it('deletes the files past their retention from R2 and forgets them, and leaves the rest', async () => {
+    const id = uid('blobs');
+    await user(id);
+    await directory(id);
+    const s = stub(id);
+    const n = await s.create({ id: crypto.randomUUID(), title: 'Files', body: '', tags: [] });
+    const key = (name: string) => `users/${id}/notes/${n.id}/files/${name}`;
+    for (const name of ['due.pdf', 'fresh.pdf', 'kept.pdf']) {
+      await env.BLOBS.put(key(name), name);
+      await s.recordAttachment({ id: name, noteId: n.id, filename: name, contentType: 'application/pdf', size: 1, r2Key: key(name) });
+    }
+    await s.removeAttachment(n.id, 'due.pdf');
+    await s.removeAttachment(n.id, 'fresh.pdf');
+    // The first deletion was thirty-six days ago.
+    await runInDurableObject(s, (_i, state) => {
+      state.storage.sql.exec(`UPDATE deleted_blobs SET deleted_at = ?1 WHERE r2_key = ?2`, Date.now() - DELETED_BLOB_RETENTION_MS - 86_400_000, key('due.pdf'));
+    });
+    // Both objects are in the bucket until the sweep: deleting the rows deleted nothing.
+    expect(await env.BLOBS.head(key('due.pdf'))).not.toBeNull();
+    expect(await env.BLOBS.head(key('fresh.pdf'))).not.toBeNull();
+
+    const reports = await fullPass();
+    expect(reports.flatMap((r) => r.failed)).toEqual([]);
+    expect(reports.reduce((n, r) => n + r.blobsDeleted, 0)).toBeGreaterThanOrEqual(1);
+    expect(await env.BLOBS.head(key('due.pdf'))).toBeNull();
+    expect(await env.BLOBS.head(key('fresh.pdf'))).not.toBeNull();
+    expect(await env.BLOBS.head(key('kept.pdf'))).not.toBeNull();
+    const left = await runInDurableObject(s, (_i, state) =>
+      state.storage.sql.exec<{ r2_key: string }>(`SELECT r2_key FROM deleted_blobs`).toArray().map((r) => r.r2_key),
+    );
+    expect(left).toEqual([key('fresh.pdf')]);
+    // Measured as before, files or no files.
+    expect(await row(id)).toMatchObject({ note_count: 1 });
+  });
+
+  /**
+   * The expiry is two subrequests on top of a visit, and a batch is sized against the
+   * Free plan's fifty: once every account is visited, what is left buys as many expiries
+   * as fit, from a start that rotates with the hour so the same accounts are not put off
+   * on every walk. The arithmetic the sweep relies on, pinned: a batch of twenty live
+   * accounts fits thirteen, one of twenty deletions asks for none and stays within the
+   * fifty, and the accounts chosen move round the list as the hours pass.
+   */
+  it('budgets the expiry against the subrequests an invocation has, and rotates who gets it', () => {
+    const d1 = 4;
+    const due = Array.from({ length: BATCH }, (_, i) => `a${i}`);
+    // All twenty live and all with files due: twenty-four spent, thirteen fit.
+    const first = pickExpiries(due, d1 + BATCH, 0);
+    expect(first.length).toBe(13);
+    expect(d1 + BATCH + first.length * 2).toBeLessThanOrEqual(SUBREQUEST_BUDGET);
+    expect(first).toEqual(due.slice(0, 13));
+    // The next hour starts one further on, and wraps: the seven put off come first.
+    expect(pickExpiries(due, d1 + BATCH, 1)).toEqual([...due.slice(1, 14)]);
+    expect(pickExpiries(due, d1 + BATCH, 13)).toEqual([...due.slice(13), ...due.slice(0, 6)]);
+    // A batch that was all deletions spends forty-four, within the fifty, and asks for
+    // nothing; if it did, three would fit.
+    expect(d1 + BATCH * 2).toBeLessThanOrEqual(SUBREQUEST_BUDGET);
+    expect(pickExpiries([], d1 + BATCH * 2, 5)).toEqual([]);
+    expect(pickExpiries(due, d1 + BATCH * 2, 5).length).toBe(3);
+    // Nothing left: nothing chosen, however many are due.
+    expect(pickExpiries(due, SUBREQUEST_BUDGET - 1, 0)).toEqual([]);
+    // Fewer due than slots: all of them, whatever the hour.
+    expect(pickExpiries(['x', 'y'], d1 + BATCH, 7)).toEqual(['y', 'x']);
   });
 
   it('counts one account\'s failure and carries on to the next', async () => {

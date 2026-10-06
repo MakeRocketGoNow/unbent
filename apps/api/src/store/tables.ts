@@ -34,6 +34,14 @@ export const DATA_TABLES = [
    * resync from nothing. Last because it references nothing and nothing references it.
    */
   'changes',
+  /*
+   * Files let go of but not yet deleted from R2 (0005). Counted so `stats` shows how many
+   * objects an account is still paying for after a purge, and dumped because a store
+   * rebuilt from a dump has to know which files it still owes a deletion: left out, every
+   * file deleted before the dump would sit in the bucket as an orphan the hourly sweep
+   * never asks about. References nothing, like `changes`.
+   */
+  'deleted_blobs',
 ] as const;
 export type DataTable = (typeof DATA_TABLES)[number];
 

@@ -35,8 +35,9 @@ export interface CopyAttachmentsResult {
  * The bytes stream from one object to the other rather than through memory: a note's
  * files can be a hundred megabytes each, and the Worker has 128MB in total.
  *
- * `move` deletes the source afterwards, but only when the source body no longer links the
- * file. A cut in the editor is the usual way here, and the cut's save may still be in
+ * `move` removes the source's row afterwards — its object stays in R2 under the store's
+ * tombstone for thirty-five days, like any deleted file — but only when the source body
+ * no longer links the file. A cut in the editor is the usual way here, and the cut's save may still be in
  * flight when the paste arrives; taking a file the source still shows would break that
  * note, so the move quietly becomes a copy and says so in `moved`. The same rule keeps a
  * file linked twice in the source — moving one occurrence is not moving the file.
@@ -109,11 +110,7 @@ export async function copyAttachments(
 
     let moved = false;
     if (input.move && !(await sourceStillLinks(requested))) {
-      const removedKey = await attachments.remove(input.from, requested);
-      if (removedKey) {
-        await blobs.delete(removedKey);
-        moved = true;
-      }
+      moved = (await attachments.remove(input.from, requested)) !== null;
     }
 
     const path = `files/${filename}`;

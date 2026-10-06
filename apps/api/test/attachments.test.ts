@@ -699,6 +699,7 @@ describe('filename validation', () => {
     const headers = { Cookie: alice.cookie, Origin: ORIGIN };
     const url = `${BASE}/api/notes/${note.id}/files/${encodeURIComponent(name)}`;
 
+    const before = await fetch(`${BASE}/api/admin/gc-blobs`, { method: 'POST', headers }).then((r) => r.json());
     const put = await upload(alice, note.id, name, 'coupon', 'application/pdf');
     expect(put.status).toBe(201);
     expect((await put.json()).path).toBe(`files/${name}`);
@@ -717,6 +718,15 @@ describe('filename validation', () => {
     const del = await fetch(url, { method: 'DELETE', headers });
     expect(del.status).toBe(204);
     expect((await fetch(url, { headers })).status).toBe(404);
+
+    // The object is still in R2, under a tombstone the store keeps for thirty-five days
+    // so a store wound back finds the file (MAK-171, part 1); the hourly sweep deletes it
+    // then. The account's own sweep counts it as referenced for the same reason, not as
+    // an orphan to take early.
+    const gc = await fetch(`${BASE}/api/admin/gc-blobs`, { method: 'POST', headers }).then((r) => r.json());
+    expect(gc.awaitingDeletion).toBe(before.awaitingDeletion + 1);
+    expect(gc.stored).toBe(before.stored + 1);
+    expect(gc.orphaned).toBe(0);
   });
 
   it('does not decode a name twice, so an escape inside a name stays literal', async () => {
@@ -1063,12 +1073,14 @@ describe('purge', () => {
     }).then((r) => r.json());
     expect(items).toEqual([]);
 
-    // The blob is gone from R2 too, not merely unreferenced.
+    // The blob is still in R2 — the store keeps a deleted file for thirty-five days, so
+    // the account can be wound back to before the purge with its files (MAK-171, part 1)
+    // — and the account's own sweep counts it as awaiting deletion, not as an orphan.
     const gc = await fetch(`${BASE}/api/admin/gc-blobs`, {
       method: 'POST',
       headers: { Cookie: actor.cookie, Origin: ORIGIN },
     }).then((r) => r.json());
-    expect(gc.stored).toBe(0);
+    expect(gc).toMatchObject({ stored: 1, referenced: 1, awaitingDeletion: 1, orphaned: 0 });
   });
 
   it('drops tags that no longer have notes', async () => {

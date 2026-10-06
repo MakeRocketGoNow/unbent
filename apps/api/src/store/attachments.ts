@@ -1,4 +1,5 @@
 import { type AttachmentInfo, type FeedAttachment, splitExt } from '@unbent/shared';
+import type { DeletedBlobs } from './deleted-blobs.js';
 import type { Feed } from './feed.js';
 import { placeholders, runs } from './notes-shared.js';
 import type { Sql } from './sql.js';
@@ -203,9 +204,11 @@ export const TEXT_PAGE_BYTES = 1024 * 1024;
  * Worker builds it from the session (`buildKey` on the facade). Bytes never come this way.
  */
 export class AttachmentsStore {
+  /** `deletedBlobs` is the object's one `DeletedBlobs`: `remove` adds to it and `record` takes from it. */
   constructor(
     private readonly sql: Sql,
     private readonly feed: Feed,
+    private readonly deletedBlobs: DeletedBlobs,
   ) {}
 
   /**
@@ -338,6 +341,10 @@ export class AttachmentsStore {
         Date.now(),
       );
       if (inserted.length === 0) return null;
+      // The key may be one a deleted row had, if this is a replay of an upload whose
+      // first copy has since been deleted: the file is live again, so its tombstone goes,
+      // or the sweep would delete the object from under this row. See `DeletedBlobs.revive`.
+      this.deletedBlobs.revive(input.r2Key);
       // The file, and the note it changes the shape of: a client keeps a note's files
       // with the note, and a row on its own would leave the note's list stale.
       this.feed.record([
@@ -348,12 +355,19 @@ export class AttachmentsStore {
     });
   }
 
-  /** Returns the R2 key to delete, or null when there is no such file on a live note. */
+  /**
+   * Deletes a file's row, and tombstones its R2 key (`DeletedBlobs`) for the sweep to
+   * delete the object thirty-five days on. Returns the key, so the caller can tell a file
+   * that went from one that was not there — not for the caller to delete; a store wound
+   * back to before this call must find the object still in the bucket. Null when there is
+   * no such file on a live note.
+   */
   remove(noteId: string, filename: string): string | null {
     return this.sql.tx(() => {
       const row = this.resolve(noteId, filename);
       if (!row) return null;
       this.sql.exec(`DELETE FROM attachments WHERE id = ?1`, row.id);
+      this.deletedBlobs.tombstone([row.r2_key], Date.now());
       this.feed.record([
         { entity: 'attachment', id: row.id, deleted: true },
         { entity: 'note', id: noteId },

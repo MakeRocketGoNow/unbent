@@ -789,6 +789,16 @@ Things about working on the store that are easy to get wrong:
   index, which only its own spelling can use.
 - **Local state is D1 *and* `do/`.** The reset scripts clear both; clearing one by hand
   leaves ghost objects. `worktree:setup` copies both.
+- **Nothing but the sweep deletes a file's object, and nothing deletes one the store has
+  not tombstoned.** Every store method that deletes an attachment row writes the file's
+  key to `deleted_blobs` (0005, `store/deleted-blobs.ts`) in the same transaction, and
+  the hourly sweep (`lib/sweep.ts`) deletes from R2 what has sat there thirty-five days
+  — five more than a restore can reach, so a store wound back finds its files. The keys
+  the purge methods return are for the count, not for the caller to delete; a route that
+  called `BLOBS.delete` on them would take the thirty-five days back. Account deletion
+  is the one path that deletes objects at once, by prefix. A new way to delete a row has
+  to tombstone; a new way to record one has to `revive` its key, as `record` does, since
+  a replayed upload can bring a tombstoned key back as a live file.
 
 ### Note history
 

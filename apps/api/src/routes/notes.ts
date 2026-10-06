@@ -360,19 +360,19 @@ export const notes = new Hono<AppEnv>()
   })
 
   /**
-   * Permanently deletes one trashed note and its blobs.
+   * Permanently deletes one trashed note.
    *
    * Only ever acts on a note already in the trash, so a stray call cannot destroy live
    * work — the two-step delete is the safety property, not the confirmation dialog.
+   *
+   * Its files are not deleted here. The store tombstones their keys in the transaction
+   * that removes the rows, and the hourly sweep deletes the objects thirty-five days on
+   * (`DeletedBlobs`), so an operator winding the store back finds them still there. This
+   * route used to delete them at once, and a restored note then pointed at nothing.
    */
   .delete('/notes/:id/permanent', async (c) => {
-    const { deleted, keys } = await c.get('notes').purgeOne(c.req.param('id'));
+    const { deleted } = await c.get('notes').purgeOne(c.req.param('id'));
     if (!deleted) return c.json({ error: 'Not found' }, 404);
-
-    // Blobs after rows: a failure here leaves orphans the sweep reclaims, while the
-    // reverse would leave a note pointing at objects that no longer exist.
-    for (const key of keys) await c.env.BLOBS.delete(key);
-
     return c.body(null, 204);
   })
 
@@ -406,14 +406,9 @@ export const notes = new Hono<AppEnv>()
     return c.json({ restored: restored.length });
   })
 
-  /**
-   * Blobs after rows, for the reason `/notes/:id/permanent` gives. `purgeMany` only
-   * returns keys of notes it actually deleted, so a restore that won the race does not
-   * come back as a live note whose files are already gone.
-   */
+  /** The files follow the store, as for `/notes/:id/permanent`: tombstoned, not deleted. */
   .post('/notes/purge', zValidator('json', noteBatchSchema), async (c) => {
-    const { deleted, keys } = await c.get('notes').purgeMany(c.req.valid('json').ids);
-    for (const key of keys) await c.env.BLOBS.delete(key);
+    const { deleted } = await c.get('notes').purgeMany(c.req.valid('json').ids);
     return c.json({ deleted });
   })
 

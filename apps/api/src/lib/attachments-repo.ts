@@ -151,6 +151,11 @@ export class AttachmentsRepo extends StoreRepo {
     return this.call((s) => s.allBlobKeys(afterRowid, limit));
   }
 
+  /** A page of every key awaiting deletion, by key, which the blob sweep counts as referenced. */
+  tombstonedBlobKeys(after = '', limit = 1000): Promise<{ keys: string[]; next: string | null }> {
+    return this.call((s) => s.tombstonedBlobKeys(after, limit));
+  }
+
   /** What `read_attachment` asks before it reads, in one call. Null when the note is not live. */
   readPrelude(noteId: string, filename: string, filesPerNote: number): Promise<{ text: string | null; forText: PendingFile[]; forVision: PendingFile[] } | null> {
     return this.call((s) => s.attachmentReadPrelude(noteId, filename, filesPerNote));

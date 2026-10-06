@@ -78,6 +78,13 @@ export interface LegalOptions {
 
 const EFFECTIVE = '2026-09-08';
 
+/**
+ * The privacy policy's own date, moved when its terms change — "How long it is kept"
+ * changed on 5 October 2026, when deleted files began staying in storage for thirty-five
+ * days (MAK-171) — without moving the terms' and the deletion page's, which did not.
+ */
+const PRIVACY_EFFECTIVE = '2026-10-05';
+
 export interface LegalDocuments {
   privacy: LegalDocument;
   terms: LegalDocument;
@@ -94,7 +101,7 @@ export interface LegalDocuments {
 export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDocuments {
   const privacy: LegalDocument = {
     title: 'Privacy Policy',
-    effective: EFFECTIVE,
+    effective: PRIVACY_EFFECTIVE,
     intro: [
       `This policy describes what Unbent collects, why, and what happens to it. Unbent is a ` +
         `notes application: a website at ${operator.host} and an Android app that talks to it. It is ` +
@@ -203,7 +210,8 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
         heading: 'How long it is kept',
         body: [
           'Your notes stay until you delete them. Deleting a note moves it to trash, where it stays ' +
-            'until you empty the trash — at which point the note and its files are gone for good. ' +
+            'until you empty the trash — at which point the note is gone for good. Files you ' +
+            'delete, from a note or with it, are removed from our storage about 35 days later. ' +
             'Everything else is kept for as long as the account exists, and removed when it is ' +
             'deleted. Sent email may persist for a short period in our email provider’s own logs.',
         ],

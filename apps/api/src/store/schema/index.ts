@@ -2,6 +2,7 @@ import init from './0001-init.js';
 import changes from './0002-changes.js';
 import revisions from './0003-revisions.js';
 import revisionProps from './0004-revision-props.js';
+import deletedBlobs from './0005-deleted-blobs.js';
 
 /** One schema file: its name, as recorded in `_migrations`, and the SQL it applies. */
 export interface SchemaFile {
@@ -29,4 +30,5 @@ export const SCHEMA: SchemaFile[] = [
   { name: '0002-changes', sql: changes },
   { name: '0003-revisions', sql: revisions },
   { name: '0004-revision-props', sql: revisionProps },
+  { name: '0005-deleted-blobs', sql: deletedBlobs },
 ];
