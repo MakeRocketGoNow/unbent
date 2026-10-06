@@ -248,6 +248,11 @@ ALLOWED_EMAILS=
 # Where those requests go instead, for a stand-in server during development. Leave unset.
 # ANTHROPIC_API_URL=
 
+# The User-Agent add_attachment sends when it fetches a file for an assistant. Unset, it is
+# a current desktop Chrome (DEFAULT_FETCH_USER_AGENT in src/lib/fetch-attachment.ts); set
+# it to bring that up to date without a release.
+# ATTACHMENT_FETCH_USER_AGENT=
+
 # PostHog, for grouping the browser errors that /api/client-errors otherwise only logs.
 #
 # Optional, and off here on purpose: a self-hosted instance downloads no SDK, sends nothing
