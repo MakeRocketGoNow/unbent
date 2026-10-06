@@ -794,7 +794,7 @@ Three are worth knowing about:
   text-less scan when someone pressed Auto-fill on its note; or what an assistant recorded
   itself. A picture nothing has read yet is reported as waiting, and no tool makes the
   instance's model read it — that runs only inside a press (MAK-179). Instead
-  **`get_attachment`** hands the assistant the picture itself, as an image under 4 MB, to
+  **`get_attachment`** hands the assistant the picture itself, as an image under about 3.7 MB, to
   read with its own model on its own bill, and **`set_attachment_text`** records what it
   read, marked `assistant`, so search and the summaries have it. It may fill a file that
   has no text, an empty row or its own earlier words, and never a text layer or the model's

@@ -17,12 +17,14 @@ import type { Env } from '../../types.js';
 import { jsonResult, notFound, toolError } from './result.js';
 
 /**
- * The most of a picture `get_attachment` hands over. Base64 inflates it by a third, and
- * the result rides in the assistant's context beside everything else it holds, so this
- * sits under the model's own cap (`MAX_LLM_IMAGE_BYTES`): a phone photo fits, a scan at
- * print resolution does not, and the refusal names the size so the person can resize it.
+ * The most of a picture `get_attachment` hands over, as bytes on disk. The model's
+ * platforms cap an image by the length of its base64 — 10 MiB on the Claude API, 5 MiB on
+ * Bedrock and Vertex — and which one the assistant's client talks to is unknown here, so
+ * the lower bound rules: three quarters of 5 MiB, less a little for the JSON around it. A
+ * phone photo fits; a scan at print resolution does not, and the refusal names the size so
+ * the person can resize it. MAK-185 is downscaling on the server, which would retire this.
  */
-const MAX_MCP_IMAGE_BYTES = 4 * 1024 * 1024;
+const MAX_MCP_IMAGE_BYTES = Math.floor((5 * 1024 * 1024 * 3) / 4) - 64 * 1024;
 
 /**
  * The most text `set_attachment_text` takes. A transcription of a stack of pages is tens
@@ -75,7 +77,7 @@ export function registerAttachmentTools(
       title: 'See a picture',
       description:
         'The picture itself, returned as an image for you to read: a JPEG, PNG, GIF or WebP ' +
-        'attachment under 4 MB. For a picture that get_attachment_text, get_note or a ' +
+        'attachment under about 3.7 MB. For a picture that get_attachment_text, get_note or a ' +
         'summary reports as "pending": nothing on this instance reads a picture on its own ' +
         '— an Auto-fill press by the person does, and so can you. Read it, then record what ' +
         'you read with set_attachment_text, so search, the summaries and the next session ' +

@@ -104,7 +104,7 @@ describe('get_attachment', () => {
     expect(pdf.content[0]!.text).toMatch(/text layer/);
     const big = await get({ noteId, filename: 'poster.jpg' });
     expect(big.isError).toBe(true);
-    expect(big.content[0]!.text).toMatch(/9\.0 MB, over the 4\.0 MB/);
+    expect(big.content[0]!.text).toMatch(/9\.0 MB, over the 3\.7 MB/);
     expect((await get({ noteId, filename: 'ghost.png' })).isError).toBe(true);
     expect((await get({ noteId: otherNote, filename: 'card.png' })).isError).toBe(true);
   });
