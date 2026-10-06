@@ -67,9 +67,16 @@ const AMOUNTS_NAMED = 3;
  * them beats a bare "Total" wherever the two fall: a card statement prints its "New
  * balance" near the top and its period's totals below, and the last bare total there is
  * a fee line's $0.00.
+ *
+ * "Amount paid" is neither: on a ticket confirmation it is the only total there is, but on
+ * a cash receipt it is the note handed over — "Total $40.00, Amount paid $50.00, Change
+ * $10.00" — so it is taken only when no other total is labelled. And a zero loses to
+ * every other figure: a paid invoice ends "Balance due $0.00" and a statement "Total fees
+ * $0.00", which say what is left, not what the document is for.
  */
 const TOTAL = /\b(?:grand\s+total|total(?:\s+(?:due|amount|paid|charged|price|cost))?|amount\s+(?:due|paid)|balance\s+due|new\s+balance)\b/i;
-const PAID = /\b(?:grand\s+total|total\s+(?:amount\s+)?(?:due|paid|charged)|amount\s+(?:due|paid)|balance\s+due|new\s+balance)\b/i;
+const PAID = /\b(?:grand\s+total|total\s+(?:amount\s+)?(?:due|paid|charged)|amount\s+due|balance\s+due|new\s+balance)\b/i;
+const TENDERED = /\bamount\s+paid\b/i;
 /**
  * What a total line can be a total *of* without being the amount paid. Turned away only
  * when the word qualifies "total" — "Total tax", "Tax total", "Total number of items" —
@@ -144,7 +151,7 @@ const lastAmount = (line: string): FoundNumber | undefined =>
 /**
  * The amount a total line labels. The last such line in the text wins, because a receipt
  * prints its subtotal, its tax and then what was paid — the last `PAID` line when there
- * is one, the last bare total otherwise. A label with its figure on the line below — how
+ * is one, then the last bare total, then "Amount paid", then a zero (see `PAID`). A label with its figure on the line below — how
  * some conversions lay out a two-column table — takes that figure when the line holds
  * nothing else.
  */
@@ -152,6 +159,8 @@ function totalIn(text: string): FoundNumber | undefined {
   const lines = text.split('\n');
   let paid: FoundNumber | undefined;
   let total: FoundNumber | undefined;
+  let tendered: FoundNumber | undefined;
+  let zero: FoundNumber | undefined;
   lines.forEach((line, i) => {
     if (!TOTAL.test(line) || NOT_TOTAL.test(line)) return;
     let found = lastAmount(line);
@@ -160,10 +169,12 @@ function totalIn(text: string): FoundNumber | undefined {
       if (next && next.replace(/[\s|*_]/g, '').length <= 20) found = lastAmount(next);
     }
     if (!found) return;
-    if (PAID.test(line)) paid = found;
+    if (found.value === 0) zero = found;
+    else if (PAID.test(line)) paid = found;
+    else if (TENDERED.test(line)) tendered = found;
     else total = found;
   });
-  return paid ?? total;
+  return paid ?? total ?? tendered ?? zero;
 }
 
 /**

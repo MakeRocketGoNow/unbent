@@ -40,6 +40,13 @@ describe('a text layer’s summary', () => {
       'Total interest charged this period $0.00',
     ].join('\n');
     expect(textSummary(statement)).toMatch(/ · Total: \$1,234\.56 · Date: 2026-04-02$/);
+    // A paid invoice ends on what is left to pay, and a cash receipt on the note handed over.
+    expect(textSummary('Acme Invoice\nTotal $500.00\nAmount paid $500.00\nBalance due $0.00')).toMatch(/ · Total: \$500\.00$/);
+    expect(textSummary('Acme Invoice\nTotal $500.00\nPayments/Credits -$500.00\nBalance Due $0.00')).toMatch(/ · Total: \$500\.00$/);
+    expect(textSummary('Acme Store\nTotal $40.00\nAmount Paid $50.00\nChange $10.00')).toMatch(/ · Total: \$40\.00$/);
+    // With nothing else, "Amount paid" is the total, and so is a zero.
+    expect(textSummary('Acme Tickets\nAmount paid: $45.00')).toMatch(/ · Total: \$45\.00$/);
+    expect(textSummary('Acme\nTotal $0.00')).toMatch(/ · Total: \$0\.00$/);
     // A labelled "due" beats a bare "Total" printed after it.
     expect(textSummary('Acme\nTotal amount due $90.00\nTotal $12.00')).toMatch(/ · Total: \$90\.00$/);
   });
