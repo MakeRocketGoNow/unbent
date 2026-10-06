@@ -20,6 +20,14 @@ import { rejectWebImageUrl } from './web-image.js';
  * No credentials go with the request. The fetch is anonymous by construction: a signed
  * URL carries its own authority in its query string, and there is nothing else this
  * server could send that would be right for an arbitrary host.
+ *
+ * The request is dressed as a browser's request for the same file (`requestHeaders`),
+ * because a model usually finds a picture on a page, and many hosts refuse anything that
+ * does not look like that page asking for it. That is best effort and stops at headers:
+ * no proxy, no imitation of a browser's TLS handshake, no headless browser. A host that
+ * still refuses is answered with the way round it — the assistant fetches the bytes
+ * itself and sends them with prepare_attachment_upload, which a page in a browser can do
+ * (routes/uploads.ts).
  */
 
 /** A source that does not declare its length is read into memory, up to this. */
@@ -37,6 +45,87 @@ const FETCH_TIMEOUT_MS = 60_000;
 
 /** As many redirect hops as the web-image fetch allows, for the same reason: a CDN chain. */
 const MAX_REDIRECTS = 5;
+
+/**
+ * Desktop Chrome on a Mac, as Chrome itself has said it since it stopped reporting minor
+ * versions: only the major number changes. A deployment can set its own with
+ * `ATTACHMENT_FETCH_USER_AGENT` without a release; this default wants its number raised
+ * every few months, since a UA a year behind is itself a sign of a bot. 155 was current
+ * in October 2026.
+ *
+ * Not the honest `Unbent (+https://unbent.app)` the web-image fetch sends. That fetch is
+ * a link preview, which hosts expect from servers; this one stands in for the person
+ * saving a picture they were looking at, and hosts that check hand that only to a browser.
+ */
+export const DEFAULT_FETCH_USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) ' +
+  'Chrome/155.0.0.0 Safari/537.36';
+
+/** What Chrome asks for when an `<img>` loads. */
+const IMAGE_ACCEPT = 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8';
+
+/** What Chrome asks for when a link is followed: a download is usually that. */
+const DOCUMENT_ACCEPT = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8';
+
+const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'svg', 'heic', 'bmp', 'ico']);
+
+/**
+ * The headers a browser would send for this URL, from a page at `referer`.
+ *
+ * The URL's extension decides between an image's Accept and a link's: the request a
+ * browser makes for a picture says so, and a host that serves both from one path can
+ * pick the format from it.
+ *
+ * The Referer is the page the caller says the file came from, else the file's own
+ * origin, which is what a hotlink check is usually looking for — a request from the
+ * site's own pages. It is trimmed as Chrome's default policy
+ * (`strict-origin-when-cross-origin`) trims it, so a host is told no more of the page than
+ * a browser would tell it: the whole address to the same origin, the origin alone to
+ * another, and nothing from https to http. The policy is applied per hop, since a
+ * redirect can cross origins.
+ */
+export function requestHeaders(
+  url: URL,
+  opts: { referer?: URL | undefined; userAgent?: string | undefined } = {},
+): Record<string, string> {
+  const ext = splitExt(url.pathname)[1].slice(1).toLowerCase();
+  const headers: Record<string, string> = {
+    'User-Agent': opts.userAgent || DEFAULT_FETCH_USER_AGENT,
+    Accept: IMAGE_EXTENSIONS.has(ext) ? IMAGE_ACCEPT : DOCUMENT_ACCEPT,
+    'Accept-Language': 'en-US,en;q=0.9',
+  };
+  const from = opts.referer ?? new URL(`${url.origin}/`);
+  if (from.protocol === 'https:' && url.protocol === 'http:') return headers;
+  if (from.origin === url.origin) {
+    // A fragment is never sent, by a browser or here.
+    const whole = new URL(from);
+    whole.hash = '';
+    headers['Referer'] = whole.href;
+  } else {
+    headers['Referer'] = `${from.origin}/`;
+  }
+  return headers;
+}
+
+/**
+ * The page a caller says a file came from, as a URL to send as the Referer, or an error.
+ * Only a web page's address makes sense there; nothing is fetched from it, so it needs no
+ * guard beyond that, and credentials in it are refused because a Referer would hand them
+ * to the file's host.
+ */
+export function checkReferer(raw: string): { url: URL } | { error: string } {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return { error: `The referer "${raw}" is not a URL.` };
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return { error: 'The referer must be the http or https address of the page the file came from.' };
+  }
+  if (url.username || url.password) return { error: 'A referer with credentials in it is refused.' };
+  return { url };
+}
 
 /**
  * Whether a URL is one this server will fetch.
@@ -243,8 +332,11 @@ export type FetchedSource =
  */
 export async function fetchSource(
   url: URL,
-  limits: { maxBytes: number; allowLoopback?: boolean },
+  limits: { maxBytes: number; allowLoopback?: boolean; referer?: URL; userAgent?: string },
 ): Promise<FetchedSource> {
+  // The page the file came from is the same page on every hop; only how much of it each
+  // host is told changes (`requestHeaders`).
+  const referer = limits.referer ?? new URL(`${url.origin}/`);
   let current = url;
   let res: Response;
   for (let hop = 0; ; hop += 1) {
@@ -256,7 +348,11 @@ export async function fetchSource(
     }
 
     try {
-      res = await fetch(current, { redirect: 'manual', signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+      res = await fetch(current, {
+        redirect: 'manual',
+        headers: requestHeaders(current, { referer, userAgent: limits.userAgent }),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
     } catch (err) {
       return { ok: false, error: `Could not fetch from ${current.host}: ${describe(err)}` };
     }
@@ -278,11 +374,7 @@ export async function fetchSource(
 
   if (!res.ok) {
     await res.body?.cancel().catch(() => {});
-    const hint =
-      res.status === 403 || res.status === 401
-        ? ' A signed URL may have expired; read the source again for a fresh one.'
-        : '';
-    return { ok: false, error: `${current.host} answered ${res.status} ${res.statusText}.${hint}` };
+    return { ok: false, error: refusal(current.host, res.status, res.statusText) };
   }
   if (!res.body) return { ok: false, error: `${current.host} sent no file.` };
 
@@ -347,6 +439,30 @@ export async function fetchSource(
     offset += chunk.byteLength;
   }
   return { ok: true, body: bytes.buffer, size: total, contentType, contentDisposition, url: finalUrl };
+}
+
+/**
+ * What to say when the host answers with an error.
+ *
+ * 401, 403 and 429 are a host deciding not to serve this server, most often because it
+ * can tell a server from a browser however the request is dressed, and asking again from
+ * here will not change its mind. So the message leads with what will: the assistant
+ * fetching the bytes where the host does serve them — a browser tab on the page, or its
+ * own tools — and sending them with prepare_attachment_upload. An expired signed link
+ * answers 403 too, and gets a clause rather than the lead, since it is the rarer case for
+ * a picture found on a page.
+ */
+function refusal(host: string, status: number, statusText: string): string {
+  const answered = `${host} answered ${status}${statusText ? ` ${statusText}` : ''}.`;
+  if (status !== 401 && status !== 403 && status !== 429) return answered;
+  return (
+    `${answered} The host refused this server's request, likely because it only serves ` +
+    'browsers, and retrying from here will not help. Fetch the file yourself — in a ' +
+    'browser tab on the page it came from, or with your own tools — then call ' +
+    'prepare_attachment_upload and PUT the bytes to the URL it returns; that URL ' +
+    'accepts a PUT from a page on any site. If this was a signed link, it may instead ' +
+    'have expired: read the source again for a fresh one.'
+  );
 }
 
 function tooLarge(length: number, max: number): string {

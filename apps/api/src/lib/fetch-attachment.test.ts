@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_FETCH_USER_AGENT,
+  checkReferer,
   checkSourceUrl,
   chooseContentType,
   chooseFilename,
   filenameFromContentDisposition,
   filenameFromUrl,
+  requestHeaders,
 } from './fetch-attachment.js';
 
 /**
@@ -183,5 +186,62 @@ describe('chooseContentType', () => {
   it('falls back to the generic binary type for an unknown extension', () => {
     expect(chooseContentType(null, 'data.xyz')).toBe('application/octet-stream');
     expect(chooseContentType('binary/octet-stream', 'data.xyz')).toBe('binary/octet-stream');
+  });
+});
+
+/*
+   What a host is told about the request. A hotlink check is the case it is for: the host
+   serves a picture to its own pages and refuses everyone else, so the Referer has to name
+   one of them, and nothing more of the page than a browser would say.
+*/
+describe('requestHeaders', () => {
+  const picture = new URL('https://cdn.example.com/images/large/shoe.jpg?sw=800');
+
+  it('asks for a picture as a browser does, as a browser', () => {
+    const headers = requestHeaders(picture);
+    expect(headers['User-Agent']).toBe(DEFAULT_FETCH_USER_AGENT);
+    expect(headers['User-Agent']).toMatch(/Chrome\/\d+\.0\.0\.0 Safari/);
+    expect(headers['Accept']).toBe('image/avif,image/webp,image/apng,image/*,*/*;q=0.8');
+    expect(headers['Accept-Language']).toBe('en-US,en;q=0.9');
+  });
+
+  it('asks for anything else as a followed link', () => {
+    expect(requestHeaders(new URL('https://files.example.com/report.pdf'))['Accept']).toMatch(/^text\/html/);
+    expect(requestHeaders(new URL('https://files.example.com/download?id=7'))['Accept']).toMatch(/^text\/html/);
+  });
+
+  it("names the file's own site when no page is given", () => {
+    expect(requestHeaders(picture)['Referer']).toBe('https://cdn.example.com/');
+  });
+
+  it('tells another site only the origin of the page', () => {
+    const referer = new URL('https://shop.example.com/mens/shoe-123.html?color=blue#reviews');
+    expect(requestHeaders(picture, { referer })['Referer']).toBe('https://shop.example.com/');
+  });
+
+  it('tells the same site the whole page, without its fragment', () => {
+    const referer = new URL('https://cdn.example.com/gallery?id=4#top');
+    expect(requestHeaders(picture, { referer })['Referer']).toBe('https://cdn.example.com/gallery?id=4');
+  });
+
+  it('sends no page from https to http', () => {
+    const plain = new URL('http://old.example.com/photo.png');
+    expect(requestHeaders(plain, { referer: new URL('https://shop.example.com/') })['Referer']).toBeUndefined();
+  });
+
+  it("takes the deployment's own User-Agent", () => {
+    expect(requestHeaders(picture, { userAgent: 'Custom/1.0' })['User-Agent']).toBe('Custom/1.0');
+  });
+});
+
+describe('checkReferer', () => {
+  it('takes a web page', () => {
+    expect(checkReferer('https://shop.example.com/p/1')).toEqual({ url: new URL('https://shop.example.com/p/1') });
+  });
+
+  it('refuses what is not a web page, or would hand a host credentials', () => {
+    expect(checkReferer('not a url')).toHaveProperty('error');
+    expect(checkReferer('file:///Users/me/page.html')).toHaveProperty('error');
+    expect(checkReferer('https://me:secret@shop.example.com/')).toHaveProperty('error');
   });
 });

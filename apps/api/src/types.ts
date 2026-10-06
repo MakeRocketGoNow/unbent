@@ -123,6 +123,12 @@ export interface Env {
    */
   ALLOW_TEST_CREDENTIALS?: string;
   /**
+   * The User-Agent `add_attachment` sends when it fetches a file. Unset, it is
+   * `DEFAULT_FETCH_USER_AGENT` in lib/fetch-attachment.ts, a desktop Chrome; set it to
+   * bring that up to date without a release.
+   */
+  ATTACHMENT_FETCH_USER_AGENT?: string;
+  /**
    * '0' withholds passkeys, which are otherwise always offered because nothing has to be
    * registered anywhere for them to work. For an operator who would rather not explain
    * them, not because they can fail.

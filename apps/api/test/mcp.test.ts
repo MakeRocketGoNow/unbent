@@ -683,7 +683,9 @@ describe('a write through MCP against a copy that has since changed', () => {
  */
 describe('add_attachment', () => {
   const PDF = new TextEncoder().encode('%PDF-1.4\n1 0 obj << >> endobj\ntrailer << >>\n%%EOF\n');
+  const PICTURE = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
   const hits: Record<string, number> = {};
+  const seen: Record<string, { ua: string | undefined; referer: string | undefined }> = {};
   let files: Server;
   let origin: string;
   let carol: Actor;
@@ -716,6 +718,21 @@ describe('add_attachment', () => {
             'Content-Length': PDF.length,
           });
           return res.end(PDF);
+        case '/hotlinked.jpg': {
+          // Serves only a browser on one of its own pages, as a hotlink check does.
+          seen[path] = { ua: req.headers['user-agent'], referer: req.headers['referer'] };
+          const fromBrowser = /Chrome\//.test(req.headers['user-agent'] ?? '');
+          const fromShop = req.headers['referer'] === 'http://shop.example.com/';
+          if (!fromBrowser || !fromShop) {
+            res.writeHead(403, { 'Content-Type': 'text/plain' });
+            return res.end('hotlinking not allowed');
+          }
+          res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': PICTURE.length });
+          return res.end(PICTURE);
+        }
+        case '/blocked.png':
+          res.writeHead(403, { 'Content-Type': 'text/plain' });
+          return res.end('access denied');
         case '/huge':
           // Declares a body it never sends; the Worker must refuse on the header alone.
           res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Length': 200 * 1024 * 1024 });
@@ -774,6 +791,38 @@ describe('add_attachment', () => {
     const { body } = await mcp(carol.token, 'tools/list');
     const names = (body.result?.tools ?? []).map((t: { name: string }) => t.name);
     expect(names).toContain('add_attachment');
+  });
+
+  it('asks as a browser on the page the caller names', async () => {
+    const result = await add(carol.token, {
+      noteId: carolNoteId,
+      url: `${origin}/hotlinked.jpg`,
+      referer: 'http://shop.example.com/mens/shoe-123.html',
+      link: false,
+    });
+    expect(result.isError).toBe(false);
+    expect(result.json()).toMatchObject({ filename: 'hotlinked.jpg', contentType: 'image/png' });
+    // Another site is told the origin of the page, as Chrome would tell it.
+    expect(seen['/hotlinked.jpg']?.referer).toBe('http://shop.example.com/');
+    expect(seen['/hotlinked.jpg']?.ua).toMatch(/Chrome\//);
+  });
+
+  it('refuses a referer that is not a web page', async () => {
+    const result = await add(carol.token, {
+      noteId: carolNoteId,
+      url: `${origin}/report.pdf`,
+      referer: 'file:///page.html',
+    });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain('referer');
+  });
+
+  it('points a refused fetch at the upload link, which a browser can use', async () => {
+    const result = await add(carol.token, { noteId: carolNoteId, url: `${origin}/blocked.png` });
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain('403');
+    expect(result.text).toContain('prepare_attachment_upload');
+    expect(result.text).toContain('browser');
   });
 
   it('fetches the file, stores it, and links it at the end of the note', async () => {

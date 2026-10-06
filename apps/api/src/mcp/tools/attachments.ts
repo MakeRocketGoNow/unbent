@@ -4,6 +4,7 @@ import type { McpServer } from '@modelcontextprotocol/server';
 import type { AppLinks } from '../../lib/app-links.js';
 import type { AttachmentsRepo } from '../../lib/attachments-repo.js';
 import {
+  checkReferer,
   checkSourceUrl,
   chooseContentType,
   chooseFilename,
@@ -64,7 +65,10 @@ const MAX_ASSISTANT_TEXT_CHARS = 100_000;
  */
 export function registerAttachmentTools(
   server: McpServer,
-  env: Pick<Env, 'APP_URL' | 'BLOBS' | 'AI' | 'ALLOW_TEST_CREDENTIALS' | 'ANTHROPIC_API_KEY'>,
+  env: Pick<
+    Env,
+    'APP_URL' | 'BLOBS' | 'AI' | 'ALLOW_TEST_CREDENTIALS' | 'ANTHROPIC_API_KEY' | 'ATTACHMENT_FETCH_USER_AGENT'
+  >,
   ctx: { waitUntil(promise: Promise<unknown>): void },
   repos: { notes: NotesRepo; attachments: AttachmentsRepo; uploads: UploadGrantsRepo },
   links: AppLinks,
@@ -229,7 +233,9 @@ export function registerAttachmentTools(
         'gets, so the bytes never pass through the conversation: to bring a file over from ' +
         'another system, read that system for a download link — usually a signed URL that ' +
         'is valid for an hour or so — and pass it here. Only http and https can be fetched; ' +
-        'a file: or other internal reference is not a download link. Give a filename when ' +
+        'a file: or other internal reference is not a download link. For a picture or file ' +
+        'found on a web page, pass that page as referer: the request is made as a browser on ' +
+        'that page would make it, which some hosts require. Give a filename when ' +
         'you know a better one than the URL offers, since download URLs often end in a ' +
         'generic name like upload.pdf. The result carries the filename the file was stored ' +
         'under (suffixed if the note already had one by that name), its relative path, and ' +
@@ -237,11 +243,22 @@ export function registerAttachmentTools(
         'to the end of the body; pass link false and place it yourself with edit_note when ' +
         'it belongs somewhere in particular. A PDF becomes searchable once its text is ' +
         'extracted, which happens in the background. For a file with no URL — one on your ' +
-        'own disk or in your sandbox — use prepare_attachment_upload instead. The answer ' +
+        'own disk or in your sandbox — use prepare_attachment_upload instead. If the host ' +
+        'refuses this server (401, 403 or 429), fetch the file yourself, in a browser tab on ' +
+        'its page or with your own tools, and send the bytes with prepare_attachment_upload, ' +
+        'whose URL accepts a PUT from a page on any site. The answer ' +
         'also carries url, the note in Unbent: give it to the person as a link.',
       inputSchema: z.object({
         noteId: z.string().uuid(),
         url: z.string().min(1).max(8192).describe('An http or https URL the file can be fetched from.'),
+        referer: z
+          .string()
+          .min(1)
+          .max(8192)
+          .optional()
+          .describe(
+            "The address of the page the file was found on, such as a product page. Defaults to the file's own site.",
+          ),
         filename: filenameSchema
           .optional()
           .describe('What to call the file. Defaults to what the source names it.'),
@@ -257,17 +274,21 @@ export function registerAttachmentTools(
         openWorldHint: true,
       },
     },
-    async ({ noteId, url: raw, filename, link }) => {
+    async ({ noteId, url: raw, referer: rawReferer, filename, link }) => {
       // Ownership first, before a byte is fetched: nothing is downloaded for a caller who
       // has no note to put it on, and a note that is not theirs reads as missing.
       if (!(await repos.attachments.ownsNote(noteId))) return notFound('note', noteId);
 
       const checked = checkSourceUrl(raw, { allowLoopback });
       if ('error' in checked) return toolError(checked.error);
+      const referer = rawReferer === undefined ? undefined : checkReferer(rawReferer);
+      if (referer && 'error' in referer) return toolError(referer.error);
 
       const source = await fetchSource(checked.url, {
         maxBytes: MAX_ATTACHMENT_BYTES,
         allowLoopback,
+        ...(referer ? { referer: referer.url } : {}),
+        ...(env.ATTACHMENT_FETCH_USER_AGENT ? { userAgent: env.ATTACHMENT_FETCH_USER_AGENT } : {}),
       });
       if (!source.ok) return toolError(source.error);
 
