@@ -1784,7 +1784,8 @@ forty-eight hours without a dump found current. Nothing is bound at the top leve
 `wrangler.toml`, so a fork's instance never dumps; unbent.app's production deploy binds the
 bucket its `BACKUPS_BUCKET` repository variable names, and the dev instance binds
 `unbent-dev-backups`. A run keeps to fifty subrequests, the Free plan's, which caps a dump
-near 170 MB of SQL; an account past that is recorded as failed rather than dumped. On
+near 170 MB of SQL; an account past that is recorded as failed rather than dumped, and
+is tried again each day after every other account, which spends that run's budget. On
 Workers Free a large account may not finish a scheduled dump well before that, since a
 run's CPU time is limited too. A self-hoster arranges their own backups.
 

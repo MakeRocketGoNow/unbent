@@ -18,7 +18,8 @@ import type { Env } from '../types.js';
  *
  * What is due, and why it is tried at most once a day. The directory records each
  * account's last dump (migration 0037), and the run takes the accounts not yet tried
- * since midnight UTC, never-tried first, then the longest waiting. So the first run after
+ * since midnight UTC, never-tried first, then the longest waiting, and those whose last
+ * attempt failed after all of them. So the first run after
  * midnight starts the day's pass and each hourly run continues it, and a key's date is
  * one per account per day: a dump is not written twice to one key, which matters because
  * the second account's copy of `stores/` is under a retention lock and refuses an
@@ -169,13 +170,15 @@ export async function dumpStores(
   const report: DumpReport = { dumped: 0, bytes: 0, unchanged: 0, failed: [], deferred: [], done: false, subrequests: 0, ms: 0 };
 
   // Live accounts only: a tombstoned row or a missing user is the sweep's to finish, and
-  // waking either store would rebuild a schema for an account that is gone.
+  // waking either store would rebuild a schema for an account that is gone. Accounts
+  // whose last attempt failed go after every other: a dump too big for the budget fails
+  // the same way each day, and first in line it would take the day's first run with it.
   const midnight = Math.floor(now / 86_400_000) * 86_400_000;
   const { results: due } = await env.DB.prepare(
     `SELECT d.user_id, d.dump_at, d.dump_mark
        FROM account_directory d JOIN user u ON u.id = d.user_id
       WHERE d.deleted_at IS NULL AND (d.dump_tried_at IS NULL OR d.dump_tried_at < ?1)
-      ORDER BY d.dump_tried_at IS NOT NULL, d.dump_tried_at, d.user_id
+      ORDER BY d.dump_error IS NOT NULL, d.dump_tried_at IS NOT NULL, d.dump_tried_at, d.user_id
       LIMIT ?2`,
   )
     .bind(midnight, budget.left)

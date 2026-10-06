@@ -261,6 +261,21 @@ describe('the daily dumps', () => {
     }
   });
 
+  it('try an account whose last attempt failed after every other, so it cannot hold up the day', async () => {
+    // Failed early yesterday, so it has waited longest; the other was dumped later.
+    const failing = await account('a-failing');
+    await bigStore(failing.stub);
+    const healthy = await account('b-healthy');
+    await healthy.stub.create({ id: crypto.randomUUID(), title: 'Fine', body: 'b', tags: [] });
+    await env.DB.prepare(`UPDATE account_directory SET dump_tried_at = ?2, dump_error = 'too big' WHERE user_id = ?1`).bind(failing.id, NOON - DAY - 12 * 3_600_000).run();
+    await env.DB.prepare(`UPDATE account_directory SET dump_tried_at = ?2 WHERE user_id = ?1`).bind(healthy.id, NOON - DAY).run();
+    // Room for one small dump: the healthy account gets it.
+    const report = await dumpStores(backups(), { now: NOON, budget: 6 });
+    expect(report).toMatchObject({ dumped: 1, failed: [] });
+    expect(await directory(healthy.id)).toMatchObject({ dump_tried_at: NOON });
+    expect(await directory(failing.id)).toMatchObject({ dump_error: 'too big', dump_tried_at: NOON - DAY - 12 * 3_600_000 });
+  });
+
   it('stop at an account the budget ran out on, and start the next run with it', async () => {
     // Ids sort the small one first, so it spends part of the budget before the big one.
     const small = await account('a-small');
