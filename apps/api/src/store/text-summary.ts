@@ -193,7 +193,11 @@ function amountsIn(text: string): FoundNumber[] {
 function orderIn(text: string): string | undefined {
   for (const m of text.matchAll(ORDER)) {
     const value = (m[2] ?? m[3])!;
-    if (!/\d/.test(value) || /^\d{4}-\d{2}-\d{2}$/.test(value)) continue;
+    if (!/\d/.test(value)) continue;
+    // A date in any of the shapes `findDates` reads is the document's date, not its number.
+    if (findDates(value).some((d) => d.raw === value)) continue;
+    // Nor is a lone year straight after the word: "Purchase order 2026 summary".
+    if (m[3] && /^(?:19|20)\d{2}$/.test(value)) continue;
     const kind = m[1]!.toLowerCase() === 'order' ? 'Order' : 'Invoice';
     return `${kind} #${value}`;
   }

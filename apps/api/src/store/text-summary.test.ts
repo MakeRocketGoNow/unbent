@@ -80,6 +80,8 @@ describe('a text layer’s summary', () => {
     // "Order total" and "Invoice date" name no number, a date is not an order number, and
     // "Order 12 items" is a count.
     expect(textSummary('Order total: $9.00\nInvoice date: 2026-03-02\nOrder 12 items')).not.toMatch(/Order #|Invoice #/);
+    // Nor is a date in another shape, or a year.
+    expect(textSummary('Invoice: 03-02-2026\nPurchase order 2026 summary')).not.toMatch(/Order #|Invoice #/);
   });
 
   it('cuts the opening at a word, and gives it the whole line when there are no facts', () => {
