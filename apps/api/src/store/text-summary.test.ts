@@ -44,6 +44,9 @@ describe('a text layer’s summary', () => {
     expect(textSummary('Acme Invoice\nTotal $500.00\nAmount paid $500.00\nBalance due $0.00')).toMatch(/ · Total: \$500\.00$/);
     expect(textSummary('Acme Invoice\nTotal $500.00\nPayments/Credits -$500.00\nBalance Due $0.00')).toMatch(/ · Total: \$500\.00$/);
     expect(textSummary('Acme Store\nTotal $40.00\nAmount Paid $50.00\nChange $10.00')).toMatch(/ · Total: \$40\.00$/);
+    // A part-paid invoice is for its total; what is left is the total only when it is all there is.
+    expect(textSummary('Acme Invoice\nTotal $500.00\nAmount paid $200.00\nBalance due $300.00')).toMatch(/ · Total: \$500\.00$/);
+    expect(textSummary('Acme Invoice\nBalance due $300.00')).toMatch(/ · Total: \$300\.00$/);
     // With nothing else, "Amount paid" is the total, and so is a zero.
     expect(textSummary('Acme Tickets\nAmount paid: $45.00')).toMatch(/ · Total: \$45\.00$/);
     expect(textSummary('Acme\nTotal $0.00')).toMatch(/ · Total: \$0\.00$/);
