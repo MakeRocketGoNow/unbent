@@ -113,7 +113,9 @@ export function findNumbers(text: string): FoundNumber[] {
   const amounts: FoundNumber[] = [];
   const plain: FoundNumber[] = [];
   const seen = new Set<number>();
-  const re = /(?<![\w./:-])-?(?:[$€£]\s?)?-?\d[\d,]*(?:\.\d+)?(?![\w/:-])/g;
+  // One minus, before the mark or after it: two dashes with no mark between them are a
+  // dash used as punctuation ("and --7"), not a sign.
+  const re = /(?<![\w./:-])-?(?:[$€£]\s?-?)?\d[\d,]*(?:\.\d+)?(?![\w/:-])/g;
   for (const m of text.matchAll(re)) {
     const raw = m[0].trim();
     const marked = /^-?[$€£]/.test(raw);
