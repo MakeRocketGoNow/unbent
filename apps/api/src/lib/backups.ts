@@ -188,6 +188,9 @@ export async function dumpStores(
     if (budget.left < 2) break;
     reached += 1;
     const whole = budget.spent === FIXED_COST;
+    // Set once the file is in the bucket. From then on any failure is recorded as one,
+    // whatever it is: an account put off would be dumped again next hour over its own key.
+    let uploaded = false;
     try {
       const outcome = await dumpOne(env, bucket, row, now, budget, opts.partBytes ?? PART_BYTES);
       if (outcome.unchanged) {
@@ -197,6 +200,7 @@ export async function dumpStores(
         );
       } else {
         // At once, not in the closing batch; see "not written twice" above.
+        uploaded = true;
         budget.take();
         await env.DB.prepare(
           `UPDATE account_directory
@@ -209,13 +213,13 @@ export async function dumpStores(
         report.bytes += outcome.bytes;
       }
     } catch (err) {
-      if (err instanceof OutOfSubrequests && !whole) {
+      if (!uploaded && err instanceof OutOfSubrequests && !whole) {
         // Someone ahead of it spent part of the budget; the next run starts with it.
         report.deferred.push(row.user_id);
         reached -= 1;
         break;
       }
-      if (isDeferral(err)) {
+      if (!uploaded && isDeferral(err)) {
         report.deferred.push(row.user_id);
         continue;
       }

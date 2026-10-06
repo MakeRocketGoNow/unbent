@@ -153,6 +153,32 @@ describe('the daily dumps', () => {
     expect(await dumpStores(backups(), { now: NOON + 3_600_000 })).toMatchObject({ dumped: 0, subrequests: 3 });
   });
 
+  it('record a dump whose row fails to write as failed, even on an error that asks to be retried', async () => {
+    const { id, stub } = await account('rowfails');
+    await stub.create({ id: crypto.randomUUID(), title: 'One', body: 'b', tags: [] });
+    // The dump's own row write refuses with the runtime's transient mark; everything
+    // else, the closing batch included, goes through.
+    const flaky = new Proxy(env.DB, {
+      get(target, key) {
+        if (key === 'prepare') {
+          return (query: string) => {
+            const statement = target.prepare(query);
+            if (!query.includes('SET dump_at')) return statement;
+            return { bind: () => ({ run: () => Promise.reject(Object.assign(new Error('try again'), { retryable: true })) }) };
+          };
+        }
+        const value = Reflect.get(target, key) as unknown;
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const report = await dumpStores({ ...backups(), DB: flaky }, { now: NOON });
+    expect(report).toMatchObject({ dumped: 0, failed: [id], deferred: [] });
+    expect(await env.BLOBS.head(dumpKey(id, NOON))).not.toBeNull();
+    expect(await directory(id)).toMatchObject({ dump_tried_at: NOON, dump_error: 'try again' });
+    // Tried today, so the file it wrote is not written again under the same key.
+    expect(await dumpStores(backups(), { now: NOON + 3_600_000 })).toMatchObject({ dumped: 0, subrequests: 3 });
+  });
+
   it('stream a dump bigger than a part as a multipart upload of equal parts', async () => {
     const { id, stub } = await account('big');
     await bigStore(stub);
