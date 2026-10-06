@@ -1,5 +1,7 @@
 import {
   encodeFieldValue,
+  findDates as findDatesIn,
+  findNumbers as findNumbersIn,
   isRatingField,
   type AutofillSuggestion,
   type FieldDef,
@@ -257,98 +259,26 @@ export function labelledValues(lines: Option[]): Option[] {
   return out;
 }
 
-const MONTHS = [
-  'january',
-  'february',
-  'march',
-  'april',
-  'may',
-  'june',
-  'july',
-  'august',
-  'september',
-  'october',
-  'november',
-  'december',
-];
-/** `jan(?:uary)?|feb(?:ruary)?|…` — the abbreviation, with the rest of the name optional. */
-const MONTH_NAME = MONTHS.map((m) => `${m.slice(0, 3)}(?:${m.slice(3)})?`).join('|');
-
-function monthNumber(name: string): number {
-  return MONTHS.findIndex((m) => m.startsWith(name.slice(0, 3).toLowerCase())) + 1;
-}
-
-/** `YYYY-MM-DD` when the parts make a real date in a plausible century, else null. */
-function isoDate(year: number, month: number, day: number): string | null {
-  if (year < 1900 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31) return null;
-  const date = new Date(Date.UTC(year, month - 1, day));
-  if (date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${year}-${pad(month)}-${pad(day)}`;
-}
-
 /**
- * Every date the text writes, in the four ways American documents write them: ISO,
- * numeric with slashes or dots, and the month by name on either side of the day. Numeric
- * dates are read month-first, as the archive's documents write them; a first number past
- * twelve can only be a day, so `25/3/2026` still reads.
+ * Every date the text writes, as candidates for a date field: the day as `YYYY-MM-DD`,
+ * described by how the document wrote it. The finding is `@unbent/shared`'s, which the
+ * store's file summaries share.
  */
 export function findDates(text: string): Option[] {
-  const found = new Map<string, string>();
-  const add = (iso: string | null, raw: string) => {
-    if (iso && !found.has(iso)) found.set(iso, raw.trim());
-  };
-  for (const m of text.matchAll(/\b(\d{4})-(\d{2})-(\d{2})\b/g)) {
-    add(isoDate(Number(m[1]), Number(m[2]), Number(m[3])), m[0]);
-  }
-  for (const m of text.matchAll(/\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{4}|\d{2})\b/g)) {
-    const [a, b] = [Number(m[1]), Number(m[2])];
-    let year = Number(m[3]);
-    if (m[3]!.length === 2) year += year < 70 ? 2000 : 1900;
-    const [month, day] = a > 12 ? [b, a] : [a, b];
-    add(isoDate(year, month, day), m[0]);
-  }
-  const monthFirst = new RegExp(`\\b(${MONTH_NAME})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?,?\\s+(\\d{4})\\b`, 'gi');
-  for (const m of text.matchAll(monthFirst)) {
-    add(isoDate(Number(m[3]), monthNumber(m[1]!), Number(m[2])), m[0]);
-  }
-  const dayFirst = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(${MONTH_NAME})\\.?,?\\s+(\\d{4})\\b`, 'gi');
-  for (const m of text.matchAll(dayFirst)) {
-    add(isoDate(Number(m[3]), monthNumber(m[2]!), Number(m[1])), m[0]);
-  }
-  return [...found]
+  return findDatesIn(text)
     .slice(0, MAX_CANDIDATES)
-    .map(([iso, raw]) => ({ key: iso, value: iso, description: `As written: ${raw}` }));
+    .map(({ iso, raw }) => ({ key: iso, value: iso, description: `As written: ${raw}` }));
 }
 
 /**
- * Every number the text writes that could be an amount: digits with optional thousands
- * separators and fraction, an optional sign, an optional currency mark. Anything glued
- * to a slash, dash, colon or letter is left alone — that is a date, a time, an id or a
- * phone number — and so is a run of more than nine digits, which is an account number.
+ * Every number the text writes that could be an amount, as candidates for a number field.
  * Amounts with a mark or a fraction come first, so that they are what survives the cap;
  * the order is lost once they are keys of the criteria object, and does not matter there.
  */
 export function findNumbers(text: string): Option[] {
-  const amounts: Option[] = [];
-  const plain: Option[] = [];
-  const seen = new Set<string>();
-  const re = /(?<![\w./:-])(?:[$€£]\s?)?-?\d[\d,]*(?:\.\d+)?(?![\w/:-])/g;
-  for (const m of text.matchAll(re)) {
-    const raw = m[0].trim();
-    const marked = /^[$€£]/.test(raw);
-    const digits = raw.replace(/^[$€£]\s?/, '').replace(/,/g, '');
-    if (!/^-?\d+(\.\d+)?$/.test(digits)) continue;
-    if (digits.replace(/^-/, '').split('.')[0]!.length > 9) continue;
-    const value = Number(digits);
-    if (!Number.isFinite(value)) continue;
-    const key = String(value);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const option: Option = { key, value, description: `As written: ${raw}` };
-    (marked || digits.includes('.') ? amounts : plain).push(option);
-  }
-  return [...amounts, ...plain].slice(0, MAX_CANDIDATES);
+  return findNumbersIn(text)
+    .slice(0, MAX_CANDIDATES)
+    .map(({ value, raw }) => ({ key: String(value), value, description: `As written: ${raw}` }));
 }
 
 export function findEmails(text: string): Option[] {
