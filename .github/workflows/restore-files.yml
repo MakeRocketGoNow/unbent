@@ -42,34 +42,14 @@ on:
         required: false
         default: ''
         type: string
-  # The summary script's tests, on a change to it or to this file. The restore job itself
-  # never runs for these: `if` below.
-  pull_request:
-    paths:
-      - 'scripts/mirror/restore-summary*.mjs'
-      - '.github/workflows/restore-files.yml'
-  push:
-    branches: [main]
-    paths:
-      - 'scripts/mirror/restore-summary*.mjs'
-      - '.github/workflows/restore-files.yml'
+  # No other trigger: the summary script's tests run in mirror.yml's `test` job, which
+  # covers every test under scripts/mirror/ on a change there.
 
 permissions:
   contents: read
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-      - run: node --test 'scripts/mirror/restore-summary.test.mjs'
-
   restore:
-    if: github.event_name == 'workflow_dispatch'
-    needs: test
     runs-on: ubuntu-latest
     # The write credential for the live bucket lives here and nowhere else.
     environment: restore
