@@ -10,6 +10,9 @@ vi.mock('@tanstack/react-router', () => ({
   ),
 }));
 
+/** The settings nav asks whether an import is running; none is. */
+vi.mock('../import-run.js', () => ({ useImportRunning: () => false }));
+
 const { BackupHealth, LastDump } = await import('./Operator.js');
 
 const now = Date.parse('2026-10-06T12:00:00Z');
@@ -106,6 +109,32 @@ describe('BackupHealth', () => {
     const m = screen.getByLabelText('Nightly mirror: Stale');
     expect(m.classList.contains('health-stale')).toBe(true);
     expect(m.textContent).toContain('The last run was 4 days ago, over 48 hours');
+  });
+});
+
+describe('the Operator tab', () => {
+  afterEach(cleanup);
+
+  it('is drawn after About for an operator, and not at all for anyone else', async () => {
+    const { SettingsLayout } = await import('./SettingsLayout.js');
+    const { QueryClient, QueryClientProvider } = await import('@tanstack/react-query');
+    const { keys } = await import('../queries.js');
+    for (const operator of [true, false]) {
+      const client = new QueryClient();
+      // The hook reads the backups query: an answer for an operator, the route's 404 kept as null for anyone else.
+      client.setQueryData(keys.operatorBackups(), operator ? { bound: false } : null);
+      render(
+        <QueryClientProvider client={client}>
+          <SettingsLayout>
+            <p>page</p>
+          </SettingsLayout>
+        </QueryClientProvider>,
+      );
+      const labels = [...document.querySelectorAll('.settings-nav-item')].map((a) => a.textContent);
+      if (operator) expect(labels.slice(-2)).toEqual(['About', 'Operator']);
+      else expect(labels).not.toContain('Operator');
+      cleanup();
+    }
   });
 });
 

@@ -36,7 +36,10 @@ export function Operator() {
 
       <section className="settings-section">
         <h3>Backup health</h3>
-        {backups.data ? (
+        {backups.data === null ? (
+          // Someone who is not an operator typed the address: the tab was never drawn for them.
+          <p className="muted small">Not found.</p>
+        ) : backups.data ? (
           <BackupHealth status={backups.data} accounts={accounts.data} />
         ) : backups.error ? (
           <p className="bad small">{errorText(backups.error)}</p>

@@ -4,7 +4,7 @@ import {
   keepPreviousData,
   type QueryClient,
 } from '@tanstack/react-query';
-import type { AttachmentInfo, FieldDef, Note, NoteSort, NoteSummary, NotebookSummary } from '@unbent/shared';
+import type { AttachmentInfo, BackupsStatus, FieldDef, Note, NoteSort, NoteSummary, NotebookSummary } from '@unbent/shared';
 import * as api from './notes-api.js';
 import { ApiError, OfflineError } from './notes-api.js';
 import { offlineNow } from './connectivity.js';
@@ -682,21 +682,27 @@ export const exactCountQuery = (filter: ExactCountFilter = {}) =>
 
 /**
  * The backup's health, and whether this session is an operator's at all: the route
- * answers anyone else 404, which ends the query (`use-operator.ts` reads it so). No
- * retry, since a 404 is the answer rather than a failure, and kept for the session —
- * the status files move once a day, and the page refetches on its own when opened.
+ * answers anyone else 404, and that answer is data here — `null` — rather than an
+ * error. Told apart on purpose: an error is "could not ask" (offline, a 5xx), and a
+ * query that cannot tell the two apart either asks every non-operator again on every
+ * Settings mount or, with retries off, hides the tab from an operator for the rest of
+ * the session over one lost request (both found in review). As data, "not an operator"
+ * is kept for the whole session and never asked again; an answer for an operator goes
+ * stale as any other, and a failure retries as any other.
  */
 export const operatorBackupsQuery = () =>
   queryOptions({
     queryKey: keys.operatorBackups(),
-    queryFn: () => api.operatorBackups(),
-    retry: false,
-    staleTime: 5 * 60 * 1000,
-    // For everyone who is not an operator the answer is a 404 and the query holds no
-    // data, which would otherwise make every Settings mount and window focus ask again.
-    // Once a session, as the comment above says; the page refetches when opened.
-    retryOnMount: false,
-    refetchOnWindowFocus: false,
+    queryFn: async (): Promise<BackupsStatus | null> => {
+      try {
+        return await api.operatorBackups();
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) return null;
+        throw err;
+      }
+    },
+    staleTime: (q) => (q.state.data === null ? Infinity : 5 * 60 * 1000),
+    gcTime: Infinity,
   });
 
 export const operatorAccountsQuery = () =>
