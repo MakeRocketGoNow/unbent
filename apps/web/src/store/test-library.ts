@@ -31,8 +31,10 @@ export interface TestLibrary extends ReadableLibrary {
   upsert: (entity: FeedEntity, row: FeedNote | FeedNotebook | FeedTag | FeedAttachment) => void;
   remove: (entity: FeedEntity, id: string) => void;
   subscribe: (listener: (state: FeedState) => void) => () => void;
-  /** The engine's `reset`: the count moves and every subscriber hears it; the rows are the caller's to replace. */
+  /** The engine's `reset`: the count moves, the library is not whole until `settle`, and every subscriber hears it; the rows are the caller's to replace. */
   reset: () => void;
+  /** The walk after a reset finishing: the library is whole again. */
+  settle: () => void;
   uninstall: () => void;
 }
 
@@ -76,6 +78,11 @@ export function installTestLibrary(rows: Rows = {}): TestLibrary {
     },
     reset: () => {
       state.resets += 1;
+      state.phase = 'reset';
+      listeners.forEach((l) => l({ ...state }));
+    },
+    settle: () => {
+      state.phase = 'current';
       listeners.forEach((l) => l({ ...state }));
     },
     version: () => version,
