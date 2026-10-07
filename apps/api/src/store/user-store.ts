@@ -423,7 +423,9 @@ export class UserStore extends DurableObject<StoreEnv> {
     this.ctx.storage.kv.put(LOADING_KEY, marker);
     this.loading = marker;
     this.wiped = false;
-    this.loadInFlight = { id: marker.id, decoder: new TextDecoder(), remainder: '' };
+    // Fatal: a damaged byte in a dump stops the load rather than loading as U+FFFD
+    // inside someone's note.
+    this.loadInFlight = { id: marker.id, decoder: new TextDecoder('utf-8', { fatal: true }), remainder: '' };
     console.log(`[store] load begun user=${this.userId} key=${dump.key} undo=${undo ?? 'none'} before=${before ?? 'none'}`);
     return { loadId: marker.id, undo, before };
   }

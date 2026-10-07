@@ -231,6 +231,11 @@ describe('loading a dump', () => {
       ['a statement a load does not run', text.replace(/^(INSERT INTO tags .*)$/m, 'DELETE FROM notes;\n$1'), /does not run: DELETE FROM notes/],
       ['a file cut short', text.slice(0, text.lastIndexOf("INSERT INTO changes") + 40), /ended inside a statement/],
     ];
+    // And bytes that are not UTF-8 at all, which must stop the load rather than load as
+    // replacement characters inside a note.
+    const { loadId } = await stub.loadBegin({ key: 'stores/test/damaged.sql', before: null });
+    await expect(stub.loadPage(loadId, new Uint8Array([0x49, 0x4e, 0xff, 0xfe]))).rejects.toThrow();
+    expect((await stub.stats()).loading).not.toBeNull();
     for (const [name, broken, message] of cases) {
       expect(broken, name).not.toBe(text);
       await expect(load(stub, broken), name).rejects.toThrow(message);
