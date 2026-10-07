@@ -72,12 +72,6 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-/**
- * The three actions, each as the confirm it opens: who, to what, and what is lost. The
- * routes are mocked with the shapes the deployed Worker answers, since the local one
- * keeps no history; what is pinned is that the page puts the dry run's numbers into the
- * question, repeats the request with the word, and offers the bookmark it gets back.
- */
 describe('OperatorAccount: facts', () => {
   it("shows the store's own last write once the stats are in, not the directory's sweep-time copy", async () => {
     harness();
@@ -89,6 +83,12 @@ describe('OperatorAccount: facts', () => {
   });
 });
 
+/**
+ * The three actions, each as the confirm it opens: who, to what, and what is lost. The
+ * routes are mocked with the shapes the deployed Worker answers, since the local one
+ * keeps no history; what is pinned is that the page puts the dry run's numbers into the
+ * question, repeats the request with the word, and offers the bookmark it gets back.
+ */
 describe('OperatorAccount: wind back', () => {
   it('previews first, then names the account, the moment and what is lost, then offers Undo', async () => {
     vi.mocked(api.previewRestore).mockResolvedValue({ dryRun: true, user: 'u1', bookmark: 'bm-1', current: stats({ notes: 12, attachments: 4, note_revisions: 40 }) });
