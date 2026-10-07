@@ -60,7 +60,7 @@ export function OperatorAccount({ userId }: { userId: string }) {
         </Link>
       </div>
 
-      {account && <AccountFacts account={account} lastWriteAt={live} />}
+      {account && <AccountFacts account={account} lastWriteAt={live} reading={stats.isPending} />}
 
       <section className="settings-section">
         <h3>Store</h3>
@@ -88,8 +88,10 @@ export function OperatorAccount({ userId }: { userId: string }) {
  * what the accounts list shows and sorts by; on this page, which reads the store anyway,
  * it was up to an hour stale, or days for an account the sweep had not reached since
  * (MAK-190). Shown only while the live one is not here yet, and said to be the sweep's.
+ * `reading` is whether the stats are still on their way: once a read has failed, "Reading
+ * the store…" would sit there for good above the error that says why.
  */
-function AccountFacts({ account, lastWriteAt }: { account: Account; lastWriteAt: number | null | undefined }) {
+function AccountFacts({ account, lastWriteAt, reading }: { account: Account; lastWriteAt: number | null | undefined; reading: boolean }) {
   return (
     <dl className="about-list operator-facts">
       <div>
@@ -116,8 +118,10 @@ function AccountFacts({ account, lastWriteAt }: { account: Account; lastWriteAt:
               <>
                 {timeAgo(account.lastActiveAt)} · {formatMoment(account.lastActiveAt)} <span className="muted">· as of the last sweep</span>
               </>
-            ) : (
+            ) : reading ? (
               <span className="muted">Reading the store…</span>
+            ) : (
+              <span className="muted">None recorded</span>
             )
           ) : lastWriteAt ? (
             `${timeAgo(lastWriteAt)} · ${formatMoment(lastWriteAt)}`

@@ -18,6 +18,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
   loadDump: vi.fn(),
   resyncDevices: vi.fn(),
   accountDumps: vi.fn(),
+  storeStats: vi.fn(),
 }));
 
 const api = await import('../notes-api.js');
@@ -53,10 +54,10 @@ const dumps: AccountDumps = {
   ],
 };
 
-function harness(answerDumps: () => Promise<AccountDumps> = () => Promise.resolve(dumps), seeded: StoreStats = stats()) {
+function harness(answerDumps: () => Promise<AccountDumps> = () => Promise.resolve(dumps), seeded: StoreStats | null = stats(), who: Account = account) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  client.setQueryData(keys.operatorAccounts(), [account]);
-  client.setQueryData(keys.storeStats('u1'), seeded);
+  client.setQueryData(keys.operatorAccounts(), [who]);
+  if (seeded) client.setQueryData(keys.storeStats('u1'), seeded);
   vi.mocked(api.accountDumps).mockImplementation(answerDumps);
   return render(
     <QueryClientProvider client={client}>
@@ -93,6 +94,16 @@ describe('OperatorAccount: facts', () => {
       expect(dd.textContent).not.toContain('Nothing written yet');
       cleanup();
     }
+  });
+
+  it('says nothing is recorded, not that it is still reading, once a stats read has failed', async () => {
+    let fail!: (err: Error) => void;
+    vi.mocked(api.storeStats).mockReturnValue(new Promise((_, reject) => (fail = reject)));
+    harness(undefined, null, { ...account, lastActiveAt: null });
+    const dd = () => screen.getByText('Last change').nextElementSibling!;
+    expect(dd().textContent).toBe('Reading the store…');
+    await act(async () => fail(new Error('store unavailable')));
+    expect(dd().textContent).toBe('None recorded');
   });
 });
 
