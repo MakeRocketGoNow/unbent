@@ -52,6 +52,25 @@ test('keeps a value that holds a newline after a ; in one statement', () => {
   assert.equal(r.unknown.length, 0);
 });
 
+test('reads past a comment in a CREATE, apostrophes and semicolons included', () => {
+  const text = [
+    'CREATE TABLE a (',
+    "  -- the plugin's schema; nullable",
+    '  x TEXT',
+    ');',
+    `INSERT INTO "a" ("x") VALUES('one -- two');`,
+    'CREATE UNIQUE INDEX a_x ON a(x);',
+    '',
+  ].join('\n');
+  const s = statements(text);
+  assert.equal(s.length, 3);
+  assert.equal(s[1], `INSERT INTO "a" ("x") VALUES('one -- two');`);
+  const r = order(text);
+  assert.equal(r.schema, 2);
+  assert.equal(r.rows, 1);
+  assert.match(r.sql, /CREATE UNIQUE INDEX a_x ON a\(x\);\nINSERT/);
+});
+
 test('keeps a statement it does not recognise, after the rows, and names it', () => {
   const r = order('CREATE TABLE a (x);\nUPDATE a SET x = 1;\nINSERT INTO "a" ("x") VALUES(2);\n');
   assert.equal(r.unknown.length, 1);

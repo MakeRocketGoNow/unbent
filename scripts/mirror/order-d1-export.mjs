@@ -29,14 +29,42 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 /**
+ * The part of a line that is SQL rather than a `--` comment, and how many single quotes
+ * in it open or close a literal, given whether one is open where the line starts. A `--`
+ * inside a literal is part of the value.
+ * @param {string} line
+ * @param {boolean} open
+ */
+function scan(line, open) {
+  let quotes = 0;
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === "'") {
+      quotes++;
+      open = !open;
+    } else if (!open && line[i] === '-' && line[i + 1] === '-') {
+      return { code: line.slice(0, i), quotes };
+    }
+  }
+  return { code: line, quotes };
+}
+
+/**
  * Splits export text into statements. A statement ends at a line ending in `;` while no
  * string literal is open, except a trigger, which holds `;` lines of its own and ends at
  * `END;`. Whether a literal is open is the parity of the single quotes seen so far: the
  * export escapes a quote inside a value as `''`, which keeps the count even, and its
  * identifiers hold no apostrophes. A value with a newline after a `;` (`'one;` on one
  * line, `two'` on the next) therefore stays one statement, where a split on the line
- * alone cut it in two and put the tail after every other row (found in review). Not a
- * SQL parser; enough for what `wrangler d1 export` writes.
+ * alone cut it in two and put the tail after every other row (found in review).
+ *
+ * Comments are read past, not counted. SQLite keeps a CREATE's text as it was written,
+ * comments and all, and a comment is prose: `-- the plugin's schema` inside a table's
+ * definition (0010's `deviceCode` has one) tipped the parity in review and folded every
+ * statement up to the next stray apostrophe into one "schema" statement, rows and all,
+ * which put rows back ahead of the indexes this script exists to move. `wrangler d1 migrations apply` happens to
+ * strip comments today, which is the only reason that export was clean; a table made
+ * any other way keeps them. Not a SQL parser; enough for what `wrangler d1 export`
+ * writes.
  * @param {string} text
  * @returns {string[]}
  */
@@ -51,8 +79,9 @@ export function statements(text) {
     if (current.length === 0 && line.trim() === '') continue;
     if (current.length === 0 && /^CREATE\s+TRIGGER\b/i.test(line)) inTrigger = true;
     current.push(line);
-    quotes += (line.match(/'/g) ?? []).length;
-    const ends = quotes % 2 === 0 && (inTrigger ? /^END;\s*$/i.test(line) : /;\s*$/.test(line));
+    const { code, quotes: seen } = scan(line, quotes % 2 === 1);
+    quotes += seen;
+    const ends = quotes % 2 === 0 && (inTrigger ? /^END;\s*$/i.test(code) : /;\s*$/.test(code));
     if (ends) {
       out.push(current.join('\n'));
       current = [];
