@@ -110,7 +110,10 @@ export function statementKind(statement: string): string {
  * object turns foreign keys off around each page itself; and anything that is only
  * comments. Run: the `CREATE`s and `INSERT`s a dump is made of, and nothing else, so a
  * file that is not a dump — or a dump someone edited a `DROP` or `DELETE` into — stops
- * the load at its first such line rather than running it against the account.
+ * the load at its first such top-level statement rather than running it against the
+ * account. A trigger's body is not looked into: the schema's own triggers update and
+ * delete by design, and a dump is read from the operator's own bucket, so the check is
+ * against a file that is not a dump, not against one written to deceive.
  */
 export function classify(statement: string): 'run' | 'skip' | 'refuse' {
   const head = statementText(statement);
