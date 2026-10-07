@@ -13,6 +13,23 @@
  */
 export const RESTORE_WINDOW_DAYS = 30;
 
+/**
+ * How long a deleted file's object stays in the live bucket after its row has gone
+ * (`DELETED_BLOB_RETENTION_MS` in the API's store derives from it): five more than the
+ * restore window, so a store wound back to any moment finds its files. Part 1 of MAK-171.
+ */
+export const DELETED_FILES_KEPT_DAYS = RESTORE_WINDOW_DAYS + 5;
+
+/**
+ * How many days the backups bucket keeps a daily dump: its `expire-dumps` lifecycle
+ * rule, set by hand on the bucket (README, "Where your notes live", under Daily dumps),
+ * not by anything in the code. Stated here so the page and the Worker say one number.
+ */
+export const DUMPS_KEPT_DAYS = 14;
+
+/** The mirror's `expire-stores` lifecycle rule on the second account's bucket, set by hand there. */
+export const MIRROR_KEPT_DAYS = 90;
+
 /** What the daily dump run writes to `status/dumps.json`; see `dumpStores` in the API. */
 export interface DumpStatus {
   ranAt: string;
@@ -114,6 +131,4 @@ export interface AccountDump {
 
 export interface AccountDumps {
   dumps: AccountDump[];
-  /** How many days the bucket's lifecycle rule keeps a dump; what the page says of older ones. */
-  keptDays: number;
 }

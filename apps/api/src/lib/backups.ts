@@ -151,13 +151,6 @@ export const STATUS_KEY = 'status/dumps.json';
 /** Where the nightly mirror (part 3) writes what it did, for the operator page; `scripts/mirror/write-status.mjs`. */
 export const MIRROR_STATUS_KEY = 'status/mirror.json';
 
-/**
- * How many days the backups bucket keeps a dump: its `expire-dumps` lifecycle rule,
- * set by hand on the bucket (README, "Where your notes live", under Daily dumps), not by
- * anything here.
- * The operator page states it, so an older dump is known to be in the mirror alone.
- */
-export const DUMPS_KEPT_DAYS = 14;
 
 interface DueRow {
   user_id: string;

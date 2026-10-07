@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { RESTORE_WINDOW_DAYS, type AccountDump, type OperatorAccount as Account } from '@unbent/shared';
+import { DELETED_FILES_KEPT_DAYS, DUMPS_KEPT_DAYS, MIRROR_KEPT_DAYS, RESTORE_WINDOW_DAYS, type AccountDump, type OperatorAccount as Account } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { ApiError, LoadFailedError, errorText } from '../notes-api.js';
 import { formatBytes } from '../format-bytes.js';
@@ -11,17 +11,6 @@ import { holdPage } from '../busy.js';
 import { Button } from './Button.js';
 import { Confirm } from './Confirm.js';
 import { LastDump } from './Operator.js';
-
-/**
- * How long a deleted file's object is kept in the live bucket after its row goes: the
- * sweep's `deleted_blobs` window (part 1 of MAK-171), stated here so a wind-back's reach
- * is honest about its files. The constant lives in the API's sweep; the page states
- * the number and nothing enforces it here.
- */
-const DELETED_FILES_KEPT_DAYS = 35;
-
-/** The mirror's lifecycle rule on `stores/`, set by hand on the bucket; stated, not enforced. */
-const MIRROR_KEPT_DAYS = 90;
 
 /**
  * One account, for the operator: what the directory and its store say of it, its dumps,
@@ -412,7 +401,7 @@ export function dumpedAt(header: string): string | null {
  * Replace the store with one of its dumps from the backups bucket.
  *
  * The list is what the bucket holds under the account: the daily dumps of the last
- * fourteen days, and the dump the load route writes before it replaces a store, which is
+ * `DUMPS_KEPT_DAYS`, and the dump the load route writes before it replaces a store, which is
  * how a load is undone once the bookmark's thirty days are up. Anything older is in the
  * mirror alone, and the paragraph under the list gives the command that brings one back,
  * since a dump can only be loaded from this bucket.
@@ -483,15 +472,13 @@ function LoadDump({ userId, email }: { userId: string; email: string }) {
   }
 
   const unbound = dumps.error instanceof ApiError && dumps.error.status === 501;
-  // The route says how long the bucket keeps a dump; 14 is only the sentence's number until it has answered.
-  const keptDays = dumps.data?.keptDays ?? 14;
 
   return (
     <section className="settings-section">
       <h3>Load a dump</h3>
       <p className="muted small">
         Replaces the whole store with a dump from the backups bucket: the way back from a fault noticed after the {RESTORE_WINDOW_DAYS}{' '}
-        days of history. The bucket keeps each daily dump {keptDays} days. A dump of the store as it stands is written first and listed
+        days of history. The bucket keeps each daily dump {DUMPS_KEPT_DAYS} days. A dump of the store as it stands is written first and listed
         here, so a load can be undone.
       </p>
 
@@ -553,7 +540,7 @@ function LoadDump({ userId, email }: { userId: string; email: string }) {
 
       {!unbound && (
         <p className="muted small">
-          For a dump older than {keptDays} days, which the mirror keeps {MIRROR_KEPT_DAYS}, bring it back from the second account first, from a laptop with
+          For a dump older than {DUMPS_KEPT_DAYS} days, which the mirror keeps {MIRROR_KEPT_DAYS}, bring it back from the second account first, from a laptop with
           the mirror credential and the dumps bucket&apos;s write key; it then appears in this list. The buckets named are production&apos;s (the
           dev instance&apos;s is <code>unbent-dev-backups</code>):
         </p>

@@ -45,7 +45,6 @@ const stats = (counts: Partial<Record<string, number>> = {}): StoreStats => ({
 });
 
 const dumps: AccountDumps = {
-  keptDays: 14,
   dumps: [
     { key: 'stores/u1/2026-10-06.sql', name: '2026-10-06.sql', size: 30_000, uploadedAt: '2026-10-06T04:47:00Z' },
     { key: 'stores/u1/2026-10-05.sql', name: '2026-10-05.sql', size: 29_000, uploadedAt: '2026-10-05T04:47:00Z' },

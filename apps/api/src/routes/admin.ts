@@ -7,7 +7,7 @@ import { withRepos } from '../lib/repos-middleware.js';
 import { deleteKeys } from '../lib/blobs.js';
 import { directoryRow, dropDirectoryRow, listOperatorAccounts } from '../lib/directory.js';
 import { beginDump } from '../lib/dump.js';
-import { DUMPS_KEPT_DAYS, MIRROR_STATUS_KEY, STATUS_KEY, dumpPrefix } from '../lib/backups.js';
+import { MIRROR_STATUS_KEY, STATUS_KEY, dumpPrefix } from '../lib/backups.js';
 import { beforeLoadKey, describeDump, dumpBeforeLoad, loadReserve, resolveDumpKey, streamDump } from '../lib/load.js';
 import { isOperator } from '../lib/instance.js';
 import { userPrefix } from '../lib/repo.js';
@@ -663,9 +663,9 @@ export const admin = new Hono<AppEnv>()
   /**
    * One account's dumps: what is under its `stores/<user>/` prefix in the backups
    * bucket, the daily files and any the load route wrote before a load. The bucket's
-   * lifecycle rule deletes a dump after `DUMPS_KEPT_DAYS`, so an older one is in the
-   * mirror alone, and the answer says the number so the page can say where. 501 with
-   * no bucket, as the load route answers.
+   * lifecycle rule deletes a dump after `DUMPS_KEPT_DAYS` (in `@unbent/shared`, since
+   * the page states it), so an older one is in the mirror alone. 501 with no bucket, as
+   * the load route answers.
    */
   .get('/admin/accounts/:id/dumps', requireAuth, async (c) => {
     const target = await operatorAccount(c, c.req.param('id'));
@@ -684,7 +684,7 @@ export const admin = new Hono<AppEnv>()
     // dump written before a load), which is what "newest" means here — a dump copied
     // back from the mirror is uploaded today and taken weeks ago.
     dumps.sort((a, b) => (a.name < b.name ? 1 : -1));
-    return c.json({ dumps, keptDays: DUMPS_KEPT_DAYS } satisfies AccountDumps);
+    return c.json({ dumps } satisfies AccountDumps);
   })
 
   /**
