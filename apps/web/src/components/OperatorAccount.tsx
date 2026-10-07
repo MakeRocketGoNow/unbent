@@ -7,6 +7,7 @@ import { ApiError, LoadFailedError, errorText } from '../notes-api.js';
 import { formatBytes } from '../format-bytes.js';
 import { formatMoment, timeAgo } from '../format-time.js';
 import { accountDumpsQuery, keys, operatorAccountsQuery, storeStatsQuery } from '../queries.js';
+import { holdPage } from '../busy.js';
 import { Button } from './Button.js';
 import { Confirm } from './Confirm.js';
 import { LastDump } from './Operator.js';
@@ -245,6 +246,10 @@ function WindBack({ userId, email }: { userId: string; email: string }) {
   }
 
   async function windBack(ms: number) {
+    // Held for the whole request, like an upload: a waiting deploy reloads the page on
+    // the next change of section unless something is in flight (`busy.ts`), and a reload
+    // here drops the request and the undo bookmark its answer carries.
+    const release = holdPage();
     setBusy(true);
     setError(null);
     try {
@@ -253,6 +258,7 @@ function WindBack({ userId, email }: { userId: string; email: string }) {
     } catch (err) {
       setError(errorText(err));
     } finally {
+      release();
       // Closed either way: after a failure the confirm's counts are of a store that may
       // already have been wound back, and a second press on it would restore again,
       // leaving the way back to before the first one in the Worker log alone.
@@ -263,6 +269,7 @@ function WindBack({ userId, email }: { userId: string; email: string }) {
   }
 
   async function undo(bookmark: string) {
+    const release = holdPage();
     setBusy(true);
     setError(null);
     try {
@@ -270,6 +277,7 @@ function WindBack({ userId, email }: { userId: string; email: string }) {
     } catch (err) {
       setError(errorText(err));
     } finally {
+      release();
       setBusy(false);
       refresh();
     }
@@ -430,6 +438,9 @@ function LoadDump({ userId, email }: { userId: string; email: string }) {
   }
 
   async function load(dump: AccountDump) {
+    // Held as `windBack` holds: an archive's load is a dump, then a page per 8 MB, then
+    // the finish, and a reload partway leaves the store emptied and refusing.
+    const release = holdPage();
     setBusy(true);
     setError(null);
     try {
@@ -442,6 +453,7 @@ function LoadDump({ userId, email }: { userId: string; email: string }) {
         setError(errorText(err));
       }
     } finally {
+      release();
       // Closed either way, as `windBack` closes its own: the confirm quoted a store that
       // may no longer exist.
       setStep({ kind: 'idle' });
@@ -451,6 +463,7 @@ function LoadDump({ userId, email }: { userId: string; email: string }) {
   }
 
   async function undo(bookmark: string) {
+    const release = holdPage();
     setBusy(true);
     setError(null);
     try {
@@ -458,6 +471,7 @@ function LoadDump({ userId, email }: { userId: string; email: string }) {
     } catch (err) {
       setError(errorText(err));
     } finally {
+      release();
       setBusy(false);
       refresh();
     }
@@ -632,6 +646,7 @@ function Resync({ userId, email }: { userId: string; email: string }) {
   const [error, setError] = useState<string | null>(null);
 
   async function resync() {
+    const release = holdPage();
     setBusy(true);
     setError(null);
     try {
@@ -641,6 +656,7 @@ function Resync({ userId, email }: { userId: string; email: string }) {
     } catch (err) {
       setError(errorText(err));
     } finally {
+      release();
       setBusy(false);
     }
   }
