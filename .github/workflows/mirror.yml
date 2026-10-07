@@ -342,6 +342,7 @@ jobs:
         if: ${{ always() && steps.configured.outputs.ready == 'true' }}
         env:
           MIRROR_OK: ${{ job.status == 'success' }}
+          MIRROR_JOB_STATUS: ${{ job.status }}
           MIRROR_EVENT: ${{ github.event_name }}
           MIRROR_RUN_ID: ${{ github.run_id }}
           MIRROR_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

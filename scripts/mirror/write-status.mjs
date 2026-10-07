@@ -17,7 +17,10 @@
 //   dumps-check.json        the result `check-dumps.mjs` wrote
 //   failed                  one line per step that failed, written by each step's ERR trap
 // and the run's identity and outcome in the environment: MIRROR_RAN_AT, MIRROR_OK
-// ("true"/"false"), MIRROR_EVENT, MIRROR_RUN_ID and MIRROR_RUN_URL.
+// ("true"/"false"), MIRROR_JOB_STATUS (GitHub's `job.status`: success, failure or
+// cancelled — a run killed by its timeout or cancelled by hand fires no step's trap, so
+// this is the only word the file has for it), MIRROR_EVENT, MIRROR_RUN_ID and
+// MIRROR_RUN_URL.
 //
 // The summary is the counts alone, for the run page. The file has the account ids and
 // error text the operator page needs; the run page of an open-source repository is
@@ -72,8 +75,12 @@ const failedSteps = existsSync(failedPath)
   ? readFileSync(failedPath, 'utf8').split('\n').filter((line) => line.length > 0)
   : [];
 const status = {
+  // `ranAt` is when the run started and `finishedAt` when this was written; a seed is
+  // hours between the two.
   ranAt: process.env.MIRROR_RAN_AT ?? new Date().toISOString(),
+  finishedAt: new Date().toISOString(),
   ok: process.env.MIRROR_OK === 'true',
+  outcome: process.env.MIRROR_JOB_STATUS ?? (process.env.MIRROR_OK === 'true' ? 'success' : 'failure'),
   failedSteps,
   run: {
     event: process.env.MIRROR_EVENT ?? null,
@@ -96,14 +103,14 @@ writeFileSync(out, `${JSON.stringify(status, null, 2)}\n`);
 /** @param {unknown} n */
 const count = (n) => (typeof n === 'number' ? String(n) : '?');
 const lines = [
-  `## Mirror ${status.ok ? 'ran' : 'failed'} (${status.run.event})`,
+  `## Mirror ${status.ok ? 'ran' : status.outcome} (${status.run.event})`,
   '',
-  status.ok ? '' : `Failed steps: ${failedSteps.join(', ') || 'none recorded'}`,
+  status.ok ? null : `Failed steps: ${failedSteps.join(', ') || 'none recorded'}`,
   `- Files: ${count(status.blobs.copied)} copied, ${count(status.blobs.live)} live, ${count(status.blobs.mirror)} mirrored`,
   `- Dumps: ${count(status.stores.copied)} copied`,
   `- D1: ${status.d1 ? `${status.d1.key}, ${count(status.d1.bytes)} bytes${status.d1.written ? '' : ' (already there)'}` : 'not exported'}`,
   `- Prune: ${count(status.prune?.gone)} gone, ${count(status.prune?.pruned)} pruned`,
   `- Worker's dumps: ${status.dumps ? (status.dumps.ok ? 'healthy' : `${status.dumps.reasons.length} reason(s) in status/mirror.json`) : 'not checked'}`,
-].filter((line) => line !== '');
+].filter((line) => line !== null);
 writeFileSync(summary, `${lines.join('\n')}\n`);
 console.log(lines.join('\n'));
