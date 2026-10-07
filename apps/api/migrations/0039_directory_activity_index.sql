@@ -10,9 +10,9 @@
 -- that does. A `WHERE deleted_at IS NULL` on the index would undo that: SQLite takes a
 -- partial index for any statement whose WHERE implies its predicate, and the dump run's
 -- two statements say `deleted_at IS NULL` too — with the predicate they walked this index
--- plus a table lookup per row on every hourly run (found in review). Without it every
--- plan on the table but the list's is what it was; the list filters the few tombstoned
--- rows itself. Before this index every page of the list sorted the whole live directory
+-- plus a table lookup per row on every hourly run (found in review). Without the
+-- predicate every plan on the table but the list's is what it was; the list filters the
+-- few tombstoned rows itself. 0040 replaces the index where the partial version landed. Before this index every page of the list sorted the whole live directory
 -- and its `user` join to take fifty rows, and the list refetches every five minutes.
 CREATE INDEX idx_account_directory_activity
   ON account_directory (COALESCE(last_active_at, created_at) DESC, user_id DESC);
