@@ -139,33 +139,69 @@ interface OperatorRow extends RawRow {
   restore_undo: string | null;
 }
 
+/** The columns the operator's view of an account joins and reads; see `toAccount`. */
+const OPERATOR_SELECT = `SELECT d.*, u.email, u.name, COALESCE(d.last_active_at, d.created_at) AS active_at
+         FROM account_directory d JOIN user u ON u.id = d.user_id`;
+
+const toAccount = (r: OperatorRow): OperatorAccount => ({
+  userId: r.user_id,
+  email: r.email,
+  name: r.name,
+  createdAt: r.created_at,
+  noteCount: r.note_count,
+  storageBytes: r.storage_bytes,
+  lastActiveAt: r.last_active_at,
+  dump: { at: r.dump_at, bytes: r.dump_bytes, checkedAt: r.dump_checked_at, triedAt: r.dump_tried_at, error: r.dump_error },
+  restore: r.restore_at === null || r.restore_to_at === null ? null : { at: r.restore_at, toAt: r.restore_to_at, undo: r.restore_undo },
+});
+
+/** The most accounts one page of the operator's list carries; the route clamps to it. */
+export const OPERATOR_PAGE_MAX = 200;
+
 /**
  * A page of live accounts for the operator page (MAK-171, part 5), with the email from
- * `user` and the daily backup's record of each (migration 0037). Live only — a
- * tombstoned row is the sweep's — and by user id as `listDirectory` pages, so the two
- * walk the table the same way; the page sorts what it reads.
+ * `user`, the daily backup's record of each (migration 0037) and the last wind-back
+ * (0038). Live only — a tombstoned row is the sweep's.
+ *
+ * Newest activity first, where activity is the newest write the sweep recorded, else the
+ * account's creation: the order the page shows, so a page is the top of that order and
+ * not an arbitrary slice of it. The first version walked the table by user id and sorted
+ * on the client, which only works while the client reads every page; a list that scales
+ * reads the first page and asks for the next. The cursor is the last row's activity and
+ * id together (`<ms>:<user id>`), a keyset, so a page is the rows past that pair and
+ * never an offset that a row inserted meanwhile would shift. There is no index on the
+ * expression, by the directory's rule (0037), so each page scans the live rows of the
+ * directory — one row per account, not per note, so thousands at most, and read only
+ * when an operator opens the list.
  */
-export async function listOperatorAccounts(db: D1Database, after = '', limit = 200): Promise<OperatorAccountsPage> {
+export async function listOperatorAccounts(db: D1Database, after = '', limit = 50): Promise<OperatorAccountsPage> {
+  const cursor = parseCursor(after);
   const { results } = await db
     .prepare(
-      `SELECT d.*, u.email, u.name
-         FROM account_directory d JOIN user u ON u.id = d.user_id
-        WHERE d.deleted_at IS NULL AND d.user_id > ?1 ORDER BY d.user_id LIMIT ?2`,
+      `${OPERATOR_SELECT}
+        WHERE d.deleted_at IS NULL
+          AND (?1 IS NULL OR COALESCE(d.last_active_at, d.created_at) < ?1 OR (COALESCE(d.last_active_at, d.created_at) = ?1 AND d.user_id < ?2))
+        ORDER BY active_at DESC, d.user_id DESC LIMIT ?3`,
     )
-    .bind(after, limit)
-    .all<OperatorRow>();
-  const accounts: OperatorAccount[] = results.map((r) => ({
-    userId: r.user_id,
-    email: r.email,
-    name: r.name,
-    createdAt: r.created_at,
-    noteCount: r.note_count,
-    storageBytes: r.storage_bytes,
-    lastActiveAt: r.last_active_at,
-    dump: { at: r.dump_at, bytes: r.dump_bytes, checkedAt: r.dump_checked_at, triedAt: r.dump_tried_at, error: r.dump_error },
-    restore: r.restore_at === null || r.restore_to_at === null ? null : { at: r.restore_at, toAt: r.restore_to_at, undo: r.restore_undo },
-  }));
-  return { accounts, next: results.length === limit ? results[results.length - 1]!.user_id : null };
+    .bind(cursor?.activeAt ?? null, cursor?.userId ?? '', limit)
+    .all<OperatorRow & { active_at: number }>();
+  const last = results[results.length - 1];
+  return { accounts: results.map(toAccount), next: results.length === limit && last ? `${last.active_at}:${last.user_id}` : null };
+}
+
+/** `<ms>:<user id>` as `listOperatorAccounts` hands it out, or null for the first page or anything else. */
+function parseCursor(after: string): { activeAt: number; userId: string } | null {
+  const at = after.indexOf(':');
+  if (at === -1) return null;
+  const activeAt = Number(after.slice(0, at));
+  const userId = after.slice(at + 1);
+  return Number.isFinite(activeAt) && userId ? { activeAt, userId } : null;
+}
+
+/** One live account as the operator's list shows it, or null for an id the directory does not hold live. */
+export async function operatorAccount(db: D1Database, userId: string): Promise<OperatorAccount | null> {
+  const row = await db.prepare(`${OPERATOR_SELECT} WHERE d.user_id = ?1 AND d.deleted_at IS NULL`).bind(userId).first<OperatorRow>();
+  return row ? toAccount(row) : null;
 }
 
 /**

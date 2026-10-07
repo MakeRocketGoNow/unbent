@@ -9725,13 +9725,33 @@ html.host-ios .viewer {
 /* Outranks `.operator-page a` above, which would draw the column green and underlined. */
 .operator-page a.operator-account-link { color: var(--fg); text-decoration: none; }
 .operator-page a.operator-account-link:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 0.15em; }
+/*
+   The chevron that says a row opens: its own narrow column, so the numbers keep their
+   alignment, and a 44px target in the row's height. Coloured with the email on hover of
+   either link, since the two go to the same place.
+*/
+.operator-table td.operator-open { width: 1.5rem; padding-left: 0.25rem; }
+.operator-page a.operator-open-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.75rem;
+  min-height: 1.75rem;
+  color: var(--muted);
+}
+.operator-table tr:hover .operator-open-link,
+.operator-page a.operator-open-link:hover { color: var(--accent); }
+.operator-more { display: flex; align-items: center; gap: 0.6rem; margin: 0.8rem 0 0; }
 @media (width <= 860px) {
   .operator-table thead { display: none; }
   .operator-table,
   .operator-table tbody,
   .operator-table tr,
   .operator-table td { display: block; }
-  .operator-table tr { padding: 0.55rem 0; border-bottom: 1px solid var(--border); }
+  .operator-table tr { position: relative; padding: 0.55rem 2.25rem 0.55rem 0; border-bottom: 1px solid var(--border); }
+  /* The chevron leaves the grid and sits at the card's top right, the row's own corner. */
+  .operator-table td.operator-open { position: absolute; top: 0.4rem; right: 0; width: auto; padding: 0; display: block; }
+  .operator-table td.operator-open::before { content: none; }
   .operator-table td {
     display: grid;
     grid-template-columns: 6.5rem minmax(0, 1fr);

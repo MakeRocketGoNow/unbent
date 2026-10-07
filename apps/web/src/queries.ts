@@ -217,6 +217,8 @@ export const keys = {
   /** The operator page's reads, under one root so an action can invalidate all of them at once. */
   operatorBackups: () => ['operator', 'backups'] as const,
   operatorAccounts: () => ['operator', 'accounts'] as const,
+  /** Under the list's key, so one invalidation refreshes the list and every account page. */
+  operatorAccount: (userId: string) => ['operator', 'accounts', userId] as const,
   storeStats: (userId: string) => ['operator', 'stats', userId] as const,
   accountDumps: (userId: string) => ['operator', 'dumps', userId] as const,
   /**
@@ -713,12 +715,24 @@ export const operatorBackupsQuery = () =>
   });
 
 export const operatorAccountsQuery = () =>
-  queryOptions({
+  infiniteQueryOptions({
     queryKey: keys.operatorAccounts(),
-    queryFn: () => api.operatorAccounts(),
+    queryFn: ({ pageParam }) => api.operatorAccountsPage(pageParam),
+    initialPageParam: '' as string,
+    getNextPageParam: (last) => last.next ?? undefined,
     staleTime: 60 * 1000,
-    // As the backups query: the directory's dump columns move every hour. One D1 page.
+    // As the backups query: the directory's dump columns move every hour. A refetch
+    // reads again the pages the operator has opened, one D1 read each.
     refetchInterval: 5 * 60 * 1000,
+    refetchOnWindowFocus: true,
+  });
+
+/** One account's row, for its page; null is the route's 404, an id the directory does not hold live. */
+export const operatorAccountQuery = (userId: string) =>
+  queryOptions({
+    queryKey: keys.operatorAccount(userId),
+    queryFn: () => api.operatorAccount(userId),
+    staleTime: 60 * 1000,
     refetchOnWindowFocus: true,
   });
 

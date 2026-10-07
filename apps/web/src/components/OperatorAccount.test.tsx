@@ -18,7 +18,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
   loadDump: vi.fn(),
   resyncDevices: vi.fn(),
   accountDumps: vi.fn(),
-  operatorAccounts: vi.fn(),
+  operatorAccount: vi.fn(),
   storeStats: vi.fn(),
 }));
 
@@ -58,7 +58,7 @@ const dumps: AccountDumps = {
 
 function harness(answerDumps: () => Promise<AccountDumps> = () => Promise.resolve(dumps), seeded: StoreStats | null = stats(), who: Account = account) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  client.setQueryData(keys.operatorAccounts(), [who]);
+  client.setQueryData(keys.operatorAccount('u1'), who);
   if (seeded) client.setQueryData(keys.storeStats('u1'), seeded);
   vi.mocked(api.accountDumps).mockImplementation(answerDumps);
   return render(
@@ -273,7 +273,7 @@ describe('OperatorAccount: wind back', () => {
     });
     // The cached row still has the wind-back the load's route cleared, and the refetch
     // the load asks for has not answered, so the row the page holds is the stale one.
-    vi.mocked(api.operatorAccounts).mockReturnValue(new Promise(() => {}));
+    vi.mocked(api.operatorAccount).mockReturnValue(new Promise(() => {}));
     harness(undefined, undefined, { ...account, restore: { at: now - 600_000, toAt: now - 7_200_000, undo: '00000001-00000002-00000003-0000000000000004' } });
     await flush();
     expect(screen.getByRole('button', { name: 'Undo the wind-back' })).toBeTruthy();
@@ -511,7 +511,7 @@ describe('OperatorAccount: the store', () => {
     cleanup();
 
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    client.setQueryData(keys.operatorAccounts(), [account]);
+    client.setQueryData(keys.operatorAccount('u1'), account);
     client.setQueryData(keys.storeStats('u1'), {
       ...stats(),
       loading: { id: 'l1', key: 'stores/u1/2026-10-05.sql', startedAt: now, pages: 2, undo: '00000001-00000002-00000003-0000000000000004', before: 'stores/u1/2026-10-06T12-00-00Z-before-load.sql' },
