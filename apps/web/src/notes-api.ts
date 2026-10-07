@@ -24,6 +24,7 @@ import type {
   OperatorAccount,
   OperatorAccountsPage,
 } from '@unbent/shared';
+import { OPERATOR_PAGE_SIZE } from '@unbent/shared';
 import { offlineNow, recheck } from './connectivity.js';
 import { SERVED_HEADER } from './sw/routes.js';
 
@@ -990,12 +991,9 @@ export async function operatorBackups(): Promise<BackupsStatus> {
   return json<BackupsStatus>(await request('/api/admin/backups'));
 }
 
-/** How many accounts one page of the operator's list asks for. */
-export const OPERATOR_ACCOUNTS_PAGE = 50;
-
 /** One page of live accounts, newest activity first; `after` is the previous page's `next`. */
 export async function operatorAccountsPage(after = ''): Promise<OperatorAccountsPage> {
-  const qs = new URLSearchParams({ limit: String(OPERATOR_ACCOUNTS_PAGE), ...(after ? { after } : {}) });
+  const qs = new URLSearchParams({ limit: String(OPERATOR_PAGE_SIZE), ...(after ? { after } : {}) });
   return json<OperatorAccountsPage>(await request(`/api/admin/accounts?${qs}`));
 }
 

@@ -25,7 +25,15 @@ import { operatorAccountsQuery, operatorBackupsQuery } from '../queries.js';
 export function Operator() {
   const backups = useQuery(operatorBackupsQuery());
   const accounts = useInfiniteQuery(operatorAccountsQuery());
-  const rows = accounts.data?.pages.flatMap((p) => p.accounts);
+  // By id, keeping the first copy: a row whose activity went down between pages can come
+  // back on a later one (`listOperatorAccounts`), and the copy that stays is the one in
+  // the slot it was drawn in, so the column keeps reading in order until the refetch.
+  let rows: OperatorAccount[] | undefined;
+  if (accounts.data) {
+    const seen = new Map<string, OperatorAccount>();
+    for (const a of accounts.data.pages.flatMap((p) => p.accounts)) if (!seen.has(a.userId)) seen.set(a.userId, a);
+    rows = [...seen.values()];
+  }
 
   return (
     <div className="panel operator-page">
@@ -43,7 +51,7 @@ export function Operator() {
           // Someone who is not an operator typed the address: the tab was never drawn for them.
           <p className="muted small">Not found.</p>
         ) : backups.data ? (
-          <BackupHealth status={backups.data} accounts={rows} />
+          <BackupHealth status={backups.data} />
         ) : backups.error ? (
           <p className="bad small">{errorText(backups.error)}</p>
         ) : (
@@ -76,7 +84,7 @@ export function Operator() {
  * checkout, has nothing to dump into and nothing to report. Saying so in words, with
  * nothing drawn beside it, is what keeps it from reading as a backup that has failed.
  */
-export function BackupHealth({ status, accounts, now = Date.now() }: { status: BackupsStatus; accounts?: OperatorAccount[]; now?: number }) {
+export function BackupHealth({ status, now = Date.now() }: { status: BackupsStatus; now?: number }) {
   if (!status.bound) {
     return (
       <p className="muted small">
@@ -85,8 +93,10 @@ export function BackupHealth({ status, accounts, now = Date.now() }: { status: B
       </p>
     );
   }
-  // The file names accounts by id; the table beside it names them by email.
-  const nameOf = (id: string) => accounts?.find((a) => a.userId === id)?.email ?? id;
+  // The file names accounts by id; the route attaches their emails, since the list
+  // beside it pages and may not hold the account. An id whose `user` row is gone shows
+  // as itself: the list could not name it either, since it joins `user` too.
+  const nameOf = (id: string) => status.names[id] ?? id;
   return (
     <div className="health-cards">
       <DumpsCard status={status.dumps} now={now} nameOf={nameOf} />
@@ -223,10 +233,14 @@ const n = (v: number | null) => (v === null ? '?' : v.toLocaleString());
  *
  * Each row opens the account's page, and says so: the email is the link, and a chevron
  * at the row's end is the sign a row that opens shares with a version in a note's
- * history (`RowChevronIcon`). On a phone the row is a card and the chevron sits at its
+ * history (`RowChevronIcon`). It is a second way to the same page, so it is out of the
+ * tab order and the accessibility tree — one link per row for a keyboard or a reader —
+ * and a 44px target on a phone, where the row is a card and the chevron sits alone at its
  * top right. The first version had the email alone, in the page's ink, and nothing told a
  * reader it went anywhere (found in the part 6 rehearsal). The name is drawn only when it
  * says more than the email does; an account whose name is its address showed it twice.
+ * An account with no write recorded shows when it was made, which is what it sorts by,
+ * so the column the list is ordered by reads in order.
  *
  * The last dump column carries the one thing a glance wants from it: when, or that it
  * failed and why, or that there has never been one. A failed dump is red in the row
@@ -254,9 +268,7 @@ export function AccountsTable({
             <th scope="col">Size</th>
             <th scope="col">Last change</th>
             <th scope="col">Last dump</th>
-            <th scope="col">
-              <span className="visually-hidden">Open</span>
-            </th>
+            <th scope="col" aria-hidden="true" />
           </tr>
         </thead>
         <tbody>
@@ -271,13 +283,19 @@ export function AccountsTable({
               <td data-label="Notes">{a.noteCount.toLocaleString()}</td>
               <td data-label="Size">{formatBytes(a.storageBytes)}</td>
               <td data-label="Last change">
-                {a.lastActiveAt ? <span title={formatMoment(a.lastActiveAt)}>{timeAgo(a.lastActiveAt, now)}</span> : <span className="muted">—</span>}
+                {a.lastActiveAt ? (
+                  <span title={formatMoment(a.lastActiveAt)}>{timeAgo(a.lastActiveAt, now)}</span>
+                ) : (
+                  <span className="muted" title={formatMoment(a.createdAt)}>
+                    Made {timeAgo(a.createdAt, now)}
+                  </span>
+                )}
               </td>
               <td data-label="Last dump">
                 <LastDump account={a} now={now} />
               </td>
               <td className="operator-open">
-                <Link to="/settings/operator/$userId" params={{ userId: a.userId }} className="operator-open-link" aria-label={`Open ${a.email}`}>
+                <Link to="/settings/operator/$userId" params={{ userId: a.userId }} className="operator-open-link" tabIndex={-1} aria-hidden="true">
                   <RowChevronIcon />
                 </Link>
               </td>

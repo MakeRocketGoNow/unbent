@@ -66,6 +66,18 @@ const account = (over: Partial<OperatorAccount> = {}): OperatorAccount => ({
 describe('BackupHealth', () => {
   afterEach(cleanup);
 
+  it('names a failing account from the emails the route attaches, whatever the list has loaded', () => {
+    const status: BackupsStatus = {
+      bound: true,
+      dumps: dumps({ failing: [{ userId: 'u9', error: 'boom', triedAt: '2026-10-06T09:47:00Z' }], failingCount: 1 }),
+      mirror: mirror(),
+      names: { u9: 'nine@example.com' },
+    };
+    render(<BackupHealth status={status} now={now} />);
+    expect(screen.getByText(/nine@example.com/)).toBeTruthy();
+    expect(screen.queryByText(/u9/)).toBeNull();
+  });
+
   it('says backups are not set up, with no numbers, where no bucket is bound', () => {
     render(<BackupHealth status={{ bound: false }} now={now} />);
     expect(screen.getByText(/Backups are not set up on this instance/).textContent).toContain('“Where your notes live”');
@@ -73,7 +85,7 @@ describe('BackupHealth', () => {
   });
 
   it('says never run for each half until its file exists', () => {
-    render(<BackupHealth status={{ bound: true, dumps: null, mirror: null }} now={now} />);
+    render(<BackupHealth status={{ bound: true, dumps: null, mirror: null, names: {} }} now={now} />);
     expect(screen.getByLabelText('Daily dumps: Never run')).toBeTruthy();
     expect(screen.getByLabelText('Nightly mirror: Never run')).toBeTruthy();
     expect(screen.getByText(/No dump run has written a status yet/)).toBeTruthy();
@@ -81,7 +93,7 @@ describe('BackupHealth', () => {
   });
 
   it('reads healthy with when it ran and what it did', () => {
-    const status: BackupsStatus = { bound: true, dumps: dumps(), mirror: mirror() };
+    const status: BackupsStatus = { bound: true, dumps: dumps(), mirror: mirror(), names: {} };
     render(<BackupHealth status={status} now={now} />);
     const card = screen.getByLabelText('Daily dumps: Healthy');
     expect(card.textContent).toContain('Ran 2 hours ago');
@@ -99,6 +111,7 @@ describe('BackupHealth', () => {
   it('reads failed with the accounts and errors, and stale with the age', () => {
     const status: BackupsStatus = {
       bound: true,
+      names: {},
       dumps: dumps({ failingCount: 1, failing: [{ userId: 'u9', error: 'the bucket refused the write', triedAt: '2026-10-06T09:47:00Z' }] }),
       mirror: mirror({ ranAt: '2026-10-02T05:23:00Z' }),
     };
@@ -171,11 +184,22 @@ describe('AccountsTable', () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]!.querySelector('td')!.textContent).toBe('one@example.com');
     expect(rows[1]!.querySelector('td')!.textContent).toBe('two@example.com · Two');
-    expect(screen.getByRole('link', { name: 'Open one@example.com' }).getAttribute('href')).toBe('/settings/operator/$userId');
-    expect(screen.getAllByRole('link').filter((l) => l.textContent?.includes('one@example.com'))).toHaveLength(1);
+    // The chevron is a second way to the same page: present, pointing there, and out of the tab order and the tree.
+    const chevrons = document.querySelectorAll('a.operator-open-link');
+    expect(chevrons).toHaveLength(2);
+    expect(chevrons[0]!.getAttribute('href')).toBe('/settings/operator/$userId');
+    expect(chevrons[0]!.getAttribute('tabindex')).toBe('-1');
+    expect(screen.getAllByRole('link')).toHaveLength(2);
     fireEvent.click(screen.getByRole('button', { name: 'Show more accounts' }));
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(screen.getByText('2 shown')).toBeTruthy();
+  });
+
+  it('shows when an account with no recorded write was made, which is what it sorts by', () => {
+    render(<AccountsTable accounts={[account({ lastActiveAt: null, createdAt: now - 3_600_000 })]} more={null} now={now} />);
+    const cell = screen.getByText(/^Made /);
+    expect(cell.textContent).toBe('Made 1 hour ago');
+    expect(cell.getAttribute('title')).toBeTruthy();
   });
 
   it('offers no next page when there is none', () => {

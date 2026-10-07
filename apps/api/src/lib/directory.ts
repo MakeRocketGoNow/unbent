@@ -1,4 +1,5 @@
 import type { OperatorAccount, OperatorAccountsPage } from '@unbent/shared';
+import { OPERATOR_PAGE_SIZE } from '@unbent/shared';
 
 /**
  * The account directory: one D1 row per account, for what the control plane needs to
@@ -155,8 +156,47 @@ const toAccount = (r: OperatorRow): OperatorAccount => ({
   restore: r.restore_at === null || r.restore_to_at === null ? null : { at: r.restore_at, toAt: r.restore_to_at, undo: r.restore_undo },
 });
 
-/** The most accounts one page of the operator's list carries; the route clamps to it. */
-export const OPERATOR_PAGE_MAX = 200;
+/**
+ * The list's two statements, as text, so `migrations.test.ts` can `EXPLAIN QUERY PLAN`
+ * them against a database built from the migrations and pin that they take 0039's index
+ * while the dump run's statements do not. Binds: `first` takes the limit; `withCursor`
+ * takes the cursor's activity, its id and the limit.
+ */
+export const OPERATOR_PAGE_SQL = {
+  first: `${OPERATOR_SELECT} WHERE d.deleted_at IS NULL ORDER BY COALESCE(d.last_active_at, d.created_at) DESC, d.user_id DESC LIMIT ?1`,
+  withCursor: `${OPERATOR_SELECT}
+        WHERE d.deleted_at IS NULL
+          AND COALESCE(d.last_active_at, d.created_at) <= ?1
+          AND (COALESCE(d.last_active_at, d.created_at), d.user_id) < (?1, ?2)
+        ORDER BY COALESCE(d.last_active_at, d.created_at) DESC, d.user_id DESC LIMIT ?3`,
+};
+
+/**
+ * The dump run's two statements (`dumpStores` in lib/backups.ts), as text, beside the
+ * list's for the same reason: `migrations.test.ts` plans them against a database built
+ * from the migrations and pins that 0039's index, which they could take if it were
+ * partial, leaves them alone. Here rather than in backups.ts because that module reaches
+ * the store client, which the node test cannot load. Binds: `due` takes the day's
+ * midnight and the budget; `status` the stale threshold and the list cap, twice.
+ */
+export const DUMP_SQL = {
+  due: `SELECT d.user_id, d.dump_at, d.dump_mark
+       FROM account_directory d JOIN user u ON u.id = d.user_id
+      WHERE d.deleted_at IS NULL AND (d.dump_tried_at IS NULL OR d.dump_tried_at < ?1)
+      ORDER BY d.dump_error IS NOT NULL, d.dump_tried_at IS NOT NULL, d.dump_tried_at, d.user_id
+      LIMIT ?2`,
+  status: `WITH live AS (
+       SELECT d.user_id, d.dump_error, d.dump_tried_at, COALESCE(d.dump_checked_at, d.created_at) < ?1 AS stale
+         FROM account_directory d JOIN user u ON u.id = d.user_id
+        WHERE d.deleted_at IS NULL)
+     SELECT (SELECT COUNT(*) FROM live) AS accounts,
+            (SELECT COUNT(*) FROM live WHERE dump_error IS NOT NULL) AS failing_count,
+            (SELECT COUNT(*) FROM live WHERE stale) AS stale_count,
+            (SELECT json_group_array(json_object('userId', user_id, 'error', dump_error, 'triedAt', dump_tried_at))
+               FROM (SELECT * FROM live WHERE dump_error IS NOT NULL ORDER BY dump_tried_at DESC, user_id LIMIT ?2)) AS failing,
+            (SELECT json_group_array(user_id)
+               FROM (SELECT user_id FROM live WHERE stale ORDER BY user_id LIMIT ?2)) AS stale`,
+};
 
 /**
  * A page of live accounts for the operator page (MAK-171, part 5), with the email from
@@ -168,23 +208,36 @@ export const OPERATOR_PAGE_MAX = 200;
  * not an arbitrary slice of it. The first version walked the table by user id and sorted
  * on the client, which only works while the client reads every page; a list that scales
  * reads the first page and asks for the next. The cursor is the last row's activity and
- * id together (`<ms>:<user id>`), a keyset, so a page is the rows past that pair and
- * never an offset that a row inserted meanwhile would shift. There is no index on the
- * expression, by the directory's rule (0037), so each page scans the live rows of the
- * directory — one row per account, not per note, so thousands at most, and read only
- * when an operator opens the list.
+ * id together (`<ms>:<user id>`), compared as one row value so the planner can seek to
+ * it, and ties on activity — every account 0030 backfilled shares one `created_at` —
+ * are broken by the id. Migration 0039's expression index is on exactly this spelling.
+ * The first page is the top of the index and `LIMIT` rows; a later page seeks to the
+ * cursor's activity, which takes a scalar bound on the leading expression beside the
+ * row-value comparison — SQLite does not seek a DESC row-value range on its own, and with
+ * the comparison alone the plan was a scan from the top on every page (found in review).
+ * Two statements rather than one with `?1 IS NULL OR`, since the `OR` is what turned the
+ * seek into a scan. Within one tied activity value the seek lands at the top of the tie
+ * and the row-value comparison filters the ids at or above the cursor, so paging through
+ * a large tie reads its earlier pages again; the accounts 0030 backfilled are one such
+ * tie, and a few thousand rows of it is nothing. Being an expression index, and not a
+ * partial one, no other statement on the table picks it up (AGENTS.md; the migration says
+ * why not partial). `migrations.test.ts` pins the plans: `SEARCH d USING INDEX
+ * idx_account_directory_activity (<expr><?)` for a page with a cursor, `SCAN d USING
+ * INDEX …` for the first, and the dump run's two statements untouched by it.
+ *
+ * The cursor is a position in an order that moves: the sweep rewrites activity hourly.
+ * An account that becomes active after a page was read sits above its cursor and is
+ * not on the next page, until the list's five-minute refetch reads from the top again;
+ * one whose activity went down (a wind-back) can appear on a later page a second time,
+ * which the page dedupes by id. Both are accepted: the alternative is a snapshot of ids
+ * held across pages, for a list an operator reads a few times a day.
  */
-export async function listOperatorAccounts(db: D1Database, after = '', limit = 50): Promise<OperatorAccountsPage> {
+export async function listOperatorAccounts(db: D1Database, after = '', limit: number = OPERATOR_PAGE_SIZE): Promise<OperatorAccountsPage> {
   const cursor = parseCursor(after);
-  const { results } = await db
-    .prepare(
-      `${OPERATOR_SELECT}
-        WHERE d.deleted_at IS NULL
-          AND (?1 IS NULL OR COALESCE(d.last_active_at, d.created_at) < ?1 OR (COALESCE(d.last_active_at, d.created_at) = ?1 AND d.user_id < ?2))
-        ORDER BY active_at DESC, d.user_id DESC LIMIT ?3`,
-    )
-    .bind(cursor?.activeAt ?? null, cursor?.userId ?? '', limit)
-    .all<OperatorRow & { active_at: number }>();
+  const statement = cursor
+    ? db.prepare(OPERATOR_PAGE_SQL.withCursor).bind(cursor.activeAt, cursor.userId, limit)
+    : db.prepare(OPERATOR_PAGE_SQL.first).bind(limit);
+  const { results } = await statement.all<OperatorRow & { active_at: number }>();
   const last = results[results.length - 1];
   return { accounts: results.map(toAccount), next: results.length === limit && last ? `${last.active_at}:${last.user_id}` : null };
 }
@@ -198,8 +251,8 @@ function parseCursor(after: string): { activeAt: number; userId: string } | null
   return Number.isFinite(activeAt) && userId ? { activeAt, userId } : null;
 }
 
-/** One live account as the operator's list shows it, or null for an id the directory does not hold live. */
-export async function operatorAccount(db: D1Database, userId: string): Promise<OperatorAccount | null> {
+/** One live account's row as the operator's list shows it, or null for an id the directory does not hold live. */
+export async function operatorAccountRow(db: D1Database, userId: string): Promise<OperatorAccount | null> {
   const row = await db.prepare(`${OPERATOR_SELECT} WHERE d.user_id = ?1 AND d.deleted_at IS NULL`).bind(userId).first<OperatorRow>();
   return row ? toAccount(row) : null;
 }

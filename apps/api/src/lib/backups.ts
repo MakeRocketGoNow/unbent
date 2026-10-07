@@ -2,6 +2,7 @@ import { beginDump } from './dump.js';
 import { storeFor } from './store-client.js';
 import { isDeferral, SUBREQUEST_BUDGET } from './sweep.js';
 import type { DumpStatus } from '@unbent/shared';
+import { DUMP_SQL } from './directory.js';
 import type { Env } from '../types.js';
 
 /** What the run writes to `status/dumps.json`: declared in `@unbent/shared`, since the operator page reads it. */
@@ -173,13 +174,7 @@ export async function dumpStores(
   // whose last attempt failed go after every other: a dump too big for the budget fails
   // the same way each day, and first in line it would take the day's first run with it.
   const midnight = Math.floor(now / 86_400_000) * 86_400_000;
-  const { results: due } = await env.DB.prepare(
-    `SELECT d.user_id, d.dump_at, d.dump_mark
-       FROM account_directory d JOIN user u ON u.id = d.user_id
-      WHERE d.deleted_at IS NULL AND (d.dump_tried_at IS NULL OR d.dump_tried_at < ?1)
-      ORDER BY d.dump_error IS NOT NULL, d.dump_tried_at IS NOT NULL, d.dump_tried_at, d.user_id
-      LIMIT ?2`,
-  )
+  const { results: due } = await env.DB.prepare(DUMP_SQL.due)
     .bind(midnight, budget.left)
     .all<DueRow>();
 
@@ -255,19 +250,7 @@ export async function dumpStores(
   // The lists are cut in the query, not after it: a failure that hits every account at
   // once — a bucket that refuses writes — is when they would be longest.
   const stale = now - STALE_MS;
-  const statusQuery = env.DB.prepare(
-    `WITH live AS (
-       SELECT d.user_id, d.dump_error, d.dump_tried_at, COALESCE(d.dump_checked_at, d.created_at) < ?1 AS stale
-         FROM account_directory d JOIN user u ON u.id = d.user_id
-        WHERE d.deleted_at IS NULL)
-     SELECT (SELECT COUNT(*) FROM live) AS accounts,
-            (SELECT COUNT(*) FROM live WHERE dump_error IS NOT NULL) AS failing_count,
-            (SELECT COUNT(*) FROM live WHERE stale) AS stale_count,
-            (SELECT json_group_array(json_object('userId', user_id, 'error', dump_error, 'triedAt', dump_tried_at))
-               FROM (SELECT * FROM live WHERE dump_error IS NOT NULL ORDER BY dump_tried_at DESC, user_id LIMIT ?2)) AS failing,
-            (SELECT json_group_array(user_id)
-               FROM (SELECT user_id FROM live WHERE stale ORDER BY user_id LIMIT ?2)) AS stale`,
-  ).bind(stale, STATUS_LIST);
+  const statusQuery = env.DB.prepare(DUMP_SQL.status).bind(stale, STATUS_LIST);
   const results = await env.DB.batch<StatusRow>([...writes, statusQuery]);
   const summary = results[results.length - 1]!.results[0]!;
 

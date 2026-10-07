@@ -9727,8 +9727,11 @@ html.host-ios .viewer {
 .operator-page a.operator-account-link:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 0.15em; }
 /*
    The chevron that says a row opens: its own narrow column, so the numbers keep their
-   alignment, and a 44px target in the row's height. Coloured with the email on hover of
-   either link, since the two go to the same place.
+   alignment. Coloured with the email on hover of the row, since the two go to the same
+   place; `.row-chevron` sets its own muted colour on the svg, which `currentColor` reads
+   before the link's, so the icon inherits here or the hover never reaches it. On a desktop
+   it is a pointer convenience beside a text link and sized to the row; on a phone it is
+   alone in the card's corner and gets the 44px a lone control needs (below).
 */
 .operator-table td.operator-open { width: 1.5rem; padding-left: 0.25rem; }
 .operator-page a.operator-open-link {
@@ -9739,6 +9742,7 @@ html.host-ios .viewer {
   min-height: 1.75rem;
   color: var(--muted);
 }
+.operator-open-link .row-chevron { color: inherit; }
 .operator-table tr:hover .operator-open-link,
 .operator-page a.operator-open-link:hover { color: var(--accent); }
 .operator-more { display: flex; align-items: center; gap: 0.6rem; margin: 0.8rem 0 0; }
@@ -9748,9 +9752,11 @@ html.host-ios .viewer {
   .operator-table tbody,
   .operator-table tr,
   .operator-table td { display: block; }
-  .operator-table tr { position: relative; padding: 0.55rem 2.25rem 0.55rem 0; border-bottom: 1px solid var(--border); }
-  /* The chevron leaves the grid and sits at the card's top right, the row's own corner. */
-  .operator-table td.operator-open { position: absolute; top: 0.4rem; right: 0; width: auto; padding: 0; display: block; }
+  .operator-table tr { position: relative; padding: 0.55rem 2.75rem 0.55rem 0; border-bottom: 1px solid var(--border); }
+  /* The chevron leaves the grid and sits at the card's top right, the row's own corner, 44px square. */
+  .operator-table td.operator-open { position: absolute; top: 0; right: 0; width: auto; padding: 0; display: block; }
+  /* The box stays inside the row's padding, so the card never scrolls sideways; the glyph sits at the edge. */
+  .operator-page a.operator-open-link { min-width: 2.75rem; min-height: 2.75rem; justify-content: flex-end; }
   .operator-table td.operator-open::before { content: none; }
   .operator-table td {
     display: grid;

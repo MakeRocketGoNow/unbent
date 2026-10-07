@@ -155,7 +155,7 @@ describe('operator-only routes', () => {
     // list, and an account's dumps — the caller's own included, since the page is the
     // operator's alone. The health route is how the page learns whose session this is,
     // so its 404 is what keeps the tab from being drawn for anyone else.
-    for (const path of ['/api/admin/backups', '/api/admin/accounts', `/api/admin/accounts/${alice.userId}/dumps`, `/api/admin/accounts/${alice.userId}/dumps/2026-10-06.sql`]) {
+    for (const path of ['/api/admin/backups', '/api/admin/accounts', `/api/admin/accounts/${alice.userId}`, `/api/admin/accounts/${alice.userId}/dumps`, `/api/admin/accounts/${alice.userId}/dumps/2026-10-06.sql`]) {
       expect((await fetch(`${BASE}${path}`, as(alice))).status, path).toBe(404);
     }
   });
