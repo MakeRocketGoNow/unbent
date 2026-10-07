@@ -28,13 +28,17 @@ test('splits on statement ends, keeping a trigger whole and a ; inside a value',
   assert.match(s[8], /^CREATE TRIGGER t[\s\S]*END;$/);
 });
 
-test('puts every CREATE before every INSERT and drops the PRAGMA and sqlite_sequence lines', () => {
+test('puts the schema before the rows and the triggers after them, keeps the foreign-key pragma first and drops the sqlite_sequence lines', () => {
   const r = order(EXPORT);
   const lines = r.sql.trim().split('\n');
   const firstInsert = lines.findIndex((l) => l.startsWith('INSERT'));
-  const lastCreate = lines.map((l) => /^(CREATE|END;)/.test(l)).lastIndexOf(true);
-  assert.ok(lastCreate < firstInsert, 'schema before rows');
-  assert.equal(r.schema, 4);
+  const lastInsert = lines.map((l) => l.startsWith('INSERT')).lastIndexOf(true);
+  const lastSchema = lines.map((l) => /^CREATE (TABLE|UNIQUE INDEX)/.test(l)).lastIndexOf(true);
+  const trigger = lines.findIndex((l) => l.startsWith('CREATE TRIGGER'));
+  assert.ok(lastSchema < firstInsert, 'schema before rows');
+  assert.ok(trigger > lastInsert, 'triggers after rows, so they do not fire on the import');
+  assert.equal(r.schema, 3);
+  assert.equal(r.triggers, 1);
   assert.equal(r.rows, 2);
   assert.equal(r.dropped.length, 2);
   assert.equal(r.unknown.length, 0);
