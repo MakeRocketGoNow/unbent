@@ -253,10 +253,11 @@ type WindBackOutcome = { kind: 'done'; at: number; result: api.RestoreResult; un
  */
 function WindBack({ userId, email, last }: { userId: string; email: string; last: Account['restore'] }) {
   const queryClient = useQueryClient();
-  // The last restore's undo, from the directory rather than from this page's own answer,
-  // so it is still offered after a reload or a look at a note (MAK-189). Shown only while
-  // this page has no fresher answer of its own: an outcome below carries its own undo,
-  // and the directory catches up with it on the next read.
+  // The last wind-back's undo, from the directory rather than from this page's own
+  // answer, so it is still offered after a reload or a look at a note (MAK-189). Shown
+  // only while this page has no fresher answer of its own: an outcome below carries its
+  // own undo, and the directory catches up with it on the next read. Only a wind-back to
+  // a moment is recorded; an undo clears the record, so this never offers to redo one.
   const [lastUndoAsked, setLastUndoAsked] = useState(false);
   // Read when the field is focused, not on every render: the bounds should not move
   // under the field while it is being typed in, but a page left open for an hour must
@@ -388,8 +389,7 @@ function WindBack({ userId, email, last }: { userId: string; email: string; last
       {!outcome && last?.undo && (
         <>
           <p className="muted small">
-            {last.toAt ? <>Wound back to {formatMoment(last.toAt)}</> : <>Put back to an earlier bookmark</>} {timeAgo(last.at)}. Undo is good for{' '}
-            {RESTORE_WINDOW_DAYS} days from then.
+            Last wind-back: {timeAgo(last.at)}, to {formatMoment(last.toAt)}. Undo is good for {RESTORE_WINDOW_DAYS} days from then.
           </p>
           {!lastUndoAsked ? (
             <Button tone="danger" disabled={busy} onClick={() => setLastUndoAsked(true)}>

@@ -82,7 +82,7 @@ describe('OperatorAccount: wind back', () => {
   it('offers Undo of the last wind-back from the directory, so a reload does not lose it', async () => {
     harness(undefined, { ...account, restore: { at: now - 600_000, toAt: now - 7_200_000, undo: '00000001-00000002-00000003-0000000000000004' } });
     await flush();
-    expect(screen.getByText(/Wound back to/).textContent).toContain(formatMoment(now - 7_200_000));
+    expect(screen.getByText(/Last wind-back:/).textContent).toContain(formatMoment(now - 7_200_000));
     fireEvent.click(screen.getByRole('button', { name: 'Undo the wind-back' }));
     const undo = screen.getByRole('group', { name: 'Confirm undo wind back' });
     expect(undo.textContent).toContain('Put someone@example.com back as it was before the wind-back?');

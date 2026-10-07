@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import { deleteKeys } from '../lib/blobs.js';
-import { directoryRow, dropDirectoryRow, listOperatorAccounts, recordRestore } from '../lib/directory.js';
+import { clearRestore, directoryRow, dropDirectoryRow, listOperatorAccounts, recordRestore } from '../lib/directory.js';
 import { beginDump } from '../lib/dump.js';
 import { MIRROR_STATUS_KEY, STATUS_KEY, dumpPrefix } from '../lib/backups.js';
 import { beforeLoadKey, describeDump, dumpBeforeLoad, loadReserve, resolveDumpDownload, resolveDumpKey, streamDump } from '../lib/load.js';
@@ -391,10 +391,14 @@ export const admin = new Hono<AppEnv>()
       } catch (err) {
         console.error(`[store] stats after restore failed for user=${target}:`, err);
       }
-      // The way back, kept where a reload of the operator page finds it (MAK-189). The
-      // answer and the log carry it too, so a failure here is logged and not answered.
+      // The way back, kept where a reload of the operator page finds it (MAK-189): a
+      // wind-back to a moment is recorded with its undo, and a restore to a bookmark —
+      // the undo itself — clears the record, since what it would offer next is the
+      // wind-back again (`recordRestore` says why). The answer and the log carry the
+      // bookmark too, so a failure here is logged and not answered.
       try {
-        await recordRestore(c.env.DB, target, { at: Date.now(), toAt: 'at' in to ? to.at : null, undo });
+        if ('at' in to) await recordRestore(c.env.DB, target, { at: Date.now(), toAt: to.at, undo });
+        else await clearRestore(c.env.DB, target);
       } catch (err) {
         console.error(`[store] recording the restore in the directory failed for user=${target}:`, err);
       }
