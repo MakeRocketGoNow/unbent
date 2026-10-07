@@ -108,6 +108,9 @@ const EXEMPT: Record<string, string> = {
   feedRestored: 'is the epoch change itself',
   clearRevisions: 'deletes note history, which is not in the feed and no client holds',
   forgetBlobs: 'drops the tombstones of deleted files the sweep has removed from R2; a client holds no deleted files',
+  loadBegin: 'empties the store for a dump; the feed in the dump replaces it',
+  loadPage: 'writes the dump\'s own rows, feed table included',
+  loadFinish: 'names a new epoch itself, so every client starts over from the loaded rows',
 };
 
 /** Reads, composites and the operator surface: nothing to record. */
