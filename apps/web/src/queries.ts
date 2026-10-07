@@ -706,7 +706,8 @@ export const operatorBackupsQuery = () =>
     // A page someone leaves open in a tab: the status file is rewritten hourly, and a
     // cron that stopped overnight must not still read "Healthy" in the morning. The
     // refetch re-renders the cards, so "3 hours ago" and the stale decision move with
-    // it. Two R2 reads every five minutes, and only while the page is mounted.
+    // it. Two R2 reads every five minutes while any Settings page is open, since the
+    // tab's probe (`use-operator.ts`) observes this query too.
     refetchInterval: (q) => (q.state.data ? 5 * 60 * 1000 : false),
     refetchOnWindowFocus: true,
   });
