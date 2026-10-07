@@ -48,7 +48,7 @@ export function Operator() {
           // Someone who is not an operator typed the address: the tab was never drawn for them.
           <p className="muted small">Not found.</p>
         ) : backups.data ? (
-          <BackupHealth status={backups.data} accounts={rows} />
+          <BackupHealth status={backups.data} />
         ) : backups.error ? (
           <p className="bad small">{errorText(backups.error)}</p>
         ) : (
@@ -81,7 +81,7 @@ export function Operator() {
  * checkout, has nothing to dump into and nothing to report. Saying so in words, with
  * nothing drawn beside it, is what keeps it from reading as a backup that has failed.
  */
-export function BackupHealth({ status, accounts, now = Date.now() }: { status: BackupsStatus; accounts?: OperatorAccount[]; now?: number }) {
+export function BackupHealth({ status, now = Date.now() }: { status: BackupsStatus; now?: number }) {
   if (!status.bound) {
     return (
       <p className="muted small">
@@ -91,9 +91,9 @@ export function BackupHealth({ status, accounts, now = Date.now() }: { status: B
     );
   }
   // The file names accounts by id; the route attaches their emails, since the list
-  // beside it pages and may not hold the account. The list is the fallback for a status
-  // written before the route did.
-  const nameOf = (id: string) => status.names[id] ?? accounts?.find((a) => a.userId === id)?.email ?? id;
+  // beside it pages and may not hold the account. An id whose `user` row is gone shows
+  // as itself: the list could not name it either, since it joins `user` too.
+  const nameOf = (id: string) => status.names[id] ?? id;
   return (
     <div className="health-cards">
       <DumpsCard status={status.dumps} now={now} nameOf={nameOf} />

@@ -73,7 +73,7 @@ describe('BackupHealth', () => {
       mirror: mirror(),
       names: { u9: 'nine@example.com' },
     };
-    render(<BackupHealth status={status} accounts={[]} now={now} />);
+    render(<BackupHealth status={status} now={now} />);
     expect(screen.getByText(/nine@example.com/)).toBeTruthy();
     expect(screen.queryByText(/u9/)).toBeNull();
   });
