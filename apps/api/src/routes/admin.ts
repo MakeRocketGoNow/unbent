@@ -7,6 +7,7 @@ import { withRepos } from '../lib/repos-middleware.js';
 import { deleteKeys } from '../lib/blobs.js';
 import { directoryRow, dropDirectoryRow } from '../lib/directory.js';
 import { beginDump } from '../lib/dump.js';
+import { beforeLoadKey, describeDump, dumpBeforeLoad, resolveDumpKey, streamDump } from '../lib/load.js';
 import { isOperator } from '../lib/instance.js';
 import { userPrefix } from '../lib/repo.js';
 import { storeFor } from '../lib/store-client.js';
@@ -401,6 +402,146 @@ export const admin = new Hono<AppEnv>()
             : 'The undo bookmark did not survive the restart; the Worker log has it on the "[store] restore scheduled" line.',
           stats ? null : 'Reading the restored store failed; call GET /api/admin/store/stats again.',
           feedEpoch ? null : 'The feed was not given a new epoch; devices with a cursor may miss what is written next. Call POST /api/admin/store/feed-epoch for this account.',
+        ]
+          .filter(Boolean)
+          .join(' '),
+      });
+    },
+  )
+
+  /**
+   * Replaces one account's store with a dump from the backups bucket (MAK-171, part 4):
+   * the way back from a fault noticed after the thirty days of history, and the last
+   * step of the runbook for losing the whole Cloudflare account. `{ user, dump }`, where
+   * `dump` is a date — that day's daily dump — or a key under the account's own
+   * `stores/<user>/` prefix (`resolveDumpKey`), so a dump can only be loaded into the
+   * account it was taken from. Operator only; a deleted account is refused as the
+   * restore route refuses it; an instance with no backups bucket bound has no dumps to
+   * load.
+   *
+   * A dry run unless the body says `confirm: "LOAD"`. The dry run reads the dump's head
+   * and tail — whose it is, when it was taken, whether its rows are one moment of the
+   * store — and shows the store as it is now. The real thing, in order:
+   *
+   * 1. Dump the store as it stands to `stores/<user>/<time>-before-load.sql`
+   *    (`beforeLoadKey`), the same file the daily run writes, which the nightly mirror
+   *    then copies off-account. It is the way back once the thirty days are up, and the
+   *    only way back where the runtime keeps no history. A failure here changes nothing.
+   * 2. `loadBegin`: the object takes its bookmark (the `undo` in the answer, which the
+   *    restore route winds back to in one call), empties itself and marks itself
+   *    loading. From here on the store refuses every request but these until step 4.
+   * 3. Stream the file into the object in pages (`streamDump`).
+   * 4. `loadFinish`: the object checks the dump is this account's and from a schema this
+   *    code knows, applies any schema file the dump lacked, names a new feed epoch so
+   *    every device starts over from a snapshot, and only then clears the mark.
+   *
+   * A failure after step 2 leaves the store loading, and the answer says so, with both
+   * ways out: restore to `undo`, or load `before` — or call this again, which starts
+   * over. Logged with both ids before anything is written.
+   */
+  .post(
+    '/admin/store/load',
+    requireAuth,
+    zValidator('json', z.object({ user: z.string().optional(), dump: z.string().min(1), confirm: z.literal('LOAD').optional() })),
+    async (c) => {
+      const email = c.get('user')?.email;
+      if (!isOperator(c.env, email)) return c.json({ error: 'Not found' }, 404);
+      const bucket = c.env.BACKUPS;
+      if (!bucket) return c.json({ error: 'This instance has no backups bucket bound, so there are no dumps to load.' }, 501);
+      const { user, dump, confirm } = c.req.valid('json');
+      const target = user ?? c.get('userId')!;
+      if (target !== c.get('userId')) {
+        const row = await directoryRow(c.env.DB, target);
+        if (!row) return c.json({ error: 'No such account' }, 404);
+        // As the restore route reasons: the owner asked for the notes to go, and a load
+        // would bring them back under an account the sweep is wiping.
+        if (row.deletedAt !== null) return c.json({ error: 'That account was deleted; its store is not loaded.' }, 409);
+      }
+      const key = resolveDumpKey(target, dump);
+      if (!key) return c.json({ error: '`dump` must be a date (YYYY-MM-DD) or a key under this account\'s stores/ prefix.' }, 400);
+      const described = await describeDump(bucket, key);
+      if (!described) return c.json({ error: `No dump at ${key}.` }, 404);
+      if (described.owner !== target) {
+        return c.json({ error: `${key} is not a dump of this account: its first line names ${described.owner ?? 'no account'}.` }, 409);
+      }
+
+      const store = storeFor(c.env, target);
+      if (confirm !== 'LOAD') {
+        return c.json({
+          dryRun: true,
+          user: target,
+          dump: described,
+          current: await store.stats(),
+          hint: `Repeat this request with "confirm": "LOAD" to replace the store with ${key}. The store as it is now is dumped first, and the answer names the file.`,
+        });
+      }
+
+      console.log(`[store] operator=${email} load user=${target} key=${key}`);
+      const before = beforeLoadKey(target, Date.now());
+      try {
+        await dumpBeforeLoad(store, bucket, target, before);
+      } catch (err) {
+        console.error(`[store] load for user=${target}: the dump before it failed; nothing changed:`, err);
+        return c.json({ error: 'Dumping the store as it stands failed, so nothing was loaded. The Worker log has the error.' }, 502);
+      }
+
+      let begun: { loadId: string; undo: string | null };
+      try {
+        begun = await store.loadBegin({ key });
+      } catch (err) {
+        // The call may have emptied the store before it failed to answer. Not "nothing
+        // changed": `stats` says whether the store is loading.
+        console.error(`[store] loadBegin for user=${target} failed:`, err);
+        return c.json(
+          { error: 'Starting the load failed, and the store may already be emptied and marked loading. Check GET /api/admin/store/stats; if it says loading, restore to the pre-load dump or call this again.', before },
+          502,
+        );
+      }
+
+      const object = await bucket.get(key);
+      let result;
+      try {
+        if (!object) throw new Error(`${key} went away between the dry run and the load`);
+        result = await streamDump(store, object.body, begun.loadId);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`[store] load for user=${target} from ${key} failed; the store is still marked loading:`, err);
+        return c.json(
+          {
+            error: `The load failed: ${message}`,
+            loading: true,
+            user: target,
+            undo: begun.undo,
+            before,
+            hint: [
+              'The store is refusing every request until it is whole again.',
+              begun.undo ? `POST /api/admin/store/restore with { "user", "bookmark": "${begun.undo}", "confirm": "RESTORE" } puts it back as it was.` : null,
+              `Or load ${before}, the dump taken just before this load; or call this again to start over.`,
+            ]
+              .filter(Boolean)
+              .join(' '),
+          },
+          502,
+        );
+      }
+
+      return c.json({
+        loaded: true,
+        user: target,
+        key,
+        before,
+        undo: begun.undo,
+        feedEpoch: result.feedEpoch,
+        pages: result.pages,
+        statements: result.statements,
+        migrated: result.migrated,
+        foreignKeyViolations: result.foreignKeyViolations,
+        stats: result.stats,
+        note: [
+          `The store now holds ${key}; every device of the account will resync from a snapshot.`,
+          begun.undo ? 'To undo, restore to the `undo` bookmark.' : `To undo, load ${before}; this runtime keeps no bookmarks.`,
+          result.migrated.length ? `Schema files the dump lacked were applied: ${result.migrated.join(', ')}.` : null,
+          result.foreignKeyViolations ? `${result.foreignKeyViolations} row(s) point at a parent the dump does not hold; the dump was read while the store was written to.` : null,
         ]
           .filter(Boolean)
           .join(' '),

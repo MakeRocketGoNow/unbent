@@ -133,7 +133,7 @@ class OutOfSubrequests extends Error {}
  * the moment the upload exists (an open that took the last call left nothing to abort
  * with, found in review).
  */
-class Budget {
+export class Budget {
   spent = FIXED_COST;
   held = 0;
   constructor(readonly limit: number) {}
@@ -350,9 +350,11 @@ async function dumpOne(
  * one goes up as a multipart upload in parts of exactly `partBytes`: one part held in
  * memory at a time, plus the slice being cut, never the file. An upload that fails or
  * runs out of budget is aborted, with the call for that held back from the moment it
- * opens, so no half-written dump is left to be completed by nothing.
+ * opens, so no half-written dump is left to be completed by nothing. Exported for the
+ * dump the load route writes before it replaces a store (lib/load.ts), which is this
+ * file under another key.
  */
-async function upload(bucket: R2Bucket, key: string, chunks: AsyncGenerator<Uint8Array>, budget: Budget, partBytes: number): Promise<number> {
+export async function upload(bucket: R2Bucket, key: string, chunks: AsyncGenerator<Uint8Array>, budget: Budget, partBytes: number): Promise<number> {
   const httpMetadata = { contentType: 'application/sql; charset=utf-8' };
   let pending: Uint8Array[] = [];
   let pendingBytes = 0;
