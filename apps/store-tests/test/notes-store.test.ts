@@ -549,6 +549,7 @@ describe('notes: bulk actions and purging', () => {
   });
 
   it('purges a scope page by page, sweeping on the last, with cascades taking the children', async () => {
+    const before = Date.now();
     const { stub } = freshStore('purge');
     const nb = (await stub.createNotebook('Bin'))!;
     const f = (await stub.createField(nb.id, { name: 'F', type: 'text', options: [] })) as { id: string };
@@ -571,6 +572,8 @@ describe('notes: bulk actions and purging', () => {
 
     const stats = await stub.stats();
     expect(stats.counts).toMatchObject({ notes: 2, attachments: 2, attachment_text: 2, note_tags: 2, note_fields: 2, tags: 2 });
+    // The newest write's time, read from the feed; what the operator page shows as "Last change".
+    expect(stats.lastWriteAt).toBeGreaterThanOrEqual(before);
     expect(await stub.count()).toBe(2);
     expect(await stub.count({ trashed: true })).toBe(0);
 

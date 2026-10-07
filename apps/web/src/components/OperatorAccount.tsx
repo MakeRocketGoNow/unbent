@@ -32,6 +32,9 @@ export function OperatorAccount({ userId }: { userId: string }) {
   const accounts = useQuery(operatorAccountsQuery());
   const account = accounts.data?.find((a) => a.userId === userId) ?? null;
   const stats = useQuery(storeStatsQuery(userId));
+  // A wiped or loading store answers null for its last write because it cannot read its
+  // feed, not because nothing was written: unknown, so the sweep's value stands in.
+  const live = stats.data && !stats.data.wiped && !stats.data.loading ? stats.data.lastWriteAt : undefined;
 
   if (accounts.data && !account) {
     return (
@@ -57,7 +60,7 @@ export function OperatorAccount({ userId }: { userId: string }) {
         </Link>
       </div>
 
-      {account && <AccountFacts account={account} />}
+      {account && <AccountFacts account={account} lastWriteAt={live} reading={stats.isPending} />}
 
       <section className="settings-section">
         <h3>Store</h3>
@@ -77,7 +80,18 @@ export function OperatorAccount({ userId }: { userId: string }) {
   );
 }
 
-function AccountFacts({ account }: { account: Account }) {
+/**
+ * `lastWriteAt` is the store's own answer, read with the stats: undefined until they
+ * have loaded or while the store cannot answer (wiped, or a dump being loaded into it),
+ * otherwise the newest write or null for a store never written to. The
+ * directory's `lastActiveAt` is the same value as of the last hourly sweep, which is
+ * what the accounts list shows and sorts by; on this page, which reads the store anyway,
+ * it was up to an hour stale, or days for an account the sweep had not reached since
+ * (MAK-190). Shown only while the live one is not here yet, and said to be the sweep's.
+ * `reading` is whether the stats are still on their way: once a read has failed, "Reading
+ * the store…" would sit there for good above the error that says why.
+ */
+function AccountFacts({ account, lastWriteAt, reading }: { account: Account; lastWriteAt: number | null | undefined; reading: boolean }) {
   return (
     <dl className="about-list operator-facts">
       <div>
@@ -98,7 +112,23 @@ function AccountFacts({ account }: { account: Account }) {
       </div>
       <div>
         <dt>Last change</dt>
-        <dd>{account.lastActiveAt ? `${timeAgo(account.lastActiveAt)} · ${formatMoment(account.lastActiveAt)}` : <span className="muted">None recorded</span>}</dd>
+        <dd>
+          {lastWriteAt === undefined ? (
+            account.lastActiveAt ? (
+              <>
+                {timeAgo(account.lastActiveAt)} · {formatMoment(account.lastActiveAt)} <span className="muted">· as of the last sweep</span>
+              </>
+            ) : reading ? (
+              <span className="muted">Reading the store…</span>
+            ) : (
+              <span className="muted">None recorded</span>
+            )
+          ) : lastWriteAt ? (
+            `${timeAgo(lastWriteAt)} · ${formatMoment(lastWriteAt)}`
+          ) : (
+            <span className="muted">Nothing written yet</span>
+          )}
+        </dd>
       </div>
       <div>
         <dt>Last dump</dt>

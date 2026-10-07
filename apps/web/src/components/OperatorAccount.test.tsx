@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { AccountDumps, OperatorAccount as Account } from '@unbent/shared';
 import type { StoreStats } from '../notes-api.js';
 import { keys } from '../queries.js';
+import { formatMoment } from './format-when.js';
 
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children, to }: { children: React.ReactNode; to: string }) => <a href={to}>{children}</a>,
@@ -17,6 +18,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
   loadDump: vi.fn(),
   resyncDevices: vi.fn(),
   accountDumps: vi.fn(),
+  storeStats: vi.fn(),
 }));
 
 const api = await import('../notes-api.js');
@@ -42,6 +44,7 @@ const stats = (counts: Partial<Record<string, number>> = {}): StoreStats => ({
   counts: { notes: 12, notebooks: 2, tags: 3, attachments: 4, note_revisions: 40, ...counts },
   wiped: false,
   loading: null,
+  lastWriteAt: now - 60_000,
 });
 
 const dumps: AccountDumps = {
@@ -51,10 +54,10 @@ const dumps: AccountDumps = {
   ],
 };
 
-function harness(answerDumps: () => Promise<AccountDumps> = () => Promise.resolve(dumps)) {
+function harness(answerDumps: () => Promise<AccountDumps> = () => Promise.resolve(dumps), seeded: StoreStats | null = stats(), who: Account = account) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  client.setQueryData(keys.operatorAccounts(), [account]);
-  client.setQueryData(keys.storeStats('u1'), stats());
+  client.setQueryData(keys.operatorAccounts(), [who]);
+  if (seeded) client.setQueryData(keys.storeStats('u1'), seeded);
   vi.mocked(api.accountDumps).mockImplementation(answerDumps);
   return render(
     <QueryClientProvider client={client}>
@@ -68,6 +71,54 @@ const flush = () => act(async () => {});
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+});
+
+describe('OperatorAccount: facts', () => {
+  it("shows the store's own last write once the stats are in, not the directory's sweep-time copy", async () => {
+    harness();
+    await flush();
+    const dd = screen.getByText('Last change').nextElementSibling!;
+    expect(dd.textContent).toContain(formatMoment(now - 60_000));
+    expect(dd.textContent).not.toContain(formatMoment(account.lastActiveAt!));
+    expect(dd.textContent).not.toContain('as of the last sweep');
+  });
+
+  it("shows the directory's value, said to be the sweep's, while the stats are on their way", () => {
+    vi.mocked(api.storeStats).mockReturnValue(new Promise(() => {}));
+    harness(undefined, null);
+    const dd = screen.getByText('Last change').nextElementSibling!;
+    expect(dd.textContent).toContain(formatMoment(account.lastActiveAt!));
+    expect(dd.textContent).toContain('as of the last sweep');
+  });
+
+  it('says nothing is written yet when the store answers with no write, whatever the sweep last saw', async () => {
+    harness(undefined, { ...stats(), lastWriteAt: null });
+    await flush();
+    expect(screen.getByText('Last change').nextElementSibling!.textContent).toBe('Nothing written yet');
+  });
+
+  it("shows the sweep's value, not 'Nothing written yet', for a store that cannot read its feed", async () => {
+    const marker = { id: 'l1', key: 'stores/u1/2026-10-05.sql', startedAt: now, pages: 2, undo: null, before: null };
+    for (const state of [{ wiped: true }, { loading: marker }]) {
+      harness(undefined, { ...stats(), lastWriteAt: null, ...state });
+      await flush();
+      const dd = screen.getByText('Last change').nextElementSibling!;
+      expect(dd.textContent).toContain(formatMoment(account.lastActiveAt!));
+      expect(dd.textContent).toContain('as of the last sweep');
+      expect(dd.textContent).not.toContain('Nothing written yet');
+      cleanup();
+    }
+  });
+
+  it('says nothing is recorded, not that it is still reading, once a stats read has failed', async () => {
+    let fail!: (err: Error) => void;
+    vi.mocked(api.storeStats).mockReturnValue(new Promise((_, reject) => (fail = reject)));
+    harness(undefined, null, { ...account, lastActiveAt: null });
+    const dd = () => screen.getByText('Last change').nextElementSibling!;
+    expect(dd().textContent).toBe('Reading the store…');
+    act(() => fail(new Error('store unavailable')));
+    await waitFor(() => expect(dd().textContent).toBe('None recorded'));
+  });
 });
 
 /**

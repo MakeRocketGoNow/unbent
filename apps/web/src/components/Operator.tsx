@@ -256,6 +256,7 @@ function AccountsTable({ accounts, now = Date.now() }: { accounts: OperatorAccou
           ))}
         </tbody>
       </table>
+      <p className="muted small">Notes, size and last change are as of the hourly sweep. An account's page reads its store.</p>
     </div>
   );
 }

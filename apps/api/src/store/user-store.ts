@@ -130,6 +130,15 @@ export interface StoreStats {
   wiped: boolean;
   /** Set while a dump is being loaded (`loadBegin`): the counts above are zero and the store refuses every data call. */
   loading: LoadMarker | null;
+  /**
+   * When the store was last written to, read from the store itself as `usage` reads it:
+   * the newest change-feed row's time, or null for a store nothing has written yet. The
+   * directory's `last_active_at` is this same value as of the last sweep, so on the
+   * operator's account page it was up to an hour stale, or older for an account the
+   * sweep had not reached — "three days ago" under a store with five hundred writes
+   * made that morning (MAK-190). The page shows this one; the list keeps the sweep's.
+   */
+  lastWriteAt: number | null;
 }
 
 /**
@@ -301,7 +310,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   stats(): StoreStats {
     const counts = Object.fromEntries(DATA_TABLES.map((t) => [t, 0])) as Record<DataTable, number>;
     if (this.wiped || this.loading) {
-      return { userId: this.userId, databaseSize: this.ctx.storage.sql.databaseSize, migrations: [], counts, wiped: this.wiped, loading: this.loading };
+      return { userId: this.userId, databaseSize: this.ctx.storage.sql.databaseSize, migrations: [], counts, wiped: this.wiped, loading: this.loading, lastWriteAt: null };
     }
     for (const table of DATA_TABLES) {
       counts[table] = this.sql.first<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table}`)?.n ?? 0;
@@ -313,6 +322,7 @@ export class UserStore extends DurableObject<StoreEnv> {
       counts,
       wiped: false,
       loading: null,
+      lastWriteAt: this.lastWriteAt(),
     };
   }
 
@@ -323,13 +333,21 @@ export class UserStore extends DurableObject<StoreEnv> {
     if (this.loading) throw new StoreLoading(this.loading);
     if (this.wiped) return { databaseSize, notes: 0, lastWriteAt: null, wiped: true };
     const counts = this.sql.first<{ live: number; trashed: number }>(`SELECT live, trashed FROM note_counts WHERE id = 1`);
-    const last = this.sql.first<{ at: number }>(`SELECT at FROM changes ORDER BY seq DESC LIMIT 1`);
     return {
       databaseSize,
       notes: (counts?.live ?? 0) + (counts?.trashed ?? 0),
-      lastWriteAt: last?.at ?? null,
+      lastWriteAt: this.lastWriteAt(),
       wiped: false,
     };
+  }
+
+  /**
+   * The newest change-feed row's time, one row off the primary key, or null for a store
+   * nothing has written. `stats` and `usage` both report it, and the directory's copy is
+   * only right if they agree, so it is read here and nowhere else.
+   */
+  private lastWriteAt(): number | null {
+    return this.sql.first<{ at: number }>(`SELECT at FROM changes ORDER BY seq DESC LIMIT 1`)?.at ?? null;
   }
 
   /**
