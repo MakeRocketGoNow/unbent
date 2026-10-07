@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { AccountDumps, OperatorAccount as Account } from '@unbent/shared';
+import { RESTORE_WINDOW_DAYS, type AccountDumps, type OperatorAccount as Account } from '@unbent/shared';
 import type { StoreStats } from '../notes-api.js';
 import { keys } from '../queries.js';
 import { formatMoment } from './format-when.js';
@@ -90,6 +90,22 @@ describe('OperatorAccount: wind back', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Undo the wind-back' }));
     await waitFor(() => expect(api.restoreStore).toHaveBeenCalledWith('u1', { bookmark: '00000001-00000002-00000003-0000000000000004' }));
     await waitFor(() => expect(screen.getByText(/Put back as it was before the wind-back/)).toBeTruthy());
+  });
+
+  it('says the recorded wind-back has no undo when its bookmark is null', async () => {
+    harness(undefined, { ...account, restore: { at: now - 600_000, toAt: now - 7_200_000, undo: null } });
+    await flush();
+    expect(screen.getByText(/did not survive the restart/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Undo the wind-back' })).toBeNull();
+  });
+
+  it('offers nothing once the recorded wind-back is past the window', async () => {
+    harness(undefined, {
+      ...account,
+      restore: { at: Date.now() - (RESTORE_WINDOW_DAYS + 1) * 86_400_000, toAt: Date.now() - (RESTORE_WINDOW_DAYS + 2) * 86_400_000, undo: '00000001-00000002-00000003-0000000000000004' },
+    });
+    await flush();
+    expect(screen.queryByText(/Last wind-back:/)).toBeNull();
   });
 
   it('previews first, then names the account, the moment and what is lost, then offers Undo', async () => {
