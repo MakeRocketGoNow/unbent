@@ -74,7 +74,7 @@ export function BackupHealth({ status, accounts, now = Date.now() }: { status: B
     return (
       <p className="muted small">
         Backups are not set up on this instance: no backups bucket is bound, so nothing is dumped and
-        nothing is mirrored. The README&apos;s section on backing up every account says how.
+        nothing is mirrored. The README&apos;s &ldquo;Where your notes live&rdquo; says how.
       </p>
     );
   }

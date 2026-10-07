@@ -153,7 +153,8 @@ export const MIRROR_STATUS_KEY = 'status/mirror.json';
 
 /**
  * How many days the backups bucket keeps a dump: its `expire-dumps` lifecycle rule,
- * set by hand on the bucket (README, "Backing up every account"), not by anything here.
+ * set by hand on the bucket (README, "Where your notes live", under Daily dumps), not by
+ * anything here.
  * The operator page states it, so an older dump is known to be in the mirror alone.
  */
 export const DUMPS_KEPT_DAYS = 14;

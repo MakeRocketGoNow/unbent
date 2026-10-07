@@ -67,7 +67,7 @@ describe('BackupHealth', () => {
 
   it('says backups are not set up, with no numbers, where no bucket is bound', () => {
     render(<BackupHealth status={{ bound: false }} now={now} />);
-    expect(screen.getByText(/Backups are not set up on this instance/)).toBeTruthy();
+    expect(screen.getByText(/Backups are not set up on this instance/).textContent).toContain('“Where your notes live”');
     expect(document.querySelector('.health-card')).toBeNull();
   });
 
