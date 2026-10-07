@@ -27,9 +27,10 @@ describe('scanStatements', () => {
     expect(rest).toBe(`\n-- a comment with a ; in it\nINSERT INTO tags (id) VALUES ('t1'`);
   });
 
-  it('keeps a trigger whole through the semicolons of its body, and a CASE inside it', () => {
+  it('keeps a trigger whole through the semicolons of its body, a CASE inside it, and a comment naming END', () => {
     const trigger = [
       `CREATE TRIGGER notes_ai AFTER INSERT ON notes BEGIN`,
+      `  -- the end is not here; begin again`,
       `  INSERT INTO notes_fts(rowid, title) VALUES (new.rowid, new.title);`,
       `  UPDATE note_counts SET live = live + CASE WHEN new.deleted_at IS NULL THEN 1 ELSE 0 END;`,
       `END;`,

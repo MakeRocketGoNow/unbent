@@ -74,7 +74,7 @@ export function scanStatements(text: string): { statements: string[]; rest: stri
 function triggerDepth(candidate: string): number {
   const head = statementText(candidate);
   if (!/^CREATE\s+TRIGGER\b/i.test(head)) return 0;
-  const bare = head.replace(/'(?:[^']|'')*'/g, "''");
+  const bare = head.replace(/'(?:[^']|'')*'|--[^\n]*/g, (m) => (m.startsWith("'") ? "''" : ''));
   let depth = 0;
   for (const word of bare.match(/\b(?:BEGIN|CASE|END)\b/gi) ?? []) {
     depth += word.toUpperCase() === 'END' ? -1 : 1;
