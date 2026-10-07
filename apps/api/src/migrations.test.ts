@@ -4,7 +4,7 @@ import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { OPERATOR_PAGE_SQL } from './lib/directory.js';
+import { DUMP_SQL, OPERATOR_PAGE_SQL } from './lib/directory.js';
 
 /**
  * The D1 migrations, applied in order to a real SQLite by the `sqlite3` CLI, and the one
@@ -151,13 +151,9 @@ describe.skipIf(!sqlite3)('the directory\'s query plans', () => {
     expect(
       plan(`SELECT d.*, (u.id IS NOT NULL) AS user_exists FROM account_directory d LEFT JOIN user u ON u.id = d.user_id WHERE d.user_id > '' ORDER BY d.user_id LIMIT 20`),
     ).toContain('SEARCH d USING INDEX sqlite_autoindex_account_directory_1');
-    // The dump run's due list and its status, as `dumpStores` writes them (lib/backups.ts).
-    const due = plan(
-      `SELECT d.user_id, d.dump_at, d.dump_mark FROM account_directory d JOIN user u ON u.id = d.user_id WHERE d.deleted_at IS NULL AND (d.dump_tried_at IS NULL OR d.dump_tried_at < 1) ORDER BY d.dump_error IS NOT NULL, d.dump_tried_at IS NOT NULL, d.dump_tried_at, d.user_id LIMIT 20`,
-    );
-    const status = plan(
-      `WITH live AS (SELECT d.user_id, d.dump_error, d.dump_tried_at, COALESCE(d.dump_checked_at, d.created_at) < 1 AS stale FROM account_directory d JOIN user u ON u.id = d.user_id WHERE d.deleted_at IS NULL) SELECT (SELECT COUNT(*) FROM live) AS accounts, (SELECT COUNT(*) FROM live WHERE dump_error IS NOT NULL) AS failing_count`,
-    );
+    // The dump run's due list and its status, the statements `dumpStores` runs.
+    const due = plan(DUMP_SQL.due.replace('?1', '1').replace('?2', '20'));
+    const status = plan(DUMP_SQL.status.replace('?1', '1').replace(/\?2/g, '50'));
     for (const p of [due, status]) expect(p).not.toContain('idx_account_directory_activity');
   });
 });

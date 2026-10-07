@@ -172,6 +172,33 @@ export const OPERATOR_PAGE_SQL = {
 };
 
 /**
+ * The dump run's two statements (`dumpStores` in lib/backups.ts), as text, beside the
+ * list's for the same reason: `migrations.test.ts` plans them against a database built
+ * from the migrations and pins that 0039's index, which they could take if it were
+ * partial, leaves them alone. Here rather than in backups.ts because that module reaches
+ * the store client, which the node test cannot load. Binds: `due` takes the day's
+ * midnight and the budget; `status` the stale threshold and the list cap, twice.
+ */
+export const DUMP_SQL = {
+  due: `SELECT d.user_id, d.dump_at, d.dump_mark
+       FROM account_directory d JOIN user u ON u.id = d.user_id
+      WHERE d.deleted_at IS NULL AND (d.dump_tried_at IS NULL OR d.dump_tried_at < ?1)
+      ORDER BY d.dump_error IS NOT NULL, d.dump_tried_at IS NOT NULL, d.dump_tried_at, d.user_id
+      LIMIT ?2`,
+  status: `WITH live AS (
+       SELECT d.user_id, d.dump_error, d.dump_tried_at, COALESCE(d.dump_checked_at, d.created_at) < ?1 AS stale
+         FROM account_directory d JOIN user u ON u.id = d.user_id
+        WHERE d.deleted_at IS NULL)
+     SELECT (SELECT COUNT(*) FROM live) AS accounts,
+            (SELECT COUNT(*) FROM live WHERE dump_error IS NOT NULL) AS failing_count,
+            (SELECT COUNT(*) FROM live WHERE stale) AS stale_count,
+            (SELECT json_group_array(json_object('userId', user_id, 'error', dump_error, 'triedAt', dump_tried_at))
+               FROM (SELECT * FROM live WHERE dump_error IS NOT NULL ORDER BY dump_tried_at DESC, user_id LIMIT ?2)) AS failing,
+            (SELECT json_group_array(user_id)
+               FROM (SELECT user_id FROM live WHERE stale ORDER BY user_id LIMIT ?2)) AS stale`,
+};
+
+/**
  * A page of live accounts for the operator page (MAK-171, part 5), with the email from
  * `user`, the daily backup's record of each (migration 0037) and the last wind-back
  * (0038). Live only — a tombstoned row is the sweep's.
