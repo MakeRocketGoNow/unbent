@@ -257,6 +257,8 @@ describe('FeedEngine', () => {
     for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) expect(h.c[k].log.slice(0, 3)).toEqual(['begin', 'truncate', 'commit']);
     expect([...h.c.note.rows.keys()]).toEqual(['z']);
     expect(h.cursor()).toEqual({ seq: 50, epoch: 'e1' });
+    // Counted, for a view holding a copy of a row the reset may have made newer than the truth (MAK-196).
+    expect(h.engine.state.resets).toBe(1);
     // The cursor is cleared only once every collection's truncate has settled on disk: a
     // cursor gone before the rows would make the next open walk the snapshot over them.
     const cleared = h.seq.indexOf('cursor null');

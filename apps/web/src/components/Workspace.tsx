@@ -10,6 +10,8 @@ import * as api from '../notes-api.js';
 import { isOfflineError, isStatus } from '../notes-api.js';
 import * as actions from '../store/actions.js';
 import { useOutbox, useSyncStatus } from '../store/use-outbox.js';
+import { useFeedState } from '../store/use-feed-state.js';
+import { isWhole } from '../store/feed.js';
 import { NotSyncedMark } from './NotSyncedMark.js';
 import { useOffline } from '../connectivity.js';
 import {
@@ -310,6 +312,39 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
    * and that flush must still be measured against the note it belongs to.
    */
   const bases = useRef(new Map<string, Note>());
+  /**
+   * The notes whose base may be newer than the truth. The feed engine empties and
+   * refills the collections on a `reset` — an operator's wind-back or load, which make
+   * every row older, not newer — and the rule below that takes only a newer copy would
+   * leave the open note showing what the wind-back removed: the list dropped the edit
+   * and the note did not (MAK-196, found in the restore rehearsal). After a reset every
+   * base is suspect until the next copy of its note has been taken, whatever its date.
+   */
+  const staleBases = useRef(new Set<string>());
+  /** A base taken from a copy the server gave is current, whatever a reset said of the one before it. */
+  const setBase = (id: string, copy: Note) => {
+    bases.current.set(id, copy);
+    staleBases.current.delete(id);
+  };
+  const feedState = useFeedState();
+  const resets = feedState?.resets ?? null;
+  const whole = feedState !== null && isWhole(feedState);
+  const seenResets = useRef(resets);
+  useEffect(() => {
+    // No library — closed by a refused session, or changing hands — is not a reset of one;
+    // the count the reopened library then reports is a first state, heard as below.
+    if (resets === null) {
+      seenResets.current = null;
+      return;
+    }
+    if (resets === seenResets.current) return;
+    const first = seenResets.current === null;
+    seenResets.current = resets;
+    // The first state a mounted workspace hears, or the first from a library opened again,
+    // is a count, not a reset it lived through.
+    if (first) return;
+    for (const id of bases.current.keys()) staleBases.current.add(id);
+  }, [resets]);
 
   /**
    * A save refused because the note changed on another device, with the note as it now
@@ -377,7 +412,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       if (!c) return;
       const clean = isClean();
       if (clean && JSON.stringify(c.draft) !== JSON.stringify(draftRef.current)) showDraft(c.draft);
-      bases.current.set(noteId, c.base);
+      setBase(noteId, c.base);
       setConflict((prev) => (prev?.id === noteId && prev.current === c.current ? prev : { id: noteId, current: c.current }));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -391,7 +426,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   useEffect(() => {
     if (!outbox) return;
     return outbox.onAcknowledged((id, updated) => {
-      bases.current.set(id, updated);
+      setBase(id, updated);
       if (id !== noteId) return;
       const clean = isClean();
       if (clean && JSON.stringify(seedFrom(updated)) !== JSON.stringify(draftRef.current)) reseed(updated);
@@ -406,7 +441,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
    * autosave take the new copy as its baseline rather than as an edit to save.
    */
   function reseed(from: Note) {
-    bases.current.set(from.id, from);
+    setBase(from.id, from);
     queryClient.setQueryData(keys.note(from.id), from);
     showDraft(seedFrom(from));
   }
@@ -434,7 +469,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   useEffect(() => {
     if (!note) return;
     const waiting = outbox?.status().conflicts.get(note.id);
-    bases.current.set(note.id, waiting?.base ?? note);
+    setBase(note.id, waiting?.base ?? note);
     setDraft(waiting?.draft ?? seedFrom(note));
     setDraftFor(note.id);
     // The editor mounted with the saved body in the render before this; a waiting
@@ -502,7 +537,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     }
     if (outcome === 'unchanged') return 'unchanged';
     if (typeof outcome === 'object') {
-      bases.current.set(noteId, outcome);
+      setBase(noteId, outcome);
       queryClient.setQueryData(keys.note(noteId), outcome);
     }
     return undefined;
@@ -558,7 +593,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     if (!conflict) return;
     discard();
     outbox?.resolveConflict(conflict.id);
-    bases.current.set(conflict.id, conflict.current);
+    setBase(conflict.id, conflict.current);
     setConflict(null);
     reseed(conflict.current);
   }
@@ -581,7 +616,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     void actions.saveNote({ noteId: id, value: draftRef.current, base, against: theirs.updatedAt }).then(
       (outcome) => {
         if (typeof outcome !== 'object') return;
-        bases.current.set(id, outcome);
+        setBase(id, outcome);
         queryClient.setQueryData(keys.note(id), outcome);
         if (noteIdRef.current === id) reseed(outcome);
       },
@@ -627,11 +662,24 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     const clean = isClean();
     const base = bases.current.get(noteId);
     /*
-       Only ever forward. A copy older than the base is not another device's save: it is
-       the row between a replayed write of our own ending and the feed delivering the
-       server's copy, and taking it would reseed the editor with text already replaced.
+       Only ever forward, unless the library has started over since the base was taken. A
+       copy older than the base is otherwise not another device's save: it is the row
+       between a replayed write of our own ending and the feed delivering the server's
+       copy, and taking it would reseed the editor with text already replaced. After a
+       reset the older copy is the truth — the store was wound back — and the base is what
+       is stale (`staleBases`). The reset is heard before the walk delivers that row,
+       while the query still holds the copy the base was taken from, so a copy with the
+       base's own date says nothing and leaves the flag standing; a different copy clears
+       it when taken, and a library whole again clears it for a note the wind-back did not
+       touch, which would otherwise stay suspect for good.
     */
-    if (!base || note.updatedAt <= base.updatedAt) return;
+    if (!base) return;
+    const stale = staleBases.current.has(noteId);
+    if (stale && note.updatedAt === base.updatedAt) {
+      if (whole) staleBases.current.delete(noteId);
+      return;
+    }
+    if (!stale && note.updatedAt <= base.updatedAt) return;
     /*
        Another device saved this note and the feed has brought its copy. With nothing
        typed here since the last save the copy simply replaces the draft, and the first
@@ -640,10 +688,10 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
        save, and the notice if need be.
     */
     if (!clean) return;
-    bases.current.set(noteId, note);
+    setBase(noteId, note);
     if (JSON.stringify(seedFrom(note)) !== JSON.stringify(draftRef.current)) reseed(note);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editing, noteId, note?.updatedAt, conflicted]);
+  }, [editing, noteId, note?.updatedAt, conflicted, whole]);
 
   /*
      The connection back: a save that failed for want of one — typing that landed in the
