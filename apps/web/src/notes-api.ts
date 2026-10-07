@@ -982,6 +982,8 @@ export interface StoreStats {
    * failed is recoverable from any page that reads it, not only the one that pressed.
    */
   loading: { id: string; key: string; startedAt: number; pages: number; undo: string | null; before: string | null } | null;
+  /** The store's newest write, read live; the directory's `lastActiveAt` is the same as of the last sweep. */
+  lastWriteAt: number | null;
 }
 
 export async function operatorBackups(): Promise<BackupsStatus> {

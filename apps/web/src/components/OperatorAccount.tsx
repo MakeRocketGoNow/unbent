@@ -57,7 +57,7 @@ export function OperatorAccount({ userId }: { userId: string }) {
         </Link>
       </div>
 
-      {account && <AccountFacts account={account} />}
+      {account && <AccountFacts account={account} lastWriteAt={stats.data ? stats.data.lastWriteAt : undefined} />}
 
       <section className="settings-section">
         <h3>Store</h3>
@@ -77,7 +77,15 @@ export function OperatorAccount({ userId }: { userId: string }) {
   );
 }
 
-function AccountFacts({ account }: { account: Account }) {
+/**
+ * `lastWriteAt` is the store's own answer, read with the stats: undefined until they
+ * have loaded, then the newest write or null for a store never written to. The
+ * directory's `lastActiveAt` is the same value as of the last hourly sweep, which is
+ * what the accounts list shows and sorts by; on this page, which reads the store anyway,
+ * it was up to an hour stale, or days for an account the sweep had not reached since
+ * (MAK-190). Shown only while the live one is not here yet, and said to be the sweep's.
+ */
+function AccountFacts({ account, lastWriteAt }: { account: Account; lastWriteAt: number | null | undefined }) {
   return (
     <dl className="about-list operator-facts">
       <div>
@@ -98,7 +106,21 @@ function AccountFacts({ account }: { account: Account }) {
       </div>
       <div>
         <dt>Last change</dt>
-        <dd>{account.lastActiveAt ? `${timeAgo(account.lastActiveAt)} · ${formatMoment(account.lastActiveAt)}` : <span className="muted">None recorded</span>}</dd>
+        <dd>
+          {lastWriteAt === undefined ? (
+            account.lastActiveAt ? (
+              <>
+                {timeAgo(account.lastActiveAt)} · {formatMoment(account.lastActiveAt)} <span className="muted">· as of the last sweep</span>
+              </>
+            ) : (
+              <span className="muted">Reading the store…</span>
+            )
+          ) : lastWriteAt ? (
+            `${timeAgo(lastWriteAt)} · ${formatMoment(lastWriteAt)}`
+          ) : (
+            <span className="muted">Nothing written yet</span>
+          )}
+        </dd>
       </div>
       <div>
         <dt>Last dump</dt>

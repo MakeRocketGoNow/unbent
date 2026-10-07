@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { AccountDumps, OperatorAccount as Account } from '@unbent/shared';
 import type { StoreStats } from '../notes-api.js';
 import { keys } from '../queries.js';
+import { formatMoment } from './format-when.js';
 
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children, to }: { children: React.ReactNode; to: string }) => <a href={to}>{children}</a>,
@@ -42,6 +43,7 @@ const stats = (counts: Partial<Record<string, number>> = {}): StoreStats => ({
   counts: { notes: 12, notebooks: 2, tags: 3, attachments: 4, note_revisions: 40, ...counts },
   wiped: false,
   loading: null,
+  lastWriteAt: now - 60_000,
 });
 
 const dumps: AccountDumps = {
@@ -76,6 +78,17 @@ afterEach(() => {
  * keeps no history; what is pinned is that the page puts the dry run's numbers into the
  * question, repeats the request with the word, and offers the bookmark it gets back.
  */
+describe('OperatorAccount: facts', () => {
+  it("shows the store's own last write once the stats are in, not the directory's sweep-time copy", async () => {
+    harness();
+    await flush();
+    const dd = screen.getByText('Last change').nextElementSibling!;
+    expect(dd.textContent).toContain(formatMoment(now - 60_000));
+    expect(dd.textContent).not.toContain(formatMoment(account.lastActiveAt!));
+    expect(dd.textContent).not.toContain('as of the last sweep');
+  });
+});
+
 describe('OperatorAccount: wind back', () => {
   it('previews first, then names the account, the moment and what is lost, then offers Undo', async () => {
     vi.mocked(api.previewRestore).mockResolvedValue({ dryRun: true, user: 'u1', bookmark: 'bm-1', current: stats({ notes: 12, attachments: 4, note_revisions: 40 }) });

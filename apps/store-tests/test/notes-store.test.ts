@@ -571,6 +571,8 @@ describe('notes: bulk actions and purging', () => {
 
     const stats = await stub.stats();
     expect(stats.counts).toMatchObject({ notes: 2, attachments: 2, attachment_text: 2, note_tags: 2, note_fields: 2, tags: 2 });
+    // The newest write's time, read from the feed; what the operator page shows as "Last change".
+    expect(stats.lastWriteAt).toBeTypeOf('number');
     expect(await stub.count()).toBe(2);
     expect(await stub.count({ trashed: true })).toBe(0);
 
