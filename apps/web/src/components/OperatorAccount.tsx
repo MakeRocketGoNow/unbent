@@ -668,7 +668,7 @@ function Resync({ userId, email }: { userId: string; email: string }) {
         Names a new history for the account&apos;s change feed, so every device drops its place in it and copies the library again from a
         snapshot. For a device that is showing something the store does not hold. Nothing is written and nothing is deleted.
       </p>
-      <Button disabled={busy} onClick={() => setAsked(true)}>
+      <Button disabled={busy} onClick={() => setAsked((v) => !v)}>
         Resync devices
       </Button>
       {asked && (
