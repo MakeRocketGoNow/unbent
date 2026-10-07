@@ -730,9 +730,11 @@ async function readStatus<T>(bucket: R2Bucket, key: string): Promise<T | null> {
 }
 
 /**
- * `operatorTarget` for a route whose account is in its path: the caller must be an
- * operator even for their own account, since the page is theirs alone, and the account
- * must be in the directory for the reason given there. Logged with both ids.
+ * An operator reading `id`'s account: the operator check, the directory check (a
+ * mistyped id must not bootstrap an object; see `operatorTarget`), and the log line
+ * with both ids. The routes whose account is in their path call it for every caller,
+ * their own account included, since the page is the operator's alone; `operatorTarget`
+ * calls it once `?user=` names someone else.
  */
 async function operatorAccount(c: Context<AppEnv>, id: string): Promise<string | Response> {
   const email = c.get('user')?.email;
@@ -766,13 +768,9 @@ function restoreRefused(c: Context<AppEnv>, message: string): Response {
  * string, so a mistyped id would bootstrap a schema, probe D1 and leave an object behind
  * that no directory row knows about and the sweep would never find.
  */
-async function operatorTarget(c: { env: AppEnv['Bindings']; req: { query(name: string): string | undefined }; get(key: 'userId'): string | undefined; get(key: 'user'): { email: string } | undefined }): Promise<string | Response> {
+async function operatorTarget(c: Context<AppEnv>): Promise<string | Response> {
   const asked = c.req.query('user');
   const own = c.get('userId')!;
   if (!asked || asked === own) return own;
-  const email = c.get('user')?.email;
-  if (!isOperator(c.env, email)) return Response.json({ error: 'Not found' }, { status: 404 });
-  if (!(await directoryRow(c.env.DB, asked))) return Response.json({ error: 'No such account' }, { status: 404 });
-  console.log(`[store] operator=${email} read user=${asked}`);
-  return asked;
+  return operatorAccount(c, asked);
 }
