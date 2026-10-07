@@ -703,10 +703,23 @@ export const operatorBackupsQuery = () =>
     },
     staleTime: (q) => (q.state.data === null ? Infinity : 5 * 60 * 1000),
     gcTime: Infinity,
+    // A page someone leaves open in a tab: the status file is rewritten hourly, and a
+    // cron that stopped overnight must not still read "Healthy" in the morning. The
+    // refetch re-renders the cards, so "3 hours ago" and the stale decision move with
+    // it. Two R2 reads every five minutes, and only while the page is mounted.
+    refetchInterval: (q) => (q.state.data ? 5 * 60 * 1000 : false),
+    refetchOnWindowFocus: true,
   });
 
 export const operatorAccountsQuery = () =>
-  queryOptions({ queryKey: keys.operatorAccounts(), queryFn: () => api.operatorAccounts(), staleTime: 60 * 1000 });
+  queryOptions({
+    queryKey: keys.operatorAccounts(),
+    queryFn: () => api.operatorAccounts(),
+    staleTime: 60 * 1000,
+    // As the backups query: the directory's dump columns move every hour. One D1 page.
+    refetchInterval: 5 * 60 * 1000,
+    refetchOnWindowFocus: true,
+  });
 
 /** Never fresh: the counts are what an action is about to change, and are read again after it. */
 export const storeStatsQuery = (userId: string) =>
