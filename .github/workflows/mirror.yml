@@ -207,17 +207,6 @@ jobs:
           sudo install -m 0755 "rclone-$RCLONE_VERSION-linux-amd64/rclone" /usr/local/bin/rclone
           rclone version
 
-      # The repository's own wrangler, from the lockfile, rather than whatever `npx` would
-      # fetch tonight. pnpm itself comes from the version package.json names, through npm
-      # rather than a third-party setup action. `--ignore-scripts` because the credentials
-      # are in this job's environment: wrangler needs no package's install script to run
-      # (checked: `wrangler --version` after such an install), and so none does.
-      - name: Install wrangler
-        if: steps.configured.outputs.ready == 'true'
-        run: |
-          npm install -g "pnpm@$(node -p "require('./package.json').packageManager.split('@')[1]")"
-          pnpm install --frozen-lockfile --filter @unbent/api --ignore-scripts
-
       # From here on each step runs unless the run was cancelled, whatever the steps before
       # it did: none depends on another's success (the prune only ever deletes what is in
       # the mirror and not in live, so a half-copied night is safe to prune against), and a
@@ -226,7 +215,7 @@ jobs:
       # exports and dumps checks as well. The run is red from whichever step failed; each
       # one records its name for the status file on the way out.
       - name: Copy the live bucket to blobs/
-        if: steps.configured.outputs.ready == 'true'
+        if: ${{ !cancelled() && steps.configured.outputs.ready == 'true' }}
         run: |
           trap 'echo blobs >> "$MIRROR_DIR/failed"' ERR
           # shellcheck disable=SC2086
@@ -241,13 +230,28 @@ jobs:
           rclone copy "dumps:$DUMPS_BUCKET/stores" "mirror:$MIRROR_BUCKET/stores" $RCLONE_COPY_FLAGS \
             > "$MIRROR_DIR/stores.log" 2>&1
 
+      # The repository's own wrangler, from the lockfile, rather than whatever `npx` would
+      # fetch tonight. pnpm itself comes from the version package.json names, through npm
+      # rather than a third-party setup action. `--ignore-scripts` because the credentials
+      # are in this job's environment: wrangler needs no package's install script to run
+      # (checked: `wrangler --version` after such an install), and so none does. Installed
+      # here, just before the one step that needs it, so a registry outage is the D1
+      # export's failure for the night and never stands in front of the copies.
+      - name: Install wrangler
+        id: wrangler
+        if: ${{ !cancelled() && steps.configured.outputs.ready == 'true' }}
+        run: |
+          trap 'echo d1 >> "$MIRROR_DIR/failed"' ERR
+          npm install -g "pnpm@$(node -p "require('./package.json').packageManager.split('@')[1]")"
+          pnpm install --frozen-lockfile --filter @unbent/api --ignore-scripts
+
       # `d1/<date>.sql` is under the lock, so a rerun on the same day cannot replace it and
       # does not try: the day's export is skipped when its key is already there, and the
       # status says so. The database is production's, `--env ""` as migrate:remote spells it.
       # D1 holds other queries while it exports, which at this size is seconds, at 05:23 UTC;
       # keep it off a busy hour if the schedule moves.
       - name: Export D1 to d1/<date>.sql
-        if: ${{ !cancelled() && steps.configured.outputs.ready == 'true' }}
+        if: ${{ !cancelled() && steps.configured.outputs.ready == 'true' && steps.wrangler.outcome == 'success' }}
         working-directory: apps/api
         run: |
           trap 'echo d1 >> "$MIRROR_DIR/failed"' ERR
