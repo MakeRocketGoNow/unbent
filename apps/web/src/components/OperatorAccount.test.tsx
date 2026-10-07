@@ -286,7 +286,7 @@ describe('OperatorAccount: load a dump', () => {
 });
 
 describe('OperatorAccount: resync devices', () => {
-  it('asks with a plain confirm that says nothing is deleted, then names the new epoch', async () => {
+  it('asks with a plain confirm that says nothing is deleted, then says every device will copy again', async () => {
     vi.mocked(api.resyncDevices).mockResolvedValue({ user: 'u1', epoch: 'abcdef0123456789' });
     harness();
     fireEvent.click(screen.getByRole('button', { name: 'Resync devices' }));
