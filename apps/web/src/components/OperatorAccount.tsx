@@ -240,6 +240,29 @@ type WindBackStep = { kind: 'idle' } | { kind: 'previewing' } | { kind: 'preview
 type WindBackOutcome = { kind: 'done'; at: number; result: api.RestoreResult; undoAsked: boolean } | { kind: 'undone'; result: api.RestoreResult };
 
 /**
+ * The confirm that undoes a wind-back, from this page's own answer or from the directory's
+ * record of the last one. One component for both so the two cannot drift apart in what
+ * they say is lost.
+ */
+function UndoWindBackConfirm({ email, busy, onCancel, onConfirm }: { email: string; busy: boolean; onCancel: () => void; onConfirm: () => void }) {
+  return (
+    <Confirm
+      label="Confirm undo wind back"
+      question={`Put ${email} back as it was before the wind-back?`}
+      detail={
+        <>
+          Restores to the bookmark the wind-back returned, which is the store as it stood just before it. Anything written since the
+          wind-back is lost, and every device resyncs again.
+        </>
+      }
+      busy={busy}
+      onCancel={onCancel}
+      actions={[{ label: 'Undo the wind-back', busyLabel: 'Restoring…', tone: 'danger', onConfirm }]}
+    />
+  );
+}
+
+/**
  * Wind the store back to a moment in the last thirty days.
  *
  * Preview is the first step and a press of its own, because the confirm has to name what
@@ -397,19 +420,7 @@ function WindBack({ userId, email, last }: { userId: string; email: string; last
               Undo the wind-back
             </Button>
           ) : (
-            <Confirm
-              label="Confirm undo wind back"
-              question={`Put ${email} back as it was before the wind-back?`}
-              detail={
-                <>
-                  Restores to the bookmark the wind-back returned, which is the store as it stood just before it. Anything written since
-                  the wind-back is lost, and every device resyncs again.
-                </>
-              }
-              busy={busy}
-              onCancel={() => setLastUndoAsked(false)}
-              actions={[{ label: 'Undo the wind-back', busyLabel: 'Restoring…', tone: 'danger', onConfirm: () => undo(last.undo!) }]}
-            />
+            <UndoWindBackConfirm email={email} busy={busy} onCancel={() => setLastUndoAsked(false)} onConfirm={() => undo(last.undo!)} />
           )}
         </>
       )}
@@ -427,19 +438,7 @@ function WindBack({ userId, email, last }: { userId: string; email: string; last
                 Undo the wind-back
               </Button>
             ) : (
-              <Confirm
-                label="Confirm undo wind back"
-                question={`Put ${email} back as it was before the wind-back?`}
-                detail={
-                  <>
-                    Restores to the bookmark the wind-back returned, which is the store as it stood just before it. Anything written
-                    since the wind-back is lost, and every device resyncs again.
-                  </>
-                }
-                busy={busy}
-                onCancel={() => setOutcome({ ...outcome, undoAsked: false })}
-                actions={[{ label: 'Undo the wind-back', busyLabel: 'Restoring…', tone: 'danger', onConfirm: () => undo(outcome.result.undo!) }]}
-              />
+              <UndoWindBackConfirm email={email} busy={busy} onCancel={() => setOutcome({ ...outcome, undoAsked: false })} onConfirm={() => undo(outcome.result.undo!)} />
             )
           ) : (
             <p className="muted small">The undo bookmark did not survive the restart; the Worker log has it on the &quot;restore scheduled&quot; line.</p>
