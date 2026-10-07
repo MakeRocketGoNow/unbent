@@ -33,6 +33,15 @@ export function OperatorAccount({ userId }: { userId: string }) {
   const accounts = useQuery(operatorAccountsQuery());
   const account = accounts.data?.find((a) => a.userId === userId) ?? null;
   const stats = useQuery(storeStatsQuery(userId));
+  // Bumped each time a section below changes the store, and each section is keyed on
+  // the other's count. An undo kept in a section's own answer is a bookmark from before
+  // that section's change, so once the other section has changed the store since,
+  // pressing it would throw that change away too, under a confirm that names only its
+  // own — the reason the routes clear the directory's wind-back record before a restore
+  // or a load (MAK-189). Remounting drops the stale answer; what the wind-back section
+  // offers afterwards is the directory's record, which the routes keep right.
+  const [windBacks, setWindBacks] = useState(0);
+  const [loads, setLoads] = useState(0);
 
   if (accounts.data && !account) {
     return (
@@ -71,8 +80,14 @@ export function OperatorAccount({ userId }: { userId: string }) {
         </p>
       </section>
 
-      <WindBack userId={userId} email={account?.email ?? userId} last={account?.restore ?? null} />
-      <LoadDump userId={userId} email={account?.email ?? userId} />
+      <WindBack
+        key={`wind-back-${loads}`}
+        userId={userId}
+        email={account?.email ?? userId}
+        last={account?.restore ?? null}
+        onChanged={() => setWindBacks((n) => n + 1)}
+      />
+      <LoadDump key={`load-${windBacks}`} userId={userId} email={account?.email ?? userId} onChanged={() => setLoads((n) => n + 1)} />
       <Resync userId={userId} email={account?.email ?? userId} />
     </div>
   );
@@ -276,7 +291,7 @@ function UndoWindBackConfirm({ email, busy, onCancel, onConfirm }: { email: stri
  * Where the runtime keeps no history — `wrangler dev` — the route answers 501, and the
  * section says so in place of the control rather than offering a preview that fails.
  */
-function WindBack({ userId, email, last }: { userId: string; email: string; last: Account['restore'] }) {
+function WindBack({ userId, email, last, onChanged }: { userId: string; email: string; last: Account['restore']; onChanged: () => void }) {
   const queryClient = useQueryClient();
   // The last wind-back's undo, from the directory rather than from this page's own
   // answer, so it is still offered after a reload or a look at a note (MAK-189). Shown
@@ -337,6 +352,7 @@ function WindBack({ userId, email, last }: { userId: string; email: string; last
       setStep({ kind: 'idle' });
       setBusy(false);
       refresh();
+      onChanged();
     }
   }
 
@@ -356,6 +372,7 @@ function WindBack({ userId, email, last }: { userId: string; email: string; last
       setLastUndoAsked(false);
       setBusy(false);
       refresh();
+      onChanged();
     }
   }
 
@@ -493,7 +510,7 @@ export function dumpedAt(header: string): string | null {
  * mirror alone, and the paragraph under the list gives the command that brings one back,
  * since a dump can only be loaded from this bucket.
  */
-function LoadDump({ userId, email }: { userId: string; email: string }) {
+function LoadDump({ userId, email, onChanged }: { userId: string; email: string; onChanged: () => void }) {
   const queryClient = useQueryClient();
   const dumps = useQuery(accountDumpsQuery(userId));
   const [step, setStep] = useState<LoadStep>({ kind: 'idle' });
@@ -540,6 +557,7 @@ function LoadDump({ userId, email }: { userId: string; email: string }) {
       setStep({ kind: 'idle' });
       setBusy(false);
       refresh();
+      onChanged();
     }
   }
 
@@ -557,6 +575,7 @@ function LoadDump({ userId, email }: { userId: string; email: string }) {
       setOutcome((o) => (o && o.kind !== 'undone' ? { ...o, undoAsked: false } : o));
       setBusy(false);
       refresh();
+      onChanged();
     }
   }
 
