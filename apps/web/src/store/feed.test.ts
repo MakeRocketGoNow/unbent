@@ -52,8 +52,8 @@ function fake<T extends object>(name: string, keyOf: (row: T) => string, seq: st
       return Promise.resolve().then(() => seq.push(`${name} committed`));
     },
     truncate: () => {
-      // As TanStack DB behaves: a truncate marks the pending sync transaction, and there
-      // must be one. The fake accepted a bare truncate until the reset path shipped one.
+      // As TanStack DB's persistence wrapper does (NoPendingSyncTransactionWriteError): a
+      // fake that allowed this hid a reset that failed on every pull.
       if (!open) throw new Error('truncate outside a transaction');
       rows.clear();
       log.push('truncate');
