@@ -146,9 +146,14 @@ export class Budget {
   }
 }
 
+/** The prefix under which every dump of `userId` lives: the daily ones, and the one the load route writes first. */
+export function dumpPrefix(userId: string): string {
+  return `stores/${userId}/`;
+}
+
 /** The day a dump is filed under: its UTC date, which is also the run's day. */
 export function dumpKey(userId: string, now: number): string {
-  return `stores/${userId}/${new Date(now).toISOString().slice(0, 10)}.sql`;
+  return `${dumpPrefix(userId)}${new Date(now).toISOString().slice(0, 10)}.sql`;
 }
 
 export const STATUS_KEY = 'status/dumps.json';

@@ -1,4 +1,4 @@
-import { dropBytes, takeBytes, upload, Budget } from './backups.js';
+import { dropBytes, dumpKey, dumpPrefix, takeBytes, upload, Budget } from './backups.js';
 import { beginDump } from './dump.js';
 import { SUBREQUEST_BUDGET } from './sweep.js';
 import { dumpOwner } from '../store/load.js';
@@ -23,11 +23,6 @@ import type { LoadResult, UserStore } from '../store/user-store.js';
 /** Bytes per page sent to the object: the dump's own slice size, well under the 32 MiB an RPC argument may be. */
 export const LOAD_PAGE_BYTES = 8 * 1024 * 1024;
 
-/** The prefix under which every dump of `userId` lives, in the daily run's layout (`dumpKey`). */
-export function dumpPrefix(userId: string): string {
-  return `stores/${userId}/`;
-}
-
 /**
  * The key a request's `dump` names, or null when it names nothing this route will load.
  * A date is the daily dump of that day; anything else must be a key under the account's
@@ -37,7 +32,8 @@ export function dumpPrefix(userId: string): string {
  * check is the whole rule, and a path that could be read as leaving it must not pass it.
  */
 export function resolveDumpKey(userId: string, dump: string): string | null {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dump)) return `${dumpPrefix(userId)}${dump}.sql`;
+  const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dump);
+  if (day) return dumpKey(userId, Date.UTC(Number(day[1]), Number(day[2]) - 1, Number(day[3])));
   const prefix = dumpPrefix(userId);
   if (!dump.startsWith(prefix) || !dump.endsWith('.sql')) return null;
   const rest = dump.slice(prefix.length);
