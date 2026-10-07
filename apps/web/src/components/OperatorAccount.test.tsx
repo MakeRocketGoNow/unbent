@@ -19,6 +19,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
   resyncDevices: vi.fn(),
   accountDumps: vi.fn(),
   operatorAccounts: vi.fn(),
+  storeStats: vi.fn(),
 }));
 
 const api = await import('../notes-api.js');
@@ -45,6 +46,7 @@ const stats = (counts: Partial<Record<string, number>> = {}): StoreStats => ({
   counts: { notes: 12, notebooks: 2, tags: 3, attachments: 4, note_revisions: 40, ...counts },
   wiped: false,
   loading: null,
+  lastWriteAt: now - 60_000,
 });
 
 const dumps: AccountDumps = {
@@ -54,10 +56,10 @@ const dumps: AccountDumps = {
   ],
 };
 
-function harness(answerDumps: () => Promise<AccountDumps> = () => Promise.resolve(dumps), row: Account = account) {
+function harness(answerDumps: () => Promise<AccountDumps> = () => Promise.resolve(dumps), seeded: StoreStats | null = stats(), who: Account = account) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  client.setQueryData(keys.operatorAccounts(), [row]);
-  client.setQueryData(keys.storeStats('u1'), stats());
+  client.setQueryData(keys.operatorAccounts(), [who]);
+  if (seeded) client.setQueryData(keys.storeStats('u1'), seeded);
   vi.mocked(api.accountDumps).mockImplementation(answerDumps);
   return render(
     <QueryClientProvider client={client}>
@@ -73,6 +75,54 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+describe('OperatorAccount: facts', () => {
+  it("shows the store's own last write once the stats are in, not the directory's sweep-time copy", async () => {
+    harness();
+    await flush();
+    const dd = screen.getByText('Last change').nextElementSibling!;
+    expect(dd.textContent).toContain(formatMoment(now - 60_000));
+    expect(dd.textContent).not.toContain(formatMoment(account.lastActiveAt!));
+    expect(dd.textContent).not.toContain('as of the last sweep');
+  });
+
+  it("shows the directory's value, said to be the sweep's, while the stats are on their way", () => {
+    vi.mocked(api.storeStats).mockReturnValue(new Promise(() => {}));
+    harness(undefined, null);
+    const dd = screen.getByText('Last change').nextElementSibling!;
+    expect(dd.textContent).toContain(formatMoment(account.lastActiveAt!));
+    expect(dd.textContent).toContain('as of the last sweep');
+  });
+
+  it('says nothing is written yet when the store answers with no write, whatever the sweep last saw', async () => {
+    harness(undefined, { ...stats(), lastWriteAt: null });
+    await flush();
+    expect(screen.getByText('Last change').nextElementSibling!.textContent).toBe('Nothing written yet');
+  });
+
+  it("shows the sweep's value, not 'Nothing written yet', for a store that cannot read its feed", async () => {
+    const marker = { id: 'l1', key: 'stores/u1/2026-10-05.sql', startedAt: now, pages: 2, undo: null, before: null };
+    for (const state of [{ wiped: true }, { loading: marker }]) {
+      harness(undefined, { ...stats(), lastWriteAt: null, ...state });
+      await flush();
+      const dd = screen.getByText('Last change').nextElementSibling!;
+      expect(dd.textContent).toContain(formatMoment(account.lastActiveAt!));
+      expect(dd.textContent).toContain('as of the last sweep');
+      expect(dd.textContent).not.toContain('Nothing written yet');
+      cleanup();
+    }
+  });
+
+  it('says nothing is recorded, not that it is still reading, once a stats read has failed', async () => {
+    let fail!: (err: Error) => void;
+    vi.mocked(api.storeStats).mockReturnValue(new Promise((_, reject) => (fail = reject)));
+    harness(undefined, null, { ...account, lastActiveAt: null });
+    const dd = () => screen.getByText('Last change').nextElementSibling!;
+    expect(dd().textContent).toBe('Reading the store…');
+    act(() => fail(new Error('store unavailable')));
+    await waitFor(() => expect(dd().textContent).toBe('None recorded'));
+  });
+});
+
 /**
  * The three actions, each as the confirm it opens: who, to what, and what is lost. The
  * routes are mocked with the shapes the deployed Worker answers, since the local one
@@ -81,7 +131,7 @@ afterEach(() => {
  */
 describe('OperatorAccount: wind back', () => {
   it('offers Undo of the last wind-back from the directory, so a reload does not lose it', async () => {
-    harness(undefined, { ...account, restore: { at: now - 600_000, toAt: now - 7_200_000, undo: '00000001-00000002-00000003-0000000000000004' } });
+    harness(undefined, undefined, { ...account, restore: { at: now - 600_000, toAt: now - 7_200_000, undo: '00000001-00000002-00000003-0000000000000004' } });
     await flush();
     expect(screen.getByText(/Last wind-back:/).textContent).toContain(formatMoment(now - 7_200_000));
     fireEvent.click(screen.getByRole('button', { name: 'Undo the wind-back' }));
@@ -94,14 +144,14 @@ describe('OperatorAccount: wind back', () => {
   });
 
   it('says the recorded wind-back has no undo when its bookmark is null', async () => {
-    harness(undefined, { ...account, restore: { at: now - 600_000, toAt: now - 7_200_000, undo: null } });
+    harness(undefined, undefined, { ...account, restore: { at: now - 600_000, toAt: now - 7_200_000, undo: null } });
     await flush();
     expect(screen.getByText(/did not survive the restart/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Undo the wind-back' })).toBeNull();
   });
 
   it('offers nothing once the recorded wind-back is past the window', async () => {
-    harness(undefined, {
+    harness(undefined, undefined, {
       ...account,
       restore: { at: Date.now() - (RESTORE_WINDOW_DAYS + 1) * 86_400_000, toAt: Date.now() - (RESTORE_WINDOW_DAYS + 2) * 86_400_000, undo: '00000001-00000002-00000003-0000000000000004' },
     });
@@ -224,7 +274,7 @@ describe('OperatorAccount: wind back', () => {
     // The cached row still has the wind-back the load's route cleared, and the refetch
     // the load asks for has not answered, so the row the page holds is the stale one.
     vi.mocked(api.operatorAccounts).mockReturnValue(new Promise(() => {}));
-    harness(undefined, { ...account, restore: { at: now - 600_000, toAt: now - 7_200_000, undo: '00000001-00000002-00000003-0000000000000004' } });
+    harness(undefined, undefined, { ...account, restore: { at: now - 600_000, toAt: now - 7_200_000, undo: '00000001-00000002-00000003-0000000000000004' } });
     await flush();
     expect(screen.getByRole('button', { name: 'Undo the wind-back' })).toBeTruthy();
 

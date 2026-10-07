@@ -199,7 +199,7 @@ export class FeedEngine {
         await this.snapshot(null);
         return;
       }
-      this.apply(page.notes, page.tombstones.filter((t) => t.entity === 'note').map((t) => t.id), page.notebooks, page.tombstones.filter((t) => t.entity === 'notebook').map((t) => t.id), page.tags, page.tombstones.filter((t) => t.entity === 'tag').map((t) => t.id), page.attachments, page.tombstones.filter((t) => t.entity === 'attachment').map((t) => t.id));
+      await this.apply(page.notes, page.tombstones.filter((t) => t.entity === 'note').map((t) => t.id), page.notebooks, page.tombstones.filter((t) => t.entity === 'notebook').map((t) => t.id), page.tags, page.tombstones.filter((t) => t.entity === 'tag').map((t) => t.id), page.attachments, page.tombstones.filter((t) => t.entity === 'attachment').map((t) => t.id));
       await this.moveCursor({ seq: page.next, epoch: page.epoch });
       if (!page.more) return;
     }
@@ -243,10 +243,10 @@ export class FeedEngine {
         seeded = { seq: page.seq, epoch: page.epoch };
         this.state.total = page.total ?? null;
       }
-      this.apply(page.notes, [], page.notebooks ?? [], [], page.tags ?? [], [], [], []);
+      await this.apply(page.notes, [], page.notebooks ?? [], [], page.tags ?? [], [], [], []);
       this.state.applied += page.notes.length;
       cursor = page.next;
-      // The position after this page's rows have committed, so a walk cut short here
+      // The position once this page's rows have settled on disk, so a walk cut short here
       // continues from the next page; the cursor itself only once the walk is whole.
       if (cursor) {
         await this.options.writeCursor({ ...seeded, resume: cursor, total: this.state.total });
@@ -262,10 +262,27 @@ export class FeedEngine {
     this.changed();
   }
 
+  /**
+   * Empties every collection: for a `reset`, and for a stored walk position the server
+   * refuses for good. Each truncate is its own sync transaction, awaited. TanStack DB's
+   * `truncate` marks the *pending* transaction and throws when there is none, so a bare
+   * `truncate()` failed the pull, which swallowed the error into `lastError` and kept the
+   * stale cursor: a device wound back by an operator kept its old rows for good and
+   * pulled in a loop. The commit is awaited for the reason `apply`'s are: a cursor gone
+   * from disk before the rows are would make the next open walk the snapshot over them,
+   * keeping a note purged on the server. A commit that fails partway through the loop
+   * leaves the cursor in place, so the next pull is answered with `reset` again and
+   * finishes the job; the half-emptied library in between is accepted over a cursor
+   * cleared ahead of rows that are still there.
+   */
   private async truncateAll(): Promise<void> {
     const all = this.all();
     if (!all) return;
-    for (const c of Object.values(all)) c.truncate();
+    for (const c of Object.values(all)) {
+      c.begin();
+      c.truncate();
+      await c.commit();
+    }
     await this.moveCursor(null);
   }
 
@@ -273,8 +290,15 @@ export class FeedEngine {
    * One page across the four collections. A note row replaces the note and its files
    * (the feed carries them with the note); a note tombstone takes its files with it, as
    * the server's cascade did. Each collection gets one transaction for the page.
+   *
+   * Settles once every collection's commit has: the persistence layer queues each
+   * collection's writes on a mutex of its own, so a notes commit still waiting behind an
+   * earlier page's can reach disk after the cursor collection's row does, and a tab
+   * closed in between would reopen with a position past rows that never landed. Every
+   * cursor write waits for this, which also means a walk fetches its next page only once
+   * the last has settled; on a phone the walk was bound by persistence anyway.
    */
-  private apply(
+  private async apply(
     notes: FeedNote[],
     noteTombstones: string[],
     notebooks: FeedNotebook[],
@@ -283,7 +307,7 @@ export class FeedEngine {
     tagTombstones: string[],
     attachments: FeedAttachment[],
     attachmentTombstones: string[],
-  ): void {
+  ): Promise<void> {
     const all = this.all();
     if (!all) return;
     const { note, notebook, tag, attachment } = all;
@@ -300,9 +324,11 @@ export class FeedEngine {
       }
     }
 
-    upsertAll(note, notes, (n) => n.id, noteTombstones);
-    upsertAll(notebook, notebooks, (n) => n.id, notebookTombstones);
-    upsertAll(tag, tags, (t) => t.id, tagTombstones);
+    const commits = [
+      upsertAll(note, notes, (n) => n.id, noteTombstones),
+      upsertAll(notebook, notebooks, (n) => n.id, notebookTombstones),
+      upsertAll(tag, tags, (t) => t.id, tagTombstones),
+    ];
 
     const files: FeedAttachment[] = [...attachments];
     const gone = new Set<string>(attachmentTombstones);
@@ -312,7 +338,8 @@ export class FeedEngine {
       files.push(...n.files);
     }
     for (const id of noteTombstones) for (const held of heldByNote.get(id) ?? []) gone.add(held);
-    upsertAll(attachment, files, (f) => f.id, [...gone]);
+    commits.push(upsertAll(attachment, files, (f) => f.id, [...gone]));
+    await Promise.all(commits);
   }
 }
 
@@ -344,8 +371,9 @@ function count(rows: Iterable<unknown> | undefined): number {
   return n;
 }
 
-function upsertAll<T extends object>(c: Controls<T>, rows: T[], keyOf: (row: T) => string, deletes: string[]): void {
-  if (rows.length === 0 && deletes.length === 0) return;
+/** The transaction's commit, to await: see `apply`. Nothing to write is nothing to wait for. */
+function upsertAll<T extends object>(c: Controls<T>, rows: T[], keyOf: (row: T) => string, deletes: string[]): Promise<unknown> | undefined {
+  if (rows.length === 0 && deletes.length === 0) return undefined;
   c.begin();
   // Last word per key within the page, in case a row and its tombstone both arrived.
   const seen = new Set<string>();
@@ -355,5 +383,5 @@ function upsertAll<T extends object>(c: Controls<T>, rows: T[], keyOf: (row: T) 
     c.write({ type: c.has(key) ? 'update' : 'insert', value: row });
   }
   for (const key of deletes) if (!seen.has(key) && c.has(key)) c.write({ type: 'delete', key });
-  c.commit();
+  return Promise.resolve(c.commit());
 }

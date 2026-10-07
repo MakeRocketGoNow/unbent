@@ -1853,12 +1853,25 @@ in the mirror and come back as orphans the file sweep reclaims.
 1. A new Cloudflare account, with the same names: the Worker, a D1 database, and the
    buckets `wrangler.toml` and the mirror workflow name (`unbent-blobs`,
    `unbent-backups`). Point the domain at it.
-2. Create the database and import the newest `d1/<date>.sql` from the mirror
-   (`wrangler d1 execute <name> --remote --file d1.sql`). Then deploy: every migration
-   is recorded in the export, so the deploy's migration step applies nothing, and the
+2. Create the database and import the newest `d1/<date>.sql` from the mirror, after
+   putting its schema first: `node scripts/mirror/order-d1-export.mjs d1.sql ordered.sql`,
+   then `wrangler d1 execute <name> --remote --file ordered.sql`. The export as written
+   puts every index after all the rows, and a fresh database refuses the first row whose
+   foreign key points at a column one of those indexes makes unique — a "foreign key
+   mismatch" that D1's import reports only as `{"D1_RESET_DO":true}`, with nothing
+   imported. The script exits non-zero if the export holds a statement it does not
+   know; read what it says before importing. Then deploy: every migration is recorded
+   in the export, so the deploy's migration step applies nothing, and the
    Worker's secrets come from the password manager, which is the one place they are
-   kept — `BETTER_AUTH_SECRET` above all, or every session and every passkey is lost
-   with it.
+   kept — `BETTER_AUTH_SECRET` above all, or every session is lost with it and everyone
+   signs in again. If that secret is gone too, deploy with a new one and then
+   `wrangler d1 execute <name> --remote --command "DELETE FROM jwks"`: the export
+   carries Better Auth's signing key encrypted with the old secret, and until the row is
+   gone every session read is a 500 (`Failed to decrypt private key` in the Worker's
+   log) behind a sign-in form that never goes away. Better Auth makes a new key on the
+   next request. The sessions were lost with the secret either way; passkeys survive,
+   since a passkey is a public key in the database and the secret only signs the
+   challenge it answers.
 3. Copy the files back: `rclone copy mirror:unbent-mirror/blobs/ live:unbent-blobs/`
    from a laptop with the mirror's credential and a write key for the new bucket, or
    the restore-files workflow once per account.
