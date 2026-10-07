@@ -28,9 +28,12 @@ export function Operator() {
   // By id, keeping the first copy: a row whose activity went down between pages can come
   // back on a later one (`listOperatorAccounts`), and the copy that stays is the one in
   // the slot it was drawn in, so the column keeps reading in order until the refetch.
-  const rows =
-    accounts.data &&
-    [...accounts.data.pages.flatMap((p) => p.accounts).reduce((m, a) => (m.has(a.userId) ? m : m.set(a.userId, a)), new Map<string, OperatorAccount>()).values()];
+  let rows: OperatorAccount[] | undefined;
+  if (accounts.data) {
+    const seen = new Map<string, OperatorAccount>();
+    for (const a of accounts.data.pages.flatMap((p) => p.accounts)) if (!seen.has(a.userId)) seen.set(a.userId, a);
+    rows = [...seen.values()];
+  }
 
   return (
     <div className="panel operator-page">
