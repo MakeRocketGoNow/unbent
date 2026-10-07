@@ -215,6 +215,29 @@ export function notifyLibraryChange(roots: ReadonlySet<string> = LIBRARY_ROOTS):
   changeListeners.forEach((l) => l(roots));
 }
 
+const resetListeners = new Set<() => void>();
+
+/**
+ * The library starting over: the feed engine emptying the collections and walking the
+ * snapshot again, after a `reset` from the server (an operator's wind-back or load) or a
+ * walk position it refuses. Distinct from a change, which the bridge answers by asking
+ * the rows again: after a reset a row may be *older* than the copy a cached answer
+ * holds, and a cached answer with no view on it is handed to the next one that mounts
+ * (`ensureQueryData` in a route loader serves what is cached, invalidated or not), which
+ * then measures the truth against it and refuses it as stale (MAK-196, the second half:
+ * the note opened after the wind-back showed the edit it had removed). The bridge drops
+ * those answers instead.
+ */
+export function onLibraryReset(listener: () => void): () => void {
+  resetListeners.add(listener);
+  return () => void resetListeners.delete(listener);
+}
+
+/** For a test library: every listener told the library has started over. */
+export function notifyLibraryReset(): void {
+  resetListeners.forEach((l) => l());
+}
+
 /** A change message as the collection reports it; the rows are read as notes. */
 type NoteChange = { type: string; value?: object | undefined; previousValue?: object | undefined };
 type LocalNoteLike = Pick<LocalNote, 'deletedAt' | 'notebookId' | 'notebookName' | 'tagIds' | 'tagNames' | 'fields'>;
@@ -286,6 +309,7 @@ async function open(userId: string): Promise<Library> {
     readCursor: () => (collections ? cursorStore(collections.syncState).readCursor() : Promise.resolve(null)),
     writeCursor: (cursor) => (collections ? cursorStore(collections.syncState).writeCursor(cursor) : Promise.resolve()),
     onState: (state) => {
+      if (latest && state.resets > latest.resets) resetListeners.forEach((l) => l());
       latest = state;
       listeners.forEach((l) => l(state));
     },

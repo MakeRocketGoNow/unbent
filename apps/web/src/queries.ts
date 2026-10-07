@@ -10,7 +10,7 @@ import { ApiError, OfflineError } from './notes-api.js';
 import { offlineNow } from './connectivity.js';
 import { count, list, lookups, notebookFields, notebookFiles, notebookList, summaries, tagSummaries, toAttachmentInfo, toNote, type LocalAttachmentInfo, type Lookups, type Snapshot } from './store/derive.js';
 import type { LocalNote } from './store/collections.js';
-import { LIBRARY_ROOTS, currentLibrary, onLibraryChange, onSearchIndexed, type ReadableLibrary as Library } from './store/library.js';
+import { LIBRARY_ROOTS, currentLibrary, onLibraryChange, onLibraryReset, onSearchIndexed, type ReadableLibrary as Library } from './store/library.js';
 import { onDirectWrite } from './store/actions.js';
 import { searchLocal, type LocalCoverage } from './store/search-local.js';
 import { isWhole } from './store/feed.js';
@@ -122,6 +122,19 @@ export function installLibraryQueries(queryClient: QueryClient): () => void {
   const stopLibrary = onLibraryChange(refetch);
   const stopDirect = onDirectWrite(() => refetch(LIBRARY_ROOTS));
   /*
+   * A reset is more than a change. The rows it brings can be older than a cached
+   * answer, and an answer nobody is looking at is not refetched: it is handed, as it
+   * stands, to the next view that mounts — a route loader's `ensureQueryData` serves
+   * whatever is cached — and the note workspace seeds from it, then refuses the true,
+   * older copy the refetch brings as a stale row (MAK-196). Answers with a view on them
+   * are refetched by the change notifications the walk makes; the rest are dropped, so
+   * the next mount reads the library afresh. Cheap: every one is derived from rows on
+   * this device.
+   */
+  const stopReset = onLibraryReset(() => {
+    queryClient.removeQueries({ type: 'inactive', predicate: ({ queryKey }) => LIBRARY_ROOTS.has(String(queryKey[0])) });
+  });
+  /*
    * A search answered on the device was answered from the index as it stood, and says
    * so: "still indexing", or without the text of some files. When the index gains
    * something, those answers — and only those; the server's are not the index's to
@@ -138,6 +151,7 @@ export function installLibraryQueries(queryClient: QueryClient): () => void {
   return () => {
     stopLibrary();
     stopDirect();
+    stopReset();
     stopIndexed();
   };
 }
