@@ -1,5 +1,5 @@
 import type { DumpStatus, MirrorStatus } from '@unbent/shared';
-import { timeAgo } from './format-time.js';
+import { timeAgo } from './components/format-when.js';
 
 /**
  * What the operator page says of each half of the backup, worked out from the status

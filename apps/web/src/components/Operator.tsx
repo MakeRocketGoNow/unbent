@@ -5,7 +5,7 @@ import type { BackupsStatus, DumpStatus, MirrorStatus, OperatorAccount } from '@
 import { HEALTH_WORD, dumpsHealth, mirrorHealth, type Health } from '../backup-health.js';
 import { errorText } from '../notes-api.js';
 import { formatBytes } from '../format-bytes.js';
-import { formatMoment, timeAgo } from '../format-time.js';
+import { formatMoment, timeAgo } from './format-when.js';
 import { operatorAccountsQuery, operatorBackupsQuery } from '../queries.js';
 
 /**

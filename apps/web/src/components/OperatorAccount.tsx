@@ -5,7 +5,7 @@ import { RESTORE_WINDOW_DAYS, type AccountDump, type OperatorAccount as Account 
 import * as api from '../notes-api.js';
 import { ApiError, LoadFailedError, errorText } from '../notes-api.js';
 import { formatBytes } from '../format-bytes.js';
-import { formatMoment, timeAgo } from '../format-time.js';
+import { formatMoment, timeAgo } from './format-when.js';
 import { accountDumpsQuery, keys, operatorAccountsQuery, storeStatsQuery } from '../queries.js';
 import { holdPage } from '../busy.js';
 import { Button } from './Button.js';
