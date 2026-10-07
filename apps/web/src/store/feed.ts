@@ -270,7 +270,10 @@ export class FeedEngine {
    * stale cursor: a device wound back by an operator kept its old rows for good and
    * pulled in a loop. The commit is awaited for the reason `apply`'s are: a cursor gone
    * from disk before the rows are would make the next open walk the snapshot over them,
-   * keeping a note purged on the server.
+   * keeping a note purged on the server. A commit that fails partway through the loop
+   * leaves the cursor in place, so the next pull is answered with `reset` again and
+   * finishes the job; the half-emptied library in between is accepted over a cursor
+   * cleared ahead of rows that are still there.
    */
   private async truncateAll(): Promise<void> {
     const all = this.all();
