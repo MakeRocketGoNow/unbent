@@ -1858,7 +1858,12 @@ in the mirror and come back as orphans the file sweep reclaims.
    is recorded in the export, so the deploy's migration step applies nothing, and the
    Worker's secrets come from the password manager, which is the one place they are
    kept — `BETTER_AUTH_SECRET` above all, or every session and every passkey is lost
-   with it.
+   with it. If that secret is gone too, deploy with a new one and then
+   `wrangler d1 execute <name> --remote --command "DELETE FROM jwks"`: the export
+   carries Better Auth's signing key encrypted with the old secret, and until the row is
+   gone every session read is a 500 (`Failed to decrypt private key` in the Worker's
+   log) behind a sign-in form that never goes away. Better Auth makes a new key on the
+   next request; the sessions and passkeys were lost with the secret either way.
 3. Copy the files back: `rclone copy mirror:unbent-mirror/blobs/ live:unbent-blobs/`
    from a laptop with the mirror's credential and a write key for the new bucket, or
    the restore-files workflow once per account.
