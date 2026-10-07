@@ -96,7 +96,7 @@ export function statementText(statement: string): string {
  * `unrecognised` for text that starts with no word at all.
  */
 export function statementKind(statement: string): string {
-  const m = /^(\w+)(?:\s+(?:OR\s+\w+\s+)?(INTO|FROM|TABLE|TRIGGER|INDEX|VIRTUAL\s+TABLE|VIEW))?\s+(\w+)/i.exec(statementText(statement));
+  const m = /^(\w+)(?:\s+(?:OR\s+\w+\s+)?(INTO|FROM|TABLE|TRIGGER|INDEX|VIRTUAL\s+TABLE|VIEW))?\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)/i.exec(statementText(statement));
   if (!m) return 'unrecognised';
   return [m[1], m[2], m[3]].filter(Boolean).join(' ').replace(/\s+/g, ' ');
 }
@@ -125,14 +125,24 @@ export function classify(statement: string): 'run' | 'skip' | 'refuse' {
 }
 
 /**
- * The most characters of SQL text one statement may be run as. The runtime refuses a
- * statement over 100 KB with `SQLITE_TOOBIG` (measured 2026-10-06: 99,000 characters
- * run, 101,000 do not), and a dump writes each row as one `INSERT` with its values as
- * literals — a note body of up to 1.8 MB, a file's text of up to half a million
- * characters. A statement past this runs with its literals bound instead
- * (`liftLiterals`); a bound value may be 2 MB, which a body fits.
+ * The most bytes of SQL text one statement may be run as. The runtime refuses a
+ * statement over 100 KB of UTF-8 with `SQLITE_TOOBIG` (measured 2026-10-06: 99,000 ASCII
+ * characters run, 101,000 do not, and 40,000 CJK characters — 120 KB — do not either),
+ * and a dump writes each row as one `INSERT` with its values as literals: a note body of
+ * up to 1.8 MB, a file's text of up to half a million characters. A statement past this
+ * runs with its literals bound instead (`liftLiterals`); a bound value may be 2 MB, which
+ * a body fits. The limit is bytes and a string's length is UTF-16 units, each at most
+ * three bytes, so `tooLongToRun` tests the length first and encodes only what might be
+ * over (found in review: the first check counted characters, and a row of curly quotes
+ * and dashes could pass it and still be refused).
  */
-export const MAX_STATEMENT_CHARS = 90_000;
+export const MAX_STATEMENT_BYTES = 90_000;
+
+/** Whether `statement` must run with its literals bound; see `MAX_STATEMENT_BYTES`. */
+export function tooLongToRun(statement: string): boolean {
+  if (statement.length * 3 <= MAX_STATEMENT_BYTES) return false;
+  return new TextEncoder().encode(statement).byteLength > MAX_STATEMENT_BYTES;
+}
 
 /**
  * `statement` with every string and blob literal replaced by a numbered parameter, and

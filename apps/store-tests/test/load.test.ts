@@ -75,6 +75,9 @@ async function populateBig(stub: ReturnType<typeof freshStore>['stub']) {
   const big = await stub.create({ id: crypto.randomUUID(), title: 'Big body', body: `start; it's long. ${'word '.repeat(300_000)} the needle-in-a-haystack end`, tags: [] });
   await stub.recordAttachment({ id: `${big.id}-scan`, noteId: big.id, filename: 'long.pdf', contentType: 'application/pdf', size: 10, r2Key: `users/x/${big.id}/long.pdf` });
   await stub.recordText({ attachmentId: `${big.id}-scan`, noteId: big.id, filename: 'long.pdf', text: `${'text '.repeat(100_000)} a rare-word at the end` });
+  // Forty thousand CJK characters: under the limit counted as characters, over it in
+  // bytes, which is the limit the runtime applies.
+  await stub.create({ id: crypto.randomUUID(), title: 'Wide body', body: `${'中'.repeat(40_000)} 終わり`, tags: [] });
   return big;
 }
 
@@ -143,6 +146,7 @@ describe('loading a dump', () => {
       expect(note!.body.endsWith('the needle-in-a-haystack end')).toBe(true);
       expect((await stub.search('needle-in-a-haystack', 10)).map((r) => r.id)).toEqual([big.id]);
       expect((await stub.search('rare-word', 10)).map((r) => r.id)).toEqual([big.id]);
+      expect((await stub.search('終わり', 10)).length, `page size ${size}`).toBe(1);
     }
   });
 

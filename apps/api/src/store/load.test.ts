@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classify, dumpOwner, liftLiterals, scanStatements, statementKind, statementText } from './load.js';
+import { classify, dumpOwner, liftLiterals, scanStatements, statementKind, statementText, tooLongToRun } from './load.js';
 
 /**
  * The statement scanner a load runs a dump through, on the shapes a dump holds: literals
@@ -89,7 +89,18 @@ describe('statementKind', () => {
     expect(statementKind(`CREATE VIRTUAL TABLE notes_fts USING fts5(title);`)).toBe('CREATE VIRTUAL TABLE notes_fts');
     expect(statementKind(`DELETE FROM notes;`)).toBe('DELETE FROM notes');
     expect(statementKind(`CREATE TRIGGER notes_ai AFTER INSERT ON notes BEGIN`)).toBe('CREATE TRIGGER notes_ai');
+    expect(statementKind(`CREATE TABLE IF NOT EXISTS _migrations (name TEXT);`)).toBe('CREATE TABLE _migrations');
     expect(statementKind(`'a literal that leads'`)).toBe('unrecognised');
+  });
+});
+
+describe('tooLongToRun', () => {
+  it('measures bytes, not characters', () => {
+    expect(tooLongToRun(`INSERT INTO t VALUES ('${'a'.repeat(80_000)}');`)).toBe(false);
+    expect(tooLongToRun(`INSERT INTO t VALUES ('${'a'.repeat(95_000)}');`)).toBe(true);
+    // 40,000 CJK characters are 120 KB.
+    expect(tooLongToRun(`INSERT INTO t VALUES ('${'中'.repeat(40_000)}');`)).toBe(true);
+    expect(tooLongToRun(`INSERT INTO t VALUES ('${'中'.repeat(29_000)}');`)).toBe(false);
   });
 });
 

@@ -16,7 +16,7 @@ import {
 import { AttachmentsStore, type FileSummary } from './attachments.js';
 import { DeletedBlobs } from './deleted-blobs.js';
 import { cutByBytes, Feed, FEED_META, FEED_PAGE_BYTES, lastWordPerEntity, type FeedRow } from './feed.js';
-import { classify, liftLiterals, MAX_STATEMENT_CHARS, scanStatements, statementKind, statementText, StoreLoading, type LoadMarker } from './load.js';
+import { classify, liftLiterals, scanStatements, statementKind, statementText, StoreLoading, tooLongToRun, type LoadMarker } from './load.js';
 import { appliedMigrations, migrate } from './migrate.js';
 import { NotesStore, type CountOptions, type ListOptions, type SearchFilters } from './notes.js';
 import { cursorAfter, nextCursor } from './notes-shared.js';
@@ -537,8 +537,8 @@ export class UserStore extends DurableObject<StoreEnv> {
     if (run.length === 0) return 0;
     this.sql.tx(() => {
       for (const statement of run) {
-        // A row too long to run as text runs with its values bound; see `MAX_STATEMENT_CHARS`.
-        if (statement.length <= MAX_STATEMENT_CHARS) {
+        // A row too long to run as text runs with its values bound; see `MAX_STATEMENT_BYTES`.
+        if (!tooLongToRun(statement)) {
           this.sql.exec(statement);
         } else {
           const { sql, values } = liftLiterals(statementText(statement));
