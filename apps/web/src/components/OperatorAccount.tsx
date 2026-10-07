@@ -554,7 +554,8 @@ function LoadDump({ userId, email }: { userId: string; email: string }) {
       {!unbound && (
         <p className="muted small">
           For a dump older than {keptDays} days, which the mirror keeps {MIRROR_KEPT_DAYS}, bring it back from the second account first, from a laptop with
-          the mirror credential and the dumps bucket&apos;s write key; it then appears in this list:
+          the mirror credential and the dumps bucket&apos;s write key; it then appears in this list. The buckets named are production&apos;s (the
+          dev instance&apos;s is <code>unbent-dev-backups</code>):
         </p>
       )}
       {!unbound && (
