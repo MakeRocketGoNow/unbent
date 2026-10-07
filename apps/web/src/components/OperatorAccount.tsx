@@ -386,7 +386,7 @@ function WindBack({ userId, email, last }: { userId: string; email: string; last
         />
       )}
 
-      {!outcome && last?.undo && (
+      {!outcome && last?.undo && last.at > now - RESTORE_WINDOW_DAYS * 86_400_000 && (
         <>
           <p className="muted small">
             Last wind-back: {timeAgo(last.at)}, to {formatMoment(last.toAt)}. Undo is good for {RESTORE_WINDOW_DAYS} days from then.
