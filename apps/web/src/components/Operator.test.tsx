@@ -195,6 +195,13 @@ describe('AccountsTable', () => {
     expect(screen.getByText('2 shown')).toBeTruthy();
   });
 
+  it('shows when an account with no recorded write was made, which is what it sorts by', () => {
+    render(<AccountsTable accounts={[account({ lastActiveAt: null, createdAt: now - 3_600_000 })]} more={null} now={now} />);
+    const cell = screen.getByText(/^Made /);
+    expect(cell.textContent).toBe('Made 1 hour ago');
+    expect(cell.getAttribute('title')).toBeTruthy();
+  });
+
   it('offers no next page when there is none', () => {
     render(<AccountsTable accounts={[account()]} more={null} now={now} />);
     expect(screen.queryByRole('button', { name: 'Show more accounts' })).toBeNull();
