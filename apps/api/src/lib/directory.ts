@@ -168,12 +168,17 @@ const toAccount = (r: OperatorRow): OperatorAccount => ({
  * reads the first page and asks for the next. The cursor is the last row's activity and
  * id together (`<ms>:<user id>`), compared as one row value so the planner can seek to
  * it, and ties on activity — every account 0030 backfilled shares one `created_at` —
- * are broken by the id. Migration 0039's expression index is on exactly this spelling,
- * so a page walks the index in order from the top and stops at `LIMIT` rows past the
- * cursor — no sort of the directory, and the `user` join only for the rows it keeps;
- * being an expression index, no other statement on the table can pick it up (AGENTS.md).
- * `EXPLAIN QUERY PLAN` on a database built from the migrations: `SCAN d USING INDEX
- * idx_account_directory_activity`, with the sweep's and the dump run's plans unchanged.
+ * are broken by the id. Migration 0039's expression index is on exactly this spelling.
+ * The first page is the top of the index and `LIMIT` rows; a later page seeks to its
+ * cursor, which takes a scalar bound on the leading expression beside the row-value
+ * comparison — SQLite does not seek a DESC row-value range on its own, and with the bound
+ * alone the plan was a scan from the top on every page (found in review). Two statements
+ * rather than one with `?1 IS NULL OR`, since the `OR` is what turned the seek into a
+ * scan. Being an expression index, no other statement on the table can pick it up
+ * (AGENTS.md). `EXPLAIN QUERY PLAN` on a database built from the migrations: `SEARCH d
+ * USING INDEX idx_account_directory_activity (<expr><?)` for a page with a cursor and
+ * `SCAN d USING INDEX …` for the first, with the sweep's and the dump run's plans
+ * unchanged.
  *
  * The cursor is a position in an order that moves: the sweep rewrites activity hourly.
  * An account that becomes active after a page was read sits above its cursor and is
@@ -184,15 +189,19 @@ const toAccount = (r: OperatorRow): OperatorAccount => ({
  */
 export async function listOperatorAccounts(db: D1Database, after = '', limit: number = OPERATOR_PAGE_SIZE): Promise<OperatorAccountsPage> {
   const cursor = parseCursor(after);
-  const { results } = await db
-    .prepare(
-      `${OPERATOR_SELECT}
-        WHERE d.deleted_at IS NULL
-          AND (?1 IS NULL OR (COALESCE(d.last_active_at, d.created_at), d.user_id) < (?1, ?2))
-        ORDER BY COALESCE(d.last_active_at, d.created_at) DESC, d.user_id DESC LIMIT ?3`,
-    )
-    .bind(cursor?.activeAt ?? null, cursor?.userId ?? '', limit)
-    .all<OperatorRow & { active_at: number }>();
+  const order = `ORDER BY COALESCE(d.last_active_at, d.created_at) DESC, d.user_id DESC`;
+  const statement = cursor
+    ? db
+        .prepare(
+          `${OPERATOR_SELECT}
+            WHERE d.deleted_at IS NULL
+              AND COALESCE(d.last_active_at, d.created_at) <= ?1
+              AND (COALESCE(d.last_active_at, d.created_at), d.user_id) < (?1, ?2)
+            ${order} LIMIT ?3`,
+        )
+        .bind(cursor.activeAt, cursor.userId, limit)
+    : db.prepare(`${OPERATOR_SELECT} WHERE d.deleted_at IS NULL ${order} LIMIT ?1`).bind(limit);
+  const { results } = await statement.all<OperatorRow & { active_at: number }>();
   const last = results[results.length - 1];
   return { accounts: results.map(toAccount), next: results.length === limit && last ? `${last.active_at}:${last.user_id}` : null };
 }

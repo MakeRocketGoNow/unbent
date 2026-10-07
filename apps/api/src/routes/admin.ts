@@ -687,6 +687,9 @@ export const admin = new Hono<AppEnv>()
     // The status names accounts by id, and the card beside the list names them by
     // email. The list pages, so it may not hold the account in question; the emails
     // come with the status instead, one D1 read over the two bounded lists.
+    // At most a hundred ids: each list is cut at fifty (`STATUS_LIST` in lib/backups.ts),
+    // and a hundred is D1's cap on binds in one statement, so raising that number means
+    // batching this query.
     const ids = [...new Set([...(dumps?.failing.map((f) => f.userId) ?? []), ...(dumps?.stale ?? [])])];
     const names: Record<string, string> = {};
     if (ids.length > 0) {

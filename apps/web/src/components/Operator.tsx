@@ -25,8 +25,12 @@ import { operatorAccountsQuery, operatorBackupsQuery } from '../queries.js';
 export function Operator() {
   const backups = useQuery(operatorBackupsQuery());
   const accounts = useInfiniteQuery(operatorAccountsQuery());
-  // By id, since a row whose activity went down between pages can come back on a later one (`listOperatorAccounts`).
-  const rows = accounts.data && [...new Map(accounts.data.pages.flatMap((p) => p.accounts).map((a) => [a.userId, a])).values()];
+  // By id, keeping the first copy: a row whose activity went down between pages can come
+  // back on a later one (`listOperatorAccounts`), and the copy that stays is the one in
+  // the slot it was drawn in, so the column keeps reading in order until the refetch.
+  const rows =
+    accounts.data &&
+    [...accounts.data.pages.flatMap((p) => p.accounts).reduce((m, a) => (m.has(a.userId) ? m : m.set(a.userId, a)), new Map<string, OperatorAccount>()).values()];
 
   return (
     <div className="panel operator-page">

@@ -66,6 +66,18 @@ const account = (over: Partial<OperatorAccount> = {}): OperatorAccount => ({
 describe('BackupHealth', () => {
   afterEach(cleanup);
 
+  it('names a failing account from the emails the route attaches, whatever the list has loaded', () => {
+    const status: BackupsStatus = {
+      bound: true,
+      dumps: dumps({ failing: [{ userId: 'u9', error: 'boom', triedAt: '2026-10-06T09:47:00Z' }], failingCount: 1 }),
+      mirror: mirror(),
+      names: { u9: 'nine@example.com' },
+    };
+    render(<BackupHealth status={status} accounts={[]} now={now} />);
+    expect(screen.getByText(/nine@example.com/)).toBeTruthy();
+    expect(screen.queryByText(/u9/)).toBeNull();
+  });
+
   it('says backups are not set up, with no numbers, where no bucket is bound', () => {
     render(<BackupHealth status={{ bound: false }} now={now} />);
     expect(screen.getByText(/Backups are not set up on this instance/).textContent).toContain('“Where your notes live”');
