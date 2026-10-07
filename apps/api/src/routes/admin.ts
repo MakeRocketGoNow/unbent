@@ -712,10 +712,21 @@ export const admin = new Hono<AppEnv>()
     });
   });
 
-/** A status file from the backups bucket as JSON, or null when no run has written it yet. */
+/**
+ * A status file from the backups bucket as JSON, or null when no run has written it yet.
+ * A file that does not parse — a write cut short — is logged and answered as null too:
+ * the alternative is a 500 from the one route that also tells the page whose session
+ * this is, which would take the whole tab away over one half's status.
+ */
 async function readStatus<T>(bucket: R2Bucket, key: string): Promise<T | null> {
   const object = await bucket.get(key);
-  return object ? ((await object.json()) as T) : null;
+  if (!object) return null;
+  try {
+    return (await object.json()) as T;
+  } catch (err) {
+    console.error(`[backup] ${key} is not readable JSON:`, err);
+    return null;
+  }
 }
 
 /**

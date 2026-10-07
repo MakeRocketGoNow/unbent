@@ -114,6 +114,23 @@ describe('OperatorAccount: wind back', () => {
     expect(screen.getByText(/Put back as it was before the wind-back/)).toBeTruthy();
   });
 
+  it('keeps the undo bookmark through a change of moment or a second preview', async () => {
+    vi.mocked(api.previewRestore).mockResolvedValue({ dryRun: true, user: 'u1', bookmark: 'bm-1', current: stats() });
+    vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: '00000001-00000002-00000003-0000000000000004', feedEpoch: 'e2', stats: stats(), note: '' });
+    harness();
+    fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Wind back' }));
+    await flush();
+    expect(screen.getByRole('button', { name: 'Undo the wind-back' })).toBeTruthy();
+    // A stray touch of the field, then another preview: the way back stays on screen.
+    fireEvent.change(screen.getByLabelText('Moment'), { target: { value: '2026-10-04T08:00' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
+    await flush();
+    expect(screen.getByRole('group', { name: 'Confirm wind back' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Undo the wind-back' })).toBeTruthy();
+  });
+
   it('says restores work on a deployed instance only where the runtime keeps no history', async () => {
     vi.mocked(api.previewRestore).mockRejectedValue(new api.ApiError(501, 'This runtime keeps no history to restore from. Restores work on a deployed instance only.'));
     harness();
@@ -240,7 +257,7 @@ describe('OperatorAccount: resync devices', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Resync' }));
     await flush();
     expect(api.resyncDevices).toHaveBeenCalledWith('u1');
-    expect(screen.getByText(/Every device of the account will copy the library again/)).toBeTruthy();
+    expect(screen.getByText(/Done. Every device of the account will copy the library again/)).toBeTruthy();
     expect(screen.queryByRole('group', { name: 'Confirm resync devices' })).toBeNull();
   });
 });

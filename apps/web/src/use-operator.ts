@@ -7,7 +7,8 @@ import { operatorBackupsQuery } from './queries.js';
  *
  * `/api/config` is public and answers before there is a session, so it cannot say who
  * is an operator; the operator routes answer anyone else as if they did not exist. So
- * the question is put to the cheapest of them, the backup's health, once per session:
+ * the question is put to the one the page reads first, the backup's health, once per session
+ * (`operatorBackupsQuery` does not ask again on a 404):
  * an answer means an operator, a 404 means not, and anything else — offline, a 5xx —
  * means not known, which draws nothing rather than a tab that would lead to an error.
  * The page itself reads the same query, so the answer is not fetched twice.

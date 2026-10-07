@@ -214,7 +214,7 @@ export const keys = {
     filter.trashed ? (['trash', 'exact-count'] as const) : (['notes', 'exact-count', filter] as const),
   search: (q: string, filter: NoteFilter = {}, rows = false) => ['search', q, filter, { rows }] as const,
   config: () => ['config'] as const,
-  /** The operator page's reads; under one root so leaving the page can drop them together. */
+  /** The operator page's reads, under one root so an action can invalidate all of them at once. */
   operatorBackups: () => ['operator', 'backups'] as const,
   operatorAccounts: () => ['operator', 'accounts'] as const,
   storeStats: (userId: string) => ['operator', 'stats', userId] as const,
@@ -687,7 +687,17 @@ export const exactCountQuery = (filter: ExactCountFilter = {}) =>
  * the status files move once a day, and the page refetches on its own when opened.
  */
 export const operatorBackupsQuery = () =>
-  queryOptions({ queryKey: keys.operatorBackups(), queryFn: () => api.operatorBackups(), retry: false, staleTime: 5 * 60 * 1000 });
+  queryOptions({
+    queryKey: keys.operatorBackups(),
+    queryFn: () => api.operatorBackups(),
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    // For everyone who is not an operator the answer is a 404 and the query holds no
+    // data, which would otherwise make every Settings mount and window focus ask again.
+    // Once a session, as the comment above says; the page refetches when opened.
+    retryOnMount: false,
+    refetchOnWindowFocus: false,
+  });
 
 export const operatorAccountsQuery = () =>
   queryOptions({ queryKey: keys.operatorAccounts(), queryFn: () => api.operatorAccounts(), staleTime: 60 * 1000 });

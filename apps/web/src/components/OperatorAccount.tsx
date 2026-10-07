@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { AccountDump, OperatorAccount as Account } from '@unbent/shared';
+import { RESTORE_WINDOW_DAYS, type AccountDump, type OperatorAccount as Account } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { ApiError, errorText } from '../notes-api.js';
 import { formatBytes } from '../format-bytes.js';
@@ -11,8 +11,16 @@ import { Button } from './Button.js';
 import { Confirm } from './Confirm.js';
 import { LastDump } from './Operator.js';
 
-/** How far back a store's history reaches: the restore route's window, stated to the operator. */
-export const RESTORE_WINDOW_DAYS = 30;
+/**
+ * How long a deleted file's object is kept in the live bucket after its row goes: the
+ * sweep's `deleted_blobs` window (part 1 of MAK-171), stated here so a wind-back's reach
+ * is honest about its files. The constant lives in the API's sweep; the page states
+ * the number and nothing enforces it here.
+ */
+const DELETED_FILES_KEPT_DAYS = 35;
+
+/** The mirror's lifecycle rule on `stores/`, set by hand on the bucket; stated, not enforced. */
+const MIRROR_KEPT_DAYS = 90;
 
 /**
  * One account, for the operator: what the directory and its store say of it, its dumps,
@@ -180,13 +188,15 @@ function toLocalInput(ms: number): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-type WindBackStep =
-  | { kind: 'idle' }
-  | { kind: 'previewing' }
-  | { kind: 'preview'; at: number; preview: api.RestorePreview }
-  | { kind: 'done'; at: number; result: api.RestoreResult }
-  | { kind: 'undo-asked'; at: number; result: api.RestoreResult }
-  | { kind: 'undone'; result: api.RestoreResult };
+/** The preview step: the control's own state, cleared whenever the moment changes. */
+type WindBackStep = { kind: 'idle' } | { kind: 'previewing' } | { kind: 'preview'; at: number; preview: api.RestorePreview };
+
+/**
+ * What the last wind-back did, kept apart from the preview step on purpose: the undo
+ * bookmark lives here, and a stray touch of the moment field or a second Preview must
+ * not throw away the one press that puts a wrong wind-back right (found in review).
+ */
+type WindBackOutcome = { kind: 'done'; at: number; result: api.RestoreResult; undoAsked: boolean } | { kind: 'undone'; result: api.RestoreResult };
 
 /**
  * Wind the store back to a moment in the last thirty days.
@@ -202,9 +212,11 @@ type WindBackStep =
  */
 function WindBack({ userId, email }: { userId: string; email: string }) {
   const queryClient = useQueryClient();
-  const now = Date.now();
+  // Read once: the input's bounds should not move under it on every render.
+  const [now] = useState(() => Date.now());
   const [at, setAt] = useState(() => toLocalInput(now - 3_600_000));
   const [step, setStep] = useState<WindBackStep>({ kind: 'idle' });
+  const [outcome, setOutcome] = useState<WindBackOutcome | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [unsupported, setUnsupported] = useState<string | null>(null);
@@ -235,7 +247,9 @@ function WindBack({ userId, email }: { userId: string; email: string }) {
     setBusy(true);
     setError(null);
     try {
-      setStep({ kind: 'done', at: ms, result: await api.restoreStore(userId, { at: ms }) });
+      const result = await api.restoreStore(userId, { at: ms });
+      setStep({ kind: 'idle' });
+      setOutcome({ kind: 'done', at: ms, result, undoAsked: false });
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -248,7 +262,7 @@ function WindBack({ userId, email }: { userId: string; email: string }) {
     setBusy(true);
     setError(null);
     try {
-      setStep({ kind: 'undone', result: await api.restoreStore(userId, { bookmark }) });
+      setOutcome({ kind: 'undone', result: await api.restoreStore(userId, { bookmark }) });
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -262,8 +276,8 @@ function WindBack({ userId, email }: { userId: string; email: string }) {
       <h3>Wind back to a moment</h3>
       <p className="muted small">
         Puts the store back as it was at a moment in the last {RESTORE_WINDOW_DAYS} days, from the history the platform keeps of it.
-        Everything written after that moment is lost; the files a wound-back note names are still stored for 35 days after
-        their deletion, so they come back with it. Preview first: it shows what the store holds now, and nothing changes.
+        Everything written after that moment is lost; the files a wound-back note names are still stored for {DELETED_FILES_KEPT_DAYS} days
+        after their deletion, so they come back with it. Preview first: it shows what the store holds now, and nothing changes.
       </p>
 
       {unsupported ? (
@@ -308,16 +322,16 @@ function WindBack({ userId, email }: { userId: string; email: string }) {
         />
       )}
 
-      {(step.kind === 'done' || step.kind === 'undo-asked') && (
+      {outcome?.kind === 'done' && (
         <>
           <p className="good small">
-            Wound back to {formatMoment(step.at)}.
-            {step.result.stats && <> The store now holds {describeCounts(step.result.stats)}.</>}
-            {!step.result.feedEpoch && <> The feed was not given a new epoch; resync the devices below.</>}
+            Wound back to {formatMoment(outcome.at)}.
+            {outcome.result.stats && <> The store now holds {describeCounts(outcome.result.stats)}.</>}
+            {!outcome.result.feedEpoch && <> The feed was not given a new epoch; resync the devices below.</>}
           </p>
-          {step.result.undo ? (
-            step.kind === 'done' ? (
-              <Button tone="danger" disabled={busy} onClick={() => setStep({ ...step, kind: 'undo-asked' })}>
+          {outcome.result.undo ? (
+            !outcome.undoAsked ? (
+              <Button tone="danger" disabled={busy} onClick={() => setOutcome({ ...outcome, undoAsked: true })}>
                 Undo the wind-back
               </Button>
             ) : (
@@ -331,8 +345,8 @@ function WindBack({ userId, email }: { userId: string; email: string }) {
                   </>
                 }
                 busy={busy}
-                onCancel={() => setStep({ ...step, kind: 'done' })}
-                actions={[{ label: 'Undo the wind-back', busyLabel: 'Restoring…', tone: 'danger', onConfirm: () => undo(step.result.undo!) }]}
+                onCancel={() => setOutcome({ ...outcome, undoAsked: false })}
+                actions={[{ label: 'Undo the wind-back', busyLabel: 'Restoring…', tone: 'danger', onConfirm: () => undo(outcome.result.undo!) }]}
               />
             )
           ) : (
@@ -341,10 +355,10 @@ function WindBack({ userId, email }: { userId: string; email: string }) {
         </>
       )}
 
-      {step.kind === 'undone' && (
+      {outcome?.kind === 'undone' && (
         <p className="good small">
           Put back as it was before the wind-back.
-          {step.result.stats && <> The store now holds {describeCounts(step.result.stats)}.</>}
+          {outcome.result.stats && <> The store now holds {describeCounts(outcome.result.stats)}.</>}
         </p>
       )}
 
@@ -353,13 +367,10 @@ function WindBack({ userId, email }: { userId: string; email: string }) {
   );
 }
 
-type LoadStep =
-  | { kind: 'idle' }
-  | { kind: 'previewing'; dump: AccountDump }
-  | { kind: 'preview'; dump: AccountDump; preview: api.LoadPreview }
-  | { kind: 'done'; dump: AccountDump; result: api.LoadResult }
-  | { kind: 'undo-asked'; dump: AccountDump; result: api.LoadResult }
-  | { kind: 'undone'; result: api.RestoreResult };
+type LoadStep = { kind: 'idle' } | { kind: 'previewing'; dump: AccountDump } | { kind: 'preview'; dump: AccountDump; preview: api.LoadPreview };
+
+/** What the last load did, apart from the preview step for the reason `WindBackOutcome` gives. */
+type LoadOutcome = { kind: 'done'; dump: AccountDump; result: api.LoadResult; undoAsked: boolean } | { kind: 'undone'; result: api.RestoreResult };
 
 /**
  * When a dump's first line says it was taken — `-- Unbent note store of account <id>,
@@ -385,6 +396,7 @@ function LoadDump({ userId, email }: { userId: string; email: string }) {
   const queryClient = useQueryClient();
   const dumps = useQuery(accountDumpsQuery(userId));
   const [step, setStep] = useState<LoadStep>({ kind: 'idle' });
+  const [outcome, setOutcome] = useState<LoadOutcome | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -409,7 +421,9 @@ function LoadDump({ userId, email }: { userId: string; email: string }) {
     setBusy(true);
     setError(null);
     try {
-      setStep({ kind: 'done', dump, result: await api.loadDump(userId, dump.key) });
+      const result = await api.loadDump(userId, dump.key);
+      setStep({ kind: 'idle' });
+      setOutcome({ kind: 'done', dump, result, undoAsked: false });
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -422,7 +436,7 @@ function LoadDump({ userId, email }: { userId: string; email: string }) {
     setBusy(true);
     setError(null);
     try {
-      setStep({ kind: 'undone', result: await api.restoreStore(userId, { bookmark }) });
+      setOutcome({ kind: 'undone', result: await api.restoreStore(userId, { bookmark }) });
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -432,8 +446,8 @@ function LoadDump({ userId, email }: { userId: string; email: string }) {
   }
 
   const unbound = dumps.error instanceof ApiError && dumps.error.status === 501;
+  // The route says how long the bucket keeps a dump; 14 is only the sentence's number until it has answered.
   const keptDays = dumps.data?.keptDays ?? 14;
-  const stepDump = 'dump' in step ? step.dump : null;
 
   return (
     <section className="settings-section">
@@ -468,6 +482,7 @@ function LoadDump({ userId, email }: { userId: string; email: string }) {
                 </a>
                 <Button
                   variant="quiet"
+                  tone="danger"
                   size="small"
                   disabled={busy || step.kind === 'previewing'}
                   onClick={() => void preview(d)}
@@ -501,7 +516,7 @@ function LoadDump({ userId, email }: { userId: string; email: string }) {
 
       {!unbound && (
         <p className="muted small">
-          For a dump older than {keptDays} days, which the mirror keeps 90, bring it back from the second account first, from a laptop with
+          For a dump older than {keptDays} days, which the mirror keeps {MIRROR_KEPT_DAYS}, bring it back from the second account first, from a laptop with
           the mirror credential and the dumps bucket&apos;s write key; it then appears in this list:
         </p>
       )}
@@ -511,19 +526,19 @@ function LoadDump({ userId, email }: { userId: string; email: string }) {
         </pre>
       )}
 
-      {(step.kind === 'done' || step.kind === 'undo-asked') && stepDump && (
+      {outcome?.kind === 'done' && (
         <>
           <p className="good small">
-            Loaded {stepDump.name}. The store now holds {describeCounts(step.result.stats)}, and every device of the account resyncs.
-            {step.result.before && <> The store as it stood is {step.result.before.split('/').pop()}, in the list above.</>}
-            {step.result.migrated.length > 0 && <> Schema files the dump lacked were applied: {step.result.migrated.join(', ')}.</>}
-            {step.result.foreignKeyViolations > 0 && (
-              <> {step.result.foreignKeyViolations.toLocaleString()} rows point at a parent the dump does not hold.</>
+            Loaded {outcome.dump.name}. The store now holds {describeCounts(outcome.result.stats)}, and every device of the account resyncs.
+            {outcome.result.before && <> The store as it stood is {outcome.result.before.split('/').pop()}, in the list above.</>}
+            {outcome.result.migrated.length > 0 && <> Schema files the dump lacked were applied: {outcome.result.migrated.join(', ')}.</>}
+            {outcome.result.foreignKeyViolations > 0 && (
+              <> {outcome.result.foreignKeyViolations.toLocaleString()} rows point at a parent the dump does not hold.</>
             )}
           </p>
-          {step.result.undo ? (
-            step.kind === 'done' ? (
-              <Button tone="danger" disabled={busy} onClick={() => setStep({ ...step, kind: 'undo-asked' })}>
+          {outcome.result.undo ? (
+            !outcome.undoAsked ? (
+              <Button tone="danger" disabled={busy} onClick={() => setOutcome({ ...outcome, undoAsked: true })}>
                 Undo the load
               </Button>
             ) : (
@@ -537,22 +552,22 @@ function LoadDump({ userId, email }: { userId: string; email: string }) {
                   </>
                 }
                 busy={busy}
-                onCancel={() => setStep({ ...step, kind: 'done' })}
-                actions={[{ label: 'Undo the load', busyLabel: 'Restoring…', tone: 'danger', onConfirm: () => undo(step.result.undo!) }]}
+                onCancel={() => setOutcome({ ...outcome, undoAsked: false })}
+                actions={[{ label: 'Undo the load', busyLabel: 'Restoring…', tone: 'danger', onConfirm: () => undo(outcome.result.undo!) }]}
               />
             )
           ) : (
-            step.result.before && (
-              <p className="muted small">This runtime keeps no bookmarks; to undo, load {step.result.before.split('/').pop()} from the list above.</p>
+            outcome.result.before && (
+              <p className="muted small">This runtime keeps no bookmarks; to undo, load {outcome.result.before.split('/').pop()} from the list above.</p>
             )
           )}
         </>
       )}
 
-      {step.kind === 'undone' && (
+      {outcome?.kind === 'undone' && (
         <p className="good small">
           Put back as it was before the load.
-          {step.result.stats && <> The store now holds {describeCounts(step.result.stats)}.</>}
+          {outcome.result.stats && <> The store now holds {describeCounts(outcome.result.stats)}.</>}
         </p>
       )}
 
@@ -570,15 +585,15 @@ function LoadDump({ userId, email }: { userId: string; email: string }) {
 function Resync({ userId, email }: { userId: string; email: string }) {
   const [asked, setAsked] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function resync() {
     setBusy(true);
     setError(null);
     try {
-      const { epoch } = await api.resyncDevices(userId);
-      setDone(epoch);
+      await api.resyncDevices(userId);
+      setDone(true);
       setAsked(false);
     } catch (err) {
       setError(errorText(err));
@@ -607,7 +622,7 @@ function Resync({ userId, email }: { userId: string; email: string }) {
           actions={[{ label: 'Resync', busyLabel: 'Resyncing…', tone: 'neutral', onConfirm: resync }]}
         />
       )}
-      {done && <p className="good small">Every device of the account will copy the library again. New epoch {done.slice(0, 8)}…</p>}
+      {done && <p className="good small">Done. Every device of the account will copy the library again.</p>}
       {error && <p className="bad small">{error}</p>}
     </section>
   );

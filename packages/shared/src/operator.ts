@@ -6,6 +6,13 @@
  * in the API alone would leave the page reading a copy that drifts.
  */
 
+/**
+ * How far back a store's history reaches, in days: what the restore route accepts
+ * (`RESTORE_WINDOW_MS` in the API derives from it) and what the operator page says.
+ * Here rather than in the API so the two cannot drift.
+ */
+export const RESTORE_WINDOW_DAYS = 30;
+
 /** What the daily dump run writes to `status/dumps.json`; see `dumpStores` in the API. */
 export interface DumpStatus {
   ranAt: string;

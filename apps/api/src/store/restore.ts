@@ -1,3 +1,5 @@
+import { RESTORE_WINDOW_DAYS } from '@unbent/shared';
+
 /**
  * What the object and the operator's route agree on about a point-in-time restore: the
  * shape of a bookmark, and the message the object restarts with, which is how the route
@@ -13,8 +15,8 @@
  */
 export const BOOKMARK_PATTERN = /^[0-9a-f]{8}(-[0-9a-f]{8}){2}-[0-9a-f]{16,}$/i;
 
-/** How far back the runtime keeps a store's history. */
-export const RESTORE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+/** How far back the runtime keeps a store's history; the number itself is stated to the operator, so it lives in `@unbent/shared`. */
+export const RESTORE_WINDOW_MS = RESTORE_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
 const MARK = 'store restore scheduled';
 const REFUSED = 'store restore refused: ';
