@@ -248,6 +248,7 @@ says otherwise; `pnpm exec wrangler secret put NAME` from `apps/api`, or the das
 | `UNBENT_BUNDLE_ID_BASE`, `UNBENT_INSTANCE_HOST`, `DEVELOPMENT_TEAM` | an iOS build of your own | `apps/ios/Config/Local.xcconfig`, untracked; see [iOS app](#ios-app) |
 | `ANDROID_APPLICATION_ID`, `ANDROID_DEFAULT_INSTANCE` | the Android build in CI | GitHub repository **variables**; `unbent.applicationId` and `unbent.defaultInstance` in `local.properties` locally |
 | `CLOUDFLARE_WORKERS_SUBDOMAIN`, `DEV_BETTER_AUTH_SECRET`, `DEV_ALLOWED_EMAILS` | a dev instance and PR previews of your own | GitHub; see [The dev instance](#the-dev-instance) — every job skips itself without them |
+| `LIVE_R2_ACCOUNT_ID`, `LIVE_R2_ACCESS_KEY_ID`, `LIVE_R2_SECRET_ACCESS_KEY`, `DUMPS_R2_ACCESS_KEY_ID`, `DUMPS_R2_SECRET_ACCESS_KEY`, `MIRROR_R2_ACCOUNT_ID`, `MIRROR_R2_ACCESS_KEY_ID`, `MIRROR_R2_SECRET_ACCESS_KEY`, `D1_EXPORT_API_TOKEN` | the nightly mirror to a second Cloudflare account | GitHub secrets, with `BACKUPS_BUCKET` as a variable; the live key read-only, the others scoped to one bucket each; see [Where your notes live](#where-your-notes-live) — the job skips itself without them |
 
 The one thing that *would* work by accident is who the legal documents name — a fork that
 deployed the file unchanged would otherwise publish somebody else's legal entity. That is why
@@ -1821,9 +1822,10 @@ run then reads the Worker's `status/dumps.json` and fails if a dump failed, an a
 no dump found current in forty-eight hours, or the status is older than that, so the
 Worker's half of the backup fails loudly too; and it writes `status/mirror.json` back to
 the dumps bucket — when it ran, what it copied and pruned, the export's size — for the
-operator's page. It runs only where the repository has the nine secrets it names and the
-`BACKUPS_BUCKET` variable, read-only on the live bucket, and skips itself otherwise; a fork
-names its live and mirror buckets at the top of the file. The first copy, and any rerun, is
+operator's page. It runs only where the repository has the nine secrets in the
+[configuration table](#configuration) and the `BACKUPS_BUCKET` variable, read-only on the
+live bucket, and skips itself otherwise; a fork names its live and mirror buckets at the top
+of the file. The first copy, and any rerun, is
 started by hand from the Actions tab.
 
 **The change feed.** Every write records what it touched, numbered by the store's own
