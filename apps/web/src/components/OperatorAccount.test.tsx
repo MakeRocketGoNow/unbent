@@ -83,6 +83,20 @@ describe('OperatorAccount: facts', () => {
     expect(dd.textContent).not.toContain('as of the last sweep');
   });
 
+  it("shows the directory's value, said to be the sweep's, while the stats are on their way", () => {
+    vi.mocked(api.storeStats).mockReturnValue(new Promise(() => {}));
+    harness(undefined, null);
+    const dd = screen.getByText('Last change').nextElementSibling!;
+    expect(dd.textContent).toContain(formatMoment(account.lastActiveAt!));
+    expect(dd.textContent).toContain('as of the last sweep');
+  });
+
+  it('says nothing is written yet when the store answers with no write, whatever the sweep last saw', async () => {
+    harness(undefined, { ...stats(), lastWriteAt: null });
+    await flush();
+    expect(screen.getByText('Last change').nextElementSibling!.textContent).toBe('Nothing written yet');
+  });
+
   it("shows the sweep's value, not 'Nothing written yet', for a store that cannot read its feed", async () => {
     const marker = { id: 'l1', key: 'stores/u1/2026-10-05.sql', startedAt: now, pages: 2, undo: null, before: null };
     for (const state of [{ wiped: true }, { loading: marker }]) {
@@ -102,8 +116,8 @@ describe('OperatorAccount: facts', () => {
     harness(undefined, null, { ...account, lastActiveAt: null });
     const dd = () => screen.getByText('Last change').nextElementSibling!;
     expect(dd().textContent).toBe('Reading the store…');
-    await act(async () => fail(new Error('store unavailable')));
-    expect(dd().textContent).toBe('None recorded');
+    act(() => fail(new Error('store unavailable')));
+    await waitFor(() => expect(dd().textContent).toBe('None recorded'));
   });
 });
 
