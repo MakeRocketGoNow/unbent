@@ -331,10 +331,17 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   const whole = feedState !== null && isWhole(feedState);
   const seenResets = useRef(resets);
   useEffect(() => {
+    // No library — closed by a refused session, or changing hands — is not a reset of one;
+    // the count the reopened library then reports is a first state, heard as below.
+    if (resets === null) {
+      seenResets.current = null;
+      return;
+    }
     if (resets === seenResets.current) return;
     const first = seenResets.current === null;
     seenResets.current = resets;
-    // The first state a mounted workspace hears is a count, not a reset it lived through.
+    // The first state a mounted workspace hears, or the first from a library opened again,
+    // is a count, not a reset it lived through.
     if (first) return;
     for (const id of bases.current.keys()) staleBases.current.add(id);
   }, [resets]);
