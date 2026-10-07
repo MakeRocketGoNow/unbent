@@ -31,6 +31,8 @@ export interface TestLibrary extends ReadableLibrary {
   upsert: (entity: FeedEntity, row: FeedNote | FeedNotebook | FeedTag | FeedAttachment) => void;
   remove: (entity: FeedEntity, id: string) => void;
   subscribe: (listener: (state: FeedState) => void) => () => void;
+  /** The engine's `reset`: the count moves and every subscriber hears it; the rows are the caller's to replace. */
+  reset: () => void;
   uninstall: () => void;
 }
 
@@ -58,7 +60,8 @@ export function installTestLibrary(rows: Rows = {}): TestLibrary {
     attachments: make<FeedAttachment>('attachment', rows.attachments ?? [], (a) => a.id),
   };
   const cursor = rows.cursor === undefined ? { seq: 1, epoch: 'test' } : rows.cursor;
-  const state: FeedState = { phase: cursor ? 'current' : 'starting', cursor, lastError: null, total: null, applied: 0, pulls: 1 };
+  const state: FeedState = { phase: cursor ? 'current' : 'starting', cursor, lastError: null, total: null, applied: 0, pulls: 1, resets: 0 };
+  const listeners = new Set<(s: FeedState) => void>();
   const of = (entity: FeedEntity) => ({ note: lib.notes, notebook: lib.notebooks, tag: lib.tags, attachment: lib.attachments })[entity] as Collection<object, string>;
   let version = 0;
   const test: TestLibrary = {
@@ -66,8 +69,15 @@ export function installTestLibrary(rows: Rows = {}): TestLibrary {
     state: () => state,
     // The real library's, for `useFeedState`: without it the test library reads as one that
     // keeps no feed, and nothing that waits for a whole library (`useLibraryWhole`) would
-    // ever see one. The state never moves here, so there is nothing to hear.
-    subscribe: () => () => {},
+    // ever see one. The state moves only when a test calls `reset`.
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => void listeners.delete(listener);
+    },
+    reset: () => {
+      state.resets += 1;
+      listeners.forEach((l) => l({ ...state }));
+    },
     version: () => version,
     upsert: (entity, row) => {
       const c = controls.get(entity)!;

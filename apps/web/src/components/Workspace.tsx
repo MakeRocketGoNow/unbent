@@ -10,6 +10,7 @@ import * as api from '../notes-api.js';
 import { isOfflineError, isStatus } from '../notes-api.js';
 import * as actions from '../store/actions.js';
 import { useOutbox, useSyncStatus } from '../store/use-outbox.js';
+import { useFeedState } from '../store/use-feed-state.js';
 import { NotSyncedMark } from './NotSyncedMark.js';
 import { useOffline } from '../connectivity.js';
 import {
@@ -310,6 +311,23 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
    * and that flush must still be measured against the note it belongs to.
    */
   const bases = useRef(new Map<string, Note>());
+  /**
+   * The notes whose base may be newer than the truth. The feed engine empties and
+   * refills the collections on a `reset` — an operator's wind-back or load, which make
+   * every row older, not newer — and the rule below that takes only a newer copy would
+   * leave the open note showing what the wind-back removed: the list dropped the edit
+   * and the note did not (MAK-196, found in the restore rehearsal). After a reset every
+   * base is suspect until the next copy of its note has been taken, whatever its date.
+   */
+  const staleBases = useRef(new Set<string>());
+  const feedState = useFeedState();
+  const resets = feedState?.resets ?? 0;
+  const seenResets = useRef(resets);
+  useEffect(() => {
+    if (resets === seenResets.current) return;
+    seenResets.current = resets;
+    for (const id of bases.current.keys()) staleBases.current.add(id);
+  }, [resets]);
 
   /**
    * A save refused because the note changed on another device, with the note as it now
@@ -627,11 +645,15 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     const clean = isClean();
     const base = bases.current.get(noteId);
     /*
-       Only ever forward. A copy older than the base is not another device's save: it is
-       the row between a replayed write of our own ending and the feed delivering the
-       server's copy, and taking it would reseed the editor with text already replaced.
+       Only ever forward, unless the library has started over since the base was taken. A
+       copy older than the base is otherwise not another device's save: it is the row
+       between a replayed write of our own ending and the feed delivering the server's
+       copy, and taking it would reseed the editor with text already replaced. After a
+       reset the older copy is the truth — the store was wound back — and the base is what
+       is stale (`staleBases`).
     */
-    if (!base || note.updatedAt <= base.updatedAt) return;
+    const stale = staleBases.current.has(noteId);
+    if (!base || (!stale && note.updatedAt <= base.updatedAt)) return;
     /*
        Another device saved this note and the feed has brought its copy. With nothing
        typed here since the last save the copy simply replaces the draft, and the first
@@ -640,10 +662,11 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
        save, and the notice if need be.
     */
     if (!clean) return;
+    staleBases.current.delete(noteId);
     bases.current.set(noteId, note);
     if (JSON.stringify(seedFrom(note)) !== JSON.stringify(draftRef.current)) reseed(note);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editing, noteId, note?.updatedAt, conflicted]);
+  }, [editing, noteId, note?.updatedAt, conflicted, resets]);
 
   /*
      The connection back: a save that failed for want of one — typing that landed in the

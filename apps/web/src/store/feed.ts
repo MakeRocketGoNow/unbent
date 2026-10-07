@@ -69,6 +69,14 @@ export interface FeedState {
   total: number | null;
   applied: number;
   pulls: number;
+  /**
+   * How many times the collections have been emptied and walked again: on a `reset` from
+   * the server, and on a stored walk position it refuses for good. What a view that holds
+   * a copy of a row outside the collections — the workspace's base for the open note —
+   * watches, since after one the row it holds may be newer than the truth, not older
+   * (an operator's wind-back; MAK-196), and a timestamp alone cannot tell it so.
+   */
+  resets: number;
 }
 
 /**
@@ -96,7 +104,7 @@ export interface FeedOptions {
 }
 
 export class FeedEngine {
-  readonly state: FeedState = { phase: 'starting', cursor: null, lastError: null, total: null, applied: 0, pulls: 0 };
+  readonly state: FeedState = { phase: 'starting', cursor: null, lastError: null, total: null, applied: 0, pulls: 0, resets: 0 };
   private controls: Partial<FeedControls> = {};
   private running: Promise<void> | null = null;
   private again = false;
@@ -278,6 +286,8 @@ export class FeedEngine {
   private async truncateAll(): Promise<void> {
     const all = this.all();
     if (!all) return;
+    this.state.resets += 1;
+    this.changed();
     for (const c of Object.values(all)) {
       c.begin();
       c.truncate();
