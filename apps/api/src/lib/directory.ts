@@ -157,6 +157,21 @@ const toAccount = (r: OperatorRow): OperatorAccount => ({
 });
 
 /**
+ * The list's two statements, as text, so `migrations.test.ts` can `EXPLAIN QUERY PLAN`
+ * them against a database built from the migrations and pin that they take 0039's index
+ * while the dump run's statements do not. Binds: `first` takes the limit; `withCursor`
+ * takes the cursor's activity, its id and the limit.
+ */
+export const OPERATOR_PAGE_SQL = {
+  first: `${OPERATOR_SELECT} WHERE d.deleted_at IS NULL ORDER BY COALESCE(d.last_active_at, d.created_at) DESC, d.user_id DESC LIMIT ?1`,
+  withCursor: `${OPERATOR_SELECT}
+        WHERE d.deleted_at IS NULL
+          AND COALESCE(d.last_active_at, d.created_at) <= ?1
+          AND (COALESCE(d.last_active_at, d.created_at), d.user_id) < (?1, ?2)
+        ORDER BY COALESCE(d.last_active_at, d.created_at) DESC, d.user_id DESC LIMIT ?3`,
+};
+
+/**
  * A page of live accounts for the operator page (MAK-171, part 5), with the email from
  * `user`, the daily backup's record of each (migration 0037) and the last wind-back
  * (0038). Live only — a tombstoned row is the sweep's.
@@ -169,16 +184,19 @@ const toAccount = (r: OperatorRow): OperatorAccount => ({
  * id together (`<ms>:<user id>`), compared as one row value so the planner can seek to
  * it, and ties on activity — every account 0030 backfilled shares one `created_at` —
  * are broken by the id. Migration 0039's expression index is on exactly this spelling.
- * The first page is the top of the index and `LIMIT` rows; a later page seeks to its
- * cursor, which takes a scalar bound on the leading expression beside the row-value
- * comparison — SQLite does not seek a DESC row-value range on its own, and with the bound
- * alone the plan was a scan from the top on every page (found in review). Two statements
- * rather than one with `?1 IS NULL OR`, since the `OR` is what turned the seek into a
- * scan. Being an expression index, no other statement on the table can pick it up
- * (AGENTS.md). `EXPLAIN QUERY PLAN` on a database built from the migrations: `SEARCH d
- * USING INDEX idx_account_directory_activity (<expr><?)` for a page with a cursor and
- * `SCAN d USING INDEX …` for the first, with the sweep's and the dump run's plans
- * unchanged.
+ * The first page is the top of the index and `LIMIT` rows; a later page seeks to the
+ * cursor's activity, which takes a scalar bound on the leading expression beside the
+ * row-value comparison — SQLite does not seek a DESC row-value range on its own, and with
+ * the comparison alone the plan was a scan from the top on every page (found in review).
+ * Two statements rather than one with `?1 IS NULL OR`, since the `OR` is what turned the
+ * seek into a scan. Within one tied activity value the seek lands at the top of the tie
+ * and the row-value comparison filters the ids at or above the cursor, so paging through
+ * a large tie reads its earlier pages again; the accounts 0030 backfilled are one such
+ * tie, and a few thousand rows of it is nothing. Being an expression index, and not a
+ * partial one, no other statement on the table picks it up (AGENTS.md; the migration says
+ * why not partial). `migrations.test.ts` pins the plans: `SEARCH d USING INDEX
+ * idx_account_directory_activity (<expr><?)` for a page with a cursor, `SCAN d USING
+ * INDEX …` for the first, and the dump run's two statements untouched by it.
  *
  * The cursor is a position in an order that moves: the sweep rewrites activity hourly.
  * An account that becomes active after a page was read sits above its cursor and is
@@ -189,18 +207,9 @@ const toAccount = (r: OperatorRow): OperatorAccount => ({
  */
 export async function listOperatorAccounts(db: D1Database, after = '', limit: number = OPERATOR_PAGE_SIZE): Promise<OperatorAccountsPage> {
   const cursor = parseCursor(after);
-  const order = `ORDER BY COALESCE(d.last_active_at, d.created_at) DESC, d.user_id DESC`;
   const statement = cursor
-    ? db
-        .prepare(
-          `${OPERATOR_SELECT}
-            WHERE d.deleted_at IS NULL
-              AND COALESCE(d.last_active_at, d.created_at) <= ?1
-              AND (COALESCE(d.last_active_at, d.created_at), d.user_id) < (?1, ?2)
-            ${order} LIMIT ?3`,
-        )
-        .bind(cursor.activeAt, cursor.userId, limit)
-    : db.prepare(`${OPERATOR_SELECT} WHERE d.deleted_at IS NULL ${order} LIMIT ?1`).bind(limit);
+    ? db.prepare(OPERATOR_PAGE_SQL.withCursor).bind(cursor.activeAt, cursor.userId, limit)
+    : db.prepare(OPERATOR_PAGE_SQL.first).bind(limit);
   const { results } = await statement.all<OperatorRow & { active_at: number }>();
   const last = results[results.length - 1];
   return { accounts: results.map(toAccount), next: results.length === limit && last ? `${last.active_at}:${last.user_id}` : null };

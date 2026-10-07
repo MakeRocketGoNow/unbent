@@ -4,6 +4,7 @@ import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { OPERATOR_PAGE_SQL } from './lib/directory.js';
 
 /**
  * The D1 migrations, applied in order to a real SQLite by the `sqlite3` CLI, and the one
@@ -117,5 +118,46 @@ describe.skipIf(!sqlite3)('the D1 migrations', () => {
       expect(run(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = '${table}'`), table).toBe('1');
     }
     expect(run(`SELECT copied_at FROM account_directory WHERE user_id = 'm'`)).toBe('2');
+  });
+});
+
+/**
+ * The plans the directory's statements get, on a database built from every migration.
+ * 0039's expression index exists for the operator's accounts list alone; the planner has
+ * no statistics, so an index it can use is an index it takes, and the first version of
+ * 0039 was partial on `deleted_at IS NULL`, which every statement on the table says —
+ * the dump run's two statements walked it on every hourly run (found in review). Pinned
+ * here, where AGENTS.md says a new D1 index is checked, so the next index on this table
+ * shows what it does to the others.
+ */
+describe.skipIf(!sqlite3)('the directory\'s query plans', () => {
+  let plan: (sql: string) => string;
+  beforeAll(() => {
+    const file = join(mkdtempSync(join(tmpdir(), 'unbent-plans-')), 'd1.sqlite');
+    const { run } = db(file);
+    for (const f of files) run(migration(f));
+    plan = (sql) => run(`EXPLAIN QUERY PLAN ${sql}`);
+  });
+
+  it('seek the accounts list on its index, from the top for the first page and from the cursor after', () => {
+    expect(plan(OPERATOR_PAGE_SQL.first.replace('?1', '50'))).toContain('SCAN d USING INDEX idx_account_directory_activity');
+    expect(plan(OPERATOR_PAGE_SQL.withCursor.replace(/\?1/g, '1').replace('?2', "'u'").replace('?3', '50'))).toContain(
+      'SEARCH d USING INDEX idx_account_directory_activity (<expr><?)',
+    );
+  });
+
+  it('leave the sweep and the dump run on the primary key, not on the list\'s index', () => {
+    // `listDirectory`, the sweep's walk.
+    expect(
+      plan(`SELECT d.*, (u.id IS NOT NULL) AS user_exists FROM account_directory d LEFT JOIN user u ON u.id = d.user_id WHERE d.user_id > '' ORDER BY d.user_id LIMIT 20`),
+    ).toContain('SEARCH d USING INDEX sqlite_autoindex_account_directory_1');
+    // The dump run's due list and its status, as `dumpStores` writes them (lib/backups.ts).
+    const due = plan(
+      `SELECT d.user_id, d.dump_at, d.dump_mark FROM account_directory d JOIN user u ON u.id = d.user_id WHERE d.deleted_at IS NULL AND (d.dump_tried_at IS NULL OR d.dump_tried_at < 1) ORDER BY d.dump_error IS NOT NULL, d.dump_tried_at IS NOT NULL, d.dump_tried_at, d.user_id LIMIT 20`,
+    );
+    const status = plan(
+      `WITH live AS (SELECT d.user_id, d.dump_error, d.dump_tried_at, COALESCE(d.dump_checked_at, d.created_at) < 1 AS stale FROM account_directory d JOIN user u ON u.id = d.user_id WHERE d.deleted_at IS NULL) SELECT (SELECT COUNT(*) FROM live) AS accounts, (SELECT COUNT(*) FROM live WHERE dump_error IS NOT NULL) AS failing_count`,
+    );
+    for (const p of [due, status]) expect(p).not.toContain('idx_account_directory_activity');
   });
 });
