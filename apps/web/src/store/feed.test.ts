@@ -13,7 +13,14 @@ interface Fake<T extends object> extends Controls<T> {
   ready: number;
 }
 
-function fake<T extends object>(keyOf: (row: T) => string): Fake<T> {
+/**
+ * `seq` is a log shared with the harness's cursor store, so a test can say what order the
+ * collections' commits settled and the cursor was written in: the engine's promise is that
+ * no cursor reaches disk before the rows it stands for, and the fakes have to be able to
+ * tell `await c.commit()` from `c.commit()` for that to be checkable. So `commit` settles
+ * on a later microtask, as the persistence layer's does, and logs to `seq` only then.
+ */
+function fake<T extends object>(name: string, keyOf: (row: T) => string, seq: string[] = []): Fake<T> {
   const rows = new Map<string, T>();
   const log: string[] = [];
   let open = false;
@@ -42,9 +49,12 @@ function fake<T extends object>(keyOf: (row: T) => string): Fake<T> {
     commit: () => {
       open = false;
       log.push('commit');
-      return true;
+      return Promise.resolve().then(() => seq.push(`${name} committed`));
     },
     truncate: () => {
+      // As TanStack DB's persistence wrapper does (NoPendingSyncTransactionWriteError): a
+      // fake that allowed this hid a reset that failed on every pull.
+      if (!open) throw new Error('truncate outside a transaction');
       rows.clear();
       log.push('truncate');
     },
@@ -74,7 +84,8 @@ function harness(answers: Record<string, unknown[] | unknown>) {
   const requests: string[] = [];
   let cursor: Position | null = null;
   const cursorWrites: Array<Position | null> = [];
-  const c = { note: fake<FeedNote>((n) => n.id), notebook: fake<FeedNotebook>((n) => n.id), tag: fake<FeedTag>((t) => t.id), attachment: fake<FeedAttachment>((a) => a.id) };
+  const seq: string[] = [];
+  const c = { note: fake<FeedNote>('note', (n) => n.id, seq), notebook: fake<FeedNotebook>('notebook', (n) => n.id, seq), tag: fake<FeedTag>('tag', (t) => t.id, seq), attachment: fake<FeedAttachment>('attachment', (a) => a.id, seq) };
   const engine = new FeedEngine({
     fetchJson: async <T,>(path: string): Promise<T> => {
       requests.push(path);
@@ -92,10 +103,11 @@ function harness(answers: Record<string, unknown[] | unknown>) {
     writeCursor: async (c) => {
       cursor = c;
       cursorWrites.push(c);
+      seq.push(`cursor ${c ? c.seq : 'null'}`);
     },
     pageSize: 2,
   });
-  return { engine, c, requests, cursorWrites, cursor: () => cursor, setCursor: (p: Position | null) => void (cursor = p) };
+  return { engine, c, requests, cursorWrites, seq, cursor: () => cursor, setCursor: (p: Position | null) => void (cursor = p) };
 }
 
 const snapshotFirst = (notes: FeedNote[], next: string | null, seq = 10): SnapshotPage => ({ seq, epoch: 'e1', notes, next, notebooks: [{ id: 'nb1', name: 'Receipts', purpose: null, emoji: null, fieldDefs: [] }], tags: [{ id: 't1', name: 'home' }], total: 3 });
@@ -118,6 +130,9 @@ describe('FeedEngine', () => {
     // first page's seq, not the last's, so what was written during the walk is replayed
     // by the feed.
     expect(h.cursorWrites).toEqual([{ seq: 10, epoch: 'e1', resume: 'b', total: 3 }, { seq: 10, epoch: 'e1' }]);
+    // And each only once the page's commits have settled: the first page wrote all four
+    // collections, the second only notes, and no position was written ahead of either.
+    expect(h.seq).toEqual(['note committed', 'notebook committed', 'tag committed', 'attachment committed', 'cursor 10', 'note committed', 'cursor 10']);
     expect(h.engine.state).toMatchObject({ phase: 'current', total: 3, applied: 3, lastError: null, pulls: 1 });
     expect(h.c.note.ready).toBe(1);
     Object.values(stop).forEach((s) => s());
@@ -239,9 +254,14 @@ describe('FeedEngine', () => {
     h.c.note.rows.set('stale', note('stale'));
     for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
     await h.engine.settled();
-    expect(h.c.note.log.slice(0, 1)).toEqual(['truncate']);
+    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) expect(h.c[k].log.slice(0, 3)).toEqual(['begin', 'truncate', 'commit']);
     expect([...h.c.note.rows.keys()]).toEqual(['z']);
     expect(h.cursor()).toEqual({ seq: 50, epoch: 'e1' });
+    // The cursor is cleared only once every collection's truncate has settled on disk: a
+    // cursor gone before the rows would make the next open walk the snapshot over them.
+    const cleared = h.seq.indexOf('cursor null');
+    expect(cleared).toBeGreaterThan(-1);
+    expect(h.seq.slice(0, cleared).filter((e) => e.endsWith('committed'))).toHaveLength(4);
   });
 
   it('a note row replaces the note\'s files, and a note tombstone takes them', async () => {
