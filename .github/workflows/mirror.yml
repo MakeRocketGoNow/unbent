@@ -25,8 +25,11 @@ name: Nightly mirror
 #                 a 30-day retention lock there, so nothing — not this workflow, not a leaked
 #                 key — can overwrite or delete a copy younger than that; `state/` is not
 #                 locked, since the prune's state file is rewritten every night.
-#   D1_EXPORT_API_TOKEN  for the export. Made with D1 Read; whether the export API accepts
-#                 that or wants Edit is settled by the first run.
+#   D1_EXPORT_API_TOKEN  for the export: D1 Read and Edit on the account, no bucket. The
+#                 export endpoint refuses a token with Read alone (the first seed, run
+#                 37563913927, failed on it with "Authentication error [code: 10000]"),
+#                 and Edit alone does not imply Read, which wrangler needs to find the
+#                 database first. Both, then.
 # Putting files back into the live bucket is part 4's workflow, behind the `restore`
 # environment, whose secrets this file must never name.
 #
