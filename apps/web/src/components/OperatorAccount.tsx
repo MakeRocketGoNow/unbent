@@ -386,12 +386,13 @@ function WindBack({ userId, email, last }: { userId: string; email: string; last
         />
       )}
 
-      {!outcome && last?.undo && last.at > now - RESTORE_WINDOW_DAYS * 86_400_000 && (
+      {!outcome && last && last.at > now - RESTORE_WINDOW_DAYS * 86_400_000 && (
         <>
           <p className="muted small">
-            Last wind-back: {timeAgo(last.at)}, to {formatMoment(last.toAt)}. Undo is good for {RESTORE_WINDOW_DAYS} days from then.
+            Last wind-back: {timeAgo(last.at)}, to {formatMoment(last.toAt)}.
+            {last.undo ? <> Undo is good for {RESTORE_WINDOW_DAYS} days from then.</> : <> Its undo bookmark did not survive the restart; the Worker log has it on the &quot;restore scheduled&quot; line.</>}
           </p>
-          {!lastUndoAsked ? (
+          {!last.undo ? null : !lastUndoAsked ? (
             <Button tone="danger" disabled={busy} onClick={() => setLastUndoAsked(true)}>
               Undo the wind-back
             </Button>
