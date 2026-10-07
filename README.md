@@ -248,7 +248,7 @@ says otherwise; `pnpm exec wrangler secret put NAME` from `apps/api`, or the das
 | `UNBENT_BUNDLE_ID_BASE`, `UNBENT_INSTANCE_HOST`, `DEVELOPMENT_TEAM` | an iOS build of your own | `apps/ios/Config/Local.xcconfig`, untracked; see [iOS app](#ios-app) |
 | `ANDROID_APPLICATION_ID`, `ANDROID_DEFAULT_INSTANCE` | the Android build in CI | GitHub repository **variables**; `unbent.applicationId` and `unbent.defaultInstance` in `local.properties` locally |
 | `CLOUDFLARE_WORKERS_SUBDOMAIN`, `DEV_BETTER_AUTH_SECRET`, `DEV_ALLOWED_EMAILS` | a dev instance and PR previews of your own | GitHub; see [The dev instance](#the-dev-instance) — every job skips itself without them |
-| `RESTORE_R2_ACCESS_KEY_ID`, `RESTORE_R2_SECRET_ACCESS_KEY` | putting one account's files back from the mirror | GitHub secrets in the `restore` environment, read-write on the live bucket and readable by that one workflow alone; see [Where your notes live](#where-your-notes-live) — the run refuses without them |
+| `RESTORE_R2_ACCESS_KEY_ID`, `RESTORE_R2_SECRET_ACCESS_KEY` | putting one account's files back from the mirror | GitHub secrets in the `restore` environment, read-write on the live bucket, with the environment restricted to deployments from `main`; see [Where your notes live](#where-your-notes-live) — the run refuses without them |
 | `LIVE_R2_ACCOUNT_ID`, `LIVE_R2_ACCESS_KEY_ID`, `LIVE_R2_SECRET_ACCESS_KEY`, `DUMPS_R2_ACCESS_KEY_ID`, `DUMPS_R2_SECRET_ACCESS_KEY`, `MIRROR_R2_ACCOUNT_ID`, `MIRROR_R2_ACCESS_KEY_ID`, `MIRROR_R2_SECRET_ACCESS_KEY`, `D1_EXPORT_API_TOKEN` | the nightly mirror to a second Cloudflare account | GitHub secrets, with `BACKUPS_BUCKET` as a variable; the live key read-only, the R2 keys scoped to one bucket each, the D1 token D1 Read on the account, since the export needs no bucket; see [Where your notes live](#where-your-notes-live) — the job skips itself without them |
 
 The one thing that *would* work by accident is who the legal documents name — a fork that
@@ -1834,8 +1834,10 @@ from the mirror back into the live bucket: started by hand only, from the Action
 with the account id and the word `RESTORE` typed in; anything else in that box is a dry
 run that lists the counts and copies nothing. It is the one workflow that can write to
 the live bucket, with a credential of its own (`RESTORE_R2_ACCESS_KEY_ID` and
-`RESTORE_R2_SECRET_ACCESS_KEY`, in the `restore` GitHub environment, which no other
-workflow can read). `rclone copy --ignore-existing` is the whole of what it does: nothing
+`RESTORE_R2_SECRET_ACCESS_KEY`, in the `restore` GitHub environment, which only a
+workflow on `main` may use — that rule on the environment is what keeps an edited copy
+of the file on a branch away from a key that can delete from the live bucket).
+`rclone copy --ignore-existing` is the whole of what it does: nothing
 is deleted and nothing already in the live bucket is overwritten, so running it twice is
 the same as once, and it never writes to the mirror, so the prune's state file is left
 alone — the files reappearing in live are enough for the next night's prune to forget

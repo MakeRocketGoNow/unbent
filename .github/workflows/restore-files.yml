@@ -14,7 +14,11 @@ name: Restore an account's files
 # here; this repository is private on a plan with no environment protection rules, so the
 # gate is: started by hand only, for one named account, with `confirm` typed as the
 # literal RESTORE. Anything else is a dry run that lists what would be copied and copies
-# nothing.
+# nothing. The environment's one rule, that only `main` may deploy to it, is what keeps
+# this file the only one that reaches the credential: a copy of it edited on a branch,
+# with the gate or `--ignore-existing` taken out, is refused the environment. Keep that
+# rule; without it any branch could dispatch a rewrite of this job against a key that
+# can delete from the live bucket.
 #
 # What a run does to each bucket:
 #   mirror   read only: a listing of the account's prefix and the copy's source. The
@@ -160,17 +164,22 @@ jobs:
       # prefix rclone does not see as a directory (exit 3), which is a count of zero here
       # and a copy of nothing below, not a failure: that is the answer for an account
       # whose files were all pruned or never mirrored.
+      # The listing goes to a file and its errors to another, and only the error file is
+      # ever shown: the listing is the account's filenames, and a listing that failed
+      # part-way would otherwise be printed with them.
       - name: Count the account's files in the mirror
         run: |
           set +e
-          listing="$(rclone lsf -R --files-only --fast-list "mirror:$MIRROR_BUCKET/blobs/users/$RESTORE_ACCOUNT" 2>&1)"
+          rclone lsf -R --files-only --fast-list "mirror:$MIRROR_BUCKET/blobs/users/$RESTORE_ACCOUNT" \
+            > "$RUNNER_TEMP/mirror.lst" 2> "$RUNNER_TEMP/mirror.err"
           status=$?
           set -e
           case "$status" in
-            0) mirrored=$(printf '%s\n' "$listing" | grep -c . || true) ;;
+            0) mirrored=$(grep -c . "$RUNNER_TEMP/mirror.lst" || true) ;;
             3) mirrored=0 ;;
-            *) printf '%s\n' "$listing" >&2; exit "$status" ;;
+            *) cat "$RUNNER_TEMP/mirror.err" >&2; echo "rclone lsf failed with exit $status" >&2; exit "$status" ;;
           esac
+          rm -f "$RUNNER_TEMP/mirror.lst"
           echo "RESTORE_MIRRORED=$mirrored" >> "$GITHUB_ENV"
           echo "$mirrored file(s) under the account's prefix in the mirror."
 
@@ -185,8 +194,10 @@ jobs:
           rclone copy "mirror:$MIRROR_BUCKET/blobs/users/$RESTORE_ACCOUNT" "live:$LIVE_BUCKET/users/$RESTORE_ACCOUNT" "${flags[@]}" \
             > "$RUNNER_TEMP/copy.log" 2>&1 || { status=$?; echo "::error::rclone copy failed with exit $status; the summary has the counts."; echo "$status" > "$RUNNER_TEMP/copy.failed"; }
 
+      # Once the inputs and secrets passed: before that there is no checkout to run the
+      # script from, and the real error is the step that failed.
       - name: Write the summary
-        if: always()
+        if: ${{ always() && steps.configured.outputs.ready == 'true' }}
         run: |
           [ -f "$RUNNER_TEMP/copy.log" ] || : > "$RUNNER_TEMP/copy.log"
           node scripts/mirror/restore-summary.mjs "$RUNNER_TEMP/copy.log" "$RUNNER_TEMP/summary.md"
