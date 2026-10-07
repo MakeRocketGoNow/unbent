@@ -806,6 +806,18 @@ Things about working on the store that are easy to get wrong:
   to tombstone; a new way to record one has to `revive` its key, as `record` does, since
   a replayed upload can bring a tombstoned key back as a live file.
 
+- **A store is whole, wiped or loading, and answers only when whole.** `POST
+  /api/admin/store/load` empties an object and fills it from a dump in pages, with a
+  marker in the object's key-value storage (`LOADING_KEY`) from the `deleteAll` to the
+  last check; while it is there `ready()` throws `StoreLoading`, which is `retryable`, so
+  a request gets the 503 the Worker already answers for a passing unavailability and the
+  sweep and the daily dumps defer. Only `loadFinish` clears it, after the owner and
+  schema checks and the migration, and only `wipe` and a point-in-time restore take it
+  otherwise. A new data method must go through `ready()`, or it answers from a
+  half-loaded store. The statement scanner and the rules for which statements run are
+  in `store/load.ts`, pure and unit-tested; a dump holds `CREATE` and `INSERT` and
+  nothing else runs.
+
 ### Note history
 
 `note_revisions` (`0003-revisions`, `0004-revision-props`, `store/revisions.ts`) holds the
