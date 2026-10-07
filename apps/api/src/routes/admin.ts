@@ -441,8 +441,9 @@ export const admin = new Hono<AppEnv>()
    * step 1 is skipped then — a dump of a half-loaded store is not a way back, and
    * `dumpBegin` refuses it anyway — and the object keeps the `undo` and `before` of the
    * first attempt (found in review: the first version dumped first every time, and so
-   * could never be called again). The dump object is opened before step 1, so an R2
-   * refusal is a load that never started rather than one that emptied the store. Logged
+   * could never be called again). The dump object is opened after step 1 and before
+   * step 2, so an R2 refusal is a load that never started rather than one that emptied
+   * the store, and the open stream does not sit idle through an archive's dump. Logged
    * with both ids before anything is read.
    */
   .post(
@@ -487,9 +488,6 @@ export const admin = new Hono<AppEnv>()
         });
       }
 
-      const object = await bucket.get(key);
-      if (!object) return c.json({ error: `${key} went away since the dry run.` }, 404);
-
       let before: string | null = null;
       if (current.loading) {
         console.log(`[store] load for user=${target} starts over on a store already loading ${current.loading.key}; no dump taken first`);
@@ -502,6 +500,9 @@ export const admin = new Hono<AppEnv>()
           return c.json({ error: 'Dumping the store as it stands failed, so nothing was loaded. The Worker log has the error.' }, 502);
         }
       }
+
+      const object = await bucket.get(key);
+      if (!object) return c.json({ error: `${key} went away since the dry run; nothing was loaded.`, before }, 404);
 
       let begun: { loadId: string; undo: string | null; before: string | null };
       try {
