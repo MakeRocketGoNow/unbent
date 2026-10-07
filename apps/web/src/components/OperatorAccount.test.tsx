@@ -106,6 +106,7 @@ describe('OperatorAccount: wind back', () => {
     });
     await flush();
     expect(screen.queryByText(/Last wind-back:/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Undo the wind-back' })).toBeNull();
   });
 
   it('previews first, then names the account, the moment and what is lost, then offers Undo', async () => {
