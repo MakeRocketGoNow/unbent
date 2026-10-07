@@ -130,6 +130,9 @@ describe('FeedEngine', () => {
     // first page's seq, not the last's, so what was written during the walk is replayed
     // by the feed.
     expect(h.cursorWrites).toEqual([{ seq: 10, epoch: 'e1', resume: 'b', total: 3 }, { seq: 10, epoch: 'e1' }]);
+    // And each only once the page's commits have settled: the first page wrote all four
+    // collections, the second only notes, and no position was written ahead of either.
+    expect(h.seq).toEqual(['note committed', 'notebook committed', 'tag committed', 'attachment committed', 'cursor 10', 'note committed', 'cursor 10']);
     expect(h.engine.state).toMatchObject({ phase: 'current', total: 3, applied: 3, lastError: null, pulls: 1 });
     expect(h.c.note.ready).toBe(1);
     Object.values(stop).forEach((s) => s());
