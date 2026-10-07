@@ -12,21 +12,31 @@
 // The rehearsal of the runbook (MAK-171, part 6) hit it on `oauthClientResource`, and
 // D1's import reported it only as `{"D1_RESET_DO":true}`, with nothing imported.
 //
-// The fix is the order: every CREATE first, then every INSERT. Two other lines go:
-// `PRAGMA defer_foreign_keys`, which the import does not need once the order is right,
-// and the `sqlite_sequence` rows, which SQLite maintains itself and refuses to have
-// written on some builds. Nothing else is in an export of the control plane, and
-// anything else found is reported on stderr and kept, after the inserts, so a statement
-// this script does not know is seen rather than silently dropped.
+// The fix is the order: every CREATE first, then every INSERT. The export's
+// `PRAGMA defer_foreign_keys` stays, and stays first: it cannot cure the index problem,
+// but it is what lets a child row be written before its parent, and the export orders
+// tables by creation, which a rebuild (0013's and 0017's create-copy-drop-rename) moves a
+// table to the end of. Without it, a rebuilt `user` would put every session and account
+// row before its parent and fail the import the same opaque way. The `sqlite_sequence`
+// rows go: the only AUTOINCREMENT table is wrangler's `d1_migrations`, whose next id
+// SQLite takes from the rows themselves, so the lines buy nothing, and an import should
+// not depend on D1 letting a `sqlite_*` table be written by hand. Nothing else is in an
+// export of the control plane; anything else found is kept, after the inserts, reported,
+// and makes the exit code non-zero, so a statement this script does not know stops the
+// operator rather than reaching D1's all-or-nothing import unseen.
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 /**
- * Splits export text into statements. A statement starts at a line beginning with a
- * keyword and ends at a line ending in `;`, except a trigger, which holds `;` lines of
- * its own and ends at `END;`. The export puts no `;` inside a string on a line of its
- * own, so this is enough for what `wrangler d1 export` writes; it is not a SQL parser.
+ * Splits export text into statements. A statement ends at a line ending in `;` while no
+ * string literal is open, except a trigger, which holds `;` lines of its own and ends at
+ * `END;`. Whether a literal is open is the parity of the single quotes seen so far: the
+ * export escapes a quote inside a value as `''`, which keeps the count even, and its
+ * identifiers hold no apostrophes. A value with a newline after a `;` (`'one;` on one
+ * line, `two'` on the next) therefore stays one statement, where a split on the line
+ * alone cut it in two and put the tail after every other row (found in review). Not a
+ * SQL parser; enough for what `wrangler d1 export` writes.
  * @param {string} text
  * @returns {string[]}
  */
@@ -36,15 +46,18 @@ export function statements(text) {
   /** @type {string[]} */
   let current = [];
   let inTrigger = false;
+  let quotes = 0;
   for (const line of text.split('\n')) {
     if (current.length === 0 && line.trim() === '') continue;
     if (current.length === 0 && /^CREATE\s+TRIGGER\b/i.test(line)) inTrigger = true;
     current.push(line);
-    const ends = inTrigger ? /^END;\s*$/i.test(line) : /;\s*$/.test(line);
+    quotes += (line.match(/'/g) ?? []).length;
+    const ends = quotes % 2 === 0 && (inTrigger ? /^END;\s*$/i.test(line) : /;\s*$/.test(line));
     if (ends) {
       out.push(current.join('\n'));
       current = [];
       inTrigger = false;
+      quotes = 0;
     }
   }
   if (current.length) out.push(current.join('\n'));
@@ -66,14 +79,17 @@ export function order(text) {
   const unknown = [];
   /** @type {string[]} */
   const dropped = [];
+  /** @type {string[]} */
+  const pragmas = [];
   for (const s of statements(text)) {
     if (/^CREATE\b/i.test(s)) schema.push(s);
     else if (/^INSERT\s+INTO\s+"?sqlite_sequence"?/i.test(s) || /^DELETE\s+FROM\s+"?sqlite_sequence"?/i.test(s)) dropped.push(s);
+    else if (/^PRAGMA\s+defer_foreign_keys\b/i.test(s)) pragmas.push(s);
     else if (/^PRAGMA\b/i.test(s)) dropped.push(s);
     else if (/^INSERT\b/i.test(s)) rows.push(s);
     else unknown.push(s);
   }
-  return { sql: [...schema, ...rows, ...unknown].join('\n') + '\n', schema: schema.length, rows: rows.length, dropped, unknown };
+  return { sql: [...pragmas, ...schema, ...rows, ...unknown].join('\n') + '\n', schema: schema.length, rows: rows.length, dropped, unknown };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -84,6 +100,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   }
   const result = order(readFileSync(input, 'utf8'));
   writeFileSync(output, result.sql);
-  console.log(`${result.schema} schema statement(s), then ${result.rows} row(s); ${result.dropped.length} line(s) dropped.`);
+  console.log(`${result.schema} schema statement(s), then ${result.rows} row(s); ${result.dropped.length} line(s) dropped; ${result.unknown.length} not recognised.`);
   for (const s of result.unknown) console.error(`kept, after the rows, a statement this script does not know: ${s.slice(0, 60)}…`);
+  // The file is written either way, so it can be read; the exit code is what stops a
+  // runbook step from feeding it to an import whose own error says nothing.
+  if (result.unknown.length > 0) process.exitCode = 1;
 }

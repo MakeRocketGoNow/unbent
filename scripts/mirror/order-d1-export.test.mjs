@@ -36,9 +36,20 @@ test('puts every CREATE before every INSERT and drops the PRAGMA and sqlite_sequ
   assert.ok(lastCreate < firstInsert, 'schema before rows');
   assert.equal(r.schema, 4);
   assert.equal(r.rows, 2);
-  assert.equal(r.dropped.length, 3);
+  assert.equal(r.dropped.length, 2);
   assert.equal(r.unknown.length, 0);
-  assert.doesNotMatch(r.sql, /sqlite_sequence|PRAGMA/);
+  assert.doesNotMatch(r.sql, /sqlite_sequence/);
+  assert.match(r.sql, /^PRAGMA defer_foreign_keys=TRUE;\n/, 'the pragma stays, and first: tables are not promised in parent-first order');
+});
+
+test('keeps a value that holds a newline after a ; in one statement', () => {
+  const text = `CREATE TABLE a (x);\nINSERT INTO "a" ("x") VALUES('one;\ntwo');\nINSERT INTO "a" ("x") VALUES('three');\n`;
+  const s = statements(text);
+  assert.equal(s.length, 3);
+  assert.equal(s[1], `INSERT INTO "a" ("x") VALUES('one;\ntwo');`);
+  const r = order(text);
+  assert.equal(r.rows, 2);
+  assert.equal(r.unknown.length, 0);
 });
 
 test('keeps a statement it does not recognise, after the rows, and names it', () => {

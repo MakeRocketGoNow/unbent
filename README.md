@@ -1859,8 +1859,9 @@ in the mirror and come back as orphans the file sweep reclaims.
    puts every index after all the rows, and a fresh database refuses the first row whose
    foreign key points at a column one of those indexes makes unique — a "foreign key
    mismatch" that D1's import reports only as `{"D1_RESET_DO":true}`, with nothing
-   imported. Then deploy: every migration
-   is recorded in the export, so the deploy's migration step applies nothing, and the
+   imported. The script exits non-zero if the export holds a statement it does not
+   know; read what it says before importing. Then deploy: every migration is recorded
+   in the export, so the deploy's migration step applies nothing, and the
    Worker's secrets come from the password manager, which is the one place they are
    kept — `BETTER_AUTH_SECRET` above all, or every session and every passkey is lost
    with it.
