@@ -667,18 +667,14 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
        between a replayed write of our own ending and the feed delivering the server's
        copy, and taking it would reseed the editor with text already replaced. After a
        reset the older copy is the truth — the store was wound back — and the base is what
-       is stale (`staleBases`).
+       is stale (`staleBases`). The reset is heard before the walk delivers that row,
+       while the query still holds the copy the base was taken from, so a copy with the
+       base's own date says nothing and leaves the flag standing; a different copy clears
+       it when taken, and a library whole again clears it for a note the wind-back did not
+       touch, which would otherwise stay suspect for good.
     */
     if (!base) return;
     const stale = staleBases.current.has(noteId);
-    /*
-       The reset is heard before the walk delivers the wound-back row, while the query
-       still holds the copy the base was taken from (found in review: the first version
-       spent the flag on that copy and refused the real one after it). A copy with the
-       base's own date says nothing about the reset; only a different copy does, or a
-       library whole again — for a note the wind-back did not touch, which would otherwise
-       stay suspect for good.
-    */
     if (stale && note.updatedAt === base.updatedAt) {
       if (whole) staleBases.current.delete(noteId);
       return;
