@@ -419,7 +419,7 @@ function WindBack({ userId, email, last, onChanged }: { userId: string; email: s
             <>
               Every note, file record and revision written after that moment is lost. The store now holds{' '}
               {describeCounts(step.preview.current)}; what it held at that moment is what it will hold after. Every device of the
-              account resyncs from a snapshot. Undo is offered afterwards, here and on this page after a reload, and the bookmark it uses lasts {RESTORE_WINDOW_DAYS} days.
+              account resyncs from a snapshot. Undo is offered afterwards, and again after a reload, for the {RESTORE_WINDOW_DAYS} days its bookmark lasts.
             </>
           }
           busy={busy}
