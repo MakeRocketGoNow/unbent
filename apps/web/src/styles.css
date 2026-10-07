@@ -9754,8 +9754,9 @@ html.host-ios .viewer {
   .operator-table td { display: block; }
   .operator-table tr { position: relative; padding: 0.55rem 2.75rem 0.55rem 0; border-bottom: 1px solid var(--border); }
   /* The chevron leaves the grid and sits at the card's top right, the row's own corner, 44px square. */
-  .operator-table td.operator-open { position: absolute; top: 0; right: -0.5rem; width: auto; padding: 0; display: block; }
-  .operator-page a.operator-open-link { min-width: 2.75rem; min-height: 2.75rem; }
+  .operator-table td.operator-open { position: absolute; top: 0; right: 0; width: auto; padding: 0; display: block; }
+  /* The box stays inside the row's padding, so the card never scrolls sideways; the glyph sits at the edge. */
+  .operator-page a.operator-open-link { min-width: 2.75rem; min-height: 2.75rem; justify-content: flex-end; }
   .operator-table td.operator-open::before { content: none; }
   .operator-table td {
     display: grid;
