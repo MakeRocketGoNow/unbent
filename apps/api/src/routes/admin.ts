@@ -8,7 +8,7 @@ import { deleteKeys } from '../lib/blobs.js';
 import { directoryRow, dropDirectoryRow, listOperatorAccounts } from '../lib/directory.js';
 import { beginDump } from '../lib/dump.js';
 import { MIRROR_STATUS_KEY, STATUS_KEY, dumpPrefix } from '../lib/backups.js';
-import { beforeLoadKey, describeDump, dumpBeforeLoad, loadReserve, resolveDumpKey, streamDump } from '../lib/load.js';
+import { beforeLoadKey, describeDump, dumpBeforeLoad, loadReserve, resolveDumpDownload, resolveDumpKey, streamDump } from '../lib/load.js';
 import { isOperator } from '../lib/instance.js';
 import { userPrefix } from '../lib/repo.js';
 import { storeFor } from '../lib/store-client.js';
@@ -689,24 +689,23 @@ export const admin = new Hono<AppEnv>()
 
   /**
    * One of those dumps, as a download. The name is the file's under the account's
-   * prefix and nothing else: `resolveDumpKey` is the load route's rule for what may be
-   * named, applied here so this can only ever hand out a file of the account named.
+   * prefix and nothing else (`resolveDumpDownload`, which is the load route's rule for
+   * what may be named), so this can only ever hand out a file of the account named.
    */
   .get('/admin/accounts/:id/dumps/:name', requireAuth, async (c) => {
     const target = await operatorAccount(c, c.req.param('id'));
     if (target instanceof Response) return target;
     const bucket = c.env.BACKUPS;
     if (!bucket) return c.json({ error: 'This instance has no backups bucket bound.' }, 501);
-    const name = c.req.param('name');
-    const key = name.includes('/') ? null : resolveDumpKey(target, `${dumpPrefix(target)}${name}`);
-    if (!key) return c.json({ error: 'Not a dump of this account.' }, 400);
-    const object = await bucket.get(key);
-    if (!object) return c.json({ error: `No dump at ${key}.` }, 404);
+    const download = resolveDumpDownload(target, c.req.param('name'));
+    if (!download) return c.json({ error: 'Not a dump of this account.' }, 400);
+    const object = await bucket.get(download.key);
+    if (!object) return c.json({ error: `No dump at ${download.key}.` }, 404);
     return new Response(object.body, {
       headers: {
         'Content-Type': 'application/sql; charset=utf-8',
         'Content-Length': String(object.size),
-        'Content-Disposition': `attachment; filename="unbent-store-${target}-${name}"`,
+        'Content-Disposition': `attachment; filename="${download.filename}"`,
         'Cache-Control': 'no-store',
       },
     });
