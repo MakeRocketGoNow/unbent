@@ -319,6 +319,9 @@ function WindBack({ userId, email }: { userId: string; email: string }) {
       setError(errorText(err));
     } finally {
       release();
+      // Closed either way, as the wind-back's own confirm is: a second press on a confirm
+      // whose restore may already have been applied would restore again.
+      setOutcome((o) => (o && o.kind === 'done' ? { ...o, undoAsked: false } : o));
       setBusy(false);
       refresh();
     }
@@ -514,6 +517,8 @@ function LoadDump({ userId, email }: { userId: string; email: string }) {
       setError(errorText(err));
     } finally {
       release();
+      // Closed either way, as the load's own confirm is.
+      setOutcome((o) => (o && o.kind !== 'undone' ? { ...o, undoAsked: false } : o));
       setBusy(false);
       refresh();
     }
