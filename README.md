@@ -248,6 +248,7 @@ says otherwise; `pnpm exec wrangler secret put NAME` from `apps/api`, or the das
 | `UNBENT_BUNDLE_ID_BASE`, `UNBENT_INSTANCE_HOST`, `DEVELOPMENT_TEAM` | an iOS build of your own | `apps/ios/Config/Local.xcconfig`, untracked; see [iOS app](#ios-app) |
 | `ANDROID_APPLICATION_ID`, `ANDROID_DEFAULT_INSTANCE` | the Android build in CI | GitHub repository **variables**; `unbent.applicationId` and `unbent.defaultInstance` in `local.properties` locally |
 | `CLOUDFLARE_WORKERS_SUBDOMAIN`, `DEV_BETTER_AUTH_SECRET`, `DEV_ALLOWED_EMAILS` | a dev instance and PR previews of your own | GitHub; see [The dev instance](#the-dev-instance) — every job skips itself without them |
+| `LIVE_R2_ACCOUNT_ID`, `LIVE_R2_ACCESS_KEY_ID`, `LIVE_R2_SECRET_ACCESS_KEY`, `DUMPS_R2_ACCESS_KEY_ID`, `DUMPS_R2_SECRET_ACCESS_KEY`, `MIRROR_R2_ACCOUNT_ID`, `MIRROR_R2_ACCESS_KEY_ID`, `MIRROR_R2_SECRET_ACCESS_KEY`, `D1_EXPORT_API_TOKEN` | the nightly mirror to a second Cloudflare account | GitHub secrets, with `BACKUPS_BUCKET` as a variable; the live key read-only, the R2 keys scoped to one bucket each, the D1 token D1 Read on the account, since the export needs no bucket; see [Where your notes live](#where-your-notes-live) — the job skips itself without them |
 
 The one thing that *would* work by accident is who the legal documents name — a fork that
 deployed the file unchanged would otherwise publish somebody else's legal entity. That is why
@@ -1806,6 +1807,26 @@ near 170 MB of SQL; an account past that is recorded as failed rather than dumpe
 is tried again each day after every other account, which spends that run's budget. On
 Workers Free a large account may not finish a scheduled dump well before that, since a
 run's CPU time is limited too. A self-hoster arranges their own backups.
+
+**Nightly mirror.** unbent.app keeps a copy of all of it in a second Cloudflare account,
+pulled from outside by `.github/workflows/mirror.yml` each night at 05:23 UTC with
+`rclone`: the live files bucket to `blobs/`, the dumps bucket's `stores/` to `stores/`, and
+a `wrangler d1 export` to `d1/<date>.sql`. Those three prefixes are under a thirty-day
+retention lock in that account, so nothing can overwrite or delete a copy younger than
+that, and lifecycle rules delete dumps and D1 exports after ninety days. Files are pruned
+by the workflow instead: a key in the mirror and not in live is gone, the date it was
+first seen gone is written to `state/prune.json`, and its copy is deleted once it has been
+gone fifty-five days (`scripts/mirror/prune-plan.mjs`, a pure function with a test; a
+live listing that comes back empty fails the run rather than planning against it). The
+run then reads the Worker's `status/dumps.json` and fails if a dump failed, an account has
+no dump found current in forty-eight hours, or the status is older than that, so the
+Worker's half of the backup fails loudly too; and it writes `status/mirror.json` back to
+the dumps bucket — when it ran, what it copied and pruned, the export's size — for the
+operator's page. It runs only where the repository has the nine secrets in the
+[configuration table](#everything-you-can-set) and the `BACKUPS_BUCKET` variable, read-only on the
+live bucket, and skips itself otherwise; a fork names its live and mirror buckets at the top
+of the file. The first copy, and any rerun, is
+started by hand from the Actions tab.
 
 **The change feed.** Every write records what it touched, numbered by the store's own
 counter, and `GET /api/changes?since=N` answers "what changed since N?" with the changed

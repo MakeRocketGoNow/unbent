@@ -1,0 +1,356 @@
+name: Nightly mirror
+
+# unbent.app's off-account backup (MAK-171, part 3): every night, copy the live files
+# bucket and the daily store dumps into a bucket in a second Cloudflare account, export
+# D1 beside them, and prune mirrored files whose originals have been gone for 55 days.
+# The Worker holds no credential for the second account; this runs from outside, pulled by
+# GitHub with credentials in repository secrets, which is the decision recorded in the
+# issue. Only rclone and first-party actions, each pinned to a commit, since a compromised
+# action here would hold read access to every customer's files; and the one `pnpm install`
+# (for the repository's wrangler) runs no lifecycle scripts, so no package's code runs with
+# the credentials either.
+#
+# A fork inherits this file without harm. The job decides first whether the repository has
+# the nine secrets and the `BACKUPS_BUCKET` variable it needs and skips itself with a note
+# in the run summary when it has not, as previews.yml does. The README's configuration
+# table has the row for them, and the block below says what each may do.
+#
+# What the credentials may do, and why each is scoped as it is:
+#   LIVE_R2_*     read the live bucket, nothing else. This workflow can never write to or
+#                 delete from the bucket customers' files are in; a bug here can at worst
+#                 copy the wrong thing to the mirror.
+#   DUMPS_R2_*    read and write the dumps bucket: read `stores/` and `status/dumps.json`,
+#                 write `status/mirror.json`.
+#   MIRROR_R2_*   read and write the mirror bucket. `blobs/`, `stores/` and `d1/` are under
+#                 a 30-day retention lock there, so nothing — not this workflow, not a leaked
+#                 key — can overwrite or delete a copy younger than that; `state/` is not
+#                 locked, since the prune's state file is rewritten every night.
+#   D1_EXPORT_API_TOKEN  for the export. Made with D1 Read; whether the export API accepts
+#                 that or wants Edit is settled by the first run.
+# Putting files back into the live bucket is part 4's workflow, behind the `restore`
+# environment, whose secrets this file must never name.
+#
+# GitHub runs a schedule late when its queue is busy, and stops running one altogether in
+# a repository with no commits for sixty days. The dumps check below is also the check
+# that this ran: a night without a run leaves `status/mirror.json` a day older, which the
+# operator page (part 5) shows.
+on:
+  schedule:
+    # 05:23 UTC. The Worker's dump run at 00:47 UTC has started the day's pass by then and
+    # finished it for a store this size, so the night's copy of `stores/` carries the day's
+    # dumps. Any hour works for correctness — a dump missed tonight is copied tomorrow, and
+    # the stale check is 48 hours — this one just keeps the two halves a day apart at most.
+    - cron: '23 5 * * *'
+  # The first seed of the mirror, and any rerun, are started by hand from the Actions tab.
+  workflow_dispatch:
+  # The prune planner's tests, on a change to the scripts or to this file. The mirror job
+  # itself never runs for these: `if` below.
+  pull_request:
+    paths:
+      - 'scripts/mirror/**'
+      - '.github/workflows/mirror.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/mirror/**'
+      - '.github/workflows/mirror.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      # The planner (`prune-plan.mjs`) decides every deletion the mirror job makes. Its
+      # tests use node:test, so nothing is installed for them.
+      - run: node --test 'scripts/mirror/*.test.mjs'
+
+  mirror:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: test
+    runs-on: ubuntu-latest
+    # One mirror at a time, and never cancelled: a run cut off part-way leaves a half-copied
+    # night that the next run simply finishes (every copy is idempotent), but two at once
+    # would race on the prune's state file. On the job, not the workflow: a group shared
+    # with the `test` job would queue a pull request's checks behind a five-hour seed, and
+    # GitHub keeps one pending run per group, so a push to the scripts would cancel the
+    # night's pending mirror.
+    concurrency:
+      group: mirror
+      cancel-in-progress: false
+    # The seed is 2.9 GB through the runner twice (down from one account, up to the other);
+    # a night after that is a few files. Generous rather than tight: a run killed by the
+    # timeout fails after doing the work, and the retry does it again.
+    timeout-minutes: 300
+    # Named explicitly for `pipefail`: with no `shell:` GitHub runs `bash -e` alone, and a
+    # step's `… | tee` would then report tee's exit code, never the command's.
+    defaults:
+      run:
+        shell: bash
+    env:
+      # unbent.app's own buckets. The dumps bucket is the one the production deploy binds as
+      # `BACKUPS` (web.yml reads the same variable), so the two cannot drift apart; a fork
+      # with buckets of its own changes the other two lines.
+      LIVE_BUCKET: unbent-blobs
+      DUMPS_BUCKET: ${{ vars.BACKUPS_BUCKET }}
+      MIRROR_BUCKET: unbent-mirror
+      # rclone, pinned by version and by the checksum of the release zip, which is how a
+      # binary is pinned the way an action is pinned by commit. Bump both together, from
+      # https://downloads.rclone.org/<version>/SHA256SUMS.
+      RCLONE_VERSION: v1.75.1
+      RCLONE_SHA256: 982b5aa772841168f8e380f139e9e787b2a105403e32b94da8676a0e1c0a13ab
+      # rclone reads a remote's configuration from RCLONE_CONFIG_<REMOTE>_<KEY>, so there
+      # is no config file to write, and nothing with a secret in it touches the disk.
+      # `no_check_bucket`: a scoped R2 token cannot list or create buckets, and without this
+      # rclone's first write would try to create one and be refused.
+      RCLONE_CONFIG_LIVE_TYPE: s3
+      RCLONE_CONFIG_LIVE_PROVIDER: Cloudflare
+      RCLONE_CONFIG_LIVE_ENDPOINT: https://${{ secrets.LIVE_R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+      RCLONE_CONFIG_LIVE_ACCESS_KEY_ID: ${{ secrets.LIVE_R2_ACCESS_KEY_ID }}
+      RCLONE_CONFIG_LIVE_SECRET_ACCESS_KEY: ${{ secrets.LIVE_R2_SECRET_ACCESS_KEY }}
+      RCLONE_CONFIG_LIVE_NO_CHECK_BUCKET: 'true'
+      RCLONE_CONFIG_LIVE_ACL: private
+      RCLONE_CONFIG_DUMPS_TYPE: s3
+      RCLONE_CONFIG_DUMPS_PROVIDER: Cloudflare
+      RCLONE_CONFIG_DUMPS_ENDPOINT: https://${{ secrets.LIVE_R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+      RCLONE_CONFIG_DUMPS_ACCESS_KEY_ID: ${{ secrets.DUMPS_R2_ACCESS_KEY_ID }}
+      RCLONE_CONFIG_DUMPS_SECRET_ACCESS_KEY: ${{ secrets.DUMPS_R2_SECRET_ACCESS_KEY }}
+      RCLONE_CONFIG_DUMPS_NO_CHECK_BUCKET: 'true'
+      RCLONE_CONFIG_DUMPS_ACL: private
+      RCLONE_CONFIG_MIRROR_TYPE: s3
+      RCLONE_CONFIG_MIRROR_PROVIDER: Cloudflare
+      RCLONE_CONFIG_MIRROR_ENDPOINT: https://${{ secrets.MIRROR_R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+      RCLONE_CONFIG_MIRROR_ACCESS_KEY_ID: ${{ secrets.MIRROR_R2_ACCESS_KEY_ID }}
+      RCLONE_CONFIG_MIRROR_SECRET_ACCESS_KEY: ${{ secrets.MIRROR_R2_SECRET_ACCESS_KEY }}
+      RCLONE_CONFIG_MIRROR_NO_CHECK_BUCKET: 'true'
+      RCLONE_CONFIG_MIRROR_ACL: private
+      # wrangler's, for the D1 export. The account is the live one.
+      CLOUDFLARE_API_TOKEN: ${{ secrets.D1_EXPORT_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.LIVE_R2_ACCOUNT_ID }}
+      # Flags every rclone copy here gets.
+      #   --immutable: a key is never written twice — file keys carry the attachment id, a
+      #     dump's key is one per account per day — so a source object that differs from the
+      #     mirror's copy is a fault, and rclone refuses it as "immutable file modified"
+      #     rather than attempting an overwrite the retention lock would refuse anyway. The
+      #     run goes red either way; this way the error in `status/mirror.json` says why.
+      #   --checksum: compare size and hash, not modtime. rclone reads an S3 object's modtime
+      #     from its metadata, a HEAD per object per side per night, and when two copies
+      #     match but their modtimes differ it rewrites the copy's modtime, a server-side
+      #     copy onto itself that the lock refuses with an error that does not say why. A
+      #     key put again with the same bytes — an upload replayed after its first `put`
+      #     landed — would do exactly that. The hash is the ETag from the listing, and
+      #     where a multipart upload has none the size decides, which for immutable keys
+      #     is the comparison meant anyway.
+      #   --fast-list: one listing call per thousand keys instead of one per prefix.
+      #   --use-json-log with the tally at NOTICE: the final line is a JSON object with the
+      #     counts, which write-status.mjs reads; everything quieter is not logged at all.
+      #     The log goes to a file, never to the run's own log: the minute-by-minute tallies
+      #     name the files in flight, and a file's key is a customer's filename.
+      RCLONE_COPY_FLAGS: >-
+        --immutable --checksum --fast-list --transfers 16 --checkers 16
+        --use-json-log --log-level NOTICE --stats-log-level NOTICE --stats 1m
+    steps:
+      # `secrets` cannot be read in an `if:`, so presence is decided once here, as an
+      # output, and every later step reads it. All nine are checked, and the missing ones
+      # named: a workflow that copied the files and then failed on the dumps bucket would
+      # be a half-mirror nobody asked for.
+      - name: Is there a mirror to run?
+        id: configured
+        env:
+          BACKUPS_BUCKET: ${{ vars.BACKUPS_BUCKET }}
+          LIVE_R2_ACCOUNT_ID: ${{ secrets.LIVE_R2_ACCOUNT_ID }}
+          LIVE_R2_ACCESS_KEY_ID: ${{ secrets.LIVE_R2_ACCESS_KEY_ID }}
+          LIVE_R2_SECRET_ACCESS_KEY: ${{ secrets.LIVE_R2_SECRET_ACCESS_KEY }}
+          DUMPS_R2_ACCESS_KEY_ID: ${{ secrets.DUMPS_R2_ACCESS_KEY_ID }}
+          DUMPS_R2_SECRET_ACCESS_KEY: ${{ secrets.DUMPS_R2_SECRET_ACCESS_KEY }}
+          MIRROR_R2_ACCOUNT_ID: ${{ secrets.MIRROR_R2_ACCOUNT_ID }}
+          MIRROR_R2_ACCESS_KEY_ID: ${{ secrets.MIRROR_R2_ACCESS_KEY_ID }}
+          MIRROR_R2_SECRET_ACCESS_KEY: ${{ secrets.MIRROR_R2_SECRET_ACCESS_KEY }}
+          D1_EXPORT_API_TOKEN: ${{ secrets.D1_EXPORT_API_TOKEN }}
+        run: |
+          missing=()
+          for name in LIVE_R2_ACCOUNT_ID LIVE_R2_ACCESS_KEY_ID LIVE_R2_SECRET_ACCESS_KEY \
+                      DUMPS_R2_ACCESS_KEY_ID DUMPS_R2_SECRET_ACCESS_KEY \
+                      MIRROR_R2_ACCOUNT_ID MIRROR_R2_ACCESS_KEY_ID MIRROR_R2_SECRET_ACCESS_KEY \
+                      D1_EXPORT_API_TOKEN BACKUPS_BUCKET; do
+            if [ -z "${!name}" ]; then missing+=("$name"); fi
+          done
+          if [ "${#missing[@]}" -eq 0 ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "No ${missing[*]} repository secret(s) or variable — this repository has no mirror account. Skipping." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - if: steps.configured.outputs.ready == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - if: steps.configured.outputs.ready == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      # Everything the steps produce goes in one directory, which write-status.mjs reads at
+      # the end, and the night's date is fixed once so a run that crosses midnight names
+      # one day throughout.
+      - name: Prepare
+        if: steps.configured.outputs.ready == 'true'
+        run: |
+          mkdir -p "$RUNNER_TEMP/mirror"
+          echo "MIRROR_DIR=$RUNNER_TEMP/mirror" >> "$GITHUB_ENV"
+          echo "MIRROR_DATE=$(date -u +%F)" >> "$GITHUB_ENV"
+          echo "MIRROR_RAN_AT=$(date -u +%FT%TZ)" >> "$GITHUB_ENV"
+
+      - name: Install rclone
+        if: steps.configured.outputs.ready == 'true'
+        run: |
+          cd "$RUNNER_TEMP"
+          curl -fsSLO "https://downloads.rclone.org/$RCLONE_VERSION/rclone-$RCLONE_VERSION-linux-amd64.zip"
+          echo "$RCLONE_SHA256  rclone-$RCLONE_VERSION-linux-amd64.zip" | sha256sum --check --strict
+          unzip -q "rclone-$RCLONE_VERSION-linux-amd64.zip"
+          sudo install -m 0755 "rclone-$RCLONE_VERSION-linux-amd64/rclone" /usr/local/bin/rclone
+          rclone version
+
+      # From here on each step runs unless the run was cancelled, whatever the steps before
+      # it did: none depends on another's success (the prune only ever deletes what is in
+      # the mirror and not in live, so a half-copied night is safe to prune against), and a
+      # `stores/` copy that fails every night for a fortnight — a dump written twice over
+      # its key, which lib/backups.ts says can happen — must not cost a fortnight of D1
+      # exports and dumps checks as well. The run is red from whichever step failed; each
+      # one records its name for the status file on the way out — on EXIT, not ERR, since a
+      # deliberate `exit 1` is not an error to the ERR trap.
+      - name: Copy the live bucket to blobs/
+        if: ${{ !cancelled() && steps.configured.outputs.ready == 'true' }}
+        run: |
+          trap '[ $? -eq 0 ] || echo blobs >> "$MIRROR_DIR/failed"' EXIT
+          # shellcheck disable=SC2086
+          rclone copy "live:$LIVE_BUCKET" "mirror:$MIRROR_BUCKET/blobs" $RCLONE_COPY_FLAGS \
+            > "$MIRROR_DIR/blobs.log" 2>&1
+
+      - name: Copy the dumps bucket to stores/
+        if: ${{ !cancelled() && steps.configured.outputs.ready == 'true' }}
+        run: |
+          trap '[ $? -eq 0 ] || echo stores >> "$MIRROR_DIR/failed"' EXIT
+          # shellcheck disable=SC2086
+          rclone copy "dumps:$DUMPS_BUCKET/stores" "mirror:$MIRROR_BUCKET/stores" $RCLONE_COPY_FLAGS \
+            > "$MIRROR_DIR/stores.log" 2>&1
+
+      # The repository's own wrangler, from the lockfile, rather than whatever `npx` would
+      # fetch tonight. pnpm itself comes from the version package.json names, through npm
+      # rather than a third-party setup action. `--ignore-scripts` because the credentials
+      # are in this job's environment: wrangler needs no package's install script to run
+      # (checked: `wrangler --version` after such an install), and so none does. Installed
+      # here, just before the one step that needs it, so a registry outage is the D1
+      # export's failure for the night and never stands in front of the copies.
+      - name: Install wrangler
+        id: wrangler
+        if: ${{ !cancelled() && steps.configured.outputs.ready == 'true' }}
+        run: |
+          trap '[ $? -eq 0 ] || echo d1 >> "$MIRROR_DIR/failed"' EXIT
+          npm install -g "pnpm@$(node -p "require('./package.json').packageManager.split('@')[1]")"
+          pnpm install --frozen-lockfile --filter @unbent/api --ignore-scripts
+
+      # `d1/<date>.sql` is under the lock, so a rerun on the same day cannot replace it and
+      # does not try: the day's export is skipped when its key is already there, and the
+      # status says so. The database is production's, `--env ""` as migrate:remote spells it.
+      # D1 holds other queries while it exports, which at this size is seconds, at 05:23 UTC;
+      # keep it off a busy hour if the schedule moves.
+      - name: Export D1 to d1/<date>.sql
+        if: ${{ !cancelled() && steps.configured.outputs.ready == 'true' && steps.wrangler.outcome == 'success' }}
+        working-directory: apps/api
+        run: |
+          trap '[ $? -eq 0 ] || echo d1 >> "$MIRROR_DIR/failed"' EXIT
+          key="d1/$MIRROR_DATE.sql"
+          # Assigned before it is tested: a failing substitution inside `[ … ]` trips neither
+          # `set -e` nor the trap, and exists.sh fails on purpose when the listing does.
+          present=$(../../scripts/mirror/exists.sh "mirror:$MIRROR_BUCKET/d1" "$MIRROR_DATE.sql")
+          if [ "$present" = yes ]; then
+            echo "::notice::$key is already in the mirror; not exporting again today."
+            bytes=$(rclone size "mirror:$MIRROR_BUCKET/$key" --json | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).bytes")
+            printf '{"key":"%s","bytes":%s,"written":false}\n' "$key" "$bytes" > "$MIRROR_DIR/d1.json"
+            exit 0
+          fi
+          pnpm exec wrangler d1 export DB --remote --env "" --output "$MIRROR_DIR/d1.sql"
+          bytes=$(stat -c %s "$MIRROR_DIR/d1.sql")
+          if [ "$bytes" -eq 0 ]; then
+            echo "::error::wrangler d1 export wrote an empty file."
+            exit 1
+          fi
+          rclone copyto "$MIRROR_DIR/d1.sql" "mirror:$MIRROR_BUCKET/$key" --immutable
+          printf '{"key":"%s","bytes":%s,"written":true}\n' "$key" "$bytes" > "$MIRROR_DIR/d1.json"
+
+      # List live and the mirror, fetch the state file, and let the planner decide
+      # (scripts/mirror/prune-plan.mjs, where the rules are). The listings are taken after
+      # the copy, so the mirror holds everything live does and the difference is exactly
+      # what is gone. An empty live listing makes the planner throw, which fails the step
+      # before anything is deleted or the state file touched. The deletes go before the
+      # state is written back: a delete that fails leaves the keys recorded as gone, and
+      # tomorrow plans them again.
+      - name: Prune files gone from live for 55 days
+        if: ${{ !cancelled() && steps.configured.outputs.ready == 'true' }}
+        run: |
+          trap '[ $? -eq 0 ] || echo prune >> "$MIRROR_DIR/failed"' EXIT
+          rclone lsf -R --files-only --fast-list "live:$LIVE_BUCKET" > "$MIRROR_DIR/live.txt"
+          rclone lsf -R --files-only --fast-list "mirror:$MIRROR_BUCKET/blobs" > "$MIRROR_DIR/mirror.txt"
+          state=()
+          present=$(scripts/mirror/exists.sh "mirror:$MIRROR_BUCKET/state" prune.json)
+          if [ "$present" = yes ]; then
+            rclone copyto "mirror:$MIRROR_BUCKET/state/prune.json" "$MIRROR_DIR/state.json"
+            state=(--state "$MIRROR_DIR/state.json")
+          else
+            echo "::notice::No state/prune.json in the mirror yet; starting one."
+          fi
+          node scripts/mirror/prune.mjs \
+            --live "$MIRROR_DIR/live.txt" --mirror "$MIRROR_DIR/mirror.txt" "${state[@]}" \
+            --today "$MIRROR_DATE" \
+            --remove "$MIRROR_DIR/remove.txt" --new-state "$MIRROR_DIR/new-state.json" \
+            | tee "$MIRROR_DIR/prune.json"
+          # The keys are customers' filenames and stay out of the log; the count is enough.
+          # `--files-from-raw`, since the plain flag trims whitespace and skips `#` lines,
+          # and a filename is whatever someone named it.
+          if [ -s "$MIRROR_DIR/remove.txt" ]; then
+            echo "Deleting $(wc -l < "$MIRROR_DIR/remove.txt") key(s) gone from live for 55 days."
+            rclone delete "mirror:$MIRROR_BUCKET/blobs" --files-from-raw "$MIRROR_DIR/remove.txt" --fast-list
+          fi
+          rclone copyto "$MIRROR_DIR/new-state.json" "mirror:$MIRROR_BUCKET/state/prune.json"
+
+      # The Worker's half. `status/dumps.json` is what the daily dump run writes last
+      # (lib/backups.ts); a dump that failed, an account with no dump found current in 48
+      # hours, or a status older than that fails this run, so the Worker's trouble is a red
+      # run here rather than a line in a bucket. The file is fetched only if it is there,
+      # so a missing one is reported as missing rather than as a failed download.
+      - name: Check the Worker's dumps
+        if: ${{ !cancelled() && steps.configured.outputs.ready == 'true' }}
+        run: |
+          trap '[ $? -eq 0 ] || echo dumps >> "$MIRROR_DIR/failed"' EXIT
+          present=$(scripts/mirror/exists.sh "dumps:$DUMPS_BUCKET/status" dumps.json)
+          if [ "$present" = yes ]; then
+            rclone copyto "dumps:$DUMPS_BUCKET/status/dumps.json" "$MIRROR_DIR/dumps.json"
+          fi
+          node scripts/mirror/check-dumps.mjs "$MIRROR_DIR/dumps.json" "$MIRROR_DIR/dumps-check.json"
+
+      # Whatever happened from the first copy on, say so where the operator page reads: a
+      # failed run is the one the file most needs to report. Only once the run was
+      # configured, though — a fork with no secrets has no bucket to write to — and only
+      # once there is an rclone to write with: a run that failed before that leaves the
+      # file a day older, which the operator page shows as its own bad state.
+      - name: Write status/mirror.json
+        if: ${{ always() && steps.configured.outputs.ready == 'true' }}
+        env:
+          MIRROR_OK: ${{ job.status == 'success' }}
+          MIRROR_JOB_STATUS: ${{ job.status }}
+          MIRROR_EVENT: ${{ github.event_name }}
+          MIRROR_RUN_ID: ${{ github.run_id }}
+          MIRROR_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "${MIRROR_DIR:-}" ] || ! command -v rclone > /dev/null; then
+            echo "::warning::The run failed before rclone was installed; status/mirror.json is not written."
+            exit 0
+          fi
+          node scripts/mirror/write-status.mjs "$MIRROR_DIR" "$MIRROR_DIR/mirror.json" "$MIRROR_DIR/summary.md"
+          rclone copyto "$MIRROR_DIR/mirror.json" "dumps:$DUMPS_BUCKET/status/mirror.json"
+          cat "$MIRROR_DIR/summary.md" >> "$GITHUB_STEP_SUMMARY"
