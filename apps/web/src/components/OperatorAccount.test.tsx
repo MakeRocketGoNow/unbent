@@ -263,8 +263,9 @@ describe('OperatorAccount: load a dump', () => {
     await flush();
     fireEvent.click(screen.getByRole('button', { name: 'Load dump' }));
     await flush();
-    const failed = screen.getByText(/The load of 2026-10-06.sql failed/);
-    expect(failed.textContent).toContain('statement 12 refused');
+    const failed = screen.getByText(/Loading 2026-10-06.sql stopped partway/);
+    // The route's message already begins "The load failed:", said once here, and ends with a full stop whether or not the runtime's did.
+    expect(failed.textContent).toContain('stopped partway: statement 12 refused. The store is');
     expect(failed.textContent).toContain('2026-10-06T12-00-00Z-before-load.sql, is in the list above');
     // The confirm is gone — its counts are of a store that no longer exists — and the
     // bookmark is one press away rather than a line in the Worker log.

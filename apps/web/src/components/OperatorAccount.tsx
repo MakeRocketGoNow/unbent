@@ -645,7 +645,8 @@ function LoadDump({ userId, email }: { userId: string; email: string }) {
       {outcome?.kind === 'failed' && (
         <>
           <p className="bad small">
-            The load of {outcome.dump.name} failed: {outcome.message} The store is empty and refusing every request until it is whole again.
+            Loading {outcome.dump.name} stopped partway: {outcome.message.replace(/^The load failed: /, '').replace(/\.?$/, '.')} The store is
+            refusing every request until it is whole again.
             {outcome.before && <> The dump taken before it, {outcome.before.split('/').pop()}, is in the list above; loading it puts the store back.</>}
             {!outcome.undo && !outcome.before && <> Load a dump from the list above to make it whole.</>}
           </p>
