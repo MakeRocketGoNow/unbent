@@ -45,7 +45,7 @@ export function OperatorAccount({ userId }: { userId: string }) {
 
   if (accounts.data && !account) {
     return (
-      <div className="panel">
+      <div className="panel operator-page">
         <div className="panel-head">
           <h2>No such account</h2>
         </div>
@@ -57,8 +57,8 @@ export function OperatorAccount({ userId }: { userId: string }) {
   }
 
   return (
-    <div className="panel">
-      <p className="small">
+    <div className="panel operator-page">
+      <p>
         <Link to="/settings/operator">All accounts</Link>
       </p>
       <div className="panel-head">
@@ -70,7 +70,7 @@ export function OperatorAccount({ userId }: { userId: string }) {
       <section className="settings-section">
         <h3>Store</h3>
         <StoreFacts stats={stats.data ?? null} error={stats.error} />
-        <p className="small">
+        <p>
           <a href={api.storeDumpUrl(userId)} download>
             Download the store as it is now
           </a>
@@ -87,7 +87,7 @@ export function OperatorAccount({ userId }: { userId: string }) {
 
 function AccountFacts({ account }: { account: Account }) {
   return (
-    <dl className="about-list">
+    <dl className="about-list operator-facts">
       <div>
         <dt>Account id</dt>
         <dd>
@@ -150,7 +150,7 @@ function StoreFacts({ stats, error }: { stats: api.StoreStats | null; error: Err
   if (stats.wiped) return <p className="muted small">The store is empty: wiped, and nothing has woken it since.</p>;
   const schema = stats.migrations[stats.migrations.length - 1] ?? 'none';
   return (
-    <dl className="health-facts small store-facts">
+    <dl className="health-facts store-facts">
       {Object.entries(stats.counts)
         .filter(([table]) => table in TABLE_LABELS)
         .map(([table, count]) => (
@@ -284,7 +284,7 @@ function WindBack({ userId, email }: { userId: string; email: string }) {
         <p className="muted small">{unsupported}</p>
       ) : (
         <div className="operator-row">
-          <label className="small">
+          <label>
             <span className="muted">Moment</span>
             <input
               type="datetime-local"
@@ -477,7 +477,7 @@ function LoadDump({ userId, email }: { userId: string; email: string }) {
                 </span>
               </span>
               <span className="dump-actions">
-                <a href={api.dumpDownloadUrl(userId, d.name)} download className="small">
+                <a href={api.dumpDownloadUrl(userId, d.name)} download>
                   Download
                 </a>
                 <Button
@@ -521,7 +521,7 @@ function LoadDump({ userId, email }: { userId: string; email: string }) {
         </p>
       )}
       {!unbound && (
-        <pre className="operator-command small">
+        <pre className="operator-command">
           <code>{`rclone copy mirror:unbent-mirror/stores/${userId}/ dumps:unbent-backups/stores/${userId}/`}</code>
         </pre>
       )}

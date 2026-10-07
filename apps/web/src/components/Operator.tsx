@@ -25,7 +25,7 @@ export function Operator() {
   const accounts = useQuery(operatorAccountsQuery());
 
   return (
-    <div className="panel">
+    <div className="panel operator-page">
       <div className="panel-head">
         <h2>Operator</h2>
       </div>
@@ -112,14 +112,14 @@ function HealthCard({
         <span className="health-title">{title}</span>
       </div>
       {ranAt && (
-        <p className="small health-when">
+        <p className="health-when">
           Ran {timeAgo(ranAt, now)}
           <span className="muted"> · {formatMoment(ranAt)}</span>
         </p>
       )}
       {children}
       {health.reasons.length > 0 && (
-        <ul className="health-reasons small">
+        <ul className="health-reasons">
           {health.reasons.map((r, i) => (
             <li key={i} className="wrap-anywhere">
               {r}
@@ -136,7 +136,7 @@ function DumpsCard({ status, now, nameOf }: { status: DumpStatus | null; now: nu
   return (
     <HealthCard title="Daily dumps" health={health} ranAt={status?.ranAt ?? null} now={now}>
       {status ? (
-        <dl className="health-facts small">
+        <dl className="health-facts">
           <Fact term="Dumped">
             {status.run.dumped.toLocaleString()}
             {status.run.bytes > 0 && <span className="muted"> · {formatBytes(status.run.bytes)}</span>}
@@ -158,7 +158,7 @@ function MirrorCard({ status, now }: { status: MirrorStatus | null; now: number 
     <HealthCard title="Nightly mirror" health={health} ranAt={status?.ranAt ?? null} now={now}>
       {status ? (
         <>
-          <dl className="health-facts small">
+          <dl className="health-facts">
             <Fact term="Files">
               {n(status.blobs.copied)} copied
               {status.blobs.live !== null && status.blobs.mirror !== null && (
@@ -178,7 +178,7 @@ function MirrorCard({ status, now }: { status: MirrorStatus | null; now: number 
             )}
           </dl>
           {status.run.url && (
-            <p className="small">
+            <p>
               <a href={status.run.url} rel="noopener noreferrer">
                 The run on GitHub
               </a>
