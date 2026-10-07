@@ -411,7 +411,7 @@ function WindBack({ userId, email, last }: { userId: string; email: string; last
         />
       )}
 
-      {!outcome && last && last.at > now - RESTORE_WINDOW_DAYS * 86_400_000 && (
+      {!outcome && last && last.at > Date.now() - RESTORE_WINDOW_DAYS * 86_400_000 && (
         <>
           <p className="muted small">
             Last wind-back: {timeAgo(last.at)}, to {formatMoment(last.toAt)}.
