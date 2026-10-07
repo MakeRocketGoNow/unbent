@@ -124,7 +124,11 @@ const STATUS_LIST = 50;
 const ERROR_LENGTH = 500;
 
 /** A dump stopped because the invocation could not afford its next call. */
-class OutOfSubrequests extends Error {}
+class OutOfSubrequests extends Error {
+  constructor() {
+    super('the dump ran out of the subrequests one invocation may make');
+  }
+}
 
 /**
  * The subrequests the run may still make, with `held` kept back for aborting an open
