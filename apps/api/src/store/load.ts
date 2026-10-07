@@ -88,6 +88,20 @@ export function statementText(statement: string): string {
 }
 
 /**
+ * What a statement is, for an error: its verb and the name after it, never its values.
+ * A dump's `INSERT` carries a note's title and body as literals, and an error about a
+ * cut-short or refused statement goes to the log and the operator's answer, where the
+ * `Sql` seam already keeps bodies out (it logs 120 characters of a statement on the
+ * grounds that a body is bound, not written in). `an INSERT INTO notes`, or
+ * `unrecognised` for text that starts with no word at all.
+ */
+export function statementKind(statement: string): string {
+  const m = /^(\w+)(?:\s+(?:OR\s+\w+\s+)?(INTO|FROM|TABLE|TRIGGER|INDEX|VIRTUAL\s+TABLE|VIEW))?\s+(\w+)/i.exec(statementText(statement));
+  if (!m) return 'unrecognised';
+  return [m[1], m[2], m[3]].filter(Boolean).join(' ').replace(/\s+/g, ' ');
+}
+
+/**
  * Whether a statement of the dump runs, is skipped, or refuses the whole load.
  *
  * Skipped: the `BEGIN` and `COMMIT` that wrap the file, since each page runs in a

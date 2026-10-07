@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classify, dumpOwner, liftLiterals, scanStatements, statementText } from './load.js';
+import { classify, dumpOwner, liftLiterals, scanStatements, statementKind, statementText } from './load.js';
 
 /**
  * The statement scanner a load runs a dump through, on the shapes a dump holds: literals
@@ -78,6 +78,17 @@ describe('classify', () => {
     expect(classify(`DROP TABLE notes;`)).toBe('refuse');
     expect(classify(`DELETE FROM notes;`)).toBe('refuse');
     expect(classify(`ATTACH 'x' AS y;`)).toBe('refuse');
+  });
+});
+
+describe('statementKind', () => {
+  it('names the verb and the table and never a value', () => {
+    expect(statementKind(`-- head\nINSERT INTO notes (id, body) VALUES ('n1', 'the secret body');`)).toBe('INSERT INTO notes');
+    expect(statementKind(`INSERT OR REPLACE INTO tags VALUES ('x');`)).toBe('INSERT INTO tags');
+    expect(statementKind(`CREATE VIRTUAL TABLE notes_fts USING fts5(title);`)).toBe('CREATE VIRTUAL TABLE notes_fts');
+    expect(statementKind(`DELETE FROM notes;`)).toBe('DELETE FROM notes');
+    expect(statementKind(`CREATE TRIGGER notes_ai AFTER INSERT ON notes BEGIN`)).toBe('CREATE TRIGGER notes_ai');
+    expect(statementKind(`'a literal that leads'`)).toBe('unrecognised');
   });
 });
 

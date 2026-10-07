@@ -16,7 +16,7 @@ import {
 import { AttachmentsStore, type FileSummary } from './attachments.js';
 import { DeletedBlobs } from './deleted-blobs.js';
 import { cutByBytes, Feed, FEED_META, FEED_PAGE_BYTES, lastWordPerEntity, type FeedRow } from './feed.js';
-import { classify, liftLiterals, MAX_STATEMENT_CHARS, scanStatements, statementText, StoreLoading, type LoadMarker } from './load.js';
+import { classify, liftLiterals, MAX_STATEMENT_CHARS, scanStatements, statementKind, statementText, StoreLoading, type LoadMarker } from './load.js';
 import { appliedMigrations, migrate } from './migrate.js';
 import { NotesStore, type CountOptions, type ListOptions, type SearchFilters } from './notes.js';
 import { cursorAfter, nextCursor } from './notes-shared.js';
@@ -478,7 +478,7 @@ export class UserStore extends DurableObject<StoreEnv> {
     this.ctx.storage.sql.exec('PRAGMA foreign_keys = ON');
     const text = load.remainder + load.decoder.decode();
     const scan = scanStatements(text);
-    if (statementText(scan.rest) !== '') throw new Error(`the dump ended inside a statement: ${statementText(scan.rest).slice(0, 80)}`);
+    if (statementText(scan.rest) !== '') throw new Error(`the dump ended inside a statement (${statementKind(scan.rest)}); the file is cut short`);
     const ran = this.runDumpStatements(scan.statements);
     this.recordLoad(ran, 0);
     load.remainder = '';
@@ -522,7 +522,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   private runDumpStatements(statements: string[]): number {
     const run = statements.filter((s) => {
       const kind = classify(s);
-      if (kind === 'refuse') throw new Error(`the dump holds a statement a load does not run: ${statementText(s).slice(0, 80)}`);
+      if (kind === 'refuse') throw new Error(`the dump holds a statement a load does not run: ${statementKind(s)}`);
       return kind === 'run';
     });
     if (run.length === 0) return 0;
