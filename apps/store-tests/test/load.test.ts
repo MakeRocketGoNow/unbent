@@ -89,9 +89,9 @@ describe('loading a dump', () => {
     expect(result.foreignKeyViolations).toBe(0);
     expect(result.statements).toBeGreaterThan(20);
     expect(result.pages).toBe(1);
-    // A bookmark of the store before the load: a real one on a deployed object, a
-    // placeholder of zeros from Miniflare, which keeps no history to restore to.
-    expect(result.undo).toMatch(/^[0-9a-f]{8}(-[0-9a-f]{8}){2}-[0-9a-f]{16,}$/);
+    // Miniflare keeps no history to restore to and answers a bookmark of zeros, which
+    // reads as none; a deployed object answers a real one.
+    expect(result.undo).toBeNull();
     expect(result.feedEpoch).not.toBe(epochBefore);
 
     // The note is back with its body, tags, field and file; the search index, rebuilt

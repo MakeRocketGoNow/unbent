@@ -399,6 +399,9 @@ export class UserStore extends DurableObject<StoreEnv> {
       if (!/does not implement point-in-time recovery/i.test(err instanceof Error ? err.message : String(err))) throw err;
       undo = null;
     }
+    // Miniflare answers a bookmark of zeros rather than refusing (measured 2026-10-06);
+    // nothing can be restored to it, so the answer must not offer it.
+    if (undo !== null && /^[0-]+$/.test(undo)) undo = null;
     await this.ctx.storage.deleteAll();
     const marker: LoadMarker = { id: crypto.randomUUID(), key: dump.key, startedAt: Date.now(), pages: 0, statements: 0 };
     this.ctx.storage.kv.put(LOADING_KEY, marker);
