@@ -1935,6 +1935,9 @@ would bring back notes its owner asked to have removed.
 3. Repeat with `"confirm": "RESTORE"`. The store restarts to apply it, and the answer has
    the restored store's counts and an `undo` bookmark — the store as it was the instant
    before. `{ "user": "<id>", "bookmark": "<undo>", "confirm": "RESTORE" }` reverses it.
+   The directory keeps the last wind-back's bookmark too, so the operator page offers
+   Undo after a reload and not only from the answer; an undo or a load clears it, and
+   the Worker's log has it as well.
 
 The whole database goes back together, schema version included, so a restore to before a
 schema file is migrated again on the next wake. Files are in R2, not the store, and are

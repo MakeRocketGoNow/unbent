@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { AccountDumps, OperatorAccount as Account } from '@unbent/shared';
+import { RESTORE_WINDOW_DAYS, type AccountDumps, type OperatorAccount as Account } from '@unbent/shared';
 import type { StoreStats } from '../notes-api.js';
 import { keys } from '../queries.js';
 import { formatMoment } from './format-when.js';
@@ -18,6 +18,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
   loadDump: vi.fn(),
   resyncDevices: vi.fn(),
   accountDumps: vi.fn(),
+  operatorAccounts: vi.fn(),
   storeStats: vi.fn(),
 }));
 
@@ -35,6 +36,7 @@ const account: Account = {
   storageBytes: 4096,
   lastActiveAt: now - 3_600_000,
   dump: { at: now - 7_200_000, bytes: 2048, checkedAt: now - 7_200_000, triedAt: now - 7_200_000, error: null },
+  restore: null,
 };
 
 const stats = (counts: Partial<Record<string, number>> = {}): StoreStats => ({
@@ -128,6 +130,36 @@ describe('OperatorAccount: facts', () => {
  * question, repeats the request with the word, and offers the bookmark it gets back.
  */
 describe('OperatorAccount: wind back', () => {
+  it('offers Undo of the last wind-back from the directory, so a reload does not lose it', async () => {
+    harness(undefined, undefined, { ...account, restore: { at: now - 600_000, toAt: now - 7_200_000, undo: '00000001-00000002-00000003-0000000000000004' } });
+    await flush();
+    expect(screen.getByText(/Last wind-back:/).textContent).toContain(formatMoment(now - 7_200_000));
+    fireEvent.click(screen.getByRole('button', { name: 'Undo the wind-back' }));
+    const undo = screen.getByRole('group', { name: 'Confirm undo wind back' });
+    expect(undo.textContent).toContain('Put someone@example.com back as it was before the wind-back?');
+    vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: '00000001-00000002-00000003-0000000000000005', feedEpoch: 'e3', stats: stats(), note: '' });
+    fireEvent.click(screen.getByRole('button', { name: 'Undo the wind-back' }));
+    await waitFor(() => expect(api.restoreStore).toHaveBeenCalledWith('u1', { bookmark: '00000001-00000002-00000003-0000000000000004' }));
+    await waitFor(() => expect(screen.getByText(/Put back as it was before the wind-back/)).toBeTruthy());
+  });
+
+  it('says the recorded wind-back has no undo when its bookmark is null', async () => {
+    harness(undefined, undefined, { ...account, restore: { at: now - 600_000, toAt: now - 7_200_000, undo: null } });
+    await flush();
+    expect(screen.getByText(/did not survive the restart/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Undo the wind-back' })).toBeNull();
+  });
+
+  it('offers nothing once the recorded wind-back is past the window', async () => {
+    harness(undefined, undefined, {
+      ...account,
+      restore: { at: Date.now() - (RESTORE_WINDOW_DAYS + 1) * 86_400_000, toAt: Date.now() - (RESTORE_WINDOW_DAYS + 2) * 86_400_000, undo: '00000001-00000002-00000003-0000000000000004' },
+    });
+    await flush();
+    expect(screen.queryByText(/Last wind-back:/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Undo the wind-back' })).toBeNull();
+  });
+
   it('previews first, then names the account, the moment and what is lost, then offers Undo', async () => {
     vi.mocked(api.previewRestore).mockResolvedValue({ dryRun: true, user: 'u1', bookmark: 'bm-1', current: stats({ notes: 12, attachments: 4, note_revisions: 40 }) });
     vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: '00000001-00000002-00000003-0000000000000004', feedEpoch: 'e2', stats: stats({ notes: 9, attachments: 3, note_revisions: 20 }), note: '' });
@@ -179,6 +211,80 @@ describe('OperatorAccount: wind back', () => {
     await flush();
     expect(screen.getByRole('group', { name: 'Confirm wind back' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Undo the wind-back' })).toBeTruthy();
+  });
+
+  it('drops the Undo from the answer once a load replaces the store, since its bookmark would throw the load away', async () => {
+    vi.mocked(api.previewRestore).mockResolvedValue({ dryRun: true, user: 'u1', bookmark: 'bm-1', current: stats() });
+    vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: '00000001-00000002-00000003-0000000000000004', feedEpoch: 'e2', stats: stats(), note: '' });
+    vi.mocked(api.previewLoad).mockResolvedValue({
+      dryRun: true,
+      user: 'u1',
+      dump: { key: 'stores/u1/2026-10-06.sql', size: 30_000, uploadedAt: '2026-10-06T04:47:00Z', owner: 'u1', header: '-- Unbent note store of account u1, dumped 2026-10-06T04:47:03.000Z', oneMoment: true },
+      current: stats(),
+    });
+    vi.mocked(api.loadDump).mockResolvedValue({
+      loaded: true,
+      user: 'u1',
+      key: 'stores/u1/2026-10-06.sql',
+      before: 'stores/u1/2026-10-06T12-00-00Z-before-load.sql',
+      undo: '00000001-00000002-00000003-0000000000000005',
+      feedEpoch: 'e3',
+      migrated: [],
+      foreignKeyViolations: 0,
+      stats: stats(),
+      note: '',
+    });
+    harness();
+    fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Wind back' }));
+    await flush();
+    expect(screen.getByRole('button', { name: 'Undo the wind-back' })).toBeTruthy();
+
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Load' }).length).toBe(2));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Load' })[0]!);
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Load dump' }));
+    await flush();
+    expect(screen.queryByText(/Wound back to/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Undo the wind-back' })).toBeNull();
+    // The load's own way back is the one on screen now.
+    expect(screen.getByRole('button', { name: 'Undo the load' })).toBeTruthy();
+  });
+
+  it('holds back the recorded wind-back after a load until the accounts list is read again', async () => {
+    vi.mocked(api.previewLoad).mockResolvedValue({
+      dryRun: true,
+      user: 'u1',
+      dump: { key: 'stores/u1/2026-10-06.sql', size: 30_000, uploadedAt: '2026-10-06T04:47:00Z', owner: 'u1', header: '-- Unbent note store of account u1, dumped 2026-10-06T04:47:03.000Z', oneMoment: true },
+      current: stats(),
+    });
+    vi.mocked(api.loadDump).mockResolvedValue({
+      loaded: true,
+      user: 'u1',
+      key: 'stores/u1/2026-10-06.sql',
+      before: 'stores/u1/2026-10-06T12-00-00Z-before-load.sql',
+      undo: '00000001-00000002-00000003-0000000000000005',
+      feedEpoch: 'e3',
+      migrated: [],
+      foreignKeyViolations: 0,
+      stats: stats(),
+      note: '',
+    });
+    // The cached row still has the wind-back the load's route cleared, and the refetch
+    // the load asks for has not answered, so the row the page holds is the stale one.
+    vi.mocked(api.operatorAccounts).mockReturnValue(new Promise(() => {}));
+    harness(undefined, undefined, { ...account, restore: { at: now - 600_000, toAt: now - 7_200_000, undo: '00000001-00000002-00000003-0000000000000004' } });
+    await flush();
+    expect(screen.getByRole('button', { name: 'Undo the wind-back' })).toBeTruthy();
+
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Load' }).length).toBe(2));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Load' })[0]!);
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Load dump' }));
+    await flush();
+    expect(screen.queryByText(/Last wind-back:/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Undo the wind-back' })).toBeNull();
   });
 
   it('closes the confirm when the wind-back fails, so a second press cannot restore twice', async () => {
@@ -265,6 +371,44 @@ describe('OperatorAccount: load a dump', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Undo the load' }));
     await flush();
     expect(api.restoreStore).toHaveBeenCalledWith('u1', { bookmark: '00000001-00000002-00000003-0000000000000004' });
+  });
+
+  it('drops the Undo from the answer once a wind-back moves the store, since its bookmark would throw the wind-back away', async () => {
+    vi.mocked(api.previewLoad).mockResolvedValue({
+      dryRun: true,
+      user: 'u1',
+      dump: { key: 'stores/u1/2026-10-06.sql', size: 30_000, uploadedAt: '2026-10-06T04:47:00Z', owner: 'u1', header: '-- Unbent note store of account u1, dumped 2026-10-06T04:47:03.000Z', oneMoment: true },
+      current: stats(),
+    });
+    vi.mocked(api.loadDump).mockResolvedValue({
+      loaded: true,
+      user: 'u1',
+      key: 'stores/u1/2026-10-06.sql',
+      before: 'stores/u1/2026-10-06T12-00-00Z-before-load.sql',
+      undo: '00000001-00000002-00000003-0000000000000005',
+      feedEpoch: 'e2',
+      migrated: [],
+      foreignKeyViolations: 0,
+      stats: stats(),
+      note: '',
+    });
+    vi.mocked(api.previewRestore).mockResolvedValue({ dryRun: true, user: 'u1', bookmark: 'bm-1', current: stats() });
+    vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: '00000001-00000002-00000003-0000000000000006', feedEpoch: 'e3', stats: stats(), note: '' });
+    harness();
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Load' }).length).toBe(2));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Load' })[0]!);
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Load dump' }));
+    await flush();
+    expect(screen.getByRole('button', { name: 'Undo the load' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Wind back' }));
+    await flush();
+    expect(screen.queryByText(/Loaded 2026-10-06.sql/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Undo the load' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Undo the wind-back' })).toBeTruthy();
   });
 
   it('says where to undo when the runtime handed back no bookmark', async () => {

@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import { deleteKeys } from '../lib/blobs.js';
-import { directoryRow, dropDirectoryRow, listOperatorAccounts } from '../lib/directory.js';
+import { clearRestore, directoryRow, dropDirectoryRow, listOperatorAccounts, recordRestore } from '../lib/directory.js';
 import { beginDump } from '../lib/dump.js';
 import { MIRROR_STATUS_KEY, STATUS_KEY, dumpPrefix } from '../lib/backups.js';
 import { beforeLoadKey, describeDump, dumpBeforeLoad, loadReserve, resolveDumpDownload, resolveDumpKey, streamDump } from '../lib/load.js';
@@ -341,6 +341,18 @@ export const admin = new Hono<AppEnv>()
       }
 
       console.log(`[store] operator=${email} restore user=${target} to=${'at' in to ? new Date(to.at).toISOString() : to.bookmark}`);
+      // The directory's record of the last wind-back (MAK-189) is cleared before the
+      // restore is scheduled, as the load route clears it before `loadBegin`. Cleared
+      // after, every way out below that is not a clean answer — an outcome unknown, a
+      // restore that will apply on the next restart, a failed write — would leave the
+      // page offering the undo of an earlier wind-back, a press that throws this one
+      // away under a confirm that says nothing of it (found in review). A refusal loses
+      // the record for nothing, but only the page's copy: the bookmark is in the log.
+      try {
+        await clearRestore(c.env.DB, target);
+      } catch (err) {
+        console.error(`[store] clearing the recorded wind-back before a restore failed for user=${target}; the operator page may offer an undo from before this restore:`, err);
+      }
       let undo: string | null;
       try {
         await store.restoreTo(to);
@@ -391,6 +403,18 @@ export const admin = new Hono<AppEnv>()
       } catch (err) {
         console.error(`[store] stats after restore failed for user=${target}:`, err);
       }
+      // The way back, kept where a reload of the operator page finds it (MAK-189). Only
+      // a wind-back to a moment is recorded; a restore to a bookmark — the undo itself —
+      // leaves the record cleared above, since what it would offer next is the wind-back
+      // again (`recordRestore` says why). The answer and the log carry the bookmark too,
+      // so a failure here is logged and not answered.
+      if ('at' in to) {
+        try {
+          await recordRestore(c.env.DB, target, { at: Date.now(), toAt: to.at, undo });
+        } catch (err) {
+          console.error(`[store] recording the wind-back in the directory failed for user=${target}; the operator page will not offer its undo after a reload:`, err);
+        }
+      }
       return c.json({
         restored: true,
         user: target,
@@ -432,6 +456,7 @@ export const admin = new Hono<AppEnv>()
    * 2. `loadBegin`: the object takes its bookmark (the `undo` in the answer, which the
    *    restore route winds back to in one call), empties itself and marks itself
    *    loading. From here on the store refuses every request but these until step 4.
+   *    The directory's record of the last wind-back is cleared just before (see there).
    * 3. Stream the file into the object in pages (`streamDump`).
    * 4. `loadFinish`: the object checks the dump is this account's and from a schema this
    *    code knows, applies any schema file the dump lacked, names a new feed epoch so
@@ -505,6 +530,21 @@ export const admin = new Hono<AppEnv>()
 
       const object = await bucket.get(key);
       if (!object) return c.json({ error: `${key} went away since the dry run; nothing was loaded.`, before }, 404);
+
+      // The wind-back the directory may still record (MAK-189) stops describing a way
+      // back the moment the store is emptied: its bookmark is from before this load, and
+      // undoing to it would throw the loaded dump away under a confirm that says nothing
+      // of the kind. Cleared before `loadBegin` rather than after, so a begin that empties
+      // the store and then fails to answer cannot leave the record standing (found in
+      // review); clearing early loses nothing, since the bookmark is in the Worker's log.
+      // The load records nothing in its place: its own way back is the before-load dump
+      // above, listed for as long as the bucket keeps it. Logged and not answered, as the
+      // restore route treats its record.
+      try {
+        await clearRestore(c.env.DB, target);
+      } catch (err) {
+        console.error(`[store] clearing the recorded wind-back before a load failed for user=${target}; the operator page may offer an undo from before the load:`, err);
+      }
 
       let begun: { loadId: string; undo: string | null; before: string | null };
       try {

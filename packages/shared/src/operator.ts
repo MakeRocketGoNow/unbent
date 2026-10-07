@@ -112,6 +112,14 @@ export interface OperatorAccount {
     /** The last attempt's failure, cleared by the next success. */
     error: string | null;
   };
+  /**
+   * The last wind-back of the store to a moment (migration 0038): when it was applied,
+   * the moment it went back to, and the bookmark that reverses it, good for
+   * `RESTORE_WINDOW_DAYS` from `at`, or null when the runtime handed none back. Kept here
+   * rather than in the answer alone so the page can offer Undo after a reload. A restore
+   * to a bookmark — an undo — clears it rather than replacing it: see `recordRestore`.
+   */
+  restore: { at: number; toAt: number; undo: string | null } | null;
 }
 
 export interface OperatorAccountsPage {

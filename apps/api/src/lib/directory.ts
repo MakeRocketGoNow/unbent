@@ -134,6 +134,9 @@ interface OperatorRow extends RawRow {
   dump_checked_at: number | null;
   dump_tried_at: number | null;
   dump_error: string | null;
+  restore_at: number | null;
+  restore_to_at: number | null;
+  restore_undo: string | null;
 }
 
 /**
@@ -160,6 +163,41 @@ export async function listOperatorAccounts(db: D1Database, after = '', limit = 2
     storageBytes: r.storage_bytes,
     lastActiveAt: r.last_active_at,
     dump: { at: r.dump_at, bytes: r.dump_bytes, checkedAt: r.dump_checked_at, triedAt: r.dump_tried_at, error: r.dump_error },
+    restore: r.restore_at === null || r.restore_to_at === null ? null : { at: r.restore_at, toAt: r.restore_to_at, undo: r.restore_undo },
   }));
   return { accounts, next: results.length === limit ? results[results.length - 1]!.user_id : null };
+}
+
+/**
+ * Records a wind-back of the account's store to a moment, for the operator page to offer
+ * its undo from (migration 0038). Only a wind-back to a moment is recorded, and a
+ * restore to a bookmark clears the record (`clearRestore`): a bookmark restore is an
+ * undo, and the one thing its own undo bookmark would reverse is the undo itself —
+ * offered after a reload as "Undo the wind-back", pressing it would have reapplied the
+ * wind-back the operator had just taken back (found in review). Recorded with a null
+ * `undo` too, so the page can say the bookmark did not survive rather than nothing.
+ * Called after the restore has been applied — the route clears the record before
+ * scheduling one, so a restore that never gets here leaves nothing rather than an older
+ * wind-back — and never allowed to fail the restore's answer: the bookmark is in the
+ * answer and the Worker's log whether or not this row is written.
+ *
+ * One row, so only the latest wind-back is undoable from the page: wind back twice and
+ * undo the second, and the first one's bookmark is in the Worker's log alone.
+ */
+export async function recordRestore(db: D1Database, userId: string, restore: { at: number; toAt: number; undo: string | null }): Promise<void> {
+  await db
+    .prepare(`UPDATE account_directory SET restore_at = ?2, restore_to_at = ?3, restore_undo = ?4 WHERE user_id = ?1`)
+    .bind(userId, restore.at, restore.toAt, restore.undo)
+    .run();
+}
+
+/**
+ * Forgets the account's recorded wind-back, before every restore and every load (see
+ * those routes) and so after a restore to a bookmark, which is what undoes one, and after
+ * a load, whose own way back is the before-load dump it lists. Left in place, the record
+ * would offer to wind back to a moment from before either, and the confirm would not say
+ * that the undo, the newer wind-back or the loaded dump went with it.
+ */
+export async function clearRestore(db: D1Database, userId: string): Promise<void> {
+  await db.prepare(`UPDATE account_directory SET restore_at = NULL, restore_to_at = NULL, restore_undo = NULL WHERE user_id = ?1`).bind(userId).run();
 }

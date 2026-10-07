@@ -23,7 +23,8 @@ import { LastDump } from './Operator.js';
  * its rows are one moment. The confirm repeats the request with the word the route
  * wants, and the answer's undo bookmark is kept beside the result as a second
  * confirm, so a wind-back to the wrong moment is one more press rather than a request
- * written by hand from the Worker log.
+ * written by hand from the Worker log. The directory keeps the last wind-back's bookmark
+ * too (migration 0038), so the same confirm is offered after a reload.
  *
  * Downloads are links: a dump is a file, and a link to a file middle-clicks, copies and
  * saves with the browser's own download, which a button cannot do.
@@ -32,6 +33,17 @@ export function OperatorAccount({ userId }: { userId: string }) {
   const accounts = useQuery(operatorAccountsQuery());
   const account = accounts.data?.find((a) => a.userId === userId) ?? null;
   const stats = useQuery(storeStatsQuery(userId));
+  // Moved each time a section below asks to change the store — in `finally`, since a
+  // request that failed may still have been applied — and each section is keyed on the
+  // other's. An undo kept in a section's own answer is a bookmark from before that
+  // section's change, so once the other section has changed the store since, pressing
+  // it would throw that change away too, under a confirm that names only its own — the
+  // reason the routes clear the directory's wind-back record before a restore or a load
+  // (MAK-189). Remounting drops the stale answer. The directory's record is held back
+  // too until the accounts list is newer than the last load: the cached one is from
+  // before it, and the route has already cleared it (found in review).
+  const [windBacks, setWindBacks] = useState(0);
+  const [loadedAt, setLoadedAt] = useState(0);
   // A wiped or loading store answers null for its last write because it cannot read its
   // feed, not because nothing was written: unknown, so the sweep's value stands in.
   const live = stats.data && !stats.data.wiped && !stats.data.loading ? stats.data.lastWriteAt : undefined;
@@ -73,8 +85,14 @@ export function OperatorAccount({ userId }: { userId: string }) {
         </p>
       </section>
 
-      <WindBack userId={userId} email={account?.email ?? userId} />
-      <LoadDump userId={userId} email={account?.email ?? userId} />
+      <WindBack
+        key={`wind-back-${loadedAt}`}
+        userId={userId}
+        email={account?.email ?? userId}
+        last={accounts.dataUpdatedAt > loadedAt ? (account?.restore ?? null) : null}
+        onChanged={() => setWindBacks((n) => n + 1)}
+      />
+      <LoadDump key={`load-${windBacks}`} userId={userId} email={account?.email ?? userId} onChanged={() => setLoadedAt(Date.now())} />
       <Resync userId={userId} email={account?.email ?? userId} />
     </div>
   );
@@ -270,19 +288,49 @@ type WindBackStep = { kind: 'idle' } | { kind: 'previewing' } | { kind: 'preview
 type WindBackOutcome = { kind: 'done'; at: number; result: api.RestoreResult; undoAsked: boolean } | { kind: 'undone'; result: api.RestoreResult };
 
 /**
+ * The confirm that undoes a wind-back, from this page's own answer or from the directory's
+ * record of the last one. One component for both so the two cannot drift apart in what
+ * they say is lost.
+ */
+function UndoWindBackConfirm({ email, busy, onCancel, onConfirm }: { email: string; busy: boolean; onCancel: () => void; onConfirm: () => void }) {
+  return (
+    <Confirm
+      label="Confirm undo wind back"
+      question={`Put ${email} back as it was before the wind-back?`}
+      detail={
+        <>
+          Restores to the bookmark the wind-back returned, which is the store as it stood just before it. Anything written since the
+          wind-back is lost, and every device resyncs again.
+        </>
+      }
+      busy={busy}
+      onCancel={onCancel}
+      actions={[{ label: 'Undo the wind-back', busyLabel: 'Restoring…', tone: 'danger', onConfirm }]}
+    />
+  );
+}
+
+/**
  * Wind the store back to a moment in the last thirty days.
  *
  * Preview is the first step and a press of its own, because the confirm has to name what
  * the store holds now and the route's dry run is where that comes from — and because a
  * moment outside the window is refused there, before anything is at stake. The confirm
  * names the account, the moment, and what is lost: everything written after it. The
- * answer keeps the undo bookmark as a second confirm beside the result.
+ * answer keeps the undo bookmark as a second confirm beside the result, and the
+ * directory's record of the last wind-back offers the same confirm after a reload.
  *
  * Where the runtime keeps no history — `wrangler dev` — the route answers 501, and the
  * section says so in place of the control rather than offering a preview that fails.
  */
-function WindBack({ userId, email }: { userId: string; email: string }) {
+function WindBack({ userId, email, last, onChanged }: { userId: string; email: string; last: Account['restore']; onChanged: () => void }) {
   const queryClient = useQueryClient();
+  // The last wind-back's undo, from the directory rather than from this page's own
+  // answer, so it is still offered after a reload or a look at a note (MAK-189). Shown
+  // only while this page has no fresher answer of its own: an outcome below carries its
+  // own undo, and the directory catches up with it on the next read. Only a wind-back to
+  // a moment is recorded; an undo clears the record, so this never offers to redo one.
+  const [lastUndoAsked, setLastUndoAsked] = useState(false);
   // Read when the field is focused, not on every render: the bounds should not move
   // under the field while it is being typed in, but a page left open for an hour must
   // not grey out the last hour, which is when an operator most often wants to go.
@@ -336,6 +384,7 @@ function WindBack({ userId, email }: { userId: string; email: string }) {
       setStep({ kind: 'idle' });
       setBusy(false);
       refresh();
+      onChanged();
     }
   }
 
@@ -352,8 +401,10 @@ function WindBack({ userId, email }: { userId: string; email: string }) {
       // Closed either way, as the wind-back's own confirm is: a second press on a confirm
       // whose restore may already have been applied would restore again.
       setOutcome((o) => (o && o.kind === 'done' ? { ...o, undoAsked: false } : o));
+      setLastUndoAsked(false);
       setBusy(false);
       refresh();
+      onChanged();
     }
   }
 
@@ -400,13 +451,29 @@ function WindBack({ userId, email }: { userId: string; email: string }) {
             <>
               Every note, file record and revision written after that moment is lost. The store now holds{' '}
               {describeCounts(step.preview.current)}; what it held at that moment is what it will hold after. Every device of the
-              account resyncs from a snapshot. Undo is offered afterwards, and the bookmark it uses lasts {RESTORE_WINDOW_DAYS} days.
+              account resyncs from a snapshot. Undo is offered afterwards, and again after a reload, for the {RESTORE_WINDOW_DAYS} days its bookmark lasts.
             </>
           }
           busy={busy}
           onCancel={() => setStep({ kind: 'idle' })}
           actions={[{ label: 'Wind back', busyLabel: 'Winding back…', tone: 'danger', onConfirm: () => windBack(step.at) }]}
         />
+      )}
+
+      {!outcome && last && last.at > Date.now() - RESTORE_WINDOW_DAYS * 86_400_000 && (
+        <>
+          <p className="muted small">
+            Last wind-back: {timeAgo(last.at)}, to {formatMoment(last.toAt)}.
+            {last.undo ? <> Undo is good for {RESTORE_WINDOW_DAYS} days from then.</> : <> Its undo bookmark did not survive the restart; the Worker log has it on the &quot;restore scheduled&quot; line.</>}
+          </p>
+          {!last.undo ? null : !lastUndoAsked ? (
+            <Button tone="danger" disabled={busy} onClick={() => setLastUndoAsked(true)}>
+              Undo the wind-back
+            </Button>
+          ) : (
+            <UndoWindBackConfirm email={email} busy={busy} onCancel={() => setLastUndoAsked(false)} onConfirm={() => undo(last.undo!)} />
+          )}
+        </>
       )}
 
       {outcome?.kind === 'done' && (
@@ -422,19 +489,7 @@ function WindBack({ userId, email }: { userId: string; email: string }) {
                 Undo the wind-back
               </Button>
             ) : (
-              <Confirm
-                label="Confirm undo wind back"
-                question={`Put ${email} back as it was before the wind-back?`}
-                detail={
-                  <>
-                    Restores to the bookmark the wind-back returned, which is the store as it stood just before it. Anything written
-                    since the wind-back is lost, and every device resyncs again.
-                  </>
-                }
-                busy={busy}
-                onCancel={() => setOutcome({ ...outcome, undoAsked: false })}
-                actions={[{ label: 'Undo the wind-back', busyLabel: 'Restoring…', tone: 'danger', onConfirm: () => undo(outcome.result.undo!) }]}
-              />
+              <UndoWindBackConfirm email={email} busy={busy} onCancel={() => setOutcome({ ...outcome, undoAsked: false })} onConfirm={() => undo(outcome.result.undo!)} />
             )
           ) : (
             <p className="muted small">The undo bookmark did not survive the restart; the Worker log has it on the &quot;restore scheduled&quot; line.</p>
@@ -487,7 +542,7 @@ export function dumpedAt(header: string): string | null {
  * mirror alone, and the paragraph under the list gives the command that brings one back,
  * since a dump can only be loaded from this bucket.
  */
-function LoadDump({ userId, email }: { userId: string; email: string }) {
+function LoadDump({ userId, email, onChanged }: { userId: string; email: string; onChanged: () => void }) {
   const queryClient = useQueryClient();
   const dumps = useQuery(accountDumpsQuery(userId));
   const [step, setStep] = useState<LoadStep>({ kind: 'idle' });
@@ -534,6 +589,7 @@ function LoadDump({ userId, email }: { userId: string; email: string }) {
       setStep({ kind: 'idle' });
       setBusy(false);
       refresh();
+      onChanged();
     }
   }
 
@@ -551,6 +607,7 @@ function LoadDump({ userId, email }: { userId: string; email: string }) {
       setOutcome((o) => (o && o.kind !== 'undone' ? { ...o, undoAsked: false } : o));
       setBusy(false);
       refresh();
+      onChanged();
     }
   }
 
