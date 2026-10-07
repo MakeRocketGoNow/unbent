@@ -236,6 +236,35 @@ describe('OperatorAccount: load a dump', () => {
     expect(screen.getByText(/Schema files the dump lacked were applied: 0005-deleted-blobs/)).toBeTruthy();
   });
 
+  it('keeps the way back when a load fails after emptying the store', async () => {
+    vi.mocked(api.previewLoad).mockResolvedValue({
+      dryRun: true,
+      user: 'u1',
+      dump: { key: 'stores/u1/2026-10-06.sql', size: 30_000, uploadedAt: '2026-10-06T04:47:00Z', owner: 'u1', header: '-- Unbent note store of account u1, dumped 2026-10-06T04:47:03.000Z', oneMoment: true },
+      current: stats(),
+    });
+    vi.mocked(api.loadDump).mockRejectedValue(
+      new api.LoadFailedError('The load failed: statement 12 refused.', '00000001-00000002-00000003-0000000000000004', 'stores/u1/2026-10-06T12-00-00Z-before-load.sql'),
+    );
+    harness();
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Load' }).length).toBe(2));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Load' })[0]!);
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Load dump' }));
+    await flush();
+    const failed = screen.getByText(/The load of 2026-10-06.sql failed/);
+    expect(failed.textContent).toContain('statement 12 refused');
+    expect(failed.textContent).toContain('2026-10-06T12-00-00Z-before-load.sql, is in the list above');
+    // The confirm is gone — its counts are of a store that no longer exists — and the
+    // bookmark is one press away rather than a line in the Worker log.
+    expect(screen.queryByRole('group', { name: 'Confirm load dump' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Undo the load' }));
+    vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: null, feedEpoch: 'e3', stats: stats(), note: '' });
+    fireEvent.click(screen.getByRole('button', { name: 'Undo the load' }));
+    await flush();
+    expect(api.restoreStore).toHaveBeenCalledWith('u1', { bookmark: '00000001-00000002-00000003-0000000000000004' });
+  });
+
   it('says so where no bucket is bound, without the list or the command', async () => {
     harness(() => Promise.reject(new api.ApiError(501, 'This instance has no backups bucket bound, so there are no dumps to list.')));
     await waitFor(() => expect(screen.getByText(/no backups bucket bound/)).toBeTruthy());

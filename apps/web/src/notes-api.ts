@@ -1078,10 +1078,30 @@ export async function previewLoad(userId: string, dump: string): Promise<LoadPre
   return json<LoadPreview>(await request('/api/admin/store/load', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ user: userId, dump }) }));
 }
 
+/**
+ * A load that failed after the store was emptied. The route's 502 then carries the two
+ * ways back — the bookmark the load took as it began, and the dump it wrote first — and
+ * a message alone would throw them away on the one path where they matter most: the
+ * store is refusing every request until one of them is used.
+ */
+export class LoadFailedError extends ApiError {
+  constructor(
+    message: string,
+    readonly undo: string | null,
+    readonly before: string | null,
+  ) {
+    super(502, message);
+    this.name = 'LoadFailedError';
+  }
+}
+
 export async function loadDump(userId: string, dump: string): Promise<LoadResult> {
-  return json<LoadResult>(
-    await request('/api/admin/store/load', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ user: userId, dump, confirm: 'LOAD' }) }),
-  );
+  const res = await request('/api/admin/store/load', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ user: userId, dump, confirm: 'LOAD' }) });
+  if (!res.ok && res.headers.get('Content-Type')?.includes('json')) {
+    const body = (await res.clone().json().catch(() => null)) as { error?: string; loading?: boolean; undo?: string | null; before?: string | null } | null;
+    if (body?.loading) throw new LoadFailedError(body.error ?? `${res.status}`, body.undo ?? null, body.before ?? null);
+  }
+  return json<LoadResult>(res);
 }
 
 /** Names a new feed epoch, so every device of the account starts over from a snapshot. */

@@ -3,7 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { RESTORE_WINDOW_DAYS, type AccountDump, type OperatorAccount as Account } from '@unbent/shared';
 import * as api from '../notes-api.js';
-import { ApiError, errorText } from '../notes-api.js';
+import { ApiError, LoadFailedError, errorText } from '../notes-api.js';
 import { formatBytes } from '../format-bytes.js';
 import { formatMoment, timeAgo } from '../format-time.js';
 import { accountDumpsQuery, keys, operatorAccountsQuery, storeStatsQuery } from '../queries.js';
@@ -143,7 +143,8 @@ function StoreFacts({ stats, error }: { stats: api.StoreStats | null; error: Err
     return (
       <p className="bad small">
         Loading {stats.loading.key} since {formatMoment(stats.loading.startedAt)}, {stats.loading.pages} pages so far, and refusing every
-        request until it is whole. If the load that started it has ended, load a dump again below, or wind back to the bookmark it returned.
+        request until it is whole. If the load that started it has ended, load a dump again below: the one it was loading, or the
+        before-load dump it wrote first. The Worker log&apos;s &quot;load for user&quot; lines have its undo bookmark.
       </p>
     );
   }
@@ -369,8 +370,16 @@ function WindBack({ userId, email }: { userId: string; email: string }) {
 
 type LoadStep = { kind: 'idle' } | { kind: 'previewing'; dump: AccountDump } | { kind: 'preview'; dump: AccountDump; preview: api.LoadPreview };
 
-/** What the last load did, apart from the preview step for the reason `WindBackOutcome` gives. */
-type LoadOutcome = { kind: 'done'; dump: AccountDump; result: api.LoadResult; undoAsked: boolean } | { kind: 'undone'; result: api.RestoreResult };
+/**
+ * What the last load did, apart from the preview step for the reason `WindBackOutcome`
+ * gives. `failed` is a load that emptied the store and did not fill it: the store is
+ * refusing every request, and the two ways back the route handed over are kept here
+ * and offered, since the Worker log is otherwise the only place they exist.
+ */
+type LoadOutcome =
+  | { kind: 'done'; dump: AccountDump; result: api.LoadResult; undoAsked: boolean }
+  | { kind: 'failed'; dump: AccountDump; message: string; undo: string | null; before: string | null; undoAsked: boolean }
+  | { kind: 'undone'; result: api.RestoreResult };
 
 /**
  * When a dump's first line says it was taken — `-- Unbent note store of account <id>,
@@ -425,7 +434,12 @@ function LoadDump({ userId, email }: { userId: string; email: string }) {
       setStep({ kind: 'idle' });
       setOutcome({ kind: 'done', dump, result, undoAsked: false });
     } catch (err) {
-      setError(errorText(err));
+      if (err instanceof LoadFailedError) {
+        setStep({ kind: 'idle' });
+        setOutcome({ kind: 'failed', dump, message: errorText(err), undo: err.undo, before: err.before, undoAsked: false });
+      } else {
+        setError(errorText(err));
+      }
     } finally {
       setBusy(false);
       refresh();
@@ -561,6 +575,31 @@ function LoadDump({ userId, email }: { userId: string; email: string }) {
               <p className="muted small">This runtime keeps no bookmarks; to undo, load {outcome.result.before.split('/').pop()} from the list above.</p>
             )
           )}
+        </>
+      )}
+
+      {outcome?.kind === 'failed' && (
+        <>
+          <p className="bad small">
+            The load of {outcome.dump.name} failed: {outcome.message} The store is empty and refusing every request until it is whole again.
+            {outcome.before && <> The dump taken before it, {outcome.before.split('/').pop()}, is in the list above; loading it puts the store back.</>}
+            {!outcome.undo && !outcome.before && <> Load a dump from the list above to make it whole.</>}
+          </p>
+          {outcome.undo &&
+            (!outcome.undoAsked ? (
+              <Button tone="danger" disabled={busy} onClick={() => setOutcome({ ...outcome, undoAsked: true })}>
+                Undo the load
+              </Button>
+            ) : (
+              <Confirm
+                label="Confirm undo load"
+                question={`Put ${email}'s store back as it was before the load?`}
+                detail="Winds back to the bookmark the load took as it began, the store as it stood just before it was emptied. Every device resyncs."
+                busy={busy}
+                onCancel={() => setOutcome({ ...outcome, undoAsked: false })}
+                actions={[{ label: 'Undo the load', busyLabel: 'Restoring…', tone: 'danger', onConfirm: () => undo(outcome.undo!) }]}
+              />
+            ))}
         </>
       )}
 
