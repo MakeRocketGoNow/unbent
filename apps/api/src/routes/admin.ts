@@ -443,6 +443,7 @@ export const admin = new Hono<AppEnv>()
    * 2. `loadBegin`: the object takes its bookmark (the `undo` in the answer, which the
    *    restore route winds back to in one call), empties itself and marks itself
    *    loading. From here on the store refuses every request but these until step 4.
+   *    The directory's record of the last wind-back is cleared here too (see below).
    * 3. Stream the file into the object in pages (`streamDump`).
    * 4. `loadFinish`: the object checks the dump is this account's and from a schema this
    *    code knows, applies any schema file the dump lacked, names a new feed epoch so
@@ -530,6 +531,17 @@ export const admin = new Hono<AppEnv>()
         );
       }
       before = begun.before;
+      // The store is emptied from here on, so the wind-back the directory may still record
+      // (MAK-189) no longer describes a way back: its bookmark is from before this load,
+      // and undoing to it would throw the loaded dump away under a confirm that says
+      // nothing of the kind. The load's own way back is the before-load dump above, listed
+      // for as long as the bucket keeps it, so it records nothing in its place. Logged and
+      // not answered, as the restore route treats its record.
+      try {
+        await clearRestore(c.env.DB, target);
+      } catch (err) {
+        console.error(`[store] clearing the recorded wind-back for user=${target} failed:`, err);
+      }
 
       let result;
       try {
