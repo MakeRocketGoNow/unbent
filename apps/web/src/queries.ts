@@ -721,9 +721,14 @@ export const operatorAccountsQuery = () =>
     refetchOnWindowFocus: true,
   });
 
-/** Never fresh: the counts are what an action is about to change, and are read again after it. */
+/**
+ * Fresh for a minute. `stats` counts every row of every table — hundreds of thousands
+ * on an archive — so going list → account → list → account must not count them each
+ * time. A minute costs nothing: every action invalidates this, and a confirm quotes its
+ * own dry run's counts, not these.
+ */
 export const storeStatsQuery = (userId: string) =>
-  queryOptions({ queryKey: keys.storeStats(userId), queryFn: () => api.storeStats(userId), staleTime: 0 });
+  queryOptions({ queryKey: keys.storeStats(userId), queryFn: () => api.storeStats(userId), staleTime: 60 * 1000 });
 
 export const accountDumpsQuery = (userId: string) =>
   queryOptions({ queryKey: keys.accountDumps(userId), queryFn: () => api.accountDumps(userId), retry: false, staleTime: 0 });
