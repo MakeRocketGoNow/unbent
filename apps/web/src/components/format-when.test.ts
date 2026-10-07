@@ -82,7 +82,6 @@ describe('formatRevisionWhen', () => {
   });
 });
 
-
 describe('timeAgo', () => {
   const now = Date.parse('2026-10-06T12:00:00Z');
   it('counts up through minutes and hours, then days', () => {

@@ -151,7 +151,6 @@ export const STATUS_KEY = 'status/dumps.json';
 /** Where the nightly mirror (part 3) writes what it did, for the operator page; `scripts/mirror/write-status.mjs`. */
 export const MIRROR_STATUS_KEY = 'status/mirror.json';
 
-
 interface DueRow {
   user_id: string;
   dump_at: number | null;
