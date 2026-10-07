@@ -446,12 +446,19 @@ export class UserStore extends DurableObject<StoreEnv> {
   loadPage(loadId: string, bytes: Uint8Array): { statements: number } {
     const load = this.inFlightLoad(loadId);
     this.ctx.storage.sql.exec('PRAGMA foreign_keys = OFF');
-    const text = load.remainder + load.decoder.decode(bytes, { stream: true });
-    const scan = scanStatements(text);
-    load.remainder = scan.rest;
-    const ran = this.runDumpStatements(scan.statements);
-    this.recordLoad(ran, 1);
-    return { statements: ran };
+    try {
+      const scan = scanStatements(load.remainder + load.decoder.decode(bytes, { stream: true }));
+      const ran = this.runDumpStatements(scan.statements);
+      load.remainder = scan.rest;
+      this.recordLoad(ran, 1);
+      return { statements: ran };
+    } catch (err) {
+      // The page's transaction rolled back, but the decoder has moved past its bytes, so
+      // no page can follow this one: the load in flight ends, the marker stays, and the
+      // only way on is a fresh `loadBegin`.
+      this.loadInFlight = null;
+      throw err;
+    }
   }
 
   /**
