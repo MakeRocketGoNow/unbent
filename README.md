@@ -1823,7 +1823,7 @@ no dump found current in forty-eight hours, or the status is older than that, so
 Worker's half of the backup fails loudly too; and it writes `status/mirror.json` back to
 the dumps bucket — when it ran, what it copied and pruned, the export's size — for the
 operator's page. It runs only where the repository has the nine secrets in the
-[configuration table](#configuration) and the `BACKUPS_BUCKET` variable, read-only on the
+[configuration table](#everything-you-can-set) and the `BACKUPS_BUCKET` variable, read-only on the
 live bucket, and skips itself otherwise; a fork names its live and mirror buckets at the top
 of the file. The first copy, and any rerun, is
 started by hand from the Actions tab.
