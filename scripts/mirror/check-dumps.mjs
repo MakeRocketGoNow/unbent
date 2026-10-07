@@ -19,9 +19,10 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 
 /**
- * How old the last run may be before the status itself is stale: the issue's 48 hours,
- * the same window the Worker uses for an account. The cron runs hourly, so a status this
- * old means the cron has stopped or the bucket binding has gone.
+ * How old the last run may be before the status itself is stale, when the file does not
+ * say: the issue's 48 hours. The file carries the Worker's own window as
+ * `staleAfterHours`, and that is used first, so the two cannot drift. The cron runs
+ * hourly, so a status this old means the cron has stopped or the bucket binding has gone.
  */
 const STALE_HOURS = 48;
 
@@ -50,8 +51,9 @@ if (status) {
     reasons.push(`status/dumps.json has no readable ranAt: ${JSON.stringify(status.ranAt)}`);
   } else {
     ageHours = Math.round(((Date.now() - ranAt) / 3_600_000) * 10) / 10;
-    if (ageHours > STALE_HOURS) {
-      reasons.push(`the last dump run was ${ageHours} hours ago, over ${STALE_HOURS}`);
+    const staleAfter = typeof status.staleAfterHours === 'number' ? status.staleAfterHours : STALE_HOURS;
+    if (ageHours > staleAfter) {
+      reasons.push(`the last dump run was ${ageHours} hours ago, over ${staleAfter}`);
     }
   }
   if (typeof status.failingCount !== 'number' || typeof status.staleCount !== 'number') {
