@@ -50,6 +50,7 @@ export function Operator() {
 
       <section className="settings-section">
         <h3>Accounts</h3>
+        <p className="muted small">Notes and size as of the last sweep; an account&apos;s own page reads its store.</p>
         {accounts.data ? (
           <AccountsTable accounts={accounts.data} />
         ) : accounts.error ? (
@@ -208,8 +209,8 @@ const n = (v: number | null) => (v === null ? '?' : v.toLocaleString());
 
 /**
  * The directory's view of every live account, newest activity first. The counts are the
- * last sweep's, which is right across accounts and said in the column head; the
- * account's own page reads the store for live ones.
+ * last sweep's, which is right across accounts and said in the line under the heading;
+ * the account's own page reads the store for live ones.
  *
  * The last dump column carries the one thing a glance wants from it: when, or that it
  * failed and why, or that there has never been one. A failed dump is red in the row
