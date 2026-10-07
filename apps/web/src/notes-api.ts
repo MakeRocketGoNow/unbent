@@ -990,15 +990,20 @@ export async function operatorBackups(): Promise<BackupsStatus> {
   return json<BackupsStatus>(await request('/api/admin/backups'));
 }
 
-/** Every live account, walking the directory's pages to the end. */
-export async function operatorAccounts(): Promise<OperatorAccount[]> {
-  const all: OperatorAccount[] = [];
-  for (let after = ''; ; ) {
-    const page = await json<OperatorAccountsPage>(await request(`/api/admin/accounts${after ? `?after=${encodeURIComponent(after)}` : ''}`));
-    all.push(...page.accounts);
-    if (page.next === null) return all;
-    after = page.next;
-  }
+/** How many accounts one page of the operator's list asks for. */
+export const OPERATOR_ACCOUNTS_PAGE = 50;
+
+/** One page of live accounts, newest activity first; `after` is the previous page's `next`. */
+export async function operatorAccountsPage(after = ''): Promise<OperatorAccountsPage> {
+  const qs = new URLSearchParams({ limit: String(OPERATOR_ACCOUNTS_PAGE), ...(after ? { after } : {}) });
+  return json<OperatorAccountsPage>(await request(`/api/admin/accounts?${qs}`));
+}
+
+/** One account as the list shows it, or null for an id the directory does not hold live. */
+export async function operatorAccount(userId: string): Promise<OperatorAccount | null> {
+  const res = await request(`/api/admin/accounts/${encodeURIComponent(userId)}`);
+  if (res.status === 404) return null;
+  return json<OperatorAccount>(res);
 }
 
 export async function storeStats(userId: string): Promise<StoreStats> {

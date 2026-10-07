@@ -1,11 +1,13 @@
 import type { ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import type { BackupsStatus, DumpStatus, MirrorStatus, OperatorAccount } from '@unbent/shared';
 import { HEALTH_WORD, dumpsHealth, mirrorHealth, type Health } from '../backup-health.js';
 import { errorText } from '../notes-api.js';
 import { formatBytes } from '../format-bytes.js';
 import { formatMoment, timeAgo } from './format-when.js';
+import { Button } from './Button.js';
+import { RowChevronIcon } from './icons.js';
 import { operatorAccountsQuery, operatorBackupsQuery } from '../queries.js';
 
 /**
@@ -22,7 +24,8 @@ import { operatorAccountsQuery, operatorBackupsQuery } from '../queries.js';
  */
 export function Operator() {
   const backups = useQuery(operatorBackupsQuery());
-  const accounts = useQuery(operatorAccountsQuery());
+  const accounts = useInfiniteQuery(operatorAccountsQuery());
+  const rows = accounts.data?.pages.flatMap((p) => p.accounts);
 
   return (
     <div className="panel operator-page">
@@ -40,7 +43,7 @@ export function Operator() {
           // Someone who is not an operator typed the address: the tab was never drawn for them.
           <p className="muted small">Not found.</p>
         ) : backups.data ? (
-          <BackupHealth status={backups.data} accounts={accounts.data} />
+          <BackupHealth status={backups.data} accounts={rows} />
         ) : backups.error ? (
           <p className="bad small">{errorText(backups.error)}</p>
         ) : (
@@ -50,9 +53,12 @@ export function Operator() {
 
       <section className="settings-section">
         <h3>Accounts</h3>
-        <p className="muted small">Notes and size as of the last sweep; an account&apos;s own page reads its store.</p>
-        {accounts.data ? (
-          <AccountsTable accounts={accounts.data} />
+        <p className="muted small">Notes, size and last change are as of the hourly sweep; an account&apos;s own page reads its store.</p>
+        {rows ? (
+          <AccountsTable
+            accounts={rows}
+            more={accounts.hasNextPage ? { fetching: accounts.isFetchingNextPage, fetch: () => void accounts.fetchNextPage() } : null}
+          />
         ) : accounts.error ? (
           <p className="bad small">{errorText(accounts.error)}</p>
         ) : (
@@ -208,21 +214,36 @@ function Fact({ term, children }: { term: string; children: ReactNode }) {
 const n = (v: number | null) => (v === null ? '?' : v.toLocaleString());
 
 /**
- * The directory's view of every live account, newest activity first. The counts are the
- * last sweep's, which is right across accounts and said in the line under the heading;
- * the account's own page reads the store for live ones.
+ * The directory's view of the live accounts, newest activity first, a page at a time.
+ * The server orders and pages (`listOperatorAccounts`); the table draws what has been
+ * read and offers the next page as one button, so an instance with thousands of
+ * accounts opens as fast as one with seven. The counts are the last sweep's, which is
+ * right across accounts and said in the line under the heading; the account's own page
+ * reads the store for live ones.
+ *
+ * Each row opens the account's page, and says so: the email is the link, and a chevron
+ * at the row's end is the sign a row that opens shares with a version in a note's
+ * history (`RowChevronIcon`). On a phone the row is a card and the chevron sits at its
+ * top right. The first version had the email alone, in the page's ink, and nothing told a
+ * reader it went anywhere (found in the part 6 rehearsal). The name is drawn only when it
+ * says more than the email does; an account whose name is its address showed it twice.
  *
  * The last dump column carries the one thing a glance wants from it: when, or that it
  * failed and why, or that there has never been one. A failed dump is red in the row
  * itself, so the health card's "1 account failed" and the row it means are found with
  * the same eye.
  */
-function AccountsTable({ accounts, now = Date.now() }: { accounts: OperatorAccount[]; now?: number }) {
+export function AccountsTable({
+  accounts,
+  more,
+  now = Date.now(),
+}: {
+  accounts: OperatorAccount[];
+  /** The next page, while there is one: whether it is being read, and how to ask for it. */
+  more: { fetching: boolean; fetch: () => void } | null;
+  now?: number;
+}) {
   if (accounts.length === 0) return <p className="muted small">No accounts yet.</p>;
-  // Most recently changed first, and accounts with no change recorded after every
-  // account with one, newest made first: a fresh account has done nothing yet, and
-  // "newest activity" is what the column beside the name sorts by.
-  const sorted = [...accounts].sort((a, b) => (b.lastActiveAt ?? -Infinity) - (a.lastActiveAt ?? -Infinity) || b.createdAt - a.createdAt);
   return (
     <div className="operator-table-wrap">
       <table className="operator-table">
@@ -233,15 +254,18 @@ function AccountsTable({ accounts, now = Date.now() }: { accounts: OperatorAccou
             <th scope="col">Size</th>
             <th scope="col">Last change</th>
             <th scope="col">Last dump</th>
+            <th scope="col">
+              <span className="visually-hidden">Open</span>
+            </th>
           </tr>
         </thead>
         <tbody>
-          {sorted.map((a) => (
+          {accounts.map((a) => (
             <tr key={a.userId}>
               <td data-label="Account">
                 <Link to="/settings/operator/$userId" params={{ userId: a.userId }} className="operator-account-link">
                   <span className="wrap-anywhere">{a.email}</span>
-                  {a.name && <span className="muted small"> · {a.name}</span>}
+                  {a.name && a.name.trim().toLowerCase() !== a.email.trim().toLowerCase() && <span className="muted small"> · {a.name}</span>}
                 </Link>
               </td>
               <td data-label="Notes">{a.noteCount.toLocaleString()}</td>
@@ -252,11 +276,23 @@ function AccountsTable({ accounts, now = Date.now() }: { accounts: OperatorAccou
               <td data-label="Last dump">
                 <LastDump account={a} now={now} />
               </td>
+              <td className="operator-open">
+                <Link to="/settings/operator/$userId" params={{ userId: a.userId }} className="operator-open-link" aria-label={`Open ${a.email}`}>
+                  <RowChevronIcon />
+                </Link>
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
-      <p className="muted small">Notes, size and last change are as of the hourly sweep. An account's page reads its store.</p>
+      {more && (
+        <p className="operator-more">
+          <Button size="small" disabled={more.fetching} onClick={more.fetch}>
+            {more.fetching ? 'Reading…' : 'Show more accounts'}
+          </Button>
+          <span className="muted small"> {accounts.length.toLocaleString()} shown</span>
+        </p>
+      )}
     </div>
   );
 }

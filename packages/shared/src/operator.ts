@@ -123,8 +123,9 @@ export interface OperatorAccount {
 }
 
 export interface OperatorAccountsPage {
+  /** Newest activity first: the newest write the sweep recorded, else the account's creation. */
   accounts: OperatorAccount[];
-  /** The last user id of the page, to pass as `after`; null when this was the last page. */
+  /** Where this page ended, to pass back as `after` for the next; null when this was the last page. */
   next: string | null;
 }
 

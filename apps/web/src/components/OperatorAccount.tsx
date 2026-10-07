@@ -6,7 +6,7 @@ import * as api from '../notes-api.js';
 import { ApiError, LoadFailedError, errorText } from '../notes-api.js';
 import { formatBytes } from '../format-bytes.js';
 import { formatMoment, timeAgo } from './format-when.js';
-import { accountDumpsQuery, keys, operatorAccountsQuery, storeStatsQuery } from '../queries.js';
+import { accountDumpsQuery, keys, operatorAccountQuery, storeStatsQuery } from '../queries.js';
 import { holdPage } from '../busy.js';
 import { Button } from './Button.js';
 import { Confirm } from './Confirm.js';
@@ -30,8 +30,8 @@ import { LastDump } from './Operator.js';
  * saves with the browser's own download, which a button cannot do.
  */
 export function OperatorAccount({ userId }: { userId: string }) {
-  const accounts = useQuery(operatorAccountsQuery());
-  const account = accounts.data?.find((a) => a.userId === userId) ?? null;
+  const row = useQuery(operatorAccountQuery(userId));
+  const account = row.data ?? null;
   const stats = useQuery(storeStatsQuery(userId));
   // Moved each time a section below asks to change the store — in `finally`, since a
   // request that failed may still have been applied — and each section is keyed on the
@@ -48,7 +48,7 @@ export function OperatorAccount({ userId }: { userId: string }) {
   // feed, not because nothing was written: unknown, so the sweep's value stands in.
   const live = stats.data && !stats.data.wiped && !stats.data.loading ? stats.data.lastWriteAt : undefined;
 
-  if (accounts.data && !account) {
+  if (row.data === null) {
     return (
       <div className="panel operator-page">
         <div className="panel-head">
@@ -89,7 +89,7 @@ export function OperatorAccount({ userId }: { userId: string }) {
         key={`wind-back-${loadedAt}`}
         userId={userId}
         email={account?.email ?? userId}
-        last={accounts.dataUpdatedAt > loadedAt ? (account?.restore ?? null) : null}
+        last={row.dataUpdatedAt > loadedAt ? (account?.restore ?? null) : null}
         onChanged={() => setWindBacks((n) => n + 1)}
       />
       <LoadDump key={`load-${windBacks}`} userId={userId} email={account?.email ?? userId} onChanged={() => setLoadedAt(Date.now())} />

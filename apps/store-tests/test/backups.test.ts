@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { env, runInDurableObject } from 'cloudflare:test';
 import { dumpKey, dumpStores, REFRESH_MS, STATUS_KEY, type DumpStatus } from '@unbent/api/lib/backups';
-import { clearRestore, listOperatorAccounts, recordRestore } from '@unbent/api/lib/directory';
+import { clearRestore, listOperatorAccounts, operatorAccount, recordRestore } from '@unbent/api/lib/directory';
 
 /**
  * The daily dumps (MAK-171, part 2), against real objects, a local D1 carrying the two
@@ -373,5 +373,30 @@ describe('the recorded wind-back', () => {
 
     await clearRestore(env.DB, id);
     expect(await find()).toBeNull();
+  });
+});
+
+/**
+ * The operator's list pages by activity, newest first, with a keyset cursor; the
+ * account page reads one row by id. Pinned here, where the directory is built by hand,
+ * because the first version sorted on the client and so only worked while the client
+ * read every page.
+ */
+describe('the operator\'s accounts', () => {
+  it('page newest activity first, continue from the cursor, and read one by id', async () => {
+    const a = await account('page-a');
+    const b = await account('page-b');
+    const c = await account('page-c', { createdAt: NOON - 7_200_000 });
+    await env.DB.prepare(`UPDATE account_directory SET last_active_at = ?2 WHERE user_id = ?1`).bind(a.id, NOON - 60_000).run();
+    await env.DB.prepare(`UPDATE account_directory SET last_active_at = ?2 WHERE user_id = ?1`).bind(b.id, NOON - 30_000).run();
+    // c has no write recorded, so its creation stands in, and it comes last.
+    const first = await listOperatorAccounts(env.DB, '', 2);
+    expect(first.accounts.map((x) => x.userId)).toEqual([b.id, a.id]);
+    expect(first.next).not.toBeNull();
+    const second = await listOperatorAccounts(env.DB, first.next!, 2);
+    expect(second.accounts.map((x) => x.userId)).toEqual([c.id]);
+    expect(second.next).toBeNull();
+    expect((await operatorAccount(env.DB, c.id))?.userId).toBe(c.id);
+    expect(await operatorAccount(env.DB, 'nobody')).toBeNull();
   });
 });

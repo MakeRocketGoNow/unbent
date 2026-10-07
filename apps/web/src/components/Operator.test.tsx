@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { BackupsStatus, DumpStatus, MirrorStatus, OperatorAccount } from '@unbent/shared';
 
 vi.mock('@tanstack/react-router', () => ({
-  Link: ({ children, ...rest }: { children: React.ReactNode; to: string; params?: unknown; className?: string }) => (
-    <a href={rest.to} className={rest.className}>
+  Link: ({ children, to, params: _params, ...rest }: { children: React.ReactNode; to: string; params?: unknown; className?: string; 'aria-label'?: string }) => (
+    <a href={to} {...rest}>
       {children}
     </a>
   ),
@@ -13,7 +13,7 @@ vi.mock('@tanstack/react-router', () => ({
 /** The settings nav asks whether an import is running; none is. */
 vi.mock('../import-run.js', () => ({ useImportRunning: () => false }));
 
-const { BackupHealth, LastDump } = await import('./Operator.js');
+const { AccountsTable, BackupHealth, LastDump } = await import('./Operator.js');
 
 const now = Date.parse('2026-10-06T12:00:00Z');
 
@@ -152,5 +152,34 @@ describe('LastDump', () => {
     cleanup();
     render(<LastDump account={account({ dump: { at: null, bytes: null, checkedAt: null, triedAt: null, error: null } })} now={now} />);
     expect(screen.getByText('Never')).toBeTruthy();
+  });
+});
+
+describe('AccountsTable', () => {
+  afterEach(cleanup);
+
+  it('opens each row from its email and its chevron, hides a name that is the email, and offers the next page', () => {
+    const fetch = vi.fn();
+    render(
+      <AccountsTable
+        accounts={[account({ userId: 'u1', email: 'one@example.com', name: 'one@example.com' }), account({ userId: 'u2', email: 'two@example.com', name: 'Two' })]}
+        more={{ fetching: false, fetch }}
+        now={now}
+      />,
+    );
+    const rows = screen.getAllByRole('row').slice(1);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.querySelector('td')!.textContent).toBe('one@example.com');
+    expect(rows[1]!.querySelector('td')!.textContent).toBe('two@example.com · Two');
+    expect(screen.getByRole('link', { name: 'Open one@example.com' }).getAttribute('href')).toBe('/settings/operator/$userId');
+    expect(screen.getAllByRole('link').filter((l) => l.textContent?.includes('one@example.com'))).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Show more accounts' }));
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('2 shown')).toBeTruthy();
+  });
+
+  it('offers no next page when there is none', () => {
+    render(<AccountsTable accounts={[account()]} more={null} now={now} />);
+    expect(screen.queryByRole('button', { name: 'Show more accounts' })).toBeNull();
   });
 });

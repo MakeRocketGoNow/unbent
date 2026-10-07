@@ -9,6 +9,6 @@ import { operatorAccountsQuery, operatorBackupsQuery } from '../queries.js';
  */
 export const Route = createFileRoute('/settings/operator')({
   loader: ({ context: { queryClient } }) =>
-    Promise.all([queryClient.ensureQueryData(operatorBackupsQuery()), queryClient.ensureQueryData(operatorAccountsQuery())]),
+    Promise.all([queryClient.ensureQueryData(operatorBackupsQuery()), queryClient.ensureInfiniteQueryData(operatorAccountsQuery())]),
   component: Operator,
 });

@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import { deleteKeys } from '../lib/blobs.js';
-import { clearRestore, directoryRow, dropDirectoryRow, listOperatorAccounts, recordRestore } from '../lib/directory.js';
+import { clearRestore, directoryRow, dropDirectoryRow, listOperatorAccounts, OPERATOR_PAGE_MAX, operatorAccount as readOperatorAccount, recordRestore } from '../lib/directory.js';
 import { beginDump } from '../lib/dump.js';
 import { MIRROR_STATUS_KEY, STATUS_KEY, dumpPrefix } from '../lib/backups.js';
 import { beforeLoadKey, describeDump, dumpBeforeLoad, loadReserve, resolveDumpDownload, resolveDumpKey, streamDump } from '../lib/load.js';
@@ -697,7 +697,24 @@ export const admin = new Hono<AppEnv>()
     const email = c.get('user')?.email;
     if (!isOperator(c.env, email)) return c.json({ error: 'Not found' }, 404);
     console.log(`[store] operator=${email} accounts`);
-    return c.json(await listOperatorAccounts(c.env.DB, c.req.query('after') ?? ''));
+    // `after` is the previous page's `next`; `limit` is clamped, since a page is a D1
+    // read and the client has no business asking for more than the list draws.
+    const limit = Math.min(OPERATOR_PAGE_MAX, Math.max(1, Number(c.req.query('limit')) || 50));
+    return c.json(await listOperatorAccounts(c.env.DB, c.req.query('after') ?? '', limit));
+  })
+
+  /**
+   * One account as the list shows it, for the account's own page, which must not need
+   * the list: an operator following a link opens one account, and a list that pages
+   * holds no promise of having reached it. Logged with both ids like every other read.
+   */
+  .get('/admin/accounts/:id', requireAuth, async (c) => {
+    const email = c.get('user')?.email;
+    if (!isOperator(c.env, email)) return c.json({ error: 'Not found' }, 404);
+    const id = c.req.param('id');
+    console.log(`[store] operator=${email} account user=${id}`);
+    const account = await readOperatorAccount(c.env.DB, id);
+    return account ? c.json(account) : c.json({ error: 'No such account' }, 404);
   })
 
   /**
