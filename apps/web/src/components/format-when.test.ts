@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatRevisionWhen, rangeLabel } from './format-when.js';
+import { formatRevisionWhen, rangeLabel, timeAgo } from './format-when.js';
 
 /**
  * The date range as a phrase.
