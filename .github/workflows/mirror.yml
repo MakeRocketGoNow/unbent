@@ -250,7 +250,10 @@ jobs:
         run: |
           trap 'echo d1 >> "$MIRROR_DIR/failed"' ERR
           key="d1/$MIRROR_DATE.sql"
-          if [ "$(../../scripts/mirror/exists.sh "mirror:$MIRROR_BUCKET/d1" "$MIRROR_DATE.sql")" = yes ]; then
+          # Assigned before it is tested: a failing substitution inside `[ … ]` trips neither
+          # `set -e` nor the trap, and exists.sh fails on purpose when the listing does.
+          present=$(../../scripts/mirror/exists.sh "mirror:$MIRROR_BUCKET/d1" "$MIRROR_DATE.sql")
+          if [ "$present" = yes ]; then
             echo "::notice::$key is already in the mirror; not exporting again today."
             bytes=$(rclone size "mirror:$MIRROR_BUCKET/$key" --json | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).bytes")
             printf '{"key":"%s","bytes":%s,"written":false}\n' "$key" "$bytes" > "$MIRROR_DIR/d1.json"
@@ -279,7 +282,8 @@ jobs:
           rclone lsf -R --files-only --fast-list "live:$LIVE_BUCKET" > "$MIRROR_DIR/live.txt"
           rclone lsf -R --files-only --fast-list "mirror:$MIRROR_BUCKET/blobs" > "$MIRROR_DIR/mirror.txt"
           state=()
-          if [ "$(scripts/mirror/exists.sh "mirror:$MIRROR_BUCKET/state" prune.json)" = yes ]; then
+          present=$(scripts/mirror/exists.sh "mirror:$MIRROR_BUCKET/state" prune.json)
+          if [ "$present" = yes ]; then
             rclone copyto "mirror:$MIRROR_BUCKET/state/prune.json" "$MIRROR_DIR/state.json"
             state=(--state "$MIRROR_DIR/state.json")
           else
@@ -308,7 +312,8 @@ jobs:
         if: ${{ !cancelled() && steps.configured.outputs.ready == 'true' }}
         run: |
           trap 'echo dumps >> "$MIRROR_DIR/failed"' ERR
-          if [ "$(scripts/mirror/exists.sh "dumps:$DUMPS_BUCKET/status" dumps.json)" = yes ]; then
+          present=$(scripts/mirror/exists.sh "dumps:$DUMPS_BUCKET/status" dumps.json)
+          if [ "$present" = yes ]; then
             rclone copyto "dumps:$DUMPS_BUCKET/status/dumps.json" "$MIRROR_DIR/dumps.json"
           fi
           node scripts/mirror/check-dumps.mjs "$MIRROR_DIR/dumps.json" "$MIRROR_DIR/dumps-check.json"
