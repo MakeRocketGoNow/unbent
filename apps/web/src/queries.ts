@@ -4,7 +4,7 @@ import {
   keepPreviousData,
   type QueryClient,
 } from '@tanstack/react-query';
-import type { AttachmentInfo, FieldDef, Note, NoteSort, NoteSummary, NotebookSummary } from '@unbent/shared';
+import type { AttachmentInfo, BackupsStatus, FieldDef, Note, NoteSort, NoteSummary, NotebookSummary } from '@unbent/shared';
 import * as api from './notes-api.js';
 import { ApiError, OfflineError } from './notes-api.js';
 import { offlineNow } from './connectivity.js';
@@ -214,6 +214,11 @@ export const keys = {
     filter.trashed ? (['trash', 'exact-count'] as const) : (['notes', 'exact-count', filter] as const),
   search: (q: string, filter: NoteFilter = {}, rows = false) => ['search', q, filter, { rows }] as const,
   config: () => ['config'] as const,
+  /** The operator page's reads, under one root so an action can invalidate all of them at once. */
+  operatorBackups: () => ['operator', 'backups'] as const,
+  operatorAccounts: () => ['operator', 'accounts'] as const,
+  storeStats: (userId: string) => ['operator', 'stats', userId] as const,
+  accountDumps: (userId: string) => ['operator', 'dumps', userId] as const,
   /**
    * A note's history and one copy from it. Under a root of their own rather than
    * `['note', id]`: that key is set by hand on every save, and nothing about a save
@@ -674,3 +679,57 @@ export const exactCountQuery = (filter: ExactCountFilter = {}) =>
       return lib ? count(view(lib).snapshot, scope, view(lib).lookups) : ((await api.listNotes({ ...scope, limit: 1, exact: true })).total ?? 0);
     },
   });
+
+/**
+ * The backup's health, and whether this session is an operator's at all: the route
+ * answers anyone else 404, and that answer is data here — `null` — rather than an
+ * error. Told apart on purpose: an error is "could not ask" (offline, a 5xx), and a
+ * query that cannot tell the two apart either asks every non-operator again on every
+ * Settings mount or, with retries off, hides the tab from an operator for the rest of
+ * the session over one lost request (both found in review). As data, "not an operator"
+ * is kept for the whole session and never asked again; an answer for an operator goes
+ * stale as any other, and a failure retries as any other.
+ */
+export const operatorBackupsQuery = () =>
+  queryOptions({
+    queryKey: keys.operatorBackups(),
+    queryFn: async (): Promise<BackupsStatus | null> => {
+      try {
+        return await api.operatorBackups();
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) return null;
+        throw err;
+      }
+    },
+    staleTime: (q) => (q.state.data === null ? Infinity : 5 * 60 * 1000),
+    gcTime: Infinity,
+    // A page someone leaves open in a tab: the status file is rewritten hourly, and a
+    // cron that stopped overnight must not still read "Healthy" in the morning. The
+    // refetch re-renders the cards, so "3 hours ago" and the stale decision move with
+    // it. Two R2 reads every five minutes while any Settings page is open, since the
+    // tab's probe (`use-operator.ts`) observes this query too.
+    refetchInterval: (q) => (q.state.data ? 5 * 60 * 1000 : false),
+    refetchOnWindowFocus: true,
+  });
+
+export const operatorAccountsQuery = () =>
+  queryOptions({
+    queryKey: keys.operatorAccounts(),
+    queryFn: () => api.operatorAccounts(),
+    staleTime: 60 * 1000,
+    // As the backups query: the directory's dump columns move every hour. One D1 page.
+    refetchInterval: 5 * 60 * 1000,
+    refetchOnWindowFocus: true,
+  });
+
+/**
+ * Fresh for a minute. `stats` counts every row of every table — hundreds of thousands
+ * on an archive — so going list → account → list → account must not count them each
+ * time. A minute costs nothing: every action invalidates this, and a confirm quotes its
+ * own dry run's counts, not these.
+ */
+export const storeStatsQuery = (userId: string) =>
+  queryOptions({ queryKey: keys.storeStats(userId), queryFn: () => api.storeStats(userId), staleTime: 60 * 1000 });
+
+export const accountDumpsQuery = (userId: string) =>
+  queryOptions({ queryKey: keys.accountDumps(userId), queryFn: () => api.accountDumps(userId), retry: false, staleTime: 0 });

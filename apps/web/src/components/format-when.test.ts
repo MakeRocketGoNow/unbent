@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatRevisionWhen, rangeLabel } from './format-when.js';
+import { formatRevisionWhen, rangeLabel, timeAgo } from './format-when.js';
 
 /**
  * The date range as a phrase.
@@ -79,5 +79,23 @@ describe('formatRevisionWhen', () => {
     expect(label).toContain('26');
     expect(label).not.toContain('2026');
     expect(formatRevisionWhen(new Date(2025, 11, 30, 9, 0).getTime(), now)).toContain('2025');
+  });
+});
+
+describe('timeAgo', () => {
+  const now = Date.parse('2026-10-06T12:00:00Z');
+  it('counts up through minutes and hours, then days', () => {
+    expect(timeAgo(now - 20_000, now)).toBe('just now');
+    expect(timeAgo(now - 60_000, now)).toBe('1 minute ago');
+    expect(timeAgo(now - 5 * 60_000, now)).toBe('5 minutes ago');
+    expect(timeAgo('2026-10-06T09:00:00Z', now)).toBe('3 hours ago');
+    // Hours up to two days, so "stale after 48 hours" reads against the same unit.
+    expect(timeAgo(now - 40 * 3_600_000, now)).toBe('40 hours ago');
+    expect(timeAgo(now - 3 * 86_400_000, now)).toBe('3 days ago');
+    // Days stay days: a 40-day-old dump must not read as "1 month".
+    expect(timeAgo(now - 40 * 86_400_000, now)).toBe('40 days ago');
+  });
+  it('does not pretend to know an unreadable time', () => {
+    expect(timeAgo('yesterday', now)).toBe('at an unknown time');
   });
 });

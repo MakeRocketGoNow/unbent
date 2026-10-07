@@ -143,6 +143,14 @@ export interface StoreUsage {
   databaseSize: number;
   /** Live and trashed notes together: what the account holds. */
   notes: number;
+  /**
+   * When the store was last written to: the newest change-feed row's time, which every
+   * write records (`Feed.record`), or null for a store nothing has written yet. One row
+   * off the table's primary key. The sweep records it in the directory as
+   * `last_active_at`, which the operator page sorts and shows accounts by; until it did,
+   * that column had no writer (found in review).
+   */
+  lastWriteAt: number | null;
   wiped: boolean;
 }
 
@@ -313,11 +321,13 @@ export class UserStore extends DurableObject<StoreEnv> {
     const databaseSize = this.ctx.storage.sql.databaseSize;
     // Unavailable rather than empty: the sweep defers on it and records nothing.
     if (this.loading) throw new StoreLoading(this.loading);
-    if (this.wiped) return { databaseSize, notes: 0, wiped: true };
+    if (this.wiped) return { databaseSize, notes: 0, lastWriteAt: null, wiped: true };
     const counts = this.sql.first<{ live: number; trashed: number }>(`SELECT live, trashed FROM note_counts WHERE id = 1`);
+    const last = this.sql.first<{ at: number }>(`SELECT at FROM changes ORDER BY seq DESC LIMIT 1`);
     return {
       databaseSize,
       notes: (counts?.live ?? 0) + (counts?.trashed ?? 0),
+      lastWriteAt: last?.at ?? null,
       wiped: false,
     };
   }

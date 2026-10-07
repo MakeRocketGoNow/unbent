@@ -162,6 +162,16 @@ migrations_dir = "migrations"
 binding = "BLOBS"
 bucket_name = "unbent-blobs"
 
+# A backups bucket locally too, in miniflare's own storage, so the load route and the
+# operator page (MAK-171, parts 4 and 5) can be driven against a real dump rather than
+# only refused. The cron that fills it never fires under `wrangler dev`, so it holds what
+# a person puts there: `wrangler r2 object put unbent-backups/<key> --local --env local`.
+# Dev and production bind theirs by name below and in the deploy workflow; a fork's
+# top-level config still binds none, which is what keeps its :47 run a no-op.
+[[env.local.r2_buckets]]
+binding = "BACKUPS"
+bucket_name = "unbent-backups"
+
 [[env.local.durable_objects.bindings]]
 name = "USER_STORE"
 class_name = "UserStore"

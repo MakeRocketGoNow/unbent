@@ -19,6 +19,10 @@ import type {
   RestoredNote,
   SearchResult,
   SearchResultRow,
+  AccountDumps,
+  BackupsStatus,
+  OperatorAccount,
+  OperatorAccountsPage,
 } from '@unbent/shared';
 import { offlineNow, recheck } from './connectivity.js';
 import { SERVED_HEADER } from './sw/routes.js';
@@ -955,4 +959,159 @@ export async function gcBlobs(apply: boolean): Promise<GcResult> {
 /** Counts every notebook, tag and total again from the notes; `corrected` is how many were wrong. */
 export async function recountNotes(): Promise<{ corrected: number }> {
   return json<{ corrected: number }>(await request('/api/admin/recount-notes', { method: 'POST' }));
+}
+
+// --- The operator page (MAK-171, part 5) -------------------------------------------------
+//
+// Every call here is to an operator-only route, which answers anyone else as if it did not
+// exist; the page is drawn only once `operatorBackups` has answered (`use-operator.ts`).
+// The three actions drive the restore, load and feed-epoch routes exactly as a hand-written
+// request would: the dry run is the first call, and the confirm repeats it with the word.
+
+/** What `GET /api/admin/store/stats?user=` reports of one store. */
+export interface StoreStats {
+  userId: string;
+  databaseSize: number;
+  migrations: string[];
+  counts: Record<string, number>;
+  wiped: boolean;
+  /**
+   * Set while a dump is being loaded: the counts are zero and the store refuses every
+   * data call. `undo` is the bookmark the load took as it began and `before` the dump
+   * the route wrote first — the two ways back, kept by the store itself so a load that
+   * failed is recoverable from any page that reads it, not only the one that pressed.
+   */
+  loading: { id: string; key: string; startedAt: number; pages: number; undo: string | null; before: string | null } | null;
+}
+
+export async function operatorBackups(): Promise<BackupsStatus> {
+  return json<BackupsStatus>(await request('/api/admin/backups'));
+}
+
+/** Every live account, walking the directory's pages to the end. */
+export async function operatorAccounts(): Promise<OperatorAccount[]> {
+  const all: OperatorAccount[] = [];
+  for (let after = ''; ; ) {
+    const page = await json<OperatorAccountsPage>(await request(`/api/admin/accounts${after ? `?after=${encodeURIComponent(after)}` : ''}`));
+    all.push(...page.accounts);
+    if (page.next === null) return all;
+    after = page.next;
+  }
+}
+
+export async function storeStats(userId: string): Promise<StoreStats> {
+  return json<StoreStats>(await request(`/api/admin/store/stats?user=${encodeURIComponent(userId)}`));
+}
+
+export async function accountDumps(userId: string): Promise<AccountDumps> {
+  return json<AccountDumps>(await request(`/api/admin/accounts/${encodeURIComponent(userId)}/dumps`));
+}
+
+/** Where a dump in the bucket downloads from; a link, since a download is a navigation. */
+export function dumpDownloadUrl(userId: string, name: string): string {
+  return `/api/admin/accounts/${encodeURIComponent(userId)}/dumps/${encodeURIComponent(name)}`;
+}
+
+/** Where the store as it stands downloads from. */
+export function storeDumpUrl(userId: string): string {
+  return `/api/admin/store/dump?user=${encodeURIComponent(userId)}`;
+}
+
+/** The restore route's dry run: the moment resolved to a bookmark, and the store as it is now. */
+export interface RestorePreview {
+  dryRun: true;
+  user: string;
+  bookmark: string;
+  current: StoreStats;
+}
+
+/** The restore route's answer once it has wound the store back. */
+export interface RestoreResult {
+  restored: true;
+  user: string;
+  /** The bookmark that puts the store back as it was before this restore, if it survived the restart. */
+  undo: string | null;
+  feedEpoch: string | null;
+  stats: StoreStats | null;
+  note: string;
+}
+
+export async function previewRestore(userId: string, to: { at: number } | { bookmark: string }): Promise<RestorePreview> {
+  return json<RestorePreview>(
+    await request('/api/admin/store/restore', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ user: userId, ...to }) }),
+  );
+}
+
+export async function restoreStore(userId: string, to: { at: number } | { bookmark: string }): Promise<RestoreResult> {
+  return json<RestoreResult>(
+    await request('/api/admin/store/restore', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ user: userId, ...to, confirm: 'RESTORE' }) }),
+  );
+}
+
+/** The load route's dry run: the dump read from its head and tail, and the store as it is now. */
+export interface LoadPreview {
+  dryRun: true;
+  user: string;
+  dump: {
+    key: string;
+    size: number;
+    uploadedAt: string;
+    owner: string | null;
+    /** The file's first line, which says when it was taken. */
+    header: string;
+    /** False when the store was written to while it was dumped; null when the file does not say. */
+    oneMoment: boolean | null;
+  };
+  current: StoreStats;
+}
+
+export interface LoadResult {
+  loaded: true;
+  user: string;
+  key: string;
+  /** The dump of the store as it stood, written before it was replaced; null when the store was already loading. */
+  before: string | null;
+  undo: string | null;
+  feedEpoch: string;
+  migrated: string[];
+  foreignKeyViolations: number;
+  stats: StoreStats;
+  note: string;
+}
+
+export async function previewLoad(userId: string, dump: string): Promise<LoadPreview> {
+  return json<LoadPreview>(await request('/api/admin/store/load', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ user: userId, dump }) }));
+}
+
+/**
+ * A load that failed after the store was emptied. The route's 502 then carries the two
+ * ways back — the bookmark the load took as it began, and the dump it wrote first — and
+ * a message alone would throw them away on the one path where they matter most: the
+ * store is refusing every request until one of them is used.
+ */
+export class LoadFailedError extends ApiError {
+  constructor(
+    message: string,
+    readonly undo: string | null,
+    readonly before: string | null,
+  ) {
+    super(502, message);
+    this.name = 'LoadFailedError';
+  }
+}
+
+export async function loadDump(userId: string, dump: string): Promise<LoadResult> {
+  const res = await request('/api/admin/store/load', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ user: userId, dump, confirm: 'LOAD' }) });
+  if (!res.ok && res.headers.get('Content-Type')?.includes('json')) {
+    const body = (await res.clone().json().catch(() => null)) as { error?: string; loading?: boolean; undo?: string | null; before?: string | null } | null;
+    if (body?.loading) throw new LoadFailedError(body.error ?? `${res.status}`, body.undo ?? null, body.before ?? null);
+  }
+  return json<LoadResult>(res);
+}
+
+/** Names a new feed epoch, so every device of the account starts over from a snapshot. */
+export async function resyncDevices(userId: string): Promise<{ user: string; epoch: string }> {
+  return json<{ user: string; epoch: string }>(
+    await request(`/api/admin/store/feed-epoch?user=${encodeURIComponent(userId)}`, { method: 'POST' }),
+  );
 }

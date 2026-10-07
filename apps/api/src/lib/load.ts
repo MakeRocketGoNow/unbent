@@ -42,6 +42,23 @@ export function resolveDumpKey(userId: string, dump: string): string | null {
 }
 
 /**
+ * The key a dump download names, from the file's name under the account's prefix, or
+ * null when the name is not one of the account's own files. The download route's rule
+ * is `resolveDumpKey`'s — the key must be under `stores/<user>/` — and a name with a
+ * slash would otherwise be read as a path under it, so it is refused before the prefix
+ * check sees it. `filename` is the name as the `Content-Disposition` header may carry
+ * it: a quote or a control character in a key, which R2 allows, would end the header
+ * early or make the response unbuildable, so anything outside a plain filename's
+ * characters becomes an underscore.
+ */
+export function resolveDumpDownload(userId: string, name: string): { key: string; filename: string } | null {
+  if (name.includes('/')) return null;
+  const key = resolveDumpKey(userId, `${dumpPrefix(userId)}${name}`);
+  if (!key) return null;
+  return { key, filename: `unbent-store-${userId}-${name.replace(/[^\w.-]/g, '_')}` };
+}
+
+/**
  * Where the dump of the store as it stood goes, beside the daily ones, so the nightly
  * mirror copies it off-account and the account's `stores/` listing shows it with the
  * rest. The daily run keys on the date alone and never writes a day's key twice, so this

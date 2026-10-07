@@ -1,3 +1,4 @@
+import { DELETED_FILES_KEPT_DAYS } from '@unbent/shared';
 import { placeholders, runs } from './notes-shared.js';
 import type { Sql } from './sql.js';
 
@@ -5,10 +6,11 @@ import type { Sql } from './sql.js';
  * How long a deleted file's object stays in R2 after its row has gone: thirty-five days.
  * Five more than the thirty a store can be wound back over, so that a store restored to
  * any moment in its history finds every file that moment's rows name still in the bucket.
- * The number is stated in the README ("Deleting notes", "Winding a store back"); change
- * it here and there together. Part 1 of MAK-171.
+ * The number is stated in the README ("Deleting notes", "Winding a store back") and by
+ * the operator page, so it lives in `@unbent/shared`; change it there and in the README
+ * together. Part 1 of MAK-171.
  */
-export const DELETED_BLOB_RETENTION_MS = 35 * 24 * 60 * 60 * 1000;
+export const DELETED_BLOB_RETENTION_MS = DELETED_FILES_KEPT_DAYS * 24 * 60 * 60 * 1000;
 
 /**
  * Keys one sweep visit takes from a store at most: what one R2 `delete()` accepts, so the

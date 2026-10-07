@@ -1174,7 +1174,8 @@ describe('rows read on an archive-sized store', () => {
       'page of 100': 700,
       'page of 100 with file summaries': 950,
       'stored counts': 10,
-      usage: 4,
+      // The counts row and the newest feed row, off its primary key.
+      usage: 5,
       // The counts row and the five due keys off the retention index; the five hundred
       // tombstones not yet due are never read (7, measured 2026-10-05), and with nothing
       // due the visit is the counts row and one index entry (2). The hourly sweep makes

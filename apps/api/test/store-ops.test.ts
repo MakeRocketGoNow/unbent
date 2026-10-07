@@ -144,13 +144,20 @@ describe('operator-only routes', () => {
     }));
     expect(restore.status).toBe(404);
     // Loading a dump over the caller's own store, likewise: the dumps are the operator's
-    // bucket, and the local Worker binds none in any case.
+    // bucket.
     const load = await fetch(`${BASE}/api/admin/store/load`, as(alice, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ dump: '2026-10-06', confirm: 'LOAD' }),
     }));
     expect(load.status).toBe(404);
+    // The operator page's reads (MAK-171, part 5): the backup's health, the account
+    // list, and an account's dumps — the caller's own included, since the page is the
+    // operator's alone. The health route is how the page learns whose session this is,
+    // so its 404 is what keeps the tab from being drawn for anyone else.
+    for (const path of ['/api/admin/backups', '/api/admin/accounts', `/api/admin/accounts/${alice.userId}/dumps`, `/api/admin/accounts/${alice.userId}/dumps/2026-10-06.sql`]) {
+      expect((await fetch(`${BASE}${path}`, as(alice))).status, path).toBe(404);
+    }
   });
 
   it('refuse a sweep token the instance was not given, and never fall through to the session', async () => {

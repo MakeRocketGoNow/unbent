@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { beforeLoadKey, describeDump, LOAD_PAGE_BYTES, loadReserve, resolveDumpKey } from './load.js';
+import { beforeLoadKey, describeDump, LOAD_PAGE_BYTES, loadReserve, resolveDumpDownload, resolveDumpKey } from './load.js';
 import { dumpKey } from './backups.js';
 import { DUMP_LINES } from '../store/load.js';
 
@@ -9,6 +9,28 @@ import { DUMP_LINES } from '../store/load.js';
  * head and tail, and the subrequests kept back from the pre-load dump. The stream into
  * the object is the store suite's, against the real thing.
  */
+describe('resolveDumpDownload', () => {
+  const user = 'u1';
+
+  it('names a file under the account and a header-safe filename', () => {
+    expect(resolveDumpDownload(user, '2026-10-06.sql')).toEqual({ key: 'stores/u1/2026-10-06.sql', filename: 'unbent-store-u1-2026-10-06.sql' });
+    expect(resolveDumpDownload(user, '2026-10-06T12-00-00Z-before-load.sql')?.key).toBe('stores/u1/2026-10-06T12-00-00Z-before-load.sql');
+  });
+
+  it('refuses a name that would leave the account, and anything but a dump', () => {
+    expect(resolveDumpDownload(user, '../u2/2026-10-06.sql')).toBeNull();
+    expect(resolveDumpDownload(user, 'u2/2026-10-06.sql')).toBeNull();
+    expect(resolveDumpDownload(user, '..')).toBeNull();
+    expect(resolveDumpDownload(user, '2026-10-06.txt')).toBeNull();
+    expect(resolveDumpDownload(user, '.sql')).toBeNull();
+  });
+
+  it('keeps a quote or a control character in a key out of the header', () => {
+    // R2 allows both in a key; either would end `Content-Disposition` early or make the response unbuildable.
+    expect(resolveDumpDownload(user, 'a"b\r\n.sql')?.filename).toBe('unbent-store-u1-a_b__.sql');
+  });
+});
+
 describe('resolveDumpKey', () => {
   it("names a day's daily dump, or a key under the account's own prefix, and nothing else", () => {
     expect(resolveDumpKey('u1', '2026-10-06')).toBe('stores/u1/2026-10-06.sql');
