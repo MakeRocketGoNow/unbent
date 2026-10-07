@@ -85,9 +85,19 @@ export async function dropDirectoryRow(db: D1Database, userId: string): Promise<
   await dropDirectoryRowStatement(db, userId).run();
 }
 
-/** What the sweep writes back after asking an object for its usage, as a statement it batches. */
-export function recordDirectoryUsageStatement(db: D1Database, userId: string, usage: { storageBytes: number; noteCount: number }): D1PreparedStatement {
-  return db.prepare(`UPDATE account_directory SET storage_bytes = ?2, note_count = ?3 WHERE user_id = ?1`).bind(userId, usage.storageBytes, usage.noteCount);
+/**
+ * What the sweep writes back after asking an object for its usage, as a statement it
+ * batches. `lastActiveAt` is the store's newest write, kept here so a view across
+ * accounts can sort by it without waking every store; null leaves the column as it was.
+ */
+export function recordDirectoryUsageStatement(
+  db: D1Database,
+  userId: string,
+  usage: { storageBytes: number; noteCount: number; lastActiveAt: number | null },
+): D1PreparedStatement {
+  return db
+    .prepare(`UPDATE account_directory SET storage_bytes = ?2, note_count = ?3, last_active_at = COALESCE(?4, last_active_at) WHERE user_id = ?1`)
+    .bind(userId, usage.storageBytes, usage.noteCount, usage.lastActiveAt);
 }
 
 export async function directoryRow(db: D1Database, userId: string): Promise<DirectoryRow | null> {

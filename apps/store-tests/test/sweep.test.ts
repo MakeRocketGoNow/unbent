@@ -38,7 +38,7 @@ async function directory(id: string, deletedAt: number | null = null) {
   await env.DB.prepare(`INSERT INTO account_directory (user_id, created_at, deleted_at) VALUES (?1, 1, ?2)`).bind(id, deletedAt).run();
 }
 async function row(id: string) {
-  return env.DB.prepare(`SELECT * FROM account_directory WHERE user_id = ?1`).bind(id).first<{ note_count: number; storage_bytes: number }>();
+  return env.DB.prepare(`SELECT * FROM account_directory WHERE user_id = ?1`).bind(id).first<{ note_count: number; storage_bytes: number; last_active_at: number | null }>();
 }
 const stub = (id: string) => env.USER_STORE.get(env.USER_STORE.idFromName(id));
 
@@ -99,6 +99,9 @@ describe('the store sweep', () => {
 
     expect(await row(live)).toMatchObject({ note_count: 2 });
     expect((await row(live))!.storage_bytes).toBeGreaterThan(0);
+    // The store's newest write, so the operator page can sort accounts by it without
+    // waking every store; it was a column nothing wrote until the sweep did.
+    expect((await row(live))!.last_active_at).toBeGreaterThan(0);
     expect((await stub(live).stats()).counts.notes).toBe(2);
 
     expect(await row(tombstoned)).toBeNull();

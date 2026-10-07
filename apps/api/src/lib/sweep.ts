@@ -263,6 +263,6 @@ async function sweepOne(
   // none — costs nothing beyond the call that was being made anyway.
   budget.spent += 1;
   const visit = await store.sweepVisit(now);
-  writes.push(recordDirectoryUsageStatement(env.DB, row.userId, { storageBytes: visit.databaseSize, noteCount: visit.notes }));
+  writes.push(recordDirectoryUsageStatement(env.DB, row.userId, { storageBytes: visit.databaseSize, noteCount: visit.notes, lastActiveAt: visit.lastWriteAt }));
   return visit.expiredBlobs;
 }
