@@ -213,11 +213,12 @@ jobs:
       # `stores/` copy that fails every night for a fortnight — a dump written twice over
       # its key, which lib/backups.ts says can happen — must not cost a fortnight of D1
       # exports and dumps checks as well. The run is red from whichever step failed; each
-      # one records its name for the status file on the way out.
+      # one records its name for the status file on the way out — on EXIT, not ERR, since a
+      # deliberate `exit 1` is not an error to the ERR trap.
       - name: Copy the live bucket to blobs/
         if: ${{ !cancelled() && steps.configured.outputs.ready == 'true' }}
         run: |
-          trap 'echo blobs >> "$MIRROR_DIR/failed"' ERR
+          trap '[ $? -eq 0 ] || echo blobs >> \"$MIRROR_DIR/failed\"' EXIT
           # shellcheck disable=SC2086
           rclone copy "live:$LIVE_BUCKET" "mirror:$MIRROR_BUCKET/blobs" $RCLONE_COPY_FLAGS \
             > "$MIRROR_DIR/blobs.log" 2>&1
@@ -225,7 +226,7 @@ jobs:
       - name: Copy the dumps bucket to stores/
         if: ${{ !cancelled() && steps.configured.outputs.ready == 'true' }}
         run: |
-          trap 'echo stores >> "$MIRROR_DIR/failed"' ERR
+          trap '[ $? -eq 0 ] || echo stores >> \"$MIRROR_DIR/failed\"' EXIT
           # shellcheck disable=SC2086
           rclone copy "dumps:$DUMPS_BUCKET/stores" "mirror:$MIRROR_BUCKET/stores" $RCLONE_COPY_FLAGS \
             > "$MIRROR_DIR/stores.log" 2>&1
@@ -241,7 +242,7 @@ jobs:
         id: wrangler
         if: ${{ !cancelled() && steps.configured.outputs.ready == 'true' }}
         run: |
-          trap 'echo d1 >> "$MIRROR_DIR/failed"' ERR
+          trap '[ $? -eq 0 ] || echo d1 >> \"$MIRROR_DIR/failed\"' EXIT
           npm install -g "pnpm@$(node -p "require('./package.json').packageManager.split('@')[1]")"
           pnpm install --frozen-lockfile --filter @unbent/api --ignore-scripts
 
@@ -254,7 +255,7 @@ jobs:
         if: ${{ !cancelled() && steps.configured.outputs.ready == 'true' && steps.wrangler.outcome == 'success' }}
         working-directory: apps/api
         run: |
-          trap 'echo d1 >> "$MIRROR_DIR/failed"' ERR
+          trap '[ $? -eq 0 ] || echo d1 >> \"$MIRROR_DIR/failed\"' EXIT
           key="d1/$MIRROR_DATE.sql"
           # Assigned before it is tested: a failing substitution inside `[ … ]` trips neither
           # `set -e` nor the trap, and exists.sh fails on purpose when the listing does.
@@ -284,7 +285,7 @@ jobs:
       - name: Prune files gone from live for 55 days
         if: ${{ !cancelled() && steps.configured.outputs.ready == 'true' }}
         run: |
-          trap 'echo prune >> "$MIRROR_DIR/failed"' ERR
+          trap '[ $? -eq 0 ] || echo prune >> \"$MIRROR_DIR/failed\"' EXIT
           rclone lsf -R --files-only --fast-list "live:$LIVE_BUCKET" > "$MIRROR_DIR/live.txt"
           rclone lsf -R --files-only --fast-list "mirror:$MIRROR_BUCKET/blobs" > "$MIRROR_DIR/mirror.txt"
           state=()
@@ -317,7 +318,7 @@ jobs:
       - name: Check the Worker's dumps
         if: ${{ !cancelled() && steps.configured.outputs.ready == 'true' }}
         run: |
-          trap 'echo dumps >> "$MIRROR_DIR/failed"' ERR
+          trap '[ $? -eq 0 ] || echo dumps >> \"$MIRROR_DIR/failed\"' EXIT
           present=$(scripts/mirror/exists.sh "dumps:$DUMPS_BUCKET/status" dumps.json)
           if [ "$present" = yes ]; then
             rclone copyto "dumps:$DUMPS_BUCKET/status/dumps.json" "$MIRROR_DIR/dumps.json"
