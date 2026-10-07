@@ -124,7 +124,11 @@ const STATUS_LIST = 50;
 const ERROR_LENGTH = 500;
 
 /** A dump stopped because the invocation could not afford its next call. */
-class OutOfSubrequests extends Error {}
+class OutOfSubrequests extends Error {
+  constructor() {
+    super('the dump ran out of the subrequests one invocation may make');
+  }
+}
 
 /**
  * The subrequests the run may still make, with `held` kept back for aborting an open
@@ -133,7 +137,7 @@ class OutOfSubrequests extends Error {}
  * the moment the upload exists (an open that took the last call left nothing to abort
  * with, found in review).
  */
-class Budget {
+export class Budget {
   spent = FIXED_COST;
   held = 0;
   constructor(readonly limit: number) {}
@@ -146,9 +150,14 @@ class Budget {
   }
 }
 
+/** The prefix under which every dump of `userId` lives: the daily ones, and the one the load route writes first. */
+export function dumpPrefix(userId: string): string {
+  return `stores/${userId}/`;
+}
+
 /** The day a dump is filed under: its UTC date, which is also the run's day. */
 export function dumpKey(userId: string, now: number): string {
-  return `stores/${userId}/${new Date(now).toISOString().slice(0, 10)}.sql`;
+  return `${dumpPrefix(userId)}${new Date(now).toISOString().slice(0, 10)}.sql`;
 }
 
 export const STATUS_KEY = 'status/dumps.json';
@@ -350,9 +359,11 @@ async function dumpOne(
  * one goes up as a multipart upload in parts of exactly `partBytes`: one part held in
  * memory at a time, plus the slice being cut, never the file. An upload that fails or
  * runs out of budget is aborted, with the call for that held back from the moment it
- * opens, so no half-written dump is left to be completed by nothing.
+ * opens, so no half-written dump is left to be completed by nothing. Exported for the
+ * dump the load route writes before it replaces a store (lib/load.ts), which is this
+ * file under another key.
  */
-async function upload(bucket: R2Bucket, key: string, chunks: AsyncGenerator<Uint8Array>, budget: Budget, partBytes: number): Promise<number> {
+export async function upload(bucket: R2Bucket, key: string, chunks: AsyncGenerator<Uint8Array>, budget: Budget, partBytes: number): Promise<number> {
   const httpMetadata = { contentType: 'application/sql; charset=utf-8' };
   let pending: Uint8Array[] = [];
   let pendingBytes = 0;

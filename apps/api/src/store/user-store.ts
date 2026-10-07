@@ -16,6 +16,7 @@ import {
 import { AttachmentsStore, type FileSummary } from './attachments.js';
 import { DeletedBlobs } from './deleted-blobs.js';
 import { cutByBytes, Feed, FEED_META, FEED_PAGE_BYTES, lastWordPerEntity, type FeedRow } from './feed.js';
+import { classify, liftLiterals, scanStatements, statementKind, statementText, StoreLoading, tooLongToRun, type LoadMarker } from './load.js';
 import { appliedMigrations, migrate } from './migrate.js';
 import { NotesStore, type CountOptions, type ListOptions, type SearchFilters } from './notes.js';
 import { cursorAfter, nextCursor } from './notes-shared.js';
@@ -59,6 +60,40 @@ const META = {
  */
 const WIPED_KEY = 'wiped';
 
+/**
+ * The other key in the object's key-value storage: that a dump is being loaded into this
+ * object, and which load (`LoadMarker`). Written by `loadBegin` straight after the
+ * `deleteAll` that empties the object, read before the schema is touched on every wake,
+ * and removed by `loadFinish` last of all. While it is there the object has some of a
+ * dump and none of a schema it would trust, and every data method refuses; see
+ * `StoreLoading`. `deleteAll` takes it with everything else, so a `wipe` ends a load too.
+ */
+const LOADING_KEY = 'loading';
+
+/** What a load holds in memory between pages: the partial statement a page ended in, and the decoder that joins a character split by one. */
+interface LoadInFlight {
+  id: string;
+  decoder: TextDecoder;
+  remainder: string;
+}
+
+/** What `loadFinish` answers: what was run, what the schema runner then applied, and the store as it is now. */
+export interface LoadResult {
+  statements: number;
+  pages: number;
+  /** Schema files the dump lacked, applied before the store answered anything. */
+  migrated: string[];
+  /** The feed's new epoch, so every device of the account starts over from a snapshot. */
+  feedEpoch: string;
+  /**
+   * Rows whose foreign key points at nothing, which a dump read while the store was
+   * written to can hold (`dumpSlice`). The dump loads anyway, as `sqlite3` would load it,
+   * and the count is for the operator to weigh.
+   */
+  foreignKeyViolations: number;
+  stats: StoreStats;
+}
+
 /** One row as SQLite hands it back: the four value types it has, by column name. */
 export type Row = Record<string, SqlStorageValue>;
 
@@ -93,6 +128,8 @@ export interface StoreStats {
   counts: Record<DataTable, number>;
   /** True when `wipe` has run and nothing has woken the schema since: the object is empty storage. */
   wiped: boolean;
+  /** Set while a dump is being loaded (`loadBegin`): the counts above are zero and the store refuses every data call. */
+  loading: LoadMarker | null;
 }
 
 /**
@@ -162,6 +199,8 @@ export class UserStore extends DurableObject<StoreEnv> {
   private attachments: AttachmentsStore;
   private deletedBlobs: DeletedBlobs;
   private wiped = false;
+  private loading: LoadMarker | null = null;
+  private loadInFlight: LoadInFlight | null = null;
 
   constructor(ctx: DurableObjectState, env: StoreEnv) {
     super(ctx, env);
@@ -189,6 +228,13 @@ export class UserStore extends DurableObject<StoreEnv> {
         this.wiped = true;
         return;
       }
+      // A load that did not finish wakes refusing: no schema is built, since the dump's
+      // own is what should be there and the runner would create one ahead of it.
+      const loading = ctx.storage.kv.get<LoadMarker>(LOADING_KEY);
+      if (loading) {
+        this.loading = loading;
+        return;
+      }
       this.bootstrap();
     });
   }
@@ -197,8 +243,8 @@ export class UserStore extends DurableObject<StoreEnv> {
    * Migrates, checks the engine, and claims the object for its user. Idempotent: on every
    * wake after the first it applies nothing and reads three rows.
    */
-  private bootstrap(): void {
-    migrate(this.ctx.storage, SCHEMA);
+  private bootstrap(): string[] {
+    const applied = migrate(this.ctx.storage, SCHEMA);
 
     // On by default for a SQLite-backed object (measured 2026-09-29), and the schema's
     // cascades rely on it: a purged note takes its files, text, tags and values with it.
@@ -221,6 +267,7 @@ export class UserStore extends DurableObject<StoreEnv> {
       throw new Error(`store belongs to another user: expected ${this.userId}, found ${owner.value}`);
     }
     this.wiped = false;
+    return applied;
   }
 
   /**
@@ -229,6 +276,7 @@ export class UserStore extends DurableObject<StoreEnv> {
    * purged.
    */
   private ready(): void {
+    if (this.loading) throw new StoreLoading(this.loading);
     if (!this.wiped) return;
     this.bootstrap();
     this.ctx.storage.kv.delete(WIPED_KEY);
@@ -244,8 +292,8 @@ export class UserStore extends DurableObject<StoreEnv> {
   /** Row counts, size and schema version, for the ops route and the sweep. */
   stats(): StoreStats {
     const counts = Object.fromEntries(DATA_TABLES.map((t) => [t, 0])) as Record<DataTable, number>;
-    if (this.wiped) {
-      return { userId: this.userId, databaseSize: this.ctx.storage.sql.databaseSize, migrations: [], counts, wiped: true };
+    if (this.wiped || this.loading) {
+      return { userId: this.userId, databaseSize: this.ctx.storage.sql.databaseSize, migrations: [], counts, wiped: this.wiped, loading: this.loading };
     }
     for (const table of DATA_TABLES) {
       counts[table] = this.sql.first<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table}`)?.n ?? 0;
@@ -256,12 +304,15 @@ export class UserStore extends DurableObject<StoreEnv> {
       migrations: appliedMigrations(this.ctx.storage),
       counts,
       wiped: false,
+      loading: null,
     };
   }
 
   /** What the sweep records: a few rows per account, never a table scan. See `StoreUsage`. */
   usage(): StoreUsage {
     const databaseSize = this.ctx.storage.sql.databaseSize;
+    // Unavailable rather than empty: the sweep defers on it and records nothing.
+    if (this.loading) throw new StoreLoading(this.loading);
     if (this.wiped) return { databaseSize, notes: 0, wiped: true };
     const counts = this.sql.first<{ live: number; trashed: number }>(`SELECT live, trashed FROM note_counts WHERE id = 1`);
     return {
@@ -315,6 +366,193 @@ export class UserStore extends DurableObject<StoreEnv> {
     // After `deleteAll`, so it is the one thing left; see `WIPED_KEY`.
     this.ctx.storage.kv.put(WIPED_KEY, true);
     this.wiped = true;
+    this.loading = null;
+    this.loadInFlight = null;
+  }
+
+  // --- Loading a dump ----------------------------------------------------------------------
+  //
+  // `POST /api/admin/store/load` (lib/load.ts) replaces this store with a dump from the
+  // backups bucket, the file `dumpBegin` and `dumpSlice` write: the way back from a fault
+  // noticed after the thirty days of history, and the last step of the runbook for
+  // losing the whole Cloudflare account. Three calls, because the dump is too big for
+  // one — an archive's is 31 MB of SQL and an RPC argument is capped at 32 MiB — and
+  // because nothing can hold a transaction open across two calls to the object. Each page
+  // is one transaction; the marker in key-value storage (`LOADING_KEY`) is what keeps a
+  // store between pages, or abandoned between them, from answering as if it were whole.
+
+  /**
+   * Empties the object and marks it loading. Everything — tables, schema, `_meta`, the
+   * wiped mark — goes, so the dump's own `CREATE`s and `_migrations` rows land in a clean
+   * database, as they would under `sqlite3`.
+   *
+   * `undo` is the runtime's bookmark of the store as it was the instant before, for the
+   * restore route to wind back to if the load was a mistake; null where the runtime keeps
+   * no history (Miniflare), which is what the dump the route writes first is for. Taken
+   * before anything is deleted, and a failure to take it stops the load before it starts.
+   * `before` is that dump's key, kept here with the bookmark so a load started over on a
+   * store that is already loading — the way out of a failed one — keeps the real ways
+   * back: a bookmark taken now would be of the half-loaded store, and the route writes
+   * no second dump of one (found in review).
+   *
+   * Between the `deleteAll` and the marker there is one await of storage. The runtime
+   * commits a call's storage writes together up to an await on something that is not
+   * storage, so the two land as one; a crash in that await would leave an empty object
+   * with no marker, which the next wake would build a schema into, and the dump the
+   * route wrote first is the answer to that as to any mistaken load.
+   */
+  async loadBegin(dump: { key: string; before: string | null }): Promise<{ loadId: string; undo: string | null; before: string | null }> {
+    let undo: string | null;
+    let before = dump.before;
+    if (this.loading) {
+      undo = this.loading.undo;
+      before = this.loading.before ?? before;
+    } else {
+      try {
+        undo = await this.ctx.storage.getCurrentBookmark();
+      } catch (err) {
+        if (!/does not implement point-in-time recovery/i.test(err instanceof Error ? err.message : String(err))) throw err;
+        undo = null;
+      }
+      // Miniflare answers a bookmark of zeros rather than refusing (measured 2026-10-06);
+      // nothing can be restored to it, so the answer must not offer it.
+      if (undo !== null && /^[0-]+$/.test(undo)) undo = null;
+    }
+    await this.ctx.storage.deleteAll();
+    const marker: LoadMarker = { id: crypto.randomUUID(), key: dump.key, startedAt: Date.now(), pages: 0, statements: 0, undo, before };
+    this.ctx.storage.kv.put(LOADING_KEY, marker);
+    this.loading = marker;
+    this.wiped = false;
+    // Fatal: a damaged byte in a dump stops the load rather than loading as U+FFFD
+    // inside someone's note.
+    this.loadInFlight = { id: marker.id, decoder: new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }), remainder: '' };
+    console.log(`[store] load begun user=${this.userId} key=${dump.key} undo=${undo ?? 'none'} before=${before ?? 'none'}`);
+    return { loadId: marker.id, undo, before };
+  }
+
+  /**
+   * Runs the whole statements of one page of the dump, cut anywhere, in one transaction;
+   * the partial statement it ends in waits for the next page. Foreign keys are off for
+   * the page, as the file asks (`PRAGMA foreign_keys = OFF` is its first statement, and a
+   * dump read while the store was written to can hold a row whose parent was read before
+   * it was there). Off at the start of the call and not back on at its end: the runtime
+   * wraps a call's writes in a transaction of its own, inside which the pragma is a
+   * no-op (measured 2026-10-06: `ON` after the page's inserts left it off, and
+   * `bootstrap` then refused the store), so the one place it can be set is before the
+   * call writes anything. `loadFinish` sets it on the same way, first thing.
+   *
+   * A page from any load but the one in flight is refused — after an eviction the
+   * remainder is gone, and the only honest answer is to start the load again — and the
+   * store stays loading either way.
+   */
+  loadPage(loadId: string, bytes: Uint8Array): { statements: number } {
+    const load = this.inFlightLoad(loadId);
+    this.ctx.storage.sql.exec('PRAGMA foreign_keys = OFF');
+    try {
+      const scan = scanStatements(load.remainder + load.decoder.decode(bytes, { stream: true }));
+      const ran = this.runDumpStatements(scan.statements);
+      load.remainder = scan.rest;
+      this.recordLoad(ran, 1);
+      return { statements: ran };
+    } catch (err) {
+      // The page's transaction rolled back, but the decoder has moved past its bytes, so
+      // no page can follow this one: the load in flight ends, the marker stays, and the
+      // only way on is a fresh `loadBegin`.
+      this.loadInFlight = null;
+      throw err;
+    }
+  }
+
+  /**
+   * Ends the load: the dump's last statement, then the checks that make the store one
+   * this code can answer for, then the schema files the dump lacked, a new feed epoch,
+   * and the marker's removal. Any check that fails leaves the marker in place: the store
+   * keeps refusing, and the operator winds it back or loads again.
+   *
+   * The checks. The dump's `_meta.user_id` must be this object's: a dump is only ever
+   * addressed under its own account by the route, so a mismatch is a file that is not a
+   * dump of this account, and loading it would be one account's notes under another's
+   * id and prefix. Its `_migrations` must name only schema files this code has, since the
+   * code cannot run against a schema it does not know; an older dump is fine, and
+   * `bootstrap` applies what it lacks here rather than on the next wake, so the store
+   * never answers at the dump's version. Foreign keys are checked but not enforced; see
+   * `LoadResult`.
+   */
+  loadFinish(loadId: string): LoadResult {
+    const load = this.inFlightLoad(loadId);
+    // Before any write of this call; see `loadPage`. What is left to run is the last
+    // statement a page boundary cut, which the file's order puts after every data row
+    // but one page's tail of them; a tail row that needed foreign keys off is a dump
+    // that could not be loaded with `sqlite3` either, and the error names it.
+    this.ctx.storage.sql.exec('PRAGMA foreign_keys = ON');
+    const text = load.remainder + load.decoder.decode();
+    const scan = scanStatements(text);
+    if (statementText(scan.rest) !== '') throw new Error(`the dump ended inside a statement (${statementKind(scan.rest)}); the file is cut short`);
+    const ran = this.runDumpStatements(scan.statements);
+    this.recordLoad(ran, 0);
+    load.remainder = '';
+
+    const owner = this.sql.first<{ value: string }>(`SELECT value FROM _meta WHERE key = ?1`, META.userId);
+    if (!owner) throw new Error('the dump has no _meta.user_id row; it is not a store dump');
+    if (owner.value !== this.userId) throw new Error(`the dump is of account ${owner.value}, not ${this.userId}`);
+    const known = new Set(SCHEMA.map((f) => f.name));
+    const names = appliedMigrations(this.ctx.storage);
+    if (names.length === 0) throw new Error('the dump records no schema files; it is not a store dump');
+    const unknown = names.filter((n) => !known.has(n));
+    if (unknown.length > 0) throw new Error(`the dump is from a newer schema than this code: ${unknown.join(', ')}`);
+
+    const migrated = this.bootstrap();
+    const violations = this.ctx.storage.sql.exec(`PRAGMA foreign_key_check`).toArray().length;
+    const feedEpoch = this.newEpoch();
+    this.ctx.storage.kv.delete(LOADING_KEY);
+    const marker = this.loading!;
+    this.loading = null;
+    this.loadInFlight = null;
+    console.log(
+      `[store] load finished user=${this.userId} key=${marker.key} pages=${marker.pages} statements=${marker.statements} migrated=${migrated.join(',') || 'none'} fkViolations=${violations} epoch=${feedEpoch}`,
+    );
+    this.tell(this.feed.seq());
+    return { statements: marker.statements, pages: marker.pages, migrated, feedEpoch, foreignKeyViolations: violations, stats: this.stats() };
+  }
+
+  private inFlightLoad(loadId: string): LoadInFlight {
+    const load = this.loadInFlight;
+    if (!this.loading || !load || load.id !== loadId || this.loading.id !== loadId) {
+      throw new Error(
+        this.loading
+          ? `no load ${loadId} is in flight on this store; the one begun at ${new Date(this.loading.startedAt).toISOString()} was interrupted. Start the load again.`
+          : `no load is in flight on this store`,
+      );
+    }
+    return load;
+  }
+
+  /** The statements of a page that run, in one transaction with foreign keys off; how many ran. */
+  private runDumpStatements(statements: string[]): number {
+    const run = statements.filter((s) => {
+      const kind = classify(s);
+      if (kind === 'refuse') throw new Error(`the dump holds a statement a load does not run: ${statementKind(s)}`);
+      return kind === 'run';
+    });
+    if (run.length === 0) return 0;
+    this.sql.tx(() => {
+      for (const statement of run) {
+        // A row too long to run as text runs with its values bound; see `MAX_STATEMENT_BYTES`.
+        if (!tooLongToRun(statement)) {
+          this.sql.exec(statement);
+        } else {
+          const { sql, values } = liftLiterals(statementText(statement));
+          this.sql.exec(sql, ...values);
+        }
+      }
+    });
+    return run.length;
+  }
+
+  private recordLoad(statements: number, pages: number): void {
+    const marker = { ...this.loading!, pages: this.loading!.pages + pages, statements: this.loading!.statements + statements };
+    this.ctx.storage.kv.put(LOADING_KEY, marker);
+    this.loading = marker;
   }
 
   /**
@@ -1071,10 +1309,16 @@ export class UserStore extends DurableObject<StoreEnv> {
    */
   feedRestored(): { epoch: string } {
     this.ready();
-    const epoch = crypto.randomUUID().replace(/-/g, '');
-    this.sql.exec(`INSERT INTO _meta (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, META.epoch, epoch);
+    const epoch = this.newEpoch();
     this.tell(this.feed.seq());
     return { epoch };
+  }
+
+  /** Names a new history for the feed; see `feedRestored`. */
+  private newEpoch(): string {
+    const epoch = crypto.randomUUID().replace(/-/g, '');
+    this.sql.exec(`INSERT INTO _meta (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, META.epoch, epoch);
+    return epoch;
   }
 }
 

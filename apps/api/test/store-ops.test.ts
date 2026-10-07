@@ -143,6 +143,14 @@ describe('operator-only routes', () => {
       body: JSON.stringify({ at: Date.now() - 60_000, confirm: 'RESTORE' }),
     }));
     expect(restore.status).toBe(404);
+    // Loading a dump over the caller's own store, likewise: the dumps are the operator's
+    // bucket, and the local Worker binds none in any case.
+    const load = await fetch(`${BASE}/api/admin/store/load`, as(alice, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dump: '2026-10-06', confirm: 'LOAD' }),
+    }));
+    expect(load.status).toBe(404);
   });
 
   it('refuse a sweep token the instance was not given, and never fall through to the session', async () => {

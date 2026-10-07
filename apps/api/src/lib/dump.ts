@@ -1,3 +1,4 @@
+import { DUMP_LINES } from '../store/load.js';
 import type { DumpSlice, UserStore } from '../store/user-store.js';
 
 /**
@@ -53,7 +54,7 @@ async function* chunks(store: DumpStub, userId: string, dump: Dump, schema: stri
   const encoder = new TextEncoder();
   const later = (s: string) => /^CREATE (VIRTUAL TABLE|TRIGGER)\b/i.test(s);
   const head = [
-    `-- Unbent note store of account ${userId}, dumped ${new Date().toISOString()}`,
+    `${DUMP_LINES.owner}${userId}, dumped ${new Date().toISOString()}`,
     `-- Rebuild with: sqlite3 account.db < this-file.sql`,
     'PRAGMA foreign_keys = OFF;',
     'BEGIN;',
@@ -78,9 +79,7 @@ async function* chunks(store: DumpStub, userId: string, dump: Dump, schema: stri
   // whether its rows are one moment of the store.
   tail.push(
     `-- Change feed at the start of the dump: ${dump.mark}; at the end: ${dump.endMark ?? 'unknown'}.`,
-    dump.endMark === dump.mark
-      ? '-- Nothing was written while the store was read: the rows are one moment.'
-      : '-- The store was written to while it was read: rows read after the write may be from after it.',
+    dump.endMark === dump.mark ? DUMP_LINES.oneMoment : DUMP_LINES.written,
   );
   yield encoder.encode(`${tail.join('\n')}\n`);
 }

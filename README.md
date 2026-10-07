@@ -248,6 +248,7 @@ says otherwise; `pnpm exec wrangler secret put NAME` from `apps/api`, or the das
 | `UNBENT_BUNDLE_ID_BASE`, `UNBENT_INSTANCE_HOST`, `DEVELOPMENT_TEAM` | an iOS build of your own | `apps/ios/Config/Local.xcconfig`, untracked; see [iOS app](#ios-app) |
 | `ANDROID_APPLICATION_ID`, `ANDROID_DEFAULT_INSTANCE` | the Android build in CI | GitHub repository **variables**; `unbent.applicationId` and `unbent.defaultInstance` in `local.properties` locally |
 | `CLOUDFLARE_WORKERS_SUBDOMAIN`, `DEV_BETTER_AUTH_SECRET`, `DEV_ALLOWED_EMAILS` | a dev instance and PR previews of your own | GitHub; see [The dev instance](#the-dev-instance) — every job skips itself without them |
+| `RESTORE_R2_ACCESS_KEY_ID`, `RESTORE_R2_SECRET_ACCESS_KEY` | putting one account's files back from the mirror | GitHub secrets in the `restore` environment, read-write on the live bucket, with the environment restricted to deployments from `main`; see [Where your notes live](#where-your-notes-live) — the run refuses without them |
 | `LIVE_R2_ACCOUNT_ID`, `LIVE_R2_ACCESS_KEY_ID`, `LIVE_R2_SECRET_ACCESS_KEY`, `DUMPS_R2_ACCESS_KEY_ID`, `DUMPS_R2_SECRET_ACCESS_KEY`, `MIRROR_R2_ACCOUNT_ID`, `MIRROR_R2_ACCESS_KEY_ID`, `MIRROR_R2_SECRET_ACCESS_KEY`, `D1_EXPORT_API_TOKEN` | the nightly mirror to a second Cloudflare account | GitHub secrets, with `BACKUPS_BUCKET` as a variable; the live key read-only, the R2 keys scoped to one bucket each, the D1 token D1 Read on the account, since the export needs no bucket; see [Where your notes live](#where-your-notes-live) — the job skips itself without them |
 
 The one thing that *would* work by accident is who the legal documents name — a fork that
@@ -1828,6 +1829,49 @@ live bucket, and skips itself otherwise; a fork names its live and mirror bucket
 of the file. The first copy, and any rerun, is
 started by hand from the Actions tab.
 
+**Putting files back.** `.github/workflows/restore-files.yml` copies one account's files
+from the mirror back into the live bucket: started by hand only, from the Actions tab,
+with the account id and the word `RESTORE` typed in; anything else in that box is a dry
+run that lists the counts and copies nothing. It is the one workflow that can write to
+the live bucket, with a credential of its own (`RESTORE_R2_ACCESS_KEY_ID` and
+`RESTORE_R2_SECRET_ACCESS_KEY`, in the `restore` GitHub environment, which only a
+workflow on `main` may use — that rule on the environment is what keeps an edited copy
+of the file on a branch away from a key that can delete from the live bucket).
+`rclone copy --ignore-existing` is the whole of what it does: nothing
+is deleted and nothing already in the live bucket is overwritten, so running it twice is
+the same as once, and it never writes to the mirror, so the prune's state file is left
+alone — the files reappearing in live are enough for the next night's prune to forget
+their gone-dates. The run's summary has counts; the files' names stay out of it.
+
+**Losing the whole Cloudflare account.** Everything above is in one account but the
+mirror, and this is how the mirror is turned back into an instance. Expected loss: up to
+a day of notes, since the newest dump is from the last 00:47 UTC and the mirror copied
+it at 05:23; files uploaded since that night's copy; and every store's thirty days of
+history, with its undo bookmarks. Files deleted in the fifty-five days before are still
+in the mirror and come back as orphans the file sweep reclaims.
+
+1. A new Cloudflare account, with the same names: the Worker, a D1 database, and the
+   buckets `wrangler.toml` and the mirror workflow name (`unbent-blobs`,
+   `unbent-backups`). Point the domain at it.
+2. Create the database and import the newest `d1/<date>.sql` from the mirror
+   (`wrangler d1 execute <name> --remote --file d1.sql`). Then deploy: every migration
+   is recorded in the export, so the deploy's migration step applies nothing, and the
+   Worker's secrets come from the password manager, which is the one place they are
+   kept — `BETTER_AUTH_SECRET` above all, or every session and every passkey is lost
+   with it.
+3. Copy the files back: `rclone copy mirror:unbent-mirror/blobs/ live:unbent-blobs/`
+   from a laptop with the mirror's credential and a write key for the new bucket, or
+   the restore-files workflow once per account.
+4. Copy the dumps back to where the load route reads:
+   `rclone copy mirror:unbent-mirror/stores/ dumps:unbent-backups/stores/`.
+5. For each account in the directory (`SELECT user_id FROM account_directory WHERE
+   deleted_at IS NULL`), `POST …/load` with the newest dump under `stores/<id>/`. The
+   object is empty on a new account, so there is nothing to dump first and nothing to
+   undo to; the load's own dump of it is a few kilobytes.
+6. New R2 tokens and GitHub secrets for the mirror and the restore workflow, since the
+   old account's are gone with it, and a hand-started run of the mirror to prove the
+   new account is being copied.
+
 **The change feed.** Every write records what it touched, numbered by the store's own
 counter, and `GET /api/changes?since=N` answers "what changed since N?" with the changed
 notes whole — body, tags, values, files — the changed notebooks and tags, and a tombstone
@@ -1852,6 +1896,7 @@ browser syncs from; see [Your library on the device](#your-library-on-the-device
   ships — dump, load, run the new schema file's SQL against the copy. The daily dumps
   (above) are the same file.
 - `POST …/restore` — winds one store back to a moment in the last thirty days; see below.
+- `POST …/load` — replaces one store with a dump from the backups bucket; see below.
 - `POST …/feed-epoch` — makes every device of an account resync its local copy, by
   naming a new history for its change feed. The restore does this itself.
 - `POST …/sweep` — one batch of the walk, now; `?restart=1` on the first call starts from
@@ -1889,6 +1934,42 @@ uploaded since the restored moment is an orphan, which the account's own
 [file sweep](#deleting-an-account) reclaims. Local development has no
 history to restore from — Miniflare refuses, and the route answers 501 — so a restore is
 tried on a preview of a PR that touches `src/store/`, which has stores of its own.
+
+**Loading a dump.** A fault noticed after the thirty days, or a store that is simply
+gone, is put back from a dump: `POST …/load` with `{ "user": "<id>", "dump": "2026-10-06" }`
+names that day's daily dump in the backups bucket, and `"dump": "stores/<id>/<file>.sql"`
+names any other file under the account's own prefix — the one written before an earlier
+load, or one copied back by hand from the mirror. A dump can only be loaded into the
+account it was taken from. Without `confirm` it is a dry run: whose the file is, when it
+was taken, whether its rows are one moment of the store or were read while it was being
+written to (the file's last lines say), and the store as it is now. With
+`"confirm": "LOAD"`:
+
+1. The store as it stands is dumped first, to `stores/<id>/<time>-before-load.sql` beside
+   the daily dumps, where the nightly mirror copies it off-account; the answer names it
+   as `before`.
+2. The object takes a bookmark of itself (`undo` in the answer; the restore route winds
+   back to it in one call for thirty days), empties itself, and marks itself loading.
+   From that moment until the load is whole the store refuses every request with a 503
+   and `Retry-After`, the same answer any passing unavailability gets, so a half-loaded
+   store is never read as an empty one. The mark is in storage, so it holds across an
+   eviction.
+3. The file is streamed into the object in pages, each run in one transaction with
+   foreign keys off, as `sqlite3` would load it; a row too long to run as one statement
+   (a long body, a file's text) runs with its values bound.
+4. The object checks that the dump's `_meta.user_id` is its own and that its schema
+   files are ones this code knows, applies any the dump lacked (a dump from before a
+   schema file loads at the current version, not the dump's), names a new feed epoch so
+   every device starts over from a snapshot, and only then clears the mark.
+
+A failure after step 2 leaves the store refusing, and the answer says so with both ways
+out: restore to `undo`, or load `before`; calling again starts over. Files are not in
+the dump and are not touched: a file the dump's rows name is still in the bucket if it
+was deleted less than thirty-five days before, since the dump carries the store's
+tombstones for it; one deleted longer ago is gone from the live bucket, and comes back
+from the mirror (below). A file uploaded after the dump was taken is an orphan the
+account's own [file sweep](#deleting-an-account) reclaims. The answer counts rows whose
+parent the dump does not hold, which a dump read mid-write can have.
 
 **Where an object lives.** The platform creates each account's object near the first
 request for it, and objects do not move. `STORE_JURISDICTION=eu` keeps every store in the

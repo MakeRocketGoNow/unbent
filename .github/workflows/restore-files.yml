@@ -1,0 +1,187 @@
+name: Restore an account's files
+
+# Puts one account's files back into the live bucket from the mirror (MAK-171, part 4):
+# the other half of loading a dump, for a restore that reaches further back than the
+# thirty-five days a deleted file stays in the live bucket, and the per-account step of
+# the runbook for losing the whole Cloudflare account (README, "Losing the whole
+# Cloudflare account"). The nightly mirror (mirror.yml) can only read the live bucket; this
+# is the one workflow that can write to it, and it does so with a credential of its own,
+# `RESTORE_R2_*`, held in the `restore` GitHub environment where no other workflow can
+# read it.
+#
+# Gated by the workflow itself, not by the environment. The environment would be the
+# place for a required reviewer, and a public repository could add one with no change
+# here; this repository is private on a plan with no environment protection rules, so the
+# gate is: started by hand only, for one named account, with `confirm` typed as the
+# literal RESTORE. Anything else is a dry run that lists what would be copied and copies
+# nothing. The environment's one rule, that only `main` may deploy to it, is what keeps
+# this file the only one that reaches the credential: a copy of it edited on a branch,
+# with the gate or `--ignore-existing` taken out, is refused the environment. Keep that
+# rule; without it any branch could dispatch a rewrite of this job against a key that
+# can delete from the live bucket.
+#
+# What a run does to each bucket:
+#   mirror   read only: a listing of the account's prefix and the copy's source. The
+#            prune's state file is never touched; the files reappearing in live make the
+#            next mirror run drop their gone-dates, which its planner does on its own.
+#   live     `rclone copy … --ignore-existing`: copy never deletes, and the flag leaves a
+#            key that is already there as it is. So a run can only add files that are
+#            missing, and running it twice is the same as once.
+# The step summary carries counts and never a key, since a key is a customer's filename
+# and the run page of an open-source repository is public. The copy's log is thrown away
+# with the runner for the same reason.
+on:
+  workflow_dispatch:
+    inputs:
+      account:
+        description: 'The account id (the user id its files are keyed under)'
+        required: true
+        type: string
+      confirm:
+        description: 'Type RESTORE to copy; anything else is a dry run'
+        required: false
+        default: ''
+        type: string
+  # No other trigger: the summary script's tests run in mirror.yml's `test` job, which
+  # covers every test under scripts/mirror/ on a change there.
+
+permissions:
+  contents: read
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    # The write credential for the live bucket lives here and nowhere else.
+    environment: restore
+    # One at a time: two runs for one account would copy the same files twice, harmlessly,
+    # but a listing taken while another run writes is a count nobody can read.
+    concurrency:
+      group: restore-files
+      cancel-in-progress: false
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    env:
+      LIVE_BUCKET: unbent-blobs
+      MIRROR_BUCKET: unbent-mirror
+      # Not named `RCLONE_*`: rclone reads every variable with that prefix as a flag of
+      # its own, and `RCLONE_VERSION` was read as `--version` (the mirror's first seed).
+      MIRROR_RCLONE_VERSION: v1.75.1
+      MIRROR_RCLONE_SHA256: 982b5aa772841168f8e380f139e9e787b2a105403e32b94da8676a0e1c0a13ab
+      # As mirror.yml configures rclone: remotes from the environment, no config file.
+      # `live` here is the restore credential, read-write on the live bucket.
+      RCLONE_CONFIG_LIVE_TYPE: s3
+      RCLONE_CONFIG_LIVE_PROVIDER: Cloudflare
+      RCLONE_CONFIG_LIVE_ENDPOINT: https://${{ secrets.LIVE_R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+      RCLONE_CONFIG_LIVE_ACCESS_KEY_ID: ${{ secrets.RESTORE_R2_ACCESS_KEY_ID }}
+      RCLONE_CONFIG_LIVE_SECRET_ACCESS_KEY: ${{ secrets.RESTORE_R2_SECRET_ACCESS_KEY }}
+      RCLONE_CONFIG_LIVE_NO_CHECK_BUCKET: 'true'
+      RCLONE_CONFIG_LIVE_ACL: private
+      RCLONE_CONFIG_MIRROR_TYPE: s3
+      RCLONE_CONFIG_MIRROR_PROVIDER: Cloudflare
+      RCLONE_CONFIG_MIRROR_ENDPOINT: https://${{ secrets.MIRROR_R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+      RCLONE_CONFIG_MIRROR_ACCESS_KEY_ID: ${{ secrets.MIRROR_R2_ACCESS_KEY_ID }}
+      RCLONE_CONFIG_MIRROR_SECRET_ACCESS_KEY: ${{ secrets.MIRROR_R2_SECRET_ACCESS_KEY }}
+      RCLONE_CONFIG_MIRROR_NO_CHECK_BUCKET: 'true'
+      RCLONE_CONFIG_MIRROR_ACL: private
+      RESTORE_ACCOUNT: ${{ inputs.account }}
+      RESTORE_DRY_RUN: ${{ inputs.confirm != 'RESTORE' }}
+    steps:
+      # The account id is a path segment of both buckets' keys, so it is held to the shape
+      # an id has before any credential is used: one segment, no slash, no dot, nothing
+      # that could read as another prefix or as the bucket's root.
+      - name: Check the inputs
+        run: |
+          if ! [[ "$RESTORE_ACCOUNT" =~ ^[A-Za-z0-9_-]{8,128}$ ]]; then
+            echo "::error::'$RESTORE_ACCOUNT' is not an account id: one segment of letters, digits, - and _."
+            exit 1
+          fi
+          if [ "$RESTORE_DRY_RUN" = true ]; then
+            echo "::notice::confirm is not RESTORE: this is a dry run, and nothing is copied."
+          fi
+
+      # `secrets` cannot be read in an `if:`, so presence is decided here and named: a
+      # fork has none of these, and a repository where the `restore` environment has not
+      # been given the write credential must say so rather than fail inside rclone.
+      - name: Is there a mirror to restore from?
+        id: configured
+        env:
+          LIVE_R2_ACCOUNT_ID: ${{ secrets.LIVE_R2_ACCOUNT_ID }}
+          RESTORE_R2_ACCESS_KEY_ID: ${{ secrets.RESTORE_R2_ACCESS_KEY_ID }}
+          RESTORE_R2_SECRET_ACCESS_KEY: ${{ secrets.RESTORE_R2_SECRET_ACCESS_KEY }}
+          MIRROR_R2_ACCOUNT_ID: ${{ secrets.MIRROR_R2_ACCOUNT_ID }}
+          MIRROR_R2_ACCESS_KEY_ID: ${{ secrets.MIRROR_R2_ACCESS_KEY_ID }}
+          MIRROR_R2_SECRET_ACCESS_KEY: ${{ secrets.MIRROR_R2_SECRET_ACCESS_KEY }}
+        run: |
+          missing=()
+          for name in LIVE_R2_ACCOUNT_ID RESTORE_R2_ACCESS_KEY_ID RESTORE_R2_SECRET_ACCESS_KEY \
+                      MIRROR_R2_ACCOUNT_ID MIRROR_R2_ACCESS_KEY_ID MIRROR_R2_SECRET_ACCESS_KEY; do
+            if [ -z "${!name}" ]; then missing+=("$name"); fi
+          done
+          if [ "${#missing[@]}" -eq 0 ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::No ${missing[*]} secret(s): the restore environment or the repository lacks them. Nothing was copied."
+            echo "No ${missing[*]} secret(s) — this repository has no mirror to restore from. Skipping." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Install rclone
+        run: |
+          cd "$RUNNER_TEMP"
+          curl -fsSLO "https://downloads.rclone.org/$MIRROR_RCLONE_VERSION/rclone-$MIRROR_RCLONE_VERSION-linux-amd64.zip"
+          echo "$MIRROR_RCLONE_SHA256  rclone-$MIRROR_RCLONE_VERSION-linux-amd64.zip" | sha256sum --check --strict
+          unzip -q "rclone-$MIRROR_RCLONE_VERSION-linux-amd64.zip"
+          sudo install -m 0755 "rclone-$MIRROR_RCLONE_VERSION-linux-amd64/rclone" /usr/local/bin/rclone
+          rclone version
+
+      # The mirror's listing of the account's prefix, counted, so the summary can say how
+      # many files there were to consider. An account with nothing in the mirror is a
+      # prefix rclone does not see as a directory (exit 3), which is a count of zero here
+      # and a copy of nothing below, not a failure: that is the answer for an account
+      # whose files were all pruned or never mirrored.
+      # The listing goes to a file and its errors to another, and only the error file is
+      # ever shown: the listing is the account's filenames, and a listing that failed
+      # part-way would otherwise be printed with them.
+      - name: Count the account's files in the mirror
+        run: |
+          set +e
+          rclone lsf -R --files-only --fast-list "mirror:$MIRROR_BUCKET/blobs/users/$RESTORE_ACCOUNT" \
+            > "$RUNNER_TEMP/mirror.lst" 2> "$RUNNER_TEMP/mirror.err"
+          status=$?
+          set -e
+          case "$status" in
+            0) mirrored=$(grep -c . "$RUNNER_TEMP/mirror.lst" || true) ;;
+            3) mirrored=0 ;;
+            *) cat "$RUNNER_TEMP/mirror.err" >&2; echo "rclone lsf failed with exit $status" >&2; exit "$status" ;;
+          esac
+          rm -f "$RUNNER_TEMP/mirror.lst"
+          echo "RESTORE_MIRRORED=$mirrored" >> "$GITHUB_ENV"
+          echo "$mirrored file(s) under the account's prefix in the mirror."
+
+      # The copy, or with `--dry-run` the same walk that copies nothing and still tallies
+      # what it would have. `--ignore-existing` is the "never overwrites"; `copy` itself is
+      # the "never deletes". `--checksum` and `--fast-list` as the mirror's copy uses them.
+      # The log goes to a file, never to the run's own log: it names every file in flight.
+      - name: Copy the files back to the live bucket
+        run: |
+          flags=(--ignore-existing --checksum --fast-list --transfers 16 --checkers 16 --use-json-log --log-level NOTICE --stats-log-level NOTICE --stats 1m)
+          if [ "$RESTORE_DRY_RUN" = true ]; then flags+=(--dry-run); fi
+          rclone copy "mirror:$MIRROR_BUCKET/blobs/users/$RESTORE_ACCOUNT" "live:$LIVE_BUCKET/users/$RESTORE_ACCOUNT" "${flags[@]}" \
+            > "$RUNNER_TEMP/copy.log" 2>&1 || { status=$?; echo "::error::rclone copy failed with exit $status; the summary has the counts."; echo "$status" > "$RUNNER_TEMP/copy.failed"; }
+
+      # Once the inputs and secrets passed: before that there is no checkout to run the
+      # script from, and the real error is the step that failed.
+      - name: Write the summary
+        if: ${{ always() && steps.configured.outputs.ready == 'true' }}
+        run: |
+          [ -f "$RUNNER_TEMP/copy.log" ] || : > "$RUNNER_TEMP/copy.log"
+          node scripts/mirror/restore-summary.mjs "$RUNNER_TEMP/copy.log" "$RUNNER_TEMP/summary.md"
+          cat "$RUNNER_TEMP/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "$RUNNER_TEMP/copy.failed" ]; then exit "$(cat "$RUNNER_TEMP/copy.failed")"; fi
