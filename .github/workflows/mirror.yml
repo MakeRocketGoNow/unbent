@@ -87,8 +87,8 @@ jobs:
     # a night after that is a few files. Generous rather than tight: a run killed by the
     # timeout fails after doing the work, and the retry does it again.
     timeout-minutes: 300
-    # Named explicitly for `pipefail`: with no `shell:` GitHub runs `bash -e` alone, and the
-    # `rclone … | tee` steps below would then report tee's exit code, never rclone's.
+    # Named explicitly for `pipefail`: with no `shell:` GitHub runs `bash -e` alone, and a
+    # step's `… | tee` would then report tee's exit code, never the command's.
     defaults:
       run:
         shell: bash
@@ -141,6 +141,8 @@ jobs:
       #   --fast-list: one listing call per thousand keys instead of one per prefix.
       #   --use-json-log with the tally at NOTICE: the final line is a JSON object with the
       #     counts, which write-status.mjs reads; everything quieter is not logged at all.
+      #     The log goes to a file, never to the run's own log: the minute-by-minute tallies
+      #     name the files in flight, and a file's key is a customer's filename.
       RCLONE_COPY_FLAGS: >-
         --immutable --fast-list --transfers 16 --checkers 16
         --use-json-log --log-level NOTICE --stats-log-level NOTICE --stats 1m
@@ -229,7 +231,7 @@ jobs:
           trap 'echo blobs >> "$MIRROR_DIR/failed"' ERR
           # shellcheck disable=SC2086
           rclone copy "live:$LIVE_BUCKET" "mirror:$MIRROR_BUCKET/blobs" $RCLONE_COPY_FLAGS \
-            2>&1 | tee "$MIRROR_DIR/blobs.log"
+            > "$MIRROR_DIR/blobs.log" 2>&1
 
       - name: Copy the dumps bucket to stores/
         if: ${{ !cancelled() && steps.configured.outputs.ready == 'true' }}
@@ -237,7 +239,7 @@ jobs:
           trap 'echo stores >> "$MIRROR_DIR/failed"' ERR
           # shellcheck disable=SC2086
           rclone copy "dumps:$DUMPS_BUCKET/stores" "mirror:$MIRROR_BUCKET/stores" $RCLONE_COPY_FLAGS \
-            2>&1 | tee "$MIRROR_DIR/stores.log"
+            > "$MIRROR_DIR/stores.log" 2>&1
 
       # `d1/<date>.sql` is under the lock, so a rerun on the same day cannot replace it and
       # does not try: the day's export is skipped when its key is already there, and the
