@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import { deleteKeys } from '../lib/blobs.js';
-import { directoryRow, dropDirectoryRow, listOperatorAccounts } from '../lib/directory.js';
+import { directoryRow, dropDirectoryRow, listOperatorAccounts, recordRestore } from '../lib/directory.js';
 import { beginDump } from '../lib/dump.js';
 import { MIRROR_STATUS_KEY, STATUS_KEY, dumpPrefix } from '../lib/backups.js';
 import { beforeLoadKey, describeDump, dumpBeforeLoad, loadReserve, resolveDumpDownload, resolveDumpKey, streamDump } from '../lib/load.js';
@@ -390,6 +390,13 @@ export const admin = new Hono<AppEnv>()
         stats = await storeFor(c.env, target).stats();
       } catch (err) {
         console.error(`[store] stats after restore failed for user=${target}:`, err);
+      }
+      // The way back, kept where a reload of the operator page finds it (MAK-189). The
+      // answer and the log carry it too, so a failure here is logged and not answered.
+      try {
+        await recordRestore(c.env.DB, target, { at: Date.now(), toAt: 'at' in to ? to.at : null, undo });
+      } catch (err) {
+        console.error(`[store] recording the restore in the directory failed for user=${target}:`, err);
       }
       return c.json({
         restored: true,

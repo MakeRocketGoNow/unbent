@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { AccountDumps, OperatorAccount as Account } from '@unbent/shared';
 import type { StoreStats } from '../notes-api.js';
 import { keys } from '../queries.js';
+import { formatMoment } from './format-when.js';
 
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children, to }: { children: React.ReactNode; to: string }) => <a href={to}>{children}</a>,
@@ -33,6 +34,7 @@ const account: Account = {
   storageBytes: 4096,
   lastActiveAt: now - 3_600_000,
   dump: { at: now - 7_200_000, bytes: 2048, checkedAt: now - 7_200_000, triedAt: now - 7_200_000, error: null },
+  restore: null,
 };
 
 const stats = (counts: Partial<Record<string, number>> = {}): StoreStats => ({
@@ -51,9 +53,9 @@ const dumps: AccountDumps = {
   ],
 };
 
-function harness(answerDumps: () => Promise<AccountDumps> = () => Promise.resolve(dumps)) {
+function harness(answerDumps: () => Promise<AccountDumps> = () => Promise.resolve(dumps), row: Account = account) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  client.setQueryData(keys.operatorAccounts(), [account]);
+  client.setQueryData(keys.operatorAccounts(), [row]);
   client.setQueryData(keys.storeStats('u1'), stats());
   vi.mocked(api.accountDumps).mockImplementation(answerDumps);
   return render(
@@ -77,6 +79,19 @@ afterEach(() => {
  * question, repeats the request with the word, and offers the bookmark it gets back.
  */
 describe('OperatorAccount: wind back', () => {
+  it('offers Undo of the last wind-back from the directory, so a reload does not lose it', async () => {
+    harness(undefined, { ...account, restore: { at: now - 600_000, toAt: now - 7_200_000, undo: '00000001-00000002-00000003-0000000000000004' } });
+    await flush();
+    expect(screen.getByText(/Wound back to/).textContent).toContain(formatMoment(now - 7_200_000));
+    fireEvent.click(screen.getByRole('button', { name: 'Undo the wind-back' }));
+    const undo = screen.getByRole('group', { name: 'Confirm undo wind back' });
+    expect(undo.textContent).toContain('Put someone@example.com back as it was before the wind-back?');
+    vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: '00000001-00000002-00000003-0000000000000005', feedEpoch: 'e3', stats: stats(), note: '' });
+    fireEvent.click(screen.getByRole('button', { name: 'Undo the wind-back' }));
+    await waitFor(() => expect(api.restoreStore).toHaveBeenCalledWith('u1', { bookmark: '00000001-00000002-00000003-0000000000000004' }));
+    await waitFor(() => expect(screen.getByText(/Put back as it was before the wind-back/)).toBeTruthy());
+  });
+
   it('previews first, then names the account, the moment and what is lost, then offers Undo', async () => {
     vi.mocked(api.previewRestore).mockResolvedValue({ dryRun: true, user: 'u1', bookmark: 'bm-1', current: stats({ notes: 12, attachments: 4, note_revisions: 40 }) });
     vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: '00000001-00000002-00000003-0000000000000004', feedEpoch: 'e2', stats: stats({ notes: 9, attachments: 3, note_revisions: 20 }), note: '' });

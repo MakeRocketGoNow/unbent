@@ -112,6 +112,13 @@ export interface OperatorAccount {
     /** The last attempt's failure, cleared by the next success. */
     error: string | null;
   };
+  /**
+   * The last point-in-time restore of the store (migration 0038): when it was applied,
+   * the moment it went back to (null for a restore to a bookmark, which is what an undo
+   * is), and the bookmark that reverses it, good for `RESTORE_WINDOW_DAYS`. Kept here
+   * rather than in the answer alone so the page can offer Undo after a reload.
+   */
+  restore: { at: number; toAt: number | null; undo: string | null } | null;
 }
 
 export interface OperatorAccountsPage {

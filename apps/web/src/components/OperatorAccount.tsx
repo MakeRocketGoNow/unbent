@@ -70,7 +70,7 @@ export function OperatorAccount({ userId }: { userId: string }) {
         </p>
       </section>
 
-      <WindBack userId={userId} email={account?.email ?? userId} />
+      <WindBack userId={userId} email={account?.email ?? userId} last={account?.restore ?? null} />
       <LoadDump userId={userId} email={account?.email ?? userId} />
       <Resync userId={userId} email={account?.email ?? userId} />
     </div>
@@ -251,8 +251,13 @@ type WindBackOutcome = { kind: 'done'; at: number; result: api.RestoreResult; un
  * Where the runtime keeps no history — `wrangler dev` — the route answers 501, and the
  * section says so in place of the control rather than offering a preview that fails.
  */
-function WindBack({ userId, email }: { userId: string; email: string }) {
+function WindBack({ userId, email, last }: { userId: string; email: string; last: Account['restore'] }) {
   const queryClient = useQueryClient();
+  // The last restore's undo, from the directory rather than from this page's own answer,
+  // so it is still offered after a reload or a look at a note (MAK-189). Shown only while
+  // this page has no fresher answer of its own: an outcome below carries its own undo,
+  // and the directory catches up with it on the next read.
+  const [lastUndoAsked, setLastUndoAsked] = useState(false);
   // Read when the field is focused, not on every render: the bounds should not move
   // under the field while it is being typed in, but a page left open for an hour must
   // not grey out the last hour, which is when an operator most often wants to go.
@@ -322,6 +327,7 @@ function WindBack({ userId, email }: { userId: string; email: string }) {
       // Closed either way, as the wind-back's own confirm is: a second press on a confirm
       // whose restore may already have been applied would restore again.
       setOutcome((o) => (o && o.kind === 'done' ? { ...o, undoAsked: false } : o));
+      setLastUndoAsked(false);
       setBusy(false);
       refresh();
     }
@@ -370,13 +376,41 @@ function WindBack({ userId, email }: { userId: string; email: string }) {
             <>
               Every note, file record and revision written after that moment is lost. The store now holds{' '}
               {describeCounts(step.preview.current)}; what it held at that moment is what it will hold after. Every device of the
-              account resyncs from a snapshot. Undo is offered afterwards, and the bookmark it uses lasts {RESTORE_WINDOW_DAYS} days.
+              account resyncs from a snapshot. Undo is offered afterwards, here and on this page after a reload, and the bookmark it uses lasts {RESTORE_WINDOW_DAYS} days.
             </>
           }
           busy={busy}
           onCancel={() => setStep({ kind: 'idle' })}
           actions={[{ label: 'Wind back', busyLabel: 'Winding back…', tone: 'danger', onConfirm: () => windBack(step.at) }]}
         />
+      )}
+
+      {!outcome && last?.undo && (
+        <>
+          <p className="muted small">
+            {last.toAt ? <>Wound back to {formatMoment(last.toAt)}</> : <>Put back to an earlier bookmark</>} {timeAgo(last.at)}. Undo is good for{' '}
+            {RESTORE_WINDOW_DAYS} days from then.
+          </p>
+          {!lastUndoAsked ? (
+            <Button tone="danger" disabled={busy} onClick={() => setLastUndoAsked(true)}>
+              Undo the wind-back
+            </Button>
+          ) : (
+            <Confirm
+              label="Confirm undo wind back"
+              question={`Put ${email} back as it was before the wind-back?`}
+              detail={
+                <>
+                  Restores to the bookmark the wind-back returned, which is the store as it stood just before it. Anything written since
+                  the wind-back is lost, and every device resyncs again.
+                </>
+              }
+              busy={busy}
+              onCancel={() => setLastUndoAsked(false)}
+              actions={[{ label: 'Undo the wind-back', busyLabel: 'Restoring…', tone: 'danger', onConfirm: () => undo(last.undo!) }]}
+            />
+          )}
+        </>
       )}
 
       {outcome?.kind === 'done' && (

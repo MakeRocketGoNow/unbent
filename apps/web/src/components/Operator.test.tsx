@@ -53,6 +53,7 @@ const account = (over: Partial<OperatorAccount> = {}): OperatorAccount => ({
   storageBytes: 4096,
   lastActiveAt: now - 3_600_000,
   dump: { at: now - 2 * 3_600_000, bytes: 2048, checkedAt: now - 2 * 3_600_000, triedAt: now - 2 * 3_600_000, error: null },
+  restore: null,
   ...over,
 });
 

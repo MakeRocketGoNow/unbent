@@ -134,6 +134,9 @@ interface OperatorRow extends RawRow {
   dump_checked_at: number | null;
   dump_tried_at: number | null;
   dump_error: string | null;
+  restore_at: number | null;
+  restore_to_at: number | null;
+  restore_undo: string | null;
 }
 
 /**
@@ -160,6 +163,21 @@ export async function listOperatorAccounts(db: D1Database, after = '', limit = 2
     storageBytes: r.storage_bytes,
     lastActiveAt: r.last_active_at,
     dump: { at: r.dump_at, bytes: r.dump_bytes, checkedAt: r.dump_checked_at, triedAt: r.dump_tried_at, error: r.dump_error },
+    restore: r.restore_at === null ? null : { at: r.restore_at, toAt: r.restore_to_at, undo: r.restore_undo },
   }));
   return { accounts, next: results.length === limit ? results[results.length - 1]!.user_id : null };
+}
+
+/**
+ * Records a point-in-time restore of the account's store, for the operator page to offer
+ * its undo from (migration 0038). The latest only: an undo is itself a restore, and its
+ * own undo bookmark is the state it replaced, which is the one worth keeping. Called
+ * after the restore has been applied, and never allowed to fail the restore's answer:
+ * the bookmark is in the answer and the Worker's log whether or not this row is written.
+ */
+export async function recordRestore(db: D1Database, userId: string, restore: { at: number; toAt: number | null; undo: string | null }): Promise<void> {
+  await db
+    .prepare(`UPDATE account_directory SET restore_at = ?2, restore_to_at = ?3, restore_undo = ?4 WHERE user_id = ?1`)
+    .bind(userId, restore.at, restore.toAt, restore.undo)
+    .run();
 }
