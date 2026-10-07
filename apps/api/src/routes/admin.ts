@@ -400,7 +400,12 @@ export const admin = new Hono<AppEnv>()
         if ('at' in to) await recordRestore(c.env.DB, target, { at: Date.now(), toAt: to.at, undo });
         else await clearRestore(c.env.DB, target);
       } catch (err) {
-        console.error(`[store] recording the restore in the directory failed for user=${target}:`, err);
+        console.error(
+          'at' in to
+            ? `[store] recording the wind-back in the directory failed for user=${target}; the operator page will not offer its undo after a reload:`
+            : `[store] clearing the recorded wind-back after an undo failed for user=${target}; the operator page will offer to redo the wind-back until it is cleared:`,
+          err,
+        );
       }
       return c.json({
         restored: true,
@@ -443,7 +448,7 @@ export const admin = new Hono<AppEnv>()
    * 2. `loadBegin`: the object takes its bookmark (the `undo` in the answer, which the
    *    restore route winds back to in one call), empties itself and marks itself
    *    loading. From here on the store refuses every request but these until step 4.
-   *    The directory's record of the last wind-back is cleared here too (see below).
+   *    The directory's record of the last wind-back is cleared just before (see there).
    * 3. Stream the file into the object in pages (`streamDump`).
    * 4. `loadFinish`: the object checks the dump is this account's and from a schema this
    *    code knows, applies any schema file the dump lacked, names a new feed epoch so
@@ -518,6 +523,21 @@ export const admin = new Hono<AppEnv>()
       const object = await bucket.get(key);
       if (!object) return c.json({ error: `${key} went away since the dry run; nothing was loaded.`, before }, 404);
 
+      // The wind-back the directory may still record (MAK-189) stops describing a way
+      // back the moment the store is emptied: its bookmark is from before this load, and
+      // undoing to it would throw the loaded dump away under a confirm that says nothing
+      // of the kind. Cleared before `loadBegin` rather than after, so a begin that empties
+      // the store and then fails to answer cannot leave the record standing (found in
+      // review); clearing early loses nothing, since the bookmark is in the Worker's log.
+      // The load records nothing in its place: its own way back is the before-load dump
+      // above, listed for as long as the bucket keeps it. Logged and not answered, as the
+      // restore route treats its record.
+      try {
+        await clearRestore(c.env.DB, target);
+      } catch (err) {
+        console.error(`[store] clearing the recorded wind-back before a load failed for user=${target}; the operator page may offer an undo from before the load:`, err);
+      }
+
       let begun: { loadId: string; undo: string | null; before: string | null };
       try {
         begun = await store.loadBegin({ key, before });
@@ -531,17 +551,6 @@ export const admin = new Hono<AppEnv>()
         );
       }
       before = begun.before;
-      // The store is emptied from here on, so the wind-back the directory may still record
-      // (MAK-189) no longer describes a way back: its bookmark is from before this load,
-      // and undoing to it would throw the loaded dump away under a confirm that says
-      // nothing of the kind. The load's own way back is the before-load dump above, listed
-      // for as long as the bucket keeps it, so it records nothing in its place. Logged and
-      // not answered, as the restore route treats its record.
-      try {
-        await clearRestore(c.env.DB, target);
-      } catch (err) {
-        console.error(`[store] clearing the recorded wind-back for user=${target} failed:`, err);
-      }
 
       let result;
       try {
