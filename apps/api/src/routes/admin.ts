@@ -697,10 +697,16 @@ export const admin = new Hono<AppEnv>()
     if (ids.length > 0) {
       // Other people's addresses, so logged like every other read of another account here.
       console.log(`[store] operator=${email} backups names=${ids.length}`);
-      const { results } = await c.env.DB.prepare(`SELECT id, email FROM user WHERE id IN (${ids.map((_, i) => `?${i + 1}`).join(', ')})`)
-        .bind(...ids)
-        .all<{ id: string; email: string }>();
-      for (const r of results) names[r.id] = r.email;
+      // The card's facts are the two status files, which matter most during an incident;
+      // a D1 that is down for the moment costs the names, not the card.
+      try {
+        const { results } = await c.env.DB.prepare(`SELECT id, email FROM user WHERE id IN (${ids.map((_, i) => `?${i + 1}`).join(', ')})`)
+          .bind(...ids)
+          .all<{ id: string; email: string }>();
+        for (const r of results) names[r.id] = r.email;
+      } catch (err) {
+        console.error(`[store] backups names lookup failed; the card shows ids:`, err);
+      }
     }
     return c.json({ bound: true, dumps, mirror, names } satisfies BackupsStatus);
   })
