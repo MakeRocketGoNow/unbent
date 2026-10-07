@@ -53,10 +53,10 @@ const dumps: AccountDumps = {
   ],
 };
 
-function harness(answerDumps: () => Promise<AccountDumps> = () => Promise.resolve(dumps)) {
+function harness(answerDumps: () => Promise<AccountDumps> = () => Promise.resolve(dumps), seeded: StoreStats = stats()) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   client.setQueryData(keys.operatorAccounts(), [account]);
-  client.setQueryData(keys.storeStats('u1'), stats());
+  client.setQueryData(keys.storeStats('u1'), seeded);
   vi.mocked(api.accountDumps).mockImplementation(answerDumps);
   return render(
     <QueryClientProvider client={client}>
@@ -80,6 +80,19 @@ describe('OperatorAccount: facts', () => {
     expect(dd.textContent).toContain(formatMoment(now - 60_000));
     expect(dd.textContent).not.toContain(formatMoment(account.lastActiveAt!));
     expect(dd.textContent).not.toContain('as of the last sweep');
+  });
+
+  it("shows the sweep's value, not 'Nothing written yet', for a store that cannot read its feed", async () => {
+    const marker = { id: 'l1', key: 'stores/u1/2026-10-05.sql', startedAt: now, pages: 2, undo: null, before: null };
+    for (const state of [{ wiped: true }, { loading: marker }]) {
+      harness(undefined, { ...stats(), lastWriteAt: null, ...state });
+      await flush();
+      const dd = screen.getByText('Last change').nextElementSibling!;
+      expect(dd.textContent).toContain(formatMoment(account.lastActiveAt!));
+      expect(dd.textContent).toContain('as of the last sweep');
+      expect(dd.textContent).not.toContain('Nothing written yet');
+      cleanup();
+    }
   });
 });
 

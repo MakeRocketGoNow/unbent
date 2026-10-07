@@ -32,6 +32,9 @@ export function OperatorAccount({ userId }: { userId: string }) {
   const accounts = useQuery(operatorAccountsQuery());
   const account = accounts.data?.find((a) => a.userId === userId) ?? null;
   const stats = useQuery(storeStatsQuery(userId));
+  // A wiped or loading store answers null for its last write because it cannot read its
+  // feed, not because nothing was written: unknown, so the sweep's value stands in.
+  const live = stats.data && !stats.data.wiped && !stats.data.loading ? stats.data.lastWriteAt : undefined;
 
   if (accounts.data && !account) {
     return (
@@ -57,7 +60,7 @@ export function OperatorAccount({ userId }: { userId: string }) {
         </Link>
       </div>
 
-      {account && <AccountFacts account={account} lastWriteAt={stats.data ? stats.data.lastWriteAt : undefined} />}
+      {account && <AccountFacts account={account} lastWriteAt={live} />}
 
       <section className="settings-section">
         <h3>Store</h3>
@@ -79,7 +82,8 @@ export function OperatorAccount({ userId }: { userId: string }) {
 
 /**
  * `lastWriteAt` is the store's own answer, read with the stats: undefined until they
- * have loaded, then the newest write or null for a store never written to. The
+ * have loaded or while the store cannot answer (wiped, or a dump being loaded into it),
+ * otherwise the newest write or null for a store never written to. The
  * directory's `lastActiveAt` is the same value as of the last hourly sweep, which is
  * what the accounts list shows and sorts by; on this page, which reads the store anyway,
  * it was up to an hour stale, or days for an account the sweep had not reached since
