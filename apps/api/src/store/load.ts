@@ -156,9 +156,24 @@ function hexBytes(hex: string): Uint8Array {
   return out;
 }
 
-/** The first line of a dump: whose it is. See `lib/dump.ts`, which writes it. */
+/**
+ * The comment lines a dump is read by, written by `lib/dump.ts` and read by the load's
+ * owner check and the dry run (`lib/load.ts`). One place for both sides, so rewording
+ * the file cannot leave a reader matching the old words and answering nothing.
+ */
+export const DUMP_LINES = {
+  /** The first line: `${owner}${userId}, dumped ${time}`. */
+  owner: '-- Unbent note store of account ',
+  /** The last line when the store was not written to while it was read. */
+  oneMoment: '-- Nothing was written while the store was read: the rows are one moment.',
+  /** The last line when it was: the rows may be from either side of the write. */
+  written: '-- The store was written to while it was read: rows read after the write may be from after it.',
+} as const;
+
+/** The first line of a dump: whose it is. */
 export function dumpOwner(header: string): string | null {
-  return /^-- Unbent note store of account (\S+), dumped /.exec(header)?.[1] ?? null;
+  if (!header.startsWith(DUMP_LINES.owner)) return null;
+  return /^(\S+), dumped /.exec(header.slice(DUMP_LINES.owner.length))?.[1] ?? null;
 }
 
 /**

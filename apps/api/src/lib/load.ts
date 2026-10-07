@@ -1,7 +1,7 @@
 import { dropBytes, dumpKey, dumpPrefix, takeBytes, upload, Budget } from './backups.js';
 import { beginDump } from './dump.js';
 import { SUBREQUEST_BUDGET } from './sweep.js';
-import { dumpOwner } from '../store/load.js';
+import { DUMP_LINES, dumpOwner } from '../store/load.js';
 import type { LoadResult, UserStore } from '../store/user-store.js';
 
 /**
@@ -81,11 +81,8 @@ export async function describeDump(bucket: R2Bucket, key: string): Promise<DumpD
   const last = head.size > 256 ? await bucket.get(key, { range: { suffix: Math.min(head.size, 512) } }) : null;
   const tailText = head.size > 256 ? (last ? await last.text() : '') : headText;
   const header = headText.split('\n')[0] ?? '';
-  const oneMoment = /^-- Nothing was written while the store was read/m.test(tailText)
-    ? true
-    : /^-- The store was written to while it was read/m.test(tailText)
-      ? false
-      : null;
+  const lines = tailText.split('\n');
+  const oneMoment = lines.includes(DUMP_LINES.oneMoment) ? true : lines.includes(DUMP_LINES.written) ? false : null;
   return { key, size: head.size, uploadedAt: head.uploaded.toISOString(), owner: dumpOwner(header), header, oneMoment };
 }
 
