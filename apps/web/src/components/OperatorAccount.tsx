@@ -23,7 +23,8 @@ import { LastDump } from './Operator.js';
  * its rows are one moment. The confirm repeats the request with the word the route
  * wants, and the answer's undo bookmark is kept beside the result as a second
  * confirm, so a wind-back to the wrong moment is one more press rather than a request
- * written by hand from the Worker log.
+ * written by hand from the Worker log. The directory keeps the last wind-back's bookmark
+ * too (migration 0038), so the same confirm is offered after a reload.
  *
  * Downloads are links: a dump is a file, and a link to a file middle-clicks, copies and
  * saves with the browser's own download, which a button cannot do.
@@ -269,7 +270,8 @@ function UndoWindBackConfirm({ email, busy, onCancel, onConfirm }: { email: stri
  * the store holds now and the route's dry run is where that comes from — and because a
  * moment outside the window is refused there, before anything is at stake. The confirm
  * names the account, the moment, and what is lost: everything written after it. The
- * answer keeps the undo bookmark as a second confirm beside the result.
+ * answer keeps the undo bookmark as a second confirm beside the result, and the
+ * directory's record of the last wind-back offers the same confirm after a reload.
  *
  * Where the runtime keeps no history — `wrangler dev` — the route answers 501, and the
  * section says so in place of the control rather than offering a preview that fails.
