@@ -40,7 +40,7 @@ export function OperatorAccount({ userId }: { userId: string }) {
   // it would throw that change away too, under a confirm that names only its own — the
   // reason the routes clear the directory's wind-back record before a restore or a load
   // (MAK-189). Remounting drops the stale answer. The directory's record is held back
-  // too until the accounts list is newer than the last load: the cached one is from
+  // too until the account's row is newer than the last load: the cached one is from
   // before it, and the route has already cleared it (found in review).
   const [windBacks, setWindBacks] = useState(0);
   const [loadedAt, setLoadedAt] = useState(0);

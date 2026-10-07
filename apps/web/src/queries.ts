@@ -733,6 +733,8 @@ export const operatorAccountQuery = (userId: string) =>
     queryKey: keys.operatorAccount(userId),
     queryFn: () => api.operatorAccount(userId),
     staleTime: 60 * 1000,
+    // As the list: the dump and wind-back facts move on the hour and the page may stay open.
+    refetchInterval: 5 * 60 * 1000,
     refetchOnWindowFocus: true,
   });
 
