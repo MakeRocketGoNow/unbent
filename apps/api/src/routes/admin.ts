@@ -437,7 +437,13 @@ export const admin = new Hono<AppEnv>()
    *
    * A failure after step 2 leaves the store loading, and the answer says so, with both
    * ways out: restore to `undo`, or load `before` — or call this again, which starts
-   * over. Logged with both ids before anything is written.
+   * over. Either of the last two is this route on a store that is already loading, so
+   * step 1 is skipped then — a dump of a half-loaded store is not a way back, and
+   * `dumpBegin` refuses it anyway — and the object keeps the `undo` and `before` of the
+   * first attempt (found in review: the first version dumped first every time, and so
+   * could never be called again). The dump object is opened before step 1, so an R2
+   * refusal is a load that never started rather than one that emptied the store. Logged
+   * with both ids before anything is read.
    */
   .post(
     '/admin/store/load',
@@ -459,6 +465,8 @@ export const admin = new Hono<AppEnv>()
       }
       const key = resolveDumpKey(target, dump);
       if (!key) return c.json({ error: '`dump` must be a date (YYYY-MM-DD) or a key under this account\'s stores/ prefix.' }, 400);
+      // The dry run reads the account too, so the line comes before either.
+      console.log(`[store] operator=${email} load${confirm === 'LOAD' ? '' : ' dry-run'} user=${target} key=${key}`);
       const described = await describeDump(bucket, key);
       if (!described) return c.json({ error: `No dump at ${key}.` }, 404);
       if (described.owner !== target) {
@@ -466,28 +474,38 @@ export const admin = new Hono<AppEnv>()
       }
 
       const store = storeFor(c.env, target);
+      const current = await store.stats();
       if (confirm !== 'LOAD') {
         return c.json({
           dryRun: true,
           user: target,
           dump: described,
-          current: await store.stats(),
-          hint: `Repeat this request with "confirm": "LOAD" to replace the store with ${key}. The store as it is now is dumped first, and the answer names the file.`,
+          current,
+          hint: current.loading
+            ? `The store is loading ${current.loading.key} and refusing requests; repeat this request with "confirm": "LOAD" to start over with ${key}.`
+            : `Repeat this request with "confirm": "LOAD" to replace the store with ${key}. The store as it is now is dumped first, and the answer names the file.`,
         });
       }
 
-      console.log(`[store] operator=${email} load user=${target} key=${key}`);
-      const before = beforeLoadKey(target, Date.now());
-      try {
-        await dumpBeforeLoad(store, bucket, target, before);
-      } catch (err) {
-        console.error(`[store] load for user=${target}: the dump before it failed; nothing changed:`, err);
-        return c.json({ error: 'Dumping the store as it stands failed, so nothing was loaded. The Worker log has the error.' }, 502);
+      const object = await bucket.get(key);
+      if (!object) return c.json({ error: `${key} went away since the dry run.` }, 404);
+
+      let before: string | null = null;
+      if (current.loading) {
+        console.log(`[store] load for user=${target} starts over on a store already loading ${current.loading.key}; no dump taken first`);
+      } else {
+        before = beforeLoadKey(target, Date.now());
+        try {
+          await dumpBeforeLoad(store, bucket, target, before);
+        } catch (err) {
+          console.error(`[store] load for user=${target}: the dump before it failed; nothing changed:`, err);
+          return c.json({ error: 'Dumping the store as it stands failed, so nothing was loaded. The Worker log has the error.' }, 502);
+        }
       }
 
-      let begun: { loadId: string; undo: string | null };
+      let begun: { loadId: string; undo: string | null; before: string | null };
       try {
-        begun = await store.loadBegin({ key });
+        begun = await store.loadBegin({ key, before });
       } catch (err) {
         // The call may have emptied the store before it failed to answer. Not "nothing
         // changed": `stats` says whether the store is loading.
@@ -497,11 +515,10 @@ export const admin = new Hono<AppEnv>()
           502,
         );
       }
+      before = begun.before;
 
-      const object = await bucket.get(key);
       let result;
       try {
-        if (!object) throw new Error(`${key} went away between the dry run and the load`);
         result = await streamDump(store, object.body, begun.loadId);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -516,7 +533,7 @@ export const admin = new Hono<AppEnv>()
             hint: [
               'The store is refusing every request until it is whole again.',
               begun.undo ? `POST /api/admin/store/restore with { "user", "bookmark": "${begun.undo}", "confirm": "RESTORE" } puts it back as it was.` : null,
-              `Or load ${before}, the dump taken just before this load; or call this again to start over.`,
+              before ? `Or load ${before}, the dump taken before the store was emptied; or call this again to start over.` : 'Or call this again to start over.',
             ]
               .filter(Boolean)
               .join(' '),
@@ -539,7 +556,7 @@ export const admin = new Hono<AppEnv>()
         stats: result.stats,
         note: [
           `The store now holds ${key}; every device of the account will resync from a snapshot.`,
-          begun.undo ? 'To undo, restore to the `undo` bookmark.' : `To undo, load ${before}; this runtime keeps no bookmarks.`,
+          begun.undo ? 'To undo, restore to the `undo` bookmark.' : before ? `To undo, load ${before}; this runtime keeps no bookmarks.` : 'There is nothing to undo to: this runtime keeps no bookmarks and no dump was taken first.',
           result.migrated.length ? `Schema files the dump lacked were applied: ${result.migrated.join(', ')}.` : null,
           result.foreignKeyViolations ? `${result.foreignKeyViolations} row(s) point at a parent the dump does not hold; the dump was read while the store was written to.` : null,
         ]

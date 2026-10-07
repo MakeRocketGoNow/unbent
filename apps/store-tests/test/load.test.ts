@@ -31,7 +31,7 @@ async function dumpOf(stub: ReturnType<typeof freshStore>['stub'], userId: strin
 /** The route's loop, with the page size a parameter: begin, every page, finish. */
 async function load(stub: ReturnType<typeof freshStore>['stub'], text: string, pageBytes = 8 * 1024 * 1024) {
   const bytes = new TextEncoder().encode(text);
-  const { loadId, undo } = await stub.loadBegin({ key: 'stores/test/2026-10-06.sql' });
+  const { loadId, undo } = await stub.loadBegin({ key: 'stores/test/2026-10-06.sql', before: null });
   let pages = 0;
   for (let at = 0; at < bytes.byteLength; at += pageBytes) {
     await stub.loadPage(loadId, bytes.subarray(at, Math.min(bytes.byteLength, at + pageBytes)));
@@ -135,9 +135,9 @@ describe('loading a dump', () => {
     const { userId, stub } = freshStore('load-marker');
     await populate(stub);
     const text = await dumpOf(stub, userId);
-    const { loadId } = await stub.loadBegin({ key: 'stores/test/2026-10-06.sql' });
+    const { loadId } = await stub.loadBegin({ key: 'stores/test/2026-10-06.sql', before: 'stores/test/first-before-load.sql' });
     const stats = await stub.stats();
-    expect(stats.loading).toMatchObject({ id: loadId, key: 'stores/test/2026-10-06.sql', pages: 0 });
+    expect(stats.loading).toMatchObject({ id: loadId, key: 'stores/test/2026-10-06.sql', pages: 0, before: 'stores/test/first-before-load.sql' });
     expect(stats.counts.notes).toBe(0);
 
     // Evicted mid-load: the marker is read before any schema is built, the store still
@@ -157,7 +157,13 @@ describe('loading a dump', () => {
     );
     expect(tables).toEqual([]);
 
-    // Starting again is the way out, and a page of the old load is refused once it has.
+    // Starting again is the way out — the route does it with no dump taken first, since
+    // the store holds nothing worth one — and the object keeps the first attempt's ways
+    // back rather than offering a bookmark of the half-loaded store. A page of the old
+    // load is refused once it has.
+    const again = await woke.loadBegin({ key: 'stores/test/2026-10-07.sql', before: null });
+    expect(again.before).toBe('stores/test/first-before-load.sql');
+    expect((await woke.stats()).loading).toMatchObject({ id: again.loadId, before: 'stores/test/first-before-load.sql', undo: null });
     const result = await load(woke, text);
     expect(result.stats.loading).toBeNull();
     await expect(woke.loadPage(loadId, new Uint8Array())).rejects.toThrow(/no load is in flight/);
@@ -209,11 +215,17 @@ describe('loading a dump', () => {
   it('a wipe ends a load, as account deletion must', async () => {
     const { stub } = freshStore('load-wipe');
     await populate(stub);
-    await stub.loadBegin({ key: 'stores/test/2026-10-06.sql' });
+    await stub.loadBegin({ key: 'stores/test/2026-10-06.sql', before: null });
     await stub.wipe();
     expect(await stub.stats()).toMatchObject({ wiped: true, loading: null });
-    // And a wiped store takes a load: the marker goes on after `deleteAll`.
     expect((await stub.usage()).wiped).toBe(true);
+    // And a wiped store takes a load: the marker goes on after `deleteAll`.
+    const text = await (async () => {
+      const { userId: other, stub: source } = freshStore('load-wipe-source');
+      await populate(source);
+      return (await dumpOf(source, other)).replace(`('user_id', '${other}')`, `('user_id', '${(await stub.ping()).userId}')`);
+    })();
+    expect((await load(stub, text)).stats.counts.notes).toBe(2);
   });
 
   it('reads each row once past the index rebuild and the final count, at three thousand notes', async () => {
@@ -251,7 +263,6 @@ describe('loading a dump', () => {
     // four tables they shadow, and `stats` at the end counts every table; nothing else
     // should walk one. Measured 2026-10-06: 12,563 read for 9,502 rows, 4,001 of them
     // indexed.
-    //
     const indexed = before.counts.notes + before.counts.attachment_text + before.counts.note_fields + before.counts.tags;
     expect(rowsWritten).toBeGreaterThanOrEqual(rows);
     expect(rowsRead).toBeLessThanOrEqual(indexed + rows + 200);

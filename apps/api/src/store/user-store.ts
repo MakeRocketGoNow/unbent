@@ -390,26 +390,42 @@ export class UserStore extends DurableObject<StoreEnv> {
    * restore route to wind back to if the load was a mistake; null where the runtime keeps
    * no history (Miniflare), which is what the dump the route writes first is for. Taken
    * before anything is deleted, and a failure to take it stops the load before it starts.
+   * `before` is that dump's key, kept here with the bookmark so a load started over on a
+   * store that is already loading — the way out of a failed one — keeps the real ways
+   * back: a bookmark taken now would be of the half-loaded store, and the route writes
+   * no second dump of one (found in review).
+   *
+   * Between the `deleteAll` and the marker there is one await of storage. The runtime
+   * commits a call's storage writes together up to an await on something that is not
+   * storage, so the two land as one; a crash in that await would leave an empty object
+   * with no marker, which the next wake would build a schema into, and the dump the
+   * route wrote first is the answer to that as to any mistaken load.
    */
-  async loadBegin(dump: { key: string }): Promise<{ loadId: string; undo: string | null }> {
+  async loadBegin(dump: { key: string; before: string | null }): Promise<{ loadId: string; undo: string | null; before: string | null }> {
     let undo: string | null;
-    try {
-      undo = await this.ctx.storage.getCurrentBookmark();
-    } catch (err) {
-      if (!/does not implement point-in-time recovery/i.test(err instanceof Error ? err.message : String(err))) throw err;
-      undo = null;
+    let before = dump.before;
+    if (this.loading) {
+      undo = this.loading.undo;
+      before = this.loading.before ?? before;
+    } else {
+      try {
+        undo = await this.ctx.storage.getCurrentBookmark();
+      } catch (err) {
+        if (!/does not implement point-in-time recovery/i.test(err instanceof Error ? err.message : String(err))) throw err;
+        undo = null;
+      }
+      // Miniflare answers a bookmark of zeros rather than refusing (measured 2026-10-06);
+      // nothing can be restored to it, so the answer must not offer it.
+      if (undo !== null && /^[0-]+$/.test(undo)) undo = null;
     }
-    // Miniflare answers a bookmark of zeros rather than refusing (measured 2026-10-06);
-    // nothing can be restored to it, so the answer must not offer it.
-    if (undo !== null && /^[0-]+$/.test(undo)) undo = null;
     await this.ctx.storage.deleteAll();
-    const marker: LoadMarker = { id: crypto.randomUUID(), key: dump.key, startedAt: Date.now(), pages: 0, statements: 0 };
+    const marker: LoadMarker = { id: crypto.randomUUID(), key: dump.key, startedAt: Date.now(), pages: 0, statements: 0, undo, before };
     this.ctx.storage.kv.put(LOADING_KEY, marker);
     this.loading = marker;
     this.wiped = false;
     this.loadInFlight = { id: marker.id, decoder: new TextDecoder(), remainder: '' };
-    console.log(`[store] load begun user=${this.userId} key=${dump.key} undo=${undo ?? 'none'}`);
-    return { loadId: marker.id, undo };
+    console.log(`[store] load begun user=${this.userId} key=${dump.key} undo=${undo ?? 'none'} before=${before ?? 'none'}`);
+    return { loadId: marker.id, undo, before };
   }
 
   /**

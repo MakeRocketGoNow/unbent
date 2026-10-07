@@ -39,7 +39,7 @@ describe('scanStatements', () => {
     expect(rest).toBe('');
   });
 
-  it('gives the same statements however the text is cut into pages', () => {
+  it('gives the same statements however the text is cut into pages (by character; bytes are the store test\'s)', () => {
     const text = [
       `CREATE TABLE t (a TEXT);`,
       `INSERT INTO t VALUES ('héllo; wörld ''quoted''');`,

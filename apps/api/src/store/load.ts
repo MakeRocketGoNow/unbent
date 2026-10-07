@@ -127,6 +127,10 @@ export interface LoadMarker {
   startedAt: number;
   pages: number;
   statements: number;
+  /** The bookmark of the store before the first `loadBegin` of this load; null where the runtime keeps none. */
+  undo: string | null;
+  /** The key of the dump the route wrote before the first `loadBegin`; null when the route wrote none. */
+  before: string | null;
 }
 
 /**

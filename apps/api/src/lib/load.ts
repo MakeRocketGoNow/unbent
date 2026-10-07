@@ -81,9 +81,9 @@ export async function describeDump(bucket: R2Bucket, key: string): Promise<DumpD
   const head = await bucket.head(key);
   if (!head) return null;
   const first = await bucket.get(key, { range: { offset: 0, length: Math.min(head.size, 256) } });
-  const last = head.size > 256 ? await bucket.get(key, { range: { suffix: Math.min(head.size, 512) } }) : first;
   const headText = first ? await first.text() : '';
-  const tailText = last ? await last.text() : '';
+  const last = head.size > 256 ? await bucket.get(key, { range: { suffix: Math.min(head.size, 512) } }) : null;
+  const tailText = head.size > 256 ? (last ? await last.text() : '') : headText;
   const header = headText.split('\n')[0] ?? '';
   const oneMoment = /^-- Nothing was written while the store was read/m.test(tailText)
     ? true
