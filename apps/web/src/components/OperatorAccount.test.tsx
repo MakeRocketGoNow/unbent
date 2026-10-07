@@ -131,6 +131,18 @@ describe('OperatorAccount: wind back', () => {
     expect(screen.getByRole('button', { name: 'Undo the wind-back' })).toBeTruthy();
   });
 
+  it('closes the confirm when the wind-back fails, so a second press cannot restore twice', async () => {
+    vi.mocked(api.previewRestore).mockResolvedValue({ dryRun: true, user: 'u1', bookmark: 'bm-1', current: stats() });
+    vi.mocked(api.restoreStore).mockRejectedValue(new api.ApiError(502, 'The restore may have been applied.'));
+    harness();
+    fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Wind back' }));
+    await flush();
+    expect(screen.getByText('The restore may have been applied.')).toBeTruthy();
+    expect(screen.queryByRole('group', { name: 'Confirm wind back' })).toBeNull();
+  });
+
   it('says restores work on a deployed instance only where the runtime keeps no history', async () => {
     vi.mocked(api.previewRestore).mockRejectedValue(new api.ApiError(501, 'This runtime keeps no history to restore from. Restores work on a deployed instance only.'));
     harness();

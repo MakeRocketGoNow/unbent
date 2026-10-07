@@ -249,11 +249,14 @@ function WindBack({ userId, email }: { userId: string; email: string }) {
     setError(null);
     try {
       const result = await api.restoreStore(userId, { at: ms });
-      setStep({ kind: 'idle' });
       setOutcome({ kind: 'done', at: ms, result, undoAsked: false });
     } catch (err) {
       setError(errorText(err));
     } finally {
+      // Closed either way: after a failure the confirm's counts are of a store that may
+      // already have been wound back, and a second press on it would restore again,
+      // leaving the way back to before the first one in the Worker log alone.
+      setStep({ kind: 'idle' });
       setBusy(false);
       refresh();
     }
@@ -431,16 +434,17 @@ function LoadDump({ userId, email }: { userId: string; email: string }) {
     setError(null);
     try {
       const result = await api.loadDump(userId, dump.key);
-      setStep({ kind: 'idle' });
       setOutcome({ kind: 'done', dump, result, undoAsked: false });
     } catch (err) {
       if (err instanceof LoadFailedError) {
-        setStep({ kind: 'idle' });
         setOutcome({ kind: 'failed', dump, message: errorText(err), undo: err.undo, before: err.before, undoAsked: false });
       } else {
         setError(errorText(err));
       }
     } finally {
+      // Closed either way, as `windBack` closes its own: the confirm quoted a store that
+      // may no longer exist.
+      setStep({ kind: 'idle' });
       setBusy(false);
       refresh();
     }
