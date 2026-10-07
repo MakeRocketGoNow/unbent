@@ -214,8 +214,10 @@ type WindBackOutcome = { kind: 'done'; at: number; result: api.RestoreResult; un
  */
 function WindBack({ userId, email }: { userId: string; email: string }) {
   const queryClient = useQueryClient();
-  // Read once: the input's bounds should not move under it on every render.
-  const [now] = useState(() => Date.now());
+  // Read when the field is focused, not on every render: the bounds should not move
+  // under the field while it is being typed in, but a page left open for an hour must
+  // not grey out the last hour, which is when an operator most often wants to go.
+  const [now, setNow] = useState(() => Date.now());
   const [at, setAt] = useState(() => toLocalInput(now - 3_600_000));
   const [step, setStep] = useState<WindBackStep>({ kind: 'idle' });
   const [outcome, setOutcome] = useState<WindBackOutcome | null>(null);
@@ -304,6 +306,7 @@ function WindBack({ userId, email }: { userId: string; email: string }) {
               value={at}
               min={toLocalInput(now - RESTORE_WINDOW_DAYS * 86_400_000)}
               max={toLocalInput(now)}
+              onFocus={() => setNow(Date.now())}
               disabled={busy || step.kind === 'previewing'}
               onChange={(e) => {
                 setAt(e.target.value);
