@@ -59,11 +59,13 @@ export function OperatorAccount({ userId }: { userId: string }) {
 
   return (
     <div className="panel operator-page">
-      <p>
-        <Link to="/settings/operator">All accounts</Link>
-      </p>
+      {/* The way back on the right of the heading, where the notebook page keeps its
+          "All notebooks": the two sub-pages under Settings should put it in one place. */}
       <div className="panel-head">
         <h2 className="wrap-anywhere">{account?.email ?? userId}</h2>
+        <Link to="/settings/operator" className="link small">
+          All accounts
+        </Link>
       </div>
 
       {account && <AccountFacts account={account} />}
