@@ -322,7 +322,7 @@ export class UserStore extends DurableObject<StoreEnv> {
       counts,
       wiped: false,
       loading: null,
-      lastWriteAt: this.sql.first<{ at: number }>(`SELECT at FROM changes ORDER BY seq DESC LIMIT 1`)?.at ?? null,
+      lastWriteAt: this.lastWriteAt(),
     };
   }
 
@@ -333,13 +333,21 @@ export class UserStore extends DurableObject<StoreEnv> {
     if (this.loading) throw new StoreLoading(this.loading);
     if (this.wiped) return { databaseSize, notes: 0, lastWriteAt: null, wiped: true };
     const counts = this.sql.first<{ live: number; trashed: number }>(`SELECT live, trashed FROM note_counts WHERE id = 1`);
-    const last = this.sql.first<{ at: number }>(`SELECT at FROM changes ORDER BY seq DESC LIMIT 1`);
     return {
       databaseSize,
       notes: (counts?.live ?? 0) + (counts?.trashed ?? 0),
-      lastWriteAt: last?.at ?? null,
+      lastWriteAt: this.lastWriteAt(),
       wiped: false,
     };
+  }
+
+  /**
+   * The newest change-feed row's time, one row off the primary key, or null for a store
+   * nothing has written. `stats` and `usage` both report it, and the directory's copy is
+   * only right if they agree, so it is read here and nowhere else.
+   */
+  private lastWriteAt(): number | null {
+    return this.sql.first<{ at: number }>(`SELECT at FROM changes ORDER BY seq DESC LIMIT 1`)?.at ?? null;
   }
 
   /**
