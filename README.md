@@ -1853,8 +1853,13 @@ in the mirror and come back as orphans the file sweep reclaims.
 1. A new Cloudflare account, with the same names: the Worker, a D1 database, and the
    buckets `wrangler.toml` and the mirror workflow name (`unbent-blobs`,
    `unbent-backups`). Point the domain at it.
-2. Create the database and import the newest `d1/<date>.sql` from the mirror
-   (`wrangler d1 execute <name> --remote --file d1.sql`). Then deploy: every migration
+2. Create the database and import the newest `d1/<date>.sql` from the mirror, after
+   putting its schema first: `node scripts/mirror/order-d1-export.mjs d1.sql ordered.sql`,
+   then `wrangler d1 execute <name> --remote --file ordered.sql`. The export as written
+   puts every index after all the rows, and a fresh database refuses the first row whose
+   foreign key points at a column one of those indexes makes unique — a "foreign key
+   mismatch" that D1's import reports only as `{"D1_RESET_DO":true}`, with nothing
+   imported. Then deploy: every migration
    is recorded in the export, so the deploy's migration step applies nothing, and the
    Worker's secrets come from the password manager, which is the one place they are
    kept — `BETTER_AUTH_SECRET` above all, or every session and every passkey is lost
