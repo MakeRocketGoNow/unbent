@@ -90,7 +90,19 @@ export interface MirrorStatus {
  * bucket, where nothing is dumped and the page says so rather than showing empty
  * numbers; either file is null until its run has written it.
  */
-export type BackupsStatus = { bound: false } | { bound: true; dumps: DumpStatus | null; mirror: MirrorStatus | null };
+export type BackupsStatus =
+  | { bound: false }
+  | {
+      bound: true;
+      dumps: DumpStatus | null;
+      mirror: MirrorStatus | null;
+      /**
+       * The email of every account the dump status names as failing or stale, by id, so
+       * the health card can name them whatever pages of the accounts list have been read.
+       * The status file carries ids alone; the lists are bounded at fifty each.
+       */
+      names: Record<string, string>;
+    };
 
 /** One account as the directory knows it, for the operator's list. */
 export interface OperatorAccount {
@@ -121,6 +133,10 @@ export interface OperatorAccount {
    */
   restore: { at: number; toAt: number; undo: string | null } | null;
 }
+
+/** How many accounts one page of the operator's list carries, and the most a request may ask for. */
+export const OPERATOR_PAGE_SIZE = 50;
+export const OPERATOR_PAGE_MAX = 200;
 
 export interface OperatorAccountsPage {
   /** Newest activity first: the newest write the sweep recorded, else the account's creation. */

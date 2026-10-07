@@ -1,4 +1,5 @@
 import type { OperatorAccount, OperatorAccountsPage } from '@unbent/shared';
+import { OPERATOR_PAGE_SIZE } from '@unbent/shared';
 
 /**
  * The account directory: one D1 row per account, for what the control plane needs to
@@ -155,9 +156,6 @@ const toAccount = (r: OperatorRow): OperatorAccount => ({
   restore: r.restore_at === null || r.restore_to_at === null ? null : { at: r.restore_at, toAt: r.restore_to_at, undo: r.restore_undo },
 });
 
-/** The most accounts one page of the operator's list carries; the route clamps to it. */
-export const OPERATOR_PAGE_MAX = 200;
-
 /**
  * A page of live accounts for the operator page (MAK-171, part 5), with the email from
  * `user`, the daily backup's record of each (migration 0037) and the last wind-back
@@ -168,20 +166,30 @@ export const OPERATOR_PAGE_MAX = 200;
  * not an arbitrary slice of it. The first version walked the table by user id and sorted
  * on the client, which only works while the client reads every page; a list that scales
  * reads the first page and asks for the next. The cursor is the last row's activity and
- * id together (`<ms>:<user id>`), a keyset, so a page is the rows past that pair and
- * never an offset that a row inserted meanwhile would shift. There is no index on the
- * expression, by the directory's rule (0037), so each page scans the live rows of the
- * directory — one row per account, not per note, so thousands at most, and read only
- * when an operator opens the list.
+ * id together (`<ms>:<user id>`), compared as one row value so the planner can seek to
+ * it, and ties on activity — every account 0030 backfilled shares one `created_at` —
+ * are broken by the id. Migration 0039's expression index is on exactly this spelling,
+ * so a page walks the index in order from the top and stops at `LIMIT` rows past the
+ * cursor — no sort of the directory, and the `user` join only for the rows it keeps;
+ * being an expression index, no other statement on the table can pick it up (AGENTS.md).
+ * `EXPLAIN QUERY PLAN` on a database built from the migrations: `SCAN d USING INDEX
+ * idx_account_directory_activity`, with the sweep's and the dump run's plans unchanged.
+ *
+ * The cursor is a position in an order that moves: the sweep rewrites activity hourly.
+ * An account that becomes active after a page was read sits above its cursor and is
+ * not on the next page, until the list's five-minute refetch reads from the top again;
+ * one whose activity went down (a wind-back) can appear on a later page a second time,
+ * which the page dedupes by id. Both are accepted: the alternative is a snapshot of ids
+ * held across pages, for a list an operator reads a few times a day.
  */
-export async function listOperatorAccounts(db: D1Database, after = '', limit = 50): Promise<OperatorAccountsPage> {
+export async function listOperatorAccounts(db: D1Database, after = '', limit: number = OPERATOR_PAGE_SIZE): Promise<OperatorAccountsPage> {
   const cursor = parseCursor(after);
   const { results } = await db
     .prepare(
       `${OPERATOR_SELECT}
         WHERE d.deleted_at IS NULL
-          AND (?1 IS NULL OR COALESCE(d.last_active_at, d.created_at) < ?1 OR (COALESCE(d.last_active_at, d.created_at) = ?1 AND d.user_id < ?2))
-        ORDER BY active_at DESC, d.user_id DESC LIMIT ?3`,
+          AND (?1 IS NULL OR (COALESCE(d.last_active_at, d.created_at), d.user_id) < (?1, ?2))
+        ORDER BY COALESCE(d.last_active_at, d.created_at) DESC, d.user_id DESC LIMIT ?3`,
     )
     .bind(cursor?.activeAt ?? null, cursor?.userId ?? '', limit)
     .all<OperatorRow & { active_at: number }>();
@@ -198,8 +206,8 @@ function parseCursor(after: string): { activeAt: number; userId: string } | null
   return Number.isFinite(activeAt) && userId ? { activeAt, userId } : null;
 }
 
-/** One live account as the operator's list shows it, or null for an id the directory does not hold live. */
-export async function operatorAccount(db: D1Database, userId: string): Promise<OperatorAccount | null> {
+/** One live account's row as the operator's list shows it, or null for an id the directory does not hold live. */
+export async function operatorAccountRow(db: D1Database, userId: string): Promise<OperatorAccount | null> {
   const row = await db.prepare(`${OPERATOR_SELECT} WHERE d.user_id = ?1 AND d.deleted_at IS NULL`).bind(userId).first<OperatorRow>();
   return row ? toAccount(row) : null;
 }

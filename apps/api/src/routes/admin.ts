@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import { deleteKeys } from '../lib/blobs.js';
-import { clearRestore, directoryRow, dropDirectoryRow, listOperatorAccounts, OPERATOR_PAGE_MAX, operatorAccount as readOperatorAccount, recordRestore } from '../lib/directory.js';
+import { clearRestore, directoryRow, dropDirectoryRow, listOperatorAccounts, operatorAccountRow, recordRestore } from '../lib/directory.js';
 import { beginDump } from '../lib/dump.js';
 import { MIRROR_STATUS_KEY, STATUS_KEY, dumpPrefix } from '../lib/backups.js';
 import { beforeLoadKey, describeDump, dumpBeforeLoad, loadReserve, resolveDumpDownload, resolveDumpKey, streamDump } from '../lib/load.js';
@@ -17,6 +17,7 @@ import { SWEEP_TOKEN_HEADER, sweepTokenMatches } from '../lib/sweep-token.js';
 import { BOOKMARK_PATTERN, RESTORE_WINDOW_MS, isRestoreUnsupported, readRestoreAbort, readRestoreRefusal } from '../store/restore.js';
 import type { StoreStats } from '../store/user-store.js';
 import type { AccountDumps, BackupsStatus, DumpStatus, MirrorStatus } from '@unbent/shared';
+import { OPERATOR_PAGE_MAX, OPERATOR_PAGE_SIZE } from '@unbent/shared';
 import type { AppEnv } from '../types.js';
 
 /**
@@ -683,15 +684,26 @@ export const admin = new Hono<AppEnv>()
     const bucket = c.env.BACKUPS;
     if (!bucket) return c.json({ bound: false } satisfies BackupsStatus);
     const [dumps, mirror] = await Promise.all([readStatus<DumpStatus>(bucket, STATUS_KEY), readStatus<MirrorStatus>(bucket, MIRROR_STATUS_KEY)]);
-    return c.json({ bound: true, dumps, mirror } satisfies BackupsStatus);
+    // The status names accounts by id, and the card beside the list names them by
+    // email. The list pages, so it may not hold the account in question; the emails
+    // come with the status instead, one D1 read over the two bounded lists.
+    const ids = [...new Set([...(dumps?.failing.map((f) => f.userId) ?? []), ...(dumps?.stale ?? [])])];
+    const names: Record<string, string> = {};
+    if (ids.length > 0) {
+      const { results } = await c.env.DB.prepare(`SELECT id, email FROM user WHERE id IN (${ids.map((_, i) => `?${i + 1}`).join(', ')})`)
+        .bind(...ids)
+        .all<{ id: string; email: string }>();
+      for (const r of results) names[r.id] = r.email;
+    }
+    return c.json({ bound: true, dumps, mirror, names } satisfies BackupsStatus);
   })
 
   /**
-   * Every live account as the directory knows it, with its email from `user` and the
-   * daily backup's record of its newest dump. One D1 query a page, by user id as the
-   * sweep's `listDirectory` pages; the counts are the last sweep's, which is right for
-   * a view across accounts (`lib/directory.ts`). Logged, as any read of other people's
-   * accounts here is.
+   * A page of live accounts as the directory knows them, with the email from `user` and
+   * the daily backup's record of each one's newest dump. One D1 query a page, newest
+   * activity first with a keyset cursor (`listOperatorAccounts`); the counts are the
+   * last sweep's, which is right for a view across accounts (`lib/directory.ts`).
+   * Logged, as any read of other people's accounts here is.
    */
   .get('/admin/accounts', requireAuth, async (c) => {
     const email = c.get('user')?.email;
@@ -699,7 +711,7 @@ export const admin = new Hono<AppEnv>()
     console.log(`[store] operator=${email} accounts`);
     // `after` is the previous page's `next`; `limit` is clamped, since a page is a D1
     // read and the client has no business asking for more than the list draws.
-    const limit = Math.min(OPERATOR_PAGE_MAX, Math.max(1, Number(c.req.query('limit')) || 50));
+    const limit = Math.min(OPERATOR_PAGE_MAX, Math.max(1, Math.trunc(Number(c.req.query('limit'))) || OPERATOR_PAGE_SIZE));
     return c.json(await listOperatorAccounts(c.env.DB, c.req.query('after') ?? '', limit));
   })
 
@@ -713,7 +725,7 @@ export const admin = new Hono<AppEnv>()
     if (!isOperator(c.env, email)) return c.json({ error: 'Not found' }, 404);
     const id = c.req.param('id');
     console.log(`[store] operator=${email} account user=${id}`);
-    const account = await readOperatorAccount(c.env.DB, id);
+    const account = await operatorAccountRow(c.env.DB, id);
     return account ? c.json(account) : c.json({ error: 'No such account' }, 404);
   })
 

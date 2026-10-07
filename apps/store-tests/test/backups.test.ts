@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { env, runInDurableObject } from 'cloudflare:test';
 import { dumpKey, dumpStores, REFRESH_MS, STATUS_KEY, type DumpStatus } from '@unbent/api/lib/backups';
-import { clearRestore, listOperatorAccounts, operatorAccount, recordRestore } from '@unbent/api/lib/directory';
+import { clearRestore, listOperatorAccounts, operatorAccountRow, recordRestore } from '@unbent/api/lib/directory';
 
 /**
  * The daily dumps (MAK-171, part 2), against real objects, a local D1 carrying the two
@@ -396,7 +396,25 @@ describe('the operator\'s accounts', () => {
     const second = await listOperatorAccounts(env.DB, first.next!, 2);
     expect(second.accounts.map((x) => x.userId)).toEqual([c.id]);
     expect(second.next).toBeNull();
-    expect((await operatorAccount(env.DB, c.id))?.userId).toBe(c.id);
-    expect(await operatorAccount(env.DB, 'nobody')).toBeNull();
+    expect((await operatorAccountRow(env.DB, c.id))?.userId).toBe(c.id);
+    expect(await operatorAccountRow(env.DB, 'nobody')).toBeNull();
+  });
+
+  it('break a tie on activity by id across pages, and leave a deleted account out', async () => {
+    // Every account 0030 backfilled shares one created_at and has no write recorded,
+    // so the real directory is full of ties; the id is what keeps a page from repeating.
+    const made = NOON - 3_600_000;
+    const ids = (await Promise.all(['tie-1', 'tie-2', 'tie-3'].map((l) => account(l, { createdAt: made })))).map((x) => x.id);
+    const gone = await account('tie-gone', { createdAt: made, deletedAt: NOON });
+    const seen: string[] = [];
+    for (let after = ''; ; ) {
+      const page = await listOperatorAccounts(env.DB, after, 1);
+      seen.push(...page.accounts.map((x) => x.userId));
+      if (page.next === null) break;
+      after = page.next;
+    }
+    expect(seen).toEqual([...ids].sort().reverse());
+    expect(seen).not.toContain(gone.id);
+    expect(await operatorAccountRow(env.DB, gone.id)).toBeNull();
   });
 });
