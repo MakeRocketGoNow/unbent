@@ -94,12 +94,28 @@ export async function describeDump(bucket: R2Bucket, key: string): Promise<DumpD
 }
 
 /**
- * Dumps `userId`'s store as it stands to `key`, the file the daily run writes, and
- * returns the bytes written. Budgeted as the daily run is, so an archive's upload is
- * counted and stopped rather than run past the invocation's subrequests.
+ * The subrequests the route spends around the dump it takes first, which that dump's
+ * budget must leave room for: the session and directory reads, the `head` and two
+ * ranged reads of the dry run, `stats`, the `get` of the dump, `loadBegin`, a page per
+ * `LOAD_PAGE_BYTES` of the dump, and `loadFinish`. Counted from the dump's size, which
+ * the dry run already read, so a load that cannot fit the invocation stops before the
+ * pre-load dump starts and long before the store is emptied: running out during the
+ * dump changes nothing, running out between pages leaves the store refusing.
  */
-export async function dumpBeforeLoad(store: DurableObjectStub<UserStore>, bucket: R2Bucket, userId: string, key: string): Promise<number> {
-  const budget = new Budget(SUBREQUEST_BUDGET);
+export function loadReserve(dumpBytes: number): number {
+  return 8 + Math.ceil(dumpBytes / LOAD_PAGE_BYTES) + 2;
+}
+
+/**
+ * Dumps `userId`'s store as it stands to `key`, the file the daily run writes, and
+ * returns the bytes written. Budgeted as the daily run is, less `reserve` for the rest
+ * of the route (`loadReserve`), so an archive's upload is counted and stopped rather
+ * than run past the invocation's subrequests.
+ */
+export async function dumpBeforeLoad(store: DurableObjectStub<UserStore>, bucket: R2Bucket, userId: string, key: string, reserve: number): Promise<number> {
+  const budget = new Budget(SUBREQUEST_BUDGET - reserve);
+  // The dump's own smallest cost: `dumpBegin` and one `put`.
+  if (budget.left < 2) throw new Error(`the load needs ${reserve} subrequests and the dump before it at least 2 more, past the ${SUBREQUEST_BUDGET} one invocation may make`);
   const dump = await beginDump(store, userId, { beforeSlice: () => budget.take() });
   return upload(bucket, key, dump.chunks!, budget, LOAD_PAGE_BYTES);
 }

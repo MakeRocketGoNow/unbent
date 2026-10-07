@@ -7,7 +7,7 @@ import { withRepos } from '../lib/repos-middleware.js';
 import { deleteKeys } from '../lib/blobs.js';
 import { directoryRow, dropDirectoryRow } from '../lib/directory.js';
 import { beginDump } from '../lib/dump.js';
-import { beforeLoadKey, describeDump, dumpBeforeLoad, resolveDumpKey, streamDump } from '../lib/load.js';
+import { beforeLoadKey, describeDump, dumpBeforeLoad, loadReserve, resolveDumpKey, streamDump } from '../lib/load.js';
 import { isOperator } from '../lib/instance.js';
 import { userPrefix } from '../lib/repo.js';
 import { storeFor } from '../lib/store-client.js';
@@ -494,10 +494,10 @@ export const admin = new Hono<AppEnv>()
       } else {
         before = beforeLoadKey(target, Date.now());
         try {
-          await dumpBeforeLoad(store, bucket, target, before);
+          await dumpBeforeLoad(store, bucket, target, before, loadReserve(described.size));
         } catch (err) {
           console.error(`[store] load for user=${target}: the dump before it failed; nothing changed:`, err);
-          return c.json({ error: 'Dumping the store as it stands failed, so nothing was loaded. The Worker log has the error.' }, 502);
+          return c.json({ error: `Dumping the store as it stands failed, so nothing was loaded: ${err instanceof Error ? err.message : String(err)}` }, 502);
         }
       }
 
