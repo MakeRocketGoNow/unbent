@@ -11,5 +11,11 @@ import { operatorAccountsQuery } from '../queries.js';
  */
 export const Route = createFileRoute('/settings/operator_/$userId')({
   loader: ({ context: { queryClient } }) => queryClient.ensureQueryData(operatorAccountsQuery()),
-  component: () => <OperatorAccount userId={Route.useParams().userId} />,
+  // Keyed by the account: the router reuses the component when only the param changes,
+  // and an outcome held for one account — a wind-back's undo bookmark — must not be
+  // offered against the next.
+  component: () => {
+    const { userId } = Route.useParams();
+    return <OperatorAccount key={userId} userId={userId} />;
+  },
 });
