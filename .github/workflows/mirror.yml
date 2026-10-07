@@ -138,13 +138,21 @@ jobs:
       #     mirror's copy is a fault, and rclone refuses it as "immutable file modified"
       #     rather than attempting an overwrite the retention lock would refuse anyway. The
       #     run goes red either way; this way says why.
+      #   --checksum: compare size and hash, not modtime. rclone reads an S3 object's modtime
+      #     from its metadata, a HEAD per object per side per night, and when two copies
+      #     match but their modtimes differ it rewrites the copy's modtime, a server-side
+      #     copy onto itself that the lock refuses with an error that does not say why. A
+      #     key put again with the same bytes — an upload replayed after its first `put`
+      #     landed — would do exactly that. The hash is the ETag from the listing, and
+      #     where a multipart upload has none the size decides, which for immutable keys
+      #     is the comparison meant anyway.
       #   --fast-list: one listing call per thousand keys instead of one per prefix.
       #   --use-json-log with the tally at NOTICE: the final line is a JSON object with the
       #     counts, which write-status.mjs reads; everything quieter is not logged at all.
       #     The log goes to a file, never to the run's own log: the minute-by-minute tallies
       #     name the files in flight, and a file's key is a customer's filename.
       RCLONE_COPY_FLAGS: >-
-        --immutable --fast-list --transfers 16 --checkers 16
+        --immutable --checksum --fast-list --transfers 16 --checkers 16
         --use-json-log --log-level NOTICE --stats-log-level NOTICE --stats 1m
     steps:
       # `secrets` cannot be read in an `if:`, so presence is decided once here, as an
