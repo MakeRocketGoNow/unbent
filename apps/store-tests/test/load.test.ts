@@ -65,6 +65,19 @@ async function populate(stub: ReturnType<typeof freshStore>['stub']) {
   return { kept, trashed, notebook };
 }
 
+/**
+ * Rows the runtime cannot run as one statement: a body of a megabyte and a half and a
+ * file's text of half a million characters, each a dump statement past
+ * `MAX_STATEMENT_CHARS`, which the load binds rather than runs as text. The real corpus
+ * is PDFs whose extracted text runs long, so this is every archive's load.
+ */
+async function populateBig(stub: ReturnType<typeof freshStore>['stub']) {
+  const big = await stub.create({ id: crypto.randomUUID(), title: 'Big body', body: `start; it's long. ${'word '.repeat(300_000)} the needle-in-a-haystack end`, tags: [] });
+  await stub.recordAttachment({ id: `${big.id}-scan`, noteId: big.id, filename: 'long.pdf', contentType: 'application/pdf', size: 10, r2Key: `users/x/${big.id}/long.pdf` });
+  await stub.recordText({ attachmentId: `${big.id}-scan`, noteId: big.id, filename: 'long.pdf', text: `${'text '.repeat(100_000)} a rare-word at the end` });
+  return big;
+}
+
 describe('loading a dump', () => {
   it('puts a changed store back as the dump had it, with its counts, its search index and a new epoch', async () => {
     const { userId, stub } = freshStore('load');
@@ -113,6 +126,24 @@ describe('loading a dump', () => {
     // The store can be written to again, and the write records after the dump's counter.
     await stub.create({ id: crypto.randomUUID(), title: 'After the load', body: 'written again', tags: [] });
     expect((await stub.stats()).counts.notes).toBe(before.counts.notes + 1);
+  });
+
+  it('runs a row too long for one statement with its values bound, whole and across pages', async () => {
+    const { userId, stub } = freshStore('load-big');
+    await populate(stub);
+    const big = await populateBig(stub);
+    const before = await stub.stats();
+    const text = await dumpOf(stub, userId);
+    expect(text.length).toBeGreaterThan(2_000_000);
+    for (const size of [8 * 1024 * 1024, 65_536]) {
+      const result = await load(stub, text, size);
+      expect(result.stats.counts, `page size ${size}`).toEqual(before.counts);
+      const note = await stub.get(big.id);
+      expect(note!.body.length).toBeGreaterThan(1_500_000);
+      expect(note!.body.endsWith('the needle-in-a-haystack end')).toBe(true);
+      expect((await stub.search('needle-in-a-haystack', 10)).map((r) => r.id)).toEqual([big.id]);
+      expect((await stub.search('rare-word', 10)).map((r) => r.id)).toEqual([big.id]);
+    }
   });
 
   it('loads the same whatever the page size, with statements and characters split across pages', async () => {

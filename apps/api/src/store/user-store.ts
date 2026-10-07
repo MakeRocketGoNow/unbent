@@ -16,7 +16,7 @@ import {
 import { AttachmentsStore, type FileSummary } from './attachments.js';
 import { DeletedBlobs } from './deleted-blobs.js';
 import { cutByBytes, Feed, FEED_META, FEED_PAGE_BYTES, lastWordPerEntity, type FeedRow } from './feed.js';
-import { classify, scanStatements, statementText, StoreLoading, type LoadMarker } from './load.js';
+import { classify, liftLiterals, MAX_STATEMENT_CHARS, scanStatements, statementText, StoreLoading, type LoadMarker } from './load.js';
 import { appliedMigrations, migrate } from './migrate.js';
 import { NotesStore, type CountOptions, type ListOptions, type SearchFilters } from './notes.js';
 import { cursorAfter, nextCursor } from './notes-shared.js';
@@ -527,7 +527,15 @@ export class UserStore extends DurableObject<StoreEnv> {
     });
     if (run.length === 0) return 0;
     this.ctx.storage.transactionSync(() => {
-      for (const statement of run) this.sql.exec(statement);
+      for (const statement of run) {
+        // A row too long to run as text runs with its values bound; see `MAX_STATEMENT_CHARS`.
+        if (statement.length <= MAX_STATEMENT_CHARS) {
+          this.sql.exec(statement);
+        } else {
+          const { sql, values } = liftLiterals(statementText(statement));
+          this.sql.exec(sql, ...values);
+        }
+      }
     });
     return run.length;
   }

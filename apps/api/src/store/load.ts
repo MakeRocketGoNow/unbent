@@ -107,6 +107,55 @@ export function classify(statement: string): 'run' | 'skip' | 'refuse' {
   return 'refuse';
 }
 
+/**
+ * The most characters of SQL text one statement may be run as. The runtime refuses a
+ * statement over 100 KB with `SQLITE_TOOBIG` (measured 2026-10-06: 99,000 characters
+ * run, 101,000 do not), and a dump writes each row as one `INSERT` with its values as
+ * literals — a note body of up to 1.8 MB, a file's text of up to half a million
+ * characters. A statement past this runs with its literals bound instead
+ * (`liftLiterals`); a bound value may be 2 MB, which a body fits.
+ */
+export const MAX_STATEMENT_CHARS = 90_000;
+
+/**
+ * `statement` with every string and blob literal replaced by a numbered parameter, and
+ * the values to bind to them in order. Numbers and `NULL` stay in the text, so each
+ * value's type is exactly what the dump wrote; a `''` inside a literal is one quote, and
+ * an `X'…'` literal binds as bytes. Scanned by `indexOf`, not a regular expression, since
+ * the literals are the size that brought the statement here.
+ */
+export function liftLiterals(statement: string): { sql: string; values: Array<string | Uint8Array> } {
+  const values: Array<string | Uint8Array> = [];
+  let sql = '';
+  let at = 0;
+  for (;;) {
+    const open = statement.indexOf("'", at);
+    if (open === -1) break;
+    let close = open + 1;
+    for (;;) {
+      close = statement.indexOf("'", close);
+      if (close === -1) throw new Error('the dump holds a literal that never closes');
+      if (statement[close + 1] === "'") {
+        close += 2;
+        continue;
+      }
+      break;
+    }
+    const blob = open > 0 && (statement[open - 1] === 'X' || statement[open - 1] === 'x');
+    const body = statement.slice(open + 1, close);
+    sql += `${statement.slice(at, blob ? open - 1 : open)}?${values.length + 1}`;
+    values.push(blob ? hexBytes(body) : body.replace(/''/g, "'"));
+    at = close + 1;
+  }
+  return { sql: sql + statement.slice(at), values };
+}
+
+function hexBytes(hex: string): Uint8Array {
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  return out;
+}
+
 /** The first line of a dump: whose it is. See `lib/dump.ts`, which writes it. */
 export function dumpOwner(header: string): string | null {
   return /^-- Unbent note store of account (\S+), dumped /.exec(header)?.[1] ?? null;

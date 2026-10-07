@@ -1955,7 +1955,8 @@ written to (the file's last lines say), and the store as it is now. With
    store is never read as an empty one. The mark is in storage, so it holds across an
    eviction.
 3. The file is streamed into the object in pages, each run in one transaction with
-   foreign keys off, as `sqlite3` would load it.
+   foreign keys off, as `sqlite3` would load it; a row too long to run as one statement
+   (a long body, a file's text) runs with its values bound.
 4. The object checks that the dump's `_meta.user_id` is its own and that its schema
    files are ones this code knows, applies any the dump lacked (a dump from before a
    schema file loads at the current version, not the dump's), names a new feed epoch so

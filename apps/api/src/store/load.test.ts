@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classify, dumpOwner, scanStatements, statementText } from './load.js';
+import { classify, dumpOwner, liftLiterals, scanStatements, statementText } from './load.js';
 
 /**
  * The statement scanner a load runs a dump through, on the shapes a dump holds: literals
@@ -78,6 +78,18 @@ describe('classify', () => {
     expect(classify(`DROP TABLE notes;`)).toBe('refuse');
     expect(classify(`DELETE FROM notes;`)).toBe('refuse');
     expect(classify(`ATTACH 'x' AS y;`)).toBe('refuse');
+  });
+});
+
+describe('liftLiterals', () => {
+  it('binds every string and blob literal, keeps numbers and NULL in the text, and unescapes quotes', () => {
+    const big = "it''s ".repeat(20_000);
+    const { sql, values } = liftLiterals(`INSERT INTO notes (id, title, body, n, k, b) VALUES ('n1', 'T; -- not a comment', '${big}', 42, NULL, X'00ff10');`);
+    expect(sql).toBe(`INSERT INTO notes (id, title, body, n, k, b) VALUES (?1, ?2, ?3, 42, NULL, ?4);`);
+    expect(values.slice(0, 2)).toEqual(['n1', 'T; -- not a comment']);
+    expect(values[2]).toBe("it's ".repeat(20_000));
+    expect(values[3]).toEqual(new Uint8Array([0, 255, 16]));
+    expect(() => liftLiterals(`INSERT INTO t VALUES ('open`)).toThrow(/never closes/);
   });
 });
 
