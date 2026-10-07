@@ -180,6 +180,9 @@ export async function listOperatorAccounts(db: D1Database, after = '', limit = 2
  * scheduling one, so a restore that never gets here leaves nothing rather than an older
  * wind-back — and never allowed to fail the restore's answer: the bookmark is in the
  * answer and the Worker's log whether or not this row is written.
+ *
+ * One row, so only the latest wind-back is undoable from the page: wind back twice and
+ * undo the second, and the first one's bookmark is in the Worker's log alone.
  */
 export async function recordRestore(db: D1Database, userId: string, restore: { at: number; toAt: number; undo: string | null }): Promise<void> {
   await db
