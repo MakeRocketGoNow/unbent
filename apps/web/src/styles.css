@@ -9615,9 +9615,9 @@ html.host-ios .viewer {
 .operator-page .operator-facts dt,
 .operator-page .operator-table th { font-size: 0.75rem; }
 
-/* The account's facts: the About page's list, at this page's size. The id is a word in
-   a cell, not a bar across it — `.panel code` is full-width for the MCP address. */
-.operator-facts { font-size: 0.85rem; }
+/* The account's facts: the About page's list, at this page's size, which `.operator-page`
+   above already sets. The id is a word in a cell, not a bar across it — `.panel code` is
+   full-width for the MCP address. */
 .panel .operator-facts code { width: auto; align-self: flex-start; }
 
 /*
