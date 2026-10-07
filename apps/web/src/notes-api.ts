@@ -975,8 +975,13 @@ export interface StoreStats {
   migrations: string[];
   counts: Record<string, number>;
   wiped: boolean;
-  /** Set while a dump is being loaded: the counts are zero and the store refuses every data call. */
-  loading: { id: string; key: string; startedAt: number; pages: number } | null;
+  /**
+   * Set while a dump is being loaded: the counts are zero and the store refuses every
+   * data call. `undo` is the bookmark the load took as it began and `before` the dump
+   * the route wrote first — the two ways back, kept by the store itself so a load that
+   * failed is recoverable from any page that reads it, not only the one that pressed.
+   */
+  loading: { id: string; key: string; startedAt: number; pages: number; undo: string | null; before: string | null } | null;
 }
 
 export async function operatorBackups(): Promise<BackupsStatus> {

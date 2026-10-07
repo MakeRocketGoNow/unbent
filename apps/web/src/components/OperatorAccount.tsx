@@ -61,7 +61,7 @@ export function OperatorAccount({ userId }: { userId: string }) {
 
       <section className="settings-section">
         <h3>Store</h3>
-        <StoreFacts stats={stats.data ?? null} error={stats.error} />
+        <StoreFacts stats={stats.data ?? null} error={stats.error} userId={userId} email={account?.email ?? userId} />
         <p>
           <a href={api.storeDumpUrl(userId)} download>
             Download the store as it is now
@@ -128,18 +128,10 @@ const TABLE_LABELS: Record<string, string> = {
  * state where those are not the point — wiped, or refusing everything while a dump is
  * loaded into it. Live, unlike the directory's numbers above.
  */
-function StoreFacts({ stats, error }: { stats: api.StoreStats | null; error: Error | null }) {
+function StoreFacts({ stats, error, userId, email }: { stats: api.StoreStats | null; error: Error | null; userId: string; email: string }) {
   if (error) return <p className="bad small">{errorText(error)}</p>;
   if (!stats) return <p className="muted small">Reading the store…</p>;
-  if (stats.loading) {
-    return (
-      <p className="bad small">
-        Loading {stats.loading.key} since {formatMoment(stats.loading.startedAt)}, {stats.loading.pages} pages so far, and refusing every
-        request until it is whole. If the load that started it has ended, load a dump again below: the one it was loading, or the
-        before-load dump it wrote first. The Worker log&apos;s &quot;load for user&quot; lines have its undo bookmark.
-      </p>
-    );
-  }
+  if (stats.loading) return <LoadingStore loading={stats.loading} userId={userId} email={email} />;
   if (stats.wiped) return <p className="muted small">The store is empty: wiped, and nothing has woken it since.</p>;
   const schema = stats.migrations[stats.migrations.length - 1] ?? 'none';
   return (
@@ -161,6 +153,62 @@ function StoreFacts({ stats, error }: { stats: api.StoreStats | null; error: Err
         <dd>{schema}</dd>
       </div>
     </dl>
+  );
+}
+
+/**
+ * A store that is being loaded, or was left so by a load that failed: refusing every
+ * request until it is whole. The store's own marker carries the two ways back, so they
+ * are offered here — from any page that reads the store, after a reload, by a second
+ * operator — and not only in the state of the page that pressed Load. Undo is the same
+ * confirm the load's own outcome offers.
+ */
+function LoadingStore({ loading, userId, email }: { loading: NonNullable<api.StoreStats['loading']>; userId: string; email: string }) {
+  const queryClient = useQueryClient();
+  const [asked, setAsked] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function undo() {
+    const release = holdPage();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.restoreStore(userId, { bookmark: loading.undo! });
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      release();
+      setAsked(false);
+      setBusy(false);
+      void queryClient.invalidateQueries({ queryKey: keys.storeStats(userId) });
+      void queryClient.invalidateQueries({ queryKey: keys.operatorAccounts() });
+    }
+  }
+  return (
+    <>
+      <p className="bad small">
+        Loading {loading.key} since {formatMoment(loading.startedAt)}, {loading.pages} pages so far, and refusing every request until it is
+        whole. If the load that started it has ended, there are two ways back.
+        {loading.before && <> The dump taken before it, {loading.before.split('/').pop()}, is in the list below; loading it puts the store back.</>}
+        {loading.undo ? <> Or undo the load, which winds back to the bookmark it took as it began.</> : <> Or load the dump it was loading again.</>}
+      </p>
+      {loading.undo &&
+        (!asked ? (
+          <Button tone="danger" disabled={busy} onClick={() => setAsked(true)}>
+            Undo the load
+          </Button>
+        ) : (
+          <Confirm
+            label="Confirm undo load"
+            question={`Put ${email}'s store back as it was before the load?`}
+            detail="Winds back to the bookmark the load took as it began, the store as it stood just before it was emptied. Every device resyncs."
+            busy={busy}
+            onCancel={() => setAsked(false)}
+            actions={[{ label: 'Undo the load', busyLabel: 'Restoring…', tone: 'danger', onConfirm: undo }]}
+          />
+        ))}
+      {error && <p className="bad small">{error}</p>}
+    </>
   );
 }
 

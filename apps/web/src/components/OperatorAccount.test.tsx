@@ -316,13 +316,20 @@ describe('OperatorAccount: the store', () => {
 
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     client.setQueryData(keys.operatorAccounts(), [account]);
-    client.setQueryData(keys.storeStats('u1'), { ...stats(), loading: { id: 'l1', key: 'stores/u1/2026-10-05.sql', startedAt: now, pages: 2 } });
+    client.setQueryData(keys.storeStats('u1'), {
+      ...stats(),
+      loading: { id: 'l1', key: 'stores/u1/2026-10-05.sql', startedAt: now, pages: 2, undo: '00000001-00000002-00000003-0000000000000004', before: 'stores/u1/2026-10-06T12-00-00Z-before-load.sql' },
+    });
     vi.mocked(api.accountDumps).mockResolvedValue(dumps);
     render(
       <QueryClientProvider client={client}>
         <OperatorAccount userId="u1" />
       </QueryClientProvider>,
     );
-    expect(screen.getByText(/Loading stores\/u1\/2026-10-05.sql since/).textContent).toContain('refusing every request until it is whole');
+    const notice = screen.getByText(/Loading stores\/u1\/2026-10-05.sql since/);
+    expect(notice.textContent).toContain('refusing every request until it is whole');
+    // The ways back come from the store's own marker, so a reload or a second operator still has them.
+    expect(notice.textContent).toContain('2026-10-06T12-00-00Z-before-load.sql, is in the list below');
+    expect(screen.getByRole('button', { name: 'Undo the load' })).toBeTruthy();
   });
 });
