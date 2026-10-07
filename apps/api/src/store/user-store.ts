@@ -526,7 +526,7 @@ export class UserStore extends DurableObject<StoreEnv> {
       return kind === 'run';
     });
     if (run.length === 0) return 0;
-    this.ctx.storage.transactionSync(() => {
+    this.sql.tx(() => {
       for (const statement of run) {
         // A row too long to run as text runs with its values bound; see `MAX_STATEMENT_CHARS`.
         if (statement.length <= MAX_STATEMENT_CHARS) {
