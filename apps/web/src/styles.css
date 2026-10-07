@@ -9593,3 +9593,199 @@ html.host-ios .viewer {
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
     env(safe-area-inset-left);
 }
+
+/* ======================================================================================
+   The operator page (MAK-171, part 5): the backup's health, the accounts, one account.
+   ====================================================================================== */
+
+/*
+   Two cards, one per half of the backup, side by side where there is room and stacked
+   on a phone. Each leads with one word and a dot in its colour: an operator glancing at
+   this wants "Healthy" or "Failed" before any number. A bad state takes the border too,
+   as a confirm's border takes its action's tone — red around what has gone wrong, and
+   plain around a half that has simply not run yet.
+*/
+.health-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 0.9rem;
+  width: 100%;
+  max-width: 46rem;
+}
+.health-card {
+  min-width: 0;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 0.45rem;
+}
+.health-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.health-dot {
+  flex: none;
+  width: 0.6rem;
+  height: 0.6rem;
+  align-self: center;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.health-word { font-weight: 600; }
+.health-title { font-size: 0.85rem; color: var(--muted); }
+.health-healthy .health-dot { background: var(--good); }
+.health-healthy .health-word { color: var(--good); }
+.health-failed .health-dot,
+.health-stale .health-dot { background: var(--bad); }
+.health-failed .health-word,
+.health-stale .health-word { color: var(--bad); }
+.health-failed,
+.health-stale { border-color: var(--bad); }
+.health-when { margin: 0.3rem 0 0; }
+
+/* The counts: a label over each number, in a row that wraps, so a figure is found by its
+   name rather than read out of a sentence. The account page's store counts share it. */
+.health-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
+  gap: 0.4rem 1rem;
+  width: 100%;
+  margin: 0.6rem 0 0;
+}
+.health-facts > div { display: flex; flex-direction: column; min-width: 0; }
+.health-facts dt { font-size: 0.75rem; color: var(--muted); }
+.health-facts dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.health-reasons {
+  margin: 0.6rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--bad);
+}
+.health-reasons li + li { margin-top: 0.2rem; }
+/* A failed dump in a row or a fact: the word red, the error under it in the muted small. */
+.dump-failed { display: flex; flex-direction: column; gap: 0.1rem; }
+.dump-error { max-width: 28rem; }
+.store-facts { max-width: 46rem; margin: 0 0 0.7rem; }
+
+/*
+   The accounts. A table on a desktop, where five columns of numbers line up and an eye
+   runs down one of them; on a phone each row becomes a card with the column names as
+   labels, since five columns in 360px is a table nobody can read. The email is the
+   row's one link, drawn in the page's ink so the table does not read as a column of
+   links, and underlined on hover so it still reads as one.
+*/
+.operator-table-wrap { width: 100%; overflow-x: auto; }
+.operator-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.operator-table th,
+.operator-table td {
+  padding: 0.5rem 1rem 0.5rem 0;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border);
+}
+.operator-table th { font-weight: 500; font-size: 0.75rem; color: var(--muted); }
+.operator-table th:last-child,
+.operator-table td:last-child { padding-right: 0; }
+.operator-table th:nth-child(2),
+.operator-table td:nth-child(2),
+.operator-table th:nth-child(3),
+.operator-table td:nth-child(3) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+/* Every cell but the account's keeps to one line; a figure split over two reads as two. */
+.operator-table td:not(:first-child) { white-space: nowrap; }
+/* The failure's error is the one cell that may run long; it wraps where it must. */
+.operator-table .dump-error { white-space: normal; }
+.operator-account-link { color: var(--fg); text-decoration: none; }
+.operator-account-link:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 0.15em; }
+@media (width <= 860px) {
+  .operator-table thead { display: none; }
+  .operator-table,
+  .operator-table tbody,
+  .operator-table tr,
+  .operator-table td { display: block; }
+  .operator-table tr { padding: 0.55rem 0; border-bottom: 1px solid var(--border); }
+  .operator-table td {
+    display: grid;
+    grid-template-columns: 6.5rem minmax(0, 1fr);
+    gap: 0.5rem;
+    padding: 0.15rem 0;
+    border: 0;
+    white-space: normal;
+  }
+  .operator-table td::before {
+    content: attr(data-label);
+    font-size: 0.75rem;
+    color: var(--muted);
+  }
+  .operator-table td:nth-child(2),
+  .operator-table td:nth-child(3) { text-align: left; }
+  .operator-table td:not(:first-child) { white-space: normal; }
+}
+
+/* The moment and its Preview, on one line until the phone wraps them. */
+.operator-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 0.7rem;
+  width: 100%;
+  margin-bottom: 0.2rem;
+}
+.operator-row label { display: flex; flex-direction: column; gap: 0.25rem; }
+.operator-row .search-field { width: auto; }
+
+/*
+   The dumps: one row per file, name and size on the left, the two row actions on the
+   right. Download is a link and Load a quiet button, as the rule has it — one goes
+   somewhere and the other does something — and the confirm a Load opens takes the row's
+   full width beneath them, as a file's confirm does in the attachments panel.
+*/
+.dump-list {
+  width: 100%;
+  max-width: 46rem;
+  margin: 0 0 0.7rem;
+  padding: 0;
+  list-style: none;
+}
+.dump-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.7rem;
+  padding: 0.45rem 0;
+  border-top: 1px solid var(--border);
+}
+.dump-row:last-child { border-bottom: 1px solid var(--border); }
+.dump-name {
+  display: flex;
+  flex: 1 1 12rem;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.dump-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin-left: auto;
+}
+.dump-row > .confirm { flex: 1 0 100%; margin: 0.25rem 0 0.4rem; }
+
+/* A command to copy, scrolling sideways rather than wrapping: an id in the middle of it must not break. */
+.operator-command {
+  width: 100%;
+  max-width: 46rem;
+  margin: 0 0 0.7rem;
+  padding: 0.6rem 0.75rem;
+  overflow-x: auto;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  border-radius: 0.4rem;
+}
+.panel .operator-command code { padding: 0; background: none; }

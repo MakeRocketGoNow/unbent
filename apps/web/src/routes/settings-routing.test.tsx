@@ -15,6 +15,8 @@ import { SettingsLayout } from '../components/SettingsLayout.js';
 /** Whether an import is running, as the section reads it from the run's store. */
 let importRunning = false;
 vi.mock('../import-run.js', () => ({ useImportRunning: () => importRunning }));
+/** Not an operator, as nobody is on a fresh instance; the tab has a test of its own. */
+vi.mock('../use-operator.js', () => ({ useOperator: () => false }));
 
 /**
  * The section's navigation, exercised against a real router.

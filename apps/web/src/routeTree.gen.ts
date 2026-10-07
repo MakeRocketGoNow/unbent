@@ -37,12 +37,14 @@ import { Route as SettingsImportRouteImport } from './routes/settings.import'
 import { Route as SettingsMaintenanceRouteImport } from './routes/settings.maintenance'
 import { Route as SettingsNotebooksRouteImport } from './routes/settings.notebooks'
 import { Route as SettingsOfflineRouteImport } from './routes/settings.offline'
+import { Route as SettingsOperatorRouteImport } from './routes/settings.operator'
 import { Route as SettingsSecurityRouteImport } from './routes/settings.security'
 import { Route as SettingsTagsRouteImport } from './routes/settings.tags'
 import { Route as TrashIndexRouteImport } from './routes/trash.index'
 import { Route as TrashNoteIdRouteImport } from './routes/trash.$noteId'
 import { Route as EmbedNotesNoteIdRouteImport } from './routes/embed.notes.$noteId'
 import { Route as SettingsNotebooksNotebookIdRouteImport } from './routes/settings.notebooks_.$notebookId'
+import { Route as SettingsOperatorUserIdRouteImport } from './routes/settings.operator_.$userId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -184,6 +186,11 @@ const SettingsOfflineRoute = SettingsOfflineRouteImport.update({
   path: '/offline',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsOperatorRoute = SettingsOperatorRouteImport.update({
+  id: '/operator',
+  path: '/operator',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsSecurityRoute = SettingsSecurityRouteImport.update({
   id: '/security',
   path: '/security',
@@ -215,6 +222,11 @@ const SettingsNotebooksNotebookIdRoute =
     path: '/notebooks/$notebookId',
     getParentRoute: () => SettingsRoute,
   } as any)
+const SettingsOperatorUserIdRoute = SettingsOperatorUserIdRouteImport.update({
+  id: '/operator_/$userId',
+  path: '/operator/$userId',
+  getParentRoute: () => SettingsRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -243,6 +255,7 @@ export interface FileRoutesByFullPath {
   '/settings/maintenance': typeof SettingsMaintenanceRoute
   '/settings/notebooks': typeof SettingsNotebooksRoute
   '/settings/offline': typeof SettingsOfflineRoute
+  '/settings/operator': typeof SettingsOperatorRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/settings/tags': typeof SettingsTagsRoute
   '/trash/$noteId': typeof TrashNoteIdRoute
@@ -251,6 +264,7 @@ export interface FileRoutesByFullPath {
   '/trash/': typeof TrashIndexRoute
   '/embed/notes/$noteId': typeof EmbedNotesNoteIdRoute
   '/settings/notebooks/$notebookId': typeof SettingsNotebooksNotebookIdRoute
+  '/settings/operator/$userId': typeof SettingsOperatorUserIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -276,6 +290,7 @@ export interface FileRoutesByTo {
   '/settings/maintenance': typeof SettingsMaintenanceRoute
   '/settings/notebooks': typeof SettingsNotebooksRoute
   '/settings/offline': typeof SettingsOfflineRoute
+  '/settings/operator': typeof SettingsOperatorRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/settings/tags': typeof SettingsTagsRoute
   '/trash/$noteId': typeof TrashNoteIdRoute
@@ -284,6 +299,7 @@ export interface FileRoutesByTo {
   '/trash': typeof TrashIndexRoute
   '/embed/notes/$noteId': typeof EmbedNotesNoteIdRoute
   '/settings/notebooks/$notebookId': typeof SettingsNotebooksNotebookIdRoute
+  '/settings/operator/$userId': typeof SettingsOperatorUserIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -313,6 +329,7 @@ export interface FileRoutesById {
   '/settings/maintenance': typeof SettingsMaintenanceRoute
   '/settings/notebooks': typeof SettingsNotebooksRoute
   '/settings/offline': typeof SettingsOfflineRoute
+  '/settings/operator': typeof SettingsOperatorRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/settings/tags': typeof SettingsTagsRoute
   '/trash/$noteId': typeof TrashNoteIdRoute
@@ -321,6 +338,7 @@ export interface FileRoutesById {
   '/trash/': typeof TrashIndexRoute
   '/embed/notes/$noteId': typeof EmbedNotesNoteIdRoute
   '/settings/notebooks_/$notebookId': typeof SettingsNotebooksNotebookIdRoute
+  '/settings/operator_/$userId': typeof SettingsOperatorUserIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -351,6 +369,7 @@ export interface FileRouteTypes {
     | '/settings/maintenance'
     | '/settings/notebooks'
     | '/settings/offline'
+    | '/settings/operator'
     | '/settings/security'
     | '/settings/tags'
     | '/trash/$noteId'
@@ -359,6 +378,7 @@ export interface FileRouteTypes {
     | '/trash/'
     | '/embed/notes/$noteId'
     | '/settings/notebooks/$notebookId'
+    | '/settings/operator/$userId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -384,6 +404,7 @@ export interface FileRouteTypes {
     | '/settings/maintenance'
     | '/settings/notebooks'
     | '/settings/offline'
+    | '/settings/operator'
     | '/settings/security'
     | '/settings/tags'
     | '/trash/$noteId'
@@ -392,6 +413,7 @@ export interface FileRouteTypes {
     | '/trash'
     | '/embed/notes/$noteId'
     | '/settings/notebooks/$notebookId'
+    | '/settings/operator/$userId'
   id:
     | '__root__'
     | '/'
@@ -420,6 +442,7 @@ export interface FileRouteTypes {
     | '/settings/maintenance'
     | '/settings/notebooks'
     | '/settings/offline'
+    | '/settings/operator'
     | '/settings/security'
     | '/settings/tags'
     | '/trash/$noteId'
@@ -428,6 +451,7 @@ export interface FileRouteTypes {
     | '/trash/'
     | '/embed/notes/$noteId'
     | '/settings/notebooks_/$notebookId'
+    | '/settings/operator_/$userId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -650,6 +674,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsOfflineRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/operator': {
+      id: '/settings/operator'
+      path: '/operator'
+      fullPath: '/settings/operator'
+      preLoaderRoute: typeof SettingsOperatorRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/security': {
       id: '/settings/security'
       path: '/security'
@@ -692,6 +723,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsNotebooksNotebookIdRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/operator_/$userId': {
+      id: '/settings/operator_/$userId'
+      path: '/operator/$userId'
+      fullPath: '/settings/operator/$userId'
+      preLoaderRoute: typeof SettingsOperatorUserIdRouteImport
+      parentRoute: typeof SettingsRoute
+    }
   }
 }
 
@@ -715,10 +753,12 @@ interface SettingsRouteChildren {
   SettingsMaintenanceRoute: typeof SettingsMaintenanceRoute
   SettingsNotebooksRoute: typeof SettingsNotebooksRoute
   SettingsOfflineRoute: typeof SettingsOfflineRoute
+  SettingsOperatorRoute: typeof SettingsOperatorRoute
   SettingsSecurityRoute: typeof SettingsSecurityRoute
   SettingsTagsRoute: typeof SettingsTagsRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
   SettingsNotebooksNotebookIdRoute: typeof SettingsNotebooksNotebookIdRoute
+  SettingsOperatorUserIdRoute: typeof SettingsOperatorUserIdRoute
 }
 
 const SettingsRouteChildren: SettingsRouteChildren = {
@@ -729,10 +769,12 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsMaintenanceRoute: SettingsMaintenanceRoute,
   SettingsNotebooksRoute: SettingsNotebooksRoute,
   SettingsOfflineRoute: SettingsOfflineRoute,
+  SettingsOperatorRoute: SettingsOperatorRoute,
   SettingsSecurityRoute: SettingsSecurityRoute,
   SettingsTagsRoute: SettingsTagsRoute,
   SettingsIndexRoute: SettingsIndexRoute,
   SettingsNotebooksNotebookIdRoute: SettingsNotebooksNotebookIdRoute,
+  SettingsOperatorUserIdRoute: SettingsOperatorUserIdRoute,
 }
 
 const SettingsRouteWithChildren = SettingsRoute._addFileChildren(

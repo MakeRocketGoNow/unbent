@@ -214,6 +214,11 @@ export const keys = {
     filter.trashed ? (['trash', 'exact-count'] as const) : (['notes', 'exact-count', filter] as const),
   search: (q: string, filter: NoteFilter = {}, rows = false) => ['search', q, filter, { rows }] as const,
   config: () => ['config'] as const,
+  /** The operator page's reads; under one root so leaving the page can drop them together. */
+  operatorBackups: () => ['operator', 'backups'] as const,
+  operatorAccounts: () => ['operator', 'accounts'] as const,
+  storeStats: (userId: string) => ['operator', 'stats', userId] as const,
+  accountDumps: (userId: string) => ['operator', 'dumps', userId] as const,
   /**
    * A note's history and one copy from it. Under a root of their own rather than
    * `['note', id]`: that key is set by hand on every save, and nothing about a save
@@ -674,3 +679,22 @@ export const exactCountQuery = (filter: ExactCountFilter = {}) =>
       return lib ? count(view(lib).snapshot, scope, view(lib).lookups) : ((await api.listNotes({ ...scope, limit: 1, exact: true })).total ?? 0);
     },
   });
+
+/**
+ * The backup's health, and whether this session is an operator's at all: the route
+ * answers anyone else 404, which ends the query (`use-operator.ts` reads it so). No
+ * retry, since a 404 is the answer rather than a failure, and kept for the session —
+ * the status files move once a day, and the page refetches on its own when opened.
+ */
+export const operatorBackupsQuery = () =>
+  queryOptions({ queryKey: keys.operatorBackups(), queryFn: () => api.operatorBackups(), retry: false, staleTime: 5 * 60 * 1000 });
+
+export const operatorAccountsQuery = () =>
+  queryOptions({ queryKey: keys.operatorAccounts(), queryFn: () => api.operatorAccounts(), staleTime: 60 * 1000 });
+
+/** Never fresh: the counts are what an action is about to change, and are read again after it. */
+export const storeStatsQuery = (userId: string) =>
+  queryOptions({ queryKey: keys.storeStats(userId), queryFn: () => api.storeStats(userId), staleTime: 0 });
+
+export const accountDumpsQuery = (userId: string) =>
+  queryOptions({ queryKey: keys.accountDumps(userId), queryFn: () => api.accountDumps(userId), retry: false, staleTime: 0 });

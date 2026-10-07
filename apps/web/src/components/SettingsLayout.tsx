@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { BackArrow } from './BackArrow.js';
 import { isHosted, postToApp } from '../app-bridge.js';
 import { useImportRunning } from '../import-run.js';
+import { useOperator } from '../use-operator.js';
 
 const TABS = [
   { to: '/settings/notebooks', label: 'Notebooks' },
@@ -18,6 +19,13 @@ const TABS = [
 ] as const;
 
 /**
+ * The operator's page, drawn only for a session that runs the instance (`useOperator`).
+ * After About rather than among the account's own pages: it is about the instance, not
+ * this account, and it is the one tab here most people never see.
+ */
+const OPERATOR_TAB = { to: '/settings/operator', label: 'Operator' } as const;
+
+/**
  * The settings section: one heading, one sub-nav, one outlet.
  *
  * These four pages accreted as separate topbar links until the topbar read as a list of
@@ -27,6 +35,8 @@ const TABS = [
  */
 export function SettingsLayout({ children }: { children: ReactNode }) {
   const importRunning = useImportRunning();
+  const operator = useOperator();
+  const tabs = operator ? [...TABS, OPERATOR_TAB] : TABS;
 
   return (
     <>
@@ -54,7 +64,7 @@ export function SettingsLayout({ children }: { children: ReactNode }) {
         <nav className="settings-nav" aria-label="Settings sections">
           {/* Live during an import: the run is held by `import-run.ts`, not by its page,
               so leaving the page no longer ends it. These used to go inert for the run. */}
-          {TABS.map((tab) => (
+          {tabs.map((tab) => (
             <Link
               key={tab.to}
               to={tab.to}
