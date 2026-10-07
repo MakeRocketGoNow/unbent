@@ -1,5 +1,5 @@
 import { QueryClient, QueryObserver } from '@tanstack/react-query';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { installLibraryQueries, keys } from './queries.js';
 import { notifyLibraryReset } from './store/library.js';
 
@@ -12,8 +12,14 @@ import { notifyLibraryReset } from './store/library.js';
  */
 describe('installLibraryQueries on a reset', () => {
   const client = new QueryClient();
-  const stop = installLibraryQueries(client);
-  afterEach(() => stop());
+  let stop = () => {};
+  beforeEach(() => {
+    stop = installLibraryQueries(client);
+  });
+  afterEach(() => {
+    stop();
+    client.clear();
+  });
 
   it('drops unwatched library answers and keeps watched ones', () => {
     client.setQueryData(keys.note('closed'), { id: 'closed', title: 'from before the wind-back' });

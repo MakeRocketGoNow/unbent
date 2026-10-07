@@ -1,7 +1,7 @@
 import { createCollection, type Collection } from '@tanstack/db';
 import type { FeedAttachment, FeedEntity, FeedNote, FeedNotebook, FeedTag } from '@unbent/shared';
 import type { Cursor, FeedState } from './feed.js';
-import { setLibraryForTests, type ReadableLibrary } from './library.js';
+import { setLibraryForTests, type ReadableLibrary, notifyLibraryReset } from './library.js';
 
 /**
  * An in-memory library for component tests: the four collections with no persistence
@@ -80,6 +80,8 @@ export function installTestLibrary(rows: Rows = {}): TestLibrary {
       state.resets += 1;
       state.phase = 'reset';
       listeners.forEach((l) => l({ ...state }));
+      // As the real library: the query bridge drops the answers nobody is watching.
+      notifyLibraryReset();
     },
     settle: () => {
       state.phase = 'current';

@@ -5,7 +5,7 @@ import { createRootRoute, createRoute, createRouter, createMemoryHistory, Router
 import type { Note } from '@unbent/shared';
 import { installTestLibrary } from '../store/test-library.js';
 import type { Outbox, SyncStatus } from '../store/actions.js';
-import { keys } from '../queries.js';
+import { installLibraryQueries, keys } from '../queries.js';
 import { Workspace } from './Workspace.js';
 
 vi.mock('../store/use-outbox.js', () => ({
@@ -39,8 +39,7 @@ function outbox(): Outbox {
   } as unknown as Outbox;
 }
 
-function mount() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function mount(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   client.setQueryData(keys.attachments(before.id), []);
   client.setQueryData(keys.tags(), []);
   client.setQueryData(keys.config(), { providers: [], autofill: false });
@@ -85,6 +84,29 @@ describe('the open note after a wind-back', () => {
       await client.invalidateQueries({ queryKey: keys.note(before.id) });
     });
     await waitFor(async () => expect((await title()).value).toBe(edited.title));
+    lib.uninstall();
+  });
+
+  it('opens the restored copy after a wind-back, not the answer cached from before it', async () => {
+    // The app's cache keeps an answer fresh for thirty seconds; a note opened, closed and
+    // opened again inside that window was served its pre-wind-back answer by the route
+    // loader, and the workspace seeded from it and refused the older truth (MAK-196,
+    // second half). The bridge drops unwatched library answers on a reset instead.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } });
+    const stop = installLibraryQueries(client);
+    const lib = installTestLibrary({ notes: [row(edited)] });
+    mount(client);
+    await waitFor(async () => expect((await title()).value).toBe(edited.title));
+    cleanup();
+
+    // The wind-back while the note is closed: the library starts over and the row comes back older.
+    await act(async () => {
+      lib.reset();
+      lib.upsert('note', row({ ...before, updatedAt: 99 }));
+    });
+    mount(client);
+    await waitFor(async () => expect((await title()).value).toBe(before.title));
+    stop();
     lib.uninstall();
   });
 
