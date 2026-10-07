@@ -134,8 +134,9 @@ export interface OperatorAccount {
   restore: { at: number; toAt: number; undo: string | null } | null;
 }
 
-/** How many accounts one page of the operator's list carries, and the most a request may ask for. */
+/** How many accounts one page of the operator's list carries by default. */
 export const OPERATOR_PAGE_SIZE = 50;
+/** The most accounts one request may ask for; the route clamps `limit` to it. */
 export const OPERATOR_PAGE_MAX = 200;
 
 export interface OperatorAccountsPage {
