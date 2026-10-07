@@ -137,7 +137,7 @@ jobs:
       #     dump's key is one per account per day — so a source object that differs from the
       #     mirror's copy is a fault, and rclone refuses it as "immutable file modified"
       #     rather than attempting an overwrite the retention lock would refuse anyway. The
-      #     run goes red either way; this way says why.
+      #     run goes red either way; this way the error in `status/mirror.json` says why.
       #   --checksum: compare size and hash, not modtime. rclone reads an S3 object's modtime
       #     from its metadata, a HEAD per object per side per night, and when two copies
       #     match but their modtimes differ it rewrites the copy's modtime, a server-side

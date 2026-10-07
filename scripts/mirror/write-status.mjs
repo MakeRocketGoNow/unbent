@@ -15,7 +15,7 @@
 //   d1.json                 { key, bytes, written } from the D1 export step
 //   prune.json              the summary `prune.mjs` printed
 //   dumps-check.json        the result `check-dumps.mjs` wrote
-//   failed                  one line per step that failed, written by each step's ERR trap
+//   failed                  one line per step that failed, written by each step's EXIT trap
 // and the run's identity and outcome in the environment: MIRROR_RAN_AT, MIRROR_OK
 // ("true"/"false"), MIRROR_JOB_STATUS (GitHub's `job.status`: success, failure or
 // cancelled — a run killed by its timeout or cancelled by hand fires no step's trap, so
@@ -41,11 +41,18 @@ function readJson(name) {
   return text ? JSON.parse(text) : null;
 }
 
+/** Error lines of a copy kept in the status; the count is whole. */
+const ERRORS_KEPT = 5;
+
 /**
- * The final tally of an rclone copy. rclone prints its stats as a log line with a
- * `stats` object when `--use-json-log` is on; the last such line is the one at exit.
- * Anything else in the log, including lines that are not JSON, is ignored, and a log
- * with no tally gives nulls, never a failed status write.
+ * The final tally of an rclone copy, and the first few errors. rclone prints its stats as
+ * a log line with a `stats` object when `--use-json-log` is on; the last such line is the
+ * one at exit. Its errors are lines at level `error`, each naming its object, and they
+ * are kept here because the log file itself is thrown away with the runner: the run's
+ * log must not carry a customer's filename, and this file, in the private dumps bucket,
+ * is where the operator reads why a copy failed. Anything else in the log, including
+ * lines that are not JSON, is ignored, and a log with no tally gives nulls, never a
+ * failed status write.
  * @param {string} name
  */
 function copyStats(name) {
@@ -53,11 +60,17 @@ function copyStats(name) {
   if (!existsSync(path)) return null;
   /** @type {any} */
   let last = null;
+  /** @type {string[]} */
+  const errorLines = [];
   for (const line of readFileSync(path, 'utf8').split('\n')) {
     if (!line.startsWith('{')) continue;
     try {
       const entry = JSON.parse(line);
-      if (entry && typeof entry === 'object' && entry.stats) last = entry.stats;
+      if (!entry || typeof entry !== 'object') continue;
+      if (entry.stats) last = entry.stats;
+      if (entry.level === 'error' && errorLines.length < ERRORS_KEPT) {
+        errorLines.push(entry.object ? `${entry.object}: ${entry.msg}` : String(entry.msg));
+      }
     } catch {
       // Not a JSON line after all; rclone's own output, not ours to fail on.
     }
@@ -66,6 +79,7 @@ function copyStats(name) {
     copied: typeof last?.transfers === 'number' ? last.transfers : null,
     bytes: typeof last?.bytes === 'number' ? last.bytes : null,
     errors: typeof last?.errors === 'number' ? last.errors : null,
+    errorLines,
   };
 }
 
@@ -88,11 +102,11 @@ const status = {
     url: process.env.MIRROR_RUN_URL ?? null,
   },
   blobs: {
-    ...(copyStats('blobs.log') ?? { copied: null, bytes: null, errors: null }),
+    ...(copyStats('blobs.log') ?? { copied: null, bytes: null, errors: null, errorLines: [] }),
     live: prune?.live ?? null,
     mirror: prune?.mirror ?? null,
   },
-  stores: copyStats('stores.log') ?? { copied: null, bytes: null, errors: null },
+  stores: copyStats('stores.log') ?? { copied: null, bytes: null, errors: null, errorLines: [] },
   d1: readJson('d1.json'),
   prune: prune ? { gone: prune.gone, pruned: prune.pruned, goneDays: prune.goneDays } : null,
   dumps: readJson('dumps-check.json'),
@@ -103,7 +117,7 @@ writeFileSync(out, `${JSON.stringify(status, null, 2)}\n`);
 /** @param {unknown} n */
 const count = (n) => (typeof n === 'number' ? String(n) : '?');
 const lines = [
-  `## Mirror ${status.ok ? 'ran' : status.outcome} (${status.run.event})`,
+  `## Mirror ${status.ok ? 'ran' : status.outcome === 'cancelled' ? 'was cancelled' : 'failed'} (${status.run.event})`,
   '',
   status.ok ? null : `Failed steps: ${failedSteps.join(', ') || 'none recorded'}`,
   `- Files: ${count(status.blobs.copied)} copied, ${count(status.blobs.live)} live, ${count(status.blobs.mirror)} mirrored`,
