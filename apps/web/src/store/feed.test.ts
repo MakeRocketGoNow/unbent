@@ -45,6 +45,9 @@ function fake<T extends object>(keyOf: (row: T) => string): Fake<T> {
       return true;
     },
     truncate: () => {
+      // As TanStack DB behaves: a truncate marks the pending sync transaction, and there
+      // must be one. The fake accepted a bare truncate until the reset path shipped one.
+      if (!open) throw new Error('truncate outside a transaction');
       rows.clear();
       log.push('truncate');
     },
@@ -239,7 +242,7 @@ describe('FeedEngine', () => {
     h.c.note.rows.set('stale', note('stale'));
     for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
     await h.engine.settled();
-    expect(h.c.note.log.slice(0, 1)).toEqual(['truncate']);
+    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) expect(h.c[k].log.slice(0, 3)).toEqual(['begin', 'truncate', 'commit']);
     expect([...h.c.note.rows.keys()]).toEqual(['z']);
     expect(h.cursor()).toEqual({ seq: 50, epoch: 'e1' });
   });

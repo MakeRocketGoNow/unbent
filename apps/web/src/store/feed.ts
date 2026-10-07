@@ -262,10 +262,24 @@ export class FeedEngine {
     this.changed();
   }
 
+  /**
+   * Empties every collection: for a `reset`, and for a stored walk position the server
+   * refuses for good. Each truncate is its own sync transaction, awaited. TanStack DB's
+   * `truncate` marks the *pending* transaction and throws when there is none, so a bare
+   * `truncate()` failed the pull, which swallowed the error into `lastError` and kept the
+   * stale cursor: a device wound back by an operator kept its old rows for good and
+   * pulled in a loop. The commit is awaited because `writeCursor(null)` waits for its own
+   * row to persist, and a cursor gone from disk before the rows are would make the next
+   * open walk the snapshot over them, keeping a note purged on the server.
+   */
   private async truncateAll(): Promise<void> {
     const all = this.all();
     if (!all) return;
-    for (const c of Object.values(all)) c.truncate();
+    for (const c of Object.values(all)) {
+      c.begin();
+      c.truncate();
+      await c.commit();
+    }
     await this.moveCursor(null);
   }
 
