@@ -677,6 +677,8 @@ export const admin = new Hono<AppEnv>()
    * This is also how the page learns the session is an operator's: `/api/config` is
    * public and answers before there is a session, so it cannot say, and this route
    * answers a non-operator as the others do, as if it did not exist.
+   * The emails of the accounts the dump status names as failing or stale are attached,
+   * since the list beside the card pages and may not hold them.
    */
   .get('/admin/backups', requireAuth, async (c) => {
     const email = c.get('user')?.email;
@@ -693,6 +695,8 @@ export const admin = new Hono<AppEnv>()
     const ids = [...new Set([...(dumps?.failing.map((f) => f.userId) ?? []), ...(dumps?.stale ?? [])])];
     const names: Record<string, string> = {};
     if (ids.length > 0) {
+      // Other people's addresses, so logged like every other read of another account here.
+      console.log(`[store] operator=${email} backups names=${ids.length}`);
       const { results } = await c.env.DB.prepare(`SELECT id, email FROM user WHERE id IN (${ids.map((_, i) => `?${i + 1}`).join(', ')})`)
         .bind(...ids)
         .all<{ id: string; email: string }>();
