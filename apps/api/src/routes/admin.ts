@@ -341,6 +341,18 @@ export const admin = new Hono<AppEnv>()
       }
 
       console.log(`[store] operator=${email} restore user=${target} to=${'at' in to ? new Date(to.at).toISOString() : to.bookmark}`);
+      // The directory's record of the last wind-back (MAK-189) is cleared before the
+      // restore is scheduled, as the load route clears it before `loadBegin`. Cleared
+      // after, every way out below that is not a clean answer — an outcome unknown, a
+      // restore that will apply on the next restart, a failed write — would leave the
+      // page offering the undo of an earlier wind-back, a press that throws this one
+      // away under a confirm that says nothing of it (found in review). A refusal loses
+      // the record for nothing, but only the page's copy: the bookmark is in the log.
+      try {
+        await clearRestore(c.env.DB, target);
+      } catch (err) {
+        console.error(`[store] clearing the recorded wind-back before a restore failed for user=${target}; the operator page may offer an undo from before this restore:`, err);
+      }
       let undo: string | null;
       try {
         await store.restoreTo(to);
@@ -391,21 +403,17 @@ export const admin = new Hono<AppEnv>()
       } catch (err) {
         console.error(`[store] stats after restore failed for user=${target}:`, err);
       }
-      // The way back, kept where a reload of the operator page finds it (MAK-189): a
-      // wind-back to a moment is recorded with its undo, and a restore to a bookmark —
-      // the undo itself — clears the record, since what it would offer next is the
-      // wind-back again (`recordRestore` says why). The answer and the log carry the
-      // bookmark too, so a failure here is logged and not answered.
-      try {
-        if ('at' in to) await recordRestore(c.env.DB, target, { at: Date.now(), toAt: to.at, undo });
-        else await clearRestore(c.env.DB, target);
-      } catch (err) {
-        console.error(
-          'at' in to
-            ? `[store] recording the wind-back in the directory failed for user=${target}; the operator page will not offer its undo after a reload:`
-            : `[store] clearing the recorded wind-back after an undo failed for user=${target}; the operator page will offer to redo the wind-back until it is cleared:`,
-          err,
-        );
+      // The way back, kept where a reload of the operator page finds it (MAK-189). Only
+      // a wind-back to a moment is recorded; a restore to a bookmark — the undo itself —
+      // leaves the record cleared above, since what it would offer next is the wind-back
+      // again (`recordRestore` says why). The answer and the log carry the bookmark too,
+      // so a failure here is logged and not answered.
+      if ('at' in to) {
+        try {
+          await recordRestore(c.env.DB, target, { at: Date.now(), toAt: to.at, undo });
+        } catch (err) {
+          console.error(`[store] recording the wind-back in the directory failed for user=${target}; the operator page will not offer its undo after a reload:`, err);
+        }
       }
       return c.json({
         restored: true,

@@ -176,9 +176,10 @@ export async function listOperatorAccounts(db: D1Database, after = '', limit = 2
  * offered after a reload as "Undo the wind-back", pressing it would have reapplied the
  * wind-back the operator had just taken back (found in review). Recorded with a null
  * `undo` too, so the page can say the bookmark did not survive rather than nothing.
- * Called after the restore has been applied, and never allowed to fail the restore's
- * answer: the bookmark is in the answer and the Worker's log whether or not this row is
- * written.
+ * Called after the restore has been applied — the route clears the record before
+ * scheduling one, so a restore that never gets here leaves nothing rather than an older
+ * wind-back — and never allowed to fail the restore's answer: the bookmark is in the
+ * answer and the Worker's log whether or not this row is written.
  */
 export async function recordRestore(db: D1Database, userId: string, restore: { at: number; toAt: number; undo: string | null }): Promise<void> {
   await db
@@ -188,11 +189,11 @@ export async function recordRestore(db: D1Database, userId: string, restore: { a
 }
 
 /**
- * Forgets the account's recorded wind-back: after a restore to a bookmark, which is what
- * undoes one, and after a load (see the load route), whose own way back is the
- * before-load dump it lists. Left in place, the record would offer to wind back to a
- * moment from before either, and the confirm would not say that the undo or the loaded
- * dump went with it.
+ * Forgets the account's recorded wind-back, before every restore and every load (see
+ * those routes) and so after a restore to a bookmark, which is what undoes one, and after
+ * a load, whose own way back is the before-load dump it lists. Left in place, the record
+ * would offer to wind back to a moment from before either, and the confirm would not say
+ * that the undo, the newer wind-back or the loaded dump went with it.
  */
 export async function clearRestore(db: D1Database, userId: string): Promise<void> {
   await db.prepare(`UPDATE account_directory SET restore_at = NULL, restore_to_at = NULL, restore_undo = NULL WHERE user_id = ?1`).bind(userId).run();
