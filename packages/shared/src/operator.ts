@@ -1,0 +1,112 @@
+/**
+ * What the operator page reads (MAK-171, part 5): the two status files the backup
+ * leaves in the backups bucket, and the directory's view of each account. Shared
+ * because the Worker writes one of the files (`lib/backups.ts`), a script writes the
+ * other (`scripts/mirror/write-status.mjs`), and the page draws both; a shape declared
+ * in the API alone would leave the page reading a copy that drifts.
+ */
+
+/** What the daily dump run writes to `status/dumps.json`; see `dumpStores` in the API. */
+export interface DumpStatus {
+  ranAt: string;
+  run: {
+    /** Accounts dumped this run, and the bytes written for them. */
+    dumped: number;
+    bytes: number;
+    /** Accounts whose newest dump was still current. */
+    unchanged: number;
+    failed: number;
+    /** Accounts left for a later run: a transient store failure, or the budget ran out. */
+    deferred: number;
+    /** Whether every account due was reached. */
+    done: boolean;
+    subrequests: number;
+    ms: number;
+  };
+  /** Live accounts in the directory. */
+  accounts: number;
+  /** Accounts whose last attempt failed, with the error; at most fifty of them. */
+  failing: Array<{ userId: string; error: string; triedAt: string | null }>;
+  failingCount: number;
+  /** Accounts no run has found current in `staleAfterHours`; at most fifty of them. */
+  stale: string[];
+  staleCount: number;
+  staleAfterHours: number;
+}
+
+/** The tally of one `rclone copy`, as `write-status.mjs` reads it from rclone's log. */
+export interface MirrorCopy {
+  copied: number | null;
+  bytes: number | null;
+  errors: number | null;
+  /** The first few error lines, each naming its object. */
+  errorLines: string[];
+}
+
+/** What the nightly mirror writes to `status/mirror.json`; see `scripts/mirror/write-status.mjs`. */
+export interface MirrorStatus {
+  /** When the run started, and when the file was written. */
+  ranAt: string;
+  finishedAt: string;
+  ok: boolean;
+  /** GitHub's `job.status`: success, failure or cancelled. */
+  outcome: string;
+  failedSteps: string[];
+  run: { event: string | null; id: string | null; url: string | null };
+  blobs: MirrorCopy & { live: number | null; mirror: number | null };
+  stores: MirrorCopy;
+  d1: { key: string; bytes: number; written: boolean } | null;
+  prune: { gone: number; pruned: number; goneDays: number } | null;
+  /** What `check-dumps.mjs` made of the Worker's status file. */
+  dumps: { ok: boolean; reasons: string[]; ranAt: string | null; ageHours: number | null } | null;
+}
+
+/**
+ * What `GET /api/admin/backups` answers. `bound: false` is an instance with no backups
+ * bucket, where nothing is dumped and the page says so rather than showing empty
+ * numbers; either file is null until its run has written it.
+ */
+export type BackupsStatus = { bound: false } | { bound: true; dumps: DumpStatus | null; mirror: MirrorStatus | null };
+
+/** One account as the directory knows it, for the operator's list. */
+export interface OperatorAccount {
+  userId: string;
+  email: string;
+  name: string | null;
+  createdAt: number;
+  /** As of the last sweep, not live; see `lib/directory.ts`. */
+  noteCount: number;
+  storageBytes: number;
+  lastActiveAt: number | null;
+  /** The daily backup's record of the account's newest dump (migration 0037). */
+  dump: {
+    at: number | null;
+    bytes: number | null;
+    /** When a run last found the newest dump current, by writing it or by finding the store unchanged. */
+    checkedAt: number | null;
+    triedAt: number | null;
+    /** The last attempt's failure, cleared by the next success. */
+    error: string | null;
+  };
+}
+
+export interface OperatorAccountsPage {
+  accounts: OperatorAccount[];
+  /** The last user id of the page, to pass as `after`; null when this was the last page. */
+  next: string | null;
+}
+
+/** One file under an account's `stores/` prefix in the backups bucket. */
+export interface AccountDump {
+  key: string;
+  /** The file's name under the prefix: `2026-10-06.sql`, or `…-before-load.sql`. */
+  name: string;
+  size: number;
+  uploadedAt: string;
+}
+
+export interface AccountDumps {
+  dumps: AccountDump[];
+  /** How many days the bucket's lifecycle rule keeps a dump; what the page says of older ones. */
+  keptDays: number;
+}

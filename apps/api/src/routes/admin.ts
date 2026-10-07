@@ -5,8 +5,9 @@ import { z } from 'zod';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import { deleteKeys } from '../lib/blobs.js';
-import { directoryRow, dropDirectoryRow } from '../lib/directory.js';
+import { directoryRow, dropDirectoryRow, listOperatorAccounts } from '../lib/directory.js';
 import { beginDump } from '../lib/dump.js';
+import { DUMPS_KEPT_DAYS, MIRROR_STATUS_KEY, STATUS_KEY, dumpPrefix } from '../lib/backups.js';
 import { beforeLoadKey, describeDump, dumpBeforeLoad, loadReserve, resolveDumpKey, streamDump } from '../lib/load.js';
 import { isOperator } from '../lib/instance.js';
 import { userPrefix } from '../lib/repo.js';
@@ -15,6 +16,7 @@ import { sweepStores } from '../lib/sweep.js';
 import { SWEEP_TOKEN_HEADER, sweepTokenMatches } from '../lib/sweep-token.js';
 import { BOOKMARK_PATTERN, RESTORE_WINDOW_MS, isRestoreUnsupported, readRestoreAbort, readRestoreRefusal } from '../store/restore.js';
 import type { StoreStats } from '../store/user-store.js';
+import type { AccountDumps, BackupsStatus, DumpStatus, MirrorStatus } from '@unbent/shared';
 import type { AppEnv } from '../types.js';
 
 /**
@@ -621,7 +623,113 @@ export const admin = new Hono<AppEnv>()
     if (!isOperator(c.env, email)) return c.json({ error: 'Not found' }, 404);
     console.log(`[store] operator=${email} sweep`);
     return c.json(await sweepStores(c.env, { restart: c.req.query('restart') === '1' }));
+  })
+
+  /**
+   * The backup's health, for the operator page (MAK-171, part 5): the two status files
+   * the backup leaves in the backups bucket, read as they are. `status/dumps.json` is
+   * what the daily run wrote last (`lib/backups.ts`), `status/mirror.json` what the
+   * nightly mirror wrote (`scripts/mirror/write-status.mjs`); either is null until its
+   * run has written one. An instance with no bucket bound answers `bound: false`, which
+   * the page draws as "backups are not set up here" rather than as empty numbers.
+   *
+   * This is also how the page learns the session is an operator's: `/api/config` is
+   * public and answers before there is a session, so it cannot say, and this route
+   * answers a non-operator as the others do, as if it did not exist.
+   */
+  .get('/admin/backups', requireAuth, async (c) => {
+    const email = c.get('user')?.email;
+    if (!isOperator(c.env, email)) return c.json({ error: 'Not found' }, 404);
+    const bucket = c.env.BACKUPS;
+    if (!bucket) return c.json({ bound: false } satisfies BackupsStatus);
+    const [dumps, mirror] = await Promise.all([readStatus<DumpStatus>(bucket, STATUS_KEY), readStatus<MirrorStatus>(bucket, MIRROR_STATUS_KEY)]);
+    return c.json({ bound: true, dumps, mirror } satisfies BackupsStatus);
+  })
+
+  /**
+   * Every live account as the directory knows it, with its email from `user` and the
+   * daily backup's record of its newest dump. One D1 query a page, by user id as the
+   * sweep's `listDirectory` pages; the counts are the last sweep's, which is right for
+   * a view across accounts (`lib/directory.ts`). Logged, as any read of other people's
+   * accounts here is.
+   */
+  .get('/admin/accounts', requireAuth, async (c) => {
+    const email = c.get('user')?.email;
+    if (!isOperator(c.env, email)) return c.json({ error: 'Not found' }, 404);
+    console.log(`[store] operator=${email} accounts`);
+    return c.json(await listOperatorAccounts(c.env.DB, c.req.query('after') ?? ''));
+  })
+
+  /**
+   * One account's dumps: what is under its `stores/<user>/` prefix in the backups
+   * bucket, the daily files and any the load route wrote before a load. The bucket's
+   * lifecycle rule deletes a dump after `DUMPS_KEPT_DAYS`, so an older one is in the
+   * mirror alone, and the answer says the number so the page can say where. 501 with
+   * no bucket, as the load route answers.
+   */
+  .get('/admin/accounts/:id/dumps', requireAuth, async (c) => {
+    const target = await operatorAccount(c, c.req.param('id'));
+    if (target instanceof Response) return target;
+    const bucket = c.env.BACKUPS;
+    if (!bucket) return c.json({ error: 'This instance has no backups bucket bound, so there are no dumps to list.' }, 501);
+    const prefix = dumpPrefix(target);
+    const dumps: AccountDumps['dumps'] = [];
+    for (let cursor: string | undefined; ; ) {
+      const page = await bucket.list({ prefix, cursor });
+      for (const o of page.objects) dumps.push({ key: o.key, name: o.key.slice(prefix.length), size: o.size, uploadedAt: o.uploaded.toISOString() });
+      if (!page.truncated) break;
+      cursor = page.cursor;
+    }
+    // Newest first, by name: a name carries the day it was taken (and the time, for a
+    // dump written before a load), which is what "newest" means here — a dump copied
+    // back from the mirror is uploaded today and taken weeks ago.
+    dumps.sort((a, b) => (a.name < b.name ? 1 : -1));
+    return c.json({ dumps, keptDays: DUMPS_KEPT_DAYS } satisfies AccountDumps);
+  })
+
+  /**
+   * One of those dumps, as a download. The name is the file's under the account's
+   * prefix and nothing else: `resolveDumpKey` is the load route's rule for what may be
+   * named, applied here so this can only ever hand out a file of the account named.
+   */
+  .get('/admin/accounts/:id/dumps/:name', requireAuth, async (c) => {
+    const target = await operatorAccount(c, c.req.param('id'));
+    if (target instanceof Response) return target;
+    const bucket = c.env.BACKUPS;
+    if (!bucket) return c.json({ error: 'This instance has no backups bucket bound.' }, 501);
+    const name = c.req.param('name');
+    const key = name.includes('/') ? null : resolveDumpKey(target, `${dumpPrefix(target)}${name}`);
+    if (!key) return c.json({ error: 'Not a dump of this account.' }, 400);
+    const object = await bucket.get(key);
+    if (!object) return c.json({ error: `No dump at ${key}.` }, 404);
+    return new Response(object.body, {
+      headers: {
+        'Content-Type': 'application/sql; charset=utf-8',
+        'Content-Length': String(object.size),
+        'Content-Disposition': `attachment; filename="unbent-store-${target}-${name}"`,
+        'Cache-Control': 'no-store',
+      },
+    });
   });
+
+/** A status file from the backups bucket as JSON, or null when no run has written it yet. */
+async function readStatus<T>(bucket: R2Bucket, key: string): Promise<T | null> {
+  const object = await bucket.get(key);
+  return object ? ((await object.json()) as T) : null;
+}
+
+/**
+ * `operatorTarget` for a route whose account is in its path: the caller must be an
+ * operator even for their own account, since the page is theirs alone, and the account
+ * must be in the directory for the reason given there. Logged with both ids.
+ */
+async function operatorAccount(c: Context<AppEnv>, id: string): Promise<string | Response> {
+  const email = c.get('user')?.email;
+  if (!isOperator(c.env, email)) return c.json({ error: 'Not found' }, 404);
+  if (!(await directoryRow(c.env.DB, id))) return c.json({ error: 'No such account' }, 404);
+  console.log(`[store] operator=${email} read user=${id}`);
+  return id;
+}
 
 
 /**

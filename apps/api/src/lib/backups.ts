@@ -1,7 +1,11 @@
 import { beginDump } from './dump.js';
 import { storeFor } from './store-client.js';
 import { isDeferral, SUBREQUEST_BUDGET } from './sweep.js';
+import type { DumpStatus } from '@unbent/shared';
 import type { Env } from '../types.js';
+
+/** What the run writes to `status/dumps.json`: declared in `@unbent/shared`, since the operator page reads it. */
+export type { DumpStatus };
 
 /**
  * The daily dumps into the backups bucket (MAK-171, part 2): every account whose store
@@ -79,24 +83,6 @@ export interface DumpReport {
   ms: number;
 }
 
-/** What the run writes to `status/dumps.json`. */
-export interface DumpStatus {
-  ranAt: string;
-  run: Omit<DumpReport, 'failed' | 'deferred'> & { failed: number; deferred: number };
-  /** Live accounts in the directory. */
-  accounts: number;
-  /** Accounts whose last attempt failed, with the error, at most `STATUS_LIST` of them. */
-  failing: Array<{ userId: string; error: string; triedAt: string | null }>;
-  failingCount: number;
-  /**
-   * Accounts no run has found current in `STALE_MS`: checked longer ago than that, or
-   * never and created longer ago than that. At most `STATUS_LIST` of them.
-   */
-  stale: string[];
-  staleCount: number;
-  staleAfterHours: number;
-}
-
 /** How old an account's newest dump may be before it is written again unchanged; see above. */
 export const REFRESH_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -161,6 +147,16 @@ export function dumpKey(userId: string, now: number): string {
 }
 
 export const STATUS_KEY = 'status/dumps.json';
+
+/** Where the nightly mirror (part 3) writes what it did, for the operator page; `scripts/mirror/write-status.mjs`. */
+export const MIRROR_STATUS_KEY = 'status/mirror.json';
+
+/**
+ * How many days the backups bucket keeps a dump: its `expire-dumps` lifecycle rule,
+ * set by hand on the bucket (README, "Backing up every account"), not by anything here.
+ * The operator page states it, so an older dump is known to be in the mirror alone.
+ */
+export const DUMPS_KEPT_DAYS = 14;
 
 interface DueRow {
   user_id: string;

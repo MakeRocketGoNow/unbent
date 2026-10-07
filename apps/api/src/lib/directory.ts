@@ -1,3 +1,5 @@
+import type { OperatorAccount, OperatorAccountsPage } from '@unbent/shared';
+
 /**
  * The account directory: one D1 row per account, for what the control plane needs to
  * know about the per-account note stores without opening one. See migration 0030 for
@@ -112,4 +114,42 @@ export async function listDirectory(
     .bind(after, limit)
     .all<RawRow & { user_exists: number }>();
   return results.map((r) => ({ ...toRow(r), userExists: r.user_exists === 1 }));
+}
+
+interface OperatorRow extends RawRow {
+  email: string;
+  name: string | null;
+  dump_at: number | null;
+  dump_bytes: number | null;
+  dump_checked_at: number | null;
+  dump_tried_at: number | null;
+  dump_error: string | null;
+}
+
+/**
+ * A page of live accounts for the operator page (MAK-171, part 5), with the email from
+ * `user` and the daily backup's record of each (migration 0037). Live only — a
+ * tombstoned row is the sweep's — and by user id as `listDirectory` pages, so the two
+ * walk the table the same way; the page sorts what it reads.
+ */
+export async function listOperatorAccounts(db: D1Database, after = '', limit = 200): Promise<OperatorAccountsPage> {
+  const { results } = await db
+    .prepare(
+      `SELECT d.*, u.email, u.name
+         FROM account_directory d JOIN user u ON u.id = d.user_id
+        WHERE d.deleted_at IS NULL AND d.user_id > ?1 ORDER BY d.user_id LIMIT ?2`,
+    )
+    .bind(after, limit)
+    .all<OperatorRow>();
+  const accounts: OperatorAccount[] = results.map((r) => ({
+    userId: r.user_id,
+    email: r.email,
+    name: r.name,
+    createdAt: r.created_at,
+    noteCount: r.note_count,
+    storageBytes: r.storage_bytes,
+    lastActiveAt: r.last_active_at,
+    dump: { at: r.dump_at, bytes: r.dump_bytes, checkedAt: r.dump_checked_at, triedAt: r.dump_tried_at, error: r.dump_error },
+  }));
+  return { accounts, next: results.length === limit ? results[results.length - 1]!.user_id : null };
 }
