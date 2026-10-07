@@ -18,6 +18,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
   loadDump: vi.fn(),
   resyncDevices: vi.fn(),
   accountDumps: vi.fn(),
+  operatorAccounts: vi.fn(),
 }));
 
 const api = await import('../notes-api.js');
@@ -199,6 +200,41 @@ describe('OperatorAccount: wind back', () => {
     expect(screen.queryByRole('button', { name: 'Undo the wind-back' })).toBeNull();
     // The load's own way back is the one on screen now.
     expect(screen.getByRole('button', { name: 'Undo the load' })).toBeTruthy();
+  });
+
+  it('holds back the recorded wind-back after a load until the accounts list is read again', async () => {
+    vi.mocked(api.previewLoad).mockResolvedValue({
+      dryRun: true,
+      user: 'u1',
+      dump: { key: 'stores/u1/2026-10-06.sql', size: 30_000, uploadedAt: '2026-10-06T04:47:00Z', owner: 'u1', header: '-- Unbent note store of account u1, dumped 2026-10-06T04:47:03.000Z', oneMoment: true },
+      current: stats(),
+    });
+    vi.mocked(api.loadDump).mockResolvedValue({
+      loaded: true,
+      user: 'u1',
+      key: 'stores/u1/2026-10-06.sql',
+      before: 'stores/u1/2026-10-06T12-00-00Z-before-load.sql',
+      undo: '00000001-00000002-00000003-0000000000000005',
+      feedEpoch: 'e3',
+      migrated: [],
+      foreignKeyViolations: 0,
+      stats: stats(),
+      note: '',
+    });
+    // The cached row still has the wind-back the load's route cleared, and the refetch
+    // the load asks for has not answered, so the row the page holds is the stale one.
+    vi.mocked(api.operatorAccounts).mockReturnValue(new Promise(() => {}));
+    harness(undefined, { ...account, restore: { at: now - 600_000, toAt: now - 7_200_000, undo: '00000001-00000002-00000003-0000000000000004' } });
+    await flush();
+    expect(screen.getByRole('button', { name: 'Undo the wind-back' })).toBeTruthy();
+
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Load' }).length).toBe(2));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Load' })[0]!);
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Load dump' }));
+    await flush();
+    expect(screen.queryByText(/Last wind-back:/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Undo the wind-back' })).toBeNull();
   });
 
   it('closes the confirm when the wind-back fails, so a second press cannot restore twice', async () => {

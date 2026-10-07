@@ -33,15 +33,17 @@ export function OperatorAccount({ userId }: { userId: string }) {
   const accounts = useQuery(operatorAccountsQuery());
   const account = accounts.data?.find((a) => a.userId === userId) ?? null;
   const stats = useQuery(storeStatsQuery(userId));
-  // Bumped each time a section below changes the store, and each section is keyed on
-  // the other's count. An undo kept in a section's own answer is a bookmark from before
-  // that section's change, so once the other section has changed the store since,
-  // pressing it would throw that change away too, under a confirm that names only its
-  // own — the reason the routes clear the directory's wind-back record before a restore
-  // or a load (MAK-189). Remounting drops the stale answer; what the wind-back section
-  // offers afterwards is the directory's record, which the routes keep right.
+  // Moved each time a section below asks to change the store — in `finally`, since a
+  // request that failed may still have been applied — and each section is keyed on the
+  // other's. An undo kept in a section's own answer is a bookmark from before that
+  // section's change, so once the other section has changed the store since, pressing
+  // it would throw that change away too, under a confirm that names only its own — the
+  // reason the routes clear the directory's wind-back record before a restore or a load
+  // (MAK-189). Remounting drops the stale answer. The directory's record is held back
+  // too until the accounts list is newer than the last load: the cached one is from
+  // before it, and the route has already cleared it (found in review).
   const [windBacks, setWindBacks] = useState(0);
-  const [loads, setLoads] = useState(0);
+  const [loadedAt, setLoadedAt] = useState(0);
 
   if (accounts.data && !account) {
     return (
@@ -81,13 +83,13 @@ export function OperatorAccount({ userId }: { userId: string }) {
       </section>
 
       <WindBack
-        key={`wind-back-${loads}`}
+        key={`wind-back-${loadedAt}`}
         userId={userId}
         email={account?.email ?? userId}
-        last={account?.restore ?? null}
+        last={accounts.dataUpdatedAt > loadedAt ? (account?.restore ?? null) : null}
         onChanged={() => setWindBacks((n) => n + 1)}
       />
-      <LoadDump key={`load-${windBacks}`} userId={userId} email={account?.email ?? userId} onChanged={() => setLoads((n) => n + 1)} />
+      <LoadDump key={`load-${windBacks}`} userId={userId} email={account?.email ?? userId} onChanged={() => setLoadedAt(Date.now())} />
       <Resync userId={userId} email={account?.email ?? userId} />
     </div>
   );
