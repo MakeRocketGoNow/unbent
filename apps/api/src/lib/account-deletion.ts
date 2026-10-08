@@ -6,6 +6,16 @@ import { storeFor } from './store-client.js';
 type DeletionEnv = Pick<Env, 'BLOBS' | 'DB' | 'USER_STORE' | 'STORE_JURISDICTION'>;
 
 /**
+ * How long a browser keeps passing `requireAuth` on its signed session cookie without
+ * D1 being asked (`cookieCache` in `auth.ts`), and so how long an account deleted with
+ * one of its sessions open can still write. Here rather than in `auth.ts` because the
+ * sweep has to wait it out before it drops a deleted account's row (`LATE_WRITES_MS` in
+ * `sweep.ts`), and the sweep's tests load it in an object, where `auth.ts` and Better
+ * Auth do not need to be.
+ */
+export const SESSION_CACHE_SECONDS = 5 * 60;
+
+/**
  * What deleting an account takes with it beyond the `user` row: its files and its note
  * store. D1 handles its own half — sessions, sign-in accounts, passkeys, OAuth grants and
  * upload links all have `ON DELETE CASCADE` — but R2 has no foreign keys and the notes
@@ -74,12 +84,22 @@ export async function tombstoneAccount(env: DeletionEnv, userId: string): Promis
  * operator delete someone else's.
  *
  * Deleting the row ends every session in D1, but not at once in a browser: the session
- * cookie cache (`cookieCache` in `auth.ts`, five minutes) lets a session already open
- * keep passing `requireAuth` until it expires, which is why the page says "within five
- * minutes". A note written in that window brings the wiped store back, and the sweep
- * wipes it again, since the directory row is tombstoned; a file uploaded in it is left
- * under the account's prefix, which nothing sweeps again. The same is true of a person
- * deleting their own account while another of their devices is open.
+ * cookie cache (`SESSION_CACHE_SECONDS`) lets a session already open keep passing
+ * `requireAuth` until it expires, which is why the page says "within five minutes". The
+ * same is true of a person deleting their own account while another of their devices is
+ * open. It is not hypothetical: measured against `wrangler dev`, a second session made a
+ * note after the deletion and uploaded two files to it, and both reached R2 — the store
+ * comes back empty on its next call and records them, and only an upload to a note from
+ * before the deletion was refused, the wipe having taken the note. (An assistant cannot
+ * do the same: every MCP call checks its consent row, which went with the user, and an
+ * upload link minted earlier went with it too.)
+ *
+ * The sweep is what finishes the account. The tombstone turns its wipe on, so the late
+ * note goes again; and once `LATE_WRITES_MS` has passed since the tombstone, when no
+ * cached session can be left, it deletes whatever is still under the account's prefix
+ * and only then drops the row (`sweepOne` in `sweep.ts`). Dropping the row earlier was
+ * the gap: with nothing left to name the account, the late files had nothing to find
+ * them.
  */
 export async function deleteAccount(env: DeletionEnv, userId: string): Promise<void> {
   await clearAccount(env, userId);

@@ -64,7 +64,8 @@ export async function ensureDirectoryRow(db: D1Database, userId: string): Promis
 
 /**
  * Marks an account deleted. The row stays: it is what the sweep retries the object wipe
- * from, and it is only removed by `dropDirectoryRow` once the object reports empty. An
+ * from, and it is only removed by the sweep once the object reports empty and the
+ * account's files are gone from R2, and not before `LATE_WRITES_MS` has passed. An
  * account with no row is never wiped by anything — see `sweepStores` — so this is also
  * the only thing that can turn a wipe on for an account.
  */
@@ -76,6 +77,17 @@ export async function tombstoneDirectoryRow(db: D1Database, userId: string): Pro
     )
     .bind(userId, Date.now())
     .run();
+}
+
+/**
+ * The sweep's tombstone, as a statement it batches, for a row whose `user` row is gone
+ * and which never got one — the deletion's last step failed, or never ran. The time is
+ * the sweep's, later than the deletion's, which only makes the wait before the row is
+ * dropped (`LATE_WRITES_MS` in `sweep.ts`) longer than it had to be. An existing
+ * tombstone is never moved.
+ */
+export function tombstoneDirectoryRowStatement(db: D1Database, userId: string, at: number): D1PreparedStatement {
+  return db.prepare(`UPDATE account_directory SET deleted_at = ?2 WHERE user_id = ?1 AND deleted_at IS NULL`).bind(userId, at);
 }
 
 /** The delete as a statement, so the sweep can batch a page of them into one query. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deleteKeys, deleteUserBlobs } from './blobs.js';
+import { deleteKeys, deleteUserBlobs, deleteUserBlobsPage } from './blobs.js';
 
 /**
  * The sweep that empties an account's storage, tested here rather than against a live
@@ -143,6 +143,29 @@ describe('deleteUserBlobs', () => {
   it('issues no delete for an account with no objects', async () => {
     const { bucket, calls } = fakeBucket(objectKeys('bob', 2));
     await deleteUserBlobs(bucket, 'alice');
+    expect(calls.map((c) => c.op)).toEqual(['list']);
+  });
+});
+
+describe('deleteUserBlobsPage', () => {
+  /**
+   * The sweep's form, which must stay inside two R2 calls whatever the account holds: a
+   * page at a time, saying whether to come back, and each call starting over from what
+   * the last one left rather than from a cursor.
+   */
+  it('deletes one page per call and says when the prefix is empty', async () => {
+    const { bucket, store, calls } = fakeBucket([...objectKeys('alice', 5), ...objectKeys('alice2', 1)]);
+
+    expect(await deleteUserBlobsPage(bucket, 'alice', 2)).toEqual({ deleted: 2, more: true });
+    expect(calls.map((c) => c.op)).toEqual(['list', 'delete']);
+    expect(await deleteUserBlobsPage(bucket, 'alice', 2)).toEqual({ deleted: 2, more: true });
+    expect(await deleteUserBlobsPage(bucket, 'alice', 2)).toEqual({ deleted: 1, more: false });
+    expect([...store]).toEqual(objectKeys('alice2', 1));
+  });
+
+  it('costs one list and no delete when nothing is there', async () => {
+    const { bucket, calls } = fakeBucket(objectKeys('alice2', 1));
+    expect(await deleteUserBlobsPage(bucket, 'alice')).toEqual({ deleted: 0, more: false });
     expect(calls.map((c) => c.op)).toEqual(['list']);
   });
 });

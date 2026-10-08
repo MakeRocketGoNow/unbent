@@ -42,3 +42,21 @@ export async function deleteUserBlobs(bucket: R2Bucket, userId: string): Promise
     cursor = page.cursor;
   }
 }
+
+/**
+ * One page of `deleteUserBlobs`: at most two R2 calls, a list and a delete, and whether
+ * anything may be left under the prefix. For the sweep, which finishes a deleted
+ * account's files inside a fixed number of subrequests and cannot spend two per thousand
+ * on an account that turned out to hold an archive; it comes back on its next walk for
+ * the rest. No cursor is carried between calls, because there is nothing to carry: what
+ * this page listed it deleted, so the next list starts at whatever is still there.
+ *
+ * `limit` is R2's own ceiling, and a parameter only so a test can make a page short.
+ */
+export async function deleteUserBlobsPage(bucket: R2Bucket, userId: string, limit = 1000): Promise<{ deleted: number; more: boolean }> {
+  const page = await bucket.list({ prefix: userPrefix(userId), limit });
+  if (page.objects.length > 0) {
+    await bucket.delete(page.objects.map((o) => o.key));
+  }
+  return { deleted: page.objects.length, more: page.truncated };
+}

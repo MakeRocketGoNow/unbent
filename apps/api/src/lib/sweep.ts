@@ -1,5 +1,12 @@
-import { deleteKeys } from './blobs.js';
-import { dropDirectoryRowStatement, listDirectory, recordDirectoryUsageStatement, type DirectoryRow } from './directory.js';
+import { SESSION_CACHE_SECONDS } from './account-deletion.js';
+import { deleteKeys, deleteUserBlobsPage } from './blobs.js';
+import {
+  dropDirectoryRowStatement,
+  listDirectory,
+  recordDirectoryUsageStatement,
+  tombstoneDirectoryRowStatement,
+  type DirectoryRow,
+} from './directory.js';
 import { dropRestoresStatement } from './restores.js';
 import { storeFor } from './store-client.js';
 import type { Env } from '../types.js';
@@ -20,7 +27,9 @@ import type { Env } from '../types.js';
  *   - An account whose deletion was interrupted between wiping the object and dropping the
  *     row, or whose `afterDelete` hook never ran, is finished here: a tombstoned row, or a
  *     row whose `user` row is gone, has its object wiped and, once the object reports
- *     itself empty, its row dropped.
+ *     itself empty and nothing is left under its prefix in R2, its row dropped. Not
+ *     before `LATE_WRITES_MS`, because a session open at the deletion can still write
+ *     for a while after it, and the row is the only thing that names what it wrote.
  *   - The files an account has deleted leave R2 here, and nowhere else (MAK-171, part 1).
  *     Emptying the trash and deleting a file tombstone the object's key in the store
  *     instead of deleting it, so a store wound back finds its files; this walk asks each
@@ -66,6 +75,10 @@ export interface SweepReport {
   blobsDeleted: number;
   /** Accounts with files due that this batch had no subrequests left to delete; they are near the front of the next walk's slots. */
   blobsDeferred: number;
+  /** Files found under a deleted account's prefix, written after its deletion swept it, and deleted from R2 by this batch. */
+  lateBlobsDeleted: number;
+  /** Deleted accounts ready to be finished that this batch had no subrequests left for; their rows stay until a walk has some. */
+  dropsDeferred: number;
   failed: string[];
   /** Accounts whose store asked to be called again; see `StoreUnavailable`. */
   deferred: string[];
@@ -77,7 +90,8 @@ export interface SweepReport {
 /**
  * Accounts per invocation. Each is at most two store calls — `sweepVisit`, or `wipe` and
  * `usage` for a deleted one. With the batch's own four D1 queries, twenty is forty-four
- * of the Free plan's fifty.
+ * of the Free plan's fifty. A deleted account's files, the R2 half of finishing it, are
+ * not in that count: they are budgeted with the expiries, below.
  */
 export const BATCH = 20;
 
@@ -87,12 +101,20 @@ export const BATCH = 20;
  * files costs two more on top of its visit — the R2 delete and the store's `forgetBlobs`
  * — and a batch of twenty accounts that all had files due would be sixty-four. So the
  * expiry is budgeted, and runs after every account has been visited, when what the
- * batch has spent is known exactly: what is left buys `pickExpiries` as many accounts as
- * fit, and the rest are counted in `blobsDeferred` and asked again on the next walk of
- * the directory — which, with the cursor moving twenty accounts an hour, is later than
- * the next hour. A batch of live accounts spends twenty-four on its visits and fits
- * thirteen expiries; one that is all deletions spends forty-four and asks for none, a
- * wiped store having no files (pinned in sweep.test.ts).
+ * batch has spent is known exactly: what is left buys `pickAffordable` as many accounts
+ * as fit, and the rest are counted in `blobsDeferred` and asked again on the next walk
+ * of the directory — which, with the cursor moving twenty accounts an hour, is later
+ * than the next hour. A batch of live accounts spends twenty-four on its visits and fits
+ * thirteen expiries (pinned in sweep.test.ts).
+ *
+ * Finishing a deleted account is budgeted the same way and goes first: one page of its
+ * prefix, a list and a delete, then its row. A deleted account is rare and its row is
+ * waiting on this; an expiry has already waited thirty-five days and loses nothing by
+ * waiting one walk more. A batch that is all deletions spends forty-four on wipes and
+ * `usage` and finishes three. Not `deleteUserBlobs`, which would be right for a page or
+ * two of late files and is two calls a thousand with no ceiling: an account deleted
+ * before this walk existed, or whose deletion failed at R2, can still hold an archive
+ * under its prefix, and one page a walk drains it without spending a batch on it.
  *
  * Which accounts get the slots rotates with the hour. A batch whose page is the same
  * twenty accounts every walk — and it is, since the directory order and the cursor's
@@ -108,16 +130,31 @@ export const SUBREQUEST_BUDGET = 50;
 const D1_PER_BATCH = 4;
 
 /** The R2 delete and the store's `forgetBlobs`: what one account's expiry costs on top of its visit. */
-const EXPIRY_COST = 2;
+export const EXPIRY_COST = 2;
+
+/** One page of a deleted account's prefix, `deleteUserBlobsPage`'s list and delete: what finishing it costs on top of its visit. */
+export const FINISH_COST = 2;
 
 /**
- * Which of the accounts with files `due` this batch can afford to expire, given what it
- * has `spent` of its budget so far: as many as fit, taken in order from a start that
- * moves with `hour`, so an account put off this walk is near the front on the next.
- * Pure, for the test.
+ * How long after a deletion's tombstone its row is kept before the sweep may finish it:
+ * the session cookie cache's lifetime, during which a session open at the deletion still
+ * writes, and half an hour more for a request it admitted at the last moment to finish —
+ * an upload of a large scan over a phone's radio takes minutes. Once it has passed,
+ * nothing can add to the store or the prefix again, so what the sweep finds is all there
+ * will ever be. Waiting costs a deleted account a wipe each walk until then; finishing
+ * early would drop the row while something could still write under it, and nothing
+ * would ever look there again.
  */
-export function pickExpiries<T>(due: T[], spent: number, hour: number, budget = SUBREQUEST_BUDGET): T[] {
-  const slots = Math.max(0, Math.floor((budget - spent) / EXPIRY_COST));
+export const LATE_WRITES_MS = SESSION_CACHE_SECONDS * 1000 + 30 * 60_000;
+
+/**
+ * Which of the accounts `due` some work costing `cost` subrequests each this batch can
+ * afford, given what it has `spent` of its budget so far: as many as fit, taken in order
+ * from a start that moves with `hour`, so an account put off this walk is near the front
+ * on the next. Pure, for the test.
+ */
+export function pickAffordable<T>(due: T[], spent: number, hour: number, cost: number, budget = SUBREQUEST_BUDGET): T[] {
+  const slots = Math.max(0, Math.floor((budget - spent) / cost));
   if (due.length === 0 || slots === 0) return [];
   const start = ((hour % due.length) + due.length) % due.length;
   return Array.from({ length: Math.min(slots, due.length) }, (_, i) => due[(start + i) % due.length]!);
@@ -135,7 +172,19 @@ export async function sweepStores(
   opts: { restart?: boolean } = {},
 ): Promise<SweepReport> {
   const started = Date.now();
-  const report: SweepReport = { visited: 0, wiped: 0, dropped: 0, blobsDeleted: 0, blobsDeferred: 0, failed: [], deferred: [], done: false, ms: 0 };
+  const report: SweepReport = {
+    visited: 0,
+    wiped: 0,
+    dropped: 0,
+    blobsDeleted: 0,
+    blobsDeferred: 0,
+    lateBlobsDeleted: 0,
+    dropsDeferred: 0,
+    failed: [],
+    deferred: [],
+    done: false,
+    ms: 0,
+  };
 
   // A preview Worker shares the dev instance's D1 and its note stores (`script_name` in
   // wrangler.toml), so the directory and every object this walk would visit are dev's,
@@ -165,10 +214,11 @@ export async function sweepStores(
   const budget = { spent: D1_PER_BATCH };
   const now = Date.now();
   const due: Array<{ userId: string; keys: string[] }> = [];
+  const finishing: string[] = [];
   for (const row of rows) {
     report.visited += 1;
     try {
-      const expired = await sweepOne(env, row, report, writes, budget, now);
+      const expired = await sweepOne(env, row, report, writes, budget, now, finishing);
       if (expired.length > 0) due.push({ userId: row.userId, keys: expired });
     } catch (err) {
       if (isDeferral(err)) {
@@ -180,13 +230,35 @@ export async function sweepStores(
     }
   }
 
-  // The expiries, once the visits have said what the batch has left to spend. R2 first,
-  // then the store: a delete that lands and a forget that does not is asked for again on
-  // the next visit, and deleting an absent object is a no-op; the reverse order would
-  // leave an object in the bucket that nothing would ever ask about again. The keys are
-  // at most one `delete()`'s worth per account, so each is one R2 call (`deleteKeys`
-  // batches by the same thousand).
-  const chosen = pickExpiries(due, budget.spent, Math.floor(now / 3_600_000));
+  // Deleted accounts whose store is empty and whose late writes are over: one page of
+  // what is under the prefix, and the row once a page comes back with nothing after it.
+  // R2 before the row, for the reason `account-deletion.ts` gives for files before the
+  // user: the row is the only thing left that names the prefix. A page that leaves more
+  // keeps the row, and the next walk takes the next page.
+  const hour = Math.floor(now / 3_600_000);
+  const finish = pickAffordable(finishing, budget.spent, hour, FINISH_COST);
+  report.dropsDeferred = finishing.length - finish.length;
+  for (const userId of finish) {
+    budget.spent += FINISH_COST;
+    try {
+      const { deleted, more } = await deleteUserBlobsPage(env.BLOBS, userId);
+      report.lateBlobsDeleted += deleted;
+      if (deleted > 0) console.log(`[store] sweep deleted ${deleted} late files of deleted user=${userId}${more ? ', more to come' : ''}`);
+      if (more) continue;
+      writes.push(dropDirectoryRowStatement(env.DB, userId), dropRestoresStatement(env.DB, userId));
+      report.dropped += 1;
+    } catch (err) {
+      console.error(`[store] sweep could not finish deleted user=${userId}:`, err);
+      report.failed.push(userId);
+    }
+  }
+
+  // The expiries, with what is left. R2 first, then the store: a delete that lands and
+  // a forget that does not is asked for again on the next visit, and deleting an absent
+  // object is a no-op; the reverse order would leave an object in the bucket that
+  // nothing would ever ask about again. The keys are at most one `delete()`'s worth per
+  // account, so each is one R2 call (`deleteKeys` batches by the same thousand).
+  const chosen = pickAffordable(due, budget.spent, hour, EXPIRY_COST);
   report.blobsDeferred = due.length - chosen.length;
   for (const { userId, keys } of chosen) {
     budget.spent += EXPIRY_COST;
@@ -213,7 +285,7 @@ export async function sweepStores(
 
   report.ms = Date.now() - started;
   console.log(
-    `[store] sweep visited=${report.visited} wiped=${report.wiped} dropped=${report.dropped} blobsDeleted=${report.blobsDeleted} blobsDeferred=${report.blobsDeferred} deferred=${report.deferred.length} failed=${report.failed.length} done=${report.done} ms=${report.ms}`,
+    `[store] sweep visited=${report.visited} wiped=${report.wiped} dropped=${report.dropped} blobsDeleted=${report.blobsDeleted} blobsDeferred=${report.blobsDeferred} lateBlobsDeleted=${report.lateBlobsDeleted} dropsDeferred=${report.dropsDeferred} deferred=${report.deferred.length} failed=${report.failed.length} done=${report.done} ms=${report.ms}`,
   );
   return report;
 }
@@ -226,7 +298,8 @@ export function isDeferral(err: unknown): boolean {
 /**
  * One account's visit. Returns the keys of its files whose retention is up, which the
  * caller expires once it knows what the batch can afford; an empty list for a deleted
- * account, whose files went with it.
+ * account, which instead goes on `finishing` once it is ready for its row to go, for the
+ * caller to sweep its prefix and drop the row as the budget allows.
  */
 async function sweepOne(
   env: Pick<Env, 'DB' | 'USER_STORE' | 'STORE_JURISDICTION'>,
@@ -235,6 +308,7 @@ async function sweepOne(
   writes: D1PreparedStatement[],
   budget: { spent: number },
   now: number,
+  finishing: string[],
 ): Promise<string[]> {
   const store = storeFor(env, row.userId);
   const gone = row.deletedAt !== null || !row.userExists;
@@ -245,16 +319,20 @@ async function sweepOne(
     // The row goes once the object is empty and the user row is too. A tombstone whose
     // user row is still there — a deletion that wiped the store and then failed to remove
     // the user — stays, and is wiped again each pass, because the heal above would
-    // otherwise re-create a live row for an account that is empty. `stats` on a wiped
-    // object reports without rebuilding the schema; anything else would leave a fresh
-    // empty database behind for a deleted account.
-    if (!row.userExists) {
-      budget.spent += 1;
-      if ((await store.usage()).wiped) {
-        writes.push(dropDirectoryRowStatement(env.DB, row.userId), dropRestoresStatement(env.DB, row.userId));
-        report.dropped += 1;
-      }
+    // otherwise re-create a live row for an account that is empty.
+    if (row.userExists) return [];
+    // Not before the late writes are over (`LATE_WRITES_MS`), which are measured from the
+    // tombstone. A row with none — the deletion's last step never ran — gets one now, and
+    // waits from there: later than the deletion, so longer than it needed, never shorter.
+    if (row.deletedAt === null) {
+      writes.push(tombstoneDirectoryRowStatement(env.DB, row.userId, now));
+      return [];
     }
+    if (now - row.deletedAt < LATE_WRITES_MS) return [];
+    // `usage` on a wiped object reports without rebuilding the schema; anything else
+    // would leave a fresh empty database behind for a deleted account.
+    budget.spent += 1;
+    if ((await store.usage()).wiped) finishing.push(row.userId);
     return [];
   }
   // Waking the object is the point: a pending migration runs in its constructor, and a
