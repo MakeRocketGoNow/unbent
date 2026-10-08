@@ -149,7 +149,10 @@ export interface StoreRestore {
   /** A load's dump, and the dump it wrote of the store as it stood first; keys in the backups bucket. */
   dump: string | null;
   before: string | null;
-  /** The bookmark that reverses this row, good for `RESTORE_WINDOW_DAYS` from `appliedAt`; null when the runtime handed none back. */
+  /**
+   * The bookmark that reverses this row, good for `RESTORE_WINDOW_DAYS` from when it was
+   * taken, which is no earlier than `startedAt`; null when the runtime handed none back.
+   */
   undo: string | null;
   /** The row this one undid. */
   undoes: number | null;

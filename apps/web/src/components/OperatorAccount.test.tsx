@@ -335,7 +335,13 @@ describe('OperatorAccount: history', () => {
       ['never answered', [restoreRow({ id: 2, state: 'started', appliedAt: null }), wound], /no answer came back/],
       ['a load that stopped', [restoreRow({ id: 2, kind: 'load', state: 'failed', appliedAt: null, toAt: null, dump: 'stores/u1/2026-10-05.sql' }), wound], /stopped partway/],
       ['no bookmark', [restoreRow({ id: 1, undo: null })], /its undo bookmark did not survive/],
-      ['past the window', [restoreRow({ id: 1, appliedAt: Date.now() - (RESTORE_WINDOW_DAYS + 1) * 86_400_000 })], null],
+      ['past the window', [restoreRow({ id: 1, startedAt: Date.now() - (RESTORE_WINDOW_DAYS + 1) * 86_400_000, appliedAt: Date.now() - (RESTORE_WINDOW_DAYS + 1) * 86_400_000 })], null],
+      // A load that took its bookmark a day before the window closed and finished just inside it.
+      [
+        'a load whose bookmark is older than its finish',
+        [restoreRow({ id: 1, kind: 'load', toAt: null, dump: 'stores/u1/2026-10-05.sql', startedAt: Date.now() - (RESTORE_WINDOW_DAYS + 1) * 86_400_000, appliedAt: Date.now() - (RESTORE_WINDOW_DAYS - 1) * 86_400_000 })],
+        null,
+      ],
     ];
     for (const [, rows, says] of cases) {
       harness(undefined, undefined, undefined, rows);

@@ -588,8 +588,10 @@ function undoable(row: StoreRestore, now: number): boolean {
     row.state === 'applied' &&
     row.undo !== null &&
     row.undoneBy === null &&
-    row.appliedAt !== null &&
-    row.appliedAt > now - RESTORE_WINDOW_DAYS * 86_400_000
+    // From the start, not from `appliedAt`: a load's bookmark is taken as it begins and
+    // it finishes minutes later, so near the edge the finish would offer a bookmark the
+    // runtime has already let go. The start is never later than the bookmark.
+    row.startedAt > now - RESTORE_WINDOW_DAYS * 86_400_000
   );
 }
 
