@@ -104,10 +104,13 @@ function resolveFieldNames(
   return { patch };
 }
 
-/** The id of a notebook by name, case-insensitively, or null when there is none yet. */
+/**
+ * The id of a notebook by name, without case as the store's NOCASE index has it
+ * (`sameName`, ASCII only), or null when there is none yet.
+ */
 async function notebookIdByName(notes: NotesRepo, name: string): Promise<string | null> {
   const all = await notes.listNotebooks();
-  return all.find((nb) => nb.name.toLowerCase() === name.trim().toLowerCase())?.id ?? null;
+  return all.find((nb) => sameName(nb.name, name.trim()))?.id ?? null;
 }
 
 /**

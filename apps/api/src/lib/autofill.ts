@@ -1,6 +1,7 @@
 import {
   encodeFieldValue,
   findDates,
+  foldNoCase,
   findNumbers,
   isRatingField,
   unreadFiles,
@@ -446,8 +447,10 @@ function firstRound(input: AutofillInput, corpus: Corpus) {
         );
   if (notebook) questions['notebook'] = notebook.question;
 
-  const has = new Set(input.note.tags.map((t) => t.toLowerCase()));
-  const tags = input.tags.filter((t) => !has.has(t.name.toLowerCase())).slice(0, MAX_TAGS_ASKED);
+  // Folded as the store folds a tag's name (`foldNoCase`, ASCII only), so a tag the store
+  // keeps apart from one the note has is still asked about.
+  const has = new Set(input.note.tags.map(foldNoCase));
+  const tags = input.tags.filter((t) => !has.has(foldNoCase(t.name))).slice(0, MAX_TAGS_ASKED);
   tags.forEach((tag, i) => {
     questions[`tag_${i}`] = {
       type: 'noul',
