@@ -5,7 +5,8 @@ import { z } from 'zod';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import { deleteKeys } from '../lib/blobs.js';
-import { clearRestore, directoryRow, dropDirectoryRow, listOperatorAccounts, operatorAccountRow, recordRestore } from '../lib/directory.js';
+import { directoryRow, dropDirectoryRow, listOperatorAccounts, operatorAccountRow } from '../lib/directory.js';
+import { dropRestore, listRestores, settleRestore, startRestore, undoneRow } from '../lib/restores.js';
 import { beginDump } from '../lib/dump.js';
 import { MIRROR_STATUS_KEY, STATUS_KEY, dumpPrefix } from '../lib/backups.js';
 import { beforeLoadKey, describeDump, dumpBeforeLoad, loadReserve, resolveDumpDownload, resolveDumpKey, streamDump } from '../lib/load.js';
@@ -291,13 +292,15 @@ export const admin = new Hono<AppEnv>()
           at: z.union([z.number().int().positive(), z.string().min(1)]).optional(),
           bookmark: z.string().regex(BOOKMARK_PATTERN).optional(),
           confirm: z.literal('RESTORE').optional(),
+          // The newest history row the caller saw; see `startRestore`.
+          ifNewest: z.number().int().nonnegative().optional(),
         })
         .refine((b) => (b.at === undefined) !== (b.bookmark === undefined), { message: 'Give exactly one of `at` or `bookmark`.' }),
     ),
     async (c) => {
       const email = c.get('user')?.email;
       if (!isOperator(c.env, email)) return c.json({ error: 'Not found' }, 404);
-      const { user, at, bookmark, confirm } = c.req.valid('json');
+      const { user, at, bookmark, confirm, ifNewest } = c.req.valid('json');
       const target = user ?? c.get('userId')!;
       if (target !== c.get('userId')) {
         const row = await directoryRow(c.env.DB, target);
@@ -342,17 +345,36 @@ export const admin = new Hono<AppEnv>()
       }
 
       console.log(`[store] operator=${email} restore user=${target} to=${'at' in to ? new Date(to.at).toISOString() : to.bookmark}`);
-      // The directory's record of the last wind-back (MAK-189) is cleared before the
-      // restore is scheduled, as the load route clears it before `loadBegin`. Cleared
+      // The history's row is started before the restore is scheduled, as the load route
+      // starts its own before `loadBegin`, and settled once the store answers. Started
       // after, every way out below that is not a clean answer — an outcome unknown, a
-      // restore that will apply on the next restart, a failed write — would leave the
-      // page offering the undo of an earlier wind-back, a press that throws this one
-      // away under a confirm that says nothing of it (found in review). A refusal loses
-      // the record for nothing, but only the page's copy: the bookmark is in the log.
+      // restore that will apply on the next restart, a failed write — would leave an
+      // older row as the newest and the page offering its undo, a press that throws this
+      // restore away under a confirm that says nothing of it (`lib/restores.ts`). A
+      // restore to a bookmark that a recorded row handed out is that row's undo, and says
+      // so (`undoes`), which is how the page knows not to offer it again.
+      //
+      // The one write here that is not best-effort. Without its row the older one stays
+      // the newest, and the page offers that undo beneath this restore, so a start that
+      // fails refuses the restore; nothing has touched the store yet, so refusing costs
+      // a retry. 0038 carried on past a failed clear, and its next write overwrote the
+      // record anyway; a list has no next write that hides the older row (found in review).
+      let recordId: number | null;
       try {
-        await clearRestore(c.env.DB, target);
+        recordId = await startRestore(c.env.DB, {
+          userId: target,
+          operatorId: c.get('userId')!,
+          kind: 'at' in to ? 'moment' : 'bookmark',
+          toAt: 'at' in to ? to.at : undefined,
+          undoes: 'bookmark' in to ? await undoneRow(c.env.DB, target, to.bookmark) : null,
+          ifNewest,
+        });
       } catch (err) {
-        console.error(`[store] clearing the recorded wind-back before a restore failed for user=${target}; the operator page may offer an undo from before this restore:`, err);
+        console.error(`[store] starting the history's row before a restore failed for user=${target}; nothing was restored:`, err);
+        return c.json({ error: 'The restore history could not be written, so nothing was restored. The Worker log has the error; try again.' }, 503);
+      }
+      if (recordId === null) {
+        return c.json({ error: 'Something else was restored or loaded since the history was read, so nothing was restored. The history now lists it; undo from its newest row.' }, 409);
       }
       let undo: string | null;
       try {
@@ -371,7 +393,10 @@ export const admin = new Hono<AppEnv>()
       } catch (err) {
         const abort = readRestoreAbort(err);
         const refused = abort.scheduled ? null : readRestoreRefusal(err);
-        if (refused !== null) return restoreRefused(c, refused);
+        if (refused !== null) {
+          await recording(`dropping the history's row of a refused restore for user=${target}`, () => dropRestore(c.env.DB, recordId));
+          return restoreRefused(c, refused);
+        }
         if (!abort.scheduled) {
           // Neither the abort nor a refusal: a dropped connection, an internal error, an
           // abort whose reason the runtime replaced. The restore may have been scheduled,
@@ -404,22 +429,22 @@ export const admin = new Hono<AppEnv>()
       } catch (err) {
         console.error(`[store] stats after restore failed for user=${target}:`, err);
       }
-      // The way back, kept where a reload of the operator page finds it (MAK-189). Only
-      // a wind-back to a moment is recorded; a restore to a bookmark — the undo itself —
-      // leaves the record cleared above, since what it would offer next is the wind-back
-      // again (`recordRestore` says why). The answer and the log carry the bookmark too,
-      // so a failure here is logged and not answered.
-      if ('at' in to) {
-        try {
-          await recordRestore(c.env.DB, target, { at: Date.now(), toAt: to.at, undo });
-        } catch (err) {
-          console.error(`[store] recording the wind-back in the directory failed for user=${target}; the operator page will not offer its undo after a reload:`, err);
-        }
-      }
+      // The way back, kept where a reload of the operator page finds it (MAK-189, MAK-198).
+      // The answer and the log carry the bookmark too, so a failure here is logged and
+      // not answered; `recorded` tells the page whether the history has it, and so
+      // whether to keep the answer's own undo on offer.
+      const recorded =
+        (await recording(`settling the history's row after a restore for user=${target}`, async () => {
+          await settleRestore(c.env.DB, recordId, { state: 'applied', undo });
+          return true;
+        })) === true;
       return c.json({
         restored: true,
         user: target,
         undo,
+        recorded,
+        // The history row's id, for the page's fallback undo to send as `ifNewest`.
+        record: recordId,
         feedEpoch,
         stats,
         note: [
@@ -457,7 +482,7 @@ export const admin = new Hono<AppEnv>()
    * 2. `loadBegin`: the object takes its bookmark (the `undo` in the answer, which the
    *    restore route winds back to in one call), empties itself and marks itself
    *    loading. From here on the store refuses every request but these until step 4.
-   *    The directory's record of the last wind-back is cleared just before (see there).
+   *    The restore history's row for the load is started just before (see there).
    * 3. Stream the file into the object in pages (`streamDump`).
    * 4. `loadFinish`: the object checks the dump is this account's and from a schema this
    *    code knows, applies any schema file the dump lacked, names a new feed epoch so
@@ -532,19 +557,19 @@ export const admin = new Hono<AppEnv>()
       const object = await bucket.get(key);
       if (!object) return c.json({ error: `${key} went away since the dry run; nothing was loaded.`, before }, 404);
 
-      // The wind-back the directory may still record (MAK-189) stops describing a way
-      // back the moment the store is emptied: its bookmark is from before this load, and
-      // undoing to it would throw the loaded dump away under a confirm that says nothing
-      // of the kind. Cleared before `loadBegin` rather than after, so a begin that empties
-      // the store and then fails to answer cannot leave the record standing (found in
-      // review); clearing early loses nothing, since the bookmark is in the Worker's log.
-      // The load records nothing in its place: its own way back is the before-load dump
-      // above, listed for as long as the bucket keeps it. Logged and not answered, as the
-      // restore route treats its record.
-      try {
-        await clearRestore(c.env.DB, target);
-      } catch (err) {
-        console.error(`[store] clearing the recorded wind-back before a load failed for user=${target}; the operator page may offer an undo from before the load:`, err);
+      // The history's row is started before `loadBegin`, for the restore route's reason:
+      // from the moment the store is emptied, every older row's bookmark is from before
+      // this load, and undoing to one would throw the loaded dump away under a confirm
+      // that says nothing of the kind. A begin that empties the store and then fails to
+      // answer leaves this row `started` and the newest, so the page offers no undo from
+      // beneath it (found in review, when the directory kept one record). A start that
+      // fails refuses the load, as it refuses a restore; the dump written above stays, and
+      // the answer names it. The writes after it are logged and not answered.
+      const recordId = await recording(`starting the history's row before a load for user=${target}`, () =>
+        startRestore(c.env.DB, { userId: target, operatorId: c.get('userId')!, kind: 'load', dump: key }),
+      );
+      if (recordId === null) {
+        return c.json({ error: 'The restore history could not be written, so nothing was loaded. The Worker log has the error; try again.', before }, 503);
       }
 
       let begun: { loadId: string; undo: string | null; before: string | null };
@@ -560,12 +585,20 @@ export const admin = new Hono<AppEnv>()
         );
       }
       before = begun.before;
+      // Its way back, kept now rather than at the end, so a load that stops partway has it
+      // in the history as well as in the store's own marker. Every settle after this one
+      // carries it again (`settleRestore` keeps what a null does not replace), so a write
+      // here that fails does not leave a finished row with no undo while the answer says
+      // the history has it (found in review).
+      const way = { undo: begun.undo, before: begun.before };
+      await recording(`noting the load's bookmark in the history for user=${target}`, () => settleRestore(c.env.DB, recordId, { state: 'started', ...way }));
 
       let result;
       try {
         result = await streamDump(store, object.body, begun.loadId);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        await recording(`marking the load failed in the history for user=${target}`, () => settleRestore(c.env.DB, recordId, { state: 'failed', ...way }));
         console.error(`[store] load for user=${target} from ${key} failed; the store is still marked loading:`, err);
         return c.json(
           {
@@ -586,12 +619,20 @@ export const admin = new Hono<AppEnv>()
         );
       }
 
+      const recorded =
+        (await recording(`settling the history's row after a load for user=${target}`, async () => {
+          await settleRestore(c.env.DB, recordId, { state: 'applied', ...way });
+          return true;
+        })) === true;
       return c.json({
         loaded: true,
         user: target,
         key,
         before,
         undo: begun.undo,
+        recorded,
+        // The history row's id, for the page's fallback undo to send as `ifNewest`.
+        record: recordId,
         feedEpoch: result.feedEpoch,
         pages: result.pages,
         statements: result.statements,
@@ -743,6 +784,16 @@ export const admin = new Hono<AppEnv>()
   })
 
   /**
+   * One account's restore history, newest first (`lib/restores.ts`): every wind-back,
+   * undo and load, with who asked. The page's list, and its one place to undo the newest.
+   */
+  .get('/admin/accounts/:id/restores', requireAuth, async (c) => {
+    const target = await operatorAccount(c, c.req.param('id'));
+    if (target instanceof Response) return target;
+    return c.json(await listRestores(c.env.DB, target));
+  })
+
+  /**
    * One account's dumps: what is under its `stores/<user>/` prefix in the backups
    * bucket, the daily files and any the load route wrote before a load. The bucket's
    * lifecycle rule deletes a dump after `DUMPS_KEPT_DAYS` (in `@unbent/shared`, since
@@ -837,6 +888,19 @@ function restoreRefused(c: Context<AppEnv>, message: string): Response {
     return c.json({ error: 'This runtime keeps no history to restore from. Restores work on a deployed instance only.' }, 501);
   }
   return c.json({ error: message }, 400);
+}
+
+/**
+ * A write to the restore history (`lib/restores.ts`), which must never fail the restore
+ * or load it records: the error is logged under `what`, and the answer is null.
+ */
+async function recording<T>(what: string, write: () => Promise<T>): Promise<T | null> {
+  try {
+    return await write();
+  } catch (err) {
+    console.error(`[store] ${what} failed:`, err);
+    return null;
+  }
 }
 
 /**

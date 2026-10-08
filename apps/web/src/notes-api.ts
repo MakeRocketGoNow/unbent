@@ -23,6 +23,7 @@ import type {
   BackupsStatus,
   OperatorAccount,
   OperatorAccountsPage,
+  StoreRestores,
 } from '@unbent/shared';
 import { OPERATOR_PAGE_SIZE } from '@unbent/shared';
 import { offlineNow, recheck } from './connectivity.js';
@@ -1012,6 +1013,11 @@ export async function accountDumps(userId: string): Promise<AccountDumps> {
   return json<AccountDumps>(await request(`/api/admin/accounts/${encodeURIComponent(userId)}/dumps`));
 }
 
+/** One account's restores and loads, newest first. */
+export async function accountRestores(userId: string): Promise<StoreRestores> {
+  return json<StoreRestores>(await request(`/api/admin/accounts/${encodeURIComponent(userId)}/restores`));
+}
+
 /** Where a dump in the bucket downloads from; a link, since a download is a navigation. */
 export function dumpDownloadUrl(userId: string, name: string): string {
   return `/api/admin/accounts/${encodeURIComponent(userId)}/dumps/${encodeURIComponent(name)}`;
@@ -1036,6 +1042,13 @@ export interface RestoreResult {
   user: string;
   /** The bookmark that puts the store back as it was before this restore, if it survived the restart. */
   undo: string | null;
+  /** Whether the restore history holds it, and so offers its undo; false when that write failed. */
+  recorded: boolean;
+  /**
+   * Its row in the history, which a restore started; the answer's own undo sends it as
+   * `ifNewest`, since a row whose settle failed is still the account's newest.
+   */
+  record: number;
   feedEpoch: string | null;
   stats: StoreStats | null;
   note: string;
@@ -1047,9 +1060,17 @@ export async function previewRestore(userId: string, to: { at: number } | { book
   );
 }
 
-export async function restoreStore(userId: string, to: { at: number } | { bookmark: string }): Promise<RestoreResult> {
+/**
+ * `ifNewest` is the newest history row the page saw: the route refuses with 409 when
+ * another has been written since, rather than undo beneath it.
+ */
+export async function restoreStore(userId: string, to: { at: number } | { bookmark: string }, ifNewest?: number): Promise<RestoreResult> {
   return json<RestoreResult>(
-    await request('/api/admin/store/restore', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ user: userId, ...to, confirm: 'RESTORE' }) }),
+    await request('/api/admin/store/restore', {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ user: userId, ...to, ...(ifNewest === undefined ? {} : { ifNewest }), confirm: 'RESTORE' }),
+    }),
   );
 }
 
@@ -1077,6 +1098,9 @@ export interface LoadResult {
   /** The dump of the store as it stood, written before it was replaced; null when the store was already loading. */
   before: string | null;
   undo: string | null;
+  /** As on `RestoreResult`. */
+  recorded: boolean;
+  record: number;
   feedEpoch: string;
   migrated: string[];
   foreignKeyViolations: number;

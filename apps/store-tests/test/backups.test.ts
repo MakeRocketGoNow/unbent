@@ -1,7 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { env, runInDurableObject } from 'cloudflare:test';
 import { dumpKey, dumpStores, REFRESH_MS, STATUS_KEY, type DumpStatus } from '@unbent/api/lib/backups';
-import { clearRestore, listOperatorAccounts, operatorAccountRow, recordRestore } from '@unbent/api/lib/directory';
+import { listOperatorAccounts, operatorAccountRow } from '@unbent/api/lib/directory';
 
 /**
  * The daily dumps (MAK-171, part 2), against real objects, a local D1 carrying the two
@@ -349,30 +349,6 @@ describe('the daily dumps', () => {
     expect(s.failing).toHaveLength(50);
     expect(s.failing[0]).toMatchObject({ error: 'refused', triedAt: new Date(NOON).toISOString() });
     expect(s.stale).toHaveLength(50);
-  });
-});
-
-/**
- * The directory's record of an account's last wind-back (migration 0038), which the
- * operator page offers Undo from after a reload. The restore route itself cannot run
- * here — the runtime keeps no history — so what is pinned is the record: written with
- * its three columns, read back on the account, null before any wind-back and again once
- * cleared, and a null bookmark kept as a row rather than dropped.
- */
-describe('the recorded wind-back', () => {
-  it('is null until recorded, reads back whole, and is gone once cleared', async () => {
-    const { id } = await account('restore');
-    const find = async () => (await listOperatorAccounts(env.DB)).accounts.find((a) => a.userId === id)!.restore;
-    expect(await find()).toBeNull();
-
-    await recordRestore(env.DB, id, { at: NOON, toAt: NOON - 3_600_000, undo: '00000001-00000002-00000003-0000000000000004' });
-    expect(await find()).toEqual({ at: NOON, toAt: NOON - 3_600_000, undo: '00000001-00000002-00000003-0000000000000004' });
-
-    await recordRestore(env.DB, id, { at: NOON + 1, toAt: NOON - 60_000, undo: null });
-    expect(await find()).toEqual({ at: NOON + 1, toAt: NOON - 60_000, undo: null });
-
-    await clearRestore(env.DB, id);
-    expect(await find()).toBeNull();
   });
 });
 

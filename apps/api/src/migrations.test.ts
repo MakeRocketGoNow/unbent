@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { DUMP_SQL, OPERATOR_PAGE_SQL } from './lib/directory.js';
+import { RESTORES_SQL } from './lib/restores.js';
 
 /**
  * The D1 migrations, applied in order to a real SQLite by the `sqlite3` CLI, and the one
@@ -155,5 +156,47 @@ describe.skipIf(!sqlite3)('the directory\'s query plans', () => {
     const due = plan(DUMP_SQL.due.replace('?1', '1').replace('?2', '20'));
     const status = plan(DUMP_SQL.status.replace('?1', '1').replace(/\?2/g, '50'));
     for (const p of [due, status]) expect(p).not.toContain('idx_account_directory_activity');
+  });
+});
+
+/**
+ * 0041 carries 0038's one record per account into the history, so the wind-back an
+ * operator could undo the day before it landed is still undoable the day after. Only a
+ * live account's, and only a whole record: 0038 wrote the moment and the time together,
+ * and a row missing either was never offered.
+ */
+describe.skipIf(!sqlite3)('the restore history', () => {
+  let run: (sql: string) => string;
+  beforeAll(() => {
+    const file = join(mkdtempSync(join(tmpdir(), 'unbent-restores-')), 'd1.sqlite');
+    ({ run } = db(file));
+    const RESTORES = '0041_restores.sql';
+    for (const f of files.slice(0, files.indexOf(RESTORES))) run(migration(f));
+    run(`
+      INSERT INTO account_directory (user_id, created_at, restore_at, restore_to_at, restore_undo) VALUES
+        ('wound', 1, 2000, 1000, 'bookmark-a'),
+        ('no-undo', 1, 3000, 1500, NULL),
+        ('never', 1, NULL, NULL, NULL);
+      INSERT INTO account_directory (user_id, created_at, deleted_at, restore_at, restore_to_at, restore_undo) VALUES
+        ('deleted', 1, 5, 4000, 3500, 'bookmark-b');
+    `);
+    run(migration(RESTORES));
+  });
+
+  it('starts from the last wind-back the directory recorded for each live account, with no operator', () => {
+    expect(run(`SELECT user_id, operator_id IS NULL, kind, state, started_at, applied_at, to_at, undo FROM restores ORDER BY user_id`)).toBe(
+      ['no-undo|1|moment|applied|3000|3000|1500|', 'wound|1|moment|applied|2000|2000|1000|bookmark-a'].join('\n'),
+    );
+  });
+
+  it('reads one account through its index, for the list and for an undo\'s bookmark', () => {
+    const plan = (sql: string) => run(`EXPLAIN QUERY PLAN ${sql}`);
+    const list = plan(RESTORES_SQL.list.replace('?1', "'u'").replace('?2', '21'));
+    expect(list).toContain('SEARCH r USING INDEX idx_restores_user (user_id=?)');
+    // Newest first from the index itself, whose entries carry the rowid in order.
+    expect(list).not.toContain('TEMP B-TREE');
+    expect(plan(RESTORES_SQL.undone.replace('?1', "'u'").replace('?2', "'b'"))).toContain('SEARCH restores USING INDEX idx_restores_user (user_id=?)');
+    // The newest row's id, checked inside every start: the index alone, which carries the rowid.
+    expect(plan(RESTORES_SQL.newest.replace('?1', "'u'"))).toContain('SEARCH restores USING COVERING INDEX idx_restores_user (user_id=?)');
   });
 });

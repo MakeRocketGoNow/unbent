@@ -124,14 +124,52 @@ export interface OperatorAccount {
     /** The last attempt's failure, cleared by the next success. */
     error: string | null;
   };
+}
+
+/**
+ * One restore or load of an account's store, as the operator page lists it (migration
+ * 0041, `lib/restores.ts`). Newest first in `StoreRestores`.
+ */
+export interface StoreRestore {
+  id: number;
   /**
-   * The last wind-back of the store to a moment (migration 0038): when it was applied,
-   * the moment it went back to, and the bookmark that reverses it, good for
-   * `RESTORE_WINDOW_DAYS` from `at`, or null when the runtime handed none back. Kept here
-   * rather than in the answer alone so the page can offer Undo after a reload. A restore
-   * to a bookmark — an undo — clears it rather than replacing it: see `recordRestore`.
+   * A wind-back to a `moment`; a restore to a `bookmark`, which is an undo when `undoes`
+   * names the row whose bookmark it was; or the `load` of a dump.
    */
-  restore: { at: number; toAt: number; undo: string | null } | null;
+  kind: 'moment' | 'bookmark' | 'load';
+  /**
+   * `started` until the store answered, and for good when it never did: the Worker log
+   * says whether it applied. `failed` is a load that emptied the store and did not fill it.
+   */
+  state: 'started' | 'applied' | 'failed';
+  startedAt: number;
+  appliedAt: number | null;
+  /** The moment a `moment` went back to. */
+  toAt: number | null;
+  /** A load's dump, and the dump it wrote of the store as it stood first; keys in the backups bucket. */
+  dump: string | null;
+  before: string | null;
+  /**
+   * The bookmark that reverses this row, good for `RESTORE_WINDOW_DAYS` from when it was
+   * taken, which is no earlier than `startedAt`; null when the runtime handed none back.
+   */
+  undo: string | null;
+  /** The row this one undid. */
+  undoes: number | null;
+  /** The row that undid this one, when it is in the same answer. */
+  undoneBy: number | null;
+  /** Who asked: null on a wind-back recorded before the history was kept, which named no one. */
+  operator: { id: string; email: string | null } | null;
+}
+
+/** How many of an account's restores the page lists. */
+export const RESTORES_LISTED = 20;
+
+export interface StoreRestores {
+  /** Newest first, at most `RESTORES_LISTED`. */
+  restores: StoreRestore[];
+  /** Whether older ones exist beyond the list. */
+  more: boolean;
 }
 
 /** How many accounts one page of the operator's list carries by default. */

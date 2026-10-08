@@ -235,6 +235,7 @@ export const keys = {
   operatorAccount: (userId: string) => ['operator', 'accounts', userId] as const,
   storeStats: (userId: string) => ['operator', 'stats', userId] as const,
   accountDumps: (userId: string) => ['operator', 'dumps', userId] as const,
+  accountRestores: (userId: string) => ['operator', 'restores', userId] as const,
   /**
    * A note's history and one copy from it. Under a root of their own rather than
    * `['note', id]`: that key is set by hand on every save, and nothing about a save
@@ -747,7 +748,7 @@ export const operatorAccountQuery = (userId: string) =>
     queryKey: keys.operatorAccount(userId),
     queryFn: () => api.operatorAccount(userId),
     staleTime: 60 * 1000,
-    // As the list: the dump and wind-back facts move on the hour and the page may stay open.
+    // As the list: the dump facts move on the hour and the page may stay open.
     refetchInterval: 5 * 60 * 1000,
     refetchOnWindowFocus: true,
   });
@@ -763,3 +764,10 @@ export const storeStatsQuery = (userId: string) =>
 
 export const accountDumpsQuery = (userId: string) =>
   queryOptions({ queryKey: keys.accountDumps(userId), queryFn: () => api.accountDumps(userId), retry: false, staleTime: 0 });
+
+/**
+ * Fresh whenever the page mounts, and on focus: a second operator's wind-back must not
+ * leave this page offering an undo from beneath it. Every action here invalidates it.
+ */
+export const accountRestoresQuery = (userId: string) =>
+  queryOptions({ queryKey: keys.accountRestores(userId), queryFn: () => api.accountRestores(userId), staleTime: 0, refetchOnWindowFocus: true });

@@ -1,5 +1,6 @@
 import type { OperatorAccount, OperatorAccountsPage } from '@unbent/shared';
 import { OPERATOR_PAGE_SIZE } from '@unbent/shared';
+import { dropRestoresStatement } from './restores.js';
 
 /**
  * The account directory: one D1 row per account, for what the control plane needs to
@@ -82,8 +83,9 @@ export function dropDirectoryRowStatement(db: D1Database, userId: string): D1Pre
   return db.prepare(`DELETE FROM account_directory WHERE user_id = ?1`).bind(userId);
 }
 
+/** The row and the account's restore history with it (`dropRestoresStatement` says why). */
 export async function dropDirectoryRow(db: D1Database, userId: string): Promise<void> {
-  await dropDirectoryRowStatement(db, userId).run();
+  await db.batch([dropDirectoryRowStatement(db, userId), dropRestoresStatement(db, userId)]);
 }
 
 /**
@@ -135,9 +137,6 @@ interface OperatorRow extends RawRow {
   dump_checked_at: number | null;
   dump_tried_at: number | null;
   dump_error: string | null;
-  restore_at: number | null;
-  restore_to_at: number | null;
-  restore_undo: string | null;
 }
 
 /** The columns the operator's view of an account joins and reads; see `toAccount`. */
@@ -153,7 +152,6 @@ const toAccount = (r: OperatorRow): OperatorAccount => ({
   storageBytes: r.storage_bytes,
   lastActiveAt: r.last_active_at,
   dump: { at: r.dump_at, bytes: r.dump_bytes, checkedAt: r.dump_checked_at, triedAt: r.dump_tried_at, error: r.dump_error },
-  restore: r.restore_at === null || r.restore_to_at === null ? null : { at: r.restore_at, toAt: r.restore_to_at, undo: r.restore_undo },
 });
 
 /**
@@ -200,8 +198,8 @@ export const DUMP_SQL = {
 
 /**
  * A page of live accounts for the operator page (MAK-171, part 5), with the email from
- * `user`, the daily backup's record of each (migration 0037) and the last wind-back
- * (0038). Live only — a tombstoned row is the sweep's.
+ * `user` and the daily backup's record of each (migration 0037). Live only — a
+ * tombstoned row is the sweep's.
  *
  * Newest activity first, where activity is the newest write the sweep recorded, else the
  * account's creation: the order the page shows, so a page is the top of that order and
@@ -255,38 +253,4 @@ function parseCursor(after: string): { activeAt: number; userId: string } | null
 export async function operatorAccountRow(db: D1Database, userId: string): Promise<OperatorAccount | null> {
   const row = await db.prepare(`${OPERATOR_SELECT} WHERE d.user_id = ?1 AND d.deleted_at IS NULL`).bind(userId).first<OperatorRow>();
   return row ? toAccount(row) : null;
-}
-
-/**
- * Records a wind-back of the account's store to a moment, for the operator page to offer
- * its undo from (migration 0038). Only a wind-back to a moment is recorded, and a
- * restore to a bookmark clears the record (`clearRestore`): a bookmark restore is an
- * undo, and the one thing its own undo bookmark would reverse is the undo itself —
- * offered after a reload as "Undo the wind-back", pressing it would have reapplied the
- * wind-back the operator had just taken back (found in review). Recorded with a null
- * `undo` too, so the page can say the bookmark did not survive rather than nothing.
- * Called after the restore has been applied — the route clears the record before
- * scheduling one, so a restore that never gets here leaves nothing rather than an older
- * wind-back — and never allowed to fail the restore's answer: the bookmark is in the
- * answer and the Worker's log whether or not this row is written.
- *
- * One row, so only the latest wind-back is undoable from the page: wind back twice and
- * undo the second, and the first one's bookmark is in the Worker's log alone.
- */
-export async function recordRestore(db: D1Database, userId: string, restore: { at: number; toAt: number; undo: string | null }): Promise<void> {
-  await db
-    .prepare(`UPDATE account_directory SET restore_at = ?2, restore_to_at = ?3, restore_undo = ?4 WHERE user_id = ?1`)
-    .bind(userId, restore.at, restore.toAt, restore.undo)
-    .run();
-}
-
-/**
- * Forgets the account's recorded wind-back, before every restore and every load (see
- * those routes) and so after a restore to a bookmark, which is what undoes one, and after
- * a load, whose own way back is the before-load dump it lists. Left in place, the record
- * would offer to wind back to a moment from before either, and the confirm would not say
- * that the undo, the newer wind-back or the loaded dump went with it.
- */
-export async function clearRestore(db: D1Database, userId: string): Promise<void> {
-  await db.prepare(`UPDATE account_directory SET restore_at = NULL, restore_to_at = NULL, restore_undo = NULL WHERE user_id = ?1`).bind(userId).run();
 }
