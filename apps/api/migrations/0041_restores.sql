@@ -44,9 +44,10 @@ CREATE TABLE restores (
 CREATE INDEX idx_restores_user ON restores (user_id);
 
 -- 0038's record of each live account's last wind-back, so its undo is still offered the
--- day this lands. Its three columns stay for now: the Worker that deploys after this
--- neither reads nor writes them, and the one before it, which runs against this schema
--- for the seconds in between, still does. MAK-199 drops them.
+-- day this lands. Its three columns stay for now: the Worker before this one, which runs
+-- against this schema for the seconds in between, still reads and writes them. The one
+-- after never reads them, and clears an account's as it starts a row, so a rollback to
+-- the old one finds no stale undo there (`startRestore`). MAK-199 drops them.
 INSERT INTO restores (user_id, operator_id, kind, state, started_at, applied_at, to_at, undo)
 SELECT user_id, NULL, 'moment', 'applied', restore_at, restore_at, restore_to_at, restore_undo
   FROM account_directory
