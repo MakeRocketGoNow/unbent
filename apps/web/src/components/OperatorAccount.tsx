@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { DELETED_FILES_KEPT_DAYS, DUMPS_KEPT_DAYS, MIRROR_KEPT_DAYS, RESTORES_LISTED, RESTORE_WINDOW_DAYS, type AccountDump, type OperatorAccount as Account, type StoreRestore } from '@unbent/shared';
 import * as api from '../notes-api.js';
@@ -48,6 +48,25 @@ export function OperatorAccount({ userId }: { userId: string }) {
   // A wiped or loading store answers null for its last write because it cannot read its
   // feed, not because nothing was written: unknown, so the sweep's value stands in.
   const live = stats.data && !stats.data.wiped && !stats.data.loading ? stats.data.lastWriteAt : undefined;
+  // The address of an account deleted from this page, kept here because the row it came
+  // from is gone the moment the list is refetched.
+  const [deleted, setDeleted] = useState<string | null>(null);
+
+  // Before the null check: a deleted account's row reads as null once refetched, and
+  // "No such account" is the wrong thing to say about one just deleted on purpose.
+  if (deleted !== null) {
+    return (
+      <div className="panel operator-page">
+        <div className="panel-head">
+          <h2 className="wrap-anywhere">{deleted}</h2>
+          <Link to="/settings/operator" className="link small">
+            All accounts
+          </Link>
+        </div>
+        <p className="good small">Deleted. The account, its notes and files, and its sign-ins are gone.</p>
+      </div>
+    );
+  }
 
   if (row.data === null) {
     return (
@@ -96,7 +115,7 @@ export function OperatorAccount({ userId }: { userId: string }) {
       <RestoreHistory key={`history-${windBacks}-${loads}`} userId={userId} email={account?.email ?? userId} onChanged={() => setUndos((n) => n + 1)} />
       <LoadDump key={`load-${windBacks}-${undos}`} userId={userId} email={account?.email ?? userId} onChanged={() => setLoads((n) => n + 1)} />
       <Resync userId={userId} email={account?.email ?? userId} />
-      <DeleteAccount userId={userId} email={account?.email ?? userId} account={account} stats={stats.data ?? null} />
+      <DeleteAccount userId={userId} email={account?.email ?? userId} account={account} stats={stats.data ?? null} onDeleted={setDeleted} />
     </div>
   );
 }
@@ -1054,9 +1073,20 @@ function Resync({ userId, email }: { userId: string; email: string }) {
  * Not offered on the operator's own account, which the server refuses too: that deletion
  * is Maintenance's, with its link, and this one would end the session making it.
  */
-function DeleteAccount({ userId, email, account, stats }: { userId: string; email: string; account: Account | null; stats: api.StoreStats | null }) {
+function DeleteAccount({
+  userId,
+  email,
+  account,
+  stats,
+  onDeleted,
+}: {
+  userId: string;
+  email: string;
+  account: Account | null;
+  stats: api.StoreStats | null;
+  onDeleted: (email: string) => void;
+}) {
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
   const { session } = useAppSession();
   const [asked, setAsked] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -1084,13 +1114,11 @@ function DeleteAccount({ userId, email, account, stats }: { userId: string; emai
     setError(null);
     try {
       await api.deleteAccount(userId);
-      // Off the page before anything is invalidated, so it never redraws as "No such
-      // account"; the account's own reads are dropped rather than refetched, since every
-      // one of them would now ask after a store that has been wiped.
-      await navigate({ to: '/settings/operator' });
-      for (const key of [keys.operatorAccount(userId), keys.storeStats(userId), keys.accountDumps(userId), keys.accountRestores(userId)]) {
-        queryClient.removeQueries({ queryKey: key, exact: true });
-      }
+      // The page says so and stays, as every other action here ends in a line saying it
+      // is done; going straight to the list left the operator to read success from a
+      // row's absence. The sections that read the store unmount with it, so nothing asks
+      // after the wiped store again. The list is refetched without the account.
+      onDeleted(email);
       void queryClient.invalidateQueries({ queryKey: keys.operatorAccounts() });
       void queryClient.invalidateQueries({ queryKey: keys.operatorBackups() });
     } catch (err) {

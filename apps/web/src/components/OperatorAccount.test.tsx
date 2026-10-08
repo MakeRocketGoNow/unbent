@@ -6,10 +6,8 @@ import type { StoreStats } from '../notes-api.js';
 import { keys } from '../queries.js';
 import { formatMoment } from './format-when.js';
 
-const navigate = vi.fn();
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children, to }: { children: React.ReactNode; to: string }) => <a href={to}>{children}</a>,
-  useNavigate: () => navigate,
 }));
 
 // The operator's own id, for the one section that is not offered on their own account.
@@ -588,7 +586,10 @@ describe('OperatorAccount: delete account', () => {
     fireEvent.click(press);
     await flush();
     expect(api.deleteAccount).toHaveBeenCalledWith('u1');
-    expect(navigate).toHaveBeenCalledWith({ to: '/settings/operator' });
+    // The page stays and says so, rather than the account's sections or "No such account".
+    expect(screen.getByText(/Deleted. The account, its notes and files, and its sign-ins are gone./)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'someone@example.com' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Resync devices' })).toBeNull();
   });
 
   it("names the sweep's note count while the store's are not in", () => {
@@ -606,7 +607,7 @@ describe('OperatorAccount: delete account', () => {
     fireEvent.change(within(confirm).getByLabelText('Type DELETE to confirm'), { target: { value: 'DELETE' } });
     fireEvent.click(within(confirm).getByRole('button', { name: 'Delete account' }));
     await flush();
-    expect(navigate).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Deleted\./)).toBeNull();
     expect(screen.getByText('The store could not be wiped.')).toBeTruthy();
   });
 
