@@ -674,7 +674,14 @@ function RestoreHistory({ userId, email, onChanged }: { userId: string; email: s
                   <span>{describeRestore(row, rows)}</span>
                   <span className="muted small">
                     {formatMoment(when)} · {row.operator ? `by ${row.operator.email ?? row.operator.id}` : 'operator not recorded'}
-                    {row.state === 'started' && <> · no answer came back; the Worker log says whether it applied</>}
+                    {/* A load is `started` for the minutes it streams, so its row cannot say no
+                        answer came: the store's own notice above says whether it is loading. */}
+                    {row.state === 'started' &&
+                      (row.kind === 'load' ? (
+                        <> · not finished; the store above says whether it is still loading</>
+                      ) : (
+                        <> · no answer came back; the Worker log says whether it applied</>
+                      ))}
                     {row.state === 'failed' && <> · stopped partway</>}
                     {row.undoneBy !== null && <> · undone</>}
                     {/* A load's way back once its bookmark is gone, or where the runtime gave none. */}
