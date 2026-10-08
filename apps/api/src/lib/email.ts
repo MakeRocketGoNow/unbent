@@ -32,6 +32,13 @@ export interface Message {
   to: string;
   subject: string;
   text: string;
+  /**
+   * An HTML alternative to `text`, for the few messages whose layout carries meaning —
+   * the sign-in code, which a mail client can only offer to copy if it can find it.
+   * Always beside `text`, never instead of it: the text part is what a plain-text
+   * client shows, what the dev fallback prints, and what spam filters expect to find.
+   */
+  html?: string;
 }
 
 /**
@@ -76,6 +83,7 @@ export async function sendEmail(env: EmailEnv, message: Message): Promise<void> 
       to: message.to,
       subject: message.subject,
       text: message.text,
+      ...(message.html ? { html: message.html } : {}),
       // Resend names this `reply_to`, and omits the header entirely when it is absent —
       // which is what an unset EMAIL_REPLY_TO should mean, rather than an empty header.
       ...(env.EMAIL_REPLY_TO ? { reply_to: env.EMAIL_REPLY_TO } : {}),

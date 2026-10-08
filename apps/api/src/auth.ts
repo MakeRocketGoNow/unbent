@@ -7,6 +7,7 @@ import { socialProviderList } from 'better-auth/social-providers';
 import type { AuthProvider } from '@unbent/shared';
 import type { Env } from './types.js';
 import { canSendEmail, sendEmail } from './lib/email.js';
+import { signInCodeEmail } from './lib/sign-in-code-email.js';
 import { deleteKeys, deleteUserBlobs } from './lib/blobs.js';
 import { ensureDirectoryRow, tombstoneDirectoryRow } from './lib/directory.js';
 import { storeFor } from './lib/store-client.js';
@@ -890,11 +891,7 @@ function createAuth(env: Env): AuthInstance {
         // Six digits for five minutes, both the plugin's defaults and right for a code
         // read off a phone. Three attempts before it is burned, also the default.
         sendVerificationOTP: async ({ email, otp }: { email: string; otp: string }) => {
-          await sendEmail(env, {
-            to: email,
-            subject: `${otp} is your Unbent sign-in code`,
-            text: `Your Unbent sign-in code is ${otp}\n\nIt expires in five minutes and can be used once. If you did not ask to sign in, you can ignore this email.`,
-          });
+          await sendEmail(env, { to: email, ...signInCodeEmail(otp) });
         },
         /**
          * Hashed rather than the default plain, so the codes are not readable in the
