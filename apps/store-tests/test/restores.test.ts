@@ -6,10 +6,16 @@ import { RESTORES_DDL } from './helpers.js';
 
 /**
  * The restore history (migration 0041, MAK-198) against a real D1, in the order the
- * restore and load routes write it. The routes cannot run here — the runtime keeps no
- * history to restore from — so what is pinned is each step's effect on the list the
+ * restore and load routes write it. What is pinned is each step's effect on the list the
  * operator page reads: a row started before the store is touched, settled by its answer,
  * gone when the runtime refused, and an undo that names the row it undid.
+ *
+ * The routes themselves are not run by any suite. This one has no Worker, and the live
+ * suite (`apps/api/test`) has no operator: its actors are throwaway sign-ups, and no
+ * instance names them in `OPERATOR_EMAILS`. A real restore needs a deployed runtime
+ * besides. They were driven by hand against `pnpm dev` with the demo account made an
+ * operator: a load records its row with the dump taken before it, a restore the runtime
+ * refuses (501 locally) leaves no row, and an undo with a stale `ifNewest` answers 409.
  *
  * Each test takes its own account id; nothing empties the table between them.
  */
