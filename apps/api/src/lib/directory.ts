@@ -211,12 +211,13 @@ export const DUMP_SQL = {
  * page reads about fifty rows of each table however many accounts the instance holds. Emails sort as
  * stored, byte for byte; Better Auth lowercases an address when it makes an account, so that is alphabetical.
  *
- * A search is a case-insensitive substring of the email or the name, because the part
- * of an address an operator remembers is as often the domain as the start. No index
- * serves a substring, so a search walks the same index and tests each row until it has
- * a page: a search that matches little reads every `user` row, and the directory only for
- * the rows that match. That is accepted: a row per account, for a page an operator opens
- * a few times a day. `%` and `_` in the search are escaped, so they match themselves.
+ * A search is a substring of the email or the name, because the part of an address an
+ * operator remembers is as often the domain as the start. It matches in either case for
+ * ASCII letters only: `LIKE` folds no others, so "é" does not find "É". No index serves a
+ * substring, so a search walks the same index and tests each row until it has a page: a
+ * search that matches little reads every `user` row, and the directory only for the rows
+ * that match. That is accepted: a row per account, for a page an operator opens a few
+ * times a day. `%` and `_` in the search are escaped, so they match themselves.
  *
  * A row whose email changed between pages can appear twice or not at all, which the
  * page dedupes by id and the five-minute refetch corrects. One statement for the first
