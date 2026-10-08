@@ -447,6 +447,19 @@ describe('FeedEngine stall reports', () => {
     expect(stalls.length).toBe(1);
   });
 
+  it('counts emptying the copy for a reset as part of a copy, though the old cursor is still set', async () => {
+    vi.useFakeTimers();
+    const h = harness({ '/api/changes?since=10&epoch=e1&limit=2': { reset: true, seq: 12, epoch: 'e2' } satisfies FeedReset });
+    h.setCursor({ seq: 10, epoch: 'e1' });
+    h.c.note.commit = () => new Promise<void>(() => {});
+    const stalls: FeedStallError[] = [];
+    h.engine['options'].onStall = (err) => stalls.push(err);
+    h.engine['options'].stallMs = 1000;
+    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(stalls.map((s) => s.message)).toEqual(['Library copy: emptying the copy has not settled after 1 s']);
+  });
+
   it('says nothing about steps that settle in time', async () => {
     vi.useFakeTimers();
     const h = harness({ '/api/changes/snapshot?limit=2': snapshotFirst([note('a')], null) });

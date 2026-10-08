@@ -283,7 +283,9 @@ export class FeedEngine {
     const onStall = this.options.onStall;
     if (!onStall) return work;
     const ms = this.options.stallMs ?? 60_000;
-    const during = this.state.cursor ? 'feed' : 'copy';
+    // Not the cursor alone: a reset empties the copy with the old cursor still set, and a
+    // walk's last cursor write sets it just before writing it. Both are a copy.
+    const during = isWhole(this.state) ? 'feed' : 'copy';
     // A library closed while the step waits is not a stall anyone needs to hear about.
     const timer = setTimeout(() => {
       if (!this.stopped) onStall(new FeedStallError(step, during, ms));
