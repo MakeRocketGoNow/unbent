@@ -23,7 +23,9 @@ import { operatorAccountsQuery, operatorBackupsQuery } from '../queries.js';
  */
 // Not trimmed here: the field is controlled by `q`, and a trim would eat the space
 // between two words as it was typed. The page and the loader trim what they ask for.
-const search = z.object({ q: z.string().max(OPERATOR_SEARCH_MAX).optional().catch(undefined) });
+// Cut rather than refused past `OPERATOR_SEARCH_MAX`, as the server cuts it, so a long
+// hand-made link searches for its start instead of opening on every account.
+const search = z.object({ q: z.string().transform((q) => q.slice(0, OPERATOR_SEARCH_MAX)).optional().catch(undefined) });
 
 export const Route = createFileRoute('/settings/operator')({
   validateSearch: search,
