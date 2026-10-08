@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { signInCodeEmail } from './sign-in-code-email.js';
 
 describe('signInCodeEmail', () => {
-  /** The notification is often all anyone reads, so the code leads the subject. */
-  it('puts the code at the front of the subject', () => {
-    expect(signInCodeEmail('622468').subject).toBe('622468 is your Unbent sign-in code');
+  /**
+   * Kept out of the subject on purpose: the message Gmail offered "Copy code" for had none
+   * there. The notification still shows it, from the body's first line.
+   */
+  it('keeps the code out of the subject', () => {
+    expect(signInCodeEmail('622468').subject).toBe('Your Unbent sign-in code');
   });
 
   /** The text part is what plain-text clients show and what the dev fallback prints. */
@@ -13,8 +16,8 @@ describe('signInCodeEmail', () => {
   });
 
   /**
-   * The point of the HTML part: the code alone in its own element, one unbroken run of
-   * digits, so a client can find it and a hand selection copies it without gaps.
+   * The code alone in its own element, one unbroken run of digits, so a hand selection
+   * copies it without gaps.
    */
   it('sets the code apart, unbroken, in the HTML part', () => {
     const { html } = signInCodeEmail('622468');
@@ -22,12 +25,13 @@ describe('signInCodeEmail', () => {
     expect(html).toContain('Your Unbent sign-in code is');
   });
 
-  /** Both parts say the same thing about expiry; one source keeps them in step. */
-  it('says the same thing about expiry in both parts', () => {
+  /** Both parts carry the same fine print; one source keeps them in step. */
+  it('says the same fine print in both parts', () => {
     const { text, html } = signInCodeEmail('622468');
-    const expiry = 'It expires in five minutes and can be used once.';
-    expect(text).toContain(expiry);
-    expect(html).toContain(expiry);
+    for (const line of ['Do not share it with anyone.', 'It expires in five minutes and can be used once.']) {
+      expect(text).toContain(line);
+      expect(html).toContain(line);
+    }
   });
 
   it('never lets a code become markup', () => {
