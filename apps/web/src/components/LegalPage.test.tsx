@@ -116,7 +116,7 @@ describe('LegalPage', () => {
       legal: BUILT_IN,
       backups: true,
     });
-    expect(await findByText(/gone within 90 days of the deletion/)).toBeTruthy();
+    expect(await findByText(/gone within about three months of the deletion/)).toBeTruthy();
 
     cleanup();
     const plain = harness('deletion', { operator: OPERATOR, legal: BUILT_IN });

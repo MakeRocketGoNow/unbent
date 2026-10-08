@@ -79,7 +79,7 @@ export interface LegalOptions {
    * the nightly copy to a second account (MAK-171; "Durability" in the README).
    *
    * `AppConfig.backups`, true where a backups bucket is bound. The policy and the deletion
-   * page describe those copies and the ninety days a deletion takes to leave them only
+   * page describe those copies and the three months a deletion takes to leave them only
    * where they exist; a fork with no bucket keeps the shorter text, which is true of it.
    */
   backups: boolean;
@@ -200,10 +200,10 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
             : []),
           ...(opts.backups
             ? [
-                'GitHub, whose servers run the nightly job that copies our backups — your notes ' +
-                  'and your files — to a second account with our hosting provider, as described ' +
-                  'under “How long it is kept”. The copy passes through those servers on the way ' +
-                  'and nothing is kept on them.',
+                'GitHub, whose servers run the nightly job that copies our backups — your notes, ' +
+                  'your files and our sign-in records — to a second account with our hosting ' +
+                  'provider, as described under “How long it is kept”. The copy passes through ' +
+                  'those servers on the way and none of your content is kept on them.',
               ]
             : []),
         ],
@@ -242,11 +242,12 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
           ...(opts.backups
             ? [
                 'We also keep backups, so that a fault on our side can be put right: a daily copy ' +
-                  'of each account’s notes, kept for 14 days, and a nightly copy of those and of ' +
-                  'every file in a second account with our hosting provider, kept for up to 90 ' +
-                  'days. A note, a file or an account you delete leaves every one of them within ' +
-                  '90 days. They are for restoring the service after a fault, not a way to bring ' +
-                  'one note back; keep an export for that.',
+                  'of each account’s notes, kept for 14 days, and a nightly copy of those, of every ' +
+                  'file, and of our sign-in records, which include your email address, in a second ' +
+                  'account with our hosting provider, kept for up to 90 days. A note, a file or an ' +
+                  'account you delete leaves every one of them within about three months. They are ' +
+                  'for restoring the service after a fault, not a way to bring one note back; keep ' +
+                  'an export for that.',
               ]
             : []),
         ],
@@ -540,9 +541,9 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
                 'Copies of your account do remain for a while in our backups, which exist so that ' +
                   'a fault on our side can be put right, and which we do not use to bring back an ' +
                   'account its owner deleted: a daily copy of your notes, kept for 14 days, and a ' +
-                  'nightly copy of your notes and files in a second account with our hosting ' +
-                  'provider, kept for up to 90 days. Every one of them is gone within 90 days of ' +
-                  'the deletion.',
+                  'nightly copy of your notes, your files and our sign-in records in a second ' +
+                  'account with our hosting provider, kept for up to 90 days. Every one of them is ' +
+                  'gone within about three months of the deletion.',
               ]
             : ['Nothing else of your account or its contents is kept.']),
           'Two other things outlive it, neither of which is your notes, and both are ordinary ' +

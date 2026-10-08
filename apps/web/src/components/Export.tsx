@@ -137,9 +137,9 @@ export function Export() {
         {backups
           ? 'This is the copy you hold. Unbent keeps backups of its own for putting things right ' +
             'after a fault on our side, but they are not something you can reach and they age ' +
-            'out; the zip is the one copy in your own hands, and the only way back from a ' +
-            'mistake of your own.'
-          : 'This is the backup. This Unbent keeps no copies of its own, so the zip is the ' +
+            'out; the zip is the one copy in your own hands, and the only way back from what ' +
+            'the trash and a note’s History cannot undo, such as deleting everything.'
+          : 'This is the backup. This Unbent makes no backups of its own, so the zip is the ' +
             'only way back from a bad day.'}
       </p>
     </div>

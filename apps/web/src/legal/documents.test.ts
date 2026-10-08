@@ -87,7 +87,9 @@ describe('legalDocuments and error tracking', () => {
 /**
  * The backups (MAK-171) are described exactly where the instance keeps them. What a
  * customer who lost data would hold us to is pinned by phrase: how long each copy is kept,
- * that a deletion leaves every copy within ninety days, that the files pass through
+ * that a deletion leaves every copy within about three months — "about", because the
+ * lifecycle rule counts from the night of the copy, a day or two after the deletion — that
+ * the sign-in records are copied too, that the files pass through
  * GitHub's servers, and that the copies are not a way to bring one note back. An instance
  * with no backups bucket says none of it, and its deletion page keeps the shorter promise.
  */
@@ -107,7 +109,8 @@ describe('legalDocuments and backups', () => {
     const body = text(with_.privacy);
     expect(body).toContain('kept for 14 days');
     expect(body).toContain('kept for up to 90 days');
-    expect(body).toContain('leaves every one of them within 90 days');
+    expect(body).toContain('leaves every one of them within about three months');
+    expect(body).toContain('sign-in records');
     expect(body).toContain('not a way to bring one note back');
   });
 
@@ -122,7 +125,7 @@ describe('legalDocuments and backups', () => {
 
   it('tells the deletion page the copies remain, and leave within ninety days', () => {
     const body = text(with_.deletion);
-    expect(body).toContain('gone within 90 days of the deletion');
+    expect(body).toContain('gone within about three months of the deletion');
     expect(body).toContain('do not use to bring back an account its owner deleted');
     expect(body).not.toContain('Nothing else of your account');
   });
