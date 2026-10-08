@@ -156,7 +156,7 @@ export interface StoreUsage {
    * When the store was last written to: the newest change-feed row's time, which every
    * write records (`Feed.record`), or null for a store nothing has written yet. One row
    * off the table's primary key. The sweep records it in the directory as
-   * `last_active_at`, which the operator page sorts and shows accounts by; until it did,
+   * `last_active_at`, which the operator page shows for each account; until it did,
    * that column had no writer (found in review).
    */
   lastWriteAt: number | null;

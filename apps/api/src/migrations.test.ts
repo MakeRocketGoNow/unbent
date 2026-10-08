@@ -124,12 +124,13 @@ describe.skipIf(!sqlite3)('the D1 migrations', () => {
 
 /**
  * The plans the directory's statements get, on a database built from every migration.
- * 0039's expression index exists for the operator's accounts list alone; the planner has
- * no statistics, so an index it can use is an index it takes, and the first version of
- * 0039 was partial on `deleted_at IS NULL`, which every statement on the table says —
- * the dump run's two statements walked it on every hourly run (found in review). Pinned
- * here, where AGENTS.md says a new D1 index is checked, so the next index on this table
- * shows what it does to the others.
+ * The operator's accounts list walks `user`'s email index and finds each directory row by
+ * its key; the dump run's statements, which join `user` too, must keep driving from the
+ * directory. The planner has no statistics, so an index it can use is an index it takes:
+ * the first version of 0039's activity index, since dropped by 0042, was partial on
+ * `deleted_at IS NULL`, and the dump run's two statements walked it on every hourly run
+ * (found in review). Pinned here, where AGENTS.md says a new D1 index is checked, so the
+ * next index on these tables shows what it does to the others.
  */
 describe.skipIf(!sqlite3)('the directory\'s query plans', () => {
   let query: (sql: string) => string;

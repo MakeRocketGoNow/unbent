@@ -125,7 +125,7 @@ export function OperatorAccount({ userId }: { userId: string }) {
  * have loaded or while the store cannot answer (wiped, or a dump being loaded into it),
  * otherwise the newest write or null for a store never written to. The
  * directory's `lastActiveAt` is the same value as of the last hourly sweep, which is
- * what the accounts list shows and sorts by; on this page, which reads the store anyway,
+ * what the accounts list shows; on this page, which reads the store anyway,
  * it was up to an hour stale, or days for an account the sweep had not reached since
  * (MAK-190). Shown only while the live one is not here yet, and said to be the sweep's.
  * `reading` is whether the stats are still on their way: once a read has failed, "Reading
