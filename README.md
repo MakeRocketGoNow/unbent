@@ -2089,9 +2089,8 @@ was at some moment and loses what came after.
 - *Loading a dump*, for a fault noticed too late to wind back: everything since the dump
   was taken, which is up to a day; the store's thirty days of history and its undo
   bookmarks; and the live copy of a file deleted more than thirty-five days before the
-  dump, which should come back from the mirror by the restore-files workflow — a
-  workflow that has only been dry-run, below. Reversible for thirty days by the store's
-  bookmark, and the store as it stood is dumped first.
+  dump, which comes back from the mirror by the restore-files workflow. Reversible for
+  thirty days by the store's bookmark, and the store as it stood is dumped first.
 - *Losing the whole Cloudflare account*, the runbook under Where your notes live: about
   a day of notes, and more if the account is lost after the morning's dump and before the
   night's copy of it; every file uploaded since the night's copy; every store's history;
@@ -2107,13 +2106,12 @@ the store wound back to the minute between and the files serving their bytes aga
 undo of that, both as a wind-back by time and by the bookmark; a day-old dump loaded, with
 the before-load dump listed, and that load undone; and steps 1 to 5 of the whole-account
 runbook into a scratch Worker in the second account, with the dumps loading to counts
-identical to dev.
-Dry-run only: the restore-files workflow has been dispatched twice without the word
-`RESTORE` — 4,113 files in the mirror, none to copy, since the live bucket held everything
-the mirror did — and copying a file that is genuinely missing from the live bucket has
-not been done, nor has the runbook's step 6, new credentials for a new account and a
-hand-started mirror. Those are designed and dry-run, not proven. The write-up is on
-MAK-171, and the real run of restore-files is MAK-200.
+identical to dev. On 8 October, restore-files for real: a throwaway account's one file,
+copied to the mirror by a hand-started mirror run, deleted from the live bucket by hand,
+and put back by the workflow with `RESTORE` — one file in the mirror, one copied, byte
+for byte the object that was deleted. Dry-run only: the runbook's step 6, new credentials
+for a new account and a hand-started mirror, which is designed and not proven. The
+write-ups are on MAK-171 and MAK-200.
 
 ## Backups and export
 
