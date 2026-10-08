@@ -231,6 +231,8 @@ export const keys = {
   /** The operator page's reads, under one root so an action can invalidate all of them at once. */
   operatorBackups: () => ['operator', 'backups'] as const,
   operatorAccounts: () => ['operator', 'accounts'] as const,
+  /** One search's pages of the list, under its key; an object, so no account id can be mistaken for it. */
+  operatorAccountsList: (q: string) => ['operator', 'accounts', { q }] as const,
   /** Under the list's key, so one invalidation refreshes the list and every account page. */
   operatorAccount: (userId: string) => ['operator', 'accounts', userId] as const,
   storeStats: (userId: string) => ['operator', 'stats', userId] as const,
@@ -729,10 +731,16 @@ export const operatorBackupsQuery = () =>
     refetchOnWindowFocus: true,
   });
 
-export const operatorAccountsQuery = () =>
+/**
+ * The operator's accounts, by email, narrowed to `q` when there is one (trimmed by the
+ * caller, so a stray space is not a second key). `keepPreviousData` for the reason
+ * `notesQuery` has it: each settled pause in the search field is a new key, and without
+ * it the table emptied to "Reading the directory…" and refilled on every one.
+ */
+export const operatorAccountsQuery = (q = '') =>
   infiniteQueryOptions({
-    queryKey: keys.operatorAccounts(),
-    queryFn: ({ pageParam }) => api.operatorAccountsPage(pageParam),
+    queryKey: keys.operatorAccountsList(q),
+    queryFn: ({ pageParam }) => api.operatorAccountsPage(pageParam, q),
     initialPageParam: '' as string,
     getNextPageParam: (last) => last.next ?? undefined,
     staleTime: 60 * 1000,
@@ -740,6 +748,7 @@ export const operatorAccountsQuery = () =>
     // reads again the pages the operator has opened, one D1 read each.
     refetchInterval: 5 * 60 * 1000,
     refetchOnWindowFocus: true,
+    placeholderData: keepPreviousData,
   });
 
 /** One account's row, for its page; null is the route's 404, an id the directory does not hold live. */

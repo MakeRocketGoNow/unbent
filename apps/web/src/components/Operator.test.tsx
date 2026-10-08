@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { BackupsStatus, DumpStatus, MirrorStatus, OperatorAccount } from '@unbent/shared';
 
 vi.mock('@tanstack/react-router', () => ({
@@ -13,7 +13,7 @@ vi.mock('@tanstack/react-router', () => ({
 /** The settings nav asks whether an import is running; none is. */
 vi.mock('../import-run.js', () => ({ useImportRunning: () => false }));
 
-const { AccountsTable, BackupHealth, LastDump } = await import('./Operator.js');
+const { AccountSearch, AccountsTable, BackupHealth, LastDump } = await import('./Operator.js');
 
 const now = Date.parse('2026-10-06T12:00:00Z');
 
@@ -194,7 +194,7 @@ describe('AccountsTable', () => {
     expect(screen.getByText('2 shown')).toBeTruthy();
   });
 
-  it('shows when an account with no recorded write was made, which is what it sorts by', () => {
+  it('shows when an account with no recorded write was made', () => {
     render(<AccountsTable accounts={[account({ lastActiveAt: null, createdAt: now - 3_600_000 })]} more={null} now={now} />);
     const cell = screen.getByText(/^Made /);
     expect(cell.textContent).toBe('Made 1 hour ago');
@@ -204,5 +204,68 @@ describe('AccountsTable', () => {
   it('offers no next page when there is none', () => {
     render(<AccountsTable accounts={[account()]} more={null} now={now} />);
     expect(screen.queryByRole('button', { name: 'Show more accounts' })).toBeNull();
+  });
+
+  it('says a search found nothing, naming it, rather than that there are no accounts', () => {
+    render(<AccountsTable accounts={[]} more={null} search="acme" now={now} />);
+    expect(screen.getByText(/No account's email or name has “acme” in it/)).toBeTruthy();
+    expect(screen.queryByText('No accounts yet.')).toBeNull();
+  });
+
+  it('marks the last search\'s accounts as busy while the next is answered', () => {
+    render(<AccountsTable accounts={[account()]} more={null} stale now={now} />);
+    expect(document.querySelector('.operator-table-wrap')!.getAttribute('aria-busy')).toBe('true');
+  });
+});
+
+/**
+ * The field hands its search on after a pause, trimmed, so a name typed at speed is one
+ * request; follows a search changed under it (Back); and does not let its own search,
+ * coming back, wipe letters typed since.
+ */
+describe('AccountSearch', () => {
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
+
+  const field = () => screen.getByRole('searchbox', { name: 'Search accounts' }) as HTMLInputElement;
+
+  it('hands the search on once typing pauses, trimmed', () => {
+    vi.useFakeTimers();
+    const onSearch = vi.fn();
+    render(<AccountSearch search="" onSearch={onSearch} />);
+    fireEvent.change(field(), { target: { value: 'ac' } });
+    act(() => vi.advanceTimersByTime(100));
+    fireEvent.change(field(), { target: { value: ' acme ' } });
+    act(() => vi.advanceTimersByTime(249));
+    expect(onSearch).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
+    expect(onSearch).toHaveBeenCalledTimes(1);
+    expect(onSearch).toHaveBeenCalledWith('acme');
+  });
+
+  it('clears on Escape at once', () => {
+    const onSearch = vi.fn();
+    render(<AccountSearch search="acme" onSearch={onSearch} />);
+    expect(field().value).toBe('acme');
+    fireEvent.keyDown(field(), { key: 'Escape' });
+    expect(field().value).toBe('');
+    expect(onSearch).toHaveBeenCalledWith('');
+  });
+
+  it('follows a search changed under it, and keeps what was typed while its own came back', () => {
+    vi.useFakeTimers();
+    const onSearch = vi.fn();
+    const { rerender } = render(<AccountSearch search="" onSearch={onSearch} />);
+    fireEvent.change(field(), { target: { value: 'acm' } });
+    act(() => vi.advanceTimersByTime(250));
+    fireEvent.change(field(), { target: { value: 'acme' } });
+    // Its own search arrives in the address while the next letter waits.
+    rerender(<AccountSearch search="acm" onSearch={onSearch} />);
+    expect(field().value).toBe('acme');
+    // Back to a different search replaces the draft.
+    rerender(<AccountSearch search="pat" onSearch={onSearch} />);
+    expect(field().value).toBe('pat');
   });
 });

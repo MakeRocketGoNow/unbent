@@ -992,9 +992,9 @@ export async function operatorBackups(): Promise<BackupsStatus> {
   return json<BackupsStatus>(await request('/api/admin/backups'));
 }
 
-/** One page of live accounts, newest activity first; `after` is the previous page's `next`. */
-export async function operatorAccountsPage(after = ''): Promise<OperatorAccountsPage> {
-  const qs = new URLSearchParams({ limit: String(OPERATOR_PAGE_SIZE), ...(after ? { after } : {}) });
+/** One page of live accounts by email, narrowed to `q` when given; `after` is the previous page's `next`. */
+export async function operatorAccountsPage(after = '', q = ''): Promise<OperatorAccountsPage> {
+  const qs = new URLSearchParams({ limit: String(OPERATOR_PAGE_SIZE), ...(after ? { after } : {}), ...(q ? { q } : {}) });
   return json<OperatorAccountsPage>(await request(`/api/admin/accounts?${qs}`));
 }
 
