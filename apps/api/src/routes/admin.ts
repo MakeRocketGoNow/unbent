@@ -12,7 +12,7 @@ import { MIRROR_STATUS_KEY, STATUS_KEY, dumpPrefix } from '../lib/backups.js';
 import { beforeLoadKey, describeDump, dumpBeforeLoad, loadReserve, resolveDumpDownload, resolveDumpKey, streamDump } from '../lib/load.js';
 import { isOperator } from '../lib/instance.js';
 import { userPrefix } from '../lib/repo.js';
-import { deleteAccount } from '../lib/account-deletion.js';
+import { clearAccount, deleteAccount } from '../lib/account-deletion.js';
 import { accountDeletionOffered } from '../auth.js';
 import { storeFor } from '../lib/store-client.js';
 import { sweepStores } from '../lib/sweep.js';
@@ -169,8 +169,13 @@ export const admin = new Hono<AppEnv>()
    * The live suites sign up throwaway `@example.test` actors, and `pnpm test` purges them
    * afterwards. That used to be one SQL statement against local D1 — delete the user rows
    * and let the cascade take the notes — but the notes are in objects now, and nothing but
-   * the Worker can reach one. So the purge is a route: wipe each actor's store, then delete
-   * the user row, whose cascade takes the sessions, and drop the directory row.
+   * the Worker can reach one. So the purge is a route: clear each actor's files and store
+   * as a deletion does (`clearAccount`), then delete the user row, whose cascade takes the
+   * sessions, and drop the directory row. The row goes at once, without the wait the sweep
+   * gives a deleted account for late writes (`LATE_WRITES_MS`): the purge runs after the
+   * suites, when nothing is left to write as these actors. Their files have to go here,
+   * though, since the row is the last thing that names the prefix — the suites upload,
+   * and before this swept R2 every run left its files in the local bucket for good.
    *
    * Local only, in the one way this codebase already draws that line: `ALLOW_TEST_CREDENTIALS`
    * is passed by `pnpm dev` on the command line and cannot be copied into a deployed
@@ -185,12 +190,13 @@ export const admin = new Hono<AppEnv>()
     const failed: string[] = [];
     for (const { id } of results) {
       try {
-        await storeFor(c.env, id).wipe();
+        await clearAccount(c.env, id);
         wiped += 1;
       } catch (err) {
-        // The row goes anyway: an object left with rows behind a deleted user is caught by
-        // the sweep, which treats a directory row with no user as tombstoned.
-        console.error(`purge-fixtures: wipe failed for ${id}:`, err);
+        // The actor is kept, rows and all, for the next purge to try again: `clearAccount`
+        // has said which half failed, and a row dropped now would leave its files with
+        // nothing to find them.
+        console.error(`purge-fixtures: clear failed for ${id}:`, err);
         failed.push(id);
         continue;
       }

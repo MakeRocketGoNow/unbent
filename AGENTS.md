@@ -771,7 +771,9 @@ Things about working on the store that are easy to get wrong:
   wipes anything, and a row is dropped only once the user row is gone too, its late writes
   are over (`LATE_WRITES_MS`: a session open at the deletion writes on its cached cookie
   for a while after it) and nothing is left under its prefix in R2. Keep it that way: the
-  row is the only thing that names a deleted account's prefix.
+  row is the only thing that names a deleted account's prefix. The local test purge
+  (`purge-fixtures`) drops its actors' rows at once, since nothing writes as them once
+  the suites are over, but clears their files first all the same.
 - **Subrequests are the budget inside one invocation.** Fifty on Free, and every D1 query
   and every store call counts. The sweep walks twenty accounts a run at two store calls
   each; a dump is one store call per eight-megabyte slice (`dumpSlice`), so one for a
