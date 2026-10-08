@@ -184,8 +184,13 @@ export function adoptHostLayout(): void {
   document.documentElement.classList.add('host-ios');
   const viewport = document.querySelector('meta[name="viewport"]');
   const content = viewport?.getAttribute('content') ?? '';
-  if (viewport && !content.includes('viewport-fit')) {
-    viewport.setAttribute('content', `${content}, ${IOS_VIEWPORT}`);
+  // Each setting by its own key, so a second call adds nothing and a page that already
+  // says `viewport-fit` still gets the scale. Checking for `viewport-fit` alone once
+  // stood for all of them, and would have brought the zoom back silently the day
+  // index.html gained `viewport-fit=cover` of its own.
+  const missing = IOS_VIEWPORT.split(', ').filter((part) => !content.includes(`${part.split('=')[0]}=`));
+  if (viewport && missing.length) {
+    viewport.setAttribute('content', [content, ...missing].join(', '));
   }
   postToApp({ type: 'edge-to-edge' });
   // The same function each time, so calling this twice still listens once.

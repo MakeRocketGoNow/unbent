@@ -43,6 +43,18 @@ describe('app bridge', () => {
     expect(postMessage).toHaveBeenCalledWith('{"type":"edge-to-edge"}');
   });
 
+  /** A page whose own viewport already covers the screen still gets the fixed scale. */
+  it('adds each viewport setting the page does not already have', () => {
+    const meta = viewport('width=device-width, initial-scale=1.0, viewport-fit=cover');
+    window.UnbentApp = { platform: 'ios', postMessage: vi.fn() };
+
+    adoptHostLayout();
+
+    expect(meta.content).toBe(
+      'width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no',
+    );
+  });
+
   /** A restored page runs no script again, and the app has put it back in the safe area. */
   it('asks for the screen again when the page comes back from the back/forward cache', () => {
     viewport('width=device-width, initial-scale=1.0');
