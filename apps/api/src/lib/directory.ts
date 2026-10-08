@@ -171,8 +171,9 @@ export const OPERATOR_PAGE_SQL = `${OPERATOR_SELECT}
  * list's for the same reason: `migrations.test.ts` plans them against a database built
  * from the migrations and pins that they drive from the directory and find each user by
  * id, so the email index the list walks leaves them alone. Here rather than in backups.ts
- * because that module reaches the store client, which the node test cannot load. Binds: `due` takes the day's
- * midnight and the budget; `status` the stale threshold and the list cap, twice.
+ * because that module reaches the store client, which the node test cannot load. Binds:
+ * `due` takes the day's midnight and the budget; `status` the stale threshold and the
+ * list cap, twice.
  */
 export const DUMP_SQL = {
   due: `SELECT d.user_id, d.dump_at, d.dump_mark
@@ -208,8 +209,9 @@ export const DUMP_SQL = {
  * Email is unique in `user`, so it is the cursor on its own: a page starts after the
  * last email the previous one ended on. The walk is `user`'s unique email index from that
  * email, with each account's directory row found by its key, and `LIMIT` stops it — a
- * page reads about fifty rows of each table however many accounts the instance holds. Emails sort as
- * stored, byte for byte; Better Auth lowercases an address when it makes an account, so that is alphabetical.
+ * page reads about fifty rows of each table however many accounts the instance holds.
+ * Emails sort as stored, byte for byte; Better Auth lowercases an address when it makes
+ * an account, so that is alphabetical.
  *
  * A search is a substring of the email or the name, because the part of an address an
  * operator remembers is as often the domain as the start. It matches in either case for
