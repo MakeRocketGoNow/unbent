@@ -31,8 +31,11 @@ import { addErrorSink, routeOf } from './report-error.js';
  *
  * Exceptions arrive through `addErrorSink` rather than through the SDK's own
  * `capture_exceptions`. `report-error.ts` already listens on `window`, dedupes by message
- * and caps a render loop at five; enabling the SDK's autocapture would add a second pair of
- * listeners with neither of those bounds and report everything twice.
+ * and caps a render loop at five; the SDK's autocapture would add a second pair of
+ * listeners with neither of those bounds and report everything twice. So it is switched off
+ * by name, not just left out: unset, the SDK takes the project's "Exception autocapture"
+ * setting from PostHog's remote config, which is on in a project that has error tracking,
+ * and every uncaught error arrived twice — once handled from here, once unhandled from it.
  */
 
 /** Where the Worker proxies this traffic. See `routes/ingest.ts` for why it is proxied. */
@@ -49,9 +52,25 @@ const INGEST_PATH = '/ingest';
  * which on this app carries a note id in the path and a search term in the query string;
  * `routeOf` is the same redaction the first-party report already applies. The referrer goes
  * for a related reason: on a note it is another note's address.
+ *
+ * Every exception is marked unhandled, because every one is. The only way in is
+ * `addErrorSink`, and `report-error.ts` only hears what reached `window` uncaught; but
+ * `captureException` is the SDK's call for an error the caller caught, and it says
+ * `handled: true` on all of them. Left alone, PostHog's Handled/Unhandled filter would put
+ * every crash in this app under the wrong one.
  */
 export function scrub(event: CaptureResult | null): CaptureResult | null {
   if (!event || event.event !== '$exception') return null;
+
+  const exceptions: unknown = event.properties['$exception_list'];
+  if (Array.isArray(exceptions)) {
+    for (const exception of exceptions) {
+      if (exception && typeof exception === 'object') {
+        const entry = exception as { mechanism?: object };
+        entry.mechanism = { ...entry.mechanism, handled: false };
+      }
+    }
+  }
 
   const route = routeOf();
   event.properties['$current_url'] = route;
@@ -82,11 +101,17 @@ export async function installPosthog(config: NonNullable<AppConfig['posthog']>):
       api_host: `${location.origin}${INGEST_PATH}`,
       // Still the real host: the toolbar and the links in the SDK's own UI point at it.
       ui_host: config.uiHost,
+      // The SDK's defaults as they stood on this date, so an upgrade of `posthog-js` does
+      // not change them underneath this file. Moving the date is a decision, made here and
+      // read against PostHog's changelog — not something a dependency bump does by itself.
+      defaults: '2026-05-30',
       cookieless_mode: 'always',
       person_profiles: 'never',
       autocapture: false,
       capture_pageview: false,
       capture_pageleave: false,
+      // Off by name, or the project's remote setting turns it on; see above.
+      capture_exceptions: false,
       disable_session_recording: true,
       disable_surveys: true,
       respect_dnt: true,

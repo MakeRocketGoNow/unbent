@@ -38,6 +38,7 @@ describe('posthog', () => {
     const [key, options] = vi.mocked(posthog.init).mock.calls[0] ?? [];
     expect(key).toBe('phc_x');
     expect(options).toMatchObject({
+      defaults: '2026-05-30',
       cookieless_mode: 'always',
       person_profiles: 'never',
       autocapture: false,
@@ -52,7 +53,9 @@ describe('posthog', () => {
     expect(String(options?.api_host)).toMatch(/\/ingest$/);
     // The SDK's own exception autocapture stays off: report-error.ts already listens, and
     // its cap and duplicate filter are what keep a render loop from becoming a flood.
-    expect(options && 'capture_exceptions' in options).toBe(false);
+    // Off by name: left unset, the SDK defers to the project's remote setting, which turned
+    // it on and reported every error twice.
+    expect(options?.capture_exceptions).toBe(false);
   });
 
   it('forwards a report, with the thrown value PostHog can parse into frames', async () => {
@@ -104,6 +107,25 @@ describe('posthog', () => {
     expect(serialized).not.toContain('3f8a1c2e');
     expect(serialized).not.toContain('secret');
     expect(serialized).not.toContain('other');
+  });
+
+  /* Everything reaches PostHog through captureException, which marks an error handled;
+     everything this app reports is something nothing caught. */
+  it('marks every exception unhandled, keeping the rest of its mechanism', () => {
+    const event = scrub({
+      event: '$exception',
+      properties: {
+        $exception_list: [
+          { type: 'Error', value: 'boom', mechanism: { type: 'generic', handled: true } },
+          { type: 'Error', value: 'cause' },
+        ],
+      },
+    } as unknown as CaptureResult);
+
+    expect(event?.properties['$exception_list']).toEqual([
+      { type: 'Error', value: 'boom', mechanism: { type: 'generic', handled: false } },
+      { type: 'Error', value: 'cause', mechanism: { handled: false } },
+    ]);
   });
 
   /* No error tracking is a worse outcome than having it; a broken app is worse than both. */
