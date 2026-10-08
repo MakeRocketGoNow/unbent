@@ -4,17 +4,23 @@
  * Plain text was enough to deliver the code, but not for a mail client to recognise it.
  * Gmail offers a "Copy code" card on messages it decides hold a one-time code, and it
  * decides on its own: there is no header, markup or registration a sender can use to ask
- * for it. What the messages that get it have in common is an HTML part with the code set
- * apart from the sentence around it, so that is what this sends, beside the same text.
- * It improves the odds; nothing guarantees the card.
+ * for it. So this copies the shape of a message that gets it, compared header by header
+ * against one that did: an HTML part, a subject with no code in it, and the warning not
+ * to share the code that nearly every code email carries. That message had its code in
+ * bold mid-sentence, so the block below is for reading, not for Gmail. None of this is
+ * documented; it improves the odds and guarantees nothing, and the sender's reputation
+ * and the reader's account weigh in too.
  *
  * The code is one run of digits in one element, spaced out by `letter-spacing` rather
  * than split into a box per digit. Split boxes look like a keypad, but selecting them by
  * hand copies the gaps between them, and a code that pastes as "6 2 2 4 6 8" is a field
  * that refuses it.
  *
- * It stays in the subject too. That is what a phone's notification shows, which is often
- * all anyone reads, and what iOS reads to offer the code above the keyboard.
+ * The code is out of the subject, where it used to lead, because the message that got the
+ * card had none there and a code a reader can already see is one Gmail may not bother to
+ * offer. Little is lost: a phone's notification shows the first line of the body under
+ * the subject, and that line is the code, and iOS finds a code in the body to offer above
+ * the keyboard.
  *
  * Tables and inline styles because that is all email clients agree on: Gmail drops a
  * `<style>` block's selectors in places and Outlook lays out nothing else. The colours
@@ -36,19 +42,20 @@ export interface SignInCodeEmail {
   html: string;
 }
 
-const EXPIRY = 'It expires in five minutes and can be used once. If you did not ask to sign in, you can ignore this email.';
+const SUBJECT = 'Your Unbent sign-in code';
+const FINE_PRINT = 'Do not share it with anyone. It expires in five minutes and can be used once. If you did not ask to sign in, you can ignore this email.';
 
 export function signInCodeEmail(otp: string): SignInCodeEmail {
   const code = escapeHtml(otp);
   return {
-    subject: `${otp} is your Unbent sign-in code`,
-    text: `Your Unbent sign-in code is ${otp}\n\n${EXPIRY}`,
+    subject: SUBJECT,
+    text: `Your Unbent sign-in code is ${otp}\n\n${FINE_PRINT}`,
     html: `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${code} is your Unbent sign-in code</title>
+<title>${SUBJECT}</title>
 </head>
 <body style="margin:0;padding:0;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -56,7 +63,7 @@ export function signInCodeEmail(otp: string): SignInCodeEmail {
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:480px;margin:0 auto;text-align:center;font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1c1a17;">
 <tr><td align="center" style="font-size:16px;line-height:24px;padding:0 0 12px;">Your Unbent sign-in code is</td></tr>
 <tr><td align="center" style="padding:0 0 24px;"><div style="display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:32px;line-height:40px;font-weight:600;letter-spacing:6px;padding:12px 14px 12px 20px;background-color:#f1eee9;border:1px solid #e3ded7;border-radius:8px;">${code}</div></td></tr>
-<tr><td align="center" style="font-size:14px;line-height:20px;color:#6b6560;">${EXPIRY}</td></tr>
+<tr><td align="center" style="font-size:14px;line-height:20px;color:#6b6560;">${FINE_PRINT}</td></tr>
 </table>
 </td></tr>
 </table>
