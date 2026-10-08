@@ -68,7 +68,13 @@ export function Operator({ search = '', onSearch }: { search?: string; onSearch:
             accounts={rows}
             search={search}
             stale={accounts.isPlaceholderData}
-            more={accounts.hasNextPage ? { fetching: accounts.isFetchingNextPage, fetch: () => void accounts.fetchNextPage() } : null}
+            // Not while the rows are the last search's: the button would read the new
+            // search's first page, not continue the rows on screen.
+            more={
+              accounts.hasNextPage && !accounts.isPlaceholderData
+                ? { fetching: accounts.isFetchingNextPage, fetch: () => void accounts.fetchNextPage() }
+                : null
+            }
           />
         ) : accounts.error ? (
           <p className="bad small">{errorText(accounts.error)}</p>
@@ -326,8 +332,10 @@ export function AccountsTable({
   now?: number;
 }) {
   if (accounts.length === 0) {
+    // An empty answer still on screen is the last search's, and says nothing of this one.
+    if (stale) return <p className="muted small">Searching…</p>;
     return (
-      <p className="muted small wrap-anywhere" aria-busy={stale}>
+      <p className="muted small wrap-anywhere">
         {search ? <>No account&apos;s email or name has &ldquo;{search}&rdquo; in it.</> : 'No accounts yet.'}
       </p>
     );

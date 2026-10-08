@@ -212,6 +212,12 @@ describe('AccountsTable', () => {
     expect(screen.queryByText('No accounts yet.')).toBeNull();
   });
 
+  it('says it is searching, not that the new search found nothing, while the last empty answer is on screen', () => {
+    render(<AccountsTable accounts={[]} more={null} search="acme" stale now={now} />);
+    expect(screen.getByText('Searching…')).toBeTruthy();
+    expect(screen.queryByText(/“acme”/)).toBeNull();
+  });
+
   it('marks the last search\'s accounts as busy while the next is answered', () => {
     render(<AccountsTable accounts={[account()]} more={null} stale now={now} />);
     expect(document.querySelector('.operator-table-wrap')!.getAttribute('aria-busy')).toBe('true');
