@@ -299,8 +299,45 @@ describe('NotebookNav', () => {
       expect(container.querySelectorAll('.drawer-tags .drawer-item')).toHaveLength(26);
       fireEvent.click(more);
       await waitFor(() =>
-        expect(container.querySelectorAll('.drawer-tags .drawer-item')).toHaveLength(30),
+        expect(container.querySelectorAll('.drawer-tags .drawer-item')).toHaveLength(25 + 30),
       );
+    });
+
+    /*
+     * The full list is an index, read by name: under the most used, which stay where they
+     * were, every tag A to Z — the head's included, so the alphabet has no gaps.
+     */
+    it('lists every tag by name under the most used once the rest are asked for', async () => {
+      localStorage.setItem('unbent.navTagsOpen', 'true');
+      const tags = [
+        ...Array.from({ length: 25 }, (_, i) => ({ name: `Common ${String(i).padStart(2, '0')}`, count: 100 - i })),
+        { name: 'zebra', count: 2 },
+        { name: 'Apple', count: 1 },
+        { name: 'banana', count: 1 },
+      ];
+      const { findByRole, findByText, container } = harness({ tags });
+      const labels = () =>
+        [...container.querySelectorAll('.drawer-tags a .drawer-item-label')].map((e) => e.textContent);
+      const more = await findByRole('button', { name: 'Show all 28 tags' });
+      const before = labels();
+      expect(before).toHaveLength(25);
+      fireEvent.click(more);
+      await findByText('All tags');
+      const after = labels();
+      expect(after.slice(0, 25)).toEqual(before);
+      expect(after.slice(25)).toEqual([
+        'Apple',
+        'banana',
+        ...tags.slice(0, 25).map((t) => t.name),
+        'zebra',
+      ]);
+    });
+
+    it('marks no head over the index while the tags are under the cap', async () => {
+      localStorage.setItem('unbent.navTagsOpen', 'true');
+      const { findByRole, queryByText } = harness({ tags: TAGS });
+      await findByRole('link', { name: /^Receipt/ });
+      expect(queryByText('All tags')).toBeNull();
     });
 
     it('keeps the current tag on screen past the cap', async () => {

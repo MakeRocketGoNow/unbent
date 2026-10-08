@@ -23,6 +23,19 @@ import { rememberedSort } from '../notebook-sort.js';
  */
 const TAG_CAP = 25;
 
+/**
+ * The order of the full tag list: by name, without case, as the notebooks are listed.
+ *
+ * The capped list and the full one answer different questions. The first 25 by use are
+ * the tags someone works in every day, and use is the order that puts them first. The
+ * full list is an index — "I have a tag called something like this" — and past the
+ * well-used head, an order by count is a long tail of ones and twos in no order a person
+ * can scan. Evernote lists every tag by name for this reason. A setting to choose between
+ * the two was considered and turned down: each order is wrong for one of the two jobs, so
+ * a switch only asks which job the list should fail at.
+ */
+const byName = new Intl.Collator(undefined, { sensitivity: 'base' }).compare;
+
 /** What the navigation needs of the notebooks. Shaped by the API, narrowed to what is drawn. */
 export interface NotebookData {
   notebooks: { id: string; name: string; count: number; emoji?: string | null }[];
@@ -159,16 +172,44 @@ export function NotebookNav({
   /** The one tag that is the place, when a tag is: no notebook, exactly one tag. */
   const tagPlace = here && !notebook && selectedTags.length === 1 ? selectedTags[0] : undefined;
   /*
-   * The tags listed: the first `TAG_CAP` by use, or all of them once asked. The current
-   * tag is always among them, past the cap or not — the same rule that keeps the Inbox on
-   * screen while it is where you are — so the navigation never fails to say where you are.
+   * The tags listed: the first `TAG_CAP` by use. The current tag is always among them,
+   * past the cap or not — the same rule that keeps the Inbox on screen while it is where
+   * you are — so the navigation never fails to say where you are. Once the full list is
+   * asked for it says so, and the current tag is in that.
    */
-  const listedTags = allTags ? tags : tags.slice(0, TAG_CAP);
+  const usedTags = tags.slice(0, TAG_CAP);
+  const capped = tags.length > TAG_CAP;
   const currentPastCap =
-    tagPlace !== undefined && !listedTags.some((t) => sameName(t.name, tagPlace))
+    !allTags && tagPlace !== undefined && !usedTags.some((t) => sameName(t.name, tagPlace))
       ? tags.find((t) => sameName(t.name, tagPlace))
       : undefined;
-  const shownTags = currentPastCap ? [...listedTags, currentPastCap] : listedTags;
+  const shownTags = currentPastCap ? [...usedTags, currentPastCap] : usedTags;
+  /*
+   * Every tag by name, under the most used rather than in place of them: the rows already
+   * on screen stay where they were when the rest arrive, and the index is whole, so a tag
+   * looked for by name is where the alphabet says even when it is also in the head.
+   */
+  const indexTags = allTags && capped ? [...tags].sort((a, b) => byName(a.name, b.name)) : [];
+  /** A tag's row; `list` keeps its key apart when the tag is in both lists. */
+  const tagRow = (t: TagCount, list: 'used' | 'all') => {
+    // Without case, as the filter matches: `?tag=receipts` is Receipts.
+    const on = tagPlace !== undefined && sameName(tagPlace, t.name);
+    return (
+      <Link
+        key={`${list}:${t.name}`}
+        to="/notes"
+        search={tagOf(t.name)}
+        className={on ? 'drawer-item current' : 'drawer-item'}
+        aria-current={on ? 'true' : undefined}
+        title={t.name}
+        onClick={picked}
+      >
+        <TagIcon />
+        <span className="drawer-item-label">{t.name}</span>
+        <span className="tag-count">{t.count}</span>
+      </Link>
+    );
+  };
   /** The tooltip a strip's row needs, and a full-width row does not. */
   const tip = (label: string) => (labelsHidden ? label : undefined);
 
@@ -288,26 +329,18 @@ export function NotebookNav({
             </div>
             {tagsOpen && (
               <div id={tagsId} className="drawer-tags">
-                {shownTags.map((t) => {
-                  // Without case, as the filter matches: `?tag=receipts` is Receipts.
-                  const on = tagPlace !== undefined && sameName(tagPlace, t.name);
-                  return (
-                    <Link
-                      key={t.name}
-                      to="/notes"
-                      search={tagOf(t.name)}
-                      className={on ? 'drawer-item current' : 'drawer-item'}
-                      aria-current={on ? 'true' : undefined}
-                      title={t.name}
-                      onClick={picked}
-                    >
-                      <TagIcon />
-                      <span className="drawer-item-label">{t.name}</span>
-                      <span className="tag-count">{t.count}</span>
-                    </Link>
-                  );
-                })}
-                {!allTags && tags.length > TAG_CAP && (
+                {shownTags.map((t) => tagRow(t, 'used'))}
+                {indexTags.length > 0 && (
+                  <>
+                    {/* A head of the section's own shape, so the index reads as a second
+                        list rather than more of the first. */}
+                    <div className="drawer-section">
+                      <span className="drawer-section-label">All tags</span>
+                    </div>
+                    {indexTags.map((t) => tagRow(t, 'all'))}
+                  </>
+                )}
+                {!allTags && capped && (
                   <button
                     type="button"
                     className="drawer-item drawer-new"
