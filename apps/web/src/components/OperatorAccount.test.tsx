@@ -155,7 +155,7 @@ describe('OperatorAccount: facts', () => {
 describe('OperatorAccount: wind back', () => {
   it('previews first, then names the account, the moment and what is lost, then offers Undo', async () => {
     vi.mocked(api.previewRestore).mockResolvedValue({ dryRun: true, user: 'u1', bookmark: 'bm-1', current: stats({ notes: 12, attachments: 4, note_revisions: 40 }) });
-    vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: '00000001-00000002-00000003-0000000000000004', recorded: true, feedEpoch: 'e2', stats: stats({ notes: 9, attachments: 3, note_revisions: 20 }), note: '' });
+    vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: '00000001-00000002-00000003-0000000000000004', recorded: true, record: 1, feedEpoch: 'e2', stats: stats({ notes: 9, attachments: 3, note_revisions: 20 }), note: '' });
     harness();
     const moment = screen.getByLabelText('Moment') as HTMLInputElement;
     fireEvent.change(moment, { target: { value: '2026-10-05T10:30' } });
@@ -187,7 +187,7 @@ describe('OperatorAccount: wind back', () => {
     const undo = screen.getByRole('group', { name: 'Confirm undo wind back' });
     expect(undo.textContent).toContain('Put someone@example.com back as it was before the wind-back?');
     expect(undo.textContent).toContain('Anything written since the wind-back is lost');
-    vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: null, recorded: true, feedEpoch: 'e3', stats: stats(), note: '' });
+    vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: null, recorded: true, record: 1, feedEpoch: 'e3', stats: stats(), note: '' });
     fireEvent.click(screen.getByRole('button', { name: 'Undo the wind-back' }));
     await flush();
     expect(api.restoreStore).toHaveBeenLastCalledWith('u1', { bookmark: '00000001-00000002-00000003-0000000000000004' }, 1);
@@ -196,7 +196,7 @@ describe('OperatorAccount: wind back', () => {
 
   it("offers the answer's own Undo when the history could not record the wind-back", async () => {
     vi.mocked(api.previewRestore).mockResolvedValue({ dryRun: true, user: 'u1', bookmark: 'bm-1', current: stats() });
-    vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: '00000001-00000002-00000003-0000000000000004', recorded: false, feedEpoch: 'e2', stats: stats(), note: '' });
+    vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: '00000001-00000002-00000003-0000000000000004', recorded: false, record: 1, feedEpoch: 'e2', stats: stats(), note: '' });
     harness();
     fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
     await flush();
@@ -206,12 +206,13 @@ describe('OperatorAccount: wind back', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Undo the wind-back' }));
     fireEvent.click(within(screen.getByRole('group', { name: 'Confirm undo wind back' })).getByRole('button', { name: 'Undo the wind-back' }));
     await flush();
-    expect(api.restoreStore).toHaveBeenLastCalledWith('u1', { bookmark: '00000001-00000002-00000003-0000000000000004' });
+    // With its history row, so the route refuses if another restore has landed since.
+    expect(api.restoreStore).toHaveBeenLastCalledWith('u1', { bookmark: '00000001-00000002-00000003-0000000000000004' }, 1);
   });
 
   it('keeps the undo bookmark through a change of moment or a second preview', async () => {
     vi.mocked(api.previewRestore).mockResolvedValue({ dryRun: true, user: 'u1', bookmark: 'bm-1', current: stats() });
-    vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: '00000001-00000002-00000003-0000000000000004', recorded: false, feedEpoch: 'e2', stats: stats(), note: '' });
+    vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: '00000001-00000002-00000003-0000000000000004', recorded: false, record: 1, feedEpoch: 'e2', stats: stats(), note: '' });
     harness();
     fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
     await flush();
@@ -228,7 +229,7 @@ describe('OperatorAccount: wind back', () => {
 
   it('drops the Undo from the answer once a load replaces the store, since its bookmark would throw the load away', async () => {
     vi.mocked(api.previewRestore).mockResolvedValue({ dryRun: true, user: 'u1', bookmark: 'bm-1', current: stats() });
-    vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: '00000001-00000002-00000003-0000000000000004', recorded: false, feedEpoch: 'e2', stats: stats(), note: '' });
+    vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: '00000001-00000002-00000003-0000000000000004', recorded: false, record: 1, feedEpoch: 'e2', stats: stats(), note: '' });
     vi.mocked(api.previewLoad).mockResolvedValue({
       dryRun: true,
       user: 'u1',
@@ -242,6 +243,7 @@ describe('OperatorAccount: wind back', () => {
       before: 'stores/u1/2026-10-06T12-00-00Z-before-load.sql',
       undo: '00000001-00000002-00000003-0000000000000005',
       recorded: false,
+      record: 1,
       feedEpoch: 'e3',
       migrated: [],
       foreignKeyViolations: 0,
@@ -318,7 +320,7 @@ describe('OperatorAccount: history', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     // The newest is a load, so the confirm is the load's.
     expect(screen.getByRole('group', { name: 'Confirm undo load' })).toBeTruthy();
-    vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: null, recorded: true, feedEpoch: 'e3', stats: stats(), note: '' });
+    vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: null, recorded: true, record: 1, feedEpoch: 'e3', stats: stats(), note: '' });
     fireEvent.click(screen.getByRole('button', { name: 'Undo the load' }));
     await flush();
     // With the row it took to be newest, so the route can refuse if another came since.
@@ -385,6 +387,7 @@ describe('OperatorAccount: load a dump', () => {
       before: 'stores/u1/2026-10-06T12-00-00Z-before-load.sql',
       undo: '00000001-00000002-00000003-0000000000000004',
       recorded: true,
+      record: 1,
       feedEpoch: 'e2',
       migrated: [],
       foreignKeyViolations: 0,
@@ -423,7 +426,7 @@ describe('OperatorAccount: load a dump', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     const undo = screen.getByRole('group', { name: 'Confirm undo load' });
     expect(undo.textContent).toContain("Put someone@example.com's store back as it was before the load?");
-    vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: null, recorded: false, feedEpoch: 'e3', stats: stats(), note: '' });
+    vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: null, recorded: false, record: 1, feedEpoch: 'e3', stats: stats(), note: '' });
     fireEvent.click(screen.getByRole('button', { name: 'Undo the load' }));
     await flush();
     expect(api.restoreStore).toHaveBeenCalledWith('u1', { bookmark: '00000001-00000002-00000003-0000000000000004' }, 1);
@@ -443,6 +446,7 @@ describe('OperatorAccount: load a dump', () => {
       before: 'stores/u1/2026-10-06T12-00-00Z-before-load.sql',
       undo: '00000001-00000002-00000003-0000000000000005',
       recorded: false,
+      record: 1,
       feedEpoch: 'e2',
       migrated: [],
       foreignKeyViolations: 0,
@@ -450,7 +454,7 @@ describe('OperatorAccount: load a dump', () => {
       note: '',
     });
     vi.mocked(api.previewRestore).mockResolvedValue({ dryRun: true, user: 'u1', bookmark: 'bm-1', current: stats() });
-    vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: '00000001-00000002-00000003-0000000000000006', recorded: false, feedEpoch: 'e3', stats: stats(), note: '' });
+    vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: '00000001-00000002-00000003-0000000000000006', recorded: false, record: 1, feedEpoch: 'e3', stats: stats(), note: '' });
     harness();
     await waitFor(() => expect(screen.getAllByRole('button', { name: 'Load' }).length).toBe(2));
     fireEvent.click(screen.getAllByRole('button', { name: 'Load' })[0]!);
@@ -482,6 +486,7 @@ describe('OperatorAccount: load a dump', () => {
       before: 'stores/u1/2026-10-06T12-00-00Z-before-load.sql',
       undo: null,
       recorded: false,
+      record: 1,
       feedEpoch: 'e2',
       migrated: ['0005-deleted-blobs'],
       foreignKeyViolations: 0,
@@ -524,10 +529,12 @@ describe('OperatorAccount: load a dump', () => {
     // bookmark is one press away rather than a line in the Worker log.
     expect(screen.queryByRole('group', { name: 'Confirm load dump' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Undo the load' }));
-    vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: null, recorded: false, feedEpoch: 'e3', stats: stats(), note: '' });
+    vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: null, recorded: false, record: 1, feedEpoch: 'e3', stats: stats(), note: '' });
     fireEvent.click(screen.getByRole('button', { name: 'Undo the load' }));
     await flush();
-    expect(api.restoreStore).toHaveBeenCalledWith('u1', { bookmark: '00000001-00000002-00000003-0000000000000004' });
+    // No history row to check against: while the store is loading it refuses everything
+    // but the load, so nothing can have landed beneath this undo.
+    expect(api.restoreStore).toHaveBeenCalledWith('u1', { bookmark: '00000001-00000002-00000003-0000000000000004' }, undefined);
   });
 
   it('says so where no bucket is bound, without the list or the command', async () => {

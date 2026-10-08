@@ -449,12 +449,14 @@ function WindBack({ userId, email, onChanged }: { userId: string; email: string;
     }
   }
 
-  async function undo(bookmark: string) {
+  // `record` is the history row of the change being undone, sent as `ifNewest` so the
+  // press is refused if another operator restored or loaded since; see `RestoreHistory`.
+  async function undo(bookmark: string, record?: number) {
     const release = holdPage();
     setBusy(true);
     setError(null);
     try {
-      setOutcome({ kind: 'undone', result: await api.restoreStore(userId, { bookmark }) });
+      setOutcome({ kind: 'undone', result: await api.restoreStore(userId, { bookmark }, record) });
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -542,7 +544,7 @@ function WindBack({ userId, email, onChanged }: { userId: string; email: string;
                   Undo the wind-back
                 </Button>
               ) : (
-                <UndoWindBackConfirm email={email} busy={busy} onCancel={() => setOutcome({ ...outcome, undoAsked: false })} onConfirm={() => undo(outcome.result.undo!)} />
+                <UndoWindBackConfirm email={email} busy={busy} onCancel={() => setOutcome({ ...outcome, undoAsked: false })} onConfirm={() => undo(outcome.result.undo!, outcome.result.record)} />
               )}
             </>
           ) : (
@@ -808,12 +810,14 @@ function LoadDump({ userId, email, onChanged }: { userId: string; email: string;
     }
   }
 
-  async function undo(bookmark: string) {
+  // `record` is the history row of the change being undone, sent as `ifNewest` so the
+  // press is refused if another operator restored or loaded since; see `RestoreHistory`.
+  async function undo(bookmark: string, record?: number) {
     const release = holdPage();
     setBusy(true);
     setError(null);
     try {
-      setOutcome({ kind: 'undone', result: await api.restoreStore(userId, { bookmark }) });
+      setOutcome({ kind: 'undone', result: await api.restoreStore(userId, { bookmark }, record) });
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -929,7 +933,7 @@ function LoadDump({ userId, email, onChanged }: { userId: string; email: string;
                     Undo the load
                   </Button>
                 ) : (
-                  <UndoLoadConfirm email={email} busy={busy} onCancel={() => setOutcome({ ...outcome, undoAsked: false })} onConfirm={() => undo(outcome.result.undo!)} />
+                  <UndoLoadConfirm email={email} busy={busy} onCancel={() => setOutcome({ ...outcome, undoAsked: false })} onConfirm={() => undo(outcome.result.undo!, outcome.result.record)} />
                 )}
               </>
             )

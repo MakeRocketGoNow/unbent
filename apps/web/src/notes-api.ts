@@ -1044,6 +1044,11 @@ export interface RestoreResult {
   undo: string | null;
   /** Whether the restore history holds it, and so offers its undo; false when that write failed. */
   recorded: boolean;
+  /**
+   * Its row in the history, which a restore started; the answer's own undo sends it as
+   * `ifNewest`, since a row whose settle failed is still the account's newest.
+   */
+  record: number;
   feedEpoch: string | null;
   stats: StoreStats | null;
   note: string;
@@ -1095,6 +1100,7 @@ export interface LoadResult {
   undo: string | null;
   /** As on `RestoreResult`. */
   recorded: boolean;
+  record: number;
   feedEpoch: string;
   migrated: string[];
   foreignKeyViolations: number;

@@ -443,6 +443,8 @@ export const admin = new Hono<AppEnv>()
         user: target,
         undo,
         recorded,
+        // The history row's id, for the page's fallback undo to send as `ifNewest`.
+        record: recordId,
         feedEpoch,
         stats,
         note: [
@@ -629,6 +631,8 @@ export const admin = new Hono<AppEnv>()
         before,
         undo: begun.undo,
         recorded,
+        // The history row's id, for the page's fallback undo to send as `ifNewest`.
+        record: recordId,
         feedEpoch: result.feedEpoch,
         pages: result.pages,
         statements: result.statements,
