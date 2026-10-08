@@ -3,7 +3,7 @@ import { env, evictDurableObject, runInDurableObject } from 'cloudflare:test';
 import type { Sql } from '@unbent/api/store/sql';
 import { isRestoreUnsupported, readRestoreRefusal } from '@unbent/api/store/restore';
 import { DUMP_TABLES } from '@unbent/api/store/tables';
-import { freshStore } from './helpers.js';
+import { feedRows, feedSeq, freshStore, listAllTags } from './helpers.js';
 
 /**
  * The object's lifecycle: what the constructor guarantees on every wake, and the operator
@@ -17,14 +17,14 @@ describe('UserStore lifecycle', () => {
 
     const stats = await stub.stats();
     expect(stats.userId).toBe(userId);
-    expect(stats.migrations).toEqual(['0001-init', '0002-changes', '0003-revisions', '0004-revision-props', '0005-deleted-blobs']);
+    expect(stats.migrations).toEqual(['0001-init', '0002-changes', '0003-revisions', '0004-revision-props', '0005-deleted-blobs', '0006-tags-nocase']);
     expect(stats.counts.notes).toBe(0);
 
     // A second wake of the same object applies nothing and reads the same schema. The
     // `_meta.user_id` row written on the first wake is what a mismatch is checked against.
     await evictDurableObject(stub);
     const again = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
-    expect((await again.stats()).migrations).toEqual(['0001-init', '0002-changes', '0003-revisions', '0004-revision-props', '0005-deleted-blobs']);
+    expect((await again.stats()).migrations).toEqual(['0001-init', '0002-changes', '0003-revisions', '0004-revision-props', '0005-deleted-blobs', '0006-tags-nocase']);
     const meta = await runInDurableObject(again, (_i, state) =>
       state.storage.sql.exec<{ value: string }>(`SELECT value FROM _meta WHERE key = 'user_id'`).toArray(),
     );
@@ -45,13 +45,14 @@ describe('UserStore lifecycle', () => {
       // one, which no object can.
       sql.exec(`DROP TABLE note_revisions`);
       sql.exec(`DROP TABLE deleted_blobs`);
-      sql.exec(`DELETE FROM _migrations WHERE name IN ('0002-changes', '0003-revisions', '0004-revision-props', '0005-deleted-blobs')`);
+      sql.exec(`DROP INDEX idx_tags_name_nocase`);
+      sql.exec(`DELETE FROM _migrations WHERE name IN ('0002-changes', '0003-revisions', '0004-revision-props', '0005-deleted-blobs', '0006-tags-nocase')`);
       sql.exec(`DELETE FROM _meta WHERE key IN ('seq', 'feed_epoch')`);
     });
     await evictDurableObject(stub);
     const woke = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
     const stats = await woke.stats();
-    expect(stats.migrations).toEqual(['0001-init', '0002-changes', '0003-revisions', '0004-revision-props', '0005-deleted-blobs']);
+    expect(stats.migrations).toEqual(['0001-init', '0002-changes', '0003-revisions', '0004-revision-props', '0005-deleted-blobs', '0006-tags-nocase']);
     expect(stats.counts.notes).toBe(1);
     expect(stats.counts.changes).toBe(0);
     const meta = await runInDurableObject(woke, (_i, state) =>
@@ -70,7 +71,8 @@ describe('UserStore lifecycle', () => {
     await runInDurableObject(stub, (_i, state) => {
       state.storage.sql.exec(`DROP TABLE note_revisions`);
       state.storage.sql.exec(`DROP TABLE deleted_blobs`);
-      state.storage.sql.exec(`DELETE FROM _migrations WHERE name IN ('0003-revisions', '0004-revision-props', '0005-deleted-blobs')`);
+      state.storage.sql.exec(`DROP INDEX idx_tags_name_nocase`);
+      state.storage.sql.exec(`DELETE FROM _migrations WHERE name IN ('0003-revisions', '0004-revision-props', '0005-deleted-blobs', '0006-tags-nocase')`);
     });
     await evictDurableObject(stub);
     const woke = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
@@ -90,7 +92,8 @@ describe('UserStore lifecycle', () => {
       state.storage.sql.exec(`ALTER TABLE note_revisions DROP COLUMN props`);
       state.storage.sql.exec(`ALTER TABLE note_revisions DROP COLUMN changed`);
       state.storage.sql.exec(`DROP TABLE deleted_blobs`);
-      state.storage.sql.exec(`DELETE FROM _migrations WHERE name IN ('0004-revision-props', '0005-deleted-blobs')`);
+      state.storage.sql.exec(`DROP INDEX idx_tags_name_nocase`);
+      state.storage.sql.exec(`DELETE FROM _migrations WHERE name IN ('0004-revision-props', '0005-deleted-blobs', '0006-tags-nocase')`);
     });
     await evictDurableObject(stub);
     const woke = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
@@ -104,6 +107,74 @@ describe('UserStore lifecycle', () => {
     const restored = await woke.restoreRevision(note.id, old!.id);
     expect(restored).toMatchObject({ note: { body: 'before', tags: ['added since', 'kept'] } });
     expect(restored).not.toHaveProperty('skipped');
+  });
+
+  it('folds a store’s tags that differ only in case into one when 0006 reaches it, and tells the feed', async () => {
+    const { userId, stub } = freshStore('tags-nocase-file');
+    const make = (tags: string[]) => stub.create({ id: crypto.randomUUID(), title: 'T', body: '', tags });
+    const a = await make(['Work']);
+    const b = await make(['Work']);
+    const c = await make([]);
+    const d = await make([]);
+    const e = await make([]);
+    // As production's objects are when 0006 reaches them: no NOCASE index, and spellings
+    // only an exact UNIQUE(name) allowed. Written by hand, since no write can make them now.
+    await runInDurableObject(stub, (_i, state) => {
+      const sql = state.storage.sql;
+      sql.exec(`DROP INDEX idx_tags_name_nocase`);
+      sql.exec(`DELETE FROM _migrations WHERE name = '0006-tags-nocase'`);
+      sql.exec(
+        `INSERT INTO tags (id, name) VALUES ('t-receipts', 'receipts'), ('t-Receipts', 'Receipts'),
+                                            ('t-RECEIPTS', 'RECEIPTS'), ('t-tax', 'tax'), ('t-Tax', 'Tax'),
+                                            ('t-cafe', 'café'), ('t-CAFE', 'CAFÉ')`,
+      );
+      // Receipts is on the most live notes; "receipts" is on one of the same notes too,
+      // and on a trashed one, which counts for nothing. tax and Tax tie at one each, and
+      // "tax" is the older row. café and CAFÉ differ outside ASCII, which NOCASE leaves be.
+      sql.exec(
+        `INSERT INTO note_tags (note_id, tag_id) VALUES
+           ('${a.id}', 't-Receipts'), ('${b.id}', 't-Receipts'), ('${a.id}', 't-receipts'), ('${c.id}', 't-receipts'),
+           ('${d.id}', 't-RECEIPTS'), ('${a.id}', 't-tax'), ('${b.id}', 't-Tax'), ('${c.id}', 't-cafe'), ('${d.id}', 't-CAFE')`,
+      );
+    });
+    await stub.remove(c.id);
+    const seq = await feedSeq(stub);
+    await evictDurableObject(stub);
+
+    const woke = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
+    expect((await woke.stats()).migrations).toContain('0006-tags-nocase');
+    const tags = await listAllTags(woke);
+    expect(tags.map((t) => [t.id, t.name]).sort()).toEqual(
+      [['t-CAFE', 'CAFÉ'], ['t-Receipts', 'Receipts'], ['t-cafe', 'café'], ['t-tax', 'tax'], [expect.any(String), 'Work']].sort(),
+    );
+    // Each note keeps one link per name, and the stored counts are the live notes'.
+    expect((await woke.get(a.id))!.tags).toEqual(['Receipts', 'Work', 'tax']);
+    expect((await woke.get(b.id))!.tags).toEqual(['Receipts', 'Work', 'tax']);
+    expect((await woke.get(d.id))!.tags).toEqual(['CAFÉ', 'Receipts']);
+    expect((await woke.get(c.id, { includeTrashed: true }))!.tags).toEqual(['Receipts', 'café']);
+    expect(await woke.get(e.id)).toMatchObject({ tags: [] });
+    expect((await woke.listTags()).map((t) => [t.name, t.count])).toEqual([
+      ['Receipts', 3], ['tax', 2], ['Work', 2], ['CAFÉ', 1],
+    ]);
+    expect(await woke.count({ tags: ['RECEIPTS'] })).toBe(3);
+
+    // The feed hears what a merge would tell it: the tags that went, the ones that took
+    // their notes, and every note whose tag ids moved, numbered on from the counter.
+    const rows = await feedRows(woke, seq);
+    const tagRows = rows.filter((r) => r.entity === 'tag');
+    expect(tagRows.filter((r) => r.deleted).map((r) => r.id).sort()).toEqual(['t-RECEIPTS', 't-Tax', 't-receipts']);
+    expect(tagRows.filter((r) => !r.deleted).map((r) => r.id).sort()).toEqual(['t-Receipts', 't-tax']);
+    expect(rows.filter((r) => r.entity === 'note').map((r) => r.id).sort()).toEqual([a.id, b.id, c.id, d.id].sort());
+    expect(await feedSeq(woke)).toBe(seq + rows.length);
+    const dense = await runInDurableObject(woke, (_i, state) =>
+      state.storage.sql.exec<{ n: number; lo: number; hi: number }>(`SELECT COUNT(*) AS n, MIN(seq) AS lo, MAX(seq) AS hi FROM changes`).toArray()[0]!,
+    );
+    expect(dense.hi - dense.lo + 1).toBe(dense.n);
+
+    // And from here a name in any case is the one tag: no second row can be made.
+    await woke.create({ id: crypto.randomUUID(), title: 'T', body: '', tags: ['RECEIPTS', 'work'] });
+    expect((await listAllTags(woke)).length).toBe(5);
+    expect((await woke.stats()).counts).not.toHaveProperty('_tag_merge');
   });
 
   it('enforces foreign keys, so a purged note takes its files, text, tags and values with it', async () => {
@@ -189,7 +260,7 @@ describe('UserStore lifecycle', () => {
     // Reached again on the same instance: schema back, still this user's, empty.
     expect(await stub.schemaSql()).toEqual(expect.arrayContaining([expect.stringContaining('CREATE TABLE notes')]));
     const rebuilt = await stub.stats();
-    expect(rebuilt).toMatchObject({ userId, wiped: false, migrations: ['0001-init', '0002-changes', '0003-revisions', '0004-revision-props', '0005-deleted-blobs'] });
+    expect(rebuilt).toMatchObject({ userId, wiped: false, migrations: ['0001-init', '0002-changes', '0003-revisions', '0004-revision-props', '0005-deleted-blobs', '0006-tags-nocase'] });
     expect(rebuilt.counts.notes).toBe(0);
 
     // And after an eviction the object wakes as it was left — empty, no schema, and
@@ -199,7 +270,7 @@ describe('UserStore lifecycle', () => {
     const woke = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
     expect(await woke.stats()).toMatchObject({ wiped: true, migrations: [] });
     expect(await woke.schemaSql()).toEqual(expect.arrayContaining([expect.stringContaining('CREATE TABLE notes')]));
-    expect(await woke.stats()).toMatchObject({ wiped: false, migrations: ['0001-init', '0002-changes', '0003-revisions', '0004-revision-props', '0005-deleted-blobs'] });
+    expect(await woke.stats()).toMatchObject({ wiped: false, migrations: ['0001-init', '0002-changes', '0003-revisions', '0004-revision-props', '0005-deleted-blobs', '0006-tags-nocase'] });
   });
 
   it('dumpSlice writes each row as one INSERT, in rowid order, without the paging column', async () => {

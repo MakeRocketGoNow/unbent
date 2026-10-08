@@ -1,4 +1,4 @@
-import { toFtsQuery, type SearchResult, type SearchResultRow } from '@unbent/shared';
+import { foldNoCase, toFtsQuery, type SearchResult, type SearchResultRow } from '@unbent/shared';
 import { lookups as buildLookups, matches, tagNames, toSummary, type ListFilter, type LocalNote, type Lookups, type Snapshot } from './derive.js';
 import type { LocalAttachment } from './collections.js';
 import { SHED, type Entry, type Kind, type SearchIndex } from './search-index.js';
@@ -67,13 +67,18 @@ export function noteEntries(note: LocalNote): { note: Entry; fields: Entry[] } {
 /**
  * Every tag name in the library, as entries. By name rather than id: a tag given to a
  * note here, with no connection, has no id until the server mints one, and it should
- * find its note meanwhile (`LocalNote.tagNames`).
+ * find its note meanwhile (`LocalNote.tagNames`). One entry per name without case, in
+ * the spelling the library holds, since that is the tag a name given here in another
+ * case will turn out to be (MAK-127).
  */
 export function tagEntries(snapshot: Pick<Snapshot, 'notes' | 'tags'>): Entry[] {
-  const names = new Set<string>();
-  for (const t of snapshot.tags) names.add(t.name);
-  for (const n of snapshot.notes) for (const name of n.tagNames ?? []) names.add(name);
-  return [...names].map((name) => ({ id: name, stamp: '', columns: [name] }));
+  const names = new Map<string, string>();
+  const add = (name: string) => {
+    if (!names.has(foldNoCase(name))) names.set(foldNoCase(name), name);
+  };
+  for (const t of snapshot.tags) add(t.name);
+  for (const n of snapshot.notes) for (const name of n.tagNames ?? []) add(name);
+  return [...names.values()].map((name) => ({ id: name, stamp: '', columns: [name] }));
 }
 
 /** A file whose text could be searched: read by the server, and not one still waiting to upload. */
@@ -186,13 +191,13 @@ export async function searchLocal(opts: LocalSearchOptions): Promise<LocalSearch
       byTag = new Map();
       for (const n of notes.values()) {
         for (const t of tagNames(n, l)) {
-          const list = byTag.get(t) ?? [];
+          const list = byTag.get(foldNoCase(t)) ?? [];
           list.push(n);
-          byTag.set(t, list);
+          byTag.set(foldNoCase(t), list);
         }
       }
     }
-    return (byTag.get(name) ?? []).map((note) => ({ note, matched: { tag: name } }));
+    return (byTag.get(foldNoCase(name)) ?? []).map((note) => ({ note, matched: { tag: name } }));
   });
 
   await tier('field', 2, (id) => {

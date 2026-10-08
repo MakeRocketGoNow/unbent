@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { sameName } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { Confirm } from './Confirm.js';
 import { LabelEditor } from './LabelEditor.js';
@@ -83,7 +84,10 @@ export function Tags({ onChanged }: TagsProps) {
     }
   };
 
-  const other = pendingMerge && tags?.find((t) => t.name === pendingMerge.into);
+  // Found without case, as the server found it (MAK-127): renaming Bills to "receipts"
+  // beside Receipts merges into Receipts, which keeps its spelling.
+  const other = pendingMerge && tags?.find((t) => sameName(t.name, pendingMerge.into));
+  const into = other ? other.name : pendingMerge?.into;
   const noteLabel = (n: number) => `${n} note${n === 1 ? '' : 's'}`;
   // What each confirm names, counted from the notes once it opens; see `useExactCount`.
   const mergeCount = useExactCount(
@@ -124,11 +128,11 @@ export function Tags({ onChanged }: TagsProps) {
           label="Confirm merge tags"
           question={
             <>
-              A tag named <strong>{pendingMerge.into}</strong> already exists. Merge{' '}
+              A tag named <strong>{into}</strong> already exists. Merge{' '}
               <strong>{pendingMerge.tag.name}</strong> into it?
             </>
           }
-          detail={`The ${noteLabel(mergeCount)} tagged ${pendingMerge.tag.name} will be tagged ${pendingMerge.into} instead${other ? `, joining its ${noteLabel(otherCount)}` : ''}. This cannot be undone.`}
+          detail={`The ${noteLabel(mergeCount)} tagged ${pendingMerge.tag.name} will be tagged ${into} instead${other ? `, joining its ${noteLabel(otherCount)}` : ''}. This cannot be undone.`}
           busy={busy}
           onCancel={() => setPendingMerge(null)}
           actions={[

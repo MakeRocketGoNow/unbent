@@ -101,6 +101,8 @@ describe('searchLocal', () => {
     expect(await ids({})).toEqual(['m1', 'r1', 'r2', 'u1']);
     expect(await ids({ notebook: 'receipts' })).toEqual(['r1', 'r2']);
     expect(await ids({ tag: ['tax 2025'] })).toEqual(['r1']);
+    // Without case, as the server's filter (MAK-127).
+    expect(await ids({ tag: ['TAX 2025'] })).toEqual(['r1']);
     expect(await ids({ notebook: 'Receipts', field: ['f-vendor:eq:Acme'] })).toEqual(['r1']);
     const day = (n: number) => new Date(n * DAY).toISOString().slice(0, 10);
     expect(await ids({ from: day(30), to: day(50) })).toEqual(['r2']);
@@ -176,6 +178,13 @@ describe('searchLocal', () => {
     expect(none.coverage.files).toEqual({ searched: 0, total: 2 });
     await index.setMeta(BUILT, null);
     expect((await searchLocal({ index, snapshot, query: 'x' })).coverage.built).toBe(false);
+  });
+});
+
+describe('tagEntries', () => {
+  it('names each tag once without case, in the spelling the library holds', () => {
+    const snapshot = library([note('n1', { tagNames: ['GARDEN', 'Shed'] }), note('n2', { tagNames: ['shed'] })]);
+    expect(tagEntries(snapshot).map((e) => e.id)).toEqual(['garden', 'tax 2025', 'Shed']);
   });
 });
 

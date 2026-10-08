@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { useCombobox } from 'downshift';
+import { sameName } from '@unbent/shared';
 import { tintIndex } from '../tint.js';
 import { MoveEarlierIcon, MoveLaterIcon } from './icons.js';
 
@@ -36,6 +37,14 @@ interface TagInputProps {
    */
   restrict?: boolean;
   /**
+   * Whether a name in another case is the token that exists. On for tags, which the
+   * store finds without case (MAK-127): "receipts" typed beside Receipts files Receipts,
+   * and a tag the note has is not added twice. The fold is the store's (`sameName`, ASCII
+   * only), so a name it keeps apart is kept apart here. Off where the editor holds a
+   * select field's options, which are compared exactly.
+   */
+  caseless?: boolean;
+  /**
    * Shown, not edited — a note in the trash, or any note while offline. The chips stay as
    * words; the × on each and the "+ Add" entry go, since a control that is drawn but
    * cannot be used is the thing this app keeps removing. Nothing at all to show reads as
@@ -70,6 +79,7 @@ export function TagInput({
   label = 'tag',
   reorderable = false,
   restrict = false,
+  caseless = true,
   readOnly = false,
 }: TagInputProps) {
   const [draft, setDraft] = useState('');
@@ -84,9 +94,10 @@ export function TagInput({
   const [active, setActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const same = caseless ? sameName : (a: string, b: string) => a === b;
   const typed = draft.trim().toLowerCase();
   const available = suggestions
-    .filter((s) => !tags.includes(s))
+    .filter((s) => !tags.some((t) => same(t, s)))
     // Completions appear once there is something to complete; a restricted list is the
     // whole choice, so it appears on an empty field too.
     .filter((s) => (restrict && typed === '') || (typed !== '' && s.toLowerCase().includes(typed)))
@@ -96,9 +107,13 @@ export function TagInput({
     const name = raw.trim();
     setDraft('');
     if (name === '') return;
-    // Restricted, a typed word means the option spelled that way, whatever its case.
-    const chosen = restrict ? suggestions.find((s) => s.toLowerCase() === name.toLowerCase()) : name;
-    if (chosen === undefined || tags.includes(chosen)) return;
+    // Restricted, a typed word means the option spelled that way, whatever its case. A
+    // tag typed in another case is the tag that exists, so the chip shows its spelling
+    // now rather than changing under the person once the save comes back.
+    const chosen = restrict
+      ? suggestions.find((s) => s.toLowerCase() === name.toLowerCase())
+      : (suggestions.find((s) => same(s, name)) ?? name);
+    if (chosen === undefined || tags.some((t) => same(t, chosen))) return;
     onChange([...tags, chosen]);
   }
 

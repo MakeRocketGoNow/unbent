@@ -36,6 +36,7 @@ import {
   type SearchResult,
   type StaleNote,
   DEFAULT_NOTE_SORT,
+  foldNoCase,
 } from '@unbent/shared';
 import type { DeletedBlobs } from './deleted-blobs.js';
 import type { Change, Feed } from './feed.js';
@@ -554,8 +555,8 @@ export class NotesStore {
    * tag and notebook clauses start from the tag or notebook rather than from every note.
    *
    * Names are matched the way `filterConditions` matches them, so a stored count and a
-   * counted one can never disagree about which notebook or tag was meant: a notebook
-   * case-insensitively, a tag exactly. A name that matches nothing is 0 either way.
+   * counted one can never disagree about which notebook or tag was meant: both without
+   * case, as NOCASE folds it. A name that matches nothing is 0 either way.
    */
   private storedCount(opts: CountOptions): number | undefined {
     const { tags = [], notebook, fields = [], untagged, trashed, from, to } = opts;
@@ -566,7 +567,7 @@ export class NotesStore {
     if (trashed) return notebook || tags.length > 0 ? undefined : this.totals().trashed;
 
     if (tags.length === 1) {
-      const row = this.sql.first<{ note_count: number }>(`SELECT note_count FROM tags WHERE name = ?1`, tags[0]);
+      const row = this.sql.first<{ note_count: number }>(`SELECT note_count FROM tags WHERE name = ?1 COLLATE NOCASE`, tags[0]);
       return row?.note_count ?? 0;
     }
     if (notebook === UNFILED) return this.totals().unfiled;
@@ -719,7 +720,9 @@ export class NotesStore {
         notebookId,
       );
 
-      if (input.tags.length > 0) this.setTags(input.id, input.tags);
+      // The names as stored, which are not always the ones given: "receipts" is
+      // Receipts once Receipts exists.
+      const tags = input.tags.length > 0 ? this.setTags(input.id, input.tags) : [];
       if (fieldWrites.length > 0) this.run(fieldWrites);
       this.feed.record([{ entity: 'note', id: input.id }]);
       if (fieldWrites.length > 0) {
@@ -734,7 +737,7 @@ export class NotesStore {
         body: input.body,
         createdAt: now,
         updatedAt: now,
-        tags: input.tags,
+        tags,
         notebook: input.notebook ?? null,
         notebookId,
       };
@@ -1092,9 +1095,10 @@ export class NotesStore {
    * - The notebook, if it still exists; one deleted since is skipped and the note stays
    *   where it is. Not made again under its old name, which `resolveNotebook` would do:
    *   deleting a notebook is a decision, and its fields would not come back with it.
-   * - The tags that still exist, under whatever they are called now. A tag deleted
-   *   since is skipped, for the same reason. A tag the note has gained since comes off:
-   *   the copy did not have it.
+   * - The tags that still exist, under whatever they are called now, and a tag the copy
+   *   names whose id is gone but whose name, in any case, a tag holds today — see the
+   *   loop. A tag deleted since, with no tag of its name, is skipped, for the same reason.
+   *   A tag the note has gained since comes off: the copy did not have it.
    * - Each value whose field is still defined and can still hold it. A field deleted
    *   since (gone, or a tombstone) is skipped; so is a value its field can no longer be
    *   read as after a conversion, and a choice the field no longer offers. A multi-select
@@ -1153,11 +1157,25 @@ export class NotesStore {
       );
       const tags: string[] = [];
       for (const tag of props.tags) {
-        const name = live.get(tag.id);
-        if (name !== undefined) {
-          tags.push(name);
-          if (name !== tag.name) renamedTags.push({ id: tag.id, name });
-        } else skipped.push({ what: 'tag', id: tag.id, name: tag.name, why: 'deleted' });
+        // A tag whose id is gone but whose name a tag holds today, in any case, is that
+        // tag. 0006-tags-nocase folded each set of names that differ only in case into
+        // one, so a copy kept before it can name the id of a spelling that went — and the
+        // tag it went into is plainly the one the copy meant, not a deleted one. The same
+        // goes for a tag merged onto the copy's name, or deleted and made again: a name in
+        // use today is not a name the person has given up. One read per such tag, which
+        // only a copy older than a fold, merge or delete has.
+        const name =
+          live.get(tag.id) ??
+          this.sql.first<{ name: string }>(`SELECT name FROM tags WHERE name = ?1 COLLATE NOCASE`, tag.name)?.name;
+        if (name === undefined) {
+          skipped.push({ what: 'tag', id: tag.id, name: tag.name, why: 'deleted' });
+          continue;
+        }
+        // Said for every id, a dropped duplicate's too: `diffProps` names each of the copy's
+        // tags by this list, and one left out would read under its old name.
+        if (name !== tag.name) renamedTags.push({ id: tag.id, name });
+        if (tags.some((t) => foldNoCase(t) === foldNoCase(name))) continue;
+        tags.push(name);
       }
       if (!sameTagSet(tags, current.tags)) plan.tags = tags;
     }
@@ -1533,7 +1551,8 @@ export class NotesStore {
     },
   ): { matched: string[]; changed: string[] } {
     const add = uniqueTags(patch.addTags ?? []);
-    const remove = uniqueTags(patch.removeTags ?? []).filter((t) => !add.includes(t));
+    const adds = new Set(add.map(foldNoCase));
+    const remove = uniqueTags(patch.removeTags ?? []).filter((t) => !adds.has(foldNoCase(t)));
 
     return this.sql.tx(() => {
       // What each note holds now: its notebook and its tags, one row per note.
@@ -1587,9 +1606,10 @@ export class NotesStore {
           moving.push(row.id);
           changed.add(row.id);
         }
-        const have = new Set(splitTags(row.tags));
-        for (const tag of add) if (!have.has(tag)) note(adding, tag, row.id);
-        for (const tag of remove) if (have.has(tag)) note(removing, tag, row.id);
+        // Without case, as the tags are found: a note carrying Receipts already has "receipts".
+        const have = new Set(splitTags(row.tags).map(foldNoCase));
+        for (const tag of add) if (!have.has(foldNoCase(tag))) note(adding, tag, row.id);
+        for (const tag of remove) if (have.has(foldNoCase(tag))) note(removing, tag, row.id);
         if (fieldWrites.has(row.id)) changed.add(row.id);
       }
       if (changed.size === 0) return { matched, changed: [] };
@@ -1625,16 +1645,14 @@ export class NotesStore {
         );
       }
 
-      // Tag rows before the joins that look them up.
-      for (const name of adding.keys()) this.ensureTag(name);
       for (const [name, noteIds] of adding) {
+        const tag = this.ensureTag(name);
         for (const run of runs(noteIds)) {
           this.sql.exec(
             `INSERT OR IGNORE INTO note_tags (note_id, tag_id)
-             SELECT n.id, t.id FROM notes n
-               JOIN tags t ON t.name = ?1
+             SELECT n.id, ?1 FROM notes n
               WHERE n.id IN (${placeholders(2, run.length)})`,
-            name,
+            tag.id,
             ...run,
           );
         }
@@ -1643,7 +1661,7 @@ export class NotesStore {
         for (const run of runs(noteIds)) {
           this.sql.exec(
             `DELETE FROM note_tags
-              WHERE tag_id = (SELECT id FROM tags WHERE name = ?1)
+              WHERE tag_id = (SELECT id FROM tags WHERE name = ?1 COLLATE NOCASE)
                 AND note_id IN (${placeholders(2, run.length)})`,
             name,
             ...run,
@@ -1990,7 +2008,7 @@ export class NotesStore {
     }
     for (const tag of filters.tags ?? []) {
       binds.push(tag);
-      sizes.push(`(SELECT note_count FROM tags WHERE name = ?${binds.length})`);
+      sizes.push(`(SELECT note_count FROM tags WHERE name = ?${binds.length} COLLATE NOCASE)`);
     }
     if (sizes.length === 0) return false;
 
@@ -2180,7 +2198,7 @@ export class NotesStore {
                 WHERE ${conditions.join(' AND ')}
                 GROUP BY nt.tag_id) c
          JOIN tags t ON t.id = c.tag_id
-        ${named.length > 0 ? `WHERE t.name NOT IN (${named.join(', ')})` : ''}
+        ${named.length > 0 ? `WHERE t.name COLLATE NOCASE NOT IN (${named.join(', ')})` : ''}
         ORDER BY c.count DESC, t.name COLLATE NOCASE`,
       ...binds,
     );
@@ -2271,8 +2289,11 @@ export class NotesStore {
    * ignored, and this tag's row goes. Merging is what "rename Receipts to Receipt" means
    * when Receipt already exists, and it is the one operation an archive with hundreds of
    * near-duplicate tags actually needs — but it is also irreversible, so the client asks
-   * before passing `merge`. Case is compared exactly, as the UNIQUE index does: "receipt"
-   * and "Receipt" are two tags today, and a rename between them is a plain rename.
+   * before passing `merge`. The other tag is found without case, as the NOCASE index has
+   * it (0006-tags-nocase), and keeps its own spelling: merging into "receipt" when Receipt
+   * exists leaves Receipt, and the answer says so. Changing only a tag's own case —
+   * Receipts to receipts — finds no other tag, so it is a plain rename, and the one way to
+   * respell a tag now that a write naming it in another case attaches it as it is.
    *
    * Notes' `updated_at` is left alone, as `updateNotebook` leaves it: nothing about the
    * note's own content changed.
@@ -2290,7 +2311,11 @@ export class NotesStore {
       if (!own) return 'missing';
       if (own.name === trimmed) return { id, name: trimmed, merged: false };
 
-      const other = this.sql.first<{ id: string }>(`SELECT id FROM tags WHERE name = ?1 AND id <> ?2`, trimmed, id);
+      const other = this.sql.first<{ id: string; name: string }>(
+        `SELECT id, name FROM tags WHERE name = ?1 COLLATE NOCASE AND id <> ?2`,
+        trimmed,
+        id,
+      );
 
       if (!other) {
         this.sql.exec(`UPDATE tags SET name = ?1 WHERE id = ?2`, trimmed, id);
@@ -2321,7 +2346,7 @@ export class NotesStore {
       this.sql.exec(`DELETE FROM note_tags WHERE tag_id = ?1`, id);
       this.sql.exec(`DELETE FROM tags WHERE id = ?1`, id);
       this.feed.record([{ entity: 'tag', id, deleted: true }, { entity: 'tag', id: other.id }, ...carrying]);
-      return { id: other.id, name: trimmed, merged: true };
+      return { id: other.id, name: other.name, merged: true };
     });
   }
 
@@ -3522,16 +3547,21 @@ export class NotesStore {
    * Replaces a note's tags. Callers must already have verified the note exists.
    *
    * Inside the caller's transaction, so a note is never observed with half its tags. Tag
-   * rows are get-or-create; a tag whose last note lets it go keeps its row, since
-   * `listTags` only shows tags with a live count and the purge sweeps the rest.
+   * rows are get-or-create, found by name without case (MAK-127): "receipts" attaches
+   * Receipts when Receipts exists, and the note shows Receipts. A tag whose last note
+   * lets it go keeps its row, since `listTags` only shows tags with a live count and the
+   * purge sweeps the rest.
    */
-  private setTags(noteId: string, tags: string[]): void {
-    const unique = uniqueTags(tags);
+  private setTags(noteId: string, tags: string[]): string[] {
     this.sql.exec(`DELETE FROM note_tags WHERE note_id = ?1`, noteId);
-    for (const name of unique) {
-      this.ensureTag(name);
-      this.sql.exec(`INSERT INTO note_tags (note_id, tag_id) SELECT ?1, id FROM tags WHERE name = ?2`, noteId, name);
+    const names: string[] = [];
+    for (const name of uniqueTags(tags)) {
+      const tag = this.ensureTag(name);
+      this.sql.exec(`INSERT INTO note_tags (note_id, tag_id) VALUES (?1, ?2)`, noteId, tag.id);
+      names.push(tag.name);
     }
+    // In the order `get` returns them, so `create` can answer without reading them back.
+    return names.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   }
 
   /**
@@ -3539,14 +3569,24 @@ export class NotesStore {
    * tags come into being, so the feed cannot miss one: a tag's id is what a client
    * renames or deletes it by, and a note's tags are names, so the row has to arrive by
    * its own entry.
+   *
+   * Found without case, on the NOCASE index (0006-tags-nocase), and answered with the
+   * stored spelling, which is the one the note will show. A read and then an insert
+   * rather than an upsert: the read is what the caller needs anyway — the id to link and
+   * the name to answer with — and `ON CONFLICT … RETURNING` returns nothing for a row
+   * that was already there. It is also one probe of the index where the upsert and the
+   * `INSERT … SELECT` that linked it by name were two.
    */
-  private ensureTag(name: string): void {
-    const created = this.sql.exec<{ id: string }>(
-      `INSERT INTO tags (id, name) VALUES (?1, ?2) ON CONFLICT(name) DO NOTHING RETURNING id`,
-      crypto.randomUUID(),
+  private ensureTag(name: string): { id: string; name: string } {
+    const held = this.sql.first<{ id: string; name: string }>(
+      `SELECT id, name FROM tags WHERE name = ?1 COLLATE NOCASE`,
       name,
     );
-    this.feed.record(created.map((r) => ({ entity: 'tag', id: r.id })));
+    if (held) return held;
+    const id = crypto.randomUUID();
+    this.sql.exec(`INSERT INTO tags (id, name) VALUES (?1, ?2)`, id, name);
+    this.feed.record([{ entity: 'tag', id }]);
+    return { id, name };
   }
 }
 

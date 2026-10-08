@@ -208,6 +208,21 @@ describe('diffProps', () => {
     expect(diffProps(current, version, [], [{ id: 't-drama', name: 'Drama' }])).toEqual([]);
   });
 
+  it('counts two spellings the store has made one tag once', () => {
+    const both = { ...version, tags: [{ id: 't-drama', name: 'drama' }, { id: 't-Drama', name: 'Drama' }] };
+    const current = now({ tags: [], fields: version.fields });
+    expect(diffProps(current, both, [], [{ id: 't-drama', name: 'Drama' }])).toEqual([
+      { kind: 'tags', same: [], removed: [], added: ['Drama'] },
+    ]);
+  });
+
+  it('reads a duplicate under today\'s name too, so it never shows as a tag going on', () => {
+    // A gone id resolved by name, then a live tag renamed since onto the same name.
+    const both = { ...version, tags: [{ id: 't-drama', name: 'drama' }, { id: 't-films', name: 'Films' }] };
+    const renamed = [{ id: 't-drama', name: 'Drama' }, { id: 't-films', name: 'Drama' }];
+    expect(diffProps(now({ tags: ['Drama'], fields: version.fields }), both, [], renamed)).toEqual([]);
+  });
+
   it('brings back a value the note has lost, and clears one it has gained', () => {
     const gained = value('f-place', 'Place', 'Hall', 'nb-shelf');
     expect(diffProps(now({ fields: [value('f-status', 'Status', 'Queued'), gained] }), version)).toEqual([

@@ -708,6 +708,55 @@ describe('tags and notebooks', () => {
     expect(await stub.listTags()).toEqual([]);
   });
 
+  it('finds a tag by name in any case, keeping the spelling stored first (MAK-127)', async () => {
+    const { stub } = freshStore('tags-nocase');
+    const a = await stub.create(note({ title: 'Lunch', tags: ['Receipts'] }));
+    // A write naming another case attaches the tag there is, and a list naming one name
+    // twice in two cases is one tag.
+    const b = await stub.create(note({ title: 'Lunch again', tags: ['receipts', 'RECEIPTS', 'Café'] }));
+    expect(b.tags).toEqual(['Café', 'Receipts']);
+    const receipts = (await stub.listTags()).find((t) => t.name === 'Receipts')!;
+    expect(await stub.listTags()).toEqual([
+      { id: receipts.id, name: 'Receipts', count: 2 },
+      { id: expect.any(String), name: 'Café', count: 1 },
+    ]);
+    // NOCASE folds ASCII only, as it does for notebooks: CAFÉ is a tag of its own.
+    await stub.update(a.id, { tags: ['Receipts', 'CAFÉ'] });
+    expect((await stub.listTags()).map((t) => t.name).sort()).toEqual(['CAFÉ', 'Café', 'Receipts']);
+
+    // Resending the tags a note has, in another case, is no edit, and does not re-date it.
+    const before = (await stub.get(b.id))!;
+    await stub.update(b.id, { tags: ['RECEIPTS', 'Café'] });
+    expect((await stub.get(b.id))!.updatedAt).toBe(before.updatedAt);
+
+    // Filters, counts and the search's scope find the notes in any case.
+    expect((await stub.list({ limit: 10, tags: ['receipts'] })).map((n) => n.id).sort()).toEqual([a.id, b.id].sort());
+    expect(await stub.count({ tags: ['RECEIPTS'] })).toBe(2);
+    expect((await stub.search('lunch', 10, { tags: ['receipts'] })).map((r) => r.id).sort()).toEqual([a.id, b.id].sort());
+    expect((await stub.tagCounts({ tags: ['receipts'] })).map((t) => t.name).sort()).toEqual(['CAFÉ', 'Café']);
+
+    // The bulk verbs: adding a tag a note has in another case changes nothing; removing
+    // one by another case takes it off.
+    const none = await stub.updateMany([a.id, b.id], { addTags: ['receipts'] });
+    expect(none.changed).toEqual([]);
+    // In the store's order, which is the ids', not the order they were sent in.
+    expect([...none.matched].sort()).toEqual([a.id, b.id].sort());
+    expect((await stub.updateMany([a.id], { removeTags: ['RECEIPTS'] })).changed).toEqual([a.id]);
+    expect((await stub.get(a.id))!.tags).toEqual(['CAFÉ']);
+    // A tag named in both lists, in two cases, is added, as it would be in one.
+    expect((await stub.updateMany([a.id], { addTags: ['Receipts'], removeTags: ['receipts'] })).changed).toEqual([a.id]);
+    expect((await stub.get(a.id))!.tags).toEqual(['CAFÉ', 'Receipts']);
+
+    // Changing only a tag's case is a plain rename — the one way to respell it now. A
+    // merge into a name that exists in another case lands on the stored spelling.
+    expect(await stub.renameTag(receipts.id, 'receipts')).toEqual({ id: receipts.id, name: 'receipts', merged: false });
+    expect((await stub.get(b.id))!.tags).toEqual(['Café', 'receipts']);
+    const cafe = (await stub.listTags()).find((t) => t.name === 'CAFÉ')!;
+    expect(await stub.renameTag(cafe.id, 'RECEIPTS')).toBe('conflict');
+    expect(await stub.renameTag(cafe.id, 'RECEIPTS', { merge: true })).toEqual({ id: receipts.id, name: 'receipts', merged: true });
+    expect((await stub.get(a.id))!.tags).toEqual(['receipts']);
+  });
+
   it('counts tags within a notebook or beside other tags, over live notes only', async () => {
     const { stub } = freshStore('tag-counts');
     await stub.create(note({ notebook: 'Coupons', tags: ['Acme', 'Food'] }));

@@ -47,3 +47,8 @@ export const RESTORES_DDL = [
   `CREATE TABLE IF NOT EXISTS restores (id INTEGER PRIMARY KEY, user_id TEXT NOT NULL, operator_id TEXT, kind TEXT NOT NULL CHECK (kind IN ('moment', 'bookmark', 'load')), state TEXT NOT NULL CHECK (state IN ('started', 'applied', 'failed')), started_at INTEGER NOT NULL, applied_at INTEGER, to_at INTEGER, dump_key TEXT, before_key TEXT, undo TEXT, undoes INTEGER);`,
   `CREATE INDEX IF NOT EXISTS idx_restores_user ON restores (user_id);`,
 ];
+
+/** Every tag row, counted or not: `listTags` leaves out tags with no live note. */
+export function listAllTags(stub: ReturnType<typeof freshStore>['stub']) {
+  return runInDurableObject(stub, (_i, state) => state.storage.sql.exec<{ id: string; name: string }>(`SELECT id, name FROM tags`).toArray());
+}

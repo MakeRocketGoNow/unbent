@@ -30,7 +30,7 @@ const tagFilter = z
   .array(z.string().trim().min(1).max(MAX_TAG_LENGTH))
   .max(20)
   .optional()
-  .describe('Only notes carrying every one of these tags, by exact name, case included.');
+  .describe('Only notes carrying every one of these tags, by name in any case.');
 
 // Trimmed, as the lookups that resolve a notebook by name already trim: the store matches
 // the filter as given, so a name with a stray space resolved its fields and then listed
@@ -539,16 +539,17 @@ export function registerReadTools(
     {
       title: 'List tags',
       description:
-        'Every tag with how many notes carry it, most used first. Tags are flat, and their ' +
-        'names are case-sensitive: "Receipts" and "receipts" are two tags. Reuse a spelling ' +
-        'from here when tagging, rather than making a near-duplicate. With notebook, tag or ' +
+        'Every tag with how many notes carry it, most used first. Tags are flat, and a name ' +
+        'is one tag in any case: tagging a note "receipts" when Receipts exists gives it ' +
+        'Receipts. Reuse a name from here when tagging, rather than making a near-duplicate ' +
+        'such as "receipt" beside "Receipts". With notebook, tag or ' +
         'both, the counts are over the live notes of that set only — what else the notes in ' +
         'a notebook carry, or the notes that carry these tags — and tags with none in it are ' +
         'left out, as are the tags named in tag, which every note in the set carries.',
       inputSchema: z.object({
         notebook: notebookFilter,
         tag: tagFilter.describe(
-          'Only count the notes carrying every one of these tags, by exact name; they are ' +
+          'Only count the notes carrying every one of these tags, by name in any case; they are ' +
             'left out of the answer.',
         ),
       }),

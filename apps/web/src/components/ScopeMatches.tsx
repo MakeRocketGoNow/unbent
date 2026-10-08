@@ -1,4 +1,5 @@
 import { useNavigate } from '@tanstack/react-router';
+import { sameName } from '@unbent/shared';
 import { TagIcon, NotebookGlyph } from './icons.js';
 import { writeTagFilter } from '../routes/notes.js';
 import { rememberedSort } from '../notebook-sort.js';
@@ -71,7 +72,7 @@ export function scopeMatches(
   if (needle === '') return { tags: [], notebooks: [] };
   const matches = (name: string) => name.toLowerCase().includes(needle);
   return {
-    tags: tags.filter((t) => !selectedTags.includes(t.name) && matches(t.name)).slice(0, MAX_TAGS),
+    tags: tags.filter((t) => !selectedTags.some((s) => sameName(s, t.name)) && matches(t.name)).slice(0, MAX_TAGS),
     notebooks: (notebooks?.notebooks ?? [])
       .filter((nb) => nb.name !== notebook && matches(nb.name))
       .slice(0, MAX_NOTEBOOKS),

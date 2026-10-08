@@ -445,8 +445,8 @@ describe('create_notebook_field with a scale', () => {
 
 /*
  * Tags are named by the model and addressed by id in the repo, so the lookup between the
- * two is the logic here: exact and case-sensitive, because "Receipts" and "receipts" are
- * two tags, and a refusal that says what a merge costs before it is asked for.
+ * two is the logic here: without case, as the store finds a tag (MAK-127), answering with
+ * the stored spelling, and a refusal that says what a merge costs before it is asked for.
  */
 describe('rename_tag and delete_tag', () => {
   function tagRepo(renamed: 'ok' | 'conflict' | 'missing' = 'ok') {
@@ -454,7 +454,7 @@ describe('rename_tag and delete_tag', () => {
     const repo = {
       listTags: async () => [
         { id: 'tag-1', name: 'Receipts', count: 4 },
-        { id: 'tag-2', name: 'receipts', count: 1 },
+        { id: 'tag-2', name: 'Café', count: 1 },
       ],
       renameTag: async (id: string, name: string, opts: unknown) => {
         calls.push({ method: 'renameTag', args: [id, name, opts] });
@@ -471,11 +471,11 @@ describe('rename_tag and delete_tag', () => {
 
   const answer = (r: { content: Array<{ text: string }> }) => JSON.parse(r.content[0]!.text);
 
-  it('renames by exact name, resolving it to that tag and not its case-variant', async () => {
+  it('renames by name in any case, and answers with the spelling it renamed', async () => {
     const { calls, tools } = tagRepo();
-    const result = answer(await tools.get('rename_tag')!({ tag: 'receipts', name: 'Bills', merge: false }));
-    expect(calls).toEqual([{ method: 'renameTag', args: ['tag-2', 'Bills', { merge: false }] }]);
-    expect(result).toEqual({ from: 'receipts', name: 'Bills', merged: false, notes: 1 });
+    const result = answer(await tools.get('rename_tag')!({ tag: 'RECEIPTS', name: 'Bills', merge: false }));
+    expect(calls).toEqual([{ method: 'renameTag', args: ['tag-1', 'Bills', { merge: false }] }]);
+    expect(result).toEqual({ from: 'Receipts', name: 'Bills', merged: false, notes: 4 });
   });
 
   it('refuses a rename onto an existing name and says what merge:true would do', async () => {
@@ -491,15 +491,16 @@ describe('rename_tag and delete_tag', () => {
     await tools.get('rename_tag')!({ tag: 'Receipts', name: 'Bills', merge: true });
     expect(calls[0]?.args[2]).toEqual({ merge: true });
 
-    const unknown = await tools.get('rename_tag')!({ tag: 'RECEIPTS', name: 'Bills', merge: false });
+    // Folded as the store folds, ASCII only: CAFÉ is not Café.
+    const unknown = await tools.get('rename_tag')!({ tag: 'CAFÉ', name: 'Bills', merge: false });
     expect(unknown.isError).toBe(true);
-    expect(unknown.content[0]!.text).toContain('No such tag: RECEIPTS');
+    expect(unknown.content[0]!.text).toContain('No such tag: CAFÉ');
     expect(calls).toHaveLength(1);
   });
 
-  it('deletes by exact name and says how many notes carried the tag', async () => {
+  it('deletes by name in any case and says how many notes carried the tag', async () => {
     const { calls, tools } = tagRepo();
-    const result = answer(await tools.get('delete_tag')!({ tag: 'Receipts' }));
+    const result = answer(await tools.get('delete_tag')!({ tag: 'receipts' }));
     expect(calls).toEqual([{ method: 'deleteTag', args: ['tag-1'] }]);
     expect(result).toEqual({ tag: 'Receipts', deleted: true, notes: 4 });
 

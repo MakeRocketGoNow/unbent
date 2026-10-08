@@ -20,6 +20,7 @@ import {
   NOTE_FTS_WEIGHTS,
   SNIPPET_ARGS,
   toFtsQuery,
+  foldNoCase,
 } from '@unbent/shared';
 
 // The query builder is shared with the web's local index; re-exported for the importers it has always had here.
@@ -548,12 +549,16 @@ export function filterConditions(
    * evaluated per note, so the query walked every note the user has and asked each one —
    * a tag on one note cost a read of the whole archive, twice with the count beside it.
    * The IN alone is not enough, though; see `liveCondition`.
+   *
+   * Matched by name without case, as a notebook is, and for the same reason: `?tag=receipts`
+   * finds the notes tagged Receipts. `COLLATE NOCASE` on the comparison is what lets it use
+   * the NOCASE index (0006-tags-nocase); the plain `UNIQUE(name)` would not serve it.
    */
   for (const tag of opts.tags ?? []) {
     binds.push(tag);
     conditions.push(
       `n.id IN (SELECT nt2.note_id FROM tags t2 JOIN note_tags nt2 ON nt2.tag_id = t2.id
-                 WHERE t2.name = ?${binds.length})`,
+                 WHERE t2.name = ?${binds.length} COLLATE NOCASE)`,
     );
   }
 
@@ -788,13 +793,6 @@ export function keysOfDeletedNotes(
   return rows.filter((r) => gone.has(r.note_id)).map((r) => r.r2_key);
 }
 
-/**
- * Whether a patch's tag list would leave the stored tags exactly as they are.
- *
- * Order is not significant — `note_tags` has none and `get` returns them sorted — so this
- * compares sets. Blanks and duplicates are normalized away first, matching what `setTags`
- * would have written, so `['work', 'work', ' ']` against a stored `['work']` is no edit.
- */
 /** Whether a stored value and a resent one are the same text, a list compared as a list. */
 export function sameFieldText(a: FieldValue, b: FieldValue): boolean {
   return Array.isArray(a) || Array.isArray(b)
@@ -802,18 +800,37 @@ export function sameFieldText(a: FieldValue, b: FieldValue): boolean {
     : String(a) === String(b);
 }
 
+/**
+ * Whether a patch's tag list would leave the stored tags exactly as they are.
+ *
+ * Order is not significant — `note_tags` has none and `get` returns them sorted — so this
+ * compares sets. Blanks and duplicates are normalized away first, matching what `setTags`
+ * would have written, so `['work', 'work', ' ']` against a stored `['work']` is no edit.
+ * So is case: `['receipts']` against a stored `['Receipts']` would attach the same tag,
+ * since a tag is found by name without case (MAK-127), and writing it would re-date the
+ * note for nothing. That is not the normalizing `changedKeysOnly` refuses for text — the
+ * case of a tag on one note is not something a write can change.
+ */
 export function sameTagSet(patch: string[], stored: string[]): boolean {
-  const next = new Set(patch.map((t) => t.trim()).filter((t) => t.length > 0));
+  const next = new Set(uniqueTags(patch).map(foldNoCase));
   if (next.size !== stored.length) return false;
-  return stored.every((t) => next.has(t));
+  return stored.every((t) => next.has(foldNoCase(t)));
 }
 
 /**
- * A tag list as `setTags` would write it: trimmed, blanks dropped, each name once.
- * Compared exactly, as the UNIQUE index compares them — "Receipt" and "receipt" are two tags.
+ * A tag list as `setTags` would write it: trimmed, blanks dropped, each name once — once
+ * without case, as the NOCASE index has it (0006-tags-nocase), keeping the spelling that
+ * came first. `['Receipts', 'receipts']` is one tag, and which spelling the note ends up
+ * showing is the stored tag's in any case: `setTags` attaches an existing tag rather than
+ * the name it was given.
  */
 export function uniqueTags(tags: string[]): string[] {
-  return [...new Set(tags.map((t) => t.trim()).filter((t) => t.length > 0))];
+  const seen = new Map<string, string>();
+  for (const raw of tags) {
+    const t = raw.trim();
+    if (t.length > 0 && !seen.has(foldNoCase(t))) seen.set(foldNoCase(t), t);
+  }
+  return [...seen.values()];
 }
 
 /**

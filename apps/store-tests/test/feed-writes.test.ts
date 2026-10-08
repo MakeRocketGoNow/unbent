@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { runInDurableObject } from 'cloudflare:test';
-import { feedRows, feedSeq, freshStore } from './helpers.js';
+import { feedRows, feedSeq, freshStore, listAllTags } from './helpers.js';
 
 /**
  * What each write records in the change feed — the rows a client will act on. The rule
@@ -277,11 +276,6 @@ describe('the feed records tag, notebook and field writes', () => {
     expect(await feedRows(stub, seq)).toEqual([]);
   });
 });
-
-/** Every tag row, counted or not: `listTags` leaves out tags with no live note. */
-async function listAllTags(stub: ReturnType<typeof freshStore>['stub']) {
-  return runInDurableObject(stub, (_i, state) => state.storage.sql.exec<{ id: string; name: string }>(`SELECT id, name FROM tags`).toArray());
-}
 
 describe('the feed records file writes', () => {
   it('a file added or removed names the file and its note; text arriving names the file alone', async () => {
