@@ -577,17 +577,19 @@ export const admin = new Hono<AppEnv>()
       }
       before = begun.before;
       // Its way back, kept now rather than at the end, so a load that stops partway has it
-      // in the history as well as in the store's own marker.
-      await recording(`noting the load's bookmark in the history for user=${target}`, () =>
-        settleRestore(c.env.DB, recordId, { state: 'started', undo: begun.undo, before: begun.before }),
-      );
+      // in the history as well as in the store's own marker. Every settle after this one
+      // carries it again (`settleRestore` keeps what a null does not replace), so a write
+      // here that fails does not leave a finished row with no undo while the answer says
+      // the history has it (found in review).
+      const way = { undo: begun.undo, before: begun.before };
+      await recording(`noting the load's bookmark in the history for user=${target}`, () => settleRestore(c.env.DB, recordId, { state: 'started', ...way }));
 
       let result;
       try {
         result = await streamDump(store, object.body, begun.loadId);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        await recording(`marking the load failed in the history for user=${target}`, () => settleRestore(c.env.DB, recordId, { state: 'failed' }));
+        await recording(`marking the load failed in the history for user=${target}`, () => settleRestore(c.env.DB, recordId, { state: 'failed', ...way }));
         console.error(`[store] load for user=${target} from ${key} failed; the store is still marked loading:`, err);
         return c.json(
           {
@@ -610,7 +612,7 @@ export const admin = new Hono<AppEnv>()
 
       const recorded =
         (await recording(`settling the history's row after a load for user=${target}`, async () => {
-          await settleRestore(c.env.DB, recordId, { state: 'applied' });
+          await settleRestore(c.env.DB, recordId, { state: 'applied', ...way });
           return true;
         })) === true;
       return c.json({
