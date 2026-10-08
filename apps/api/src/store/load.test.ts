@@ -83,6 +83,8 @@ describe('classify', () => {
     expect(classify(`INSERT INTO _cf_KV (key, value) VALUES ('x', X'00');`)).toBe('skip');
     expect(classify(`INSERT INTO "sqlite_sequence" ("name","seq") VALUES('t', 1);`)).toBe('skip');
     expect(classify(`CREATE INDEX idx_kv ON _cf_KV (value);`)).toBe('skip');
+    expect(classify(`CREATE INDEX IF NOT EXISTS idx_kv ON _cf_KV (value);`)).toBe('skip');
+    expect(classify(`INSERT OR REPLACE INTO _cf_KV (key, value) VALUES ('x', X'00');`)).toBe('skip');
     expect(classify(`CREATE TABLE cf_things (a);`)).toBe('run');
     expect(classify(`ATTACH 'x' AS y;`)).toBe('refuse');
   });

@@ -135,7 +135,7 @@ export function classify(statement: string): 'run' | 'skip' | 'refuse' {
  * `CREATE TABLE`/`INDEX` (with or without `IF NOT EXISTS`) named `_cf_*` or `sqlite_*`,
  * an index `ON` one, or an `INSERT INTO` one; the name may be quoted.
  */
-const RUNTIME_TABLE = /^(?:CREATE\s+(?:UNIQUE\s+)?(?:TABLE|INDEX)\s+(?:IF\s+NOT\s+EXISTS\s+)?["`]?(?:_cf_|sqlite_)|CREATE\s+(?:UNIQUE\s+)?INDEX\s+\S+\s+ON\s+["`]?(?:_cf_|sqlite_)|INSERT\s+INTO\s+["`]?(?:_cf_|sqlite_))/i;
+const RUNTIME_TABLE = /^(?:CREATE\s+(?:UNIQUE\s+)?(?:TABLE|INDEX)\s+(?:IF\s+NOT\s+EXISTS\s+)?["`]?(?:_cf_|sqlite_)|CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?\S+\s+ON\s+["`]?(?:_cf_|sqlite_)|INSERT\s+(?:OR\s+\w+\s+)?INTO\s+["`]?(?:_cf_|sqlite_))/i;
 
 /**
  * The most bytes of SQL text one statement may be run as. The runtime refuses a
