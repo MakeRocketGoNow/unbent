@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState, type FormEvent, type JSX } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { isLocalMethod, type AuthProvider } from '@unbent/shared';
+import { SIGNUPS_CLOSED_MESSAGE, isLocalMethod, type AuthProvider } from '@unbent/shared';
 import {
   emailOtp,
   refreshSession,
@@ -78,7 +78,7 @@ export interface LoginProps {
 export function refusalMessage(code: string): string {
   switch (code) {
     case 'SIGNUPS_CLOSED':
-      return 'This Unbent instance is not open for sign-ups.';
+      return SIGNUPS_CLOSED_MESSAGE;
     case 'access_denied':
       return 'Sign-in was cancelled before it finished.';
     case 'account_not_linked':

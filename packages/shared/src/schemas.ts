@@ -221,6 +221,14 @@ export function isLocalMethod(p: string): p is LocalMethod {
   return (LOCAL_METHODS as readonly string[]).includes(p);
 }
 
+/**
+ * The sentence for a sign-up the instance's allowlist refuses. One string because two
+ * places show it: the code and password forms read it from the API's JSON refusal, and a
+ * provider sign-in, which comes back as a redirect with only the code `SIGNUPS_CLOSED`,
+ * has the sign-in screen map that code to it (`refusalMessage` in the web app).
+ */
+export const SIGNUPS_CLOSED_MESSAGE = 'This Unbent instance is not open for sign-ups.';
+
 export interface AppConfig {
   providers: AuthProvider[];
   /**

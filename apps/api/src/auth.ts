@@ -4,7 +4,7 @@ import { bearer, deviceAuthorization, emailOTP, jwt, oneTimeToken } from 'better
 import { mcp } from '@better-auth/mcp';
 import { passkey } from '@better-auth/passkey';
 import { socialProviderList } from 'better-auth/social-providers';
-import type { AuthProvider } from '@unbent/shared';
+import { SIGNUPS_CLOSED_MESSAGE, type AuthProvider } from '@unbent/shared';
 import type { Env } from './types.js';
 import { canSendEmail, sendEmail } from './lib/email.js';
 import { deleteKeys, deleteUserBlobs } from './lib/blobs.js';
@@ -598,7 +598,7 @@ function createAuth(env: Env): AuthInstance {
              */
             throw new APIError('FORBIDDEN', {
               code: 'SIGNUPS_CLOSED',
-              message: 'This Unbent instance is not open for sign-ups.',
+              message: SIGNUPS_CLOSED_MESSAGE,
             });
           },
           /**
