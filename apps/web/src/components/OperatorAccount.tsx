@@ -335,7 +335,10 @@ function WindBack({ userId, email, last, onChanged }: { userId: string; email: s
   // under the field while it is being typed in, but a page left open for an hour must
   // not grey out the last hour, which is when an operator most often wants to go.
   const [now, setNow] = useState(() => Date.now());
-  const [at, setAt] = useState(() => toLocalInput(now - 3_600_000));
+  // The field starts at now, not an hour back: a default in the past read as the page
+  // being on the wrong clock, and it never matched what the operator wanted anyway. The
+  // moment is theirs to type.
+  const [at, setAt] = useState(() => toLocalInput(now));
   const [step, setStep] = useState<WindBackStep>({ kind: 'idle' });
   const [outcome, setOutcome] = useState<WindBackOutcome | null>(null);
   const [busy, setBusy] = useState(false);
