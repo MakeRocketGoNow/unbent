@@ -796,6 +796,11 @@ export const admin = new Hono<AppEnv>()
    * bucket to age out under its lifecycle rule, as they are when a person deletes their
    * own; the page says so before the press.
    *
+   * Irreversible, so it requires `?confirm=<the same id>` rather than firing on a bare
+   * DELETE, as `purge-notes` requires its word: a stray retry or a URL typed by hand
+   * should not be able to delete an account. The id rather than a fixed word, so a
+   * confirmed request cannot be pointed at a different account by editing its path.
+   *
    * Logged before anything is deleted, with both ids and the address, since afterwards
    * there is no row left to say whose account it was.
    */
@@ -804,6 +809,9 @@ export const admin = new Hono<AppEnv>()
     if (target instanceof Response) return target;
     if (target === c.get('userId')) {
       return c.json({ error: 'This is your own account. Delete it from Settings → Maintenance, which confirms by email.' }, 400);
+    }
+    if (c.req.query('confirm') !== target) {
+      return c.json({ error: 'Confirmation required', hint: `Repeat this request with ?confirm=${target} to delete this account.` }, 400);
     }
     const row = await c.env.DB.prepare(`SELECT email FROM user WHERE id = ?1`).bind(target).first<{ email: string }>();
     // A directory row with no user is a deletion already made and not yet swept up.

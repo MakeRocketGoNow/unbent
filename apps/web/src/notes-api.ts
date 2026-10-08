@@ -1143,7 +1143,8 @@ export async function loadDump(userId: string, dump: string): Promise<LoadResult
  * The operator's own is refused: Settings deletes that, with its emailed link.
  */
 export async function deleteAccount(userId: string): Promise<{ deleted: string }> {
-  return json<{ deleted: string }>(await request(`/api/admin/accounts/${encodeURIComponent(userId)}`, { method: 'DELETE' }));
+  const id = encodeURIComponent(userId);
+  return json<{ deleted: string }>(await request(`/api/admin/accounts/${id}?confirm=${id}`, { method: 'DELETE' }));
 }
 
 /** Names a new feed epoch, so every device of the account starts over from a snapshot. */

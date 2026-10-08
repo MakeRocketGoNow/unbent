@@ -1329,7 +1329,8 @@ referenced.
 
 An operator can delete someone else's account from that account's page under Settings →
 Operator, for a sign-up that should not exist — a bot, a test account, someone who asked
-by other means. It is `DELETE /api/admin/accounts/<id>`, and it is the same deletion in
+by other means. It is `DELETE /api/admin/accounts/<id>?confirm=<id>` — the id twice, so
+neither a stray retry nor a hand-typed URL deletes anything — and it is the same deletion in
 the same order, by the same code (`lib/account-deletion.ts`), with no email: the link is a
 person's proof that an account is theirs, which is not what lets an operator act. The
 confirm names the account and what is in it, and asks for `DELETE` typed, since here the
