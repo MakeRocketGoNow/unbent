@@ -516,7 +516,11 @@ function WindBack({ userId, email, onChanged }: { userId: string; email: string;
           </p>
           {/* The history's row is where the undo lives; this is the fallback for a row
               that was not written, when the answer is the only copy on screen. */}
-          {outcome.result.recorded ? null : outcome.result.undo ? (
+          {outcome.result.recorded ? (
+            // Said, as the load's answer says it: the button used to sit here, and an
+            // operator who just pressed something destructive should not have to look.
+            outcome.result.undo && <p className="muted small">Undo is on its row under Restores and loads, just below.</p>
+          ) : outcome.result.undo ? (
             <>
               <p className="muted small">The history could not record this wind-back, so its undo is offered here instead.</p>
               {!outcome.undoAsked ? (

@@ -182,6 +182,7 @@ describe('OperatorAccount: wind back', () => {
     // and the answer offers no second one beside it.
     await waitFor(() => expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy());
     expect(screen.queryByRole('button', { name: 'Undo the wind-back' })).toBeNull();
+    expect(screen.getByText('Undo is on its row under Restores and loads, just below.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     const undo = screen.getByRole('group', { name: 'Confirm undo wind back' });
     expect(undo.textContent).toContain('Put someone@example.com back as it was before the wind-back?');
