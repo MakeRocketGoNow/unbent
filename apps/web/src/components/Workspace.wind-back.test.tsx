@@ -95,19 +95,23 @@ describe('the open note after a wind-back', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } });
     const stop = installLibraryQueries(client);
     const lib = installTestLibrary({ notes: [row(edited)] });
-    mount(client);
-    await waitFor(async () => expect((await title()).value).toBe(edited.title));
-    cleanup();
+    try {
+      mount(client);
+      await waitFor(async () => expect((await title()).value).toBe(edited.title));
+      cleanup();
 
-    // The wind-back while the note is closed: the library starts over and the row comes back older.
-    await act(async () => {
-      lib.reset();
-      lib.upsert('note', row({ ...before, updatedAt: 99 }));
-    });
-    mount(client);
-    await waitFor(async () => expect((await title()).value).toBe(before.title));
-    stop();
-    lib.uninstall();
+      // The wind-back while the note is closed: the library starts over and the row comes back older.
+      await act(async () => {
+        lib.reset();
+        lib.upsert('note', row({ ...before, updatedAt: 99 }));
+      });
+      mount(client);
+      await waitFor(async () => expect((await title()).value).toBe(before.title));
+    } finally {
+      // A failed assertion must not leave the bridge's listener installed for later tests.
+      stop();
+      lib.uninstall();
+    }
   });
 
   it('shows the restored copy once the library has reset, although it is older than what was last saved', async () => {
