@@ -38,6 +38,7 @@ describe('posthog', () => {
     const [key, options] = vi.mocked(posthog.init).mock.calls[0] ?? [];
     expect(key).toBe('phc_x');
     expect(options).toMatchObject({
+      defaults: '2026-05-30',
       cookieless_mode: 'always',
       person_profiles: 'never',
       autocapture: false,

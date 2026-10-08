@@ -82,6 +82,10 @@ export async function installPosthog(config: NonNullable<AppConfig['posthog']>):
       api_host: `${location.origin}${INGEST_PATH}`,
       // Still the real host: the toolbar and the links in the SDK's own UI point at it.
       ui_host: config.uiHost,
+      // The SDK's defaults as they stood on this date, so an upgrade of `posthog-js` does
+      // not change them underneath this file. Moving the date is a decision, made here and
+      // read against PostHog's changelog — not something a dependency bump does by itself.
+      defaults: '2026-05-30',
       cookieless_mode: 'always',
       person_profiles: 'never',
       autocapture: false,
