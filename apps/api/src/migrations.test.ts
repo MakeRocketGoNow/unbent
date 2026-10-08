@@ -144,9 +144,9 @@ describe.skipIf(!sqlite3)('the directory\'s query plans', () => {
   });
 
   it('walk the accounts list down the email index, with or without a search, and find each row by its key', () => {
-    const pages: [after: string, pattern: string][] = [["''", 'NULL'], ["'m@example.com'", 'NULL'], ["''", "'ex'"], ["'m@example.com'", "'ex'"]];
-    for (const [after, pattern] of pages) {
-      const p = plan(OPERATOR_PAGE_SQL.replace('?1', after).replace(/\?2/g, pattern).replace('?3', '50'));
+    const pages: [after: string, needle: string][] = [["''", 'NULL'], ["'m@example.com'", 'NULL'], ["''", "'ex'"], ["'m@example.com'", "'ex'"]];
+    for (const [after, needle] of pages) {
+      const p = plan(OPERATOR_PAGE_SQL.replace('?1', after).replace(/\?2/g, needle).replace('?3', '50'));
       // The first page's `email > ''` is a seek too, from the start of the index.
       expect(p).toContain('SEARCH u USING INDEX sqlite_autoindex_user_2 (email>?)');
       expect(p).toContain('SEARCH d USING INDEX sqlite_autoindex_account_directory_1 (user_id=?)');
