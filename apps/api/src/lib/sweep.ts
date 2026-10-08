@@ -253,12 +253,11 @@ export async function sweepStores(
     }
   }
 
-  // The expiries, with what is left. R2 first,
-  // then the store: a delete that lands and a forget that does not is asked for again on
-  // the next visit, and deleting an absent object is a no-op; the reverse order would
-  // leave an object in the bucket that nothing would ever ask about again. The keys are
-  // at most one `delete()`'s worth per account, so each is one R2 call (`deleteKeys`
-  // batches by the same thousand).
+  // The expiries, with what is left. R2 first, then the store: a delete that lands and
+  // a forget that does not is asked for again on the next visit, and deleting an absent
+  // object is a no-op; the reverse order would leave an object in the bucket that
+  // nothing would ever ask about again. The keys are at most one `delete()`'s worth per
+  // account, so each is one R2 call (`deleteKeys` batches by the same thousand).
   const chosen = pickAffordable(due, budget.spent, hour, EXPIRY_COST);
   report.blobsDeferred = due.length - chosen.length;
   for (const { userId, keys } of chosen) {
