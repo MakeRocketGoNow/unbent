@@ -555,8 +555,8 @@ export class NotesStore {
    * tag and notebook clauses start from the tag or notebook rather than from every note.
    *
    * Names are matched the way `filterConditions` matches them, so a stored count and a
-   * counted one can never disagree about which notebook or tag was meant: a notebook
-   * case-insensitively, a tag exactly. A name that matches nothing is 0 either way.
+   * counted one can never disagree about which notebook or tag was meant: both without
+   * case, as NOCASE folds it. A name that matches nothing is 0 either way.
    */
   private storedCount(opts: CountOptions): number | undefined {
     const { tags = [], notebook, fields = [], untagged, trashed, from, to } = opts;
