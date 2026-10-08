@@ -292,13 +292,15 @@ export const admin = new Hono<AppEnv>()
           at: z.union([z.number().int().positive(), z.string().min(1)]).optional(),
           bookmark: z.string().regex(BOOKMARK_PATTERN).optional(),
           confirm: z.literal('RESTORE').optional(),
+          // The newest history row the caller saw; see `startRestore`.
+          ifNewest: z.number().int().nonnegative().optional(),
         })
         .refine((b) => (b.at === undefined) !== (b.bookmark === undefined), { message: 'Give exactly one of `at` or `bookmark`.' }),
     ),
     async (c) => {
       const email = c.get('user')?.email;
       if (!isOperator(c.env, email)) return c.json({ error: 'Not found' }, 404);
-      const { user, at, bookmark, confirm } = c.req.valid('json');
+      const { user, at, bookmark, confirm, ifNewest } = c.req.valid('json');
       const target = user ?? c.get('userId')!;
       if (target !== c.get('userId')) {
         const row = await directoryRow(c.env.DB, target);
@@ -357,17 +359,22 @@ export const admin = new Hono<AppEnv>()
       // fails refuses the restore; nothing has touched the store yet, so refusing costs
       // a retry. 0038 carried on past a failed clear, and its next write overwrote the
       // record anyway; a list has no next write that hides the older row (found in review).
-      const recordId = await recording(`starting the history's row before a restore for user=${target}`, async () =>
-        startRestore(c.env.DB, {
+      let recordId: number | null;
+      try {
+        recordId = await startRestore(c.env.DB, {
           userId: target,
           operatorId: c.get('userId')!,
           kind: 'at' in to ? 'moment' : 'bookmark',
           toAt: 'at' in to ? to.at : undefined,
           undoes: 'bookmark' in to ? await undoneRow(c.env.DB, target, to.bookmark) : null,
-        }),
-      );
-      if (recordId === null) {
+          ifNewest,
+        });
+      } catch (err) {
+        console.error(`[store] starting the history's row before a restore failed for user=${target}; nothing was restored:`, err);
         return c.json({ error: 'The restore history could not be written, so nothing was restored. The Worker log has the error; try again.' }, 503);
+      }
+      if (recordId === null) {
+        return c.json({ error: 'Something else was restored or loaded since this page read the history, so nothing was restored. Read the history again before undoing.' }, 409);
       }
       let undo: string | null;
       try {

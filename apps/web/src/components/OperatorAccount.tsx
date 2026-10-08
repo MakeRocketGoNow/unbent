@@ -613,7 +613,9 @@ function RestoreHistory({ userId, email, onChanged }: { userId: string; email: s
     setError(null);
     setUndone(null);
     try {
-      setUndone({ kind: row.kind, result: await api.restoreStore(userId, { bookmark: row.undo! }) });
+      // The row's id goes with it: if another operator has restored or loaded since this
+      // list was read, the route refuses rather than throw their change away.
+      setUndone({ kind: row.kind, result: await api.restoreStore(userId, { bookmark: row.undo! }, row.id) });
     } catch (err) {
       setError(errorText(err));
     } finally {

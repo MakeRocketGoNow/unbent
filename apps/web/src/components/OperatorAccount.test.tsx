@@ -189,7 +189,7 @@ describe('OperatorAccount: wind back', () => {
     vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: null, recorded: true, feedEpoch: 'e3', stats: stats(), note: '' });
     fireEvent.click(screen.getByRole('button', { name: 'Undo the wind-back' }));
     await flush();
-    expect(api.restoreStore).toHaveBeenLastCalledWith('u1', { bookmark: '00000001-00000002-00000003-0000000000000004' });
+    expect(api.restoreStore).toHaveBeenLastCalledWith('u1', { bookmark: '00000001-00000002-00000003-0000000000000004' }, 1);
     expect(screen.getByText(/Put back as it was before the wind-back/)).toBeTruthy();
   });
 
@@ -317,7 +317,8 @@ describe('OperatorAccount: history', () => {
     vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: null, recorded: true, feedEpoch: 'e3', stats: stats(), note: '' });
     fireEvent.click(screen.getByRole('button', { name: 'Undo the load' }));
     await flush();
-    expect(api.restoreStore).toHaveBeenCalledWith('u1', { bookmark: '00000001-00000002-00000003-0000000000000009' });
+    // With the row it took to be newest, so the route can refuse if another came since.
+    expect(api.restoreStore).toHaveBeenCalledWith('u1', { bookmark: '00000001-00000002-00000003-0000000000000009' }, 4);
     expect(screen.getByText(/Put back as it was before the load/)).toBeTruthy();
   });
 
@@ -415,7 +416,7 @@ describe('OperatorAccount: load a dump', () => {
     vi.mocked(api.restoreStore).mockResolvedValue({ restored: true, user: 'u1', undo: null, recorded: false, feedEpoch: 'e3', stats: stats(), note: '' });
     fireEvent.click(screen.getByRole('button', { name: 'Undo the load' }));
     await flush();
-    expect(api.restoreStore).toHaveBeenCalledWith('u1', { bookmark: '00000001-00000002-00000003-0000000000000004' });
+    expect(api.restoreStore).toHaveBeenCalledWith('u1', { bookmark: '00000001-00000002-00000003-0000000000000004' }, 1);
   });
 
   it('drops the Undo from the answer once a wind-back moves the store, since its bookmark would throw the wind-back away', async () => {

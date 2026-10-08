@@ -1055,9 +1055,17 @@ export async function previewRestore(userId: string, to: { at: number } | { book
   );
 }
 
-export async function restoreStore(userId: string, to: { at: number } | { bookmark: string }): Promise<RestoreResult> {
+/**
+ * `ifNewest` is the newest history row the page saw: the route refuses with 409 when
+ * another has been written since, rather than undo beneath it.
+ */
+export async function restoreStore(userId: string, to: { at: number } | { bookmark: string }, ifNewest?: number): Promise<RestoreResult> {
   return json<RestoreResult>(
-    await request('/api/admin/store/restore', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ user: userId, ...to, confirm: 'RESTORE' }) }),
+    await request('/api/admin/store/restore', {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ user: userId, ...to, ...(ifNewest === undefined ? {} : { ifNewest }), confirm: 'RESTORE' }),
+    }),
   );
 }
 

@@ -196,5 +196,7 @@ describe.skipIf(!sqlite3)('the restore history', () => {
     // Newest first from the index itself, whose entries carry the rowid in order.
     expect(list).not.toContain('TEMP B-TREE');
     expect(plan(RESTORES_SQL.undone.replace('?1', "'u'").replace('?2', "'b'"))).toContain('SEARCH restores USING INDEX idx_restores_user (user_id=?)');
+    // The newest row's id, checked inside every start: the index alone, which carries the rowid.
+    expect(plan(RESTORES_SQL.newest.replace('?1', "'u'"))).toContain('SEARCH restores USING COVERING INDEX idx_restores_user (user_id=?)');
   });
 });

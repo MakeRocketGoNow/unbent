@@ -20,9 +20,10 @@ import { RESTORES_LISTED } from '@unbent/shared';
  */
 
 /**
- * The two reads, as text, so `migrations.test.ts` can `EXPLAIN QUERY PLAN` them against a
- * database built from the migrations and pin that both take 0041's index. Binds: `list`
- * takes the account and the limit; `undone` the account and the bookmark.
+ * The reads, as text, so `migrations.test.ts` can `EXPLAIN QUERY PLAN` them against a
+ * database built from the migrations and pin that each takes 0041's index. Binds: `list`
+ * takes the account and the limit; `undone` the account and the bookmark; `newest` the
+ * account.
  */
 export const RESTORES_SQL = {
   list: `SELECT r.id, r.kind, r.state, r.started_at, r.applied_at, r.to_at, r.dump_key, r.before_key, r.undo, r.undoes,
@@ -30,6 +31,8 @@ export const RESTORES_SQL = {
          FROM restores r LEFT JOIN user u ON u.id = r.operator_id
         WHERE r.user_id = ?1 ORDER BY r.id DESC LIMIT ?2`,
   undone: `SELECT id FROM restores WHERE user_id = ?1 AND undo = ?2 ORDER BY id DESC LIMIT 1`,
+  /** The account's newest row's id, as `startRestore` checks it; 0 for none. */
+  newest: `SELECT COALESCE(MAX(id), 0) FROM restores WHERE user_id = ?1`,
 };
 
 interface RawRestore {
@@ -50,19 +53,29 @@ interface RawRestore {
 /**
  * A restore or load about to touch the store. `undoes` is the row whose bookmark a
  * restore to a bookmark is going back to, from `undoneRow`. Answers the new row's id.
+ *
+ * `ifNewest` is the id of the row the caller took to be the account's newest, and the
+ * row is written only while it still is; null is the answer when it is not. The page
+ * sends it with an undo from the history, because the bookmark it offers is right only
+ * while nothing has happened since: a second operator's wind-back in between would be
+ * thrown away by the press, under a confirm that never named it (found in review). In
+ * the insert itself, not a read before it, so two requests cannot both pass. Without it,
+ * as from the API by hand, the row is written whatever the history holds.
  */
 export async function startRestore(
   db: D1Database,
-  row: { userId: string; operatorId: string; kind: StoreRestore['kind']; toAt?: number; dump?: string; undoes?: number | null },
-): Promise<number> {
+  row: { userId: string; operatorId: string; kind: StoreRestore['kind']; toAt?: number; dump?: string; undoes?: number | null; ifNewest?: number },
+): Promise<number | null> {
   const inserted = await db
     .prepare(
       `INSERT INTO restores (user_id, operator_id, kind, state, started_at, to_at, dump_key, undoes)
-       VALUES (?1, ?2, ?3, 'started', ?4, ?5, ?6, ?7) RETURNING id`,
+       SELECT ?1, ?2, ?3, 'started', ?4, ?5, ?6, ?7
+        WHERE ?8 IS NULL OR (${RESTORES_SQL.newest}) = ?8
+       RETURNING id`,
     )
-    .bind(row.userId, row.operatorId, row.kind, Date.now(), row.toAt ?? null, row.dump ?? null, row.undoes ?? null)
+    .bind(row.userId, row.operatorId, row.kind, Date.now(), row.toAt ?? null, row.dump ?? null, row.undoes ?? null, row.ifNewest ?? null)
     .first<{ id: number }>();
-  return inserted!.id;
+  return inserted?.id ?? null;
 }
 
 /**

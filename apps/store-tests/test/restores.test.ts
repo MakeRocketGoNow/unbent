@@ -26,6 +26,9 @@ beforeAll(async () => {
 const account = (label: string) => `restores-${label}-${crypto.randomUUID()}`;
 const BOOKMARK = '00000001-00000002-00000003-0000000000000004';
 
+/** A row started with no precondition, which is always written. */
+const start = async (row: Parameters<typeof startRestore>[1]) => (await startRestore(env.DB, row))!;
+
 async function operator(): Promise<string> {
   const id = `op-${crypto.randomUUID()}`;
   await env.DB.prepare(`INSERT INTO user (id, name, email, createdAt, updatedAt) VALUES (?1, 'Op', ?2, 'now', 'now')`).bind(id, `${id}@example.test`).run();
@@ -36,7 +39,7 @@ describe('the restore history', () => {
   it('keeps a wind-back started until its answer, then applied with its bookmark and the operator who asked', async () => {
     const user = account('wind');
     const op = await operator();
-    const id = await startRestore(env.DB, { userId: user, operatorId: op, kind: 'moment', toAt: 1000 });
+    const id = await start({ userId: user, operatorId: op, kind: 'moment', toAt: 1000 });
     // Before the answer: listed, and without a bookmark, so nothing beneath it is offered.
     expect((await listRestores(env.DB, user)).restores).toMatchObject([{ id, kind: 'moment', state: 'started', appliedAt: null, toAt: 1000, undo: null }]);
 
@@ -46,9 +49,22 @@ describe('the restore history', () => {
     expect(row!.appliedAt).toBeGreaterThanOrEqual(row!.startedAt);
   });
 
+  it('writes an undo only while the row it was offered under is still the newest', async () => {
+    const user = account('newest');
+    const op = await operator();
+    // Nothing yet: the newest is 0.
+    const first = await startRestore(env.DB, { userId: user, operatorId: op, kind: 'moment', toAt: 1000, ifNewest: 0 });
+    expect(first).not.toBeNull();
+    // A second operator's wind-back lands while the page still shows the first as newest.
+    const second = await start({ userId: user, operatorId: op, kind: 'moment', toAt: 2000 });
+    expect(await startRestore(env.DB, { userId: user, operatorId: op, kind: 'bookmark', undoes: first, ifNewest: first! })).toBeNull();
+    expect((await listRestores(env.DB, user)).restores.map((r) => r.id)).toEqual([second, first]);
+    expect(await startRestore(env.DB, { userId: user, operatorId: op, kind: 'bookmark', undoes: second, ifNewest: second! })).not.toBeNull();
+  });
+
   it('records nothing for a restore the runtime refused', async () => {
     const user = account('refused');
-    const id = await startRestore(env.DB, { userId: user, operatorId: await operator(), kind: 'moment', toAt: 1000 });
+    const id = await start({ userId: user, operatorId: await operator(), kind: 'moment', toAt: 1000 });
     await dropRestore(env.DB, id);
     expect(await listRestores(env.DB, user)).toEqual({ restores: [], more: false });
   });
@@ -56,16 +72,16 @@ describe('the restore history', () => {
   it('finds the row an undo goes back to by its bookmark, and marks that row undone', async () => {
     const user = account('undo');
     const op = await operator();
-    const wound = await startRestore(env.DB, { userId: user, operatorId: op, kind: 'moment', toAt: 1000 });
+    const wound = await start({ userId: user, operatorId: op, kind: 'moment', toAt: 1000 });
     await settleRestore(env.DB, wound, { state: 'applied', undo: BOOKMARK });
     // Another account's row with the same bookmark is not this account's to undo.
-    const other = await startRestore(env.DB, { userId: account('other'), operatorId: op, kind: 'moment', toAt: 1000 });
+    const other = await start({ userId: account('other'), operatorId: op, kind: 'moment', toAt: 1000 });
     await settleRestore(env.DB, other, { state: 'applied', undo: BOOKMARK });
 
     expect(await undoneRow(env.DB, user, BOOKMARK)).toBe(wound);
     expect(await undoneRow(env.DB, user, '00000001-00000002-00000003-0000000000000009')).toBeNull();
 
-    const undo = await startRestore(env.DB, { userId: user, operatorId: op, kind: 'bookmark', undoes: wound });
+    const undo = await start({ userId: user, operatorId: op, kind: 'bookmark', undoes: wound });
     await settleRestore(env.DB, undo, { state: 'applied', undo: null });
     const { restores } = await listRestores(env.DB, user);
     expect(restores.map((r) => [r.id, r.undoes, r.undoneBy])).toEqual([
@@ -76,7 +92,7 @@ describe('the restore history', () => {
 
   it("keeps a load's way back from the moment its bookmark is taken, through a load that stops partway", async () => {
     const user = account('load');
-    const id = await startRestore(env.DB, { userId: user, operatorId: await operator(), kind: 'load', dump: `stores/${user}/2026-10-05.sql` });
+    const id = await start({ userId: user, operatorId: await operator(), kind: 'load', dump: `stores/${user}/2026-10-05.sql` });
     await settleRestore(env.DB, id, { state: 'started', undo: BOOKMARK, before: `stores/${user}/before-load.sql` });
     await settleRestore(env.DB, id, { state: 'failed' });
     expect((await listRestores(env.DB, user)).restores).toMatchObject([
