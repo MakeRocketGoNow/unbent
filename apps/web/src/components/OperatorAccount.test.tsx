@@ -413,7 +413,7 @@ describe('OperatorAccount: load a dump', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Load dump' }));
     await flush();
     expect(api.loadDump).toHaveBeenCalledWith('u1', 'stores/u1/2026-10-05.sql');
-    const result = screen.getByText(/Loaded 2026-10-05.sql/);
+    const result = screen.getByText(/Loaded 2026-10-05.sql\. The store now holds/);
     expect(result.textContent).toContain('The store now holds 11 notes, 4 files and 40 revisions');
     expect(result.textContent).toContain('The store as it stood is 2026-10-06T12-00-00Z-before-load.sql, in the list above.');
     expect(screen.getByText('Undo is on its row under Restores and loads, above.')).toBeTruthy();
