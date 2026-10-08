@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FeedAttachment, FeedNote, FeedNotebook, FeedPage, FeedReset, FeedTag, SnapshotPage } from '@unbent/shared';
-import { FeedEngine, isWhole, type Controls, type Position } from './feed.js';
+import { FeedEngine, FeedStallError, isWhole, type Controls, type Position } from './feed.js';
 
 /**
  * The feed's reader against a fake server and fake collections: what a page does to the
@@ -399,6 +399,47 @@ describe('FeedEngine retry', () => {
     // The pull that came sooner failed too and set a wait of its own; one, not two.
     expect(vi.getTimerCount()).toBe(1);
     h.engine.stop();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+/**
+ * A pull that never settles throws nothing, so the engine says when a step inside the
+ * browser has waited too long. The fetches have their own timeout; these steps do not.
+ */
+describe('FeedEngine stall reports', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('says which step a copy is stuck on, once, and keeps waiting', async () => {
+    vi.useFakeTimers();
+    const h = harness({ '/api/changes/snapshot?limit=2': snapshotFirst([note('a')], null) });
+    let release: () => void = () => {};
+    h.c.note.commit = () => new Promise<void>((r) => (release = r));
+    const stalls: FeedStallError[] = [];
+    h.engine['options'].onStall = (err) => stalls.push(err);
+    h.engine['options'].stallMs = 1000;
+    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(stalls.map((s) => s.message)).toEqual(['Library copy: applying a page has not settled after 1 s']);
+    expect(h.engine.state.phase).toBe('hydrating');
+    release();
+    await h.engine.settled();
+    expect(h.engine.state.phase).toBe('current');
+    expect(stalls.length).toBe(1);
+  });
+
+  it('says nothing about steps that settle in time', async () => {
+    vi.useFakeTimers();
+    const h = harness({ '/api/changes/snapshot?limit=2': snapshotFirst([note('a')], null) });
+    const stalls: FeedStallError[] = [];
+    h.engine['options'].onStall = (err) => stalls.push(err);
+    h.engine['options'].stallMs = 1000;
+    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    await h.engine.settled();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(stalls).toEqual([]);
     expect(vi.getTimerCount()).toBe(0);
   });
 });

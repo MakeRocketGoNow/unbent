@@ -371,6 +371,7 @@ async function open(userId: string): Promise<Library> {
     // cache them again, and nothing would drop that answer (found in review).
     onTruncated: () => resetListeners.forEach((l) => l()),
     onError: reportPullFailure,
+    onStall: (err) => reportError(err, 'error'),
   });
   collections = createCollections(store, engine);
 

@@ -118,7 +118,27 @@ export interface FeedOptions {
   onError?: (err: unknown) => void;
   /** The first wait before a failed copy is tried again; doubles to `RETRY_MAX_MS`. */
   retryMs?: number;
+  /**
+   * A step of a pull has not settled after `stallMs`. Called once per stalled step, which
+   * keeps waiting: this reports a hang, it does not end one. See `watched`.
+   */
+  onStall?: (err: FeedStallError) => void;
+  stallMs?: number;
 }
+
+/** What `onStall` is given: which step, and whether a copy or the feed was waiting on it. */
+export class FeedStallError extends Error {
+  constructor(
+    readonly step: StallStep,
+    readonly during: 'copy' | 'feed',
+    ms: number,
+  ) {
+    super(`Library ${during}: ${step} has not settled after ${ms / 1000} s`);
+    this.name = 'FeedStallError';
+  }
+}
+
+type StallStep = 'reading the cursor' | 'writing the cursor' | 'applying a page' | 'emptying the copy';
 
 /** The longest wait between tries of a copy that keeps failing. */
 const RETRY_MAX_MS = 5 * 60 * 1000;
@@ -236,13 +256,38 @@ export class FeedEngine {
     this.retryTimer = null;
   }
 
+  /**
+   * Waits on a step that has no timeout of its own, and says so if it takes too long.
+   *
+   * A pull that never settles throws nothing, so nothing reported it: a first copy stuck
+   * on "Copying your notes to this device…" until a reload left no trace on the device or
+   * the server (2026-10-08). The steps watched are the ones inside the browser — the
+   * cursor's reads and writes, and the commits of a page into the collections, which wait
+   * on the persistence worker and its file. The fetches are not: `fetchJson` gives each a
+   * timeout, which ends the hang as well as reporting it, and watching them too would say
+   * the same thing twice. The message is the step and the phase alone, so a stall at the
+   * same place groups as one report however far the copy had got.
+   */
+  private async watched<T>(step: StallStep, work: Promise<T>): Promise<T> {
+    const onStall = this.options.onStall;
+    if (!onStall) return work;
+    const ms = this.options.stallMs ?? 60_000;
+    const during = this.state.cursor ? 'feed' : 'copy';
+    const timer = setTimeout(() => onStall(new FeedStallError(step, during, ms)), ms);
+    try {
+      return await work;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   private changed(): void {
     this.options.onState?.({ ...this.state });
   }
 
   private async once(): Promise<void> {
     if (!this.state.cursor) {
-      const stored = await this.options.readCursor();
+      const stored = await this.watched('reading the cursor', this.options.readCursor());
       if (!stored || stored.resume) {
         await this.snapshot(stored);
         return;
@@ -312,7 +357,7 @@ export class FeedEngine {
       // The position once this page's rows have settled on disk, so a walk cut short here
       // continues from the next page; the cursor itself only once the walk is whole.
       if (cursor) {
-        await this.options.writeCursor({ ...seeded, resume: cursor, total: this.state.total });
+        await this.watched('writing the cursor', this.options.writeCursor({ ...seeded, resume: cursor, total: this.state.total }));
         this.changed();
       }
     } while (cursor);
@@ -321,7 +366,7 @@ export class FeedEngine {
 
   private async moveCursor(cursor: Cursor | null): Promise<void> {
     this.state.cursor = cursor;
-    await this.options.writeCursor(cursor);
+    await this.watched('writing the cursor', this.options.writeCursor(cursor));
     this.changed();
   }
 
@@ -346,7 +391,7 @@ export class FeedEngine {
     for (const c of Object.values(all)) {
       c.begin();
       c.truncate();
-      await c.commit();
+      await this.watched('emptying the copy', Promise.resolve(c.commit()));
     }
     this.options.onTruncated?.();
     await this.moveCursor(null);
@@ -405,7 +450,7 @@ export class FeedEngine {
     }
     for (const id of noteTombstones) for (const held of heldByNote.get(id) ?? []) gone.add(held);
     commits.push(upsertAll(attachment, files, (f) => f.id, [...gone]));
-    await Promise.all(commits);
+    await this.watched('applying a page', Promise.all(commits));
   }
 }
 
