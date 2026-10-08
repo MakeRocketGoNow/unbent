@@ -63,8 +63,10 @@ describe('/login', () => {
   it('shows a refusal from the URL, then drops the code and keeps the destination', async () => {
     const router = harness('/login?error=SIGNUPS_CLOSED&redirect=%2Fx');
     await waitFor(() => expect(screen.getByText(SIGNUPS_CLOSED_MESSAGE)).toBeTruthy());
-    await waitFor(() => expect(router.state.location.search).toEqual({ redirect: '/x' }));
-    expect(router.history.location.search).toBe('?redirect=%2Fx');
+    // Read off the router's own state; the URL-boundary test keeps raw location reads out.
+    const where = () => router.state.location;
+    await waitFor(() => expect(where().search).toEqual({ redirect: '/x' }));
+    expect(where().href).toBe('/login?redirect=%2Fx');
     // Replaced, not pushed: Back must not return to the address with the code in it.
     expect(router.history.length).toBe(1);
     // Still on screen after the address no longer carries it.
