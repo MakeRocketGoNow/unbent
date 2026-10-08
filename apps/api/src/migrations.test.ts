@@ -124,38 +124,52 @@ describe.skipIf(!sqlite3)('the D1 migrations', () => {
 
 /**
  * The plans the directory's statements get, on a database built from every migration.
- * 0039's expression index exists for the operator's accounts list alone; the planner has
- * no statistics, so an index it can use is an index it takes, and the first version of
- * 0039 was partial on `deleted_at IS NULL`, which every statement on the table says —
- * the dump run's two statements walked it on every hourly run (found in review). Pinned
- * here, where AGENTS.md says a new D1 index is checked, so the next index on this table
- * shows what it does to the others.
+ * The operator's accounts list walks `user`'s email index and finds each directory row by
+ * its key; the dump run's statements, which join `user` too, must keep driving from the
+ * directory. The planner has no statistics, so an index it can use is an index it takes:
+ * the first version of 0039's activity index, since dropped by 0042, was partial on
+ * `deleted_at IS NULL`, and the dump run's two statements walked it on every hourly run
+ * (found in review). Pinned here, where AGENTS.md says a new D1 index is checked, so the
+ * next index on these tables shows what it does to the others.
  */
 describe.skipIf(!sqlite3)('the directory\'s query plans', () => {
+  let query: (sql: string) => string;
   let plan: (sql: string) => string;
   beforeAll(() => {
     const file = join(mkdtempSync(join(tmpdir(), 'unbent-plans-')), 'd1.sqlite');
     const { run } = db(file);
     for (const f of files) run(migration(f));
+    query = run;
     plan = (sql) => run(`EXPLAIN QUERY PLAN ${sql}`);
   });
 
-  it('seek the accounts list on its index, from the top for the first page and from the cursor after', () => {
-    expect(plan(OPERATOR_PAGE_SQL.first.replace('?1', '50'))).toContain('SCAN d USING INDEX idx_account_directory_activity');
-    expect(plan(OPERATOR_PAGE_SQL.withCursor.replace(/\?1/g, '1').replace('?2', "'u'").replace('?3', '50'))).toContain(
-      'SEARCH d USING INDEX idx_account_directory_activity (<expr><?)',
-    );
+  it('walk the accounts list down the email index, with or without a search, and find each row by its key', () => {
+    const pages: [after: string, needle: string][] = [["''", 'NULL'], ["'m@example.com'", 'NULL'], ["''", "'ex'"], ["'m@example.com'", "'ex'"]];
+    for (const [after, needle] of pages) {
+      const p = plan(OPERATOR_PAGE_SQL.replace('?1', after).replace(/\?2/g, needle).replace('?3', '50'));
+      // The first page's `email > ''` is a seek too, from the start of the index.
+      expect(p).toContain('SEARCH u USING INDEX sqlite_autoindex_user_2 (email>?)');
+      expect(p).toContain('SEARCH d USING INDEX sqlite_autoindex_account_directory_1 (user_id=?)');
+      // In the index's order, so a page is `LIMIT` rows read and not the table sorted.
+      expect(p).not.toContain('TEMP B-TREE');
+    }
   });
 
-  it('leave the sweep and the dump run on the primary key, not on the list\'s index', () => {
+  it('leave the sweep and the dump run on the directory\'s key, not on the list\'s email index', () => {
     // `listDirectory`, the sweep's walk.
     expect(
       plan(`SELECT d.*, (u.id IS NOT NULL) AS user_exists FROM account_directory d LEFT JOIN user u ON u.id = d.user_id WHERE d.user_id > '' ORDER BY d.user_id LIMIT 20`),
     ).toContain('SEARCH d USING INDEX sqlite_autoindex_account_directory_1');
-    // The dump run's due list and its status, the statements `dumpStores` runs.
+    // The dump run's due list and its status, the statements `dumpStores` runs, which
+    // join `user` too and must keep finding it by id rather than walking it by email.
     const due = plan(DUMP_SQL.due.replace('?1', '1').replace('?2', '20'));
     const status = plan(DUMP_SQL.status.replace('?1', '1').replace(/\?2/g, '50'));
-    for (const p of [due, status]) expect(p).not.toContain('idx_account_directory_activity');
+    for (const p of [due, status]) expect(p).not.toContain('sqlite_autoindex_user_2');
+  });
+
+  it('drop the activity index the list no longer reads', () => {
+    // Run, not planned: the plan of a read of the catalogue names no index whatever it holds.
+    expect(query(`SELECT COUNT(*) FROM sqlite_master WHERE name = 'idx_account_directory_activity'`)).toBe('0');
   });
 });
 

@@ -152,8 +152,8 @@ interface OperatorRow extends RawRow {
 }
 
 /** The columns the operator's view of an account joins and reads; see `toAccount`. */
-const OPERATOR_SELECT = `SELECT d.*, u.email, u.name, COALESCE(d.last_active_at, d.created_at) AS active_at
-         FROM account_directory d JOIN user u ON u.id = d.user_id`;
+const OPERATOR_SELECT = `SELECT d.*, u.email, u.name
+         FROM user u JOIN account_directory d ON d.user_id = u.id`;
 
 const toAccount = (r: OperatorRow): OperatorAccount => ({
   userId: r.user_id,
@@ -167,27 +167,25 @@ const toAccount = (r: OperatorRow): OperatorAccount => ({
 });
 
 /**
- * The list's two statements, as text, so `migrations.test.ts` can `EXPLAIN QUERY PLAN`
- * them against a database built from the migrations and pin that they take 0039's index
- * while the dump run's statements do not. Binds: `first` takes the limit; `withCursor`
- * takes the cursor's activity, its id and the limit.
+ * The list's statement, as text, so `migrations.test.ts` can `EXPLAIN QUERY PLAN` it
+ * against a database built from the migrations and pin that it walks `user`'s email
+ * index and finds each directory row by its key. Binds: the email to start after (`''`
+ * for the first page), the search lowercased or null, and the limit.
  */
-export const OPERATOR_PAGE_SQL = {
-  first: `${OPERATOR_SELECT} WHERE d.deleted_at IS NULL ORDER BY COALESCE(d.last_active_at, d.created_at) DESC, d.user_id DESC LIMIT ?1`,
-  withCursor: `${OPERATOR_SELECT}
+export const OPERATOR_PAGE_SQL = `${OPERATOR_SELECT}
         WHERE d.deleted_at IS NULL
-          AND COALESCE(d.last_active_at, d.created_at) <= ?1
-          AND (COALESCE(d.last_active_at, d.created_at), d.user_id) < (?1, ?2)
-        ORDER BY COALESCE(d.last_active_at, d.created_at) DESC, d.user_id DESC LIMIT ?3`,
-};
+          AND u.email > ?1
+          AND (?2 IS NULL OR instr(lower(u.email), ?2) > 0 OR instr(lower(u.name), ?2) > 0)
+        ORDER BY u.email LIMIT ?3`;
 
 /**
  * The dump run's two statements (`dumpStores` in lib/backups.ts), as text, beside the
  * list's for the same reason: `migrations.test.ts` plans them against a database built
- * from the migrations and pins that 0039's index, which they could take if it were
- * partial, leaves them alone. Here rather than in backups.ts because that module reaches
- * the store client, which the node test cannot load. Binds: `due` takes the day's
- * midnight and the budget; `status` the stale threshold and the list cap, twice.
+ * from the migrations and pins that they drive from the directory and find each user by
+ * id, so the email index the list walks leaves them alone. Here rather than in backups.ts
+ * because that module reaches the store client, which the node test cannot load. Binds:
+ * `due` takes the day's midnight and the budget; `status` the stale threshold and the
+ * list cap, twice.
  */
 export const DUMP_SQL = {
   due: `SELECT d.user_id, d.dump_at, d.dump_mark
@@ -213,52 +211,47 @@ export const DUMP_SQL = {
  * `user` and the daily backup's record of each (migration 0037). Live only — a
  * tombstoned row is the sweep's.
  *
- * Newest activity first, where activity is the newest write the sweep recorded, else the
- * account's creation: the order the page shows, so a page is the top of that order and
- * not an arbitrary slice of it. The first version walked the table by user id and sorted
- * on the client, which only works while the client reads every page; a list that scales
- * reads the first page and asks for the next. The cursor is the last row's activity and
- * id together (`<ms>:<user id>`), compared as one row value so the planner can seek to
- * it, and ties on activity — every account 0030 backfilled shares one `created_at` —
- * are broken by the id. Migration 0039's expression index is on exactly this spelling.
- * The first page is the top of the index and `LIMIT` rows; a later page seeks to the
- * cursor's activity, which takes a scalar bound on the leading expression beside the
- * row-value comparison — SQLite does not seek a DESC row-value range on its own, and with
- * the comparison alone the plan was a scan from the top on every page (found in review).
- * Two statements rather than one with `?1 IS NULL OR`, since the `OR` is what turned the
- * seek into a scan. Within one tied activity value the seek lands at the top of the tie
- * and the row-value comparison filters the ids at or above the cursor, so paging through
- * a large tie reads its earlier pages again; the accounts 0030 backfilled are one such
- * tie, and a few thousand rows of it is nothing. Being an expression index, and not a
- * partial one, no other statement on the table picks it up (AGENTS.md; the migration says
- * why not partial). `migrations.test.ts` pins the plans: `SEARCH d USING INDEX
- * idx_account_directory_activity (<expr><?)` for a page with a cursor, `SCAN d USING
- * INDEX …` for the first, and the dump run's two statements untouched by it.
+ * By email, A to Z, and only those whose email or name holds `search` when there is one.
+ * The list used to be ordered by activity, newest first, with an account that had never
+ * written standing in by its creation: an order that moved every hour as the sweep
+ * rewrote activity, read as two orders spliced together (a column of "3 hours ago" that
+ * became "Made 18 hours ago" partway down), and gave an operator looking for one account
+ * nowhere to look but the whole list. An address is where they look, and it stays put.
  *
- * The cursor is a position in an order that moves: the sweep rewrites activity hourly.
- * An account that becomes active after a page was read sits above its cursor and is
- * not on the next page, until the list's five-minute refetch reads from the top again;
- * one whose activity went down (a wind-back) can appear on a later page a second time,
- * which the page dedupes by id. Both are accepted: the alternative is a snapshot of ids
- * held across pages, for a list an operator reads a few times a day.
+ * Email is unique in `user`, so it is the cursor on its own: a page starts after the
+ * last email the previous one ended on. The walk is `user`'s unique email index from that
+ * email, with each account's directory row found by its key, and `LIMIT` stops it — a
+ * page reads about fifty rows of each table however many accounts the instance holds.
+ * Emails sort as stored, byte for byte; Better Auth lowercases an address when it makes
+ * an account, so that is alphabetical.
+ *
+ * A search is a substring of the email or the name, because the part of an address an
+ * operator remembers is as often the domain as the start. It is `instr` over `lower`, not
+ * `LIKE`: D1 refuses a `LIKE` pattern over fifty bytes, which a pasted address passes
+ * (found in review, as a 500), and `instr` has no pattern, so `%` and `_` are only
+ * themselves. It matches in either case for ASCII letters only, since SQLite's `lower`
+ * folds no others: "é" does not find "É", and the search is lowered the same way so that
+ * an "É" typed still finds itself. No index serves a substring, so a search walks the same
+ * index and tests each row until it has a page: a search that matches little reads every
+ * `user` row, and the directory only for the rows that match. That is accepted: a row per
+ * account, for a page an operator opens a few times a day.
+ *
+ * A row whose email changed between pages can appear twice or not at all, which the
+ * page dedupes by id and the five-minute refetch corrects. One statement for the first
+ * page and the next, since `email > ''` is a seek from the start of the index.
  */
-export async function listOperatorAccounts(db: D1Database, after = '', limit: number = OPERATOR_PAGE_SIZE): Promise<OperatorAccountsPage> {
-  const cursor = parseCursor(after);
-  const statement = cursor
-    ? db.prepare(OPERATOR_PAGE_SQL.withCursor).bind(cursor.activeAt, cursor.userId, limit)
-    : db.prepare(OPERATOR_PAGE_SQL.first).bind(limit);
-  const { results } = await statement.all<OperatorRow & { active_at: number }>();
+export async function listOperatorAccounts(
+  db: D1Database,
+  after = '',
+  limit: number = OPERATOR_PAGE_SIZE,
+  search = '',
+): Promise<OperatorAccountsPage> {
+  const term = search.trim();
+  // ASCII letters only, as SQLite's `lower` does to the columns it is compared with.
+  const needle = term ? term.replace(/[A-Z]/g, (c) => c.toLowerCase()) : null;
+  const { results } = await db.prepare(OPERATOR_PAGE_SQL).bind(after, needle, limit).all<OperatorRow>();
   const last = results[results.length - 1];
-  return { accounts: results.map(toAccount), next: results.length === limit && last ? `${last.active_at}:${last.user_id}` : null };
-}
-
-/** `<ms>:<user id>` as `listOperatorAccounts` hands it out, or null for the first page or anything else. */
-function parseCursor(after: string): { activeAt: number; userId: string } | null {
-  const at = after.indexOf(':');
-  if (at === -1) return null;
-  const activeAt = Number(after.slice(0, at));
-  const userId = after.slice(at + 1);
-  return Number.isFinite(activeAt) && userId ? { activeAt, userId } : null;
+  return { accounts: results.map(toAccount), next: results.length === limit && last ? last.email : null };
 }
 
 /** One live account's row as the operator's list shows it, or null for an id the directory does not hold live. */

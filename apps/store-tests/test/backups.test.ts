@@ -33,10 +33,12 @@ beforeEach(async () => {
 });
 
 /** A live account: a user row and a directory row made an hour before the run. */
-async function account(label: string, opts: { deletedAt?: number; userRow?: boolean; createdAt?: number } = {}) {
+async function account(label: string, opts: { deletedAt?: number; userRow?: boolean; createdAt?: number; email?: string; name?: string } = {}) {
   const id = `backup-${label}-${crypto.randomUUID()}`;
   if (opts.userRow !== false) {
-    await env.DB.prepare(`INSERT INTO user (id, name, email, createdAt, updatedAt) VALUES (?1, 'T', ?2, 'now', 'now')`).bind(id, `${id}@example.test`).run();
+    await env.DB.prepare(`INSERT INTO user (id, name, email, createdAt, updatedAt) VALUES (?1, ?2, ?3, 'now', 'now')`)
+      .bind(id, opts.name ?? 'T', opts.email ?? `${id}@example.test`)
+      .run();
   }
   await env.DB.prepare(`INSERT INTO account_directory (user_id, created_at, deleted_at) VALUES (?1, ?2, ?3)`)
     .bind(id, opts.createdAt ?? NOON - 3_600_000, opts.deletedAt ?? null)
@@ -353,22 +355,33 @@ describe('the daily dumps', () => {
 });
 
 /**
- * The operator's list pages by activity, newest first, with a keyset cursor; the
- * account page reads one row by id. Pinned here, where the directory is built by hand,
- * because the first version sorted on the client and so only worked while the client
- * read every page.
+ * The operator's list pages by email, A to Z, with the last email as the cursor, and
+ * narrows to a search of the email and the name; the account page reads one row by id.
+ * Pinned here, where the directory is built by hand: the order is the server's, since a
+ * list that pages cannot be sorted on the client.
  */
 describe('the operator\'s accounts', () => {
-  it('page newest activity first, continue from the cursor, and read one by id', async () => {
-    const a = await account('page-a');
-    const b = await account('page-b');
-    const c = await account('page-c', { createdAt: NOON - 7_200_000 });
-    await env.DB.prepare(`UPDATE account_directory SET last_active_at = ?2 WHERE user_id = ?1`).bind(a.id, NOON - 60_000).run();
-    await env.DB.prepare(`UPDATE account_directory SET last_active_at = ?2 WHERE user_id = ?1`).bind(b.id, NOON - 30_000).run();
-    // c has no write recorded, so its creation stands in, and it comes last.
+  /** Every page of the list, as emails, the way the page's "Show more accounts" reads it. */
+  async function walk(search = '') {
+    const seen: string[] = [];
+    for (let after = ''; ; ) {
+      const page = await listOperatorAccounts(env.DB, after, 1, search);
+      seen.push(...page.accounts.map((x) => x.email));
+      if (page.next === null) break;
+      after = page.next;
+    }
+    return seen;
+  }
+
+  it('page by email whatever the activity, continue from the cursor, and read one by id', async () => {
+    const c = await account('page-c', { email: 'carol@example.test' });
+    const a = await account('page-a', { email: 'alice@example.test', createdAt: NOON - 7_200_000 });
+    const b = await account('page-b', { email: 'bob@example.test' });
+    // The newest activity is the last email: the order is the address, not when it wrote.
+    await env.DB.prepare(`UPDATE account_directory SET last_active_at = ?2 WHERE user_id = ?1`).bind(c.id, NOON - 30_000).run();
     const first = await listOperatorAccounts(env.DB, '', 2);
-    expect(first.accounts.map((x) => x.userId)).toEqual([b.id, a.id]);
-    expect(first.next).not.toBeNull();
+    expect(first.accounts.map((x) => x.userId)).toEqual([a.id, b.id]);
+    expect(first.next).toBe('bob@example.test');
     const second = await listOperatorAccounts(env.DB, first.next!, 2);
     expect(second.accounts.map((x) => x.userId)).toEqual([c.id]);
     expect(second.next).toBeNull();
@@ -376,21 +389,45 @@ describe('the operator\'s accounts', () => {
     expect(await operatorAccountRow(env.DB, 'nobody')).toBeNull();
   });
 
-  it('break a tie on activity by id across pages, and leave a deleted account out', async () => {
-    // Every account 0030 backfilled shares one created_at and has no write recorded,
-    // so the real directory is full of ties; the id is what keeps a page from repeating.
-    const made = NOON - 3_600_000;
-    const ids = (await Promise.all(['tie-1', 'tie-2', 'tie-3'].map((l) => account(l, { createdAt: made })))).map((x) => x.id);
-    const gone = await account('tie-gone', { createdAt: made, deletedAt: NOON });
-    const seen: string[] = [];
-    for (let after = ''; ; ) {
-      const page = await listOperatorAccounts(env.DB, after, 1);
-      seen.push(...page.accounts.map((x) => x.userId));
-      if (page.next === null) break;
-      after = page.next;
-    }
-    expect(seen).toEqual([...ids].sort().reverse());
-    expect(seen).not.toContain(gone.id);
-    expect(await operatorAccountRow(env.DB, gone.id)).toBeNull();
+  it('leave a deleted account out of every page', async () => {
+    await account('live-1', { email: 'one@example.test' });
+    await account('gone', { email: 'two@example.test', deletedAt: NOON });
+    await account('live-3', { email: 'three@example.test' });
+    expect(await walk()).toEqual(['one@example.test', 'three@example.test']);
+    expect(await walk('two')).toEqual([]);
+  });
+
+  it('search the email and the name for a piece of either, in any case, a page at a time', async () => {
+    await account('s-1', { email: 'pat@acme.test', name: 'Pat Lee' });
+    await account('s-2', { email: 'sam@example.test', name: 'Sam Acme' });
+    await account('s-3', { email: 'robin@example.test', name: 'Robin' });
+    await account('s-4', { email: 'jo@acme.test', name: 'Jo' });
+    // The domain, the middle of a name, and the case an operator happened to type.
+    expect(await walk('ACME')).toEqual(['jo@acme.test', 'pat@acme.test', 'sam@example.test']);
+    expect(await walk('obi')).toEqual(['robin@example.test']);
+    expect(await walk('  lee ')).toEqual(['pat@acme.test']);
+    expect(await walk('nobody')).toEqual([]);
+  });
+
+  it('match a % or an _ in the search as itself, not as a wildcard', async () => {
+    await account('w-1', { email: 'first_last@example.test' });
+    await account('w-2', { email: 'firstxlast@example.test' });
+    await account('w-3', { email: '100%@example.test' });
+    expect(await walk('t_l')).toEqual(['first_last@example.test']);
+    expect(await walk('%')).toEqual(['100%@example.test']);
+  });
+
+  it('search for a whole long address, which D1 refuses as a LIKE pattern', async () => {
+    const long = 'a.rather.long.address.for.a.search@subdomain.example.test';
+    expect(long.length).toBeGreaterThan(50);
+    await account('long', { email: long });
+    expect(await walk(long.toUpperCase())).toEqual([long]);
+  });
+
+  it('fold ASCII letters only, so a letter outside ASCII finds itself and not its other case', async () => {
+    await account('e-1', { email: 'emile@example.test', name: 'Émile' });
+    // The ASCII letters fold either way; the É only matches an É.
+    expect(await walk('ÉMILE')).toEqual(['emile@example.test']);
+    expect(await walk('émile')).toEqual([]);
   });
 });

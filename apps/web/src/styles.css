@@ -9706,7 +9706,15 @@ html.host-ios .viewer {
    row's one link, drawn in the page's ink so the table does not read as a column of
    links, and underlined on hover so it still reads as one.
 */
-.operator-table-wrap { width: 100%; overflow-x: auto; }
+.operator-table-wrap { width: 100%; overflow-x: auto; transition: opacity 0.15s ease; }
+/* The last search's accounts, while the next is answered: dimmed as the note table is, after
+   the same 150ms, so an answer that comes straight back does not flicker the rows. */
+.operator-table-wrap[aria-busy='true'] {
+  opacity: 0.45;
+  transition: opacity 0.15s ease 0.15s;
+}
+/* Wide enough for a long address, and no wider: the field belongs to the table under it. */
+.operator-search { max-width: 22rem; margin: 0.2rem 0 0.4rem; }
 .operator-table {
   width: 100%;
   border-collapse: collapse;

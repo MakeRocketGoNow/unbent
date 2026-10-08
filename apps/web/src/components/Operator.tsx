@@ -1,7 +1,7 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import type { BackupsStatus, DumpStatus, MirrorStatus, OperatorAccount } from '@unbent/shared';
+import { OPERATOR_SEARCH_MAX, type BackupsStatus, type DumpStatus, type MirrorStatus, type OperatorAccount } from '@unbent/shared';
 import { HEALTH_WORD, dumpsHealth, mirrorHealth, type Health } from '../backup-health.js';
 import { errorText } from '../notes-api.js';
 import { formatBytes } from '../format-bytes.js';
@@ -22,12 +22,20 @@ import { operatorAccountsQuery, operatorBackupsQuery } from '../queries.js';
  * that names the account and what it loses, and a confirm unfolding inside a table row
  * is the layout the issue's "quiet row actions" was warning against, not asking for.
  */
-export function Operator() {
+export function Operator({ search = '', onSearch }: { search?: string; onSearch: (q: string) => void }) {
   const backups = useQuery(operatorBackupsQuery());
-  const accounts = useInfiniteQuery(operatorAccountsQuery());
-  // By id, keeping the first copy: a row whose activity went down between pages can come
-  // back on a later one (`listOperatorAccounts`), and the copy that stays is the one in
-  // the slot it was drawn in, so the column keeps reading in order until the refetch.
+  // The search as asked of the server: trimmed, and once typing settles, as the notes
+  // page's is. The address holds every keystroke, so the field stays a plain controlled
+  // input; a name typed at speed is still one request, not one a letter.
+  const [term, setTerm] = useState(search.trim());
+  useEffect(() => {
+    const t = setTimeout(() => setTerm(search.trim()), 250);
+    return () => clearTimeout(t);
+  }, [search]);
+  const accounts = useInfiniteQuery(operatorAccountsQuery(term));
+  // By id, keeping the first copy: a row whose email changed between pages can come back
+  // on a later one (`listOperatorAccounts`), and the copy that stays is the one in the
+  // slot it was drawn in, so the column keeps reading in order until the refetch.
   let rows: OperatorAccount[] | undefined;
   if (accounts.data) {
     const seen = new Map<string, OperatorAccount>();
@@ -62,10 +70,19 @@ export function Operator() {
       <section className="settings-section">
         <h3>Accounts</h3>
         <p className="muted small">Notes, size and last change are as of the hourly sweep; an account&apos;s own page reads its store.</p>
+        <AccountSearch search={search} onSearch={onSearch} />
         {rows ? (
           <AccountsTable
             accounts={rows}
-            more={accounts.hasNextPage ? { fetching: accounts.isFetchingNextPage, fetch: () => void accounts.fetchNextPage() } : null}
+            search={term}
+            stale={accounts.isPlaceholderData}
+            // Not while the rows are the last search's: the button would read the new
+            // search's first page, not continue the rows on screen.
+            more={
+              accounts.hasNextPage && !accounts.isPlaceholderData
+                ? { fetching: accounts.isFetchingNextPage, fetch: () => void accounts.fetchNextPage() }
+                : null
+            }
           />
         ) : accounts.error ? (
           <p className="bad small">{errorText(accounts.error)}</p>
@@ -224,8 +241,38 @@ function Fact({ term, children }: { term: string; children: ReactNode }) {
 const n = (v: number | null) => (v === null ? '?' : v.toLocaleString());
 
 /**
- * The directory's view of the live accounts, newest activity first, a page at a time.
- * The server orders and pages (`listOperatorAccounts`); the table draws what has been
+ * The accounts search: a piece of an email or a name, answered by the server, since the
+ * list pages and the account looked for may be on a page not yet read. Controlled by the
+ * address (`?q=`), so Back from an account's page puts the search back in the field.
+ * Escape clears it, as it clears the notes search.
+ *
+ * Above the table and as wide as an address needs, not the panel's width: it belongs to
+ * the list under it, and a field across the whole page read as the page's search.
+ */
+export function AccountSearch({ search, onSearch }: { search: string; onSearch: (q: string) => void }) {
+  return (
+    <div className="operator-search">
+      <input
+        className="search-field"
+        type="search"
+        value={search}
+        placeholder="Search by email or name"
+        aria-label="Search accounts"
+        maxLength={OPERATOR_SEARCH_MAX}
+        onChange={(e) => onSearch(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape' && search !== '') onSearch('');
+        }}
+      />
+    </div>
+  );
+}
+
+/**
+ * The directory's view of the live accounts, by email, a page at a time. The order is
+ * the address because the address is how an operator finds an account, and it stays put
+ * where activity moved every hour. The server orders, searches and pages
+ * (`listOperatorAccounts`); the table draws what has been
  * read and offers the next page as one button, so an instance with thousands of
  * accounts opens as fast as one with seven. The counts are the last sweep's, which is
  * right across accounts and said in the line under the heading; the account's own page
@@ -239,8 +286,12 @@ const n = (v: number | null) => (v === null ? '?' : v.toLocaleString());
  * top right. The first version had the email alone, in the page's ink, and nothing told a
  * reader it went anywhere (found in the part 6 rehearsal). The name is drawn only when it
  * says more than the email does; an account whose name is its address showed it twice.
- * An account with no write recorded shows when it was made, which is what it sorts by,
- * so the column the list is ordered by reads in order.
+ * An account with no write recorded shows when it was made, muted, so it does not read
+ * as a write.
+ *
+ * While a new search is being answered the last answer stays and dims (`stale`), as the
+ * note list does between notebooks: emptying to a loading line on every pause in the
+ * field made the table jump.
  *
  * The last dump column carries the one thing a glance wants from it: when, or that it
  * failed and why, or that there has never been one. A failed dump is red in the row
@@ -250,16 +301,30 @@ const n = (v: number | null) => (v === null ? '?' : v.toLocaleString());
 export function AccountsTable({
   accounts,
   more,
+  search = '',
+  stale = false,
   now = Date.now(),
 }: {
   accounts: OperatorAccount[];
   /** The next page, while there is one: whether it is being read, and how to ask for it. */
   more: { fetching: boolean; fetch: () => void } | null;
+  /** The search these accounts answer, or `''` for every account. */
+  search?: string;
+  /** Whether these are the last search's accounts while the next one is answered. */
+  stale?: boolean;
   now?: number;
 }) {
-  if (accounts.length === 0) return <p className="muted small">No accounts yet.</p>;
+  if (accounts.length === 0) {
+    // An empty answer still on screen is the last search's, and says nothing of this one.
+    if (stale) return <p className="muted small">Searching…</p>;
+    return (
+      <p className="muted small wrap-anywhere">
+        {search ? <>No account&apos;s email or name has &ldquo;{search}&rdquo; in it.</> : 'No accounts yet.'}
+      </p>
+    );
+  }
   return (
-    <div className="operator-table-wrap">
+    <div className="operator-table-wrap" aria-busy={stale}>
       <table className="operator-table">
         <thead>
           <tr>

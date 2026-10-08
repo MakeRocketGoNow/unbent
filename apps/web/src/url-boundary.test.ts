@@ -18,7 +18,10 @@ import { fileURLToPath } from 'node:url';
  * `location.searchStr` — read through `useLocation`, so the router still owns the
  * location — to keep the Android app's colour values as the strings they were written
  * as; the router's parsed search had turned an all-digit colour into a number. Reading a
- * string is not navigating either.
+ * string is not navigating either. The operator route's loader is allowed for the same
+ * kind of read: it takes the accounts search from the `location` the router hands its
+ * loader, because a search kept out of the loader's dependencies is not otherwise passed
+ * to it (`settings.operator.tsx` says why it is kept out).
  *
  * `attachment-viewer.ts` is allowed because its one `pushState` pushes a throwaway entry
  * that never changes the URL — it exists so the back gesture dismisses the full-screen
@@ -56,6 +59,7 @@ describe('url boundary', () => {
     const allowed = [
       'notes-api.ts',
       'embed.notes.$noteId.tsx',
+      'settings.operator.tsx',
       'attachment-viewer.ts',
       'url-boundary.test.ts',
     ];

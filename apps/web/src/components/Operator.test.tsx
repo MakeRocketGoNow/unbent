@@ -13,7 +13,7 @@ vi.mock('@tanstack/react-router', () => ({
 /** The settings nav asks whether an import is running; none is. */
 vi.mock('../import-run.js', () => ({ useImportRunning: () => false }));
 
-const { AccountsTable, BackupHealth, LastDump } = await import('./Operator.js');
+const { AccountSearch, AccountsTable, BackupHealth, LastDump } = await import('./Operator.js');
 
 const now = Date.parse('2026-10-06T12:00:00Z');
 
@@ -194,7 +194,7 @@ describe('AccountsTable', () => {
     expect(screen.getByText('2 shown')).toBeTruthy();
   });
 
-  it('shows when an account with no recorded write was made, which is what it sorts by', () => {
+  it('shows when an account with no recorded write was made', () => {
     render(<AccountsTable accounts={[account({ lastActiveAt: null, createdAt: now - 3_600_000 })]} more={null} now={now} />);
     const cell = screen.getByText(/^Made /);
     expect(cell.textContent).toBe('Made 1 hour ago');
@@ -204,5 +204,39 @@ describe('AccountsTable', () => {
   it('offers no next page when there is none', () => {
     render(<AccountsTable accounts={[account()]} more={null} now={now} />);
     expect(screen.queryByRole('button', { name: 'Show more accounts' })).toBeNull();
+  });
+
+  it('says a search found nothing, naming it, rather than that there are no accounts', () => {
+    render(<AccountsTable accounts={[]} more={null} search="acme" now={now} />);
+    expect(screen.getByText(/No account's email or name has “acme” in it/)).toBeTruthy();
+    expect(screen.queryByText('No accounts yet.')).toBeNull();
+  });
+
+  it('says it is searching, not that the new search found nothing, while the last empty answer is on screen', () => {
+    render(<AccountsTable accounts={[]} more={null} search="acme" stale now={now} />);
+    expect(screen.getByText('Searching…')).toBeTruthy();
+    expect(screen.queryByText(/“acme”/)).toBeNull();
+  });
+
+  it('marks the last search\'s accounts as busy while the next is answered', () => {
+    render(<AccountsTable accounts={[account()]} more={null} stale now={now} />);
+    expect(document.querySelector('.operator-table-wrap')!.getAttribute('aria-busy')).toBe('true');
+  });
+});
+
+/** The field is the address's `q`: it shows it, writes each keystroke back, and Escape clears it. */
+describe('AccountSearch', () => {
+  afterEach(cleanup);
+
+  const field = () => screen.getByRole('searchbox', { name: 'Search accounts' }) as HTMLInputElement;
+
+  it('shows the search, hands on each keystroke as typed, and clears on Escape', () => {
+    const onSearch = vi.fn();
+    render(<AccountSearch search="acme " onSearch={onSearch} />);
+    expect(field().value).toBe('acme ');
+    fireEvent.change(field(), { target: { value: 'acme c' } });
+    expect(onSearch).toHaveBeenLastCalledWith('acme c');
+    fireEvent.keyDown(field(), { key: 'Escape' });
+    expect(onSearch).toHaveBeenLastCalledWith('');
   });
 });
