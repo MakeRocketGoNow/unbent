@@ -290,10 +290,56 @@ export async function closeLibrary(): Promise<void> {
   if (open) await open.library.then((l) => l.close()).catch(() => {});
 }
 
-async function fetchJson<T>(path: string): Promise<T> {
-  const res = await request(path);
-  if (!res.ok) throw new ApiError(res.status, `${path} answered ${res.status}`);
-  return (await res.json()) as T;
+/**
+ * How long one page of the feed or the snapshot may take, headers and body together. A
+ * snapshot page is cut at about 4 MB of bodies (`FEED_PAGE_BYTES`), which a slow phone
+ * connection takes tens of seconds over; a minute is room for that and still an answer
+ * someone waiting on a first copy gets.
+ */
+export const FEED_TIMEOUT_MS = 60_000;
+
+/** A page of the feed that did not arrive in time. Reported, unlike an `OfflineError`. */
+export class FeedTimeoutError extends Error {
+  constructor(route: string) {
+    super(`${route} did not answer within ${FEED_TIMEOUT_MS / 1000} s`);
+    this.name = 'FeedTimeoutError';
+  }
+}
+
+/**
+ * The engine's fetch, with a timeout of its own that covers the body as well as the
+ * headers. `request`'s `timeout` stops at the headers, and a page is megabytes, so a
+ * connection that stalls halfway through one is the hang it would miss.
+ *
+ * Without any timeout, a request that never answered held the engine's pull for good: a
+ * fresh sign-in sat on "Copying your notes to this device…" until a reload, because every
+ * later reason to pull — focus, the socket, the connection back — coalesces into the pull
+ * in flight (seen in a new private window, 2026-10-08). Timed out, it is a failed pull,
+ * which the engine retries.
+ *
+ * Aborted with its own error as the reason, so `request` rethrows that rather than calling
+ * it offline: an answer that never came from a server whose health check passes is worth
+ * seeing in the error reports, which drop an `OfflineError`. Connectivity is still asked
+ * about, as `request` would for a fetch that failed. The route is the path without its
+ * query, so the message reads the same for every page and groups as one.
+ */
+export async function fetchJson<T>(path: string): Promise<T> {
+  const route = path.replace(/\?.*$/, '');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new FeedTimeoutError(route)), FEED_TIMEOUT_MS);
+  try {
+    const res = await request(path, { signal: controller.signal });
+    if (!res.ok) throw new ApiError(res.status, `${route} answered ${res.status}`);
+    return (await res.json()) as T;
+  } catch (err) {
+    if (controller.signal.aborted) {
+      recheck();
+      throw controller.signal.reason;
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function open(userId: string): Promise<Library> {
