@@ -758,6 +758,36 @@ export function onDirectWrite(listener: () => void): () => void {
   return () => void directListeners.delete(listener);
 }
 
+const localListeners = new Set<() => void>();
+let lastLocalWrite = -Infinity;
+
+/**
+ * Hears each write this device is about to make, queued or as a request, before it
+ * reaches the rows: what the person did here, as opposed to what the feed brought from
+ * another device or the first copy of the library. The interface answers its own changes
+ * differently — a count that ticks over, a row that leaves the list rather than vanishing
+ * — and this is how it tells them apart. Heard before the change lands, so a list can
+ * still measure where its rows were.
+ */
+export function onLocalWrite(listener: () => void): () => void {
+  localListeners.add(listener);
+  return () => void localListeners.delete(listener);
+}
+
+/**
+ * Whether a write was made here in the last `ms`: long enough for the change to come back
+ * through the collections and be drawn, short enough that the feed's next change is not
+ * mistaken for it.
+ */
+export function wroteLocallyWithin(ms: number): boolean {
+  return performance.now() - lastLocalWrite < ms;
+}
+
+function aboutToWrite(): void {
+  lastLocalWrite = performance.now();
+  localListeners.forEach((l) => l());
+}
+
 /**
  * After a write made as a request: whoever follows direct writes hears of it, and in a
  * tab that has a library but does not queue, the server's copy is brought to the local
@@ -765,6 +795,7 @@ export function onDirectWrite(listener: () => void): () => void {
  * Nothing to wait for; the library is already right about every row this did not touch.
  */
 async function pulled<T>(write: Promise<T>): Promise<T> {
+  aboutToWrite();
   const out = await write;
   directListeners.forEach((l) => l());
   const lib = await resolve();
@@ -780,6 +811,7 @@ async function pulled<T>(write: Promise<T>): Promise<T> {
  */
 function queue(lib: WritableLibrary, mutationFnName: string, metadata: Record<string, unknown>, mutate: () => void): { id: string; retire: () => void } {
   if (!durable(lib)) throw new Error('queue() in a tab that does not hold the outbox'); // callers go through queueable()
+  aboutToWrite();
   const tx = lib.outbox.executor.createOfflineTransaction({ mutationFnName, autoCommit: false, metadata });
   const inner = tx.mutate(mutate);
   void tx.commit().catch((err: unknown) => {

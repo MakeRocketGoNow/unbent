@@ -1129,3 +1129,32 @@ describe('applying a notebook template', () => {
     expect(engine.pull).not.toHaveBeenCalled();
   });
 });
+
+/*
+ * The writes the person makes here, told apart from everything else that changes the rows:
+ * the interface rolls a count and moves a list row for these and not for the feed's.
+ */
+describe('a write made here', () => {
+  it('is heard before it reaches the row, so a list can still measure where the row was', async () => {
+    const { lib } = library([row('n1')]);
+    await lib.outbox.ready;
+    const seenBefore: Array<number | undefined> = [];
+    const stop = actions.onLocalWrite(() => seenBefore.push(lib.notes.get('n1')?.deletedAt));
+    await actions.trashNote('n1');
+    stop();
+    expect(seenBefore).toEqual([undefined]);
+    expect(lib.notes.get('n1')?.deletedAt).toBeDefined();
+    expect(actions.wroteLocallyWithin(1000)).toBe(true);
+  });
+
+  it('is heard when it goes as a request too', async () => {
+    const { engine } = library([row('n1')]);
+    engine.state.phase = 'hydrating';
+    vi.mocked(api.deleteNote).mockResolvedValueOnce(undefined);
+    const heard = vi.fn();
+    const stop = actions.onLocalWrite(heard);
+    await actions.trashNote('n1');
+    stop();
+    expect(heard).toHaveBeenCalledOnce();
+  });
+});

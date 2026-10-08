@@ -6653,6 +6653,48 @@ button.settings-nav-item {
   }
 }
 
+/*
+   A count that rolls when the person's own action changed it (`RollingCount`): the old
+   number leaves and the new one arrives in one cell, a larger number up from below and a
+   smaller one down from above, as an odometer turns. Clipped to the cell, so neither is
+   seen outside the line it sits on.
+*/
+.count-roll {
+  display: inline-grid;
+  overflow: hidden;
+  /* The cell is as tall as one line, so the clip is exactly the number's own height. */
+  line-height: inherit;
+}
+
+.count-roll > * {
+  grid-area: 1 / 1;
+  justify-self: end;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* `ROLL_MS` in `RollingCount.tsx`, which keeps the old number until it has left. */
+  .count-in.up { animation: count-in-up 0.3s cubic-bezier(0.2, 0, 0, 1) both; }
+  .count-out.up { animation: count-out-up 0.3s cubic-bezier(0.2, 0, 0, 1) both; }
+  .count-in.down { animation: count-in-down 0.3s cubic-bezier(0.2, 0, 0, 1) both; }
+  .count-out.down { animation: count-out-down 0.3s cubic-bezier(0.2, 0, 0, 1) both; }
+}
+
+@keyframes count-in-up {
+  from { translate: 0 100%; opacity: 0; }
+}
+
+@keyframes count-out-up {
+  to { translate: 0 -100%; opacity: 0; }
+}
+
+@keyframes count-in-down {
+  from { translate: 0 -100%; opacity: 0; }
+}
+
+@keyframes count-out-down {
+  to { translate: 0 100%; opacity: 0; }
+}
+
 /* A notebook name is unbounded; it yields so the count never moves. */
 .drawer-item-label {
   flex: 1;
