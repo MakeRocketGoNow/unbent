@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import type { BackupsStatus, DumpStatus, MirrorStatus, OperatorAccount } from '@unbent/shared';
+import { OPERATOR_SEARCH_MAX, type BackupsStatus, type DumpStatus, type MirrorStatus, type OperatorAccount } from '@unbent/shared';
 import { HEALTH_WORD, dumpsHealth, mirrorHealth, type Health } from '../backup-health.js';
 import { errorText } from '../notes-api.js';
 import { formatBytes } from '../format-bytes.js';
@@ -258,6 +258,7 @@ export function AccountSearch({ search, onSearch }: { search: string; onSearch: 
         value={search}
         placeholder="Search by email or name"
         aria-label="Search accounts"
+        maxLength={OPERATOR_SEARCH_MAX}
         onChange={(e) => onSearch(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Escape' && search !== '') onSearch('');
