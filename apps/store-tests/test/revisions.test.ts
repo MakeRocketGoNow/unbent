@@ -243,6 +243,23 @@ describe('history: putting fields, tags and the notebook back', () => {
     expect(await stub.listNotebooks()).toHaveLength(1);
   });
 
+  it('takes a tag whose id is gone to the tag its name is today, in any case (MAK-127)', async () => {
+    // As a copy kept before 0006 folded "drama" into Drama: the id it names is gone and a
+    // tag of its name, in another case, is what the note carries now.
+    const { stub, id } = await filed('folded');
+    await stub.update(id, { tags: ['seen'], by: 'assistant' });
+    const [copy] = (await stub.listRevisions(id))!;
+    await stub.deleteTag(await tagId(stub, 'drama'));
+    await stub.update(id, { tags: ['Drama'] });
+
+    const whole = (await stub.getRevision(id, copy!.id))!;
+    expect(whole).not.toHaveProperty('unfit');
+    expect(whole.renamedTags).toEqual([{ id: whole.props!.tags[0]!.id, name: 'Drama' }]);
+    const restored = (await stub.restoreRevision(id, copy!.id)) as RestoredNote;
+    expect(restored).not.toHaveProperty('skipped');
+    expect(restored.note.tags).toEqual(['Drama']);
+  });
+
   it('skips what no longer fits, says so before and after, and restores the rest', async () => {
     const { stub, id, nb, status, year } = await filed('unfit');
     await stub.update(id, { title: 'A film, seen', fields: { [status.id]: 'Done', [year.id]: 2001 }, tags: ['seen'], by: 'assistant' });

@@ -40,8 +40,9 @@
  * tags table, which is a few hundred rows on an archive, once.
  *
  * The note's history is not rewritten. A copy kept before this ran may name a tag id that
- * is gone, and a restore of it skips that tag as it skips one merged on the Tags page
- * (`planRestore`): restoring one note does not undo a decision about the account's tags.
+ * is gone; `planRestore` takes such a tag to the tag its name is today, in any case, so a
+ * restore puts back the tag this file kept rather than calling it deleted. Rewriting the
+ * ids inside every copy's `props` would have been a read of the whole history table.
  *
  * 0001's `UNIQUE(name)` stays, because removing a table constraint means rebuilding the
  * table; the NOCASE index is stricter, so the exact one can never be the one that refuses

@@ -1095,9 +1095,10 @@ export class NotesStore {
    * - The notebook, if it still exists; one deleted since is skipped and the note stays
    *   where it is. Not made again under its old name, which `resolveNotebook` would do:
    *   deleting a notebook is a decision, and its fields would not come back with it.
-   * - The tags that still exist, under whatever they are called now. A tag deleted
-   *   since is skipped, for the same reason. A tag the note has gained since comes off:
-   *   the copy did not have it.
+   * - The tags that still exist, under whatever they are called now, and a tag the copy
+   *   names whose id is gone but whose name, in any case, a tag holds today — see the
+   *   loop. A tag deleted since, with no tag of its name, is skipped, for the same reason.
+   *   A tag the note has gained since comes off: the copy did not have it.
    * - Each value whose field is still defined and can still hold it. A field deleted
    *   since (gone, or a tombstone) is skipped; so is a value its field can no longer be
    *   read as after a conversion, and a choice the field no longer offers. A multi-select
@@ -1156,11 +1157,23 @@ export class NotesStore {
       );
       const tags: string[] = [];
       for (const tag of props.tags) {
-        const name = live.get(tag.id);
-        if (name !== undefined) {
-          tags.push(name);
-          if (name !== tag.name) renamedTags.push({ id: tag.id, name });
-        } else skipped.push({ what: 'tag', id: tag.id, name: tag.name, why: 'deleted' });
+        // A tag whose id is gone but whose name a tag holds today, in any case, is that
+        // tag. 0006-tags-nocase folded each set of names that differ only in case into
+        // one, so a copy kept before it can name the id of a spelling that went — and the
+        // tag it went into is plainly the one the copy meant, not a deleted one. The same
+        // goes for a tag merged onto the copy's name, or deleted and made again: a name in
+        // use today is not a name the person has given up. One read per such tag, which
+        // only a copy older than a fold, merge or delete has.
+        const name =
+          live.get(tag.id) ??
+          this.sql.first<{ name: string }>(`SELECT name FROM tags WHERE name = ?1 COLLATE NOCASE`, tag.name)?.name;
+        if (name === undefined) {
+          skipped.push({ what: 'tag', id: tag.id, name: tag.name, why: 'deleted' });
+          continue;
+        }
+        if (tags.some((t) => foldNoCase(t) === foldNoCase(name))) continue;
+        tags.push(name);
+        if (name !== tag.name) renamedTags.push({ id: tag.id, name });
       }
       if (!sameTagSet(tags, current.tags)) plan.tags = tags;
     }
