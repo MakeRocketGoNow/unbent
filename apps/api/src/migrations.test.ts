@@ -132,11 +132,13 @@ describe.skipIf(!sqlite3)('the D1 migrations', () => {
  * shows what it does to the others.
  */
 describe.skipIf(!sqlite3)('the directory\'s query plans', () => {
+  let query: (sql: string) => string;
   let plan: (sql: string) => string;
   beforeAll(() => {
     const file = join(mkdtempSync(join(tmpdir(), 'unbent-plans-')), 'd1.sqlite');
     const { run } = db(file);
     for (const f of files) run(migration(f));
+    query = run;
     plan = (sql) => run(`EXPLAIN QUERY PLAN ${sql}`);
   });
 
@@ -165,7 +167,8 @@ describe.skipIf(!sqlite3)('the directory\'s query plans', () => {
   });
 
   it('drop the activity index the list no longer reads', () => {
-    expect(plan(`SELECT name FROM sqlite_master WHERE name = 'idx_account_directory_activity'`)).not.toContain('idx_account_directory_activity');
+    // Run, not planned: the plan of a read of the catalogue names no index whatever it holds.
+    expect(query(`SELECT COUNT(*) FROM sqlite_master WHERE name = 'idx_account_directory_activity'`)).toBe('0');
   });
 });
 
