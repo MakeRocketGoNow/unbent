@@ -351,6 +351,12 @@ export const admin = new Hono<AppEnv>()
       // restore away under a confirm that says nothing of it (`lib/restores.ts`). A
       // restore to a bookmark that a recorded row handed out is that row's undo, and says
       // so (`undoes`), which is how the page knows not to offer it again.
+      //
+      // The one write here that is not best-effort. Without its row the older one stays
+      // the newest, and the page offers that undo beneath this restore, so a start that
+      // fails refuses the restore; nothing has touched the store yet, so refusing costs
+      // a retry. 0038 carried on past a failed clear, and its next write overwrote the
+      // record anyway; a list has no next write that hides the older row (found in review).
       const recordId = await recording(`starting the history's row before a restore for user=${target}`, async () =>
         startRestore(c.env.DB, {
           userId: target,
@@ -360,6 +366,9 @@ export const admin = new Hono<AppEnv>()
           undoes: 'bookmark' in to ? await undoneRow(c.env.DB, target, to.bookmark) : null,
         }),
       );
+      if (recordId === null) {
+        return c.json({ error: 'The restore history could not be written, so nothing was restored. The Worker log has the error; try again.' }, 503);
+      }
       let undo: string | null;
       try {
         await store.restoreTo(to);
@@ -378,7 +387,7 @@ export const admin = new Hono<AppEnv>()
         const abort = readRestoreAbort(err);
         const refused = abort.scheduled ? null : readRestoreRefusal(err);
         if (refused !== null) {
-          if (recordId !== null) await recording(`dropping the history's row of a refused restore for user=${target}`, () => dropRestore(c.env.DB, recordId));
+          await recording(`dropping the history's row of a refused restore for user=${target}`, () => dropRestore(c.env.DB, recordId));
           return restoreRefused(c, refused);
         }
         if (!abort.scheduled) {
@@ -418,7 +427,6 @@ export const admin = new Hono<AppEnv>()
       // not answered; `recorded` tells the page whether the history has it, and so
       // whether to keep the answer's own undo on offer.
       const recorded =
-        recordId !== null &&
         (await recording(`settling the history's row after a restore for user=${target}`, async () => {
           await settleRestore(c.env.DB, recordId, { state: 'applied', undo });
           return true;
@@ -545,11 +553,15 @@ export const admin = new Hono<AppEnv>()
       // this load, and undoing to one would throw the loaded dump away under a confirm
       // that says nothing of the kind. A begin that empties the store and then fails to
       // answer leaves this row `started` and the newest, so the page offers no undo from
-      // beneath it (found in review, when the directory kept one record). Logged and not
-      // answered, as the restore route treats its row.
+      // beneath it (found in review, when the directory kept one record). A start that
+      // fails refuses the load, as it refuses a restore; the dump written above stays, and
+      // the answer names it. The writes after it are logged and not answered.
       const recordId = await recording(`starting the history's row before a load for user=${target}`, () =>
         startRestore(c.env.DB, { userId: target, operatorId: c.get('userId')!, kind: 'load', dump: key }),
       );
+      if (recordId === null) {
+        return c.json({ error: 'The restore history could not be written, so nothing was loaded. The Worker log has the error; try again.', before }, 503);
+      }
 
       let begun: { loadId: string; undo: string | null; before: string | null };
       try {
@@ -566,18 +578,16 @@ export const admin = new Hono<AppEnv>()
       before = begun.before;
       // Its way back, kept now rather than at the end, so a load that stops partway has it
       // in the history as well as in the store's own marker.
-      if (recordId !== null) {
-        await recording(`noting the load's bookmark in the history for user=${target}`, () =>
-          settleRestore(c.env.DB, recordId, { state: 'started', undo: begun.undo, before: begun.before }),
-        );
-      }
+      await recording(`noting the load's bookmark in the history for user=${target}`, () =>
+        settleRestore(c.env.DB, recordId, { state: 'started', undo: begun.undo, before: begun.before }),
+      );
 
       let result;
       try {
         result = await streamDump(store, object.body, begun.loadId);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        if (recordId !== null) await recording(`marking the load failed in the history for user=${target}`, () => settleRestore(c.env.DB, recordId, { state: 'failed' }));
+        await recording(`marking the load failed in the history for user=${target}`, () => settleRestore(c.env.DB, recordId, { state: 'failed' }));
         console.error(`[store] load for user=${target} from ${key} failed; the store is still marked loading:`, err);
         return c.json(
           {
@@ -599,7 +609,6 @@ export const admin = new Hono<AppEnv>()
       }
 
       const recorded =
-        recordId !== null &&
         (await recording(`settling the history's row after a load for user=${target}`, async () => {
           await settleRestore(c.env.DB, recordId, { state: 'applied' });
           return true;
