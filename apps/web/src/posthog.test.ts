@@ -109,6 +109,25 @@ describe('posthog', () => {
     expect(serialized).not.toContain('other');
   });
 
+  /* Everything reaches PostHog through captureException, which marks an error handled;
+     everything this app reports is something nothing caught. */
+  it('marks every exception unhandled, keeping the rest of its mechanism', () => {
+    const event = scrub({
+      event: '$exception',
+      properties: {
+        $exception_list: [
+          { type: 'Error', value: 'boom', mechanism: { type: 'generic', handled: true } },
+          { type: 'Error', value: 'cause' },
+        ],
+      },
+    } as unknown as CaptureResult);
+
+    expect(event?.properties['$exception_list']).toEqual([
+      { type: 'Error', value: 'boom', mechanism: { type: 'generic', handled: false } },
+      { type: 'Error', value: 'cause', mechanism: { handled: false } },
+    ]);
+  });
+
   /* No error tracking is a worse outcome than having it; a broken app is worse than both. */
   it('does not throw when the SDK cannot start', async () => {
     vi.mocked(posthog.init).mockImplementationOnce(() => {

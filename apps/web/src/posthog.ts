@@ -52,9 +52,25 @@ const INGEST_PATH = '/ingest';
  * which on this app carries a note id in the path and a search term in the query string;
  * `routeOf` is the same redaction the first-party report already applies. The referrer goes
  * for a related reason: on a note it is another note's address.
+ *
+ * Every exception is marked unhandled, because every one is. The only way in is
+ * `addErrorSink`, and `report-error.ts` only hears what reached `window` uncaught; but
+ * `captureException` is the SDK's call for an error the caller caught, and it says
+ * `handled: true` on all of them. Left alone, PostHog's Handled/Unhandled filter would put
+ * every crash in this app under the wrong one.
  */
 export function scrub(event: CaptureResult | null): CaptureResult | null {
   if (!event || event.event !== '$exception') return null;
+
+  const exceptions: unknown = event.properties['$exception_list'];
+  if (Array.isArray(exceptions)) {
+    for (const exception of exceptions) {
+      if (exception && typeof exception === 'object') {
+        const entry = exception as { mechanism?: object };
+        entry.mechanism = { ...entry.mechanism, handled: false };
+      }
+    }
+  }
 
   const route = routeOf();
   event.properties['$current_url'] = route;
