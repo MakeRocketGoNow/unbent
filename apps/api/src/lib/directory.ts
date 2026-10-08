@@ -198,7 +198,8 @@ export const DUMP_SQL = {
 
 /**
  * A page of live accounts for the operator page (MAK-171, part 5), with the email from
- * `user` and the daily backup's record of each (migration 0037). Live only — a tombstoned row is the sweep's.
+ * `user` and the daily backup's record of each (migration 0037). Live only — a
+ * tombstoned row is the sweep's.
  *
  * Newest activity first, where activity is the newest write the sweep recorded, else the
  * account's creation: the order the page shows, so a page is the top of that order and
