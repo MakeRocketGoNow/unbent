@@ -592,11 +592,15 @@ describe('OperatorAccount: delete account', () => {
     expect(screen.queryByRole('button', { name: 'Resync devices' })).toBeNull();
   });
 
-  it("names the sweep's note count while the store's are not in", () => {
+  it("names the sweep's note count while the store's are not in, or are a loading store's zeros", () => {
     vi.mocked(api.storeStats).mockReturnValue(new Promise(() => {}));
-    harness(undefined, null);
-    fireEvent.click(screen.getByRole('button', { name: 'Delete account' }));
-    expect(screen.getByRole('group', { name: 'Confirm delete account' }).textContent).toContain('Delete someone@example.com and its 12 notes?');
+    const loading = { ...stats({ notes: 0, attachments: 0 }), loading: { id: 'l1', key: 'stores/u1/2026-10-05.sql', startedAt: now, pages: 2, undo: null, before: null } };
+    for (const seeded of [null, loading]) {
+      harness(undefined, seeded);
+      fireEvent.click(screen.getByRole('button', { name: 'Delete account' }));
+      expect(screen.getByRole('group', { name: 'Confirm delete account' }).textContent).toContain('Delete someone@example.com and its 12 notes?');
+      cleanup();
+    }
   });
 
   it('stays on the page and says why when the server refuses', async () => {

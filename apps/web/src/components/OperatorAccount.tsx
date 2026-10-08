@@ -1103,8 +1103,11 @@ function DeleteAccount({
     );
   }
 
-  const notes = stats && !stats.wiped ? stats.counts['notes'] : account?.noteCount;
-  const files = stats && !stats.wiped ? stats.counts['attachments'] : undefined;
+  // The store's own counts when it can give them; a wiped or loading store reports zeros
+  // that are not its size, so the sweep's note count stands in, as `live` does above.
+  const counted = stats && !stats.wiped && !stats.loading ? stats : null;
+  const notes = counted ? counted.counts['notes'] : account?.noteCount;
+  const files = counted ? counted.counts['attachments'] : undefined;
   // Only what there is: "and its 0 files" names nothing, and a bot's account often has neither.
   const what = [notes ? plural(notes, 'note') : null, files ? plural(files, 'file') : null].filter(Boolean).join(' and ');
 
