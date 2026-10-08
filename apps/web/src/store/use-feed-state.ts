@@ -35,7 +35,11 @@ export function useLibraryArriving(): { stage: 'opening' | 'copying'; applied: n
     const timer = setTimeout(() => setOpeningLong(true), OPENING_GRACE_MS);
     return () => clearTimeout(timer);
   }, [opening]);
-  if (presence === 'open' && state?.phase === 'hydrating') return { stage: 'copying', applied: state.applied, total: state.total };
+  // A copy that failed partway is still arriving: the engine tries it again (`retry` in
+  // `feed.ts`), and the line going away between tries would leave a list with half the
+  // notes in it and nothing to say the rest are coming.
+  const copying = state?.phase === 'hydrating' || (state?.phase === 'failed' && !isWhole(state));
+  if (presence === 'open' && state && copying) return { stage: 'copying', applied: state.applied, total: state.total };
   if (opening && openingLong) return { stage: 'opening', applied: 0, total: null };
   return null;
 }

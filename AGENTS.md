@@ -561,7 +561,11 @@ archive on a phone is minutes of pages) and a page cut short is applied again (e
 is an upsert); once the walk is whole it is that `seq` alone, and the feed is followed from
 it, so anything written during the walk is replayed. Collections are ready as soon as
 persistence has restored them, not after the first pull. Pulls are event-driven — open, tab
-shown, connection back, socket nudge, after a replayed write — never a timer.
+shown, connection back, socket nudge, after a replayed write — never a timer, with one
+exception: a copy that is not whole and whose pull failed is tried again on a doubling
+wait (`retry` in `feed.ts`), since no event comes to a tab left open on an empty list. Each
+page of the feed and the snapshot has a timeout (`fetchJson` in `library.ts`): a pull that
+never settles holds every later one behind it.
 
 **A note the copy does not hold while no snapshot has been taken is asked of the server, or
 reads as not available — never as missing.** `noteQuery` asks the server while there is a

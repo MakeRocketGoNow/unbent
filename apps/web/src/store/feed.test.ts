@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FeedAttachment, FeedNote, FeedNotebook, FeedPage, FeedReset, FeedTag, SnapshotPage } from '@unbent/shared';
-import { FeedEngine, isWhole, type Controls, type Position } from './feed.js';
+import { FeedEngine, FeedStallError, isWhole, type Controls, type Position } from './feed.js';
 
 /**
  * The feed's reader against a fake server and fake collections: what a page does to the
@@ -303,6 +303,35 @@ describe('FeedEngine', () => {
     expect(h.c.attachment.ready).toBe(1);
   });
 
+  it('hands what a failed pull threw to onError, once per failure', async () => {
+    const refused = Object.assign(new Error('/api/changes answered 503'), { status: 503 });
+    const h = harness({ '/api/changes?since=10&epoch=e1&limit=2': [refused, feedPage({ next: 10 })] });
+    const errors: unknown[] = [];
+    h.engine['options'].onError = (err) => errors.push(err);
+    h.setCursor({ seq: 10, epoch: 'e1' });
+    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    await h.engine.settled();
+    await h.engine.pull();
+    expect(errors).toEqual([refused]);
+  });
+
+  it('on stop, ends the page in flight at once and reports nothing for it', async () => {
+    const h = harness({});
+    let seen: AbortSignal | undefined;
+    h.engine['options'].fetchJson = <T,>(_path: string, signal?: AbortSignal) => {
+      seen = signal;
+      return new Promise<T>((_, reject) => signal?.addEventListener('abort', () => reject(signal.reason), { once: true }));
+    };
+    const errors: unknown[] = [];
+    h.engine['options'].onError = (err) => errors.push(err);
+    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    await vi.waitFor(() => expect(seen?.aborted).toBe(false));
+    h.engine.stop();
+    await h.engine.settled();
+    expect(h.engine.state.phase).toBe('failed');
+    expect(errors).toEqual([]);
+  });
+
   it('coalesces pulls: one runs at a time, a request during a run queues exactly one more', async () => {
     let release: () => void = () => {};
     const gate = new Promise<void>((r) => (release = r));
@@ -327,6 +356,121 @@ describe('FeedEngine', () => {
     // Two requests: the one in flight, and the one the queued pulls collapsed into.
     expect(h.requests.filter((r) => r.startsWith('/api/changes?')).length).toBe(2);
     expect(h.engine.state.pulls).toBe(1);
+  });
+});
+
+/**
+ * A copy that is not whole is the one thing the engine pulls for on its own: a first walk
+ * that failed used to wait for focus, the socket or the connection to come back, none of
+ * which happens to a tab someone is sitting in front of, and the list stayed empty.
+ */
+describe('FeedEngine retry', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const register = (h: ReturnType<typeof harness>) => {
+    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+  };
+
+  it('tries a failed first walk again, waiting twice as long each time, until it is whole', async () => {
+    vi.useFakeTimers();
+    const h = harness({
+      '/api/changes/snapshot?limit=2': [new Error('503'), new Error('503'), snapshotFirst([note('a')], null)],
+    });
+    h.engine['options'].retryMs = 1000;
+    register(h);
+    await h.engine.settled();
+    expect(h.engine.state.phase).toBe('failed');
+    await vi.advanceTimersByTimeAsync(999);
+    expect(h.requests.length).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await h.engine.settled();
+    expect(h.requests.length).toBe(2);
+    // The second wait is twice the first.
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(h.requests.length).toBe(2);
+    await vi.advanceTimersByTimeAsync(1);
+    await h.engine.settled();
+    expect(h.engine.state).toMatchObject({ phase: 'current', cursor: { seq: 10, epoch: 'e1' } });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('leaves a failed pull over a whole library to the next event', async () => {
+    vi.useFakeTimers();
+    const h = harness({ '/api/changes?since=10&epoch=e1&limit=2': [new Error("You're offline.")] });
+    h.setCursor({ seq: 10, epoch: 'e1' });
+    register(h);
+    await h.engine.settled();
+    expect(h.engine.state.phase).toBe('failed');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('gives the wait up to a pull that comes sooner, and to a stop', async () => {
+    vi.useFakeTimers();
+    const h = harness({ '/api/changes/snapshot?limit=2': [new Error('503'), new Error('503')] });
+    register(h);
+    await h.engine.settled();
+    expect(vi.getTimerCount()).toBe(1);
+    await h.engine.pull();
+    // The pull that came sooner failed too and set a wait of its own; one, not two.
+    expect(vi.getTimerCount()).toBe(1);
+    h.engine.stop();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+/**
+ * A pull that never settles throws nothing, so the engine says when a step inside the
+ * browser has waited too long. The fetches have their own timeout; these steps do not.
+ */
+describe('FeedEngine stall reports', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('says which step a copy is stuck on, once, and keeps waiting', async () => {
+    vi.useFakeTimers();
+    const h = harness({ '/api/changes/snapshot?limit=2': snapshotFirst([note('a')], null) });
+    let release: () => void = () => {};
+    h.c.note.commit = () => new Promise<void>((r) => (release = r));
+    const stalls: FeedStallError[] = [];
+    h.engine['options'].onStall = (err) => stalls.push(err);
+    h.engine['options'].stallMs = 1000;
+    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(stalls.map((s) => s.message)).toEqual(['Library copy: applying a page has not settled after 1 s']);
+    expect(h.engine.state.phase).toBe('hydrating');
+    release();
+    await h.engine.settled();
+    expect(h.engine.state.phase).toBe('current');
+    expect(stalls.length).toBe(1);
+  });
+
+  it('counts emptying the copy for a reset as part of a copy, though the old cursor is still set', async () => {
+    vi.useFakeTimers();
+    const h = harness({ '/api/changes?since=10&epoch=e1&limit=2': { reset: true, seq: 12, epoch: 'e2' } satisfies FeedReset });
+    h.setCursor({ seq: 10, epoch: 'e1' });
+    h.c.note.commit = () => new Promise<void>(() => {});
+    const stalls: FeedStallError[] = [];
+    h.engine['options'].onStall = (err) => stalls.push(err);
+    h.engine['options'].stallMs = 1000;
+    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(stalls.map((s) => s.message)).toEqual(['Library copy: emptying the copy has not settled after 1 s']);
+  });
+
+  it('says nothing about steps that settle in time', async () => {
+    vi.useFakeTimers();
+    const h = harness({ '/api/changes/snapshot?limit=2': snapshotFirst([note('a')], null) });
+    const stalls: FeedStallError[] = [];
+    h.engine['options'].onStall = (err) => stalls.push(err);
+    h.engine['options'].stallMs = 1000;
+    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    await h.engine.settled();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(stalls).toEqual([]);
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
 

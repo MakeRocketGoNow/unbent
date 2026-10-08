@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { LIBRARY_ROOTS, rootsOfNoteChanges } from './library.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { FEED_TIMEOUT_MS, FeedTimeoutError, LIBRARY_ROOTS, fetchJson, rootsOfNoteChanges } from './library.js';
 
 /**
  * Which queries a change to the notes collection reaches. A save that changed only the
@@ -43,5 +43,48 @@ describe('rootsOfNoteChanges', () => {
       { type: 'update', previousValue: row, value: { ...row, tagIds: [] } },
     ]);
     expect(roots).toBe(LIBRARY_ROOTS);
+  });
+});
+
+/**
+ * The engine's fetch. A page that never arrived held the first copy for good until a
+ * reload; timed out, it is a failed pull the engine can retry, and an error worth reporting.
+ */
+describe('fetchJson', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  /** A fetch whose answer never comes, or whose body never finishes, until it is aborted. */
+  function stalling(at: 'headers' | 'body') {
+    return vi.fn((_input: string, init?: RequestInit) => {
+      const aborted = new Promise<never>((_, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true }));
+      if (at === 'headers') return aborted;
+      return Promise.resolve({ ok: true, status: 200, headers: new Headers(), json: () => aborted } as unknown as Response);
+    });
+  }
+
+  it.each(['headers', 'body'] as const)('gives up on a page whose %s never arrive, naming the route and not the cursor', async (at) => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', stalling(at));
+    const result = fetchJson('/api/changes/snapshot?limit=200&cursor=abc');
+    const settled = expect(result).rejects.toBeInstanceOf(FeedTimeoutError);
+    await vi.advanceTimersByTimeAsync(FEED_TIMEOUT_MS);
+    await settled;
+    await expect(result).rejects.toThrow('/api/changes/snapshot did not answer within 60 s');
+  });
+
+  it('gives up at once when the engine stops, as the stop and not as a timeout', async () => {
+    vi.stubGlobal('fetch', stalling('headers'));
+    const stop = new AbortController();
+    const result = fetchJson('/api/changes?since=10&epoch=e1&limit=200', stop.signal);
+    stop.abort();
+    await expect(result).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('names the route alone when the server refuses, so every page groups as one report', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 503, headers: new Headers() }) as unknown as Response));
+    await expect(fetchJson('/api/changes?since=10&epoch=e1&limit=200')).rejects.toMatchObject({ status: 503, message: '/api/changes answered 503' });
   });
 });

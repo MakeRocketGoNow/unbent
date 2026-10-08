@@ -21,7 +21,8 @@ import type { FeedAttachment, FeedEntity, FeedNote, FeedNotebook, FeedPage, Feed
  *
  * When to pull is the caller's: on open, when the tab is shown again, when the
  * connection returns, when the socket says the feed moved, and after each replayed write.
- * Pulls coalesce: one runs at a time, and a request during a run queues one more.
+ * Pulls coalesce: one runs at a time, and a request during a run queues one more. The one
+ * pull the engine schedules itself is the retry of a copy that is not whole (`retry`).
  */
 
 export interface Cursor {
@@ -96,7 +97,8 @@ export function isWhole(state: Pick<FeedState, 'cursor' | 'phase'>): boolean {
 }
 
 export interface FeedOptions {
-  fetchJson: <T>(path: string) => Promise<T>;
+  /** `signal` is aborted by `stop`, so a page in flight does not hold a close behind it. */
+  fetchJson: <T>(path: string, signal?: AbortSignal) => Promise<T>;
   readCursor: () => Promise<Position | null>;
   writeCursor: (position: Position | null) => Promise<void>;
   pageSize?: number;
@@ -109,7 +111,38 @@ export interface FeedOptions {
    * old rows are gone, or a read in between fills it with them (found in review).
    */
   onTruncated?: () => void;
+  /**
+   * A pull failed, with what it threw. `lastError` keeps the message for the view; this is
+   * for the error reports, which nothing in the state reached before: a first copy that
+   * failed on every device would have been seen by nobody.
+   */
+  onError?: (err: unknown) => void;
+  /** The first wait before a failed copy is tried again; doubles to `RETRY_MAX_MS`. */
+  retryMs?: number;
+  /**
+   * A step of a pull has not settled after `stallMs`. Called once per stalled step, which
+   * keeps waiting: this reports a hang, it does not end one. See `watched`.
+   */
+  onStall?: (err: FeedStallError) => void;
+  stallMs?: number;
 }
+
+/** What `onStall` is given: which step, and whether a copy or the feed was waiting on it. */
+export class FeedStallError extends Error {
+  constructor(
+    readonly step: StallStep,
+    readonly during: 'copy' | 'feed',
+    ms: number,
+  ) {
+    super(`Library ${during}: ${step} has not settled after ${ms / 1000} s`);
+    this.name = 'FeedStallError';
+  }
+}
+
+type StallStep = 'reading the cursor' | 'writing the cursor' | 'applying a page' | 'emptying the copy';
+
+/** The longest wait between tries of a copy that keeps failing. */
+const RETRY_MAX_MS = 5 * 60 * 1000;
 
 export class FeedEngine {
   readonly state: FeedState = { phase: 'starting', cursor: null, lastError: null, total: null, applied: 0, pulls: 0, resets: 0 };
@@ -117,6 +150,9 @@ export class FeedEngine {
   private running: Promise<void> | null = null;
   private again = false;
   private stopped = false;
+  private readonly stopping = new AbortController();
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private retryWait = 0;
 
   constructor(private readonly options: FeedOptions) {}
 
@@ -134,8 +170,17 @@ export class FeedEngine {
     };
   }
 
+  /**
+   * Ends the engine, and the pull in flight with it. `close` awaits `settled` before it
+   * lets go of the collections, and sign-out and an account switch wait on `close`, so a
+   * page that was not answering held both — for good before the fetch had a timeout, and
+   * a minute after. Aborted, the page fails at once and nothing is reported for it.
+   * A commit to the persistence worker cannot be taken back, and is still waited for.
+   */
   stop(): void {
     this.stopped = true;
+    this.cancelRetry();
+    this.stopping.abort();
   }
 
   /** Resolves when the pull in flight, if any, has settled; for tests and shutdown. */
@@ -169,6 +214,7 @@ export class FeedEngine {
       return this.running;
     }
     if (!this.all() || this.stopped) return Promise.resolve();
+    this.cancelRetry();
     this.running = (async () => {
       try {
         do {
@@ -177,9 +223,13 @@ export class FeedEngine {
           this.state.phase = 'current';
           this.state.lastError = null;
         } while (this.again && !this.stopped);
+        this.retryWait = 0;
       } catch (err) {
         this.state.lastError = err instanceof Error ? err.message : String(err);
         this.state.phase = 'failed';
+        // A pull ended by `stop` failed because it was asked to, not because of a fault.
+        if (!this.stopped) this.options.onError?.(err);
+        this.retry();
       } finally {
         this.state.pulls += 1;
         this.running = null;
@@ -189,13 +239,71 @@ export class FeedEngine {
     return this.running;
   }
 
+  /**
+   * Tries a failed pull again, after a wait that doubles each time, but only while the
+   * copy is not whole: a first walk, or the walk after a `reset`, that stopped partway.
+   *
+   * Everywhere else pulls are event-driven, and a failed pull over a whole library waits
+   * for the next event — the device is offline, or the server is having a moment, and the
+   * copy it has is complete. A copy that is not whole has no such floor. Before this, a
+   * first walk that failed waited for focus, the socket or the connection to come back,
+   * and none of those happens to a tab someone is sitting in front of with a working
+   * connection: the list stayed empty. A walk resumes from its stored position, so a
+   * retry repeats at most one page. Never a polling loop: it stops the moment the copy is
+   * whole, and any other pull in the meantime takes its place.
+   */
+  private retry(): void {
+    if (this.stopped || isWhole(this.state)) return;
+    const base = this.options.retryMs ?? 2000;
+    this.retryWait = Math.min(this.retryWait ? this.retryWait * 2 : base, RETRY_MAX_MS);
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      void this.pull();
+    }, this.retryWait);
+  }
+
+  private cancelRetry(): void {
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
+  }
+
+  /**
+   * Waits on a step that has no timeout of its own, and says so if it takes too long.
+   *
+   * A pull that never settles throws nothing, so nothing reported it: a first copy stuck
+   * on "Copying your notes to this device…" until a reload left no trace on the device or
+   * the server (2026-10-08). The steps watched are the ones inside the browser — the
+   * cursor's reads and writes, and the commits of a page into the collections, which wait
+   * on the persistence worker and its file. The fetches are not: `fetchJson` gives each a
+   * timeout, which ends the hang as well as reporting it, and watching them too would say
+   * the same thing twice. The message is the step and the phase alone, so a stall at the
+   * same place groups as one report however far the copy had got.
+   */
+  private async watched<T>(step: StallStep, work: Promise<T>): Promise<T> {
+    const onStall = this.options.onStall;
+    if (!onStall) return work;
+    const ms = this.options.stallMs ?? 60_000;
+    // Not the cursor alone: a reset empties the copy with the old cursor still set, and a
+    // walk's last cursor write sets it just before writing it. Both are a copy.
+    const during = isWhole(this.state) ? 'feed' : 'copy';
+    // A library closed while the step waits is not a stall anyone needs to hear about.
+    const timer = setTimeout(() => {
+      if (!this.stopped) onStall(new FeedStallError(step, during, ms));
+    }, ms);
+    try {
+      return await work;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   private changed(): void {
     this.options.onState?.({ ...this.state });
   }
 
   private async once(): Promise<void> {
     if (!this.state.cursor) {
-      const stored = await this.options.readCursor();
+      const stored = await this.watched('reading the cursor', this.options.readCursor());
       if (!stored || stored.resume) {
         await this.snapshot(stored);
         return;
@@ -207,6 +315,7 @@ export class FeedEngine {
       const c = this.state.cursor;
       const page = await this.options.fetchJson<FeedPage | FeedReset>(
         `/api/changes?since=${c.seq}&epoch=${encodeURIComponent(c.epoch)}&limit=${limit}`,
+        this.stopping.signal,
       );
       if (page.reset) {
         this.state.phase = 'reset';
@@ -237,6 +346,7 @@ export class FeedEngine {
       try {
         page = await this.options.fetchJson(
           `/api/changes/snapshot?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+          this.stopping.signal,
         );
       } catch (err) {
         /*
@@ -265,7 +375,7 @@ export class FeedEngine {
       // The position once this page's rows have settled on disk, so a walk cut short here
       // continues from the next page; the cursor itself only once the walk is whole.
       if (cursor) {
-        await this.options.writeCursor({ ...seeded, resume: cursor, total: this.state.total });
+        await this.watched('writing the cursor', this.options.writeCursor({ ...seeded, resume: cursor, total: this.state.total }));
         this.changed();
       }
     } while (cursor);
@@ -274,7 +384,7 @@ export class FeedEngine {
 
   private async moveCursor(cursor: Cursor | null): Promise<void> {
     this.state.cursor = cursor;
-    await this.options.writeCursor(cursor);
+    await this.watched('writing the cursor', this.options.writeCursor(cursor));
     this.changed();
   }
 
@@ -299,7 +409,7 @@ export class FeedEngine {
     for (const c of Object.values(all)) {
       c.begin();
       c.truncate();
-      await c.commit();
+      await this.watched('emptying the copy', Promise.resolve(c.commit()));
     }
     this.options.onTruncated?.();
     await this.moveCursor(null);
@@ -358,7 +468,7 @@ export class FeedEngine {
     }
     for (const id of noteTombstones) for (const held of heldByNote.get(id) ?? []) gone.add(held);
     commits.push(upsertAll(attachment, files, (f) => f.id, [...gone]));
-    await Promise.all(commits);
+    await this.watched('applying a page', Promise.all(commits));
   }
 }
 

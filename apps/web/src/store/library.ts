@@ -1,5 +1,6 @@
 import type { AttachmentTexts } from '@unbent/shared';
 import { ApiError, isOfflineError, request } from '../notes-api.js';
+import { reportError } from '../report-error.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
 import { openLocalStore, openSearchDatabase, closeLocalStore } from './db.js';
 import { createCollections, cursorStore, type Collections, type LocalNote } from './collections.js';
@@ -290,10 +291,73 @@ export async function closeLibrary(): Promise<void> {
   if (open) await open.library.then((l) => l.close()).catch(() => {});
 }
 
-async function fetchJson<T>(path: string): Promise<T> {
-  const res = await request(path);
-  if (!res.ok) throw new ApiError(res.status, `${path} answered ${res.status}`);
-  return (await res.json()) as T;
+/**
+ * A failed pull, to the error reports. `reportError` already drops an `OfflineError` and
+ * says each message once a page load, so a retry failing the same way is one report. A
+ * lapsed session is dropped here too: the app answers a 401 by asking for a sign-in, and
+ * every device whose sign-in ran out would otherwise report it as a fault.
+ */
+function reportPullFailure(err: unknown): void {
+  if (err instanceof ApiError && err.status === 401) return;
+  reportError(err, 'error');
+}
+
+/**
+ * How long one page of the feed or the snapshot may take, headers and body together. A
+ * snapshot page is cut at about 4 MB of bodies (`FEED_PAGE_BYTES`), which a slow phone
+ * connection takes tens of seconds over; a minute is room for that and still an answer
+ * someone waiting on a first copy gets.
+ */
+export const FEED_TIMEOUT_MS = 60_000;
+
+/** A page of the feed that did not arrive in time. Reported, unlike an `OfflineError`. */
+export class FeedTimeoutError extends Error {
+  constructor(route: string) {
+    super(`${route} did not answer within ${FEED_TIMEOUT_MS / 1000} s`);
+    this.name = 'FeedTimeoutError';
+  }
+}
+
+/**
+ * The engine's fetch, with a timeout of its own that covers the body as well as the
+ * headers. `request`'s `timeout` stops at the headers, and a page is megabytes, so a
+ * connection that stalls halfway through one is the hang it would miss.
+ *
+ * Without any timeout, a request that never answered held the engine's pull for good: a
+ * fresh sign-in sat on "Copying your notes to this device…" until a reload, because every
+ * later reason to pull — focus, the socket, the connection back — coalesces into the pull
+ * in flight (seen in a new private window, 2026-10-08). Timed out, it is a failed pull,
+ * which the engine retries.
+ *
+ * Aborted with its own error as the reason, so `request` rethrows that rather than calling
+ * it offline: an answer that never came from a server whose health check passes is worth
+ * seeing in the error reports, which drop an `OfflineError`. Connectivity is still asked
+ * about, as `request` would for a fetch that failed. The route is the path without its
+ * query, so the message reads the same for every page and groups as one.
+ */
+export async function fetchJson<T>(path: string, stop?: AbortSignal): Promise<T> {
+  const route = path.replace(/\?.*$/, '');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new FeedTimeoutError(route)), FEED_TIMEOUT_MS);
+  // The engine's stop, folded in by hand rather than with `AbortSignal.any`, which the
+  // older WebViews the apps run in do not all have.
+  const onStop = () => controller.abort(stop?.reason);
+  if (stop?.aborted) onStop();
+  else stop?.addEventListener('abort', onStop, { once: true });
+  try {
+    const res = await request(path, { signal: controller.signal });
+    if (!res.ok) throw new ApiError(res.status, `${route} answered ${res.status}`);
+    return (await res.json()) as T;
+  } catch (err) {
+    if (controller.signal.aborted) {
+      if (controller.signal.reason instanceof FeedTimeoutError) recheck();
+      throw controller.signal.reason;
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+    stop?.removeEventListener('abort', onStop);
+  }
 }
 
 async function open(userId: string): Promise<Library> {
@@ -312,6 +376,8 @@ async function open(userId: string): Promise<Library> {
     // Once the old rows are gone, not when the count moves: a read in between would
     // cache them again, and nothing would drop that answer (found in review).
     onTruncated: () => resetListeners.forEach((l) => l()),
+    onError: reportPullFailure,
+    onStall: (err) => reportError(err, 'error'),
   });
   collections = createCollections(store, engine);
 
@@ -357,7 +423,8 @@ async function open(userId: string): Promise<Library> {
   ];
 
   // What makes the engine pull. None of these is a timer: a device that is open and
-  // idle costs nothing, and the socket is what carries another device's edit here.
+  // idle costs nothing, and the socket is what carries another device's edit here. The
+  // engine's own retry of a copy that is not whole is the one exception (`retry`).
   const pull = () => void engine.pull();
   const onVisible = () => {
     if (document.visibilityState === 'visible') pull();
