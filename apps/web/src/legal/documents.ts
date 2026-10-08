@@ -74,16 +74,33 @@ export interface LegalOptions {
    * must not describe a third party it does not use. See `posthog.ts`.
    */
   errorTracking: boolean;
+  /**
+   * Whether this instance keeps backups of its own — the daily dumps and, on unbent.app,
+   * the nightly copy to a second account (MAK-171; "Durability" in the README).
+   *
+   * `AppConfig.backups`, true where a backups bucket is bound. The policy and the deletion
+   * page describe those copies and the three months a deletion takes to leave them only
+   * where they exist; a fork with no bucket keeps the shorter text, which is true of it.
+   */
+  backups: boolean;
 }
 
 const EFFECTIVE = '2026-09-08';
 
 /**
+ * How many "other kinds of service" the policy lists, as the word the sentence needs. Two
+ * always (sign-in, email); error tracking and the backups' GitHub job each add one.
+ */
+const COUNT = ['', '', 'Two', 'Three', 'Four'] as const;
+
+/**
  * The privacy policy's own date, moved when its terms change — "How long it is kept"
  * changed on 5 October 2026, when deleted files began staying in storage for thirty-five
- * days (MAK-171) — without moving the terms' and the deletion page's, which did not.
+ * days, and again on 8 October 2026, when the backups were described (both MAK-171) —
+ * without moving the terms', which did not. The deletion page restates the policy's
+ * retention terms, so it carries this date too.
  */
-const PRIVACY_EFFECTIVE = '2026-10-05';
+const PRIVACY_EFFECTIVE = '2026-10-08';
 
 export interface LegalDocuments {
   privacy: LegalDocument;
@@ -165,8 +182,8 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
             'stored with our hosting provider there, which also keeps ordinary request logs, as ' +
             'any web host does. Text inside PDFs you upload is extracted on those same systems ' +
             'so that search can find it; the file is used for that and nothing else.',
-          `${opts.errorTracking ? 'Three' : 'Two'} other kinds of service are involved, each ` +
-            `for one narrow job:`,
+          `${COUNT[2 + Number(opts.errorTracking) + Number(opts.backups)]} other kinds of service ` +
+            `are involved, each for one narrow job:`,
         ],
         list: [
           'A sign-in provider, if you choose to sign in with one — Google, for example. The ' +
@@ -179,6 +196,14 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
             ? [
                 'An error-tracking service, which receives the error reports described above ' +
                   'and nothing else. It never sees your notes, your files or your address.',
+              ]
+            : []),
+          ...(opts.backups
+            ? [
+                'GitHub, whose servers run the nightly job that copies our backups — your notes, ' +
+                  'your files and our sign-in records — to a second account with our hosting ' +
+                  'provider, as described under “How long it is kept”. The copy passes through ' +
+                  'those servers on the way and none of your content is kept on them.',
               ]
             : []),
         ],
@@ -214,6 +239,17 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
             'delete, from a note or with it, are removed from our storage about 35 days later. ' +
             'Everything else is kept for as long as the account exists, and removed when it is ' +
             'deleted. Sent email may persist for a short period in our email provider’s own logs.',
+          ...(opts.backups
+            ? [
+                'We also keep backups, so that a fault on our side can be put right: a daily copy ' +
+                  'of each account’s notes, kept for 14 days, and a nightly copy of those, of every ' +
+                  'file, and of our sign-in records, which include your email address, in a second ' +
+                  'account with our hosting provider, kept for up to 90 days. A note, a file or an ' +
+                  'account you delete leaves every one of them within about three months. They are ' +
+                  'for restoring the service after a fault, not a way to bring one note back; keep ' +
+                  'an export for that.',
+              ]
+            : []),
         ],
       },
       {
@@ -442,12 +478,13 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
    * in the Privacy Policy's "Deleting your account" and "How long it is kept"; change both
    * together, or neither.
    *
-   * No `effective` date is displayed for it in the sense the legal documents have one — it
-   * shares theirs, because it is a restatement of them rather than a separate promise.
+   * No `effective` date of its own in the sense the legal documents have one — it carries
+   * the privacy policy's, because it is a restatement of that policy's retention terms
+   * rather than a separate promise, and moves when they do.
    */
   const deletion: LegalDocument = {
     title: 'Deleting your Unbent account',
-    effective: EFFECTIVE,
+    effective: PRIVACY_EFFECTIVE,
     intro: [
       `Unbent is a notes application — a website at ${operator.host} and an Android app — operated ` +
         `by ${operator.name}. You can delete your account and everything in it yourself, at any time, ` +
@@ -497,10 +534,19 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
       {
         heading: 'What is kept, and for how long',
         body: [
-          'Nothing of your account or its contents is kept, and there is no grace period during ' +
-            'which it could be restored — the deletion is immediate and final rather than a ' +
-            'scheduled one you could change your mind about.',
-          'Two things outlive it, neither of which is your notes, and both are ordinary ' +
+          'The deletion is immediate and final rather than a scheduled one you could change your ' +
+            'mind about, and nothing can be restored for you afterwards.',
+          ...(opts.backups
+            ? [
+                'Copies of your account do remain for a while in our backups, which exist so that ' +
+                  'a fault on our side can be put right, and which we do not use to bring back an ' +
+                  'account its owner deleted: a daily copy of your notes, kept for 14 days, and a ' +
+                  'nightly copy of your notes, your files and our sign-in records in a second ' +
+                  'account with our hosting provider, kept for up to 90 days. Every one of them is ' +
+                  'gone within about three months of the deletion.',
+              ]
+            : ['Nothing else of your account or its contents is kept.']),
+          'Two other things outlive it, neither of which is your notes, and both are ordinary ' +
             'infrastructure rather than anything we keep on purpose. Our hosting provider ' +
             'retains routine server request logs, as any web host does. Mail we have already ' +
             'sent you — a sign-in code, the deletion link itself — may persist for a short ' +

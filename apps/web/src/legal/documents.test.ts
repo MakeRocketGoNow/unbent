@@ -21,7 +21,7 @@ function text(doc: LegalDocument): string {
  * what appears, and the previous operator's must not survive anywhere in any of the three.
  */
 describe('legalDocuments', () => {
-  const docs = legalDocuments(OPERATOR, { errorTracking: false });
+  const docs = legalDocuments(OPERATOR, { errorTracking: false, backups: false });
   const all: [string, LegalDocument][] = [
     ['privacy', docs.privacy],
     ['terms', docs.terms],
@@ -61,8 +61,8 @@ describe('legalDocuments', () => {
  * never contacts is as wrong as one that hides a third party it does.
  */
 describe('legalDocuments and error tracking', () => {
-  const without = legalDocuments(OPERATOR, { errorTracking: false });
-  const with_ = legalDocuments(OPERATOR, { errorTracking: true });
+  const without = legalDocuments(OPERATOR, { errorTracking: false, backups: false });
+  const with_ = legalDocuments(OPERATOR, { errorTracking: true, backups: false });
 
   it('says nothing about it on an instance that does not do it', () => {
     expect(text(without.privacy)).not.toContain('error-tracking');
@@ -81,5 +81,56 @@ describe('legalDocuments and error tracking', () => {
   it('leaves the terms and the deletion page identical either way', () => {
     expect(text(with_.terms)).toBe(text(without.terms));
     expect(text(with_.deletion)).toBe(text(without.deletion));
+  });
+});
+
+/**
+ * The backups (MAK-171) are described exactly where the instance keeps them. What a
+ * customer who lost data would hold us to is pinned by phrase: how long each copy is kept,
+ * that a deletion leaves every copy within about three months — "about", because the
+ * lifecycle rule counts from the night of the copy, a day or two after the deletion — that
+ * the sign-in records are copied too, that the files pass through
+ * GitHub's servers, and that the copies are not a way to bring one note back. An instance
+ * with no backups bucket says none of it, and its deletion page keeps the shorter promise.
+ */
+describe('legalDocuments and backups', () => {
+  const without = legalDocuments(OPERATOR, { errorTracking: false, backups: false });
+  const with_ = legalDocuments(OPERATOR, { errorTracking: false, backups: true });
+
+  it('says nothing about them on an instance that keeps none', () => {
+    for (const doc of [without.privacy, without.deletion]) {
+      expect(text(doc)).not.toContain('backup');
+      expect(text(doc)).not.toContain('GitHub');
+    }
+    expect(text(without.deletion)).toContain('Nothing else of your account or its contents is kept');
+  });
+
+  it('states the retention, the ninety days a deletion takes, and what they are for', () => {
+    const body = text(with_.privacy);
+    expect(body).toContain('kept for 14 days');
+    expect(body).toContain('kept for up to 90 days');
+    expect(body).toContain('leaves every one of them within about three months');
+    expect(body).toContain('sign-in records');
+    expect(body).toContain('not a way to bring one note back');
+  });
+
+  it('names GitHub among the services, and counts it', () => {
+    const body = text(with_.privacy);
+    expect(body).toContain('GitHub');
+    expect(body).toContain('Three other kinds of service');
+    expect(text(legalDocuments(OPERATOR, { errorTracking: true, backups: true }).privacy)).toContain(
+      'Four other kinds of service',
+    );
+  });
+
+  it('tells the deletion page the copies remain, and leave within ninety days', () => {
+    const body = text(with_.deletion);
+    expect(body).toContain('gone within about three months of the deletion');
+    expect(body).toContain('do not use to bring back an account its owner deleted');
+    expect(body).not.toContain('Nothing else of your account');
+  });
+
+  it('leaves the terms alone', () => {
+    expect(text(with_.terms)).toBe(text(without.terms));
   });
 });

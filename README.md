@@ -1228,8 +1228,10 @@ every version of that note for good and leaves the note as it is; it asks first,
 is the one thing in the sheet that cannot be undone. What it cannot reach is the thirty
 days of point-in-time recovery every store keeps (see [Where your notes
 live](#where-your-notes-live)): an operator winding the whole account back to before the
-clear would bring the versions back with everything else. Emptying the trash
-takes a note's history with it, and deleting the account takes all of it.
+clear would bring the versions back with everything else; nor the daily dumps, which hold
+the store whole and age out within about three months (see [Durability](#durability)).
+Emptying
+the trash takes a note's history with it, and deleting the account takes all of it.
 
 The API is `GET /api/notes/:id/revisions`, `GET /api/notes/:id/revisions/:revision`,
 `POST /api/notes/:id/revisions/:revision/restore` and `DELETE /api/notes/:id/revisions`.
@@ -1246,7 +1248,9 @@ Maintenance page:
 - **Sweep orphaned files** — removes R2 objects with no attachment row. Files you
   unlinked from a note still have a row; delete those from the note’s Attachments list.
 - **Delete all notes** — wipes every note and attachment in the account. Requires typing
-  `DELETE`, since it is irreversible and export is the only way back.
+  `DELETE`, since nothing in your own hands reverses it: an export is the only way back
+  you hold, and an operator's wind-back or dump load (see [Durability](#durability)) is
+  theirs to offer, not a control of yours.
 
 The API equivalents are `POST /api/admin/purge-notes?scope=trashed|all&confirm=DELETE` and
 `POST /api/admin/gc-blobs?apply=1`. Both are scoped to the caller's own data.
@@ -1285,7 +1289,10 @@ token names an intention, and the click that acts on it should be a person's.
 
 Pressing it sweeps `users/{id}/` out of R2, wipes the account's note store — the object
 holding every note, tag, notebook, field and attachment record — and then removes the user
-row, whose cascade takes the sessions. Then it signs the browser out and lands on
+row, whose cascade takes the sessions. It does not touch the backups: the account's
+dumps, its mirrored files and the D1 exports that name it age out on their own, every one
+within about three months (see [Durability](#durability)), and neither the wind-back nor
+the load route will put a deleted account back from them. Then it signs the browser out and lands on
 `/goodbye`. The account's row in the directory is tombstoned last, and the sweep drops it
 once the object reports itself empty and the user row is gone, retrying the wipe if it was
 interrupted. The sign-out is not a formality: the
@@ -2024,6 +2031,89 @@ token is looked up once, deleted as it is read, and yields the user id the scope
 then built from, exactly as a session does everywhere else. Its cases are in `mcp.test.ts`
 too, since only the tool can mint one.
 
+## Durability
+
+What unbent.app promises about keeping your notes, stated as what is true on `main` today
+and nothing further. The mechanics are in [Where your notes live](#where-your-notes-live);
+the customer-facing version is the privacy policy's "How long it is kept" and the
+deletion page, both of which say this only on an instance that keeps backups
+(`backups` in `/api/config`, true where a `BACKUPS` bucket is bound). A fork with no
+bucket makes no dumps and has no mirror — the first two rows of the table still hold —
+and its documents describe only that. The Worker cannot see whether the mirror workflow
+runs, so a fork that binds a bucket and never sets the mirror up has its documents
+overstate the off-account half; such a fork should publish its own, as `legal/documents.ts`
+says of every operator the built-in text does not fit.
+
+**What is kept, and where.** Each account's notes are in a store of their own on
+Cloudflare, its files in R2 and the account records in D1, all in one Cloudflare
+account. Beyond the live copy:
+
+| Copy | Where | Kept |
+| -- | -- | -- |
+| The store's own history, for winding back | Cloudflare, in the store | 30 days |
+| A deleted file's bytes, under a tombstone the store keeps | The live bucket | 35 days |
+| A daily dump of every account whose store changed, and of every account at least weekly | A backups bucket in the same account | 14 days |
+| Those dumps, copied nightly | A second Cloudflare account | 90 days |
+| Every file, copied nightly | The second account | Until 55 days after the file leaves the live bucket |
+| The D1 export: sign-in, connected apps, the account directory | The second account | 90 days |
+
+The nightly copy is made by a GitHub Actions job on a GitHub-hosted runner, pulling from
+outside with a read-only credential: **your files pass through that runner on the way to
+the second account**, and none of your content is kept on it. The copies in the second
+account sit under a thirty-day retention lock, so the credential the job uses, or a
+leaked copy of it, cannot overwrite or delete one younger than that; an administrator of
+that account can still change the rule, or close the account, which is what the two
+accounts being separate is for. Worker secrets are in no backup. The mirror has run on
+its schedule once, on 7 October 2026, green; it has not yet shown a week of nights, which
+is what MAK-171 asks for before it closes.
+
+**What a deletion means.** Emptying the trash removes a note's rows at once and its files
+thirty-five days later; a deleted account's files go at once. Neither touches the
+backups, which age out on their own: a dump fourteen days after it was written
+on-account and ninety days after the night it was copied off-account, a file fifty-five
+days after the night it was first seen gone from the live bucket, a D1 export ninety days
+after its night. The last copy of a note purged today is therefore the dump written this
+morning, copied tonight, deleted ninety days on — **a deleted note or a deleted account is
+gone from every copy within about three months**, ninety-one or ninety-two days at the
+longest, which the customer-facing text rounds to "about three months" rather than
+promising a number the lifecycle rule can miss by a day. A note's history is in the dumps
+too, so **Clear history** is final once they have aged out, not before.
+
+**What each way back loses.** Nothing here is a merge; each puts an account back as it
+was at some moment and loses what came after.
+
+- *Winding the store back*, to a moment in the last thirty days: everything written after
+  that moment, and nothing else — files follow the store through their tombstones, so a
+  file deleted since is the note's again. Reversible for thirty days by the undo bookmark.
+- *Loading a dump*, for a fault noticed too late to wind back: everything since the dump
+  was taken, which is up to a day; the store's thirty days of history and its undo
+  bookmarks; and the live copy of a file deleted more than thirty-five days before the
+  dump, which should come back from the mirror by the restore-files workflow — a
+  workflow that has only been dry-run, below. Reversible for thirty days by the store's
+  bookmark, and the store as it stood is dumped first.
+- *Losing the whole Cloudflare account*, the runbook under Where your notes live: about
+  a day of notes, and more if the account is lost after the morning's dump and before the
+  night's copy of it; every file uploaded since the night's copy; every store's history;
+  and every session, so everyone signs in again. Files deleted in the fifty-five days
+  before should come back as orphans the sweep reclaims; that part was not rehearsed.
+
+None of these is a way to bring one note back. That is the trash, History in a note's
+⋯ menu, and the [export](#backups-and-export) in your own hands.
+
+**What has been rehearsed, and what has only been dry-run.** On the dev instance on
+7 October 2026, with counts checked before and after: notes purged and a file deleted,
+the store wound back to the minute between and the files serving their bytes again; the
+undo of that, both as a wind-back by time and by the bookmark; a day-old dump loaded, with
+the before-load dump listed, and that load undone; and steps 1 to 5 of the whole-account
+runbook into a scratch Worker in the second account, with the dumps loading to counts
+identical to dev.
+Dry-run only: the restore-files workflow has been dispatched twice without the word
+`RESTORE` — 4,113 files in the mirror, none to copy, since the live bucket held everything
+the mirror did — and copying a file that is genuinely missing from the live bucket has
+not been done, nor has the runbook's step 6, new credentials for a new account and a
+hand-started mirror. Those are designed and dry-run, not proven. The write-up is on
+MAK-171, and the real run of restore-files is MAK-200.
+
 ## Backups and export
 
 Settings → Export writes a zip of the whole account as a plain folder tree:
@@ -2085,10 +2175,14 @@ screen and another in the zip. There is no order (a directory tree has no order 
 choosing); `sort` is accepted only to say which column a date range applies to. The filename
 carries the scope, since several slices land in one downloads folder on the same day.
 
-This is the backup mechanism, not a convenience feature: it is the only copy that holds
-both the notes and their files. An account's store dump (see
-[Where your notes live](#where-your-notes-live)) has no files in it, and D1 has held no
-notes since the cutover. `wrangler d1 export` works on D1 again, but what it exports is
+This is the backup in your own hands, not a convenience feature. It used to be the only
+copy anywhere that held both the notes and their files; since October 2026 unbent.app's
+daily dumps and nightly mirror hold both as well (see [Durability](#durability)), but
+those are the operator's, for a fault on the service's side, and they age out, so the
+export is still the only copy a person holds and the only one that works on any
+instance. An account's store dump (see [Where your notes live](#where-your-notes-live))
+has no files in it, and D1 has held no notes since the cutover. `wrangler d1 export`
+works on D1 again, but what it exports is
 sign-in, connected apps, upload links and the account directory. It used to refuse the
 whole database because of the search tables, which have since moved into each account's
 store, and a refused export left D1 answering every query with "processing export"

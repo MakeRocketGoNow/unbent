@@ -73,8 +73,12 @@ export function LegalPage({ which }: { which: LegalWhich }) {
 
   if (operator && builtIn) {
     // The documents describe an error-tracking service only where this instance has one, so
-    // that a self-hosted policy does not name a third party it never contacts.
-    const docs = legalDocuments(operator, { errorTracking: Boolean(config.data?.posthog) });
+    // that a self-hosted policy does not name a third party it never contacts; and the
+    // backups, with the ninety days a deletion takes to leave them, only where it keeps any.
+    const docs = legalDocuments(operator, {
+      errorTracking: Boolean(config.data?.posthog),
+      backups: Boolean(config.data?.backups),
+    });
     return <LegalDoc doc={docs[which]} />;
   }
 
