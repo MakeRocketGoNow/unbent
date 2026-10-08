@@ -1,4 +1,4 @@
-import { EditorState, EditorSelection } from '@codemirror/state';
+import { EditorState, EditorSelection, StateEffect } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { markdown } from '@codemirror/lang-markdown';
 import { GFM } from '@lezer/markdown';
@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetConnectivity, setReachableForTests } from '../connectivity.js';
 import {
   bulletGlyph,
+  caretRoom,
   collectAttachmentTargets,
   orderedMarker,
   pdfNamesChanged,
@@ -1144,6 +1145,22 @@ describe('a line below a closing picture', () => {
     down(v);
     expect(v.state.doc.toString()).toBe(`${doc}\n`);
     expect(v.state.selection.main.head).toBe(doc.length + 1);
+  });
+
+  /** So the editor keeps it from the autosave; see `caretRoom`. */
+  it('marks the opened line as room for the caret', () => {
+    const doc = '![photo.png](files/photo.png)';
+    const v = mountWithAttachments(doc, doc.length);
+    const marked: boolean[] = [];
+    v.dispatch({
+      effects: StateEffect.appendConfig.of(
+        EditorView.updateListener.of((u) => {
+          for (const tr of u.transactions) if (tr.docChanged) marked.push(tr.annotation(caretRoom) === true);
+        }),
+      ),
+    });
+    down(v);
+    expect(marked).toEqual([true]);
   });
 
   it('opens a line below an image with no alt, which the picture replaces', () => {

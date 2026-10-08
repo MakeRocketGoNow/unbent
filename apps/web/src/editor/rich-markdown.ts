@@ -1,5 +1,6 @@
 import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
 import {
+  Annotation,
   type EditorState,
   type Extension,
   type Range,
@@ -2164,6 +2165,18 @@ function endsInPicture(view: EditorView, decorations: DecorationSet): boolean {
 }
 
 /**
+ * Marks an edit that only gives the caret somewhere to stand: the line Down opens below a
+ * closing picture.
+ *
+ * The editor does not hand such an edit to the autosave (see `Editor.tsx`). An empty line
+ * at the end of a note says nothing; saving it would bump the note's date and lift it to
+ * the top of a list sorted by edit, for a press of an arrow key. What is typed on the line
+ * is a change like any other, and its save carries the newline along with it. Pressing
+ * Down and moving on saves nothing at all.
+ */
+export const caretRoom = Annotation.define<true>();
+
+/**
  * Down from the end of a note that ends in a picture opens a line below it.
  *
  * The picture is a widget at the end of its markdown, so the last position in the document
@@ -2175,8 +2188,9 @@ function endsInPicture(view: EditorView, decorations: DecorationSet): boolean {
  * Only at the very end and only past a picture, rather than keeping a blank line at the end
  * of every note. A trailing line added on open would be a save no one made — a new revision,
  * a new `updatedAt`, and a write racing another device's for a note nobody touched. Opened
- * here, the line is an edit the person asked for with a key, and ⌘Z takes it back. A note
+ * here, the line is one the person asked for with a key, and ⌘Z takes it back. A note
  * ending in text needs none of this: its end is its bottom, and Enter is where it looks.
+ * The line itself is not saved until something is written on it; see `caretRoom`.
  */
 function openLineBelowPicture(plugin: ViewPlugin<{ decorations: DecorationSet }>) {
   return (view: EditorView): boolean => {
@@ -2193,6 +2207,7 @@ function openLineBelowPicture(plugin: ViewPlugin<{ decorations: DecorationSet }>
       selection: { anchor: end + 1 },
       scrollIntoView: true,
       userEvent: 'input',
+      annotations: caretRoom.of(true),
     });
     return true;
   };
