@@ -32,8 +32,8 @@ export interface ConfirmProps {
   actions: ConfirmAction[];
   /**
    * When set, every action stays disabled until the user types this string exactly.
-   * Reserved for operations with no undo and no scope limit — today, only "delete every
-   * note in this account".
+   * Reserved for operations with no undo whose button is itself the irreversible step —
+   * today "delete every note in this account", and an operator deleting someone's account.
    */
   requireTyped?: string;
   busy?: boolean;
