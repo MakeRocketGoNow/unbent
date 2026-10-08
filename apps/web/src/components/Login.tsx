@@ -194,10 +194,11 @@ export function Login({ redirectTo, refusal }: LoginProps) {
        * `errorCallbackURL` is this screen again, destination kept, because a failure on
        * the way back has nowhere else to be shown: the callback route redirects a coded
        * error there with `?error=`, which the route reads and `refusal` carries in. Without
-       * it Better Auth sends the browser to its own `/error` page, which this app does not
-       * serve, and a refused sign-up — the allowlist — used to end on a bare JSON 403 at
-       * the callback address, message included and no way back. `encodeURIComponent`
-       * rather than the query-string builder, as `startRelay` does and for its reason.
+       * it Better Auth sends the browser to its own generic `/api/auth/error` page, outside
+       * the app and with no way back, and a refused sign-up — the allowlist — used to end on
+       * a bare JSON 403 at the callback address, message included and no way back.
+       * `encodeURIComponent` rather than the query-string builder, as `startRelay` does and
+       * for its reason.
        */
       const back = redirectTo === HOME ? '/login' : `/login?redirect=${encodeURIComponent(redirectTo)}`;
       await signIn.social({ provider, callbackURL: redirectTo, errorCallbackURL: back });
