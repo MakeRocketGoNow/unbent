@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FeedAttachment, FeedNote, FeedNotebook, FeedPage, FeedReset, FeedTag, SnapshotPage } from '@unbent/shared';
 import { FeedEngine, isWhole, type Controls, type Position } from './feed.js';
 
@@ -327,6 +327,67 @@ describe('FeedEngine', () => {
     // Two requests: the one in flight, and the one the queued pulls collapsed into.
     expect(h.requests.filter((r) => r.startsWith('/api/changes?')).length).toBe(2);
     expect(h.engine.state.pulls).toBe(1);
+  });
+});
+
+/**
+ * A copy that is not whole is the one thing the engine pulls for on its own: a first walk
+ * that failed used to wait for focus, the socket or the connection to come back, none of
+ * which happens to a tab someone is sitting in front of, and the list stayed empty.
+ */
+describe('FeedEngine retry', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const register = (h: ReturnType<typeof harness>) => {
+    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+  };
+
+  it('tries a failed first walk again, waiting twice as long each time, until it is whole', async () => {
+    vi.useFakeTimers();
+    const h = harness({
+      '/api/changes/snapshot?limit=2': [new Error('503'), new Error('503'), snapshotFirst([note('a')], null)],
+    });
+    h.engine['options'].retryMs = 1000;
+    register(h);
+    await h.engine.settled();
+    expect(h.engine.state.phase).toBe('failed');
+    await vi.advanceTimersByTimeAsync(999);
+    expect(h.requests.length).toBe(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await h.engine.settled();
+    expect(h.requests.length).toBe(2);
+    // The second wait is twice the first.
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(h.requests.length).toBe(2);
+    await vi.advanceTimersByTimeAsync(1);
+    await h.engine.settled();
+    expect(h.engine.state).toMatchObject({ phase: 'current', cursor: { seq: 10, epoch: 'e1' } });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('leaves a failed pull over a whole library to the next event', async () => {
+    vi.useFakeTimers();
+    const h = harness({ '/api/changes?since=10&epoch=e1&limit=2': [new Error("You're offline.")] });
+    h.setCursor({ seq: 10, epoch: 'e1' });
+    register(h);
+    await h.engine.settled();
+    expect(h.engine.state.phase).toBe('failed');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('gives the wait up to a pull that comes sooner, and to a stop', async () => {
+    vi.useFakeTimers();
+    const h = harness({ '/api/changes/snapshot?limit=2': [new Error('503'), new Error('503')] });
+    register(h);
+    await h.engine.settled();
+    expect(vi.getTimerCount()).toBe(1);
+    await h.engine.pull();
+    // The pull that came sooner failed too and set a wait of its own; one, not two.
+    expect(vi.getTimerCount()).toBe(1);
+    h.engine.stop();
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
 

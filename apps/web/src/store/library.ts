@@ -403,7 +403,8 @@ async function open(userId: string): Promise<Library> {
   ];
 
   // What makes the engine pull. None of these is a timer: a device that is open and
-  // idle costs nothing, and the socket is what carries another device's edit here.
+  // idle costs nothing, and the socket is what carries another device's edit here. The
+  // engine's own retry of a copy that is not whole is the one exception (`retry`).
   const pull = () => void engine.pull();
   const onVisible = () => {
     if (document.visibilityState === 'visible') pull();

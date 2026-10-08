@@ -21,7 +21,8 @@ import type { FeedAttachment, FeedEntity, FeedNote, FeedNotebook, FeedPage, Feed
  *
  * When to pull is the caller's: on open, when the tab is shown again, when the
  * connection returns, when the socket says the feed moved, and after each replayed write.
- * Pulls coalesce: one runs at a time, and a request during a run queues one more.
+ * Pulls coalesce: one runs at a time, and a request during a run queues one more. The one
+ * pull the engine schedules itself is the retry of a copy that is not whole (`retry`).
  */
 
 export interface Cursor {
@@ -109,7 +110,12 @@ export interface FeedOptions {
    * old rows are gone, or a read in between fills it with them (found in review).
    */
   onTruncated?: () => void;
+  /** The first wait before a failed copy is tried again; doubles to `RETRY_MAX_MS`. */
+  retryMs?: number;
 }
+
+/** The longest wait between tries of a copy that keeps failing. */
+const RETRY_MAX_MS = 5 * 60 * 1000;
 
 export class FeedEngine {
   readonly state: FeedState = { phase: 'starting', cursor: null, lastError: null, total: null, applied: 0, pulls: 0, resets: 0 };
@@ -117,6 +123,8 @@ export class FeedEngine {
   private running: Promise<void> | null = null;
   private again = false;
   private stopped = false;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private retryWait = 0;
 
   constructor(private readonly options: FeedOptions) {}
 
@@ -136,6 +144,7 @@ export class FeedEngine {
 
   stop(): void {
     this.stopped = true;
+    this.cancelRetry();
   }
 
   /** Resolves when the pull in flight, if any, has settled; for tests and shutdown. */
@@ -169,6 +178,7 @@ export class FeedEngine {
       return this.running;
     }
     if (!this.all() || this.stopped) return Promise.resolve();
+    this.cancelRetry();
     this.running = (async () => {
       try {
         do {
@@ -177,9 +187,11 @@ export class FeedEngine {
           this.state.phase = 'current';
           this.state.lastError = null;
         } while (this.again && !this.stopped);
+        this.retryWait = 0;
       } catch (err) {
         this.state.lastError = err instanceof Error ? err.message : String(err);
         this.state.phase = 'failed';
+        this.retry();
       } finally {
         this.state.pulls += 1;
         this.running = null;
@@ -187,6 +199,34 @@ export class FeedEngine {
       }
     })();
     return this.running;
+  }
+
+  /**
+   * Tries a failed pull again, after a wait that doubles each time, but only while the
+   * copy is not whole: a first walk, or the walk after a `reset`, that stopped partway.
+   *
+   * Everywhere else pulls are event-driven, and a failed pull over a whole library waits
+   * for the next event — the device is offline, or the server is having a moment, and the
+   * copy it has is complete. A copy that is not whole has no such floor. Before this, a
+   * first walk that failed waited for focus, the socket or the connection to come back,
+   * and none of those happens to a tab someone is sitting in front of with a working
+   * connection: the list stayed empty. A walk resumes from its stored position, so a
+   * retry repeats at most one page. Never a polling loop: it stops the moment the copy is
+   * whole, and any other pull in the meantime takes its place.
+   */
+  private retry(): void {
+    if (this.stopped || isWhole(this.state)) return;
+    const base = this.options.retryMs ?? 2000;
+    this.retryWait = Math.min(this.retryWait ? this.retryWait * 2 : base, RETRY_MAX_MS);
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      void this.pull();
+    }, this.retryWait);
+  }
+
+  private cancelRetry(): void {
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
   }
 
   private changed(): void {
