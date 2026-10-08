@@ -185,6 +185,46 @@ describe('the Auto-fill control', () => {
     expect(document.querySelector('.confirm')).toBeNull();
   });
 
+  /*
+   * Where the press wrote, marked for a moment: each thing it filled carries its place in
+   * one sequence down the record, which the stylesheet staggers; Undo takes the marks with
+   * the fill.
+   */
+  it('marks what it filled where it landed, in order down the record', async () => {
+    vi.mocked(api.autofillNote).mockResolvedValue(suggestion);
+    mount(fresh);
+    fireEvent.click(await screen.findByRole('button', { name: 'Auto-fill' }));
+    await waitFor(() => expect((screen.getByLabelText('Amount') as HTMLInputElement).value).toBe('12.50'));
+
+    const place = (el: Element | null | undefined) => (el as HTMLElement | null)?.style.getPropertyValue('--filled-i');
+    const title = screen.getByPlaceholderText('Untitled');
+    expect(title.classList.contains('filled-title')).toBe(true);
+    expect(place(title)).toBe('0');
+    const notebookRow = screen.getByLabelText('Notebook').closest('.note-field');
+    expect(notebookRow?.classList.contains('filled')).toBe(true);
+    expect(place(notebookRow)).toBe('1');
+    const chip = [...document.querySelectorAll('.tag-chip')].find((c) => c.textContent?.includes('home'));
+    expect(chip?.classList.contains('fresh')).toBe(true);
+    expect(place(chip)).toBe('2');
+    const amountRow = screen.getByLabelText('Amount').closest('.note-field');
+    expect(amountRow?.classList.contains('filled')).toBe(true);
+    expect(place(amountRow)).toBe('3');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(document.querySelector('.filled, .filled-title, .filled-tags, .fresh')).toBeNull();
+  });
+
+  it('marks what a replace wrote once it is confirmed, and nothing before', async () => {
+    vi.mocked(api.autofillNote).mockResolvedValue(suggestion);
+    mount({ ...fresh, title: 'My own title', notebook: 'Receipts' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Auto-fill' }));
+    await screen.findByRole('group', { name: "Confirm replacing the note's filing" });
+    expect(screen.getByPlaceholderText('Untitled').classList.contains('filled-title')).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Replace' }));
+    expect(screen.getByPlaceholderText('Untitled').classList.contains('filled-title')).toBe(true);
+  });
+
   it('asks before replacing what is already set, and fills the rest meanwhile', async () => {
     vi.mocked(api.autofillNote).mockResolvedValue(suggestion);
     mount({ ...fresh, title: 'My own title', notebook: 'Receipts' });

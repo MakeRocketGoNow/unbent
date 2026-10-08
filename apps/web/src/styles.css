@@ -2145,6 +2145,48 @@ a.overflow-item { text-decoration: none; }
   }
 }
 
+/*
+   What an Auto-fill press just wrote, marked where it landed (`filled` in `Workspace`).
+
+   The snackbar says what changed in a sentence; this says where. Each thing the press
+   wrote lights in turn down the record — the title, the notebook, the tags it added, then
+   the fields in the order they are drawn — holds for a beat, and fades back to how it
+   always looks. A value's own box takes an accent wash; a field's name and glyph, and the
+   title, take the accent as their colour, since a row here is cells in the list's grid
+   with no box of its own to tint (`.note-field` is `display: contents`), and the title has
+   no box at all. A tag the press added is ringed instead: a chip already has a colour of
+   its own, and washing it green would make it look like a different tag for a second.
+
+   A colour that fades rather than anything that moves, so it stays when reduced motion is
+   asked for: it says something the sentence does not, and nothing on screen travels.
+   Timed to `FILLED_MS` and `FILLED_STAGGER_MS` in `filled.ts`, which clear the marks.
+*/
+.note-field:is(.filled, .filled-tags) > :is(.note-field-glyph, .note-field-label),
+.title-input.filled-title {
+  animation: filled-ink 2.2s ease-out calc(var(--filled-i, 0) * 70ms);
+}
+
+.note-field.filled > :nth-child(3) {
+  animation: filled-wash 2.2s ease-out calc(var(--filled-i, 0) * 70ms);
+}
+
+.tag-chip.fresh {
+  animation: filled-ring 2.2s ease-out calc(var(--filled-i, 0) * 70ms);
+}
+
+/* Each holds for the first third and fades to the element's own value from there. */
+@keyframes filled-ink {
+  0%, 30% { color: var(--accent); }
+}
+
+@keyframes filled-wash {
+  0%, 30% { background-color: color-mix(in srgb, var(--accent) 22%, transparent); }
+}
+
+@keyframes filled-ring {
+  0%, 30% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 70%, transparent); }
+}
+
 .small { font-size: 0.78rem; }
 .danger { color: var(--bad); }
 

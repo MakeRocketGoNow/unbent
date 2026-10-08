@@ -3,9 +3,15 @@ import { useCombobox } from 'downshift';
 import { sameName } from '@unbent/shared';
 import { tintIndex } from '../tint.js';
 import { MoveEarlierIcon, MoveLaterIcon } from './icons.js';
+import { filledStyle } from './filled.js';
 
 interface TagInputProps {
   tags: string[];
+  /**
+   * Tags just added for the person rather than by them — an Auto-fill press — ringed for a
+   * moment so they can be told from the ones that were there, in order from `at`.
+   */
+  fresh?: { at: number; names: readonly string[] } | undefined;
   /** Existing tag names, offered as completions. */
   suggestions: string[];
   onChange: (tags: string[]) => void;
@@ -81,6 +87,7 @@ export function TagInput({
   restrict = false,
   caseless = true,
   readOnly = false,
+  fresh,
 }: TagInputProps) {
   const [draft, setDraft] = useState('');
   /**
@@ -172,6 +179,17 @@ export function TagInput({
 
   const open = isOpen && available.length > 0;
 
+  /** A chip: its own tint, and a ring for a moment if it is one of `fresh`. */
+  const chipProps = (t: string) => {
+    const k = fresh?.names.findIndex((n) => sameName(n, t)) ?? -1;
+    const at = fresh && k >= 0 ? fresh.at + k : undefined;
+    return {
+      className: at === undefined ? 'tag-chip' : 'tag-chip fresh',
+      'data-tint': tintIndex(t),
+      style: filledStyle(at),
+    };
+  };
+
   if (readOnly) {
     return (
       <div className="tag-input read-only">
@@ -179,7 +197,7 @@ export function TagInput({
           <span className="tag-none">No {label}s</span>
         ) : (
           tags.map((t) => (
-            <span key={t} className="tag-chip" data-tint={tintIndex(t)}>
+            <span key={t} {...chipProps(t)}>
               {t}
             </span>
           ))
@@ -192,7 +210,7 @@ export function TagInput({
     <div className="tag-input" onClick={() => inputRef.current?.focus()}>
       {/* Each chip's tint is the word's own — see `tintIndex` — so a tag keeps its colour everywhere. */}
       {tags.map((t, index) => (
-        <span key={t} className="tag-chip" data-tint={tintIndex(t)}>
+        <span key={t} {...chipProps(t)}>
           {t}
           {/* Earlier/later before the ×, so the chip's controls read left to right as
               "move, move, remove". The ends' buttons stay rendered but disabled, the same

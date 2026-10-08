@@ -67,6 +67,7 @@ import { AutofillIcon } from './icons.js';
 import { formatFieldValue } from './format-field.js';
 import { applySaveToLists } from '../list-cache.js';
 import { onBackArrowClick } from '../note-nav.js';
+import { FILLED_MS, FILLED_STAGGER_MS, filledMarks, filledStyle } from './filled.js';
 import {
   applyAutofill,
   describeChanges,
@@ -761,6 +762,21 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   }
 
   /**
+   * What the last Auto-fill press wrote, marked where it landed for a moment: the title,
+   * the notebook, the tags it added and each field, lit in turn down the record and faded
+   * back (`.filled` in the stylesheet). The snackbar names the changes in a sentence; this
+   * shows where they are, so the eye goes to them and Undo has something visible to undo.
+   * Cleared once the last mark has faded, so a later press starts its own.
+   */
+  const [filled, setFilled] = useState<AutofillChanges | null>(null);
+  const marks = useMemo(() => filled && filledMarks(filled), [filled]);
+  useEffect(() => {
+    if (!marks) return;
+    const timer = window.setTimeout(() => setFilled(null), FILLED_MS + marks.count * FILLED_STAGGER_MS);
+    return () => window.clearTimeout(timer);
+  }, [marks]);
+
+  /**
    * The notebook and the tags as the first two rows of the property list, at every width.
    *
    * They used to be a row that opened a sheet holding them — a full-height modal surface
@@ -777,6 +793,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       readOnly={readOnly || frozen}
       onNotebook={(next) => setDraft((d) => ({ ...d, notebook: next }))}
       onTags={(next) => setDraft((d) => ({ ...d, tags: next }))}
+      filled={marks ? { notebook: marks.notebook, tags: marks.tags } : undefined}
     />
   );
 
@@ -801,6 +818,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
         carried={note.fields ?? []}
         notebookId={currentNotebook?.id ?? null}
         readOnly={readOnly || frozen}
+        filled={marks ? { ids: marks.fields, start: marks.fieldsAt } : undefined}
         onChange={(fieldId, value) =>
           setDraft((d) => ({ ...d, fields: { ...d.fields, [fieldId]: value } }))
         }
@@ -1134,6 +1152,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     setSnackbar(null);
     setTitleModelFault(false);
     setWebImagesStatus(null);
+    setFilled(null);
   }, [noteId]);
 
   /**
@@ -1161,6 +1180,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     const startedFor = noteId;
     setAutofilling(true);
     setAutofillReplace(null);
+    setFilled(null);
     // The press is its own progress now — the button goes busy; the last result, if one is
     // still up, clears so it can't be mistaken for this press's answer.
     setSnackbar(null);
@@ -1205,9 +1225,13 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
         // back to it — `applyAutofill` returns a new object and never touches this one.
         const before = draftRef.current;
         setDraft((d) => applyAutofill(d, plan.fill));
+        setFilled(plan.fill);
         showFillResult(`Filled in ${describeChanges(plan.fill)}${unread}`, {
           label: 'Undo',
-          onClick: () => setDraft(before),
+          onClick: () => {
+            setFilled(null);
+            setDraft(before);
+          },
         });
       }
       if (!isEmptyChanges(plan.replace)) setAutofillReplace(plan.replace);
@@ -1389,7 +1413,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
           */}
           <input
             ref={titleRef}
-            className="title-input"
+            className={marks?.title === undefined ? 'title-input' : 'title-input filled-title'}
+            style={filledStyle(marks?.title)}
             value={draft.title}
             placeholder="Untitled"
             readOnly={readOnly || frozen}
@@ -1607,9 +1632,13 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
                 const before = draftRef.current;
                 setDraft((d) => applyAutofill(d, changes));
                 setAutofillReplace(null);
+                setFilled(changes);
                 showFillResult(`Replaced ${describeChanges(changes)}`, {
                   label: 'Undo',
-                  onClick: () => setDraft(before),
+                  onClick: () => {
+                    setFilled(null);
+                    setDraft(before);
+                  },
                 });
               },
             },
