@@ -18,6 +18,7 @@ beforeAll(async () => {
   await env.DB.exec(
     [
       `CREATE TABLE IF NOT EXISTS user (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, emailVerified INTEGER NOT NULL DEFAULT 0, image TEXT, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);`,
+      `CREATE TABLE IF NOT EXISTS account_directory (user_id TEXT PRIMARY KEY, created_at INTEGER NOT NULL, restore_at INTEGER, restore_to_at INTEGER, restore_undo TEXT);`,
       ...RESTORES_DDL,
     ].join(' '),
   );
@@ -60,6 +61,17 @@ describe('the restore history', () => {
     expect(await startRestore(env.DB, { userId: user, operatorId: op, kind: 'bookmark', undoes: first, ifNewest: first! })).toBeNull();
     expect((await listRestores(env.DB, user)).restores.map((r) => r.id)).toEqual([second, first]);
     expect(await startRestore(env.DB, { userId: user, operatorId: op, kind: 'bookmark', undoes: second, ifNewest: second! })).not.toBeNull();
+  });
+
+  it("clears 0038's record of the account as it starts a row, so a rolled-back Worker offers no stale undo", async () => {
+    const user = account('rollback');
+    await env.DB.prepare(`INSERT INTO account_directory (user_id, created_at, restore_at, restore_to_at, restore_undo) VALUES (?1, 1, 2000, 1000, ?2)`).bind(user, BOOKMARK).run();
+    await start({ userId: user, operatorId: await operator(), kind: 'load', dump: 'stores/x/2026-10-05.sql' });
+    expect(await env.DB.prepare(`SELECT restore_at, restore_to_at, restore_undo FROM account_directory WHERE user_id = ?1`).bind(user).first()).toEqual({
+      restore_at: null,
+      restore_to_at: null,
+      restore_undo: null,
+    });
   });
 
   it('records nothing for a restore the runtime refused', async () => {

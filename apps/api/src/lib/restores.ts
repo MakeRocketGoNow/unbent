@@ -66,16 +66,22 @@ export async function startRestore(
   db: D1Database,
   row: { userId: string; operatorId: string; kind: StoreRestore['kind']; toAt?: number; dump?: string; undoes?: number | null; ifNewest?: number },
 ): Promise<number | null> {
-  const inserted = await db
-    .prepare(
-      `INSERT INTO restores (user_id, operator_id, kind, state, started_at, to_at, dump_key, undoes)
-       SELECT ?1, ?2, ?3, 'started', ?4, ?5, ?6, ?7
-        WHERE ?8 IS NULL OR (${RESTORES_SQL.newest}) = ?8
-       RETURNING id`,
-    )
-    .bind(row.userId, row.operatorId, row.kind, Date.now(), row.toAt ?? null, row.dump ?? null, row.undoes ?? null, row.ifNewest ?? null)
-    .first<{ id: number }>();
-  return inserted?.id ?? null;
+  const [inserted] = await db.batch<{ id: number }>([
+    db
+      .prepare(
+        `INSERT INTO restores (user_id, operator_id, kind, state, started_at, to_at, dump_key, undoes)
+         SELECT ?1, ?2, ?3, 'started', ?4, ?5, ?6, ?7
+          WHERE ?8 IS NULL OR (${RESTORES_SQL.newest}) = ?8
+         RETURNING id`,
+      )
+      .bind(row.userId, row.operatorId, row.kind, Date.now(), row.toAt ?? null, row.dump ?? null, row.undoes ?? null, row.ifNewest ?? null),
+    // 0038's record, which nothing reads now, cleared as the Worker before this one
+    // cleared it: a rollback to that Worker reads these columns again, and left standing
+    // they would offer the undo of a wind-back from before everything recorded here
+    // (found in review). Goes with the migration that drops them (MAK-199).
+    db.prepare(`UPDATE account_directory SET restore_at = NULL, restore_to_at = NULL, restore_undo = NULL WHERE user_id = ?1`).bind(row.userId),
+  ]);
+  return inserted?.results[0]?.id ?? null;
 }
 
 /**
