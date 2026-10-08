@@ -176,11 +176,13 @@ export interface StoreRestores {
 export const OPERATOR_PAGE_SIZE = 50;
 /** The most accounts one request may ask for; the route clamps `limit` to it. */
 export const OPERATOR_PAGE_MAX = 200;
+/** The longest search the accounts list takes: an address's own limit, 64 + 1 + 255. */
+export const OPERATOR_SEARCH_MAX = 320;
 
 export interface OperatorAccountsPage {
-  /** Newest activity first: the newest write the sweep recorded, else the account's creation. */
+  /** By email, A to Z; only those whose email or name holds the search, when there is one. */
   accounts: OperatorAccount[];
-  /** Where this page ended, to pass back as `after` for the next; null when this was the last page. */
+  /** The last email on this page, to pass back as `after` for the next; null when this was the last page. */
   next: string | null;
 }
 
