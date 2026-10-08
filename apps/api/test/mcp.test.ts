@@ -559,6 +559,45 @@ describe('a write through MCP that changes nothing', () => {
     expect(read.updatedAt).toBe(before.updatedAt);
   });
 
+  it('treats a tag named in another case as the tag there is (MAK-127)', async () => {
+    // The case that started it: an assistant tagging "receipts" beside Receipts made a
+    // second tag, and removing "receipts" left Receipts on the note without a word.
+    const tag = `Receipts ${crypto.randomUUID().slice(0, 8)}`;
+    const before = await note({ title: 'Coupons', body: 'Body', tags: [tag] });
+    const other = await note({ title: 'Coupons too', body: 'Body', tags: [tag.toLowerCase()] });
+    expect(other.tags).toEqual([tag]);
+
+    const added = JSON.parse(
+      toolText(
+        (
+          await mcp(alice.token, 'tools/call', {
+            name: 'update_note_tags',
+            arguments: { noteIds: [before.id], add: [tag.toUpperCase()] },
+          })
+        ).body,
+      ),
+    );
+    expect(added.changed).toBe(0);
+
+    const listed = JSON.parse(
+      toolText((await mcp(alice.token, 'tools/call', { name: 'list_notes', arguments: { tag: [tag.toLowerCase()] } })).body),
+    );
+    expect(listed.notes.map((n: { id: string }) => n.id).sort()).toEqual([before.id, other.id].sort());
+
+    const removed = JSON.parse(
+      toolText(
+        (
+          await mcp(alice.token, 'tools/call', {
+            name: 'update_note_tags',
+            arguments: { noteIds: [before.id, other.id], remove: [tag.toLowerCase()] },
+          })
+        ).body,
+      ),
+    );
+    // Both notes: under exact matching only the note spelled "receipts" would have lost it.
+    expect(removed.changed).toBe(2);
+  });
+
   it('leaves the date alone when move_notes re-files a note where it already is', async () => {
     const before = await note({ title: 'Coupons', body: 'Body', notebook: 'Podcast Bookmarks' });
 
