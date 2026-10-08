@@ -37,6 +37,14 @@ interface TagInputProps {
    */
   restrict?: boolean;
   /**
+   * Whether a name in another case is the token that exists. On for tags, which the
+   * store finds without case (MAK-127): "receipts" typed beside Receipts files Receipts,
+   * and a tag the note has is not added twice. The fold is the store's (`sameName`, ASCII
+   * only), so a name it keeps apart is kept apart here. Off where the editor holds a
+   * select field's options, which are compared exactly.
+   */
+  caseless?: boolean;
+  /**
    * Shown, not edited — a note in the trash, or any note while offline. The chips stay as
    * words; the × on each and the "+ Add" entry go, since a control that is drawn but
    * cannot be used is the thing this app keeps removing. Nothing at all to show reads as
@@ -71,6 +79,7 @@ export function TagInput({
   label = 'tag',
   reorderable = false,
   restrict = false,
+  caseless = true,
   readOnly = false,
 }: TagInputProps) {
   const [draft, setDraft] = useState('');
@@ -85,13 +94,7 @@ export function TagInput({
   const [active, setActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  /*
-   * Whether two names are one. For tags the store's own fold decides (`sameName`, ASCII
-   * only): a tag is found without case (MAK-127), so "receipts" beside Receipts is the
-   * same chip, and a name the store keeps apart is kept apart here. A field's options
-   * are compared exactly, as they always were; the label is what says which this is.
-   */
-  const same = label === 'tag' ? sameName : (a: string, b: string) => a === b;
+  const same = caseless ? sameName : (a: string, b: string) => a === b;
   const typed = draft.trim().toLowerCase();
   const available = suggestions
     .filter((s) => !tags.some((t) => same(t, s)))

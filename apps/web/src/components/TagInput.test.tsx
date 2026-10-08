@@ -323,7 +323,7 @@ describe('TagInput and the case of a tag', () => {
 
   it('leaves a field’s options exact, as they always were', () => {
     const onChange = vi.fn();
-    render(<TagInput tags={['Small']} suggestions={[]} onChange={onChange} label="option" />);
+    render(<TagInput tags={['Small']} suggestions={[]} onChange={onChange} label="option" caseless={false} />);
     const field = screen.getByLabelText('Add a option');
     fireEvent.change(field, { target: { value: 'small' } });
     fireEvent.keyDown(field, { key: 'Enter' });
