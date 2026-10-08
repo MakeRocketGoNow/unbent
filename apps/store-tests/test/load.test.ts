@@ -166,6 +166,25 @@ describe('loading a dump', () => {
     }
   });
 
+  it('leaves the runtime\'s key-value table out of a dump taken after a load, and loads a dump that carries it', async () => {
+    // A load writes the object's key-value storage, which is when `_cf_KV` appears in
+    // `sqlite_master`; the day's dump then carried its CREATE, and could not be loaded
+    // into an object that has the table already (MAK-197, found in the rehearsal).
+    const { stub, userId } = freshStore('kv-table');
+    await populate(stub);
+    const before = await dumpOf(stub, userId);
+    await load(stub, before);
+    const after = await dumpOf(stub, userId);
+    expect(after).not.toContain('_cf_KV');
+    expect(await runInDurableObject(stub, (_i, state) => state.storage.sql.exec(`SELECT name FROM sqlite_master WHERE name = '_cf_KV'`).toArray().length)).toBe(1);
+    // A dump written before the fix, with the runtime's table in it, loads as if it were not there.
+    const old = before.replace('BEGIN;', `BEGIN;\nCREATE TABLE _cf_KV (\n        key TEXT PRIMARY KEY,\n        value BLOB\n      ) WITHOUT ROWID;`);
+    expect(old).toContain('_cf_KV');
+    const result = await load(stub, old);
+    expect(result.stats.loading).toBeNull();
+    expect(result.stats.counts.notes).toBeGreaterThan(0);
+  });
+
   it('refuses every data call while loading, across an eviction, and a page from a load that is over', async () => {
     const { userId, stub } = freshStore('load-marker');
     await populate(stub);
