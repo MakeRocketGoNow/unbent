@@ -18,6 +18,7 @@ import {
   notebookNameSchema,
   notebookEmojiSchema,
   notebookPurposeSchema,
+  sameName,
   tagNameSchema,
   type FieldDef,
   type FieldValue,
@@ -103,10 +104,22 @@ function resolveFieldNames(
   return { patch };
 }
 
-/** The id of a notebook by name, case-insensitively, or null when there is none yet. */
+/**
+ * The id of a notebook by name, without case as the store's NOCASE index has it
+ * (`sameName`, ASCII only), or null when there is none yet.
+ */
 async function notebookIdByName(notes: NotesRepo, name: string): Promise<string | null> {
   const all = await notes.listNotebooks();
-  return all.find((nb) => nb.name.toLowerCase() === name.trim().toLowerCase())?.id ?? null;
+  return all.find((nb) => sameName(nb.name, name.trim()))?.id ?? null;
+}
+
+/**
+ * A tag from `listTags` by name, as the store finds one: without case, ASCII only
+ * (`sameName`). The fold is the store's rather than `toLowerCase`, so a name the store keeps
+ * as two tags is two here.
+ */
+function findTag<T extends { name: string }>(tags: T[], name: string): T | undefined {
+  return tags.find((t) => sameName(t.name, name));
 }
 
 const bodySchema = z
@@ -118,8 +131,8 @@ const tagsSchema = z
   .array(tagNameSchema)
   .max(50)
   .describe(
-    'Tag names, matched exactly: "Receipts" and "receipts" are two tags. Reuse the ' +
-      'spelling list_tags shows.',
+    'Tag names. A name matches an existing tag whatever its case, and the note takes the ' +
+      'existing spelling; list_tags has the tags there are.',
   );
 
 /**
@@ -358,8 +371,8 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo, links: A
       description:
         'Add and remove tags across one or more notes without touching their other fields. ' +
         'Tags that are already there, or already absent, are left alone, and a tag named ' +
-        'in both lists is added. Names match exactly, case included, so removing ' +
-        '"receipts" leaves "Receipts" in place; list_tags has the spellings. Answers with the ' +
+        'in both lists is added. Names match whatever their case, so removing "receipts" ' +
+        'takes Receipts off. Answers with the ' +
         'notes it reached, how many changed, and any ids it could not find; get_note shows ' +
         "a note's tags afterwards." +
         SHARE_NOTE_LINKS,
@@ -462,19 +475,22 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo, links: A
      Tags are addressed by name here, as every other tool does, and resolved to the id the
      repo wants from `listTags`. That list is live notes only, so a tag whose every note is
      in the trash is "no such tag" to these two — the same answer list_tags gives, which is
-     what the assistant has just read.
+     what the assistant has just read. Found without case, as the store finds a tag
+     (MAK-127), and answered with the stored spelling, so the assistant reports the tag
+     the person sees rather than the case it happened to type.
   */
   server.registerTool(
     'rename_tag',
     {
       title: 'Rename or merge a tag',
       description:
-        'Rename a tag everywhere it is used. The current name matches exactly, case ' +
-        'included; list_tags has the spellings. If another tag already has the new name the ' +
-        'call is refused, since the two would become one: pass merge:true to fold this tag ' +
-        'into that one, so every note that carried it carries the other instead. A merge ' +
-        'cannot be undone, so confirm it with the person first. Notes\' own dates do not ' +
-        'change.',
+        'Rename a tag everywhere it is used. The current name matches whatever its case. ' +
+        'Changing only the case — Receipts to receipts — is a plain rename, and the way to ' +
+        'respell a tag. If another tag already has the new name, in any case, the call is ' +
+        'refused, since the two would become one: pass merge:true to fold this tag into ' +
+        'that one, so every note that carried it carries the other instead, under the ' +
+        'other\'s spelling. A merge cannot be undone, so confirm it with the person first. ' +
+        'Notes\' own dates do not change.',
       inputSchema: z.object({
         tag: tagNameSchema.describe('The tag to rename, by its current name.'),
         name: tagNameSchema.describe('The new name.'),
@@ -488,18 +504,18 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo, links: A
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
     },
     async ({ tag, name, merge }) => {
-      const existing = (await notes.listTags()).find((t) => t.name === tag);
+      const existing = findTag(await notes.listTags(), tag);
       if (!existing) return notFound('tag', tag);
       const result = await notes.renameTag(existing.id, name, { merge });
       if (result === 'missing') return notFound('tag', tag);
       if (result === 'conflict') {
         return toolError(
-          `A tag called "${name}" already exists, so renaming "${tag}" to it would merge the ` +
+          `A tag called "${name}" already exists, so renaming "${existing.name}" to it would merge the ` +
             'two. Pass merge:true to fold this tag into it: every note carrying it will carry ' +
             `"${name}" instead, and that cannot be undone. Or choose another name.`,
         );
       }
-      return jsonResult({ from: tag, name: result.name, merged: result.merged, notes: existing.count });
+      return jsonResult({ from: existing.name, name: result.name, merged: result.merged, notes: existing.count });
     },
   );
 
@@ -508,7 +524,7 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo, links: A
     {
       title: 'Delete a tag',
       description:
-        'Delete a tag by its exact name, taking it off every note that carries it. The notes ' +
+        'Delete a tag by name, in any case, taking it off every note that carries it. The notes ' +
         'themselves stay, with their other tags; only the label goes, and it cannot be ' +
         'brought back except by tagging again, so confirm it with the person first, saying ' +
         'how many notes carry it (list_tags has the count). Answers with how many notes ' +
@@ -518,10 +534,10 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo, links: A
     },
     async ({ tag }) => {
       // The count is read first, since the delete is what removes the thing counted.
-      const existing = (await notes.listTags()).find((t) => t.name === tag);
+      const existing = findTag(await notes.listTags(), tag);
       if (!existing) return notFound('tag', tag);
       if (!(await notes.deleteTag(existing.id))) return notFound('tag', tag);
-      return jsonResult({ tag, deleted: true, notes: existing.count });
+      return jsonResult({ tag: existing.name, deleted: true, notes: existing.count });
     },
   );
 

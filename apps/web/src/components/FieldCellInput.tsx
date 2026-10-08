@@ -118,6 +118,7 @@ export function FieldCellInput({
       <div id={id} className="note-field-multi" role="group" aria-label={label ?? def.name}>
         <TagInput
           label="option"
+          caseless={false}
           tags={chosen}
           suggestions={def.options}
           restrict

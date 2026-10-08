@@ -293,6 +293,44 @@ describe('TagInput restricted to its suggestions', () => {
   });
 });
 
+/*
+ * A tag is found without case (MAK-127), so a name typed in another case is the tag that
+ * exists: the chip says so at once, and a tag the note already has is not added twice.
+ * Folded as the store folds, ASCII only, so a name it keeps apart is kept apart here.
+ */
+describe('TagInput and the case of a tag', () => {
+  afterEach(cleanup);
+
+  it('files a typed tag in the spelling that exists, once', () => {
+    const onChange = vi.fn();
+    render(<TagInput tags={['Garden']} suggestions={['Receipts', 'Garden', 'Café']} onChange={onChange} />);
+    const field = screen.getByLabelText('Add a tag');
+    fireEvent.change(field, { target: { value: 'receipts' } });
+    fireEvent.keyDown(field, { key: 'Escape' });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(onChange).toHaveBeenLastCalledWith(['Garden', 'Receipts']);
+
+    fireEvent.change(field, { target: { value: 'GARDEN' } });
+    fireEvent.keyDown(field, { key: 'Escape' });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(field, { target: { value: 'CAFÉ' } });
+    fireEvent.keyDown(field, { key: 'Escape' });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(onChange).toHaveBeenLastCalledWith(['Garden', 'CAFÉ']);
+  });
+
+  it('leaves a field’s options exact, as they always were', () => {
+    const onChange = vi.fn();
+    render(<TagInput tags={['Small']} suggestions={[]} onChange={onChange} label="option" caseless={false} />);
+    const field = screen.getByLabelText('Add a option');
+    fireEvent.change(field, { target: { value: 'small' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledWith(['Small', 'small']);
+  });
+});
+
 /**
  * Read-only is the trash and every note while offline. Tags there are shown as words, with
  * nothing on the row that would take a click and then go nowhere.

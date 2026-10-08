@@ -1,6 +1,6 @@
 import { IndexedDBAdapter, NonRetriableError, startOfflineExecutor, type OfflineExecutor, type OnlineDetector, type StorageAdapter } from '@tanstack/offline-transactions';
 import type { Transaction } from '@tanstack/db';
-import { MAX_ATTACHMENT_BYTES, filenameSchema, type FeedNote, type FieldDef, type FieldValue, type Note, type NoteFieldValue, type NotebookDefinition, type RestoredNote } from '@unbent/shared';
+import { MAX_ATTACHMENT_BYTES, filenameSchema, foldNoCase, type FeedNote, type FieldDef, type FieldValue, type Note, type NoteFieldValue, type NotebookDefinition, type RestoredNote } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { ApiError, isNoteChanged, isOfflineError } from '../notes-api.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
@@ -1139,12 +1139,22 @@ export async function tagNotes(ids: string[], change: { add?: string[]; remove?:
   if (here.length > 0) {
     const l = lookups(snapshot(lib));
     const add = change.add ?? [];
-    const remove = new Set(change.remove ?? []);
+    // `updateMany`'s rules, so the row reads now as it will once the server has it: names
+    // compared without case (MAK-127), and a tag in both lists added.
+    const adding = new Set(add.map(foldNoCase));
+    const remove = new Set((change.remove ?? []).map(foldNoCase).filter((t) => !adding.has(t)));
     queue(lib, 'tagNotes', { ids: here, ...change }, () => {
       for (const id of here) {
         lib.notes.update(id, (row) => {
           const current = row.tagNames ?? row.tagIds.map((t) => l.tags.get(t)?.name).filter((n): n is string => !!n);
-          row.tagNames = [...current.filter((t) => !remove.has(t)), ...add.filter((t) => !current.includes(t))];
+          const kept = current.filter((t) => !remove.has(foldNoCase(t)));
+          const held = new Set(kept.map(foldNoCase));
+          for (const t of add) {
+            if (held.has(foldNoCase(t))) continue;
+            held.add(foldNoCase(t));
+            kept.push(t);
+          }
+          row.tagNames = kept;
         });
       }
     });

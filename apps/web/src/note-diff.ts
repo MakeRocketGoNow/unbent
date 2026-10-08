@@ -1,4 +1,4 @@
-import type { FieldValue, NoteFieldValue, NoteRevisionProps, RevisionSkip } from '@unbent/shared';
+import { foldNoCase, type FieldValue, type NoteFieldValue, type NoteRevisionProps, type RevisionSkip } from '@unbent/shared';
 import { diffArrays, diffWordsWithSpace } from 'diff';
 import { sameFieldValue } from './note-patch.js';
 
@@ -266,7 +266,8 @@ export type PropChange =
  * A tag renamed since the version is compared under today's name (`renamed`, from the
  * server, which goes by id): the note carries it under that name, so the version's old
  * name would read as one tag going on and another coming off where the restore leaves
- * the tag alone.
+ * the tag alone. That includes a tag whose id is gone but whose name a tag holds today in
+ * any case, which the store resolves by name (MAK-127) and reports the same way.
  */
 export function diffProps(
   current: CurrentProps,
@@ -292,7 +293,17 @@ export function diffProps(
     if (!same) changes.push({ kind: 'notebook', from: now?.name ?? null, to: then?.name ?? null });
   }
 
-  const target = props.tags.filter((t) => !skip('tag', t.id)).map((t) => renamed.find((r) => r.id === t.id)?.name ?? t.name);
+  // Once per name: a version kept before tags matched without case can hold two
+  // spellings the store has since made one, and the server names both under it.
+  const target: string[] = [];
+  const seen = new Set<string>();
+  for (const t of props.tags) {
+    if (skip('tag', t.id)) continue;
+    const name = renamed.find((r) => r.id === t.id)?.name ?? t.name;
+    if (seen.has(foldNoCase(name))) continue;
+    seen.add(foldNoCase(name));
+    target.push(name);
+  }
   const removed = current.tags.filter((t) => !target.includes(t));
   const added = target.filter((t) => !current.tags.includes(t));
   if (removed.length > 0 || added.length > 0) {

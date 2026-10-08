@@ -807,6 +807,16 @@ describe('a note the copy does not hold yet', () => {
     expect(fake.queue.map((e) => e.metadata)).toEqual([{ ids: ['n1'], notebook: 'Coupons' }, { ids: ['n1'], add: ['saved'] }]);
   });
 
+  it('tags a held note as the server will: without case, and a tag in both lists added', async () => {
+    const { lib } = library([{ ...row('n1'), tagNames: ['Receipts', 'Garden'] }]);
+    await actions.tagNotes(['n1'], { add: ['receipts', 'Shed', 'SHED'], remove: ['GARDEN'] });
+    await tick();
+    expect(lib.notes.get('n1')?.tagNames).toEqual(['Receipts', 'Shed']);
+    await actions.tagNotes(['n1'], { add: ['garden'], remove: ['Garden'] });
+    await tick();
+    expect(lib.notes.get('n1')?.tagNames).toEqual(['Receipts', 'Shed', 'garden']);
+  });
+
   it('queues nothing when the request for the rest of a bulk action fails', async () => {
     // Half an action applied while the list says it failed would skip telling the open
     // note's draft, whose next save put the old filing back. The request goes first.

@@ -1,6 +1,6 @@
 import { useId, useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
-import { UNFILED } from '@unbent/shared';
+import { sameName, UNFILED } from '@unbent/shared';
 import {
   NotesRowIcon,
   InboxRowIcon,
@@ -165,8 +165,8 @@ export function NotebookNav({
    */
   const listedTags = allTags ? tags : tags.slice(0, TAG_CAP);
   const currentPastCap =
-    tagPlace !== undefined && !listedTags.some((t) => t.name === tagPlace)
-      ? tags.find((t) => t.name === tagPlace)
+    tagPlace !== undefined && !listedTags.some((t) => sameName(t.name, tagPlace))
+      ? tags.find((t) => sameName(t.name, tagPlace))
       : undefined;
   const shownTags = currentPastCap ? [...listedTags, currentPastCap] : listedTags;
   /** The tooltip a strip's row needs, and a full-width row does not. */
@@ -289,7 +289,8 @@ export function NotebookNav({
             {tagsOpen && (
               <div id={tagsId} className="drawer-tags">
                 {shownTags.map((t) => {
-                  const on = tagPlace === t.name;
+                  // Without case, as the filter matches: `?tag=receipts` is Receipts.
+                  const on = tagPlace !== undefined && sameName(tagPlace, t.name);
                   return (
                     <Link
                       key={t.name}

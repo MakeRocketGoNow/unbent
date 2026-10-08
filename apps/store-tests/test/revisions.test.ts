@@ -243,6 +243,39 @@ describe('history: putting fields, tags and the notebook back', () => {
     expect(await stub.listNotebooks()).toHaveLength(1);
   });
 
+  it('takes a tag whose id is gone to the tag its name is today, in any case (MAK-127)', async () => {
+    // As a copy kept before 0006 folded "drama" into Drama: the id it names is gone and a
+    // tag of its name, in another case, is what the note carries now.
+    const { stub, id } = await filed('folded');
+    await stub.update(id, { tags: ['seen'], by: 'assistant' });
+    const [copy] = (await stub.listRevisions(id))!;
+    await stub.deleteTag(await tagId(stub, 'drama'));
+    await stub.update(id, { tags: ['Drama'] });
+
+    const whole = (await stub.getRevision(id, copy!.id))!;
+    expect(whole).not.toHaveProperty('unfit');
+    expect(whole.renamedTags).toEqual([{ id: whole.props!.tags[0]!.id, name: 'Drama' }]);
+    const restored = (await stub.restoreRevision(id, copy!.id)) as RestoredNote;
+    expect(restored).not.toHaveProperty('skipped');
+    expect(restored.note.tags).toEqual(['Drama']);
+  });
+
+  it('names every one of a copy\'s tags that lands on one name today, the dropped duplicate too', async () => {
+    const { stub, id } = await filed('folded-twice');
+    await stub.update(id, { tags: ['drama', 'films'] });
+    await stub.update(id, { tags: [], by: 'assistant' });
+    const [copy] = (await stub.listRevisions(id))!;
+    // "drama" goes, and "films" is renamed onto its name: the copy's first tag resolves by
+    // name to the second, which the restore then drops as the same tag.
+    await stub.deleteTag(await tagId(stub, 'drama'));
+    await stub.renameTag(await tagId(stub, 'films'), 'Drama');
+
+    const whole = (await stub.getRevision(id, copy!.id))!;
+    expect(whole.props!.tags.map((t) => t.name)).toEqual(['drama', 'films']);
+    expect(whole.renamedTags!.map((t) => t.name)).toEqual(['Drama', 'Drama']);
+    expect(((await stub.restoreRevision(id, copy!.id)) as RestoredNote).note.tags).toEqual(['Drama']);
+  });
+
   it('skips what no longer fits, says so before and after, and restores the rest', async () => {
     const { stub, id, nb, status, year } = await filed('unfit');
     await stub.update(id, { title: 'A film, seen', fields: { [status.id]: 'Done', [year.id]: 2001 }, tags: ['seen'], by: 'assistant' });

@@ -699,6 +699,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
                 <div className="field-admin-options">
                   <TagInput
                     label="option"
+                    caseless={false}
                     tags={field.options}
                     suggestions={[]}
                     reorderable
@@ -877,6 +878,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
           {fieldHasOptions(newType) && !newIsRating && (
             <TagInput
               label="option"
+              caseless={false}
               tags={newOptions}
               suggestions={[]}
               reorderable
