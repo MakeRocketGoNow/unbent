@@ -23,6 +23,11 @@
  * itself, which it cannot without a stylesheet, and the result is this dark text on the
  * client's dark page. Undeclared, each client recolours it the way it does any light
  * message, or shows it light.
+ *
+ * Centred as one column, all three lines together. Left-aligned, the fine print ran
+ * wider than the code above it and read as a ragged block; centring it alone would put
+ * it out of line with the lines above. `align` beside `text-align` because Outlook reads
+ * only the attribute.
  */
 
 export interface SignInCodeEmail {
@@ -48,10 +53,10 @@ export function signInCodeEmail(otp: string): SignInCodeEmail {
 <body style="margin:0;padding:0;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
 <tr><td style="padding:32px 16px;">
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:480px;margin:0 auto;font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1c1a17;">
-<tr><td style="font-size:16px;line-height:24px;padding:0 0 12px;">Your Unbent sign-in code is</td></tr>
-<tr><td style="padding:0 0 24px;"><div style="display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:32px;line-height:40px;font-weight:600;letter-spacing:6px;padding:12px 14px 12px 20px;background-color:#f1eee9;border:1px solid #e3ded7;border-radius:8px;">${code}</div></td></tr>
-<tr><td style="font-size:14px;line-height:20px;color:#6b6560;">${EXPIRY}</td></tr>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:480px;margin:0 auto;text-align:center;font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1c1a17;">
+<tr><td align="center" style="font-size:16px;line-height:24px;padding:0 0 12px;">Your Unbent sign-in code is</td></tr>
+<tr><td align="center" style="padding:0 0 24px;"><div style="display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:32px;line-height:40px;font-weight:600;letter-spacing:6px;padding:12px 14px 12px 20px;background-color:#f1eee9;border:1px solid #e3ded7;border-radius:8px;">${code}</div></td></tr>
+<tr><td align="center" style="font-size:14px;line-height:20px;color:#6b6560;">${EXPIRY}</td></tr>
 </table>
 </td></tr>
 </table>
