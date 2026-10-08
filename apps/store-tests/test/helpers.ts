@@ -36,3 +36,8 @@ export function feedSeq(stub: ReturnType<typeof freshStore>['stub']): Promise<nu
     Number(state.storage.sql.exec<{ value: string }>(`SELECT value FROM _meta WHERE key = 'seq'`).toArray()[0]?.value ?? 0),
   );
 }
+
+/** Every tag row, counted or not: `listTags` leaves out tags with no live note. */
+export function listAllTags(stub: ReturnType<typeof freshStore>['stub']) {
+  return runInDurableObject(stub, (_i, state) => state.storage.sql.exec<{ id: string; name: string }>(`SELECT id, name FROM tags`).toArray());
+}
