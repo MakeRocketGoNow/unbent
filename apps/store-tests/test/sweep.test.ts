@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { env, evictDurableObject, runInDurableObject } from 'cloudflare:test';
-import { BATCH, SUBREQUEST_BUDGET, pickExpiries, sweepStores } from '@unbent/api/lib/sweep';
+import { BATCH, EXPIRY_COST, FINISH_COST, LATE_WRITES_MS, SUBREQUEST_BUDGET, pickAffordable, sweepStores } from '@unbent/api/lib/sweep';
 import { DELETED_BLOB_RETENTION_MS } from '@unbent/api/store/deleted-blobs';
 import { listRestores, startRestore } from '@unbent/api/lib/restores';
 import { RESTORES_DDL } from './helpers.js';
@@ -11,7 +11,8 @@ import { RESTORES_DDL } from './helpers.js';
  * shape migrations 0002, 0030 and 0001 give them. What is checked is the sweep's one
  * invariant and its jobs: a live account is woken and measured and never wiped; a
  * tombstoned account, or one whose user row is gone, is wiped and its row dropped once
- * the object is empty; an account never opened gets its object created and measured; an
+ * the object is empty, its prefix in R2 is too, and its late writes are over; an
+ * account never opened gets its object created and measured; an
  * account with no directory row gets one; and a walk longer than a batch continues
  * across invocations from where it left off.
  *
@@ -41,7 +42,7 @@ async function directory(id: string, deletedAt: number | null = null) {
   await env.DB.prepare(`INSERT INTO account_directory (user_id, created_at, deleted_at) VALUES (?1, 1, ?2)`).bind(id, deletedAt).run();
 }
 async function row(id: string) {
-  return env.DB.prepare(`SELECT * FROM account_directory WHERE user_id = ?1`).bind(id).first<{ note_count: number; storage_bytes: number; last_active_at: number | null }>();
+  return env.DB.prepare(`SELECT * FROM account_directory WHERE user_id = ?1`).bind(id).first<{ note_count: number; storage_bytes: number; last_active_at: number | null; deleted_at: number | null }>();
 }
 const stub = (id: string) => env.USER_STORE.get(env.USER_STORE.idFromName(id));
 
@@ -67,9 +68,10 @@ describe('the store sweep', () => {
     await stub(live).create({ id: crypto.randomUUID(), title: 'Mine too', body: 'keep', tags: [] });
 
     // Deleted, with the wipe still to do: the tombstone is set and the object has rows.
-    // The user row is gone, as it is after a deletion; the row is only dropped once it is.
+    // The user row is gone, as it is after a deletion; the row is only dropped once it is,
+    // and once the deletion is old enough that no session of the account can still write.
     const tombstoned = uid('tombstoned');
-    await directory(tombstoned, Date.now());
+    await directory(tombstoned, Date.now() - LATE_WRITES_MS - 60_000);
     await stub(tombstoned).create({ id: crypto.randomUUID(), title: 'Gone', body: 'x', tags: [] });
 
     // Tombstoned but the user row survived — a deletion that wiped the store and then
@@ -80,7 +82,8 @@ describe('the store sweep', () => {
     await directory(halfDeleted, Date.now());
     await stub(halfDeleted).create({ id: crypto.randomUUID(), title: 'Half', body: 'x', tags: [] });
 
-    // A row whose user row is missing: the `afterDelete` hook never ran.
+    // A row whose user row is missing: the `afterDelete` hook never ran. Wiped, and given
+    // the tombstone it should have had, from which its late writes are waited out.
     const orphan = uid('orphan');
     await directory(orphan);
     await stub(orphan).create({ id: crypto.randomUUID(), title: 'Orphaned', body: 'x', tags: [] });
@@ -115,7 +118,7 @@ describe('the store sweep', () => {
     expect((await stub(tombstoned).stats()).wiped).toBe(true);
     expect((await listRestores(env.DB, tombstoned)).restores).toEqual([]);
     expect((await listRestores(env.DB, live)).restores).toHaveLength(1);
-    expect(await row(orphan)).toBeNull();
+    expect(await row(orphan)).toMatchObject({ deleted_at: expect.any(Number) });
     expect((await stub(orphan).stats()).wiped).toBe(true);
     expect((await stub(halfDeleted).stats()).wiped).toBe(true);
     expect(await env.DB.prepare(`SELECT deleted_at FROM account_directory WHERE user_id = ?1`).bind(halfDeleted).first<{ deleted_at: number | null }>()).toMatchObject({ deleted_at: expect.any(Number) });
@@ -248,33 +251,85 @@ describe('the store sweep', () => {
   });
 
   /**
-   * The expiry is two subrequests on top of a visit, and a batch is sized against the
-   * Free plan's fifty: once every account is visited, what is left buys as many expiries
-   * as fit, from a start that rotates with the hour so the same accounts are not put off
-   * on every walk. The arithmetic the sweep relies on, pinned: a batch of twenty live
-   * accounts fits thirteen, one of twenty deletions asks for none and stays within the
-   * fifty, and the accounts chosen move round the list as the hours pass.
+   * The expiry is two subrequests on top of a visit, and so is finishing a deleted
+   * account (a page of its prefix, listed and deleted), and a batch is sized against the
+   * Free plan's fifty: once every account is visited, what is left buys as many as fit,
+   * deleted accounts first, from a start that rotates with the hour so the same accounts
+   * are not put off on every walk. The arithmetic the sweep relies on, pinned: a batch of
+   * twenty live accounts fits thirteen expiries, one of twenty deletions finishes three
+   * and stays within the fifty, and the accounts chosen move round the list as the hours
+   * pass.
    */
-  it('budgets the expiry against the subrequests an invocation has, and rotates who gets it', () => {
+  it('budgets the R2 work against the subrequests an invocation has, and rotates who gets it', () => {
     const d1 = 4;
     const due = Array.from({ length: BATCH }, (_, i) => `a${i}`);
     // All twenty live and all with files due: twenty-four spent, thirteen fit.
-    const first = pickExpiries(due, d1 + BATCH, 0);
+    const first = pickAffordable(due, d1 + BATCH, 0, EXPIRY_COST);
     expect(first.length).toBe(13);
-    expect(d1 + BATCH + first.length * 2).toBeLessThanOrEqual(SUBREQUEST_BUDGET);
+    expect(d1 + BATCH + first.length * EXPIRY_COST).toBeLessThanOrEqual(SUBREQUEST_BUDGET);
     expect(first).toEqual(due.slice(0, 13));
     // The next hour starts one further on, and wraps: the seven put off come first.
-    expect(pickExpiries(due, d1 + BATCH, 1)).toEqual([...due.slice(1, 14)]);
-    expect(pickExpiries(due, d1 + BATCH, 13)).toEqual([...due.slice(13), ...due.slice(0, 6)]);
-    // A batch that was all deletions spends forty-four, within the fifty, and asks for
-    // nothing; if it did, three would fit.
+    expect(pickAffordable(due, d1 + BATCH, 1, EXPIRY_COST)).toEqual([...due.slice(1, 14)]);
+    expect(pickAffordable(due, d1 + BATCH, 13, EXPIRY_COST)).toEqual([...due.slice(13), ...due.slice(0, 6)]);
+    // A batch that is all deletions past their late writes spends forty-four on wipes and
+    // `usage`, within the fifty, and finishes three; a wiped store has no files due, so
+    // nothing is left for an expiry.
     expect(d1 + BATCH * 2).toBeLessThanOrEqual(SUBREQUEST_BUDGET);
-    expect(pickExpiries([], d1 + BATCH * 2, 5)).toEqual([]);
-    expect(pickExpiries(due, d1 + BATCH * 2, 5).length).toBe(3);
+    const finished = pickAffordable(due, d1 + BATCH * 2, 5, FINISH_COST);
+    expect(finished.length).toBe(3);
+    expect(d1 + BATCH * 2 + finished.length * FINISH_COST).toBeLessThanOrEqual(SUBREQUEST_BUDGET);
+    expect(pickAffordable([], d1 + BATCH * 2, 5, EXPIRY_COST)).toEqual([]);
     // Nothing left: nothing chosen, however many are due.
-    expect(pickExpiries(due, SUBREQUEST_BUDGET - 1, 0)).toEqual([]);
+    expect(pickAffordable(due, SUBREQUEST_BUDGET - 1, 0, EXPIRY_COST)).toEqual([]);
     // Fewer due than slots: all of them, whatever the hour.
-    expect(pickExpiries(['x', 'y'], d1 + BATCH, 7)).toEqual(['y', 'x']);
+    expect(pickAffordable(['x', 'y'], d1 + BATCH, 7, EXPIRY_COST)).toEqual(['y', 'x']);
+  });
+
+  /**
+   * A session open when its account was deleted keeps passing `requireAuth` on its cached
+   * cookie for a while, and can make a note and upload a file to it after the deletion
+   * swept the prefix — measured against `wrangler dev`, see `deleteAccount`. The note
+   * comes back in the store and the file under the prefix. While the late writes can
+   * still happen the row stays and only the store is wiped; once they are over the sweep
+   * deletes what the prefix holds, and the row goes only when that is nothing, so a file
+   * cannot be left with nothing to find it.
+   */
+  it("deletes a deleted account's late files before it drops the row, and not while it could still be written to", async () => {
+    const late = uid('late');
+    await directory(late, Date.now());
+    const s = stub(late);
+    const n = await s.create({ id: crypto.randomUUID(), title: 'After the deletion', body: '', tags: [] });
+    const key = (name: string) => `users/${late}/notes/${n.id}/files/${name}`;
+    for (const name of ['late.pdf', 'later.pdf']) {
+      await env.BLOBS.put(key(name), name);
+      await s.recordAttachment({ id: name, noteId: n.id, filename: name, contentType: 'application/pdf', size: 1, r2Key: key(name) });
+    }
+    // An account whose id the late one's is a prefix of, and which is alive: its file is
+    // under `users/<id>…/` too, and must not be taken for the deleted account's.
+    const neighbour = `${late}x`;
+    await user(neighbour);
+    await directory(neighbour);
+    const neighbourKey = `users/${neighbour}/notes/n/files/mine.pdf`;
+    await env.BLOBS.put(neighbourKey, 'mine');
+
+    // Inside the window: wiped, but the row and the files stay, since a session could
+    // still be writing under them.
+    let reports = await fullPass();
+    expect(reports.flatMap((r) => r.failed)).toEqual([]);
+    expect((await s.stats()).wiped).toBe(true);
+    expect(await row(late)).not.toBeNull();
+    expect(await env.BLOBS.head(key('late.pdf'))).not.toBeNull();
+
+    // The window closes.
+    await env.DB.prepare(`UPDATE account_directory SET deleted_at = ?2 WHERE user_id = ?1`).bind(late, Date.now() - LATE_WRITES_MS - 1).run();
+    reports = await fullPass();
+    expect(reports.flatMap((r) => r.failed)).toEqual([]);
+    expect(reports.reduce((n, r) => n + r.lateBlobsDeleted, 0)).toBeGreaterThanOrEqual(2);
+    expect(await env.BLOBS.head(key('late.pdf'))).toBeNull();
+    expect(await env.BLOBS.head(key('later.pdf'))).toBeNull();
+    expect(await row(late)).toBeNull();
+    expect(await env.BLOBS.head(neighbourKey)).not.toBeNull();
+    expect(await row(neighbour)).not.toBeNull();
   });
 
   it('counts one account\'s failure and carries on to the next', async () => {

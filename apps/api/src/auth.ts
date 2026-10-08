@@ -10,7 +10,7 @@ import { canSendEmail, sendEmail } from './lib/email.js';
 import { signInCodeEmail } from './lib/sign-in-code-email.js';
 import { deleteKeys } from './lib/blobs.js';
 import { ensureDirectoryRow } from './lib/directory.js';
-import { clearAccount, tombstoneAccount } from './lib/account-deletion.js';
+import { SESSION_CACHE_SECONDS, clearAccount, tombstoneAccount } from './lib/account-deletion.js';
 
 /**
  * Emails permitted to create an account, lowercased.
@@ -634,9 +634,10 @@ function createAuth(env: Env): AuthInstance {
        * the local database was always a full thirty days.
        *
        * Signed with the same secret, and a read-through cache only: revocation still
-       * takes effect within `maxAge`.
+       * takes effect within `maxAge`. Account deletion included, which is why the number
+       * lives beside `deleteAccount` and the sweep reads it too.
        */
-      cookieCache: { enabled: true, maxAge: 5 * 60 },
+      cookieCache: { enabled: true, maxAge: SESSION_CACHE_SECONDS },
     },
     /**
      * Count rate limits in D1 rather than in memory.

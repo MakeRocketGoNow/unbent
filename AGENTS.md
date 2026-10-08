@@ -768,8 +768,10 @@ Things about working on the store that are easy to get wrong:
   a random name per test. Never name an object in a test.
 - **The directory is the only thing that can turn a wipe on.** The sweep wipes an object
   only for a tombstoned directory row or one whose `user` row is gone; a missing row never
-  wipes anything, and a row is dropped only once the user row is gone too. Keep it that
-  way.
+  wipes anything, and a row is dropped only once the user row is gone too, its late writes
+  are over (`LATE_WRITES_MS`: a session open at the deletion writes on its cached cookie
+  for a while after it) and nothing is left under its prefix in R2. Keep it that way: the
+  row is the only thing that names a deleted account's prefix.
 - **Subrequests are the budget inside one invocation.** Fifty on Free, and every D1 query
   and every store call counts. The sweep walks twenty accounts a run at two store calls
   each; a dump is one store call per eight-megabyte slice (`dumpSlice`), so one for a
@@ -806,7 +808,9 @@ Things about working on the store that are easy to get wrong:
   — five more than a restore can reach, so a store wound back finds its files. The keys
   the purge methods return are for the count, not for the caller to delete; a route that
   called `BLOBS.delete` on them would take the thirty-five days back. Account deletion
-  is the one path that deletes objects at once, by prefix. A new way to delete a row has
+  is the one path that deletes objects by prefix: at once, and again from the sweep
+  before the account's row is dropped, for files a still-open session uploaded after the
+  deletion. A new way to delete a row has
   to tombstone; a new way to record one has to `revive` its key, as `record` does, since
   a replayed upload can bring a tombstoned key back as a live file.
 
