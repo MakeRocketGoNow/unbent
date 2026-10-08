@@ -810,7 +810,9 @@ export class UserStore extends DurableObject<StoreEnv> {
    * account carried `CREATE TABLE _cf_KV`, which the object it was loaded into already
    * had, and the load died on its first statement (MAK-197, found in the restore
    * rehearsal: the day's dump of an account that had been loaded once could not be
-   * loaded). Its rows are never dumped; `DUMP_TABLES` names what is.
+   * loaded). `tbl_name` is checked too, so an index or trigger the runtime might one day
+   * put on its table under an ordinary name goes with it. Its rows are never dumped;
+   * `DUMP_TABLES` names what is.
    */
   schemaSql(): string[] {
     this.ready();
@@ -819,7 +821,7 @@ export class UserStore extends DurableObject<StoreEnv> {
         `SELECT sql FROM sqlite_master
           WHERE sql IS NOT NULL
             AND NOT (type = 'table' AND name GLOB '*_fts_*')
-            AND name NOT GLOB 'sqlite_*' AND name NOT GLOB '_cf_*'
+            AND name NOT GLOB 'sqlite_*' AND name NOT GLOB '_cf_*' AND tbl_name NOT GLOB '_cf_*'
           ORDER BY rowid`,
       )
       .map((r) => r.sql);
