@@ -78,6 +78,22 @@ function sameTagSet(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((tag) => b.includes(tag));
 }
 
+/**
+ * Tags the open draft should hold after a save of it comes back, while typing is still
+ * in flight.
+ *
+ * The answer is the note as the server has it, and becomes the next save's base. When
+ * the person has not touched tags, that answer is the tags to show — a merge can add
+ * the surviving name on the server while the local copy had dropped it (the tag row
+ * gone, the note row not yet on this device). Leaving the draft as it was, and taking
+ * the answer as the base, made the next keystroke send the short set and take the tag
+ * off the server. When they have edited tags, the draft's set is the one that must
+ * go, as it is for a title.
+ */
+export function tagsAfterAck(draftTags: string[], baseTags: string[], serverTags: string[]): string[] {
+  return sameTagSet(draftTags, baseTags) ? serverTags : draftTags;
+}
+
 function sameOrBothEmpty(a: FieldValue | null, b: FieldValue | null): boolean {
   if (a === null || b === null) return a === b;
   return sameFieldValue(a, b);

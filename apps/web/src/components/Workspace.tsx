@@ -19,6 +19,7 @@ import {
   holdsTheirChanges,
   rememberFieldDefs,
   seedFrom,
+  tagsAfterAck,
   unstoreableFieldIds,
   type NoteDraft,
 } from '../note-patch.js';
@@ -422,14 +423,29 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
      The server's copy after a save of this note went through: the base the next save is
      made against. Reseeded only when nothing has been typed since and the copy differs
      from the draft — the server normalised something — so typing is never disturbed.
+     While typing is still in flight the body stays, but tags the person has not edited
+     take the answer's (`tagsAfterAck`): a merge can land a name the local copy had
+     dropped, and leaving the short set against that base would send it next.
   */
   useEffect(() => {
     if (!outbox) return;
     return outbox.onAcknowledged((id, updated) => {
-      setBase(id, updated);
-      if (id !== noteId) return;
+      if (id !== noteId) {
+        setBase(id, updated);
+        return;
+      }
       const clean = isClean();
-      if (clean && JSON.stringify(seedFrom(updated)) !== JSON.stringify(draftRef.current)) reseed(updated);
+      if (clean) {
+        setBase(id, updated);
+        if (JSON.stringify(seedFrom(updated)) !== JSON.stringify(draftRef.current)) reseed(updated);
+        return;
+      }
+      const prev = bases.current.get(id);
+      const tags = prev ? tagsAfterAck(draftRef.current.tags, prev.tags, updated.tags) : updated.tags;
+      setBase(id, updated);
+      if (JSON.stringify(tags) !== JSON.stringify(draftRef.current.tags)) {
+        setDraft((d) => ({ ...d, tags }));
+      }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [outbox, noteId]);

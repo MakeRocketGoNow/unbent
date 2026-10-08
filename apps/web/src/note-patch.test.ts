@@ -4,6 +4,7 @@ import {
   buildNotePatch,
   holdsTheirChanges,
   rememberFieldDefs,
+  tagsAfterAck,
   unstoreableFieldIds,
   type NoteDraft,
 } from './note-patch.js';
@@ -398,5 +399,17 @@ describe('holdsTheirChanges', () => {
   it('says yes when nothing the draft can see has changed at all', () => {
     // The date moved for something the draft does not hold — an attachment, say.
     expect(holdsTheirChanges(draftOf({ body: 'Body, edited' }), base, { ...base })).toBe(true);
+  });
+});
+
+describe('tagsAfterAck', () => {
+  it('takes the server\'s tags when the person has not edited them', () => {
+    expect(tagsAfterAck(['garden'], ['garden'], ['garden', 'receipts'])).toEqual(['garden', 'receipts']);
+    expect(tagsAfterAck(['b', 'a'], ['a', 'b'], ['a', 'b', 'c'])).toEqual(['a', 'b', 'c']);
+  });
+
+  it('keeps the draft\'s tags when the person has added or removed one', () => {
+    expect(tagsAfterAck(['garden', 'tax'], ['garden'], ['garden', 'receipts'])).toEqual(['garden', 'tax']);
+    expect(tagsAfterAck([], ['garden'], ['garden', 'receipts'])).toEqual([]);
   });
 });
