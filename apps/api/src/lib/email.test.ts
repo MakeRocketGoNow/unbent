@@ -68,6 +68,19 @@ describe('sendEmail', () => {
     expect('reply_to' in body()).toBe(false);
   });
 
+  /** The HTML part rides beside the text, never in place of it. */
+  it('carries an HTML part beside the text when there is one', async () => {
+    const body = captureRequest();
+    await sendEmail(configured, { ...message, html: '<p>Body</p>' });
+    expect(body()).toMatchObject({ text: 'Body', html: '<p>Body</p>' });
+  });
+
+  it('sends text alone when there is no HTML part', async () => {
+    const body = captureRequest();
+    await sendEmail(configured, message);
+    expect('html' in body()).toBe(false);
+  });
+
   /**
    * The local path. Without a key the code or link is printed instead of sent, which is
    * what makes the flows testable offline — and what must never be reached deployed.
