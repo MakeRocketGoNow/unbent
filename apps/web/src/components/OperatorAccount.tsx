@@ -497,7 +497,7 @@ function WindBack({ userId, email, onChanged }: { userId: string; email: string;
             <>
               Every note, file record and revision written after that moment is lost. The store now holds{' '}
               {describeCounts(step.preview.current)}; what it held at that moment is what it will hold after. Every device of the
-              account resyncs from a snapshot. Undo is offered in the history below for the {RESTORE_WINDOW_DAYS} days its bookmark lasts, until something
+              account resyncs from a snapshot. Undo is offered under Restores and loads below for the {RESTORE_WINDOW_DAYS} days its bookmark lasts, until something
               else changes the store.
             </>
           }
@@ -631,7 +631,9 @@ function RestoreHistory({ userId, email, onChanged }: { userId: string; email: s
 
   return (
     <section className="settings-section">
-      <h3>History</h3>
+      {/* Not "History": the section above means the platform's thirty days of it, and
+          a note's History sheet is another thing again. This is a log of what operators did. */}
+      <h3>Restores and loads</h3>
       <p className="muted small">
         Every wind-back, undo and load of this store, newest first, and who asked for it. Only the newest can be undone here: an older
         one&apos;s bookmark is from before everything above it, so to go further back, wind back to a moment.
@@ -891,7 +893,7 @@ function LoadDump({ userId, email, onChanged }: { userId: string; email: string;
               offered only when that row was not written. */}
           {outcome.result.undo ? (
             outcome.result.recorded ? (
-              <p className="muted small">Undo is on its row in the history above.</p>
+              <p className="muted small">Undo is on its row under Restores and loads, above.</p>
             ) : (
               <>
                 <p className="muted small">The history could not record this load, so its undo is offered here instead.</p>

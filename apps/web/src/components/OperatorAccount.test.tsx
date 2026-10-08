@@ -406,7 +406,7 @@ describe('OperatorAccount: load a dump', () => {
     const result = screen.getByText(/Loaded 2026-10-05.sql/);
     expect(result.textContent).toContain('The store now holds 11 notes, 4 files and 40 revisions');
     expect(result.textContent).toContain('The store as it stood is 2026-10-06T12-00-00Z-before-load.sql, in the list above.');
-    expect(screen.getByText('Undo is on its row in the history above.')).toBeTruthy();
+    expect(screen.getByText('Undo is on its row under Restores and loads, above.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Undo the load' })).toBeNull();
 
     await waitFor(() => expect(screen.getByText('Loaded 2026-10-05.sql')).toBeTruthy());
