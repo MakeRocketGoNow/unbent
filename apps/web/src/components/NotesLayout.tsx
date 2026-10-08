@@ -1217,7 +1217,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                 note={n}
                 to="/notes/$noteId"
                 sort={sort ?? DEFAULT_NOTE_SORT}
-                transition={isMobile}
+                replacedByNote={isMobile}
                 selection={{
                   selected: selection.has(n.id),
                   active: selection.active,

@@ -8606,26 +8606,6 @@ button.settings-nav-item {
   .notes.note-open > .sidebar { display: none; }
   .notes:not(.note-open) > .workspace { display: none; }
 
-  /*
-     Opening a note grows the tapped entry into it.
-
-     Keep's container transform, on the platform's View Transitions: the entry that was
-     tapped (marked by `NoteListItem` in the click, since the URL does not yet say which)
-     and the open note share one `view-transition-name`, so when the grid swaps the list
-     for the note the browser morphs the entry's box into the note's. Back does the same
-     in reverse — the mark stays on the entry while the note is open, so the note has a
-     row to shrink into. Below the breakpoint only: on a desktop the list and the note are
-     both on screen, and two elements with one name would make the browser skip the whole
-     thing, correctly, since there is nothing to morph.
-
-     The editor is not remounted by any of this. A view transition is snapshots of the
-     old and new page painted over the real one for 300ms; CodeMirror keeps its cursor,
-     scroll and undo history underneath. The motion itself is in the block below the
-     breakpoint rules, with the timing.
-  */
-  .note-item[data-opening] { view-transition-name: note; }
-  .notes.note-open > .workspace { view-transition-name: note; }
-
   .view-back { display: inline-flex; }
 
   /* Where the arrow is the only way out of a failed note — see `.workspace-error-head`. */
@@ -9060,72 +9040,80 @@ button.settings-nav-item {
 }
 
 /* ---------------------------------------------------------------------------------
-   The note's view transition: how the morph moves. Names are given above, under the
-   phone breakpoint; nothing here fires unless something carries the name.
+   Opening and closing a note on a phone: the slide. Which navigations run it, and which
+   way, is decided in `note-nav.ts`; this is only how it moves.
    --------------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: no-preference) {
   /*
-     Only the note moves. Without this the root crossfades as well, which on a phone is
-     the whole screen fading behind the box that is already growing across it — two
-     animations telling one story.
+     The whole page moves, as a phone's navigation does: the note slides in from the right
+     edge over the list, and the list drifts a third of the way left and dims a little
+     under it, so the two read as one page laid over another rather than a carousel. Back
+     is the same reversed, with the note on top on its way off.
+
+     iOS's navigation curve, a fast start that settles with no overshoot, at 350ms in and
+     300ms out, since leaving should be quicker than arriving. The snapshots are opaque, so
+     the default `plus-lighter` blend, which exists for a crossfade, is undone: where the
+     two overlap it would add them and flash the seam bright.
+
+     The page on top carries a soft shadow along its leading edge, which is what makes it
+     read as lying over the list rather than butting against it; the list's dimming is the
+     same depth seen from underneath.
+
+     The editor is not remounted by any of this. A view transition is snapshots of the old
+     and new page painted over the real one while it runs; CodeMirror keeps its cursor,
+     scroll and undo history underneath.
   */
-  ::view-transition-old(root),
-  ::view-transition-new(root) {
-    animation: none;
+  html:active-view-transition-type(note-open, note-close)::view-transition-old(root),
+  html:active-view-transition-type(note-open, note-close)::view-transition-new(root) {
+    mix-blend-mode: normal;
+    animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+    animation-fill-mode: both;
   }
 
-  /*
-     The box: 300ms in on Material's emphasized-decelerate, a fast start that settles
-     slowly so the note is readable long before it stops; 220ms out on the mirror, since
-     leaving should be quicker than arriving. The same pair the drawer uses.
-  */
-  ::view-transition-group(note) {
+  html:active-view-transition-type(note-open)::view-transition-old(root) {
+    animation-name: note-slide-under;
+    animation-duration: 0.35s;
+  }
+
+  html:active-view-transition-type(note-open)::view-transition-new(root),
+  html:active-view-transition-type(note-close)::view-transition-old(root) {
+    box-shadow: -0.25rem 0 1.5rem rgb(0 0 0 / 0.16);
+  }
+
+  html:active-view-transition-type(note-open)::view-transition-new(root) {
+    animation-name: note-slide-in;
+    animation-duration: 0.35s;
+  }
+
+  html:active-view-transition-type(note-close)::view-transition-old(root) {
+    animation-name: note-slide-out;
     animation-duration: 0.3s;
-    animation-timing-function: cubic-bezier(0.05, 0.7, 0.1, 1);
+    z-index: 1;
   }
 
-  html:active-view-transition-type(note-close)::view-transition-group(note) {
-    animation-duration: 0.22s;
-    animation-timing-function: cubic-bezier(0.3, 0, 0.8, 0.15);
-  }
-
-  /*
-     What is painted inside the box. The old and new snapshots would crossfade for the
-     whole 300ms by default, so mid-way the row and the note are both half-visible in a
-     box that fits neither. A quick fade out of the old and a fade in of the new, one
-     after the other, keeps the box carrying one picture at a time. The snapshots are
-     sized to the box's width rather than stretched, so the row's text does not smear
-     into the note's.
-  */
-  ::view-transition-old(note) {
-    animation: 0.1s ease both vt-fade-out;
-    object-fit: none;
-    object-position: top left;
-  }
-
-  ::view-transition-new(note) {
-    animation: 0.2s 0.08s ease both vt-fade-in;
-    object-fit: none;
-    object-position: top left;
-  }
-
-  ::view-transition-image-pair(note) {
-    isolation: auto;
-    overflow: clip;
+  html:active-view-transition-type(note-close)::view-transition-new(root) {
+    animation-name: note-slide-back;
+    animation-duration: 0.3s;
   }
 }
 
-@keyframes vt-fade-out {
-  from { opacity: 1; }
-  to { opacity: 0; }
+@keyframes note-slide-in {
+  from { translate: 100% 0; }
 }
 
-@keyframes vt-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+@keyframes note-slide-out {
+  to { translate: 100% 0; }
 }
 
-/* With reduced motion asked for, the page changes and nothing morphs — the transition
+@keyframes note-slide-under {
+  to { translate: -30% 0; filter: brightness(0.9); }
+}
+
+@keyframes note-slide-back {
+  from { translate: -30% 0; filter: brightness(0.9); }
+}
+
+/* With reduced motion asked for, the page changes and nothing slides — the transition
    still runs, since the router starts it, but every part of it is instant. */
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-group(*),
