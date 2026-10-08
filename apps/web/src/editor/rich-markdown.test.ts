@@ -1132,6 +1132,73 @@ describe('inline images', () => {
  * What the viewer pages through: every attachment the editor would draw, in the order
  * the note has them, whether or not its line is anywhere near the viewport.
  */
+/**
+ * Down from the end of a note that ends in a picture opens a line under it — the only way
+ * to get the caret below an image or a PDF that is the last thing in a note.
+ */
+describe('a line below a closing picture', () => {
+  beforeEach(() => resetFailedImages());
+
+  const down = (v: EditorView) =>
+    v.contentDOM.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+
+  it('opens a line below an image that ends the note', () => {
+    const doc = '![photo.png](files/photo.png)';
+    const v = mountWithAttachments(doc, doc.length);
+    down(v);
+    expect(v.state.doc.toString()).toBe(`${doc}\n`);
+    expect(v.state.selection.main.head).toBe(doc.length + 1);
+  });
+
+  it('opens a line below an image with no alt, which the picture replaces', () => {
+    const doc = 'intro\n![](files/photo.png)';
+    const v = mountWithAttachments(doc, doc.length, [], false);
+    v.dispatch({ selection: EditorSelection.cursor(doc.length) });
+    down(v);
+    expect(v.state.doc.toString()).toBe(`${doc}\n`);
+  });
+
+  it('opens a line below a PDF that ends the note', () => {
+    const doc = '[scan.pdf](files/scan.pdf)';
+    const v = mountWithAttachments(doc, doc.length, ['scan.pdf']);
+    down(v);
+    expect(v.state.doc.toString()).toBe(`${doc}\n`);
+  });
+
+  /** Its end is its bottom; Down there is the editor's own, and changes nothing. */
+  it('leaves a note ending in text alone', () => {
+    const doc = '![photo.png](files/photo.png)\nand a caption';
+    const v = mountWithAttachments(doc, doc.length);
+    down(v);
+    expect(v.state.doc.toString()).toBe(doc);
+  });
+
+  it('leaves the note alone when the caret is not at its end', () => {
+    const doc = '![photo.png](files/photo.png)';
+    const v = mountWithAttachments(doc, 3);
+    down(v);
+    expect(v.state.doc.toString()).toBe(doc);
+  });
+
+  /** A broken image draws no picture and shows its source, so there is nothing to get below. */
+  it('leaves the note alone when the image failed to load', () => {
+    const doc = '![photo.png](files/photo.png)';
+    const v = mountWithAttachments(doc, doc.length);
+    v.dom.querySelector<HTMLImageElement>('.cm-md-image img')?.dispatchEvent(new Event('error'));
+    expect(v.dom.querySelector('.cm-md-image img')).toBeNull();
+    down(v);
+    expect(v.state.doc.toString()).toBe(doc);
+  });
+
+  it('puts the caret on the new line, so typing lands below the picture', () => {
+    const doc = '![photo.png](files/photo.png)';
+    const v = mountWithAttachments(doc, doc.length);
+    down(v);
+    v.dispatch(v.state.replaceSelection('below'));
+    expect(v.state.doc.toString()).toBe(`${doc}\nbelow`);
+  });
+});
+
 describe('attachment set', () => {
   const options = {
     resolveAttachment: (name: string) => `/api/notes/n1/files/${name}`,

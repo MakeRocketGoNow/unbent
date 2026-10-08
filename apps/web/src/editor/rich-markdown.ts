@@ -3,6 +3,7 @@ import {
   type EditorState,
   type Extension,
   type Range,
+  Prec,
   RangeSetBuilder,
   StateEffect,
 } from '@codemirror/state';
@@ -10,6 +11,7 @@ import {
   Decoration,
   type DecorationSet,
   EditorView,
+  keymap,
   ViewPlugin,
   type ViewUpdate,
   WidgetType,
@@ -2139,52 +2141,113 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
   return builder.finish();
 }
 
+/**
+ * Whether the note ends in something drawn below the caret: an image or a PDF whose widget
+ * sits at the very end of the document.
+ *
+ * Read from the decorations the view is actually drawing rather than from the syntax tree,
+ * so it agrees with what is on screen — an image that failed to load draws no widget, its
+ * source is back in view, and there is nothing to get below.
+ */
+function endsInPicture(view: EditorView, decorations: DecorationSet): boolean {
+  const end = view.state.doc.length;
+  let found = false;
+  decorations.between(end, end, (_from, to, value) => {
+    const widget = value.spec.widget as WidgetType | undefined;
+    if (to === end && (widget instanceof ImageWidget || widget instanceof PdfWidget)) {
+      found = true;
+      return false;
+    }
+    return undefined;
+  });
+  return found;
+}
+
+/**
+ * Down from the end of a note that ends in a picture opens a line below it.
+ *
+ * The picture is a widget at the end of its markdown, so the last position in the document
+ * is the end of that markdown — above the picture as drawn. With nothing after it there was
+ * no position below the picture at all: Down did nothing, and the only way to write under
+ * an image was to know that Enter at the end of its hidden source would do it. Every rich
+ * editor people know lets the caret through the bottom of a picture, and this is that.
+ *
+ * Only at the very end and only past a picture, rather than keeping a blank line at the end
+ * of every note. A trailing line added on open would be a save no one made — a new revision,
+ * a new `updatedAt`, and a write racing another device's for a note nobody touched. Opened
+ * here, the line is an edit the person asked for with a key, and ⌘Z takes it back. A note
+ * ending in text needs none of this: its end is its bottom, and Enter is where it looks.
+ */
+function openLineBelowPicture(plugin: ViewPlugin<{ decorations: DecorationSet }>) {
+  return (view: EditorView): boolean => {
+    const { state } = view;
+    const end = state.doc.length;
+    const { main } = state.selection;
+    if (state.readOnly || state.selection.ranges.length > 1 || !main.empty || main.head !== end) {
+      return false;
+    }
+    const decorations = view.plugin(plugin)?.decorations;
+    if (!decorations || !endsInPicture(view, decorations)) return false;
+    view.dispatch({
+      changes: { from: end, insert: '\n' },
+      selection: { anchor: end + 1 },
+      scrollIntoView: true,
+      userEvent: 'input',
+    });
+    return true;
+  };
+}
+
 export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
+  const decorationsPlugin = ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet;
+
+      constructor(view: EditorView) {
+        this.decorations = buildDecorations(view, options);
+      }
+
+      update(update: ViewUpdate) {
+        // Selection changes matter as much as edits: they reveal and hide syntax. Focus
+        // matters for the same reason — a reveal only happens in a focused editor (see
+        // `reveals`), so gaining or losing focus changes what is shown even with the
+        // selection unmoved. The effects cover the inputs that change without a transaction
+        // of their own — the attachment list arriving after the view was built, and an
+        // image failing to load.
+        const repaint = update.transactions.some((tr) =>
+          tr.effects.some((e) => e.is(pdfNamesChanged) || e.is(imageFailed)),
+        );
+        /*
+           The parse finishing is a repaint too. CodeMirror parses only for twenty
+           milliseconds when a state is created and does the rest in idle time, and that
+           rest arrives as a transaction that changes neither the document nor the
+           selection. On a desktop a note parses inside the budget and this never
+           matters; on a phone the parser's first run can overshoot it, and then the view
+           was built from an empty tree and drew the note as bare markdown — images and
+           PDFs as their brackets — until something else happened to repaint. Seen on
+           the Android emulator, where the first tap into the note was what finally drew
+           it. Comparing the trees is the documented way to notice the parse landing.
+        */
+        const parsed = syntaxTree(update.startState) !== syntaxTree(update.state);
+        if (
+          update.docChanged ||
+          update.viewportChanged ||
+          update.selectionSet ||
+          update.focusChanged ||
+          parsed ||
+          repaint
+        ) {
+          this.decorations = buildDecorations(update.view, options);
+        }
+      }
+    },
+    { decorations: (v) => v.decorations },
+  );
   return [
-    ViewPlugin.fromClass(
-      class {
-        decorations: DecorationSet;
+    decorationsPlugin,
 
-        constructor(view: EditorView) {
-          this.decorations = buildDecorations(view, options);
-        }
-
-        update(update: ViewUpdate) {
-          // Selection changes matter as much as edits: they reveal and hide syntax. Focus
-          // matters for the same reason — a reveal only happens in a focused editor (see
-          // `reveals`), so gaining or losing focus changes what is shown even with the
-          // selection unmoved. The effects cover the inputs that change without a transaction
-          // of their own — the attachment list arriving after the view was built, and an
-          // image failing to load.
-          const repaint = update.transactions.some((tr) =>
-            tr.effects.some((e) => e.is(pdfNamesChanged) || e.is(imageFailed)),
-          );
-          /*
-             The parse finishing is a repaint too. CodeMirror parses only for twenty
-             milliseconds when a state is created and does the rest in idle time, and that
-             rest arrives as a transaction that changes neither the document nor the
-             selection. On a desktop a note parses inside the budget and this never
-             matters; on a phone the parser's first run can overshoot it, and then the view
-             was built from an empty tree and drew the note as bare markdown — images and
-             PDFs as their brackets — until something else happened to repaint. Seen on
-             the Android emulator, where the first tap into the note was what finally drew
-             it. Comparing the trees is the documented way to notice the parse landing.
-          */
-          const parsed = syntaxTree(update.startState) !== syntaxTree(update.state);
-          if (
-            update.docChanged ||
-            update.viewportChanged ||
-            update.selectionSet ||
-            update.focusChanged ||
-            parsed ||
-            repaint
-          ) {
-            this.decorations = buildDecorations(update.view, options);
-          }
-        }
-      },
-      { decorations: (v) => v.decorations },
-    ),
+    // Ahead of the default keymap, whose Down at the last line would move nowhere.
+    Prec.high(keymap.of([{ key: 'ArrowDown', run: openLineBelowPicture(decorationsPlugin) }])),
 
     /**
      * Following a link — see `linkClickOpener` for which clicks do.
