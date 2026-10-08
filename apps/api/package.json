@@ -33,13 +33,13 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20261001.1",
+    "@cloudflare/workers-types": "^5.20261008.1",
     "@types/node": "^26.6.3",
     "@zip.js/zip.js": "^2.22.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3",
-    "wrangler": "^4.145.0"
+    "wrangler": "^4.149.0"
   },
   "exports": {
     ".": "./src/index.ts",
