@@ -187,4 +187,23 @@ describe('EditorToolbar hide keyboard', () => {
     expect(hide()).toBeNull();
     view.destroy();
   });
+
+  // iOS gives focus back to the editor when the picker closes, with no keyboard to hide.
+  it('leaves the editor unfocused after Attach on a phone, so there is nothing to hide', () => {
+    const view = new EditorView({
+      state: EditorState.create({ doc: 'body', extensions: [attachments({ upload: async () => 'files/x' })] }),
+      parent: document.body,
+    });
+    render(<EditorToolbar view={view} docked noteView={{ current: 'rich', onChange: () => {} }} />);
+    const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
+    act(() => view.focus());
+
+    fireEvent.click(screen.getByLabelText('Attach file'));
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(view.hasFocus).toBe(false);
+    expect(hide()).toBeNull();
+
+    click.mockRestore();
+    view.destroy();
+  });
 });

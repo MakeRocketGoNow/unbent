@@ -246,6 +246,12 @@ function TableButton({ view, disabled = false }: { view: EditorView | null; disa
  * phone, where refocusing raises the keyboard over the note the user is looking at;
  * undocked means a desktop, where "formatting should never cost the user their place"
  * applies to attaching too.
+ *
+ * Docked, the editor gives up its focus before the picker opens, not only after. iOS
+ * hands focus back to whatever had it when the picker closes, and raises no keyboard for
+ * it: an editor holding a focus with no keyboard under it, which the hide-keyboard
+ * button then offered to put away. The picker takes the keyboard down regardless, and
+ * the selection the file lands at is the editor's own, which a blur leaves where it is.
  */
 function AttachButton({
   view,
@@ -270,7 +276,10 @@ function AttachButton({
         aria-label="Attach file"
         disabled={disabled || !canUpload}
         onMouseDown={(e) => e.preventDefault()}
-        onClick={() => input.current?.click()}
+        onClick={() => {
+          if (docked) view?.contentDOM.blur();
+          input.current?.click();
+        }}
       >
         {AttachIcon}
       </button>
