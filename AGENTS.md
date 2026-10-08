@@ -812,9 +812,9 @@ Things about working on the store that are easy to get wrong:
   called `BLOBS.delete` on them would take the thirty-five days back. Account deletion
   is the one path that deletes objects by prefix: at once, and again from the sweep
   before the account's row is dropped, for files a still-open session uploaded after the
-  deletion. A new way to delete a row has
-  to tombstone; a new way to record one has to `revive` its key, as `record` does, since
-  a replayed upload can bring a tombstoned key back as a live file.
+  deletion. A new way to delete a row has to tombstone; a new way to record one has to
+  `revive` its key, as `record` does, since a replayed upload can bring a tombstoned key
+  back as a live file.
 
 - **A store is whole, wiped or loading, and answers only when whole.** `POST
   /api/admin/store/load` empties an object and fills it from a dump in pages, with a
