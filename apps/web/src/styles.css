@@ -2846,6 +2846,11 @@ select.note-field-input {
    text put the word on the column's edge and the box a padding's width left of it, so
    choosing a value jumped both to the right as the chip took over. With the chip's
    geometry in both states, a choice changes the colour and nothing else moves.
+
+   The box is drawn, faintly. Without it the word sat a padding's width inside the column
+   for no reason anyone could see, a step right of every text value's "Empty" above and
+   below it; a wash shows the slot the word is in. It is a third of the neutral chip's
+   wash — the notebook picker's — so it never reads as an option called "Empty".
 */
 select.note-field-input:not([data-filled]) {
   min-height: 1.75rem;
@@ -2853,6 +2858,11 @@ select.note-field-input:not([data-filled]) {
   margin-left: 0;
   font-size: 0.85rem;
   color: var(--muted);
+  background: color-mix(in srgb, var(--fg) calc(var(--tint-wash) / 3), transparent);
+}
+
+select.note-field-input:not([data-filled]):hover:not(:disabled) {
+  background: color-mix(in srgb, var(--fg) calc(var(--tint-wash) / 3 + 5%), transparent);
 }
 
 select.note-field-input[data-filled] {
