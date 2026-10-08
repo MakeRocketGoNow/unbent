@@ -374,7 +374,7 @@ export const admin = new Hono<AppEnv>()
         return c.json({ error: 'The restore history could not be written, so nothing was restored. The Worker log has the error; try again.' }, 503);
       }
       if (recordId === null) {
-        return c.json({ error: 'Something else was restored or loaded since this page read the history, so nothing was restored. Read the history again before undoing.' }, 409);
+        return c.json({ error: 'Something else was restored or loaded since the history was read, so nothing was restored. The history now lists it; undo from its newest row.' }, 409);
       }
       let undo: string | null;
       try {
