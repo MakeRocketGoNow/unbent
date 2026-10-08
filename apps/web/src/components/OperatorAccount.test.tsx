@@ -294,6 +294,9 @@ describe('OperatorAccount: wind back', () => {
  * with who asked, and an Undo on the newest row alone — an older row's bookmark is from
  * before every row above it.
  */
+/** The section's rows, found by its heading. */
+const historyRows = () => within(screen.getByRole('heading', { name: 'Restores and loads' }).closest('section')!).queryAllByRole('listitem');
+
 describe('OperatorAccount: history', () => {
   it('lists each restore with who asked, names what an undo undid, and offers Undo on the newest alone', async () => {
     harness(undefined, undefined, undefined, [
@@ -303,7 +306,7 @@ describe('OperatorAccount: history', () => {
       restoreRow({ id: 1, toAt: now - 86_400_000, operator: null }),
     ]);
     await waitFor(() => expect(screen.getByText('Loaded 2026-10-05.sql')).toBeTruthy());
-    const rows = [...document.querySelectorAll('.restore-list > li')].map((li) => li.textContent);
+    const rows = historyRows().map((li) => li.textContent);
     expect(rows).toHaveLength(4);
     expect(rows[0]).toContain('by operator@example.com');
     expect(rows[1]).toContain(`Undid the wind-back to ${formatMoment(now - 7_200_000)}`);
@@ -336,9 +339,9 @@ describe('OperatorAccount: history', () => {
     ];
     for (const [, rows, says] of cases) {
       harness(undefined, undefined, undefined, rows);
-      await waitFor(() => expect(document.querySelectorAll('.restore-list > li')).toHaveLength(rows.length));
+      await waitFor(() => expect(historyRows()).toHaveLength(rows.length));
       expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
-      if (says) expect(document.querySelector('.restore-list')!.textContent).toMatch(says);
+      if (says) expect(historyRows().map((li) => li.textContent).join(' ')).toMatch(says);
       cleanup();
     }
   });

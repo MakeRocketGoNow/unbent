@@ -664,7 +664,7 @@ function RestoreHistory({ userId, email, onChanged }: { userId: string; email: s
       ) : rows.length === 0 ? (
         <p className="muted small">Nothing has been wound back or loaded.</p>
       ) : (
-        <ul className="dump-list restore-list">
+        <ul className="dump-list">
           {rows.map((row) => {
             const when = row.appliedAt ?? row.startedAt;
             const isOffered = offered?.id === row.id;
