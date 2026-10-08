@@ -1874,8 +1874,8 @@ export class NotesStore {
      * the OCR text those files already contained; a match there surfaces the note and
      * names the file it came from. note_fields_fts carries custom field values — a vendor,
      * a policy number — which are in neither the body nor the file; a match there names
-     * the field. tags_fts carries tag names, so a note filed under "Alfa Romeo Stelvio"
-     * is found by "stelvio" even when the word appears nowhere in it — which is how an
+     * the field. tags_fts carries tag names, so a note filed under "Acme Roadster 9000"
+     * is found by "roadster" even when the word appears nowhere in it — which is how an
      * archive filed by tag is actually looked up, and what Evernote does; a match there
      * names the tag.
      *

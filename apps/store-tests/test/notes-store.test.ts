@@ -399,7 +399,7 @@ describe('notes: search', () => {
     const nb = (await stub.createNotebook('Receipts'))!;
     const vendor = (await stub.createField(nb.id, { name: 'Vendor', type: 'text', options: [] })) as { id: string };
     const inBody = await stub.create(note({ title: 'Lunch', body: 'coffee with the accountant', notebook: 'Receipts' }));
-    const inTag = await stub.create(note({ title: 'Car', body: 'nothing', tags: ['Alfa Romeo Stelvio'] }));
+    const inTag = await stub.create(note({ title: 'Car', body: 'nothing', tags: ['Acme Roadster 9000'] }));
     const inField = await stub.create(note({ title: 'Bill', body: 'nothing', notebook: 'Receipts', fields: { [vendor.id]: 'Acme Coffee Roasters' } }));
     const inFile = await stub.create(note({ title: 'Scan', body: 'nothing' }));
     await stub.recordAttachment({ id: 'a1', noteId: inFile.id, filename: 'scan.pdf', contentType: 'application/pdf', size: 1, r2Key: 'k1' });
@@ -412,7 +412,7 @@ describe('notes: search', () => {
       [inFile.id, 'scan.pdf'],
     ]);
     expect(coffee[0]!.snippet).toContain('<<coffee>>');
-    expect(await stub.search('stelvio', 20)).toEqual([expect.objectContaining({ id: inTag.id, matchedTag: 'Alfa Romeo Stelvio' })]);
+    expect(await stub.search('roadster', 20)).toEqual([expect.objectContaining({ id: inTag.id, matchedTag: 'Acme Roadster 9000' })]);
     // Porter stemming: "running" finds "run".
     await stub.update(inTag.id, { body: 'running late' });
     expect((await stub.search('run', 20)).map((r) => r.id)).toEqual([inTag.id]);

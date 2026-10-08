@@ -2,7 +2,7 @@
 --
 -- A note's tags are the one thing about it that search could not see: the index covers
 -- the title and body (0005), attachment text (0006) and custom field values (0015), and a
--- note whose only mention of "Stelvio" is a tag called Alfa Romeo Stelvio matched nothing.
+-- note whose only mention of "Roadster" is a tag called Acme Roadster 9000 matched nothing.
 -- Evernote finds that note, and people who filed an archive by tag expect to. So the
 -- names get an index of their own, in the shape of the other three: external content,
 -- pointing at the rows in tags rather than copying them.
