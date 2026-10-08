@@ -133,6 +133,7 @@ describe('Login', () => {
   it('has a sentence for each code it knows, and names the ones it does not', () => {
     expect(refusalMessage('SIGNUPS_CLOSED')).toBe('This Unbent instance is not open for sign-ups.');
     expect(refusalMessage('access_denied')).toBe('Sign-in was cancelled before it finished.');
+    expect(refusalMessage('account_not_linked')).toMatch(/^An account with this email already exists/);
     expect(refusalMessage('state_mismatch')).toBe('Sign-in did not complete (state_mismatch).');
   });
 

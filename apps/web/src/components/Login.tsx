@@ -69,7 +69,11 @@ export interface LoginProps {
  * anyone can write a query string, and text shown in the app's own voice must be the
  * app's. `SIGNUPS_CLOSED` is this server's own (the allowlist hook in the API);
  * `access_denied` is what a provider sends when the person backs out at its consent
- * screen; anything else is shown by name so a report of it means something.
+ * screen; `account_not_linked` is Better Auth refusing to join a provider to an existing
+ * account whose address was never confirmed (`requireLocalEmailVerified`) — an account
+ * made with a password, say. An email code confirms the address, and the provider links
+ * itself on the next try; there is no "add Google" in Settings to point at instead.
+ * Anything else is shown by name so a report of it means something.
  */
 export function refusalMessage(code: string): string {
   switch (code) {
@@ -77,6 +81,8 @@ export function refusalMessage(code: string): string {
       return 'This Unbent instance is not open for sign-ups.';
     case 'access_denied':
       return 'Sign-in was cancelled before it finished.';
+    case 'account_not_linked':
+      return 'An account with this email already exists and its address is not confirmed yet. Sign in with an email code first, and this sign-in will work after that.';
     default:
       return `Sign-in did not complete (${code}).`;
   }
