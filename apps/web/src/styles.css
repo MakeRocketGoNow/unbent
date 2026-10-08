@@ -6581,6 +6581,33 @@ button.settings-nav-item {
     .drawer-foot::before {
       transition: inset 0.4s cubic-bezier(0.05, 0.7, 0.1, 1);
     }
+
+    /*
+       Picking a row fills the pill already under the pointer with the current tint, and
+       the row that was current lets its tint go in the same moment.
+
+       The selection does not glide, though the anchor would make that one more rule. On a
+       click the hover pill is already on the row, so a second pill travelling there from
+       the old place tells the same story twice, in a part of the column nobody is looking
+       at — the reason the note morph turns the root crossfade off. It could not even do
+       it consistently: the place can move from a notebook in the scrolling list to Trash
+       in the foot, or to a row scrolled out of view, so it would glide one time and
+       appear the next. And at the hover's 0.4s it would hold back the one answer a click
+       has to give at once.
+
+       Short for that reason, and on the hover's curve: the fill is the click's answer, so
+       it is most of the way there in the first frames, where a plain `ease-out` is still
+       only half way. It runs only when a row's class changes; a row drawn
+       already current, on load or when the rail mounts, has nothing to fade from. Inside
+       the pill's own conditions, so a browser that draws the plain hover keeps a plain
+       click too, rather than a hover that fades in where it used to appear.
+    */
+    :is(.drawer-list, .drawer-foot) .drawer-item,
+    :is(.drawer-list, .drawer-foot) .drawer-item > svg {
+      transition:
+        background-color 0.15s cubic-bezier(0.05, 0.7, 0.1, 1),
+        color 0.15s cubic-bezier(0.05, 0.7, 0.1, 1);
+    }
   }
 }
 
