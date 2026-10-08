@@ -1171,9 +1171,11 @@ export class NotesStore {
           skipped.push({ what: 'tag', id: tag.id, name: tag.name, why: 'deleted' });
           continue;
         }
+        // Said for every id, a dropped duplicate's too: `diffProps` names each of the copy's
+        // tags by this list, and one left out would read under its old name.
+        if (name !== tag.name) renamedTags.push({ id: tag.id, name });
         if (tags.some((t) => foldNoCase(t) === foldNoCase(name))) continue;
         tags.push(name);
-        if (name !== tag.name) renamedTags.push({ id: tag.id, name });
       }
       if (!sameTagSet(tags, current.tags)) plan.tags = tags;
     }
