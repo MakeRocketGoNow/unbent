@@ -97,7 +97,8 @@ export function isWhole(state: Pick<FeedState, 'cursor' | 'phase'>): boolean {
 }
 
 export interface FeedOptions {
-  fetchJson: <T>(path: string) => Promise<T>;
+  /** `signal` is aborted by `stop`, so a page in flight does not hold a close behind it. */
+  fetchJson: <T>(path: string, signal?: AbortSignal) => Promise<T>;
   readCursor: () => Promise<Position | null>;
   writeCursor: (position: Position | null) => Promise<void>;
   pageSize?: number;
@@ -149,6 +150,7 @@ export class FeedEngine {
   private running: Promise<void> | null = null;
   private again = false;
   private stopped = false;
+  private readonly stopping = new AbortController();
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private retryWait = 0;
 
@@ -168,9 +170,17 @@ export class FeedEngine {
     };
   }
 
+  /**
+   * Ends the engine, and the pull in flight with it. `close` awaits `settled` before it
+   * lets go of the collections, and sign-out and an account switch wait on `close`, so a
+   * page that was not answering held both — for good before the fetch had a timeout, and
+   * a minute after. Aborted, the page fails at once and nothing is reported for it.
+   * A commit to the persistence worker cannot be taken back, and is still waited for.
+   */
   stop(): void {
     this.stopped = true;
     this.cancelRetry();
+    this.stopping.abort();
   }
 
   /** Resolves when the pull in flight, if any, has settled; for tests and shutdown. */
@@ -217,7 +227,8 @@ export class FeedEngine {
       } catch (err) {
         this.state.lastError = err instanceof Error ? err.message : String(err);
         this.state.phase = 'failed';
-        this.options.onError?.(err);
+        // A pull ended by `stop` failed because it was asked to, not because of a fault.
+        if (!this.stopped) this.options.onError?.(err);
         this.retry();
       } finally {
         this.state.pulls += 1;
@@ -273,7 +284,10 @@ export class FeedEngine {
     if (!onStall) return work;
     const ms = this.options.stallMs ?? 60_000;
     const during = this.state.cursor ? 'feed' : 'copy';
-    const timer = setTimeout(() => onStall(new FeedStallError(step, during, ms)), ms);
+    // A library closed while the step waits is not a stall anyone needs to hear about.
+    const timer = setTimeout(() => {
+      if (!this.stopped) onStall(new FeedStallError(step, during, ms));
+    }, ms);
     try {
       return await work;
     } finally {
@@ -299,6 +313,7 @@ export class FeedEngine {
       const c = this.state.cursor;
       const page = await this.options.fetchJson<FeedPage | FeedReset>(
         `/api/changes?since=${c.seq}&epoch=${encodeURIComponent(c.epoch)}&limit=${limit}`,
+        this.stopping.signal,
       );
       if (page.reset) {
         this.state.phase = 'reset';
@@ -329,6 +344,7 @@ export class FeedEngine {
       try {
         page = await this.options.fetchJson(
           `/api/changes/snapshot?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+          this.stopping.signal,
         );
       } catch (err) {
         /*

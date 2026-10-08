@@ -315,6 +315,23 @@ describe('FeedEngine', () => {
     expect(errors).toEqual([refused]);
   });
 
+  it('on stop, ends the page in flight at once and reports nothing for it', async () => {
+    const h = harness({});
+    let seen: AbortSignal | undefined;
+    h.engine['options'].fetchJson = <T,>(_path: string, signal?: AbortSignal) => {
+      seen = signal;
+      return new Promise<T>((_, reject) => signal?.addEventListener('abort', () => reject(signal.reason), { once: true }));
+    };
+    const errors: unknown[] = [];
+    h.engine['options'].onError = (err) => errors.push(err);
+    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    await vi.waitFor(() => expect(seen?.aborted).toBe(false));
+    h.engine.stop();
+    await h.engine.settled();
+    expect(h.engine.state.phase).toBe('failed');
+    expect(errors).toEqual([]);
+  });
+
   it('coalesces pulls: one runs at a time, a request during a run queues exactly one more', async () => {
     let release: () => void = () => {};
     const gate = new Promise<void>((r) => (release = r));

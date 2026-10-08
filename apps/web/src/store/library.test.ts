@@ -75,6 +75,14 @@ describe('fetchJson', () => {
     await expect(result).rejects.toThrow('/api/changes/snapshot did not answer within 60 s');
   });
 
+  it('gives up at once when the engine stops, as the stop and not as a timeout', async () => {
+    vi.stubGlobal('fetch', stalling('headers'));
+    const stop = new AbortController();
+    const result = fetchJson('/api/changes?since=10&epoch=e1&limit=200', stop.signal);
+    stop.abort();
+    await expect(result).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
   it('names the route alone when the server refuses, so every page groups as one report', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 503, headers: new Headers() }) as unknown as Response));
     await expect(fetchJson('/api/changes?since=10&epoch=e1&limit=200')).rejects.toMatchObject({ status: 503, message: '/api/changes answered 503' });

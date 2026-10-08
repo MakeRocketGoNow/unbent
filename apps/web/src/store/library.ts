@@ -335,22 +335,28 @@ export class FeedTimeoutError extends Error {
  * about, as `request` would for a fetch that failed. The route is the path without its
  * query, so the message reads the same for every page and groups as one.
  */
-export async function fetchJson<T>(path: string): Promise<T> {
+export async function fetchJson<T>(path: string, stop?: AbortSignal): Promise<T> {
   const route = path.replace(/\?.*$/, '');
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new FeedTimeoutError(route)), FEED_TIMEOUT_MS);
+  // The engine's stop, folded in by hand rather than with `AbortSignal.any`, which the
+  // older WebViews the apps run in do not all have.
+  const onStop = () => controller.abort(stop?.reason);
+  if (stop?.aborted) onStop();
+  else stop?.addEventListener('abort', onStop, { once: true });
   try {
     const res = await request(path, { signal: controller.signal });
     if (!res.ok) throw new ApiError(res.status, `${route} answered ${res.status}`);
     return (await res.json()) as T;
   } catch (err) {
     if (controller.signal.aborted) {
-      recheck();
+      if (controller.signal.reason instanceof FeedTimeoutError) recheck();
       throw controller.signal.reason;
     }
     throw err;
   } finally {
     clearTimeout(timer);
+    stop?.removeEventListener('abort', onStop);
   }
 }
 
