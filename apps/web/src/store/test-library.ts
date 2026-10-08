@@ -80,7 +80,8 @@ export function installTestLibrary(rows: Rows = {}): TestLibrary {
       state.resets += 1;
       state.phase = 'reset';
       listeners.forEach((l) => l({ ...state }));
-      // As the real library: the query bridge drops the answers nobody is watching.
+      // As the real library: the state moves as the emptying begins, and the query
+      // bridge drops the answers nobody is watching once the rows are gone.
       notifyLibraryReset();
     },
     settle: () => {
