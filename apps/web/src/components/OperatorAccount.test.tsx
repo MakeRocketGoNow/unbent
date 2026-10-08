@@ -6,8 +6,16 @@ import type { StoreStats } from '../notes-api.js';
 import { keys } from '../queries.js';
 import { formatMoment } from './format-when.js';
 
+const navigate = vi.fn();
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children, to }: { children: React.ReactNode; to: string }) => <a href={to}>{children}</a>,
+  useNavigate: () => navigate,
+}));
+
+// The operator's own id, for the one section that is not offered on their own account.
+let signedInAs = 'op1';
+vi.mock('../useAppSession.js', () => ({
+  useAppSession: () => ({ session: { user: { id: signedInAs } }, isPending: false, unreachable: false }),
 }));
 
 vi.mock('../notes-api.js', async (importOriginal) => ({
@@ -17,6 +25,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
   previewLoad: vi.fn(),
   loadDump: vi.fn(),
   resyncDevices: vi.fn(),
+  deleteAccount: vi.fn(),
   accountDumps: vi.fn(),
   accountRestores: vi.fn(),
   operatorAccount: vi.fn(),
@@ -96,6 +105,7 @@ const flush = () => act(async () => {});
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  signedInAs = 'op1';
 });
 
 describe('OperatorAccount: facts', () => {
@@ -560,6 +570,51 @@ describe('OperatorAccount: resync devices', () => {
     expect(api.resyncDevices).toHaveBeenCalledWith('u1');
     expect(screen.getByText(/Done. Every device of the account will copy the library again/)).toBeTruthy();
     expect(screen.queryByRole('group', { name: 'Confirm resync devices' })).toBeNull();
+  });
+});
+
+describe('OperatorAccount: delete account', () => {
+  it("names the account and the store's counts, and deletes only once DELETE is typed", async () => {
+    vi.mocked(api.deleteAccount).mockResolvedValue({ deleted: 'u1' });
+    harness();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete account' }));
+    const confirm = screen.getByRole('group', { name: 'Confirm delete account' });
+    expect(confirm.textContent).toContain('Delete someone@example.com and its 12 notes and 4 files?');
+    expect(confirm.classList.contains('confirm-danger')).toBe(true);
+    const press = within(confirm).getByRole('button', { name: 'Delete account' }) as HTMLButtonElement;
+    expect(press.disabled).toBe(true);
+    fireEvent.change(within(confirm).getByLabelText('Type DELETE to confirm'), { target: { value: 'DELETE' } });
+    expect(press.disabled).toBe(false);
+    fireEvent.click(press);
+    await flush();
+    expect(api.deleteAccount).toHaveBeenCalledWith('u1');
+    expect(navigate).toHaveBeenCalledWith({ to: '/settings/operator' });
+  });
+
+  it("names the sweep's note count while the store's are not in", () => {
+    vi.mocked(api.storeStats).mockReturnValue(new Promise(() => {}));
+    harness(undefined, null);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete account' }));
+    expect(screen.getByRole('group', { name: 'Confirm delete account' }).textContent).toContain('Delete someone@example.com and its 12 notes?');
+  });
+
+  it('stays on the page and says why when the server refuses', async () => {
+    vi.mocked(api.deleteAccount).mockRejectedValue(new Error('The store could not be wiped.'));
+    harness();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete account' }));
+    const confirm = screen.getByRole('group', { name: 'Confirm delete account' });
+    fireEvent.change(within(confirm).getByLabelText('Type DELETE to confirm'), { target: { value: 'DELETE' } });
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Delete account' }));
+    await flush();
+    expect(navigate).not.toHaveBeenCalled();
+    expect(screen.getByText('The store could not be wiped.')).toBeTruthy();
+  });
+
+  it("is not offered on the operator's own account", () => {
+    signedInAs = 'u1';
+    harness();
+    expect(screen.queryByRole('button', { name: 'Delete account' })).toBeNull();
+    expect(screen.getByText(/This is your own account/)).toBeTruthy();
   });
 });
 

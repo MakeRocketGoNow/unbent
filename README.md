@@ -1327,6 +1327,15 @@ because the user id both need is exactly what the deletion destroys; blobs befor
 because the store's rows are what the blob sweep reads to know which objects are
 referenced.
 
+An operator can delete someone else's account from that account's page under Settings →
+Operator, for a sign-up that should not exist — a bot, a test account, someone who asked
+by other means. It is `DELETE /api/admin/accounts/<id>`, and it is the same deletion in
+the same order, by the same code (`lib/account-deletion.ts`), with no email: the link is a
+person's proof that an account is theirs, which is not what lets an operator act. The
+confirm names the account and what is in it, and asks for `DELETE` typed, since here the
+button is the irreversible step. The backups are left to age out as above. The operator's
+own account is refused; that one is deleted here, with its link.
+
 ## Blob garbage collection
 
 R2 has no foreign keys, so objects can outlive their metadata — a crash between the upload
