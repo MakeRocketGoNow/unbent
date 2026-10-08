@@ -320,13 +320,25 @@ describe('the store sweep', () => {
     expect(await row(late)).not.toBeNull();
     expect(await env.BLOBS.head(key('late.pdf'))).not.toBeNull();
 
-    // The window closes.
+    // The window closes. Through a bucket whose pages are one key long, so the prefix
+    // takes more than one walk to empty, as an archive's would at a thousand a page: the
+    // first walk deletes a file and must keep the row, since the row is all that would
+    // find the other; the second deletes the last and drops it.
     await env.DB.prepare(`UPDATE account_directory SET deleted_at = ?2 WHERE user_id = ?1`).bind(late, Date.now() - LATE_WRITES_MS - 1).run();
-    reports = await fullPass();
+    const shortPages = Object.assign(Object.create(env.BLOBS) as R2Bucket, {
+      list: (options?: R2ListOptions) => env.BLOBS.list({ ...options, limit: 1 }),
+      delete: (keys: string | string[]) => env.BLOBS.delete(keys),
+    });
+    const left = async () => (await env.BLOBS.list({ prefix: `users/${late}/` })).objects.length;
+    reports = await fullPass({ ...env, BLOBS: shortPages });
     expect(reports.flatMap((r) => r.failed)).toEqual([]);
-    expect(reports.reduce((n, r) => n + r.lateBlobsDeleted, 0)).toBeGreaterThanOrEqual(2);
-    expect(await env.BLOBS.head(key('late.pdf'))).toBeNull();
-    expect(await env.BLOBS.head(key('later.pdf'))).toBeNull();
+    expect(await left()).toBe(1);
+    expect(await row(late)).not.toBeNull();
+
+    reports = await fullPass({ ...env, BLOBS: shortPages });
+    expect(reports.flatMap((r) => r.failed)).toEqual([]);
+    expect(reports.reduce((n, r) => n + r.lateBlobsDeleted, 0)).toBeGreaterThanOrEqual(1);
+    expect(await left()).toBe(0);
     expect(await row(late)).toBeNull();
     expect(await env.BLOBS.head(neighbourKey)).not.toBeNull();
     expect(await row(neighbour)).not.toBeNull();
