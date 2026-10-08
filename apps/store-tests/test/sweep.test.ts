@@ -2,6 +2,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { env, evictDurableObject, runInDurableObject } from 'cloudflare:test';
 import { BATCH, SUBREQUEST_BUDGET, pickExpiries, sweepStores } from '@unbent/api/lib/sweep';
 import { DELETED_BLOB_RETENTION_MS } from '@unbent/api/store/deleted-blobs';
+import { listRestores, startRestore } from '@unbent/api/lib/restores';
+import { RESTORES_DDL } from './helpers.js';
 
 /**
  * The sweep, against real objects and a local D1 carrying the three control-plane
@@ -27,6 +29,7 @@ beforeAll(async () => {
       `CREATE TABLE IF NOT EXISTS user (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, emailVerified INTEGER NOT NULL DEFAULT 0, image TEXT, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);`,
       `CREATE TABLE IF NOT EXISTS account_directory (user_id TEXT PRIMARY KEY, created_at INTEGER NOT NULL, migrated_at INTEGER, storage_bytes INTEGER NOT NULL DEFAULT 0, note_count INTEGER NOT NULL DEFAULT 0, last_active_at INTEGER, deleted_at INTEGER, copied_at INTEGER);`,
       `CREATE TABLE IF NOT EXISTS _unbent_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);`,
+      ...RESTORES_DDL,
     ].join(' '),
   );
 });
@@ -82,6 +85,10 @@ describe('the store sweep', () => {
     await directory(orphan);
     await stub(orphan).create({ id: crypto.randomUUID(), title: 'Orphaned', body: 'x', tags: [] });
 
+    // Each with a wind-back in the history, which goes with the dead account's row and
+    // stays with the living one's.
+    for (const id of [live, tombstoned]) await startRestore(env.DB, { userId: id, operatorId: 'op', kind: 'moment', toAt: 1 });
+
     // Never opened: no object exists until the sweep names it.
     const fresh = uid('fresh');
     await user(fresh);
@@ -106,6 +113,8 @@ describe('the store sweep', () => {
 
     expect(await row(tombstoned)).toBeNull();
     expect((await stub(tombstoned).stats()).wiped).toBe(true);
+    expect((await listRestores(env.DB, tombstoned)).restores).toEqual([]);
+    expect((await listRestores(env.DB, live)).restores).toHaveLength(1);
     expect(await row(orphan)).toBeNull();
     expect((await stub(orphan).stats()).wiped).toBe(true);
     expect((await stub(halfDeleted).stats()).wiped).toBe(true);

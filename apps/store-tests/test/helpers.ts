@@ -36,3 +36,14 @@ export function feedSeq(stub: ReturnType<typeof freshStore>['stub']): Promise<nu
     Number(state.storage.sql.exec<{ value: string }>(`SELECT value FROM _meta WHERE key = 'seq'`).toArray()[0]?.value ?? 0),
   );
 }
+
+/**
+ * The restore history's table as migration 0041 makes it (without the copy from the
+ * directory), for the suites that build their D1 by hand: the sweep deletes a gone
+ * account's rows beside its directory row, so a directory without this table fails the
+ * sweep's batch.
+ */
+export const RESTORES_DDL = [
+  `CREATE TABLE IF NOT EXISTS restores (id INTEGER PRIMARY KEY, user_id TEXT NOT NULL, operator_id TEXT, kind TEXT NOT NULL CHECK (kind IN ('moment', 'bookmark', 'load')), state TEXT NOT NULL CHECK (state IN ('started', 'applied', 'failed')), started_at INTEGER NOT NULL, applied_at INTEGER, to_at INTEGER, dump_key TEXT, before_key TEXT, undo TEXT, undoes INTEGER);`,
+  `CREATE INDEX IF NOT EXISTS idx_restores_user ON restores (user_id);`,
+];

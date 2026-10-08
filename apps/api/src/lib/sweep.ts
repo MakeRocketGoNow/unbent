@@ -1,5 +1,6 @@
 import { deleteKeys } from './blobs.js';
 import { dropDirectoryRowStatement, listDirectory, recordDirectoryUsageStatement, type DirectoryRow } from './directory.js';
+import { dropRestoresStatement } from './restores.js';
 import { storeFor } from './store-client.js';
 import type { Env } from '../types.js';
 
@@ -250,7 +251,7 @@ async function sweepOne(
     if (!row.userExists) {
       budget.spent += 1;
       if ((await store.usage()).wiped) {
-        writes.push(dropDirectoryRowStatement(env.DB, row.userId));
+        writes.push(dropDirectoryRowStatement(env.DB, row.userId), dropRestoresStatement(env.DB, row.userId));
         report.dropped += 1;
       }
     }
