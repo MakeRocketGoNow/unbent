@@ -21,11 +21,11 @@ import { LastDump } from './Operator.js';
  * — Preview — and what it shows is what the confirm then names: the moment resolved to a
  * bookmark and the counts the store holds now, or the dump's own first line and whether
  * its rows are one moment. The confirm repeats the request with the word the route
- * wants, and the answer's undo bookmark is kept beside the result as a second
- * confirm, so a wind-back to the wrong moment is one more press rather than a request
- * written by hand from the Worker log. Every restore and load is recorded with who asked
- * (migration 0041), and the history between the two sections lists them and offers the
- * newest one's undo, so the same confirm is there after a reload.
+ * wants. Every restore and load is recorded with who asked (migration 0041), and
+ * Restores and loads, between the two sections, lists them and offers the newest one's
+ * undo as a second confirm, so a wind-back to the wrong moment is one more press rather
+ * than a request written by hand from the Worker log, before a reload and after it. An
+ * answer keeps its own undo only when the history could not record it.
  *
  * Downloads are links: a dump is a file, and a link to a file middle-clicks, copies and
  * saves with the browser's own download, which a button cannot do.
