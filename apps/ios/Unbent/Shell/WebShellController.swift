@@ -133,7 +133,9 @@ final class WebShellController: UIViewController {
         // The view is already inside the safe area; a second inset from the scroll view
         // would push the page down by a status bar it is not under.
         webView.scrollView.contentInsetAdjustmentBehavior = .never
-        webView.removeInputAccessoryBar()
+        if !webView.removeInputAccessoryBar() {
+            log.warning("Could not find the web view's content view; the bar above the keyboard is back.")
+        }
         #if DEBUG
         webView.isInspectable = true
         #endif

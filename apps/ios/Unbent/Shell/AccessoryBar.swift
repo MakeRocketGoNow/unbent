@@ -16,28 +16,29 @@ extension WKWebView {
     /// Nothing private is named or called: the view is found by being the scroll view's
     /// content view, and the property overridden is `UIResponder`'s own. If a future
     /// WebKit arranges its views differently this finds nothing and the bar comes back,
-    /// which is the failure worth having.
+    /// which is the failure worth having — and it says so, by returning false, so the
+    /// caller can put it in the log rather than wait for a screenshot.
     ///
     /// The bar's tick put the keyboard away. Without it, a tap anywhere outside the text
     /// does — the note's fields, its head — which is what the page already did. Dragging
     /// the keyboard down, as in Notes, was tried through the scroll view's
     /// `keyboardDismissMode` and does nothing here: the note scrolls in a column of the
     /// page's own, so the web view's scroll view never moves.
-    func removeInputAccessoryBar() {
+    func removeInputAccessoryBar() -> Bool {
         guard
             let content = scrollView.subviews.first(where: { String(describing: type(of: $0)).hasPrefix("WKContent") }),
             let original = object_getClass(content)
-        else { return }
+        else { return false }
 
         let name = "\(NSStringFromClass(original))_UnbentNoAccessory"
         if let existing = NSClassFromString(name) {
             object_setClass(content, existing)
-            return
+            return true
         }
         guard
             let subclass = objc_allocateClassPair(original, name, 0),
             let getter = class_getInstanceMethod(NoAccessory.self, #selector(getter: NoAccessory.inputAccessoryView))
-        else { return }
+        else { return false }
         class_addMethod(
             subclass,
             #selector(getter: UIResponder.inputAccessoryView),
@@ -46,6 +47,7 @@ extension WKWebView {
         )
         objc_registerClassPair(subclass)
         object_setClass(content, subclass)
+        return true
     }
 }
 
