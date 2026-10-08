@@ -1117,7 +1117,7 @@ function DeleteAccount({ userId, email, account, stats }: { userId: string; emai
           question={`Delete ${email}${what ? ` and its ${what}` : ''}?`}
           detail={
             <>
-              Everything goes now, and anyone signed in to it is signed out. There is no undo. Type <code>DELETE</code> to confirm.
+              Everything goes now, and anyone signed in to it is signed out within five minutes. There is no undo. Type <code>DELETE</code> to confirm.
             </>
           }
           requireTyped="DELETE"

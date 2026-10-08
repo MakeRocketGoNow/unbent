@@ -72,6 +72,14 @@ export async function tombstoneAccount(env: DeletionEnv, userId: string): Promis
  * makes, without the endpoint's own checks — the session's freshness, the emailed link —
  * which are a person's proof that the account is theirs, and are not what lets an
  * operator delete someone else's.
+ *
+ * Deleting the row ends every session in D1, but not at once in a browser: the session
+ * cookie cache (`cookieCache` in `auth.ts`, five minutes) lets a session already open
+ * keep passing `requireAuth` until it expires, which is why the page says "within five
+ * minutes". A note written in that window brings the wiped store back, and the sweep
+ * wipes it again, since the directory row is tombstoned; a file uploaded in it is left
+ * under the account's prefix, which nothing sweeps again. The same is true of a person
+ * deleting their own account while another of their devices is open.
  */
 export async function deleteAccount(env: DeletionEnv, userId: string): Promise<void> {
   await clearAccount(env, userId);
