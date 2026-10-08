@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import type { BackupsStatus, DumpStatus, MirrorStatus, OperatorAccount } from '@unbent/shared';
@@ -24,7 +24,15 @@ import { operatorAccountsQuery, operatorBackupsQuery } from '../queries.js';
  */
 export function Operator({ search = '', onSearch }: { search?: string; onSearch: (q: string) => void }) {
   const backups = useQuery(operatorBackupsQuery());
-  const accounts = useInfiniteQuery(operatorAccountsQuery(search));
+  // The search as asked of the server: trimmed, and once typing settles, as the notes
+  // page's is. The address holds every keystroke, so the field stays a plain controlled
+  // input; a name typed at speed is still one request, not one a letter.
+  const [term, setTerm] = useState(search.trim());
+  useEffect(() => {
+    const t = setTimeout(() => setTerm(search.trim()), 250);
+    return () => clearTimeout(t);
+  }, [search]);
+  const accounts = useInfiniteQuery(operatorAccountsQuery(term));
   // By id, keeping the first copy: a row whose email changed between pages can come back
   // on a later one (`listOperatorAccounts`), and the copy that stays is the one in the
   // slot it was drawn in, so the column keeps reading in order until the refetch.
@@ -66,7 +74,7 @@ export function Operator({ search = '', onSearch }: { search?: string; onSearch:
         {rows ? (
           <AccountsTable
             accounts={rows}
-            search={search}
+            search={term}
             stale={accounts.isPlaceholderData}
             // Not while the rows are the last search's: the button would read the new
             // search's first page, not continue the rows on screen.
@@ -234,51 +242,25 @@ const n = (v: number | null) => (v === null ? '?' : v.toLocaleString());
 
 /**
  * The accounts search: a piece of an email or a name, answered by the server, since the
- * list pages and the account looked for may be on a page not yet read. The field holds
- * what is typed and hands it on after a pause, so a name typed at speed is one request,
- * not one a letter; the address (`?q=`) holds what was handed on. Escape clears it, as
- * it clears the notes search.
+ * list pages and the account looked for may be on a page not yet read. Controlled by the
+ * address (`?q=`), so Back from an account's page puts the search back in the field.
+ * Escape clears it, as it clears the notes search.
  *
  * Above the table and as wide as an address needs, not the panel's width: it belongs to
  * the list under it, and a field across the whole page read as the page's search.
  */
 export function AccountSearch({ search, onSearch }: { search: string; onSearch: (q: string) => void }) {
-  const [draft, setDraft] = useState(search);
-  // What this field last handed on. Back, or a link, changes the search under the field
-  // and the draft follows it; the field's own search coming back must not, or letters
-  // typed while it was on its way would be wiped by it.
-  const sent = useRef(search);
-  useEffect(() => {
-    if (search === sent.current) return;
-    sent.current = search;
-    setDraft(search);
-  }, [search]);
-  const hand = (term: string) => {
-    sent.current = term;
-    onSearch(term);
-  };
-  useEffect(() => {
-    const term = draft.trim();
-    if (term === sent.current) return;
-    const t = setTimeout(() => hand(term), 250);
-    return () => clearTimeout(t);
-    // The draft alone: a refetch landing mid-pause must not start the wait again.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft]);
   return (
     <div className="operator-search">
       <input
         className="search-field"
         type="search"
-        value={draft}
+        value={search}
         placeholder="Search by email or name"
         aria-label="Search accounts"
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={(e) => onSearch(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Escape' && draft !== '') {
-            setDraft('');
-            hand('');
-          }
+          if (e.key === 'Escape' && search !== '') onSearch('');
         }}
       />
     </div>

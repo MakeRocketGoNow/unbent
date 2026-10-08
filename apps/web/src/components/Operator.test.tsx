@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { BackupsStatus, DumpStatus, MirrorStatus, OperatorAccount } from '@unbent/shared';
 
 vi.mock('@tanstack/react-router', () => ({
@@ -224,54 +224,19 @@ describe('AccountsTable', () => {
   });
 });
 
-/**
- * The field hands its search on after a pause, trimmed, so a name typed at speed is one
- * request; follows a search changed under it (Back); and does not let its own search,
- * coming back, wipe letters typed since.
- */
+/** The field is the address's `q`: it shows it, writes each keystroke back, and Escape clears it. */
 describe('AccountSearch', () => {
-  afterEach(() => {
-    cleanup();
-    vi.useRealTimers();
-  });
+  afterEach(cleanup);
 
   const field = () => screen.getByRole('searchbox', { name: 'Search accounts' }) as HTMLInputElement;
 
-  it('hands the search on once typing pauses, trimmed', () => {
-    vi.useFakeTimers();
+  it('shows the search, hands on each keystroke as typed, and clears on Escape', () => {
     const onSearch = vi.fn();
-    render(<AccountSearch search="" onSearch={onSearch} />);
-    fireEvent.change(field(), { target: { value: 'ac' } });
-    act(() => vi.advanceTimersByTime(100));
-    fireEvent.change(field(), { target: { value: ' acme ' } });
-    act(() => vi.advanceTimersByTime(249));
-    expect(onSearch).not.toHaveBeenCalled();
-    act(() => vi.advanceTimersByTime(1));
-    expect(onSearch).toHaveBeenCalledTimes(1);
-    expect(onSearch).toHaveBeenCalledWith('acme');
-  });
-
-  it('clears on Escape at once', () => {
-    const onSearch = vi.fn();
-    render(<AccountSearch search="acme" onSearch={onSearch} />);
-    expect(field().value).toBe('acme');
+    render(<AccountSearch search="acme " onSearch={onSearch} />);
+    expect(field().value).toBe('acme ');
+    fireEvent.change(field(), { target: { value: 'acme c' } });
+    expect(onSearch).toHaveBeenLastCalledWith('acme c');
     fireEvent.keyDown(field(), { key: 'Escape' });
-    expect(field().value).toBe('');
-    expect(onSearch).toHaveBeenCalledWith('');
-  });
-
-  it('follows a search changed under it, and keeps what was typed while its own came back', () => {
-    vi.useFakeTimers();
-    const onSearch = vi.fn();
-    const { rerender } = render(<AccountSearch search="" onSearch={onSearch} />);
-    fireEvent.change(field(), { target: { value: 'acm' } });
-    act(() => vi.advanceTimersByTime(250));
-    fireEvent.change(field(), { target: { value: 'acme' } });
-    // Its own search arrives in the address while the next letter waits.
-    rerender(<AccountSearch search="acm" onSearch={onSearch} />);
-    expect(field().value).toBe('acme');
-    // Back to a different search replaces the draft.
-    rerender(<AccountSearch search="pat" onSearch={onSearch} />);
-    expect(field().value).toBe('pat');
+    expect(onSearch).toHaveBeenLastCalledWith('');
   });
 });
