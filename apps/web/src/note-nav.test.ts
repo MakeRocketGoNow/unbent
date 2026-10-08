@@ -1,6 +1,16 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ParsedLocation } from '@tanstack/react-router';
-import { isListPath, isNotePath, noteTransitionTypes, slideFor, watchHistoryMoves } from './note-nav.js';
+import {
+  goBackToList,
+  isListPath,
+  isNotePath,
+  noteTransitionTypes,
+  onBackArrowClick,
+  recordBehind,
+  slideFor,
+  trackWhatIsBehind,
+  watchHistoryMoves,
+} from './note-nav.js';
 
 /** As much of a router location as the decision reads. */
 function at(pathname: string, index = 0, key = `k${index}`): ParsedLocation {
@@ -98,5 +108,88 @@ describe('noteTransitionTypes', () => {
     window.UnbentApp = { platform: 'ios' } as typeof window.UnbentApp;
     popTo('k1');
     expect(noteTransitionTypes({ fromLocation: at('/notes/n1', 2), toLocation: at('/notes', 1) })).toBe(false);
+  });
+});
+
+describe('recordBehind', () => {
+  it('puts the page a step forward left behind the page it arrived at', () => {
+    const behind = new Map<string, string>();
+    recordBehind(behind, at('/notes', 3, 'list'), at('/notes/n1', 4, 'note'));
+    expect(behind.get('note')).toBe('/notes');
+  });
+
+  it('keeps what was behind a page that is replaced, as a new note replaces /notes?new=1', () => {
+    const behind = new Map([['new', '/notes']]);
+    recordBehind(behind, at('/notes', 4, 'new'), at('/notes/n1', 4, 'note'));
+    expect(behind.get('note')).toBe('/notes');
+  });
+
+  it('writes nothing for a walk back through the history, or for the first page', () => {
+    const behind = new Map([['note', '/notes']]);
+    recordBehind(behind, at('/notes/n1', 4, 'note'), at('/notes', 3, 'list'));
+    recordBehind(behind, undefined, at('/notes', 0, 'first'));
+    expect([...behind]).toEqual([['note', '/notes']]);
+  });
+});
+
+describe('the back arrow', () => {
+  /**
+   * A router with only what the tracker and the arrow use: navigations reported as they
+   * resolve, the current entry, and a way back that records being asked.
+   */
+  function track() {
+    let report: ((e: { fromLocation?: ParsedLocation; toLocation: ParsedLocation }) => void) | undefined;
+    sessionStorage.clear();
+    const router = {
+      subscribe: (_type: 'onResolved', fn: NonNullable<typeof report>) => {
+        report = fn;
+      },
+      history: { location: { state: {} as unknown }, back: vi.fn() },
+    };
+    trackWhatIsBehind(router);
+    const go = (from: ParsedLocation, to: ParsedLocation) => {
+      report?.({ fromLocation: from, toLocation: to });
+      router.history.location = { state: to.state };
+    };
+    return { router, go, back: router.history.back };
+  }
+
+  it('goes back through the history when the list is the page behind the note', () => {
+    const { router, go, back } = track();
+    go(at('/notes', 0, 'list'), at('/notes/n1', 1, 'note'));
+    expect(goBackToList(router, '/notes')).toBe(true);
+    expect(back).toHaveBeenCalledOnce();
+  });
+
+  it('leaves the link to replace the note when something else is behind it', () => {
+    const { router, go, back } = track();
+    go(at('/notes/n1', 1, 'one'), at('/notes/n2', 2, 'two'));
+    expect(goBackToList(router, '/notes')).toBe(false);
+    expect(goBackToList(router, '/trash')).toBe(false);
+    expect(back).not.toHaveBeenCalled();
+  });
+
+  it('leaves a modified click to the link, to open the list in a new tab', () => {
+    const { router, go, back } = track();
+    go(at('/notes', 0, 'list'), at('/notes/n1', 1, 'note'));
+    const preventDefault = vi.fn();
+    const click = { button: 0, metaKey: true, ctrlKey: false, shiftKey: false, altKey: false, preventDefault };
+    onBackArrowClick(router, '/notes')(click);
+    expect(back).not.toHaveBeenCalled();
+    onBackArrowClick(router, '/notes')({ ...click, metaKey: false });
+    expect(back).toHaveBeenCalledOnce();
+    expect(preventDefault).toHaveBeenCalledOnce();
+  });
+
+  it('slides its walk back in the iOS app, where a walk the page did not start would not', () => {
+    phone(true);
+    window.UnbentApp = { platform: 'ios' } as typeof window.UnbentApp;
+    const { router, go } = track();
+    go(at('/notes', 0, 'list'), at('/notes/n1', 1, 'note'));
+    goBackToList(router, '/notes');
+    popTo('list');
+    expect(noteTransitionTypes({ fromLocation: at('/notes/n1', 1, 'note'), toLocation: at('/notes', 0, 'list') })).toEqual([
+      'note-close',
+    ]);
   });
 });

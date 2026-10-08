@@ -17,7 +17,7 @@ import { installSessionRecheck } from './auth-client.js';
 import { isOfflineError } from './notes-api.js';
 import { onUploaded } from './store/actions.js';
 import { indexUploadedFile } from './index-files.js';
-import { canTypeTransitions, noteTransitionTypes, watchHistoryMoves } from './note-nav.js';
+import { canTypeTransitions, noteTransitionTypes, trackWhatIsBehind, watchHistoryMoves } from './note-nav.js';
 import './styles.css';
 
 /*
@@ -151,6 +151,9 @@ const router = createRouter({
    */
   defaultViewTransition: canTypeTransitions() ? { types: noteTransitionTypes } : false,
 });
+
+// What the note's back arrow goes back to; see `goBackToList`.
+trackWhatIsBehind(router);
 
 /*
  * Files and links the browser launched the installed app with; see `launch-queue.ts`.

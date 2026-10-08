@@ -66,6 +66,7 @@ import { Snackbar } from './Snackbar.js';
 import { AutofillIcon } from './icons.js';
 import { formatFieldValue } from './format-field.js';
 import { applySaveToLists } from '../list-cache.js';
+import { onBackArrowClick } from '../note-nav.js';
 import {
   applyAutofill,
   describeChanges,
@@ -1256,6 +1257,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
             <Link
               to={backTo}
               search={(p) => p}
+              replace
+              onClick={onBackArrowClick(router, backTo)}
               className="view-back"
               aria-label="Back to notes"
             >
@@ -1353,10 +1356,19 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
 
               `search` is carried rather than dropped — going back to an unfiltered list
               from a note you reached through a tag is the same trap `newNote` guards.
+
+              Back through the history when the list is the page behind the note, which
+              it is whenever the note was opened from it (`goBackToList`). It used to open
+              the list as a new page on top, so a swipe back or Android's Back right after
+              it reopened the note the arrow had just left. Where something else is behind
+              — a link from another note, a notification — the link replaces the note with
+              the list instead, so Back from there still never lands on the note.
           */}
           <Link
             to={backTo}
             search={(p) => p}
+            replace
+            onClick={onBackArrowClick(router, backTo)}
             className="view-back"
             aria-label="Back to notes"
           >

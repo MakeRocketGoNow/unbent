@@ -70,6 +70,9 @@ export function slideFor(from: string, to: string, back: boolean): NoteTransitio
  */
 let pop: { key: string | undefined; drawn: boolean } | null = null;
 
+/** Set while the page's own back arrow is walking the history, which nothing has drawn. */
+let pageBack = false;
+
 /**
  * Listens for history moves. Installed once, before the router, so the flag is set by the
  * time the router decides how the move is drawn.
@@ -77,9 +80,111 @@ let pop: { key: string | undefined; drawn: boolean } | null = null;
 export function watchHistoryMoves(): void {
   window.addEventListener('popstate', (e) => {
     const flagged = (e as PopStateEvent & { hasUAVisualTransition?: boolean }).hasUAVisualTransition === true;
-    const swipe = hostApp()?.platform === 'ios';
-    pop = { key: (e.state as { __TSR_key?: string } | null)?.__TSR_key, drawn: flagged || swipe };
+    const swipe = hostApp()?.platform === 'ios' && !pageBack;
+    pageBack = false;
+    pop = { key: keyOf(e.state), drawn: flagged || swipe };
   });
+}
+
+/** The key the router gives each history entry, unique to it. */
+function keyOf(state: unknown): string | undefined {
+  return (state as { __TSR_key?: string } | null | undefined)?.__TSR_key;
+}
+
+/*
+ * What is behind each history entry: the page the history goes back to from it, by the
+ * entry's key.
+ *
+ * The note's back arrow needs to know whether that is the list. If it is, the arrow goes
+ * back, so the history holds list then note and nothing more — and a swipe back or
+ * Android's Back after it leaves the app rather than reopening the note, which is what
+ * the arrow did when it opened the list as a new page on top. A history entry cannot be
+ * asked what precedes it, so each navigation writes it down: a step forward puts the
+ * page it left behind the page it arrived at, and a replacement keeps what was behind the
+ * page it replaced, which is how a new note — made at `/notes?new=1`, then replaced by
+ * the note — still has the list behind it.
+ *
+ * Kept in the tab's session storage, so it survives a reload, which a phone does to a
+ * page in the background more often than anyone notices. Bounded, since a session can
+ * walk through any number of pages.
+ */
+const BEHIND_KEY = 'unbent.behind';
+const BEHIND_KEPT = 200;
+
+function loadBehind(): Map<string, string> {
+  try {
+    const raw = sessionStorage.getItem(BEHIND_KEY);
+    const entries = raw ? (JSON.parse(raw) as [string, string][]) : [];
+    return new Map(Array.isArray(entries) ? entries : []);
+  } catch {
+    return new Map();
+  }
+}
+
+function saveBehind(behind: Map<string, string>): void {
+  try {
+    sessionStorage.setItem(BEHIND_KEY, JSON.stringify([...behind].slice(-BEHIND_KEPT)));
+  } catch {
+    // A full or refused storage costs only the history walk: the arrow replaces instead.
+  }
+}
+
+/**
+ * Writes down what is behind the entry a navigation arrived at. Pure over the map, so the
+ * three cases can be tested without a router.
+ */
+export function recordBehind(
+  behind: Map<string, string>,
+  from: ParsedLocation | undefined,
+  to: ParsedLocation,
+): void {
+  const toKey = keyOf(to.state);
+  if (!from || !toKey) return;
+  const fromIndex = indexOf(from);
+  const toIndex = indexOf(to);
+  if (toIndex === fromIndex + 1) {
+    behind.delete(toKey);
+    behind.set(toKey, from.pathname);
+  } else if (toIndex === fromIndex) {
+    const kept = behind.get(keyOf(from.state) ?? '');
+    behind.delete(toKey);
+    if (kept !== undefined) behind.set(toKey, kept);
+  }
+  // Anything else walked the history to an entry already written down.
+}
+
+let behind: Map<string, string> | null = null;
+
+/** Follows the router's navigations to keep `behind` current. Installed once. */
+export function trackWhatIsBehind(router: {
+  subscribe: (type: 'onResolved', fn: (e: { fromLocation?: ParsedLocation; toLocation: ParsedLocation }) => void) => unknown;
+}): void {
+  behind = loadBehind();
+  router.subscribe('onResolved', ({ fromLocation, toLocation }) => {
+    if (!behind) return;
+    recordBehind(behind, fromLocation, toLocation);
+    saveBehind(behind);
+  });
+}
+
+/** As much of the router's history as the arrow uses: where it is, and the way back. */
+export interface RouterHistoryLike {
+  history: { location: { state: unknown }; back: () => void };
+}
+
+/**
+ * The note's back arrow, when the list it leads to is the page behind this one: goes back
+ * to it through the router's history and says so, so the arrow's link stands down.
+ * Otherwise false, and the link replaces the note with the list — a note opened from a
+ * link, a notification or another note has something else behind it, or nothing.
+ */
+export function goBackToList(router: RouterHistoryLike, list: string): boolean {
+  const here = keyOf(router.history.location.state);
+  const previous = here ? behind?.get(here) : undefined;
+  if (previous?.replace(/\/$/, '') !== list) return false;
+  pageBack = true;
+  router.history.back();
+  return true;
 }
 
 /** The index the router keeps on each history entry, to tell forward from back. */
@@ -100,8 +205,7 @@ export function noteTransitionTypes({
 }): string[] | false {
   const popped = pop;
   pop = null;
-  const key = (toLocation.state as { __TSR_key?: string }).__TSR_key;
-  if (popped?.drawn && popped.key === key) return false;
+  if (popped?.drawn && popped.key === keyOf(toLocation.state)) return false;
   if (!fromLocation || !window.matchMedia(MOBILE_QUERY).matches) return false;
   const slide = slideFor(fromLocation.pathname, toLocation.pathname, indexOf(toLocation) < indexOf(fromLocation));
   return slide ? [slide] : false;
@@ -115,4 +219,23 @@ export function noteTransitionTypes({
  */
 export function canTypeTransitions(): boolean {
   return typeof CSS !== 'undefined' && CSS.supports?.('selector(:active-view-transition-type(a))') === true;
+}
+
+/**
+ * The arrow's click, for its `Link`: back through the history when `goBackToList` can,
+ * and the link's own navigation otherwise. A modified click is left to the link, which
+ * opens the list in a new tab as any link would.
+ */
+export function onBackArrowClick(router: RouterHistoryLike, list: string) {
+  return (e: {
+    button: number;
+    metaKey: boolean;
+    ctrlKey: boolean;
+    shiftKey: boolean;
+    altKey: boolean;
+    preventDefault: () => void;
+  }) => {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (goBackToList(router, list)) e.preventDefault();
+  };
 }
