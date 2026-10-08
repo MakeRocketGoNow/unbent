@@ -269,14 +269,7 @@ function LoadingStore({
             Undo the load
           </Button>
         ) : (
-          <Confirm
-            label="Confirm undo load"
-            question={`Put ${email}'s store back as it was before the load?`}
-            detail="Winds back to the bookmark the load took as it began, the store as it stood just before it was emptied. Every device resyncs."
-            busy={busy}
-            onCancel={() => setAsked(false)}
-            actions={[{ label: 'Undo the load', busyLabel: 'Restoring…', tone: 'danger', onConfirm: undo }]}
-          />
+          <UndoLoadConfirm email={email} busy={busy} stopped onCancel={() => setAsked(false)} onConfirm={() => undo()} />
         ))}
       {error && <p className="bad small">{error}</p>}
     </>
@@ -343,17 +336,38 @@ function UndoWindBackConfirm({ email, busy, onCancel, onConfirm }: { email: stri
   );
 }
 
-/** The confirm that undoes a finished load, from the history's newest row or from the load's own answer. */
-function UndoLoadConfirm({ email, busy, onCancel, onConfirm }: { email: string; busy: boolean; onCancel: () => void; onConfirm: () => void }) {
+/**
+ * The confirm that undoes a load, from the history's newest row, the load's own answer,
+ * or the store's loading marker. `stopped` is a load that emptied the store and did not
+ * fill it: the store has refused every write since, so nothing written since is lost,
+ * and saying so would name a loss that cannot happen.
+ */
+function UndoLoadConfirm({
+  email,
+  busy,
+  stopped = false,
+  onCancel,
+  onConfirm,
+}: {
+  email: string;
+  busy: boolean;
+  stopped?: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
   return (
     <Confirm
       label="Confirm undo load"
       question={`Put ${email}'s store back as it was before the load?`}
       detail={
-        <>
-          Winds back to the bookmark the load took as it began, the store as it stood just before it was emptied. Anything written since
-          the load is lost, and every device resyncs again.
-        </>
+        stopped ? (
+          'Winds back to the bookmark the load took as it began, the store as it stood just before it was emptied. Every device resyncs.'
+        ) : (
+          <>
+            Winds back to the bookmark the load took as it began, the store as it stood just before it was emptied. Anything written since
+            the load is lost, and every device resyncs again.
+          </>
+        )
       }
       busy={busy}
       onCancel={onCancel}
@@ -932,13 +946,12 @@ function LoadDump({ userId, email, onChanged }: { userId: string; email: string;
                 Undo the load
               </Button>
             ) : (
-              <Confirm
-                label="Confirm undo load"
-                question={`Put ${email}'s store back as it was before the load?`}
-                detail="Winds back to the bookmark the load took as it began, the store as it stood just before it was emptied. Every device resyncs."
+              <UndoLoadConfirm
+                email={email}
                 busy={busy}
+                stopped
                 onCancel={() => setOutcome({ ...outcome, undoAsked: false })}
-                actions={[{ label: 'Undo the load', busyLabel: 'Restoring…', tone: 'danger', onConfirm: () => undo(outcome.undo!) }]}
+                onConfirm={() => undo(outcome.undo!)}
               />
             ))}
         </>
