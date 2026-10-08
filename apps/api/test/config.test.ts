@@ -141,4 +141,16 @@ describe('advertisement and endpoints agree', () => {
     const body = (await res.json()) as Record<string, unknown>;
     expect('previewRelay' in body).toBe(false);
   });
+
+  /**
+   * `backups` follows the `BACKUPS` binding, which `[env.local]` has (a miniflare bucket, so
+   * the load route can be exercised), so here it is `true`. What is pinned is the shape the
+   * legal documents read: `true` or absent, never `false` or `null`, so a client older than
+   * the field and an instance without the bucket read the same thing.
+   */
+  it('says whether this instance keeps backups, as true or nothing', async () => {
+    const res = await fetch(`${BASE}/api/config`);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect('backups' in body ? body['backups'] : true).toBe(true);
+  });
 });

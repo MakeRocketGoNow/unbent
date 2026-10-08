@@ -38,6 +38,9 @@ export const authRoutes = new Hono<AppEnv>()
    * `frontPage` is the operator's again: on only where the instance says it is the public
    * one, since the page it turns on states that instance's prices. See `frontPageOf`.
    *
+   * `backups` says whether a `BACKUPS` bucket is bound, so the privacy policy and the
+   * deletion page describe the daily dumps only where they are made (MAK-171, part 7).
+   *
    * `satisfies` rather than a return annotation: the fields whose value is `undefined` are
    * dropped by `JSON.stringify` on the way out, which is exactly the "absent means not
    * offered" reading the client already applies to `accountDeletion`.
@@ -56,6 +59,7 @@ export const authRoutes = new Hono<AppEnv>()
       instanceLabel: instanceLabelOf(c.env),
       instanceKind: instanceKindOf(c.env),
       frontPage: frontPageOf(c.env),
+      backups: c.env.BACKUPS ? true : undefined,
     } satisfies AppConfig);
   });
 

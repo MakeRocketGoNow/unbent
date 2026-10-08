@@ -109,6 +109,20 @@ describe('LegalPage', () => {
     expect(queryByText(/error-tracking/)).toBeNull();
   });
 
+  /** The backups' paragraphs follow `config.backups`, the way error tracking follows `posthog`. */
+  it('describes the backups only where the instance keeps them', async () => {
+    const { findByText } = harness('deletion', {
+      operator: OPERATOR,
+      legal: BUILT_IN,
+      backups: true,
+    });
+    expect(await findByText(/gone within 90 days of the deletion/)).toBeTruthy();
+
+    cleanup();
+    const plain = harness('deletion', { operator: OPERATOR, legal: BUILT_IN });
+    expect(await plain.findByText(/Nothing else of your account or its contents is kept/)).toBeTruthy();
+  });
+
   it('offers a way back into the app from every state', async () => {
     const { findByText } = harness('terms', {});
     expect((await findByText('Back to Unbent')).getAttribute('href')).toBe('/');

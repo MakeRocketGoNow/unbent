@@ -321,6 +321,21 @@ export interface AppConfig {
    * deployed unchanged must not advertise somebody else's offer. `FRONT_PAGE=1` in the API.
    */
   frontPage?: boolean;
+  /**
+   * This instance keeps backups of its own: a daily dump of every changed account's store
+   * into a backups bucket, which unbent.app's nightly mirror then copies to a second
+   * Cloudflare account (MAK-171; "Durability" in the README).
+   *
+   * True exactly where a `BACKUPS` bucket is bound, and read by the built-in privacy policy
+   * and deletion page, which describe those copies and how long a deletion takes to leave
+   * them. Like `posthog`, it is here so the legal text says nothing about copies an instance
+   * does not keep. The Worker cannot see whether the mirror workflow runs — that is a
+   * GitHub secret, not a binding — so a fork that binds a bucket and never sets the mirror
+   * up has its policy overstate the off-account half; such a fork should publish its own
+   * documents, as the README says. Optional for the same reason the rest are: absent means
+   * no backups to speak of.
+   */
+  backups?: boolean;
 }
 
 export const INSTANCE_KINDS = ['dev', 'preview', 'local'] as const;
