@@ -102,6 +102,7 @@ describe('the store sweep', () => {
     const unlisted = uid('unlisted');
     await user(unlisted);
 
+    const before = Date.now();
     const reports = await fullPass();
     expect(reports.flatMap((r) => r.failed)).toEqual([]);
     expect(reports.reduce((n, r) => n + r.visited, 0)).toBeGreaterThanOrEqual(6);
@@ -118,7 +119,9 @@ describe('the store sweep', () => {
     expect((await stub(tombstoned).stats()).wiped).toBe(true);
     expect((await listRestores(env.DB, tombstoned)).restores).toEqual([]);
     expect((await listRestores(env.DB, live)).restores).toHaveLength(1);
-    expect(await row(orphan)).toMatchObject({ deleted_at: expect.any(Number) });
+    // Stamped with the sweep's own time, so the wait starts now rather than at some
+    // earlier moment that would let the row go at once.
+    expect((await row(orphan))!.deleted_at).toBeGreaterThanOrEqual(before);
     expect((await stub(orphan).stats()).wiped).toBe(true);
     expect((await stub(halfDeleted).stats()).wiped).toBe(true);
     expect(await env.DB.prepare(`SELECT deleted_at FROM account_directory WHERE user_id = ?1`).bind(halfDeleted).first<{ deleted_at: number | null }>()).toMatchObject({ deleted_at: expect.any(Number) });
