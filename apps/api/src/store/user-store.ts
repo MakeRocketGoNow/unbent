@@ -804,13 +804,22 @@ export class UserStore extends DurableObject<StoreEnv> {
    * virtual table's shadow tables (`notes_fts_data`, `_idx`, `_docsize`, `_config`) are
    * left out: SQLite lists them in `sqlite_master` as ordinary tables, but they belong to
    * the virtual table, which creates them itself and refuses to if they already exist.
+   * So are `sqlite_*`, SQLite's own, and `_cf_*`, the runtime's: `_cf_KV` is where
+   * `ctx.storage.kv` lives, and it appears in `sqlite_master` the first time that storage
+   * is written — the loading marker, the wiped mark — after which every dump of the
+   * account carried `CREATE TABLE _cf_KV`, which the object it was loaded into already
+   * had, and the load died on its first statement (MAK-197, found in the restore
+   * rehearsal: the day's dump of an account that had been loaded once could not be
+   * loaded). Its rows are never dumped; `DUMP_TABLES` names what is.
    */
   schemaSql(): string[] {
     this.ready();
     return this.sql
       .exec<{ sql: string }>(
         `SELECT sql FROM sqlite_master
-          WHERE sql IS NOT NULL AND NOT (type = 'table' AND name GLOB '*_fts_*')
+          WHERE sql IS NOT NULL
+            AND NOT (type = 'table' AND name GLOB '*_fts_*')
+            AND name NOT GLOB 'sqlite_*' AND name NOT GLOB '_cf_*'
           ORDER BY rowid`,
       )
       .map((r) => r.sql);

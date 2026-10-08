@@ -78,6 +78,12 @@ describe('classify', () => {
     expect(classify(`;`)).toBe('skip');
     expect(classify(`DROP TABLE notes;`)).toBe('refuse');
     expect(classify(`DELETE FROM notes;`)).toBe('refuse');
+    // The runtime's and SQLite's own, which a dump taken before MAK-197 carries.
+    expect(classify(`CREATE TABLE _cf_KV (\n        key TEXT PRIMARY KEY,\n        value BLOB\n      ) WITHOUT ROWID;`)).toBe('skip');
+    expect(classify(`INSERT INTO _cf_KV (key, value) VALUES ('x', X'00');`)).toBe('skip');
+    expect(classify(`INSERT INTO "sqlite_sequence" ("name","seq") VALUES('t', 1);`)).toBe('skip');
+    expect(classify(`CREATE INDEX idx_kv ON _cf_KV (value);`)).toBe('skip');
+    expect(classify(`CREATE TABLE cf_things (a);`)).toBe('run');
     expect(classify(`ATTACH 'x' AS y;`)).toBe('refuse');
   });
 });

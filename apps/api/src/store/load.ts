@@ -108,21 +108,34 @@ export function statementKind(statement: string): string {
  * transaction of the object's own and a nested `BEGIN` is an error; the two
  * `PRAGMA foreign_keys` lines, since a pragma inside a transaction does nothing and the
  * object turns foreign keys off around each page itself; and anything that is only
- * comments. Run: the `CREATE`s and `INSERT`s a dump is made of, and nothing else, so a
- * file that is not a dump — or a dump someone edited a `DROP` or `DELETE` into — stops
- * the load at its first such top-level statement rather than running it against the
- * account. A trigger's body is not looked into: the schema's own triggers update and
- * delete by design, and a dump is read from the operator's own bucket, so the check is
- * against a file that is not a dump, not against one written to deceive.
+ * comments; and a `CREATE` or `INSERT` on a table of the runtime's or of SQLite's own
+ * (`_cf_*`, `sqlite_*`), which a dump taken before MAK-197 carries — `_cf_KV`, where the
+ * object's key-value storage lives, listed in `sqlite_master` once that storage has been
+ * written — and which the object being loaded already has, so running it ended the load
+ * on its first statement. Run: the `CREATE`s and `INSERT`s a dump is made of, and
+ * nothing else, so a file that is not a dump — or a dump someone edited a `DROP` or
+ * `DELETE` into — stops the load at its first such top-level statement rather than
+ * running it against the account. A trigger's body is not looked into: the schema's own
+ * triggers update and delete by design, and a dump is read from the operator's own
+ * bucket, so the check is against a file that is not a dump, not against one written to
+ * deceive.
  */
 export function classify(statement: string): 'run' | 'skip' | 'refuse' {
   const head = statementText(statement);
   if (head === '' || head === ';') return 'skip';
   if (/^(BEGIN|COMMIT|END)\b/i.test(head)) return 'skip';
   if (/^PRAGMA\b/i.test(head)) return 'skip';
+  if (RUNTIME_TABLE.test(head)) return 'skip';
   if (/^(CREATE|INSERT)\b/i.test(head)) return 'run';
   return 'refuse';
 }
+
+/**
+ * A statement that makes or fills a table of the runtime's or of SQLite's own: a
+ * `CREATE TABLE`/`INDEX` (with or without `IF NOT EXISTS`) named `_cf_*` or `sqlite_*`,
+ * an index `ON` one, or an `INSERT INTO` one; the name may be quoted.
+ */
+const RUNTIME_TABLE = /^(?:CREATE\s+(?:UNIQUE\s+)?(?:TABLE|INDEX)\s+(?:IF\s+NOT\s+EXISTS\s+)?["`]?(?:_cf_|sqlite_)|CREATE\s+(?:UNIQUE\s+)?INDEX\s+\S+\s+ON\s+["`]?(?:_cf_|sqlite_)|INSERT\s+INTO\s+["`]?(?:_cf_|sqlite_))/i;
 
 /**
  * The most bytes of SQL text one statement may be run as. The runtime refuses a
