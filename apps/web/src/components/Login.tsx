@@ -10,7 +10,7 @@ import {
   signUp,
 } from '../auth-client.js';
 import { configQuery } from '../queries.js';
-import { HOME, rememberRelayRedirect } from '../auth-gate.js';
+import { HOME, LOGIN, rememberRelayRedirect } from '../auth-gate.js';
 import { Button } from './Button.js';
 import { LegalLink } from './LegalLink.js';
 import { ProviderIcon } from './provider-icons.js';
@@ -200,7 +200,7 @@ export function Login({ redirectTo, refusal }: LoginProps) {
        * `encodeURIComponent` rather than the query-string builder, as `startRelay` does and
        * for its reason.
        */
-      const back = redirectTo === HOME ? '/login' : `/login?redirect=${encodeURIComponent(redirectTo)}`;
+      const back = redirectTo === HOME ? LOGIN : `${LOGIN}?redirect=${encodeURIComponent(redirectTo)}`;
       await signIn.social({ provider, callbackURL: redirectTo, errorCallbackURL: back });
     } catch (err) {
       setError((err as Error).message || 'Sign-in failed');
