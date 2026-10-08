@@ -87,9 +87,10 @@ export async function startRestore(
 /**
  * What the store answered. `applied` stamps `appliedAt`, which the page shows as when
  * the change happened; the bookmark's thirty days are counted from `startedAt`, since a
- * load takes its bookmark as it begins. A load calls this twice: once its bookmark is taken (`undo` and
- * `before`, still `started`), and again with how it ended, so a load that stops partway
- * keeps the way back it began with.
+ * load takes its bookmark as it begins. A load calls this once its bookmark is taken
+ * (`undo` and `before`, still `started`), and again with how it ended, carrying them
+ * both times, so a load that stops partway keeps the way back it began with. A null
+ * keeps what the row holds.
  */
 export async function settleRestore(
   db: D1Database,
