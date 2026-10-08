@@ -6511,6 +6511,77 @@ button.settings-nav-item {
   font-weight: 500;
 }
 
+/*
+   The hover tint glides from row to row instead of going out on one and on at the next.
+
+   It is the same 8% pill `.drawer-item:hover` draws, moved onto one box per column that
+   follows whichever row is under the pointer. Anchor positioning does the following: the
+   hovered row names itself (`anchor-name`), the pill takes its four edges from that row
+   (`anchor()`), and a transition on `inset` is the glide. Nothing is measured by script.
+   A browser without anchor positioning, and a touch screen, keep the plain hover above.
+
+   Fast, because hover is the most frequent thing this column does and the pill has to be
+   where the pointer is. The note morph's emphasized-decelerate covers most of the way in
+   the first few frames and spends the rest settling, so it reads as following rather than
+   chasing. A 0.4s `ease`, which is how the effect is usually shown, trails a pointer
+   moving down a list, and for that long the pill sits on a row the click will not land on.
+
+   It appears in place rather than flying in. With no row hovered there is no anchor, so
+   `anchor()` is invalid and `inset` falls back to `auto`, which does not interpolate: the
+   pill drops out at once and appears on the next row the pointer reaches without
+   travelling there. That is also why it never sails across a section head or a rule —
+   the pointer has left the rows — and why the foot has a pill of its own rather than
+   sharing the list's: the list scrolls under it.
+
+   The rows' 0.1rem gap would cut a glide between neighbours the same way, so each row's
+   hit area reaches over it (`::after`); without that, a slow pointer lands in the gap and
+   the glide becomes a blink. Positioning the rows for that is also what keeps the pill
+   under them: the pill is the first positioned box in its column, so it paints first.
+
+   On the current row the pill shows through the current tint, so the place you are on
+   answers a hover too — before, the current rule simply won and it did not.
+
+   Scoped to the navigation's two columns. The move picker draws the same rows in a list
+   of its own, and must keep its plain hover rather than lose it to a pill it lacks.
+*/
+@media (hover: hover) {
+  @supports (anchor-name: --a) {
+    .drawer-list,
+    .drawer-foot { position: relative; }
+
+    .drawer-list::before,
+    .drawer-foot::before {
+      content: '';
+      position: absolute;
+      position-anchor: --drawer-hover;
+      inset: anchor(top) anchor(right) anchor(bottom) anchor(left);
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--fg) 8%, transparent);
+      pointer-events: none;
+    }
+
+    :is(.drawer-list, .drawer-foot) .drawer-item { position: relative; }
+
+    :is(.drawer-list, .drawer-foot) .drawer-item::after {
+      content: '';
+      position: absolute;
+      inset: -0.1rem 0;
+    }
+
+    :is(.drawer-list, .drawer-foot) .drawer-item:hover { anchor-name: --drawer-hover; }
+    :is(.drawer-list, .drawer-foot) .drawer-item:not(.current):hover { background: none; }
+  }
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  @supports (anchor-name: --a) {
+    .drawer-list::before,
+    .drawer-foot::before {
+      transition: inset 0.2s cubic-bezier(0.05, 0.7, 0.1, 1);
+    }
+  }
+}
+
 /* A notebook name is unbounded; it yields so the count never moves. */
 .drawer-item-label {
   flex: 1;
