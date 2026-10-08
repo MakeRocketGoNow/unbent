@@ -303,6 +303,11 @@ running, and that fallback is for a human at a keyboard, not for you. If `adb de
 empty, **stop and ask the user to start it** from Android Studio's Device Manager or by
 running those scripts in their own terminal.
 
+This is enforced, because the rule alone was not enough. A Bash hook
+(`scripts/deny-emulator-launch.mjs`) refuses a command that launches the emulator or
+touches its snapshots, and both scripts refuse to boot one when stdin is not a terminal.
+If either stops you, that is the answer: ask the user. Don't route around it.
+
 An emulator launched from an agent's shell has no macOS GUI session. It looks fine — it
 renders, it boots, `adb` input works, screenshots come back — so it is easy to believe it
 is healthy. But its window silently discards every real mouse click, logging

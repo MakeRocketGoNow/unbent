@@ -15,6 +15,18 @@ GRADLE_APP="$DIR/app"
 AVD="${AVD_NAME:-Pixel_9_API_36}"
 
 if ! "$ADB" get-state 2>/dev/null | grep -q device; then
+  # Only a person at a terminal may boot one. An emulator started from an agent's shell has
+  # no GUI session: it renders and answers adb, but its window discards every real mouse
+  # click, so it looks healthy to the agent and is unusable for the person in front of it.
+  # Booting it is also what puts the AVD's default_boot snapshot at risk. The Bash hook in
+  # .claude/settings.json cannot see this launch, since the agent typed `pnpm android`, so
+  # the check is here: a TTY on stdin, which a terminal has and an agent's shell does not.
+  if [ ! -t 0 ]; then
+    echo "error: no emulator running, and this is not an interactive terminal." >&2
+    echo "       Start $AVD yourself (Android Studio Device Manager, or run this" >&2
+    echo "       script from your own terminal), then run this again." >&2
+    exit 1
+  fi
   echo "No emulator running, booting $AVD..."
   "$EMULATOR" -avd "$AVD" -no-snapshot-save >/dev/null 2>&1 &
   "$ADB" wait-for-device
