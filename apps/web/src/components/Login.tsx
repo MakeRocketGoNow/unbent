@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState, type FormEvent, type JSX } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { isLocalMethod, type AuthProvider } from '@unbent/shared';
+import { SIGNUPS_CLOSED_MESSAGE, isLocalMethod, type AuthProvider } from '@unbent/shared';
 import {
   emailOtp,
   refreshSession,
@@ -10,7 +10,7 @@ import {
   signUp,
 } from '../auth-client.js';
 import { configQuery } from '../queries.js';
-import { rememberRelayRedirect } from '../auth-gate.js';
+import { HOME, LOGIN, rememberRelayRedirect } from '../auth-gate.js';
 import { Button } from './Button.js';
 import { LegalLink } from './LegalLink.js';
 import { ProviderIcon } from './provider-icons.js';
@@ -52,6 +52,40 @@ export interface LoginProps {
    * at `/login`, which is nobody's destination.
    */
   redirectTo: string;
+  /**
+   * Why a provider sign-in came back here instead of signing in: the `error` code the
+   * auth callback put in the URL, read by the route. A provider round trip leaves the page,
+   * so its failure cannot arrive in a response the way the code and password forms' do — it
+   * arrives as a fresh load of this screen with a code in the query string. Absent on a
+   * plain visit.
+   */
+  refusal?: string;
+}
+
+/**
+ * The sentence for a code the auth callback sent the browser back with.
+ *
+ * A fixed sentence per code rather than the `error_description` beside it in the URL:
+ * anyone can write a query string, and text shown in the app's own voice must be the
+ * app's. `SIGNUPS_CLOSED` is this server's own (the allowlist hook in the API);
+ * `access_denied` is what a provider sends when the person backs out at its consent
+ * screen; `account_not_linked` is Better Auth refusing to join a provider to an existing
+ * account whose address was never confirmed (`requireLocalEmailVerified`) — an account
+ * made with a password, say. An email code confirms the address, and the provider links
+ * itself on the next try; there is no "add Google" in Settings to point at instead.
+ * Anything else is shown by name so a report of it means something.
+ */
+export function refusalMessage(code: string): string {
+  switch (code) {
+    case 'SIGNUPS_CLOSED':
+      return SIGNUPS_CLOSED_MESSAGE;
+    case 'access_denied':
+      return 'Sign-in was cancelled before it finished.';
+    case 'account_not_linked':
+      return 'An account with this email already exists and its address is not confirmed yet. Sign in with an email code first, and this sign-in will work after that.';
+    default:
+      return `Sign-in did not complete (${code}).`;
+  }
 }
 
 /**
@@ -66,12 +100,14 @@ export interface LoginProps {
  * the browser offers the credential from the email field before a key is pressed, and a
  * touch of a sensor is the entire interaction. Everyone else sees what they saw before.
  */
-export function Login({ redirectTo }: LoginProps) {
+export function Login({ redirectTo, refusal }: LoginProps) {
   const config = useQuery(configQuery());
   // Absent on an instance that publishes neither document; see the consent line below.
   const legal = config.data?.legal;
   const [pending, setPending] = useState<AuthProvider | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Seeded from the URL's code once, so it survives the route taking the code back out of
+  // the address, and clears like any other error on the next attempt.
+  const [error, setError] = useState<string | null>(refusal ? refusalMessage(refusal) : null);
   // Through the router rather than `window.location`, which `url-boundary.test.ts` forbids
   // so that navigation stays the router's business.
   const navigate = useNavigate();
@@ -154,8 +190,18 @@ export function Login({ redirectTo }: LoginProps) {
        * This is the one method that leaves the page, so it is the one that cannot use
        * `landed` — the provider brings the browser back with a fresh load, and the guard
        * on the destination reads the cookie that arrived with it.
+       *
+       * `errorCallbackURL` is this screen again, destination kept, because a failure on
+       * the way back has nowhere else to be shown: the callback route redirects a coded
+       * error there with `?error=`, which the route reads and `refusal` carries in. Without
+       * it Better Auth sends the browser to its own generic `/api/auth/error` page, outside
+       * the app and with no way back, and a refused sign-up — the allowlist — used to end on
+       * a bare JSON 403 at the callback address, message included and no way back.
+       * `encodeURIComponent` rather than the query-string builder, as `startRelay` does and
+       * for its reason.
        */
-      await signIn.social({ provider, callbackURL: redirectTo });
+      const back = redirectTo === HOME ? LOGIN : `${LOGIN}?redirect=${encodeURIComponent(redirectTo)}`;
+      await signIn.social({ provider, callbackURL: redirectTo, errorCallbackURL: back });
     } catch (err) {
       setError((err as Error).message || 'Sign-in failed');
       setPending(null);

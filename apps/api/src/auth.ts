@@ -4,7 +4,7 @@ import { bearer, deviceAuthorization, emailOTP, jwt, oneTimeToken } from 'better
 import { mcp } from '@better-auth/mcp';
 import { passkey } from '@better-auth/passkey';
 import { socialProviderList } from 'better-auth/social-providers';
-import type { AuthProvider } from '@unbent/shared';
+import { SIGNUPS_CLOSED_MESSAGE, type AuthProvider } from '@unbent/shared';
 import type { Env } from './types.js';
 import { canSendEmail, sendEmail } from './lib/email.js';
 import { signInCodeEmail } from './lib/sign-in-code-email.js';
@@ -586,8 +586,20 @@ function createAuth(env: Env): AuthInstance {
             if (allowed.length === 0) return;
             const email = user.email?.toLowerCase();
             if (email && allowed.includes(email)) return;
+            /**
+             * The `code` is what gets this refusal back to the sign-in screen. The OAuth
+             * callback route redirects to the client's `errorCallbackURL` only for an
+             * `APIError` whose body has a code, and re-throws any other — which the
+             * browser then showed as a bare JSON 403 at `/api/auth/callback/google`, the
+             * message in it and no way back. The code and password routes answer the
+             * same body as JSON, where the screen reads `message`; they are unaffected.
+             * The screen maps the code to its own sentence (`refusalMessage` in
+             * `Login.tsx`) rather than showing `error_description` from the URL, which
+             * anyone can write.
+             */
             throw new APIError('FORBIDDEN', {
-              message: 'This Unbent instance is not open for sign-ups.',
+              code: 'SIGNUPS_CLOSED',
+              message: SIGNUPS_CLOSED_MESSAGE,
             });
           },
           /**

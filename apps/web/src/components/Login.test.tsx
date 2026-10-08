@@ -8,7 +8,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router';
 import type { AppConfig, AuthProvider } from '@unbent/shared';
-import { Login } from './Login.js';
+import { Login, refusalMessage } from './Login.js';
 import { emailOtp, signIn } from '../auth-client.js';
 import * as api from '../notes-api.js';
 import { takeRelayRedirect } from '../auth-gate.js';
@@ -51,10 +51,14 @@ function harness(
   // `redirectTo` is the route's job in the app; here it only has to be somewhere, except
   // in the relay cases, which are about carrying a *particular* destination across.
   redirectTo = '/notes',
+  // The code a provider round trip came back with, which only the route sets in the app.
+  refusal?: string,
 ) {
   vi.mocked(api.getConfig).mockResolvedValue({ providers, ...config });
 
-  const rootRoute = createRootRoute({ component: () => <Login redirectTo={redirectTo} /> });
+  const rootRoute = createRootRoute({
+    component: () => <Login redirectTo={redirectTo} refusal={refusal} />,
+  });
   const history = createMemoryHistory({ initialEntries: ['/login'] });
   const router = createRouter({ routeTree: rootRoute, history });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -84,6 +88,53 @@ describe('Login', () => {
     await waitFor(() => expect(screen.getByText('Continue with Google')).toBeTruthy());
     expect(screen.getByText('Continue with GitHub')).toBeTruthy();
     expect(screen.queryByLabelText('Email')).toBeNull();
+  });
+
+  /**
+   * A provider sign-in leaves the page, so its failure cannot come back in a response: it
+   * comes back as a fresh load with a code in the URL. A refused sign-up — the allowlist —
+   * used to end on a bare JSON page at the callback address with nothing on this screen.
+   */
+  it('says why a provider sent the browser back', async () => {
+    harness(['google'], { legal: BUILT_IN }, '/notes', 'SIGNUPS_CLOSED');
+    await waitFor(() =>
+      expect(screen.getByText('This Unbent instance is not open for sign-ups.')).toBeTruthy(),
+    );
+  });
+
+  it('sends a provider failure back to this screen, destination kept', async () => {
+    harness(['google'], { legal: BUILT_IN }, '/device?user_code=ABCD1234');
+    await waitFor(() => expect(screen.getByText('Continue with Google')).toBeTruthy());
+    fireEvent.click(screen.getByText('Continue with Google'));
+    await waitFor(() =>
+      expect(signIn.social).toHaveBeenCalledWith({
+        provider: 'google',
+        callbackURL: '/device?user_code=ABCD1234',
+        errorCallbackURL: '/login?redirect=%2Fdevice%3Fuser_code%3DABCD1234',
+      }),
+    );
+  });
+
+  /** The ordinary destination needs no parameter; the URL stays the plain one. */
+  it('sends a provider failure back to a plain /login for the default destination', async () => {
+    harness(['google']);
+    await waitFor(() => expect(screen.getByText('Continue with Google')).toBeTruthy());
+    fireEvent.click(screen.getByText('Continue with Google'));
+    await waitFor(() =>
+      expect(signIn.social).toHaveBeenCalledWith(expect.objectContaining({ errorCallbackURL: '/login' })),
+    );
+  });
+
+  /**
+   * Fixed sentences per code, never the description from the URL: anyone can write a query
+   * string, and a sentence in the app's own voice must be the app's. An unknown code is
+   * named, so a report of it means something.
+   */
+  it('has a sentence for each code it knows, and names the ones it does not', () => {
+    expect(refusalMessage('SIGNUPS_CLOSED')).toBe('This Unbent instance is not open for sign-ups.');
+    expect(refusalMessage('access_denied')).toBe('Sign-in was cancelled before it finished.');
+    expect(refusalMessage('account_not_linked')).toMatch(/^An account with this email already exists/);
+    expect(refusalMessage('state_mismatch')).toBe('Sign-in did not complete (state_mismatch).');
   });
 
   it('shows the form and no provider buttons for a password-only instance', async () => {

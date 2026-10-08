@@ -41,7 +41,7 @@ final class SignInCallsTests: XCTestCase {
     func testARefusalKeepsTheServersWordsSoTheAllowlistCanExplainItself() async throws {
         StubServer.enqueue(.init(
             status: 403,
-            body: #"{"code":"FORBIDDEN","message":"This Unbent instance is not open for sign-ups."}"#
+            body: #"{"code":"SIGNUPS_CLOSED","message":"This Unbent instance is not open for sign-ups."}"#
         ))
 
         do {
