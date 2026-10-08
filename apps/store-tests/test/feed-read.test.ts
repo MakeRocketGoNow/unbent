@@ -150,6 +150,36 @@ describe('changesSince', () => {
     expect(await stub.changesSince(1, 10, epoch)).toMatchObject({ reset: false, epoch });
     expect(page(await stub.changesSince(0, 10)).notes.map((n) => n.id)).toEqual([a.id]);
   });
+
+  it('a merge delivers retagged notes before the loser\'s tombstone, so a short page cannot hide the tag', async () => {
+    const { stub } = freshStore('read-merge-page');
+    const moved: string[] = [];
+    for (let i = 0; i < 4; i++) moved.push((await stub.create(note({ tags: ['receipts'] }))).id);
+    await stub.create(note({ tags: ['receipt'] }));
+    const tags = await stub.listTags();
+    const receipts = tags.find((t) => t.name === 'receipts')!;
+    const receipt = tags.find((t) => t.name === 'receipt')!;
+    const since = await feedSeq(stub);
+    expect(await stub.renameTag(receipts.id, 'receipt', { merge: true })).toEqual({
+      id: receipt.id,
+      name: 'receipt',
+      merged: true,
+    });
+    const first = page(await stub.changesSince(since, 2));
+    expect(first.more).toBe(true);
+    expect(first.notes).toHaveLength(2);
+    expect(first.notes.every((n) => n.tagIds.includes(receipt.id))).toBe(true);
+    expect(first.tombstones).toEqual([]);
+    let cursor = first.next;
+    let sawTombstone = false;
+    for (;;) {
+      const next = page(await stub.changesSince(cursor, 2));
+      if (next.tombstones.some((t) => t.entity === 'tag' && t.id === receipts.id)) sawTombstone = true;
+      if (!next.more) break;
+      cursor = next.next;
+    }
+    expect(sawTombstone).toBe(true);
+  });
 });
 
 describe('snapshotPage', () => {
