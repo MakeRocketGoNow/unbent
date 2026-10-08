@@ -39,6 +39,12 @@ function OperatorRoute() {
   const { q = '' } = Route.useSearch();
   const navigate = Route.useNavigate();
   // `replace`: each keystroke in the field is not a page of its own to go Back through.
-  const onSearch = useCallback((next: string) => void navigate({ search: next ? { q: next } : {}, replace: true }), [navigate]);
+  // `resetScroll: false`: the router scrolls `.settings` to its top after every navigation
+  // otherwise (`scrollToTopSelectors` in main.tsx), and the field sits below the health
+  // cards, so each letter typed threw the page, and the field, back up out of view.
+  const onSearch = useCallback(
+    (next: string) => void navigate({ search: next ? { q: next } : {}, replace: true, resetScroll: false }),
+    [navigate],
+  );
   return <Operator search={q} onSearch={onSearch} />;
 }
