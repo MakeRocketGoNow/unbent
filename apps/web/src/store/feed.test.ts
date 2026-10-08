@@ -87,6 +87,7 @@ function harness(answers: Record<string, unknown[] | unknown>) {
   const seq: string[] = [];
   const c = { note: fake<FeedNote>('note', (n) => n.id, seq), notebook: fake<FeedNotebook>('notebook', (n) => n.id, seq), tag: fake<FeedTag>('tag', (t) => t.id, seq), attachment: fake<FeedAttachment>('attachment', (a) => a.id, seq) };
   const engine = new FeedEngine({
+    onTruncated: () => seq.push('truncated'),
     fetchJson: async <T,>(path: string): Promise<T> => {
       requests.push(path);
       const a = answers[path];
@@ -261,6 +262,11 @@ describe('FeedEngine', () => {
     expect(h.engine.state.resets).toBe(1);
     // The cursor is cleared only once every collection's truncate has settled on disk: a
     // cursor gone before the rows would make the next open walk the snapshot over them.
+    // The library is told the rows are gone only once every truncate has committed, and
+    // before the cursor goes: what the query bridge drops its cached answers on.
+    const truncated = h.seq.indexOf('truncated');
+    expect(h.seq.slice(0, truncated).filter((e) => e.endsWith('committed'))).toHaveLength(4);
+    expect(truncated).toBeLessThan(h.seq.indexOf('cursor null'));
     const cleared = h.seq.indexOf('cursor null');
     expect(cleared).toBeGreaterThan(-1);
     expect(h.seq.slice(0, cleared).filter((e) => e.endsWith('committed'))).toHaveLength(4);

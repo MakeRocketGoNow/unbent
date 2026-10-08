@@ -218,15 +218,12 @@ export function notifyLibraryChange(roots: ReadonlySet<string> = LIBRARY_ROOTS):
 const resetListeners = new Set<() => void>();
 
 /**
- * The library starting over: the feed engine emptying the collections and walking the
- * snapshot again, after a `reset` from the server (an operator's wind-back or load) or a
- * walk position it refuses. Distinct from a change, which the bridge answers by asking
- * the rows again: after a reset a row may be *older* than the copy a cached answer
- * holds, and a cached answer with no view on it is handed to the next one that mounts
- * (`ensureQueryData` in a route loader serves what is cached, invalidated or not), which
- * then measures the truth against it and refuses it as stale (MAK-196, the second half:
- * the note opened after the wind-back showed the edit it had removed). The bridge drops
- * those answers instead.
+ * The library starting over: the feed engine has emptied the collections, to walk the
+ * snapshot again after a `reset` from the server (an operator's wind-back or load) or a
+ * walk position it refuses. Told once the old rows are gone. Distinct from a change:
+ * after a reset a row may be *older* than a cached answer, and `installLibraryQueries`
+ * in `queries.ts` drops the cached answers no view is watching rather than asking them
+ * again (MAK-196).
  */
 export function onLibraryReset(listener: () => void): () => void {
   resetListeners.add(listener);
@@ -309,10 +306,12 @@ async function open(userId: string): Promise<Library> {
     readCursor: () => (collections ? cursorStore(collections.syncState).readCursor() : Promise.resolve(null)),
     writeCursor: (cursor) => (collections ? cursorStore(collections.syncState).writeCursor(cursor) : Promise.resolve()),
     onState: (state) => {
-      if (latest && state.resets > latest.resets) resetListeners.forEach((l) => l());
       latest = state;
       listeners.forEach((l) => l(state));
     },
+    // Once the old rows are gone, not when the count moves: a read in between would
+    // cache them again, and nothing would drop that answer (found in review).
+    onTruncated: () => resetListeners.forEach((l) => l()),
   });
   collections = createCollections(store, engine);
 

@@ -101,6 +101,14 @@ export interface FeedOptions {
   writeCursor: (position: Position | null) => Promise<void>;
   pageSize?: number;
   onState?: (state: FeedState) => void;
+  /**
+   * The collections have been emptied for a walk from nothing, called once every
+   * truncate has committed and before the cursor is cleared. `resets` in the state moves
+   * as the emptying begins, which is right for a view that holds a copy of a row and
+   * must stop trusting it; a cache that will be read again must be dropped only once the
+   * old rows are gone, or a read in between fills it with them (found in review).
+   */
+  onTruncated?: () => void;
 }
 
 export class FeedEngine {
@@ -293,6 +301,7 @@ export class FeedEngine {
       c.truncate();
       await c.commit();
     }
+    this.options.onTruncated?.();
     await this.moveCursor(null);
   }
 
