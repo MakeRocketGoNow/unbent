@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import { HistoryChanges } from './HistoryChanges.js';
 
 /**
@@ -69,7 +69,7 @@ describe('HistoryChanges', () => {
     expect(screen.getByText('This version is too different to compare; see Preview.')).toBeTruthy();
   });
 
-  it('folds unchanged lines into a button that opens them in place', () => {
+  it('folds unchanged lines into a button that opens them in place', async () => {
     const body = (last: string) => ['One', 'Two', 'Three', 'Four', 'Five', 'Six', last].join('\n');
     const { container } = render(
       <HistoryChanges current={{ ...bare, title: 'Acme', body: body('Acme 1') }} version={{ title: 'Acme', body: body('Acme 2') }} />,
@@ -84,8 +84,10 @@ describe('HistoryChanges', () => {
     const text = [...container.querySelectorAll('.history-diff-row.is-same')].map((r) => r.textContent);
     expect(text).toEqual(['One', 'Two', 'Three', 'Four', 'Five', 'Six']);
 
+    // Closing takes the lines out of reach at once and off the page once they have shrunk.
     fireEvent.click(fold);
-    expect(screen.queryByText('One')).toBeNull();
+    expect(screen.getByText('One').closest('.collapse')?.hasAttribute('inert')).toBe(true);
+    await waitFor(() => expect(screen.queryByText('One')).toBeNull());
   });
 
   it('counts the lines a fold hides, and folds nothing when there is nothing to hide', () => {

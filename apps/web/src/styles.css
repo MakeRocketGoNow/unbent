@@ -9155,6 +9155,59 @@ button.settings-nav-item {
   from { translate: -30% 0; filter: brightness(0.9); }
 }
 
+/* ---------------------------------------------------------------------------------
+   Disclosures: content a control opens grows to its height rather than appearing in one
+   frame, and shrinks back. `Collapse` for the ones that are a button and a state; the
+   `<details>` elements below, from the stylesheet alone.
+   --------------------------------------------------------------------------------- */
+.collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+}
+
+.collapse.open { grid-template-rows: 1fr; }
+
+.collapse-clip {
+  min-height: 0;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* `COLLAPSE_MS` in `Collapse.tsx`, which keeps the content until the close has run. */
+  .collapse { transition: grid-template-rows 0.25s cubic-bezier(0.2, 0, 0, 1); }
+
+  /* Mounted open, so the open is a transition from nothing rather than a first frame. */
+  @starting-style {
+    .collapse.open { grid-template-rows: 0fr; }
+  }
+
+  /*
+     A `<details>` grows the same way, where the browser can animate to `auto` and exposes
+     the box its content sits in. Elsewhere this whole block is skipped and it opens at once,
+     as it always has. `content-visibility` is the browser's own switch for hiding a closed
+     details' content; transitioning it discretely keeps the content drawn until the
+     shrink has finished.
+
+     `hidden` rather than `clip`, because `hidden` makes the box a formatting context of
+     its own. With `clip` the first child's top margin collapsed out through the shrinking
+     box, so the panel jumped by that margin on the first frame of an open and again on
+     the last frame of a close.
+  */
+  @supports (interpolate-size: allow-keywords) and selector(::details-content) {
+    details { interpolate-size: allow-keywords; }
+
+    details::details-content {
+      block-size: 0;
+      overflow: hidden;
+      transition:
+        block-size 0.25s cubic-bezier(0.2, 0, 0, 1),
+        content-visibility 0.25s allow-discrete;
+    }
+
+    details[open]::details-content { block-size: auto; }
+  }
+}
+
 /* With reduced motion asked for, the page changes and nothing slides — the transition
    still runs, since the router starts it, but every part of it is instant. */
 @media (prefers-reduced-motion: reduce) {
