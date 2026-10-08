@@ -12,6 +12,8 @@ vi.mock('@tanstack/react-router', () => ({
 
 // The operator's own id, for the one section that is not offered on their own account.
 let signedInAs = 'op1';
+// Whether the instance offers a person's own deletion, which is where that section points them.
+let selfDeletion = true;
 vi.mock('../useAppSession.js', () => ({
   useAppSession: () => ({ session: { user: { id: signedInAs } }, isPending: false, unreachable: false }),
 }));
@@ -87,6 +89,7 @@ function harness(
   restores: StoreRestore[] = [],
 ) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(keys.config(), { accountDeletion: selfDeletion } as Awaited<ReturnType<typeof api.getConfig>>);
   client.setQueryData(keys.operatorAccount('u1'), who);
   if (seeded) client.setQueryData(keys.storeStats('u1'), seeded);
   vi.mocked(api.accountDumps).mockImplementation(answerDumps);
@@ -104,6 +107,7 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   signedInAs = 'op1';
+  selfDeletion = true;
 });
 
 describe('OperatorAccount: facts', () => {
@@ -615,11 +619,16 @@ describe('OperatorAccount: delete account', () => {
     expect(screen.getByText('The store could not be wiped.')).toBeTruthy();
   });
 
-  it("is not offered on the operator's own account", () => {
+  it("is not offered on the operator's own account, and points to Maintenance only where it offers it", () => {
     signedInAs = 'u1';
     harness();
     expect(screen.queryByRole('button', { name: 'Delete account' })).toBeNull();
-    expect(screen.getByText(/This is your own account/)).toBeTruthy();
+    expect(screen.getByText(/This is your own account/).textContent).toContain('Delete it from Maintenance');
+    cleanup();
+
+    selfDeletion = false;
+    harness();
+    expect(screen.getByText(/This is your own account/).textContent).toContain('this instance cannot send one');
   });
 });
 

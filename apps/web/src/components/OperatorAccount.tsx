@@ -6,7 +6,7 @@ import * as api from '../notes-api.js';
 import { ApiError, LoadFailedError, errorText } from '../notes-api.js';
 import { formatBytes } from '../format-bytes.js';
 import { formatMoment, timeAgo } from './format-when.js';
-import { accountDumpsQuery, accountRestoresQuery, keys, operatorAccountQuery, storeStatsQuery } from '../queries.js';
+import { accountDumpsQuery, accountRestoresQuery, configQuery, keys, operatorAccountQuery, storeStatsQuery } from '../queries.js';
 import { holdPage } from '../busy.js';
 import { useAppSession } from '../useAppSession.js';
 import { Button } from './Button.js';
@@ -1088,6 +1088,7 @@ function DeleteAccount({
 }) {
   const queryClient = useQueryClient();
   const { session } = useAppSession();
+  const config = useQuery(configQuery());
   const [asked, setAsked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1096,8 +1097,17 @@ function DeleteAccount({
     return (
       <section className="settings-section">
         <h3>Delete account</h3>
+        {/* Maintenance draws its control only where mail can confirm it; on an instance
+            with none, pointing there would send the operator to something that is not drawn. */}
         <p className="muted small">
-          This is your own account. Delete it from <Link to="/settings/maintenance">Maintenance</Link>, which confirms by email.
+          This is your own account.{' '}
+          {config.data?.accountDeletion === false ? (
+            'An account deletes itself with a link sent by email, and this instance cannot send one.'
+          ) : (
+            <>
+              Delete it from <Link to="/settings/maintenance">Maintenance</Link>, which confirms by email.
+            </>
+          )}
         </p>
       </section>
     );

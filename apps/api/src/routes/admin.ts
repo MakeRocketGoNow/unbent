@@ -13,6 +13,7 @@ import { beforeLoadKey, describeDump, dumpBeforeLoad, loadReserve, resolveDumpDo
 import { isOperator } from '../lib/instance.js';
 import { userPrefix } from '../lib/repo.js';
 import { deleteAccount } from '../lib/account-deletion.js';
+import { accountDeletionOffered } from '../auth.js';
 import { storeFor } from '../lib/store-client.js';
 import { sweepStores } from '../lib/sweep.js';
 import { SWEEP_TOKEN_HEADER, sweepTokenMatches } from '../lib/sweep-token.js';
@@ -808,7 +809,12 @@ export const admin = new Hono<AppEnv>()
     const target = await operatorAccount(c, c.req.param('id'));
     if (target instanceof Response) return target;
     if (target === c.get('userId')) {
-      return c.json({ error: 'This is your own account. Delete it from Settings → Maintenance, which confirms by email.' }, 400);
+      // Pointing at Maintenance only where it draws the control: an instance with no mail
+      // does not offer a person's own deletion at all (`accountDeletionOffered`).
+      const where = accountDeletionOffered(c.env)
+        ? 'Delete it from Settings → Maintenance, which confirms by email.'
+        : 'An account deletes itself with a link sent by email, and this instance cannot send one.';
+      return c.json({ error: `This is your own account. ${where}` }, 400);
     }
     if (c.req.query('confirm') !== target) {
       return c.json({ error: 'Confirmation required', hint: `Repeat this request with ?confirm=${target} to delete this account.` }, 400);

@@ -34,6 +34,8 @@ function fakeEnv({ directory = ['op1', 'u1'], users = ['op1', 'u1'] }: { directo
   };
   const env = {
     OPERATOR_EMAILS: OPERATOR.email,
+    // No mail binding: a person's own deletion is offered only on localhost then.
+    APP_URL: 'https://notes.example.com',
     DB,
     BLOBS: { list: async () => ({ objects: [], truncated: false }), delete: async () => {} },
     USER_STORE: { idFromName: (name: string) => name, get: (name: string) => ({ wipe: async () => void wiped.push(name) }) },
@@ -79,13 +81,18 @@ describe('DELETE /api/admin/accounts/:id', () => {
     expect(ran).toEqual([]);
   });
 
-  it("refuses the operator's own account, even confirmed", async () => {
+  it("refuses the operator's own account, even confirmed, and points to Maintenance only where it offers it", async () => {
     const { env, ran, wiped } = fakeEnv();
     const res = await remove(env, 'op1', 'op1');
     expect(res.status).toBe(400);
-    expect(((await res.json()) as { error: string }).error).toContain('your own account');
+    expect(((await res.json()) as { error: string }).error).toBe(
+      'This is your own account. An account deletes itself with a link sent by email, and this instance cannot send one.',
+    );
     expect(wiped).toEqual([]);
     expect(ran).toEqual([]);
+
+    const local = await remove({ ...env, APP_URL: 'http://localhost:5173' } as AppEnv['Bindings'], 'op1', 'op1');
+    expect(((await local.json()) as { error: string }).error).toContain('Delete it from Settings → Maintenance');
   });
 
   it('answers 404 for an id the directory does not hold, and for a deletion already made', async () => {
