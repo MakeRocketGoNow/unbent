@@ -31,8 +31,11 @@ import { addErrorSink, routeOf } from './report-error.js';
  *
  * Exceptions arrive through `addErrorSink` rather than through the SDK's own
  * `capture_exceptions`. `report-error.ts` already listens on `window`, dedupes by message
- * and caps a render loop at five; enabling the SDK's autocapture would add a second pair of
- * listeners with neither of those bounds and report everything twice.
+ * and caps a render loop at five; the SDK's autocapture would add a second pair of
+ * listeners with neither of those bounds and report everything twice. So it is switched off
+ * by name, not just left out: unset, the SDK takes the project's "Exception autocapture"
+ * setting from PostHog's remote config, which is on in a project that has error tracking,
+ * and every uncaught error arrived twice — once handled from here, once unhandled from it.
  */
 
 /** Where the Worker proxies this traffic. See `routes/ingest.ts` for why it is proxied. */
@@ -91,6 +94,8 @@ export async function installPosthog(config: NonNullable<AppConfig['posthog']>):
       autocapture: false,
       capture_pageview: false,
       capture_pageleave: false,
+      // Off by name, or the project's remote setting turns it on; see above.
+      capture_exceptions: false,
       disable_session_recording: true,
       disable_surveys: true,
       respect_dnt: true,

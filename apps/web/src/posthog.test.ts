@@ -53,7 +53,9 @@ describe('posthog', () => {
     expect(String(options?.api_host)).toMatch(/\/ingest$/);
     // The SDK's own exception autocapture stays off: report-error.ts already listens, and
     // its cap and duplicate filter are what keep a render loop from becoming a flood.
-    expect(options && 'capture_exceptions' in options).toBe(false);
+    // Off by name: left unset, the SDK defers to the project's remote setting, which turned
+    // it on and reported every error twice.
+    expect(options?.capture_exceptions).toBe(false);
   });
 
   it('forwards a report, with the thrown value PostHog can parse into frames', async () => {
