@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
+import { sameName } from '@unbent/shared';
 import { CloseIcon } from './icons.js';
 import { writeTagFilter } from '../routes/notes.js';
 
@@ -58,7 +59,7 @@ export function TagPicker({ tags, selected }: TagPickerProps) {
    * deadest tags first — `notes-repo.ts` records that reasoning for the same reason.
    */
   const candidates = tags
-    .filter((t) => !selected.includes(t.name))
+    .filter((t) => !selected.some((s) => sameName(s, t.name)))
     .filter((t) => needle === '' || t.name.toLowerCase().includes(needle));
 
   /** Tags accumulate rather than replace: two selected narrows to notes carrying both. */

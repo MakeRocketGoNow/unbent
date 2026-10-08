@@ -1,5 +1,5 @@
 import type { InfiniteData, QueryClient, QueryKey } from '@tanstack/react-query';
-import { DEFAULT_NOTE_SORT, excerptMarkdown, UNFILED, type Note, type NoteSummary } from '@unbent/shared';
+import { DEFAULT_NOTE_SORT, excerptMarkdown, sameName, UNFILED, type Note, type NoteSummary } from '@unbent/shared';
 import type { NotePage, SearchHit } from './notes-api.js';
 import type { SearchAnswer } from './queries.js';
 import type { NoteFilter, NoteOrdering } from './queries.js';
@@ -155,7 +155,8 @@ function belongsTo(note: Note, filter: NoteFilter): boolean | undefined {
   } else if (filter.notebook !== undefined) {
     if ((note.notebook ?? '').toLowerCase() !== filter.notebook.toLowerCase()) return false;
   }
-  return (filter.tag ?? []).every((t) => note.tags.includes(t));
+  // Tags without case, as the store's filter has them (MAK-127).
+  return (filter.tag ?? []).every((t) => note.tags.some((held) => sameName(held, t)));
 }
 
 /**

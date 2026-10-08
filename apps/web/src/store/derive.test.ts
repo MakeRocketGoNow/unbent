@@ -110,6 +110,25 @@ describe('derive', () => {
     expect(notebookList(mixed).notebooks.find((nb) => nb.id === 'nb1')?.count).toBe(2);
   });
 
+  it('finds a tag by name as COLLATE NOCASE does, and shows a name given here as the library spells it', () => {
+    // The filter, as the server's (MAK-127): `?tag=HOME` lists home's notes.
+    expect(list(s, { tag: ['HOME', 'Acme'] }, {}).map((r) => r.id)).toEqual(['a']);
+    expect(count(s, { tag: ['Home'] })).toBe(2);
+    // A write made here that named a held tag in another case, and one name twice: the
+    // note shows the tag the server will attach, once, and the counts agree.
+    const written: Snapshot = {
+      ...s,
+      tags: [...s.tags, tag('t4', 'Café')],
+      notes: [...s.notes].map((n) => (n.id === 'e' ? { ...n, tagNames: ['HOME', 'home', 'new one', 'CAFÉ'] } : n)),
+    };
+    const l = lookups(written);
+    expect(toNote([...written.notes].find((n) => n.id === 'e')!, l).tags).toEqual(['CAFÉ', 'home', 'new one']);
+    expect(list(written, { tag: ['home'] }, {}).map((r) => r.id)).toEqual(['e', 'b', 'a']);
+    expect(tagSummaries(written).find((t) => t.id === 't1')?.count).toBe(3);
+    // Outside ASCII nothing is folded, as the index folds nothing there: CAFÉ is not Café.
+    expect(tagSummaries(written).find((t) => t.id === 't4')).toBeUndefined();
+  });
+
   it('counts a field’s values on trashed notes too, as the server does', () => {
     const withTrashed: Snapshot = { ...s, notes: [...s.notes, { ...[...s.notes][3]!, id: 'f', notebookId: 'nb1', fields: [{ fieldId: 'amount', name: 'Amount', type: 'number', value: 1, notebookId: 'nb1', notebook: 'receipts' }] }] };
     expect(notebookFields(withTrashed, 'nb1', true)?.find((f) => f.id === 'amount')?.valueCount).toBe(3);

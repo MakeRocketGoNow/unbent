@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { useCombobox } from 'downshift';
+import { sameName } from '@unbent/shared';
 import { tintIndex } from '../tint.js';
 import { MoveEarlierIcon, MoveLaterIcon } from './icons.js';
 
@@ -84,9 +85,16 @@ export function TagInput({
   const [active, setActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  /*
+   * Whether two names are one. For tags the store's own fold decides (`sameName`, ASCII
+   * only): a tag is found without case (MAK-127), so "receipts" beside Receipts is the
+   * same chip, and a name the store keeps apart is kept apart here. A field's options
+   * are compared exactly, as they always were; the label is what says which this is.
+   */
+  const same = label === 'tag' ? sameName : (a: string, b: string) => a === b;
   const typed = draft.trim().toLowerCase();
   const available = suggestions
-    .filter((s) => !tags.includes(s))
+    .filter((s) => !tags.some((t) => same(t, s)))
     // Completions appear once there is something to complete; a restricted list is the
     // whole choice, so it appears on an empty field too.
     .filter((s) => (restrict && typed === '') || (typed !== '' && s.toLowerCase().includes(typed)))
@@ -96,9 +104,13 @@ export function TagInput({
     const name = raw.trim();
     setDraft('');
     if (name === '') return;
-    // Restricted, a typed word means the option spelled that way, whatever its case.
-    const chosen = restrict ? suggestions.find((s) => s.toLowerCase() === name.toLowerCase()) : name;
-    if (chosen === undefined || tags.includes(chosen)) return;
+    // Restricted, a typed word means the option spelled that way, whatever its case. A
+    // tag typed in another case is the tag that exists, so the chip shows its spelling
+    // now rather than changing under the person once the save comes back.
+    const chosen = restrict
+      ? suggestions.find((s) => s.toLowerCase() === name.toLowerCase())
+      : (suggestions.find((s) => same(s, name)) ?? name);
+    if (chosen === undefined || tags.some((t) => same(t, chosen))) return;
     onChange([...tags, chosen]);
   }
 

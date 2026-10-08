@@ -3,6 +3,7 @@ import {
   UNFILED,
   endOfDay,
   excerptMarkdown,
+  foldNoCase,
   fieldRangeBound,
   fieldSortKey,
   fieldSortsNumerically,
@@ -50,6 +51,8 @@ export interface Snapshot {
 export interface Lookups {
   notebooks: Map<string, FeedNotebook>;
   tags: Map<string, FeedTag>;
+  /** Tags by their name folded as the store's NOCASE index folds it (`foldNoCase`). */
+  tagsByName: Map<string, FeedTag>;
   /** Definitions held, by field id, for rendering a value from the definition rather than the carried name. */
   fieldDefs: Map<string, FieldDef>;
   /** Files by note, oldest first then by name, as the server lists them. */
@@ -64,7 +67,11 @@ export function lookups(s: Snapshot): Lookups {
     for (const f of nb.fieldDefs) fieldDefs.set(f.id, f);
   }
   const tags = new Map<string, FeedTag>();
-  for (const t of s.tags) tags.set(t.id, t);
+  const tagsByName = new Map<string, FeedTag>();
+  for (const t of s.tags) {
+    tags.set(t.id, t);
+    tagsByName.set(foldNoCase(t.name), t);
+  }
   const filesByNote = new Map<string, FeedAttachment[]>();
   for (const a of s.attachments) {
     const list = filesByNote.get(a.noteId) ?? [];
@@ -72,26 +79,37 @@ export function lookups(s: Snapshot): Lookups {
     filesByNote.set(a.noteId, list);
   }
   for (const list of filesByNote.values()) list.sort((a, b) => a.createdAt - b.createdAt || a.filename.localeCompare(b.filename));
-  return { notebooks, tags, fieldDefs, filesByNote };
+  return { notebooks, tags, tagsByName, fieldDefs, filesByNote };
 }
 
 const byNameNoCase = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: 'base' }) || (a < b ? -1 : a > b ? 1 : 0);
 
-/**
- * A name as `COLLATE NOCASE` compares it: ASCII letters folded, nothing else. SQLite's
- * NOCASE folds only A–Z, so a filter that folded Unicode case as well, or compared with
- * `localeCompare`, matched notebooks the server's own filter did not, and the filter and
- * the sidebar's count — which used a third spelling — could disagree (review of #232).
- * One fold, used wherever a notebook is found by name. It is also about fifty times
- * cheaper than `localeCompare` over an archive's rows.
- */
-export const foldNoCase = (name: string) => name.replace(/[A-Z]/g, (c) => c.toLowerCase());
+// One fold, used wherever a notebook or a tag is found by name; see `foldNoCase` in
+// `@unbent/shared`, which says why it is ASCII only. Re-exported for the components
+// that have always imported it from here.
+export { foldNoCase };
 export const sameNotebookName = (a: string, b: string) => foldNoCase(a) === foldNoCase(b);
 
-/** A note's tags as names, sorted as `get` returns them; a write made here names them itself. */
+/**
+ * A note's tags as names, sorted as `get` returns them; a write made here names them
+ * itself. A name it gave that the library already holds in another case shows as the
+ * library has it, and one name given twice in two cases is one: what `setTags` will
+ * make of it when the write reaches the server (MAK-127), so the note does not change
+ * spelling under the person when the feed brings the row back.
+ */
 export function tagNames(note: LocalNote, l: Lookups): string[] {
-  const names = note.tagNames ?? note.tagIds.map((id) => l.tags.get(id)?.name).filter((n): n is string => n !== undefined);
-  return [...names].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  let names: string[];
+  if (note.tagNames) {
+    const seen = new Map<string, string>();
+    for (const name of note.tagNames) {
+      const key = foldNoCase(name);
+      if (!seen.has(key)) seen.set(key, l.tagsByName.get(key)?.name ?? name);
+    }
+    names = [...seen.values()];
+  } else {
+    names = note.tagIds.map((id) => l.tags.get(id)?.name).filter((n): n is string => n !== undefined);
+  }
+  return names.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 }
 
 /** A note's notebook's name: what a write made here said, else the notebook the id names. */
@@ -238,8 +256,9 @@ export function matches(note: LocalNote, filter: ListFilter, ordering: ListOrder
     if (!name || !sameNotebookName(name, filter.notebook)) return false;
   }
   if (filter.tag && filter.tag.length > 0) {
-    const names = new Set(tagNames(note, l));
-    for (const t of filter.tag) if (!names.has(t)) return false;
+    // Without case, as the server's filter has it: `?tag=receipts` lists Receipts' notes.
+    const names = new Set(tagNames(note, l).map(foldNoCase));
+    for (const t of filter.tag) if (!names.has(foldNoCase(t))) return false;
   }
   for (const raw of filter.field ?? []) {
     const f = parseFieldFilter(raw);
@@ -345,10 +364,12 @@ export function count(s: Snapshot, filter: ListFilter, l = lookups(s)): number {
 export function tagSummaries(s: Snapshot): Array<{ id: string; name: string; count: number }> {
   const counts = new Map<string, number>();
   const byName = new Map<string, string>();
-  for (const t of s.tags) byName.set(t.name, t.id);
+  for (const t of s.tags) byName.set(foldNoCase(t.name), t.id);
   for (const n of s.notes) {
     if (n.deletedAt !== undefined) continue;
-    const ids = n.tagNames ? n.tagNames.map((name) => byName.get(name)).filter((id): id is string => !!id) : n.tagIds;
+    const ids = n.tagNames
+      ? [...new Set(n.tagNames.map((name) => byName.get(foldNoCase(name))).filter((id): id is string => !!id))]
+      : n.tagIds;
     for (const id of ids) counts.set(id, (counts.get(id) ?? 0) + 1);
   }
   const out: Array<{ id: string; name: string; count: number }> = [];
