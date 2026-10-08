@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, act } from '@testing-library/react';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { EditorToolbar, type NoteView } from './EditorToolbar.js';
@@ -143,6 +143,65 @@ describe('EditorToolbar attach', () => {
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files: [new File(['x'], 'a.png', { type: 'image/png' })] } });
     expect(view.state.doc.toString()).toMatch(/^body!\[uploading a\.png…]/);
+
+    click.mockRestore();
+    view.destroy();
+  });
+});
+
+describe('EditorToolbar hide keyboard', () => {
+  function mount() {
+    return new EditorView({ state: EditorState.create({ doc: 'body' }), parent: document.body });
+  }
+  const hide = () => screen.queryByLabelText('Hide keyboard');
+
+  // Shown only while there is a keyboard to put away: docked, and the editor focused.
+  it('appears in the docked bar only while the editor has the caret', () => {
+    const view = mount();
+    render(<EditorToolbar view={view} docked noteView={{ current: 'rich', onChange: () => {} }} />);
+    expect(hide()).toBeNull();
+
+    act(() => view.focus());
+    expect(hide()).not.toBeNull();
+
+    act(() => view.contentDOM.blur());
+    expect(hide()).toBeNull();
+    view.destroy();
+  });
+
+  it('is not offered on a desktop, which has no on-screen keyboard', () => {
+    const view = mount();
+    render(<EditorToolbar view={view} noteView={{ current: 'rich', onChange: () => {} }} />);
+    act(() => view.focus());
+    expect(hide()).toBeNull();
+    view.destroy();
+  });
+
+  it('takes the caret out of the editor, which puts the keyboard away', () => {
+    const view = mount();
+    render(<EditorToolbar view={view} docked noteView={{ current: 'rich', onChange: () => {} }} />);
+    act(() => view.focus());
+
+    fireEvent.mouseDown(hide()!);
+    expect(view.hasFocus).toBe(false);
+    expect(hide()).toBeNull();
+    view.destroy();
+  });
+
+  // iOS gives focus back to the editor when the picker closes, with no keyboard to hide.
+  it('leaves the editor unfocused after Attach on a phone, so there is nothing to hide', () => {
+    const view = new EditorView({
+      state: EditorState.create({ doc: 'body', extensions: [attachments({ upload: async () => 'files/x' })] }),
+      parent: document.body,
+    });
+    render(<EditorToolbar view={view} docked noteView={{ current: 'rich', onChange: () => {} }} />);
+    const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
+    act(() => view.focus());
+
+    fireEvent.click(screen.getByLabelText('Attach file'));
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(view.hasFocus).toBe(false);
+    expect(hide()).toBeNull();
 
     click.mockRestore();
     view.destroy();

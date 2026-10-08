@@ -111,6 +111,15 @@ const AttachIcon = (
   </ToolbarIcon>
 );
 
+/** A keyboard over a chevron pointing down, for putting the keyboard away. */
+const HideKeyboardIcon = (
+  <ToolbarIcon>
+    <rect x="2" y="3" width="20" height="12" rx="2" />
+    <path d="M6 7h.01M10 7h.01M14 7h.01M18 7h.01M8 11h8" />
+    <path d="m9 18 3 3 3-3" />
+  </ToolbarIcon>
+);
+
 const ACTIONS: Action[] = [
   { label: 'B', title: 'Bold (⌘B)', run: cmd.toggleBold, className: 'tb-bold' },
   { label: 'I', title: 'Italic (⌘I)', run: cmd.toggleItalic, className: 'tb-italic' },
@@ -237,6 +246,12 @@ function TableButton({ view, disabled = false }: { view: EditorView | null; disa
  * phone, where refocusing raises the keyboard over the note the user is looking at;
  * undocked means a desktop, where "formatting should never cost the user their place"
  * applies to attaching too.
+ *
+ * Docked, the editor gives up its focus before the picker opens, not only after. iOS
+ * hands focus back to whatever had it when the picker closes, and raises no keyboard for
+ * it: an editor holding a focus with no keyboard under it, which the hide-keyboard
+ * button then offered to put away. The picker takes the keyboard down regardless, and
+ * the selection the file lands at is the editor's own, which a blur leaves where it is.
  */
 function AttachButton({
   view,
@@ -261,7 +276,10 @@ function AttachButton({
         aria-label="Attach file"
         disabled={disabled || !canUpload}
         onMouseDown={(e) => e.preventDefault()}
-        onClick={() => input.current?.click()}
+        onClick={() => {
+          if (docked) view?.contentDOM.blur();
+          input.current?.click();
+        }}
       >
         {AttachIcon}
       </button>
@@ -283,6 +301,32 @@ function AttachButton({
       />
     </span>
   );
+}
+
+/**
+ * Whether the editor holds the caret, which on a phone is whether the keyboard is up.
+ *
+ * Read from the editor's own focus rather than from `keyboardInset`: the inset also grows
+ * when a person pinches the page in, which is no keyboard at all.
+ */
+function useEditorFocused(view: EditorView | null): boolean {
+  const [focused, setFocused] = useState(false);
+  useEffect(() => {
+    if (!view) {
+      setFocused(false);
+      return;
+    }
+    const el = view.contentDOM;
+    const update = () => setFocused(view.hasFocus);
+    update();
+    el.addEventListener('focus', update);
+    el.addEventListener('blur', update);
+    return () => {
+      el.removeEventListener('focus', update);
+      el.removeEventListener('blur', update);
+    };
+  }, [view]);
+  return focused;
 }
 
 export function EditorToolbar({
@@ -307,6 +351,7 @@ export function EditorToolbar({
   */
   const editing = noteView.current !== 'preview';
   const canEdit = editing && !readOnly;
+  const editorFocused = useEditorFocused(view);
 
   /*
      Whether the docked run has more to the right of what is on screen.
@@ -430,6 +475,35 @@ export function EditorToolbar({
             </button>
           ))}
         </div>
+
+        {/*
+            Puts the keyboard away. The bar WebKit draws above an iOS keyboard had a tick
+            for this, and the app takes that bar away (`AccessoryBar.swift`) because its
+            other two buttons step between form fields and a note has one. Without the
+            tick, tapping outside the text was the only way left, and in a long note the
+            text fills everything above the keys. Dragging the keyboard down does not work
+            there either, since the note scrolls in a column of its own. Android has Back,
+            but this costs it nothing and works the same way.
+
+            The trailing end of the row, beside the switcher and outside the scroller, so
+            it is always on screen and never among the formatting. Shown only while the
+            editor holds the caret, when there is a keyboard to put away. A control that
+            did nothing the rest of the time would be noise on every note.
+        */}
+        {docked && editorFocused && (
+          <button
+            type="button"
+            className="tb-btn tb-hide-keyboard"
+            title="Hide keyboard"
+            aria-label="Hide keyboard"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              view?.contentDOM.blur();
+            }}
+          >
+            {HideKeyboardIcon}
+          </button>
+        )}
       </div>
     </div>
   );

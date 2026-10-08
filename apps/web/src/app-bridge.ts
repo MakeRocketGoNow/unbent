@@ -146,6 +146,22 @@ export function exposeToApp(handlers: AppHandlers): () => void {
 }
 
 /**
+ * What the iOS app's page adds to its viewport: the whole screen, and no zooming it did
+ * not ask for.
+ *
+ * The second half is here because of what WebKit does unasked. Tapping Attach with the
+ * keyboard up put the picker's menu on screen with the page magnified to about one and
+ * three-quarter times behind it — the title cut off, the docked bar halfway up — until
+ * the menu was dismissed. A web view zooms toward whatever it has just focused, and it
+ * does so freely unless the page says its scale is fixed. `maximum-scale=1` is what stops
+ * that. A pinch still works: the app sets `ignoresViewportScaleLimits`, as Safari does,
+ * so the limit binds WebKit and never the person. `user-scalable=no` was here at first
+ * and took pinch-zoom from anyone who needs it to read a scan, which was the wrong trade
+ * for stopping a stray thumb.
+ */
+const IOS_VIEWPORT = 'viewport-fit=cover, maximum-scale=1.0';
+
+/**
  * Lays the page out for the app hosting it. Called once, before anything renders.
  *
  * Only the iOS app asks anything of the layout. It first kept the page inside the safe
@@ -170,8 +186,13 @@ export function adoptHostLayout(): void {
   document.documentElement.classList.add('host-ios');
   const viewport = document.querySelector('meta[name="viewport"]');
   const content = viewport?.getAttribute('content') ?? '';
-  if (viewport && !content.includes('viewport-fit')) {
-    viewport.setAttribute('content', `${content}, viewport-fit=cover`);
+  // Each setting by its own key, so a second call adds nothing and a page that already
+  // says `viewport-fit` still gets the scale. Checking for `viewport-fit` alone once
+  // stood for all of them, and would have brought the zoom back silently the day
+  // index.html gained `viewport-fit=cover` of its own.
+  const missing = IOS_VIEWPORT.split(', ').filter((part) => !content.includes(`${part.split('=')[0]}=`));
+  if (viewport && missing.length) {
+    viewport.setAttribute('content', [content, ...missing].join(', '));
   }
   postToApp({ type: 'edge-to-edge' });
   // The same function each time, so calling this twice still listens once.
