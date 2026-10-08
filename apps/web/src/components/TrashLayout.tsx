@@ -16,6 +16,7 @@ import { useExactCount } from './use-exact-count.js';
 import { useSelection } from '../useSelection.js';
 import { SelectionBar } from './SelectionBar.js';
 import { RestoreIcon, TrashIcon } from './icons.js';
+import { useListMotion } from '../list-motion.js';
 
 /**
  * The trash sidebar.
@@ -30,6 +31,8 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
   // `open` is undefined unless a trashed note is on screen; used both to leave the view
   // when that note disappears and, on mobile, to decide which pane is showing.
   const layout = useNotesLayout('/trash/$noteId');
+  // Restored and deleted rows leave rather than vanish; see `list-motion.ts`.
+  const listMotionRef = useListMotion<HTMLUListElement>();
   const onListKeys = useListKeys();
   const open = layout.open;
   /**
@@ -237,6 +240,7 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
 
         <ul
           className={selection.active ? 'note-list selecting' : 'note-list'}
+          ref={listMotionRef}
           aria-multiselectable
           onKeyDown={onListKeysWithSelection}
         >

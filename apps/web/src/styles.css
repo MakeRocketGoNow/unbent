@@ -1045,6 +1045,22 @@ button.link {
   min-height: 0;
 }
 
+/*
+   A row that just left the list, drawn where it stood while it closes up (`list-motion.ts`).
+   Inside the list, which is its scroll box, so it scrolls with the rows and is clipped
+   where they are; above them, on the list's own ground, so the row rising into its place
+   is covered by what is left of it rather than drawn through its text.
+*/
+.note-list { position: relative; }
+
+/* Through the list, since a row's own `.note-entry` rule, later in the file, positions it too. */
+.note-list > .note-ghost {
+  position: absolute;
+  z-index: 1;
+  margin: 0;
+  pointer-events: none;
+}
+
 .note-list[aria-busy='true'] {
   opacity: 0.45;
   transition: opacity 0.15s ease 0.15s;

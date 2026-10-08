@@ -108,6 +108,8 @@ export function NoteListItem({
 
   return (
     <li
+      // What the list's motion follows a row by (`list-motion.ts`).
+      data-note-id={note.id}
       className={['note-entry', selection?.selected && 'selected', actions && 'with-actions']
         .filter(Boolean)
         .join(' ')}
