@@ -12,6 +12,7 @@ import type { Note, NoteRevision } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { ApiError, NoteChangedError } from '../notes-api.js';
 import { keys } from '../queries.js';
+import { formatRevisionWhen } from './format-when.js';
 import { Workspace } from './Workspace.js';
 
 vi.mock('../notes-api.js', async (importOriginal) => ({
@@ -110,7 +111,8 @@ describe('restoring a version from History', () => {
     await waitFor(async () => expect((await title()).value).toBe('Minutes (final)'));
     expect(api.restoreRevision).toHaveBeenCalledWith('n1', 4, {});
     expect(client.getQueryData<Note>(keys.note('n1'))).toMatchObject({ body: earlier.body, updatedAt: 200 });
-    expect(screen.getByRole('status').textContent).toContain('Restored the version from today,');
+    // Through the same formatter as the message: a test collected before midnight and run after it read "yesterday" (CI, 2026-10-08).
+    expect(screen.getByRole('status').textContent).toContain(`Restored the version from ${formatRevisionWhen(earlier.createdAt, Date.now(), { inSentence: true })}`);
     await waitFor(() => expect(document.querySelector<HTMLDialogElement>('dialog.history-sheet')!.open).toBe(false));
 
     // The restored note is the autosave's new baseline, not an edit to send.
@@ -130,8 +132,8 @@ describe('restoring a version from History', () => {
     mount();
     fireEvent.click(await openVersion());
     await waitFor(() =>
-      expect(screen.getByRole('status').textContent).toMatch(
-        /Restored the version from today, .*, except Status and the tag “drama”/,
+      expect(screen.getByRole('status').textContent).toContain(
+        `Restored the version from ${formatRevisionWhen(earlier.createdAt, Date.now(), { inSentence: true })}, except Status and the tag “drama”`,
       ),
     );
   });

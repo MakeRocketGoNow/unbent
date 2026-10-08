@@ -215,6 +215,26 @@ export function notifyLibraryChange(roots: ReadonlySet<string> = LIBRARY_ROOTS):
   changeListeners.forEach((l) => l(roots));
 }
 
+const resetListeners = new Set<() => void>();
+
+/**
+ * The library starting over: the feed engine has emptied the collections, to walk the
+ * snapshot again after a `reset` from the server (an operator's wind-back or load) or a
+ * walk position it refuses. Told once the old rows are gone. Distinct from a change:
+ * after a reset a row may be *older* than a cached answer, and `installLibraryQueries`
+ * in `queries.ts` drops the cached answers no view is watching rather than asking them
+ * again (MAK-196).
+ */
+export function onLibraryReset(listener: () => void): () => void {
+  resetListeners.add(listener);
+  return () => void resetListeners.delete(listener);
+}
+
+/** For a test library: every listener told the library has started over. */
+export function notifyLibraryReset(): void {
+  resetListeners.forEach((l) => l());
+}
+
 /** A change message as the collection reports it; the rows are read as notes. */
 type NoteChange = { type: string; value?: object | undefined; previousValue?: object | undefined };
 type LocalNoteLike = Pick<LocalNote, 'deletedAt' | 'notebookId' | 'notebookName' | 'tagIds' | 'tagNames' | 'fields'>;
@@ -289,6 +309,9 @@ async function open(userId: string): Promise<Library> {
       latest = state;
       listeners.forEach((l) => l(state));
     },
+    // Once the old rows are gone, not when the count moves: a read in between would
+    // cache them again, and nothing would drop that answer (found in review).
+    onTruncated: () => resetListeners.forEach((l) => l()),
   });
   collections = createCollections(store, engine);
 
