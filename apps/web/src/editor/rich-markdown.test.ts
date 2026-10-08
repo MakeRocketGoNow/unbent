@@ -1129,10 +1129,6 @@ describe('inline images', () => {
 });
 
 /**
- * What the viewer pages through: every attachment the editor would draw, in the order
- * the note has them, whether or not its line is anywhere near the viewport.
- */
-/**
  * Down from the end of a note that ends in a picture opens a line under it — the only way
  * to get the caret below an image or a PDF that is the last thing in a note.
  */
@@ -1199,6 +1195,10 @@ describe('a line below a closing picture', () => {
   });
 });
 
+/**
+ * What the viewer pages through: every attachment the editor would draw, in the order
+ * the note has them, whether or not its line is anywhere near the viewport.
+ */
 describe('attachment set', () => {
   const options = {
     resolveAttachment: (name: string) => `/api/notes/n1/files/${name}`,
