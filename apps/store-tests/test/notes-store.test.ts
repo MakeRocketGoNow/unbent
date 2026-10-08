@@ -737,7 +737,10 @@ describe('tags and notebooks', () => {
 
     // The bulk verbs: adding a tag a note has in another case changes nothing; removing
     // one by another case takes it off.
-    expect(await stub.updateMany([a.id, b.id], { addTags: ['receipts'] })).toEqual({ matched: [a.id, b.id], changed: [] });
+    const none = await stub.updateMany([a.id, b.id], { addTags: ['receipts'] });
+    expect(none.changed).toEqual([]);
+    // In the store's order, which is the ids', not the order they were sent in.
+    expect([...none.matched].sort()).toEqual([a.id, b.id].sort());
     expect((await stub.updateMany([a.id], { removeTags: ['RECEIPTS'] })).changed).toEqual([a.id]);
     expect((await stub.get(a.id))!.tags).toEqual(['CAFÉ']);
     // A tag named in both lists, in two cases, is added, as it would be in one.
