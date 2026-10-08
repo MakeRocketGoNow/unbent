@@ -4,6 +4,7 @@ import {
   endOfDay,
   excerptMarkdown,
   foldNoCase,
+  sameName,
   fieldRangeBound,
   fieldSortKey,
   fieldSortsNumerically,
@@ -84,11 +85,9 @@ export function lookups(s: Snapshot): Lookups {
 
 const byNameNoCase = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: 'base' }) || (a < b ? -1 : a > b ? 1 : 0);
 
-// One fold, used wherever a notebook or a tag is found by name; see `foldNoCase` in
-// `@unbent/shared`, which says why it is ASCII only. Re-exported for the components
-// that have always imported it from here.
-export { foldNoCase };
-export const sameNotebookName = (a: string, b: string) => foldNoCase(a) === foldNoCase(b);
+// One fold for notebooks and tags alike; see `foldNoCase` in `@unbent/shared`, which says
+// why it is ASCII only. The notebook name the components have always imported.
+export const sameNotebookName = sameName;
 
 /**
  * A note's tags as names, sorted as `get` returns them; a write made here names them
