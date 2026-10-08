@@ -292,6 +292,17 @@ export async function closeLibrary(): Promise<void> {
 }
 
 /**
+ * A failed pull, to the error reports. `reportError` already drops an `OfflineError` and
+ * says each message once a page load, so a retry failing the same way is one report. A
+ * lapsed session is dropped here too: the app answers a 401 by asking for a sign-in, and
+ * every device whose sign-in ran out would otherwise report it as a fault.
+ */
+function reportPullFailure(err: unknown): void {
+  if (err instanceof ApiError && err.status === 401) return;
+  reportError(err, 'error');
+}
+
+/**
  * How long one page of the feed or the snapshot may take, headers and body together. A
  * snapshot page is cut at about 4 MB of bodies (`FEED_PAGE_BYTES`), which a slow phone
  * connection takes tens of seconds over; a minute is room for that and still an answer
@@ -324,17 +335,6 @@ export class FeedTimeoutError extends Error {
  * about, as `request` would for a fetch that failed. The route is the path without its
  * query, so the message reads the same for every page and groups as one.
  */
-/**
- * A failed pull, to the error reports. `reportError` already drops an `OfflineError` and
- * says each message once a page load, so a retry failing the same way is one report. A
- * lapsed session is dropped here too: the app answers a 401 by asking for a sign-in, and
- * every device whose sign-in ran out would otherwise report it as a fault.
- */
-function reportPullFailure(err: unknown): void {
-  if (err instanceof ApiError && err.status === 401) return;
-  reportError(err, 'error');
-}
-
 export async function fetchJson<T>(path: string): Promise<T> {
   const route = path.replace(/\?.*$/, '');
   const controller = new AbortController();
