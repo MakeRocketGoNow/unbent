@@ -10,6 +10,14 @@ vi.mock('@tanstack/react-router', () => ({
   Link: ({ children, to }: { children: React.ReactNode; to: string }) => <a href={to}>{children}</a>,
 }));
 
+// The operator's own id, for the one section that is not offered on their own account.
+let signedInAs = 'op1';
+// Whether the instance offers a person's own deletion, which is where that section points them.
+let selfDeletion = true;
+vi.mock('../useAppSession.js', () => ({
+  useAppSession: () => ({ session: { user: { id: signedInAs } }, isPending: false, unreachable: false }),
+}));
+
 vi.mock('../notes-api.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../notes-api.js')>()),
   previewRestore: vi.fn(),
@@ -17,6 +25,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
   previewLoad: vi.fn(),
   loadDump: vi.fn(),
   resyncDevices: vi.fn(),
+  deleteAccount: vi.fn(),
   accountDumps: vi.fn(),
   accountRestores: vi.fn(),
   operatorAccount: vi.fn(),
@@ -80,6 +89,7 @@ function harness(
   restores: StoreRestore[] = [],
 ) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(keys.config(), { accountDeletion: selfDeletion } as Awaited<ReturnType<typeof api.getConfig>>);
   client.setQueryData(keys.operatorAccount('u1'), who);
   if (seeded) client.setQueryData(keys.storeStats('u1'), seeded);
   vi.mocked(api.accountDumps).mockImplementation(answerDumps);
@@ -96,6 +106,8 @@ const flush = () => act(async () => {});
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  signedInAs = 'op1';
+  selfDeletion = true;
 });
 
 describe('OperatorAccount: facts', () => {
@@ -560,6 +572,63 @@ describe('OperatorAccount: resync devices', () => {
     expect(api.resyncDevices).toHaveBeenCalledWith('u1');
     expect(screen.getByText(/Done. Every device of the account will copy the library again/)).toBeTruthy();
     expect(screen.queryByRole('group', { name: 'Confirm resync devices' })).toBeNull();
+  });
+});
+
+describe('OperatorAccount: delete account', () => {
+  it("names the account and the store's counts, and deletes only once DELETE is typed", async () => {
+    vi.mocked(api.deleteAccount).mockResolvedValue({ deleted: 'u1' });
+    harness();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete account' }));
+    const confirm = screen.getByRole('group', { name: 'Confirm delete account' });
+    expect(confirm.textContent).toContain('Delete someone@example.com and its 12 notes and 4 files?');
+    expect(confirm.classList.contains('confirm-danger')).toBe(true);
+    const press = within(confirm).getByRole('button', { name: 'Delete account' }) as HTMLButtonElement;
+    expect(press.disabled).toBe(true);
+    fireEvent.change(within(confirm).getByLabelText('Type DELETE to confirm'), { target: { value: 'DELETE' } });
+    expect(press.disabled).toBe(false);
+    fireEvent.click(press);
+    await flush();
+    expect(api.deleteAccount).toHaveBeenCalledWith('u1');
+    // The page stays and says so, rather than the account's sections or "No such account".
+    expect(screen.getByText(/Deleted. The account, its notes and files, and its sign-ins are gone./)).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'someone@example.com' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Resync devices' })).toBeNull();
+  });
+
+  it("names the sweep's note count while the store's are not in, or are a loading store's zeros", () => {
+    vi.mocked(api.storeStats).mockReturnValue(new Promise(() => {}));
+    const loading = { ...stats({ notes: 0, attachments: 0 }), loading: { id: 'l1', key: 'stores/u1/2026-10-05.sql', startedAt: now, pages: 2, undo: null, before: null } };
+    for (const seeded of [null, loading]) {
+      harness(undefined, seeded);
+      fireEvent.click(screen.getByRole('button', { name: 'Delete account' }));
+      expect(screen.getByRole('group', { name: 'Confirm delete account' }).textContent).toContain('Delete someone@example.com and its 12 notes?');
+      cleanup();
+    }
+  });
+
+  it('stays on the page and says why when the server refuses', async () => {
+    vi.mocked(api.deleteAccount).mockRejectedValue(new Error('The store could not be wiped.'));
+    harness();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete account' }));
+    const confirm = screen.getByRole('group', { name: 'Confirm delete account' });
+    fireEvent.change(within(confirm).getByLabelText('Type DELETE to confirm'), { target: { value: 'DELETE' } });
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Delete account' }));
+    await flush();
+    expect(screen.queryByText(/Deleted\./)).toBeNull();
+    expect(screen.getByText('The store could not be wiped.')).toBeTruthy();
+  });
+
+  it("is not offered on the operator's own account, and points to Maintenance only where it offers it", () => {
+    signedInAs = 'u1';
+    harness();
+    expect(screen.queryByRole('button', { name: 'Delete account' })).toBeNull();
+    expect(screen.getByText(/This is your own account/).textContent).toContain('Delete it from Maintenance');
+    cleanup();
+
+    selfDeletion = false;
+    harness();
+    expect(screen.getByText(/This is your own account/).textContent).toContain('this instance cannot send one');
   });
 });
 

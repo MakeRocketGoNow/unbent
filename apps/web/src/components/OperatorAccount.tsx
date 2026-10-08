@@ -6,15 +6,16 @@ import * as api from '../notes-api.js';
 import { ApiError, LoadFailedError, errorText } from '../notes-api.js';
 import { formatBytes } from '../format-bytes.js';
 import { formatMoment, timeAgo } from './format-when.js';
-import { accountDumpsQuery, accountRestoresQuery, keys, operatorAccountQuery, storeStatsQuery } from '../queries.js';
+import { accountDumpsQuery, accountRestoresQuery, configQuery, keys, operatorAccountQuery, storeStatsQuery } from '../queries.js';
 import { holdPage } from '../busy.js';
+import { useAppSession } from '../useAppSession.js';
 import { Button } from './Button.js';
 import { Confirm } from './Confirm.js';
 import { LastDump } from './Operator.js';
 
 /**
  * One account, for the operator: what the directory and its store say of it, its dumps,
- * and the three things an operator can do to it. Every action goes through `Confirm`
+ * and the four things an operator can do to it. Every action goes through `Confirm`
  * with the account and the blast radius named, in the order of how much each loses.
  *
  * Each action is the route it drives and nothing more. The dry run is a press of its own
@@ -47,6 +48,25 @@ export function OperatorAccount({ userId }: { userId: string }) {
   // A wiped or loading store answers null for its last write because it cannot read its
   // feed, not because nothing was written: unknown, so the sweep's value stands in.
   const live = stats.data && !stats.data.wiped && !stats.data.loading ? stats.data.lastWriteAt : undefined;
+  // The address of an account deleted from this page, kept here because the row it came
+  // from is gone the moment the list is refetched.
+  const [deleted, setDeleted] = useState<string | null>(null);
+
+  // Before the null check: a deleted account's row reads as null once refetched, and
+  // "No such account" is the wrong thing to say about one just deleted on purpose.
+  if (deleted !== null) {
+    return (
+      <div className="panel operator-page">
+        <div className="panel-head">
+          <h2 className="wrap-anywhere">{deleted}</h2>
+          <Link to="/settings/operator" className="link small">
+            All accounts
+          </Link>
+        </div>
+        <p className="good small">Deleted. The account, its notes and files, and its sign-ins are gone.</p>
+      </div>
+    );
+  }
 
   if (row.data === null) {
     return (
@@ -95,6 +115,7 @@ export function OperatorAccount({ userId }: { userId: string }) {
       <RestoreHistory key={`history-${windBacks}-${loads}`} userId={userId} email={account?.email ?? userId} onChanged={() => setUndos((n) => n + 1)} />
       <LoadDump key={`load-${windBacks}-${undos}`} userId={userId} email={account?.email ?? userId} onChanged={() => setLoads((n) => n + 1)} />
       <Resync userId={userId} email={account?.email ?? userId} />
+      <DeleteAccount userId={userId} email={account?.email ?? userId} account={account} stats={stats.data ?? null} onDeleted={setDeleted} />
     </div>
   );
 }
@@ -1031,6 +1052,121 @@ function Resync({ userId, email }: { userId: string; email: string }) {
         />
       )}
       {done && <p className="good small">Done. Every device of the account will copy the library again.</p>}
+      {error && <p className="bad small">{error}</p>}
+    </section>
+  );
+}
+
+/**
+ * Deleting the account: for a sign-up that should not exist — a bot, a test account,
+ * someone who asked by other means. The same deletion a person makes of their own from
+ * Maintenance, by the same server code, without the emailed link that proves an account
+ * is theirs.
+ *
+ * Last on the page, below everything that can be undone, and typed to confirm as
+ * "Delete all notes" is, since it is the one action here with no undo at all: a wind-back
+ * and a load each record a bookmark to go back to, and this leaves no account to load a
+ * dump into. The confirm names what goes from the store's own counts, falling back to
+ * the sweep's while those are not in, and says that the dumps stay — they are not
+ * deleted, and age out under the bucket's rules.
+ *
+ * Not offered on the operator's own account, which the server refuses too: that deletion
+ * is Maintenance's, with its link, and this one would end the session making it.
+ */
+function DeleteAccount({
+  userId,
+  email,
+  account,
+  stats,
+  onDeleted,
+}: {
+  userId: string;
+  email: string;
+  account: Account | null;
+  stats: api.StoreStats | null;
+  onDeleted: (email: string) => void;
+}) {
+  const queryClient = useQueryClient();
+  const { session } = useAppSession();
+  const config = useQuery(configQuery());
+  const [asked, setAsked] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (session?.user.id === userId) {
+    return (
+      <section className="settings-section">
+        <h3>Delete account</h3>
+        {/* Maintenance draws its control only where mail can confirm it; on an instance
+            with none, pointing there would send the operator to something that is not drawn. */}
+        <p className="muted small">
+          This is your own account.{' '}
+          {config.data?.accountDeletion === false ? (
+            'An account deletes itself with a link sent by email, and this instance cannot send one.'
+          ) : (
+            <>
+              Delete it from <Link to="/settings/maintenance">Maintenance</Link>, which confirms by email.
+            </>
+          )}
+        </p>
+      </section>
+    );
+  }
+
+  // The store's own counts when it can give them; a wiped or loading store reports zeros
+  // that are not its size, so the sweep's note count stands in, as `live` does above.
+  const counted = stats && !stats.wiped && !stats.loading ? stats : null;
+  const notes = counted ? counted.counts['notes'] : account?.noteCount;
+  const files = counted ? counted.counts['attachments'] : undefined;
+  // Only what there is: "and its 0 files" names nothing, and a bot's account often has neither.
+  const what = [notes ? plural(notes, 'note') : null, files ? plural(files, 'file') : null].filter(Boolean).join(' and ');
+
+  async function remove() {
+    const release = holdPage();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.deleteAccount(userId);
+      // The page says so and stays, as every other action here ends in a line saying it
+      // is done; going straight to the list left the operator to read success from a
+      // row's absence. The sections that read the store unmount with it, so nothing asks
+      // after the wiped store again. The list is refetched without the account.
+      onDeleted(email);
+      void queryClient.invalidateQueries({ queryKey: keys.operatorAccounts() });
+      void queryClient.invalidateQueries({ queryKey: keys.operatorBackups() });
+    } catch (err) {
+      setError(errorText(err));
+      setBusy(false);
+    } finally {
+      release();
+    }
+  }
+
+  return (
+    <section className="settings-section">
+      <h3>Delete account</h3>
+      <p className="muted small">
+        Deletes the account, every note and file in it, and every way of signing in to it. There is no undo. Its dumps are not deleted: they
+        stay in the backups bucket for {DUMPS_KEPT_DAYS} days and in the mirror for {MIRROR_KEPT_DAYS}.
+      </p>
+      <Button tone="danger" disabled={busy} onClick={() => setAsked((v) => !v)}>
+        Delete account
+      </Button>
+      {asked && (
+        <Confirm
+          label="Confirm delete account"
+          question={`Delete ${email}${what ? ` and its ${what}` : ''}?`}
+          detail={
+            <>
+              Everything goes now, and anyone signed in to it is signed out within five minutes. There is no undo. Type <code>DELETE</code> to confirm.
+            </>
+          }
+          requireTyped="DELETE"
+          busy={busy}
+          onCancel={() => setAsked(false)}
+          actions={[{ label: 'Delete account', busyLabel: 'Deleting…', tone: 'danger', onConfirm: remove }]}
+        />
+      )}
       {error && <p className="bad small">{error}</p>}
     </section>
   );

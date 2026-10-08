@@ -1138,6 +1138,15 @@ export async function loadDump(userId: string, dump: string): Promise<LoadResult
   return json<LoadResult>(res);
 }
 
+/**
+ * Deletes someone else's account and everything in it (`DELETE /api/admin/accounts/:id`).
+ * The operator's own is refused: Settings deletes that, with its emailed link.
+ */
+export async function deleteAccount(userId: string): Promise<{ deleted: string }> {
+  const id = encodeURIComponent(userId);
+  return json<{ deleted: string }>(await request(`/api/admin/accounts/${id}?confirm=${id}`, { method: 'DELETE' }));
+}
+
 /** Names a new feed epoch, so every device of the account starts over from a snapshot. */
 export async function resyncDevices(userId: string): Promise<{ user: string; epoch: string }> {
   return json<{ user: string; epoch: string }>(

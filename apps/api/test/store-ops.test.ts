@@ -158,6 +158,12 @@ describe('operator-only routes', () => {
     for (const path of ['/api/admin/backups', '/api/admin/accounts', `/api/admin/accounts/${alice.userId}`, `/api/admin/accounts/${alice.userId}/dumps`, `/api/admin/accounts/${alice.userId}/dumps/2026-10-06.sql`, `/api/admin/accounts/${alice.userId}/restores`]) {
       expect((await fetch(`${BASE}${path}`, as(alice))).status, path).toBe(404);
     }
+    // Deleting an account, someone else's or the caller's own: Settings is where a
+    // person deletes their own, with the emailed link. Bob is still there afterwards.
+    for (const target of [bob, alice]) {
+      expect((await fetch(`${BASE}/api/admin/accounts/${target.userId}`, as(alice, { method: 'DELETE' }))).status).toBe(404);
+    }
+    expect((await fetch(`${BASE}/api/notes`, as(bob))).status).toBe(200);
   });
 
   it('refuse a sweep token the instance was not given, and never fall through to the session', async () => {

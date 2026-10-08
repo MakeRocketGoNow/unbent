@@ -18,7 +18,7 @@ import { operatorAccountsQuery, operatorBackupsQuery } from '../queries.js';
  * Health first, because it is the question the page exists to answer at a glance:
  * two cards, one per half of the backup, each leading with one word. The accounts are
  * a table of what the directory knows; each row is a link to the account's own page,
- * where the three actions live. The actions are not on the rows: each needs a confirm
+ * where the actions live. The actions are not on the rows: each needs a confirm
  * that names the account and what it loses, and a confirm unfolding inside a table row
  * is the layout the issue's "quiet row actions" was warning against, not asking for.
  */

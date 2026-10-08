@@ -12,6 +12,8 @@ import { MIRROR_STATUS_KEY, STATUS_KEY, dumpPrefix } from '../lib/backups.js';
 import { beforeLoadKey, describeDump, dumpBeforeLoad, loadReserve, resolveDumpDownload, resolveDumpKey, streamDump } from '../lib/load.js';
 import { isOperator } from '../lib/instance.js';
 import { userPrefix } from '../lib/repo.js';
+import { deleteAccount } from '../lib/account-deletion.js';
+import { accountDeletionOffered } from '../auth.js';
 import { storeFor } from '../lib/store-client.js';
 import { sweepStores } from '../lib/sweep.js';
 import { SWEEP_TOKEN_HEADER, sweepTokenMatches } from '../lib/sweep-token.js';
@@ -781,6 +783,48 @@ export const admin = new Hono<AppEnv>()
     console.log(`[store] operator=${email} account user=${id}`);
     const account = await operatorAccountRow(c.env.DB, id);
     return account ? c.json(account) : c.json({ error: 'No such account' }, 404);
+  })
+
+  /**
+   * Deletes someone else's account: its files, its store, its `user` row and everything
+   * D1 cascades from it, then the directory's tombstone — the deletion a person makes of
+   * their own from Settings, by the same code (`deleteAccount`), without the emailed link
+   * that proves an account is theirs. For a sign-up that should not exist: a bot, a test
+   * account, someone who asked by other means.
+   *
+   * Not the operator's own: that deletion is Maintenance's, with its link, and this one would
+   * end the session it is answering. The account's daily dumps are left in the backups
+   * bucket to age out under its lifecycle rule, as they are when a person deletes their
+   * own; the page says so before the press.
+   *
+   * Irreversible, so it requires `?confirm=<the same id>` rather than firing on a bare
+   * DELETE, as `purge-notes` requires its word: a stray retry or a URL typed by hand
+   * should not be able to delete an account. The id rather than a fixed word, so a
+   * confirmed request cannot be pointed at a different account by editing its path.
+   *
+   * Logged before anything is deleted, with both ids and the address, since afterwards
+   * there is no row left to say whose account it was.
+   */
+  .delete('/admin/accounts/:id', requireAuth, async (c) => {
+    const target = await operatorAccount(c, c.req.param('id'));
+    if (target instanceof Response) return target;
+    if (target === c.get('userId')) {
+      // Pointing at Maintenance only where it draws the control: an instance with no mail
+      // does not offer a person's own deletion at all (`accountDeletionOffered`).
+      const where = accountDeletionOffered(c.env)
+        ? 'Delete it from Settings → Maintenance, which confirms by email.'
+        : 'An account deletes itself with a link sent by email, and this instance cannot send one.';
+      return c.json({ error: `This is your own account. ${where}` }, 400);
+    }
+    if (c.req.query('confirm') !== target) {
+      return c.json({ error: 'Confirmation required', hint: `Repeat this request with ?confirm=${target} to delete this account.` }, 400);
+    }
+    const row = await c.env.DB.prepare(`SELECT email FROM user WHERE id = ?1`).bind(target).first<{ email: string }>();
+    // A directory row with no user is a deletion already made and not yet swept up.
+    if (!row) return c.json({ error: 'No such account' }, 404);
+    console.log(`[store] operator=${c.get('user')?.email} delete user=${target} email=${row.email}`);
+    await deleteAccount(c.env, target);
+    return c.json({ deleted: target });
   })
 
   /**
