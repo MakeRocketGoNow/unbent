@@ -416,4 +416,18 @@ describe('the operator\'s accounts', () => {
     expect(await walk('t_l')).toEqual(['first_last@example.test']);
     expect(await walk('%')).toEqual(['100%@example.test']);
   });
+
+  it('search for a whole long address, which D1 refuses as a LIKE pattern', async () => {
+    const long = 'a.rather.long.address.for.a.search@subdomain.example.test';
+    expect(long.length).toBeGreaterThan(50);
+    await account('long', { email: long });
+    expect(await walk(long.toUpperCase())).toEqual([long]);
+  });
+
+  it('fold ASCII letters only, so a letter outside ASCII finds itself and not its other case', async () => {
+    await account('e-1', { email: 'emile@example.test', name: 'Émile' });
+    // The ASCII letters fold either way; the É only matches an É.
+    expect(await walk('ÉMILE')).toEqual(['emile@example.test']);
+    expect(await walk('émile')).toEqual([]);
+  });
 });

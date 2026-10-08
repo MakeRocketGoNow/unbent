@@ -158,12 +158,12 @@ const toAccount = (r: OperatorRow): OperatorAccount => ({
  * The list's statement, as text, so `migrations.test.ts` can `EXPLAIN QUERY PLAN` it
  * against a database built from the migrations and pin that it walks `user`'s email
  * index and finds each directory row by its key. Binds: the email to start after (`''`
- * for the first page), the search's `LIKE` pattern or null, and the limit.
+ * for the first page), the search lowercased or null, and the limit.
  */
 export const OPERATOR_PAGE_SQL = `${OPERATOR_SELECT}
         WHERE d.deleted_at IS NULL
           AND u.email > ?1
-          AND (?2 IS NULL OR u.email LIKE ?2 ESCAPE '\\' OR u.name LIKE ?2 ESCAPE '\\')
+          AND (?2 IS NULL OR instr(lower(u.email), ?2) > 0 OR instr(lower(u.name), ?2) > 0)
         ORDER BY u.email LIMIT ?3`;
 
 /**
@@ -214,12 +214,15 @@ export const DUMP_SQL = {
  * an account, so that is alphabetical.
  *
  * A search is a substring of the email or the name, because the part of an address an
- * operator remembers is as often the domain as the start. It matches in either case for
- * ASCII letters only: `LIKE` folds no others, so "é" does not find "É". No index serves a
- * substring, so a search walks the same index and tests each row until it has a page: a
- * search that matches little reads every `user` row, and the directory only for the rows
- * that match. That is accepted: a row per account, for a page an operator opens a few
- * times a day. `%` and `_` in the search are escaped, so they match themselves.
+ * operator remembers is as often the domain as the start. It is `instr` over `lower`, not
+ * `LIKE`: D1 refuses a `LIKE` pattern over fifty bytes, which a pasted address passes
+ * (found in review, as a 500), and `instr` has no pattern, so `%` and `_` are only
+ * themselves. It matches in either case for ASCII letters only, since SQLite's `lower`
+ * folds no others: "é" does not find "É", and the search is lowered the same way so that
+ * an "É" typed still finds itself. No index serves a substring, so a search walks the same
+ * index and tests each row until it has a page: a search that matches little reads every
+ * `user` row, and the directory only for the rows that match. That is accepted: a row per
+ * account, for a page an operator opens a few times a day.
  *
  * A row whose email changed between pages can appear twice or not at all, which the
  * page dedupes by id and the five-minute refetch corrects. One statement for the first
@@ -232,8 +235,9 @@ export async function listOperatorAccounts(
   search = '',
 ): Promise<OperatorAccountsPage> {
   const term = search.trim();
-  const pattern = term ? `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
-  const { results } = await db.prepare(OPERATOR_PAGE_SQL).bind(after, pattern, limit).all<OperatorRow>();
+  // ASCII letters only, as SQLite's `lower` does to the columns it is compared with.
+  const needle = term ? term.replace(/[A-Z]/g, (c) => c.toLowerCase()) : null;
+  const { results } = await db.prepare(OPERATOR_PAGE_SQL).bind(after, needle, limit).all<OperatorRow>();
   const last = results[results.length - 1];
   return { accounts: results.map(toAccount), next: results.length === limit && last ? last.email : null };
 }

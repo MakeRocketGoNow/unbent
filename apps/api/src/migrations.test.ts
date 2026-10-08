@@ -144,7 +144,7 @@ describe.skipIf(!sqlite3)('the directory\'s query plans', () => {
   });
 
   it('walk the accounts list down the email index, with or without a search, and find each row by its key', () => {
-    const pages: [after: string, pattern: string][] = [["''", 'NULL'], ["'m@example.com'", 'NULL'], ["''", "'%ex%'"], ["'m@example.com'", "'%ex%'"]];
+    const pages: [after: string, pattern: string][] = [["''", 'NULL'], ["'m@example.com'", 'NULL'], ["''", "'ex'"], ["'m@example.com'", "'ex'"]];
     for (const [after, pattern] of pages) {
       const p = plan(OPERATOR_PAGE_SQL.replace('?1', after).replace(/\?2/g, pattern).replace('?3', '50'));
       // The first page's `email > ''` is a seek too, from the start of the index.
