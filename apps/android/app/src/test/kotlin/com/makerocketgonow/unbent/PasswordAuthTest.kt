@@ -66,7 +66,7 @@ class PasswordAuthTest {
     fun `a refusal keeps the server's words, so the allowlist can explain itself`() {
         server.enqueue(
             MockResponse().setResponseCode(403)
-                .setBody("""{"code":"FORBIDDEN","message":"This Unbent instance is not open for sign-ups."}"""),
+                .setBody("""{"code":"SIGNUPS_CLOSED","message":"This Unbent instance is not open for sign-ups."}"""),
         )
 
         try {
