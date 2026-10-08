@@ -1,4 +1,6 @@
 import { Link } from '@tanstack/react-router';
+import { useQuery } from '@tanstack/react-query';
+import { configQuery } from '../queries.js';
 import { Button } from './Button.js';
 import { savedAs, startExport, stopExport, useExporting, type ExportState } from '../export-archive.js';
 import { isHosted, savesTo } from '../app-bridge.js';
@@ -7,8 +9,10 @@ import { isHosted, savesTo } from '../app-bridge.js';
  * The export page.
  *
  * Export used to be a bare topbar link, so a click started a possibly multi-gigabyte
- * download with no warning and no account of what was in it. It is the only backup this
- * app has, which makes it worth a page that says so.
+ * download with no warning and no account of what was in it. It is the only copy of the
+ * library the person holds themselves — the instance's own backups (MAK-171, "Durability"
+ * in the README) are the operator's, for a fault on the service's side, and age out — which
+ * makes it worth a page that says so.
  *
  * A button rather than a link now: the archive is built here in the browser, a page of
  * notes per request, because one request to the Worker may make only so many calls to
@@ -18,6 +22,9 @@ import { isHosted, savesTo } from '../app-bridge.js';
  */
 export function Export() {
   const exporting = useExporting();
+  // Whether this instance keeps backups of its own, for the closing paragraph; a fork with
+  // none must not be told it has them. Absent reads as none, like the rest of the config.
+  const backups = Boolean(useQuery(configQuery()).data?.backups);
   // Matches the filename the export stamps, so the example is never a date from the past.
   const stamp = new Date().toISOString().slice(0, 10);
   const running = exporting.status === 'running';
@@ -122,10 +129,18 @@ export function Export() {
         </p>
       )}
 
+      {/* Said plainly because the old text here called this "the backup", which stopped
+          being the whole truth where the instance keeps copies of its own. Those are not
+          the person's to reach, and they age out, so the zip is still the one copy in their
+          own hands — the distinction a customer who lost something would care about. */}
       <p className="muted small">
-        This is the backup. D1&apos;s own export cannot be used — it fails on any database
-        with a full-text search index and leaves the database wedged — so a copy of this
-        zip is the only way back from a bad day.
+        {backups
+          ? 'This is the copy you hold. Unbent keeps backups of its own for putting things right ' +
+            'after a fault on our side, but they are not something you can reach and they age ' +
+            'out; the zip is the one copy in your own hands, and the only way back from a ' +
+            'mistake of your own.'
+          : 'This is the backup. This Unbent keeps no copies of its own, so the zip is the ' +
+            'only way back from a bad day.'}
       </p>
     </div>
   );
