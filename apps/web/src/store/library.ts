@@ -1,5 +1,6 @@
 import type { AttachmentTexts } from '@unbent/shared';
 import { ApiError, isOfflineError, request } from '../notes-api.js';
+import { reportError } from '../report-error.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
 import { openLocalStore, openSearchDatabase, closeLocalStore } from './db.js';
 import { createCollections, cursorStore, type Collections, type LocalNote } from './collections.js';
@@ -323,6 +324,17 @@ export class FeedTimeoutError extends Error {
  * about, as `request` would for a fetch that failed. The route is the path without its
  * query, so the message reads the same for every page and groups as one.
  */
+/**
+ * A failed pull, to the error reports. `reportError` already drops an `OfflineError` and
+ * says each message once a page load, so a retry failing the same way is one report. A
+ * lapsed session is dropped here too: the app answers a 401 by asking for a sign-in, and
+ * every device whose sign-in ran out would otherwise report it as a fault.
+ */
+function reportPullFailure(err: unknown): void {
+  if (err instanceof ApiError && err.status === 401) return;
+  reportError(err, 'error');
+}
+
 export async function fetchJson<T>(path: string): Promise<T> {
   const route = path.replace(/\?.*$/, '');
   const controller = new AbortController();
@@ -358,6 +370,7 @@ async function open(userId: string): Promise<Library> {
     // Once the old rows are gone, not when the count moves: a read in between would
     // cache them again, and nothing would drop that answer (found in review).
     onTruncated: () => resetListeners.forEach((l) => l()),
+    onError: reportPullFailure,
   });
   collections = createCollections(store, engine);
 

@@ -303,6 +303,18 @@ describe('FeedEngine', () => {
     expect(h.c.attachment.ready).toBe(1);
   });
 
+  it('hands what a failed pull threw to onError, once per failure', async () => {
+    const refused = Object.assign(new Error('/api/changes answered 503'), { status: 503 });
+    const h = harness({ '/api/changes?since=10&epoch=e1&limit=2': [refused, feedPage({ next: 10 })] });
+    const errors: unknown[] = [];
+    h.engine['options'].onError = (err) => errors.push(err);
+    h.setCursor({ seq: 10, epoch: 'e1' });
+    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    await h.engine.settled();
+    await h.engine.pull();
+    expect(errors).toEqual([refused]);
+  });
+
   it('coalesces pulls: one runs at a time, a request during a run queues exactly one more', async () => {
     let release: () => void = () => {};
     const gate = new Promise<void>((r) => (release = r));

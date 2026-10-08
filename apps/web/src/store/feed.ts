@@ -110,6 +110,12 @@ export interface FeedOptions {
    * old rows are gone, or a read in between fills it with them (found in review).
    */
   onTruncated?: () => void;
+  /**
+   * A pull failed, with what it threw. `lastError` keeps the message for the view; this is
+   * for the error reports, which nothing in the state reached before: a first copy that
+   * failed on every device would have been seen by nobody.
+   */
+  onError?: (err: unknown) => void;
   /** The first wait before a failed copy is tried again; doubles to `RETRY_MAX_MS`. */
   retryMs?: number;
 }
@@ -191,6 +197,7 @@ export class FeedEngine {
       } catch (err) {
         this.state.lastError = err instanceof Error ? err.message : String(err);
         this.state.phase = 'failed';
+        this.options.onError?.(err);
         this.retry();
       } finally {
         this.state.pulls += 1;
