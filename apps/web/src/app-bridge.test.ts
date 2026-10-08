@@ -38,7 +38,7 @@ describe('app bridge', () => {
     // The whole screen, and a fixed scale: a web view otherwise zooms toward whatever it
     // focuses, which the file picker showed with the page magnified behind its menu.
     expect(meta.content).toBe(
-      'width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no',
+      'width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0',
     );
     expect(postMessage).toHaveBeenCalledWith('{"type":"edge-to-edge"}');
   });
@@ -51,7 +51,7 @@ describe('app bridge', () => {
     adoptHostLayout();
 
     expect(meta.content).toBe(
-      'width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no',
+      'width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0',
     );
   });
 

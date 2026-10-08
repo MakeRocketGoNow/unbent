@@ -197,6 +197,12 @@ final class WebShellController: UIViewController {
         // is what tells the app from Safari there.
         config.applicationNameForUserAgent = "UnbentiOS/\(BuildInfo.version)"
         config.allowsInlineMediaPlayback = true
+        // A pinch is always the person's, whatever the page's viewport says — Safari's own
+        // rule since iOS 10. The page's `maximum-scale=1` still stops WebKit zooming toward
+        // what it focuses, because that zoom reads the page's limit and this does not lift
+        // it; only the hand is let through. Low-vision readers need it for a scan's small
+        // print, and the app does not answer Dynamic Type to make up for its loss.
+        config.ignoresViewportScaleLimits = true
 
         let handler = WeakMessageHandler(self)
         let content = config.userContentController
