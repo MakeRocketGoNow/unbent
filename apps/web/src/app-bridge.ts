@@ -146,6 +146,20 @@ export function exposeToApp(handlers: AppHandlers): () => void {
 }
 
 /**
+ * What the iOS app's page adds to its viewport: the whole screen, and no zooming.
+ *
+ * The second half is the Android app's `setSupportZoom(false)`, and it is here because of
+ * what WebKit does unasked. Tapping Attach with the keyboard up put the picker's menu on
+ * screen with the page magnified to about one and three-quarter times behind it — the
+ * title cut off, the docked bar halfway up — until the menu was dismissed. A web view
+ * zooms toward whatever it has just focused, and it does so freely unless the page says
+ * its scale is fixed. `maximum-scale=1` is what stops that; `user-scalable=no` stops a
+ * pinch, which in an editor is a mistake waiting to be made with a thumb. Neither is
+ * asked for in a browser, where zooming a page is the reader's to decide.
+ */
+const IOS_VIEWPORT = 'viewport-fit=cover, maximum-scale=1.0, user-scalable=no';
+
+/**
  * Lays the page out for the app hosting it. Called once, before anything renders.
  *
  * Only the iOS app asks anything of the layout. It first kept the page inside the safe
@@ -165,20 +179,6 @@ export function exposeToApp(handlers: AppHandlers): () => void {
  * Android keeps its strips. They are a status bar and a gesture bar high, the WebView
  * tells a page nothing about them, and its drawer's rounded corners are Material's own.
  */
-/**
- * What the iOS app's page adds to its viewport: the whole screen, and no zooming.
- *
- * The second half is the Android app's `setSupportZoom(false)`, and it is here because of
- * what WebKit does unasked. Tapping Attach with the keyboard up put the picker's menu on
- * screen with the page magnified to about one and three-quarter times behind it — the
- * title cut off, the docked bar halfway up — until the menu was dismissed. A web view
- * zooms toward whatever it has just focused, and it does so freely unless the page says
- * its scale is fixed. `maximum-scale=1` is what stops that; `user-scalable=no` stops a
- * pinch, which in an editor is a mistake waiting to be made with a thumb. Neither is
- * asked for in a browser, where zooming a page is the reader's to decide.
- */
-const IOS_VIEWPORT = 'viewport-fit=cover, maximum-scale=1.0, user-scalable=no';
-
 export function adoptHostLayout(): void {
   if (hostApp()?.platform !== 'ios') return;
   document.documentElement.classList.add('host-ios');
