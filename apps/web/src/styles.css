@@ -2024,6 +2024,15 @@ a.overflow-item { text-decoration: none; }
   color: var(--muted);
 }
 
+/* An item that says why it is faded is faded by colour instead of opacity. The opacity
+   above stacked on the note's own muted colour left the one line that explains the item
+   at about 2:1 — unreadable on the phone it exists for. Muted ink on both lines still
+   reads as unavailable beside the full-ink items, with no hover fill to say otherwise. */
+.overflow-item:disabled:has(.overflow-item-note) {
+  opacity: 1;
+  color: var(--muted);
+}
+
 /*
    The error state's header row holds only the back arrow, and that arrow is hidden above
    the breakpoint — which left a bordered 9px strip above the message with nothing in it.
