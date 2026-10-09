@@ -203,7 +203,8 @@ function deployArrived(): void {
     handOver(worker, location.href, holding);
     return;
   }
-  if (busy && atOnce) {
+  // Not on an embed page, which never takes one at arrival: waiting there only delays the notice.
+  if (busy && atOnce && !state.path.startsWith('/embed/')) {
     held ??= { since: Date.now(), said: false };
     if (sayHold(held, Date.now())) {
       held.said = true;
