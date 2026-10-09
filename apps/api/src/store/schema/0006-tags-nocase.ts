@@ -27,16 +27,11 @@
  *   - The feed hears of it as it hears of a merge: a tombstone for each tag that went, a
  *     row for each that took its notes, and a row for every note whose tag ids changed.
  *     Without them a device holding the library would keep notes pointing at a tag id
- *     that no longer exists. The UNION ALL below writes tombstones first, then survivors,
- *     then notes — the order merge used to use. A client that pages the pull can apply
- *     the delete before some retags; `tagNames` then hides the tag, and a body save can
- *     send the short set. `renameTag` now records notes first so a later merge does not.
- *     This file is not edited: schema is append-only, and objects that have already run
- *     it have those rows as they were written. The rows are numbered from `_meta.seq` as
- *     `Feed.flush` numbers them, through a staging table whose rowid counts them, so the
- *     counter moves by exactly the rows written and `seq` stays dense. Nothing is
- *     announced on the sockets — a migration runs before any request — so a device finds
- *     them on its next pull, which opening the app makes.
+ *     that no longer exists. The rows are numbered from `_meta.seq` as `Feed.flush`
+ *     numbers them, through a staging table whose rowid counts them, so the counter
+ *     moves by exactly the rows written and `seq` stays dense. Nothing is announced on
+ *     the sockets — a migration runs before any request — so a device finds them on its
+ *     next pull, which opening the app makes.
  *   - The two staging tables are dropped in the same transaction; nothing outside this
  *     file ever sees them, and a dump never holds them.
  *
