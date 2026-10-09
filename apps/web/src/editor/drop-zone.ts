@@ -71,10 +71,19 @@ function blockAround(view: EditorView, line: { from: number; to: number }): { fr
  * are tested the same way. Returns the cleanup.
  */
 export function noteDropZone(zone: HTMLElement, view: EditorView): () => void {
-  const files = (event: DragEvent) => event.dataTransfer?.types.includes('Files') ?? false;
+  /*
+     Whether this drag is the note's to take. Not over a sheet open on top of the note —
+     History is one — which is a child of the column in the page, so its events bubble
+     through here, but is drawn above the note in the top layer, with the note behind it
+     inert. A file let go on it is left to the window's guard (`refuseStrayFileDrops`).
+  */
+  const ours = (event: DragEvent) =>
+    !event.defaultPrevented &&
+    (event.dataTransfer?.types.includes('Files') ?? false) &&
+    !(event.target instanceof Element && event.target.closest('dialog'));
 
   const over = (event: DragEvent) => {
-    if (event.defaultPrevented || !files(event)) return;
+    if (!ours(event)) return;
     // Claims the drag; without it the browser opens the file when it is let go.
     event.preventDefault();
     if (view.state.readOnly) {
@@ -95,7 +104,7 @@ export function noteDropZone(zone: HTMLElement, view: EditorView): () => void {
   };
 
   const drop = (event: DragEvent) => {
-    if (event.defaultPrevented || !files(event)) return;
+    if (!ours(event)) return;
     event.preventDefault();
     showDropAt(view, null);
     if (view.state.readOnly) return;

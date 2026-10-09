@@ -156,6 +156,25 @@ describe('noteDropZone', () => {
     expect(caretAt(view)).toBe(0);
   });
 
+  /**
+   * A sheet open over the note — History — sits inside the column in the page, so its
+   * events bubble through the zone, but the note is inert behind it.
+   */
+  it('leaves a file over a sheet open on the note alone', async () => {
+    const { zone, view, uploaded } = mount('one');
+    const sheet = zone.appendChild(document.createElement('dialog'));
+    const row = sheet.appendChild(document.createElement('p'));
+    const over = dragEvent('dragover');
+    const drop = dragEvent('drop');
+    row.dispatchEvent(over);
+    row.dispatchEvent(drop);
+    expect(over.defaultPrevented).toBe(false);
+    expect(drop.defaultPrevented).toBe(false);
+    expect(caretAt(view)).toBeNull();
+    await settle();
+    expect(uploaded).toEqual([]);
+  });
+
   it('ignores a drag that carries no files', () => {
     const { zone, view } = mount('one');
     const event = dragEvent('dragover', ['text/plain']);
