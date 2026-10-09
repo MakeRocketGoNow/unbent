@@ -4,11 +4,13 @@ import { IndexedDBAdapter, OfflineExecutor } from '@tanstack/offline-transaction
 import pkg from '../../package.json';
 
 /**
- * Two private fields of two libraries are reached into: `syncedRow` in `actions.ts` reads
- * a collection's `_state.syncedData` for the row as the server last had it, and the
- * outbox's `dispose` closes the IndexedDB adapter's `db`. Neither is part of a contract,
- * so the versions are pinned exactly and this says so the day an upgrade moves them —
- * rather than the base of a save quietly becoming the local, unsynced view.
+ * Two private fields of two libraries are reached into: a collection's `_state.syncedData`,
+ * read by `syncedRow` in `actions.ts` for the row as the server last had it and by
+ * `feedControls` in `collections.ts` for the rows a tombstone is checked against, and the
+ * IndexedDB adapter's `db`, which the outbox's `dispose` closes. Neither is part of a
+ * contract, so the versions are pinned exactly and this says so the day an upgrade moves
+ * them — rather than the base of a save quietly becoming the local, unsynced view, or a
+ * purged note's tombstone being dropped again.
  */
 describe('the pinned library internals', () => {
   it('are pinned exactly', () => {
@@ -32,6 +34,8 @@ describe('the pinned library internals', () => {
     });
     const state = (c as unknown as { _state?: { syncedData?: Map<string, unknown> } })._state;
     expect(state?.syncedData?.get('a')).toEqual({ id: 'a' });
+    expect(state?.syncedData?.has('a')).toBe(true);
+    expect([...(state?.syncedData?.values() ?? [])]).toEqual([{ id: 'a' }]);
   });
 
   it('the IndexedDB adapter keeps its connection under db', () => {

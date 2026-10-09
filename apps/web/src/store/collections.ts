@@ -121,16 +121,27 @@ export interface SyncHandles<T extends object> {
  * once, the commit settles at once, so the persistence layer never has a page waiting
  * for the collection — which is also what keeps its rule against an immediate page
  * overtaking a waiting one from refusing these.
+ *
+ * `has` and `values` answer from the rows the feed wrote, not the collection's view of
+ * them. The engine asks what the server's copy here holds — whether a tombstone has a row
+ * to delete, which files a note had — and the view answers with the outbox's changes
+ * drawn on top. A purge hides its note from the view, and the purge's own pull brings the
+ * note's tombstone: asked of the view, the row was not there, the tombstone was dropped,
+ * the cursor moved past it, and the note was back in the trash once the purge ended — for
+ * good, since the feed never names it again (seen on 2026-10-08). Read through the
+ * collection's state manager, as `syncedRow` in `actions.ts` reads it; the version is
+ * pinned (`pins.test.ts`), and without the field the view is the fallback.
  */
 export function feedControls<T extends object>({ collection, begin, write, commit, truncate, markReady }: SyncHandles<T>): Controls<T> {
+  const synced = () => (collection as unknown as { _state?: { syncedData?: { has: (key: string) => boolean; values: () => Iterable<T> } } })._state?.syncedData ?? collection;
   return {
     begin: () => begin({ immediate: true }),
     write: (m) => write(m.type === 'delete' ? { type: 'delete', key: m.key } : { type: m.type, value: m.value }),
     commit: () => commit(),
     truncate,
     markReady,
-    has: (key) => collection.has(key),
-    values: () => collection.values(),
+    has: (key) => synced().has(key),
+    values: () => synced().values(),
   };
 }
 

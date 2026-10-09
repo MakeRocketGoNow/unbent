@@ -541,6 +541,22 @@ describe('a replay that pulls the feed', () => {
     expect(lib.notes.get('n2')?.deletedAt).toBe(5);
     expect(lib.outbox.status().pending).toBe(0);
   });
+
+  it('takes a purged note out of the rows, though the purge was hiding it when its tombstone came', async () => {
+    // The purge's own pull brings the tombstone while the purge still hides the row. A
+    // tombstone written only for a row the collection showed was dropped, the cursor went
+    // past it, and the note came back when the purge ended: in the trash for good, on a
+    // server that no longer had it, until a sign-out emptied the copy.
+    const { lib, fake, server, synced } = await fedLibrary([row('n1', { deletedAt: 5 })]);
+    vi.mocked(api.deleteNotePermanently).mockImplementation(async (id) => server.purged(id));
+    await actions.purgeNote('n1');
+    await tick();
+    expect(lib.notes.has('n1')).toBe(false);
+
+    expect(await settles(fake.replayOne())).toBe('done');
+    expect(synced('n1')).toBeUndefined();
+    expect(lib.notes.has('n1')).toBe(false);
+  });
 });
 
 describe('saves of one note', () => {
