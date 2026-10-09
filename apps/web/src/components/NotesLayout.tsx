@@ -28,7 +28,6 @@ import { SampleNotes } from './SampleNotes.js';
 import { EmptyLibrary } from './EmptyLibrary.js';
 import { Button } from './Button';
 import { NotebookMissing, isNotebookMissing } from './NotebookMissing.js';
-import { ExportLink } from './ExportLink.js';
 import { countMenuItems } from './count-menu.js';
 import { startExport, useExportRunning } from '../export-archive.js';
 import { TagPicker } from './TagPicker.js';
@@ -1115,10 +1114,6 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                 value={rangeLabel(from, to) ?? undefined}
                 onClick={() => setSheetPage('dates')}
               />
-
-              {!searching && isFiltered && (
-                <ExportLink filter={filter} sort={sort} total={total} />
-              )}
             </>
           )}
 

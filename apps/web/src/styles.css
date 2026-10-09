@@ -2412,14 +2412,6 @@ a.overflow-item { text-decoration: none; }
   border-color: var(--accent);
 }
 
-/* Export the current filter: a quiet button under the filter rows, as wide as its label
-   rather than stretched across the sheet. The negative margin centres its glyph under the
-   rows' larger ones — its padding is there for the hover fill, not to indent it. */
-.export-filtered {
-  align-self: flex-start;
-  margin-left: -0.15rem;
-}
-
 /* ---------------------------------------------------------------------------------
    The tag picker.
 
@@ -8118,7 +8110,7 @@ button.settings-nav-item {
    the taller row a larger target for free.
 
    The gap is cancelled rather than the body's rule changed, because every other child of
-   the sheet does want that gap — the chips, the rule, the export link. `+` so it only
+   the sheet does want that gap — the chips and the rule. `+` so it only
    collapses the space *between* rows and leaves the one above the first.
 */
 .filter-row {

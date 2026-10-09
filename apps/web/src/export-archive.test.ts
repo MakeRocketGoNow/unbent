@@ -6,7 +6,6 @@ import type { ExportSource } from '@unbent/enex';
 import {
   appDestination,
   createExporting,
-  isExportOf,
   savedAs,
   transient,
   type Exporting,
@@ -76,15 +75,12 @@ describe('createExporting', () => {
     exporting.start({ notebook: 'Coupons' });
     await settled(exporting);
     expect(exporting.get()).toMatchObject({ status: 'done', run: 1 });
-    expect(isExportOf(exporting.get(), { notebook: 'Coupons' })).toBe(true);
-    expect(isExportOf(exporting.get(), { notebook: 'Podcast Bookmarks' })).toBe(false);
-    // A sort means nothing without a date range, so it does not make a different export.
-    expect(isExportOf(exporting.get(), { notebook: 'Coupons', sort: 'title' })).toBe(true);
+    expect(exporting.get().filter).toEqual({ notebook: 'Coupons' });
 
     exporting.start({});
     await settled(exporting, 2);
     expect(exporting.get().run).toBe(2);
-    expect(isExportOf(exporting.get(), {})).toBe(true);
+    expect(exporting.get().filter).toEqual({});
   });
 
   it('counts a file that is gone as skipped, and still finishes', async () => {
