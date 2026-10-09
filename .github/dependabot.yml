@@ -89,10 +89,19 @@ updates:
     # any other route. Lift it with the override, once upstream agrees on a range. `ignore`
     # covers version updates only, so an advisory against utils still opens a security
     # update.
+    #
+    # Not `@journeyapps/wa-sqlite` 2, until `@tanstack/browser-db-sqlite-persistence` peers
+    # on it. The local library and the outbox open their SQLite file through that adapter,
+    # which peers on ^1.4.1 (as of 0.2.32, 2026-10); pnpm installs a 2.x beside it with
+    # only a peer warning, and what breaks is the persistence worker on every device, where
+    # no unit test reaches. The bump was merged once (#336) and reverted. Lift this when the
+    # adapter's peer range takes the new major, and run `pnpm gate:offline` on the bump.
     ignore:
       - dependency-name: vitest
         update-types: ['version-update:semver-major']
       - dependency-name: '@better-auth/utils'
+      - dependency-name: '@journeyapps/wa-sqlite'
+        update-types: ['version-update:semver-major']
 
   # Android. Gradle and AndroidX move on their own schedule and the app is built in CI.
   - package-ecosystem: gradle
