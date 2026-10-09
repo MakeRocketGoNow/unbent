@@ -12,6 +12,16 @@
  * Evernote has no export API, so the .enex has to be produced by hand before the Import
  * panel is any use at all. Someone arriving there without one had nowhere to go, which made
  * the whole feature undiscoverable for the person it is for.
+ *
+ * The whole-account path is a command run on the person's own computer, and this is the
+ * one place the app offers it. A hosted version — sign in to Evernote here and a machine of
+ * ours does the rest — was considered and declined (MAK-204). The Evernote sign-in that
+ * works for every account is the desktop client's own, which a tool someone runs against
+ * their own account can borrow and a service holding thousands of people's sessions cannot;
+ * the sanctioned OAuth route is for paid plans and unproven against the sync API; and it
+ * would pass the whole of someone's Evernote account through this instance, which the rest
+ * of the app goes out of its way not to do with a single photo. If that changes, the offer
+ * belongs in this paragraph, since both places that show it would need it.
  */
 export function EnexHelp() {
   return (
@@ -27,14 +37,25 @@ export function EnexHelp() {
           <strong>For a whole account.</strong> Exporting tens of thousands of notes by hand is
           unreliable, and the desktop app tends to give up partway.{' '}
           <a
-            href="https://github.com/vzhd1701/evernote-backup"
+            href="https://github.com/MakeRocketGoNow/evernote2unbent"
             target="_blank"
             rel="noreferrer noopener"
             className="link"
           >
-            evernote-backup
+            evernote2unbent
           </a>{' '}
-          syncs the account and writes one .enex per notebook. Import them one at a time.
+          skips the file: one command on your own computer signs in to Evernote, copies the
+          account and uploads it here, and a run that stops continues when it is run again.
+          With{' '}
+          <a
+            href="https://docs.astral.sh/uv/getting-started/installation/"
+            target="_blank"
+            rel="noreferrer noopener"
+            className="link"
+          >
+            uv
+          </a>{' '}
+          installed, it is <code>uvx evernote2unbent migrate</code>.
         </p>
       </div>
     </details>
