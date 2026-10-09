@@ -132,6 +132,27 @@ describe('a save answered while typing', () => {
     expect(api.updateNote).toHaveBeenCalledTimes(1);
   });
 
+  it('does not send the old tags with a keystroke typed and taken back while the save was out', async () => {
+    vi.mocked(useOutbox).mockReturnValue(outbox(() => {}));
+    let answer: (n: Note) => void = () => {};
+    vi.mocked(api.updateNote)
+      .mockImplementationOnce(() => new Promise<Note>((r) => (answer = r)))
+      .mockImplementation(async (_id, patch) => ({ ...server, ...elsewhere, ...patch, updatedAt: 102 }) as Note);
+    mount();
+
+    await type('Trip notes, one');
+    await waitFor(() => expect(api.updateNote).toHaveBeenCalledTimes(1), { timeout: 3000 });
+    // Equal to what was sent again, but a new draft the autosave is now holding.
+    await type('Trip notes, one!');
+    await type('Trip notes, one');
+    await act(async () => answer({ ...server, ...elsewhere, title: 'Trip notes, one', updatedAt: 101 }));
+    await act(() => new Promise((r) => setTimeout(r, 1500)));
+    for (const [, patch] of vi.mocked(api.updateNote).mock.calls.slice(1)) {
+      expect(patch).not.toHaveProperty('tags');
+      expect(patch).not.toHaveProperty('notebook');
+    }
+  });
+
   it('takes the same from an acknowledgement that lands mid-typing, and keeps the typing', async () => {
     let ack: Ack = () => {};
     vi.mocked(useOutbox).mockReturnValue(outbox((l) => (ack = l)));

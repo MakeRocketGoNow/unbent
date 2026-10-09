@@ -567,10 +567,13 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       // there. Nothing typed since: a reseed, whose new reset key re-arms the autosave's
       // baseline. A rebase alone would leave the baseline at what was sent, read the
       // answer's changes as an edit, and wipe "Saved" with a save that finds nothing.
+      // "Typed since" goes by identity, not content: a keystroke typed and taken back is
+      // equal to what was sent but already the autosave's pending value, and only a
+      // rebase replaces that with the answer's tags and notebook before it goes out.
       setBase(noteId, outcome);
       queryClient.setQueryData(keys.note(noteId), outcome);
       if (noteIdRef.current === noteId) {
-        if (JSON.stringify(draftRef.current) !== JSON.stringify(value)) rebaseDraft(value, outcome);
+        if (draftRef.current !== value) rebaseDraft(value, outcome);
         else if (JSON.stringify(seedFrom(outcome)) !== JSON.stringify(value)) reseed(outcome);
       }
     }
