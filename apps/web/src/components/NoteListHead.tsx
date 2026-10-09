@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react';
-import { SearchIcon, FilterIcon, MenuIcon } from './icons.js';
+import { SearchIcon, FilterIcon, MenuIcon, CountChevronIcon } from './icons.js';
+import { OverflowMenu, type OverflowItem } from './OverflowMenu.js';
 import { BackArrow } from './BackArrow.js';
 
 interface NoteListHeadProps {
@@ -10,6 +11,20 @@ interface NoteListHeadProps {
    * when the notebooks finish loading and the count turns out not to apply.
    */
   count: string | null;
+  /**
+   * What the count offers, when it offers anything — see `countMenuItems`. With it the
+   * count is a menu trigger, "37 notes ⌄"; without it, plain text.
+   *
+   * The caller passes it only for a narrowed list that is not being searched, and only
+   * while `count` is a count: "Loading…" and "Searching…" are not numbers anything could
+   * be done to, and a search's query is not part of an export. An unfiltered list keeps
+   * a plain count because its export is the whole library, which has its own page.
+   *
+   * The count rather than a control of its own because it is the one thing in this row
+   * that names the slice on screen, at every width and in every view — a notebook alone
+   * or a lone tag has no chips, which is why Export on the chip row did not work.
+   */
+  countMenu?: OverflowItem[];
   /**
    * Where the list is: the notebook's name, "Inbox", or "All notes".
    *
@@ -120,6 +135,7 @@ interface NoteListHeadProps {
  */
 export function NoteListHead({
   count,
+  countMenu,
   title,
   query,
   onQuery,
@@ -251,6 +267,22 @@ export function NoteListHead({
             <span className="count" aria-hidden="true">
               {'\u00a0'}
             </span>
+          ) : countMenu ? (
+            /* Same type size and place as the plain count, so nothing moves when it
+               becomes one; the chevron and the hover fill are what say it opens. A bare
+               number that happened to open a menu was the version rejected before. */
+            <OverflowMenu
+              label={`${count}, export or select`}
+              items={countMenu}
+              className="count-menu"
+              triggerClassName="count-trigger"
+              trigger={
+                <>
+                  <span className="count-text">{count}</span>
+                  <CountChevronIcon />
+                </>
+              }
+            />
           ) : (
             <span className="count">{count}</span>
           )}

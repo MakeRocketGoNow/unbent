@@ -29,6 +29,8 @@ import { EmptyLibrary } from './EmptyLibrary.js';
 import { Button } from './Button';
 import { NotebookMissing, isNotebookMissing } from './NotebookMissing.js';
 import { ExportLink } from './ExportLink.js';
+import { countMenuItems } from './count-menu.js';
+import { startExport, useExportRunning } from '../export-archive.js';
 import { TagPicker } from './TagPicker.js';
 import { FilterRow } from './FilterRow.js';
 import { DatePicker } from './DatePicker.js';
@@ -135,9 +137,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   };
 
   /**
-   * Whether anything narrows the list, notebook included. The export link reads this: it
-   * is the current filter serialized, and because the filters already live in the URL
-   * there is no separate state to keep in step — the link is the view.
+   * Whether anything narrows the list, notebook included. The count's export reads this:
+   * it is the current filter serialized, and because the filters already live in the URL
+   * there is no separate state to keep in step — the export is of the view.
    */
   const isFiltered = Boolean(notebook || selectedTags.length || fieldFilters.length || from || to);
 
@@ -150,7 +152,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * pointing at a surface where nothing was set. A badge has to be about the control it
    * sits on.
    *
-   * `isFiltered` is still the whole scope, and still what the export link reads: that is
+   * `isFiltered` is still the whole scope, and still what the count's export reads: that is
    * about the slice of the archive on screen, which the notebook is very much part of.
    */
   const sheetFiltered = Boolean(selectedTags.length || fieldFilters.length || from || to);
@@ -755,6 +757,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * anywhere; clearing the query brings the state back.
    */
   const showNotebookMissing = notebookMissing && results === null;
+  const counting = loading || (arriving && notes.length === 0);
+  const noteCount = total ?? notes.length;
   const countLabel = showNotebookMissing
     ? // A count of a notebook that does not exist would be a claim about nothing.
       null
@@ -762,9 +766,36 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       ? awaiting
         ? 'Searching…'
         : `${results.length} matches`
-      : loading || (arriving && notes.length === 0)
+      : counting
         ? 'Loading…'
-        : `${total ?? notes.length} notes`;
+        : `${noteCount} notes`;
+
+  /*
+   * The count as a menu: export the slice, or select it. Only for a list `isFiltered`
+   * narrows — the notebook counts, since the export is of the slice on screen — and only
+   * when the count is a number of notes: not over a search, whose query an export does not
+   * carry, not while loading, not for a notebook that is not there, and not for none.
+   */
+  const exportRunning = useExportRunning();
+  const countMenu =
+    isFiltered && results === null && !showNotebookMissing && !counting && noteCount > 0
+      ? countMenuItems({
+          total: noteCount,
+          shown: rowIds.length,
+          more: list.hasNextPage,
+          exportRunning,
+          onExport: () =>
+            startExport({
+              tags: filter.tag,
+              notebook: filter.notebook,
+              fields: filter.field,
+              from: filter.from,
+              to: filter.to,
+              sort: sort ?? DEFAULT_NOTE_SORT,
+            }),
+          onSelectAll: selection.selectAll,
+        })
+      : undefined;
 
   const createNote = useCreateNote();
   /**
@@ -790,6 +821,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       <aside className="sidebar">
         <NoteListHead
           count={countLabel}
+          countMenu={countMenu}
           title={heading}
           query={q}
           onQuery={setQuery}

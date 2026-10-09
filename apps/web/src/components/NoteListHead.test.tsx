@@ -42,6 +42,35 @@ describe('NoteListHead', () => {
     expect(getByLabelText('Filter notes')).toBeTruthy();
   });
 
+  /* A narrowed list's count is how it is exported, at every width and in every view; an
+     unfiltered one stays plain text, since its export is the whole library's page. */
+  it('makes the count a menu only when given one', () => {
+    const onExport = vi.fn();
+    const { getByRole, getByText, queryByRole, rerender } = render(
+      <NoteListHead
+        {...props}
+        count="37 notes"
+        countMenu={[{ label: 'Export these 37 notes', onSelect: onExport }]}
+      />,
+    );
+    const trigger = getByRole('button', { name: '37 notes, export or select' });
+    expect(trigger.getAttribute('aria-haspopup')).toBe('true');
+    fireEvent.click(trigger);
+    fireEvent.click(getByText('Export these 37 notes'));
+    expect(onExport).toHaveBeenCalledOnce();
+
+    rerender(<NoteListHead {...props} count="37 notes" />);
+    expect(queryByRole('button', { name: /37 notes/ })).toBeNull();
+    expect(getByText('37 notes').tagName).toBe('SPAN');
+  });
+
+  it('keeps an unknown count plain even with a menu to offer', () => {
+    const { queryByRole } = render(
+      <NoteListHead {...props} count={null} countMenu={[{ label: 'Export', onSelect: () => {} }]} />,
+    );
+    expect(queryByRole('button', { name: /export or select/ })).toBeNull();
+  });
+
   /* New floats over the list now, where every notes app people arrive from puts it, so
      this row is only the controls that are about what is already on screen. */
   it('draws the view toggle between the sort and the action', () => {

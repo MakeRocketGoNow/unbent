@@ -9,6 +9,7 @@ import {
   Bot,
   Calendar,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   CloudOff,
@@ -501,6 +502,14 @@ export function MoveLaterIcon() {
  */
 export function RowChevronIcon() {
   return <ChevronRight className="row-chevron" size="1em" aria-hidden="true" focusable="false" />;
+}
+
+/**
+ * The chevron after the list's count when the count opens a menu — see `NoteListHead`.
+ * Text-sized, since it is a suffix of the count rather than a control of its own.
+ */
+export function CountChevronIcon() {
+  return <ChevronDown size="1em" strokeWidth={2.25} aria-hidden="true" focusable="false" />;
 }
 
 /**
