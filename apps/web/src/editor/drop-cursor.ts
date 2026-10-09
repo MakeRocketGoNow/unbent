@@ -78,6 +78,17 @@ export function fileDropCursor(): Extension {
         if (!event.dataTransfer?.types.includes('Files')) return false;
         // Also claims the drag, without which the browser navigates to the file on drop.
         event.preventDefault();
+        /*
+           A note that takes no changes — in the trash, or held by a save conflict — says
+           so with the pointer instead. It used to draw the point all the same, and the
+           drop then did nothing (`attachments` takes the file and keeps it), so the
+           person aimed at a place the note was never going to put anything.
+        */
+        if (view.state.readOnly) {
+          event.dataTransfer.dropEffect = 'none';
+          moveTo(view, null);
+          return false;
+        }
         // `posAtCoords` measures rendered geometry, so it throws where there is none —
         // a headless test environment, or a pointer over a line that has been scrolled
         // out of the rendered viewport. Neither is worth failing a drag over: without a
