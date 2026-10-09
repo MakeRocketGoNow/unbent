@@ -9234,9 +9234,13 @@ button.settings-nav-item {
   /* `COLLAPSE_MS` in `Collapse.tsx`, which keeps the content until the close has run. */
   .collapse { transition: grid-template-rows 0.25s cubic-bezier(0.2, 0, 0, 1); }
 
-  /* Mounted open, so the open is a transition from nothing rather than a first frame. */
+  /*
+     An open that follows a close mounts the box already open, so it grows from nothing
+     rather than appearing on its first frame. One drawn open from the start does not
+     carry `.grows` and appears as it is; see `Collapse`.
+  */
   @starting-style {
-    .collapse.open { grid-template-rows: 0fr; }
+    .collapse.open.grows { grid-template-rows: 0fr; }
   }
 
   /*

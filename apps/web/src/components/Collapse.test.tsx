@@ -53,6 +53,24 @@ describe('Collapse', () => {
     expect(screen.queryByText('Lines')).toBeNull();
   });
 
+  it('appears as it is when drawn open, and grows only for an open that follows a close', () => {
+    reducedMotion(false);
+    vi.useFakeTimers();
+    const { rerender } = render(<Collapse open>Lines</Collapse>);
+    expect(screen.getByText('Lines').closest('.collapse')?.classList.contains('grows')).toBe(false);
+
+    rerender(<Collapse open={false}>Lines</Collapse>);
+    act(() => vi.advanceTimersByTime(COLLAPSE_MS));
+    rerender(<Collapse open>Lines</Collapse>);
+    expect(screen.getByText('Lines').closest('.collapse')?.classList.contains('grows')).toBe(true);
+  });
+
+  it('grows the first time when it starts closed', () => {
+    const { rerender } = render(<Collapse open={false}>Lines</Collapse>);
+    rerender(<Collapse open>Lines</Collapse>);
+    expect(screen.getByText('Lines').closest('.collapse')?.classList.contains('grows')).toBe(true);
+  });
+
   it('names its box for the control that opens it, and lays the content out in the class given', () => {
     render(
       <Collapse open id="tags" className="drawer-tags">

@@ -35,6 +35,14 @@ interface CollapseProps {
 export function Collapse({ open, children, id, className }: CollapseProps) {
   const [present, setPresent] = useState(open);
   if (open && !present) setPresent(true);
+  /*
+   * Whether an open grows. Not when it is drawn open in the first place: the sidebar's Tags
+   * remembers being open, and growing a list hundreds of pixels tall on every page load,
+   * and every time the drawer opens, is the jump this exists to remove. Once it has been
+   * closed, every open is the person's, and grows.
+   */
+  const [grows, setGrows] = useState(!open);
+  if (!open && !grows) setGrows(true);
 
   useEffect(() => {
     if (open || !present) return;
@@ -45,7 +53,7 @@ export function Collapse({ open, children, id, className }: CollapseProps) {
 
   if (!present) return null;
   return (
-    <div id={id} className={open ? 'collapse open' : 'collapse'} inert={!open}>
+    <div id={id} className={['collapse', open && 'open', grows && 'grows'].filter(Boolean).join(' ')} inert={!open}>
       {/* The clip is what the row shrinks; the content inside keeps its own padding and
           margins, which a box shrunk to nothing would otherwise still show. */}
       <div className="collapse-clip">
