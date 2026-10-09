@@ -7,7 +7,11 @@ import { carriesFiles, refuseFile, showDropAt } from './drop-cursor.js';
  * Where a file let go on the note, but not on its text, goes: the point of the text
  * nearest the pointer.
  *
- * - **Above the text** — the title, the properties, the formatting bar — at the top.
+ * - **Above the text** — the title, the properties, the attachments, the formatting bar —
+ *   at the top. The attachments row on purpose, though a file let go there reads as
+ *   "attach this": a note's files live in its text, so attaching one is putting it there,
+ *   and the top is the text nearest the row. Sending it to the end instead would be the
+ *   one place on the note where the drop point jumped away from the pointer.
  * - **Below it,** at the end. On a new note that is the whole empty page.
  * - **Level with a line,** in a margin or over something drawn across it, before or after
  *   the block that line belongs to, whichever side of the text the pointer is on.
