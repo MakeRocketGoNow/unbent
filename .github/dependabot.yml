@@ -11,8 +11,8 @@
 # weekly and monthly pull requests and leaves security updates alone (they are not counted
 # against it). Dependabot proposes a version without knowing why one was chosen — it
 # merged wa-sqlite 2 under an adapter that peers on 1 (#336) — so routine updates are done
-# by hand, by someone who can read why a version was chosen. The groups stay, because
-# security pull requests are grouped by them.
+# by hand, against DEPENDENCIES.md, which says which versions are held and why. The groups
+# stay, because security pull requests are grouped by them.
 
 version: 2
 updates:
@@ -80,13 +80,6 @@ updates:
         patterns:
           - '*'
     open-pull-requests-limit: 0
-    # Not vitest 6, until Cloudflare's vitest integration supports it. apps/store-tests
-    # runs the per-account store against real Durable Object SQLite through
-    # `@cloudflare/vitest-plugin`, which peers on one vitest major at a time (4, as of
-    # 2026-09) while every other package here is on 5; the grouped major bump would move
-    # them all and leave the plugin with no vitest it can load. Minors and patches still
-    # flow. Lift this once the plugin's peer range and the workspace's major agree.
-    #
     # Not `@better-auth/utils` at all, while the root `pnpm.overrides` pins it. Every
     # `better-auth` package requires exactly 0.4.2 while `better-call` asks for ^0.5.0, and
     # the override is what keeps one copy in the graph. The apps used to declare 0.4.2
@@ -104,8 +97,6 @@ updates:
     # no unit test reaches. The bump was merged once (#336) and reverted. Lift this when the
     # adapter's peer range takes the new major, and run `pnpm gate:offline` on the bump.
     ignore:
-      - dependency-name: vitest
-        update-types: ['version-update:semver-major']
       - dependency-name: '@better-auth/utils'
       - dependency-name: '@journeyapps/wa-sqlite'
         update-types: ['version-update:semver-major']
