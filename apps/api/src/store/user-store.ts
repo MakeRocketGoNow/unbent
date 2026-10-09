@@ -1190,7 +1190,7 @@ export class UserStore extends DurableObject<StoreEnv> {
     });
   }
 
-  /** `GET /usage`: this calendar year's presses and tokens; see `AutofillUsage`. */
+  /** `GET /api/autofill/usage`: this calendar year's presses and tokens; see `AutofillUsage`. */
   autofillUsage() {
     this.ready();
     return this.llmUsage.year(Date.now());

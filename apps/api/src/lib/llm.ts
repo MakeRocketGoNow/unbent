@@ -176,7 +176,7 @@ export interface LanguageModel {
  *
  * `usage` is set when the API answered and billed for it but the answer could not be
  * used — a reply cut off at the token budget, the dearest kind there is, since it spent
- * the whole budget. A caller that counts what a press cost counts this too (`meterErrors`
+ * the whole budget. A caller that counts what a press cost counts this too (`PressUsage.failed`
  * in lib/llm-usage.ts); an error with no usage cost nothing.
  */
 export class LlmError extends Error {

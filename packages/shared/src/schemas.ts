@@ -433,7 +433,7 @@ export interface LlmJobUsage extends LlmTokens {
 }
 
 /**
-  * `GET /api/autofill/usage`: the account's Auto-fill this calendar year, UTC (MAK-180). Presses,
+ * `GET /api/autofill/usage`: the account's Auto-fill this calendar year, UTC (MAK-180). Presses,
  * and the model's tokens by job and model, so a price can be put on them at display when
  * one is wanted — the counter itself keeps no money. `today` and `dailyCap` are what the
  * press route refuses on; `dailyCap` is null where the instance sets none.
