@@ -49,17 +49,22 @@ export function shortCommit(info: BuildInfo): string {
 }
 
 /**
- * "3 Oct 2026", or null when the build could not read the date.
+ * "Oct 3, 2026, 2:20 PM" in the reader's own locale and time zone, or null when the build
+ * could not read the date.
  *
  * A short SHA alone says nothing about how old a build is, and "is this the deploy from
- * this morning" is most of what people look it up to answer.
+ * this morning" is most of what people look it up to answer. The day is not enough for
+ * that: several merges land in one day, and the time is what tells the latest from the one
+ * before it.
  */
 export function commitDate(info: BuildInfo): string | null {
   if (!info.date) return null;
-  return new Date(info.date).toLocaleDateString(undefined, {
+  return new Date(info.date).toLocaleString(undefined, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
   });
 }
 

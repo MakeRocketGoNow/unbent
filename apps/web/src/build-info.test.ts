@@ -19,6 +19,11 @@ describe('build info', () => {
     expect(commitDate(ci)).toContain('2026');
   });
 
+  it('puts the time of day beside the date, since a day holds several merges', () => {
+    // Locale and zone vary by machine; a clock reading is `h:mm` in every one of them.
+    expect(commitDate(ci)).toMatch(/\d{1,2}:\d{2}/);
+  });
+
   it('has no date it could not read, as a preview has none', () => {
     expect(commitDate({ ...ci, date: null })).toBeNull();
   });
