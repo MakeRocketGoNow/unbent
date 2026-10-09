@@ -271,6 +271,7 @@ export const notes = new Hono<AppEnv>()
           llm: canUseLlm(c.env) ? llmFrom(c.env) : undefined,
           cap: dailyCap(c.env),
           operator: isOperator(c.env, c.get('user')?.email),
+          defer: (work) => c.executionCtx.waitUntil(work),
         },
         c.req.param('id'),
       );

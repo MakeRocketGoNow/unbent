@@ -31,6 +31,11 @@ export interface PressDeps {
   cap: number | null;
   /** Whether the person pressing runs the instance; see `autofill`. */
   operator: boolean;
+  /**
+   * Hands the end-of-press record to the runtime to finish after the answer has gone
+   * (`waitUntil`), where there is one. Without it the record is awaited, as in a test.
+   */
+  defer?: ((work: Promise<unknown>) => void) | undefined;
   now?: number;
 }
 
@@ -132,15 +137,22 @@ export async function press(deps: PressDeps, id: string): Promise<PressOutcome> 
     return { kind: 'filed', suggestion };
   } finally {
     /*
-       Awaited, and in `finally`: a press that failed after the model answered was still
-       paid for. A failure to record is logged rather than allowed to take the press's
-       answer with it, since the person has already waited for it; the count is what is
-       lost, and the log line is what the operator then has.
+       In `finally`, because a press that failed after the model answered was still paid
+       for; after every metered call has settled, because a title still being written when
+       Jev failed is paid for too, and `autofill` does not wait for it on that path. Handed
+       to `waitUntil` rather than awaited: a person waiting on an error should not also
+       wait out the title's timeout, and a press the person left mid-way is cancelled with
+       its request but not with its `waitUntil`. A failure to record is logged rather
+       than thrown — the count is what is lost, and the log line is what the operator then
+       has.
     */
-    if (usage.entries.length > 0) {
-      await deps.notes.recordLlmUsage(usage.entries).catch((err: unknown) => {
+    const recording = usage
+      .settled()
+      .then(() => (usage.entries.length > 0 ? deps.notes.recordLlmUsage(usage.entries) : undefined))
+      .catch((err: unknown) => {
         console.error('autofill usage:', (err as Error).message);
       });
-    }
+    if (deps.defer) deps.defer(recording);
+    else await recording;
   }
 }

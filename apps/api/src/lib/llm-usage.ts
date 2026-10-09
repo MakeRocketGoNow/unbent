@@ -67,6 +67,17 @@ export function usageEntry(job: LlmJob, usage: LlmUsage): UsageEntry {
  */
 export class PressUsage {
   readonly entries: UsageEntry[] = [];
+  /**
+   * Every metered call started, answered or not. The title call runs beside Jev's rounds,
+   * and when a round throws, `autofill` rejects without waiting for it; a record written
+   * then would miss a call that is still on its way to being paid for.
+   */
+  private readonly inflight: Promise<unknown>[] = [];
+
+  /** Settles once every metered call has answered or failed, so its cost is in `entries`. */
+  settled(): Promise<unknown> {
+    return Promise.allSettled(this.inflight);
+  }
 
   /** Keeps a thrown call's cost, when the API had billed for it, and rethrows. */
   failed(job: LlmJob, err: unknown): never {
@@ -82,8 +93,10 @@ export class PressUsage {
   metering<M extends Pick<LanguageModel, 'title' | 'textFields'>>(llm: M): Pick<LanguageModel, 'title' | 'textFields'> {
     const through = async <T>(job: LlmJob, call: () => Promise<Metered<T>>): Promise<Metered<T>> => {
       let answer: Metered<T>;
+      const started = call();
+      this.inflight.push(started);
       try {
-        answer = await call();
+        answer = await started;
       } catch (err) {
         return this.failed(job, err);
       }

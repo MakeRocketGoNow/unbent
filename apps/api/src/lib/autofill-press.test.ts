@@ -111,7 +111,7 @@ describe('one press, counted', () => {
     const outcome = await press(deps, 'n1');
     expect(outcome).toEqual({ kind: 'capped', ...capReached(3, deps.now!) });
     expect(outcome.kind === 'capped' && outcome.message).toBe(
-      'Auto-fill can be used 3 times a day on this instance, and today’s are used up. It will work again in 6 hours.'.replace('’', "'"),
+      "Auto-fill can be used 3 times a day on this instance, and today's are used up. It will work again in 6 hours.",
     );
     expect(recordText).not.toHaveBeenCalled();
     expect(recordLlmUsage).not.toHaveBeenCalled();
@@ -144,6 +144,35 @@ describe('one press, counted', () => {
       { job: 'fields', ...cost(450, 30) },
     ]);
     quiet.mockRestore();
+  });
+});
+
+describe('a press that fails', () => {
+  it('still counts a title that answers after Jev has failed, and records once it has', async () => {
+    let finish!: () => void;
+    const late = new Promise<void>((resolve) => (finish = resolve));
+    const down: Jev = {
+      async ask() {
+        throw new Error('Jev is down');
+      },
+    };
+    const { deps, recordLlmUsage } = setup({
+      jev: down,
+      title: async () => {
+        await late;
+        return { value: 'Acme Hardware Receipt', usage: cost(400, 20) };
+      },
+    });
+    const deferred: Promise<unknown>[] = [];
+    deps.defer = (work) => deferred.push(work);
+
+    // The press answers with Jev's error without waiting for the title...
+    await expect(press(deps, 'n1')).rejects.toThrow('Jev is down');
+    expect(recordLlmUsage).not.toHaveBeenCalled();
+    // ...and what the title cost is recorded once it has answered, after the response.
+    finish();
+    await Promise.all(deferred);
+    expect(recordLlmUsage).toHaveBeenCalledWith([{ job: 'title', ...cost(400, 20) }]);
   });
 });
 
