@@ -358,13 +358,27 @@ export function takeUpdate(to: { pathname: string; href: string }, preload: bool
   return new Promise<never>(() => handOver(wb!, to.href));
 }
 
-/** Lets the waiting worker take over, then loads `href` from it. */
+/**
+ * Lets the waiting worker take over, then loads `href` from it.
+ *
+ * The load waits while the page holds work a reload would lose, although every caller has
+ * just checked. The worker takes a moment to take over, and on dev and previews, where a
+ * deploy is taken while the page is in use, a key pressed in that moment left the note
+ * unsaved with the load already on its way; its save then rested on the autosave's flush
+ * racing the unload. While it waits the page is under the new worker, so a route it had not
+ * loaded yet is asked of the new build, and `recoverFromMissingChunks` reloads if that
+ * build no longer has it.
+ */
 function handOver(worker: Workbox, href: string): void {
   // Once: `controlling` and the timer can both fire, and a second `assign` on a slow
   // load would restart the navigation already under way.
   let gone = false;
   const go = () => {
     if (gone) return;
+    if (pageBusy()) {
+      setTimeout(go, 250);
+      return;
+    }
     gone = true;
     location.assign(href);
   };
