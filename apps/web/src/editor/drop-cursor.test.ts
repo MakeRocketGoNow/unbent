@@ -15,9 +15,12 @@ import { fileDropCursor } from './drop-cursor.js';
  * that it is cleared again by every path that ends a drag. A marker left behind is worse
  * than none, because it points at a position nothing is going to use.
  */
-function mount(doc: string) {
+function mount(doc: string, { readOnly = false } = {}) {
   const view = new EditorView({
-    state: EditorState.create({ doc, extensions: [fileDropCursor()] }),
+    state: EditorState.create({
+      doc,
+      extensions: [fileDropCursor(), EditorState.readOnly.of(readOnly)],
+    }),
     parent: document.body,
   });
   return view;
@@ -62,6 +65,20 @@ describe('file drop cursor', () => {
     const event = dragEvent('dragover', ['text/plain']);
     view.contentDOM.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(false);
+    expect(hasCaret()).toBe(false);
+    view.destroy();
+  });
+
+  /**
+   * A note in the trash takes the file and keeps it, so a point drawn there was an aim at
+   * nothing. Still claimed, or the browser would open the file in the app's place.
+   */
+  it('refuses a file over a note that takes no changes, without drawing a point', () => {
+    const view = mount('hello world', { readOnly: true });
+    const event = dragEvent('dragover', ['Files']);
+    view.contentDOM.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect((event as DragEvent).dataTransfer?.dropEffect).toBe('none');
     expect(hasCaret()).toBe(false);
     view.destroy();
   });

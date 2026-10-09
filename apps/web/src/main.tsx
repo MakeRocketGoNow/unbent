@@ -17,6 +17,7 @@ import { installSessionRecheck } from './auth-client.js';
 import { isOfflineError } from './notes-api.js';
 import { onUploaded } from './store/actions.js';
 import { indexUploadedFile } from './index-files.js';
+import { refuseStrayFileDrops } from './file-drop-guard.js';
 import { canTypeTransitions, noteTransitionTypes, trackWhatIsBehind, watchHistoryMoves } from './note-nav.js';
 import './styles.css';
 
@@ -85,6 +86,12 @@ installSessionRecheck();
  * where it was dropped (`indexUploadedFile` decides whether the server is doing it).
  */
 onUploaded(indexUploadedFile);
+
+/*
+ * A file let go anywhere the app does not take one is refused, rather than opened by the
+ * browser in place of the app; see `file-drop-guard.ts`.
+ */
+refuseStrayFileDrops();
 
 /*
  * Error tracking, on the instances that have it — see `posthog.ts`.

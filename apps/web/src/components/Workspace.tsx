@@ -57,6 +57,7 @@ import { HistorySheet, skippedPhrase } from './HistorySheet.js';
 import type { HistoryCurrent } from './HistoryChanges.js';
 import type { PropValue } from '../note-diff.js';
 import { caretBelowEnd } from '../editor/rich-markdown.js';
+import { noteDropZone } from '../editor/drop-zone.js';
 import { formatRevisionWhen } from './format-when.js';
 import { Button } from './Button';
 import { BackArrow } from './BackArrow.js';
@@ -248,6 +249,19 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   const [fraction, setFraction] = useState(storedFraction);
   useEffect(() => setFraction(storedFraction), [storedFraction]);
   const panesRef = useRef<HTMLDivElement>(null);
+
+  /*
+     The whole note takes a dragged file, not only the lines its text fills — on a new
+     note, one line. See `noteDropZone` for where a file let go off the text lands. Not in
+     the preview, where the Attach button is off too: the editor is hidden there, so the
+     drop would have no point to show and nothing to show it on.
+  */
+  const columnRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const zone = columnRef.current;
+    if (!zone || !editorView || noteView === 'preview') return;
+    return noteDropZone(zone, editorView);
+  }, [editorView, noteView]);
 
   /**
    * Whether this is a one-pane width.
@@ -1352,6 +1366,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       */}
       <div
         className="workspace-main"
+        ref={columnRef}
         /*
             How much of the screen the keyboard is covering, for the stylesheet.
 

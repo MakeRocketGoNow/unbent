@@ -50,12 +50,37 @@ const dropPosField = StateField.define<DecorationSet>({
   provide: (field) => EditorView.decorations.from(field),
 });
 
-/** Only redispatches when the position actually changes; dragover fires continuously. */
-function moveTo(view: EditorView, pos: number | null): void {
+/**
+ * Draws the drop point at `pos`, or clears it for null.
+ *
+ * Exported for `noteDropZone`, which aims drops that land on the note around the editor
+ * and has to show them with this same marker. Only redispatches when the position
+ * actually changes; dragover fires continuously.
+ */
+export function showDropAt(view: EditorView, pos: number | null): void {
   const current = view.state.field(dropPosField, false);
   const existing = current?.size ? current.iter().from : null;
   if (existing === pos) return;
   view.dispatch({ effects: setDropPos.of(pos) });
+}
+
+/** Whether a drag carries files — the only drags the editor and the note around it aim. */
+export function carriesFiles(event: DragEvent): boolean {
+  return event.dataTransfer?.types.includes('Files') ?? false;
+}
+
+/**
+ * Refuses a dragged file, for a note that takes no changes — in the trash, or held by a
+ * save conflict: the pointer says no, and no point is drawn. It used to draw the point all
+ * the same, and the drop then did nothing (`attachments` takes the file and keeps it), so
+ * the person aimed at a place the note was never going to put anything.
+ *
+ * The caller still claims the drag, or the browser would open the file. Shared with
+ * `noteDropZone`, so the text and the page around it refuse alike.
+ */
+export function refuseFile(view: EditorView, event: DragEvent): void {
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'none';
+  showDropAt(view, null);
 }
 
 /**
@@ -75,9 +100,13 @@ export function fileDropCursor(): Extension {
     dropPosField,
     EditorView.domEventHandlers({
       dragover(event, view) {
-        if (!event.dataTransfer?.types.includes('Files')) return false;
+        if (!carriesFiles(event)) return false;
         // Also claims the drag, without which the browser navigates to the file on drop.
         event.preventDefault();
+        if (view.state.readOnly) {
+          refuseFile(view, event);
+          return false;
+        }
         // `posAtCoords` measures rendered geometry, so it throws where there is none —
         // a headless test environment, or a pointer over a line that has been scrolled
         // out of the rendered viewport. Neither is worth failing a drag over: without a
@@ -89,7 +118,7 @@ export function fileDropCursor(): Extension {
         } catch {
           pos = null;
         }
-        moveTo(view, pos);
+        showDropAt(view, pos);
         return false;
       },
       dragleave(event, view) {
@@ -98,15 +127,15 @@ export function fileDropCursor(): Extension {
         // editor itself counts.
         const to = event.relatedTarget as Node | null;
         if (to && view.dom.contains(to)) return false;
-        moveTo(view, null);
+        showDropAt(view, null);
         return false;
       },
       drop(event, view) {
-        if (event.dataTransfer?.types.includes('Files')) moveTo(view, null);
+        if (carriesFiles(event)) showDropAt(view, null);
         return false;
       },
       dragend(_event, view) {
-        moveTo(view, null);
+        showDropAt(view, null);
         return false;
       },
     }),

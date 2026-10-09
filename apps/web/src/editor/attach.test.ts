@@ -144,6 +144,51 @@ describe('insertUploads', () => {
   });
 });
 
+/*
+   A file dropped beside the text rather than into it — see `noteDropZone`. Markdown reads
+   a line written straight under a paragraph, a quote or a list item as more of it, so a
+   picture that is only on the next line is drawn inside whatever it follows. These pin the
+   blank lines that keep it apart, and that none is doubled where one already is.
+*/
+describe('insertUploads, as a paragraph of its own', () => {
+  /** The document with each placeholder written as FILE, so the spacing is what reads. */
+  async function dropApart(doc: string, at: number, files = [png()]) {
+    const view = mount(doc, { upload: () => new Promise<string>(() => {}) });
+    void insertUploads(view, files, at, { ownParagraph: true });
+    const shape = view.state.doc.toString().replace(/!\[uploading [^\]]*…\]\(#upload-[0-9a-f]{8}\)/g, 'FILE');
+    view.destroy();
+    return shape;
+  }
+
+  it('goes into an empty note as a drop always has', async () => {
+    expect(await dropApart('', 0)).toBe('FILE\n');
+  });
+
+  it('sets a file under the last line apart from it, so a closing quote does not take it in', async () => {
+    expect(await dropApart('> a quote', 9)).toBe('> a quote\n\nFILE\n');
+  });
+
+  it('puts a blank line either side of a file between two lines', async () => {
+    expect(await dropApart('one\ntwo', 3)).toBe('one\n\nFILE\n\ntwo');
+    expect(await dropApart('one\ntwo', 4)).toBe('one\n\nFILE\n\ntwo');
+  });
+
+  it('adds no blank line where there already is one', async () => {
+    expect(await dropApart('one\n\ntwo', 3)).toBe('one\n\nFILE\n\ntwo');
+    expect(await dropApart('one\n\ntwo', 5)).toBe('one\n\nFILE\n\ntwo');
+    expect(await dropApart('one\n\ntwo', 0)).toBe('FILE\n\none\n\ntwo');
+    expect(await dropApart('one\n', 4)).toBe('one\n\nFILE\n');
+  });
+
+  it('splits a line it is put into the middle of', async () => {
+    expect(await dropApart('one two', 3)).toBe('one\n\nFILE\n\n two');
+  });
+
+  it('gives each of several files a paragraph', async () => {
+    expect(await dropApart('one', 3, [png(), pdf()])).toBe('one\n\nFILE\n\nFILE\n');
+  });
+});
+
 describe('abandonUploads', () => {
   it('removes the placeholders, aborts the uploads, and writes no failure comment', async () => {
     const { upload, calls, call } = deferredUpload();
