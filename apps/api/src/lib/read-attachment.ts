@@ -283,7 +283,8 @@ async function readWithLlm(
     );
   } catch (err) {
     // The write that would have carried the cost did not happen; the reading was still
-    // paid for, so it goes with the press's own record instead.
+    // paid for, so it goes with the press's own record instead. A write that committed
+    // and lost its reply is counted twice by this — rare, and the safer side to be wrong on.
     press?.entries.push(entry);
     throw err;
   }
