@@ -84,7 +84,9 @@ async function fillShell(): Promise<void> {
     if (response.status !== 200) throw new Error(`${url}: ${response.status}`);
     await cache.put(cacheKey, response.redirected ? unredirected(response) : response);
   };
-  const queue = [...shell.getURLsToCacheKeys()];
+  const entries = [...shell.getURLsToCacheKeys()];
+  const isPage = ([url]: [string, string]) => new URL(url).pathname === '/index.html';
+  const queue = entries.filter((entry) => !isPage(entry));
   // The first failure stops every loop at its next file, and the fill settles only once
   // all of them have: `Promise.all` alone rejects at once and leaves the other loops
   // fetching, which let a second refill start beside the first (review of #331).
@@ -98,6 +100,12 @@ async function fillShell(): Promise<void> {
   };
   await Promise.all(Array.from({ length: INSTALL_CONCURRENCY }, next));
   if (failure) throw failure;
+  // Last, so a cached page means a whole shell: the navigation route refills on its
+  // absence and on nothing else. Stored in manifest order it could land early, and a
+  // refill that then stopped — the worker killed, a chunk gone from a newer deploy —
+  // was never taken up again; the app worked online and had no shell offline until the
+  // next deploy (review of #331).
+  for (const entry of entries.filter(isPage)) await store(entry);
 }
 
 /** The same body and headers, without the mark of having been redirected. */
@@ -158,7 +166,9 @@ self.addEventListener('activate', (event) => {
  *
  * When the cache does not hold it, the load goes to the network as itself — the request
  * the browser made, which the Worker answers with `index.html` directly — and the shell
- * is fetched again in the background. The cache can be empty under a live worker:
+ * is fetched again in the background. `index.html` is the one file looked for because
+ * `fillShell` stores it last, once every other file is in: its presence means the whole
+ * shell is, and its absence means a fill is owed. The cache can be empty under a live worker:
  * Chrome's "Clear cached images and files" removes the worker's caches and leaves the
  * worker registered, and so does a device short of storage. Workbox's handler bound to
  * `/index.html` fetched that address on a miss and handed the page load what came back
