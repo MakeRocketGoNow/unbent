@@ -769,7 +769,11 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         : `${results.length} matches`
       : counting
         ? 'Loading…'
-        : `${noteCount} notes`;
+        : // Formatted as the menu under it formats it: "1,234 notes ⌄" over "Export these
+          // 1,234 notes", and one note over "Export this note".
+          noteCount === 1
+          ? '1 note'
+          : `${noteCount.toLocaleString()} notes`;
 
   /* The count as a menu: export the slice, or select it — see `offersCountMenu` for when,
      and `countMenuItems` for what. */
