@@ -5,12 +5,14 @@ import {
   MAX_LLM_PDF_BYTES,
   LLM_MODEL_DEFAULT,
   LlmError,
+  MAX_TRANSCRIBED_WORDS,
   canUseLlm,
   fieldTokens,
   formatReading,
   isLlmAuthError,
   readableByLlm,
   llmFrom,
+  sniffMediaType,
 } from './llm.js';
 import { summarize } from '../store/attachments.js';
 
@@ -51,6 +53,19 @@ describe('vision', () => {
     // Not an LlmError at all.
     expect(isLlmAuthError(new Error('boom'))).toBe(false);
     expect(isLlmAuthError(null)).toBe(false);
+  });
+
+  it('reads a file\u2019s type off its first bytes', () => {
+    const of = (...b: number[]) => new Uint8Array([...b, ...new Array(12).fill(0)]).buffer as ArrayBuffer;
+    const text = (t: string) => new TextEncoder().encode(t.padEnd(12, ' ')).buffer as ArrayBuffer;
+    expect(sniffMediaType(of(0xff, 0xd8, 0xff, 0xe0))).toBe('image/jpeg');
+    expect(sniffMediaType(of(0x89, 0x50, 0x4e, 0x47))).toBe('image/png');
+    expect(sniffMediaType(text('GIF89a'))).toBe('image/gif');
+    expect(sniffMediaType(text('RIFF\0\0\0\0WEBP'))).toBe('image/webp');
+    expect(sniffMediaType(text('%PDF-1.7'))).toBe('application/pdf');
+    // Anything else is left to the stored type: a HEIC, or bytes too short to tell.
+    expect(sniffMediaType(text('\0\0\0\x18ftypheic'))).toBeNull();
+    expect(sniffMediaType(new ArrayBuffer(2))).toBeNull();
   });
 
   it('takes pictures and PDFs under their caps, and nothing else', () => {
@@ -100,6 +115,26 @@ describe('vision', () => {
     const body = JSON.parse(init!.body as string);
     expect(body.model).toBe('claude-sonnet-5');
     expect(body.messages[0].content[0]).toMatchObject({ type: 'document', source: { media_type: 'application/pdf' } });
+  });
+
+  it('sends a file as what its bytes are, not as what the upload called it', async () => {
+    // A PNG stored as image/jpeg, the way Evernote's snapshots arrive: the API refuses an
+    // image whose bytes and type disagree, so this file could never be read.
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d]).buffer as ArrayBuffer;
+    const fetchImpl = answering(200, message(JSON.stringify(said)));
+    await llmFrom(env, fetchImpl as unknown as typeof fetch).read({ filename: 'Snapshot.png', contentType: 'image/jpeg', bytes: png });
+    const body = JSON.parse(fetchImpl.mock.calls[0]![1]!.body as string);
+    expect(body.messages[0].content[0]).toMatchObject({ type: 'image', source: { media_type: 'image/png' } });
+  });
+
+  it('tells the model where a long transcription stops, short of the output budget', async () => {
+    const fetchImpl = answering(200, message(JSON.stringify(said)));
+    await llmFrom(env, fetchImpl as unknown as typeof fetch).read(photo);
+    const body = JSON.parse(fetchImpl.mock.calls[0]![1]!.body as string);
+    expect(body.system).toContain(`past about ${MAX_TRANSCRIBED_WORDS.toLocaleString('en-US')} words`);
+    // About 1.4 tokens a word, with the thinking beside it: the cap must leave most of the
+    // budget free, or a long scan runs out of room and is paid for on every press.
+    expect(MAX_TRANSCRIBED_WORDS * 1.4).toBeLessThan(body.max_tokens / 2);
   });
 
   it('reads a decline as no reading, whether it comes as a stop reason or as prose', async () => {
