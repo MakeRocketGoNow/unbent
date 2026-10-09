@@ -193,13 +193,14 @@ function deployArrived(): void {
   const worker = wb;
   if (!worker || !updateReady) return;
   const atOnce = takesDeploysAtOnce(instanceKind);
-  const busy = pageBusy() || (atOnce && isTextField(document.activeElement));
+  const holding = () => pageBusy() || (atOnce && isTextField(document.activeElement));
+  const busy = holding();
   const state = { untouched, busy, path: location.pathname, kind: instanceKind };
   if (shouldApplyOnArrival(state) && reloadAllowed()) {
     updateReady = false;
     held = undefined;
     setNotice(false);
-    handOver(worker, location.href);
+    handOver(worker, location.href, holding);
     return;
   }
   if (busy && atOnce) {
@@ -406,17 +407,20 @@ export function takeUpdate(to: { pathname: string; href: string }, preload: bool
  * just checked. The worker takes a moment to take over, and on dev and previews, where a
  * deploy is taken while the page is in use, a key pressed in that moment left the note
  * unsaved with the load already on its way; its save then rested on the autosave's flush
- * racing the unload. While it waits the page is under the new worker, so a route it had not
- * loaded yet is asked of the new build, and `recoverFromMissingChunks` reloads if that
- * build no longer has it.
+ * racing the unload. `held` is what counts as holding the page: `pageBusy()`, and on dev
+ * and previews a focused text field as well (`deployArrived`), for the same moment. Not for
+ * the other callers: the notice's Reload is a decision already made, and a change of
+ * section is leaving the field anyway. While it waits the page is under the new worker, so
+ * a route it had not loaded yet is asked of the new build, and `recoverFromMissingChunks`
+ * reloads if that build no longer has it.
  */
-function handOver(worker: Workbox, href: string): void {
+function handOver(worker: Workbox, href: string, held: () => boolean = pageBusy): void {
   // Once: `controlling` and the timer can both fire, and a second `assign` on a slow
   // load would restart the navigation already under way.
   let gone = false;
   const go = () => {
     if (gone) return;
-    if (pageBusy()) {
+    if (held()) {
       setTimeout(go, 250);
       return;
     }
