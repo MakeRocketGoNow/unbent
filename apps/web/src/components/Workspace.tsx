@@ -563,11 +563,16 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     if (outcome === 'unchanged') return 'unchanged';
     if (typeof outcome === 'object') {
       // The server answered the save itself — no local copy, or another tab holds the
-      // outbox — so no acknowledgement follows, and the answer is rebased into the draft
-      // here, for the same reason as there.
+      // outbox — so no acknowledgement follows, and the answer is taken here as it is
+      // there. Nothing typed since: a reseed, whose new reset key re-arms the autosave's
+      // baseline. A rebase alone would leave the baseline at what was sent, read the
+      // answer's changes as an edit, and wipe "Saved" with a save that finds nothing.
       setBase(noteId, outcome);
       queryClient.setQueryData(keys.note(noteId), outcome);
-      if (noteIdRef.current === noteId) rebaseDraft(value, outcome);
+      if (noteIdRef.current === noteId) {
+        if (JSON.stringify(draftRef.current) !== JSON.stringify(value)) rebaseDraft(value, outcome);
+        else if (JSON.stringify(seedFrom(outcome)) !== JSON.stringify(value)) reseed(outcome);
+      }
     }
     return undefined;
   }

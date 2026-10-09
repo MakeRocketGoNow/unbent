@@ -119,6 +119,19 @@ describe('a save answered while typing', () => {
     expect(vi.mocked(api.updateNote).mock.calls[1]).toEqual([server.id, { title: 'Trip notes, two', ifUpdatedAt: 101 }]);
   });
 
+  it('stays Saved when the answer to a save with nothing typed since changed something elsewhere', async () => {
+    vi.mocked(useOutbox).mockReturnValue(outbox(() => {}));
+    vi.mocked(api.updateNote).mockResolvedValueOnce({ ...server, ...elsewhere, title: 'Trip notes, one', updatedAt: 101 });
+    mount();
+
+    await type('Trip notes, one');
+    await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy(), { timeout: 3000 });
+    // Past the autosave's delay: a rebase read as an edit would have cleared the label.
+    await act(() => new Promise((r) => setTimeout(r, 1200)));
+    expect(screen.getByText('Saved')).toBeTruthy();
+    expect(api.updateNote).toHaveBeenCalledTimes(1);
+  });
+
   it('takes the same from an acknowledgement that lands mid-typing, and keeps the typing', async () => {
     let ack: Ack = () => {};
     vi.mocked(useOutbox).mockReturnValue(outbox((l) => (ack = l)));
