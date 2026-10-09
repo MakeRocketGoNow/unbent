@@ -191,6 +191,9 @@ describe('vision', () => {
     const silent = { ...message(JSON.stringify({ title: 'X' })), usage: undefined };
     const quiet = llmFrom(env, answering(200, silent) as unknown as typeof fetch);
     expect((await quiet.title({ title: '', body: 'x', attachments: [] })).usage).toMatchObject({ inputTokens: 0, outputTokens: 0 });
+    const odd = { ...message(JSON.stringify({ title: 'X' })), usage: { input_tokens: '12', output_tokens: -1 } };
+    const strange = llmFrom(env, answering(200, odd) as unknown as typeof fetch);
+    expect(await strange.title({ title: '', body: 'x', attachments: [] })).toMatchObject({ value: 'X', usage: { inputTokens: 0, outputTokens: 0 } });
   });
 
   it('writes the values of text fields, keyed as asked, from a schema of those keys', async () => {

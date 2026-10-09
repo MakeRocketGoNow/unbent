@@ -334,9 +334,10 @@ const MAX_TITLE_CHARS = 200;
 /**
  * A count the API may leave out or send as null — the cache counts on a request that
  * touched no cache, or a stand-in that says nothing of usage — read as zero rather than
- * failing an answer whose text is fine.
+ * failing an answer whose text is fine. So is a count of any other shape (`catch`):
+ * usage was never parsed before it was counted, and a reading must not be lost to it.
  */
-const tokens = z.number().int().nonnegative().nullish().transform((n) => n ?? 0);
+const tokens = z.number().int().nonnegative().nullish().transform((n) => n ?? 0).catch(0);
 
 const answer = z.object({
   stop_reason: z.string().nullable().optional(),
