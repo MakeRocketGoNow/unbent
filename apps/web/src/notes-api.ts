@@ -383,7 +383,10 @@ export async function restoreNote(id: string): Promise<Note> {
   return json<Note>(await request(`/api/notes/${id}/restore`, { method: 'POST' }));
 }
 
-/** Permanently deletes one trashed note and its attachments. Irreversible. An `ApiError` when refused, for the reason `deleteNote` gives. */
+/**
+ * Permanently deletes one trashed note and its attachments. Irreversible. An `ApiError`
+ * when refused, for the reason `deleteNote` gives.
+ */
 export async function deleteNotePermanently(id: string): Promise<void> {
   const res = await request(`/api/notes/${id}/permanent`, { method: 'DELETE' });
   if (!res.ok) throw new ApiError(res.status, await httpErrorMessage(res));
