@@ -11,7 +11,8 @@
  * is the only way the worker's own requests are cut too.
  *
  * It signs in as the demo account, opens a receipt that carries two PDFs and an image, and
- * then checks, in order: the worker is installed and in control; a file that is not on the
+ * then checks, in order: the worker is installed and in control; a page load with the
+ * worker's caches emptied still loads, and fills them again; a file that is not on the
  * device says so at once; the worker, its caches and the library survive being offline; a
  * file opened online draws again offline; and a file added offline goes to the device
  * and uploads when the connection returns. Then search, offline: a phrase from a note's
@@ -273,6 +274,22 @@ async function run(BASE, chrome, keepSocket) {
 
     // 2
     {
+      // The worker's caches emptied under a live worker — what Chrome's "Clear cached
+      // images and files" does, and a device short of storage — and the page opened
+      // again. The worker must answer the load from the network and fill its cache back;
+      // it answered it with the Worker's redirect of `/index.html` instead, which is a
+      // network error for a page load, and every load failed until the next deploy.
+      // The document on screen is marked, so the wait below is for the new one: the list
+      // is already rendered here, and read before the load lands it would pass at once.
+      await ev(`(async()=>{for(const n of await caches.keys())await caches.delete(n);window.__gateOld=true})()`);
+      await goto(`${BASE}/notes`);
+      const loaded = await until(async () => (!(await ev('!!window.__gateOld')) && (await libraryReady()) ? true : null), 20000);
+      const filled = loaded && (await until(async () => { const v = await state(); return v && typeof v === 'object' && v.precache >= precache ? v : null; }, 30000));
+      report('a page load with the caches emptied still loads, and fills them again', !!filled, loaded ? `precache ${(await state())?.precache} of ${precache}` : `page never rendered: ${JSON.stringify(await ev('location.href'))}`);
+    }
+
+    // 3
+    {
       await offlineAt(noteUrl);
       const look = () => ev(`(()=>{const pdfs=[...document.querySelectorAll('.cm-md-pdf')];const imgs=[...document.querySelectorAll('.cm-md-image')];return {pdfs:pdfs.map(w=>w.querySelector('.file-unavailable')?.textContent??'',),rendering:pdfs.some(w=>/Rendering/.test(w.textContent)),imgs:imgs.map(w=>!!w.querySelector('.file-unavailable'))}})()`);
       const ok = await until(async () => {
@@ -282,7 +299,7 @@ async function run(BASE, chrome, keepSocket) {
       report('a file that is not on the device says so, at once', !!ok, `saw ${JSON.stringify(await look())}`);
     }
 
-    // 3
+    // 4
     {
       for (let i = 0; i < 5; i++) { await sleep(3000); await network(true); }
       const v = await state();
@@ -290,7 +307,7 @@ async function run(BASE, chrome, keepSocket) {
       report('the worker, its caches and the library survive being offline', !!good, `precache ${precache} -> ${v?.precache}, active ${v?.active}, sqlite ${v?.sqlite}, opfs ${JSON.stringify(v?.opfs)}`);
     }
 
-    // 4
+    // 5
     {
       const drawn = () => ev(`(()=>{const pdfs=[...document.querySelectorAll('.cm-md-pdf')];const imgs=[...document.querySelectorAll('.cm-md-image img')];return pdfs.length>0&&imgs.length>0&&pdfs.every(w=>!w.querySelector('.cm-md-pdf-status, .file-unavailable')&&(w.querySelector('canvas')?.width??0)>300)&&imgs.every(i=>i.naturalWidth>0)?'ok':JSON.stringify({pdfs:pdfs.map(w=>w.querySelector('.cm-md-pdf-status, .file-unavailable')?.textContent??(w.querySelector('canvas')?.width??'no canvas')),imgs:imgs.map(i=>i.naturalWidth)})})()`);
       await network(false);
@@ -304,7 +321,7 @@ async function run(BASE, chrome, keepSocket) {
       report('a file opened online draws again offline', !!result, online ? `offline: ${await drawn()}` : `never drew online: ${await drawn()}`);
     }
 
-    // 5
+    // 6
     {
       const pendingHas = () => ev(`(async()=>{try{const root=await navigator.storage.getDirectory();for await (const [n,h] of root.entries()){if(!n.startsWith('unbent-files-'))continue;const p=await h.getDirectoryHandle('pending');const d=await p.getDirectoryHandle(${JSON.stringify(note.id)});await d.getFileHandle(${JSON.stringify(FILE)});return true}}catch(e){}return false})()`);
       // The drop edits the body (it inserts a link); the original is restored below.
@@ -335,7 +352,7 @@ async function run(BASE, chrome, keepSocket) {
     const searched = () => ev(`(()=>{const hits=[...document.querySelectorAll('.note-list a.note-item')].map(a=>a.textContent);return {hits,empty:[...document.querySelectorAll('.note-list .empty')].map(e=>e.textContent).join(' '),covered:document.querySelector('.search-coverage')?.textContent??null,count:document.querySelector('.note-list')?.getAttribute('aria-busy')??''}})()`);
     const searchUrl = (q) => `${BASE}/notes?q=${encodeURIComponent(q)}`;
 
-    // 6
+    // 7
     {
       // Online first, so the index has had a pass over the library before the network goes.
       await goto(`${BASE}/notes`);
@@ -349,7 +366,7 @@ async function run(BASE, chrome, keepSocket) {
       report('offline, a phrase from a note body finds the note', !!ok, `saw ${JSON.stringify(await searched())}`);
     }
 
-    // 7
+    // 8
     {
       await offlineAt(searchUrl(PDF_QUERY));
       const ok = await until(async () => {
@@ -359,7 +376,7 @@ async function run(BASE, chrome, keepSocket) {
       report('offline, a phrase from a PDF in a notebook that is not kept finds nothing, and says files went unsearched', !!ok, `saw ${JSON.stringify(await searched())}`);
     }
 
-    // 8
+    // 9
     {
       await network(false);
       const notebookId = await ev(`fetch('/api/notebooks').then(r=>r.json()).then(j=>(Array.isArray(j)?j:(j.notebooks??[])).find(n=>n.name===${JSON.stringify(PDF_NOTEBOOK)})?.id??null)`);
@@ -385,7 +402,7 @@ async function run(BASE, chrome, keepSocket) {
       report('offline, the same phrase finds its note once the notebook is kept', !!ok, !asked ? `no Keep offline button on the notebook's page (notebook ${notebookId})` : !kept ? 'the notebook was never kept' : !fed ? 'the text of its files was never asked for' : `saw ${JSON.stringify(await searched())}`);
     }
 
-    // 9
+    // 10
     {
       // The row on screen is remembered by identity: the server's answer has to land in it,
       // not in a list drawn again under the pointer.

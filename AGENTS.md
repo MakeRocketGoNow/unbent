@@ -697,7 +697,8 @@ every service-worker target, attaching one session per target and reusing it: em
 per session, and a second attach leaves the first one's conditions in force. `pnpm gate:offline`
 (`scripts/offline-gate.mjs`) is that, kept: with `pnpm dev` up, the demo account seeded and
 the web app built, it installs the worker, cuts the network on the page and the worker, and
-checks that a file not on the device says so, that the worker, its caches and the library
+checks that a page load with the worker's caches emptied still loads and fills them
+again, that a file not on the device says so, that the worker, its caches and the library
 survive, that an opened file draws again, that a file added offline uploads on
 reconnect, and that search answers from the device: a note by its body, a PDF's text only
 once its notebook is kept, and the server's answer in place on reconnect. Run it before asking anyone to test offline behaviour by hand. On a phone,
