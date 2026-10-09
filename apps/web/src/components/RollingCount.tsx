@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { wroteLocallyWithin } from '../store/actions.js';
+import { refiledLocallyWithin } from '../store/actions.js';
 
 /** How long one roll takes; `.count-roll` in the stylesheet is written to it. */
 export const ROLL_MS = 300;
@@ -23,7 +23,7 @@ interface RollingCountProps {
  * above. It ties the action to its consequence on the other side of the screen, which a
  * number that silently changed did not.
  *
- * Only for a change made here (`wroteLocallyWithin`). The first copy of a library, and the
+ * Only for a change made here (`refiledLocallyWithin`). The first copy of a library, and the
  * feed bringing another device's changes, move counts too, sometimes hundreds of times in
  * a minute; rolling for those would be a column of numbers flickering at someone who did
  * nothing. A count drawn for the first time, on load, has nothing to roll from.
@@ -41,7 +41,7 @@ export function RollingCount({ value, className }: RollingCountProps) {
 
   if (value !== shown) {
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    const rolls = wroteLocallyWithin(MINE_MS) && !reduced;
+    const rolls = refiledLocallyWithin(MINE_MS) && !reduced;
     setLeaving(rolls ? { value: shown, up: value > shown } : null);
     if (rolls) setTurn((t) => t + 1);
     setShown(value);

@@ -775,7 +775,7 @@ export interface LocalWrite {
 }
 
 const localListeners = new Set<(write: LocalWrite) => void>();
-let lastLocalWrite = -Infinity;
+let lastRefile = -Infinity;
 
 /**
  * Hears each write this device is about to make, queued or as a request, before it
@@ -792,16 +792,19 @@ export function onLocalWrite(listener: (write: LocalWrite) => void): () => void 
 }
 
 /**
- * Whether a write was made here in the last `ms`: long enough for the change to come back
- * through the collections and be drawn, short enough that the feed's next change is not
- * mistaken for it.
+ * Whether a write made here in the last `ms` could have moved a count: one that refiles a
+ * note (`LocalWrite.refiles`). Long enough for the change to come back through the
+ * collections and be drawn, short enough that the feed's next change is not mistaken for
+ * it. Only refiling writes open the window, because autosave writes the text every few
+ * seconds while someone types: counted, it held the window open for as long as they
+ * typed, and every count the feed or the first copy moved meanwhile rolled as if they had.
  */
-export function wroteLocallyWithin(ms: number): boolean {
-  return performance.now() - lastLocalWrite < ms;
+export function refiledLocallyWithin(ms: number): boolean {
+  return performance.now() - lastRefile < ms;
 }
 
 function aboutToWrite(write: LocalWrite): void {
-  lastLocalWrite = performance.now();
+  if (write.refiles) lastRefile = performance.now();
   localListeners.forEach((l) => l(write));
 }
 

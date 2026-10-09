@@ -1149,7 +1149,7 @@ describe('a write made here', () => {
     expect(seenBefore).toEqual([undefined]);
     expect(writes).toEqual([{ ids: ['n1'], refiles: true }]);
     expect(lib.notes.get('n1')?.deletedAt).toBeDefined();
-    expect(actions.wroteLocallyWithin(1000)).toBe(true);
+    expect(actions.refiledLocallyWithin(1000)).toBe(true);
   });
 
   it('is heard when it goes as a request too', async () => {
@@ -1177,5 +1177,22 @@ describe('a write made here', () => {
       { ids: ['n1'], refiles: false },
       { ids: ['n1'], refiles: true },
     ]);
+  });
+
+  it('opens the window a count rolls in only for a write that can move one', async () => {
+    vi.useFakeTimers({ toFake: ['performance'] });
+    try {
+      const { lib, note } = library([row('n1')]);
+      await lib.outbox.ready;
+      // Far past any refile an earlier test made on the real clock.
+      vi.advanceTimersByTime(1e9);
+      const base = note('n1');
+      await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'retyped' }, base });
+      expect(actions.refiledLocallyWithin(1000)).toBe(false);
+      await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'retyped', notebook: 'Elsewhere' }, base });
+      expect(actions.refiledLocallyWithin(1000)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
