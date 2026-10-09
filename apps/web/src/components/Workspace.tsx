@@ -1372,6 +1372,12 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
         */
         onMouseDown={(e) => {
           if (e.target !== e.currentTarget || e.button !== 0 || !editorView || noteView === 'preview') return;
+          // A modified press is a selection gesture, as it is to `tapBelowPicture`.
+          if (e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
+          // The column is the scroll region, so its own scrollbar is part of this element:
+          // a press on the track below the note is scrolling, not writing.
+          const column = e.currentTarget;
+          if (e.clientX >= column.getBoundingClientRect().left + column.clientLeft + column.clientWidth) return;
           if (e.clientY <= editorView.dom.getBoundingClientRect().bottom) return;
           e.preventDefault();
           caretBelowEnd(editorView);
