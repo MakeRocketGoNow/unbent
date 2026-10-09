@@ -1069,9 +1069,11 @@ instance's model read the file and replaces them, and an assistant may never wri
 text layer or the model's reading. The instance calls no model for any of it, and the
 bytes go to the assistant the person connected, nowhere else.
 
-`ANTHROPIC_MODEL` picks the model. Unset means the most capable current one — a wrong digit in a
-transcribed total is copied into a field with full confidence — and `claude-sonnet-5` trades
-some of that for cost. The same model writes Auto-fill's titles and text field values (see
+`ANTHROPIC_MODEL` picks the model. Unset means `claude-haiku-5-5`, which read printed
+receipts as accurately as Opus in a small trial at a fiftieth of the price. Handwriting and
+poor photos were not part of that trial; for more care set `claude-sonnet-5-5`, or
+`claude-opus-5-5` for the most capable model, where a wrong digit in a transcribed total is
+the cost you care about. The same model writes Auto-fill's titles and text field values (see
 [Filing a note from what it says](#filing-a-note-from-what-it-says)). It sits behind one
 interface in `apps/api/src/lib/llm.ts`, so another model, or Workers AI for an instance that
 would rather keep images in place, is one more implementation of it.
