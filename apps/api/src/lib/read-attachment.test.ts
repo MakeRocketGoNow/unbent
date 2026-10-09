@@ -217,9 +217,13 @@ describe('a pass over files already chosen', () => {
     const counts = await readPendingFiles(blobs, { llm: cut, usage }, r, [{ ...photo, pending: 'vision' }]);
     expect(counts.failed).toBe(1);
     expect(r.recordText).not.toHaveBeenCalled();
+    // And a reading whose text could not be written: the store was away, the model was paid.
+    const away = { recordText: vi.fn(async () => { throw new Error('store unavailable'); }) };
+    expect((await readPendingFiles(blobs, { llm: vision(said), usage }, away, [{ ...photo, pending: 'vision' }])).failed).toBe(1);
     expect(usage.entries).toEqual([
       { job: 'read', ...cost },
       { job: 'read', ...cost, outputTokens: 16384 },
+      { job: 'read', ...cost },
     ]);
   });
 

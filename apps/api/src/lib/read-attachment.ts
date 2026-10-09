@@ -157,7 +157,7 @@ export async function readAttachment(
     }
 
     if (readers.llm && readableByLlm(file.contentType, file.size)) {
-      return readWithLlm(readers, readers.llm, attachments, file, await load());
+      return readWithLlm(readers.llm, readers.usage, attachments, file, await load());
     }
 
     return 'unread';
@@ -235,7 +235,7 @@ export async function readPendingFile(
   }
   const stored = await blobs.get(file.r2Key);
   if (!stored) throw new Error(`No object at ${file.r2Key}`);
-  return readWithLlm(readers, readers.llm, attachments, file, await stored.arrayBuffer());
+  return readWithLlm(readers.llm, readers.usage, attachments, file, await stored.arrayBuffer());
 }
 
 /**
@@ -245,8 +245,8 @@ export async function readPendingFile(
  * recorded in the same write.
  */
 async function readWithLlm(
-  readers: Pick<Readers, 'usage'>,
   llm: Pick<LanguageModel, 'read'>,
+  press: PressUsage | undefined,
   attachments: Pick<AttachmentsRepo, 'recordText'>,
   file: StoredFile & Pick<StoredPending, 'writtenBy'>,
   bytes: ArrayBuffer,
@@ -255,7 +255,7 @@ async function readWithLlm(
   try {
     answer = await llm.read({ filename: file.filename, contentType: file.contentType, bytes });
   } catch (err) {
-    if (readers.usage) readers.usage.failed('read', err);
+    if (press) press.failed('read', err);
     throw err;
   }
   const { value: reading, usage } = answer;
@@ -266,18 +266,26 @@ async function readWithLlm(
   // once. The tool that writes those words says so. Nothing is written, so the cost goes
   // with the press's own.
   if (!reading && file.writtenBy === 'assistant') {
-    readers.usage?.entries.push(usageEntry('read', usage));
+    press?.entries.push(usageEntry('read', usage));
     return 'empty';
   }
-  await attachments.recordText(
-    {
-      attachmentId: file.id,
-      noteId: file.noteId,
-      filename: file.filename,
-      text: reading ? formatReading(reading) : '',
-      readBy: 'vision',
-    },
-    usageEntry('read', usage),
-  );
+  const entry = usageEntry('read', usage);
+  try {
+    await attachments.recordText(
+      {
+        attachmentId: file.id,
+        noteId: file.noteId,
+        filename: file.filename,
+        text: reading ? formatReading(reading) : '',
+        readBy: 'vision',
+      },
+      entry,
+    );
+  } catch (err) {
+    // The write that would have carried the cost did not happen; the reading was still
+    // paid for, so it goes with the press's own record instead.
+    press?.entries.push(entry);
+    throw err;
+  }
   return reading ? 'vision' : 'empty';
 }
