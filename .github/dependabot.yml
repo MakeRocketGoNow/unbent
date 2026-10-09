@@ -6,6 +6,13 @@
 # repository setting rather than a file, but how they are *grouped* is set here — and
 # grouping is the part that decides whether an advisory bump installs. Keeping ordinary
 # versions current is what makes that bump a one-line diff instead of a migration.
+#
+# Version updates are off: every `open-pull-requests-limit` below is 0, which stops the
+# weekly and monthly pull requests and leaves security updates alone (they are not counted
+# against it). Dependabot proposes a version without knowing why one was chosen — it
+# merged wa-sqlite 2 under an adapter that peers on 1 (#336) — so routine updates are done
+# by hand, by someone who can read why a version was chosen. The groups stay, because
+# security pull requests are grouped by them.
 
 version: 2
 updates:
@@ -72,7 +79,7 @@ updates:
         applies-to: security-updates
         patterns:
           - '*'
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     # Not vitest 6, until Cloudflare's vitest integration supports it. apps/store-tests
     # runs the per-account store against real Durable Object SQLite through
     # `@cloudflare/vitest-plugin`, which peers on one vitest major at a time (4, as of
@@ -131,8 +138,7 @@ updates:
         applies-to: security-updates
         patterns:
           - '*'
-    # Three version-update groups, plus headroom so a fourth would not silently starve.
-    open-pull-requests-limit: 4
+    open-pull-requests-limit: 0
 
   # The actions in .github/workflows, which are pinned by tag and otherwise never revisited.
   - package-ecosystem: github-actions
@@ -147,3 +153,4 @@ updates:
         applies-to: security-updates
         patterns:
           - '*'
+    open-pull-requests-limit: 0
