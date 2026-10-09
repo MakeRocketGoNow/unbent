@@ -18,6 +18,21 @@ interface CountMenuOptions {
 }
 
 /**
+ * Whether the count is a menu at all: whenever it is a number of notes something could be
+ * done to. Not over a search, whose query an export does not carry; not while the list is
+ * loading, when the count reads "Loading…"; not for a notebook that is not there; and not
+ * for an empty list. Filtered or not — what that changes is the export, not the menu.
+ */
+export function offersCountMenu(o: {
+  searching: boolean;
+  notebookMissing: boolean;
+  loading: boolean;
+  total: number;
+}): boolean {
+  return !o.searching && !o.notebookMissing && !o.loading && o.total > 0;
+}
+
+/**
  * What the list's count offers when it is a menu — see `NoteListHead`'s `countMenu`.
  *
  * **Export**, because the count is where the slice of the archive on screen is named. It

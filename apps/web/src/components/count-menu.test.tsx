@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { countMenuItems } from './count-menu.js';
+import { countMenuItems, offersCountMenu } from './count-menu.js';
 
 /**
  * What the count's menu promises. Both labels are claims about numbers — how many an export
@@ -17,6 +17,24 @@ const base = {
   onExport: () => {},
   onSelectAll: () => {},
 };
+
+describe('offersCountMenu', () => {
+  const list = { searching: false, notebookMissing: false, loading: false, total: 37 };
+
+  it('is a menu for a count of notes', () => {
+    expect(offersCountMenu(list)).toBe(true);
+  });
+
+  it('is plain text whenever the count is not a number of notes to act on', () => {
+    // A search's query is not part of an export, so its matches are not offered one.
+    expect(offersCountMenu({ ...list, searching: true })).toBe(false);
+    // "Loading…" is not a number.
+    expect(offersCountMenu({ ...list, loading: true })).toBe(false);
+    // A count of a notebook that does not exist would be a claim about nothing.
+    expect(offersCountMenu({ ...list, notebookMissing: true })).toBe(false);
+    expect(offersCountMenu({ ...list, total: 0 })).toBe(false);
+  });
+});
 
 describe('countMenuItems', () => {
   it('exports every note the filter matches, by number', () => {

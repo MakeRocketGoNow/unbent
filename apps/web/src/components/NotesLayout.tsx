@@ -28,7 +28,7 @@ import { SampleNotes } from './SampleNotes.js';
 import { EmptyLibrary } from './EmptyLibrary.js';
 import { Button } from './Button';
 import { NotebookMissing, isNotebookMissing } from './NotebookMissing.js';
-import { countMenuItems } from './count-menu.js';
+import { countMenuItems, offersCountMenu } from './count-menu.js';
 import { startExport, useExportRunning } from '../export-archive.js';
 import { useOffline } from '../connectivity.js';
 import { TagPicker } from './TagPicker.js';
@@ -758,7 +758,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * anywhere; clearing the query brings the state back.
    */
   const showNotebookMissing = notebookMissing && results === null;
-  const counting = loading || (arriving && notes.length === 0);
+  const counting = loading || (arriving !== null && notes.length === 0);
   const noteCount = total ?? notes.length;
   const countLabel = showNotebookMissing
     ? // A count of a notebook that does not exist would be a claim about nothing.
@@ -771,16 +771,17 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         ? 'Loading…'
         : `${noteCount} notes`;
 
-  /*
-   * The count as a menu: export the slice, or select it. Whenever the count is a number
-   * of notes: not over a search, whose query an export does not carry, not while loading,
-   * not for a notebook that is not there, and not for none. Unfiltered, its export is the
-   * whole library's page instead — see `countMenuItems`.
-   */
+  /* The count as a menu: export the slice, or select it — see `offersCountMenu` for when,
+     and `countMenuItems` for what. */
   const exportRunning = useExportRunning();
   const offline = useOffline();
   const countMenu =
-    results === null && !showNotebookMissing && !counting && noteCount > 0
+    offersCountMenu({
+      searching: results !== null,
+      notebookMissing: showNotebookMissing,
+      loading: counting,
+      total: noteCount,
+    })
       ? countMenuItems({
           total: noteCount,
           everything: !isFiltered,
