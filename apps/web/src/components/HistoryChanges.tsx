@@ -4,6 +4,7 @@ import { diffNote, diffProps, type CurrentProps, type DiffPart, type DiffRow, ty
 import { andList } from '../and-list.js';
 import { formatFieldValue } from './format-field.js';
 import { RowChevronIcon } from './icons.js';
+import { Collapse } from './Collapse.js';
 
 /** The note as it is on screen: its text, and where it is filed, its tags and its fields. */
 export type HistoryCurrent = { title: string; body: string } & CurrentProps;
@@ -355,7 +356,11 @@ function Fold({ lines }: { lines: string[] }) {
         <RowChevronIcon />
         {label}
       </button>
-      {open && lines.map((text, i) => <Same key={i} text={text} />)}
+      <Collapse open={open}>
+        {lines.map((text, i) => (
+          <Same key={i} text={text} />
+        ))}
+      </Collapse>
     </>
   );
 }

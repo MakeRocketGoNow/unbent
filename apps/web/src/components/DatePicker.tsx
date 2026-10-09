@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { DATE_PRESETS, activePreset } from './date-presets.js';
+import { Collapse } from './Collapse.js';
 
 interface DatePickerProps {
   from: string | undefined;
@@ -87,41 +88,39 @@ export function DatePicker({ from, to, onDone }: DatePickerProps) {
         Custom…
       </button>
 
-      {showCustom && (
-        <div className="date-range">
-          {/* These write directly rather than through `set`: a custom range is usually two
-              fields, and returning to the root after the first one would take the second
-              away mid-edit. */}
-          <label>
-            <span className="small">From</span>
-            <input
-              type="date"
-              value={from ?? ''}
-              max={to ?? undefined}
-              onChange={(e) =>
-                void navigate({
-                  to: '/notes',
-                  search: (prev) => ({ ...prev, from: e.target.value || undefined }),
-                })
-              }
-            />
-          </label>
-          <label>
-            <span className="small">To</span>
-            <input
-              type="date"
-              value={to ?? ''}
-              min={from ?? undefined}
-              onChange={(e) =>
-                void navigate({
-                  to: '/notes',
-                  search: (prev) => ({ ...prev, to: e.target.value || undefined }),
-                })
-              }
-            />
-          </label>
-        </div>
-      )}
+      <Collapse open={showCustom} className="date-range">
+        {/* These write directly rather than through `set`: a custom range is usually two
+            fields, and returning to the root after the first one would take the second
+            away mid-edit. */}
+        <label>
+          <span className="small">From</span>
+          <input
+            type="date"
+            value={from ?? ''}
+            max={to ?? undefined}
+            onChange={(e) =>
+              void navigate({
+                to: '/notes',
+                search: (prev) => ({ ...prev, from: e.target.value || undefined }),
+              })
+            }
+          />
+        </label>
+        <label>
+          <span className="small">To</span>
+          <input
+            type="date"
+            value={to ?? ''}
+            min={from ?? undefined}
+            onChange={(e) =>
+              void navigate({
+                to: '/notes',
+                search: (prev) => ({ ...prev, to: e.target.value || undefined }),
+              })
+            }
+          />
+        </label>
+      </Collapse>
     </div>
   );
 }

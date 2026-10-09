@@ -27,8 +27,10 @@ import { useCallback, useSyncExternalStore, type KeyboardEvent } from 'react';
 /**
  * The rows the arrows move between, in the order they are on screen. A note is a sidebar
  * entry or a table row's name link — the list drawn two ways, browsed by one set of keys.
+ * Not the copy of a row that has just left the list, which stays drawn while it closes up
+ * (`list-motion.ts`): it is not a row any more.
  */
-const ROW = '.scope-match-btn, .note-item, .note-row-link';
+const ROW = ':is(.scope-match-btn, .note-item, .note-row-link):not(.note-ghost *)';
 
 function isNote(el: HTMLElement): boolean {
   return el.classList.contains('note-item') || el.classList.contains('note-row-link');
@@ -207,7 +209,7 @@ export function focusEditor() {
  * something invisible.
  */
 export function focusActiveListItem(): boolean {
-  const active = document.querySelector<HTMLElement>('.note-item.active, .note-row-link.active');
+  const active = document.querySelector<HTMLElement>(':is(.note-item.active, .note-row-link.active):not(.note-ghost *)');
   if (!active) return false;
   setCameFromList(true);
   active.focus();

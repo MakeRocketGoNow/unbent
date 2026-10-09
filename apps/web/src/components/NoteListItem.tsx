@@ -37,13 +37,10 @@ interface NoteListItemProps {
   /** The sort the list is using, so the entry shows the date that ordering is based on. */
   sort?: NoteSort;
   /**
-   * Opens the note through a view transition that grows this entry into the note.
-   *
-   * Set on a phone only. There the list is replaced by the note, so the tapped entry
-   * has somewhere to go; on a desktop the two sit side by side and a transition would
-   * animate a change nobody can see.
+   * The note replaces the list when it opens, as it does on a phone; on a desktop the two
+   * sit side by side. Decides where focus goes on a click — see `data-keep-focus` below.
    */
-  transition?: boolean;
+  replacedByNote?: boolean;
   selection?: RowSelection | undefined;
 }
 
@@ -86,7 +83,7 @@ export function NoteListItem({
   to,
   actions,
   sort,
-  transition = false,
+  replacedByNote = false,
   selection,
 }: NoteListItemProps) {
   const when = sort === 'created' ? note.createdAt : note.updatedAt;
@@ -111,6 +108,8 @@ export function NoteListItem({
 
   return (
     <li
+      // What the list's motion follows a row by (`list-motion.ts`).
+      data-note-id={note.id}
       className={['note-entry', selection?.selected && 'selected', actions && 'with-actions']
         .filter(Boolean)
         .join(' ')}
@@ -129,8 +128,7 @@ export function NoteListItem({
         // Marked only where the list survives the open — a phone replaces it with the note,
         // so there focus has nowhere to stay and the note opens ready to write in. Read by
         // the pointerdown handler in `useListKeys`.
-        {...(transition ? {} : { 'data-keep-focus': '' })}
-        viewTransition={transition ? { types: ['note-open'] } : undefined}
+        {...(replacedByNote ? {} : { 'data-keep-focus': '' })}
         onPointerDown={(e) => {
           pointerType.current = e.pointerType;
           swallowClick.current = false;
@@ -162,18 +160,6 @@ export function NoteListItem({
             selection.onPick({ range: e.shiftKey });
           }
         }}
-        /*
-         * Which entry is opening, for the transition to grow from.
-         *
-         * The browser snapshots the page before the navigation, and at that moment
-         * nothing in the route says which entry was tapped — the id only reaches the URL
-         * afterwards. So the entry marks itself here, synchronously in the click, and
-         * the stylesheet gives the marked entry the note's `view-transition-name`. The
-         * mark stays while the note is open, which is what lets Back run the same
-         * transition in reverse, shrinking the note into the row it came from; any
-         * sibling still carrying it from an earlier open is cleared first, because two
-         * elements with one name make the browser skip the transition altogether.
-         */
         onClick={(e) => {
           if (selection) {
             if (swallowClick.current) {
@@ -188,12 +174,6 @@ export function NoteListItem({
               return;
             }
           }
-          if (!transition) return;
-          const el = e.currentTarget;
-          el.closest('.note-list')
-            ?.querySelectorAll('[data-opening]')
-            .forEach((n) => n.removeAttribute('data-opening'));
-          el.setAttribute('data-opening', '');
         }}
       >
         <span className="note-title">{title}</span>

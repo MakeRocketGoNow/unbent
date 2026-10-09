@@ -16,6 +16,7 @@ import { FieldTypeIcon, PlusRowIcon } from './icons.js';
 import { FieldCellInput } from './FieldCellInput.js';
 import { amountText, currencySymbol, formatFieldValue } from './format-field.js';
 import { usePersistentState } from '../usePersistentState.js';
+import { filledStyle } from './filled.js';
 
 export interface NoteFieldsProps {
   /** The note's notebook's definitions, in order. Undefined while they load. */
@@ -36,6 +37,12 @@ export interface NoteFieldsProps {
   onAddField: (input: { name: string; type: FieldType; options: string[] }) => Promise<void>;
   /** Rendered last: the way to the notebook's field settings. */
   manage?: ReactNode;
+  /**
+   * The fields an Auto-fill press just wrote, marked for a moment (`.filled`), and where in
+   * the press's order the first of them falls — the title and the filing rows above take
+   * the places before it, so the marks run down the record as one sequence.
+   */
+  filled?: { ids: ReadonlySet<string>; start: number };
   /**
    * Rows rendered first, inside the same grid, so their labels share the fields' column.
    *
@@ -92,6 +99,7 @@ export function NoteFields({
   onAddField,
   manage,
   lead,
+  filled,
 }: NoteFieldsProps) {
   const defs = notebookId ? definitions : [];
   // Sticks across notes and sessions: the notebooks whose empties are noise are noise
@@ -129,6 +137,7 @@ export function NoteFields({
   const offerHide = defs.length >= HIDE_EMPTY_FROM && empties > 0;
   const shown = hideEmpty && offerHide ? defs.filter((d) => !isEmpty(d)) : defs;
 
+  let nextFilled = filled?.start ?? 0;
   return (
     <div className="note-fields">
       {lead}
@@ -138,6 +147,7 @@ export function NoteFields({
           def={def}
           value={values[def.id] ?? null}
           readOnly={readOnly}
+          filledAt={filled?.ids.has(def.id) ? nextFilled++ : undefined}
           onChange={(v) => onChange(def.id, v)}
         />
       ))}
@@ -225,10 +235,12 @@ interface FieldRowProps {
   def: FieldDef;
   value: FieldValue | null;
   readOnly: boolean;
+  /** This row's place among what an Auto-fill press just wrote, if it wrote this. */
+  filledAt?: number | undefined;
   onChange: (value: FieldValue | null) => void;
 }
 
-function FieldRow({ def, value, readOnly, onChange }: FieldRowProps) {
+function FieldRow({ def, value, readOnly, filledAt, onChange }: FieldRowProps) {
   // An amount's text while its input has focus; see the `number` case below.
   const [typing, setTyping] = useState<string | null>(null);
   const id = `field-${def.id}`;
@@ -382,7 +394,11 @@ function FieldRow({ def, value, readOnly, onChange }: FieldRowProps) {
   }
 
   return (
-    <div className="note-field" data-type={def.type}>
+    <div
+      className={filledAt === undefined ? 'note-field' : 'note-field filled'}
+      data-type={def.type}
+      style={filledStyle(filledAt)}
+    >
       <span className="note-field-glyph" aria-hidden="true">
         <FieldTypeIcon type={def.type} rating={isRatingField(def)} currency={isCurrencyField(def)} />
       </span>

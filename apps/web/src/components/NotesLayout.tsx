@@ -74,6 +74,7 @@ import { useLibraryArriving, useLibraryWhole } from '../store/use-feed-state.js'
 import { sameNotebookName } from '../store/derive.js';
 import { ListRowsContext, showsWholeAccount, useLibraryTotal } from '../useLibraryTotal.js';
 import { useSignOut } from '../useSignOut.js';
+import { useListMotion } from '../list-motion.js';
 
 /** Sidebar plus the routed workspace. Filters come from the URL; nothing here is mirrored into state. */
 export function NotesLayout({ children }: { children: React.ReactNode }) {
@@ -104,6 +105,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    */
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  // Rows leave and arrive rather than vanish when the person's own action moves them.
+  const listMotionRef = useListMotion(listRef);
   const tableRef = useRef<HTMLDivElement>(null);
   const filterRef = useRef<HTMLButtonElement>(null);
   const onListKeys = useListKeys({ onLeaveTop: () => searchRef.current?.focus() });
@@ -1177,7 +1180,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         ) : (
         <ul
           className={selection.active ? 'note-list selecting' : 'note-list'}
-          ref={listRef}
+          ref={listMotionRef}
           aria-busy={(searching ? searchStale : stale) || undefined}
           aria-multiselectable={results === null ? true : undefined}
           onKeyDown={onListKeysWithSelection}
@@ -1217,7 +1220,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                 note={n}
                 to="/notes/$noteId"
                 sort={sort ?? DEFAULT_NOTE_SORT}
-                transition={isMobile}
+                replacedByNote={isMobile}
                 selection={{
                   selected: selection.has(n.id),
                   active: selection.active,
@@ -1227,7 +1230,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             ))}
 
           {results === null && list.hasNextPage && (
-            <li>
+            <li data-motion-key="more">
               <button
                 type="button"
                 className="load-more"
@@ -1240,7 +1243,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           )}
 
           {results === null && emptyMessage && (
-            <li className="muted small empty">{emptyMessage}</li>
+            <li className="muted small empty" data-motion-key="empty">
+              {emptyMessage}
+            </li>
           )}
           {offerSampleNotes && (
             <li>

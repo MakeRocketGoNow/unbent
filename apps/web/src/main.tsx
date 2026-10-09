@@ -17,6 +17,7 @@ import { installSessionRecheck } from './auth-client.js';
 import { isOfflineError } from './notes-api.js';
 import { onUploaded } from './store/actions.js';
 import { indexUploadedFile } from './index-files.js';
+import { canTypeTransitions, noteTransitionTypes, trackWhatIsBehind, watchHistoryMoves } from './note-nav.js';
 import './styles.css';
 
 /*
@@ -108,6 +109,9 @@ void queryClient
   })
   .catch(() => {});
 
+// Before the router subscribes to the same event; see `watchHistoryMoves`.
+watchHistoryMoves();
+
 const router = createRouter({
   routeTree,
   // Loaders resolve through this client, so route data and component data are the same
@@ -139,7 +143,17 @@ const router = createRouter({
    * current page is harmless — the router skips it.
    */
   scrollToTopSelectors: ['.settings', '.workspace-main', '.editor-pane', '.preview-pane'],
+  /*
+   * How a navigation is drawn, decided for every one in one place: the slide between a
+   * list and a note on a phone, and nothing anywhere else. Here rather than on the links,
+   * because most ways in and out of a note are not a link — a new note, Back, a swipe —
+   * and each should slide the same way for the same move. See `note-nav.ts`.
+   */
+  defaultViewTransition: canTypeTransitions() ? { types: noteTransitionTypes } : false,
 });
+
+// What the note's back arrow goes back to; see `goBackToList`.
+trackWhatIsBehind(router);
 
 /*
  * Files and links the browser launched the installed app with; see `launch-queue.ts`.

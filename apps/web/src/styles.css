@@ -1045,6 +1045,22 @@ button.link {
   min-height: 0;
 }
 
+/*
+   A row that just left the list, drawn where it stood while it closes up (`list-motion.ts`).
+   Inside the list, which is its scroll box, so it scrolls with the rows and is clipped
+   where they are; above them, on the list's own ground, so the row rising into its place
+   is covered by what is left of it rather than drawn through its text.
+*/
+.note-list { position: relative; }
+
+/* Through the list, since a row's own `.note-entry` rule, later in the file, positions it too. */
+.note-list > .note-ghost {
+  position: absolute;
+  z-index: 1;
+  margin: 0;
+  pointer-events: none;
+}
+
 .note-list[aria-busy='true'] {
   opacity: 0.45;
   transition: opacity 0.15s ease 0.15s;
@@ -2143,6 +2159,49 @@ a.overflow-item { text-decoration: none; }
   .autofill-btn.busy svg {
     animation: none;
   }
+}
+
+/*
+   What an Auto-fill press just wrote, marked where it landed (`filled` in `Workspace`).
+
+   The snackbar says what changed in a sentence; this says where. Each thing the press
+   wrote lights in turn down the record — the title, the notebook, the tags it added, then
+   the fields in the order they are drawn — holds for a beat, and fades back to how it
+   always looks. A value's own box takes an accent wash; a field's name and glyph, and the
+   title, take the accent as their colour, since a row here is cells in the list's grid
+   with no box of its own to tint (`.note-field` is `display: contents`), and the title has
+   no box at all. A tag the press added is ringed instead: a chip already has a colour of
+   its own, and washing it green would make it look like a different tag for a second.
+
+   A colour that fades rather than anything that moves, so it stays when reduced motion is
+   asked for: it says something the sentence does not, and nothing on screen travels.
+   Timed to `FILLED_MS` and `FILLED_STAGGER_MS` in `filled.ts`, which clear the marks.
+*/
+.note-field:is(.filled, .filled-tags) > :is(.note-field-glyph, .note-field-label),
+.title-input.filled-title {
+  animation: filled-ink 2.2s ease-out calc(var(--filled-i, 0) * 70ms);
+}
+
+/* The value: whatever the row draws between its name and its side cell, whatever kind. */
+.note-field.filled > :not(.note-field-glyph, .note-field-label, .note-field-side) {
+  animation: filled-wash 2.2s ease-out calc(var(--filled-i, 0) * 70ms);
+}
+
+.tag-chip.fresh {
+  animation: filled-ring 2.2s ease-out calc(var(--filled-i, 0) * 70ms);
+}
+
+/* Each holds for the first third and fades to the element's own value from there. */
+@keyframes filled-ink {
+  0%, 30% { color: var(--accent); }
+}
+
+@keyframes filled-wash {
+  0%, 30% { background-color: color-mix(in srgb, var(--accent) 22%, transparent); }
+}
+
+@keyframes filled-ring {
+  0%, 30% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 70%, transparent); }
 }
 
 .small { font-size: 0.78rem; }
@@ -6511,6 +6570,147 @@ button.settings-nav-item {
   font-weight: 500;
 }
 
+/*
+   The hover tint glides from row to row instead of going out on one and on at the next.
+
+   It is the same 8% pill `.drawer-item:hover` draws, moved onto one box per column that
+   follows whichever row is under the pointer. Anchor positioning does the following: the
+   hovered row names itself (`anchor-name`), the pill takes its four edges from that row
+   (`anchor()`), and a transition on `inset` is the glide. Nothing is measured by script.
+   A browser without anchor positioning, and a touch screen, keep the plain hover above.
+
+   The curve, not the duration, is what keeps it with the pointer. Hover is the most
+   frequent thing this column does and the pill has to be where the pointer is: Material's
+   emphasized-decelerate, `cubic-bezier(0.05, 0.7, 0.1, 1)`, is about 80% of the way there
+   after 100ms and spends the rest of its 0.4s settling, so it reads as following with a
+   soft landing rather than chasing. The same 0.4s on `ease`, which is how the effect is
+   usually shown, is about 40% of the way at 100ms and trails a pointer moving down a
+   list — for that long the pill sits on a row the click will not land on.
+
+   It appears in place rather than flying in. With no row hovered there is no anchor, so
+   `anchor()` is invalid and `inset` falls back to `auto`, which does not interpolate: the
+   pill drops out at once and appears on the next row the pointer reaches without
+   travelling there. That is also why it never sails across a section head or a rule —
+   the pointer has left the rows — and why the foot has a pill of its own rather than
+   sharing the list's: the list scrolls under it.
+
+   The rows' 0.1rem gap would cut a glide between neighbours the same way, so each row's
+   hit area reaches over it (`::after`); without that, a slow pointer lands in the gap and
+   the glide becomes a blink. Positioning the rows for that is also what keeps the pill
+   under them: the pill is the first positioned box in its column, so it paints first.
+
+   On the current row the pill shows through the current tint, so the place you are on
+   answers a hover too — before, the current rule simply won and it did not.
+
+   Scoped to the navigation's two columns. The move picker draws the same rows in a list
+   of its own, and must keep its plain hover rather than lose it to a pill it lacks.
+*/
+@media (hover: hover) {
+  @supports (anchor-name: --a) {
+    .drawer-list,
+    .drawer-foot { position: relative; }
+
+    .drawer-list::before,
+    .drawer-foot::before {
+      content: '';
+      position: absolute;
+      position-anchor: --drawer-hover;
+      inset: anchor(top) anchor(right) anchor(bottom) anchor(left);
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--fg) 8%, transparent);
+      pointer-events: none;
+    }
+
+    :is(.drawer-list, .drawer-foot) .drawer-item { position: relative; }
+
+    :is(.drawer-list, .drawer-foot) .drawer-item::after {
+      content: '';
+      position: absolute;
+      inset: -0.1rem 0;
+    }
+
+    :is(.drawer-list, .drawer-foot) .drawer-item:hover { anchor-name: --drawer-hover; }
+    :is(.drawer-list, .drawer-foot) .drawer-item:not(.current):hover { background: none; }
+  }
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  @supports (anchor-name: --a) {
+    .drawer-list::before,
+    .drawer-foot::before {
+      transition: inset 0.4s cubic-bezier(0.05, 0.7, 0.1, 1);
+    }
+
+    /*
+       Picking a row fills the pill already under the pointer with the current tint, and
+       the row that was current lets its tint go in the same moment.
+
+       The selection does not glide, though the anchor would make that one more rule. On a
+       click the hover pill is already on the row, so a second pill travelling there from
+       the old place tells the same story twice — two animations for one event, in a part
+       of the column nobody is looking at. It could not even do it consistently: the place
+       can move from a notebook in the scrolling list to Trash in the foot, or to a row
+       scrolled out of view, so it would glide one time and appear the next. And at the hover's 0.4s it would hold back the one answer a click
+       has to give at once.
+
+       Short for that reason, and on the hover's curve: the fill is the click's answer, so
+       it is most of the way there in the first frames, where a plain `ease-out` is still
+       only half way. It runs only when a row's class changes; a row drawn
+       already current, on load or when the rail mounts, has nothing to fade from. Inside
+       the pill's own conditions, so a browser that draws the plain hover keeps a plain
+       click too, rather than a hover that fades in where it used to appear.
+    */
+    :is(.drawer-list, .drawer-foot) .drawer-item,
+    :is(.drawer-list, .drawer-foot) .drawer-item > svg {
+      transition:
+        background-color 0.15s cubic-bezier(0.05, 0.7, 0.1, 1),
+        color 0.15s cubic-bezier(0.05, 0.7, 0.1, 1);
+    }
+  }
+}
+
+/*
+   A count that rolls when the person's own action changed it (`RollingCount`): the old
+   number leaves and the new one arrives in one cell, a larger number up from below and a
+   smaller one down from above, as an odometer turns. Clipped to the cell, so neither is
+   seen outside the line it sits on.
+*/
+.count-roll {
+  display: inline-grid;
+  overflow: hidden;
+  /* The cell is as tall as one line, so the clip is exactly the number's own height. */
+  line-height: inherit;
+}
+
+.count-roll > * {
+  grid-area: 1 / 1;
+  justify-self: end;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* `ROLL_MS` in `RollingCount.tsx`, which keeps the old number until it has left. */
+  .count-in.up { animation: count-in-up 0.3s cubic-bezier(0.2, 0, 0, 1) both; }
+  .count-out.up { animation: count-out-up 0.3s cubic-bezier(0.2, 0, 0, 1) both; }
+  .count-in.down { animation: count-in-down 0.3s cubic-bezier(0.2, 0, 0, 1) both; }
+  .count-out.down { animation: count-out-down 0.3s cubic-bezier(0.2, 0, 0, 1) both; }
+}
+
+@keyframes count-in-up {
+  from { translate: 0 100%; opacity: 0; }
+}
+
+@keyframes count-out-up {
+  to { translate: 0 -100%; opacity: 0; }
+}
+
+@keyframes count-in-down {
+  from { translate: 0 -100%; opacity: 0; }
+}
+
+@keyframes count-out-down {
+  to { translate: 0 100%; opacity: 0; }
+}
+
 /* A notebook name is unbounded; it yields so the count never moves. */
 .drawer-item-label {
   flex: 1;
@@ -8506,26 +8706,6 @@ button.settings-nav-item {
   .notes.note-open > .sidebar { display: none; }
   .notes:not(.note-open) > .workspace { display: none; }
 
-  /*
-     Opening a note grows the tapped entry into it.
-
-     Keep's container transform, on the platform's View Transitions: the entry that was
-     tapped (marked by `NoteListItem` in the click, since the URL does not yet say which)
-     and the open note share one `view-transition-name`, so when the grid swaps the list
-     for the note the browser morphs the entry's box into the note's. Back does the same
-     in reverse — the mark stays on the entry while the note is open, so the note has a
-     row to shrink into. Below the breakpoint only: on a desktop the list and the note are
-     both on screen, and two elements with one name would make the browser skip the whole
-     thing, correctly, since there is nothing to morph.
-
-     The editor is not remounted by any of this. A view transition is snapshots of the
-     old and new page painted over the real one for 300ms; CodeMirror keeps its cursor,
-     scroll and undo history underneath. The motion itself is in the block below the
-     breakpoint rules, with the timing.
-  */
-  .note-item[data-opening] { view-transition-name: note; }
-  .notes.note-open > .workspace { view-transition-name: note; }
-
   .view-back { display: inline-flex; }
 
   /* Where the arrow is the only way out of a failed note — see `.workspace-error-head`. */
@@ -8960,72 +9140,137 @@ button.settings-nav-item {
 }
 
 /* ---------------------------------------------------------------------------------
-   The note's view transition: how the morph moves. Names are given above, under the
-   phone breakpoint; nothing here fires unless something carries the name.
+   Opening and closing a note on a phone: the slide. Which navigations run it, and which
+   way, is decided in `note-nav.ts`; this is only how it moves.
    --------------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: no-preference) {
   /*
-     Only the note moves. Without this the root crossfades as well, which on a phone is
-     the whole screen fading behind the box that is already growing across it — two
-     animations telling one story.
+     The whole page moves, as a phone's navigation does: the note slides in from the right
+     edge over the list, and the list drifts a third of the way left and dims a little
+     under it, so the two read as one page laid over another rather than a carousel. Back
+     is the same reversed, with the note on top on its way off.
+
+     iOS's navigation curve, a fast start that settles with no overshoot, at 350ms in and
+     300ms out, since leaving should be quicker than arriving. The snapshots are opaque, so
+     the default `plus-lighter` blend, which exists for a crossfade, is undone: where the
+     two overlap it would add them and flash the seam bright.
+
+     The page on top carries a soft shadow along its leading edge, which is what makes it
+     read as lying over the list rather than butting against it; the list's dimming is the
+     same depth seen from underneath.
+
+     The editor is not remounted by any of this. A view transition is snapshots of the old
+     and new page painted over the real one while it runs; CodeMirror keeps its cursor,
+     scroll and undo history underneath.
   */
-  ::view-transition-old(root),
-  ::view-transition-new(root) {
-    animation: none;
+  html:active-view-transition-type(note-open, note-close)::view-transition-old(root),
+  html:active-view-transition-type(note-open, note-close)::view-transition-new(root) {
+    mix-blend-mode: normal;
+    animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+    animation-fill-mode: both;
   }
 
-  /*
-     The box: 300ms in on Material's emphasized-decelerate, a fast start that settles
-     slowly so the note is readable long before it stops; 220ms out on the mirror, since
-     leaving should be quicker than arriving. The same pair the drawer uses.
-  */
-  ::view-transition-group(note) {
+  html:active-view-transition-type(note-open)::view-transition-old(root) {
+    animation-name: note-slide-under;
+    animation-duration: 0.35s;
+  }
+
+  html:active-view-transition-type(note-open)::view-transition-new(root),
+  html:active-view-transition-type(note-close)::view-transition-old(root) {
+    box-shadow: -0.25rem 0 1.5rem rgb(0 0 0 / 0.16);
+  }
+
+  html:active-view-transition-type(note-open)::view-transition-new(root) {
+    animation-name: note-slide-in;
+    animation-duration: 0.35s;
+  }
+
+  html:active-view-transition-type(note-close)::view-transition-old(root) {
+    animation-name: note-slide-out;
     animation-duration: 0.3s;
-    animation-timing-function: cubic-bezier(0.05, 0.7, 0.1, 1);
+    z-index: 1;
   }
 
-  html:active-view-transition-type(note-close)::view-transition-group(note) {
-    animation-duration: 0.22s;
-    animation-timing-function: cubic-bezier(0.3, 0, 0.8, 0.15);
+  html:active-view-transition-type(note-close)::view-transition-new(root) {
+    animation-name: note-slide-back;
+    animation-duration: 0.3s;
+  }
+}
+
+@keyframes note-slide-in {
+  from { translate: 100% 0; }
+}
+
+@keyframes note-slide-out {
+  to { translate: 100% 0; }
+}
+
+@keyframes note-slide-under {
+  to { translate: -30% 0; filter: brightness(0.9); }
+}
+
+@keyframes note-slide-back {
+  from { translate: -30% 0; filter: brightness(0.9); }
+}
+
+/* ---------------------------------------------------------------------------------
+   Disclosures: content a control opens grows to its height rather than appearing in one
+   frame, and shrinks back. `Collapse` for the ones that are a button and a state; the
+   `<details>` elements below, from the stylesheet alone.
+   --------------------------------------------------------------------------------- */
+.collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+}
+
+.collapse.open { grid-template-rows: 1fr; }
+
+.collapse-clip {
+  min-height: 0;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* `COLLAPSE_MS` in `Collapse.tsx`, which keeps the content until the close has run. */
+  .collapse { transition: grid-template-rows 0.25s cubic-bezier(0.2, 0, 0, 1); }
+
+  /*
+     An open that follows a close mounts the box already open, so it grows from nothing
+     rather than appearing on its first frame. One drawn open from the start does not
+     carry `.grows` and appears as it is; see `Collapse`.
+  */
+  @starting-style {
+    .collapse.open.grows { grid-template-rows: 0fr; }
   }
 
   /*
-     What is painted inside the box. The old and new snapshots would crossfade for the
-     whole 300ms by default, so mid-way the row and the note are both half-visible in a
-     box that fits neither. A quick fade out of the old and a fade in of the new, one
-     after the other, keeps the box carrying one picture at a time. The snapshots are
-     sized to the box's width rather than stretched, so the row's text does not smear
-     into the note's.
+     A `<details>` grows the same way, where the browser can animate to `auto` and exposes
+     the box its content sits in. Elsewhere this whole block is skipped and it opens at once,
+     as it always has. `content-visibility` is the browser's own switch for hiding a closed
+     details' content; transitioning it discretely keeps the content drawn until the
+     shrink has finished.
+
+     `hidden` rather than `clip`, because `hidden` makes the box a formatting context of
+     its own. With `clip` the first child's top margin collapsed out through the shrinking
+     box, so the panel jumped by that margin on the first frame of an open and again on
+     the last frame of a close.
   */
-  ::view-transition-old(note) {
-    animation: 0.1s ease both vt-fade-out;
-    object-fit: none;
-    object-position: top left;
-  }
+  @supports (interpolate-size: allow-keywords) and selector(::details-content) {
+    details { interpolate-size: allow-keywords; }
 
-  ::view-transition-new(note) {
-    animation: 0.2s 0.08s ease both vt-fade-in;
-    object-fit: none;
-    object-position: top left;
-  }
+    details::details-content {
+      block-size: 0;
+      overflow: hidden;
+      transition:
+        block-size 0.25s cubic-bezier(0.2, 0, 0, 1),
+        content-visibility 0.25s allow-discrete;
+    }
 
-  ::view-transition-image-pair(note) {
-    isolation: auto;
-    overflow: clip;
+    details[open]::details-content { block-size: auto; }
   }
 }
 
-@keyframes vt-fade-out {
-  from { opacity: 1; }
-  to { opacity: 0; }
-}
-
-@keyframes vt-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-/* With reduced motion asked for, the page changes and nothing morphs — the transition
+/* With reduced motion asked for, the page changes and nothing slides — the transition
    still runs, since the router starts it, but every part of it is instant. */
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-group(*),

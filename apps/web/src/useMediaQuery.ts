@@ -30,6 +30,16 @@ export function useMediaQuery(query: string): boolean {
 export const MOBILE_QUERY = '(max-width: 860px)';
 
 /**
+ * Whether the person has asked for less motion, read at the moment it matters rather than
+ * followed: the motion it gates starts on a click, and the answer then is the one to use.
+ * For the motion the stylesheet cannot turn off on its own — what script animates, or
+ * keeps on the page for an animation's length. False where the browser cannot say.
+ */
+export function prefersReducedMotion(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+}
+
+/**
  * Where the desktop's navigation rail opens by itself.
  *
  * The stylesheet decides the rail's width from this same number, in range syntax, so

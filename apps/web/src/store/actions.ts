@@ -758,14 +758,86 @@ export function onDirectWrite(listener: () => void): () => void {
   return () => void directListeners.delete(listener);
 }
 
+/** A write this device is about to make; see `onLocalWrite`. */
+export interface LocalWrite {
+  /**
+   * The notes it touches. Empty when the server will name them, as it does a note made or
+   * copied by request: nothing here knows its id until the answer.
+   */
+  ids: readonly string[];
+  /**
+   * Whether it can move a note between lists or change a count: a trash, a restore, a
+   * purge, a move, a tag, a note made or copied, or a save that changes the notebook or the
+   * tags. A save of the title, the body or a field cannot, and autosave makes those every
+   * few seconds while someone types.
+   */
+  refiles: boolean;
+}
+
+const localListeners = new Set<(write: LocalWrite) => void>();
+let lastRefile = -Infinity;
+
+/**
+ * Hears each write this device is about to make, queued or as a request, before it
+ * reaches the rows: what the person did here, as opposed to what the feed brought from
+ * another device or the first copy of the library. The interface answers its own changes
+ * differently — a count that ticks over, a row that leaves the list rather than vanishing
+ * — and this is how it tells them apart. Heard before the change lands, so a list can
+ * still measure where its rows were: a queued write before its change reaches the rows, a
+ * write made as a request once its answer is in (`pulled`). Told which notes the write
+ * touches, so a list redrawn for some other reason in the moments after is not taken for
+ * this write's doing.
+ */
+export function onLocalWrite(listener: (write: LocalWrite) => void): () => void {
+  localListeners.add(listener);
+  return () => void localListeners.delete(listener);
+}
+
+/**
+ * Whether a write made here in the last `ms` could have moved a count: one that refiles a
+ * note (`LocalWrite.refiles`). Long enough for the change to come back through the
+ * collections and be drawn, short enough that the feed's next change is not mistaken for
+ * it. Only refiling writes open the window, because autosave writes the text every few
+ * seconds while someone types: counted, it held the window open for as long as they
+ * typed, and every count the feed or the first copy moved meanwhile rolled as if they had.
+ */
+export function refiledLocallyWithin(ms: number): boolean {
+  return performance.now() - lastRefile < ms;
+}
+
+function aboutToWrite(write: LocalWrite): void {
+  if (write.refiles) lastRefile = performance.now();
+  localListeners.forEach((l) => l(write));
+}
+
+/** The queued writes that can move a note between lists; a save says for itself. */
+const REFILING = new Set([
+  'createNote',
+  'duplicateNote',
+  'trashNote',
+  'restoreNote',
+  'purgeNote',
+  'trashNotes',
+  'restoreNotes',
+  'purgeNotes',
+  'moveNotes',
+  'tagNotes',
+]);
+
 /**
  * After a write made as a request: whoever follows direct writes hears of it, and in a
  * tab that has a library but does not queue, the server's copy is brought to the local
  * copy now rather than on the next nudge, so the row on screen agrees with the answer.
  * Nothing to wait for; the library is already right about every row this did not touch.
+ *
+ * It is told to `onLocalWrite` once the answer is in, not when the request goes. Nothing
+ * on the rows changed before it, so the list is still where it was, and the redraw is now
+ * a pull away rather than a request and a pull: emptying a large trash outlasted the
+ * list's wait for its redraw. A refused request is not a write at all, and is not told.
  */
-async function pulled<T>(write: Promise<T>): Promise<T> {
+async function pulled<T>(write: Promise<T>, local: LocalWrite): Promise<T> {
   const out = await write;
+  aboutToWrite(local);
   directListeners.forEach((l) => l());
   const lib = await resolve();
   if (lib) void lib.engine.pull();
@@ -778,8 +850,15 @@ async function pulled<T>(write: Promise<T>): Promise<T> {
  * whenever the connection returns — but its failure is heard, since an entry the outbox
  * could not store is a change that will be lost on reload.
  */
-function queue(lib: WritableLibrary, mutationFnName: string, metadata: Record<string, unknown>, mutate: () => void): { id: string; retire: () => void } {
+function queue(
+  lib: WritableLibrary,
+  mutationFnName: string,
+  metadata: Record<string, unknown>,
+  mutate: () => void,
+  refiles = REFILING.has(mutationFnName),
+): { id: string; retire: () => void } {
   if (!durable(lib)) throw new Error('queue() in a tab that does not hold the outbox'); // callers go through queueable()
+  aboutToWrite({ ids: notesOf(metadata), refiles });
   const tx = lib.outbox.executor.createOfflineTransaction({ mutationFnName, autoCommit: false, metadata });
   const inner = tx.mutate(mutate);
   void tx.commit().catch((err: unknown) => {
@@ -875,6 +954,7 @@ function split(lib: WritableLibrary, ids: string[]): { here: string[]; there: st
 async function saveViaRequest(input: Save): Promise<'unchanged' | Note> {
   const patch = buildNotePatch(input.value, input.base, undefined);
   if (!patch) return 'unchanged';
+  const refiles = patch.notebook !== undefined || patch.tags !== undefined;
   return pulled(
     (async () => {
       try {
@@ -884,6 +964,7 @@ async function saveViaRequest(input: Save): Promise<'unchanged' | Note> {
         return api.updateNote(input.noteId, { ...patch, ifUpdatedAt: err.current.updatedAt });
       }
     })(),
+    { ids: [input.noteId], refiles },
   );
 }
 
@@ -918,15 +999,21 @@ export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | No
   if (!patch) return 'unchanged';
   const { value } = input;
   const entry: Save = { noteId: input.noteId, value, base, against: input.against ?? carried?.against };
-  const queued = queue(lib, 'saveNote', entry as unknown as Record<string, unknown>, () => {
-    lib.notes.update(input.noteId, (row) => {
-      if (patch.title !== undefined) row.title = value.title;
-      if (patch.body !== undefined) row.body = value.body;
-      if (patch.tags !== undefined) row.tagNames = value.tags;
-      if (patch.notebook !== undefined) row.notebookName = value.notebook;
-      if (patch.fields !== undefined) row.fields = valuesOf(value, lib);
-    });
-  });
+  const queued = queue(
+    lib,
+    'saveNote',
+    entry as unknown as Record<string, unknown>,
+    () => {
+      lib.notes.update(input.noteId, (row) => {
+        if (patch.title !== undefined) row.title = value.title;
+        if (patch.body !== undefined) row.body = value.body;
+        if (patch.tags !== undefined) row.tagNames = value.tags;
+        if (patch.notebook !== undefined) row.notebookName = value.notebook;
+        if (patch.fields !== undefined) row.fields = valuesOf(value, lib);
+      });
+    },
+    patch.notebook !== undefined || patch.tags !== undefined,
+  );
   lib.outbox.trackSave(input.noteId, { ...queued, base, against: entry.against });
   return 'queued';
 }
@@ -934,7 +1021,7 @@ export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | No
 /** Makes a note, with an id minted here, and answers with it at once. */
 export async function createNote(input: { title: string; body: string; tags: string[]; notebook: string | null }): Promise<Note> {
   const lib = await queueable();
-  if (!lib) return pulled(api.createNote(input));
+  if (!lib) return pulled(api.createNote(input), { ids: [], refiles: true });
   const id = crypto.randomUUID();
   const now = Date.now();
   const row: LocalNote = { id, title: input.title, body: input.body, createdAt: now, updatedAt: now, tagIds: [], tagNames: input.tags, notebookId: null, notebookName: input.notebook, files: [] };
@@ -947,9 +1034,9 @@ export async function createNote(input: { title: string; body: string; tags: str
 /** A copy of a note, under an id minted here; the server copies its files. */
 export async function duplicateNote(sourceId: string): Promise<{ id: string }> {
   const lib = await queueable();
-  if (!lib) return pulled(api.duplicateNote(sourceId));
+  if (!lib) return pulled(api.duplicateNote(sourceId), { ids: [], refiles: true });
   const source = lib.notes.get(sourceId);
-  if (!source) return pulled(api.duplicateNote(sourceId));
+  if (!source) return pulled(api.duplicateNote(sourceId), { ids: [], refiles: true });
   const copyId = crypto.randomUUID();
   const now = Date.now();
   queue(lib, 'duplicateNote', { sourceId, copyId }, () => {
@@ -1047,7 +1134,7 @@ export async function restoreRevision(noteId: string, revisionId: number, opts: 
 
 export async function trashNote(noteId: string): Promise<void> {
   const lib = await queueable();
-  if (!lib || notCopiedYet(lib, noteId)) return pulled(api.deleteNote(noteId));
+  if (!lib || notCopiedYet(lib, noteId)) return pulled(api.deleteNote(noteId), { ids: [noteId], refiles: true });
   queue(lib, 'trashNote', { noteId }, () => {
     lib.notes.update(noteId, (row) => {
       row.deletedAt = Date.now();
@@ -1057,7 +1144,7 @@ export async function trashNote(noteId: string): Promise<void> {
 
 export async function restoreNote(noteId: string): Promise<void> {
   const lib = await queueable();
-  if (!lib || notCopiedYet(lib, noteId)) return pulled(api.restoreNote(noteId).then(() => undefined));
+  if (!lib || notCopiedYet(lib, noteId)) return pulled(api.restoreNote(noteId).then(() => undefined), { ids: [noteId], refiles: true });
   queue(lib, 'restoreNote', { noteId }, () => {
     lib.notes.update(noteId, (row) => {
       delete row.deletedAt;
@@ -1067,10 +1154,20 @@ export async function restoreNote(noteId: string): Promise<void> {
 
 export async function purgeNote(noteId: string): Promise<void> {
   const lib = await queueable();
-  if (!lib || notCopiedYet(lib, noteId)) return pulled(api.deleteNotePermanently(noteId));
+  if (!lib || notCopiedYet(lib, noteId)) return pulled(api.deleteNotePermanently(noteId), { ids: [noteId], refiles: true });
   queue(lib, 'purgeNote', { noteId }, () => {
     lib.notes.delete(noteId);
   });
+}
+
+/**
+ * Empties the trash: the server's own purge of every trashed note, sent as the request it
+ * always was, since the server decides its extent — notes this device has not copied
+ * included. Through here rather than straight to the API so it is a write like any other:
+ * `ids` are the trashed notes on screen, which the list follows out, and the count rolls.
+ */
+export async function emptyTrash(ids: readonly string[]): Promise<api.PurgeResult> {
+  return pulled(api.purgeNotes('trashed'), { ids, refiles: true });
 }
 
 /*
@@ -1081,9 +1178,9 @@ export async function purgeNote(noteId: string): Promise<void> {
 
 export async function trashNotes(ids: string[]): Promise<number> {
   const lib = await queueable();
-  if (!lib) return pulled(api.deleteNotes(ids).then((r) => r.trashed));
+  if (!lib) return pulled(api.deleteNotes(ids).then((r) => r.trashed), { ids, refiles: true });
   const { here, there } = split(lib, ids);
-  const remote = there.length > 0 ? await pulled(api.deleteNotes(there).then((r) => r.trashed)) : 0;
+  const remote = there.length > 0 ? await pulled(api.deleteNotes(there).then((r) => r.trashed), { ids: there, refiles: true }) : 0;
   if (here.length > 0) {
     queue(lib, 'trashNotes', { ids: here }, () => {
       const now = Date.now();
@@ -1095,9 +1192,9 @@ export async function trashNotes(ids: string[]): Promise<number> {
 
 export async function restoreNotes(ids: string[]): Promise<number> {
   const lib = await queueable();
-  if (!lib) return pulled(api.restoreNotes(ids).then((r) => r.restored));
+  if (!lib) return pulled(api.restoreNotes(ids).then((r) => r.restored), { ids, refiles: true });
   const { here, there } = split(lib, ids);
-  const remote = there.length > 0 ? await pulled(api.restoreNotes(there).then((r) => r.restored)) : 0;
+  const remote = there.length > 0 ? await pulled(api.restoreNotes(there).then((r) => r.restored), { ids: there, refiles: true }) : 0;
   if (here.length > 0) {
     queue(lib, 'restoreNotes', { ids: here }, () => {
       for (const id of here) lib.notes.update(id, (row) => void delete row.deletedAt);
@@ -1108,9 +1205,9 @@ export async function restoreNotes(ids: string[]): Promise<number> {
 
 export async function purgeNotes(ids: string[]): Promise<number> {
   const lib = await queueable();
-  if (!lib) return pulled(api.deleteNotesPermanently(ids).then((r) => r.deleted));
+  if (!lib) return pulled(api.deleteNotesPermanently(ids).then((r) => r.deleted), { ids, refiles: true });
   const { here, there } = split(lib, ids);
-  const remote = there.length > 0 ? await pulled(api.deleteNotesPermanently(there).then((r) => r.deleted)) : 0;
+  const remote = there.length > 0 ? await pulled(api.deleteNotesPermanently(there).then((r) => r.deleted), { ids: there, refiles: true }) : 0;
   if (here.length > 0) {
     queue(lib, 'purgeNotes', { ids: here }, () => {
       for (const id of here) lib.notes.delete(id);
@@ -1121,9 +1218,9 @@ export async function purgeNotes(ids: string[]): Promise<number> {
 
 export async function moveNotes(ids: string[], notebook: string | null): Promise<void> {
   const lib = await queueable();
-  if (!lib) return pulled(api.updateNotes(ids, { notebook }).then(() => undefined));
+  if (!lib) return pulled(api.updateNotes(ids, { notebook }).then(() => undefined), { ids, refiles: true });
   const { here, there } = split(lib, ids);
-  if (there.length > 0) await pulled(api.updateNotes(there, { notebook }));
+  if (there.length > 0) await pulled(api.updateNotes(there, { notebook }), { ids: there, refiles: true });
   if (here.length > 0) {
     queue(lib, 'moveNotes', { ids: here, notebook }, () => {
       for (const id of here) lib.notes.update(id, (row) => void (row.notebookName = notebook));
@@ -1133,9 +1230,16 @@ export async function moveNotes(ids: string[], notebook: string | null): Promise
 
 export async function tagNotes(ids: string[], change: { add?: string[]; remove?: string[] }): Promise<void> {
   const lib = await queueable();
-  if (!lib) return pulled(api.updateNotes(ids, { addTags: change.add, removeTags: change.remove }).then(() => undefined));
+  if (!lib) {
+    return pulled(api.updateNotes(ids, { addTags: change.add, removeTags: change.remove }).then(() => undefined), {
+      ids,
+      refiles: true,
+    });
+  }
   const { here, there } = split(lib, ids);
-  if (there.length > 0) await pulled(api.updateNotes(there, { addTags: change.add, removeTags: change.remove }));
+  if (there.length > 0) {
+    await pulled(api.updateNotes(there, { addTags: change.add, removeTags: change.remove }), { ids: there, refiles: true });
+  }
   if (here.length > 0) {
     const l = lookups(snapshot(lib));
     const add = change.add ?? [];
@@ -1201,7 +1305,7 @@ export async function uploadFile(noteId: string, file: File, opts: { signal?: Ab
    * under a new one it stored `scan-2.pdf` beside it and said so (review of #236).
    */
   const attachmentId = crypto.randomUUID();
-  const direct = () => pulled(api.uploadFile(noteId, file, { ...opts, id: attachmentId }));
+  const direct = () => pulled(api.uploadFile(noteId, file, { ...opts, id: attachmentId }), { ids: [noteId], refiles: false });
   if (!lib || !filesSupported() || !lib.notes.has(noteId)) return direct();
   if (!offlineNow() && !lib.outbox.status().waiting.has(noteId)) {
     try {
@@ -1288,7 +1392,7 @@ function syncedRow(lib: WritableLibrary, noteId: string): LocalNote | undefined 
 export async function setNoteField(noteId: string, def: FieldDef, value: FieldValue | null): Promise<Note> {
   const lib = await queueable();
   const row = lib ? syncedRow(lib, noteId) : undefined;
-  if (!lib || !row) return pulled(api.updateNote(noteId, { fields: { [def.id]: value } }));
+  if (!lib || !row) return pulled(api.updateNote(noteId, { fields: { [def.id]: value } }), { ids: [noteId], refiles: false });
   const l = lookups(snapshot(lib));
   const base = toNote(row, l);
   const shown = toNote(lib.notes.get(noteId) ?? row, l);

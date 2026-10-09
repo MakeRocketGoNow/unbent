@@ -182,6 +182,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
   restoreRevision: vi.fn(),
   clearRevisions: vi.fn(),
   importNotebook: vi.fn(),
+  purgeNotes: vi.fn(),
 }));
 
 const { fakes, MemoryAdapter } = await h;
@@ -1127,5 +1128,96 @@ describe('applying a notebook template', () => {
     const { engine } = library([]);
     await expect(actions.applyNotebookTemplate(definition, { create: true })).resolves.toBe('taken');
     expect(engine.pull).not.toHaveBeenCalled();
+  });
+});
+
+/*
+ * The writes the person makes here, told apart from everything else that changes the rows:
+ * the interface rolls a count and moves a list row for these and not for the feed's.
+ */
+describe('a write made here', () => {
+  it('is heard before it reaches the row, so a list can still measure where the row was', async () => {
+    const { lib } = library([row('n1')]);
+    await lib.outbox.ready;
+    const seenBefore: Array<number | undefined> = [];
+    const writes: actions.LocalWrite[] = [];
+    const stop = actions.onLocalWrite((write) => {
+      seenBefore.push(lib.notes.get('n1')?.deletedAt);
+      writes.push(write);
+    });
+    await actions.trashNote('n1');
+    stop();
+    expect(seenBefore).toEqual([undefined]);
+    expect(writes).toEqual([{ ids: ['n1'], refiles: true }]);
+    expect(lib.notes.get('n1')?.deletedAt).toBeDefined();
+    expect(actions.refiledLocallyWithin(1000)).toBe(true);
+  });
+
+  it('is heard when it goes as a request too', async () => {
+    // A note the first copy has not reached yet goes as a request.
+    const { engine } = library([]);
+    engine.state.cursor = null;
+    vi.mocked(api.deleteNote).mockResolvedValueOnce(undefined);
+    const heard = vi.fn();
+    const stop = actions.onLocalWrite(heard);
+    await actions.trashNote('n1');
+    stop();
+    expect(heard).toHaveBeenCalledOnce();
+    expect(heard).toHaveBeenCalledWith({ ids: ['n1'], refiles: true });
+  });
+
+  it('is not heard for a request the server refused, which wrote nothing', async () => {
+    const { engine } = library([]);
+    engine.state.cursor = null;
+    vi.mocked(api.deleteNote).mockRejectedValueOnce(new ApiError(403, 'refused'));
+    const heard = vi.fn();
+    const stop = actions.onLocalWrite(heard);
+    await expect(actions.trashNote('n1')).rejects.toThrow('refused');
+    stop();
+    expect(heard).not.toHaveBeenCalled();
+  });
+
+  it('says a save of the text cannot refile the note, and a save of its notebook can', async () => {
+    const { lib, note } = library([row('n1')]);
+    await lib.outbox.ready;
+    const writes: actions.LocalWrite[] = [];
+    const stop = actions.onLocalWrite((write) => writes.push(write));
+    const base = note('n1');
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'retyped' }, base });
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'retyped', notebook: 'Elsewhere' }, base });
+    stop();
+    expect(writes).toEqual([
+      { ids: ['n1'], refiles: false },
+      { ids: ['n1'], refiles: true },
+    ]);
+  });
+
+  it('includes emptying the trash, which names the trashed notes the list is showing', async () => {
+    const { engine } = library([row('n1'), row('n2')]);
+    vi.mocked(api.purgeNotes).mockResolvedValueOnce({ notesDeleted: 2 } as api.PurgeResult);
+    const heard = vi.fn();
+    const stop = actions.onLocalWrite(heard);
+    await expect(actions.emptyTrash(['n1', 'n2'])).resolves.toMatchObject({ notesDeleted: 2 });
+    stop();
+    expect(api.purgeNotes).toHaveBeenCalledWith('trashed');
+    expect(heard).toHaveBeenCalledWith({ ids: ['n1', 'n2'], refiles: true });
+    expect(engine.pull).toHaveBeenCalled();
+  });
+
+  it('opens the window a count rolls in only for a write that can move one', async () => {
+    vi.useFakeTimers({ toFake: ['performance'] });
+    try {
+      const { lib, note } = library([row('n1')]);
+      await lib.outbox.ready;
+      // Far past any refile an earlier test made on the real clock.
+      vi.advanceTimersByTime(1e9);
+      const base = note('n1');
+      await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'retyped' }, base });
+      expect(actions.refiledLocallyWithin(1000)).toBe(false);
+      await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'retyped', notebook: 'Elsewhere' }, base });
+      expect(actions.refiledLocallyWithin(1000)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

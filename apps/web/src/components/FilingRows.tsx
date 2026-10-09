@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { TagInput } from './TagInput.js';
 import { NotebookRowIcon, TagIcon } from './icons.js';
+import { filledStyle } from './filled.js';
 
 interface NotebookPickerProps {
   notebook: string | null;
@@ -59,6 +60,12 @@ interface FilingRowsProps {
   readOnly?: boolean;
   onNotebook: (notebook: string | null) => void;
   onTags: (tags: string[]) => void;
+  /**
+   * What an Auto-fill press just wrote here, marked for a moment: the notebook's place in
+   * the press's sequence, and the tags it added with the place of the first. See
+   * `NoteFields`'s `filled`.
+   */
+  filled?: { notebook?: number | undefined; tags?: { at: number; names: readonly string[] } | undefined };
 }
 
 /**
@@ -82,10 +89,16 @@ export function FilingRows({
   readOnly = false,
   onNotebook,
   onTags,
+  filled,
 }: FilingRowsProps): ReactNode {
+  const notebookAt = filled?.notebook;
+  const tagsAt = filled?.tags?.at;
   return (
     <>
-      <div className="note-field filing-prop">
+      <div
+        className={notebookAt === undefined ? 'note-field filing-prop' : 'note-field filing-prop filled'}
+        style={filledStyle(notebookAt)}
+      >
         <span className="note-field-glyph" aria-hidden="true">
           <NotebookRowIcon />
         </span>
@@ -102,12 +115,21 @@ export function FilingRows({
         />
         <span className="note-field-side" />
       </div>
-      <div className="note-field filing-prop">
+      <div
+        className={tagsAt === undefined ? 'note-field filing-prop' : 'note-field filing-prop filled-tags'}
+        style={filledStyle(tagsAt)}
+      >
         <span className="note-field-glyph" aria-hidden="true">
           <TagIcon />
         </span>
         <span className="note-field-label">Tags</span>
-        <TagInput tags={tags} suggestions={suggestions} onChange={onTags} readOnly={readOnly} />
+        <TagInput
+          tags={tags}
+          suggestions={suggestions}
+          onChange={onTags}
+          readOnly={readOnly}
+          fresh={filled?.tags}
+        />
         <span className="note-field-side" />
       </div>
     </>

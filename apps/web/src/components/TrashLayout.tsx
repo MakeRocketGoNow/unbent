@@ -1,7 +1,6 @@
 import { useEffect, useState, type KeyboardEvent } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import * as api from '../notes-api.js';
 import * as actions from '../store/actions.js';
 import { trashQuery, invalidateNoteMembership } from '../queries.js';
 import { useNotesLayout, SIDEBAR_DEFAULT, SIDEBAR_MIN, SIDEBAR_MAX } from '../useNotesLayout.js';
@@ -16,6 +15,7 @@ import { useExactCount } from './use-exact-count.js';
 import { useSelection } from '../useSelection.js';
 import { SelectionBar } from './SelectionBar.js';
 import { RestoreIcon, TrashIcon } from './icons.js';
+import { useListMotion } from '../list-motion.js';
 
 /**
  * The trash sidebar.
@@ -30,6 +30,8 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
   // `open` is undefined unless a trashed note is on screen; used both to leave the view
   // when that note disappears and, on mobile, to decide which pane is showing.
   const layout = useNotesLayout('/trash/$noteId');
+  // Restored and deleted rows leave rather than vanish; see `list-motion.ts`.
+  const listMotionRef = useListMotion<HTMLUListElement>();
   const onListKeys = useListKeys();
   const open = layout.open;
   /**
@@ -181,7 +183,7 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
                 tone: 'danger',
                 onConfirm: () =>
                   empty.run(async () => {
-                    const r = await api.purgeNotes('trashed');
+                    const r = await actions.emptyTrash(notes.map((n) => n.id));
                     setPending(null);
                     if (open) void navigate({ to: '/trash' });
                     return `Deleted ${r.notesDeleted} note${r.notesDeleted === 1 ? '' : 's'}.`;
@@ -237,6 +239,7 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
 
         <ul
           className={selection.active ? 'note-list selecting' : 'note-list'}
+          ref={listMotionRef}
           aria-multiselectable
           onKeyDown={onListKeysWithSelection}
         >
@@ -271,7 +274,7 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
           ))}
 
           {list.hasNextPage && (
-            <li>
+            <li data-motion-key="more">
               <button
                 type="button"
                 className="load-more"
@@ -284,7 +287,9 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
           )}
 
           {notes.length === 0 && !list.error && (
-            <li className="muted small empty">Trash is empty.</li>
+            <li className="muted small empty" data-motion-key="empty">
+              Trash is empty.
+            </li>
           )}
         </ul>
 

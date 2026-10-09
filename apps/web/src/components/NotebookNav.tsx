@@ -11,6 +11,8 @@ import {
   SettingsRowIcon,
 } from './icons.js';
 import type { TagCount } from './TagPicker.js';
+import { Collapse } from './Collapse.js';
+import { RollingCount } from './RollingCount.js';
 import { usePersistentState } from '../usePersistentState.js';
 import { rememberedSort } from '../notebook-sort.js';
 
@@ -206,7 +208,7 @@ export function NotebookNav({
       >
         <TagIcon />
         <span className="drawer-item-label">{t.name}</span>
-        <span className="tag-count">{t.count}</span>
+        <RollingCount className="tag-count" value={t.count} />
       </Link>
     );
   };
@@ -245,7 +247,7 @@ export function NotebookNav({
           >
             <InboxRowIcon />
             <span className="drawer-item-label">Inbox</span>
-            <span className="tag-count">{notebooks.data?.unfiled ?? 0}</span>
+            <RollingCount className="tag-count" value={notebooks.data?.unfiled ?? 0} />
           </Link>
         )}
 
@@ -286,7 +288,7 @@ export function NotebookNav({
             >
               <NotebookGlyph emoji={nb.emoji} />
               <span className="drawer-item-label">{nb.name}</span>
-              <span className="tag-count">{nb.count}</span>
+              <RollingCount className="tag-count" value={nb.count} />
             </Link>
           );
         })}
@@ -327,30 +329,28 @@ export function NotebookNav({
                 Edit
               </Link>
             </div>
-            {tagsOpen && (
-              <div id={tagsId} className="drawer-tags">
-                {shownTags.map((t) => tagRow(t, 'used'))}
-                {indexTags.length > 0 && (
-                  <>
-                    {/* A head of the section's own shape, so the index reads as a second
-                        list rather than more of the first. */}
-                    <div className="drawer-section">
-                      <span className="drawer-section-label">All tags</span>
-                    </div>
-                    {indexTags.map((t) => tagRow(t, 'all'))}
-                  </>
-                )}
-                {!allTags && capped && (
-                  <button
-                    type="button"
-                    className="drawer-item drawer-new"
-                    onClick={() => setAllTags(true)}
-                  >
-                    <span className="drawer-item-label">Show all {tags.length} tags</span>
-                  </button>
-                )}
-              </div>
-            )}
+            <Collapse open={tagsOpen} id={tagsId} className="drawer-tags">
+              {shownTags.map((t) => tagRow(t, 'used'))}
+              {indexTags.length > 0 && (
+                <>
+                  {/* A head of the section's own shape, so the index reads as a second
+                      list rather than more of the first. */}
+                  <div className="drawer-section">
+                    <span className="drawer-section-label">All tags</span>
+                  </div>
+                  {indexTags.map((t) => tagRow(t, 'all'))}
+                </>
+              )}
+              {!allTags && capped && (
+                <button
+                  type="button"
+                  className="drawer-item drawer-new"
+                  onClick={() => setAllTags(true)}
+                >
+                  <span className="drawer-item-label">Show all {tags.length} tags</span>
+                </button>
+              )}
+            </Collapse>
           </>
         )}
       </nav>
@@ -377,7 +377,7 @@ export function NotebookNav({
         >
           <TrashRowIcon />
           <span className="drawer-item-label">Trash</span>
-          {trashed > 0 && <span className="tag-count">{trashed}</span>}
+          {trashed > 0 && <RollingCount className="tag-count" value={trashed} />}
         </Link>
         <Link
           to="/settings"
