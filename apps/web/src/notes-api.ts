@@ -364,9 +364,18 @@ export async function restoreRevision(noteId: string, revisionId: number, opts: 
   return json<RestoredNote>(res);
 }
 
+/**
+ * Moves a note to the trash.
+ *
+ * A refusal is an `ApiError`, as `json` makes it for every other call here, and for the
+ * same reader: the outbox tells a note already trashed (404) from a request worth sending
+ * again by the status (`gone` in `store/actions.ts`). This threw a bare `Error`, so a
+ * trash replayed after its first send had landed was kept and retried for good, and every
+ * write queued behind it waited with it.
+ */
 export async function deleteNote(id: string): Promise<void> {
   const res = await request(`/api/notes/${id}`, { method: 'DELETE' });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) throw new ApiError(res.status, await httpErrorMessage(res));
 }
 
 /** Restores a trashed note. */
@@ -374,10 +383,13 @@ export async function restoreNote(id: string): Promise<Note> {
   return json<Note>(await request(`/api/notes/${id}/restore`, { method: 'POST' }));
 }
 
-/** Permanently deletes one trashed note and its attachments. Irreversible. */
+/**
+ * Permanently deletes one trashed note and its attachments. Irreversible. An `ApiError`
+ * when refused, for the reason `deleteNote` gives.
+ */
 export async function deleteNotePermanently(id: string): Promise<void> {
   const res = await request(`/api/notes/${id}/permanent`, { method: 'DELETE' });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) throw new ApiError(res.status, await httpErrorMessage(res));
 }
 
 /*

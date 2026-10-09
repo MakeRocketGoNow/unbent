@@ -67,18 +67,7 @@ export function createCollections(store: LocalStore, engine: FeedEngine): Collec
         initialRender: { strategy: 'network-first', networkTimeoutMs: 0 },
         sync: {
           rowUpdateMode: 'full',
-          sync: ({ collection, begin, write, commit, truncate, markReady }) => {
-            const controls: Controls<T> = {
-              begin: () => begin(),
-              write: (m) => write(m.type === 'delete' ? { type: 'delete', key: m.key } : { type: m.type, value: m.value }),
-              commit: () => commit(),
-              truncate,
-              markReady,
-              has: (key) => collection.has(key),
-              values: () => collection.values(),
-            };
-            return engine.register(entity, controls as never);
-          },
+          sync: (handles) => engine.register(entity, feedControls<T>(handles) as never),
         },
       }),
     );
@@ -98,6 +87,61 @@ export function createCollections(store: LocalStore, engine: FeedEngine): Collec
     tags: fed<FeedTag>('tags', 'tag', (t) => t.id),
     attachments: fed<LocalAttachment>('attachments', 'attachment', (a) => a.id),
     syncState,
+  };
+}
+
+/** What TanStack DB hands a collection's sync function, as far as the engine needs it. */
+export interface SyncHandles<T extends object> {
+  collection: { has: (key: string) => boolean; values: () => Iterable<T> };
+  begin: (options?: { immediate?: boolean }) => void;
+  write: (message: { type: 'insert' | 'update'; value: T } | { type: 'delete'; key: string }) => void;
+  commit: () => unknown;
+  truncate: () => void;
+  markReady: () => void;
+}
+
+/**
+ * A collection's sync handles as the engine's controls; the tests feed collections through
+ * this too.
+ *
+ * Every transaction begins `immediate`. By default TanStack DB holds a committed page of
+ * sync back while any write on the collection is in flight, and applies it once none is.
+ * Every entry waiting in the outbox is such a write, from the moment it is queued until
+ * its replay ends, and a replay ends only after the pull that brings its own row back has
+ * applied (`settled` in `actions.ts`), which since the engine began waiting for each
+ * page's commit is a wait on that held page. A single trash waited on itself; a second
+ * queued behind it waited for good, and only a reload ended it, by sending the first
+ * again (seen on 2026-10-08, where a restore made in between was undone). Offline it is
+ * worse in a quieter way: a write waiting all afternoon would hold every page another
+ * device's edits arrive in.
+ *
+ * A page is the server's copy and goes in when it arrives; an entry's optimistic change
+ * stays drawn over it until the entry ends, so nothing the person typed is hidden by it,
+ * and once the entry ends the row is the server's copy with no gap between. Applied at
+ * once, the commit settles at once, so the persistence layer never has a page waiting
+ * for the collection — which is also what keeps its rule against an immediate page
+ * overtaking a waiting one from refusing these.
+ *
+ * `has` and `values` answer from the rows the feed wrote, not the collection's view of
+ * them. The engine asks what the server's copy here holds — whether a tombstone has a row
+ * to delete, which files a note had — and the view answers with the outbox's changes
+ * drawn on top. A purge hides its note from the view, and the purge's own pull brings the
+ * note's tombstone: asked of the view, the row was not there, the tombstone was dropped,
+ * the cursor moved past it, and the note was back in the trash once the purge ended — for
+ * good, since the feed never names it again (seen on 2026-10-08). Read through the
+ * collection's state manager, as `syncedRow` in `actions.ts` reads it; the version is
+ * pinned (`pins.test.ts`), and without the field the view is the fallback.
+ */
+export function feedControls<T extends object>({ collection, begin, write, commit, truncate, markReady }: SyncHandles<T>): Controls<T> {
+  const synced = () => (collection as unknown as { _state?: { syncedData?: { has: (key: string) => boolean; values: () => Iterable<T> } } })._state?.syncedData ?? collection;
+  return {
+    begin: () => begin({ immediate: true }),
+    write: (m) => write(m.type === 'delete' ? { type: 'delete', key: m.key } : { type: m.type, value: m.value }),
+    commit: () => commit(),
+    truncate,
+    markReady,
+    has: (key) => synced().has(key),
+    values: () => synced().values(),
   };
 }
 
