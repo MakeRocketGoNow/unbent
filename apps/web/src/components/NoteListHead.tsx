@@ -15,10 +15,10 @@ interface NoteListHeadProps {
    * What the count offers, when it offers anything — see `countMenuItems`. With it the
    * count is a menu trigger, "37 notes ⌄"; without it, plain text.
    *
-   * The caller passes it only for a narrowed list that is not being searched, and only
-   * while `count` is a count: "Loading…" and "Searching…" are not numbers anything could
-   * be done to, and a search's query is not part of an export. An unfiltered list keeps
-   * a plain count because its export is the whole library, which has its own page.
+   * The caller passes it only while `count` is a count of notes on a list that is not
+   * being searched: "Loading…" and "Searching…" are not numbers anything could be done
+   * to, and a search's query is not part of an export. It is a menu filtered or not —
+   * one that opened only while something was filtered would hide that it ever does.
    *
    * The count rather than a control of its own because it is the one thing in this row
    * that names the slice on screen, at every width and in every view — a notebook alone

@@ -9,6 +9,7 @@ import { countMenuItems } from './count-menu.js';
  */
 const base = {
   total: 37,
+  everything: false,
   shown: 37,
   more: false,
   exportRunning: false,
@@ -47,6 +48,14 @@ describe('countMenuItems', () => {
     // The connection is named over the running export: it is the reason that can be acted on.
     expect(exp!.title).toBe('Exporting needs a connection');
     expect(select!.disabled).toBeFalsy();
+  });
+
+  it('sends an unfiltered list to the whole-library export page instead', () => {
+    const [exp, select] = countMenuItems({ ...base, everything: true, offline: true });
+    // A link, not an export: the page carries the size and the Trash caveats a menu
+    // item cannot. A link has nothing to wait for, so it does not fade offline.
+    expect(exp).toEqual({ label: 'Export everything…', to: '/settings/export' });
+    expect(select!.label).toBe('Select all');
   });
 
   it('runs the handlers it was given', () => {

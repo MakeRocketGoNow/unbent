@@ -138,8 +138,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
 
   /**
    * Whether anything narrows the list, notebook included. The count's export reads this:
-   * it is the current filter serialized, and because the filters already live in the URL
-   * there is no separate state to keep in step — the export is of the view.
+   * narrowed, it exports the current filter serialized — because the filters already live
+   * in the URL there is no separate state to keep in step, the export is of the view —
+   * and otherwise it leads to the whole library's export page.
    */
   const isFiltered = Boolean(notebook || selectedTags.length || fieldFilters.length || from || to);
 
@@ -771,17 +772,18 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         : `${noteCount} notes`;
 
   /*
-   * The count as a menu: export the slice, or select it. Only for a list `isFiltered`
-   * narrows — the notebook counts, since the export is of the slice on screen — and only
-   * when the count is a number of notes: not over a search, whose query an export does not
-   * carry, not while loading, not for a notebook that is not there, and not for none.
+   * The count as a menu: export the slice, or select it. Whenever the count is a number
+   * of notes: not over a search, whose query an export does not carry, not while loading,
+   * not for a notebook that is not there, and not for none. Unfiltered, its export is the
+   * whole library's page instead — see `countMenuItems`.
    */
   const exportRunning = useExportRunning();
   const offline = useOffline();
   const countMenu =
-    isFiltered && results === null && !showNotebookMissing && !counting && noteCount > 0
+    results === null && !showNotebookMissing && !counting && noteCount > 0
       ? countMenuItems({
           total: noteCount,
+          everything: !isFiltered,
           shown: rowIds.length,
           more: list.hasNextPage,
           exportRunning,

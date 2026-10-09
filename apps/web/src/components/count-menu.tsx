@@ -3,6 +3,8 @@ import type { OverflowItem } from './OverflowMenu.js';
 interface CountMenuOptions {
   /** Every note the filter matches, which is what an export takes. */
   total: number;
+  /** Nothing narrows the list, so an export of it would be the whole library. */
+  everything: boolean;
   /** The rows drawn so far, which is all a selection can name. */
   shown: number;
   /** Whether a later page is still to come, so `shown` is short of `total`. */
@@ -29,6 +31,14 @@ interface CountMenuOptions {
  * 340 notes" would read as all 340 and pick 50, so until the list is whole it says how
  * many it takes.
  *
+ * **Unfiltered, Export is the way to Settings → Export** rather than the export itself.
+ * There it would be the whole library — an archive of gigabytes — and that page says what
+ * it leaves out and how big it gets, which a menu item has no room for. The count is still
+ * a menu, though: a count that opened a menu only while something was filtered would
+ * hide that it ever does, and Select all is as useful on All notes as anywhere. The "…"
+ * says the item leads somewhere before anything happens; it is a real link (`to`), so it
+ * fades for nothing — the page says for itself what it can do offline.
+ *
  * Export needs the server, page by page, and one export runs at a time. Offline, or while
  * another runs, it stays where it is, faded, and says why in the item itself rather than in
  * a tooltip, which a phone never shows. Faded rather than dropped, so the menu keeps its
@@ -38,6 +48,7 @@ interface CountMenuOptions {
  */
 export function countMenuItems({
   total,
+  everything,
   shown,
   more,
   exportRunning,
@@ -53,20 +64,23 @@ export function countMenuItems({
     : exportRunning
       ? 'After the current export finishes'
       : undefined;
+  const exportItem: OverflowItem = everything
+    ? { label: 'Export everything…', to: '/settings/export' }
+    : {
+        label: unavailable ? (
+          <>
+            {exportLabel}
+            <span className="overflow-item-note">{unavailable}</span>
+          </>
+        ) : (
+          exportLabel
+        ),
+        onSelect: onExport,
+        disabled: unavailable !== undefined,
+        title: unavailable,
+      };
   return [
-    {
-      label: unavailable ? (
-        <>
-          {exportLabel}
-          <span className="overflow-item-note">{unavailable}</span>
-        </>
-      ) : (
-        exportLabel
-      ),
-      onSelect: onExport,
-      disabled: unavailable !== undefined,
-      title: unavailable,
-    },
+    exportItem,
     {
       label: more ? `Select the ${shown.toLocaleString()} shown` : 'Select all',
       onSelect: onSelectAll,
