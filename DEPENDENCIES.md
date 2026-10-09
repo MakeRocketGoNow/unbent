@@ -12,6 +12,8 @@ not to. Security updates still open.
 
 ## Doing an update round
 
+The `update-dependencies` skill (`.claude/skills/`) runs the whole round; this is its short form.
+
 ```bash
 pnpm outdated -r
 ```
