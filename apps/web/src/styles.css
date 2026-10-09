@@ -9417,6 +9417,25 @@ button.settings-nav-item {
 /* A pill has no second line; the words in it stay on the first. */
 .selection-bar .btn { white-space: nowrap; }
 
+/*
+   On a narrow phone the count is the number alone, beside the ✕ — Android's own selection
+   bars read "✕ 3" for the same reason. Five actions at the 44px a thumb gets, a Select
+   all and "3 selected" came to about 390px, and a phone's bar has about 340: the last
+   action, Delete, was pushed off the screen. The word was the one thing on the bar that
+   the ticked rows already say, so it goes from sight and stays for a screen reader,
+   which hears "3 selected" in the live region as before.
+*/
+@media (max-width: 30rem) {
+  .selection-count-word {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
 /* The actions, after the count and its Select all, with a breath between the two groups. */
 .selection-actions {
   display: inline-flex;

@@ -11,9 +11,10 @@ import {
   transient,
   type Exporting,
   type ExportState,
+  selectionPage,
 } from './export-archive.js';
 import type { HostApp } from './app-bridge.js';
-import { ApiError, OfflineError } from './notes-api.js';
+import { ApiError, OfflineError, exportQuery } from './notes-api.js';
 
 /**
  * The store around the archive writer: what a page sees while an export runs. The
@@ -455,5 +456,58 @@ describe('transient', () => {
     expect(transient(new ApiError(503, 'busy'))).toBe(true);
     expect(transient(new ApiError(404, 'gone'))).toBe(false);
     expect(transient(new ApiError(401, 'signed out'))).toBe(false);
+  });
+});
+
+describe('selectionPage', () => {
+  /*
+   * A selection is asked for a run of ninety ids at a time, the most one request may
+   * name. The walk has to visit every run, carry on inside a run the server cut short, and
+   * count the whole selection once — the server only ever sees one run.
+   */
+  const ids = Array.from({ length: 200 }, (_, i) => `id-${i}`);
+  const note = (id: string) => ({ id }) as unknown as ExportedNote;
+
+  it('walks the selection a run at a time, counting it once', async () => {
+    const asked: Array<{ run: string[]; cursor: string | undefined }> = [];
+    const fetchPage = async (run: string[], cursor: string | undefined): Promise<ExportPage> => {
+      asked.push({ run, cursor });
+      return { notes: run.map(note), cursor: null, total: run.length };
+    };
+
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    let total: number | null = null;
+    for (;;) {
+      const page = await selectionPage(ids, cursor, fetchPage);
+      total ??= page.total;
+      seen.push(...page.notes.map((n) => n.id));
+      if (!page.cursor) break;
+      cursor = page.cursor;
+    }
+    expect(asked.map((a) => a.run.length)).toEqual([90, 90, 20]);
+    expect(seen).toEqual(ids);
+    expect(total).toBe(200);
+  });
+
+  it('carries on inside a run the server cut short', async () => {
+    const fetchPage = vi.fn(async (run: string[], cursor: string | undefined): Promise<ExportPage> =>
+      cursor === undefined
+        ? { notes: run.slice(0, 10).map(note), cursor: 'k\u001Fid-9', total: run.length }
+        : { notes: run.slice(10).map(note), cursor: null, total: null },
+    );
+    const first = await selectionPage(ids.slice(0, 50), undefined, fetchPage);
+    expect(first.cursor).toBe('0:k\u001Fid-9');
+    const second = await selectionPage(ids.slice(0, 50), first.cursor!, fetchPage);
+    expect(fetchPage).toHaveBeenLastCalledWith(ids.slice(0, 50), 'k\u001Fid-9');
+    expect(second.total).toBeNull();
+    expect(second.cursor).toBeNull();
+  });
+
+  it('asks for the named notes alone, by created date', () => {
+    const qs = exportQuery({ ids: ['a', 'b'], sort: 'title' }, { cursor: 'c', limit: 100 });
+    expect(qs.getAll('id')).toEqual(['a', 'b']);
+    expect(qs.get('sort')).toBe('created');
+    expect(qs.get('cursor')).toBe('c');
   });
 });
