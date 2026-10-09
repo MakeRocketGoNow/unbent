@@ -124,7 +124,7 @@ self.addEventListener('install', (event) => {
 let refilling: Promise<void> | null = null;
 function refillShell(): Promise<void> {
   refilling ??= fillShell()
-    .catch(() => {})
+    .catch((error: unknown) => console.warn('[sw] refilling the shell failed', error))
     .finally(() => {
       refilling = null;
     });
