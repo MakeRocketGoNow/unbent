@@ -1,6 +1,7 @@
 import { useCallback, type RefObject } from 'react';
 import { useRouter } from '@tanstack/react-router';
 import { onLocalWrite, type LocalWrite } from './store/actions.js';
+import { prefersReducedMotion } from './useMediaQuery.js';
 
 /**
  * Notes leaving and arriving in a list, instead of vanishing and appearing, when the
@@ -77,10 +78,6 @@ interface Snapshot {
    * jump to its new one and land on the row still sliding above it.
    */
   rows: Map<string, { rect: DOMRect; node: HTMLElement }>;
-}
-
-function reducedMotion(): boolean {
-  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
 }
 
 function onScreen(rect: DOMRect, view: DOMRect): boolean {
@@ -211,7 +208,7 @@ export function followLocalChanges(list: HTMLElement): { stop: () => void; disar
     window.clearTimeout(timer);
   };
   const unlisten = onLocalWrite((write) => {
-    if (reducedMotion() || !concerns(list, write)) return;
+    if (prefersReducedMotion() || !concerns(list, write)) return;
     before = measure(list);
     for (const id of write.ids) touched.add(id);
     window.clearTimeout(timer);

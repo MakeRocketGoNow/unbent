@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { refiledLocallyWithin } from '../store/actions.js';
+import { prefersReducedMotion } from '../useMediaQuery.js';
 
 /** How long one roll takes; `.count-roll` in the stylesheet is written to it. */
 export const ROLL_MS = 300;
@@ -40,8 +41,7 @@ export function RollingCount({ value, className }: RollingCountProps) {
   const [turn, setTurn] = useState(0);
 
   if (value !== shown) {
-    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    const rolls = refiledLocallyWithin(MINE_MS) && !reduced;
+    const rolls = refiledLocallyWithin(MINE_MS) && !prefersReducedMotion();
     setLeaving(rolls ? { value: shown, up: value > shown } : null);
     if (rolls) setTurn((t) => t + 1);
     setShown(value);

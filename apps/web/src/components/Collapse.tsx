@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { prefersReducedMotion } from '../useMediaQuery.js';
 
 /** How long opening and closing take; `.collapse` in the stylesheet is written to it. */
 export const COLLAPSE_MS = 250;
@@ -46,8 +47,7 @@ export function Collapse({ open, children, id, className }: CollapseProps) {
 
   useEffect(() => {
     if (open || !present) return;
-    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    const timer = window.setTimeout(() => setPresent(false), reduced ? 0 : COLLAPSE_MS);
+    const timer = window.setTimeout(() => setPresent(false), prefersReducedMotion() ? 0 : COLLAPSE_MS);
     return () => window.clearTimeout(timer);
   }, [open, present]);
 
