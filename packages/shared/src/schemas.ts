@@ -691,6 +691,12 @@ export const searchQuerySchema = z.object({
 });
 
 /**
+ * How many ids one export page may name. Ninety, the store's `ID_RUN`: the statement
+ * binds them beside a cursor and a limit, under the engine's cap of a hundred.
+ */
+export const EXPORT_IDS_PER_PAGE = 90;
+
+/**
  * Export takes the note list's filters, so an export is the view the user was looking at.
  *
  * No `limit`: a partial backup is a trap rather than a feature. `sort` orders nothing
@@ -713,10 +719,31 @@ export const exportQuerySchema = z.object({
  * the client from these pages (see the web app's `export-archive.ts`), because a Worker
  * request may make only so many database calls and a library is thousands of notes.
  */
-export const exportPageQuerySchema = exportQuerySchema.extend({
-  cursor: z.string().optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
-});
+export const exportPageQuerySchema = exportQuerySchema
+  .extend({
+    cursor: z.string().optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+    /**
+     * Only these notes: an export of a selection, which no filter can describe. Given once
+     * per id, like `tag`, and at most `EXPORT_IDS_PER_PAGE` in one request — the store
+     * binds them in one statement, whose engine takes a hundred values at most — so the
+     * browser asks for a selection a run of ids at a time (`selectionSource` in the web
+     * app's `export-archive.ts`).
+     */
+    id: z
+      .union([noteIdSchema, z.array(noteIdSchema)])
+      .optional()
+      .transform((v) => (v === undefined ? undefined : Array.isArray(v) ? v : [v]))
+      .pipe(z.array(noteIdSchema).min(1).max(EXPORT_IDS_PER_PAGE).optional()),
+  })
+  /*
+   * Ids or filters, never both. A selection is already the notes it names, so a filter
+   * beside it could only drop some of them without saying so — and every filter binds
+   * values of its own, which would carry the statement past the engine's hundred.
+   */
+  .refine((q) => !q.id || !(q.tag?.length || q.notebook || q.field?.length || q.from || q.to), {
+    message: 'An export of named notes takes no other filter',
+  });
 
 /**
  * One note from an ENEX import. `contentHash` makes the endpoint idempotent so an

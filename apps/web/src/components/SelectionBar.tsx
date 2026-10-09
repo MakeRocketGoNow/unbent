@@ -41,8 +41,11 @@ export function SelectionBar({ count, total, onClear, onSelectAll, children }: S
       <button type="button" className="icon-btn" aria-label="Clear selection" onClick={onClear}>
         <CancelIcon />
       </button>
+      {/* The word is dropped from sight on a narrow phone, where the bar's five 44px
+          actions leave no room for it — see `.selection-count-word`. */}
       <span className="selection-count" aria-live="polite">
-        {count} selected
+        {count}
+        <span className="selection-count-word"> selected</span>
       </span>
       {/* Offered only while it would do something; once every row is picked it goes. */}
       {count < total && (
