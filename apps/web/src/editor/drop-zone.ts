@@ -1,3 +1,4 @@
+import { syntaxTree } from '@codemirror/language';
 import type { EditorView } from '@codemirror/view';
 import { insertUploads } from './attach.js';
 import { showDropAt } from './drop-cursor.js';
@@ -8,10 +9,15 @@ import { showDropAt } from './drop-cursor.js';
  *
  * - **Above the text** — the title, the properties, the formatting bar — at the top.
  * - **Below it,** at the end. On a new note that is the whole empty page.
- * - **Level with a line,** in a margin or over something drawn across it, at that line's
- *   start or end, whichever side of the text the pointer is on. The line is the
- *   document's, not the wrapped row the pointer is level with: a file put beside a
- *   paragraph goes before or after it, not into it.
+ * - **Level with a line,** in a margin or over something drawn across it, before or after
+ *   the block that line belongs to, whichever side of the text the pointer is on.
+ *
+ * The block, not the line. Rich mode draws a fenced code block and a table line by line,
+ * so the line beside the pointer can be a row of either, and a file set apart there by
+ * blank lines (`ownParagraph`) went inside the fence as literal text, or cut the table in
+ * two and left the rows under it without a header. A list and a quote split the same way.
+ * The top-level block of the markdown — a paragraph, a list, a quote, a fence, a table —
+ * is the unit a file put beside the text can go before or after without breaking it.
  *
  * By position alone, deliberately. Sending everything that comes before the body in the
  * page to the top was tried, so that the title and the bar, which stick while the body
@@ -24,8 +30,24 @@ function landingFor(view: EditorView, x: number, y: number): number {
   const box = view.contentDOM.getBoundingClientRect();
   if (y < box.top) return 0;
   if (y >= box.bottom) return view.state.doc.length;
-  const line = view.lineBlockAtHeight(y - view.documentTop);
-  return x < box.left ? line.from : line.to;
+  const block = blockAround(view, view.lineBlockAtHeight(y - view.documentTop));
+  return x < box.left ? block.from : block.to;
+}
+
+/**
+ * The lines of the top-level markdown block around `line`, or `line` itself where it holds
+ * none: a blank line between two blocks, where a file already splits nothing.
+ */
+function blockAround(view: EditorView, line: { from: number; to: number }): { from: number; to: number } {
+  let node = syntaxTree(view.state).resolveInner(line.from, 1);
+  // Up to the child of the document; the document itself, with no parent, is a blank line.
+  while (node.parent?.parent) node = node.parent;
+  if (!node.parent) return line;
+  const { doc } = view.state;
+  return {
+    from: Math.min(line.from, doc.lineAt(node.from).from),
+    to: Math.max(line.to, doc.lineAt(node.to).to),
+  };
 }
 
 /**

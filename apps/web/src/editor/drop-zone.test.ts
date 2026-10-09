@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
+import { markdown } from '@codemirror/lang-markdown';
+import { GFM } from '@lezer/markdown';
 import { attachments } from './attach.js';
 import { fileDropCursor } from './drop-cursor.js';
 import { noteDropZone } from './drop-zone.js';
@@ -35,6 +37,9 @@ function mount(doc: string, { readOnly = false } = {}) {
     state: EditorState.create({
       doc,
       extensions: [
+        // The editor's own parse, tables included: where a file beside the text goes
+        // depends on the markdown block the line beside it belongs to.
+        markdown({ extensions: [GFM] }),
         fileDropCursor(),
         attachments({
           upload: async (file) => {
@@ -48,7 +53,10 @@ function mount(doc: string, { readOnly = false } = {}) {
     parent: zone,
   });
   const off = noteDropZone(zone, view);
+  // Chained, since `besideLine` mounts more than once in a test.
+  const previous = cleanup;
   cleanup = () => {
+    previous?.();
     off();
     view.destroy();
   };
@@ -70,14 +78,24 @@ function dragEvent(type: string, types = ['Files'], extra: Record<string, unknow
 }
 
 /**
- * Puts the text in a box from (50, 100) to (250, 200), and the first line level with
- * every height inside it — jsdom measures each line at zero height, so CodeMirror's own
- * answer is always the last line. That is all `landingFor` measures.
+ * Puts the text in a box from (50, 100) to (250, 200), with line `level` level with every
+ * height inside it — jsdom measures each line at zero height, so CodeMirror's own answer
+ * is always the last line. That is all `landingFor` measures.
  */
-function layOut(view: EditorView) {
+function layOut(view: EditorView, level = 1) {
   const box = { left: 50, top: 100, right: 250, bottom: 200, width: 200, height: 100, x: 50, y: 100 };
   view.contentDOM.getBoundingClientRect = () => ({ ...box, toJSON: () => box }) as DOMRect;
-  view.lineBlockAtHeight = () => view.lineBlockAt(0);
+  view.lineBlockAtHeight = () => view.lineBlockAt(view.state.doc.line(level).from);
+}
+
+/** Where a file over the right margin, then the left, points beside line `level`. */
+function besideLine(doc: string, level: number): [number | null, number | null] {
+  const { zone, view } = mount(doc);
+  layOut(view, level);
+  zone.dispatchEvent(dragEvent('dragover', ['Files'], { clientX: 300, clientY: 150 }));
+  const right = caretAt(view);
+  zone.dispatchEvent(dragEvent('dragover', ['Files'], { clientX: 10, clientY: 150 }));
+  return [right, caretAt(view)];
 }
 
 /** Where the drop point is drawn, or null when it is not. */
@@ -104,14 +122,28 @@ describe('noteDropZone', () => {
     expect(caretAt(view)).toBe(0);
   });
 
-  /** The side decides: before the line from the left margin, after it from the right. */
-  it('points at the start or the end of the line beside a file in a margin', () => {
-    const { zone, view } = mount('one\ntwo');
-    layOut(view);
-    zone.dispatchEvent(dragEvent('dragover', ['Files'], { clientX: 300, clientY: 101 }));
-    expect(caretAt(view)).toBe(3);
-    zone.dispatchEvent(dragEvent('dragover', ['Files'], { clientX: 10, clientY: 101 }));
-    expect(caretAt(view)).toBe(0);
+  /** The side decides: before the paragraph from the left margin, after it from the right. */
+  it('points before or after the paragraph beside a file in a margin', () => {
+    expect(besideLine('one\n\ntwo', 1)).toEqual([3, 0]);
+    expect(besideLine('one\n\ntwo', 3)).toEqual([8, 5]);
+  });
+
+  /*
+     A row of a fence, a table, a list or a quote is a line of its own in rich mode, but a
+     file set apart beside it would go inside the fence as text, or cut the rest in two.
+  */
+  it('points before or after the whole block a line in a margin belongs to', () => {
+    const fence = '```\ncode one\ncode two\n```\n\nafter';
+    expect(besideLine(fence, 3)).toEqual([fence.indexOf('\n\n'), 0]);
+    const table = '| a | b |\n| - | - |\n| 1 | 2 |\n| 3 | 4 |\n\nafter';
+    expect(besideLine(table, 3)).toEqual([table.indexOf('\n\n'), 0]);
+    expect(besideLine('- one\n- two\n- three', 2)).toEqual([19, 0]);
+    expect(besideLine('> one\n> two', 2)).toEqual([11, 0]);
+    expect(besideLine('one\ntwo', 2)).toEqual([7, 0]);
+  });
+
+  it('points at a blank line between blocks as it is', () => {
+    expect(besideLine('one\n\ntwo', 2)).toEqual([4, 4]);
   });
 
   it('leaves a drag the editor claimed to the editor', () => {
@@ -160,6 +192,16 @@ describe('noteDropZone', () => {
     await settle();
     expect(uploaded).toEqual(['scan.png']);
     expect(view.state.doc.toString()).toBe('> a quote\n\n![scan.png](files/scan.png)\n');
+  });
+
+  it('puts a file dropped beside a fence after the fence, not inside it', async () => {
+    const { zone, view } = mount('```\ncode one\ncode two\n```\n\nafter');
+    layOut(view, 3);
+    zone.dispatchEvent(dragEvent('drop', ['Files'], { clientX: 300, clientY: 150 }));
+    await settle();
+    expect(view.state.doc.toString()).toBe(
+      '```\ncode one\ncode two\n```\n\n![scan.png](files/scan.png)\n\nafter',
+    );
   });
 
   it('puts a file dropped above the text at the top', async () => {
