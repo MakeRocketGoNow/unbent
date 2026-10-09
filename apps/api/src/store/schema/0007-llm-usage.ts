@@ -13,7 +13,9 @@
  * year is a range on the primary key and the daily cap is one lookup on it. `model` is
  * in the key because a token's price is the model's: the counter keeps tokens and who
  * spent them, and anything that shows a price converts at display. An operator who
- * changes `ANTHROPIC_MODEL` mid-day gets a second row rather than a sum of two prices.
+ * changes `ANTHROPIC_MODEL` mid-day gets a second row rather than a sum of two prices,
+ * and one who reads with a dearer model than the one that titles (MAK-182) gets each
+ * job's tokens under the model that spent them.
  *
  * The four token counts are the API's own split, kept apart because each is billed at its
  * own rate. `requests` counts the answers the model was paid for, which a retried 5xx is

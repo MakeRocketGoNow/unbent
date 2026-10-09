@@ -241,9 +241,21 @@ ALLOWED_EMAILS=
 #   https://console.anthropic.com/settings/keys
 # ANTHROPIC_API_KEY=
 #
-# The model asked. Unset means the default in src/lib/llm.ts, claude-haiku-5-5; for more
-# care with hard scans, claude-sonnet-5-5, or claude-opus-5-5, the most capable and dearest.
+# The model asked. Unset means the default in src/lib/llm.ts, claude-haiku-5-5, which on
+# a measured sample of hard real scans read as accurately as the dearer models on all but
+# handwriting (MAK-182). This one moves all three of the model's jobs; the three below
+# each move one and win over it. An archive of handwriting wants a careful reader and
+# nothing more: ANTHROPIC_READ_MODEL=claude-sonnet-5-5, with the title and the fields
+# left on Haiku, since those only copy words off a reading already made.
 # ANTHROPIC_MODEL=
+# ANTHROPIC_READ_MODEL=
+# ANTHROPIC_TITLE_MODEL=
+# ANTHROPIC_FIELDS_MODEL=
+#
+# The effort the read sends, low to max. Unset means low on the default model and nothing
+# on a named one. Set low beside a Sonnet read: at its default effort its thinking alone
+# fills the output budget on a long scan, and the read never finishes.
+# ANTHROPIC_READ_EFFORT=
 #
 # Where those requests go instead, for a stand-in server during development. Leave unset.
 # ANTHROPIC_API_URL=
