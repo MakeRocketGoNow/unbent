@@ -1,4 +1,4 @@
-import { syntaxTree } from '@codemirror/language';
+import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
 import type { EditorView } from '@codemirror/view';
 import { insertUploads } from './attach.js';
 import { carriesFiles, refuseFile, showDropAt } from './drop-cursor.js';
@@ -56,7 +56,10 @@ function landingFor(view: EditorView, x: number, y: number): number {
  * none: a blank line between two blocks, where a file already splits nothing.
  */
 function blockAround(view: EditorView, line: { from: number; to: number }): { from: number; to: number } {
-  let node = syntaxTree(view.state).resolveInner(line.from, 1);
+  // Parsed as far as the line first, within a bound: a long note's parse can stop short of
+  // a line just scrolled to, and an unparsed line reads as one between blocks.
+  const tree = ensureSyntaxTree(view.state, line.to, 50) ?? syntaxTree(view.state);
+  let node = tree.resolveInner(line.from, 1);
   // Up to the child of the document; the document itself, with no parent, is a blank line.
   while (node.parent?.parent) node = node.parent;
   if (!node.parent) return line;
