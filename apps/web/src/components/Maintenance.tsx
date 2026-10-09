@@ -8,7 +8,7 @@ import { SampleNotes } from './SampleNotes.js';
 import { Confirm } from './Confirm.js';
 import { Button } from './Button.js';
 import { useMaintenance } from './use-maintenance.js';
-import { configQuery, noteCountQuery, trashCountQuery } from '../queries.js';
+import { autofillUsageQuery, configQuery, noteCountQuery, trashCountQuery } from '../queries.js';
 import { useExactCount } from './use-exact-count.js';
 
 type Pending = 'trashed' | 'all' | 'account' | null;
@@ -175,6 +175,8 @@ export function Maintenance() {
           {recountError && <span className="bad small">{recountError}</span>}
         </div>
       </section>
+
+      {config.data?.autofill && <AutofillUsageSection />}
 
       <section className="settings-section">
         <h3>Empty trash</h3>
@@ -442,5 +444,87 @@ export function Maintenance() {
       {result && <p className="good small">{result}</p>}
       {error && <p className="bad small">{error}</p>}
     </div>
+  );
+}
+
+/**
+ * "1.2 million", "84 thousand", "1,412": a large count of tokens is read as a magnitude,
+ * not to the unit. Under ten thousand the number is written out, since "1.4 thousand" is
+ * longer than the number it rounds.
+ */
+const compact = new Intl.NumberFormat('en', { notation: 'compact', compactDisplay: 'long', maximumFractionDigits: 1 });
+const exact = new Intl.NumberFormat('en');
+const tokenCount = (n: number) => (n < 10_000 ? exact.format(n) : compact.format(n));
+
+/**
+ * What Auto-fill has cost this account this calendar year (MAK-180): the presses, and the
+ * tokens the language model read and wrote inside them. Here because Maintenance is where
+ * the account's other whole-account figures are, until the plans decide where usage lives
+ * (MAK-108).
+ *
+ * Read-only, so it sits with the passes that change nothing, after them and before
+ * anything that deletes. A sentence rather than a table of figures: the page's other
+ * sections report in a line, and three numbers do not need a grid to be read. Tokens
+ * rather than money, because the price is the model's and changes, and the counter keeps
+ * what was used. "Read" counts every kind of input — fresh, from the cache, into it —
+ * since a person cannot act on that split; the server keeps it apart for the bill.
+ *
+ * The day's cap is said only where the instance sets one, with today's count beside it, so
+ * the 429 a press can meet is never a surprise to someone who looked here first.
+ */
+function AutofillUsageSection() {
+  const usage = useQuery(autofillUsageQuery());
+  const u = usage.data;
+  const read = u?.models.reduce((n, m) => n + m.inputTokens + m.cacheReadTokens + m.cacheWriteTokens, 0) ?? 0;
+  const written = u?.models.reduce((n, m) => n + m.outputTokens, 0) ?? 0;
+
+  return (
+    <section className="settings-section">
+      <h3>Auto-fill this year</h3>
+      <p className="muted small">
+        Each press of Auto-fill files a note from what it says. Where this instance has a
+        language model, the press also reads the note&apos;s pictures and writes its title and
+        fields with it, and that model is paid for by the token.
+      </p>
+      {/* A figure already on screen stays when a refetch fails; the error is for none at all.
+          Offline is not a failure: the counter is the server's, and the page says so in
+          the phrase the app uses for every read that needs it. */}
+      {!u ? (
+        usage.isError ? (
+          api.isOfflineError(usage.error) ? (
+            <p className="muted small">Not available offline.</p>
+          ) : (
+            <p className="bad small">Could not load this year&apos;s usage.</p>
+          )
+        ) : (
+          <p className="muted small">Loading…</p>
+        )
+      ) : (
+        <p className="small">
+          {u.presses === 0 ? (
+            'No presses yet this year.'
+          ) : (
+            <>
+              {u.presses} {u.presses === 1 ? 'press' : 'presses'} since 1 January
+              {read + written > 0 && (
+                <>
+                  , in which the model read {tokenCount(read)} tokens and wrote{' '}
+                  {tokenCount(written)}
+                </>
+              )}
+              .
+            </>
+          )}
+          {u.dailyCap !== null && (
+            <>
+              {' '}
+              This instance allows {u.dailyCap} {u.dailyCap === 1 ? 'press' : 'presses'} a day,
+              and {u.today === 0 ? 'none have' : u.today === 1 ? '1 has' : `${u.today} have`} been
+              used today.
+            </>
+          )}
+        </p>
+      )}
+    </section>
   );
 }

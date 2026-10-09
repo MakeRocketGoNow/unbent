@@ -240,6 +240,7 @@ says otherwise; `pnpm exec wrangler secret put NAME` from `apps/api`, or the das
 | `POSTHOG_KEY`, `POSTHOG_HOST` | error tracking | see [Errors in the browser](#errors-in-the-browser) |
 | `TYPESAFE_API_KEY` | filing a note from what it says | see [Filing a note from what it says](#filing-a-note-from-what-it-says); `DEV_TYPESAFE_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
 | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | Auto-fill's language model: reading a note's pictures and text-less scans on a press, and writing its title and text fields | see [Reading images](#reading-images); `DEV_ANTHROPIC_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
+| `AUTOFILL_DAILY_CAP` | a ceiling on Auto-fill presses per account per UTC day | a whole number; unset means none. Every press and the model's tokens are counted either way, and Maintenance shows the year's; see [Filing a note from what it says](#filing-a-note-from-what-it-says) |
 | `ANDROID_ASSET_LINKS` | an Android build of your own | see [Android app](#android-app) |
 | `APPLE_APP_SITE_ASSOCIATION` | an iOS build of your own | see [iOS app](#ios-app) |
 | `APPLE_BUNDLE_ID` | Sign in with Apple from an iOS build of your own | comma-separated bundle ids, beside `APPLE_CLIENT_ID`; see [iOS app](#ios-app) |
@@ -1120,6 +1121,13 @@ only when the document contains it. Without one, a line written as a label and a
 like "Order number: 112-0042", offers the value alone too. A value can still be wrong, but
 it is always something the document actually says, and anything the model is unsure of is
 left empty rather than guessed. Ratings are left alone: a document has no opinion to read.
+
+**What it costs, and the ceiling.** Every press is counted per account, and so is every
+token the language model is paid for inside one — by day, by job (reading a file, the
+title, the fields) and by model, since a token's price is the model's. Maintenance shows
+the account's presses and tokens for the year. A press is one request anyone signed in can
+send in a loop, so `AUTOFILL_DAILY_CAP` sets how many one account may make in a UTC day;
+past it, the button says how long until it works again. Unset, nothing is refused.
 
 `POST /api/notes/:id/autofill` answers with the suggestions and applies nothing; the client
 does. The Android app is the site in a WebView, so it has the same control.

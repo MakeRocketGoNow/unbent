@@ -15,6 +15,7 @@ import {
 } from '@unbent/shared';
 import { AttachmentsStore, type FileSummary } from './attachments.js';
 import { DeletedBlobs } from './deleted-blobs.js';
+import { LlmUsageCounter, type UsageEntry } from './llm-usage.js';
 import { cutByBytes, Feed, FEED_META, FEED_PAGE_BYTES, lastWordPerEntity, type FeedRow } from './feed.js';
 import { classify, liftLiterals, scanStatements, statementKind, statementText, StoreLoading, tooLongToRun, type LoadMarker } from './load.js';
 import { appliedMigrations, migrate } from './migrate.js';
@@ -215,6 +216,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   private notes: NotesStore;
   private attachments: AttachmentsStore;
   private deletedBlobs: DeletedBlobs;
+  private llmUsage: LlmUsageCounter;
   private wiped = false;
   private loading: LoadMarker | null = null;
   private loadInFlight: LoadInFlight | null = null;
@@ -235,6 +237,7 @@ export class UserStore extends DurableObject<StoreEnv> {
     this.deletedBlobs = new DeletedBlobs(this.sql);
     this.notes = new NotesStore(this.sql, this.feed, this.deletedBlobs);
     this.attachments = new AttachmentsStore(this.sql, this.feed, this.deletedBlobs);
+    this.llmUsage = new LlmUsageCounter(this.sql, name);
     ctx.blockConcurrencyWhile(async () => {
       // Pings on the feed's sockets are answered at the edge, without waking the object;
       // object-wide and idempotent, so set once here rather than on every handshake.
@@ -952,7 +955,18 @@ export class UserStore extends DurableObject<StoreEnv> {
   availableFilename(noteId: string, desired: string) { this.ready(); return this.attachments.availableFilename(noteId, desired); }
   recordAttachment(input: Parameters<AttachmentsStore['record']>[0], opts?: Parameters<AttachmentsStore['record']>[1]) { return this.writing(() => this.attachments.record(input, opts)); }
   removeAttachment(noteId: string, filename: string) { return this.writing(() => this.attachments.remove(noteId, filename)); }
-  recordText(input: Parameters<AttachmentsStore['recordText']>[0]) { return this.writing(() => this.attachments.recordText(input)); }
+  /**
+   * A file's text, and — when the language model read it — what the reading cost, in one
+   * transaction (MAK-180): a reading recorded is a reading counted.
+   */
+  recordText(input: Parameters<AttachmentsStore['recordText']>[0], usage?: UsageEntry) {
+    return this.writing(() =>
+      this.sql.tx(() => {
+        this.attachments.recordText(input);
+        if (usage) this.llmUsage.add(usage, Date.now());
+      }),
+    );
+  }
   copyText(fromAttachmentId: string, to: { attachmentId: string; noteId: string; filename: string }) {
     return this.writing(() => this.attachments.copyText(fromAttachmentId, to));
   }
@@ -1137,18 +1151,49 @@ export class UserStore extends DurableObject<StoreEnv> {
   /**
    * The first half of `POST /notes/:id/autofill`: the note, and the files of its own that
    * are still to be read, capped. Null when there is no such live note.
+   *
+   * With `press`, the press is also counted against the day's cap here, in the same
+   * transaction (MAK-180), and `press.allowed` false means it was refused and nothing
+   * else was read. Here rather than a call of its own because the route makes this call
+   * first anyway, and a check that was a separate request could be raced by a loop. The
+   * route passes `press` only where Auto-fill is set up, so a press an instance cannot
+   * answer is never counted; and only for a live note, since an id that names nothing
+   * must not cost anyone a press.
    */
-  autofillPrelude(id: string, ownFilesToRead: number) {
+  autofillPrelude(id: string, ownFilesToRead: number, press?: { cap: number | null }) {
     this.ready();
     return this.sql.tx(() => {
       const note = this.notes.get(id);
       if (!note) return null;
+      const counted = press ? this.llmUsage.press(press.cap, Date.now()) : null;
+      if (counted && !counted.allowed) return { note, forText: [], forVision: [], press: counted };
       return {
         note,
         forText: this.attachments.needingText(ownFilesToRead, id),
         forVision: this.attachments.needingVision(ownFilesToRead, id),
+        press: counted,
       };
     });
+  }
+
+  /**
+   * What a press cost that was not recorded with a file's text: the title and fields
+   * calls, and a reading the model was paid for but that could not be used (a reply cut
+   * off at its budget). One call at the end of a press, in one transaction.
+   */
+  recordLlmUsage(entries: UsageEntry[]) {
+    this.ready();
+    if (entries.length === 0) return;
+    const at = Date.now();
+    this.sql.tx(() => {
+      for (const entry of entries) this.llmUsage.add(entry, at);
+    });
+  }
+
+  /** `GET /api/autofill/usage`: this calendar year's presses and tokens; see `AutofillUsage`. */
+  autofillUsage() {
+    this.ready();
+    return this.llmUsage.year(Date.now());
   }
 
   /** The second half: everything the model is shown beside the note. */

@@ -2,6 +2,7 @@ import type { ReadBy } from '@unbent/shared';
 import type { AttachmentInfo } from '@unbent/shared';
 import { StoreRepo } from './store-client.js';
 import type { AttachmentRow, AttachmentsStore, FileRead, PendingFile, AssistantWrite } from '../store/attachments.js';
+import type { UsageEntry } from '../store/llm-usage.js';
 
 /**
  * Attachment metadata for one user, answered by that user's store.
@@ -77,8 +78,8 @@ export class AttachmentsRepo extends StoreRepo {
     filename: string;
     text: string;
     readBy?: ReadBy | null | undefined;
-  }): Promise<void> {
-    return this.call((s) => s.recordText(input));
+  }, usage?: UsageEntry): Promise<void> {
+    return this.call((s) => s.recordText(input, usage));
   }
 
   copyText(fromAttachmentId: string, to: { attachmentId: string; noteId: string; filename: string }): Promise<void> {

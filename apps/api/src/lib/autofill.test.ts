@@ -15,7 +15,13 @@ import {
   type AutofillInput,
 } from './autofill.js';
 import type { Jev, JevAnswer, JevChoiceQuestion, JevEntry, JevQuestion } from './jev.js';
-import { LlmError } from './llm.js';
+import { LlmError, type Metered } from './llm.js';
+
+/** A stand-in model's answer: the value, at a cost the tests here do not count. */
+const paid = <T,>(value: T): Metered<T> => ({
+  value,
+  usage: { model: 'stand-in', inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+});
 
 /**
  * A Jev that records what it was asked and answers from a script keyed by question id.
@@ -49,7 +55,7 @@ const choice = (choice: string, confidence = 0.9): JevAnswer => ({
 });
 const noul = (noul: number): JevAnswer => ({ type: 'noul', noul });
 /** A language model whose title is what a test is about, and which leaves the text fields to Jev. */
-const noFields = async () => ({});
+const noFields = async () => paid({});
 
 function field(over: Partial<FieldDef> & Pick<FieldDef, 'id' | 'name' | 'type'>): FieldDef {
   return { notebookId: 'nb-coupons', options: [], scale: null, currency: null, position: 0, ...over };
@@ -189,7 +195,7 @@ describe('what the model is asked', () => {
 });
 
 describe('the title', () => {
-  const written = { textFields: noFields, title: vi.fn(async () => 'Acme Hardware invoice, March 2026') };
+  const written = { textFields: noFields, title: vi.fn(async () => paid('Acme Hardware invoice, March 2026')) };
 
   it('is written by the language model when there is one, shown the note whole', async () => {
     const { jev } = fake({ title: choice('ACME HARDWARE', 0.9) });
@@ -221,7 +227,7 @@ describe('the title', () => {
 
   it('asks the fields before the title has come back, and collects the title last', async () => {
     let finish!: (title: string) => void;
-    const slow = { textFields: noFields, title: vi.fn(() => new Promise<string>((resolve) => (finish = resolve))) };
+    const slow = { textFields: noFields, title: vi.fn(() => new Promise<string>((resolve) => (finish = resolve)).then(paid)) };
     const { jev, calls } = fake({ notebook: choice('Receipts') });
     const running = autofill(jev, input(), slow);
     // Both rounds are asked while the title is still being written.
@@ -232,7 +238,7 @@ describe('the title', () => {
 
   it('falls back to Jev\u2019s pick of a line, in title case, when the model declines or fails', async () => {
     const { jev } = fake({ title: choice('ACME HARDWARE', 0.7) });
-    const declined = { textFields: noFields, title: vi.fn(async () => null) };
+    const declined = { textFields: noFields, title: vi.fn(async () => paid(null)) };
     expect((await autofill(jev, input(), declined)).title).toEqual({ value: 'Acme Hardware', confidence: 0.7 });
     const failing = { textFields: noFields, title: vi.fn(async () => { throw new Error('down'); }) };
     expect((await autofill(jev, input(), failing)).title).toEqual({ value: 'Acme Hardware', confidence: 0.7 });
@@ -428,10 +434,10 @@ describe('text fields the language model writes (MAK-174)', () => {
       ...over,
     });
   const model = (answer: Record<string, string> | null | Error) => ({
-    title: vi.fn(async () => null),
+    title: vi.fn(async () => paid(null)),
     textFields: vi.fn(async () => {
       if (answer instanceof Error) throw answer;
-      return answer;
+      return paid(answer);
     }),
   });
 

@@ -12,7 +12,8 @@ import {
   type BlobStore,
   type StoredFile,
 } from './read-attachment.js';
-import type { FileReading, LanguageModel } from './llm.js';
+import { LlmError, type FileReading, type LanguageModel } from './llm.js';
+import { PressUsage } from './llm-usage.js';
 
 const prose =
   'Your diagnosis based on what you shared about how you are feeling is allergic rhinitis, ' +
@@ -30,8 +31,11 @@ function converter(data: string | null): MarkdownConverter {
   };
 }
 
+/** What every stand-in reading costs, so a test can see it carried into the write. */
+const cost = { model: 'stand-in', inputTokens: 1500, outputTokens: 200, cacheReadTokens: 0, cacheWriteTokens: 0 };
+
 function vision(reading: FileReading | null): Pick<LanguageModel, 'read'> & { read: ReturnType<typeof vi.fn> } {
-  return { read: vi.fn(async () => reading) };
+  return { read: vi.fn(async () => ({ value: reading, usage: cost })) };
 }
 
 const blobs: BlobStore = {
@@ -104,7 +108,7 @@ describe('reading a file', () => {
     expect(outcome).toBe('vision');
     expect(eyes.read).toHaveBeenCalledWith(expect.objectContaining({ filename: 'scan.pdf', contentType: 'application/pdf' }));
     expect(r.recordText).toHaveBeenCalledTimes(1);
-    expect(r.recordText).toHaveBeenCalledWith(expect.objectContaining({ text: expect.stringContaining('A card'), readBy: 'vision' }));
+    expect(r.recordText).toHaveBeenCalledWith(expect.objectContaining({ text: expect.stringContaining('A card'), readBy: 'vision' }), { job: 'read', ...cost });
   });
 
   it('closes an empty scan as before when there is no model, and leaves an unreadable one pending', async () => {
@@ -132,11 +136,11 @@ describe('reading a file', () => {
   it('reads a picture with the model, and records a decline so it is not asked again', async () => {
     const r = repo();
     expect(await readAttachment(blobs, { llm: vision(said) }, r, photo)).toBe('vision');
-    expect(r.recordText).toHaveBeenCalledWith(expect.objectContaining({ attachmentId: 'a2', readBy: 'vision' }));
+    expect(r.recordText).toHaveBeenCalledWith(expect.objectContaining({ attachmentId: 'a2', readBy: 'vision' }), { job: 'read', ...cost });
 
     const declined = repo();
     expect(await readAttachment(blobs, { llm: vision(null) }, declined, photo)).toBe('empty');
-    expect(declined.recordText).toHaveBeenCalledWith(expect.objectContaining({ text: '', readBy: 'vision' }));
+    expect(declined.recordText).toHaveBeenCalledWith(expect.objectContaining({ text: '', readBy: 'vision' }), { job: 'read', ...cost });
   });
 
   it('leaves a picture alone where there is no model, and a PDF alone where there is only a model', async () => {
@@ -196,7 +200,31 @@ describe('a pass over files already chosen', () => {
 
     const read = repo();
     await readPendingFiles(blobs, { llm: vision(said) }, read, [{ ...photo, pending: 'vision', writtenBy: 'assistant' }]);
-    expect(read.recordText).toHaveBeenCalledWith(expect.objectContaining({ attachmentId: 'a2', readBy: 'vision' }));
+    expect(read.recordText).toHaveBeenCalledWith(expect.objectContaining({ attachmentId: 'a2', readBy: 'vision' }), { job: 'read', ...cost });
+  });
+
+  it('counts with the press what a reading cost when there is no text to carry it', async () => {
+    // A decline over an assistant's words writes nothing, and a reply cut off at its budget
+    // throws, but both were paid for (MAK-180).
+    const usage = new PressUsage();
+    await readPendingFiles(blobs, { llm: vision(null), usage }, repo(), [{ ...photo, pending: 'vision', writtenBy: 'assistant' }]);
+    const cut: Pick<LanguageModel, 'read'> = {
+      read: async () => {
+        throw new LlmError(0, 'ran out of room', { ...cost, outputTokens: 16384 });
+      },
+    };
+    const r = repo();
+    const counts = await readPendingFiles(blobs, { llm: cut, usage }, r, [{ ...photo, pending: 'vision' }]);
+    expect(counts.failed).toBe(1);
+    expect(r.recordText).not.toHaveBeenCalled();
+    // And a reading whose text could not be written: the store was away, the model was paid.
+    const away = { recordText: vi.fn(async () => { throw new Error('store unavailable'); }) };
+    expect((await readPendingFiles(blobs, { llm: vision(said), usage }, away, [{ ...photo, pending: 'vision' }])).failed).toBe(1);
+    expect(usage.entries).toEqual([
+      { job: 'read', ...cost },
+      { job: 'read', ...cost, outputTokens: 16384 },
+      { job: 'read', ...cost },
+    ]);
   });
 
   it('leaves every file alone where no reader here takes it', async () => {

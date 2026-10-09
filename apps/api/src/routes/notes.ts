@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import {
+  type AutofillUsage,
   createNoteSchema,
   duplicateNoteSchema,
   InvalidFieldValue,
@@ -10,13 +11,15 @@ import {
   updateNoteSchema,
   updateNotesSchema,
 } from '@unbent/shared';
-import { attachmentTextFor, autofill, EXAMPLES_PER_OPTION, MAX_TAGS_ASKED, NothingToRead } from '../lib/autofill.js';
+import { NothingToRead } from '../lib/autofill.js';
+import { press } from '../lib/autofill-press.js';
 import { copyAttachments } from '../lib/copy-attachments.js';
 import { canAutofill, JevError, jevFrom } from '../lib/jev.js';
 import { canUseLlm, llmFrom } from '../lib/llm.js';
+import { dailyCap } from '../lib/llm-usage.js';
 import { isOperator } from '../lib/instance.js';
 import { nextCursor } from '../lib/notes-repo.js';
-import { autofillReaders, readPendingFiles } from '../lib/read-attachment.js';
+import { autofillReaders } from '../lib/read-attachment.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import type { AppEnv } from '../types.js';
@@ -245,98 +248,45 @@ export const notes = new Hono<AppEnv>()
 
   /**
    * What the model would file this note as: a title, a notebook, tags and field values,
-   * each with its confidence. Suggestions only — nothing is written; see
-   * `AutofillSuggestion` for why the client applies them.
+   * each with its confidence. Suggestions only — nothing in the note is written; see
+   * `AutofillSuggestion` for why the client applies them. What is written is the press
+   * itself and what the model cost, to the account's usage counter, and a press past the
+   * day's cap (`AUTOFILL_DAILY_CAP`) is a 429 with a sentence the button shows; see
+   * `press` in lib/autofill-press.ts.
    *
-   * A POST although it changes nothing here, because it is not free: every call is a
-   * round trip to a paid API, and nothing that treats GET as safe — a prefetch, a cache, a
-   * retry — may make one on its own. Ownership is checked before configuration, so the
-   * 404 for another user's note holds on an instance with no key too.
+   * A POST, because it is not free: every call is a round trip to a paid API, and nothing
+   * that treats GET as safe — a prefetch, a cache, a retry — may make one on its own.
+   * Ownership is checked before configuration, so the 404 for another user's note holds
+   * on an instance with no key too.
    */
   .post('/notes/:id/autofill', async (c) => {
-    const id = c.req.param('id');
-    /*
-       How many of the note's unread files one press will read. A card and its back fit;
-       a note with a stack of twenty scans is read five at a press, with the rest reported
-       as still waiting, since a press that silently paid for the whole stack would be the
-       surprise this cap exists to prevent. Maintenance offered the rest as a pass of its
-       own until MAK-179; the press is the only reader now.
-    */
-    const OWN_FILES_TO_READ = 5;
-    const notes = c.get('notes');
-    const attachments = c.get('attachments');
-
-    // The note and its own unread files, in one call; the read below wants both.
-    const prelude = await notes.autofillPrelude(id, OWN_FILES_TO_READ);
-    if (!prelude) return c.json({ error: 'Not found' }, 404);
-    const { note, forText, forVision } = prelude;
-    if (!canAutofill(c.env)) return c.json({ error: 'Auto-fill is not set up on this instance' }, 503);
-
-    /*
-       The note's own files first, before anything is suggested. This is the one place
-       the model reads a file (MAK-179): a picture, or a scan whose text layer had
-       nothing, is not read when it arrives but here, when a person presses — so the press
-       is the person asking for exactly this read, and it happens awaited. A few seconds
-       for a card is what the button costs anyway, and the text it records is what the
-       suggestion is then built from. Before that rule a file was read once, at upload,
-       and a press on one whose read had failed that day only ever answered "a file is
-       still being read".
-
-       Scoped to this note and capped, never the account's backlog: that is a thousand paid
-       requests on a real archive, and nothing runs it. A file this instance has no reader
-       for stays as it was and is reported in `read.pending`, as before. A read that fails
-       is logged and left pending rather than failing the press — the suggestion still
-       comes from whatever text there is.
-    */
-    const readers = autofillReaders(c.env);
-    if (readers.converter || readers.llm) {
-      const pending = [
-        ...forText.map((f) => ({ ...f, pending: 'text' as const })),
-        ...forVision.map((f) => ({ ...f, pending: 'vision' as const })),
-      ];
-      if (pending.length > 0) await readPendingFiles(c.env.BLOBS, readers, attachments, pending);
-    }
-
-    /*
-       Everything the model is shown beside the note, in one call: the files' text (read
-       just above, where it was pending), the notebooks and fields, and the most-used tags
-       with their examples. More tags than auto-fill's cap: it drops the note's own tags
-       first, and compares them without case, so a note tagged "Tax" also drops "tax".
-    */
-    const { files, notebooks, fields, examples } = await notes.autofillContext(
-      id,
-      EXAMPLES_PER_OPTION,
-      MAX_TAGS_ASKED + 2 * note.tags.length,
-    );
-
     try {
-      const suggestion = await autofill(
-        jevFrom(c.env),
+      const outcome = await press(
         {
-        note: { title: note.title, body: note.body, tags: note.tags, notebookId: note.notebookId ?? null },
-        attachments: files.map((f) => ({
-          filename: f.filename,
-          text: attachmentTextFor(f, canUseLlm(c.env)),
-          // Only the model's reading opens with a name for the file; an assistant's words
-          // are plain text to Auto-fill, wherever they came from.
-          readBy: f.readBy === 'vision' ? 'vision' : null,
-        })),
-        notebooks: notebooks.map((nb) => ({
-          id: nb.id,
-          name: nb.name,
-          purpose: nb.purpose,
-          fields: fields.filter((f) => f.notebookId === nb.id),
-          examples: examples.notebooks.get(nb.id) ?? [],
-        })),
-        tags: examples.tags.map((t) => ({ name: t.name, examples: t.examples })),
+          notes: c.get('notes'),
+          attachments: c.get('attachments'),
+          blobs: c.env.BLOBS,
+          readers: autofillReaders(c.env),
+          jev: canAutofill(c.env) ? jevFrom(c.env) : null,
+          llm: canUseLlm(c.env) ? llmFrom(c.env) : undefined,
+          cap: dailyCap(c.env),
+          operator: isOperator(c.env, c.get('user')?.email),
+          defer: (work) => c.executionCtx.waitUntil(work),
         },
-        // The language model writes the title and the text fields' values where the
-        // instance has one; see `autofill`.
-        canUseLlm(c.env) ? llmFrom(c.env) : undefined,
-        // Only an operator is told when that model rejects its key — a fault they can fix.
-        isOperator(c.env, c.get('user')?.email),
+        c.req.param('id'),
       );
-      return c.json(suggestion);
+      switch (outcome.kind) {
+        case 'missing':
+          return c.json({ error: 'Not found' }, 404);
+        case 'unconfigured':
+          return c.json({ error: 'Auto-fill is not set up on this instance' }, 503);
+        case 'capped':
+          // The sentence is the button's; Retry-After is for anything that reads headers.
+          c.header('Retry-After', String(outcome.retryAfter));
+          return c.json({ error: outcome.message }, 429);
+        case 'filed':
+          return c.json(outcome.suggestion);
+      }
     } catch (err) {
       if (err instanceof NothingToRead) return c.json({ error: err.message }, 422);
       if (err instanceof JevError) {
@@ -347,6 +297,16 @@ export const notes = new Hono<AppEnv>()
       }
       throw err;
     }
+  })
+
+  /**
+   * The account's Auto-fill this calendar year: presses, today's, the cap, and the
+   * model's tokens by job and model (`AutofillUsage`). One store call. Shown on
+   * Maintenance until the plans decide where it lives (MAK-108).
+   */
+  .get('/autofill/usage', requireAuth, withRepos, async (c) => {
+    const usage: AutofillUsage = { ...(await c.get('notes').autofillUsage()), dailyCap: dailyCap(c.env) };
+    return c.json(usage);
   })
 
   /** Restores a trashed note. 404 when it is not this user's, or was never trashed. */

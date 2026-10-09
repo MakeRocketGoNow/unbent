@@ -294,6 +294,12 @@ export interface Env {
    * `LLM_MODEL_DEFAULT` in lib/llm.ts.
    */
   ANTHROPIC_MODEL?: string;
+  /**
+   * The most Auto-fill presses one account may make in a UTC day; past it a press is a
+   * 429 the button shows. Unset enforces nothing, though every press is counted. See
+   * `dailyCap` in lib/llm-usage.ts.
+   */
+  AUTOFILL_DAILY_CAP?: string;
 }
 
 export interface SessionUser {

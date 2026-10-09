@@ -62,6 +62,9 @@ async function populate(stub: ReturnType<typeof freshStore>['stub']) {
   // A file let go of, so `deleted_blobs` has a row the loaded store still owes.
   await stub.recordAttachment({ id: `${kept.id}-gone`, noteId: kept.id, filename: 'gone.pdf', contentType: 'application/pdf', size: 10, r2Key: `users/x/${kept.id}/gone.pdf` });
   await stub.removeAttachment(kept.id, 'gone.pdf');
+  // An Auto-fill press and what its title cost, so `llm_usage` has rows to carry.
+  await stub.autofillPrelude(kept.id, 5, { cap: null });
+  await stub.recordLlmUsage([{ job: 'title', model: 'claude-opus-5', inputTokens: 400, outputTokens: 20, cacheReadTokens: 0, cacheWriteTokens: 0 }]);
   return { kept, trashed, notebook };
 }
 
@@ -230,16 +233,16 @@ describe('loading a dump', () => {
     const before = await stub.stats();
     const text = await dumpOf(stub, userId);
     // The dump as a store at 0004 would have written it: no deleted_blobs table, no rows
-    // for it, no record of 0005, and none of what came after — 0006's index.
+    // for it, no record of 0005, and none of what came after — 0006's index, 0007's table.
     const scan = scanStatements(text);
     const older =
-      scan.statements.filter((s) => !/deleted_blobs|0005-deleted-blobs|idx_tags_name_nocase|0006-tags-nocase/.test(s)).join('') +
+      scan.statements.filter((s) => !/deleted_blobs|0005-deleted-blobs|idx_tags_name_nocase|0006-tags-nocase|llm_usage|0007-llm-usage/.test(s)).join('') +
       scan.rest;
     expect(older).not.toBe(text);
     const result = await load(stub, older);
-    expect(result.migrated).toEqual(['0005-deleted-blobs', '0006-tags-nocase']);
+    expect(result.migrated).toEqual(['0005-deleted-blobs', '0006-tags-nocase', '0007-llm-usage']);
     expect(result.stats.migrations).toEqual(SCHEMA.map((f) => f.name));
-    expect(result.stats.counts).toEqual({ ...before.counts, deleted_blobs: 0 });
+    expect(result.stats.counts).toEqual({ ...before.counts, deleted_blobs: 0, llm_usage: 0 });
     // The table the file added is there to be written.
     await stub.removeAttachment((await stub.list({ limit: 1 }))[0]!.id, 'scan.pdf');
     expect((await stub.stats()).counts.deleted_blobs).toBe(1);

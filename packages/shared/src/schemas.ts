@@ -410,6 +410,42 @@ export function unreadFiles(pending: readonly string[]): string {
   return pending.length === 1 ? pending[0]! : `${pending.length} files`;
 }
 
+/** The jobs the language model does inside a press, as the usage counter names them. */
+export type LlmJob = 'read' | 'title' | 'fields';
+
+/**
+ * What one or more answers from the language model cost, in the API's own four counts,
+ * and the model that gave them. Tokens, never dollars: a token's price is the model's and
+ * changes. Declared once here; the API's `LlmUsage` and the store's `UsageEntry` are this.
+ */
+export interface LlmTokens {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+}
+
+/** What the model was asked for one job on one model, summed over a period. */
+export interface LlmJobUsage extends LlmTokens {
+  job: LlmJob;
+  requests: number;
+}
+
+/**
+ * `GET /api/autofill/usage`: the account's Auto-fill this calendar year, UTC (MAK-180). Presses,
+ * and the model's tokens by job and model, so a price can be put on them at display when
+ * one is wanted — the counter itself keeps no money. `today` and `dailyCap` are what the
+ * press route refuses on; `dailyCap` is null where the instance sets none.
+ */
+export interface AutofillUsage {
+  year: number;
+  presses: number;
+  today: number;
+  dailyCap: number | null;
+  models: LlmJobUsage[];
+}
+
 export const noteIdSchema = z.string().uuid();
 
 /**

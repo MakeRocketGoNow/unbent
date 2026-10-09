@@ -1047,6 +1047,18 @@ describe('rows read on an archive-sized store', () => {
             );
           }
         }
+        // Two years of Auto-fill used every day, four rows a day (MAK-180): the year's read
+        // must take this year's rows off the key and never last year's.
+        const thisYear = new Date().getUTCFullYear();
+        for (const year of [thisYear - 1, thisYear]) {
+          for (let d = 0; d < 365; d++) {
+            const day = new Date(Date.UTC(year, 0, 1 + d)).toISOString().slice(0, 10);
+            sql.exec(`INSERT INTO llm_usage (day, job, model, requests) VALUES (?1, 'press', '', 3)`, day);
+            for (const job of ['read', 'title', 'fields']) {
+              sql.exec(`INSERT INTO llm_usage (day, job, model, requests, input_tokens, output_tokens) VALUES (?1, ?2, 'claude-opus-5', 3, 4000, 300)`, day, job);
+            }
+          }
+        }
       });
     });
     expect(await stub.recountNotes()).toBe(0);
@@ -1139,6 +1151,10 @@ describe('rows read on an archive-sized store', () => {
       await measure('snapshot page', () => stub.snapshotPage(null, 100)),
       await measure('snapshot page deep', () => stub.snapshotPage('n02000', 100)),
       await measure('texts by id', () => stub.textsById(Array.from({ length: 25 }, (_, k) => `att-n${String(k * 3).padStart(5, '0')}`))),
+      // An Auto-fill press: the note, its unread files, and the day's press row checked and
+      // counted. Then the year read back for Maintenance.
+      await measure('autofill press', () => stub.autofillPrelude('n01500', 5, { cap: 1000 })),
+      await measure('autofill usage', () => stub.autofillUsage()),
       // History. A save inside the window asks for the newest copy and keeps nothing;
       // one outside it keeps a copy and prunes the note's oldest. Then the sheet's
       // two reads, and a copy put back.
@@ -1226,6 +1242,13 @@ describe('rows read on an archive-sized store', () => {
       'page of 100': 700,
       'page of 100 with file summaries': 950,
       'stored counts': 10,
+      // The press row by its key and its upsert, on top of the note and its files (21,
+      // measured 2026-10-08).
+      'autofill press': 30,
+      // A year used every day is 1,460 rows, and that is what it reads: this year's, off
+      // the primary key, and none of last year's 1,460 (1,460, measured 2026-10-08).
+      // Maintenance's, once a visit, so a whole year is fine; a scan would be double.
+      'autofill usage': 1600,
       // The counts row and the newest feed row, off its primary key.
       usage: 5,
       // The counts row and the five due keys off the retention index; the five hundred
