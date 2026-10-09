@@ -3,6 +3,7 @@ import type {
   AppConfig,
   AttachmentInfo,
   AutofillSuggestion,
+  AutofillUsage,
   ExportFilter,
   ExportPage,
   FieldDef,
@@ -316,6 +317,11 @@ export async function autofillNote(id: string): Promise<AutofillSuggestion> {
   return json<AutofillSuggestion>(
     await request(`/api/notes/${encodeURIComponent(id)}/autofill`, { method: 'POST' }),
   );
+}
+
+/** The account's Auto-fill this calendar year: presses, the day's cap, and the model's tokens. */
+export async function autofillUsage(): Promise<AutofillUsage> {
+  return json<AutofillUsage>(await request('/api/autofill/usage'));
 }
 
 /** A new note with this one's title, body, filing and files, under `copyId` when given. */

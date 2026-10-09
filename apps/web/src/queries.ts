@@ -228,6 +228,7 @@ export const keys = {
     filter.trashed ? (['trash', 'exact-count'] as const) : (['notes', 'exact-count', filter] as const),
   search: (q: string, filter: NoteFilter = {}, rows = false) => ['search', q, filter, { rows }] as const,
   config: () => ['config'] as const,
+  autofillUsage: () => ['autofill', 'usage'] as const,
   /** The operator page's reads, under one root so an action can invalidate all of them at once. */
   operatorBackups: () => ['operator', 'backups'] as const,
   operatorAccounts: () => ['operator', 'accounts'] as const,
@@ -439,6 +440,14 @@ export const tagsQuery = () =>
  */
 export const configQuery = () =>
   queryOptions({ queryKey: keys.config(), queryFn: () => api.getConfig(), staleTime: Infinity });
+
+/**
+ * What Auto-fill has cost the account this year, for Maintenance. The server's alone: the
+ * counter lives in the account's store and is in no feed. Read each time the page opens,
+ * since a press a minute ago is the one someone came to see counted.
+ */
+export const autofillUsageQuery = () =>
+  queryOptions({ queryKey: keys.autofillUsage(), queryFn: () => api.autofillUsage(), staleTime: 0 });
 
 /**
  * A note's history, for the History sheet. One of the reads that goes to the server

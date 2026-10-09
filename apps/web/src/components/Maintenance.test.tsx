@@ -7,7 +7,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import type { AppConfig } from '@unbent/shared';
+import type { AppConfig, AutofillUsage } from '@unbent/shared';
 import { keys } from '../queries.js';
 
 const deleteUser = vi.fn();
@@ -103,6 +103,63 @@ describe('Maintenance: note counts', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Recount' }));
     expect(await screen.findByText('Corrected 2 counts.')).toBeTruthy();
     expect(screen.queryByText('Every count was already right.')).toBeNull();
+  });
+});
+
+describe('Maintenance: Auto-fill this year', () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  const answering = (usage: AutofillUsage) =>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.startsWith('/api/autofill/usage')
+          ? new Response(JSON.stringify(usage), { status: 200 })
+          : new Response(JSON.stringify({ items: [], cursor: null, total: 3 }), { status: 200 }),
+      ),
+    );
+  const model = (job: 'read' | 'title' | 'fields', inputTokens: number, outputTokens: number, cacheReadTokens = 0) => ({
+    job,
+    model: 'claude-opus-5',
+    requests: 1,
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheWriteTokens: 0,
+  });
+
+  /**
+   * Presses and tokens for the year, read as magnitudes, with every kind of input summed
+   * into what the model read; and the day's cap only where the instance sets one.
+   */
+  it('says the presses and the tokens read and written, and the cap with today\u2019s count', async () => {
+    answering({
+      year: 2026,
+      presses: 38,
+      today: 3,
+      dailyCap: 50,
+      models: [model('read', 1_000_000, 60_000, 150_000), model('title', 40_000, 9_000), model('fields', 10_000, 15_000)],
+    });
+    harness({ accountDeletion: true, autofill: true });
+    const line = await screen.findByText(/38 presses since 1 January/);
+    expect(line.textContent).toBe(
+      '38 presses since 1 January, in which the model read 1.2 million tokens and wrote 84 thousand. This instance allows 50 a day; 3 used today.',
+    );
+  });
+
+  it('says there has been none, and nothing of a cap the instance does not set', async () => {
+    answering({ year: 2026, presses: 0, today: 0, dailyCap: null, models: [] });
+    harness({ accountDeletion: true, autofill: true });
+    expect((await screen.findByText(/No presses yet this year/)).textContent).toBe('No presses yet this year.');
+  });
+
+  it('is absent where the instance has no Auto-fill', async () => {
+    harness({ accountDeletion: true });
+    await screen.findByRole('button', { name: 'Recount' });
+    expect(screen.queryByText('Auto-fill this year')).toBeNull();
   });
 });
 

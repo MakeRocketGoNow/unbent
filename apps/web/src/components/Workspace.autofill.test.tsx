@@ -281,6 +281,19 @@ describe('the Auto-fill control', () => {
     expect(snackbar?.querySelector('[aria-label="Dismiss notification"]')).toBeTruthy();
   });
 
+  it('shows the server\u2019s sentence when the day\u2019s presses are used up', async () => {
+    // MAK-180: past the instance's daily cap the press is a 429 whose sentence says when it
+    // works again. It is shown as the server wrote it, like any other refusal.
+    const sentence = "Auto-fill can be used 50 times a day on this instance, and today's are used up. It will work again in 6 hours.";
+    vi.mocked(api.autofillNote).mockRejectedValue(new api.ApiError(429, `429: ${sentence}`));
+    mount(fresh);
+    fireEvent.click(await screen.findByRole('button', { name: 'Auto-fill' }));
+    const message = await screen.findByText(sentence);
+    expect(message.closest('.snackbar')?.className).toContain('error');
+    // The button is free again for a later press, not left busy.
+    expect((await screen.findByRole('button', { name: 'Auto-fill' })).hasAttribute('disabled')).toBe(false);
+  });
+
   it('offers Undo after a fill and restores what it changed', async () => {
     vi.mocked(api.autofillNote).mockResolvedValue(suggestion);
     mount(fresh);
