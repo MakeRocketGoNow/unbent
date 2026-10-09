@@ -46,7 +46,7 @@ export function capReached(cap: number, now: number): { message: string; retryAf
   const seconds = Math.max(1, Math.ceil((midnight.getTime() - now) / 1000));
   const hours = Math.ceil(seconds / 3600);
   const when = hours <= 1 ? 'within the hour' : `in ${hours} hours`;
-  const presses = cap === 1 ? 'once a day' : `${cap} times a day`;
+  const presses = cap === 1 ? 'once a day' : cap === 2 ? 'twice a day' : `${cap} times a day`;
   return {
     message: `Auto-fill can be used ${presses} on this instance, and today's are used up. It will work again ${when}.`,
     retryAfter: seconds,

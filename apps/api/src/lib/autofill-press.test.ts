@@ -165,5 +165,6 @@ describe('the cap', () => {
       retryAfter: 1800,
     });
     expect(capReached(20, Date.UTC(2026, 9, 8, 0, 0)).message).toContain('in 24 hours');
+    expect(capReached(2, late).message).toMatch(/^Auto-fill can be used twice a day/);
   });
 });

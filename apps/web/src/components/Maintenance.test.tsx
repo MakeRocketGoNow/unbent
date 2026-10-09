@@ -146,7 +146,7 @@ describe('Maintenance: Auto-fill this year', () => {
     harness({ accountDeletion: true, autofill: true });
     const line = await screen.findByText(/38 presses since 1 January/);
     expect(line.textContent).toBe(
-      '38 presses since 1 January, in which the model read 1.2 million tokens and wrote 84 thousand. This instance allows 50 a day; 3 used today.',
+      '38 presses since 1 January, in which the model read 1.2 million tokens and wrote 84 thousand. This instance allows 50 presses a day, and 3 have been used today.',
     );
   });
 
@@ -154,6 +154,14 @@ describe('Maintenance: Auto-fill this year', () => {
     answering({ year: 2026, presses: 0, today: 0, dailyCap: null, models: [] });
     harness({ accountDeletion: true, autofill: true });
     expect((await screen.findByText(/No presses yet this year/)).textContent).toBe('No presses yet this year.');
+  });
+
+  it('writes a small count out, and says when none of the day\u2019s have been used', async () => {
+    answering({ year: 2026, presses: 2, today: 0, dailyCap: 1, models: [model('title', 1412, 44)] });
+    harness({ accountDeletion: true, autofill: true });
+    expect((await screen.findByText(/2 presses since/)).textContent).toBe(
+      '2 presses since 1 January, in which the model read 1,412 tokens and wrote 44. This instance allows 1 press a day, and none have been used today.',
+    );
   });
 
   it('is absent where the instance has no Auto-fill', async () => {

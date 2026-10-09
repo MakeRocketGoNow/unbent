@@ -447,8 +447,14 @@ export function Maintenance() {
   );
 }
 
-/** "1.2 million", "84 thousand", "950": tokens are read as magnitudes, not to the unit. */
-const tokenCount = new Intl.NumberFormat('en', { notation: 'compact', compactDisplay: 'long', maximumFractionDigits: 1 });
+/**
+ * "1.2 million", "84 thousand", "1,412": a large count of tokens is read as a magnitude,
+ * not to the unit. Under ten thousand the number is written out, since "1.4 thousand" is
+ * longer than the number it rounds.
+ */
+const compact = new Intl.NumberFormat('en', { notation: 'compact', compactDisplay: 'long', maximumFractionDigits: 1 });
+const exact = new Intl.NumberFormat('en');
+const tokenCount = (n: number) => (n < 10_000 ? exact.format(n) : compact.format(n));
 
 /**
  * What Auto-fill has cost this account this calendar year (MAK-180): the presses, and the
@@ -496,8 +502,8 @@ function AutofillUsageSection() {
               {u.presses} {u.presses === 1 ? 'press' : 'presses'} since 1 January
               {read + written > 0 && (
                 <>
-                  , in which the model read {tokenCount.format(read)} tokens and wrote{' '}
-                  {tokenCount.format(written)}
+                  , in which the model read {tokenCount(read)} tokens and wrote{' '}
+                  {tokenCount(written)}
                 </>
               )}
               .
@@ -506,7 +512,9 @@ function AutofillUsageSection() {
           {u.dailyCap !== null && (
             <>
               {' '}
-              This instance allows {u.dailyCap} a day; {u.today} used today.
+              This instance allows {u.dailyCap} {u.dailyCap === 1 ? 'press' : 'presses'} a day,
+              and {u.today === 0 ? 'none have' : u.today === 1 ? '1 has' : `${u.today} have`} been
+              used today.
             </>
           )}
         </p>
