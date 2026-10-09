@@ -563,8 +563,13 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     }
     if (outcome === 'unchanged') return 'unchanged';
     if (typeof outcome === 'object') {
+      // The server answered the save itself — no local copy, or another tab holds the
+      // outbox — so no acknowledgement follows, and the answer is rebased into the draft
+      // here, for the same reason as there.
+      const prev = bases.current.get(noteId);
       setBase(noteId, outcome);
       queryClient.setQueryData(keys.note(noteId), outcome);
+      if (prev && noteIdRef.current === noteId) rebaseDraft(prev, outcome);
     }
     return undefined;
   }
