@@ -182,6 +182,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
   restoreRevision: vi.fn(),
   clearRevisions: vi.fn(),
   importNotebook: vi.fn(),
+  purgeNotes: vi.fn(),
 }));
 
 const { fakes, MemoryAdapter } = await h;
@@ -1177,6 +1178,18 @@ describe('a write made here', () => {
       { ids: ['n1'], refiles: false },
       { ids: ['n1'], refiles: true },
     ]);
+  });
+
+  it('includes emptying the trash, which names the trashed notes the list is showing', async () => {
+    const { engine } = library([row('n1'), row('n2')]);
+    vi.mocked(api.purgeNotes).mockResolvedValueOnce({ notesDeleted: 2 } as api.PurgeResult);
+    const heard = vi.fn();
+    const stop = actions.onLocalWrite(heard);
+    await expect(actions.emptyTrash(['n1', 'n2'])).resolves.toMatchObject({ notesDeleted: 2 });
+    stop();
+    expect(api.purgeNotes).toHaveBeenCalledWith('trashed');
+    expect(heard).toHaveBeenCalledWith({ ids: ['n1', 'n2'], refiles: true });
+    expect(engine.pull).toHaveBeenCalled();
   });
 
   it('opens the window a count rolls in only for a write that can move one', async () => {

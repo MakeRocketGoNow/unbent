@@ -1153,6 +1153,16 @@ export async function purgeNote(noteId: string): Promise<void> {
   });
 }
 
+/**
+ * Empties the trash: the server's own purge of every trashed note, sent as the request it
+ * always was, since the server decides its extent — notes this device has not copied
+ * included. Through here rather than straight to the API so it is a write like any other:
+ * `ids` are the trashed notes on screen, which the list follows out, and the count rolls.
+ */
+export async function emptyTrash(ids: readonly string[]): Promise<api.PurgeResult> {
+  return pulled(api.purgeNotes('trashed'), { ids, refiles: true });
+}
+
 /*
  * The bulk verbs answer with how many notes they acted on: the notes queued here, since
  * the server's count for those comes later from the queue, plus the server's count for

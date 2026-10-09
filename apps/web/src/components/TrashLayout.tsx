@@ -1,7 +1,6 @@
 import { useEffect, useState, type KeyboardEvent } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import * as api from '../notes-api.js';
 import * as actions from '../store/actions.js';
 import { trashQuery, invalidateNoteMembership } from '../queries.js';
 import { useNotesLayout, SIDEBAR_DEFAULT, SIDEBAR_MIN, SIDEBAR_MAX } from '../useNotesLayout.js';
@@ -184,7 +183,7 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
                 tone: 'danger',
                 onConfirm: () =>
                   empty.run(async () => {
-                    const r = await api.purgeNotes('trashed');
+                    const r = await actions.emptyTrash(notes.map((n) => n.id));
                     setPending(null);
                     if (open) void navigate({ to: '/trash' });
                     return `Deleted ${r.notesDeleted} note${r.notesDeleted === 1 ? '' : 's'}.`;
