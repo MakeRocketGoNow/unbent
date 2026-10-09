@@ -155,6 +155,11 @@ function play(list: HTMLElement, before: Snapshot, touched: ReadonlySet<string>)
     ghost.classList.add('note-ghost');
     ghost.setAttribute('aria-hidden', 'true');
     ghost.inert = true;
+    // A picture of the row, not a second one: no address to follow, even by a script's
+    // `click()`, which `inert` does not stop, and no id the page holds twice. The list's
+    // keys pass over it too (`useListKeys`).
+    for (const el of ghost.querySelectorAll('[href]')) el.removeAttribute('href');
+    for (const el of ghost.querySelectorAll('[id]')) el.removeAttribute('id');
     // In the list's own coordinates — it scrolls, and the copy is placed inside it — at
     // the place on screen the row left.
     ghost.style.top = `${was.rect.top - before.view.top - list.clientTop + list.scrollTop}px`;

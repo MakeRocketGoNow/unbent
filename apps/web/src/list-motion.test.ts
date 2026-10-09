@@ -37,7 +37,11 @@ function list(ids: string[]): HTMLUListElement {
 function row(id: string): HTMLLIElement {
   const li = document.createElement('li');
   li.dataset.noteId = id;
-  li.textContent = id;
+  const link = document.createElement('a');
+  link.href = `/notes/${id}`;
+  link.id = `row-${id}`;
+  link.textContent = id;
+  li.appendChild(link);
   li.getBoundingClientRect = function (this: HTMLLIElement) {
     const at = [...(this.parentElement?.querySelectorAll(':scope > [data-note-id], :scope > [data-motion-key]') ?? [])].indexOf(this);
     return rect(at * ROW);
@@ -89,6 +93,7 @@ describe('followLocalChanges', () => {
     expect(ghost.style.top).toBe(`${ROW}px`);
     expect(ghost.getAttribute('aria-hidden')).toBe('true');
     expect(ghost.dataset.noteId).toBeUndefined();
+    expect(ghost.querySelector('[href], [id]')).toBeNull();
     stop();
   });
 

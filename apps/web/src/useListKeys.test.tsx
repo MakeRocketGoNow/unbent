@@ -104,6 +104,21 @@ describe('useListKeys', () => {
     expect(document.activeElement).toBe(screen.getByTestId('c'));
   });
 
+  /* A row that has just left stays drawn while it closes up (`list-motion.ts`); it is not a row. */
+  it('passes over the copy of a row that has just left the list', () => {
+    const onActivate = vi.fn();
+    render(<List onActivate={onActivate} />);
+    const copy = document.createElement('li');
+    copy.className = 'note-entry note-ghost';
+    copy.innerHTML = '<a class="note-item active" data-testid="copy">gone</a>';
+    screen.getByRole('list').appendChild(copy);
+
+    screen.getByTestId('c').focus();
+    fireEvent.keyDown(screen.getByRole('list'), { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(screen.getByTestId('c'));
+    expect(focusActiveListItem()).toBe(false);
+  });
+
   /* Arrows inside other controls in the same list belong to those controls. */
   it('ignores arrows when an entry is not focused', () => {
     render(<List />);
