@@ -105,6 +105,9 @@ are drawn to match those letters rather than a library's weight.
 
 Don't add a second icon library, and ask before adding any other dependency.
 
+Updating one is done by hand, not by Dependabot: read [DEPENDENCIES.md](DEPENDENCIES.md)
+first, which names every version held back and why, and add to it when you hold one.
+
 ## Destructive actions
 
 Every destructive action goes through the `Confirm` component. It is inline, not modal, and

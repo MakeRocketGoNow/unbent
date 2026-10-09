@@ -11,8 +11,8 @@
 # weekly and monthly pull requests and leaves security updates alone (they are not counted
 # against it). Dependabot proposes a version without knowing why one was chosen — it
 # merged wa-sqlite 2 under an adapter that peers on 1 (#336) — so routine updates are done
-# by hand, by someone who can read why a version was chosen. The groups stay, because
-# security pull requests are grouped by them.
+# by hand, against DEPENDENCIES.md, which says which versions are held and why. The groups
+# stay, because security pull requests are grouped by them.
 
 version: 2
 updates:
