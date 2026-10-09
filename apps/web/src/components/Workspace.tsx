@@ -1368,7 +1368,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
             is most of the screen under a short note, and it is where a thumb goes to add
             to it; it is the column's, not the editor's, so the press used to do nothing.
             Only the column itself — never a press that landed on something inside it —
-            and only below the editor, so the margins beside a desktop note stay inert.
+            and only below the editor's bottom edge, across the column's whole width:
+            the margins beside the note's text stay inert, the space under it does not.
         */
         onMouseDown={(e) => {
           if (e.target !== e.currentTarget || e.button !== 0 || !editorView || noteView === 'preview') return;
