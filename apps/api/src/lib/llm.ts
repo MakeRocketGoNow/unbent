@@ -73,6 +73,25 @@ export const MAX_LLM_PDF_BYTES = 8 * 1024 * 1024;
 const MAX_OUTPUT_TOKENS = 16384;
 
 /**
+ * The media type a file's bytes actually are, read from their first bytes, or null when
+ * they are none of the types the model takes. The stored type is what the upload said,
+ * and an upload can be wrong: Evernote's snapshots are PNGs that arrive as `image/jpeg`.
+ * The API refuses an image whose bytes do not match the type it is sent as, so a file
+ * stored under the wrong type failed on every press and could never be read (three of 45
+ * pictures in a sample of the real corpus, 2026-10-09).
+ */
+export function sniffMediaType(bytes: ArrayBuffer): string | null {
+  const b = new Uint8Array(bytes.slice(0, 12));
+  const ascii = (from: number, to: number) => String.fromCharCode(...b.subarray(from, to));
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
+  if (b[0] === 0x89 && ascii(1, 4) === 'PNG') return 'image/png';
+  if (ascii(0, 4) === 'GIF8') return 'image/gif';
+  if (ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WEBP') return 'image/webp';
+  if (ascii(0, 5) === '%PDF-') return 'application/pdf';
+  return null;
+}
+
+/**
  * A title is a few dozen tokens, and this is far more than that on purpose: the default
  * model thinks before it answers, that thinking is counted against the same budget, and
  * a title that spent the whole of a small budget thinking would come back with no answer
@@ -446,11 +465,13 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
   return {
     async read(file) {
       const data = toBase64(file.bytes);
+      // Sent as what the bytes are, not as what the upload called them; see `sniffMediaType`.
+      const mediaType = sniffMediaType(file.bytes) ?? file.contentType;
       // A PDF is a document, a picture an image; the API reads each page of a document
       // as text and as an image, so a scan with no text layer reads the same as a photo.
-      const source = { type: 'base64', media_type: file.contentType, data };
+      const source = { type: 'base64', media_type: mediaType, data };
       const block =
-        file.contentType === 'application/pdf'
+        mediaType === 'application/pdf'
           ? { type: 'document', source }
           : { type: 'image', source };
 
