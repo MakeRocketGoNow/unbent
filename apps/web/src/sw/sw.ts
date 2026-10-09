@@ -64,31 +64,40 @@ self.addEventListener('activate', shell.activate);
  * event, and again from a page load that found the cache empty (`refillShell`). Workbox
  * stores what it fetches outside the install only when the manifest carries integrity
  * hashes, which this one does not, so with the strategy an emptied cache was never
- * filled again until the next deploy. A fetch that fails ends the fill: in the install
- * that fails the install, and the browser tries again on the next load; in a refill it
- * is caught, and the next page load tries again.
+ * filled again until the next deploy. A fetch that fails ends the fill, once every loop
+ * has stopped: in the install that fails the install, and the browser tries again on
+ * the next load; in a refill it is caught, and the next page load tries again.
  */
 const INSTALL_CONCURRENCY = 6;
 
 async function fillShell(): Promise<void> {
   const cache = await caches.open(shell.strategy.cacheName);
+  const store = async ([url, cacheKey]: [string, string]): Promise<void> => {
+    if (await cache.match(cacheKey)) return;
+    const response = await fetch(
+      new Request(url, {
+        integrity: shell.getIntegrityForCacheKey(cacheKey),
+        cache: cacheKey === url ? 'default' : 'reload',
+        credentials: 'same-origin',
+      }),
+    );
+    if (response.status !== 200) throw new Error(`${url}: ${response.status}`);
+    await cache.put(cacheKey, response.redirected ? unredirected(response) : response);
+  };
   const queue = [...shell.getURLsToCacheKeys()];
+  // The first failure stops every loop at its next file, and the fill settles only once
+  // all of them have: `Promise.all` alone rejects at once and leaves the other loops
+  // fetching, which let a second refill start beside the first (review of #331).
+  let failure: unknown;
   const next = async (): Promise<void> => {
-    for (let entry = queue.shift(); entry; entry = queue.shift()) {
-      const [url, cacheKey] = entry;
-      if (await cache.match(cacheKey)) continue;
-      const response = await fetch(
-        new Request(url, {
-          integrity: shell.getIntegrityForCacheKey(cacheKey),
-          cache: cacheKey === url ? 'default' : 'reload',
-          credentials: 'same-origin',
-        }),
-      );
-      if (response.status !== 200) throw new Error(`${url}: ${response.status}`);
-      await cache.put(cacheKey, response.redirected ? unredirected(response) : response);
+    for (let entry = queue.shift(); entry && !failure; entry = queue.shift()) {
+      await store(entry).catch((error: unknown) => {
+        failure ??= error;
+      });
     }
   };
   await Promise.all(Array.from({ length: INSTALL_CONCURRENCY }, next));
+  if (failure) throw failure;
 }
 
 /** The same body and headers, without the mark of having been redirected. */
