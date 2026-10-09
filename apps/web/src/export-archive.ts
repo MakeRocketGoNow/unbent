@@ -474,16 +474,6 @@ const exporting = createExporting();
 export const startExport = (filter: ExportFilter) => exporting.start(filter);
 export const stopExport = () => exporting.stop();
 
-/**
- * Whether `state` is an export of `filter`. Compared as the query the pages are fetched
- * with, which is already the export's normal form: no empty lists, no sort that means
- * nothing without a date range.
- */
-export function isExportOf(state: ExportState, filter: ExportFilter): boolean {
-  if (!state.filter) return false;
-  return api.exportQuery(state.filter).toString() === api.exportQuery(filter).toString();
-}
-
 export function useExporting(): ExportState {
   return useSyncExternalStore(exporting.subscribe, exporting.get);
 }

@@ -79,9 +79,10 @@ export function Export() {
       <p className="muted small">
         This page exports everything. To export one notebook, use the download beside it
         under <Link to="/settings/notebooks" className="link">Notebooks</Link>. For any
-        other slice — a tag, a range of dates — filter the note list and use{' '}
-        <em>Export these notes</em> beneath the filters, or select the notes you want and
-        export them from the bar that appears. The archive has the same shape either way.
+        other slice — a tag, a range of dates — filter the note list, then open the count
+        under its heading (<em>37 notes ⌄</em>) and choose <em>Export these notes</em>, or
+        select the notes you want and export them from the bar that appears. The archive has
+        the same shape either way.
       </p>
 
       {/* The other half of the promise, said where the first half is made: a backup that

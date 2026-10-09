@@ -2015,6 +2015,24 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
    otherwise inherit, so it reads as a menu item and not as prose. */
 a.overflow-item { text-decoration: none; }
 
+/* A second, quieter line saying why an item is faded — on a phone the `title` that says
+   the same is never shown. See `countMenuItems`. */
+.overflow-item-note {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* An item that says why it is faded is faded by colour instead of opacity. The opacity
+   above stacked on the note's own muted colour left the one line that explains the item
+   at about 2:1 — unreadable on the phone it exists for. Muted ink on both lines still
+   reads as unavailable beside the full-ink items, with no hover fill to say otherwise. */
+.overflow-item:disabled:has(.overflow-item-note) {
+  opacity: 1;
+  color: var(--muted);
+}
+
 /*
    The error state's header row holds only the back arrow, and that arrow is hidden above
    the breakpoint — which left a bordered 9px strip above the message with nothing in it.
@@ -2401,14 +2419,6 @@ a.overflow-item { text-decoration: none; }
 .date-range input:focus {
   outline: none;
   border-color: var(--accent);
-}
-
-/* Export the current filter: a quiet button under the filter rows, as wide as its label
-   rather than stretched across the sheet. The negative margin centres its glyph under the
-   rows' larger ones — its padding is there for the hover fill, not to indent it. */
-.export-filtered {
-  align-self: flex-start;
-  margin-left: -0.15rem;
 }
 
 /* ---------------------------------------------------------------------------------
@@ -7190,6 +7200,72 @@ button.settings-nav-item {
 }
 
 /*
+   The count as a menu trigger — see `NoteListHead`'s `countMenu` for when it is one.
+
+   It has to read as the count first and a control second: the count's own size and
+   colour, a chevron after it, and the fill every icon in this row takes under the pointer.
+   A count that opened a menu with nothing to say so was the version turned down before.
+
+   Nothing may move when a plain count becomes this. The padding the fill needs is taken
+   back by an equal negative margin, so the box grows into the space around the line
+   instead of pushing the line; the header measures the same with either. The width is the
+   trigger's own content rather than its wrapper's, because a wrapper sized from the
+   margin box would hand the padding's width back out of the text and truncate "7 notes".
+
+   On a touch screen the box is still a line of 0.8rem text, so an invisible layer
+   stretches its target to 44px tall: up over the title, which does nothing when tapped,
+   and down into the gap above the first note. Under a pointer the visible box is target
+   enough.
+*/
+.count-menu {
+  align-self: flex-start;
+  max-width: 100%;
+}
+
+.overflow-trigger.count-trigger {
+  position: relative;
+  min-width: 0;
+  width: max-content;
+  max-width: calc(100% + 0.5rem);
+  height: auto;
+  gap: 0.15rem;
+  padding: 0.05rem 0.25rem;
+  margin: -0.05rem -0.25rem;
+  font-size: 0.8rem;
+  line-height: inherit;
+  color: var(--muted);
+}
+
+.count-trigger .count-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.count-trigger svg { flex: none; }
+
+.count-trigger[aria-expanded='true'] {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 7%, transparent);
+}
+
+@media (pointer: coarse) {
+  .count-trigger::after {
+    content: '';
+    position: absolute;
+    inset: -0.7rem -0.25rem;
+  }
+}
+
+/* Left-anchored, and lined up with the count's text rather than its fill: the trigger is
+   at the start of the row here, where the right-anchored default would hang the menu off
+   the left edge of a phone. */
+.count-menu .overflow-list {
+  left: -0.25rem;
+  right: auto;
+}
+
+/*
    A 44px square holding one icon.
 
    Shares every declaration with `.overflow-trigger`, which is the same object: an icon that
@@ -8043,7 +8119,7 @@ button.settings-nav-item {
    the taller row a larger target for free.
 
    The gap is cancelled rather than the body's rule changed, because every other child of
-   the sheet does want that gap — the chips, the rule, the export link. `+` so it only
+   the sheet does want that gap — the chips and the rule. `+` so it only
    collapses the space *between* rows and leaves the one above the first.
 */
 .filter-row {

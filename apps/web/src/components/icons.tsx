@@ -9,6 +9,7 @@ import {
   Bot,
   Calendar,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   CloudOff,
@@ -504,6 +505,14 @@ export function RowChevronIcon() {
 }
 
 /**
+ * The chevron after the list's count when the count opens a menu — see `NoteListHead`.
+ * Text-sized, since it is a suffix of the count rather than a control of its own.
+ */
+export function CountChevronIcon() {
+  return <ChevronDown size="1em" strokeWidth={2.25} aria-hidden="true" focusable="false" />;
+}
+
+/**
  * Two overlapping rectangles, for copying text to the clipboard.
  *
  * Used beside a copiable value like the MCP server URL, where clicking copies. Small and
@@ -524,15 +533,6 @@ export function CopyIcon() {
  */
 export function DownloadIcon() {
   return <HeaderIcon icon={Download} />;
-}
-
-/**
- * The same tray and arrow, sized to the words beside it: for a button that says what it
- * downloads, like "Export these notes" beneath the list's filters, where the glyph labels
- * the action rather than standing in for it.
- */
-export function DownloadRowIcon() {
-  return <RowIcon icon={Download} />;
 }
 
 /**

@@ -28,8 +28,9 @@ import { SampleNotes } from './SampleNotes.js';
 import { EmptyLibrary } from './EmptyLibrary.js';
 import { Button } from './Button';
 import { NotebookMissing, isNotebookMissing } from './NotebookMissing.js';
-import { ExportLink } from './ExportLink.js';
+import { countMenuItems, offersCountMenu } from './count-menu.js';
 import { startExport, useExportRunning } from '../export-archive.js';
+import { useOffline } from '../connectivity.js';
 import { TagPicker } from './TagPicker.js';
 import { FilterRow } from './FilterRow.js';
 import { DatePicker } from './DatePicker.js';
@@ -137,9 +138,10 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   };
 
   /**
-   * Whether anything narrows the list, notebook included. The export link reads this: it
-   * is the current filter serialized, and because the filters already live in the URL
-   * there is no separate state to keep in step — the link is the view.
+   * Whether anything narrows the list, notebook included. The count's export reads this:
+   * narrowed, it exports the current filter serialized — because the filters already live
+   * in the URL there is no separate state to keep in step, the export is of the view —
+   * and otherwise it leads to the whole library's export page.
    */
   const isFiltered = Boolean(notebook || selectedTags.length || fieldFilters.length || from || to);
 
@@ -152,7 +154,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * pointing at a surface where nothing was set. A badge has to be about the control it
    * sits on.
    *
-   * `isFiltered` is still the whole scope, and still what the export link reads: that is
+   * `isFiltered` is still the whole scope, and still what the count's export reads: that is
    * about the slice of the archive on screen, which the notebook is very much part of.
    */
   const sheetFiltered = Boolean(selectedTags.length || fieldFilters.length || from || to);
@@ -757,6 +759,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * anywhere; clearing the query brings the state back.
    */
   const showNotebookMissing = notebookMissing && results === null;
+  const counting = loading || (arriving !== null && notes.length === 0);
+  const noteCount = total ?? notes.length;
   const countLabel = showNotebookMissing
     ? // A count of a notebook that does not exist would be a claim about nothing.
       null
@@ -764,11 +768,45 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       ? awaiting
         ? 'Searching…'
         : `${results.length} matches`
-      : loading || (arriving && notes.length === 0)
+      : counting
         ? 'Loading…'
-        : `${total ?? notes.length} notes`;
+        : // Formatted as the menu under it formats it: "1,234 notes ⌄" over "Export these
+          // 1,234 notes", and one note over "Export this note".
+          noteCount === 1
+          ? '1 note'
+          : `${noteCount.toLocaleString()} notes`;
 
+  /* The count as a menu: export the slice, or select it — see `offersCountMenu` for when,
+     and `countMenuItems` for what. */
   const exportRunning = useExportRunning();
+  const offline = useOffline();
+  const countMenu =
+    offersCountMenu({
+      searching: results !== null,
+      notebookMissing: showNotebookMissing,
+      loading: counting,
+      total: noteCount,
+    })
+      ? countMenuItems({
+          total: noteCount,
+          everything: !isFiltered,
+          shown: rowIds.length,
+          more: list.hasNextPage,
+          exportRunning,
+          offline,
+          onExport: () =>
+            startExport({
+              tags: filter.tag,
+              notebook: filter.notebook,
+              fields: filter.field,
+              from: filter.from,
+              to: filter.to,
+              sort: sort ?? DEFAULT_NOTE_SORT,
+            }),
+          onSelectAll: selection.selectAll,
+        })
+      : undefined;
+
   const selectionExportLabel = exportRunning
     ? 'Export — another export is running'
     : selection.ids.length === 1
@@ -799,6 +837,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       <aside className="sidebar">
         <NoteListHead
           count={countLabel}
+          countMenu={countMenu}
           title={heading}
           query={q}
           onQuery={setQuery}
@@ -1092,10 +1131,6 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                 value={rangeLabel(from, to) ?? undefined}
                 onClick={() => setSheetPage('dates')}
               />
-
-              {!searching && isFiltered && (
-                <ExportLink filter={filter} sort={sort} total={total} />
-              )}
             </>
           )}
 
