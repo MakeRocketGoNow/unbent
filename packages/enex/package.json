@@ -16,17 +16,17 @@
   },
   "dependencies": {
     "@unbent/shared": "workspace:*",
-    "@zip.js/zip.js": "^2.22.0",
+    "@zip.js/zip.js": "^2.23.0",
     "hast-util-from-html": "^2.0.3",
     "hast-util-to-mdast": "^10.1.2",
     "mdast-util-gfm": "^3.1.0",
-    "mdast-util-to-markdown": "^2.1.3",
-    "pdfjs-dist": "^6.3.289",
+    "mdast-util-to-markdown": "^2.2.0",
+    "pdfjs-dist": "^6.4.299",
     "saxes": "^6.0.0",
     "unist-util-visit": "^5.1.0"
   },
   "devDependencies": {
-    "@types/node": "^26.6.3",
+    "@types/node": "^26.6.5",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"
   }
