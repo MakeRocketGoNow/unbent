@@ -50,8 +50,14 @@ const dropPosField = StateField.define<DecorationSet>({
   provide: (field) => EditorView.decorations.from(field),
 });
 
-/** Only redispatches when the position actually changes; dragover fires continuously. */
-function moveTo(view: EditorView, pos: number | null): void {
+/**
+ * Draws the drop point at `pos`, or clears it for null.
+ *
+ * Exported for `noteDropZone`, which aims drops that land on the note around the editor
+ * and has to show them with this same marker. Only redispatches when the position
+ * actually changes; dragover fires continuously.
+ */
+export function showDropAt(view: EditorView, pos: number | null): void {
   const current = view.state.field(dropPosField, false);
   const existing = current?.size ? current.iter().from : null;
   if (existing === pos) return;
@@ -86,7 +92,7 @@ export function fileDropCursor(): Extension {
         */
         if (view.state.readOnly) {
           event.dataTransfer.dropEffect = 'none';
-          moveTo(view, null);
+          showDropAt(view, null);
           return false;
         }
         // `posAtCoords` measures rendered geometry, so it throws where there is none —
@@ -100,7 +106,7 @@ export function fileDropCursor(): Extension {
         } catch {
           pos = null;
         }
-        moveTo(view, pos);
+        showDropAt(view, pos);
         return false;
       },
       dragleave(event, view) {
@@ -109,15 +115,15 @@ export function fileDropCursor(): Extension {
         // editor itself counts.
         const to = event.relatedTarget as Node | null;
         if (to && view.dom.contains(to)) return false;
-        moveTo(view, null);
+        showDropAt(view, null);
         return false;
       },
       drop(event, view) {
-        if (event.dataTransfer?.types.includes('Files')) moveTo(view, null);
+        if (event.dataTransfer?.types.includes('Files')) showDropAt(view, null);
         return false;
       },
       dragend(_event, view) {
-        moveTo(view, null);
+        showDropAt(view, null);
         return false;
       },
     }),

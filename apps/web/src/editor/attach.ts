@@ -1,4 +1,4 @@
-import { Facet, type Extension } from '@codemirror/state';
+import { Facet, type Extension, type Text } from '@codemirror/state';
 import { EditorView, ViewPlugin, type PluginValue } from '@codemirror/view';
 import { findAbsoluteAttachmentLinks, formatAttachmentMarkdown } from '@unbent/shared';
 
@@ -139,8 +139,22 @@ export function pendingUploads(view: EditorView): number {
  * The uploads themselves run one at a time. On a phone radio a PDF and a photo racing
  * each other finish later than the two in sequence, and the order in the note is already
  * settled by the placeholders.
+ *
+ * `ownParagraph` sets each file apart as a paragraph of its own, with a blank line either
+ * side — for a drop beside the text rather than into it (`noteDropZone`), which was not
+ * aimed into the middle of anything. A single line break is not enough: markdown reads a
+ * line written straight under a paragraph, a quote or a list item as more of it, so a
+ * picture dropped under a closing quote would be drawn inside the quote. Only what is
+ * missing goes in — no blank line is doubled — and a file that ends the note is followed
+ * by one line break, as a file dropped into an empty note always was. Without it, a file
+ * goes exactly where `at` is, on the line it is dropped into.
  */
-export async function insertUploads(view: EditorView, files: File[], at: number): Promise<void> {
+export async function insertUploads(
+  view: EditorView,
+  files: File[],
+  at: number,
+  { ownParagraph = false }: { ownParagraph?: boolean } = {},
+): Promise<void> {
   // The one routine every way in shares — drop, paste, the toolbar's Attach — so the
   // read-only check here covers any caller that forgot its own.
   if (view.state.readOnly) return;
@@ -154,8 +168,14 @@ export async function insertUploads(view: EditorView, files: File[], at: number)
     controller: new AbortController(),
   }));
 
+  const tokens = jobs.map((job) => job.token);
   view.dispatch({
-    changes: { from: at, insert: jobs.map((job) => `${job.token}\n`).join('') },
+    changes: {
+      from: at,
+      insert: ownParagraph
+        ? apart(view.state.doc, at, tokens)
+        : tokens.map((token) => `${token}\n`).join(''),
+    },
     // A file chosen from the toolbar may land off-screen; a drop never does, and
     // scrolling to something already visible is a no-op.
     effects: EditorView.scrollIntoView(at),
@@ -207,6 +227,19 @@ export function abandonUploads(view: EditorView): boolean {
   if (changes.length === 0) return false;
   view.dispatch({ changes });
   return true;
+}
+
+/** The tokens for `ownParagraph`, with the line breaks `at` lacks on either side. */
+function apart(doc: Text, at: number, tokens: string[]): string {
+  const line = doc.lineAt(at);
+  const blank = (n: number) => doc.line(n).text.trim() === '';
+  // Text on this line before `at` needs a blank line; a line above that is not blank
+  // already ends in a break, so it needs one more; the top of the note or a blank line
+  // above needs nothing.
+  const lead = at > line.from ? '\n\n' : line.number === 1 || blank(line.number - 1) ? '' : '\n';
+  // The same below, except that the end of the note takes the one break.
+  const tail = at < line.to ? '\n\n' : line.number === doc.lines ? '\n' : blank(line.number + 1) ? '' : '\n';
+  return lead + tokens.join('\n\n') + tail;
 }
 
 function replaceToken(view: EditorView, token: string, replacement: string) {
