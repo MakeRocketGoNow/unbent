@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { Workbox } from 'workbox-window';
+import type { InstanceKind } from '@unbent/shared';
 import { pageBusy } from './busy.js';
 
 /**
@@ -46,6 +47,19 @@ let currentPath: () => string = () => location.pathname;
 let untouched = true;
 let watchingTouch = false;
 
+/**
+ * Which instance this is, from its config, once that has loaded; until then the page is
+ * treated as production, the careful case. See `takesDeploysAtOnce`.
+ */
+let instanceKind: InstanceKind | undefined;
+
+/** The next look at a deploy waiting for the page to finish what it is doing (`deployArrived`). */
+let retry: ReturnType<typeof setTimeout> | undefined;
+
+/** When that wait began, and whether it has been said yet; see `deployArrived`. */
+let held: { since: number; said: boolean } | undefined;
+const LONG_HOLD = 3000;
+
 export function registerServiceWorker(pathNow: () => string): void {
   recoverFromMissingChunks();
   if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
@@ -55,12 +69,8 @@ export function registerServiceWorker(pathNow: () => string): void {
   // Fires for a worker that installed during this visit and for one already waiting when
   // the page loaded, which is the Android app's usual case: it resumes rather than reloads.
   worker.addEventListener('waiting', () => {
-    if (shouldApplyOnLoad({ untouched, busy: pageBusy(), path: location.pathname }) && reloadAllowed()) {
-      handOver(worker, location.href);
-      return;
-    }
     updateReady = true;
-    setNotice(true);
+    deployArrived();
   });
   /*
      A page already under a worker registers at once and asks for a new one straight
@@ -81,7 +91,9 @@ export function registerServiceWorker(pathNow: () => string): void {
 }
 
 /**
- * Whether a deploy found while the page has only just loaded should be taken at once.
+ * Whether a deploy whose worker has just started waiting should be taken at once: on dev
+ * and previews whenever the page can spare a reload (`takesDeploysAtOnce`), and elsewhere
+ * while the page has only just loaded.
  *
  * A reload is how anyone asks for the newest version, and the worker answers every load
  * from the shell it holds — so without this, reloading after a deploy drew the old build,
@@ -97,8 +109,117 @@ export function registerServiceWorker(pathNow: () => string): void {
  * instead. Never inside the Android app's embed pages, and never while the page holds
  * work a reload would lose.
  */
-export function shouldApplyOnLoad(state: { untouched: boolean; busy: boolean; path: string }): boolean {
-  return state.untouched && !state.busy && !state.path.startsWith('/embed/');
+export function shouldApplyOnArrival(state: {
+  untouched: boolean;
+  busy: boolean;
+  path: string;
+  kind?: InstanceKind;
+}): boolean {
+  if (state.busy || state.path.startsWith('/embed/')) return false;
+  return state.untouched || takesDeploysAtOnce(state.kind);
+}
+
+/**
+ * Whether this instance takes a new deploy the moment its worker is waiting, rather than
+ * at the careful moments production waits for.
+ *
+ * Dev and previews exist to be tried right after a push, and the careful rules made that
+ * nearly impossible on a phone: the reload drew the build the worker held, the new one
+ * arrived while the tester was already scrolling, and the notice then waited for a change
+ * of section or five minutes away. So they reloaded again and saw the same build, and
+ * reached for clearing the site's data, which takes the worker away mid-session and makes
+ * the next load slower still. On these the deploy is the thing being looked at; a reload
+ * that resets a list's scroll is cheap beside reviewing a build the PR has moved past.
+ *
+ * Still never while the page holds work a reload would lose — `deployArrived` waits for it
+ * to land instead, and here that includes someone in a text field (`isTextField`) — and
+ * still at most once a minute (`reloadAllowed`). Local is left out:
+ * a built app on the Worker's port is where the worker is tried before it ships, so it
+ * behaves as production does. Production, with no kind, is unchanged.
+ */
+export function takesDeploysAtOnce(kind: InstanceKind | undefined): boolean {
+  return kind === 'dev' || kind === 'preview';
+}
+
+/**
+ * Whether `el` is a field someone can be typing in, for holding a deploy back on dev and
+ * previews.
+ *
+ * `pageBusy()` knows the note's unsent typing and nothing else, so a rename, a new tag or
+ * the search box half typed is lost to a reload — the reason production waits five
+ * minutes away before taking a deploy on return. Here, where a deploy is taken while the
+ * page is in use, focus in such a field stands in for the hold it does not have; the
+ * deploy follows as soon as it leaves. The note's title counts too, which costs only the
+ * wait for a blur. Its body does not: the editor is `contenteditable`, not a field, and a
+ * cursor resting in a saved note has nothing to lose.
+ */
+export function isTextField(el: Element | null): boolean {
+  if (el instanceof HTMLTextAreaElement) return !el.readOnly && !el.disabled;
+  if (!(el instanceof HTMLInputElement)) return false;
+  return !el.readOnly && !el.disabled && !NOT_TYPED.has(el.type);
+}
+const NOT_TYPED = new Set(['button', 'checkbox', 'color', 'file', 'hidden', 'image', 'radio', 'range', 'reset', 'submit']);
+
+/**
+ * Tells the hand-over which instance this is, from the config. Order-free with
+ * `registerServiceWorker`: a deploy that was found before the config loaded, and left
+ * waiting because the page was in use, is taken now if this instance takes them at once.
+ * Anywhere else it does nothing, so a slow config cannot bring back a notice someone has
+ * already dismissed.
+ */
+export function setInstanceKind(kind: InstanceKind | undefined): void {
+  instanceKind = kind;
+  if (takesDeploysAtOnce(kind)) deployArrived();
+}
+
+/**
+ * A new deploy's worker is waiting: take it now if this moment allows, and otherwise say
+ * so and leave it to a change of section, a return after a real absence, or the notice's
+ * Reload.
+ *
+ * On an instance that takes deploys at once, a page holding one back — a save, an upload,
+ * someone in a text field — is asked again every quarter second rather than left to those
+ * moments. The notice waits too. The hold is usually a save a second from landing, and a
+ * notice up for that second would be a flicker; but an import or an export holds the page
+ * for minutes, and a tester then looked at the old build with no word that a new one was
+ * waiting, which is what the notice exists to end. So it is said once the hold has lasted
+ * a few seconds, once, so that dismissing it sticks, and the deploy is still taken the
+ * moment the hold ends. The minute's guard still holds there, and a deploy it turns away
+ * gets the notice like any other.
+ */
+function deployArrived(): void {
+  clearTimeout(retry);
+  retry = undefined;
+  const worker = wb;
+  if (!worker || !updateReady) return;
+  const atOnce = takesDeploysAtOnce(instanceKind);
+  const holding = () => pageBusy() || (atOnce && isTextField(document.activeElement));
+  const busy = holding();
+  const state = { untouched, busy, path: location.pathname, kind: instanceKind };
+  if (shouldApplyOnArrival(state) && reloadAllowed()) {
+    updateReady = false;
+    held = undefined;
+    setNotice(false);
+    handOver(worker, location.href, holding);
+    return;
+  }
+  // Not on an embed page, which never takes one at arrival: waiting there only delays the notice.
+  if (busy && atOnce && !state.path.startsWith('/embed/')) {
+    held ??= { since: Date.now(), said: false };
+    if (sayHold(held, Date.now())) {
+      held.said = true;
+      setNotice(true);
+    }
+    retry = setTimeout(deployArrived, 250);
+    return;
+  }
+  held = undefined;
+  setNotice(true);
+}
+
+/** Whether a deploy held back on dev or a preview should now be said; see `deployArrived`. */
+export function sayHold(held: { since: number; said: boolean }, now: number): boolean {
+  return !held.said && now - held.since >= LONG_HOLD;
 }
 
 function watchFirstTouch(): void {
@@ -211,6 +332,8 @@ function reloadIntoUpdate(): void {
   const worker = wb;
   if (!worker) return;
   const go = () => {
+    // Taken meanwhile, by a change of section or a deploy taken at once (`deployArrived`).
+    if (!updateReady) return;
     if (pageBusy()) {
       setTimeout(go, 250);
       return;
@@ -278,13 +401,30 @@ export function takeUpdate(to: { pathname: string; href: string }, preload: bool
   return new Promise<never>(() => handOver(wb!, to.href));
 }
 
-/** Lets the waiting worker take over, then loads `href` from it. */
-function handOver(worker: Workbox, href: string): void {
+/**
+ * Lets the waiting worker take over, then loads `href` from it.
+ *
+ * The load waits while the page holds work a reload would lose, although every caller has
+ * just checked. The worker takes a moment to take over, and on dev and previews, where a
+ * deploy is taken while the page is in use, a key pressed in that moment left the note
+ * unsaved with the load already on its way; its save then rested on the autosave's flush
+ * racing the unload. `held` is what counts as holding the page: `pageBusy()`, and on dev
+ * and previews a focused text field as well (`deployArrived`), for the same moment. Not for
+ * the other callers: the notice's Reload is a decision already made, and a change of
+ * section is leaving the field anyway. While it waits the page is under the new worker, so
+ * a route it had not loaded yet is asked of the new build, and `recoverFromMissingChunks`
+ * reloads if that build no longer has it.
+ */
+function handOver(worker: Workbox, href: string, held: () => boolean = pageBusy): void {
   // Once: `controlling` and the timer can both fire, and a second `assign` on a slow
   // load would restart the navigation already under way.
   let gone = false;
   const go = () => {
     if (gone) return;
+    if (held()) {
+      setTimeout(go, 250);
+      return;
+    }
     gone = true;
     location.assign(href);
   };
@@ -318,7 +458,7 @@ function handOver(worker: Workbox, href: string): void {
  * minute only keeps a run of quick switches from making one each.
  *
  * After a real absence the page also counts as untouched again, as it does just after a
- * load (`shouldApplyOnLoad`): a deploy this return's check finds a few seconds later is
+ * load (`shouldApplyOnArrival`): a deploy this return's check finds a few seconds later is
  * taken in place, unless someone has started using the page by then.
  */
 const UPDATE_CHECK_INTERVAL = 60 * 1000;

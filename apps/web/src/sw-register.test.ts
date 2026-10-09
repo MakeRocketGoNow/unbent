@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { offlineReadyState, onReturn, shouldApplyOnLoad, shouldApplyOnReturn, shouldApplyUpdate } from './sw-register.js';
+import {
+  offlineReadyState,
+  onReturn,
+  shouldApplyOnArrival,
+  shouldApplyOnReturn,
+  shouldApplyUpdate,
+  takesDeploysAtOnce,
+  isTextField,
+  sayHold,
+} from './sw-register.js';
 import { holdPage, pageBusy } from './busy.js';
 
 const ready = { ready: true, busy: false, preload: false, from: '/notes', to: '/settings' };
@@ -83,23 +92,95 @@ describe('onReturn', () => {
 
 const loaded = { untouched: true, busy: false, path: '/notes' };
 
-describe('shouldApplyOnLoad', () => {
+describe('shouldApplyOnArrival', () => {
   /* A reload is how anyone asks for the newest version; the worker answering it with the
      old shell made a deploy impossible to try. */
   it('takes a deploy found while the page has only just loaded', () => {
-    expect(shouldApplyOnLoad(loaded)).toBe(true);
+    expect(shouldApplyOnArrival(loaded)).toBe(true);
   });
 
   it('leaves a page someone has started using to the careful rules', () => {
-    expect(shouldApplyOnLoad({ ...loaded, untouched: false })).toBe(false);
+    expect(shouldApplyOnArrival({ ...loaded, untouched: false })).toBe(false);
   });
 
   it('waits while the page holds work a reload would lose', () => {
-    expect(shouldApplyOnLoad({ ...loaded, busy: true })).toBe(false);
+    expect(shouldApplyOnArrival({ ...loaded, busy: true })).toBe(false);
   });
 
   it('stays out of the Android app’s embed pages', () => {
-    expect(shouldApplyOnLoad({ ...loaded, path: '/embed/notes/a' })).toBe(false);
+    expect(shouldApplyOnArrival({ ...loaded, path: '/embed/notes/a' })).toBe(false);
+  });
+
+  /* A preview is tried right after a push; a tester already scrolling when the new build
+     arrived kept the old one, and reloading again did not help. */
+  it('takes a deploy on dev and previews even once the page is in use', () => {
+    expect(shouldApplyOnArrival({ ...loaded, untouched: false, kind: 'preview' })).toBe(true);
+    expect(shouldApplyOnArrival({ ...loaded, untouched: false, kind: 'dev' })).toBe(true);
+  });
+
+  it('leaves production and local to the careful rules once the page is in use', () => {
+    expect(shouldApplyOnArrival({ ...loaded, untouched: false })).toBe(false);
+    expect(shouldApplyOnArrival({ ...loaded, untouched: false, kind: 'local' })).toBe(false);
+  });
+
+  it('still waits on a preview while the page holds work a reload would lose', () => {
+    expect(shouldApplyOnArrival({ ...loaded, untouched: false, busy: true, kind: 'preview' })).toBe(false);
+  });
+
+  it('still stays out of the embed pages on a preview', () => {
+    expect(shouldApplyOnArrival({ ...loaded, untouched: false, path: '/embed/notes/a', kind: 'preview' })).toBe(false);
+  });
+});
+
+describe('takesDeploysAtOnce', () => {
+  it('is dev and previews only', () => {
+    expect(takesDeploysAtOnce('dev')).toBe(true);
+    expect(takesDeploysAtOnce('preview')).toBe(true);
+    expect(takesDeploysAtOnce('local')).toBe(false);
+    expect(takesDeploysAtOnce(undefined)).toBe(false);
+  });
+});
+
+describe('sayHold', () => {
+  /* Usually the hold is a save a second from landing; a notice for that second flickers. */
+  it('says nothing while the hold is short', () => {
+    expect(sayHold({ since: 0, said: false }, 1000)).toBe(false);
+  });
+
+  /* An import holds the page for minutes, and the old build should not look current all
+     that time. */
+  it('says a long hold once, so that dismissing it sticks', () => {
+    expect(sayHold({ since: 0, said: false }, 3000)).toBe(true);
+    expect(sayHold({ since: 0, said: true }, 60_000)).toBe(false);
+  });
+});
+
+describe('isTextField', () => {
+  const input = (type: string, attrs: { readOnly?: boolean; disabled?: boolean } = {}) =>
+    Object.assign(document.createElement('input'), { type, ...attrs });
+
+  /* A rename or the search box half typed is lost to a reload, and `pageBusy()` cannot see
+     it; on a preview focus there holds the deploy back. */
+  it('counts a text input or a textarea someone can type in', () => {
+    expect(isTextField(input('text'))).toBe(true);
+    expect(isTextField(input('search'))).toBe(true);
+    expect(isTextField(document.createElement('textarea'))).toBe(true);
+  });
+
+  it('leaves out controls with nothing typed in them, and fields that cannot be typed in', () => {
+    expect(isTextField(input('checkbox'))).toBe(false);
+    expect(isTextField(input('button'))).toBe(false);
+    expect(isTextField(input('text', { readOnly: true }))).toBe(false);
+    expect(isTextField(input('text', { disabled: true }))).toBe(false);
+  });
+
+  /* The note's body says it has unsent typing itself, through `holdPage`. */
+  it('leaves out the editor, which is not a field', () => {
+    const editor = document.createElement('div');
+    editor.contentEditable = 'true';
+    expect(isTextField(editor)).toBe(false);
+    expect(isTextField(document.body)).toBe(false);
+    expect(isTextField(null)).toBe(false);
   });
 });
 

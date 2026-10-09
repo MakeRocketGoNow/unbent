@@ -11,7 +11,7 @@ import { configQuery, installLibraryQueries } from './queries.js';
 import { applyInstanceMarker } from './instance-marker.js';
 import { adoptHostLayout } from './app-bridge.js';
 import { openSitePath } from './useHostApp.js';
-import { registerServiceWorker } from './sw-register.js';
+import { registerServiceWorker, setInstanceKind } from './sw-register.js';
 import { installConnectivity } from './connectivity.js';
 import { installSessionRecheck } from './auth-client.js';
 import { isOfflineError } from './notes-api.js';
@@ -105,6 +105,8 @@ void queryClient
     // Before the error tracker, which needs nothing from it: a scratch instance's tab
     // should say so as early as the page can know it is one.
     applyInstanceMarker(config);
+    // Dev and previews take a new deploy at once; see `takesDeploysAtOnce`.
+    setInstanceKind(config.instanceKind);
     return config.posthog ? installPosthog(config.posthog) : undefined;
   })
   .catch(() => {});
