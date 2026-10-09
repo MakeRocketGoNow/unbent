@@ -7,7 +7,7 @@ import * as api from '../notes-api.js';
 import { installTestLibrary } from '../store/test-library.js';
 import type { Outbox } from '../store/actions.js';
 import { keys } from '../queries.js';
-import type { NoteDraft } from '../note-patch.js';
+import { seedFrom, type NoteDraft } from '../note-patch.js';
 import { Workspace } from './Workspace.js';
 
 vi.mock('../notes-api.js', async (importOriginal) => ({
@@ -161,7 +161,7 @@ describe('a save answered while typing', () => {
 
     // Still inside the autosave's delay, so the draft is dirty when the answer comes.
     await type('Trip notes, typed');
-    const sent = { title: server.title, body: server.body, tags: [], notebook: null, fields: {} };
+    const sent = seedFrom(server);
     await act(async () => ack(server.id, { ...server, ...elsewhere, updatedAt: 101 }, sent));
     expect((await title()).value).toBe('Trip notes, typed');
 
