@@ -17,9 +17,9 @@ import { useOffline } from '../connectivity.js';
 import {
   buildNotePatch,
   holdsTheirChanges,
+  rebaseAfterAck,
   rememberFieldDefs,
   seedFrom,
-  tagsAfterAck,
   unstoreableFieldIds,
   type NoteDraft,
 } from '../note-patch.js';
@@ -423,9 +423,10 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
      The server's copy after a save of this note went through: the base the next save is
      made against. Reseeded only when nothing has been typed since and the copy differs
      from the draft — the server normalised something — so typing is never disturbed.
-     While typing is still in flight the body stays, but tags the person has not edited
-     take the answer's (`tagsAfterAck`): a merge can land a name the local copy had
-     dropped, and leaving the short set against that base would send it next.
+     While typing is still in flight the body stays, but whatever the person has not
+     edited takes the answer's (`rebaseAfterAck`): a rename or a merge elsewhere can
+     reach the answer without moving the note's date, and leaving the stale value
+     against that base would send it next.
   */
   useEffect(() => {
     if (!outbox) return;
@@ -441,14 +442,23 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
         return;
       }
       const prev = bases.current.get(id);
-      const tags = prev ? tagsAfterAck(draftRef.current.tags, prev.tags, updated.tags) : updated.tags;
       setBase(id, updated);
-      if (JSON.stringify(tags) !== JSON.stringify(draftRef.current.tags)) {
-        setDraft((d) => ({ ...d, tags }));
-      }
+      if (prev) rebaseDraft(prev, updated);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [outbox, noteId]);
+
+  /**
+   * Hands the open draft whatever the server's answer changed that the person has not
+   * edited since `prev`, the base the answered save was made against. A functional
+   * update, so typing that lands in the same tick is kept rather than overwritten.
+   */
+  function rebaseDraft(prev: Note, answer: Note) {
+    setDraft((d) => {
+      const next = rebaseAfterAck(d, prev, answer);
+      return JSON.stringify(next) === JSON.stringify(d) ? d : next;
+    });
+  }
 
   /**
    * Re-seeds the open note from a copy of it the server just gave, rebuilding the editor

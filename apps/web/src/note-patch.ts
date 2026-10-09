@@ -79,19 +79,41 @@ function sameTagSet(a: string[], b: string[]): boolean {
 }
 
 /**
- * Tags the open draft should hold after a save of it comes back, while typing is still
- * in flight.
+ * The open draft after a save of it comes back while typing is still in flight: every
+ * property the person has not changed since `base` takes the server's value, and every
+ * one they have keeps theirs. The body is the editor's and always stays.
  *
- * The answer is the note as the server has it, and becomes the next save's base. When
- * the person has not touched tags, that answer is the tags to show — a merge can add
- * the surviving name on the server while the local copy had dropped it (the tag row
- * gone, the note row not yet on this device). Leaving the draft as it was, and taking
- * the answer as the base, made the next keystroke send the short set and take the tag
- * off the server. When they have edited tags, the draft's set is the one that must
- * go, as it is for a title.
+ * The answer is the note as the server has it, and becomes the next save's base. Some
+ * changes made elsewhere reach it without moving the note's date, so no precondition
+ * catches them: a notebook or tag renamed on another device, a field converted, or a
+ * merge adding the surviving tag while this device's copy had already dropped the one
+ * that went. Leaving the draft as it was against that base made the next keystroke send
+ * the stale value back — the short tag set, which took the tag off; the old notebook
+ * name, which the server's get-or-create made again and refiled the note into.
+ *
+ * The mirror of `holdsTheirChanges`, and compared the same way: tags as sets, fields
+ * with empty and absent alike. Only tags edited while their local copy was stale still
+ * send the short set; that edit's own save carries it, and the feed's ordering of a
+ * merge (`renameTag`) is what keeps that window small.
  */
-export function tagsAfterAck(draftTags: string[], baseTags: string[], serverTags: string[]): string[] {
-  return sameTagSet(draftTags, baseTags) ? serverTags : draftTags;
+export function rebaseAfterAck(
+  draft: NoteDraft,
+  base: Pick<Note, 'title' | 'body' | 'tags' | 'notebook' | 'fields'>,
+  server: Pick<Note, 'title' | 'body' | 'tags' | 'notebook' | 'fields'>,
+): NoteDraft {
+  const was = seedFrom(base);
+  const now = seedFrom(server);
+  const fields = { ...draft.fields };
+  for (const id of new Set([...Object.keys(now.fields), ...Object.keys(was.fields)])) {
+    if (sameOrBothEmpty(draft.fields[id] ?? null, was.fields[id] ?? null)) fields[id] = now.fields[id] ?? null;
+  }
+  return {
+    title: draft.title === was.title ? now.title : draft.title,
+    body: draft.body,
+    tags: sameTagSet(draft.tags, was.tags) ? now.tags : draft.tags,
+    notebook: draft.notebook === was.notebook ? now.notebook : draft.notebook,
+    fields,
+  };
 }
 
 function sameOrBothEmpty(a: FieldValue | null, b: FieldValue | null): boolean {

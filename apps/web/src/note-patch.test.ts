@@ -3,8 +3,8 @@ import type { FieldDef, FieldValue, Note, NoteFieldValue } from '@unbent/shared'
 import {
   buildNotePatch,
   holdsTheirChanges,
+  rebaseAfterAck,
   rememberFieldDefs,
-  tagsAfterAck,
   unstoreableFieldIds,
   type NoteDraft,
 } from './note-patch.js';
@@ -402,14 +402,55 @@ describe('holdsTheirChanges', () => {
   });
 });
 
-describe('tagsAfterAck', () => {
-  it('takes the server\'s tags when the person has not edited them', () => {
-    expect(tagsAfterAck(['garden'], ['garden'], ['garden', 'receipts'])).toEqual(['garden', 'receipts']);
-    expect(tagsAfterAck(['b', 'a'], ['a', 'b'], ['a', 'b', 'c'])).toEqual(['a', 'b', 'c']);
+/**
+ * What the open draft holds after a save comes back mid-typing: the server's value for
+ * whatever the person has not edited, theirs for whatever they have. Each case pairs the
+ * taken value with the kept one, since a rebase that always took the server's would
+ * throw away typing, and one that never did is the bug.
+ */
+describe('rebaseAfterAck', () => {
+  const base = { title: 'Trip', body: 'Body', tags: ['garden'], notebook: 'Coupons', fields: [] as NoteFieldValue[] };
+  const draftOf = (over: Partial<NoteDraft> = {}): NoteDraft => ({
+    title: 'Trip',
+    body: 'Body, typing',
+    tags: ['garden'],
+    notebook: 'Coupons',
+    fields: {},
+    ...over,
   });
 
-  it('keeps the draft\'s tags when the person has added or removed one', () => {
-    expect(tagsAfterAck(['garden', 'tax'], ['garden'], ['garden', 'receipts'])).toEqual(['garden', 'tax']);
-    expect(tagsAfterAck([], ['garden'], ['garden', 'receipts'])).toEqual([]);
+  it('takes the server\'s tags when the person has not edited them, compared as a set', () => {
+    const server = { ...base, tags: ['garden', 'receipts'] };
+    expect(rebaseAfterAck(draftOf(), base, server).tags).toEqual(['garden', 'receipts']);
+    expect(rebaseAfterAck(draftOf({ tags: ['b', 'a'] }), { ...base, tags: ['a', 'b'] }, { ...base, tags: ['a', 'b', 'c'] }).tags).toEqual(['a', 'b', 'c']);
+    expect(rebaseAfterAck(draftOf({ tags: ['garden', 'tax'] }), base, server).tags).toEqual(['garden', 'tax']);
+    expect(rebaseAfterAck(draftOf({ tags: [] }), base, server).tags).toEqual([]);
+  });
+
+  it('takes a notebook renamed elsewhere unless the person moved the note', () => {
+    const server = { ...base, notebook: 'Coupons 2026' };
+    expect(rebaseAfterAck(draftOf(), base, server).notebook).toBe('Coupons 2026');
+    expect(rebaseAfterAck(draftOf({ notebook: 'Receipts' }), base, server).notebook).toBe('Receipts');
+  });
+
+  it('takes the title unless the person is editing it, and always keeps the body', () => {
+    const server = { ...base, title: 'Trip, renamed', body: 'Body' };
+    const rebased = rebaseAfterAck(draftOf(), base, server);
+    expect(rebased.title).toBe('Trip, renamed');
+    expect(rebased.body).toBe('Body, typing');
+    expect(rebaseAfterAck(draftOf({ title: 'Trip, mine' }), base, server).title).toBe('Trip, mine');
+  });
+
+  it('takes a field the server rewrote unless the person typed in it', () => {
+    const value = (v: FieldValue): NoteFieldValue[] => [
+      { fieldId: amount.id, name: 'Amount', type: 'number', value: v, notebook: 'Receipts' } as NoteFieldValue,
+    ];
+    const was = { ...base, fields: value(12) };
+    expect(rebaseAfterAck(draftOf({ fields: { [amount.id]: 12 } }), was, { ...was, fields: value(13) }).fields).toEqual({
+      [amount.id]: 13,
+    });
+    expect(rebaseAfterAck(draftOf({ fields: { [amount.id]: '14' } }), was, { ...was, fields: value(13) }).fields).toEqual({
+      [amount.id]: '14',
+    });
   });
 });
