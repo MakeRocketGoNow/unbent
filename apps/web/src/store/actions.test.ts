@@ -460,6 +460,30 @@ describe('a replayed write', () => {
     expect(await replay).toBe('done');
   });
 
+  it('takes the 404 of a trash or purge the server already made as done, through the real client, so the writes behind it go', async () => {
+    // A replay of a request that already went — the tab closed before its entry ended —
+    // finds the note trashed or purged already, and the route says 404. The client threw
+    // that as a bare Error, which nothing read as a 404: the entry was kept and tried
+    // again for good, the restores queued behind it never went, and a reload changed
+    // nothing, since the outbox is kept across reloads.
+    const { fake, engine } = library([row('n1'), row('n2', { deletedAt: 5 }), row('n3', { deletedAt: 5 })]);
+    engine.pull.mockResolvedValue(undefined);
+    const real = await vi.importActual<typeof import('../notes-api.js')>('../notes-api.js');
+    vi.mocked(api.deleteNote).mockImplementation(real.deleteNote);
+    vi.mocked(api.deleteNotePermanently).mockImplementation(real.deleteNotePermanently);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'Not found' }), { status: 404, headers: { 'Content-Type': 'application/json' } })));
+    vi.mocked(api.restoreNote).mockResolvedValueOnce(toNote(row('n3'), lookups({ notes: [], notebooks: [], tags: [], attachments: [] })));
+    await actions.trashNote('n1');
+    await actions.purgeNote('n2');
+    await actions.restoreNote('n3');
+    await tick();
+
+    expect(await fake.replayOne()).toBe('done');
+    expect(await fake.replayOne()).toBe('done');
+    expect(await fake.replayOne()).toBe('done');
+    expect(api.restoreNote).toHaveBeenCalledWith('n3');
+  });
+
   it('is refused as a conflict when the note moved on and the draft lacks what moved', async () => {
     const { fake, lib, landPull, note } = library([row('n1', { title: 'old', body: 'ours' })]);
     const base = note('n1');
