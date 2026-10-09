@@ -19,8 +19,8 @@ export interface SnackbarProps {
   message: string;
   /**
    * `info` is a result to acknowledge (green tint); `error` is a failure to notice (red
-   * tint). Only an error stays until dismissed — see `Workspace`, which passes no duration
-   * for one.
+   * tint). An error stays until dismissed — see `Workspace`, which passes no duration
+   * for one — and so does the outcome of a run too long to watch (`ExportSnackbar`).
    */
   tone: 'info' | 'error';
   /** One optional action, e.g. Undo. Its click dismisses the snackbar too. */
@@ -32,8 +32,9 @@ export interface SnackbarProps {
    */
   link?: SnackbarLink;
   /**
-   * Milliseconds until it clears itself. Omit — the error case — and it stays until the
-   * close button, so a failure is never lost to a timer before it is read.
+   * Milliseconds until it clears itself. Omit and it stays until the close button: for a
+   * failure, so it is never lost to a timer before it is read, and for the end of a long
+   * run, whose result lands after the person has looked away.
    */
   duration?: number;
   onDismiss: () => void;
