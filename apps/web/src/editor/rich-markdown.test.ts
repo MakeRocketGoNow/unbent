@@ -968,6 +968,92 @@ describe('inline images', () => {
   });
 
   /**
+   * The bug this fixes: a click at the end of the caption put the caret after the alt,
+   * which on the revealed line is the middle of `![alt](url)` — between `alt` and `](`.
+   * The hidden syntax has no width, so the click could not have meant that seam; the
+   * caret belongs at the end of the whole markdown. See `snapCaptionCaret`.
+   *
+   * A pointer can only be stubbed here — jsdom lays nothing out — so the test dispatches
+   * the selection the click would have produced, tagged as the pointer event it was.
+   */
+  describe('a caret put on the edge of a caption', () => {
+    const doc = '![scan](files/scan.jpg)\n\nplain';
+    const altStart = 2;
+    const altEnd = altStart + 'scan'.length;
+    const imageEnd = '![scan](files/scan.jpg)'.length;
+
+    function placeCaret(v: EditorView, pos: number, userEvent = 'select.pointer'): void {
+      v.dispatch({ selection: EditorSelection.cursor(pos), userEvent });
+    }
+
+    it('lands at the end of the markdown from the caption\'s right edge', () => {
+      const v = mountWithAttachments(doc, doc.length);
+      placeCaret(v, altEnd);
+      expect(v.state.selection.main.head).toBe(imageEnd);
+      // The line reveals around it, with the caret at its end, not inside it.
+      expect(visibleText(v, 1)).toBe('![scan](files/scan.jpg)');
+    });
+
+    it('lands at the start of the markdown from the caption\'s left edge', () => {
+      const v = mountWithAttachments(doc, doc.length);
+      placeCaret(v, altStart);
+      expect(v.state.selection.main.head).toBe(0);
+    });
+
+    it('still edits the alt from a click inside the caption', () => {
+      const v = mountWithAttachments(doc, doc.length);
+      placeCaret(v, altStart + 2);
+      expect(v.state.selection.main.head).toBe(altStart + 2);
+    });
+
+    /** The same tap on a phone arrives as a plain selection read back from the DOM. */
+    it('snaps a caret placed by touch too', () => {
+      const v = mountWithAttachments(doc, doc.length);
+      placeCaret(v, altEnd, 'select');
+      expect(v.state.selection.main.head).toBe(imageEnd);
+    });
+
+    /**
+     * The sidebar's arrow keys mount the note unfocused with a phantom caret at 0, which
+     * is on this very line; the caption is drawn all the same, so a click still snaps.
+     */
+    it('snaps when the unfocused caret was already on the line', () => {
+      const v = mountWithAttachments(doc, 0, [], false);
+      expect(v.dom.querySelector('.cm-md-image-alt')).not.toBeNull();
+      placeCaret(v, altEnd);
+      expect(v.state.selection.main.head).toBe(imageEnd);
+    });
+
+    /** Once revealed there is no caption, and the seam is a real place to put the caret. */
+    it('leaves the caret alone once the markdown is revealed', () => {
+      const v = mountWithAttachments(doc, imageEnd);
+      expect(v.dom.querySelector('.cm-md-image-alt')).toBeNull();
+      placeCaret(v, altEnd);
+      expect(v.state.selection.main.head).toBe(altEnd);
+    });
+
+    it('keeps a dragged range that ends on the edge', () => {
+      const v = mountWithAttachments(doc, doc.length);
+      v.dispatch({
+        selection: EditorSelection.range(doc.length, altEnd),
+        userEvent: 'select.pointer',
+      });
+      expect(v.state.selection.main.head).toBe(altEnd);
+      expect(v.state.selection.main.anchor).toBe(doc.length);
+    });
+  });
+
+  /** The destination is plumbing: dimmed to the brackets' strength, see `imageDestination`. */
+  it('dims a revealed destination further than a link\'s', () => {
+    const doc = '![scan](files/scan.jpg)';
+    const v = mountWithAttachments(doc, doc.length);
+    const url = v.dom.querySelector('.cm-md-image-url');
+    expect(url?.textContent).toBe('files/scan.jpg');
+    expect(url?.classList.contains('cm-md-url')).toBe(true);
+    expect(v.dom.querySelector('.cm-md-image-alt')).toBeNull();
+  });
+
+  /**
    * With no alt there is nothing to keep and nowhere to caption; the whole `![](url)` is
    * replaced by the picture, and its line collapses to the picture's height.
    */
