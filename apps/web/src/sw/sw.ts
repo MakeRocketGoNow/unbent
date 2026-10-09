@@ -39,7 +39,8 @@ registerRoute(new PrecacheRoute(shell));
 self.addEventListener('activate', shell.activate);
 
 /**
- * Downloads the files a new deploy changed, a few at a time.
+ * Downloads the files of the shell the cache does not hold, a few at a time, and stores
+ * each under its key.
  *
  * Workbox's own install fetches them strictly one after another (its issue 2528: a first
  * install is over two hundred files, and firing them all at once is what that guards
@@ -51,29 +52,67 @@ self.addEventListener('activate', shell.activate);
  * a time — and longer on a phone, or behind the app's own startup traffic. Six is still
  * only a handful in flight.
  *
- * The same work as Workbox's loop otherwise: a file already cached under its key costs
- * nothing (`PrecacheStrategy` answers it from the cache), and a revisioned file — one
- * whose name has no hash, `index.html` above all — is fetched past the HTTP cache, which
- * is what Workbox's `reload` mode is for. Its key carries `__WB_REVISION__` where a hashed
- * file's key is its address, which is how that is told without its private map.
+ * The same work as Workbox's install otherwise: a file already cached under its key costs
+ * nothing, and a revisioned file — one whose name has no hash, `index.html` above all —
+ * is fetched past the HTTP cache, which is what Workbox's `reload` mode is for. Its key
+ * carries `__WB_REVISION__` where a hashed file's key is its address, which is how that is
+ * told without its private map. A redirected response is stored as a plain copy, as
+ * Workbox stores it: the Worker answers `/index.html` with a redirect to `/`, and a
+ * response that remembers being redirected cannot be given to a page load (see below).
+ *
+ * Ours rather than `PrecacheStrategy`'s because it runs twice over: from the install
+ * event, and again from a page load that found the cache empty (`refillShell`). Workbox
+ * stores what it fetches outside the install only when the manifest carries integrity
+ * hashes, which this one does not, so with the strategy an emptied cache was never
+ * filled again until the next deploy. A fetch that fails ends the fill: in the install
+ * that fails the install, and the browser tries again on the next load; in a refill it
+ * is caught, and the next page load tries again.
  */
 const INSTALL_CONCURRENCY = 6;
 
-self.addEventListener('install', (event) => {
+async function fillShell(): Promise<void> {
+  const cache = await caches.open(shell.strategy.cacheName);
   const queue = [...shell.getURLsToCacheKeys()];
   const next = async (): Promise<void> => {
     for (let entry = queue.shift(); entry; entry = queue.shift()) {
       const [url, cacheKey] = entry;
-      const request = new Request(url, {
-        integrity: shell.getIntegrityForCacheKey(cacheKey),
-        cache: cacheKey === url ? 'default' : 'reload',
-        credentials: 'same-origin',
-      });
-      await Promise.all(shell.strategy.handleAll({ params: { cacheKey }, request, event }));
+      if (await cache.match(cacheKey)) continue;
+      const response = await fetch(
+        new Request(url, {
+          integrity: shell.getIntegrityForCacheKey(cacheKey),
+          cache: cacheKey === url ? 'default' : 'reload',
+          credentials: 'same-origin',
+        }),
+      );
+      if (response.status !== 200) throw new Error(`${url}: ${response.status}`);
+      await cache.put(cacheKey, response.redirected ? unredirected(response) : response);
     }
   };
-  event.waitUntil(Promise.all(Array.from({ length: INSTALL_CONCURRENCY }, next)));
+  await Promise.all(Array.from({ length: INSTALL_CONCURRENCY }, next));
+}
+
+/** The same body and headers, without the mark of having been redirected. */
+function unredirected(response: Response): Response {
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers: response.headers });
+}
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(fillShell());
 });
+
+/**
+ * One refill at a time: every page load that finds the cache empty asks for one, and a
+ * burst of tabs opened together must not start six fetches each.
+ */
+let refilling: Promise<void> | null = null;
+function refillShell(): Promise<void> {
+  refilling ??= fillShell()
+    .catch(() => {})
+    .finally(() => {
+      refilling = null;
+    });
+  return refilling;
+}
 
 /**
  * The previous build's shell, once this one is in charge. Without it every deploy would
@@ -108,13 +147,26 @@ self.addEventListener('activate', (event) => {
  * holds, and a new deploy reaches it through the worker's own update rather than through
  * whichever load happens to hit the network first.
  *
- * `/index.html` is the key even though the Worker answers that address with a redirect to
- * `/`: Workbox's precache stores the redirected response's copy under the key it asked
- * for, so the handler finds it.
+ * When the cache does not hold it, the load goes to the network as itself — the request
+ * the browser made, which the Worker answers with `index.html` directly — and the shell
+ * is fetched again in the background. The cache can be empty under a live worker:
+ * Chrome's "Clear cached images and files" removes the worker's caches and leaves the
+ * worker registered, and so does a device short of storage. Workbox's handler bound to
+ * `/index.html` fetched that address on a miss and handed the page load what came back
+ * — the Worker's redirect to `/`, followed — and a response that was redirected is a
+ * network error for a navigation (the fetch spec's rule for `redirect: 'manual'`). Every
+ * page load then failed with "This site can't be reached", on every tab, until the next
+ * deploy installed a worker with a full cache, since the strategy repairs nothing without
+ * integrity hashes. Seen on 2026-10-09, after clearing the cache to get a fresh load.
  */
 registerRoute(
   ({ request, url }) => request.mode === 'navigate' && servesShell(url),
-  shell.createHandlerBoundToURL('/index.html'),
+  async ({ event, request }) => {
+    const cached = await shell.matchPrecache('/index.html');
+    if (cached) return cached;
+    event.waitUntil(refillShell());
+    return fetch(request);
+  },
 );
 
 const DAY = 24 * 60 * 60;
