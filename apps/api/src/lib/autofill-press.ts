@@ -69,6 +69,13 @@ export async function press(deps: PressDeps, id: string): Promise<PressOutcome> 
   if (prelude.press && !prelude.press.allowed) return { kind: 'capped', ...capReached(deps.cap!, now) };
   const { note, forText, forVision } = prelude;
   const usage = new PressUsage();
+  /*
+     Registered now rather than in `finally`: a client that disconnects cancels whatever
+     has no `waitUntil` pending, and the press — its readings and its record — would go
+     with it. Resolved with the record once there is one.
+  */
+  let recorded!: (work: Promise<unknown>) => void;
+  deps.defer?.(new Promise<unknown>((resolve) => (recorded = resolve)));
 
   try {
     /*
@@ -140,11 +147,12 @@ export async function press(deps: PressDeps, id: string): Promise<PressOutcome> 
        In `finally`, because a press that failed after the model answered was still paid
        for; after every metered call has settled, because a title still being written when
        Jev failed is paid for too, and `autofill` does not wait for it on that path. Handed
-       to `waitUntil` rather than awaited: a person waiting on an error should not also
-       wait out the title's timeout, and a press the person left mid-way is cancelled with
-       its request but not with its `waitUntil`. A failure to record is logged rather
-       than thrown — the count is what is lost, and the log line is what the operator then
-       has.
+       to `waitUntil` (registered above) rather than awaited: a person waiting on an error
+       should not also wait out the title's timeout. `waitUntil` runs about thirty seconds
+       past the response, and a title's two attempts can take longer, so on that one path
+       a slow title's cost can still be lost at the edge. A failure to record is logged
+       rather than thrown — the count is what is lost, and the log line is what the
+       operator then has.
     */
     const recording = usage
       .settled()
@@ -152,7 +160,7 @@ export async function press(deps: PressDeps, id: string): Promise<PressOutcome> 
       .catch((err: unknown) => {
         console.error('autofill usage:', (err as Error).message);
       });
-    if (deps.defer) deps.defer(recording);
+    if (deps.defer) recorded(recording);
     else await recording;
   }
 }
