@@ -6579,12 +6579,12 @@ button.settings-nav-item {
    A browser without anchor positioning, and a touch screen, keep the plain hover above.
 
    The curve, not the duration, is what keeps it with the pointer. Hover is the most
-   frequent thing this column does and the pill has to be where the pointer is: the note
-   morph's emphasized-decelerate is about 80% of the way there after 100ms and spends the
-   rest of its 0.4s settling, so it reads as following with a soft landing rather than
-   chasing. The same 0.4s on `ease`, which is how the effect is usually shown, is about 40%
-   of the way at 100ms and trails a pointer moving down a list — for that long the pill
-   sits on a row the click will not land on.
+   frequent thing this column does and the pill has to be where the pointer is: Material's
+   emphasized-decelerate, `cubic-bezier(0.05, 0.7, 0.1, 1)`, is about 80% of the way there
+   after 100ms and spends the rest of its 0.4s settling, so it reads as following with a
+   soft landing rather than chasing. The same 0.4s on `ease`, which is how the effect is
+   usually shown, is about 40% of the way at 100ms and trails a pointer moving down a
+   list — for that long the pill sits on a row the click will not land on.
 
    It appears in place rather than flying in. With no row hovered there is no anchor, so
    `anchor()` is invalid and `inset` falls back to `auto`, which does not interpolate: the
@@ -6646,11 +6646,10 @@ button.settings-nav-item {
 
        The selection does not glide, though the anchor would make that one more rule. On a
        click the hover pill is already on the row, so a second pill travelling there from
-       the old place tells the same story twice, in a part of the column nobody is looking
-       at — the reason the note morph turns the root crossfade off. It could not even do
-       it consistently: the place can move from a notebook in the scrolling list to Trash
-       in the foot, or to a row scrolled out of view, so it would glide one time and
-       appear the next. And at the hover's 0.4s it would hold back the one answer a click
+       the old place tells the same story twice — two animations for one event, in a part
+       of the column nobody is looking at. It could not even do it consistently: the place
+       can move from a notebook in the scrolling list to Trash in the foot, or to a row
+       scrolled out of view, so it would glide one time and appear the next. And at the hover's 0.4s it would hold back the one answer a click
        has to give at once.
 
        Short for that reason, and on the hover's curve: the fill is the click's answer, so
