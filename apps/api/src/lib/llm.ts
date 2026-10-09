@@ -150,8 +150,8 @@ const MAX_OUTPUT_TOKENS = 16384;
  * throws and leaves the file pending, so every later press read the whole scan again and
  * paid for it again — about 46¢ a press on Opus. Four thousand words is about five and a
  * half thousand tokens, which leaves the thinking ten thousand: on the same lease, Haiku
- * 5.5 at medium (the default) now finishes in about half a minute, and Haiku at high and
- * Opus 5.5 finish too.
+ * 5.5 at medium (the model's own default, which the read sent before MAK-182) now
+ * finishes in about half a minute, and Haiku at high and Opus 5.5 finish too.
  *
  * Sonnet 5.5 at its default effort still does not, at four thousand words or at three:
  * its thinking alone fills the budget, so no cap on the answer can fix it. Effort is what
