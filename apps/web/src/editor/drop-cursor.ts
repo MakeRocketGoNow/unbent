@@ -64,6 +64,25 @@ export function showDropAt(view: EditorView, pos: number | null): void {
   view.dispatch({ effects: setDropPos.of(pos) });
 }
 
+/** Whether a drag carries files — the only drags the editor and the note around it aim. */
+export function carriesFiles(event: DragEvent): boolean {
+  return event.dataTransfer?.types.includes('Files') ?? false;
+}
+
+/**
+ * Refuses a dragged file, for a note that takes no changes — in the trash, or held by a
+ * save conflict: the pointer says no, and no point is drawn. It used to draw the point all
+ * the same, and the drop then did nothing (`attachments` takes the file and keeps it), so
+ * the person aimed at a place the note was never going to put anything.
+ *
+ * The caller still claims the drag, or the browser would open the file. Shared with
+ * `noteDropZone`, so the text and the page around it refuse alike.
+ */
+export function refuseFile(view: EditorView, event: DragEvent): void {
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'none';
+  showDropAt(view, null);
+}
+
 /**
  * Shows where a dragged file will land.
  *
@@ -81,18 +100,11 @@ export function fileDropCursor(): Extension {
     dropPosField,
     EditorView.domEventHandlers({
       dragover(event, view) {
-        if (!event.dataTransfer?.types.includes('Files')) return false;
+        if (!carriesFiles(event)) return false;
         // Also claims the drag, without which the browser navigates to the file on drop.
         event.preventDefault();
-        /*
-           A note that takes no changes — in the trash, or held by a save conflict — says
-           so with the pointer instead. It used to draw the point all the same, and the
-           drop then did nothing (`attachments` takes the file and keeps it), so the
-           person aimed at a place the note was never going to put anything.
-        */
         if (view.state.readOnly) {
-          event.dataTransfer.dropEffect = 'none';
-          showDropAt(view, null);
+          refuseFile(view, event);
           return false;
         }
         // `posAtCoords` measures rendered geometry, so it throws where there is none —
@@ -119,7 +131,7 @@ export function fileDropCursor(): Extension {
         return false;
       },
       drop(event, view) {
-        if (event.dataTransfer?.types.includes('Files')) showDropAt(view, null);
+        if (carriesFiles(event)) showDropAt(view, null);
         return false;
       },
       dragend(_event, view) {

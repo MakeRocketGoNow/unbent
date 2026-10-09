@@ -1,7 +1,7 @@
 import { syntaxTree } from '@codemirror/language';
 import type { EditorView } from '@codemirror/view';
 import { insertUploads } from './attach.js';
-import { showDropAt } from './drop-cursor.js';
+import { carriesFiles, refuseFile, showDropAt } from './drop-cursor.js';
 
 /**
  * Where a file let go on the note, but not on its text, goes: the point of the text
@@ -79,19 +79,15 @@ export function noteDropZone(zone: HTMLElement, view: EditorView): () => void {
   */
   const ours = (event: DragEvent) =>
     !event.defaultPrevented &&
-    (event.dataTransfer?.types.includes('Files') ?? false) &&
+    carriesFiles(event) &&
     !(event.target instanceof Element && event.target.closest('dialog'));
 
   const over = (event: DragEvent) => {
     if (!ours(event)) return;
     // Claims the drag; without it the browser opens the file when it is let go.
     event.preventDefault();
-    if (view.state.readOnly) {
-      if (event.dataTransfer) event.dataTransfer.dropEffect = 'none';
-      showDropAt(view, null);
-      return;
-    }
-    showDropAt(view, landingFor(view, event.clientX, event.clientY));
+    if (view.state.readOnly) refuseFile(view, event);
+    else showDropAt(view, landingFor(view, event.clientX, event.clientY));
   };
 
   const leave = (event: DragEvent) => {
