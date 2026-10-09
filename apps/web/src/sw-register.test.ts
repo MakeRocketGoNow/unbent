@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { offlineReadyState, onReturn, shouldApplyOnLoad, shouldApplyOnReturn, shouldApplyUpdate } from './sw-register.js';
+import {
+  offlineReadyState,
+  onReturn,
+  shouldApplyOnLoad,
+  shouldApplyOnReturn,
+  shouldApplyUpdate,
+  takesDeploysAtOnce,
+} from './sw-register.js';
 import { holdPage, pageBusy } from './busy.js';
 
 const ready = { ready: true, busy: false, preload: false, from: '/notes', to: '/settings' };
@@ -100,6 +107,35 @@ describe('shouldApplyOnLoad', () => {
 
   it('stays out of the Android app’s embed pages', () => {
     expect(shouldApplyOnLoad({ ...loaded, path: '/embed/notes/a' })).toBe(false);
+  });
+
+  /* A preview is tried right after a push; a tester already scrolling when the new build
+     arrived kept the old one, and reloading again did not help. */
+  it('takes a deploy on dev and previews even once the page is in use', () => {
+    expect(shouldApplyOnLoad({ ...loaded, untouched: false, kind: 'preview' })).toBe(true);
+    expect(shouldApplyOnLoad({ ...loaded, untouched: false, kind: 'dev' })).toBe(true);
+  });
+
+  it('leaves production and local to the careful rules once the page is in use', () => {
+    expect(shouldApplyOnLoad({ ...loaded, untouched: false })).toBe(false);
+    expect(shouldApplyOnLoad({ ...loaded, untouched: false, kind: 'local' })).toBe(false);
+  });
+
+  it('still waits on a preview while the page holds work a reload would lose', () => {
+    expect(shouldApplyOnLoad({ ...loaded, untouched: false, busy: true, kind: 'preview' })).toBe(false);
+  });
+
+  it('still stays out of the embed pages on a preview', () => {
+    expect(shouldApplyOnLoad({ ...loaded, untouched: false, path: '/embed/notes/a', kind: 'preview' })).toBe(false);
+  });
+});
+
+describe('takesDeploysAtOnce', () => {
+  it('is dev and previews only', () => {
+    expect(takesDeploysAtOnce('dev')).toBe(true);
+    expect(takesDeploysAtOnce('preview')).toBe(true);
+    expect(takesDeploysAtOnce('local')).toBe(false);
+    expect(takesDeploysAtOnce(undefined)).toBe(false);
   });
 });
 

@@ -8,7 +8,9 @@ import { Snackbar } from './Snackbar.js';
  * moment a reload costs nothing — see `sw-register.ts`. Those moments can be a long time
  * coming for someone who stays in one place, and until now the wait was silent: the old
  * build went on looking current, and a reload did not change it. This is the word that
- * was missing, with the reload one press away.
+ * was missing, with the reload one press away. Dev and previews take a deploy whenever it
+ * arrives (`takesDeploysAtOnce`), so there it shows only when the minute's guard turned
+ * one away.
  *
  * It stays until it is answered, and has no timer: a notice that cleared itself would put
  * back exactly the doubt it exists to remove. Info, not error — nothing is wrong, and the

@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { Workbox } from 'workbox-window';
+import type { InstanceKind } from '@unbent/shared';
 import { pageBusy } from './busy.js';
 
 /**
@@ -46,6 +47,15 @@ let currentPath: () => string = () => location.pathname;
 let untouched = true;
 let watchingTouch = false;
 
+/**
+ * Which instance this is, from its config, once that has loaded; until then the page is
+ * treated as production, the careful case. See `takesDeploysAtOnce`.
+ */
+let instanceKind: InstanceKind | undefined;
+
+/** The next look at a deploy waiting for the page to finish what it is doing (`deployArrived`). */
+let retry: ReturnType<typeof setTimeout> | undefined;
+
 export function registerServiceWorker(pathNow: () => string): void {
   recoverFromMissingChunks();
   if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
@@ -55,12 +65,8 @@ export function registerServiceWorker(pathNow: () => string): void {
   // Fires for a worker that installed during this visit and for one already waiting when
   // the page loaded, which is the Android app's usual case: it resumes rather than reloads.
   worker.addEventListener('waiting', () => {
-    if (shouldApplyOnLoad({ untouched, busy: pageBusy(), path: location.pathname }) && reloadAllowed()) {
-      handOver(worker, location.href);
-      return;
-    }
     updateReady = true;
-    setNotice(true);
+    deployArrived();
   });
   /*
      A page already under a worker registers at once and asks for a new one straight
@@ -96,9 +102,81 @@ export function registerServiceWorker(pathNow: () => string): void {
  * look, and someone who has started reading or typing gets the careful rules below
  * instead. Never inside the Android app's embed pages, and never while the page holds
  * work a reload would lose.
+ *
+ * On dev and previews, touched or not (`takesDeploysAtOnce`).
  */
-export function shouldApplyOnLoad(state: { untouched: boolean; busy: boolean; path: string }): boolean {
-  return state.untouched && !state.busy && !state.path.startsWith('/embed/');
+export function shouldApplyOnLoad(state: {
+  untouched: boolean;
+  busy: boolean;
+  path: string;
+  kind?: InstanceKind;
+}): boolean {
+  if (state.busy || state.path.startsWith('/embed/')) return false;
+  return state.untouched || takesDeploysAtOnce(state.kind);
+}
+
+/**
+ * Whether this instance takes a new deploy the moment its worker is waiting, rather than
+ * at the careful moments production waits for.
+ *
+ * Dev and previews exist to be tried right after a push, and the careful rules made that
+ * nearly impossible on a phone: the reload drew the build the worker held, the new one
+ * arrived while the tester was already scrolling, and the notice then waited for a change
+ * of section or five minutes away. So they reloaded again and saw the same build, and
+ * reached for clearing the site's data, which takes the worker away mid-session and makes
+ * the next load slower still. On these the deploy is the thing being looked at; a reload
+ * that resets a list's scroll is cheap beside reviewing a build the PR has moved past.
+ *
+ * Still never while the page holds work a reload would lose — `deployArrived` waits for it
+ * to land instead — and still at most once a minute (`reloadAllowed`). Local is left out:
+ * a built app on the Worker's port is where the worker is tried before it ships, so it
+ * behaves as production does. Production, with no kind, is unchanged.
+ */
+export function takesDeploysAtOnce(kind: InstanceKind | undefined): boolean {
+  return kind === 'dev' || kind === 'preview';
+}
+
+/**
+ * Tells the hand-over which instance this is, from the config. Order-free with
+ * `registerServiceWorker`: a deploy that was found before the config loaded, and left
+ * waiting because the page was in use, is taken now if this instance takes them at once.
+ * Anywhere else it does nothing, so a slow config cannot bring back a notice someone has
+ * already dismissed.
+ */
+export function setInstanceKind(kind: InstanceKind | undefined): void {
+  instanceKind = kind;
+  if (takesDeploysAtOnce(kind)) deployArrived();
+}
+
+/**
+ * A new deploy's worker is waiting: take it now if this moment allows, and otherwise say
+ * so and leave it to a change of section, a return after a real absence, or the notice's
+ * Reload.
+ *
+ * On an instance that takes deploys at once, a page busy with work a reload would lose is
+ * asked again shortly rather than left to those moments, with no notice in between: the
+ * work is usually a save a second from landing, and a notice up for that second would be a
+ * flicker. The minute's guard still holds there, and a deploy it turns away gets the
+ * notice like any other.
+ */
+function deployArrived(): void {
+  clearTimeout(retry);
+  retry = undefined;
+  const worker = wb;
+  if (!worker || !updateReady) return;
+  const state = { untouched, busy: pageBusy(), path: location.pathname, kind: instanceKind };
+  if (shouldApplyOnLoad(state) && reloadAllowed()) {
+    updateReady = false;
+    setNotice(false);
+    handOver(worker, location.href);
+    return;
+  }
+  if (state.busy && takesDeploysAtOnce(state.kind)) {
+    setNotice(false);
+    retry = setTimeout(deployArrived, 250);
+    return;
+  }
+  setNotice(true);
 }
 
 function watchFirstTouch(): void {
@@ -211,6 +289,8 @@ function reloadIntoUpdate(): void {
   const worker = wb;
   if (!worker) return;
   const go = () => {
+    // Taken meanwhile, by a change of section or a deploy taken at once (`deployArrived`).
+    if (!updateReady) return;
     if (pageBusy()) {
       setTimeout(go, 250);
       return;
