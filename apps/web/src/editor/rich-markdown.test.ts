@@ -1041,6 +1041,16 @@ describe('inline images', () => {
     });
   });
 
+  /** The destination is plumbing: dimmed to the brackets' strength, see `imageDestination`. */
+  it('dims a revealed destination further than a link\'s', () => {
+    const doc = '![scan](files/scan.jpg)';
+    const v = mountWithAttachments(doc, doc.length);
+    const url = v.dom.querySelector('.cm-md-image-url');
+    expect(url?.textContent).toBe('files/scan.jpg');
+    expect(url?.classList.contains('cm-md-url')).toBe(true);
+    expect(v.dom.querySelector('.cm-md-image-alt')).toBeNull();
+  });
+
   /**
    * With no alt there is nothing to keep and nowhere to caption; the whole `![](url)` is
    * replaced by the picture, and its line collapses to the picture's height.

@@ -125,6 +125,17 @@ const hiddenMark = Decoration.mark({ class: 'cm-md-hidden' });
  */
 const urlDestination = Decoration.mark({ class: 'cm-md-url' });
 /**
+ * An image's revealed destination, dimmed one step further than a link's.
+ *
+ * A link's destination is edited by hand — pasted, corrected, swapped — so it stays
+ * readable at a glance. An image's is almost never: a stored file's `files/name` is set
+ * by the attachments panel, which renames and moves it, and a web image's address is
+ * what the save control turns into a stored file. Drawn at the brackets' own strength,
+ * the `(url)` reads as plumbing with the `![` and `](` around it, and the alt — the one
+ * part a person edits in place — stands out as the editable thing on the line.
+ */
+const imageDestination = Decoration.mark({ class: 'cm-md-url cm-md-image-url' });
+/**
  * A syntax mark on the line being edited.
  *
  * Revealed rather than hidden, but drawn as punctuation the editor owns — dimmed, at
@@ -1957,7 +1968,9 @@ function buildDecorations(
           if (parent === 'Link' || parent === 'Image') {
             const before = node.node.prevSibling;
             if (before && state.doc.sliceString(before.from, before.to) === '(') {
-              marks.push(urlDestination.range(node.from, node.to));
+              marks.push(
+                (parent === 'Image' ? imageDestination : urlDestination).range(node.from, node.to),
+              );
             }
             return;
           }
@@ -2475,6 +2488,9 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
       '.cm-md-bullet': { color: 'var(--accent)', fontWeight: '600' },
       '.cm-md-task': { verticalAlign: 'middle', margin: '0 0.35em 0 0', cursor: 'pointer' },
       '.cm-md-url': { opacity: '0.5', fontSize: '0.9em' },
+      // The same opacity as `.cm-md-mark`, so the destination sits at the brackets'
+      // strength; see `imageDestination`.
+      '.cm-md-image-url': { opacity: '0.35' },
       /**
        * Underlined rather than only coloured: colour alone is not an accessible way to
        * mark a link, and the accent is already the list-bullet colour.
