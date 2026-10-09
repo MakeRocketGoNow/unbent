@@ -67,18 +67,7 @@ export function createCollections(store: LocalStore, engine: FeedEngine): Collec
         initialRender: { strategy: 'network-first', networkTimeoutMs: 0 },
         sync: {
           rowUpdateMode: 'full',
-          sync: ({ collection, begin, write, commit, truncate, markReady }) => {
-            const controls: Controls<T> = {
-              begin: () => begin(),
-              write: (m) => write(m.type === 'delete' ? { type: 'delete', key: m.key } : { type: m.type, value: m.value }),
-              commit: () => commit(),
-              truncate,
-              markReady,
-              has: (key) => collection.has(key),
-              values: () => collection.values(),
-            };
-            return engine.register(entity, controls as never);
-          },
+          sync: (handles) => engine.register(entity, feedControls<T>(handles) as never),
         },
       }),
     );
@@ -98,6 +87,50 @@ export function createCollections(store: LocalStore, engine: FeedEngine): Collec
     tags: fed<FeedTag>('tags', 'tag', (t) => t.id),
     attachments: fed<LocalAttachment>('attachments', 'attachment', (a) => a.id),
     syncState,
+  };
+}
+
+/** What TanStack DB hands a collection's sync function, as far as the engine needs it. */
+export interface SyncHandles<T extends object> {
+  collection: { has: (key: string) => boolean; values: () => Iterable<T> };
+  begin: (options?: { immediate?: boolean }) => void;
+  write: (message: { type: 'insert' | 'update'; value: T } | { type: 'delete'; key: string }) => void;
+  commit: () => unknown;
+  truncate: () => void;
+  markReady: () => void;
+}
+
+/**
+ * A collection's sync handles as the engine's controls; the tests feed collections through
+ * this too.
+ *
+ * Every transaction begins `immediate`. By default TanStack DB holds a committed page of
+ * sync back while any write on the collection is in flight, and applies it once none is.
+ * Every entry waiting in the outbox is such a write, from the moment it is queued until
+ * its replay ends, and a replay ends only after the pull that brings its own row back has
+ * applied (`settled` in `actions.ts`), which since the engine began waiting for each
+ * page's commit is a wait on that held page. A single trash waited on itself; a second
+ * queued behind it waited for good, and only a reload ended it, by sending the first
+ * again (seen on 2026-10-08, where a restore made in between was undone). Offline it is
+ * worse in a quieter way: a write waiting all afternoon would hold every page another
+ * device's edits arrive in.
+ *
+ * A page is the server's copy and goes in when it arrives; an entry's optimistic change
+ * stays drawn over it until the entry ends, so nothing the person typed is hidden by it,
+ * and once the entry ends the row is the server's copy with no gap between. Applied at
+ * once, the commit settles at once, so the persistence layer never has a page waiting
+ * for the collection — which is also what keeps its rule against an immediate page
+ * overtaking a waiting one from refusing these.
+ */
+export function feedControls<T extends object>({ collection, begin, write, commit, truncate, markReady }: SyncHandles<T>): Controls<T> {
+  return {
+    begin: () => begin({ immediate: true }),
+    write: (m) => write(m.type === 'delete' ? { type: 'delete', key: m.key } : { type: m.type, value: m.value }),
+    commit: () => commit(),
+    truncate,
+    markReady,
+    has: (key) => collection.has(key),
+    values: () => collection.values(),
   };
 }
 

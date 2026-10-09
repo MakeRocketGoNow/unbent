@@ -426,6 +426,11 @@ export class FeedEngine {
    * closed in between would reopen with a position past rows that never landed. Every
    * cursor write waits for this, which also means a walk fetches its next page only once
    * the last has settled; on a phone the walk was bound by persistence anyway.
+   *
+   * The wait is safe only because a commit is applied when it arrives (`feedControls` in
+   * `collections.ts`). A commit TanStack DB held back behind a write in flight would hold
+   * this pull, and an outbox entry's replay waits on a pull: a single trash waited on
+   * itself.
    */
   private async apply(
     notes: FeedNote[],

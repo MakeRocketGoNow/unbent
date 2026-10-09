@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createCollection, type Collection } from '@tanstack/db';
 import { QueryClient } from '@tanstack/react-query';
-import type { FeedNote, Note } from '@unbent/shared';
+import type { FeedEntity, FeedNote, FeedPage, Note } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { ApiError, NoteChangedError, OfflineError } from '../notes-api.js';
 import { resetConnectivity, setReachableForTests } from '../connectivity.js';
@@ -10,8 +10,8 @@ import { installLibraryQueries, keys } from '../queries.js';
 import * as actions from './actions.js';
 import { createOutbox, provideLibrary, type WritableLibrary } from './actions.js';
 import { lookups, toNote } from './derive.js';
-import type { Collections, LocalNote } from './collections.js';
-import type { FeedEngine } from './feed.js';
+import { feedControls, type Collections, type LocalNote } from './collections.js';
+import { FeedEngine, type Position } from './feed.js';
 import { installMemoryOpfs, type MemoryDirectory } from './test-opfs.js';
 
 /**
@@ -254,7 +254,82 @@ function library(notes: LocalNote[]) {
   };
 }
 
+/**
+ * A library fed by the real engine, through the controls `collections.ts` gives it, from a
+ * server this file answers for. `library()`'s stand-in engine cannot show what a pull
+ * inside a replay does to the rows under TanStack DB's own rules for sync that arrives
+ * while a write is in flight, and a replay once stalled on exactly those rules.
+ */
+async function fedLibrary(notes: LocalNote[]) {
+  /** What the server has written, in order: a note as it now stands, or a purge. */
+  const log: { seq: number; note?: FeedNote; purged?: string }[] = [];
+  let position: Position | null = { seq: 1, epoch: 'test' };
+  const page = (path: string): FeedPage => {
+    const since = Number(new URL(path, 'http://x').searchParams.get('since'));
+    const after = log.filter((e) => e.seq > since);
+    return {
+      reset: false,
+      seq: log.at(-1)?.seq ?? 1,
+      epoch: 'test',
+      next: after.at(-1)?.seq ?? since,
+      more: false,
+      notes: after.flatMap((e) => (e.note ? [e.note] : [])),
+      notebooks: [],
+      tags: [],
+      attachments: [],
+      tombstones: after.flatMap((e) => (e.purged ? [{ entity: 'note' as const, id: e.purged }] : [])),
+    };
+  };
+  const engine = new FeedEngine({
+    fetchJson: async <T,>(path: string) => page(path) as T,
+    readCursor: async () => position,
+    writeCursor: async (p) => void (position = p),
+  });
+  const fed = <T extends object>(entity: FeedEntity, seed: T[], keyOf: (row: T) => string) =>
+    createCollection<T, string>({
+      id: `fed-${entity}-${Math.random().toString(36).slice(2)}`,
+      getKey: keyOf,
+      startSync: true,
+      sync: {
+        sync: (handles) => {
+          // The rows a persisted collection restores before its sync starts.
+          handles.begin();
+          for (const r of seed) handles.write({ type: 'insert', value: r });
+          handles.commit();
+          return engine.register(entity, feedControls<T>(handles) as never);
+        },
+      },
+    });
+  const collections = {
+    notes: fed<LocalNote>('note', notes, (r) => r.id),
+    notebooks: fed<{ id: string }>('notebook', [], (r) => r.id),
+    tags: fed<{ id: string }>('tag', [], (r) => r.id),
+    attachments: fed<{ id: string }>('attachment', [], (r) => r.id),
+    syncState: collection<{ id: string }>([], (r) => r.id).c,
+  } as unknown as Collections;
+  const outbox = createOutbox('u1', { ...collections, userId: 'u1', engine });
+  const lib: WritableLibrary = { ...collections, userId: 'u1', engine, outbox };
+  provideLibrary(async () => lib);
+  // The pull every library makes on open, settled, so the copy is whole before a test writes.
+  await vi.waitFor(() => expect(engine.state.phase).toBe('current'));
+  let seq = 1;
+  return {
+    lib,
+    fake: fakes[fakes.length - 1]!,
+    server: {
+      /** The note as a write left it on the server. */
+      wrote: (note: FeedNote) => void log.push({ seq: (seq += 1), note }),
+      purged: (id: string) => void log.push({ seq: (seq += 1), purged: id }),
+    },
+    /** The row as the server last delivered it, under whatever writes are still pending here. */
+    synced: (id: string) => (lib.notes as unknown as { _state: { syncedData: Map<string, LocalNote> } })._state.syncedData.get(id),
+  };
+}
+
 const tick = () => new Promise((r) => setTimeout(r, 0));
+
+/** What a replay came to, or `stuck` when it has not settled within a second. */
+const settles = <T,>(p: Promise<T>) => Promise.race([p, new Promise<'stuck'>((r) => setTimeout(() => r('stuck'), 1000))]);
 
 beforeEach(() => {
   resetConnectivity();
@@ -440,6 +515,31 @@ describe('a replayed write', () => {
     landPull();
     expect(await replay).toBe('done');
     expect(vi.mocked(api.updateNote).mock.calls.map((c) => c[1].ifUpdatedAt)).toEqual([100, 150]);
+  });
+});
+
+describe('a replay that pulls the feed', () => {
+  it('ends while the writes queued after it still wait, rather than waiting on them', async () => {
+    // Two notes trashed a moment apart: two entries, the second in flight until its turn.
+    // The first replay's pull brings its own row back, and TanStack DB holds a page of
+    // sync back while any write on the collection is in flight; the entry waited for the
+    // page, the page for the entry, and only a reload ended it — sending the trash again.
+    const { lib, fake, server, synced } = await fedLibrary([row('n1'), row('n2')]);
+    vi.mocked(api.deleteNotes).mockImplementation(async (ids) => {
+      for (const id of ids) server.wrote(row(id, { deletedAt: 5 }));
+      return { trashed: ids.length };
+    });
+    await actions.trashNotes(['n1']);
+    await actions.trashNotes(['n2']);
+    await tick();
+
+    expect(await settles(fake.replayOne())).toBe('done');
+    // The page is in the rows the feed wrote, not only waiting under the note still queued.
+    expect(synced('n1')?.deletedAt).toBe(5);
+    expect(await settles(fake.replayOne())).toBe('done');
+    expect(api.deleteNotes).toHaveBeenCalledTimes(2);
+    expect(lib.notes.get('n2')?.deletedAt).toBe(5);
+    expect(lib.outbox.status().pending).toBe(0);
   });
 });
 
