@@ -42,8 +42,9 @@ describe('NoteListHead', () => {
     expect(getByLabelText('Filter notes')).toBeTruthy();
   });
 
-  /* A narrowed list's count is how it is exported, at every width and in every view; an
-     unfiltered one stays plain text, since its export is the whole library's page. */
+  /* The count is how a list is exported or selected, at every width and in every view. It
+     is a menu only when the caller passes one — filtered or not, see `countMenuItems` —
+     and plain text otherwise. */
   it('makes the count a menu only when given one', () => {
     const onExport = vi.fn();
     const { getByRole, getByText, queryByRole, rerender } = render(

@@ -7200,7 +7200,7 @@ button.settings-nav-item {
 }
 
 /*
-   The count as a menu trigger, when the list is narrowed — see `NoteListHead`'s `countMenu`.
+   The count as a menu trigger — see `NoteListHead`'s `countMenu` for when it is one.
 
    It has to read as the count first and a control second: the count's own size and
    colour, a chevron after it, and the fill every icon in this row takes under the pointer.
