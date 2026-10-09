@@ -176,8 +176,9 @@ export async function insertUploads(
         ? apart(view.state.doc, at, tokens)
         : tokens.map((token) => `${token}\n`).join(''),
     },
-    // A file chosen from the toolbar may land off-screen; a drop never does, and
-    // scrolling to something already visible is a no-op.
+    // A file chosen from the toolbar may land off-screen, and so, rarely, may one dropped
+    // beside a block taller than the screen (`landingFor`); scrolling to something
+    // already visible is a no-op.
     effects: EditorView.scrollIntoView(at),
   });
   for (const job of jobs) pending.add(job.token, job.controller);

@@ -14,7 +14,8 @@ import { carriesFiles, refuseFile, showDropAt } from './drop-cursor.js';
  *   one place on the note where the drop point jumped away from the pointer.
  * - **Below it,** at the end. On a new note that is the whole empty page.
  * - **Level with a line,** in a margin or over something drawn across it, before or after
- *   the block that line belongs to, whichever side of the text the pointer is on.
+ *   the block that line belongs to: the edge of the block nearer the pointer, or, for a
+ *   block of one line, whichever side of the text the pointer is on.
  *
  * The block, not the line. Rich mode draws a fenced code block and a table line by line,
  * so the line beside the pointer can be a row of either, and a file set apart there by
@@ -22,6 +23,13 @@ import { carriesFiles, refuseFile, showDropAt } from './drop-cursor.js';
  * two and left the rows under it without a header. A list and a quote split the same way.
  * The top-level block of the markdown — a paragraph, a list, a quote, a fence, a table —
  * is the unit a file put beside the text can go before or after without breaking it.
+ *
+ * The nearer edge, not the side, once the block is taller than its line. Going by the side
+ * alone sent a file put in the right margin beside the third row of a long table to the
+ * table's end, out of sight: the drag pointed at nothing visible, and the drop scrolled
+ * the note away to show where the file went. The nearer edge stays beside the pointer for
+ * any block shorter than two screens; past that, a drop in its middle still lands out of
+ * sight, which a block that size makes rare and the scroll to it at least explains.
  *
  * By position alone, deliberately. Sending everything that comes before the body in the
  * page to the top was tried, so that the title and the bar, which stick while the body
@@ -34,8 +42,13 @@ function landingFor(view: EditorView, x: number, y: number): number {
   const box = view.contentDOM.getBoundingClientRect();
   if (y < box.top) return 0;
   if (y >= box.bottom) return view.state.doc.length;
-  const block = blockAround(view, view.lineBlockAtHeight(y - view.documentTop));
-  return x < box.left ? block.from : block.to;
+  const height = y - view.documentTop;
+  const line = view.lineBlockAtHeight(height);
+  const block = blockAround(view, line);
+  if (block.from === line.from && block.to === line.to) return x < box.left ? line.from : line.to;
+  const top = view.lineBlockAt(block.from).top;
+  const bottom = view.lineBlockAt(block.to).bottom;
+  return height - top <= bottom - height ? block.from : block.to;
 }
 
 /**
