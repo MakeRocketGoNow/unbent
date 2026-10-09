@@ -1,11 +1,15 @@
 import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
 import {
-  type EditorState,
+  EditorSelection,
+  EditorState,
   type Extension,
   type Range,
   Prec,
   RangeSetBuilder,
   StateEffect,
+  type Text,
+  type Transaction,
+  type TransactionSpec,
 } from '@codemirror/state';
 import {
   Decoration,
@@ -1599,10 +1603,26 @@ const imageFailed = StateEffect.define<null>();
 /** An image on a line of its own collapses that line's text height while it stands in. */
 const imageOnlyLine = Decoration.line({ class: 'cm-md-image-line' });
 
-function buildDecorations(view: EditorView, options: RichMarkdownOptions): DecorationSet {
+/**
+ * The edges of every caption drawn by the last build, and where a caret landing on one
+ * belongs — see `snapCaptionCaret`.
+ *
+ * `doc` is the document the edges were measured against. A build and the transaction
+ * that reads its edges are separated by whatever the person did in between, so the
+ * reader checks it is still the same document before trusting a position.
+ */
+type CaptionEdges = { doc: Text | null; edges: Map<number, number> };
+
+function buildDecorations(
+  view: EditorView,
+  options: RichMarkdownOptions,
+  captions: CaptionEdges,
+): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   const marks: Array<Range<Decoration>> = [];
   const state = view.state;
+  captions.doc = state.doc;
+  captions.edges.clear();
   // Read from the view at click time, so the set is the note as it stands then.
   const siblings: Siblings = () => collectAttachmentTargets(view.state, options);
 
@@ -1812,6 +1832,10 @@ function buildDecorations(view: EditorView, options: RichMarkdownOptions): Decor
               marks.push(imageAlt.range(altStart, altEnd));
               marks.push(hiddenMark.range(altEnd, node.to));
               marks.push(Decoration.widget({ widget, side: 1 }).range(node.to));
+              // A caret put on either edge of the caption belongs on the matching edge
+              // of the whole `![alt](url)`; see `snapCaptionCaret`.
+              captions.edges.set(altStart, node.from);
+              captions.edges.set(altEnd, node.to);
               return;
             }
 
@@ -2198,13 +2222,47 @@ function openLineBelowPicture(plugin: ViewPlugin<{ decorations: DecorationSet }>
   };
 }
 
+/**
+ * Moves a caret put on the edge of a drawn caption to the edge of its image's markdown.
+ *
+ * An unfocused image is its alt text with `![` and `](url)` hidden at zero width on either
+ * side. A click at the right end of the caption therefore resolves to the end of the alt —
+ * there is nothing of any width to click past — and the next build reveals the line with
+ * the caret between `alt` and `](url)`: the middle of the markdown, when the person aimed
+ * at its end. The left edge has the mirror problem, landing after `![`. Nobody clicking
+ * the edge of a caption means the seam between the alt and its hidden syntax, so both
+ * edges move out to the ends of the whole `![alt](url)`. A click inside the caption is
+ * untouched and still edits the alt.
+ *
+ * Done on the transaction rather than the mouse event so a tap on a phone, which places
+ * the caret through the DOM with no mouse event the editor sees, snaps the same way. The
+ * edges come from the last build, so an entry exists only while the caption is drawn: once
+ * the line is revealed there is nothing to snap, and arrowing along the markdown is
+ * unaffected. Only a lone empty cursor moves — a drag that ends on an edge keeps the
+ * range the person drew.
+ */
+function snapCaptionCaret(
+  tr: Transaction,
+  captions: CaptionEdges,
+): TransactionSpec | readonly TransactionSpec[] {
+  if (tr.docChanged || !tr.selection || !tr.isUserEvent('select')) return tr;
+  if (captions.doc !== tr.startState.doc) return tr;
+  const { ranges, main } = tr.selection;
+  if (ranges.length !== 1 || !main.empty) return tr;
+  const snapped = captions.edges.get(main.head);
+  if (snapped === undefined) return tr;
+  return [tr, { selection: EditorSelection.cursor(snapped) }];
+}
+
 export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
+  // Per editor, not per module: two notes side by side each have their own captions.
+  const captions: CaptionEdges = { doc: null, edges: new Map() };
   const decorationsPlugin = ViewPlugin.fromClass(
     class {
       decorations: DecorationSet;
 
       constructor(view: EditorView) {
-        this.decorations = buildDecorations(view, options);
+        this.decorations = buildDecorations(view, options, captions);
       }
 
       update(update: ViewUpdate) {
@@ -2237,7 +2295,7 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
           parsed ||
           repaint
         ) {
-          this.decorations = buildDecorations(update.view, options);
+          this.decorations = buildDecorations(update.view, options, captions);
         }
       }
     },
@@ -2245,6 +2303,7 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
   );
   return [
     decorationsPlugin,
+    EditorState.transactionFilter.of((tr) => snapCaptionCaret(tr, captions)),
 
     // Ahead of the default keymap, whose Down at the last line would move nowhere.
     Prec.high(keymap.of([{ key: 'ArrowDown', run: openLineBelowPicture(decorationsPlugin) }])),
