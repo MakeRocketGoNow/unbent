@@ -469,8 +469,9 @@ describe('a replayed write', () => {
     const { fake, engine } = library([row('n1'), row('n2', { deletedAt: 5 }), row('n3', { deletedAt: 5 })]);
     engine.pull.mockResolvedValue(undefined);
     const real = await vi.importActual<typeof import('../notes-api.js')>('../notes-api.js');
-    vi.mocked(api.deleteNote).mockImplementation(real.deleteNote);
-    vi.mocked(api.deleteNotePermanently).mockImplementation(real.deleteNotePermanently);
+    // Once each, so the real client and its stubbed fetch do not outlive this test.
+    vi.mocked(api.deleteNote).mockImplementationOnce(real.deleteNote);
+    vi.mocked(api.deleteNotePermanently).mockImplementationOnce(real.deleteNotePermanently);
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'Not found' }), { status: 404, headers: { 'Content-Type': 'application/json' } })));
     vi.mocked(api.restoreNote).mockResolvedValueOnce(toNote(row('n3'), lookups({ notes: [], notebooks: [], tags: [], attachments: [] })));
     await actions.trashNote('n1');
@@ -549,10 +550,11 @@ describe('a replay that pulls the feed', () => {
     // sync back while any write on the collection is in flight; the entry waited for the
     // page, the page for the entry, and only a reload ended it — sending the trash again.
     const { lib, fake, server, synced } = await fedLibrary([row('n1'), row('n2')]);
-    vi.mocked(api.deleteNotes).mockImplementation(async (ids) => {
+    const trash = async (ids: string[]) => {
       for (const id of ids) server.wrote(row(id, { deletedAt: 5 }));
       return { trashed: ids.length };
-    });
+    };
+    vi.mocked(api.deleteNotes).mockImplementationOnce(trash).mockImplementationOnce(trash);
     await actions.trashNotes(['n1']);
     await actions.trashNotes(['n2']);
     await tick();
@@ -572,7 +574,7 @@ describe('a replay that pulls the feed', () => {
     // past it, and the note came back when the purge ended: in the trash for good, on a
     // server that no longer had it, until a sign-out emptied the copy.
     const { lib, fake, server, synced } = await fedLibrary([row('n1', { deletedAt: 5 })]);
-    vi.mocked(api.deleteNotePermanently).mockImplementation(async (id) => server.purged(id));
+    vi.mocked(api.deleteNotePermanently).mockImplementationOnce(async (id) => server.purged(id));
     await actions.purgeNote('n1');
     await tick();
     expect(lib.notes.has('n1')).toBe(false);
