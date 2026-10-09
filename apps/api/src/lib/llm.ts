@@ -1,3 +1,4 @@
+import type { LlmTokens } from '@unbent/shared';
 import { z } from 'zod';
 
 /**
@@ -139,13 +140,7 @@ export interface NoteForTitle {
  * different rates — a cache read at a tenth, a cache write at a premium — which is why
  * they are kept apart rather than summed here.
  */
-export interface LlmUsage {
-  model: string;
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens: number;
-  cacheWriteTokens: number;
-}
+export type LlmUsage = LlmTokens;
 
 /** A job's answer and what asking for it cost. */
 export interface Metered<T> {

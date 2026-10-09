@@ -1,15 +1,8 @@
-import type { LlmJob, LlmJobUsage } from '@unbent/shared';
+import type { LlmJob, LlmJobUsage, LlmTokens } from '@unbent/shared';
 import type { Sql } from './sql.js';
 
 /** One answer the model was paid for: the job, the model, and the API's four counts. */
-export interface UsageEntry {
-  job: LlmJob;
-  model: string;
-  inputTokens: number;
-  outputTokens: number;
-  cacheReadTokens: number;
-  cacheWriteTokens: number;
-}
+export type UsageEntry = LlmTokens & { job: LlmJob };
 
 /** What a press was told: whether it may go ahead, and how many the day had before it. */
 export interface PressCheck {

@@ -413,15 +413,23 @@ export function unreadFiles(pending: readonly string[]): string {
 /** The jobs the language model does inside a press, as the usage counter names them. */
 export type LlmJob = 'read' | 'title' | 'fields';
 
-/** What the model was asked for one job on one model, summed over a period. Tokens, never dollars. */
-export interface LlmJobUsage {
-  job: LlmJob;
+/**
+ * What one or more answers from the language model cost, in the API's own four counts,
+ * and the model that gave them. Tokens, never dollars: a token's price is the model's and
+ * changes. Declared once here; the API's `LlmUsage` and the store's `UsageEntry` are this.
+ */
+export interface LlmTokens {
   model: string;
-  requests: number;
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+}
+
+/** What the model was asked for one job on one model, summed over a period. */
+export interface LlmJobUsage extends LlmTokens {
+  job: LlmJob;
+  requests: number;
 }
 
 /**
