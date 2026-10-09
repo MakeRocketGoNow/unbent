@@ -279,10 +279,11 @@ async function run(BASE, chrome, keepSocket) {
       // again. The worker must answer the load from the network and fill its cache back;
       // it answered it with the Worker's redirect of `/index.html` instead, which is a
       // network error for a page load, and every load failed until the next deploy.
-      await ev(`(async()=>{for(const n of await caches.keys())await caches.delete(n)})()`);
+      // The document on screen is marked, so the wait below is for the new one: the list
+      // is already rendered here, and read before the load lands it would pass at once.
+      await ev(`(async()=>{for(const n of await caches.keys())await caches.delete(n);window.__gateOld=true})()`);
       await goto(`${BASE}/notes`);
-      await sleep(1000);
-      const loaded = await until(async () => ((await libraryReady()) ? true : null), 20000);
+      const loaded = await until(async () => (!(await ev('!!window.__gateOld')) && (await libraryReady()) ? true : null), 20000);
       const filled = loaded && (await until(async () => { const v = await state(); return v && typeof v === 'object' && v.precache >= precache ? v : null; }, 30000));
       report('a page load with the caches emptied still loads, and fills them again', !!filled, loaded ? `precache ${(await state())?.precache} of ${precache}` : `page never rendered: ${JSON.stringify(await ev('location.href'))}`);
     }
