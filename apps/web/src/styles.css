@@ -2156,6 +2156,37 @@ a.overflow-item { text-decoration: none; }
   box-shadow: 0 4px 12px color-mix(in srgb, var(--fg) 25%, transparent);
 }
 
+/* The app's tooltip, for every `data-tip` (`tooltips.ts`). The same dark bubble as the
+   not-synced mark's word above, so the two read as one thing. A popover, placed by the
+   script in fixed coordinates: the UA's centring margin and inset are undone here. */
+.tip {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  border: 0;
+  max-width: min(18rem, calc(100vw - 1rem));
+  padding: 0.3rem 0.55rem;
+  border-radius: 0.4rem;
+  background: var(--fg);
+  color: var(--bg);
+  font: 500 0.78rem/1.35 var(--font-ui);
+  text-align: center;
+  pointer-events: none;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--fg) 25%, transparent);
+  opacity: 0;
+}
+.tip[data-open] { opacity: 1; }
+/* An engine without popovers never draws it closed. */
+.tip:not([data-open]) { display: none; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .tip[data-open] { transition: opacity 90ms ease-out; }
+
+  @starting-style {
+    .tip[data-open] { opacity: 0; }
+  }
+}
+
 /* Auto-fill, between the save state and the ⋯: a sparkle and a word, drawn as one more
    thing in the head rather than a second menu. The gap is the icon's, not a button's. */
 .autofill-btn { gap: 0.3rem; }
