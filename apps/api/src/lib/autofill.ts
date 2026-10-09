@@ -660,10 +660,10 @@ async function textFieldValues(
   if (asked.length === 0) return found;
   let answer: Record<string, string> | null;
   try {
-    answer = await llm.textFields(
+    ({ value: answer } = await llm.textFields(
       corpus.note,
       asked.map((f, i) => ({ key: `field_${i}`, name: f.name })),
-    );
+    ));
   } catch (err) {
     console.error('autofill fields:', (err as Error).message);
     return found;
@@ -741,7 +741,7 @@ export async function autofill(
   const named = nameFromReading(input);
   const writing =
     llm && !named
-      ? llm.title(corpus.note).catch((err: unknown) => {
+      ? llm.title(corpus.note).then(({ value }) => value, (err: unknown) => {
           if (isLlmAuthError(err)) {
             titleAuthFailed = true;
             console.error('autofill title: LLM auth/config failure —', (err as Error).message);

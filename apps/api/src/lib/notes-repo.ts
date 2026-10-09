@@ -21,6 +21,7 @@ import type {
 } from '@unbent/shared';
 import { StoreRepo } from './store-client.js';
 import type { FileSummary } from '../store/attachments.js';
+import type { UsageEntry } from '../store/llm-usage.js';
 import type { CountOptions, ListOptions, SearchFilters } from '../store/notes.js';
 import {
   keysOfDeletedNotes,
@@ -427,9 +428,22 @@ export class NotesRepo extends StoreRepo {
     return this.call((s) => s.notebooksOverview(opts));
   }
 
-  /** The first half of auto-fill: the note and its own unread files. Null when there is no such live note. */
-  autofillPrelude(id: string, ownFilesToRead: number) {
-    return this.call((s) => s.autofillPrelude(id, ownFilesToRead));
+  /**
+   * The first half of auto-fill: the note and its own unread files, and with `press` the
+   * press counted against the day's cap. Null when there is no such live note.
+   */
+  autofillPrelude(id: string, ownFilesToRead: number, press?: { cap: number | null }) {
+    return this.call((s) => s.autofillPrelude(id, ownFilesToRead, press));
+  }
+
+  /** What a press cost beyond its files' readings; see `UserStore.recordLlmUsage`. */
+  recordLlmUsage(entries: UsageEntry[]): Promise<void> {
+    return this.call((s) => s.recordLlmUsage(entries));
+  }
+
+  /** This calendar year's presses and tokens. */
+  autofillUsage() {
+    return this.call((s) => s.autofillUsage());
   }
 
   /** The second half: everything the model is shown beside the note. */

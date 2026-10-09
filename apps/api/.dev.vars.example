@@ -247,6 +247,11 @@ ALLOWED_EMAILS=
 #
 # Where those requests go instead, for a stand-in server during development. Leave unset.
 # ANTHROPIC_API_URL=
+#
+# The most Auto-fill presses one account may make in a UTC day; past it a press is refused
+# with a sentence the button shows. Unset enforces nothing, though every press and what the
+# model cost is still counted (src/lib/llm-usage.ts). Set a small number to try the refusal.
+# AUTOFILL_DAILY_CAP=
 
 # The User-Agent add_attachment sends when it fetches a file for an assistant. Unset, it is
 # a current desktop Chrome (DEFAULT_FETCH_USER_AGENT in src/lib/fetch-attachment.ts); set

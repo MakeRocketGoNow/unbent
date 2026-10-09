@@ -111,6 +111,8 @@ const EXEMPT: Record<string, string> = {
   loadBegin: 'empties the store for a dump; the feed in the dump replaces it',
   loadPage: 'writes the dump\'s own rows, feed table included',
   loadFinish: 'names a new epoch itself, so every client starts over from the loaded rows',
+  autofillPrelude: 'counts an Auto-fill press against the day\'s cap, which is metering no client holds',
+  recordLlmUsage: 'counts what the language model cost, which is metering no client holds',
 };
 
 /** Reads, composites and the operator surface: nothing to record. */
@@ -122,7 +124,7 @@ const READS = new Set([
   'pendingTextCount', 'textFor', 'textWithRead', 'textsForNote', 'textsForNotes', 'textsById', 'attachmentIdFor',
   'keysForNote', 'allBlobKeys', 'tombstonedBlobKeys',
   'listPage', 'searchRows', 'searchWithFiles', 'exportPage', 'getWithFiles', 'filesForNote', 'notebooksOverview', 'pendingText',
-  'autofillPrelude', 'autofillContext', 'uploadPrelude',
+  'autofillContext', 'uploadPrelude', 'autofillUsage',
   'changesSince', 'snapshotPage',
   'listRevisions', 'getRevision',
 ]);

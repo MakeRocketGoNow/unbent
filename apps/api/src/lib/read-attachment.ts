@@ -3,6 +3,7 @@ import type { AttachmentsRepo } from './attachments-repo.js';
 import type { PendingFile as StoredPending } from '../store/attachments.js';
 import { canExtractOnServer, extractOnServer, type MarkdownConverter } from './extract-text.js';
 import { canUseLlm, formatReading, readableByLlm, llmFrom, type LlmEnv, type LanguageModel } from './llm.js';
+import { usageEntry, type PressUsage } from './llm-usage.js';
 import { withReaderSlot } from './reader-gate.js';
 
 /**
@@ -38,6 +39,12 @@ export interface Readers {
   converter?: MarkdownConverter;
   /** The language model, when the deployment has a key for one. Only its reading is needed here. */
   llm?: Pick<LanguageModel, 'read'>;
+  /**
+   * Where a reading the model was paid for but that came to nothing is counted — a reply
+   * cut off at its budget, which records no text to carry its cost (MAK-180). A reading
+   * that records text carries its own cost into that write. Only a press has one.
+   */
+  usage?: PressUsage;
 }
 
 /**
@@ -150,7 +157,7 @@ export async function readAttachment(
     }
 
     if (readers.llm && readableByLlm(file.contentType, file.size)) {
-      return readWithLlm(readers.llm, attachments, file, await load());
+      return readWithLlm(readers, readers.llm, attachments, file, await load());
     }
 
     return 'unread';
@@ -228,33 +235,49 @@ export async function readPendingFile(
   }
   const stored = await blobs.get(file.r2Key);
   if (!stored) throw new Error(`No object at ${file.r2Key}`);
-  return readWithLlm(readers.llm, attachments, file, await stored.arrayBuffer());
+  return readWithLlm(readers, readers.llm, attachments, file, await stored.arrayBuffer());
 }
 
 /**
  * The vision model alone, for a file that is past the text layer: a picture, or a scan
  * the layer had nothing for. Whatever it says is recorded under its name, so a later
- * press never pays for the same file twice — a decline included.
+ * press never pays for the same file twice — a decline included — and what it cost is
+ * recorded in the same write.
  */
 async function readWithLlm(
+  readers: Pick<Readers, 'usage'>,
   llm: Pick<LanguageModel, 'read'>,
   attachments: Pick<AttachmentsRepo, 'recordText'>,
   file: StoredFile & Pick<StoredPending, 'writtenBy'>,
   bytes: ArrayBuffer,
 ): Promise<Reading> {
-  const reading = await llm.read({ filename: file.filename, contentType: file.contentType, bytes });
+  let answer;
+  try {
+    answer = await llm.read({ filename: file.filename, contentType: file.contentType, bytes });
+  } catch (err) {
+    if (readers.usage) readers.usage.failed('read', err);
+    throw err;
+  }
+  const { value: reading, usage } = answer;
   // A decline over an assistant's words leaves them standing: the model gave nothing to
   // put in their place, and an empty row would take text search and summaries were using.
   // The file stays offered to later presses — after anything nothing has read, which is
   // how `needingVision` orders them — so it is the one case a press pays for more than
-  // once. The tool that writes those words says so.
-  if (!reading && file.writtenBy === 'assistant') return 'empty';
-  await attachments.recordText({
-    attachmentId: file.id,
-    noteId: file.noteId,
-    filename: file.filename,
-    text: reading ? formatReading(reading) : '',
-    readBy: 'vision',
-  });
+  // once. The tool that writes those words says so. Nothing is written, so the cost goes
+  // with the press's own.
+  if (!reading && file.writtenBy === 'assistant') {
+    readers.usage?.entries.push(usageEntry('read', usage));
+    return 'empty';
+  }
+  await attachments.recordText(
+    {
+      attachmentId: file.id,
+      noteId: file.noteId,
+      filename: file.filename,
+      text: reading ? formatReading(reading) : '',
+      readBy: 'vision',
+    },
+    usageEntry('read', usage),
+  );
   return reading ? 'vision' : 'empty';
 }

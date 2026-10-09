@@ -42,6 +42,13 @@ export const DATA_TABLES = [
    * never asks about. References nothing, like `changes`.
    */
   'deleted_blobs',
+  /*
+   * What the language model has cost the account, by day (0007). Counted so `stats`
+   * shows it, and dumped because it is the account's record of what it has spent: a
+   * store rebuilt from a dump without it would start the year, and the day's cap, again.
+   * References nothing.
+   */
+  'llm_usage',
 ] as const;
 export type DataTable = (typeof DATA_TABLES)[number];
 

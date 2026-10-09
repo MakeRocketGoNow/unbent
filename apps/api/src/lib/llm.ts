@@ -129,25 +129,66 @@ export interface NoteForTitle {
   attachments: Array<{ filename: string; text: string }>;
 }
 
-/** What a caller asks of the model, so a test can hand in a stand-in and another model can take its place. */
+/**
+ * What one request cost, as the API reports it in `usage`, and which model it was asked
+ * of (MAK-180). Tokens, never dollars: the price of a token is the model's and changes,
+ * so the counter keeps what was used and the model that used it, and anything that shows
+ * a price converts at display.
+ *
+ * The four counts are the API's own split. All three kinds of input are billed, at
+ * different rates — a cache read at a tenth, a cache write at a premium — which is why
+ * they are kept apart rather than summed here.
+ */
+export interface LlmUsage {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+}
+
+/** A job's answer and what asking for it cost. */
+export interface Metered<T> {
+  value: T;
+  usage: LlmUsage;
+}
+
+/**
+ * What a caller asks of the model, so a test can hand in a stand-in and another model can
+ * take its place.
+ *
+ * Every job answers with its usage beside its value, so the caller that records the value
+ * records the cost in the same breath — a reading's tokens go into the transaction that
+ * writes its text — and a stand-in reports usage the way the real model does, which is
+ * what lets a test count a press. A callback handed to `llmFrom` was the alternative and
+ * was not taken: it would count only what the one real implementation counted.
+ */
 export interface LanguageModel {
   /** Null when the model declined to read the file, which is recorded so it is not asked again. */
-  read(file: { filename: string; contentType: string; bytes: ArrayBuffer }): Promise<FileReading | null>;
+  read(file: { filename: string; contentType: string; bytes: ArrayBuffer }): Promise<Metered<FileReading | null>>;
   /** The title a careful person would give the note. Null when the model declined. */
-  title(note: NoteForTitle): Promise<string | null>;
+  title(note: NoteForTitle): Promise<Metered<string | null>>;
   /**
    * The values of a notebook's text fields, as the note writes them: by each field's
    * `key`, `''` where the note does not say. Null when the model declined. Only text
    * fields: see `textFieldValues` in lib/autofill.ts for why the rest stay Jev's.
    */
-  textFields(note: NoteForTitle, fields: Array<{ key: string; name: string }>): Promise<Record<string, string> | null>;
+  textFields(note: NoteForTitle, fields: Array<{ key: string; name: string }>): Promise<Metered<Record<string, string> | null>>;
 }
 
-/** The API refused or failed. `status` is HTTP's, or 0 when no answer arrived at all. */
+/**
+ * The API refused or failed. `status` is HTTP's, or 0 when no answer arrived at all.
+ *
+ * `usage` is set when the API answered and billed for it but the answer could not be
+ * used — a reply cut off at the token budget, the dearest kind there is, since it spent
+ * the whole budget. A caller that counts what a press cost counts this too (`meterErrors`
+ * in lib/llm-usage.ts); an error with no usage cost nothing.
+ */
 export class LlmError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    readonly usage?: LlmUsage,
   ) {
     super(message);
     this.name = 'LlmError';
@@ -295,9 +336,24 @@ export function fieldTokens(count: number): number {
 /** Titles have a length in the shared schema; a model that ignores "short" is cut, not refused. */
 const MAX_TITLE_CHARS = 200;
 
+/**
+ * A count the API may leave out or send as null — the cache counts on a request that
+ * touched no cache, or a stand-in that says nothing of usage — read as zero rather than
+ * failing an answer whose text is fine.
+ */
+const tokens = z.number().int().nonnegative().nullish().transform((n) => n ?? 0);
+
 const answer = z.object({
   stop_reason: z.string().nullable().optional(),
   content: z.array(z.object({ type: z.string(), text: z.string().optional() })),
+  usage: z
+    .object({
+      input_tokens: tokens,
+      output_tokens: tokens,
+      cache_read_input_tokens: tokens,
+      cache_creation_input_tokens: tokens,
+    })
+    .nullish(),
 });
 
 /** Chunked, because `String.fromCharCode(...bytes)` overflows the call stack on a photo. Shared with MCP's `get_attachment`. */
@@ -334,14 +390,19 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
   }
 
   /**
-   * One request, answered with the text the model wrote, or null when it declined.
+   * One request, answered with the text the model wrote, or null when it declined, and
+   * what the request cost either way.
    *
    * A refusal carries its own stop reason, and a refusal under structured output can also
    * arrive as prose where the JSON should be; the callers' parse failures mean the same.
    * Both are "declined", and a file the model declines once it would decline again, so
-   * the callers record that rather than retry it.
+   * the callers record that rather than retry it. A decline is still billed for the input
+   * it read, so its usage comes back with it.
+   *
+   * Only the answer that was kept is counted. A retried 429 or 5xx is not billed, and an
+   * error status carries no usage to count.
    */
-  async function ask(body: string, timeout = TIMEOUT_MS): Promise<string | null> {
+  async function ask(body: string, timeout = TIMEOUT_MS): Promise<Metered<string | null>> {
     let res = await post(body, timeout);
     if (RETRY_STATUSES.has(res.status)) {
       await new Promise((resolve) => setTimeout(resolve, RETRY_AFTER_MS));
@@ -355,14 +416,22 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
     }
     const parsed = answer.safeParse(await res.json().catch(() => null));
     if (!parsed.success) throw new LlmError(0, 'The language model answered with nothing this code can read');
-    if (parsed.data.stop_reason === 'refusal') return null;
+    const used = parsed.data.usage;
+    const usage: LlmUsage = {
+      model,
+      inputTokens: used?.input_tokens ?? 0,
+      outputTokens: used?.output_tokens ?? 0,
+      cacheReadTokens: used?.cache_read_input_tokens ?? 0,
+      cacheWriteTokens: used?.cache_creation_input_tokens ?? 0,
+    };
+    if (parsed.data.stop_reason === 'refusal') return { value: null, usage };
     // Cut off, not declined: the answer is missing or truncated. Recording that as a
     // decline would file a half-read scan as empty for good, so it is an error instead,
     // which leaves the file pending and the title to Jev's pick, and is logged either way.
     if (parsed.data.stop_reason === 'max_tokens') {
-      throw new LlmError(0, 'The language model ran out of room before it finished answering');
+      throw new LlmError(0, 'The language model ran out of room before it finished answering', usage);
     }
-    return parsed.data.content.find((c) => c.type === 'text')?.text ?? null;
+    return { value: parsed.data.content.find((c) => c.type === 'text')?.text ?? null, usage };
   }
 
   return {
@@ -390,13 +459,13 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
         output_config: { format: { type: 'json_schema', schema: READING_SCHEMA } },
       });
 
-      const text = await ask(body);
-      if (!text) return null;
+      const { value: text, usage } = await ask(body);
+      if (!text) return { value: null, usage };
       try {
         const result = reading.safeParse(JSON.parse(text));
-        return result.success ? result.data : null;
+        return { value: result.success ? result.data : null, usage };
       } catch {
-        return null;
+        return { value: null, usage };
       }
     },
 
@@ -417,20 +486,21 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
           format: { type: 'json_schema', schema: TITLE_SCHEMA },
         },
       });
-      const text = await ask(body, TITLE_TIMEOUT_MS);
-      if (!text) return null;
+      const { value: text, usage } = await ask(body, TITLE_TIMEOUT_MS);
+      if (!text) return { value: null, usage };
       try {
         const result = titled.safeParse(JSON.parse(text));
-        if (!result.success) return null;
+        if (!result.success) return { value: null, usage };
         const title = result.data.title.trim().replace(/\s+/g, ' ').slice(0, MAX_TITLE_CHARS);
-        return title || null;
+        return { value: title || null, usage };
       } catch {
-        return null;
+        return { value: null, usage };
       }
     },
 
     async textFields(note, fields) {
-      if (fields.length === 0) return {};
+      // Nothing asked, nothing sent, nothing spent.
+      if (fields.length === 0) return { value: {}, usage: { model, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 } };
       // One property per field, keyed by the caller's key rather than the field's name: a
       // name is the owner's to write, and a schema key has rules a name need not follow.
       // The name goes in each property's description, which the model reads.
@@ -457,18 +527,18 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
           format: { type: 'json_schema', schema },
         },
       });
-      const text = await ask(body, FIELDS_TIMEOUT_MS);
-      if (!text) return null;
+      const { value: text, usage } = await ask(body, FIELDS_TIMEOUT_MS);
+      if (!text) return { value: null, usage };
       try {
         const result = z.record(z.string(), z.string()).safeParse(JSON.parse(text));
-        if (!result.success) return null;
+        if (!result.success) return { value: null, usage };
         const out: Record<string, string> = {};
         for (const f of fields) {
           out[f.key] = (result.data[f.key] ?? '').trim().replace(/\s+/g, ' ').slice(0, MAX_FIELD_CHARS);
         }
-        return out;
+        return { value: out, usage };
       } catch {
-        return null;
+        return { value: null, usage };
       }
     },
   };

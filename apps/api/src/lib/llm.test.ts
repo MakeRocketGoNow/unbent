@@ -65,9 +65,11 @@ describe('vision', () => {
   it('sends the picture before the words, with the key and the shape to fill in', async () => {
     const fetchImpl = answering(200, message(JSON.stringify(said)));
     const vision = llmFrom(env, fetchImpl as unknown as typeof fetch);
-    const reading = await vision.read(photo);
+    const { value: reading, usage } = await vision.read(photo);
 
     expect(reading).toEqual(said);
+    // What it cost comes back with it, with the model that was asked (MAK-180).
+    expect(usage).toEqual({ model: LLM_MODEL_DEFAULT, inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 });
     const [url, init] = fetchImpl.mock.calls[0]!;
     expect(url).toBe(ANTHROPIC_API_URL);
     const headers = init!.headers as Record<string, string>;
@@ -102,9 +104,9 @@ describe('vision', () => {
 
   it('reads a decline as no reading, whether it comes as a stop reason or as prose', async () => {
     const refused = llmFrom(env, answering(200, message('', 'refusal')) as unknown as typeof fetch);
-    expect(await refused.read(photo)).toBeNull();
+    expect((await refused.read(photo)).value).toBeNull();
     const prose = llmFrom(env, answering(200, message('I cannot help with that image.')) as unknown as typeof fetch);
-    expect(await prose.read(photo)).toBeNull();
+    expect((await prose.read(photo)).value).toBeNull();
   });
 
   it('says why the API refused, with the status', async () => {
@@ -120,7 +122,7 @@ describe('vision', () => {
       .mockResolvedValueOnce(new Response('busy', { status: 529 }))
       .mockResolvedValueOnce(new Response(JSON.stringify(message(JSON.stringify(said))), { status: 200 }));
     const vision = llmFrom(env, fetchImpl as unknown as typeof fetch);
-    expect(await vision.read(photo)).toEqual(said);
+    expect((await vision.read(photo)).value).toEqual(said);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   }, 10_000);
 
@@ -128,7 +130,7 @@ describe('vision', () => {
     const fetchImpl = answering(200, message(JSON.stringify({ title: '  Acme Hardware invoice, March 2026 ' })));
     const llm = llmFrom(env, fetchImpl as unknown as typeof fetch);
     const note = { title: '', body: 'Paid.', attachments: [{ filename: 'scan.pdf', text: 'ACME HARDWARE\nInvoice #4471' }] };
-    expect(await llm.title(note)).toBe('Acme Hardware invoice, March 2026');
+    expect((await llm.title(note)).value).toBe('Acme Hardware invoice, March 2026');
 
     const [, init] = fetchImpl.mock.calls[0]!;
     const body = JSON.parse(init!.body as string);
@@ -172,6 +174,23 @@ describe('vision', () => {
     const cut = llmFrom(env, answering(200, message('{"title": "Acme', 'max_tokens')) as unknown as typeof fetch);
     await expect(cut.title({ title: '', body: 'x', attachments: [] })).rejects.toBeInstanceOf(LlmError);
     await expect(cut.read(photo)).rejects.toMatchObject({ message: expect.stringContaining('ran out of room') });
+    // It was paid for all the same, so the error carries what it cost.
+    await expect(cut.read(photo)).rejects.toMatchObject({ usage: { inputTokens: 1, outputTokens: 1 } });
+  });
+
+  it('reads all four of the API\u2019s counts, and zero for any it leaves out', async () => {
+    const counted = { ...message(JSON.stringify({ title: 'X' })), usage: { input_tokens: 900, output_tokens: 40, cache_read_input_tokens: 300, cache_creation_input_tokens: 20 } };
+    const llm = llmFrom({ ...env, ANTHROPIC_MODEL: 'claude-sonnet-5' }, answering(200, counted) as unknown as typeof fetch);
+    expect((await llm.title({ title: '', body: 'x', attachments: [] })).usage).toEqual({
+      model: 'claude-sonnet-5',
+      inputTokens: 900,
+      outputTokens: 40,
+      cacheReadTokens: 300,
+      cacheWriteTokens: 20,
+    });
+    const silent = { ...message(JSON.stringify({ title: 'X' })), usage: undefined };
+    const quiet = llmFrom(env, answering(200, silent) as unknown as typeof fetch);
+    expect((await quiet.title({ title: '', body: 'x', attachments: [] })).usage).toMatchObject({ inputTokens: 0, outputTokens: 0 });
   });
 
   it('writes the values of text fields, keyed as asked, from a schema of those keys', async () => {
@@ -183,7 +202,7 @@ describe('vision', () => {
       { key: 'field_1', name: 'Order number' },
     ];
     // Spacing collapsed; an empty string is the model saying the note does not say.
-    expect(await llm.textFields(note, fields)).toEqual({ field_0: 'Acme Rentals', field_1: '' });
+    expect((await llm.textFields(note, fields)).value).toEqual({ field_0: 'Acme Rentals', field_1: '' });
 
     const body = JSON.parse(fetchImpl.mock.calls[0]![1]!.body as string);
     expect(JSON.parse(body.messages[0].content)).toEqual({
@@ -206,16 +225,16 @@ describe('vision', () => {
     const fetchImpl = answering(200, message('', 'refusal'));
     const llm = llmFrom(env, fetchImpl as unknown as typeof fetch);
     const note = { title: '', body: 'x', attachments: [] };
-    expect(await llm.textFields(note, [])).toEqual({});
+    expect((await llm.textFields(note, [])).value).toEqual({});
     expect(fetchImpl).not.toHaveBeenCalled();
-    expect(await llm.textFields(note, [{ key: 'field_0', name: 'Vendor' }])).toBeNull();
+    expect((await llm.textFields(note, [{ key: 'field_0', name: 'Vendor' }])).value).toBeNull();
   });
 
   it('answers no title for a decline or an empty answer', async () => {
     const declined = llmFrom(env, answering(200, message('', 'refusal')) as unknown as typeof fetch);
-    expect(await declined.title({ title: '', body: 'x', attachments: [] })).toBeNull();
+    expect((await declined.title({ title: '', body: 'x', attachments: [] })).value).toBeNull();
     const blank = llmFrom(env, answering(200, message(JSON.stringify({ title: '   ' }))) as unknown as typeof fetch);
-    expect(await blank.title({ title: '', body: 'x', attachments: [] })).toBeNull();
+    expect((await blank.title({ title: '', body: 'x', attachments: [] })).value).toBeNull();
   });
 
   it('lays the reading out as the file’s text: the name, the kind and description, then the words', () => {
