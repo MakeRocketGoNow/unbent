@@ -32,10 +32,15 @@ export const exportRoutes = new Hono<AppEnv>()
    * archive can carry that text beside the file and a restore need not read everything
    * again — see `textSidecarPath` in `@unbent/shared`. One more statement per page, after
    * the page, because it needs the page's note ids.
+   *
+   * `id` names the notes instead — a selection in the list, which no filter describes. A
+   * run of them per request, never beside a filter (the schema refuses the pair); the
+   * total is of the run, which is all this request knows, so the browser counts the
+   * selection itself.
    */
   .get('/export/notes', requireAuth, withRepos, zValidator('query', exportPageQuerySchema), async (c) => {
-    const { tag: tags, notebook, field: fields, from, to, sort, cursor, limit } = c.req.valid('query');
-    const filter = { tags, notebook, fields, from, to, sort };
+    const { tag: tags, notebook, field: fields, from, to, sort, cursor, limit, id: ids } = c.req.valid('query');
+    const filter = { tags, notebook, fields, from, to, sort, ids };
     // One call: the page, the total on the first page, the files' texts, and the cursor.
     // The store computes the cursor rather than this route because it can cut a page
     // short — a page of scans' texts can pass the size an RPC result may be — and a short

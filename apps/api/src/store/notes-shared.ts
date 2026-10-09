@@ -465,8 +465,16 @@ export function scopeDrivenSearchSql(live: string, scoped: string): string {
  * more than walking the sort index when the tag is on most notes — but never more than
  * the count beside the first page, which has to read every tagged note anyway.
  */
-export function liveCondition(trashed: boolean | undefined, tags: string[] | undefined): string {
-  const column = tags && tags.length > 0 ? '+n.deleted_at' : 'n.deleted_at';
+export function liveCondition(
+  trashed: boolean | undefined,
+  tags: string[] | undefined,
+  ids?: string[] | undefined,
+): string {
+  // Named notes are the same case as a tag, more so: each id is a primary-key lookup, and
+  // a plan that walked a `deleted_at` index would read every live note to test it against
+  // the list — the hazard `ID_RUN`'s comment measured on the batch writes.
+  const byKey = (tags && tags.length > 0) || (ids && ids.length > 0);
+  const column = byKey ? '+n.deleted_at' : 'n.deleted_at';
   return trashed ? `${column} IS NOT NULL` : `${column} IS NULL`;
 }
 
@@ -493,10 +501,22 @@ export function filterConditions(
     to?: string | undefined;
     /** Column the date range applies to. */
     dateColumn?: string;
+    /**
+     * Only these notes: an export of a selection. Bound in one statement, so at most
+     * `ID_RUN` of them; the caller passes `liveCondition` the same list.
+     */
+    ids?: string[] | undefined;
   },
   binds: unknown[],
 ): string[] {
   const conditions: string[] = [];
+
+  if (opts.ids && opts.ids.length > 0) {
+    if (opts.ids.length > ID_RUN) throw new Error(`At most ${ID_RUN} ids in one filter`);
+    const first = binds.length + 1;
+    binds.push(...opts.ids);
+    conditions.push(`n.id IN (${placeholders(first, opts.ids.length)})`);
+  }
 
   /**
    * The range filters whichever column the caller is ordering by, so "oldest first" and

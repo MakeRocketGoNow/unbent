@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { BlobWriter } from '@zip.js/zip.js';
 import { writeArchive, type ExportSource } from '@unbent/enex';
-import { exportFilename, type ExportFilter } from '@unbent/shared';
+import { EXPORT_IDS_PER_PAGE, exportFilename, type ExportFilter } from '@unbent/shared';
 import * as api from './notes-api.js';
 import { hostApp, savesTo, type HostApp } from './app-bridge.js';
 
@@ -144,8 +144,42 @@ async function retrying<T>(signal: AbortSignal | undefined, attempt: () => Promi
   }
 }
 
+/**
+ * A page of a selection, asked for a run of ids at a time.
+ *
+ * The server takes at most `EXPORT_IDS_PER_PAGE` ids a request, since it binds them in
+ * one statement, and a selection can be every row the list has loaded. So the walk is
+ * two cursors in one string: which run, and the server's cursor within it — a run whose
+ * page was cut short on bytes carries on from where the server said. The total is the
+ * selection's, on the first page: the server only ever sees one run. A selected note the
+ * server no longer has, trashed from another device, is simply not in its page, so an
+ * export can end a note or two short of its total.
+ */
+export async function selectionPage(
+  ids: string[],
+  cursor: string | undefined,
+  fetchPage: (run: string[], cursor: string | undefined) => Promise<api.ExportPage>,
+): Promise<api.ExportPage> {
+  const split = cursor?.indexOf(':') ?? -1;
+  const at = cursor && split > 0 ? Number(cursor.slice(0, split)) : 0;
+  const inner = cursor && split > 0 ? cursor.slice(split + 1) || undefined : undefined;
+  const run = ids.slice(at * EXPORT_IDS_PER_PAGE, (at + 1) * EXPORT_IDS_PER_PAGE);
+  const page = await fetchPage(run, inner);
+  const more = (at + 1) * EXPORT_IDS_PER_PAGE < ids.length;
+  return {
+    notes: page.notes,
+    cursor: page.cursor ? `${at}:${page.cursor}` : more ? `${at + 1}:` : null,
+    total: cursor === undefined ? ids.length : null,
+  };
+}
+
 const liveSource: ExportSource = {
-  page: (filter, cursor, signal) => retrying(signal, () => api.exportPage(filter, cursor, PAGE)),
+  page: (filter, cursor, signal) =>
+    filter.ids?.length
+      ? selectionPage(filter.ids, cursor, (run, inner) =>
+          retrying(signal, () => api.exportPage({ ids: run }, inner, PAGE)),
+        )
+      : retrying(signal, () => api.exportPage(filter, cursor, PAGE)),
   file: (noteId, filename, signal) =>
     retrying(signal, async () => {
       // Unmarked: an export reads every file, and must not fill the offline cache with

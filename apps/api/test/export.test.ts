@@ -481,6 +481,63 @@ describe('filtered export', () => {
   });
 });
 
+describe('export of named notes', () => {
+  /** A page for these ids, each given as its own `id`, as the browser sends them. */
+  const idsPage = (actor: Actor, ids: string[], extra: Record<string, string> = {}) => {
+    const params = new URLSearchParams(extra);
+    for (const id of ids) params.append('id', id);
+    return fetch(`${BASE}/api/export/notes?${params}`, { headers: { Cookie: actor.cookie, Origin: ORIGIN } });
+  };
+
+  it('exports only the notes it names, wherever they are filed', async () => {
+    const actor = await signUp(`idsexport-${Date.now()}@example.test`, 'idsexport-pass', 'I');
+    const one = await createNote(actor, { title: 'Picked one', body: 'a', notebook: 'Somewhere' });
+    const two = await createNote(actor, { title: 'Picked two', body: 'b' });
+    await createNote(actor, { title: 'Left alone', body: 'c' });
+
+    const res = await idsPage(actor, [one.id, two.id]);
+    expect(res.status).toBe(200);
+    const page = (await res.json()) as ExportPage;
+    expect(page.notes.map((n) => n.title).sort()).toEqual(['Picked one', 'Picked two']);
+    expect(page.total).toBe(2);
+    expect(page.cursor).toBeNull();
+  });
+
+  it('leaves out a named note that is in the trash', async () => {
+    const actor = await signUp(`idstrash-${Date.now()}@example.test`, 'idstrash-pass', 'I');
+    const kept = await createNote(actor, { title: 'Kept', body: 'a' });
+    const gone = await createNote(actor, { title: 'Gone', body: 'b' });
+    const del = await fetch(`${BASE}/api/notes/${gone.id}`, {
+      method: 'DELETE',
+      headers: { Cookie: actor.cookie, Origin: ORIGIN },
+    });
+    expect(del.ok).toBe(true);
+
+    const page = (await (await idsPage(actor, [kept.id, gone.id])).json()) as ExportPage;
+    expect(page.notes.map((n) => n.title)).toEqual(['Kept']);
+  });
+
+  it('never exports another user note by its id', async () => {
+    const theirs = await createNote(alice, { title: 'Alice by id', body: 'a' });
+    const page = (await (await idsPage(bob, [theirs.id])).json()) as ExportPage;
+    expect(page.notes).toEqual([]);
+  });
+
+  it('refuses ids beside a filter, and more ids than one statement holds', async () => {
+    const actor = await signUp(`idsrefuse-${Date.now()}@example.test`, 'idsrefuse-pass', 'I');
+    const one = await createNote(actor, { title: 'Any', body: 'a' });
+
+    // A filter beside a selection could only drop some of it without saying so.
+    const mixed = await idsPage(actor, [one.id], { notebook: 'Somewhere' });
+    expect(mixed.status).toBe(400);
+    await mixed.body?.cancel();
+
+    const many = await idsPage(actor, Array.from({ length: 91 }, () => crypto.randomUUID()));
+    expect(many.status).toBe(400);
+    await many.body?.cancel();
+  });
+});
+
 describe('single-note export', () => {
   it('serves a bare .md when the note has no attachments', async () => {
     const actor = await signUp(`one-md-${Date.now()}@example.test`, 'md-password-1234', 'M');

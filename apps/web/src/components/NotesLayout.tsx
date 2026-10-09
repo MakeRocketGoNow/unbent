@@ -44,6 +44,7 @@ import {
   FieldsIcon,
   TrashIcon,
   NotebookActionIcon,
+  DownloadIcon,
   TagActionIcon,
 } from './icons.js';
 import { Sheet } from './Sheet.js';
@@ -806,6 +807,12 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         })
       : undefined;
 
+  const selectionExportLabel = exportRunning
+    ? 'Export — another export is running'
+    : selection.ids.length === 1
+      ? 'Export this note'
+      : `Export ${selection.ids.length} notes`;
+
   const createNote = useCreateNote();
   /**
    * The New button and the phone's +. Carries the active filter onto the new note,
@@ -1326,6 +1333,24 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               onClick={() => setBulkSheet('tags')}
             >
               <TagActionIcon />
+            </button>
+            {/*
+                Export, before Delete so the destructive action stays at the end. The way
+                Evernote exports — select, then export — and the one export no filter can
+                describe: three notes of five, or notes from different notebooks. The
+                selection stays, as it does after Move and Tags, so a second look at what
+                was exported is a glance. Waits while another export runs, since one runs
+                at a time; the snackbar says how this one goes.
+            */}
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label={selectionExportLabel}
+              title={selectionExportLabel}
+              disabled={exportRunning}
+              onClick={() => startExport({ ids: selection.ids })}
+            >
+              <DownloadIcon />
             </button>
             <button
               type="button"

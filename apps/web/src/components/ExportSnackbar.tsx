@@ -82,6 +82,9 @@ export function ExportSnackbar() {
 
 /** What is being exported, in the words the place that started it used. */
 function subject(filter: ExportFilter | null): string {
+  if (filter?.ids?.length) {
+    return filter.ids.length === 1 ? 'the selected note' : `${filter.ids.length} selected notes`;
+  }
   if (filter?.notebook) return filter.notebook;
   const filtered =
     filter && ((filter.tags?.length ?? 0) > 0 || (filter.fields?.length ?? 0) > 0 || filter.from || filter.to);

@@ -867,6 +867,15 @@ export function exportQuery(
   page: { cursor?: string | undefined; limit?: number | undefined } = {},
 ): URLSearchParams {
   const params = new URLSearchParams();
+  // Named notes take no other filter (the server refuses the pair), and the server walks
+  // them by `created`, which a note edited mid-export cannot move under the cursor.
+  if (filter.ids?.length) {
+    for (const id of filter.ids) params.append('id', id);
+    params.set('sort', 'created');
+    if (page.cursor) params.set('cursor', page.cursor);
+    if (page.limit) params.set('limit', String(page.limit));
+    return params;
+  }
   for (const t of filter.tags ?? []) params.append('tag', t);
   if (filter.notebook) params.set('notebook', filter.notebook);
   for (const f of filter.fields ?? []) params.append('field', f);
