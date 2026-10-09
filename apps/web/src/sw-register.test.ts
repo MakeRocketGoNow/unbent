@@ -6,6 +6,7 @@ import {
   shouldApplyOnReturn,
   shouldApplyUpdate,
   takesDeploysAtOnce,
+  isTextField,
 } from './sw-register.js';
 import { holdPage, pageBusy } from './busy.js';
 
@@ -136,6 +137,35 @@ describe('takesDeploysAtOnce', () => {
     expect(takesDeploysAtOnce('preview')).toBe(true);
     expect(takesDeploysAtOnce('local')).toBe(false);
     expect(takesDeploysAtOnce(undefined)).toBe(false);
+  });
+});
+
+describe('isTextField', () => {
+  const input = (type: string, attrs: { readOnly?: boolean; disabled?: boolean } = {}) =>
+    Object.assign(document.createElement('input'), { type, ...attrs });
+
+  /* A rename or the search box half typed is lost to a reload, and `pageBusy()` cannot see
+     it; on a preview focus there holds the deploy back. */
+  it('counts a text input or a textarea someone can type in', () => {
+    expect(isTextField(input('text'))).toBe(true);
+    expect(isTextField(input('search'))).toBe(true);
+    expect(isTextField(document.createElement('textarea'))).toBe(true);
+  });
+
+  it('leaves out controls with nothing typed in them, and fields that cannot be typed in', () => {
+    expect(isTextField(input('checkbox'))).toBe(false);
+    expect(isTextField(input('button'))).toBe(false);
+    expect(isTextField(input('text', { readOnly: true }))).toBe(false);
+    expect(isTextField(input('text', { disabled: true }))).toBe(false);
+  });
+
+  /* The note's body says it has unsent typing itself, through `holdPage`. */
+  it('leaves out the editor, which is not a field', () => {
+    const editor = document.createElement('div');
+    editor.contentEditable = 'true';
+    expect(isTextField(editor)).toBe(false);
+    expect(isTextField(document.body)).toBe(false);
+    expect(isTextField(null)).toBe(false);
   });
 });
 

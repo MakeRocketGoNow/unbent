@@ -128,13 +128,33 @@ export function shouldApplyOnLoad(state: {
  * that resets a list's scroll is cheap beside reviewing a build the PR has moved past.
  *
  * Still never while the page holds work a reload would lose — `deployArrived` waits for it
- * to land instead — and still at most once a minute (`reloadAllowed`). Local is left out:
+ * to land instead, and here that includes someone in a text field (`isTextField`) — and
+ * still at most once a minute (`reloadAllowed`). Local is left out:
  * a built app on the Worker's port is where the worker is tried before it ships, so it
  * behaves as production does. Production, with no kind, is unchanged.
  */
 export function takesDeploysAtOnce(kind: InstanceKind | undefined): boolean {
   return kind === 'dev' || kind === 'preview';
 }
+
+/**
+ * Whether `el` is a field someone can be typing in, for holding a deploy back on dev and
+ * previews.
+ *
+ * `pageBusy()` knows the note's unsent typing and nothing else, so a rename, a new tag or
+ * the search box half typed is lost to a reload — the reason production waits five
+ * minutes away before taking a deploy on return. Here, where a deploy is taken while the
+ * page is in use, focus in such a field stands in for the hold it does not have; the
+ * deploy follows as soon as it leaves. The note's title counts too, which costs only the
+ * wait for a blur. Its body does not: the editor is `contenteditable`, not a field, and a
+ * cursor resting in a saved note has nothing to lose.
+ */
+export function isTextField(el: Element | null): boolean {
+  if (el instanceof HTMLTextAreaElement) return !el.readOnly && !el.disabled;
+  if (!(el instanceof HTMLInputElement)) return false;
+  return !el.readOnly && !el.disabled && !NOT_TYPED.has(el.type);
+}
+const NOT_TYPED = new Set(['button', 'checkbox', 'color', 'file', 'hidden', 'image', 'radio', 'range', 'reset', 'submit']);
 
 /**
  * Tells the hand-over which instance this is, from the config. Order-free with
@@ -164,14 +184,16 @@ function deployArrived(): void {
   retry = undefined;
   const worker = wb;
   if (!worker || !updateReady) return;
-  const state = { untouched, busy: pageBusy(), path: location.pathname, kind: instanceKind };
+  const atOnce = takesDeploysAtOnce(instanceKind);
+  const busy = pageBusy() || (atOnce && isTextField(document.activeElement));
+  const state = { untouched, busy, path: location.pathname, kind: instanceKind };
   if (shouldApplyOnLoad(state) && reloadAllowed()) {
     updateReady = false;
     setNotice(false);
     handOver(worker, location.href);
     return;
   }
-  if (state.busy && takesDeploysAtOnce(state.kind)) {
+  if (busy && atOnce) {
     setNotice(false);
     retry = setTimeout(deployArrived, 250);
     return;
