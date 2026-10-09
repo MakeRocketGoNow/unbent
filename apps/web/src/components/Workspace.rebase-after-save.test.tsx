@@ -7,6 +7,7 @@ import * as api from '../notes-api.js';
 import { installTestLibrary } from '../store/test-library.js';
 import type { Outbox } from '../store/actions.js';
 import { keys } from '../queries.js';
+import type { NoteDraft } from '../note-patch.js';
 import { Workspace } from './Workspace.js';
 
 vi.mock('../notes-api.js', async (importOriginal) => ({
@@ -39,7 +40,7 @@ const server: Note = {
 };
 const elsewhere = { tags: ['receipts'], notebook: 'Coupons' };
 
-type Ack = (id: string, updated: Note) => void;
+type Ack = (id: string, updated: Note, sent: NoteDraft) => void;
 
 function outbox(onAck: (l: Ack) => void) {
   const status = () => ({ pending: 0, durable: true, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map() });
@@ -126,7 +127,8 @@ describe('a save answered while typing', () => {
 
     // Still inside the autosave's delay, so the draft is dirty when the answer comes.
     await type('Trip notes, typed');
-    await act(async () => ack(server.id, { ...server, ...elsewhere, updatedAt: 101 }));
+    const sent = { title: server.title, body: server.body, tags: [], notebook: null, fields: {} };
+    await act(async () => ack(server.id, { ...server, ...elsewhere, updatedAt: 101 }, sent));
     expect((await title()).value).toBe('Trip notes, typed');
 
     await waitFor(() => expect(api.updateNote).toHaveBeenCalledTimes(1), { timeout: 3000 });

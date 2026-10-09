@@ -430,7 +430,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   */
   useEffect(() => {
     if (!outbox) return;
-    return outbox.onAcknowledged((id, updated) => {
+    return outbox.onAcknowledged((id, updated, sent) => {
       if (id !== noteId) {
         setBase(id, updated);
         return;
@@ -441,21 +441,20 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
         if (JSON.stringify(seedFrom(updated)) !== JSON.stringify(draftRef.current)) reseed(updated);
         return;
       }
-      const prev = bases.current.get(id);
       setBase(id, updated);
-      if (prev) rebaseDraft(prev, updated);
+      rebaseDraft(sent, updated);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [outbox, noteId]);
 
   /**
    * Hands the open draft whatever the server's answer changed that the person has not
-   * edited since `prev`, the base the answered save was made against. A functional
-   * update, so typing that lands in the same tick is kept rather than overwritten.
+   * edited since `sent`, the draft the answered save carried. A functional update, so
+   * typing that lands in the same tick is kept rather than overwritten.
    */
-  function rebaseDraft(prev: Note, answer: Note) {
+  function rebaseDraft(sent: NoteDraft, answer: Note) {
     setDraft((d) => {
-      const next = rebaseAfterAck(d, prev, answer);
+      const next = rebaseAfterAck(d, sent, answer);
       return JSON.stringify(next) === JSON.stringify(d) ? d : next;
     });
   }
@@ -566,10 +565,9 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       // The server answered the save itself — no local copy, or another tab holds the
       // outbox — so no acknowledgement follows, and the answer is rebased into the draft
       // here, for the same reason as there.
-      const prev = bases.current.get(noteId);
       setBase(noteId, outcome);
       queryClient.setQueryData(keys.note(noteId), outcome);
-      if (prev && noteIdRef.current === noteId) rebaseDraft(prev, outcome);
+      if (noteIdRef.current === noteId) rebaseDraft(value, outcome);
     }
     return undefined;
   }

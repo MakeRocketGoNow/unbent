@@ -410,6 +410,8 @@ describe('holdsTheirChanges', () => {
  */
 describe('rebaseAfterAck', () => {
   const base = { title: 'Trip', body: 'Body', tags: ['garden'], notebook: 'Coupons', fields: [] as NoteFieldValue[] };
+  // What the answered save carried: the base as typed then, before the typing since.
+  const sent: NoteDraft = { title: 'Trip', body: 'Body', tags: ['garden'], notebook: 'Coupons', fields: {} };
   const draftOf = (over: Partial<NoteDraft> = {}): NoteDraft => ({
     title: 'Trip',
     body: 'Body, typing',
@@ -421,24 +423,31 @@ describe('rebaseAfterAck', () => {
 
   it('takes the server\'s tags when the person has not edited them, compared as a set', () => {
     const server = { ...base, tags: ['garden', 'receipts'] };
-    expect(rebaseAfterAck(draftOf(), base, server).tags).toEqual(['garden', 'receipts']);
-    expect(rebaseAfterAck(draftOf({ tags: ['b', 'a'] }), { ...base, tags: ['a', 'b'] }, { ...base, tags: ['a', 'b', 'c'] }).tags).toEqual(['a', 'b', 'c']);
-    expect(rebaseAfterAck(draftOf({ tags: ['garden', 'tax'] }), base, server).tags).toEqual(['garden', 'tax']);
-    expect(rebaseAfterAck(draftOf({ tags: [] }), base, server).tags).toEqual([]);
+    expect(rebaseAfterAck(draftOf(), sent, server).tags).toEqual(['garden', 'receipts']);
+    expect(rebaseAfterAck(draftOf({ tags: ['b', 'a'] }), { ...sent, tags: ['a', 'b'] }, { ...base, tags: ['a', 'b', 'c'] }).tags).toEqual(['a', 'b', 'c']);
+    expect(rebaseAfterAck(draftOf({ tags: ['garden', 'tax'] }), sent, server).tags).toEqual(['garden', 'tax']);
+    expect(rebaseAfterAck(draftOf({ tags: [] }), sent, server).tags).toEqual([]);
   });
 
   it('takes a notebook renamed elsewhere unless the person moved the note', () => {
     const server = { ...base, notebook: 'Coupons 2026' };
-    expect(rebaseAfterAck(draftOf(), base, server).notebook).toBe('Coupons 2026');
-    expect(rebaseAfterAck(draftOf({ notebook: 'Receipts' }), base, server).notebook).toBe('Receipts');
+    expect(rebaseAfterAck(draftOf(), sent, server).notebook).toBe('Coupons 2026');
+    expect(rebaseAfterAck(draftOf({ notebook: 'Receipts' }), sent, server).notebook).toBe('Receipts');
   });
 
   it('takes the title unless the person is editing it, and always keeps the body', () => {
     const server = { ...base, title: 'Trip, renamed', body: 'Body' };
-    const rebased = rebaseAfterAck(draftOf(), base, server);
+    const rebased = rebaseAfterAck(draftOf(), sent, server);
     expect(rebased.title).toBe('Trip, renamed');
     expect(rebased.body).toBe('Body, typing');
-    expect(rebaseAfterAck(draftOf({ title: 'Trip, mine' }), base, server).title).toBe('Trip, mine');
+    expect(rebaseAfterAck(draftOf({ title: 'Trip, mine' }), sent, server).title).toBe('Trip, mine');
+  });
+
+  it('keeps a title typed and taken back while the save was out', () => {
+    // The save sent "Trip x"; the person deleted the " x" before the answer came. The
+    // draft equals the base again, and measured against that it took the " x" back.
+    const typed = { ...sent, title: 'Trip x' };
+    expect(rebaseAfterAck(draftOf({ title: 'Trip' }), typed, { ...base, title: 'Trip x' }).title).toBe('Trip');
   });
 
   it('takes a field the server rewrote unless the person typed in it', () => {
@@ -446,10 +455,11 @@ describe('rebaseAfterAck', () => {
       { fieldId: amount.id, name: 'Amount', type: 'number', value: v, notebook: 'Receipts' } as NoteFieldValue,
     ];
     const was = { ...base, fields: value(12) };
-    expect(rebaseAfterAck(draftOf({ fields: { [amount.id]: 12 } }), was, { ...was, fields: value(13) }).fields).toEqual({
+    const sentWith = { ...sent, fields: { [amount.id]: 12 } };
+    expect(rebaseAfterAck(draftOf({ fields: { [amount.id]: 12 } }), sentWith, { ...was, fields: value(13) }).fields).toEqual({
       [amount.id]: 13,
     });
-    expect(rebaseAfterAck(draftOf({ fields: { [amount.id]: '14' } }), was, { ...was, fields: value(13) }).fields).toEqual({
+    expect(rebaseAfterAck(draftOf({ fields: { [amount.id]: '14' } }), sentWith, { ...was, fields: value(13) }).fields).toEqual({
       [amount.id]: '14',
     });
   });

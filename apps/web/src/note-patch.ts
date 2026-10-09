@@ -80,8 +80,13 @@ function sameTagSet(a: string[], b: string[]): boolean {
 
 /**
  * The open draft after a save of it comes back while typing is still in flight: every
- * property the person has not changed since `base` takes the server's value, and every
- * one they have keeps theirs. The body is the editor's and always stays.
+ * property the person has not changed since `sent` — the draft that save carried — takes
+ * the server's value, and every one they have keeps theirs. The body is the editor's and
+ * always stays.
+ *
+ * Measured against what was sent, not the base the save was made against: a title typed
+ * and then reverted while the save was out equals the base, and measured against that it
+ * read as untouched and took back the very text the person had just removed.
  *
  * The answer is the note as the server has it, and becomes the next save's base. Some
  * changes made elsewhere reach it without moving the note's date, so no precondition
@@ -98,10 +103,10 @@ function sameTagSet(a: string[], b: string[]): boolean {
  */
 export function rebaseAfterAck(
   draft: NoteDraft,
-  base: Pick<Note, 'title' | 'body' | 'tags' | 'notebook' | 'fields'>,
+  sent: NoteDraft,
   server: Pick<Note, 'title' | 'body' | 'tags' | 'notebook' | 'fields'>,
 ): NoteDraft {
-  const was = seedFrom(base);
+  const was = sent;
   const now = seedFrom(server);
   const fields = { ...draft.fields };
   for (const id of new Set([...Object.keys(now.fields), ...Object.keys(was.fields)])) {
