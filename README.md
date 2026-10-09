@@ -1078,9 +1078,9 @@ says](#filing-a-note-from-what-it-says)) — and each has a variable: `ANTHROPIC
 and then to `claude-haiku-5-5`. The reading is the one whose cost grows with what you keep,
 so it was measured on forty-five hard files from a real archive — faded receipts, business
 cards, handwritten forms, scans with no text layer, a twenty-two-page lease — against an
-answer key of 261 facts. Haiku 5.5 read 240 of 243 right; Sonnet 5.5 and Opus 5.5 read all
-but one. Every model read every phone number, email, merchant and total; the difference was
-one handwritten form, a word and a date. A read cost about 0.1¢ on Haiku, 1.6¢ on Sonnet and
+answer key of 261 facts. Haiku 5.5 read 240 of 243 right; Sonnet 5.5 read every one of its
+236 and Opus 5.5 all but one. Every model read every phone number, email, merchant and
+total; the difference was one handwritten form, a word and a date. A read cost about 0.1¢ on Haiku, 1.6¢ on Sonnet and
 3.3¢ on Opus, and Haiku was the fastest. So Haiku is the default for every job, and the
 dearer models buy handwriting and nothing else measurable. If your archive is handwriting,
 set `ANTHROPIC_READ_MODEL=claude-sonnet-5-5` and leave the title and the fields on Haiku:
