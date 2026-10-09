@@ -21,8 +21,13 @@ import { Snackbar } from './Snackbar.js';
  * pointer. Not on the export page itself, which says all of this beside its button.
  *
  * Progress is shown in steps of five percent rather than per note: the snackbar is a live
- * region, and one that changed thousands of times would talk over everything else. A
- * failure stays until it is dismissed; the others clear themselves.
+ * region, and one that changed thousands of times would talk over everything else.
+ *
+ * How a run ended stays until it is dismissed — the saved file's name as much as a
+ * failure. An export of an archive takes long enough that nobody watches it finish: they
+ * start it and go back to their notes or another tab, and a "Saved" that cleared itself
+ * after six seconds was gone before they looked. The one outcome that still clears itself
+ * is "stopped", because the person pressed Stop and is looking right at it.
  */
 export function ExportSnackbar() {
   const state = useExporting();
@@ -58,12 +63,7 @@ export function ExportSnackbar() {
       );
     case 'done':
       return (
-        <Snackbar
-          message={savedAs(state)}
-          tone="info"
-          duration={6000}
-          onDismiss={onDismiss}
-        />
+        <Snackbar message={savedAs(state)} tone="info" onDismiss={onDismiss} />
       );
     case 'stopped':
       return (
