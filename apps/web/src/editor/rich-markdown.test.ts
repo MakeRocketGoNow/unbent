@@ -1,4 +1,4 @@
-import { EditorState, EditorSelection } from '@codemirror/state';
+import { EditorState, EditorSelection, StateEffect } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { markdown } from '@codemirror/lang-markdown';
 import { GFM } from '@lezer/markdown';
@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetConnectivity, setReachableForTests } from '../connectivity.js';
 import {
   bulletGlyph,
+  caretBelowEnd,
+  caretRoom,
   collectAttachmentTargets,
   orderedMarker,
   pdfNamesChanged,
@@ -1146,6 +1148,22 @@ describe('a line below a closing picture', () => {
     expect(v.state.selection.main.head).toBe(doc.length + 1);
   });
 
+  /** So the editor keeps it from the autosave; see `caretRoom`. */
+  it('marks the opened line as room for the caret', () => {
+    const doc = '![photo.png](files/photo.png)';
+    const v = mountWithAttachments(doc, doc.length);
+    const marked: boolean[] = [];
+    v.dispatch({
+      effects: StateEffect.appendConfig.of(
+        EditorView.updateListener.of((u) => {
+          for (const tr of u.transactions) if (tr.docChanged) marked.push(tr.annotation(caretRoom) === true);
+        }),
+      ),
+    });
+    down(v);
+    expect(marked).toEqual([true]);
+  });
+
   it('opens a line below an image with no alt, which the picture replaces', () => {
     const doc = 'intro\n![](files/photo.png)';
     const v = mountWithAttachments(doc, doc.length, [], false);
@@ -1184,6 +1202,50 @@ describe('a line below a closing picture', () => {
     expect(v.dom.querySelector('.cm-md-image img')).toBeNull();
     down(v);
     expect(v.state.doc.toString()).toBe(doc);
+  });
+
+  const room = (v: EditorView) => v.contentDOM.classList.contains('cm-md-room-below');
+  const press = (v: EditorView, clientY: number) =>
+    v.contentDOM.dispatchEvent(new MouseEvent('mousedown', { button: 0, clientY, bubbles: true, cancelable: true }));
+
+  it('leaves room below a picture that ends the note, and only then', () => {
+    const doc = '![photo.png](files/photo.png)';
+    const v = mountWithAttachments(doc, 0);
+    expect(room(v)).toBe(true);
+    v.dispatch({ changes: { from: doc.length, insert: '\nand a caption' } });
+    expect(room(v)).toBe(false);
+  });
+
+  /** A tap under the picture is how a phone, which has no Down key, gets there. */
+  it('opens a line for a press below the picture, wherever the caret was', () => {
+    const doc = '![photo.png](files/photo.png)';
+    const v = mountWithAttachments(doc, 0);
+    press(v, 100_000);
+    expect(v.state.doc.toString()).toBe(`${doc}\n`);
+    expect(v.state.selection.main.head).toBe(doc.length + 1);
+    expect(room(v)).toBe(false);
+  });
+
+  it('leaves a press on the picture itself alone', () => {
+    const doc = '![photo.png](files/photo.png)';
+    const v = mountWithAttachments(doc, 0);
+    press(v, -100_000);
+    expect(v.state.doc.toString()).toBe(doc);
+  });
+
+  /** The blank column under a note on a phone, which is outside the editor. */
+  it('opens the line for a press on the column below, and only places the caret below text', () => {
+    const doc = '![photo.png](files/photo.png)';
+    const v = mountWithAttachments(doc, 0);
+    caretBelowEnd(v);
+    expect(v.state.doc.toString()).toBe(`${doc}\n`);
+    expect(v.state.selection.main.head).toBe(doc.length + 1);
+
+    v.dispatch(v.state.replaceSelection('text'));
+    v.dispatch({ selection: EditorSelection.cursor(0) });
+    caretBelowEnd(v);
+    expect(v.state.doc.toString()).toBe(`${doc}\ntext`);
+    expect(v.state.selection.main.head).toBe(v.state.doc.length);
   });
 
   it('puts the caret on the new line, so typing lands below the picture', () => {
