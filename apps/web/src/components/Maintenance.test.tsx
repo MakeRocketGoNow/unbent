@@ -164,6 +164,13 @@ describe('Maintenance: Auto-fill this year', () => {
     );
   });
 
+  it('says it is not available offline, rather than that it failed', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
+    harness({ accountDeletion: true, autofill: true });
+    const line = await screen.findByText('Not available offline.');
+    expect(line.className).not.toContain('bad');
+  });
+
   it('is absent where the instance has no Auto-fill', async () => {
     harness({ accountDeletion: true });
     await screen.findByRole('button', { name: 'Recount' });

@@ -486,10 +486,16 @@ function AutofillUsageSection() {
         language model, the press also reads the note&apos;s pictures and writes its title and
         fields with it, and that model is paid for by the token.
       </p>
-      {/* A figure already on screen stays when a refetch fails; the error is for none at all. */}
+      {/* A figure already on screen stays when a refetch fails; the error is for none at all.
+          Offline is not a failure: the counter is the server's, and the page says so in
+          the phrase the app uses for every read that needs it. */}
       {!u ? (
         usage.isError ? (
-          <p className="bad small">Could not load this year&apos;s usage.</p>
+          api.isOfflineError(usage.error) ? (
+            <p className="muted small">Not available offline.</p>
+          ) : (
+            <p className="bad small">Could not load this year&apos;s usage.</p>
+          )
         ) : (
           <p className="muted small">Loading…</p>
         )
