@@ -56,6 +56,7 @@ import { OverflowMenu } from './OverflowMenu.js';
 import { HistorySheet, skippedPhrase } from './HistorySheet.js';
 import type { HistoryCurrent } from './HistoryChanges.js';
 import type { PropValue } from '../note-diff.js';
+import { caretBelowEnd } from '../editor/rich-markdown.js';
 import { formatRevisionWhen } from './format-when.js';
 import { Button } from './Button';
 import { BackArrow } from './BackArrow.js';
@@ -1361,6 +1362,20 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
             reads 0 wherever there is no keyboard, so the padding costs nothing then.
         */
         style={{ '--keyboard-inset': `${keyboardInset}px` } as React.CSSProperties}
+        /*
+            A press on the blank column under the note writes at its bottom, the way a
+            press below the last line of a page does in any editor. On a phone that blank
+            is most of the screen under a short note, and it is where a thumb goes to add
+            to it; it is the column's, not the editor's, so the press used to do nothing.
+            Only the column itself — never a press that landed on something inside it —
+            and only below the editor, so the margins beside a desktop note stay inert.
+        */
+        onMouseDown={(e) => {
+          if (e.target !== e.currentTarget || e.button !== 0 || !editorView || noteView === 'preview') return;
+          if (e.clientY <= editorView.dom.getBoundingClientRect().bottom) return;
+          e.preventDefault();
+          caretBelowEnd(editorView);
+        }}
       >
       {/*
           Two rows on a phone, one on a desktop.
