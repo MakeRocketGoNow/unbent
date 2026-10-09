@@ -32,27 +32,93 @@ export const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
 
 /**
- * The model asked when `ANTHROPIC_MODEL` is unset: the current Haiku. The default was the most
- * capable current model, Opus 5 at $5 / $25 a million tokens, on the reasoning that a
+ * The model's three jobs inside a press, each with a model of its own (MAK-182). They cost
+ * very different amounts — a read is a whole photo or every page of a scan, a title a few
+ * hundred tokens — and an operator may well want a careful reader and a cheap titler, so
+ * each job has a variable (`ANTHROPIC_READ_MODEL`, `ANTHROPIC_TITLE_MODEL`,
+ * `ANTHROPIC_FIELDS_MODEL`), falling back to `ANTHROPIC_MODEL` and then to the default,
+ * so an instance that set the one variable keeps the behaviour it had. The usage counter
+ * keys on the model each request named (`LlmUsage.model`), so a split is costed right.
+ */
+export type LlmJob = 'read' | 'title' | 'fields';
+
+/**
+ * The model every job asks when nothing names one: the current Haiku. The default was the
+ * most capable current model, Opus 5 at $5 / $25 a million tokens, on the reasoning that a
  * wrong digit in a transcribed total is copied into a field with full confidence. Reading
- * a file is the one call whose cost grows with what people keep, so the same receipts were
- * pressed on Opus 5, Sonnet 5.5 and Haiku 5.5 (2026-10-09): all three transcribed every
- * line verbatim and filled the same vendor, total and date, from the same number of
- * tokens. Haiku 5.5 is $0.10 / $0.50 — about 0.04¢ a read against Opus 5's 2¢ — and was
- * the fastest of the three.
+ * a file is the one call whose cost grows with what people keep, so it was measured, twice
+ * (2026-10-09, counts in MAK-182). First on clean generated receipts, which Opus 5, Sonnet
+ * 5.5 and Haiku 5.5 all transcribed line for line. Then on 45 files chosen from a real
+ * archive for being hard — faded receipts, business cards, handwritten forms, text-less
+ * scans, a 22-page lease — against a blind answer key of 261 facts: Haiku 5.5 at low
+ * effort read 240 of 243 right, Sonnet 5.5 236 of 236, Opus 5.5 235 of 236, and every
+ * setting read every phone, email, merchant and total. The three Haiku misses were on one
+ * handwritten form: a word and a date. The notebook Jev then chose from the reading moved
+ * on one note in 44. A read costs about 0.1¢ on Haiku, 1.6¢ on Sonnet, 3.3¢ on Opus, and
+ * Haiku was the fastest.
  *
- * Those were clean printed receipts, which any of them reads. Where a smaller model is
- * likelier to slip — handwriting, a crumpled photo, faded thermal paper, a dense scan of
- * many pages — was not tested, and that is the measured comparison MAK-182 still asks
- * for. An operator who wants more care sets the variable: `claude-sonnet-5-5`, or
- * `claude-opus-5-5` for the most capable. Haiku's price rises fivefold past a prompt of
- * 100K tokens, which only a scan of fifty-odd pages reaches.
- *
- * The one model-specific setting here, a low effort on the title and the fields, is sent
- * only to this default; an operator's choice gets the plain request, so any current model
- * works in the variable.
+ * So the stronger models buy handwriting and nothing else measurable, at sixteen to
+ * thirty-three times the price, and Haiku is the default for every job. An operator whose
+ * archive is handwriting sets `ANTHROPIC_READ_MODEL=claude-sonnet-5-5` and keeps the
+ * title and the fields on Haiku, which they never leave: those two jobs copy words off a
+ * reading already made. Haiku's price rises fivefold past a prompt of 100K tokens, which
+ * only a scan of fifty-odd pages reaches.
  */
 export const LLM_MODEL_DEFAULT = 'claude-haiku-5-5';
+
+/**
+ * The effort the read sends when `ANTHROPIC_READ_EFFORT` is unset and the read is on the
+ * default model. Measured on the same 45 files: `low` tied `medium` and `high` on facts
+ * (240/243 against 234/236 and 233/236), was the fastest (5.3 s median against 6.8 and
+ * 7.4) and the cheapest, and was the only setting that finished the 22-page lease before
+ * `MAX_TRANSCRIBED_WORDS` was lowered. Thinking harder about a transcription does not
+ * change what is on the page.
+ *
+ * Sent only when the read is on `LLM_MODEL_DEFAULT`, whose parameters this file knows; a
+ * model the operator named gets the plain request, since not every model takes the field.
+ * The variable overrides that guard, and is what an operator sets beside a Sonnet read:
+ * at its default effort Sonnet's thinking alone fills the output budget on a long scan.
+ * Any value the API takes is passed through as named, like the model id; a value it does
+ * not take is a 400 with the API's own words in it.
+ */
+export const LLM_READ_EFFORT_DEFAULT = 'low';
+
+/**
+ * The title and the fields always send a low effort on the default model, and no effort
+ * on a named one, as the read does. Those two are small judgements — one line, a few
+ * words copied off a line — and the thinking a capable model would spend on them is paid
+ * for and waited on by the press. Not a variable: nothing was measured that would make
+ * an operator want it, and the read's variable is enough to steer the one job that costs.
+ */
+const SMALL_JOB_EFFORT = 'low';
+
+/** What each job sends: the model, and the effort when there is one. */
+export interface JobSettings {
+  model: string;
+  effort?: string;
+}
+
+/**
+ * Each job's model and effort from the variables, defaults applied; see `LlmJob` and
+ * `LLM_READ_EFFORT_DEFAULT` for the rules. Exported so a test can pin what each request
+ * names without a fetch, and so an operator's page could show it.
+ */
+export function jobSettings(env: LlmEnv): Record<LlmJob, JobSettings> {
+  const named = (value: string | undefined) => value?.trim() || undefined;
+  const shared = named(env.ANTHROPIC_MODEL) ?? LLM_MODEL_DEFAULT;
+  const model = (own: string | undefined) => named(own) ?? shared;
+  const guarded = (chosen: string, effort: string) => (chosen === LLM_MODEL_DEFAULT ? { effort } : {});
+
+  const read = model(env.ANTHROPIC_READ_MODEL);
+  const title = model(env.ANTHROPIC_TITLE_MODEL);
+  const fields = model(env.ANTHROPIC_FIELDS_MODEL);
+  const readEffort = named(env.ANTHROPIC_READ_EFFORT);
+  return {
+    read: { model: read, ...(readEffort ? { effort: readEffort } : guarded(read, LLM_READ_EFFORT_DEFAULT)) },
+    title: { model: title, ...guarded(title, SMALL_JOB_EFFORT) },
+    fields: { model: fields, ...guarded(fields, SMALL_JOB_EFFORT) },
+  };
+}
 
 /** What the API takes as a picture. An animation loses all but its first frame, which is fine for filing. */
 export const LLM_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
@@ -84,13 +150,13 @@ const MAX_OUTPUT_TOKENS = 16384;
  * throws and leaves the file pending, so every later press read the whole scan again and
  * paid for it again — about 46¢ a press on Opus. Four thousand words is about five and a
  * half thousand tokens, which leaves the thinking ten thousand: on the same lease, Haiku
- * 5.5 at medium (the default) now finishes in about half a minute, and Haiku at high and
- * Opus 5.5 finish too.
+ * 5.5 at medium (the model's own default, which the read sent before MAK-182) now
+ * finishes in about half a minute, and Haiku at high and Opus 5.5 finish too.
  *
  * Sonnet 5.5 at its default effort still does not, at four thousand words or at three:
  * its thinking alone fills the budget, so no cap on the answer can fix it. Effort is what
- * would, and choosing the read's effort per model is MAK-182's. Lower than four thousand
- * was tried and bought nothing but a shorter transcription.
+ * does — `ANTHROPIC_READ_EFFORT=low` beside a Sonnet read; see `LLM_READ_EFFORT_DEFAULT`.
+ * Lower than four thousand was tried and bought nothing but a shorter transcription.
  */
 export const MAX_TRANSCRIBED_WORDS = 4000;
 
@@ -148,8 +214,16 @@ export interface LlmEnv {
   ANTHROPIC_API_KEY?: string;
   /** Where the requests go instead of Anthropic, for a stand-in during development. */
   ANTHROPIC_API_URL?: string;
-  /** The model asked; see `LLM_MODEL_DEFAULT`. */
+  /** The model every job asks unless its own variable names one; see `LLM_MODEL_DEFAULT`. */
   ANTHROPIC_MODEL?: string;
+  /** The model that reads a note's pictures and text-less scans; see `LlmJob`. */
+  ANTHROPIC_READ_MODEL?: string;
+  /** The model that writes the title. */
+  ANTHROPIC_TITLE_MODEL?: string;
+  /** The model that writes the text fields' values. */
+  ANTHROPIC_FIELDS_MODEL?: string;
+  /** The effort the read sends, whatever its model; see `LLM_READ_EFFORT_DEFAULT`. */
+  ANTHROPIC_READ_EFFORT?: string;
 }
 
 /** Whether this instance has a language model at all. The key alone decides. */
@@ -420,7 +494,7 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
   const apiKey = env.ANTHROPIC_API_KEY?.trim();
   if (!apiKey) throw new Error('Refusing to build a vision client without a key');
   const url = env.ANTHROPIC_API_URL?.trim() || ANTHROPIC_API_URL;
-  const model = env.ANTHROPIC_MODEL?.trim() || LLM_MODEL_DEFAULT;
+  const jobs = jobSettings(env);
 
   async function post(body: string, timeout: number): Promise<Response> {
     try {
@@ -452,7 +526,8 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
    * Only the answer that was kept is counted. A retried 429 or 5xx is not billed, and an
    * error status carries no usage to count.
    */
-  async function ask(body: string, timeout = TIMEOUT_MS): Promise<Metered<string | null>> {
+  async function ask(job: LlmJob, body: string, timeout = TIMEOUT_MS): Promise<Metered<string | null>> {
+    const { model } = jobs[job];
     let res = await post(body, timeout);
     if (RETRY_STATUSES.has(res.status)) {
       await new Promise((resolve) => setTimeout(resolve, RETRY_AFTER_MS));
@@ -498,7 +573,7 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
           : { type: 'image', source };
 
       const body = JSON.stringify({
-        model,
+        model: jobs.read.model,
         max_tokens: MAX_OUTPUT_TOKENS,
         system: SYSTEM,
         // The file before the words about it, which is the order the docs recommend.
@@ -508,10 +583,16 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
             content: [block, { type: 'text', text: `Read this file, which is called "${file.filename}".` }],
           },
         ],
-        output_config: { format: { type: 'json_schema', schema: READING_SCHEMA } },
+        output_config: {
+          // An explicit effort, low by default: thinking harder about a transcription
+          // does not change what is on the page, and the thinking shares the output
+          // budget with a long one. See `LLM_READ_EFFORT_DEFAULT`.
+          ...(jobs.read.effort ? { effort: jobs.read.effort } : {}),
+          format: { type: 'json_schema', schema: READING_SCHEMA },
+        },
       });
 
-      const { value: text, usage } = await ask(body);
+      const { value: text, usage } = await ask('read', body);
       if (!text) return { value: null, usage };
       try {
         const result = reading.safeParse(JSON.parse(text));
@@ -523,7 +604,7 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
 
     async title(note) {
       const body = JSON.stringify({
-        model,
+        model: jobs.title.model,
         max_tokens: MAX_TITLE_TOKENS,
         system: TITLE_SYSTEM,
         // The note as one JSON object, its parts labelled, the way the docs recommend
@@ -533,12 +614,13 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
           // A title is a small judgement, and the thinking a capable model would spend on
           // it is paid for and waited on. Low effort trims both — but only on the model
           // this file chose, whose parameters it knows; a model the operator named gets
-          // the plain request, since not every model accepts the field.
-          ...(model === LLM_MODEL_DEFAULT ? { effort: 'low' } : {}),
+          // the plain request, since not every model accepts the field. `jobSettings`
+          // decides.
+          ...(jobs.title.effort ? { effort: jobs.title.effort } : {}),
           format: { type: 'json_schema', schema: TITLE_SCHEMA },
         },
       });
-      const { value: text, usage } = await ask(body, TITLE_TIMEOUT_MS);
+      const { value: text, usage } = await ask('title', body, TITLE_TIMEOUT_MS);
       if (!text) return { value: null, usage };
       try {
         const result = titled.safeParse(JSON.parse(text));
@@ -552,7 +634,7 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
 
     async textFields(note, fields) {
       // Nothing asked, nothing sent, nothing spent.
-      if (fields.length === 0) return { value: {}, usage: { model, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 } };
+      if (fields.length === 0) return { value: {}, usage: { model: jobs.fields.model, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 } };
       // One property per field, keyed by the caller's key rather than the field's name: a
       // name is the owner's to write, and a schema key has rules a name need not follow.
       // The name goes in each property's description, which the model reads.
@@ -565,7 +647,7 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
         additionalProperties: false,
       };
       const body = JSON.stringify({
-        model,
+        model: jobs.fields.model,
         max_tokens: fieldTokens(fields.length),
         system: FIELDS_SYSTEM,
         messages: [
@@ -575,11 +657,11 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
           },
         ],
         output_config: {
-          ...(model === LLM_MODEL_DEFAULT ? { effort: 'low' } : {}),
+          ...(jobs.fields.effort ? { effort: jobs.fields.effort } : {}),
           format: { type: 'json_schema', schema },
         },
       });
-      const { value: text, usage } = await ask(body, FIELDS_TIMEOUT_MS);
+      const { value: text, usage } = await ask('fields', body, FIELDS_TIMEOUT_MS);
       if (!text) return { value: null, usage };
       try {
         const result = z.record(z.string(), z.string()).safeParse(JSON.parse(text));

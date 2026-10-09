@@ -289,11 +289,24 @@ export interface Env {
   /** Where those requests go instead of Anthropic's endpoint; a stand-in for development. */
   ANTHROPIC_API_URL?: string;
   /**
-   * The model the language model client asks for, e.g. `claude-sonnet-5-5` or
-   * `claude-opus-5-5` for more careful reading at a higher price. Unset means
-   * `LLM_MODEL_DEFAULT` in lib/llm.ts.
+   * The model the language model client asks for every job that does not name its own.
+   * Unset means `LLM_MODEL_DEFAULT` in lib/llm.ts. More careful reading at a higher
+   * price is `ANTHROPIC_READ_MODEL` below, which moves the one job that costs (MAK-182)
+   * and leaves the title and the fields on the cheap model.
    */
   ANTHROPIC_MODEL?: string;
+  /** The model that reads a note's pictures and text-less scans; unset falls back to `ANTHROPIC_MODEL`. */
+  ANTHROPIC_READ_MODEL?: string;
+  /** The model that writes the title; unset falls back to `ANTHROPIC_MODEL`. */
+  ANTHROPIC_TITLE_MODEL?: string;
+  /** The model that writes the text fields' values; unset falls back to `ANTHROPIC_MODEL`. */
+  ANTHROPIC_FIELDS_MODEL?: string;
+  /**
+   * The effort the read sends, `low` to `max`, to whichever model reads. Unset means
+   * `LLM_READ_EFFORT_DEFAULT` on the default model and nothing on a named one; see
+   * lib/llm.ts for why a Sonnet read wants `low` set here.
+   */
+  ANTHROPIC_READ_EFFORT?: string;
   /**
    * The most Auto-fill presses one account may make in a UTC day; past it a press is a
    * 429 the button shows. Unset enforces nothing, though every press is counted. See

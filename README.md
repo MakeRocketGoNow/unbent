@@ -240,6 +240,7 @@ says otherwise; `pnpm exec wrangler secret put NAME` from `apps/api`, or the das
 | `POSTHOG_KEY`, `POSTHOG_HOST` | error tracking | see [Errors in the browser](#errors-in-the-browser) |
 | `TYPESAFE_API_KEY` | filing a note from what it says | see [Filing a note from what it says](#filing-a-note-from-what-it-says); `DEV_TYPESAFE_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
 | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | Auto-fill's language model: reading a note's pictures and text-less scans on a press, and writing its title and text fields | see [Reading images](#reading-images); `DEV_ANTHROPIC_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
+| `ANTHROPIC_READ_MODEL`, `ANTHROPIC_TITLE_MODEL`, `ANTHROPIC_FIELDS_MODEL`, `ANTHROPIC_READ_EFFORT` | a model per job, and the reading's effort | each unset falls back to `ANTHROPIC_MODEL`; see [Reading images](#reading-images) |
 | `AUTOFILL_DAILY_CAP` | a ceiling on Auto-fill presses per account per UTC day | a whole number; unset means none. Every press and the model's tokens are counted either way, and Maintenance shows the year's; see [Filing a note from what it says](#filing-a-note-from-what-it-says) |
 | `ANDROID_ASSET_LINKS` | an Android build of your own | see [Android app](#android-app) |
 | `APPLE_APP_SITE_ASSOCIATION` | an iOS build of your own | see [iOS app](#ios-app) |
@@ -1070,14 +1071,29 @@ instance's model read the file and replaces them, and an assistant may never wri
 text layer or the model's reading. The instance calls no model for any of it, and the
 bytes go to the assistant the person connected, nowhere else.
 
-`ANTHROPIC_MODEL` picks the model. Unset means `claude-haiku-5-5`, which read printed
-receipts as accurately as Opus in a small trial at a fiftieth of the price. Handwriting and
-poor photos were not part of that trial; for more care set `claude-sonnet-5-5`, or
-`claude-opus-5-5` for the most capable model, where a wrong digit in a transcribed total is
-the cost you care about. The same model writes Auto-fill's titles and text field values (see
-[Filing a note from what it says](#filing-a-note-from-what-it-says)). It sits behind one
-interface in `apps/api/src/lib/llm.ts`, so another model, or Workers AI for an instance that
-would rather keep images in place, is one more implementation of it.
+**Which model.** The model has three jobs inside a press — reading the files, writing the
+title, writing the text field values (see [Filing a note from what it
+says](#filing-a-note-from-what-it-says)) — and each has a variable: `ANTHROPIC_READ_MODEL`,
+`ANTHROPIC_TITLE_MODEL` and `ANTHROPIC_FIELDS_MODEL`, each falling back to `ANTHROPIC_MODEL`
+and then to `claude-haiku-5-5`. The reading is the one whose cost grows with what you keep,
+so it was measured on forty-five hard files from a real archive — faded receipts, business
+cards, handwritten forms, scans with no text layer, a twenty-two-page lease — against an
+answer key of 261 facts. Haiku 5.5 read 240 of 243 right; Sonnet 5.5 read every one of its
+236 and Opus 5.5 all but one. Every model read every phone number, email, merchant and
+total; the difference was one handwritten form, a word and a date. A read cost about 0.1¢ on Haiku, 1.6¢ on Sonnet and
+3.3¢ on Opus, and Haiku was the fastest. So Haiku is the default for every job, and the
+dearer models buy handwriting and nothing else measurable. If your archive is handwriting,
+set `ANTHROPIC_READ_MODEL=claude-sonnet-5-5` and leave the title and the fields on Haiku:
+those only copy words off a reading already made, and gained nothing from a bigger model.
+
+`ANTHROPIC_READ_EFFORT` is how hard the reading model thinks, `low` to `max`. Unset, the
+default model reads at `low`, which on the same sample tied `medium` and `high` on what it
+read and was the fastest and cheapest — thinking harder does not change what is on the page.
+A model you name gets no effort unless you set one, and beside a Sonnet read you should set
+`low`: at its default effort its thinking alone fills the output budget on a long scan, and
+the read never finishes. The whole of it sits behind one interface in
+`apps/api/src/lib/llm.ts`, so another model, or Workers AI for an instance that would rather
+keep images in place, is one more implementation of it.
 
 ## Filing a note from what it says
 

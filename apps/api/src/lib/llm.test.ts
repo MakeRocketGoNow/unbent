@@ -4,12 +4,14 @@ import {
   MAX_LLM_IMAGE_BYTES,
   MAX_LLM_PDF_BYTES,
   LLM_MODEL_DEFAULT,
+  LLM_READ_EFFORT_DEFAULT,
   LlmError,
   MAX_TRANSCRIBED_WORDS,
   canUseLlm,
   fieldTokens,
   formatReading,
   isLlmAuthError,
+  jobSettings,
   readableByLlm,
   llmFrom,
   sniffMediaType,
@@ -93,6 +95,9 @@ describe('vision', () => {
 
     const body = JSON.parse(init!.body as string);
     expect(body.model).toBe(LLM_MODEL_DEFAULT);
+    // An explicit effort on the read, low by default (MAK-182): measured on a real sample
+    // to tie medium and high on what it reads, and to be the fastest and cheapest.
+    expect(body.output_config.effort).toBe(LLM_READ_EFFORT_DEFAULT);
     expect(body.output_config.format.type).toBe('json_schema');
     expect(body.output_config.format.schema.required).toEqual(['name', 'kind', 'description', 'text']);
     expect(body.output_config.format.schema.additionalProperties).toBe(false);
@@ -114,7 +119,71 @@ describe('vision', () => {
     expect(url).toBe('http://localhost:9/v1/messages');
     const body = JSON.parse(init!.body as string);
     expect(body.model).toBe('claude-sonnet-5');
+    // A model the operator named gets no effort it did not ask for.
+    expect(body.output_config.effort).toBeUndefined();
     expect(body.messages[0].content[0]).toMatchObject({ type: 'document', source: { media_type: 'application/pdf' } });
+  });
+
+  /*
+   * Each job has a model of its own, and the read an effort (MAK-182). The table pins
+   * what each request names for each shape of configuration, so a change to the defaults
+   * or to the fallback is a change here, and an instance that set only `ANTHROPIC_MODEL`
+   * keeps what it had.
+   */
+  it('gives each job its own model, falling back to the shared one and then the default', () => {
+    // Nothing set: every job on the default, the small jobs and the read at low effort.
+    expect(jobSettings(env)).toEqual({
+      read: { model: LLM_MODEL_DEFAULT, effort: LLM_READ_EFFORT_DEFAULT },
+      title: { model: LLM_MODEL_DEFAULT, effort: 'low' },
+      fields: { model: LLM_MODEL_DEFAULT, effort: 'low' },
+    });
+    // The one variable an instance may already have set moves every job, and takes the
+    // effort guard with it: a named model gets the plain request.
+    expect(jobSettings({ ...env, ANTHROPIC_MODEL: 'claude-opus-5-5' })).toEqual({
+      read: { model: 'claude-opus-5-5' },
+      title: { model: 'claude-opus-5-5' },
+      fields: { model: 'claude-opus-5-5' },
+    });
+    // A job's own variable wins over the shared one; the others keep falling back.
+    expect(jobSettings({ ...env, ANTHROPIC_MODEL: 'claude-opus-5-5', ANTHROPIC_READ_MODEL: 'claude-sonnet-5-5', ANTHROPIC_TITLE_MODEL: ' ' })).toEqual({
+      read: { model: 'claude-sonnet-5-5' },
+      title: { model: 'claude-opus-5-5' },
+      fields: { model: 'claude-opus-5-5' },
+    });
+    // The careful reader an operator with handwriting wants, with the small jobs left cheap.
+    expect(jobSettings({ ...env, ANTHROPIC_READ_MODEL: 'claude-sonnet-5-5', ANTHROPIC_FIELDS_MODEL: LLM_MODEL_DEFAULT })).toEqual({
+      read: { model: 'claude-sonnet-5-5' },
+      title: { model: LLM_MODEL_DEFAULT, effort: 'low' },
+      fields: { model: LLM_MODEL_DEFAULT, effort: 'low' },
+    });
+    // The read's effort is a variable of its own, sent to whatever model reads — which is
+    // what keeps Sonnet's thinking out of a long scan's output budget — and passed through
+    // as named, like a model id.
+    expect(jobSettings({ ...env, ANTHROPIC_READ_EFFORT: 'medium' }).read).toEqual({ model: LLM_MODEL_DEFAULT, effort: 'medium' });
+    expect(jobSettings({ ...env, ANTHROPIC_READ_MODEL: 'claude-sonnet-5-5', ANTHROPIC_READ_EFFORT: ' low ' }).read).toEqual({ model: 'claude-sonnet-5-5', effort: 'low' });
+  });
+
+  it('asks each job of its own model, and counts the tokens against that model', async () => {
+    const split = { ...env, ANTHROPIC_READ_MODEL: 'claude-sonnet-5-5', ANTHROPIC_READ_EFFORT: 'high', ANTHROPIC_FIELDS_MODEL: 'claude-opus-5-5' };
+    const fetchImpl = answering(200, message(JSON.stringify({ ...said, title: 'x', field_0: 'y' })));
+    const llm = llmFrom(split, fetchImpl as unknown as typeof fetch);
+    const note = { title: '', body: 'x', attachments: [] };
+
+    const read = await llm.read(photo);
+    const title = await llm.title(note);
+    const fields = await llm.textFields(note, [{ key: 'field_0', name: 'Vendor' }]);
+    const sent = fetchImpl.mock.calls.map(([, init]) => JSON.parse(init!.body as string));
+    expect(sent.map((b) => [b.model, b.output_config.effort])).toEqual([
+      ['claude-sonnet-5-5', 'high'],
+      [LLM_MODEL_DEFAULT, 'low'],
+      ['claude-opus-5-5', undefined],
+    ]);
+    // The counter keys on the model (0007-llm-usage), so each job's usage names its own.
+    expect(read.usage.model).toBe('claude-sonnet-5-5');
+    expect(title.usage.model).toBe(LLM_MODEL_DEFAULT);
+    expect(fields.usage.model).toBe('claude-opus-5-5');
+    // Nothing asked still says which model would have been.
+    expect((await llm.textFields(note, [])).usage.model).toBe('claude-opus-5-5');
   });
 
   it('sends a file as what its bytes are, not as what the upload called it', async () => {
