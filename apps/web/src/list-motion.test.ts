@@ -39,15 +39,25 @@ function row(id: string): HTMLLIElement {
   li.dataset.noteId = id;
   li.textContent = id;
   li.getBoundingClientRect = function (this: HTMLLIElement) {
-    const at = [...(this.parentElement?.querySelectorAll(':scope > [data-note-id]') ?? [])].indexOf(this);
+    const at = [...(this.parentElement?.querySelectorAll(':scope > [data-note-id], :scope > [data-motion-key]') ?? [])].indexOf(this);
     return rect(at * ROW);
   };
   return li;
 }
 
+/** A row after the notes — Load more, the empty line — which moves with them. */
+function trailing(key: string): HTMLLIElement {
+  const li = row(key);
+  delete li.dataset.noteId;
+  li.dataset.motionKey = key;
+  return li;
+}
+
 const flush = () => new Promise((r) => setTimeout(r, 0));
 const moved = (id: string) =>
-  animations.filter((a) => (a.el as HTMLElement).dataset.noteId === id).map((a) => a.frames[0]);
+  animations
+    .filter((a) => (a.el as HTMLElement).dataset.noteId === id || (a.el as HTMLElement).dataset.motionKey === id)
+    .map((a) => a.frames[0]);
 
 beforeEach(() => {
   animations.length = 0;
@@ -159,6 +169,28 @@ describe('followLocalChanges', () => {
     await flush();
     two.stop();
     expect(animations).toEqual([]);
+  });
+
+  it('slides the rows after the notes with them, and fades in the empty line without taking it for a stranger', async () => {
+    const ul = list(['a', 'b']);
+    ul.appendChild(trailing('more'));
+    const { stop } = followLocalChanges(ul);
+    writeHere(['a']);
+    ul.querySelector('[data-note-id="a"]')!.remove();
+    await flush();
+    expect(moved('more')).toEqual([{ translate: `0 ${ROW}px` }]);
+
+    writeHere(['b']);
+    ul.querySelector('[data-note-id="b"]')!.remove();
+    ul.querySelector('[data-motion-key="more"]')!.remove();
+    ul.appendChild(trailing('empty'));
+    await flush();
+    expect(moved('empty')).toEqual([{ opacity: 0 }]);
+    // A copy for the note that left, none for Load more going with it.
+    const copies = [...ul.querySelectorAll('.note-ghost')].map((g) => g.textContent);
+    expect(copies).toContain('b');
+    expect(copies).not.toContain('more');
+    stop();
   });
 
   it('stops listening when let go', () => {

@@ -51,7 +51,22 @@ const EASE = 'cubic-bezier(0.2, 0, 0, 1)';
 const ARRIVE_MS = 220;
 const ARRIVE_DELAY_MS = 60;
 
-const ROWS = ':scope > [data-note-id]';
+/**
+ * The list's rows: its notes, and the rows after them that move when a note leaves — Load
+ * more, the line that says the list is empty — which carry `data-motion-key` instead. Those
+ * slide with the notes rather than jumping under the last one while it is still sliding.
+ */
+const ROWS = ':scope > [data-note-id], :scope > [data-motion-key]';
+
+/** A row's key: the note's id, or the trailing row's own name, kept apart from any id. */
+function keyOf(node: HTMLElement): string {
+  return node.dataset.noteId ?? `:${node.dataset.motionKey}`;
+}
+
+/** Whether a key is a note's, rather than a trailing row's. */
+function isNote(key: string): boolean {
+  return !key.startsWith(':');
+}
 
 interface Snapshot {
   /** The list's own box when measured, so a list that moved as a whole moves nothing in it. */
@@ -75,7 +90,7 @@ function onScreen(rect: DOMRect, view: DOMRect): boolean {
 function measure(list: HTMLElement): Snapshot {
   const rows = new Map<string, { rect: DOMRect; node: HTMLElement }>();
   for (const node of list.querySelectorAll<HTMLElement>(ROWS)) {
-    rows.set(node.dataset.noteId!, { rect: node.getBoundingClientRect(), node });
+    rows.set(keyOf(node), { rect: node.getBoundingClientRect(), node });
   }
   return { view: list.getBoundingClientRect(), rows };
 }
@@ -95,15 +110,17 @@ function surfaceOf(el: HTMLElement): string {
  * redraw is not the writes' doing, and nothing of it should move.
  */
 function explained(before: Snapshot, present: Map<string, HTMLElement>, touched: ReadonlySet<string>): boolean {
-  for (const id of present.keys()) if (!before.rows.has(id) && !touched.has(id)) return false;
-  for (const id of before.rows.keys()) if (!present.has(id) && !touched.has(id)) return false;
+  // Trailing rows come and go as a consequence — the empty line when the last note leaves —
+  // so only the notes are asked to be explained.
+  for (const id of present.keys()) if (isNote(id) && !before.rows.has(id) && !touched.has(id)) return false;
+  for (const id of before.rows.keys()) if (isNote(id) && !present.has(id) && !touched.has(id)) return false;
   return true;
 }
 
 function play(list: HTMLElement, before: Snapshot, touched: ReadonlySet<string>): void {
   const view = list.getBoundingClientRect();
   const present = new Map<string, HTMLElement>();
-  for (const node of list.querySelectorAll<HTMLElement>(ROWS)) present.set(node.dataset.noteId!, node);
+  for (const node of list.querySelectorAll<HTMLElement>(ROWS)) present.set(keyOf(node), node);
   if (!explained(before, present, touched)) return;
 
   for (const [id, node] of present) {
@@ -130,7 +147,8 @@ function play(list: HTMLElement, before: Snapshot, touched: ReadonlySet<string>)
 
   let surface: string | null = null;
   for (const [id, was] of before.rows) {
-    if (present.has(id) || !onScreen(was.rect, before.view)) continue;
+    // A trailing row that went is simply gone: it is not something the person removed.
+    if (present.has(id) || !isNote(id) || !onScreen(was.rect, before.view)) continue;
     surface ??= surfaceOf(list);
     const ghost = was.node.cloneNode(true) as HTMLElement;
     delete ghost.dataset.noteId;

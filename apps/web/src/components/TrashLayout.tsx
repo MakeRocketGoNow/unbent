@@ -274,7 +274,7 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
           ))}
 
           {list.hasNextPage && (
-            <li>
+            <li data-motion-key="more">
               <button
                 type="button"
                 className="load-more"
@@ -287,7 +287,9 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
           )}
 
           {notes.length === 0 && !list.error && (
-            <li className="muted small empty">Trash is empty.</li>
+            <li className="muted small empty" data-motion-key="empty">
+              Trash is empty.
+            </li>
           )}
         </ul>
 

@@ -1230,7 +1230,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             ))}
 
           {results === null && list.hasNextPage && (
-            <li>
+            <li data-motion-key="more">
               <button
                 type="button"
                 className="load-more"
@@ -1243,7 +1243,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           )}
 
           {results === null && emptyMessage && (
-            <li className="muted small empty">{emptyMessage}</li>
+            <li className="muted small empty" data-motion-key="empty">
+              {emptyMessage}
+            </li>
           )}
           {offerSampleNotes && (
             <li>
