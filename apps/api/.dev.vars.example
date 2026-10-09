@@ -241,8 +241,8 @@ ALLOWED_EMAILS=
 #   https://console.anthropic.com/settings/keys
 # ANTHROPIC_API_KEY=
 #
-# The model asked. Unset means the default in src/lib/llm.ts, the most capable current
-# one; a cheaper one, such as claude-sonnet-5, trades some reading accuracy for cost.
+# The model asked. Unset means the default in src/lib/llm.ts, claude-haiku-5-5; for more
+# care with hard scans, claude-sonnet-5-5, or claude-opus-5-5, the most capable and dearest.
 # ANTHROPIC_MODEL=
 #
 # Where those requests go instead, for a stand-in server during development. Leave unset.

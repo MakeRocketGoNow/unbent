@@ -289,8 +289,9 @@ export interface Env {
   /** Where those requests go instead of Anthropic's endpoint; a stand-in for development. */
   ANTHROPIC_API_URL?: string;
   /**
-   * The model the language model client asks for, e.g. `claude-sonnet-5` to trade some
-   * reading accuracy for cost. Unset means `LLM_MODEL_DEFAULT` in lib/llm.ts.
+   * The model the language model client asks for, e.g. `claude-sonnet-5-5` or
+   * `claude-opus-5-5` for more careful reading at a higher price. Unset means
+   * `LLM_MODEL_DEFAULT` in lib/llm.ts.
    */
   ANTHROPIC_MODEL?: string;
 }

@@ -31,14 +31,27 @@ export const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
 
 /**
- * The model asked when `ANTHROPIC_MODEL` is unset. The most capable current one rather
- * than the cheapest, because a wrong digit in a transcribed total is copied into a field
- * with full confidence, and the reading of a file happens once; an operator who would
- * rather trade some accuracy for cost sets the variable. The one model-specific setting
- * here, a low effort on the title, is sent only to this default; an operator's choice
- * gets the plain request, so any current model works in the variable.
+ * The model asked when `ANTHROPIC_MODEL` is unset: the current Haiku. The default was the most
+ * capable current model, Opus 5 at $5 / $25 a million tokens, on the reasoning that a
+ * wrong digit in a transcribed total is copied into a field with full confidence. Reading
+ * a file is the one call whose cost grows with what people keep, so the same receipts were
+ * pressed on Opus 5, Sonnet 5.5 and Haiku 5.5 (2026-10-09): all three transcribed every
+ * line verbatim and filled the same vendor, total and date, from the same number of
+ * tokens. Haiku 5.5 is $0.10 / $0.50 — about 0.04¢ a read against Opus 5's 2¢ — and was
+ * the fastest of the three.
+ *
+ * Those were clean printed receipts, which any of them reads. Where a smaller model is
+ * likelier to slip — handwriting, a crumpled photo, faded thermal paper, a dense scan of
+ * many pages — was not tested, and that is the measured comparison MAK-182 still asks
+ * for. An operator who wants more care sets the variable: `claude-sonnet-5-5`, or
+ * `claude-opus-5-5` for the most capable. Haiku's price rises fivefold past a prompt of
+ * 100K tokens, which only a scan of fifty-odd pages reaches.
+ *
+ * The one model-specific setting here, a low effort on the title and the fields, is sent
+ * only to this default; an operator's choice gets the plain request, so any current model
+ * works in the variable.
  */
-export const LLM_MODEL_DEFAULT = 'claude-opus-5';
+export const LLM_MODEL_DEFAULT = 'claude-haiku-5-5';
 
 /** What the API takes as a picture. An animation loses all but its first frame, which is fine for filing. */
 export const LLM_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
