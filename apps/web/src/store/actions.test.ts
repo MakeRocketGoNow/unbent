@@ -1139,10 +1139,15 @@ describe('a write made here', () => {
     const { lib } = library([row('n1')]);
     await lib.outbox.ready;
     const seenBefore: Array<number | undefined> = [];
-    const stop = actions.onLocalWrite(() => seenBefore.push(lib.notes.get('n1')?.deletedAt));
+    const writes: actions.LocalWrite[] = [];
+    const stop = actions.onLocalWrite((write) => {
+      seenBefore.push(lib.notes.get('n1')?.deletedAt);
+      writes.push(write);
+    });
     await actions.trashNote('n1');
     stop();
     expect(seenBefore).toEqual([undefined]);
+    expect(writes).toEqual([{ ids: ['n1'], refiles: true }]);
     expect(lib.notes.get('n1')?.deletedAt).toBeDefined();
     expect(actions.wroteLocallyWithin(1000)).toBe(true);
   });
@@ -1156,5 +1161,21 @@ describe('a write made here', () => {
     await actions.trashNote('n1');
     stop();
     expect(heard).toHaveBeenCalledOnce();
+    expect(heard).toHaveBeenCalledWith({ ids: ['n1'], refiles: true });
+  });
+
+  it('says a save of the text cannot refile the note, and a save of its notebook can', async () => {
+    const { lib, note } = library([row('n1')]);
+    await lib.outbox.ready;
+    const writes: actions.LocalWrite[] = [];
+    const stop = actions.onLocalWrite((write) => writes.push(write));
+    const base = note('n1');
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'retyped' }, base });
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'retyped', notebook: 'Elsewhere' }, base });
+    stop();
+    expect(writes).toEqual([
+      { ids: ['n1'], refiles: false },
+      { ids: ['n1'], refiles: true },
+    ]);
   });
 });

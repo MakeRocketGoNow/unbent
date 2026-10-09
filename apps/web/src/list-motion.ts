@@ -1,5 +1,6 @@
 import { useCallback, type RefObject } from 'react';
-import { onLocalWrite } from './store/actions.js';
+import { useRouter } from '@tanstack/react-router';
+import { onLocalWrite, type LocalWrite } from './store/actions.js';
 
 /**
  * Notes leaving and arriving in a list, instead of vanishing and appearing, when the
@@ -15,6 +16,16 @@ import { onLocalWrite } from './store/actions.js';
  * Only for a write made here (`onLocalWrite`). The feed brings other devices' changes and
  * the first copy brings thousands of rows; moving the list for those would set it sliding
  * under someone reading it. A list redrawn because a filter changed is not a write at all.
+ *
+ * "Made here" is not enough on its own, because a write and the redraw it causes are not
+ * tied together: autosave writes every few seconds while someone types, mostly without
+ * changing which rows a list holds, and the next redraw after it may be a notebook picked,
+ * a search typed or Load more. So a write names the notes it touches, and a redraw is
+ * played only if every row that came or went is one of them; anything else drops the
+ * measurement and draws as it always did. A change to the list's own address — its
+ * filters, its sort, its search — drops it too, since that redraw may only reorder. And a
+ * list that is not drawn, or that holds none of the notes a write touches and cannot gain
+ * one, is not measured at all.
  *
  * The technique is FLIP, done by hand rather than with a library: where every row in the
  * list stands is measured when a write is about to land — `onLocalWrite` is heard before
@@ -78,10 +89,22 @@ function surfaceOf(el: HTMLElement): string {
   return 'transparent';
 }
 
-function play(list: HTMLElement, before: Snapshot): void {
+/**
+ * Whether the rows that came and went are all ones the writes touched. A row that appeared
+ * or left for any other reason — a different filter, the next page, the feed — means the
+ * redraw is not the writes' doing, and nothing of it should move.
+ */
+function explained(before: Snapshot, present: Map<string, HTMLElement>, touched: ReadonlySet<string>): boolean {
+  for (const id of present.keys()) if (!before.rows.has(id) && !touched.has(id)) return false;
+  for (const id of before.rows.keys()) if (!present.has(id) && !touched.has(id)) return false;
+  return true;
+}
+
+function play(list: HTMLElement, before: Snapshot, touched: ReadonlySet<string>): void {
   const view = list.getBoundingClientRect();
   const present = new Map<string, HTMLElement>();
   for (const node of list.querySelectorAll<HTMLElement>(ROWS)) present.set(node.dataset.noteId!, node);
+  if (!explained(before, present, touched)) return;
 
   for (const [id, node] of present) {
     const was = before.rows.get(id);
@@ -141,33 +164,53 @@ function play(list: HTMLElement, before: Snapshot): void {
   }
 }
 
+/** Whether a write can change what this list holds or where its rows stand. */
+function concerns(list: HTMLElement, write: LocalWrite): boolean {
+  // Not drawn — a phone's list behind the open note — so there is nothing to measure.
+  if (list.getClientRects().length === 0) return false;
+  // A filing change can bring a note in from anywhere; anything else only moves its own row.
+  return write.refiles || write.ids.some((id) => list.querySelector(`:scope > [data-note-id="${CSS.escape(id)}"]`));
+}
+
 /**
- * Moves the list's rows for each write made here. Returns the way to stop. A `<ul>` whose
- * direct children are the rows, each carrying `data-note-id`.
+ * Moves the list's rows for each write made here. A `<ul>` whose direct children are the
+ * rows, each carrying `data-note-id`. `disarm` lets go of a measurement still waiting for
+ * its redraw; `stop` stops following.
  */
-export function followLocalChanges(list: HTMLElement): () => void {
+export function followLocalChanges(list: HTMLElement): { stop: () => void; disarm: () => void } {
   let before: Snapshot | null = null;
+  // Every note the writes since the measurement touched: two writes in a row land as one redraw.
+  const touched = new Set<string>();
   let timer = 0;
-  const unlisten = onLocalWrite(() => {
-    if (reducedMotion()) return;
-    before = measure(list);
+  const disarm = () => {
+    before = null;
+    touched.clear();
     window.clearTimeout(timer);
-    timer = window.setTimeout(() => (before = null), ARMED_MS);
+  };
+  const unlisten = onLocalWrite((write) => {
+    if (reducedMotion() || !concerns(list, write)) return;
+    before = measure(list);
+    for (const id of write.ids) touched.add(id);
+    window.clearTimeout(timer);
+    timer = window.setTimeout(disarm, ARMED_MS);
   });
   // The list's own children only: rows added, removed or reordered. Its copies of leaving
   // rows are children too, but by the time they are added the measurement is spent.
   const observer = new MutationObserver(() => {
     const snapshot = before;
     if (!snapshot) return;
-    before = null;
-    window.clearTimeout(timer);
-    play(list, snapshot);
+    const ids = new Set(touched);
+    disarm();
+    play(list, snapshot, ids);
   });
   observer.observe(list, { childList: true });
-  return () => {
-    unlisten();
-    observer.disconnect();
-    window.clearTimeout(timer);
+  return {
+    stop: () => {
+      unlisten();
+      observer.disconnect();
+      window.clearTimeout(timer);
+    },
+    disarm,
   };
 }
 
@@ -176,16 +219,25 @@ export function followLocalChanges(list: HTMLElement): () => void {
  * as well for whoever else needs the element.
  */
 export function useListMotion<T extends HTMLElement>(ref?: RefObject<T | null>) {
+  const router = useRouter();
   return useCallback(
     (el: T | null) => {
       if (ref) ref.current = el;
       if (!el) return;
-      const stop = followLocalChanges(el);
+      const motion = followLocalChanges(el);
+      // A new filter, sort or search redraws the list for its own reasons, and may only
+      // reorder it, which the rows' membership cannot tell apart from a write's doing.
+      // Opening or closing a note keeps the list's address, so a note deleted from its own
+      // view still leaves the list beside it.
+      const unsubscribe = router.subscribe('onBeforeNavigate', ({ fromLocation, toLocation }) => {
+        if (fromLocation?.searchStr !== toLocation.searchStr) motion.disarm();
+      });
       return () => {
-        stop();
+        motion.stop();
+        unsubscribe();
         if (ref) ref.current = null;
       };
     },
-    [ref],
+    [ref, router],
   );
 }
