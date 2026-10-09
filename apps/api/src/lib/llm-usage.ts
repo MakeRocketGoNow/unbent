@@ -19,6 +19,8 @@ export interface UsageEnv {
   AUTOFILL_DAILY_CAP?: string;
 }
 
+let warnedAboutCap = false;
+
 /**
  * The cap, or null for none. Anything but a whole number of at least one is none, and
  * says so in the log: a typo in a variable must not turn into a cap of zero that refuses
@@ -28,7 +30,10 @@ export function dailyCap(env: UsageEnv): number | null {
   const raw = env.AUTOFILL_DAILY_CAP?.trim();
   if (!raw) return null;
   if (!/^\d+$/.test(raw) || Number(raw) < 1) {
-    console.warn(`AUTOFILL_DAILY_CAP is not a whole number above zero ("${raw}"); no cap is enforced`);
+    // Once an isolate: this runs on every press and every usage read, and the same line
+    // a hundred times buries it rather than surfacing it.
+    if (!warnedAboutCap) console.warn(`AUTOFILL_DAILY_CAP is not a whole number above zero ("${raw}"); no cap is enforced`);
+    warnedAboutCap = true;
     return null;
   }
   return Number(raw);
