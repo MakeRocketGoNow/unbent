@@ -289,10 +289,10 @@ export interface Env {
   /** Where those requests go instead of Anthropic's endpoint; a stand-in for development. */
   ANTHROPIC_API_URL?: string;
   /**
-   * The model the language model client asks for, e.g. `claude-sonnet-5-5` or
-   * `claude-opus-5-5` for more careful reading at a higher price. Unset means
-   * `LLM_MODEL_DEFAULT` in lib/llm.ts. Each of the model's three jobs can name its own
-   * instead (MAK-182), falling back to this one.
+   * The model the language model client asks for every job that does not name its own.
+   * Unset means `LLM_MODEL_DEFAULT` in lib/llm.ts. More careful reading at a higher
+   * price is `ANTHROPIC_READ_MODEL` below, which moves the one job that costs (MAK-182)
+   * and leaves the title and the fields on the cheap model.
    */
   ANTHROPIC_MODEL?: string;
   /** The model that reads a note's pictures and text-less scans; unset falls back to `ANTHROPIC_MODEL`. */
