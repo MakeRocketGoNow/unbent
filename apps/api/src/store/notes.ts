@@ -102,6 +102,8 @@ export interface ListOptions {
   to?: string | undefined;
   /** List trashed notes instead of live ones. */
   trashed?: boolean | undefined;
+  /** Only these notes, at most `ID_RUN`: an export of a selection. See `filterConditions`. */
+  ids?: string[] | undefined;
   /**
    * Order by this field's value instead of `sort`. The resolved definition rather than
    * an id, so the SQL is built knowing the type — the same reason `filterConditions`
@@ -123,6 +125,8 @@ export interface CountOptions {
   /** Sorting by a field, which decides the column a date range reads; see `fieldSort`. */
   sortField?: FieldDef | undefined;
   exact?: boolean | undefined;
+  /** Only these notes; see `ListOptions.ids`. Never a stored count. */
+  ids?: string[] | undefined;
 }
 
 export interface SearchFilters {
@@ -322,7 +326,7 @@ export class NotesStore {
   }
 
   private pageRows(opts: ListOptions): SummaryRow[] {
-    const { limit, cursor, tags, notebook, fields, untagged, trashed, from, to } = opts;
+    const { limit, cursor, tags, notebook, fields, untagged, trashed, from, to, ids } = opts;
     const sort = opts.sort ?? DEFAULT_NOTE_SORT;
     // Trash has one meaningful order — most recently deleted first — so it ignores both.
     const byField = !trashed && opts.sortField ? opts.sortField : undefined;
@@ -360,7 +364,7 @@ export class NotesStore {
       );
     };
 
-    const conditions = [liveCondition(trashed, tags)];
+    const conditions = [liveCondition(trashed, tags, ids)];
     const sortKey = `${spec.column}${collate}`;
     const cursorCondition = !byField && decoded ? pastCursor(sortKey, 'n.id') : '';
     /*
@@ -381,7 +385,7 @@ export class NotesStore {
     }
     conditions.push(
       // The range applies to the column being sorted, so the filter and the order agree.
-      ...filterConditions({ tags, notebook, fields, untagged, from, to, dateColumn: spec.dateColumn }, binds),
+      ...filterConditions({ tags, notebook, fields, untagged, from, to, ids, dateColumn: spec.dateColumn }, binds),
     );
     binds.push(limit);
     const limitBind = `?${binds.length}`;
@@ -520,9 +524,10 @@ export class NotesStore {
 
     const binds: Bind[] = [];
     const conditions = [
-      liveCondition(opts.trashed, opts.tags),
+      liveCondition(opts.trashed, opts.tags, opts.ids),
       ...filterConditions(
         {
+          ids: opts.ids,
           tags: opts.tags,
           notebook: opts.notebook,
           fields: opts.fields,
@@ -559,9 +564,9 @@ export class NotesStore {
    * case, as NOCASE folds it. A name that matches nothing is 0 either way.
    */
   private storedCount(opts: CountOptions): number | undefined {
-    const { tags = [], notebook, fields = [], untagged, trashed, from, to } = opts;
+    const { tags = [], notebook, fields = [], untagged, trashed, from, to, ids = [] } = opts;
     // No stored count is of notes without tags, so it is counted like a field filter is.
-    if (from || to || untagged || fields.length > 0 || tags.length > 1) return undefined;
+    if (from || to || untagged || fields.length > 0 || tags.length > 1 || ids.length > 0) return undefined;
     if (tags.length === 1 && notebook) return undefined;
 
     if (trashed) return notebook || tags.length > 0 ? undefined : this.totals().trashed;

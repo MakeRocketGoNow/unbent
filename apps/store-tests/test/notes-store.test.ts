@@ -1080,6 +1080,12 @@ describe('rows read on an archive-sized store', () => {
       await measure('notebook page by created', () => stub.list({ limit: 50, notebook: 'Notebook 3', sort: 'created' })),
       await measure('rare tag page', () => stub.list({ limit: 50, tags: ['rare'] })),
       await measure('rare tag count', () => stub.count({ tags: ['rare'], notebook: 'Notebook 0' })),
+      // A selection's export: ninety notes named by id, spread over the archive, each a
+      // primary-key lookup — never a walk of the live notes to test each against the list.
+      await measure('export page of named notes', () => {
+        const ids = Array.from({ length: 90 }, (_, k) => `n${String(k * 33).padStart(5, '0')}`);
+        return stub.exportPage({ limit: 100, sort: 'created', ids }, { sort: 'created', ids });
+      }),
       await measure('field sort page', () => stub.list({ limit: 50, notebook: 'Notebook 0', sortField })),
       // The tags of a set, counted within it: the cost is the set's, so these are the
       // three sizes it can be — a notebook of six hundred, one of thirty, and a tag on three.
@@ -1190,6 +1196,10 @@ describe('rows read on an archive-sized store', () => {
       'notebook page by created': 400,
       'rare tag page': 60,
       'rare tag count': 20,
+      // Whole notes with their files' text, so dearer a note than a list row: 1,478 for
+      // ninety (2026-10-09) — 180 of them the count, two a note. A plan that walked the
+      // live notes would read three thousand before it started on the files.
+      'export page of named notes': 1700,
       'field sort page': 600,
       // A notebook's tags cost about two and a half rows a note — the note, its links —
       // and no more: 1,489 for 594 notes, 77 for 30 (2026-10-04). A plan that started from

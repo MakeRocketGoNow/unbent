@@ -136,12 +136,23 @@ export interface ExportFilter {
   from?: string | undefined;
   to?: string | undefined;
   sort?: NoteSort | undefined;
+  /**
+   * Only these notes — the ones selected in the list — in place of every other filter.
+   * The client asks for them a run at a time (`EXPORT_IDS_PER_PAGE`); see `id` on
+   * `exportPageQuerySchema`.
+   */
+  ids?: string[] | undefined;
 }
 
 /** Whether a filter narrows the export to a slice of the library. */
 export function isExportSlice(filter: ExportFilter): boolean {
   return Boolean(
-    filter.notebook || filter.tags?.length || filter.fields?.length || filter.from || filter.to,
+    filter.notebook ||
+      filter.tags?.length ||
+      filter.fields?.length ||
+      filter.from ||
+      filter.to ||
+      filter.ids?.length,
   );
 }
 
@@ -164,6 +175,9 @@ export function exportFilename(filter: ExportFilter, stamp: string): string {
   // archive.
   for (const tag of filter.tags ?? []) parts.push(slugify(tag));
   if (filter.from || filter.to) parts.push(`${filter.from ?? 'start'}-to-${filter.to ?? 'now'}`);
+  // A selection has no name of its own, so it says how many, which is the one thing that
+  // tells two of them on the same day apart without opening them.
+  if (filter.ids?.length) parts.push(`${filter.ids.length}-selected`);
   parts.push(stamp);
   return `${parts.join('-')}.zip`;
 }
