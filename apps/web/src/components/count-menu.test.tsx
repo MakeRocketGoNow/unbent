@@ -12,6 +12,7 @@ const base = {
   shown: 37,
   more: false,
   exportRunning: false,
+  offline: false,
   onExport: () => {},
   onSelectAll: () => {},
 };
@@ -38,6 +39,14 @@ describe('countMenuItems', () => {
     expect(exp!.title).toBe('After the current export finishes');
     // In the label too, not only the tooltip: a phone never shows a title.
     expect(exp!.label).not.toBe('Export these 37 notes');
+  });
+
+  it('fades Export offline and says so, but not Select all', () => {
+    const [exp, select] = countMenuItems({ ...base, offline: true, exportRunning: true });
+    expect(exp!.disabled).toBe(true);
+    // The connection is named over the running export: it is the reason that can be acted on.
+    expect(exp!.title).toBe('Exporting needs a connection');
+    expect(select!.disabled).toBeFalsy();
   });
 
   it('runs the handlers it was given', () => {

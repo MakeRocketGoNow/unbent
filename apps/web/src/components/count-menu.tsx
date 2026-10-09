@@ -9,6 +9,8 @@ interface CountMenuOptions {
   more: boolean;
   /** An export is already running; see `useExportRunning`. */
   exportRunning: boolean;
+  /** No connection; see `useOffline`. An export reads every page from the server. */
+  offline: boolean;
   onExport: () => void;
   onSelectAll: () => void;
 }
@@ -27,33 +29,43 @@ interface CountMenuOptions {
  * 340 notes" would read as all 340 and pick 50, so until the list is whole it says how
  * many it takes.
  *
- * One export runs at a time. While one does, Export stays where it is, faded, and says why
- * in the item itself rather than in a tooltip, which a phone never shows. How the running
- * export is going is `ExportSnackbar`'s to say, app-wide.
+ * Export needs the server, page by page, and one export runs at a time. Offline, or while
+ * another runs, it stays where it is, faded, and says why in the item itself rather than in
+ * a tooltip, which a phone never shows. Faded rather than dropped, so the menu keeps its
+ * shape — the rule for every control that needs the server (see `OverflowItem.disabled`).
+ * Select all does not fade: a selection is made of the rows on screen. How a running export
+ * is going is `ExportSnackbar`'s to say, app-wide.
  */
 export function countMenuItems({
   total,
   shown,
   more,
   exportRunning,
+  offline,
   onExport,
   onSelectAll,
 }: CountMenuOptions): OverflowItem[] {
   const exportLabel = total === 1 ? 'Export this note' : `Export these ${total.toLocaleString()} notes`;
-  const waiting = 'After the current export finishes';
+  // Offline first: it is the one the person can do something about, and a running export
+  // with no connection is not going to finish until there is one.
+  const unavailable = offline
+    ? 'Exporting needs a connection'
+    : exportRunning
+      ? 'After the current export finishes'
+      : undefined;
   return [
     {
-      label: exportRunning ? (
+      label: unavailable ? (
         <>
           {exportLabel}
-          <span className="overflow-item-note">{waiting}</span>
+          <span className="overflow-item-note">{unavailable}</span>
         </>
       ) : (
         exportLabel
       ),
       onSelect: onExport,
-      disabled: exportRunning,
-      title: exportRunning ? waiting : undefined,
+      disabled: unavailable !== undefined,
+      title: unavailable,
     },
     {
       label: more ? `Select the ${shown.toLocaleString()} shown` : 'Select all',

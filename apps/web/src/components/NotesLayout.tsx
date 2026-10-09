@@ -30,6 +30,7 @@ import { Button } from './Button';
 import { NotebookMissing, isNotebookMissing } from './NotebookMissing.js';
 import { countMenuItems } from './count-menu.js';
 import { startExport, useExportRunning } from '../export-archive.js';
+import { useOffline } from '../connectivity.js';
 import { TagPicker } from './TagPicker.js';
 import { FilterRow } from './FilterRow.js';
 import { DatePicker } from './DatePicker.js';
@@ -776,6 +777,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * carry, not while loading, not for a notebook that is not there, and not for none.
    */
   const exportRunning = useExportRunning();
+  const offline = useOffline();
   const countMenu =
     isFiltered && results === null && !showNotebookMissing && !counting && noteCount > 0
       ? countMenuItems({
@@ -783,6 +785,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           shown: rowIds.length,
           more: list.hasNextPage,
           exportRunning,
+          offline,
           onExport: () =>
             startExport({
               tags: filter.tag,
