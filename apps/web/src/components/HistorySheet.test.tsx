@@ -198,7 +198,7 @@ describe('HistorySheet', () => {
     expect(restore.disabled).toBe(false);
     act(() => setReachableForTests(false));
     await waitFor(() => expect(restore.disabled).toBe(true));
-    expect(restore.title).toBe('Not available offline');
+    expect(restore.dataset.tip).toBe('Not available offline');
   });
 
   it('does not offer Restore until the version has loaded', async () => {

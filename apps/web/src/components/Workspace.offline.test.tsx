@@ -90,7 +90,7 @@ describe('a note while offline', () => {
     expect(screen.getByRole<HTMLButtonElement>('button', { name: /^Bold/ }).disabled).toBe(false);
     // Auto-fill reads the note on the server and the ⋯ menu's actions all need it.
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Auto-fill' }).disabled).toBe(true);
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Auto-fill' }).title).toBe('Auto-fill needs a connection');
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Auto-fill' }).dataset.tip).toBe('Auto-fill needs a connection');
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'More actions' }).disabled).toBe(true);
   });
 

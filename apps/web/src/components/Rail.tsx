@@ -130,7 +130,7 @@ export function Rail({ pref, onPref, email, onSignOut }: RailProps) {
             className="icon-btn rail-toggle"
             aria-expanded={open}
             aria-label={open ? 'Collapse sidebar' : 'Expand sidebar'}
-            title={open ? 'Collapse sidebar' : 'Expand sidebar'}
+            data-tip={open ? 'Collapse sidebar' : 'Expand sidebar'}
             onClick={() => onPref(open ? 'collapsed' : 'open')}
           >
             <RailToggleIcon open={open} />

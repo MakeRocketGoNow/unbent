@@ -157,7 +157,7 @@ export function NoteTable({
                       // Disabled rather than withdrawn, so the header row keeps its shape
                       // as a search starts and ends — see `ranked`.
                       disabled={ranked}
-                      title={ranked ? 'Matches are in order of relevance' : undefined}
+                      data-tip={ranked ? 'Matches are in order of relevance' : undefined}
                       onClick={() => onSort(target)}
                     >
                       {col.label}

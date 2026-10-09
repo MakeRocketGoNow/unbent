@@ -108,6 +108,18 @@ Don't add a second icon library, and ask before adding any other dependency.
 Updating one is done by hand, not by Dependabot: read [DEPENDENCIES.md](DEPENDENCIES.md)
 first, which names every version held back and why, and add to it when you hold one.
 
+## Tooltips
+
+A control's tooltip is `data-tip`, not `title`. `apps/web/src/tooltips.ts` listens once on
+the document and draws every `data-tip` in the app's own bubble after a short rest, at once
+for the next control in the same sweep, on keyboard focus, and never on touch. A native
+`title` waits over a second, every time, which made a row of icons a guessing game.
+
+Every icon-only control gets one, alongside its `aria-label` — the tip is drawn, the label
+is the name. `data-tip-side="right"` puts it beside a control in a column of them, like
+the rail's strip. `title` stays only on text an ellipsis may cut short, where a fast bubble
+would flash over every row a pointer crosses.
+
 ## Destructive actions
 
 Every destructive action goes through the `Confirm` component. It is inline, not modal, and

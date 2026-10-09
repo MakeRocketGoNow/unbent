@@ -47,7 +47,7 @@ function McpUrl() {
         className="mcp-copy"
         onClick={() => void copy()}
         aria-label="Copy URL"
-        title={copied ? 'Copied' : 'Copy'}
+        data-tip={copied ? 'Copied' : 'Copy'}
       >
         {copied ? '✓' : <CopyIcon />}
       </button>

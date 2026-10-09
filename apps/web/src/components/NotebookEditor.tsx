@@ -615,7 +615,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
                 <button
                   type="button"
                   className="notebook-admin-name"
-                  title="Rename"
+                  data-tip="Rename"
                   onClick={() => setEditing({ id: field.id, value: field.name })}
                 >
                   <FieldTypeIcon type={field.type} rating={isRatingField(field)} currency={isCurrencyField(field)} />

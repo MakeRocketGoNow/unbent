@@ -37,6 +37,6 @@ describe('NotesViewToggle', () => {
     );
     const button = getByRole('button', { name: /^Table view, choose a notebook/ }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
-    expect(button.title).toContain('choose a notebook');
+    expect(button.dataset.tip).toContain('choose a notebook');
   });
 });

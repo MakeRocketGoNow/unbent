@@ -218,7 +218,7 @@ describe('Attachments on a locked note', () => {
     expect(button('Insert link').disabled).toBe(true);
     expect(button('Delete').disabled).toBe(true);
     expect(button('More actions for scan.pdf').disabled).toBe(true);
-    expect(button('Insert link').title).toBe('Not available offline');
+    expect(button('Insert link').dataset.tip).toBe('Not available offline');
     expect(button('Copy').disabled).toBe(false);
     expect(screen.getByRole('link', { name: 'scan.pdf' })).toBeTruthy();
 
@@ -242,7 +242,7 @@ describe('Attachments on a locked note', () => {
     const [, waitingRow] = screen.getAllByRole('listitem');
     const button = (name: string) => [...waitingRow!.querySelectorAll('button')].find((b) => b.textContent === name) as HTMLButtonElement;
     expect(button('Copy').disabled).toBe(true);
-    expect(button('Copy').title).toBe('Waiting to upload');
+    expect(button('Copy').dataset.tip).toBe('Waiting to upload');
 
     // Delete is live: for a file that has not uploaded it takes the file back, on this
     // device, and asks the server nothing.

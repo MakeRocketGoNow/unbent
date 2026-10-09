@@ -217,6 +217,7 @@ export function LabelEditor({
                 type="button"
                 className="icon-btn label-slot"
                 aria-label="Cancel"
+                data-tip="Cancel"
                 disabled={busy}
                 onClick={() => setCreating(null)}
               >
@@ -235,6 +236,7 @@ export function LabelEditor({
                 type="button"
                 className="icon-btn"
                 aria-label="Create"
+                data-tip="Create"
                 disabled={busy || !creating.trim()}
                 onClick={() => void commitCreate()}
               >
@@ -250,6 +252,7 @@ export function LabelEditor({
                   type="button"
                   className="icon-btn label-slot"
                   aria-label="Close"
+                  data-tip="Close"
                   onClick={closeChooser}
                 >
                   <CancelIcon />
@@ -300,6 +303,7 @@ export function LabelEditor({
                 type="button"
                 className="icon-btn label-delete"
                 aria-label={`Delete ${item.name}`}
+                data-tip="Delete"
                 disabled={busy}
                 onClick={() => onDelete(item)}
               >
@@ -309,6 +313,7 @@ export function LabelEditor({
                 to={rowHref(item)}
                 className="icon-btn"
                 aria-label={`Edit ${item.name}`}
+                data-tip="Edit"
                 disabled={busy}
               >
                 <PencilIcon />
@@ -320,6 +325,7 @@ export function LabelEditor({
                 type="button"
                 className="icon-btn label-slot"
                 aria-label={`Delete ${item.name}`}
+                data-tip="Delete"
                 disabled={busy}
                 onClick={() => onDelete(item)}
               >
@@ -337,6 +343,7 @@ export function LabelEditor({
                 type="button"
                 className="icon-btn"
                 aria-label="Save"
+                data-tip="Save"
                 disabled={busy}
                 onClick={() => void commitRename(item)}
               >
@@ -368,6 +375,7 @@ export function LabelEditor({
                 type="button"
                 className="icon-btn"
                 aria-label={`Rename ${item.name}`}
+                data-tip="Rename"
                 disabled={busy}
                 onClick={() => startRename(item)}
               >

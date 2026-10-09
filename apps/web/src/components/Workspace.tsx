@@ -1530,7 +1530,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
               // widen when the connection drops and narrow when it returns.
               disabled={autofilling || frozen || offline}
               aria-label={autofilling ? 'Reading…' : 'Auto-fill'}
-              title={
+              data-tip={
                 offline
                   ? 'Auto-fill needs a connection'
                   : 'Fill in the title, notebook, tags and fields from what the note and its files say'
@@ -1569,7 +1569,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
                 // Every item here needs the server. Faded, not withdrawn, for the reason
                 // Auto-fill is.
                 disabled={offline}
-                title={offline ? 'Not available offline' : undefined}
+                tip={offline ? 'Not available offline' : undefined}
                 items={[
                   // Only when there is something to save; the count says how much.
                   ...(remoteImages.length > 0

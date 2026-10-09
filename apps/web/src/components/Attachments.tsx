@@ -416,7 +416,7 @@ export function Attachments({
                   variant="quiet"
                   size="small"
                   disabled={busy !== null || waiting}
-                  title={held ?? 'Copy a link to paste into another note'}
+                  data-tip={held ?? 'Copy a link to paste into another note'}
                   onClick={() => void copy(file)}
                 >
                   {copied === file.filename ? 'Copied' : 'Copy'}
@@ -431,7 +431,7 @@ export function Attachments({
                   label={`More actions for ${file.filename}`}
                   className="attachments-more"
                   disabled={readOnly || waiting}
-                  title={held ?? (readOnly ? 'Not available offline' : undefined)}
+                  tip={held ?? (readOnly ? 'Not available offline' : undefined)}
                   items={[
                     {
                       label: 'Copy to note…',
@@ -454,7 +454,7 @@ export function Attachments({
                     variant="quiet"
                     size="small"
                     disabled={busy !== null || readOnly}
-                    title={readOnly ? 'Not available offline' : undefined}
+                    data-tip={readOnly ? 'Not available offline' : undefined}
                     onClick={() => insertLink(file)}
                   >
                     Insert link
@@ -465,7 +465,7 @@ export function Attachments({
                   tone="danger"
                   size="small"
                   disabled={busy !== null || readOnly}
-                  title={readOnly ? 'Not available offline' : undefined}
+                  data-tip={readOnly ? 'Not available offline' : undefined}
                   onClick={() => {
                     setSending(null);
                     setPending(file.filename);

@@ -172,7 +172,7 @@ export function Settings({ onChanged, createRequested = false, onCreateRequested
                 className="icon-btn label-download"
                 disabled={exportRunning}
                 onClick={() => startExport({ notebook: item.name })}
-                title={`Download ${item.name} as a zip`}
+                data-tip={`Download ${item.name} as a zip`}
                 aria-label={`Download ${item.name} as a zip`}
               >
                 <DownloadIcon />
