@@ -783,8 +783,10 @@ let lastRefile = -Infinity;
  * another device or the first copy of the library. The interface answers its own changes
  * differently — a count that ticks over, a row that leaves the list rather than vanishing
  * — and this is how it tells them apart. Heard before the change lands, so a list can
- * still measure where its rows were, and told which notes the write touches, so a list
- * redrawn for some other reason in the moments after is not taken for this write's doing.
+ * still measure where its rows were: a queued write before its change reaches the rows, a
+ * write made as a request once its answer is in (`pulled`). Told which notes the write
+ * touches, so a list redrawn for some other reason in the moments after is not taken for
+ * this write's doing.
  */
 export function onLocalWrite(listener: (write: LocalWrite) => void): () => void {
   localListeners.add(listener);
@@ -827,10 +829,15 @@ const REFILING = new Set([
  * tab that has a library but does not queue, the server's copy is brought to the local
  * copy now rather than on the next nudge, so the row on screen agrees with the answer.
  * Nothing to wait for; the library is already right about every row this did not touch.
+ *
+ * It is told to `onLocalWrite` once the answer is in, not when the request goes. Nothing
+ * on the rows changed before it, so the list is still where it was, and the redraw is now
+ * a pull away rather than a request and a pull: emptying a large trash outlasted the
+ * list's wait for its redraw. A refused request is not a write at all, and is not told.
  */
 async function pulled<T>(write: Promise<T>, local: LocalWrite): Promise<T> {
-  aboutToWrite(local);
   const out = await write;
+  aboutToWrite(local);
   directListeners.forEach((l) => l());
   const lib = await resolve();
   if (lib) void lib.engine.pull();

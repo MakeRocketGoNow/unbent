@@ -1154,8 +1154,9 @@ describe('a write made here', () => {
   });
 
   it('is heard when it goes as a request too', async () => {
-    const { engine } = library([row('n1')]);
-    engine.state.phase = 'hydrating';
+    // A note the first copy has not reached yet goes as a request.
+    const { engine } = library([]);
+    engine.state.cursor = null;
     vi.mocked(api.deleteNote).mockResolvedValueOnce(undefined);
     const heard = vi.fn();
     const stop = actions.onLocalWrite(heard);
@@ -1163,6 +1164,17 @@ describe('a write made here', () => {
     stop();
     expect(heard).toHaveBeenCalledOnce();
     expect(heard).toHaveBeenCalledWith({ ids: ['n1'], refiles: true });
+  });
+
+  it('is not heard for a request the server refused, which wrote nothing', async () => {
+    const { engine } = library([]);
+    engine.state.cursor = null;
+    vi.mocked(api.deleteNote).mockRejectedValueOnce(new ApiError(403, 'refused'));
+    const heard = vi.fn();
+    const stop = actions.onLocalWrite(heard);
+    await expect(actions.trashNote('n1')).rejects.toThrow('refused');
+    stop();
+    expect(heard).not.toHaveBeenCalled();
   });
 
   it('says a save of the text cannot refile the note, and a save of its notebook can', async () => {
