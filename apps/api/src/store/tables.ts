@@ -46,7 +46,11 @@ export const DATA_TABLES = [
    * What the language model has cost the account, by day (0007). Counted so `stats`
    * shows it, and dumped because it is the account's record of what it has spent: a
    * store rebuilt from a dump without it would start the year, and the day's cap, again.
-   * References nothing.
+   * As of the account's last dump, though: a write here does not move the feed's mark,
+   * which is what tells the daily dump an account changed, so presses that read no file
+   * may reach a dump only with the weekly refresh. A restore can therefore lose up to a
+   * week of counts, and gives back that much of the day's cap. Moving the mark for them
+   * would dump an account for every press; a count is not worth that. References nothing.
    */
   'llm_usage',
 ] as const;

@@ -25,7 +25,8 @@
  *
  * Not in the feed: no client holds it, and it is not the account's data the way a note
  * is — local to the object, as the feed's own cursor is local to a device. Dumped with
- * the data tables, so a store rebuilt from a dump keeps the year it had spent.
+ * the data tables, as of the account's last dump; see `DATA_TABLES` for why that can be
+ * up to a week behind.
  */
 export default `
 CREATE TABLE llm_usage (
