@@ -124,6 +124,21 @@ describe('recordBehind', () => {
     expect(behind.get('note')).toBe('/notes');
   });
 
+  it('lets go of the entry a replacement retires, so a search typed into the list leaves one line', () => {
+    const behind = new Map([['typed-a', '/notes']]);
+    recordBehind(behind, at('/notes', 4, 'typed-a'), at('/notes', 4, 'typed-ab'));
+    recordBehind(behind, at('/notes', 4, 'typed-ab'), at('/notes', 4, 'typed-abc'));
+    expect([...behind]).toEqual([['typed-abc', '/notes']]);
+  });
+
+  it('keeps no more than it saves, letting the oldest go', () => {
+    const behind = new Map<string, string>();
+    for (let i = 0; i < 250; i++) recordBehind(behind, at('/notes', i, `k${i}`), at('/notes/n', i + 1, `k${i + 1}`));
+    expect(behind.size).toBe(200);
+    expect(behind.has('k1')).toBe(false);
+    expect(behind.has('k250')).toBe(true);
+  });
+
   it('writes nothing for a walk back through the history, or for the first page', () => {
     const behind = new Map([['note', '/notes']]);
     recordBehind(behind, at('/notes/n1', 4, 'note'), at('/notes', 3, 'list'));

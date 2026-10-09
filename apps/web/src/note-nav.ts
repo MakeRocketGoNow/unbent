@@ -123,7 +123,7 @@ function loadBehind(): Map<string, string> {
 
 function saveBehind(behind: Map<string, string>): void {
   try {
-    sessionStorage.setItem(BEHIND_KEY, JSON.stringify([...behind].slice(-BEHIND_KEPT)));
+    sessionStorage.setItem(BEHIND_KEY, JSON.stringify([...behind]));
   } catch {
     // A full or refused storage costs only the history walk: the arrow replaces instead.
   }
@@ -146,11 +146,17 @@ export function recordBehind(
     behind.delete(toKey);
     behind.set(toKey, from.pathname);
   } else if (toIndex === fromIndex) {
-    const kept = behind.get(keyOf(from.state) ?? '');
+    // The entry replaced is gone from the history, so its line goes too: a search typed
+    // into the list replaces the entry on every keystroke, and each gets a key of its own.
+    const fromKey = keyOf(from.state) ?? '';
+    const kept = behind.get(fromKey);
+    behind.delete(fromKey);
     behind.delete(toKey);
     if (kept !== undefined) behind.set(toKey, kept);
   }
   // Anything else walked the history to an entry already written down.
+  // Oldest first, since every line is written last: what is let go is what Back reaches last.
+  while (behind.size > BEHIND_KEPT) behind.delete(behind.keys().next().value!);
 }
 
 let behind: Map<string, string> | null = null;
