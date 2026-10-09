@@ -2182,7 +2182,8 @@ a.overflow-item { text-decoration: none; }
   animation: filled-ink 2.2s ease-out calc(var(--filled-i, 0) * 70ms);
 }
 
-.note-field.filled > :nth-child(3) {
+/* The value: whatever the row draws between its name and its side cell, whatever kind. */
+.note-field.filled > :not(.note-field-glyph, .note-field-label, .note-field-side) {
   animation: filled-wash 2.2s ease-out calc(var(--filled-i, 0) * 70ms);
 }
 
