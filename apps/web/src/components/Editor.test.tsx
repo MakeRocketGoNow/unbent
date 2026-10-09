@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, cleanup, act } from '@testing-library/react';
 import type { EditorView } from '@codemirror/view';
 import { undoDepth } from '@codemirror/commands';
+import { caretRoom } from '../editor/rich-markdown.js';
 import { Editor } from './Editor.js';
 
 /**
@@ -193,5 +194,44 @@ describe('Editor read-only', () => {
     expect(drop.defaultPrevented).toBe(true);
     expect(onUpload).not.toHaveBeenCalled();
     expect(view().state.doc.toString()).toBe('saved body');
+  });
+});
+
+/**
+ * The line Down opens below a closing picture is room for the caret, not an edit: saving it
+ * would bump the note's date for an arrow key. What is typed on it saves with it.
+ */
+describe('Editor and the line below a closing picture', () => {
+  afterEach(cleanup);
+
+  it('does not hand the opened line to the autosave, but saves it with what is typed there', () => {
+    let view: EditorView | null = null;
+    const onChange = vi.fn();
+    render(
+      <Editor
+        noteId="n1"
+        initialValue="saved body"
+        rich
+        onChange={onChange}
+        onViewReady={(v) => {
+          view = v;
+        }}
+      />,
+    );
+
+    const end = view!.state.doc.length;
+    act(() => {
+      view!.dispatch({
+        changes: { from: end, insert: '\n' },
+        selection: { anchor: end + 1 },
+        annotations: caretRoom.of(true),
+      });
+    });
+    expect(onChange).not.toHaveBeenCalled();
+
+    act(() => {
+      view!.dispatch(view!.state.replaceSelection('below'));
+    });
+    expect(onChange).toHaveBeenLastCalledWith('saved body\nbelow');
   });
 });

@@ -5,7 +5,7 @@ import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import { GFM } from '@lezer/markdown';
 import { languages } from '@codemirror/language-data';
-import { pdfNamesChanged, richMarkdown } from '../editor/rich-markdown.js';
+import { caretRoom, pdfNamesChanged, richMarkdown } from '../editor/rich-markdown.js';
 import { markdownKeymap } from '../editor/markdown-commands.js';
 import { tableTools } from '../editor/table-toolbar.js';
 import { fileDropCursor } from '../editor/drop-cursor.js';
@@ -273,7 +273,11 @@ export function Editor({
           fileDropCursor(),
           cmPlaceholder('Start writing…'),
           EditorView.updateListener.of((update) => {
-            if (update.docChanged) onChangeRef.current(update.state.doc.toString());
+            if (!update.docChanged) return;
+            // A line opened only to put the caret below a picture is not a change worth a
+            // save; see `caretRoom`. Whatever is typed there next carries it along.
+            if (update.transactions.every((tr) => !tr.docChanged || tr.annotation(caretRoom))) return;
+            onChangeRef.current(update.state.doc.toString());
           }),
           /*
              Drop, paste and the toolbar's Attach button, through one routine. The view

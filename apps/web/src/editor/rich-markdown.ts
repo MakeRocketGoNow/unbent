@@ -1,8 +1,10 @@
 import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
 import {
+  Annotation,
   EditorSelection,
   EditorState,
   type Extension,
+  Facet,
   type Range,
   Prec,
   RangeSetBuilder,
@@ -2201,38 +2203,117 @@ function endsInPicture(view: EditorView, decorations: DecorationSet): boolean {
 }
 
 /**
- * Down from the end of a note that ends in a picture opens a line below it.
+ * Marks an edit that only gives the caret somewhere to stand: the line opened below a
+ * closing picture.
+ *
+ * The editor does not hand such an edit to the autosave (see `Editor.tsx`). An empty line
+ * at the end of a note says nothing; saving it would bump the note's date and lift it to
+ * the top of a list sorted by edit, for a tap or an arrow key. What is typed on the line
+ * is a change like any other, and its save carries the newline along with it. Opening the
+ * line and moving on saves nothing at all.
+ */
+export const caretRoom = Annotation.define<true>();
+
+/**
+ * Getting the caret below a picture that ends a note.
  *
  * The picture is a widget at the end of its markdown, so the last position in the document
  * is the end of that markdown — above the picture as drawn. With nothing after it there was
- * no position below the picture at all: Down did nothing, and the only way to write under
- * an image was to know that Enter at the end of its hidden source would do it. Every rich
- * editor people know lets the caret through the bottom of a picture, and this is that.
+ * no position below the picture at all: Down did nothing, a tap under it put the caret back
+ * above it, and the only way to write under an image was to know that Enter at the end of
+ * its hidden source would do it. Every rich editor people know lets the caret through the
+ * bottom of a picture, and this is that, for both ways people reach for it:
  *
- * Only at the very end and only past a picture, rather than keeping a blank line at the end
- * of every note. A trailing line added on open would be a save no one made — a new revision,
- * a new `updatedAt`, and a write racing another device's for a note nobody touched. Opened
- * here, the line is an edit the person asked for with a key, and ⌘Z takes it back. A note
- * ending in text needs none of this: its end is its bottom, and Enter is where it looks.
+ * - **Below the picture there is room** (`ROOM_CLASS`): the content's bottom padding grows
+ *   to a touch target's height, so there is somewhere under the picture to tap. It is
+ *   space, not text, so it costs the note nothing.
+ * - **A tap in that room, or Down at the very end,** opens a real line there and puts the
+ *   caret on it. The line lands where the tap was, so nothing moves under the finger.
+ *
+ * The line is made on demand rather than kept. Writing a trailing newline into every note
+ * that ends in a picture is a save no one made, on open, across an archive that is mostly
+ * scans — a new revision and a new `updatedAt` each, and a write racing another device's
+ * for a note nobody touched. Keeping one in the editor without saving it was the other
+ * option, and was turned down because the editor's text would then differ from the saved
+ * body for as long as any such note was open, which is what the autosave and the conflict
+ * handling compare. Opened on demand, the line is one the person asked for, ⌘Z takes it
+ * back, and it is not saved until something is written on it (`caretRoom`). A note ending
+ * in text needs none of this: its end is its bottom.
  */
-function openLineBelowPicture(plugin: ViewPlugin<{ decorations: DecorationSet }>) {
+const ROOM_CLASS = 'cm-md-room-below';
+
+/** Whether a picture ends the note and the note can be written to — when the room shows. */
+function wantsRoomBelow(view: EditorView, plugin: ViewPlugin<{ decorations: DecorationSet }>): boolean {
+  if (view.state.readOnly) return false;
+  const decorations = view.plugin(plugin)?.decorations;
+  return decorations !== undefined && endsInPicture(view, decorations);
+}
+
+function openLineBelow(view: EditorView): void {
+  const end = view.state.doc.length;
+  view.dispatch({
+    changes: { from: end, insert: '\n' },
+    selection: { anchor: end + 1 },
+    scrollIntoView: true,
+    userEvent: 'input',
+    annotations: caretRoom.of(true),
+  });
+}
+
+/**
+ * Asks the rich renderer whether the room below a closing picture is showing, for code
+ * outside the editor's own extensions: `caretBelowEnd`. A facet rather than a reach into
+ * the decorations, because the plugin that holds them belongs to one `richMarkdown()`.
+ */
+const roomBelow = Facet.define<(view: EditorView) => boolean>();
+
+/**
+ * Puts the caret under everything in the note, for a press on the blank column below the
+ * editor (see `Workspace`). On a phone, that blank is most of the screen under a short
+ * note and is where a thumb goes to write more; it is outside the editor, so CodeMirror
+ * never saw the press. The end of the note when the note ends in text, and a line opened
+ * below the picture when a picture ends it, exactly as a tap in the room would.
+ */
+export function caretBelowEnd(view: EditorView): void {
+  if (view.state.facet(roomBelow).some((wants) => wants(view))) openLineBelow(view);
+  else view.dispatch({ selection: { anchor: view.state.doc.length }, scrollIntoView: true });
+  view.focus();
+}
+
+/** Down with the caret at the very end of a note a picture closes. */
+function downBelowPicture(plugin: ViewPlugin<{ decorations: DecorationSet }>) {
   return (view: EditorView): boolean => {
     const { state } = view;
-    const end = state.doc.length;
     const { main } = state.selection;
-    if (state.readOnly || state.selection.ranges.length > 1 || !main.empty || main.head !== end) {
-      return false;
-    }
-    const decorations = view.plugin(plugin)?.decorations;
-    if (!decorations || !endsInPicture(view, decorations)) return false;
-    view.dispatch({
-      changes: { from: end, insert: '\n' },
-      selection: { anchor: end + 1 },
-      scrollIntoView: true,
-      userEvent: 'input',
-    });
+    if (state.selection.ranges.length > 1 || !main.empty || main.head !== state.doc.length) return false;
+    if (!wantsRoomBelow(view, plugin)) return false;
+    openLineBelow(view);
     return true;
   };
+}
+
+/**
+ * A press in the room below a closing picture: anywhere under the bottom of the last line,
+ * which is the bottom of the picture, since the picture is drawn inside that line.
+ *
+ * Claimed rather than left to CodeMirror, whose own placement reads the layout from before
+ * the line existed and would put the caret back at the end of the markdown, above the
+ * picture. Focus is taken by hand for the same reason: the default the press would have
+ * done is prevented. This runs inside the press, so a phone still raises its keyboard.
+ */
+function tapBelowPicture(
+  event: MouseEvent,
+  view: EditorView,
+  plugin: ViewPlugin<{ decorations: DecorationSet }>,
+): boolean {
+  if (event.button !== 0 || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return false;
+  if (!wantsRoomBelow(view, plugin)) return false;
+  const bottom = view.lineBlockAt(view.state.doc.length).bottom + view.documentTop;
+  if (event.clientY <= bottom) return false;
+  event.preventDefault();
+  openLineBelow(view);
+  view.focus();
+  return true;
 }
 
 /**
@@ -2319,7 +2400,11 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
     EditorState.transactionFilter.of((tr) => snapCaptionCaret(tr, captions)),
 
     // Ahead of the default keymap, whose Down at the last line would move nowhere.
-    Prec.high(keymap.of([{ key: 'ArrowDown', run: openLineBelowPicture(decorationsPlugin) }])),
+    Prec.high(keymap.of([{ key: 'ArrowDown', run: downBelowPicture(decorationsPlugin) }])),
+    roomBelow.of((view) => wantsRoomBelow(view, decorationsPlugin)),
+    EditorView.contentAttributes.of((view) =>
+      wantsRoomBelow(view, decorationsPlugin) ? { class: ROOM_CLASS } : null,
+    ),
 
     /**
      * Following a link — see `linkClickOpener` for which clicks do.
@@ -2329,6 +2414,7 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
      */
     EditorView.domEventHandlers({
       mousedown(event, view) {
+        if (tapBelowPicture(event, view, decorationsPlugin)) return true;
         if (!linkClickOpener(event, view, options)) return false;
         event.preventDefault();
         return true;
@@ -2607,6 +2693,11 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
        * this class comes off.
        */
       '.cm-md-image-line': { lineHeight: '0', fontSize: '0' },
+      /**
+       * The room below a picture that ends the note — see `ROOM_CLASS`. 44px, the touch
+       * target the rest of the app sizes lone controls to, since a thumb is what it is for.
+       */
+      [`.cm-content.${ROOM_CLASS}`]: { paddingBottom: '2.75rem' },
 
       /**
        * The empty break CodeMirror leaves after a block-shaped widget.

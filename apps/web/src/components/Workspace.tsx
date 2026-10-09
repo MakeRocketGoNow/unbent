@@ -56,6 +56,7 @@ import { OverflowMenu } from './OverflowMenu.js';
 import { HistorySheet, skippedPhrase } from './HistorySheet.js';
 import type { HistoryCurrent } from './HistoryChanges.js';
 import type { PropValue } from '../note-diff.js';
+import { caretBelowEnd } from '../editor/rich-markdown.js';
 import { formatRevisionWhen } from './format-when.js';
 import { Button } from './Button';
 import { BackArrow } from './BackArrow.js';
@@ -1361,6 +1362,27 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
             reads 0 wherever there is no keyboard, so the padding costs nothing then.
         */
         style={{ '--keyboard-inset': `${keyboardInset}px` } as React.CSSProperties}
+        /*
+            A press on the blank column under the note writes at its bottom, the way a
+            press below the last line of a page does in any editor. On a phone that blank
+            is most of the screen under a short note, and it is where a thumb goes to add
+            to it; it is the column's, not the editor's, so the press used to do nothing.
+            Only the column itself — never a press that landed on something inside it —
+            and only below the editor's bottom edge, across the column's whole width:
+            the margins beside the note's text stay inert, the space under it does not.
+        */
+        onMouseDown={(e) => {
+          if (e.target !== e.currentTarget || e.button !== 0 || !editorView || noteView === 'preview') return;
+          // A modified press is a selection gesture, as it is to `tapBelowPicture`.
+          if (e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return;
+          // The column is the scroll region, so its own scrollbar is part of this element:
+          // a press on the track below the note is scrolling, not writing.
+          const column = e.currentTarget;
+          if (e.clientX >= column.getBoundingClientRect().left + column.clientLeft + column.clientWidth) return;
+          if (e.clientY <= editorView.dom.getBoundingClientRect().bottom) return;
+          e.preventDefault();
+          caretBelowEnd(editorView);
+        }}
       >
       {/*
           Two rows on a phone, one on a desktop.
