@@ -73,6 +73,28 @@ export const MAX_LLM_PDF_BYTES = 8 * 1024 * 1024;
 const MAX_OUTPUT_TOKENS = 16384;
 
 /**
+ * Where a transcription stops, in words, for a document longer than that: the model ends
+ * with a line saying the rest was left out. The part a person files by — who it is from,
+ * what it is, the dates and amounts — is nearly always on the first pages.
+ *
+ * It was ten thousand, which is about thirteen thousand tokens before the JSON around it,
+ * and the thinking shares the same `MAX_OUTPUT_TOKENS`. So a long scan never finished: a
+ * 22-page lease ran out of room on Haiku 5.5 at medium and high effort, on Sonnet 5.5 and
+ * on Opus 5.5 (2026-10-09), after one to two minutes each. A read that runs out of room
+ * throws and leaves the file pending, so every later press read the whole scan again and
+ * paid for it again — about 46¢ a press on Opus. Four thousand words is about five and a
+ * half thousand tokens, which leaves the thinking ten thousand: on the same lease, Haiku
+ * 5.5 at medium (the default) now finishes in about half a minute, and Haiku at high and
+ * Opus 5.5 finish too.
+ *
+ * Sonnet 5.5 at its default effort still does not, at four thousand words or at three:
+ * its thinking alone fills the budget, so no cap on the answer can fix it. Effort is what
+ * would, and choosing the read's effort per model is MAK-182's. Lower than four thousand
+ * was tried and bought nothing but a shorter transcription.
+ */
+export const MAX_TRANSCRIBED_WORDS = 4000;
+
+/**
  * The media type a file's bytes actually are, read from their first bytes, or null when
  * they are none of the types the model takes. The stored type is what the upload said,
  * and an upload can be wrong: Evernote's snapshots are PNGs that arrive as `image/jpeg`.
@@ -302,8 +324,8 @@ const SYSTEM = [
   '- text: every piece of legible text, transcribed exactly as written and in reading',
   '  order, one line per line of the original, with no commentary. For a document of',
   '  several pages, every page in order. Empty when there is no text. If the text runs',
-  '  past about ten thousand words, stop there and end with a line saying the rest was',
-  '  left out.',
+  `  past about ${MAX_TRANSCRIBED_WORDS.toLocaleString('en-US')} words, stop there and end with a line saying`,
+  '  the rest was left out.',
 ].join('\n');
 
 const TITLE_SYSTEM = [

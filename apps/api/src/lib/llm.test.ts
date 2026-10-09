@@ -5,6 +5,7 @@ import {
   MAX_LLM_PDF_BYTES,
   LLM_MODEL_DEFAULT,
   LlmError,
+  MAX_TRANSCRIBED_WORDS,
   canUseLlm,
   fieldTokens,
   formatReading,
@@ -124,6 +125,16 @@ describe('vision', () => {
     await llmFrom(env, fetchImpl as unknown as typeof fetch).read({ filename: 'Snapshot.png', contentType: 'image/jpeg', bytes: png });
     const body = JSON.parse(fetchImpl.mock.calls[0]![1]!.body as string);
     expect(body.messages[0].content[0]).toMatchObject({ type: 'image', source: { media_type: 'image/png' } });
+  });
+
+  it('tells the model where a long transcription stops, short of the output budget', async () => {
+    const fetchImpl = answering(200, message(JSON.stringify(said)));
+    await llmFrom(env, fetchImpl as unknown as typeof fetch).read(photo);
+    const body = JSON.parse(fetchImpl.mock.calls[0]![1]!.body as string);
+    expect(body.system).toContain(`past about ${MAX_TRANSCRIBED_WORDS.toLocaleString('en-US')} words`);
+    // About 1.4 tokens a word, with the thinking beside it: the cap must leave most of the
+    // budget free, or a long scan runs out of room and is paid for on every press.
+    expect(MAX_TRANSCRIBED_WORDS * 1.4).toBeLessThan(body.max_tokens / 2);
   });
 
   it('reads a decline as no reading, whether it comes as a stop reason or as prose', async () => {
