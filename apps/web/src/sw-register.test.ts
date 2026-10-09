@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   offlineReadyState,
   onReturn,
-  shouldApplyOnLoad,
+  shouldApplyOnArrival,
   shouldApplyOnReturn,
   shouldApplyUpdate,
   takesDeploysAtOnce,
@@ -92,43 +92,43 @@ describe('onReturn', () => {
 
 const loaded = { untouched: true, busy: false, path: '/notes' };
 
-describe('shouldApplyOnLoad', () => {
+describe('shouldApplyOnArrival', () => {
   /* A reload is how anyone asks for the newest version; the worker answering it with the
      old shell made a deploy impossible to try. */
   it('takes a deploy found while the page has only just loaded', () => {
-    expect(shouldApplyOnLoad(loaded)).toBe(true);
+    expect(shouldApplyOnArrival(loaded)).toBe(true);
   });
 
   it('leaves a page someone has started using to the careful rules', () => {
-    expect(shouldApplyOnLoad({ ...loaded, untouched: false })).toBe(false);
+    expect(shouldApplyOnArrival({ ...loaded, untouched: false })).toBe(false);
   });
 
   it('waits while the page holds work a reload would lose', () => {
-    expect(shouldApplyOnLoad({ ...loaded, busy: true })).toBe(false);
+    expect(shouldApplyOnArrival({ ...loaded, busy: true })).toBe(false);
   });
 
   it('stays out of the Android app’s embed pages', () => {
-    expect(shouldApplyOnLoad({ ...loaded, path: '/embed/notes/a' })).toBe(false);
+    expect(shouldApplyOnArrival({ ...loaded, path: '/embed/notes/a' })).toBe(false);
   });
 
   /* A preview is tried right after a push; a tester already scrolling when the new build
      arrived kept the old one, and reloading again did not help. */
   it('takes a deploy on dev and previews even once the page is in use', () => {
-    expect(shouldApplyOnLoad({ ...loaded, untouched: false, kind: 'preview' })).toBe(true);
-    expect(shouldApplyOnLoad({ ...loaded, untouched: false, kind: 'dev' })).toBe(true);
+    expect(shouldApplyOnArrival({ ...loaded, untouched: false, kind: 'preview' })).toBe(true);
+    expect(shouldApplyOnArrival({ ...loaded, untouched: false, kind: 'dev' })).toBe(true);
   });
 
   it('leaves production and local to the careful rules once the page is in use', () => {
-    expect(shouldApplyOnLoad({ ...loaded, untouched: false })).toBe(false);
-    expect(shouldApplyOnLoad({ ...loaded, untouched: false, kind: 'local' })).toBe(false);
+    expect(shouldApplyOnArrival({ ...loaded, untouched: false })).toBe(false);
+    expect(shouldApplyOnArrival({ ...loaded, untouched: false, kind: 'local' })).toBe(false);
   });
 
   it('still waits on a preview while the page holds work a reload would lose', () => {
-    expect(shouldApplyOnLoad({ ...loaded, untouched: false, busy: true, kind: 'preview' })).toBe(false);
+    expect(shouldApplyOnArrival({ ...loaded, untouched: false, busy: true, kind: 'preview' })).toBe(false);
   });
 
   it('still stays out of the embed pages on a preview', () => {
-    expect(shouldApplyOnLoad({ ...loaded, untouched: false, path: '/embed/notes/a', kind: 'preview' })).toBe(false);
+    expect(shouldApplyOnArrival({ ...loaded, untouched: false, path: '/embed/notes/a', kind: 'preview' })).toBe(false);
   });
 });
 

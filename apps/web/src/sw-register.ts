@@ -91,7 +91,9 @@ export function registerServiceWorker(pathNow: () => string): void {
 }
 
 /**
- * Whether a deploy found while the page has only just loaded should be taken at once.
+ * Whether a deploy whose worker has just started waiting should be taken at once: on dev
+ * and previews whenever the page can spare a reload (`takesDeploysAtOnce`), and elsewhere
+ * while the page has only just loaded.
  *
  * A reload is how anyone asks for the newest version, and the worker answers every load
  * from the shell it holds — so without this, reloading after a deploy drew the old build,
@@ -106,10 +108,8 @@ export function registerServiceWorker(pathNow: () => string): void {
  * look, and someone who has started reading or typing gets the careful rules below
  * instead. Never inside the Android app's embed pages, and never while the page holds
  * work a reload would lose.
- *
- * On dev and previews, touched or not (`takesDeploysAtOnce`).
  */
-export function shouldApplyOnLoad(state: {
+export function shouldApplyOnArrival(state: {
   untouched: boolean;
   busy: boolean;
   path: string;
@@ -195,7 +195,7 @@ function deployArrived(): void {
   const atOnce = takesDeploysAtOnce(instanceKind);
   const busy = pageBusy() || (atOnce && isTextField(document.activeElement));
   const state = { untouched, busy, path: location.pathname, kind: instanceKind };
-  if (shouldApplyOnLoad(state) && reloadAllowed()) {
+  if (shouldApplyOnArrival(state) && reloadAllowed()) {
     updateReady = false;
     held = undefined;
     setNotice(false);
@@ -453,7 +453,7 @@ function handOver(worker: Workbox, href: string): void {
  * minute only keeps a run of quick switches from making one each.
  *
  * After a real absence the page also counts as untouched again, as it does just after a
- * load (`shouldApplyOnLoad`): a deploy this return's check finds a few seconds later is
+ * load (`shouldApplyOnArrival`): a deploy this return's check finds a few seconds later is
  * taken in place, unless someone has started using the page by then.
  */
 const UPDATE_CHECK_INTERVAL = 60 * 1000;
