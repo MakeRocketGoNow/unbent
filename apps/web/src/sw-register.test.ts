@@ -7,6 +7,7 @@ import {
   shouldApplyUpdate,
   takesDeploysAtOnce,
   isTextField,
+  sayHold,
 } from './sw-register.js';
 import { holdPage, pageBusy } from './busy.js';
 
@@ -137,6 +138,20 @@ describe('takesDeploysAtOnce', () => {
     expect(takesDeploysAtOnce('preview')).toBe(true);
     expect(takesDeploysAtOnce('local')).toBe(false);
     expect(takesDeploysAtOnce(undefined)).toBe(false);
+  });
+});
+
+describe('sayHold', () => {
+  /* Usually the hold is a save a second from landing; a notice for that second flickers. */
+  it('says nothing while the hold is short', () => {
+    expect(sayHold({ since: 0, said: false }, 1000)).toBe(false);
+  });
+
+  /* An import holds the page for minutes, and the old build should not look current all
+     that time. */
+  it('says a long hold once, so that dismissing it sticks', () => {
+    expect(sayHold({ since: 0, said: false }, 3000)).toBe(true);
+    expect(sayHold({ since: 0, said: true }, 60_000)).toBe(false);
   });
 });
 

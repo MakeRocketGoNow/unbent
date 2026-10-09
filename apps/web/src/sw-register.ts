@@ -56,6 +56,10 @@ let instanceKind: InstanceKind | undefined;
 /** The next look at a deploy waiting for the page to finish what it is doing (`deployArrived`). */
 let retry: ReturnType<typeof setTimeout> | undefined;
 
+/** When that wait began, and whether it has been said yet; see `deployArrived`. */
+let held: { since: number; said: boolean } | undefined;
+const LONG_HOLD = 3000;
+
 export function registerServiceWorker(pathNow: () => string): void {
   recoverFromMissingChunks();
   if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
@@ -173,11 +177,15 @@ export function setInstanceKind(kind: InstanceKind | undefined): void {
  * so and leave it to a change of section, a return after a real absence, or the notice's
  * Reload.
  *
- * On an instance that takes deploys at once, a page busy with work a reload would lose is
- * asked again shortly rather than left to those moments, with no notice in between: the
- * work is usually a save a second from landing, and a notice up for that second would be a
- * flicker. The minute's guard still holds there, and a deploy it turns away gets the
- * notice like any other.
+ * On an instance that takes deploys at once, a page holding one back — a save, an upload,
+ * someone in a text field — is asked again every quarter second rather than left to those
+ * moments. The notice waits too. The hold is usually a save a second from landing, and a
+ * notice up for that second would be a flicker; but an import or an export holds the page
+ * for minutes, and a tester then looked at the old build with no word that a new one was
+ * waiting, which is what the notice exists to end. So it is said once the hold has lasted
+ * a few seconds, once, so that dismissing it sticks, and the deploy is still taken the
+ * moment the hold ends. The minute's guard still holds there, and a deploy it turns away
+ * gets the notice like any other.
  */
 function deployArrived(): void {
   clearTimeout(retry);
@@ -189,16 +197,27 @@ function deployArrived(): void {
   const state = { untouched, busy, path: location.pathname, kind: instanceKind };
   if (shouldApplyOnLoad(state) && reloadAllowed()) {
     updateReady = false;
+    held = undefined;
     setNotice(false);
     handOver(worker, location.href);
     return;
   }
   if (busy && atOnce) {
-    setNotice(false);
+    held ??= { since: Date.now(), said: false };
+    if (sayHold(held, Date.now())) {
+      held.said = true;
+      setNotice(true);
+    }
     retry = setTimeout(deployArrived, 250);
     return;
   }
+  held = undefined;
   setNotice(true);
+}
+
+/** Whether a deploy held back on dev or a preview should now be said; see `deployArrived`. */
+export function sayHold(held: { since: number; said: boolean }, now: number): boolean {
+  return !held.said && now - held.since >= LONG_HOLD;
 }
 
 function watchFirstTouch(): void {
