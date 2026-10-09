@@ -17,6 +17,7 @@ import { useOffline } from '../connectivity.js';
 import {
   buildNotePatch,
   holdsTheirChanges,
+  rebaseAfterAck,
   rememberFieldDefs,
   seedFrom,
   unstoreableFieldIds,
@@ -439,17 +440,41 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
      The server's copy after a save of this note went through: the base the next save is
      made against. Reseeded only when nothing has been typed since and the copy differs
      from the draft — the server normalised something — so typing is never disturbed.
+     While typing is still in flight the body stays, but whatever the person has not
+     edited takes the answer's (`rebaseAfterAck`): a rename or a merge elsewhere can
+     reach the answer without moving the note's date, and leaving the stale value
+     against that base would send it next.
   */
   useEffect(() => {
     if (!outbox) return;
-    return outbox.onAcknowledged((id, updated) => {
-      setBase(id, updated);
-      if (id !== noteId) return;
+    return outbox.onAcknowledged((id, updated, sent) => {
+      if (id !== noteId) {
+        setBase(id, updated);
+        return;
+      }
       const clean = isClean();
-      if (clean && JSON.stringify(seedFrom(updated)) !== JSON.stringify(draftRef.current)) reseed(updated);
+      if (clean) {
+        setBase(id, updated);
+        if (JSON.stringify(seedFrom(updated)) !== JSON.stringify(draftRef.current)) reseed(updated);
+        return;
+      }
+      setBase(id, updated);
+      rebaseDraft(sent, updated);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [outbox, noteId]);
+
+  /**
+   * Hands the open draft whatever the server's answer changed that the person has not
+   * edited since `sent`, the draft the answered save carried. A functional update, so
+   * typing that lands in the same tick is kept rather than overwritten.
+   */
+  function rebaseDraft(sent: NoteDraft, answer: Note) {
+    setDraft((d) => {
+      const next = rebaseAfterAck(d, sent, answer);
+      return JSON.stringify(next) === JSON.stringify(d) ? d : next;
+    });
+  }
 
   /**
    * Re-seeds the open note from a copy of it the server just gave, rebuilding the editor
@@ -554,8 +579,20 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     }
     if (outcome === 'unchanged') return 'unchanged';
     if (typeof outcome === 'object') {
+      // The server answered the save itself — no local copy, or another tab holds the
+      // outbox — so no acknowledgement follows, and the answer is taken here as it is
+      // there. Nothing typed since: a reseed, whose new reset key re-arms the autosave's
+      // baseline. A rebase alone would leave the baseline at what was sent, read the
+      // answer's changes as an edit, and wipe "Saved" with a save that finds nothing.
+      // "Typed since" goes by identity, not content: a keystroke typed and taken back is
+      // equal to what was sent but already the autosave's pending value, and only a
+      // rebase replaces that with the answer's tags and notebook before it goes out.
       setBase(noteId, outcome);
       queryClient.setQueryData(keys.note(noteId), outcome);
+      if (noteIdRef.current === noteId) {
+        if (draftRef.current !== value) rebaseDraft(value, outcome);
+        else if (JSON.stringify(seedFrom(outcome)) !== JSON.stringify(value)) reseed(outcome);
+      }
     }
     return undefined;
   }

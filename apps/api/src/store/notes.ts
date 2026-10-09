@@ -2350,7 +2350,15 @@ export class NotesStore {
       );
       this.sql.exec(`DELETE FROM note_tags WHERE tag_id = ?1`, id);
       this.sql.exec(`DELETE FROM tags WHERE id = ?1`, id);
-      this.feed.record([{ entity: 'tag', id, deleted: true }, { entity: 'tag', id: other.id }, ...carrying]);
+      // Notes first, then the survivor, then the tombstone. A client following the feed
+      // applies one page at a time (`limit` 200; cut also on bodies), and `tagNames`
+      // drops an id whose tag row is gone. Tombstone-first — the order 0006-tags-nocase
+      // still writes, and this method used to — meant a merge of a few hundred notes
+      // delivered the delete before some of the retags: opening one of those notes
+      // seeded the draft without the merged tag, and the next body save sent that set
+      // and took the tag off the server. Notes first, the loser still resolves on every
+      // note the retag has not reached.
+      this.feed.record([...carrying, { entity: 'tag', id: other.id }, { entity: 'tag', id, deleted: true }]);
       return { id: other.id, name: other.name, merged: true };
     });
   }

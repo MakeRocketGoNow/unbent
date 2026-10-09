@@ -111,8 +111,11 @@ export interface Outbox {
   ready: Promise<void>;
   status: () => SyncStatus;
   subscribe: (listener: (status: SyncStatus) => void) => () => void;
-  /** Hears the server's copy after a replayed save of that note went through. */
-  onAcknowledged: (listener: (noteId: string, note: Note) => void) => () => void;
+  /**
+   * Hears the server's copy after a replayed save of that note went through, with the
+   * draft that save sent — what the person had then, so typing since can be told apart.
+   */
+  onAcknowledged: (listener: (noteId: string, note: Note, sent: NoteDraft) => void) => () => void;
   /** Forgets a conflict once a choice has been made. */
   resolveConflict: (noteId: string) => void;
   /** Forgets what was said about a note's uploads, once it has been read. */
@@ -197,7 +200,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     void storage.set(noticeKey(upload.attachmentId), JSON.stringify({ noteId: upload.noteId, ...said })).catch((err: unknown) => console.error('[outbox] upload notice not kept:', err));
   };
   const listeners = new Set<(s: SyncStatus) => void>();
-  const acks = new Set<(id: string, note: Note) => void>();
+  const acks = new Set<(id: string, note: Note, sent: NoteDraft) => void>();
   const status = (): SyncStatus => ({ pending: storage.held(), durable: executor.isOfflineEnabled, waiting: waiting(), conflicts, uploadNotices: notices });
   const touch = () => {
     const s = status();
@@ -311,7 +314,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
               throw new NonRetriableError(`Note ${noteId} changed on another device`);
             }
           }
-          acks.forEach((l) => l(noteId, updated));
+          acks.forEach((l) => l(noteId, updated, value));
           if (!took(updated)) await settled();
           ended(transaction.id);
         } catch (err) {

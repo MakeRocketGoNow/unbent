@@ -78,6 +78,49 @@ function sameTagSet(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((tag) => b.includes(tag));
 }
 
+/**
+ * The open draft after a save of it comes back while typing is still in flight: every
+ * property the person has not changed since `sent` — the draft that save carried — takes
+ * the server's value, and every one they have keeps theirs. The body is the editor's and
+ * always stays.
+ *
+ * Measured against what was sent, not the base the save was made against: a title typed
+ * and then reverted while the save was out equals the base, and measured against that it
+ * read as untouched and took back the very text the person had just removed.
+ *
+ * The answer is the note as the server has it, and becomes the next save's base. Some
+ * changes made elsewhere reach it without moving the note's date, so no precondition
+ * catches them: a notebook or tag renamed on another device, a field converted, or a
+ * merge adding the surviving tag while this device's copy had already dropped the one
+ * that went. Leaving the draft as it was against that base made the next keystroke send
+ * the stale value back — the short tag set, which took the tag off; the old notebook
+ * name, which the server's get-or-create made again and refiled the note into.
+ *
+ * The mirror of `holdsTheirChanges`, and compared the same way: tags as sets, fields
+ * with empty and absent alike. Only tags edited while their local copy was stale still
+ * send the short set; that edit's own save carries it, and the feed's ordering of a
+ * merge (`renameTag`) is what keeps that window small.
+ */
+export function rebaseAfterAck(
+  draft: NoteDraft,
+  sent: NoteDraft,
+  server: Pick<Note, 'title' | 'body' | 'tags' | 'notebook' | 'fields'>,
+): NoteDraft {
+  const was = sent;
+  const now = seedFrom(server);
+  const fields = { ...draft.fields };
+  for (const id of new Set([...Object.keys(now.fields), ...Object.keys(was.fields)])) {
+    if (sameOrBothEmpty(draft.fields[id] ?? null, was.fields[id] ?? null)) fields[id] = now.fields[id] ?? null;
+  }
+  return {
+    title: draft.title === was.title ? now.title : draft.title,
+    body: draft.body,
+    tags: sameTagSet(draft.tags, was.tags) ? now.tags : draft.tags,
+    notebook: draft.notebook === was.notebook ? now.notebook : draft.notebook,
+    fields,
+  };
+}
+
 function sameOrBothEmpty(a: FieldValue | null, b: FieldValue | null): boolean {
   if (a === null || b === null) return a === b;
   return sameFieldValue(a, b);

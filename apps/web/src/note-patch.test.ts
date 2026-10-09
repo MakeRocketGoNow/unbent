@@ -3,6 +3,7 @@ import type { FieldDef, FieldValue, Note, NoteFieldValue } from '@unbent/shared'
 import {
   buildNotePatch,
   holdsTheirChanges,
+  rebaseAfterAck,
   rememberFieldDefs,
   unstoreableFieldIds,
   type NoteDraft,
@@ -398,5 +399,68 @@ describe('holdsTheirChanges', () => {
   it('says yes when nothing the draft can see has changed at all', () => {
     // The date moved for something the draft does not hold — an attachment, say.
     expect(holdsTheirChanges(draftOf({ body: 'Body, edited' }), base, { ...base })).toBe(true);
+  });
+});
+
+/**
+ * What the open draft holds after a save comes back mid-typing: the server's value for
+ * whatever the person has not edited, theirs for whatever they have. Each case pairs the
+ * taken value with the kept one, since a rebase that always took the server's would
+ * throw away typing, and one that never did is the bug.
+ */
+describe('rebaseAfterAck', () => {
+  const base = { title: 'Trip', body: 'Body', tags: ['garden'], notebook: 'Coupons', fields: [] as NoteFieldValue[] };
+  // What the answered save carried: the base as typed then, before the typing since.
+  const sent: NoteDraft = { title: 'Trip', body: 'Body', tags: ['garden'], notebook: 'Coupons', fields: {} };
+  const draftOf = (over: Partial<NoteDraft> = {}): NoteDraft => ({
+    title: 'Trip',
+    body: 'Body, typing',
+    tags: ['garden'],
+    notebook: 'Coupons',
+    fields: {},
+    ...over,
+  });
+
+  it('takes the server\'s tags when the person has not edited them, compared as a set', () => {
+    const server = { ...base, tags: ['garden', 'receipts'] };
+    expect(rebaseAfterAck(draftOf(), sent, server).tags).toEqual(['garden', 'receipts']);
+    expect(rebaseAfterAck(draftOf({ tags: ['b', 'a'] }), { ...sent, tags: ['a', 'b'] }, { ...base, tags: ['a', 'b', 'c'] }).tags).toEqual(['a', 'b', 'c']);
+    expect(rebaseAfterAck(draftOf({ tags: ['garden', 'tax'] }), sent, server).tags).toEqual(['garden', 'tax']);
+    expect(rebaseAfterAck(draftOf({ tags: [] }), sent, server).tags).toEqual([]);
+  });
+
+  it('takes a notebook renamed elsewhere unless the person moved the note', () => {
+    const server = { ...base, notebook: 'Coupons 2026' };
+    expect(rebaseAfterAck(draftOf(), sent, server).notebook).toBe('Coupons 2026');
+    expect(rebaseAfterAck(draftOf({ notebook: 'Receipts' }), sent, server).notebook).toBe('Receipts');
+  });
+
+  it('takes the title unless the person is editing it, and always keeps the body', () => {
+    const server = { ...base, title: 'Trip, renamed', body: 'Body' };
+    const rebased = rebaseAfterAck(draftOf(), sent, server);
+    expect(rebased.title).toBe('Trip, renamed');
+    expect(rebased.body).toBe('Body, typing');
+    expect(rebaseAfterAck(draftOf({ title: 'Trip, mine' }), sent, server).title).toBe('Trip, mine');
+  });
+
+  it('keeps a title typed and taken back while the save was out', () => {
+    // The save sent "Trip x"; the person deleted the " x" before the answer came. The
+    // draft equals the base again, and measured against that it took the " x" back.
+    const typed = { ...sent, title: 'Trip x' };
+    expect(rebaseAfterAck(draftOf({ title: 'Trip' }), typed, { ...base, title: 'Trip x' }).title).toBe('Trip');
+  });
+
+  it('takes a field the server rewrote unless the person typed in it', () => {
+    const value = (v: FieldValue): NoteFieldValue[] => [
+      { fieldId: amount.id, name: 'Amount', type: 'number', value: v, notebook: 'Receipts' } as NoteFieldValue,
+    ];
+    const was = { ...base, fields: value(12) };
+    const sentWith = { ...sent, fields: { [amount.id]: 12 } };
+    expect(rebaseAfterAck(draftOf({ fields: { [amount.id]: 12 } }), sentWith, { ...was, fields: value(13) }).fields).toEqual({
+      [amount.id]: 13,
+    });
+    expect(rebaseAfterAck(draftOf({ fields: { [amount.id]: '14' } }), sentWith, { ...was, fields: value(13) }).fields).toEqual({
+      [amount.id]: '14',
+    });
   });
 });

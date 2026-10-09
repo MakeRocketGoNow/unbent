@@ -180,13 +180,14 @@ describe('the feed records tag, notebook and field writes', () => {
     const seq2 = await feedSeq(stub);
     await stub.renameTag(receipts.id, 'Receipts');
     expect(await feedRows(stub, seq2)).toEqual([]);
-    // A merge: the tag that went is a tombstone, the one that stays is a row, and the
-    // notes whose ids changed follow.
+    // A merge: the notes whose ids changed, then the tag that stays, then a tombstone
+    // for the one that went — notes first so a paged pull cannot drop the loser before
+    // the retag arrives (see `renameTag`).
     const receipt = (await stub.listTags()).find((t) => t.name === 'receipt') ?? (await listAllTags(stub)).find((t) => t.name === 'receipt')!;
     expect(await stub.renameTag(receipts.id, 'receipt', { merge: true })).toEqual({ id: receipt.id, name: 'receipt', merged: true });
     const merged = await feedRows(stub, seq2);
-    expect(merged.slice(0, 2)).toEqual([{ entity: 'tag', id: receipts.id, deleted: true }, { entity: 'tag', id: receipt.id }]);
-    expect(merged.slice(2).map((r) => r.id).sort()).toEqual([a.id, b.id].sort());
+    expect(merged.slice(0, 2).map((r) => r.id).sort()).toEqual([a.id, b.id].sort());
+    expect(merged.slice(2)).toEqual([{ entity: 'tag', id: receipt.id }, { entity: 'tag', id: receipts.id, deleted: true }]);
     const seq3 = await feedSeq(stub);
     expect(await stub.deleteTag(receipt.id)).toBe(true);
     expect(await feedRows(stub, seq3)).toEqual([{ entity: 'tag', id: receipt.id, deleted: true }]);
