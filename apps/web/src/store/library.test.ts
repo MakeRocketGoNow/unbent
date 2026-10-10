@@ -109,7 +109,7 @@ describe('acquireLibrary', () => {
     vi.mocked(reportError).mockReset();
   });
 
-  it('gives up on an open that does not settle, and reports it', async () => {
+  it('refuses its caller when an open does not settle, reports it, and answers every later ask at once', async () => {
     vi.useFakeTimers();
     vi.mocked(openLocalStore).mockImplementation(() => new Promise(() => {}));
     const first = acquireLibrary('u1');
@@ -147,7 +147,7 @@ describe('acquireLibrary', () => {
   it('closes the account before a switch inside the queue, so a wipe meanwhile waits for it too', async () => {
     vi.useFakeTimers();
     // An account whose open never settles, then a switch to another: the switch's open is
-    // behind the first's step, and gives up on its own clock.
+    // behind the first's step, and refuses its caller on its own clock.
     vi.mocked(openLocalStore).mockImplementation(() => new Promise(() => {}));
     const first = acquireLibrary('u1');
     first.catch(() => {});

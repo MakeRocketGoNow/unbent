@@ -64,7 +64,13 @@ export type ReadableLibrary = Pick<Library, 'notes' | 'notebooks' | 'tags' | 'at
 /** The query roots a change to the library can reach; see `installLibraryQueries`. */
 export const LIBRARY_ROOTS: ReadonlySet<string> = new Set(['notes', 'note', 'trash', 'tags', 'notebooks', 'notebook-fields', 'attachments']);
 
-let current: { userId: string; library: Promise<Library> } | null = null;
+/**
+ * The account whose library this tab holds or is opening. `opened` is the open itself,
+ * the queue's step; `library` is what callers are given, which is `opened` bounded by
+ * `LIBRARY_OPEN_TIMEOUT_MS` — the same promise while the open is quick, a refusal after
+ * the bound, and the library again once a slow open has finished (`acquireLibrary`).
+ */
+let current: { userId: string; library: Promise<Library>; opened: Promise<Library> } | null = null;
 let forTests: ReadableLibrary | null = null;
 
 const libraryListeners = new Set<() => void>();
@@ -284,24 +290,22 @@ export class LibraryOpenTimeoutError extends Error {
  * account, the close of the one before it, the close a wipe or a refused session asks
  * for, the close the outbox asks for, the close and reopen after a page comes back from
  * the back/forward cache. Each is a step, and a step runs only once every step queued
- * before it has settled, however it settled.
+ * before it has settled, however it settled. A path that is not a step cannot exist
+ * here, since the store is only ever touched inside one; a new way to open or close the
+ * library is a new call to `enqueue`, and nothing else.
  *
- * Not a chain closes were added to by hand. The first version kept one promise for
- * closes in flight and had each open wait on it, and four rounds of review each found
- * one more way to open or close that was not on it — the abandoned open's own close,
- * the wipe's close of the store, the close of the account before a switch — with the
- * same race behind each: a store closed under a close still cleaning up, or under the
- * open that had just taken it. A path that is not a step cannot exist here, since the
- * store is only ever touched inside one; a new way to open or close the library is a
- * new call to `enqueue`, and nothing else.
- *
- * A step that never settles holds every step after it. The waits inside a step are
- * bounded in practice — the engine's pulls are aborted, the persistence layer's calls to
- * another tab time out, the worker answers a close — except the open's wait for the
- * outbox's database, which another tab's queued delete can hold for good; that wait is
- * the one an abandoned open does not stay for (see `open`). What a caller sees is
- * bounded by construction: an open answers its caller within `LIBRARY_OPEN_TIMEOUT_MS`
- * whatever the queue is doing, and reads from the server are what it falls back to.
+ * Not a chain closes were added to by hand, and not a queue that abandons a step: the
+ * first draft kept one promise for closes in flight and had each open wait on it, and
+ * every review found one more open or close beside it; the second gave up on a slow
+ * open, tore down what it had built and barred the account until the teardown was
+ * done, and every review found a hole in that — a teardown outside the queue, a bar
+ * that caught every account, no bar and a fresh twenty-second wait on every click. A
+ * step is never abandoned. It runs to its end, and what is bounded is what a caller
+ * sees: an open answers its caller within `LIBRARY_OPEN_TIMEOUT_MS` whatever the queue
+ * is doing, and a wipe waits on the queue for a bounded time too (`closeLocalStores`).
+ * A step that never settles — an open held by another tab's queued delete of the
+ * outbox, or by a leader that is not running — holds the steps after it, and nothing
+ * else: the page reads the server, and a reload is what clears it.
  */
 let queue: Promise<void> = Promise.resolve();
 
@@ -317,57 +321,66 @@ function enqueue<T>(step: () => Promise<T>): Promise<T> {
 export function acquireLibrary(userId: string): Promise<Library> {
   if (current?.userId === userId) return current.library;
   const previous = current;
+  const opened = enqueue(async () => {
+    // The account before this one, closed first; what it was told is the queue's.
+    if (previous) await previous.opened.then((l) => l.close()).catch(() => {});
+    return open(userId);
+  });
   /*
    * Bounded, so the app is never dead on a storage wedge. The open waits on things
    * outside this tab — the outbox's IndexedDB database, which another tab's delete can
    * hold queued for good, and the collections' leader, which can be a tab that is not
    * running — and before this it waited for ever: every screen sat on "Opening your
-   * notes…" with no error anywhere (2026-10-10). Timed out, there is no local copy on
-   * this page load, which is the app as it is on a device that cannot keep one, and
-   * the error is reported. The bound covers the wait for the queue too: a close in
-   * hand that never finishes must not leave the app waiting with nothing reported
-   * either. Given up on before its turn, the open is never started; given up on while
-   * under way, it closes what it built inside its own step, so the step after it finds
-   * nothing of it left.
+   * notes…" with no error anywhere (2026-10-10). Past the bound the caller is refused
+   * and the error reported; there is no local copy on this page load, which is the app
+   * as it is on a device that cannot keep one, and the queries read the server.
+   *
+   * The open itself is not given up on. It stays the account's entry here, with the
+   * refusal as its answer, so every later ask for this account — the root `beforeLoad`
+   * asks on every navigation — is answered at once rather than with a fresh
+   * twenty-second wait (found in review); and if it does finish, it is the library from
+   * then on, with the hooks told. A close takes the entry as it takes any other, and
+   * its step waits for the open to settle, as every step after it does.
    */
-  const abandon = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new LibraryOpenTimeoutError()), LIBRARY_OPEN_TIMEOUT_MS);
   });
-  const opened = enqueue(async () => {
-    // The account before this one, closed first; what it was told is the queue's.
-    if (previous) await previous.library.then((l) => l.close()).catch(() => {});
-    if (abandon.signal.aborted) throw abandon.signal.reason;
-    return open(userId, abandon.signal);
-  });
-  const library = Promise.race([opened, timeout]).then(
-    (lib) => {
-      clearTimeout(timer);
-      return lib;
-    },
-    (err: unknown) => {
-      clearTimeout(timer);
-      if (err instanceof LibraryOpenTimeoutError) {
-        reportError(err, 'error');
-        abandon.abort(err);
-      }
-      throw err;
-    },
-  );
-  current = { userId, library };
+  const library = Promise.race([opened, timeout]).finally(() => clearTimeout(timer));
+  const entry = { userId, library, opened };
+  current = entry;
   libraryChanged();
-  library.catch((err) => {
+  let late = false;
+  library.catch((err: unknown) => {
+    if (err instanceof LibraryOpenTimeoutError) {
+      late = true;
+      reportError(err, 'error');
+      return;
+    }
     // A browser without the origin-private file system, or one refusing it in a private
     // window: there is no local copy here, and the queries read the server instead (see
-    // `queries.ts`). Said once in the console; the next sign-in tries again, behind
-    // whatever the queue still holds of this one.
+    // `queries.ts`). Said once in the console; the next sign-in tries again.
     console.warn('[library] not available on this device; reading from the server instead:', err);
-    if (current?.library === library) {
+    if (current === entry) {
       current = null;
       libraryChanged();
     }
   });
+  opened.then(
+    (lib) => {
+      if (late && current === entry) {
+        current = { ...entry, library: Promise.resolve(lib) };
+        libraryChanged();
+      }
+    },
+    () => {
+      // Failed after its caller was refused: the entry is no longer anyone's; the next sign-in tries again.
+      if (late && current === entry) {
+        current = null;
+        libraryChanged();
+      }
+    },
+  );
   return library;
 }
 
@@ -383,9 +396,10 @@ function closeStep(then?: () => Promise<void>): Promise<void> {
   current = null;
   if (open) libraryChanged();
   return enqueue(async () => {
-    // A library that never opened — timed out, or refused by the device — has closed
-    // itself in its own step, or was never built; there is nothing to close.
-    if (open) await open.library.then((l) => l.close()).catch(() => {});
+    // The open itself, not the bounded answer its callers were given: an open its caller
+    // was refused is still a library once it finishes, and this step runs after it has.
+    // One the device refused was never built; there is nothing to close.
+    if (open) await open.opened.then((l) => l.close()).catch(() => {});
     await then?.();
   });
 }
@@ -475,7 +489,7 @@ export async function fetchJson<T>(path: string, stop?: AbortSignal): Promise<T>
   }
 }
 
-async function open(userId: string, abandon: AbortSignal): Promise<Library> {
+async function open(userId: string): Promise<Library> {
   const store = await openLocalStore(userId);
   const listeners = new Set<(state: FeedState) => void>();
   let latest: FeedState | null = null;
@@ -743,31 +757,11 @@ async function open(userId: string, abandon: AbortSignal): Promise<Library> {
 
   /*
    * The one wait in here that can wedge — the outbox's database held by another tab's
-   * queued delete (`store/wipe.ts`) — comes last, after everything above has been set
-   * up and can be torn down, and under the caller's signal: `acquireLibrary` gives up
-   * on an open that takes too long, and what was built here — the socket, the engine's
-   * pulls, the listeners — must not go on running in a tab that has no library
-   * (found in review). Abandoned, this closes itself and settles only once that close
-   * has, so the queue's next step finds nothing of it; the caller gets nothing. It does
-   * not stay for the outbox once abandoned: that wait can be for good, and a step that
-   * never settles would hold every close and open after it (the sign-out's wipe among
-   * them). The outbox's own init goes on in the background and asks nothing of the
-   * library once the executor is disposed.
+   * queued delete (`store/wipe.ts`) — and so the one that can hold this step, and the
+   * queue behind it, for good. Not given up on: a step runs to its end (see `queue`),
+   * and what `acquireLibrary` bounds is its caller's wait, not this.
    */
-  const abandoned = new Promise<never>((_, reject) => {
-    if (abandon.aborted) reject(abandon.reason);
-    else abandon.addEventListener('abort', () => reject(abandon.reason), { once: true });
-  });
-  abandoned.catch(() => {});
-  try {
-    await Promise.race([outbox.ready, abandoned]);
-  } catch (err) {
-    if (abandon.aborted) {
-      await close();
-      throw abandon.reason;
-    }
-    throw err;
-  }
+  await outbox.ready;
 
   return {
     ...collections,

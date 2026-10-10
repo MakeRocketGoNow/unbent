@@ -667,14 +667,17 @@ them: the wipe tells the other tabs, over the channel in `store/wipe.ts`
 (`installLibraryCloser`), and `recordSession` closes the library in any tab whose session
 the server has refused, so a tab left on the sign-in screen holds nothing; the outbox
 closes its connection on `versionchange`, which is how IndexedDB asks, and the library
-closes with it; and `acquireLibrary` gives up after `LIBRARY_OPEN_TIMEOUT_MS`, closes
-what it built, and reads the server, reporting the timeout, so a wedge is a page with no
-local copy rather than a dead app. Every open and close of the library is a step on one
-queue in `library.ts` (`enqueue`), run only after every step before it has settled; a
-new way to open or close the library is a new step there, never a call beside the
-queue, which is what each of four review rounds found one more of. The other tabs' closes race the wipe: the outbox's
-delete completes once their connections have closed, and the store's files are tried
-again for a moment, since a file another tab's worker still holds cannot be removed.
+closes with it; and `acquireLibrary` answers its caller within `LIBRARY_OPEN_TIMEOUT_MS`
+whatever the open is doing — a refusal past the bound, reported, and the page reads the
+server — so a wedge is a page with no local copy rather than a dead app. Every open and
+close of the library is a step on one queue in `library.ts` (`enqueue`), run only after
+every step before it has settled and never abandoned; a new way to open or close the
+library is a new step there, never a call beside the queue, and what is bounded is what
+a caller waits, never the step (a wipe's wait is `CLOSE_WAIT_MS` in `store/wipe.ts`). The
+other tabs' closes race the wipe: the outbox's delete completes once their connections
+have closed, and the store's files are tried again for a moment, since a file another
+tab's worker still holds cannot be removed. A tab told to close then asks the server who
+is signed in, so it does not open the old account again from the session it remembers.
 The leader that stops answering — a tab Chrome has frozen in the background holds its
 Web Locks and sends no heartbeats — is not something this code can release from another
 tab; the timeout is what bounds it.
