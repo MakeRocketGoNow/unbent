@@ -240,6 +240,7 @@ export function NoteListHead({
           // "Close search" would describe the chrome; this describes the effect, which is
           // the part that is not obvious from an arrow.
           aria-label="Close search and clear the query"
+          data-tip="Close search"
           onClick={onCloseSearch}
         >
           <BackArrow />
@@ -253,7 +254,7 @@ export function NoteListHead({
     <>
       <div className={inToolbar ? 'list-head list-head-toolbar' : 'list-head'}>
         {onOpenMenu && (
-          <button type="button" className="icon-btn" aria-label="Notebooks" onClick={onOpenMenu}>
+          <button type="button" className="icon-btn" aria-label="Notebooks" data-tip="Notebooks" onClick={onOpenMenu}>
             <MenuIcon />
           </button>
         )}
@@ -290,7 +291,7 @@ export function NoteListHead({
         {inToolbar && <div className="list-search">{input}</div>}
         <div className="list-head-actions">
           {onOpenSearch && (
-            <button type="button" className="icon-btn" aria-label="Search notes" onClick={onOpenSearch}>
+            <button type="button" className="icon-btn" aria-label="Search notes" data-tip="Search notes" onClick={onOpenSearch}>
               <SearchIcon />
             </button>
           )}
@@ -305,6 +306,7 @@ export function NoteListHead({
              * narrowed — available to sighted users alone.
              */
             aria-label={filtered ? 'Filter notes, filters are active' : 'Filter notes'}
+            data-tip={filtered ? 'Filter notes, some are on' : 'Filter notes'}
             onClick={onOpenFilters}
           >
             <FilterIcon />

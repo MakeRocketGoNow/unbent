@@ -43,7 +43,8 @@ export function NotesViewToggle({ value, onChange, tableDisabledReason }: NotesV
       type="button"
       className="icon-btn view-toggle"
       aria-label={label}
-      title={tableDisabledReason ?? (next === 'table' ? 'Table view' : 'List view')}
+      // The reason reads as the end of a sentence, so the tip keeps the name in front of it.
+      data-tip={tableDisabledReason !== undefined ? label : next === 'table' ? 'Table view' : 'List view'}
       disabled={tableDisabledReason !== undefined}
       onClick={() => onChange(next)}
     >

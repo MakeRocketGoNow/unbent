@@ -68,7 +68,7 @@ interface NotebookNavProps {
   /**
    * The labels are clipped from view — a desktop's rail drawn as a strip of icons. The
    * rows then carry their label as a tooltip too, since a glyph alone says less than a
-   * word; the stylesheet does the clipping, this only adds the titles.
+   * word; the stylesheet does the clipping, this only adds the tips (`tooltips.ts`).
    */
   labelsHidden?: boolean | undefined;
   /** The last thing on the floor: the desktop rail puts the account here. */
@@ -223,7 +223,8 @@ export function NotebookNav({
           search={scopeOf(undefined)}
           className={allActive ? 'drawer-item current' : 'drawer-item'}
           aria-current={allActive ? 'true' : undefined}
-          title={tip('All notes')}
+          data-tip={tip('All notes')}
+          data-tip-side="right"
           onClick={picked}
         >
           <NotesRowIcon />
@@ -242,7 +243,8 @@ export function NotebookNav({
             search={scopeOf(UNFILED)}
             className={inboxActive ? 'drawer-item current' : 'drawer-item'}
             aria-current={inboxActive ? 'true' : undefined}
-            title={tip('Inbox')}
+            data-tip={tip('Inbox')}
+            data-tip-side="right"
             onClick={picked}
           >
             <InboxRowIcon />
@@ -373,7 +375,8 @@ export function NotebookNav({
           to="/trash"
           className={place === 'trash' ? 'drawer-item current' : 'drawer-item'}
           aria-current={place === 'trash' ? 'page' : undefined}
-          title={tip('Trash')}
+          data-tip={tip('Trash')}
+          data-tip-side="right"
         >
           <TrashRowIcon />
           <span className="drawer-item-label">Trash</span>
@@ -383,7 +386,8 @@ export function NotebookNav({
           to="/settings"
           className={place === 'settings' ? 'drawer-item current' : 'drawer-item'}
           aria-current={place === 'settings' ? 'page' : undefined}
-          title={tip('Settings')}
+          data-tip={tip('Settings')}
+          data-tip-side="right"
         >
           <SettingsRowIcon />
           <span className="drawer-item-label">Settings</span>

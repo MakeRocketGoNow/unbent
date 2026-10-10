@@ -23,7 +23,7 @@ export function NotSyncedMark() {
       type="button"
       className="sync-mark"
       aria-label="Not synced yet"
-      title="Not synced yet"
+      data-tip="Not synced yet"
       aria-pressed={shown}
       onClick={() => setShown((s) => !s)}
     >

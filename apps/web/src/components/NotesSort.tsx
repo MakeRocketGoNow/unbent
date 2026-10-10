@@ -97,7 +97,7 @@ export function NotesSort({ notebook, sort, order, sortField, fields = [], disab
         type="button"
         className="icon-btn sort-toggle"
         aria-label={disabledReason ? `Sort notes, ${disabledReason}` : `Sort notes, currently ${label}`}
-        title={disabledReason}
+        data-tip={disabledReason ? `Sort notes, ${disabledReason}` : 'Sort notes'}
         disabled={disabledReason !== undefined}
         onClick={() => setPicking(true)}
       >

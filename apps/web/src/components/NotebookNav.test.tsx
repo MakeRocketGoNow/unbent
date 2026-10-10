@@ -106,8 +106,8 @@ describe('NotebookNav', () => {
   it('adds tooltips to the rows a strip keeps, without losing their names', async () => {
     const { findByRole } = harness({ labelsHidden: true });
     const trash = await findByRole('link', { name: /^Trash/ });
-    expect(trash.getAttribute('title')).toBe('Trash');
-    expect((await findByRole('link', { name: 'All notes' })).getAttribute('title')).toBe('All notes');
+    expect(trash.dataset.tip).toBe('Trash');
+    expect((await findByRole('link', { name: 'All notes' })).dataset.tip).toBe('All notes');
     // Notebook rows are hidden by the stylesheet in a strip, so they only ever carry
     // their own name, which is what a truncated label needs anyway.
     expect((await findByRole('link', { name: /^Coupons/ })).getAttribute('title')).toBe('Coupons');

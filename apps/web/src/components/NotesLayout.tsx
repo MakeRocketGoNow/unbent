@@ -1318,7 +1318,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               type="button"
               className="icon-btn"
               aria-label="Move to notebook"
-              title="Move to notebook"
+              data-tip="Move to notebook"
               disabled={bulkBusy}
               onClick={() => setBulkSheet('move')}
             >
@@ -1328,7 +1328,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               type="button"
               className="icon-btn"
               aria-label="Tags"
-              title="Tags"
+              data-tip="Tags"
               disabled={bulkBusy}
               onClick={() => setBulkSheet('tags')}
             >
@@ -1346,7 +1346,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               type="button"
               className="icon-btn"
               aria-label={selectionExportLabel}
-              title={selectionExportLabel}
+              data-tip={selectionExportLabel}
               disabled={exportRunning}
               onClick={() => startExport({ ids: selection.ids })}
             >
@@ -1356,7 +1356,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               type="button"
               className="icon-btn danger"
               aria-label="Delete"
-              title="Delete"
+              data-tip="Delete"
               disabled={bulkBusy}
               onClick={() => setPendingTrash(true)}
             >

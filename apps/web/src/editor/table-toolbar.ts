@@ -146,7 +146,7 @@ function buildToolbar(view: EditorView): { dom: HTMLElement; destroy: () => void
   const sizeButton = document.createElement('button');
   sizeButton.type = 'button';
   sizeButton.className = 'cm-table-btn';
-  sizeButton.title = 'Insert table';
+  sizeButton.dataset.tip = 'Insert table';
   sizeButton.setAttribute('aria-label', 'Insert table');
   sizeButton.innerHTML = icon(ICONS.grid);
   // mousedown, not click: a click blurs the editor first and loses the selection the
@@ -190,7 +190,7 @@ function buildToolbar(view: EditorView): { dom: HTMLElement; destroy: () => void
     const button = document.createElement('button');
     button.type = 'button';
     button.className = `cm-table-btn cm-table-btn-${action.label}`;
-    button.title = action.title;
+    button.dataset.tip = action.title;
     button.setAttribute('aria-label', action.title);
     button.innerHTML = icon(action.icon);
     button.addEventListener('mousedown', (event) => {

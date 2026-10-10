@@ -138,7 +138,7 @@ export function Settings({ onChanged, createRequested = false, onCreateRequested
            is plainly the notebook's size. Silent at zero, as it is there. */
         renderNameCount={(item) =>
           item.count > 0 ? (
-            <span className="tag-count" title={`${item.count} note${item.count === 1 ? '' : 's'}`}>
+            <span className="tag-count" data-tip={`${item.count} note${item.count === 1 ? '' : 's'}`}>
               {item.count}
             </span>
           ) : null
@@ -161,7 +161,7 @@ export function Settings({ onChanged, createRequested = false, onCreateRequested
               {fields > 0 && (
                 <span
                   className="label-field-count muted small"
-                  title={`${fields} custom field${fields === 1 ? '' : 's'}`}
+                  data-tip={`${fields} custom field${fields === 1 ? '' : 's'}`}
                 >
                   <FieldsIcon />
                   {fields}
@@ -172,7 +172,7 @@ export function Settings({ onChanged, createRequested = false, onCreateRequested
                 className="icon-btn label-download"
                 disabled={exportRunning}
                 onClick={() => startExport({ notebook: item.name })}
-                title={`Download ${item.name} as a zip`}
+                data-tip={`Download ${item.name} as a zip`}
                 aria-label={`Download ${item.name} as a zip`}
               >
                 <DownloadIcon />

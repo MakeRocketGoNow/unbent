@@ -105,10 +105,11 @@ interface OverflowMenuProps {
   /**
    * Every item needs something the page cannot do right now — offline, a note's actions
    * all do. The trigger stays where it is, faded, rather than going: a head that loses its
-   * ⋯ when the connection drops moves the title under the reader's eye. `title` says why.
+   * ⋯ when the connection drops moves the title under the reader's eye. `tip` says why.
    */
   disabled?: boolean;
-  title?: string;
+  /** The trigger's tooltip (`tooltips.ts`) and accessible description, as on `Button`. */
+  tip?: string | undefined;
 }
 
 export function OverflowMenu({
@@ -118,7 +119,7 @@ export function OverflowMenu({
   className,
   triggerClassName,
   disabled = false,
-  title,
+  tip,
 }: OverflowMenuProps) {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
@@ -160,7 +161,10 @@ export function OverflowMenu({
         aria-expanded={open}
         aria-haspopup="true"
         disabled={disabled}
-        title={title}
+        // A ⋯ is a glyph and says nothing alone; a trigger with a face of its own — the
+        // avatar, the count — already says what it opens.
+        data-tip={tip ?? (trigger === undefined ? label : undefined)}
+        aria-description={tip}
         onClick={() => setOpen((o) => !o)}
       >
         {trigger ?? '⋯'}

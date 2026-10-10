@@ -197,9 +197,11 @@ export function openAttachmentViewer(
   if (paged) {
     prev.type = 'button';
     prev.setAttribute('aria-label', 'Previous attachment');
+    prev.dataset.tip = 'Previous';
     prev.innerHTML = chevronLeftMarkup();
     next.type = 'button';
     next.setAttribute('aria-label', 'Next attachment');
+    next.dataset.tip = 'Next';
     next.innerHTML = chevronRightMarkup();
     nav.appendChild(prev);
     nav.appendChild(position);
@@ -210,6 +212,7 @@ export function openAttachmentViewer(
   const close = el('button', 'icon-btn viewer-close');
   close.type = 'button';
   close.setAttribute('aria-label', 'Close');
+  close.dataset.tip = 'Close';
   close.innerHTML = closeIconMarkup();
   head.appendChild(close);
 

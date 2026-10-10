@@ -37,7 +37,7 @@ export function Topbar({ email, onSignOut }: TopbarProps) {
       </h1>
       <div className="account">
         {/* A link, not a button: it navigates, and middle-click and copy should work. */}
-        <Link to="/settings" className="icon-btn" aria-label="Settings" title="Settings">
+        <Link to="/settings" className="icon-btn" aria-label="Settings" data-tip="Settings">
           <SettingsIcon />
         </Link>
         <span className="account-menu">
