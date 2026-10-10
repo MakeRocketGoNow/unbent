@@ -100,12 +100,16 @@ export class PaddleError extends Error {
   }
 }
 
+/** How long one call may take. Paddle answers in well under a second; a hang must not hold a deletion or a checkout open. */
+export const PADDLE_TIMEOUT_MS = 10_000;
+
 /**
  * One call. Every Paddle answer wraps its entity in `data`, and a refusal carries
  * `error.code` and `error.detail`, which the thrown error keeps for the few callers that
  * branch on a code (a customer that already exists). The version header pins the API's
  * shape against the one this was written to, rather than to whatever the account's
- * default becomes.
+ * default becomes. A call that does not answer in `PADDLE_TIMEOUT_MS` throws as the
+ * fetch does, which every caller answers as Paddle being out of reach.
  */
 export async function paddleCall<T>(
   paddle: PaddleConfig,
@@ -121,6 +125,7 @@ export async function paddleCall<T>(
       ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
     },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    signal: AbortSignal.timeout(PADDLE_TIMEOUT_MS),
   });
   const text = await res.text();
   let json: { data?: T; error?: { code?: string; detail?: string } } = {};
