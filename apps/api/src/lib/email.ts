@@ -98,6 +98,22 @@ export async function sendEmail(env: EmailEnv, message: Message): Promise<void> 
      * message: it is an email address, and the caller already knows who it was sending to.
      */
     const detail = await res.text().catch(() => '');
-    throw new Error(`Resend rejected the message: ${res.status} ${detail.slice(0, 200)}`);
+    throw new EmailRejected(res.status, `Resend rejected the message: ${res.status} ${detail.slice(0, 200)}`);
+  }
+}
+
+/**
+ * The provider's refusal, with its status, for a caller that must decide whether to try
+ * again: a 4xx is this message as sent (an address it will not take) and a 5xx is the
+ * provider's day. `sendEmail` throws nothing else of its own; a fetch that fails throws
+ * as a fetch does.
+ */
+export class EmailRejected extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'EmailRejected';
   }
 }

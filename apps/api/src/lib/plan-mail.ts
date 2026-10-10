@@ -1,5 +1,5 @@
 import { INACTIVE_KEPT_DAYS, type PlanSource, type PlanState } from '@unbent/shared';
-import { canSendEmail, sendEmail, type EmailEnv } from './email.js';
+import { EmailRejected, canSendEmail, sendEmail, type EmailEnv } from './email.js';
 import { billingOn, type PaddleEnv } from './paddle.js';
 import { LAPSE_DUE_SQL, updatePlanStatement } from './plan.js';
 
@@ -68,6 +68,11 @@ export function lapseKind(row: { plan: PlanState; source: PlanSource | null }): 
  * mark is written after the mail is accepted, so a mail that fails is tried again on
  * the next run rather than lost; one that is accepted and then fails to be marked would
  * be sent twice, which is the better of the two mistakes.
+ *
+ * Except a mail the provider refuses outright (a 4xx: an address it will not take, a
+ * suppressed one), which is marked as told all the same. The query takes the oldest
+ * ends first, and five addresses refused for good would otherwise hold the five slots
+ * on every run and no later account would ever be told.
  */
 export async function notifyLapsedPlans(
   env: PaddleEnv & EmailEnv & { DB: D1Database; APP_URL?: string | undefined },
@@ -91,6 +96,11 @@ export async function notifyLapsedPlans(
     try {
       await sendEmail(env, { to: row.email, ...lapseMessage(kind, planUrl) });
     } catch (err) {
+      if (err instanceof EmailRejected && err.status < 500) {
+        console.error(`[billing] lapse mail for user=${row.user_id} refused by the provider; marked as told:`, err.message);
+        await updatePlanStatement(env.DB, row.user_id, { lapseNotifiedAt: now }, now).run();
+        continue;
+      }
       console.error(`[billing] lapse mail for user=${row.user_id} failed; will retry next run:`, (err as Error).message);
       continue;
     }

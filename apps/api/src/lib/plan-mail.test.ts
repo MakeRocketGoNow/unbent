@@ -58,25 +58,29 @@ describe('the lapse mail', () => {
     expect(ran).toEqual([]);
   });
 
-  it('mails each account that is due, marks it told, and leaves a failed mail for the next run', async () => {
+  it('mails each account that is due and marks it told; marks one the provider refuses too, and leaves one it could not reach for the next run', async () => {
     const sent: string[] = [];
     vi.stubGlobal(
       'fetch',
       vi.fn(async (_url: string, init: RequestInit) => {
         const body = JSON.parse(init.body as string) as { to: string };
         sent.push(body.to);
-        return new Response(body.to === 'bad@example.com' ? 'nope' : '{}', { status: body.to === 'bad@example.com' ? 422 : 200 });
+        if (body.to === 'bad@example.com') return new Response('nope', { status: 422 });
+        if (body.to === 'down@example.com') return new Response('later', { status: 503 });
+        return new Response('{}', { status: 200 });
       }),
     );
     const { db, ran } = fakeDb([
       { user_id: 'u1', plan: 'trial', plan_until: 1, source: null, email: 'one@example.com' },
       { user_id: 'u2', plan: 'active', plan_until: 1, source: 'paddle', email: 'bad@example.com' },
+      { user_id: 'u3', plan: 'active', plan_until: 1, source: 'comp', email: 'down@example.com' },
     ]);
     expect(await notifyLapsedPlans({ ...paddle, DB: db }, 10)).toBe(1);
-    expect(sent).toEqual(['one@example.com', 'bad@example.com']);
-    // The due query with now and the limit, then one mark, for the one that went.
+    expect(sent).toEqual(['one@example.com', 'bad@example.com', 'down@example.com']);
+    // The due query with now and the limit, then a mark for the one that went and the
+    // one refused for good; the provider's outage is tried again next run.
     expect(ran[0]!.binds).toEqual([10, 5]);
-    expect(ran.slice(1).map((r) => r.binds[0])).toEqual(['u1']);
+    expect(ran.slice(1).map((r) => r.binds[0])).toEqual(['u1', 'u2']);
     expect(ran[1]!.sql).toContain('lapse_notified_at');
     vi.unstubAllGlobals();
   });
