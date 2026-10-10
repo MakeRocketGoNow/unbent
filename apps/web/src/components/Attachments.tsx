@@ -41,6 +41,14 @@ interface AttachmentsProps {
    * read-only does not stop.
    */
   readOnly?: boolean;
+  /**
+   * The account's plan has ended (MAK-108): the server refuses every write but a delete.
+   * Narrower than `readOnly`, which is for a note that cannot be reached at all. Here
+   * the files still open, download and delete — that is what the banner promises — and
+   * only what would write goes: copying or moving a file to another note, and inserting
+   * a link, which edits the body.
+   */
+  lapsed?: boolean;
 }
 
 function fileUrl(noteId: string, filename: string): string {
@@ -60,7 +68,11 @@ export function Attachments({
   editorView,
   onBodyRewrite,
   readOnly = false,
+  lapsed = false,
 }: AttachmentsProps) {
+  /** The writes a lapsed account cannot make, and why; `readOnly`'s word wins when both hold. */
+  const noWrites = readOnly || lapsed;
+  const noWritesTip = readOnly ? 'Not available offline' : lapsed ? 'Not while the plan has ended' : undefined;
   const queryClient = useQueryClient();
   const { data: files = [], isLoading, error } = useQuery(attachmentsQuery(noteId));
   /*
@@ -147,16 +159,19 @@ export function Attachments({
   useEffect(() => {
     if (unlinkedCount > 0) setHadUnlinked(true);
   }, [unlinkedCount, noteId]);
-  // A question left open when the note locks would go on offering what it can no longer do.
+  // A question left open when the note locks would go on offering what it can no longer
+  // do. A lapse closes only the copy and move; a delete stays askable.
   useEffect(() => {
-    if (!readOnly) return;
-    setPending(null);
+    if (!readOnly && !lapsed) return;
+    if (readOnly) {
+      setPending(null);
+      setCleaning(false);
+    }
     setSending(null);
-    setCleaning(false);
-  }, [readOnly]);
+  }, [readOnly, lapsed]);
 
   function insertLink(file: AttachmentInfo) {
-    if (readOnly) return;
+    if (noWrites) return;
     const markdown = formatAttachmentMarkdown(file.filename, `files/${file.filename}`, {
       image: file.contentType.startsWith('image/'),
     });
@@ -430,8 +445,8 @@ export function Attachments({
                 <OverflowMenu
                   label={`More actions for ${file.filename}`}
                   className="attachments-more"
-                  disabled={readOnly || waiting}
-                  tip={held ?? (readOnly ? 'Not available offline' : undefined)}
+                  disabled={noWrites || waiting}
+                  tip={held ?? noWritesTip}
                   items={[
                     {
                       label: 'Copy to note…',
@@ -453,8 +468,8 @@ export function Attachments({
                   <Button
                     variant="quiet"
                     size="small"
-                    disabled={busy !== null || readOnly}
-                    tip={readOnly ? 'Not available offline' : undefined}
+                    disabled={busy !== null || noWrites}
+                    tip={noWritesTip}
                     onClick={() => insertLink(file)}
                   >
                     Insert link

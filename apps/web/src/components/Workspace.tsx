@@ -117,8 +117,11 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   /*
      And read-only when the account's plan has ended (MAK-108): every write but a delete
      is refused by the server, so the inputs say so before anyone types rather than after
-     a refused save. The same `readOnly` the trash uses, since what it means to the editor
-     is the same; only the word in the head differs.
+     a refused save. The same `readOnly` the trash uses for the inputs, and not for the
+     rest: the trash withdraws the ⋯ menu and the files panel, because a trashed note has
+     nothing to do but come back; a lapsed account keeps Download and Delete, and its
+     files to open, download and delete, which is what the banner promises. Only the
+     writes go — History's restore, Duplicate, saving web images, adding a file.
   */
   const { inactive: planInactive } = usePlan();
   const readOnly = inTrash || planInactive;
@@ -1630,7 +1633,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
           */}
           {/* A trashed note has neither action, and a ⋯ that opens an empty box is worse
               than no ⋯ — so the trigger goes with its contents. */}
-          {!readOnly && (
+          {!inTrash && (
             <span className="overflow-slot" ref={overflowSlot}>
               <OverflowMenu
                 label="More actions"
@@ -1639,8 +1642,9 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
                 disabled={offline}
                 tip={offline ? 'Not available offline' : undefined}
                 items={[
-                  // Only when there is something to save; the count says how much.
-                  ...(remoteImages.length > 0
+                  // Only when there is something to save; the count says how much. Not
+                  // for a lapsed account, nor Duplicate or History below: each is a write.
+                  ...(remoteImages.length > 0 && !planInactive
                     ? [
                         {
                           label: `Save ${remoteImages.length} web image${remoteImages.length === 1 ? '' : 's'}`,
@@ -1648,7 +1652,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
                         },
                       ]
                     : []),
-                  { label: 'Duplicate', onSelect: () => void duplicateNote() },
+                  ...(planInactive ? [] : [{ label: 'Duplicate', onSelect: () => void duplicateNote() }]),
                   { label: 'Download', href: api.noteDownloadUrl(noteId) },
                   /*
                      Earlier versions of the note's text, and a way back to one. Beside
@@ -1658,15 +1662,19 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
                      draft is flushed as the sheet opens, so by the time a version is
                      picked the server already has what is on screen.
                   */
-                  {
-                    label: 'History',
-                    disabled: frozen,
-                    onSelect: () => {
-                      historyFlush.current = flush();
-                      setHistoryMounted(true);
-                      setHistoryFor(noteId);
-                    },
-                  },
+                  ...(planInactive
+                    ? []
+                    : [
+                        {
+                          label: 'History',
+                          disabled: frozen,
+                          onSelect: () => {
+                            historyFlush.current = flush();
+                            setHistoryMounted(true);
+                            setHistoryFor(noteId);
+                          },
+                        },
+                      ]),
                   {
                     label: 'Delete',
                     tone: 'danger' as const,
@@ -1822,7 +1830,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       */}
       <div className="fields-inline">{fieldsBlock(filingRows)}</div>
 
-      {!readOnly && (
+      {!inTrash && (
         <Attachments
           noteId={note.id}
           /*
@@ -1836,6 +1844,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
           editorView={editorView}
           onBodyRewrite={rewriteBody}
           readOnly={frozen}
+          lapsed={planInactive}
         />
       )}
 
