@@ -117,12 +117,13 @@ for the next control in the same sweep, on keyboard focus, and never on touch. A
 
 Every icon-only control gets one, alongside its `aria-label` — the tip is drawn, the label
 is the name. The one exception is the × inside a chip: the chip already names what it
-removes, and a bubble on every chip's cross in a row of them would be noise. A tip that says more than the name — why a control is faded, above all —
-must be read out too: `Button`'s `tip` prop writes `data-tip` and `aria-description`
-together, and a raw `<button>` sets both itself. A disabled button cannot be focused, so a
-reason that is only drawn never reaches a screen reader. `data-tip-side="right"` puts it beside a control in a column of them, like
-the rail's strip. `title` stays only on text an ellipsis may cut short, where a fast bubble
-would flash over every row a pointer crosses.
+removes, and a bubble on every chip's cross in a row of them would be noise. A tip that
+says more than the name — why a control is faded, above all — must be read out too:
+`Button`'s `tip` prop writes `data-tip` and `aria-description` together, and a raw
+`<button>` sets both itself. A disabled button cannot be focused, so a reason that is only
+drawn never reaches a screen reader. `data-tip-side="right"` puts it beside a control in a
+column of them, like the rail's strip. `title` stays only on text an ellipsis may cut
+short, where a fast bubble would flash over every row a pointer crosses.
 
 ## Destructive actions
 
