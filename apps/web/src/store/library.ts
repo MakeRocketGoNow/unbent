@@ -343,12 +343,26 @@ export function resetLibraryForTests(): void {
   current = null;
 }
 
+/**
+ * A close in hand, so a second caller waits for it rather than going on to close the
+ * store under it. Three things can now ask for a close at once — the refused-session
+ * path, the broadcast from another tab's wipe, the outbox's `versionchange` — and each
+ * ends in `closeLocalStore`, which `db.ts` says must come after the collections' cleanup;
+ * a second caller that found `current` already null went straight there while the first
+ * close was still waiting on the search index and the outbox (found in review).
+ */
+let closing: Promise<void> = Promise.resolve();
+
 /** Closes the open library, if any, before the store is closed or wiped. */
 export async function closeLibrary(): Promise<void> {
   const open = current;
   current = null;
-  if (open) libraryChanged();
-  if (open) await open.library.then((l) => l.close()).catch(() => {});
+  if (open) {
+    libraryChanged();
+    const done = open.library.then((l) => l.close()).catch(() => {});
+    closing = Promise.all([closing, done]).then(() => {});
+  }
+  await closing;
 }
 
 /**
