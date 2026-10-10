@@ -12,6 +12,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  CircleDashed,
   CloudOff,
   CloudUpload,
   Code,
@@ -383,6 +384,39 @@ export function TagIcon() {
  */
 export function FieldsIcon() {
   return <RowIcon icon={SlidersHorizontal} />;
+}
+
+/**
+ * A notebook kept on this device, in the notebook list: a solid circle with a tick cut
+ * out of it once its files have all arrived, a dashed outline while they are still coming.
+ *
+ * The solid ticked circle is the mark this idea already has: Google Drive's "available
+ * offline" (Material's `offline_pin`) and OneDrive's "always keep on this device" are both
+ * it. The outlined lucide `CircleCheck` was tried first and read as "done" or "verified";
+ * the fill is what makes it the convention, and it also sets the mark apart from the
+ * outlined actions on the same row, which is right for a status. It is the one solid glyph
+ * in the app for that reason, and so drawn here: lucide has no filled icons. The tick is a
+ * hole in the shape (`evenodd`), not a stroke in the background colour, so it shows
+ * whatever is behind the row in either theme and on hover.
+ *
+ * Not a download arrow, which was the obvious glyph: the same row already has one, and it
+ * means "download this notebook as a zip". Not a cloud, since `OfflineIcon`'s crossed-out
+ * cloud is the banner's "you are offline", and a cloud with a tick says "synced", the
+ * opposite of "here". The dashed outline is the circle not yet filled, so a notebook whose
+ * files are still on their way does not claim to be ready for a flight.
+ */
+export function KeptIcon({ complete }: { complete: boolean }) {
+  if (!complete) return <RowIcon icon={CircleDashed} />;
+  return (
+    <svg width="1.15em" height="1.15em" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">
+      {/* The circle at lucide's outer edge (r 10 plus half its 2 stroke), less a tick
+          2.6 wide along lucide's own `CircleCheck` path. */}
+      <path
+        fillRule="evenodd"
+        d="M12 1a11 11 0 1 0 0 22a11 11 0 1 0 0-22zM6.58 12.92l3.92 3.92 6.92-6.92-1.84-1.84-5.08 5.08-2.08-2.08z"
+      />
+    </svg>
+  );
 }
 
 /**

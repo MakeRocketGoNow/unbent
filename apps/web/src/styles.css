@@ -5206,6 +5206,23 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   height: 0.95em;
 }
 
+/* The kept-on-this-device mark, after a notebook's note count: the count's own gap off
+   what is before it and its own fade, so the two read as one quiet tail on the name.
+   Centred rather than on the name's baseline, which an icon takes to be its bottom edge
+   and so sat a few pixels above the number beside it. */
+.label-name .label-kept {
+  display: inline-flex;
+  align-self: center;
+  flex: 0 0 auto;
+  margin-left: 0.4rem;
+  opacity: 0.7;
+}
+
+.label-kept svg {
+  width: 0.95em;
+  height: 0.95em;
+}
+
 /* The count that hugs the name, when a caller puts one there — a notebook's note count,
    like a field's value count on the notebook's own page. A small gap off the name, and it
    does not stretch, so the name's ellipsis still takes the slack on a narrow row. */
