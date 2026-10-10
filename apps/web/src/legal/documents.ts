@@ -85,7 +85,7 @@ export interface LegalOptions {
   backups: boolean;
 }
 
-const EFFECTIVE = '2026-09-08';
+const EFFECTIVE = '2026-10-09';
 
 /**
  * How many "other kinds of service" the policy lists, as the word the sentence needs. Two
@@ -99,8 +99,14 @@ const COUNT = ['', '', 'Two', 'Three', 'Four'] as const;
  * days, and again on 8 October 2026, when the backups were described (both MAK-171) —
  * without moving the terms', which did not. The deletion page restates the policy's
  * retention terms, so it carries this date too.
+ *
+ * Both dates moved on 9 October 2026 (MAK-209), when the policy gained its section on
+ * cookies, its California paragraph and the record of agreement, and both documents began
+ * saying how a change is put to people. That is also the first `LEGAL_VERSION`, which is
+ * the version people agree to; it moves only for a change worth asking everyone about,
+ * and these dates move for every change. `documents.test.ts` checks neither is older.
  */
-const PRIVACY_EFFECTIVE = '2026-10-08';
+const PRIVACY_EFFECTIVE = '2026-10-09';
 
 export interface LegalDocuments {
   privacy: LegalDocument;
@@ -155,6 +161,8 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
             'provider gives us if you use one. A password is stored only if you set one, and only ' +
             'as a hash. Passkeys are stored as public keys, which cannot be used to sign in as you ' +
             'anywhere else.',
+          'Your agreement — which version of the Terms of Service and this policy you agreed ' +
+            'to, and when, so that we can show what you agreed to and ask again when they change.',
           'Session records — for each device you sign in from, we store the IP address and browser ' +
             'user agent alongside the session, so that a session can be identified and revoked. ' +
             'Sessions expire after thirty days of disuse.',
@@ -209,6 +217,29 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
         ],
       },
       {
+        heading: 'Cookies, and what is kept on your device',
+        body: [
+          'Unbent sets one kind of cookie: the one that keeps you signed in. There are no ' +
+            'advertising, analytics or tracking cookies, and no other company sets a cookie ' +
+            'or stores anything on your device through Unbent.',
+          'Because all of it is needed to give you the service you asked for, none of it needs ' +
+            'your consent, and there is no cookie banner to dismiss. Clearing this site’s data ' +
+            'in your browser removes all of it, and signs you out.',
+          'What Unbent keeps on your device is there to run the app for you, and nothing else:',
+        ],
+        list: [
+          'A sign-in cookie, and beside it a short-lived signed copy of your session, so that ' +
+            'every page does not have to look it up again. Both are removed when you sign out.',
+          'Your notes, notebooks and tags, and the files you open or choose to keep offline, in ' +
+            'your browser’s own storage, so that the app opens and works without a connection. ' +
+            'They are removed from the device when you sign out.',
+          'The app itself, so that it loads with no connection.',
+          'Your preferences on this device, such as how wide the sidebar is or how notebooks are ' +
+            'sorted, and which account was last signed in here, so that losing your connection ' +
+            'is not mistaken for signing out.',
+        ],
+      },
+      {
         heading: 'Getting your data out',
         body: [
           'Settings has an Export that streams your entire account as a zip of ordinary Markdown ' +
@@ -260,6 +291,11 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
             'to you under the GDPR, along with the right to object to processing and to complain to ' +
             'your data protection authority; we process your information in order to provide the ' +
             'service you asked for. Note that your information is stored in the United States.',
+          'If you are in California, you have the right to know what personal information we ' +
+            'collect and how it is used, to have it corrected or deleted, and not to be treated ' +
+            'differently for asking. Everything this policy describes applies to you. We do not ' +
+            'sell or share your personal information, as California law uses those words, and ' +
+            'we have not done so in the past twelve months.',
           `For anything you cannot do from the app, write to ${operator.email}.`,
         ],
       },
@@ -280,10 +316,11 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
         ],
       },
       {
-        heading: 'Do Not Track',
+        heading: 'Do Not Track and Global Privacy Control',
         body: [
           'There is nothing to honour or ignore: Unbent does not track you across websites, with or ' +
-            'without a Do Not Track signal.',
+            'without a Do Not Track signal. A Global Privacy Control signal asks a site not to sell ' +
+            'or share your information, which Unbent never does, so it changes nothing either.',
           ...(opts.errorTracking
             ? [
                 'The one thing that does read it is error reporting, which is switched off ' +
@@ -295,9 +332,10 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
       {
         heading: 'Changes',
         body: [
-          'If this policy changes in a way that affects how your information is handled, the ' +
-            'effective date above changes with it. Continuing to use Unbent after that means the ' +
-            'new version applies.',
+          'If this policy changes, the effective date above changes with it. When the change ' +
+            'affects how your information is handled, you will be asked to agree to the new ' +
+            'version in the app before you go on using it — and if you do not, you can still ' +
+            'export your notes and delete your account.',
         ],
       },
       {
@@ -314,8 +352,9 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
     effective: EFFECTIVE,
     intro: [
       `These terms govern your use of Unbent, a notes service consisting of the website at ` +
-        `${operator.host} and its Android app, operated by ${operator.name}. Using Unbent means agreeing to ` +
-        `them. If you do not agree, please do not use it.`,
+        `${operator.host} and its Android app, operated by ${operator.name}. You agree to them, ` +
+        `and to the Privacy Policy, when the app asks you to before you first use it. If you do ` +
+        `not agree, please do not use it.`,
     ],
     sections: [
       {
@@ -435,9 +474,10 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
       {
         heading: 'Changes to these terms',
         body: [
-          'We may update these terms. When we do, the effective date above changes, and material ' +
-            'changes will be announced in the app before they take effect. Continuing to use ' +
-            'Unbent afterwards means accepting the new version; if you do not, delete your account.',
+          'We may update these terms. When we do, the effective date above changes. When the ' +
+            'change is material, the app will ask you to agree to the new version before you go ' +
+            'on using it. If you do not agree, you can still export your notes and delete your ' +
+            'account, and the version you agreed to before applies until you do.',
         ],
       },
       {
