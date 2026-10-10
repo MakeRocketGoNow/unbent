@@ -116,7 +116,10 @@ for the next control in the same sweep, on keyboard focus, and never on touch. A
 `title` waits over a second, every time, which made a row of icons a guessing game.
 
 Every icon-only control gets one, alongside its `aria-label` — the tip is drawn, the label
-is the name. `data-tip-side="right"` puts it beside a control in a column of them, like
+is the name. A tip that says more than the name — why a control is faded, above all —
+must be read out too: `Button`'s `tip` prop writes `data-tip` and `aria-description`
+together, and a raw `<button>` sets both itself. A disabled button cannot be focused, so a
+reason that is only drawn never reaches a screen reader. `data-tip-side="right"` puts it beside a control in a column of them, like
 the rail's strip. `title` stays only on text an ellipsis may cut short, where a fast bubble
 would flash over every row a pointer crosses.
 

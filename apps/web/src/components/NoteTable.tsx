@@ -158,6 +158,7 @@ export function NoteTable({
                       // as a search starts and ends — see `ranked`.
                       disabled={ranked}
                       data-tip={ranked ? 'Matches are in order of relevance' : undefined}
+                      aria-description={ranked ? 'Matches are in order of relevance' : undefined}
                       onClick={() => onSort(target)}
                     >
                       {col.label}

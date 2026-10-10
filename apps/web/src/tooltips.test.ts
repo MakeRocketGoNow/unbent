@@ -117,18 +117,6 @@ describe('installTooltips', () => {
     expect(open()).toBe(false);
   });
 
-  it('describes the control only when the tip says more than its name', () => {
-    a.focus();
-    expect(open()).toBe(true);
-    expect(a.hasAttribute('aria-describedby')).toBe(false);
-    b.focus();
-    expect(bubble().textContent).toBe('Sort notes');
-    expect(b.getAttribute('aria-describedby')).toBe('app-tip');
-    b.blur();
-    expect(open()).toBe(false);
-    expect(b.hasAttribute('aria-describedby')).toBe(false);
-  });
-
   it('follows the text when it changes while showing', async () => {
     a.focus();
     a.dataset.tip = 'Copied';

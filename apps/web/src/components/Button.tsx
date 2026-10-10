@@ -41,6 +41,13 @@ export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement
    * share the way it shares `btn-primary`.
    */
   size?: 'default' | 'small' | 'large';
+  /**
+   * The tooltip (`tooltips.ts`), and the control's accessible description: what the
+   * button's name does not say — why it is faded, or what it will do beyond its word.
+   * One prop for both because the bubble is only drawn, and a disabled button can never
+   * be focused to have it read out; a native `title` used to be both at once.
+   */
+  tip?: string | undefined;
   /** Escape hatch for layout only (margins, grid placement) — never for restyling. */
   className?: string;
 }
@@ -68,6 +75,7 @@ export function Button({
   variant = 'secondary',
   tone = 'default',
   size = 'default',
+  tip,
   className,
   ...rest
 }: ButtonProps) {
@@ -84,7 +92,7 @@ export function Button({
     .join(' ');
 
   return (
-    <button type="button" className={classes} {...rest}>
+    <button type="button" className={classes} data-tip={tip} aria-description={tip} {...rest}>
       {children}
     </button>
   );

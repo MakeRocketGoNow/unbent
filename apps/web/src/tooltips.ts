@@ -20,9 +20,12 @@
  * a phone needs carries it some other way — its name, or a word under it on a tap, as
  * `NotSyncedMark` does.
  *
- * Not a replacement for the accessible name. An icon button still needs `aria-label`;
- * the tip is drawn, and only described to a screen reader (`aria-describedby`, while it
- * shows) when it says something the name does not.
+ * Drawn only, never read out. An icon button still needs its `aria-label`, and a tip that
+ * says more than the name — why a control is faded, above all — needs `aria-description`
+ * beside it, which `Button`'s `tip` prop writes for both. Tying the description to the
+ * bubble was tried: `aria-describedby` set while it showed. A disabled button cannot be
+ * focused, so its reason never reached a screen reader at all, where `title` had always
+ * carried it.
  *
  * `title` stays where it is the right tool: on text cut short by an ellipsis, which shows
  * its whole self after the usual wait. A fast bubble there would flash over every row a
@@ -35,7 +38,8 @@ export function installTooltips(doc: Document = document): () => void {
   const bubble = doc.createElement('div');
   bubble.className = 'tip';
   bubble.id = 'app-tip';
-  bubble.setAttribute('role', 'tooltip');
+  // Hidden from the accessibility tree: what it says is on the control already.
+  bubble.setAttribute('aria-hidden', 'true');
   // `manual`: nothing but this module opens or closes it. An `auto` popover would close
   // any other open popover — a menu, say — the moment a tip appeared over it.
   bubble.setAttribute('popover', 'manual');
@@ -48,8 +52,6 @@ export function installTooltips(doc: Document = document): () => void {
   let closedAt = -Infinity;
   /** Pressed, so not shown again until the pointer leaves it. */
   let pressed: HTMLElement | null = null;
-  /** What `aria-describedby` held before the tip was added to it, to put back. */
-  let describedBefore: string | null = null;
   let watcher: MutationObserver | undefined;
 
   const cancel = () => {
@@ -62,8 +64,6 @@ export function installTooltips(doc: Document = document): () => void {
     cancel();
     if (!shown) return;
     watcher?.disconnect();
-    if (describedBefore === null) shown.removeAttribute('aria-describedby');
-    else shown.setAttribute('aria-describedby', describedBefore);
     shown = null;
     closedAt = view.performance.now();
     if (popoverOpen(bubble)) bubble.hidePopover();
@@ -77,11 +77,6 @@ export function installTooltips(doc: Document = document): () => void {
     if (shown !== el) {
       hide();
       shown = el;
-      describedBefore = el.getAttribute('aria-describedby');
-      // A tip that says no more than the name would be read twice.
-      if (text !== accessibleName(el)) {
-        el.setAttribute('aria-describedby', [describedBefore, bubble.id].filter(Boolean).join(' '));
-      }
       // The text can change while it shows — Copy becoming Copied — and the bubble follows.
       watcher = new MutationObserver(() => (el.dataset.tip ? show(el) : hide()));
       watcher.observe(el, { attributes: true, attributeFilter: ['data-tip'] });
@@ -252,10 +247,6 @@ function popoverOpen(el: HTMLElement): boolean {
     // An engine without popovers: the bubble is shown by `data-open` alone.
     return false;
   }
-}
-
-function accessibleName(el: HTMLElement): string {
-  return (el.getAttribute('aria-label') ?? el.textContent ?? '').trim();
 }
 
 function focusVisible(el: HTMLElement): boolean {

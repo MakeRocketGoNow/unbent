@@ -1530,7 +1530,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
               // widen when the connection drops and narrow when it returns.
               disabled={autofilling || frozen || offline}
               aria-label={autofilling ? 'Reading…' : 'Auto-fill'}
-              data-tip={
+              tip={
                 offline
                   ? 'Auto-fill needs a connection'
                   : 'Fill in the title, notebook, tags and fields from what the note and its files say'

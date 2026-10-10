@@ -219,6 +219,8 @@ describe('Attachments on a locked note', () => {
     expect(button('Delete').disabled).toBe(true);
     expect(button('More actions for scan.pdf').disabled).toBe(true);
     expect(button('Insert link').dataset.tip).toBe('Not available offline');
+    // Read out as well as drawn: a disabled button cannot be focused to show its tip.
+    expect(button('Insert link').getAttribute('aria-description')).toBe('Not available offline');
     expect(button('Copy').disabled).toBe(false);
     expect(screen.getByRole('link', { name: 'scan.pdf' })).toBeTruthy();
 

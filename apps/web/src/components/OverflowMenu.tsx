@@ -108,7 +108,7 @@ interface OverflowMenuProps {
    * ⋯ when the connection drops moves the title under the reader's eye. `tip` says why.
    */
   disabled?: boolean;
-  /** The trigger's tooltip (`tooltips.ts`). */
+  /** The trigger's tooltip (`tooltips.ts`) and accessible description, as on `Button`. */
   tip?: string | undefined;
 }
 
@@ -164,6 +164,7 @@ export function OverflowMenu({
         // A ⋯ is a glyph and says nothing alone; a trigger with a face of its own — the
         // avatar, the count — already says what it opens.
         data-tip={tip ?? (trigger === undefined ? label : undefined)}
+        aria-description={tip}
         onClick={() => setOpen((o) => !o)}
       >
         {trigger ?? '⋯'}

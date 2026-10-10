@@ -466,6 +466,7 @@ export function EditorToolbar({
               role="radio"
               aria-checked={noteView.current === value}
               data-tip={title}
+              aria-description={title}
               onMouseDown={(e) => {
                 e.preventDefault();
                 noteView.onChange(value);
