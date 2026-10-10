@@ -82,6 +82,11 @@ export function installTooltips(doc: Document = document): () => void {
       watcher.observe(el, { attributes: true, attributeFilter: ['data-tip'] });
     }
     bubble.textContent = text;
+    // Measured at the origin: left where the last tip was — clamped against the window's
+    // right edge, say — a long text would wrap into the room left there, and be placed as
+    // a narrow box that then reflows wide.
+    bubble.style.left = '0px';
+    bubble.style.top = '0px';
     // Opened before it is measured, since a closed bubble has no size; it is placed in the
     // same frame, so it is never drawn where it does not belong.
     bubble.setAttribute('data-open', '');
