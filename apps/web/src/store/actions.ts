@@ -176,7 +176,17 @@ const noticeKey = (attachmentId: string) => `upload-notice:${attachmentId}`;
 /** What an outbox entry runs; the library does not export the name. */
 type MutationFn = Parameters<typeof startOfflineExecutor>[0]['mutationFns'][string];
 
-export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'>): Outbox {
+/**
+ * What the outbox tells the library about: its database being deleted under it. A
+ * sign-out in another tab removes every account's outbox (`store/wipe.ts`); this tab's
+ * connection is closed at once so that delete can go through, and the library it belongs
+ * to is told, since an outbox with no database is not one anything can queue on.
+ */
+export interface OutboxEvents {
+  onDeleted?: () => void;
+}
+
+export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'>, events: OutboxEvents = {}): Outbox {
   const conflicts = new Map<string, Conflict>();
   /** The notes each waiting entry is about, by entry id. */
   const entryNotes = new Map<string, string[]>();
@@ -499,7 +509,26 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
   // and the conflicts still waiting on a choice.
   const ready = executor
     .waitForInit()
-    .then(() => Promise.all([executor.peekOutbox(), storage.keys()]))
+    .then(() => {
+      /*
+       * The connection the adapter opened on init, closed the moment another tab asks
+       * for the database to be deleted, which IndexedDB tells every connection through
+       * `versionchange`. The adapter sets no handler, so a delete requested while this
+       * tab was open waited on it for ever, and every open of the same database after
+       * it — the next sign-in's — queued behind the delete (seen with three tabs open,
+       * 2026-10-10). Closing here is what the standard pattern asks of a connection and
+       * what lets the delete go through; the library is told and closes itself with the
+       * outbox. The same private field `dispose` closes, pinned by `pins.test.ts`.
+       */
+      const db = (adapter as unknown as { db?: IDBDatabase | null }).db;
+      if (db) {
+        db.onversionchange = () => {
+          db.close();
+          events.onDeleted?.();
+        };
+      }
+      return Promise.all([executor.peekOutbox(), storage.keys()]);
+    })
     .then(async ([entries, keys]) => {
       for (const t of entries) {
         entryNotes.set(t.id, notesOf(t.metadata as Record<string, unknown> | undefined));

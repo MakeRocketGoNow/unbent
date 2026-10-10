@@ -489,7 +489,11 @@ async function open(userId: string): Promise<Library> {
   };
   window.addEventListener('pageshow', onPageShow);
 
-  const outbox = createOutbox(userId, { ...collections, userId, engine });
+  const outbox = createOutbox(userId, { ...collections, userId, engine }, {
+    // Another tab is wiping this device's copies: this library goes with its outbox,
+    // keeping every file, as `closeLocalStores` does for a refused session.
+    onDeleted: () => void closeLibrary(),
+  });
   await outbox.ready;
 
   /*
