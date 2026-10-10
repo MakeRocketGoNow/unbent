@@ -56,8 +56,19 @@ describe('installTooltips', () => {
     target.dispatchEvent(event);
   };
 
+  /**
+   * Whether a focus counts as the keyboard's. Stubbed rather than left to jsdom, whose own
+   * `:focus-visible` turns false after any keydown and stays that way for the whole file.
+   */
+  let keyboardFocus = true;
+
   beforeEach(() => {
     vi.useFakeTimers();
+    keyboardFocus = true;
+    const matches = Element.prototype.matches;
+    vi.spyOn(Element.prototype, 'matches').mockImplementation(function (this: Element, selector: string) {
+      return selector === ':focus-visible' ? keyboardFocus : matches.call(this, selector);
+    });
     document.body.innerHTML = `
       <button id="a" aria-label="Tags" data-tip="Tags"><svg></svg></button>
       <button id="b" aria-label="Sort notes, currently newest" data-tip="Sort notes"></button>`;
@@ -68,6 +79,7 @@ describe('installTooltips', () => {
 
   afterEach(() => {
     uninstall();
+    vi.restoreAllMocks();
     vi.useRealTimers();
   });
 
@@ -114,6 +126,24 @@ describe('installTooltips', () => {
     expect(open()).toBe(false);
     pointer('pointerover', a);
     vi.advanceTimersByTime(SHOW_DELAY_MS);
+    expect(open()).toBe(false);
+  });
+
+  it('shows at once on keyboard focus, and closes on blur or Escape', () => {
+    a.focus();
+    expect(open()).toBe(true);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(open()).toBe(false);
+    b.focus();
+    expect(bubble().textContent).toBe('Sort notes');
+    b.blur();
+    expect(open()).toBe(false);
+  });
+
+  // Otherwise every button pressed with a mouse would wear its label afterwards.
+  it('stays closed for focus that came from a click', () => {
+    keyboardFocus = false;
+    a.focus();
     expect(open()).toBe(false);
   });
 
