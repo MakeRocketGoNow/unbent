@@ -157,7 +157,7 @@ describe('the webhook', () => {
     // A newer event, then an older one delivered late: the row stays with the newer.
     const later = subscription({ status: 'canceled', current_billing_period: null, items: [{ status: 'active', quantity: 1, price: { id: 'pri_local_plan' } }] });
     expect(await (await deliver({ event_id: `evt_${customer}_3`, event_type: 'subscription.canceled', occurred_at: '2026-10-12T00:00:00Z', data: later })).json()).toEqual({ applied: true });
-    expect(await (await deliver({ event_id: `evt_${customer}_2`, event_type: 'subscription.updated', occurred_at: '2026-10-11T00:00:00Z', data: subscription() })).json()).toEqual({ applied: true });
+    expect(await (await deliver({ event_id: `evt_${customer}_2`, event_type: 'subscription.updated', occurred_at: '2026-10-11T00:00:00Z', data: subscription() })).json()).toEqual({ applied: false, reason: 'older' });
     plan = (await (await call('GET', '/api/me/plan')).json()) as typeof plan;
     expect(plan).toMatchObject({ state: 'active', storageGb: 10, until: Date.parse('2027-10-10T00:00:00Z') });
     expect(((await (await call('GET', '/api/me/plan')).json()) as { subscription: { status: string } }).subscription.status).toBe('canceled');
