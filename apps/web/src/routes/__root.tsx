@@ -230,6 +230,7 @@ function AppShell() {
    */
   useEffect(() => {
     if (isPending || session?.user) return;
+    // The library is closed by `recordSession` on the same answer; see `store/wipe.ts`.
     // The app, if there is one, takes over from here; see `requireSession`.
     postToApp({ type: 'unauthorized' });
     void navigate({ to: '/login', replace: true });

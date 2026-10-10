@@ -176,7 +176,19 @@ const noticeKey = (attachmentId: string) => `upload-notice:${attachmentId}`;
 /** What an outbox entry runs; the library does not export the name. */
 type MutationFn = Parameters<typeof startOfflineExecutor>[0]['mutationFns'][string];
 
-export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'>): Outbox {
+/**
+ * What the outbox tells the library about: IndexedDB asking this tab's connection to
+ * close, because another tab is deleting the database — a sign-out removes every
+ * account's outbox (`store/wipe.ts`) — or opening it at a newer version, which a later
+ * deploy's schema would. The connection is closed at once so the other tab's request
+ * can go through, and the library it belongs to is told, since an outbox with no
+ * connection is not one anything can queue on.
+ */
+export interface OutboxEvents {
+  onAskedToClose?: () => void;
+}
+
+export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'>, events: OutboxEvents = {}): Outbox {
   const conflicts = new Map<string, Conflict>();
   /** The notes each waiting entry is about, by entry id. */
   const entryNotes = new Map<string, string[]>();
@@ -268,6 +280,8 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     );
 
   const adapter = new IndexedDBAdapter(outboxName(userId));
+  /** The adapter's connection: a private field, pinned by `pins.test.ts`; null until its first use. */
+  const connection = () => (adapter as unknown as { db?: IDBDatabase | null }).db ?? null;
   const storage = watched(adapter, () => touch());
   const executor = startOfflineExecutor({
     // Both, so a reload restores an upload's row as it restores a save's text.
@@ -501,6 +515,25 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     .waitForInit()
     .then(() => Promise.all([executor.peekOutbox(), storage.keys()]))
     .then(async ([entries, keys]) => {
+      /*
+       * Closed the moment another tab asks for the database to be deleted or opened at
+       * a newer version, which IndexedDB tells every connection through `versionchange`
+       * and which the adapter does not listen for. A delete held open by this handler's
+       * absence is what wedged every later sign-in on the device; the story is on
+       * `CHANNEL` in `store/wipe.ts`. The library is told, and closes with the outbox.
+       *
+       * After `keys()`, not after `waitForInit`: the adapter opens its database on first
+       * use, and on init only the tab that leads the outbox uses it (it restores the
+       * entries); in every other tab — the ones a sign-out elsewhere is about — the
+       * connection does not exist until the read above.
+       */
+      const db = connection();
+      if (db) {
+        db.onversionchange = () => {
+          db.close();
+          events.onAskedToClose?.();
+        };
+      }
       for (const t of entries) {
         entryNotes.set(t.id, notesOf(t.metadata as Record<string, unknown> | undefined));
         // The executor's private cleanup, for the reason given below; an upload a reload
@@ -615,7 +648,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
        * once, after the executor has stopped. A pinned version; the fallback is a database
        * left behind, which holds no rows after `dispose` and is removed on the next wipe.
        */
-      (adapter as unknown as { db?: IDBDatabase | null }).db?.close?.();
+      connection()?.close?.();
     },
   };
 }
