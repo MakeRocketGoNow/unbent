@@ -182,6 +182,18 @@ describe('other tabs', () => {
     expect(deleted.sort()).toEqual(['unbent-outbox-a', 'unbent-outbox-b']);
   });
 
+  it('run what the caller asks once a received close has settled', async () => {
+    device(files, dbs);
+    channels();
+    const onClosed = vi.fn();
+    const stop = installLibraryCloser(onClosed);
+    // Another tab's wipe, as this tab hears it.
+    new BroadcastChannel('unbent-libraries').postMessage({ type: 'close' });
+    await vi.waitFor(() => expect(closeLibrary).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(onClosed).toHaveBeenCalledTimes(1));
+    stop();
+  });
+
   it('are not a reason a browser without the channel cannot wipe', async () => {
     const { deleted } = device(files, dbs);
     vi.stubGlobal('BroadcastChannel', undefined);

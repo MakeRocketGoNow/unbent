@@ -13,7 +13,7 @@ import { adoptHostLayout } from './app-bridge.js';
 import { openSitePath } from './useHostApp.js';
 import { registerServiceWorker, setInstanceKind } from './sw-register.js';
 import { installConnectivity } from './connectivity.js';
-import { installSessionRecheck } from './auth-client.js';
+import { installSessionRecheck, refreshSession } from './auth-client.js';
 import { isOfflineError } from './notes-api.js';
 import { onUploaded } from './store/actions.js';
 import { installLibraryCloser } from './store/wipe.js';
@@ -83,9 +83,11 @@ installSessionRecheck();
 
 /*
  * A sign-out or a change of account in another tab of this origin closes the library
- * here, so the wipe there is not held behind what this tab holds; see `store/wipe.ts`.
+ * here, so the wipe there is not held behind what this tab holds, and then asks the
+ * server who is signed in, so this tab does not open the old account again from the
+ * session it remembers; see `store/wipe.ts`.
  */
-installLibraryCloser();
+installLibraryCloser(() => void refreshSession().catch(() => null));
 
 /*
  * A file added with no connection is uploaded from the outbox when there is one, by which

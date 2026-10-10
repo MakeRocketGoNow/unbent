@@ -99,12 +99,20 @@ function closeLibrariesInOtherTabs(): void {
  * file: what `closeLocalStores` does for a refused session, for the same reason — this tab
  * decides nothing about the account; the one wiping has. Installed once, at start, and
  * before any wipe can post: the wipe posts on this listener's own object.
+ *
+ * `onClosed` runs once the close has settled. The caller passes a check of the session
+ * with the server (`main.tsx`): this tab's session store still names the account the
+ * other tab just signed out, and its next navigation would open that account's library
+ * again from the cached answer — making the files the wipe just removed anew, and for a
+ * different person's sign-in, pulling their feed into a file named for the old account
+ * (found in review). Passed in rather than imported, since `auth-client` reaches this
+ * module through `offline-cache` and the import would be a cycle.
  */
-export function installLibraryCloser(): () => void {
+export function installLibraryCloser(onClosed?: () => void): () => void {
   if (typeof BroadcastChannel === 'undefined') return () => {};
   const mine = new BroadcastChannel(CHANNEL);
   mine.onmessage = (event: MessageEvent<{ type?: string }>) => {
-    if (event.data?.type === 'close') void closeLocalStores();
+    if (event.data?.type === 'close') void closeLocalStores().then(onClosed);
   };
   channel = mine;
   return () => {
