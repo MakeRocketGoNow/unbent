@@ -117,6 +117,14 @@ describe('installTooltips', () => {
     expect(open()).toBe(false);
   });
 
+  it('closes when its control is removed while it shows', async () => {
+    a.focus();
+    expect(open()).toBe(true);
+    a.remove();
+    await Promise.resolve();
+    expect(open()).toBe(false);
+  });
+
   it('follows the text when it changes while showing', async () => {
     a.focus();
     a.dataset.tip = 'Copied';

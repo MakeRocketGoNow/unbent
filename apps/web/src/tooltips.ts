@@ -77,8 +77,17 @@ export function installTooltips(doc: Document = document): () => void {
     if (shown !== el) {
       hide();
       shown = el;
-      // The text can change while it shows — Copy becoming Copied — and the bubble follows.
-      watcher = new MutationObserver(() => (el.dataset.tip ? show(el) : hide()));
+      // Watched while it shows, for two things nothing else reports. The text can change
+      // under the pointer — the rail's toggle goes from Collapse to Expand sidebar — and
+      // the bubble follows. And the control can go: a removed element gets no `pointerout`,
+      // and in some browsers no `focusout`, so Save in the label editor, or the not-synced
+      // cloud once the note syncs, would leave a bubble floating over nothing. Connected
+      // only while a bubble is up, so it costs nothing the rest of the time.
+      watcher = new MutationObserver(() => {
+        if (!el.isConnected || !el.dataset.tip) hide();
+        else if (el.dataset.tip.trim() !== bubble.textContent) show(el);
+      });
+      watcher.observe(doc.body, { childList: true, subtree: true });
       watcher.observe(el, { attributes: true, attributeFilter: ['data-tip'] });
     }
     bubble.textContent = text;
