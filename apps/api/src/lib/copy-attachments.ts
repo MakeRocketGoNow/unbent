@@ -5,7 +5,7 @@ import {
 } from '@unbent/shared';
 import type { AttachmentsRepo } from './attachments-repo.js';
 import type { NotesRepo } from './notes-repo.js';
-import { assertRoom } from './quota.js';
+import { assertRoom, storageExceeded } from './quota.js';
 
 /** One file after a copy: what it was asked for as, and what it is called now. */
 export interface CopiedAttachment extends AttachmentInfo {
@@ -113,7 +113,18 @@ export async function copyAttachments(
     if (!stored) throw new Error(`Copy failed for ${requested}`);
 
     const row = { id, noteId: input.to, filename, contentType: source.content_type, size: stored.size, r2Key: key };
-    const info = input.skipExisting ? await attachments.record(row, { ifAbsent: true }) : await attachments.record(row);
+    // The quota decided again as the row is recorded, atomically with the sum (see
+    // `AttachmentsStore.record`); a move adds nothing and is not checked.
+    const quota = input.move ? null : input.quota;
+    let info: AttachmentInfo | null;
+    try {
+      info = input.skipExisting ? await attachments.record(row, { ifAbsent: true, quota }) : await attachments.record(row, { quota });
+    } catch (err) {
+      const full = storageExceeded(err);
+      if (!full) throw err;
+      await blobs.delete(key).catch(() => {});
+      throw full;
+    }
     if (!info) {
       // Another request recorded this name first; its copy is the file. Ours is an orphan.
       await blobs.delete(key);

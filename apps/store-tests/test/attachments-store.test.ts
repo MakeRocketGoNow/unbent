@@ -38,6 +38,29 @@ describe('attachments', () => {
     expect(await stub.recountNotes()).toBe(0);
   });
 
+  /**
+   * The plan's quota (MAK-108) is decided in the transaction that records the row, on
+   * the sum the triggers keep: a file that fits exactly fits, one byte more is refused
+   * with the numbers, and nothing of the refused one is written.
+   */
+  it('refuses a file past the quota as it records it, and writes nothing of it', async () => {
+    const { stub } = freshStore('att-quota');
+    const n = await stub.create({ id: 'n1', title: 'T', body: '', tags: [] });
+    await stub.recordAttachment({ ...file(n.id, { id: 'a1' }), size: 900 }, { quota: 1000 });
+    await expect(stub.recordAttachment({ ...file(n.id, { id: 'a2', filename: 'two.pdf' }), size: 101 }, { quota: 1000 })).rejects.toMatchObject({
+      code: 'STORAGE_FULL',
+      usedBytes: 900,
+      quotaBytes: 1000,
+      addingBytes: 101,
+    });
+    expect(await stub.attachmentBytes()).toBe(900);
+    expect((await stub.listAttachments(n.id)).map((f) => f.filename)).toEqual(['scan.pdf']);
+    // Exactly full fits; no quota means no check.
+    await stub.recordAttachment({ ...file(n.id, { id: 'a3', filename: 'three.pdf' }), size: 100 }, { quota: 1000 });
+    await stub.recordAttachment({ ...file(n.id, { id: 'a4', filename: 'four.pdf' }), size: 5000 }, { quota: null });
+    expect(await stub.attachmentBytes()).toBe(6000);
+  });
+
   it('records, resolves, lists, names around collisions and removes', async () => {
     const { stub } = freshStore('att');
     const n = await stub.create({ id: 'n1', title: 'T', body: '', tags: [] });

@@ -59,6 +59,16 @@ export async function assertRoom(attachments: AttachmentsRepo, quota: number | n
   if (used + adding > quota) throw new StorageFull(used, quota, adding);
 }
 
+/**
+ * The store's refusal, as it arrives over RPC: `StorageExceeded` in store/attachments.ts
+ * loses its class on the way and keeps its properties. Null for any other error.
+ */
+export function storageExceeded(err: unknown): StorageFull | null {
+  const e = err as { code?: unknown; usedBytes?: unknown; quotaBytes?: unknown; addingBytes?: unknown } | null;
+  if (e?.code !== STORAGE_FULL_CODE || typeof e.usedBytes !== 'number' || typeof e.quotaBytes !== 'number') return null;
+  return new StorageFull(e.usedBytes, e.quotaBytes, typeof e.addingBytes === 'number' ? e.addingBytes : 0);
+}
+
 /** The JSON a route answers a `StorageFull` with: the 402's body, with the numbers for the page. */
 export function storageFullBody(err: StorageFull) {
   return { code: err.code, error: err.message, usedBytes: err.usedBytes, quotaBytes: err.quotaBytes };

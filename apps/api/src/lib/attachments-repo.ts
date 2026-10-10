@@ -66,9 +66,9 @@ export class AttachmentsRepo extends StoreRepo {
     contentType: string;
     size: number;
     r2Key: string;
-  }): Promise<AttachmentInfo>;
-  record(input: Parameters<AttachmentsStore['record']>[0], opts: { ifAbsent: true }): Promise<AttachmentInfo | null>;
-  record(input: Parameters<AttachmentsStore['record']>[0], opts?: { ifAbsent?: boolean }): Promise<AttachmentInfo | null> {
+  }, opts?: { quota?: number | null }): Promise<AttachmentInfo>;
+  record(input: Parameters<AttachmentsStore['record']>[0], opts: { ifAbsent: true; quota?: number | null }): Promise<AttachmentInfo | null>;
+  record(input: Parameters<AttachmentsStore['record']>[0], opts?: { ifAbsent?: boolean; quota?: number | null }): Promise<AttachmentInfo | null> {
     return this.call((s) => s.recordAttachment(input, opts));
   }
 
