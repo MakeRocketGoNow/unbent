@@ -1040,6 +1040,33 @@ Rules that hold it together, each with a test:
   note (`createOrFind` / `duplicateOrFind`, which say `existing` beside a plain `Note`;
   `create` itself still refuses a taken id). Nothing else needs a client id yet.
 
+## The plan, and what a lapsed account may do
+
+An instance with the five `PADDLE_*` settings sells a plan (MAK-108; "Selling the plan" in
+the README), and every account on it is on its trial, paid for, comped, or lapsed. A
+lapsed account is **read-only**: every write is refused with a 402 except a delete, and
+reads, search, export and an assistant's reads keep working. Three things hold that:
+
+- **The rule is global and deny by default.** `requireActivePlan` in
+  `lib/plan-middleware.ts` runs in front of every `/api` route, and a request that is
+  not a read is refused unless `EXEMPT` there says otherwise, with its reason. A new
+  mutating route is read-only for a lapsed account until someone adds it to that list,
+  and `plan-middleware.test.ts` reads the app's route table and fails by name on any
+  mutating route that is neither exempt nor listed as gated — so a new route has to be
+  classified, out loud, in the commit that adds it. The MCP endpoint is one POST for
+  every tool, so its write tools check for themselves through `gatedRegistrar`
+  (`mcp/plan-gate.ts`), keyed on each tool's `readOnlyHint`.
+- **What the account is, is derived.** `planStateOf` works the row out against the
+  clock; nothing flips rows on a timer. A comp is a row with no Paddle ids, which the
+  webhook can never match, and it is set from the operator's page, never with a Paddle
+  discount — a 100% discount there still asks for a card.
+- **Bytes are checked where they come in.** Every path that stores or copies a file
+  passes a `quota` to `storeAttachment` or `copyAttachments` (lib/quota.ts); the sum it
+  is checked against is the store's own (schema 0008), never a read of the files table.
+
+Where billing is off — every fresh checkout, every fork — none of this exists: every
+account is active for good, the Plan tab is not drawn, and nothing reads a plan row.
+
 ## Rows read are still the budget
 
 The rows a Durable Object's SQLite reads and writes are metered as D1's were. Production

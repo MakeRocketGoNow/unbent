@@ -1344,6 +1344,56 @@ when the discount ends, so an account that should not pay — the owner, a gifte
 comped from the operator's page, with an end date or none, and Paddle never hears of it.
 Paddle discount codes are for marketing.
 
+Storage is enforced where bytes come in: an upload, a copy, a fetched picture or a
+duplicate past the plan's quota is a 402 that names the numbers, and the Plan page shows
+what the account holds against it. The sum is kept on each account's store by triggers
+(schema 0008), never by reading the files table.
+
+### Setting up Paddle
+
+Sandbox and live are two separate Paddle accounts, with separate logins, keys, prices and
+webhook secrets: [sandbox-vendors.paddle.com](https://sandbox-vendors.paddle.com) is for
+building against, and needs no approval; [vendors.paddle.com](https://vendors.paddle.com)
+is the real one, and its verification — the website review, the business and the
+identity checks — takes days, so start it early. Everything below is done in both, the
+sandbox first.
+
+1. **Catalog → Products.** Two products: the plan, with one price of $36 a year, and
+   the storage add-on, with one price of $12 a year and quantity turned on. The tax
+   category is Standard Digital Goods, which needs no approval. Copy both price ids,
+   `pri_…`.
+2. **Developer tools → Authentication.** An API key with `customer`, `transaction` and
+   `subscription` read and write and `customer_portal_session` write, which is shown
+   once; and a client-side token, which is public and ships in the page.
+3. **Checkout → Checkout configuration.** A default payment link — the homepage is fine,
+   and `https://localhost/` in the sandbox — and the payment methods to offer. The
+   checkout itself is Paddle's overlay on the Plan page, so no page of yours needs it.
+4. **Developer tools → Notifications.** A destination of type webhook at
+   `https://<host>/api/billing/webhook`, with the subscription events
+   (`subscription.created`, `activated`, `trialing`, `updated`, `past_due`, `paused`,
+   `resumed`, `canceled`) and `transaction.completed`. Its secret, `pdl_ntfset_…`, is
+   what every delivery is signed with. The Worker answers inside Paddle's five seconds
+   and applies each event once, in any order, so a retry or a late delivery changes
+   nothing.
+5. **The five settings** on the Worker, as secrets: `PADDLE_API_KEY`,
+   `PADDLE_WEBHOOK_SECRET`, `PADDLE_CLIENT_TOKEN`, `PADDLE_PLAN_PRICE_ID` and
+   `PADDLE_STORAGE_PRICE_ID`. Which environment they belong to is read off the key:
+   `pdl_sdbx_` is the sandbox, `pdl_live_` is live. In `.dev.vars` locally; `APP_URL`
+   must be set too, since the mail that says a plan has ended names it.
+
+Locally, Paddle cannot reach a webhook on `localhost`; a tunnel (`cloudflared tunnel
+--url http://localhost:<API_PORT>`) gives it an address for a session, or the sandbox's
+simulator sends a sample event to one. The live suite proves the rest with a signed body
+of its own (`apps/api/test/plan.test.ts`), given the dev server's secret as
+`PADDLE_WEBHOOK_SECRET`. Test cards are in Paddle's sandbox docs; `4242 4242 4242 4242`
+with any future date succeeds.
+
+Going live is the same five settings from the live account, after its verification. The
+website review wants the pricing public, and terms, a privacy policy and a refund policy
+naming Paddle as the merchant of record, which the built-in documents do not yet say; that
+is MAK-45 and MAK-46. Everything an account is told — the trial's end, a lapse, the mail —
+is the same in both environments.
+
 ## Deleting an account
 
 Settings → Maintenance, at the bottom, under everything else the page can destroy. The
