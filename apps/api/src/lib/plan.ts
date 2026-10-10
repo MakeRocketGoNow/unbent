@@ -115,6 +115,12 @@ export async function planRow(db: D1Database, userId: string): Promise<PlanRow |
   return row ? toRow(row) : null;
 }
 
+/** The row a Paddle customer id names, for the webhook; null for an id no row holds. */
+export async function planRowByCustomer(db: D1Database, customerId: string): Promise<PlanRow | null> {
+  const row = await db.prepare(`SELECT ${COLUMNS} FROM account_plan WHERE paddle_customer_id = ?1`).bind(customerId).first<RawRow>();
+  return row ? toRow(row) : null;
+}
+
 /**
  * The statement that starts an account's trial, as a statement so the sign-up hook and
  * `planFor` share it. Idempotent: an account that has a row keeps it, whatever it says.
