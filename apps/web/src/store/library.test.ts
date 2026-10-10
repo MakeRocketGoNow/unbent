@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { FEED_TIMEOUT_MS, FeedTimeoutError, LIBRARY_OPEN_TIMEOUT_MS, LIBRARY_ROOTS, LibraryOpenTimeoutError, acquireLibrary, currentLibrary, fetchJson, resetLibraryForTests, rootsOfNoteChanges } from './library.js';
+import { FEED_TIMEOUT_MS, FeedTimeoutError, LIBRARY_OPEN_TIMEOUT_MS, LIBRARY_ROOTS, LibraryOpenTimeoutError, acquireLibrary, closeLibraryAndStore, currentLibrary, fetchJson, resetLibraryForTests, rootsOfNoteChanges } from './library.js';
 import { openLocalStore } from './db.js';
 import { reportError } from '../report-error.js';
 
 vi.mock('./db.js', () => ({ openLocalStore: vi.fn(), closeLocalStore: vi.fn(async () => {}), openSearchDatabase: vi.fn() }));
+import { closeLocalStore } from './db.js';
 vi.mock('../report-error.js', () => ({ reportError: vi.fn() }));
 
 /**
@@ -137,6 +138,19 @@ describe('acquireLibrary', () => {
     vi.mocked(openLocalStore).mockRejectedValueOnce(new Error('no OPFS'));
     await expect(acquireLibrary('u1')).rejects.toThrow('no OPFS');
     expect(openLocalStore).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not start an open while a close is in hand, and gives up on a close that never ends', async () => {
+    vi.useFakeTimers();
+    // A store close that does not settle, as a wedged tab's would.
+    vi.mocked(closeLocalStore).mockImplementationOnce(() => new Promise(() => {}));
+    void closeLibraryAndStore();
+    const opened = acquireLibrary('u1');
+    const settled = expect(opened).rejects.toBeInstanceOf(LibraryOpenTimeoutError);
+    await vi.advanceTimersByTimeAsync(LIBRARY_OPEN_TIMEOUT_MS);
+    await settled;
+    expect(openLocalStore).not.toHaveBeenCalled();
+    expect(reportError).toHaveBeenCalledWith(expect.any(LibraryOpenTimeoutError), 'error');
   });
 
   it('is not a timeout that fires under an open that settled in time', async () => {

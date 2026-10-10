@@ -305,15 +305,19 @@ export function acquireLibrary(userId: string): Promise<Library> {
      * the error is reported. Whatever the open does finish later is closed, so a tab
      * that recovers does not hold the file against the next one.
      */
-    // After any close in hand, an abandoned open's included: the store is one per tab
-    // (`db.ts`), and an open that started while a close was still cleaning up got the
-    // store the close then shut under it (found in review).
-    await closing;
     const abandon = new AbortController();
-    const opening = open(userId, abandon.signal);
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(new LibraryOpenTimeoutError()), LIBRARY_OPEN_TIMEOUT_MS);
+    });
+    // After any close in hand, an abandoned open's included: the store is one per tab
+    // (`db.ts`), and an open that started while a close was still cleaning up got the
+    // store the close then shut under it (found in review). Under the same bound as the
+    // open, since a close that never finishes must not leave the app on "Opening your
+    // notes…" with nothing reported either; given up on, the open is never started.
+    const opening = closing.then(() => {
+      if (abandon.signal.aborted) throw abandon.signal.reason;
+      return open(userId, abandon.signal);
     });
     try {
       return await Promise.race([opening, timeout]);
@@ -354,10 +358,11 @@ export function acquireLibrary(userId: string): Promise<Library> {
   return library;
 }
 
-/** For tests: forgets an open that timed out, as a reload would. */
+/** For tests: forgets an open that timed out and a close still in hand, as a reload would. */
 export function resetLibraryForTests(): void {
   gaveUp = null;
   current = null;
+  closing = Promise.resolve();
 }
 
 /**
