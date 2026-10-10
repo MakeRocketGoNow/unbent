@@ -747,30 +747,6 @@ async function open(userId: string, abandon: AbortSignal): Promise<Library> {
     },
     state: () => latest ?? engine.state,
     socket: () => socketState,
-    close: async () => {
-      closed = true;
-      engine.stop();
-      window.removeEventListener('pageshow', onPageShow);
-      document.removeEventListener('visibilitychange', onVisible);
-      window.removeEventListener('online', pull);
-      unsubscribeConnectivity();
-      if (reconnect) clearTimeout(reconnect);
-      socket?.close();
-      stopKeeping();
-      stopKeptWatch();
-      keeper.stop();
-      giveUp.abort();
-      await searchReady;
-      await search?.sync.stop();
-      await outbox.dispose();
-      await engine.settled();
-      for (const s of subscriptions) s.unsubscribe();
-      if (collections) {
-        await Promise.all(Object.values(collections).map((c) => c.cleanup()));
-      }
-      // After its sync has stopped: a pass in hand finishes its write, and the file is free for a wipe.
-      await search?.index.close().catch(() => {});
-      await closeLocalStore();
-    },
+    close,
   };
 }
