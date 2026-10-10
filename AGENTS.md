@@ -661,30 +661,33 @@ IndexedDB database, and, in one tab, the leadership of each collection, through 
 other tabs' writes go. A wipe in one tab runs against all of that: the outbox's
 `deleteDatabase` waits on every open connection, and IndexedDB serves the requests on one
 name in order, so an open queued behind a waiting delete — the next sign-in's — waits for
-good, in every tab, until all of them are closed (seen with three tabs, 2026-10-10). Three
-things keep that from happening, and a new way to hold or wipe the library has to keep
-them: the wipe tells the other tabs, over the channel in `store/wipe.ts`
-(`installLibraryCloser`) — all but a tab holding the account a sign-in's wipe keeps, which
-keeps its library — and `recordSession` closes the library in any tab whose session
-the server has refused, so a tab left on the sign-in screen holds nothing; the outbox
-closes its connection on `versionchange`, which is how IndexedDB asks, and the library
-closes with it; and `acquireLibrary` answers its caller within `LIBRARY_OPEN_TIMEOUT_MS`
-whatever the open is doing — a refusal past the bound, reported, and the page reads the
-server — so a wedge is a page with no local copy rather than a dead app. Every open and
-close of the library is a step on one queue in `library.ts` (`enqueue`), run only after
-every step before it has settled and never abandoned; a new way to open or close the
-library is a new step there, never a call beside the queue, and what is bounded is what
-a caller waits, never the step (a wipe's wait is `CLOSE_WAIT_MS` in `store/wipe.ts`). A
-close that takes a stuck open's entry halts its engine, socket and listeners at once
-(`halt` in `open`), so an open a sign-out moved on past pulls nothing into a file the
-account no longer owns; the store and the outbox stay the step's. The
-other tabs' closes race the wipe: the outbox's delete completes once their connections
-have closed, and the store's files are tried again for a moment, since a file another
-tab's worker still holds cannot be removed. A tab told to close then asks the server who
-is signed in, so it does not open the old account again from the session it remembers.
-The leader that stops answering — a tab Chrome has frozen in the background holds its
-Web Locks and sends no heartbeats — is not something this code can release from another
-tab; the timeout is what bounds it.
+good, in every tab, until all of them are closed (seen with three tabs, 2026-10-10). The
+leader that stops answering — a tab Chrome has frozen in the background holds its Web
+Locks and sends no heartbeats — is not something this code can release from another tab;
+the open's bound, below, is what covers it.
+
+Three things keep a wipe from wedging the next sign-in, and a new way to hold or wipe the
+library has to keep them. The wipe tells the other tabs, over the channel in
+`store/wipe.ts` (`installLibraryCloser`) — all but a tab holding the account a sign-in's
+wipe keeps, which keeps its library — and `recordSession` closes the library in any tab
+whose session the server has refused, so a tab left on the sign-in screen holds nothing;
+a tab told to close then asks the server who is signed in, so it does not open the old
+account again from the session it remembers. The outbox closes its connection on
+`versionchange`, which is how IndexedDB asks, and the library closes with it. And
+`acquireLibrary` answers its caller within `LIBRARY_OPEN_TIMEOUT_MS` whatever the open is
+doing — a refusal past the bound, reported, and the page reads the server — so a wedge is
+a page with no local copy rather than a dead app. The other tabs' closes race the wipe:
+the outbox's delete completes once their connections have closed, and the store's files
+are tried again for a moment, since a file another tab's worker still holds cannot be
+removed.
+
+Every open and close of the library is a step on one queue in `library.ts` (`enqueue`),
+run only after every step before it has settled and never abandoned. A new way to open or
+close the library is a new step there, never a call beside the queue, and what is bounded
+is what a caller waits, never the step (a wipe's wait is `CLOSE_WAIT_MS` in
+`store/wipe.ts`). A close that takes a stuck open's entry halts its engine, socket and
+listeners at once (`halt` in `open`), so an open a sign-out moved on past pulls nothing
+into a file the account no longer owns; the store and the outbox stay the step's.
 
 **Offline is not `readOnly`, and it no longer locks.** The trash's `readOnly` turns the
 autosave off and drops the draft. Offline, the note is as editable as ever and the head
