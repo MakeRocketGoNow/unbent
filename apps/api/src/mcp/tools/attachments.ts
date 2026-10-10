@@ -64,7 +64,7 @@ const MAX_ASSISTANT_TEXT_CHARS = 100_000;
  * the editor.
  */
 export function registerAttachmentTools(
-  server: McpServer,
+  server: Pick<McpServer, 'registerTool'>,
   env: Pick<
     Env,
     'APP_URL' | 'BLOBS' | 'AI' | 'ALLOW_TEST_CREDENTIALS' | 'ANTHROPIC_API_KEY' | 'ATTACHMENT_FETCH_USER_AGENT'

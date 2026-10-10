@@ -153,7 +153,7 @@ function normalizeNotebook(value: string | null | undefined): string | null | un
   return value;
 }
 
-export function registerWriteTools(server: McpServer, notes: NotesRepo, links: AppLinks): void {
+export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, notes: NotesRepo, links: AppLinks): void {
   server.registerTool(
     'create_note',
     {

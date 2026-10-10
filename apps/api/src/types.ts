@@ -1,6 +1,7 @@
 import type { NotesRepo } from './lib/notes-repo.js';
 import type { AttachmentsRepo } from './lib/attachments-repo.js';
 import type { UserStore } from './store/user-store.js';
+import type { PlanRow } from './lib/plan.js';
 
 /** Bindings declared in wrangler.toml, plus secrets supplied via `wrangler secret`. */
 export interface Env {
@@ -353,6 +354,8 @@ export interface Variables {
   user?: SessionUser;
   /** Set by sessionMiddleware when the session could not be looked up at all. */
   sessionUnavailable?: boolean;
+  /** Set by requireActivePlan on a write it let through, for a route that wants the quota. */
+  plan?: PlanRow;
   /** Set by withRepos; already bound to the authenticated user. */
   notes: NotesRepo;
   attachments: AttachmentsRepo;

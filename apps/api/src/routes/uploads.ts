@@ -1,8 +1,10 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { MAX_ATTACHMENT_BYTES } from '@unbent/shared';
+import { MAX_ATTACHMENT_BYTES, PLAN_INACTIVE_CODE, PLAN_INACTIVE_MESSAGE } from '@unbent/shared';
 import { appLinks } from '../lib/app-links.js';
 import { chooseContentType } from '../lib/fetch-attachment.js';
+import { billingOn } from '../lib/paddle.js';
+import { planFor, planStateOf } from '../lib/plan.js';
 import { reposFor } from '../lib/repos.js';
 import { storeAttachment } from '../lib/store-attachment.js';
 import { claimUploadGrant } from '../lib/upload-grants.js';
@@ -75,6 +77,15 @@ export const uploads = new Hono<AppEnv>().use('/uploads/*', anyOrigin).put('/upl
   const grant = await claimUploadGrant(c.env.DB, c.req.param('token'));
   if (!grant) {
     return c.json({ error: `This upload link is unknown, already used, or expired. ${ASK_AGAIN}` }, 404);
+  }
+
+  /*
+     The plan, since this route has no session for `requireActivePlan` to read: the link
+     was minted by a tool the gate let through, but a plan can end in the minutes between.
+     Same answer as any other write's, so the assistant relaying it reads one sentence.
+  */
+  if (billingOn(c.env) && planStateOf(await planFor(c.env.DB, grant.userId), Date.now()) === 'inactive') {
+    return c.json({ code: PLAN_INACTIVE_CODE, error: PLAN_INACTIVE_MESSAGE }, 402);
   }
 
   const { attachments, notes } = reposFor(c.env, grant.userId);

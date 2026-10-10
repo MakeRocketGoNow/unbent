@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono';
 import { createMiddleware } from 'hono/factory';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
+import { planFor, updatePlan } from '../lib/plan.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import { deleteKeys } from '../lib/blobs.js';
@@ -43,6 +44,8 @@ const sweepByToken = createMiddleware<AppEnv>(async (c, next) => {
  * own note store, so none of them can see or touch another account. An operator-wide sweep would
  * need separate, deliberately privileged handling.
  */
+const testPlanBody = z.object({ plan: z.enum(['trial', 'active', 'inactive']), until: z.number().int().nullable() });
+
 export const admin = new Hono<AppEnv>()
   /**
    * Deletes R2 objects with no attachment row pointing at them.
@@ -204,6 +207,24 @@ export const admin = new Hono<AppEnv>()
       await dropDirectoryRow(c.env.DB, id);
     }
     return c.json({ users: results.length, wiped, failed });
+  })
+
+  /**
+   * The live suite's way of ending its own actor's plan (`test/plan.test.ts`), where
+   * `purge-fixtures` is its way of removing the actor: local only, by the same switch,
+   * and self-scoped — a session may move only its own row. The body is the row's `plan`
+   * and an end `until` in epoch milliseconds, or null for none. The operator's comp is
+   * the real control (`POST /admin/accounts/:id/plan`); this exists so the suite can
+   * reach `inactive` without waiting a fortnight.
+   */
+  .post('/admin/test/plan', requireAuth, async (c) => {
+    if (c.env.ALLOW_TEST_CREDENTIALS !== '1') return c.json({ error: 'Not found' }, 404);
+    const parsed = testPlanBody.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: 'plan and until, please' }, 400);
+    const userId = c.get('userId')!;
+    await planFor(c.env.DB, userId);
+    await updatePlan(c.env.DB, userId, { plan: parsed.data.plan, planUntil: parsed.data.until });
+    return c.json({ ok: true });
   })
 
   /*
