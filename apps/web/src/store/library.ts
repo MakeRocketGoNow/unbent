@@ -754,6 +754,14 @@ async function open(userId: string, abandon: AbortSignal): Promise<Library> {
   abandon.addEventListener('abort', onAbandon, { once: true });
   try {
     await outbox.ready;
+  } catch (err) {
+    // An outbox that failed under an abandoned open is still the abandoned open's
+    // close to wait for, not a failure of its own to settle on first.
+    if (abandon.aborted) {
+      await abandoned;
+      throw abandon.reason;
+    }
+    throw err;
   } finally {
     abandon.removeEventListener('abort', onAbandon);
   }
