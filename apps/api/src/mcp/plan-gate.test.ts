@@ -43,6 +43,6 @@ describe('gatedRegistrar', () => {
   });
 
   it('allows exactly the deletes and their undo', () => {
-    expect([...ALLOWED_INACTIVE].sort()).toEqual(['delete_note', 'delete_notebook', 'delete_notes', 'delete_tag', 'restore_note', 'restore_notes']);
+    expect([...ALLOWED_INACTIVE].sort()).toEqual(['delete_note', 'delete_notebook', 'delete_notes', 'delete_tag', 'restore_note', 'restore_notes', 'set_attachment_text']);
   });
 });

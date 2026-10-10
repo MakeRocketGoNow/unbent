@@ -10,8 +10,12 @@ import { toolError } from './tools/result.js';
  * connected is decided here.
  *
  * By the tool's own annotation, so a tool cannot be forgotten: one that does not say
- * `readOnlyHint: true` is a write and is gated unless its name is in `ALLOWED_INACTIVE`,
- * the deletes and the undo of a delete, as `exemptFromPlan` allows them over HTTP. The
+ * `readOnlyHint: true` is a write and is gated unless its name is in `ALLOWED_INACTIVE`:
+ * the deletes and the undo of a delete, as `exemptFromPlan` allows them over HTTP, and
+ * recording what the assistant read off a file, which is the same derived data the
+ * browser's pass writes through the exempt `PUT …/text` — not the person's writing, and
+ * a tool told to read a picture and then refused the recording would be told to do
+ * something it cannot. The
  * gate asks the plan once per call — one D1 read by key — and answers the model with the
  * sentence the page shows, as a tool error it can read and relay rather than an exception
  * that ends the conversation.
@@ -23,6 +27,7 @@ export const ALLOWED_INACTIVE: ReadonlySet<string> = new Set([
   'restore_notes',
   'delete_notebook',
   'delete_tag',
+  'set_attachment_text',
 ]);
 
 /** Answers the sentence to refuse with, or null to let the call through. */
