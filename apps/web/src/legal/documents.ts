@@ -127,7 +127,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
     effective: PRIVACY_EFFECTIVE,
     intro: [
       `This policy describes what Unbent collects, why, and what happens to it. Unbent is a ` +
-        `notes application: a website at ${operator.host} and an Android app that talks to it. It is ` +
+        `notes application: a website at ${operator.host} and Android and iOS apps that talk to it. It is ` +
         `operated by ${operator.name}.`,
       `The short version: your notes are yours, nothing is sold or shared for advertising, ` +
         `nothing tracks you or builds a profile of you, and you can export or delete ` +
@@ -194,7 +194,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
             `are involved, each for one narrow job:`,
         ],
         list: [
-          'A sign-in provider, if you choose to sign in with one — Google, for example. The ' +
+          'A sign-in provider, if you choose to sign in with one — Google or Apple, for example. The ' +
             'provider tells us your email address, name and profile image; we tell it nothing ' +
             'about your notes.',
           'An email delivery service, for the messages described above — sign-in codes, password ' +
@@ -352,7 +352,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
     effective: EFFECTIVE,
     intro: [
       `These terms govern your use of Unbent, a notes service consisting of the website at ` +
-        `${operator.host} and its Android app, operated by ${operator.name}. You agree to them, ` +
+        `${operator.host} and its Android and iOS apps, operated by ${operator.name}. You agree to them, ` +
         `and to the Privacy Policy, when the app asks you to before you first use it. If you do ` +
         `not agree, please do not use it.`,
     ],
@@ -361,7 +361,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
         heading: 'The service',
         body: [
           'Unbent stores notes and files you choose to put into it, and lets you search and ' +
-            'organise them from a browser or an Android phone. We may add, change or remove ' +
+            'organise them from a browser, an Android phone or an iPhone. We may add, change or remove ' +
             'features, and we may stop offering the service altogether. If we discontinue it we ' +
             'will give you reasonable notice and time to export your notes.',
           'The service is provided as it is. We do not promise it will be uninterrupted or ' +
@@ -526,7 +526,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
     title: 'Deleting your Unbent account',
     effective: PRIVACY_EFFECTIVE,
     intro: [
-      `Unbent is a notes application — a website at ${operator.host} and an Android app — operated ` +
+      `Unbent is a notes application — a website at ${operator.host} and Android and iOS apps — operated ` +
         `by ${operator.name}. You can delete your account and everything in it yourself, at any time, ` +
         `without asking us.`,
       `This page explains how, and exactly what deletion removes. It is the same process ` +
@@ -536,7 +536,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
       {
         heading: 'How to delete your account',
         body: [
-          'From the Android app or the website, signed in as the account you want to delete:',
+          'From the Android or iOS app or the website, signed in as the account you want to delete:',
         ],
         steps: [
           'Open Settings, then Maintenance.',
