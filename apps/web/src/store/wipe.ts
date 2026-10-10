@@ -180,8 +180,9 @@ async function wipeOutboxes(keep?: string): Promise<void> {
             new Promise<void>((resolve) => {
               const req = indexedDB.deleteDatabase(name);
               req.onsuccess = req.onerror = () => resolve();
-              // Blocked means a connection is still open; the delete completes when it
-              // closes, which `closeLibrary` above has arranged. Waited for, bounded.
+              // Blocked means a connection is still open, usually another tab's; the delete
+              // completes when it closes, which the broadcast and the outbox's `versionchange`
+              // handler (`actions.ts`) arrange. Waited for, bounded.
               req.onblocked = () => setTimeout(resolve, 2000);
             }),
         ),
