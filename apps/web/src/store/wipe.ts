@@ -34,17 +34,24 @@ export async function wipeLocalStores(except?: string): Promise<void> {
    * is tried again a few times after the outbox deletes have settled, which is usually
    * after the other tabs have closed. Bounded: a tab that will not let go leaves the
    * file for the next wipe, as it did before the other tabs were told at all. The tries
-   * run on any removal that fails, not only one another tab is causing — the channel
-   * cannot say whether anyone heard — so a sign-out, which waits on this, can take up
-   * to `STORE_FILE_RETRIES` × `STORE_FILE_RETRY_MS` longer, a second and a half, when a
-   * file will not go.
+   * run on any removal that fails, not only one another tab is causing, since the
+   * channel cannot say whether anyone heard.
+   *
+   * A sign-out waits for the tries, so "signed out" means the files are gone, and can
+   * take up to `STORE_FILE_RETRIES` × `STORE_FILE_RETRY_MS` longer, a second and a half,
+   * when a file will not go. A sign-in does not: the wipe that keeps the arriving
+   * account runs on the route guard's path, before the first page loads, and nothing
+   * that account loads needs the other accounts' files gone first (found in review).
    */
   await wipeOutboxes(keep?.outbox);
-  for (let attempt = 0; ; attempt += 1) {
-    if (await wipeStoreFiles(keep?.stores, keep?.files)) return;
-    if (attempt >= STORE_FILE_RETRIES) return;
-    await new Promise((resolve) => setTimeout(resolve, STORE_FILE_RETRY_MS));
-  }
+  if (await wipeStoreFiles(keep?.stores, keep?.files)) return;
+  const tried = (async () => {
+    for (let attempt = 1; attempt <= STORE_FILE_RETRIES; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, STORE_FILE_RETRY_MS));
+      if (await wipeStoreFiles(keep?.stores, keep?.files)) return;
+    }
+  })();
+  if (!keep) await tried;
 }
 
 /** How often, and how long apart, the store's files are tried again while another tab lets go. */
