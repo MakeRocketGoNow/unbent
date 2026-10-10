@@ -605,11 +605,16 @@ async function open(userId: string, abandon: AbortSignal): Promise<Library> {
   window.addEventListener('pageshow', onPageShow);
 
   const outbox = createOutbox(userId, { ...collections, userId, engine }, {
-    // Another tab is wiping this device's copies: this library goes with its outbox,
-    // keeping every file, as `closeLocalStores` does for a refused session. This
-    // library's, not whichever is current — a later account's open is not this outbox's.
+    // Another tab is wiping this device's copies, or a newer deploy there is opening
+    // the outbox at a newer version: this library goes with its outbox, keeping every
+    // file, as `closeLocalStores` does for a refused session. This library's, not
+    // whichever is current — a later account's open is not this outbox's. Said in the
+    // console, since the second case closes a library mid-session with nothing else to
+    // show for it, and its reopen on the next navigation fails at the old version.
     onAskedToClose: () => {
-      if (currentLibraryUser() === userId) void closeLibrary();
+      if (currentLibraryUser() !== userId) return;
+      console.warn('[library] closed: another tab deleted this account’s outbox or opened it at a newer version');
+      void closeLibrary();
     },
   });
 
