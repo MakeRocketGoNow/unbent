@@ -33,7 +33,11 @@ export async function wipeLocalStores(except?: string): Promise<void> {
    * refuses to remove a file a worker still holds, and the refusal is swallowed — so it
    * is tried again a few times after the outbox deletes have settled, which is usually
    * after the other tabs have closed. Bounded: a tab that will not let go leaves the
-   * file for the next wipe, as it did before the other tabs were told at all.
+   * file for the next wipe, as it did before the other tabs were told at all. The tries
+   * run on any removal that fails, not only one another tab is causing — the channel
+   * cannot say whether anyone heard — so a sign-out, which waits on this, can take up
+   * to `STORE_FILE_RETRIES` × `STORE_FILE_RETRY_MS` longer, a second and a half, when a
+   * file will not go.
    */
   await wipeOutboxes(keep?.outbox);
   for (let attempt = 0; ; attempt += 1) {
