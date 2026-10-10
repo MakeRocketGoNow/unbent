@@ -27,8 +27,26 @@ export async function wipeLocalStores(except?: string): Promise<void> {
   const keep = except === undefined ? null : { stores: [storeFileName(except), searchFileName(except)], outbox: outboxName(except), files: filesDirName(except) };
   closeLibrariesInOtherTabs();
   if (!keep || currentLibraryUser() !== except) await closeLocalStores();
-  await Promise.all([wipeStoreFiles(keep?.stores, keep?.files), wipeOutboxes(keep?.outbox)]);
+  /*
+   * The other tabs' closes race this: told, each one is still stopping its search sync,
+   * its outbox and its engine before it lets go of the file. The outbox's delete waits
+   * for their connections on its own (`wipeOutboxes`); the store's file does not — OPFS
+   * refuses to remove a file a worker still holds, and the refusal is swallowed — so it
+   * is tried again a few times after the outbox deletes have settled, which is usually
+   * after the other tabs have closed. Bounded: a tab that will not let go leaves the
+   * file for the next wipe, as it did before the other tabs were told at all.
+   */
+  await wipeOutboxes(keep?.outbox);
+  for (let attempt = 0; ; attempt += 1) {
+    if (await wipeStoreFiles(keep?.stores, keep?.files)) return;
+    if (attempt >= STORE_FILE_RETRIES) return;
+    await new Promise((resolve) => setTimeout(resolve, STORE_FILE_RETRY_MS));
+  }
 }
+
+/** How often, and how long apart, the store's files are tried again while another tab lets go. */
+const STORE_FILE_RETRIES = 3;
+const STORE_FILE_RETRY_MS = 500;
 
 /**
  * The channel on which a tab wiping this device tells every other tab of the origin to
@@ -44,7 +62,8 @@ export async function wipeLocalStores(except?: string): Promise<void> {
  * sign-in's open of the same database queued behind that delete, for good: the app sat
  * on "Opening your notes…" in every tab until all of them were closed (seen with three
  * tabs open, 2026-10-10). Told, the other tabs close their libraries, which releases the
- * file, the connection and the leadership before anything here waits on them.
+ * file, the connection and the leadership — in their own time; `wipeLocalStores` says
+ * what waits for that and what is tried again.
  *
  * Every other tab closes whatever it holds, whoever it is for: the wipe that keeps one
  * account's copy (`except`) is a different person signing in, and the tab still signed in
@@ -89,8 +108,9 @@ export async function closeLocalStores(): Promise<void> {
   }
 }
 
-async function wipeStoreFiles(keep: string[] = [], keepFiles?: string): Promise<void> {
-  if (typeof navigator === 'undefined' || !navigator.storage?.getDirectory) return;
+/** Removes what it can; true when nothing is left that should have gone. */
+async function wipeStoreFiles(keep: string[] = [], keepFiles?: string): Promise<boolean> {
+  if (typeof navigator === 'undefined' || !navigator.storage?.getDirectory) return true;
   try {
     const root = await navigator.storage.getDirectory();
     const names: string[] = [];
@@ -99,12 +119,14 @@ async function wipeStoreFiles(keep: string[] = [], keepFiles?: string): Promise<
     for await (const [name] of root.entries()) if (isStoreFile(name) && !keep.some((k) => name.startsWith(k))) names.push(name);
     const dirs: string[] = [];
     for await (const [name] of root.entries()) if (isFilesDir(name) && name !== keepFiles) dirs.push(name);
-    await Promise.all([
-      ...names.map((name) => root.removeEntry(name).catch(() => {})),
-      ...dirs.map((name) => root.removeEntry(name, { recursive: true }).catch(() => {})),
+    const outcomes = await Promise.all([
+      ...names.map((name) => root.removeEntry(name).then(() => true, () => false)),
+      ...dirs.map((name) => root.removeEntry(name, { recursive: true }).then(() => true, () => false)),
     ]);
+    return outcomes.every(Boolean);
   } catch {
     // No OPFS, or it is unavailable in this context (a private window, say).
+    return true;
   }
 }
 

@@ -11,16 +11,27 @@ import { closeLibrary, currentLibraryUser } from './library.js';
  * journal and WAL beside it, its files directory and its outbox stay, since the outbox may hold writes the server has
  * not heard of. The engine's own directory is never ours to remove.
  */
-function device(files: string[], dbs: string[]) {
+function device(files: string[], dbs: string[], opts: { refuse?: (name: string, attempt: number) => boolean } = {}) {
   const removed: string[] = [];
   const deleted: string[] = [];
+  /** Everything that happened, in order: what was posted, deleted and removed. */
+  const order: string[] = [];
+  const attempts = new Map<string, number>();
+  const remaining = new Set(files);
   vi.stubGlobal('navigator', {
     storage: {
       getDirectory: async () => ({
         entries: async function* () {
-          for (const f of files) yield [f, {}];
+          for (const f of remaining) yield [f, {}];
         },
-        removeEntry: async (name: string) => void removed.push(name),
+        removeEntry: async (name: string) => {
+          const attempt = (attempts.get(name) ?? 0) + 1;
+          attempts.set(name, attempt);
+          if (opts.refuse?.(name, attempt)) throw new DOMException('held', 'NoModificationAllowedError');
+          remaining.delete(name);
+          removed.push(name);
+          order.push(`remove:${name}`);
+        },
       }),
     },
   });
@@ -28,12 +39,13 @@ function device(files: string[], dbs: string[]) {
     databases: async () => dbs.map((name) => ({ name })),
     deleteDatabase: (name: string) => {
       deleted.push(name);
+      order.push(`delete:${name}`);
       const req = {} as { onsuccess?: () => void };
       queueMicrotask(() => req.onsuccess?.());
       return req;
     },
   });
-  return { removed, deleted };
+  return { removed, deleted, order, attempts };
 }
 
 const files = ['unbent-a.sqlite', 'unbent-a.sqlite-wal', 'unbent-a.sqlite-journal', 'unbent-a.search.sqlite', 'unbent-b.sqlite', 'unbent-b.search.sqlite', 'unbent-files-a', 'unbent-files-b', '.ahp-pigei0c7inp'];
@@ -75,7 +87,7 @@ describe('wipeLocalStores', () => {
  * A stand-in for the channel between tabs: every instance under a name hears what the
  * others post, and nothing it posted itself, as the real one does.
  */
-function channels() {
+function channels(order: string[] = []) {
   const open = new Map<string, Set<{ onmessage: ((e: { data: unknown }) => void) | null }>>();
   class FakeChannel {
     onmessage: ((e: { data: unknown }) => void) | null = null;
@@ -84,6 +96,7 @@ function channels() {
       open.get(name)!.add(this);
     }
     postMessage(data: unknown) {
+      order.push('post');
       for (const other of open.get(this.name) ?? []) if (other !== this) other.onmessage?.({ data });
     }
     close() {
@@ -94,14 +107,46 @@ function channels() {
 }
 
 describe('other tabs', () => {
-  it('are told to close their libraries before the wipe waits on anything they hold', async () => {
-    device(files, dbs);
-    channels();
+  it('are told to close their libraries before the wipe deletes or removes anything', async () => {
+    const { order } = device(files, dbs);
+    channels(order);
     const stop = installLibraryCloser();
     await wipeLocalStores();
     // The listener's close is this module's own `closeLocalStores`, through the mocked library.
     expect(closeLibrary).toHaveBeenCalledTimes(2);
+    expect(order[0]).toBe('post');
+    expect(order.filter((o) => o === 'post')).toHaveLength(1);
     stop();
+  });
+
+  it('get a moment to let go of the store’s file: a removal they still hold is tried again', async () => {
+    vi.useFakeTimers();
+    try {
+      const { removed, attempts } = device(files, dbs, { refuse: (name, attempt) => name === 'unbent-b.sqlite' && attempt < 3 });
+      const wipe = wipeLocalStores();
+      await vi.advanceTimersByTimeAsync(2000);
+      await wipe;
+      expect(removed).toContain('unbent-b.sqlite');
+      expect(attempts.get('unbent-b.sqlite')).toBe(3);
+      // What went the first time is not asked for again.
+      expect(attempts.get('unbent-a.sqlite')).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('leave a file a tab will not let go of for the next wipe, after a bounded wait', async () => {
+    vi.useFakeTimers();
+    try {
+      const { removed, attempts } = device(files, dbs, { refuse: (name) => name === 'unbent-b.sqlite' });
+      const wipe = wipeLocalStores();
+      await vi.advanceTimersByTimeAsync(5000);
+      await wipe;
+      expect(removed).not.toContain('unbent-b.sqlite');
+      expect(attempts.get('unbent-b.sqlite')).toBe(4);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('are told on a wipe that keeps one account, since the tab wiping is the one deciding', async () => {
