@@ -142,7 +142,7 @@ export async function settleWrites(ms: number): Promise<number> {
   if (!open) return 0;
   // The library itself is waited for under the same `ms`: Sign out pressed while an open
   // is still inside its own bound would otherwise sit for that bound first, with nothing
-  // said (found in review). A library that has not opened has no outbox to drain.
+  // said. A library that has not opened has no outbox to drain.
   const deadline = Date.now() + ms;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const lib = await Promise.race([
@@ -338,20 +338,26 @@ function enqueue<T>(step: () => Promise<T>): Promise<T> {
  * What a close or a switch uses to halt an open's engine and socket before the step
  * ends: a signal, so a halt asked for while the open is still booting the store — a
  * sign-out pressed during a cold open on a phone — is honoured when the open arms the
- * handle, rather than dropped (found in review). The open checks the signal when it
+ * handle rather than dropped. A slot the open filled later dropped it, and the open went
+ * on to start the engine and socket the halt was for. The open checks the signal when it
  * has something to halt, and listens from then on.
  */
 type Halting = AbortSignal;
 
 export function acquireLibrary(userId: string): Promise<Library> {
   if (current?.userId === userId) return current.library;
+  generation += 1;
   const previous = current;
   previous?.halt();
   const halting = new AbortController();
-  const opened = enqueue(async () => {
+  const opened: Promise<Library> = enqueue(async () => {
     // The account before this one, closed first; what it was told is the queue's.
     if (previous) await previous.opened.then((l) => l.close()).catch(() => {});
-    return open(userId, halting.signal);
+    // Whether the library this open makes is still the one this tab holds: the entry's
+    // own step, which the late-finish replacement of the entry copies. Not the account —
+    // a reopen after a back/forward-cache restore, or a slow open finishing late, is the
+    // same account's and a different library.
+    return open(userId, halting.signal, () => current?.opened === opened);
   });
   /*
    * Bounded, so the app is never dead on a storage wedge: an open can wait for good on
@@ -413,6 +419,7 @@ export function resetLibraryForTests(): void {
 
 /** The close of what is open now, if anything, as a step: the library's close, then whatever `then` adds. */
 function closeStep(then?: () => Promise<void>): Promise<void> {
+  generation += 1;
   const open = current;
   current = null;
   if (open) {
@@ -439,7 +446,7 @@ export function closeLibrary(): Promise<void> {
  * (`closeLocalStores`). One step rather than `closeLibrary` then `closeLocalStore` from
  * the caller: an open queued behind the library's close would otherwise run between the
  * two, take a fresh store from `db.ts`, and have it closed under it by the store close
- * that ran next (found in review).
+ * that ran next.
  */
 export function closeLibraryAndStore(): Promise<void> {
   return closeStep(closeLocalStore);
@@ -677,7 +684,7 @@ async function open(userId: string, halting: Halting, isMine: () => boolean): Pr
    * the first thing `close` does. Not the store, the outbox or the collections, which
    * stay the step's: a bounded wipe lets a sign-out move on past an open that is stuck
    * below, and an engine left running would go on pulling with whatever cookie the tab
-   * has next, into a file named for this account (found in review).
+   * has next, into a file named for this account.
    */
   let halted = false;
   const halt = () => {

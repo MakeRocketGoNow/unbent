@@ -231,6 +231,47 @@ describe('acquireLibrary', () => {
     expect(stop).toHaveBeenCalled();
   });
 
+  /** The page coming back from the back/forward cache, as the browser says it. */
+  const restored = () => {
+    const event = new Event('pageshow');
+    Object.defineProperty(event, 'persisted', { value: true });
+    window.dispatchEvent(event);
+  };
+
+  it('reopens the same account after a back/forward-cache restore, and the old outbox cannot close the new library', async () => {
+    vi.useFakeTimers();
+    page();
+    const first = await acquireLibrary('u1');
+    restored();
+    await vi.advanceTimersByTimeAsync(10);
+    const second = await currentLibrary();
+    expect(second).toMatchObject({ userId: 'u1' });
+    expect(second).not.toBe(first);
+    // The first library's outbox, asked to close by another tab after the reopen: it is
+    // not the current library's outbox, so the current library stays.
+    const firstEvents = vi.mocked(createOutbox).mock.calls[0]![2]!;
+    firstEvents.onAskedToClose!();
+    await vi.advanceTimersByTimeAsync(10);
+    await expect(currentLibrary()).resolves.toBe(second);
+  });
+
+  it('does not reopen an account after a back/forward-cache restore when a switch came first', async () => {
+    vi.useFakeTimers();
+    let disposed!: () => void;
+    const { outbox } = page();
+    outbox.dispose.mockImplementationOnce(() => new Promise<void>((resolve) => (disposed = resolve)));
+    await acquireLibrary('u1');
+    restored();
+    await vi.advanceTimersByTimeAsync(10);
+    // The restore's close is still in hand; another account signs in meanwhile.
+    const switched = acquireLibrary('u2');
+    disposed();
+    await vi.advanceTimersByTimeAsync(10);
+    await switched;
+    await expect(currentLibrary()).resolves.toMatchObject({ userId: 'u2' });
+    expect(vi.mocked(openLocalStore).mock.calls.map(([id]) => id)).toEqual(['u1', 'u2']);
+  });
+
   it('becomes the library once an open its caller was refused finishes, and tells the hooks', async () => {
     vi.useFakeTimers();
     let ready!: () => void;
