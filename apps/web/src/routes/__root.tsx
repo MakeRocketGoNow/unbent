@@ -12,6 +12,7 @@ import { handOver } from '../hand-over.js';
 import { startIndexing, subscribeIndexing } from '../index-files.js';
 import { Topbar } from '../components/Topbar.js';
 import { OfflineBanner } from '../components/OfflineBanner.js';
+import { PlanBanner } from '../components/PlanBanner.js';
 import { LibraryStatus } from '../components/LibraryStatus.js';
 import { useOffline } from '../connectivity.js';
 import { useHostApp } from '../useHostApp.js';
@@ -288,6 +289,7 @@ function AppShell() {
             stylesheet hides it above the breakpoint, where the rail is the chrome. */}
         <Topbar email={session.user.email} onSignOut={signOutAndLeave} />
         <OfflineBanner />
+        <PlanBanner />
         {gate.kind === 'open' && gate.pending && <AgreementPending />}
         <LibraryStatus />
         <SyncingLine />

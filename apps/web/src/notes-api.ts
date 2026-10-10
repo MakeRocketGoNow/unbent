@@ -1,4 +1,5 @@
-import { DEFAULT_NOTE_SORT } from '@unbent/shared';
+import {
+  type AccountPlan, DEFAULT_NOTE_SORT } from '@unbent/shared';
 import type {
   AppConfig,
   AttachmentInfo,
@@ -478,6 +479,36 @@ export async function deleteNotesPermanently(ids: string[]): Promise<{ deleted: 
  */
 export async function getConfig(): Promise<AppConfig> {
   return json<AppConfig>(await request('/api/config'));
+}
+
+// --- The plan (MAK-108) ------------------------------------------------------------------
+//
+// Every call here answers 404 on an instance with billing off; nothing asks unless
+// `/api/config` carries `billing`.
+
+/** The account's plan as the server works it out now, with what it holds. */
+export async function getPlan(): Promise<AccountPlan> {
+  return json<AccountPlan>(await request('/api/me/plan'));
+}
+
+/** A checkout for `storage` add-ons beside the plan: the transaction Paddle.js opens. */
+export async function startCheckout(storage: number): Promise<{ transactionId: string }> {
+  return json(await request('/api/billing/checkout', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ storage }) }));
+}
+
+/** The subscription's storage add-ons set to `storage`, charged now; the plan follows from the webhook. */
+export async function setStorage(storage: number): Promise<void> {
+  await json(await request('/api/billing/storage', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ storage }) }));
+}
+
+/** Fresh links into Paddle's portal: made per press, never kept. */
+export async function portalLinks(): Promise<{ overview: string; cancel: string | null; payment: string | null }> {
+  return json(await request('/api/billing/portal'));
+}
+
+/** The plan read back from Paddle and applied, for the moment after a checkout, before the webhook lands. */
+export async function refreshPlan(): Promise<AccountPlan> {
+  return json<AccountPlan>(await request('/api/billing/refresh', { method: 'POST' }));
 }
 
 /**

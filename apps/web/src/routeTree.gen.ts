@@ -38,6 +38,7 @@ import { Route as SettingsMaintenanceRouteImport } from './routes/settings.maint
 import { Route as SettingsNotebooksRouteImport } from './routes/settings.notebooks'
 import { Route as SettingsOfflineRouteImport } from './routes/settings.offline'
 import { Route as SettingsOperatorRouteImport } from './routes/settings.operator'
+import { Route as SettingsPlanRouteImport } from './routes/settings.plan'
 import { Route as SettingsSecurityRouteImport } from './routes/settings.security'
 import { Route as SettingsTagsRouteImport } from './routes/settings.tags'
 import { Route as TrashIndexRouteImport } from './routes/trash.index'
@@ -190,6 +191,11 @@ const SettingsOperatorRoute = SettingsOperatorRouteImport.update({
   path: '/operator',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsPlanRoute = SettingsPlanRouteImport.update({
+  id: '/plan',
+  path: '/plan',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsSecurityRoute = SettingsSecurityRouteImport.update({
   id: '/security',
   path: '/security',
@@ -250,6 +256,7 @@ export interface FileRoutesByFullPath {
   '/settings/notebooks': typeof SettingsNotebooksRoute
   '/settings/offline': typeof SettingsOfflineRoute
   '/settings/operator': typeof SettingsOperatorRoute
+  '/settings/plan': typeof SettingsPlanRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/settings/tags': typeof SettingsTagsRoute
   '/trash/$noteId': typeof TrashNoteIdRoute
@@ -284,6 +291,7 @@ export interface FileRoutesByTo {
   '/settings/notebooks': typeof SettingsNotebooksRoute
   '/settings/offline': typeof SettingsOfflineRoute
   '/settings/operator': typeof SettingsOperatorRoute
+  '/settings/plan': typeof SettingsPlanRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/settings/tags': typeof SettingsTagsRoute
   '/trash/$noteId': typeof TrashNoteIdRoute
@@ -322,6 +330,7 @@ export interface FileRoutesById {
   '/settings/notebooks': typeof SettingsNotebooksRoute
   '/settings/offline': typeof SettingsOfflineRoute
   '/settings/operator': typeof SettingsOperatorRoute
+  '/settings/plan': typeof SettingsPlanRoute
   '/settings/security': typeof SettingsSecurityRoute
   '/settings/tags': typeof SettingsTagsRoute
   '/trash/$noteId': typeof TrashNoteIdRoute
@@ -361,6 +370,7 @@ export interface FileRouteTypes {
     | '/settings/notebooks'
     | '/settings/offline'
     | '/settings/operator'
+    | '/settings/plan'
     | '/settings/security'
     | '/settings/tags'
     | '/trash/$noteId'
@@ -395,6 +405,7 @@ export interface FileRouteTypes {
     | '/settings/notebooks'
     | '/settings/offline'
     | '/settings/operator'
+    | '/settings/plan'
     | '/settings/security'
     | '/settings/tags'
     | '/trash/$noteId'
@@ -432,6 +443,7 @@ export interface FileRouteTypes {
     | '/settings/notebooks'
     | '/settings/offline'
     | '/settings/operator'
+    | '/settings/plan'
     | '/settings/security'
     | '/settings/tags'
     | '/trash/$noteId'
@@ -668,6 +680,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsOperatorRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/plan': {
+      id: '/settings/plan'
+      path: '/plan'
+      fullPath: '/settings/plan'
+      preLoaderRoute: typeof SettingsPlanRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/security': {
       id: '/settings/security'
       path: '/security'
@@ -734,6 +753,7 @@ interface SettingsRouteChildren {
   SettingsNotebooksRoute: typeof SettingsNotebooksRoute
   SettingsOfflineRoute: typeof SettingsOfflineRoute
   SettingsOperatorRoute: typeof SettingsOperatorRoute
+  SettingsPlanRoute: typeof SettingsPlanRoute
   SettingsSecurityRoute: typeof SettingsSecurityRoute
   SettingsTagsRoute: typeof SettingsTagsRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
@@ -750,6 +770,7 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsNotebooksRoute: SettingsNotebooksRoute,
   SettingsOfflineRoute: SettingsOfflineRoute,
   SettingsOperatorRoute: SettingsOperatorRoute,
+  SettingsPlanRoute: SettingsPlanRoute,
   SettingsSecurityRoute: SettingsSecurityRoute,
   SettingsTagsRoute: SettingsTagsRoute,
   SettingsIndexRoute: SettingsIndexRoute,

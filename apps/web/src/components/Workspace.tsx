@@ -79,6 +79,7 @@ import {
   planAutofill,
   type AutofillChanges,
 } from '../autofill.js';
+import { usePlan } from '../use-plan.js';
 
 /** The editor's share of the pane row when split evenly, and the limits a drag respects. */
 const EDITOR_DEFAULT = 0.5;
@@ -112,7 +113,15 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
      loads instead of failing — and would load editable, with every save refused, if this
      followed the route alone.
   */
-  const readOnly = inTrashView || note?.deletedAt !== undefined;
+  const inTrash = inTrashView || note?.deletedAt !== undefined;
+  /*
+     And read-only when the account's plan has ended (MAK-108): every write but a delete
+     is refused by the server, so the inputs say so before anyone types rather than after
+     a refused save. The same `readOnly` the trash uses, since what it means to the editor
+     is the same; only the word in the head differs.
+  */
+  const { inactive: planInactive } = usePlan();
+  const readOnly = inTrash || planInactive;
   /*
      Opening a note is how its files become searchable offline without keeping its whole
      notebook: the device holds the text of the files of the last few hundred notes opened
@@ -1566,7 +1575,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
             className={`workspace-status ${(saveState === 'error' && !unsavedOffline) || saveState === 'conflict' ? 'bad' : 'muted'} small`}
           >
             <span className="workspace-status-text" title={webImagesStatus ?? saveLabel}>
-              {readOnly ? 'In trash' : (webImagesStatus ?? saveLabel)}
+              {readOnly ? (inTrash ? 'In trash' : 'Read-only') : (webImagesStatus ?? saveLabel)}
             </span>
             {notSynced && <NotSyncedMark />}
           </span>

@@ -1,0 +1,292 @@
+import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  BASE_STORAGE_GB,
+  PLAN_PRICE_USD,
+  STORAGE_ADDON_GB,
+  STORAGE_ADDON_PRICE_USD,
+  storageQuotaBytes,
+  type AccountPlan,
+  type BillingConfig,
+} from '@unbent/shared';
+import * as api from '../notes-api.js';
+import { isHosted } from '../app-bridge.js';
+import { formatBytes } from '../format-bytes.js';
+import { openCheckout } from '../paddle.js';
+import { keys } from '../queries.js';
+import { usePlan } from '../use-plan.js';
+import { Button } from './Button.js';
+import { Snackbar } from './Snackbar.js';
+import { formatDay } from './format-when.js';
+
+/** The most storage blocks the page offers in one go; the API caps the same. */
+const MAX_UNITS = 8;
+
+/** How many add-on blocks a quota is, for the storage control. */
+function unitsOf(plan: AccountPlan): number {
+  return Math.max(0, Math.round((plan.storageGb - BASE_STORAGE_GB) / STORAGE_ADDON_GB));
+}
+
+const dollars = (n: number) => `$${n}`;
+
+/**
+ * The account's plan (MAK-108): where it stands, what it holds, and the three things
+ * that change it — subscribing, managing the subscription in Paddle's portal, and buying
+ * more storage. Drawn only where the instance sells a plan (`config.billing`).
+ *
+ * One state at a time, in a sentence: a trial and when it ends, a subscription and when
+ * it renews or cancels, a comp, or read-only and what that still allows. Subscribe is
+ * the one `primary` on the page and appears only where it is the thing to do; a
+ * subscribed account gets the portal instead, since cancelling and changing the card are
+ * Paddle's forms, not this app's.
+ *
+ * Inside the Android and iOS apps the buttons are not drawn at all. Both stores forbid
+ * selling a subscription in an app through anything but their own billing, and a button
+ * that opens a web checkout inside the app is the thing a review rejects. The page says
+ * where to go instead, and nothing else changes: the plan is the account's, not the
+ * device's.
+ *
+ * The checkout is Paddle's overlay, on a transaction the server made, so the page never
+ * learns a price id and the account's Paddle customer exists before the overlay opens.
+ * When the overlay reports the payment, the plan is read back from Paddle at once rather
+ * than waiting on the webhook: the page should say "Subscribed" when the overlay closes,
+ * not a few seconds later.
+ */
+export function Plan() {
+  const { billing, plan } = usePlan();
+  const queryClient = useQueryClient();
+  const [busy, setBusy] = useState<'checkout' | 'portal' | 'storage' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [units, setUnits] = useState<number | null>(null);
+  const hosted = isHosted();
+
+  if (!billing) return null;
+  if (!plan) {
+    return (
+      <div className="panel">
+        <div className="panel-head">
+          <h2>Plan</h2>
+        </div>
+        <p className="muted small">Reading your plan…</p>
+      </div>
+    );
+  }
+
+  const subscribed = plan.subscription !== null && plan.subscription.status !== 'canceled';
+  const canSubscribe = !hosted && !subscribed && plan.source !== 'comp';
+  const chosenUnits = units ?? unitsOf(plan);
+  const refresh = () => queryClient.invalidateQueries({ queryKey: keys.plan() });
+
+  async function subscribe() {
+    setBusy('checkout');
+    setError(null);
+    try {
+      const { transactionId } = await api.startCheckout(chosenUnits);
+      const outcome = await openCheckout(billing!, transactionId);
+      if (outcome === 'completed') {
+        await api.refreshPlan().catch(() => undefined);
+        await refresh();
+        setNotice('You’re subscribed. Thank you.');
+      }
+    } catch (err) {
+      setError((err as Error).message || 'The checkout could not be opened.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /**
+   * The portal opens in a new tab, which has to be opened before the link is fetched:
+   * a `window.open` after an `await` is a pop-up to the browser, and blocked. So the tab
+   * is opened blank on the press and pointed at the link when it arrives; a browser that
+   * refused even that is sent there in this tab instead.
+   */
+  async function openPortal(which: 'overview' | 'payment') {
+    setBusy('portal');
+    setError(null);
+    const tab = window.open('', '_blank');
+    try {
+      const links = await api.portalLinks();
+      const url = (which === 'payment' && links.payment) || links.overview;
+      if (tab) tab.location.href = url;
+      else window.location.href = url;
+      // Whatever was done there, the plan is read again on the way back.
+      setTimeout(() => void refresh(), 1500);
+    } catch (err) {
+      tab?.close();
+      setError((err as Error).message || 'The portal could not be opened.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function changeStorage(next: number) {
+    setBusy('storage');
+    setError(null);
+    try {
+      await api.setStorage(next);
+      await api.refreshPlan().catch(() => undefined);
+      await refresh();
+      setNotice(next > unitsOf(plan!) ? `Added ${STORAGE_ADDON_GB} GB.` : `Removed ${STORAGE_ADDON_GB} GB.`);
+    } catch (err) {
+      setError((err as Error).message || 'The storage could not be changed.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="panel">
+      <div className="panel-head">
+        <h2>Plan</h2>
+      </div>
+
+      <p className="muted small">
+        One plan, {dollars(PLAN_PRICE_USD)} a year: unlimited notes, {BASE_STORAGE_GB} GB of files, and{' '}
+        {STORAGE_ADDON_GB} GB more for {dollars(STORAGE_ADDON_PRICE_USD)} a year each. If it ends,
+        your notes stay readable and exportable.
+      </p>
+
+      <section className="settings-section">
+        <PlanState plan={plan} />
+        {hosted && (
+          <p className="muted small">
+            Subscriptions are managed on the web: open {window.location.host} in a browser and go to
+            Settings → Plan.
+          </p>
+        )}
+        {canSubscribe && (
+          <>
+            <label className="plan-storage-choice">
+              <span>Storage</span>
+              <select value={chosenUnits} onChange={(e) => setUnits(Number(e.target.value))} disabled={busy !== null}>
+                {Array.from({ length: MAX_UNITS + 1 }, (_, n) => (
+                  <option key={n} value={n}>
+                    {BASE_STORAGE_GB + n * STORAGE_ADDON_GB} GB
+                    {n === 0 ? ' (included)' : ` (+${dollars(n * STORAGE_ADDON_PRICE_USD)} a year)`}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="backfill-row">
+              <Button variant="primary" disabled={busy !== null} onClick={() => void subscribe()}>
+                {busy === 'checkout' ? 'Opening checkout…' : `Subscribe for ${dollars(PLAN_PRICE_USD + chosenUnits * STORAGE_ADDON_PRICE_USD)} a year`}
+              </Button>
+            </div>
+          </>
+        )}
+        {subscribed && !hosted && (
+          <div className="backfill-row">
+            <Button disabled={busy !== null} onClick={() => void openPortal('overview')}>
+              {busy === 'portal' ? 'Opening…' : 'Manage subscription'}
+            </Button>
+            {plan.subscription?.pastDue && (
+              <Button disabled={busy !== null} onClick={() => void openPortal('payment')}>
+                Update payment method
+              </Button>
+            )}
+            <span className="muted small">Invoices, the card, and cancelling, in Paddle’s portal.</span>
+          </div>
+        )}
+        {error && <p className="bad small">{error}</p>}
+      </section>
+
+      <section className="settings-section">
+        <h3>Storage</h3>
+        <StorageMeter plan={plan} />
+        {subscribed && !hosted && (
+          <div className="backfill-row">
+            <Button size="small" disabled={busy !== null || unitsOf(plan) >= MAX_UNITS} onClick={() => void changeStorage(unitsOf(plan) + 1)}>
+              {busy === 'storage' ? 'Changing…' : `Add ${STORAGE_ADDON_GB} GB`}
+            </Button>
+            {unitsOf(plan) > 0 && (
+              <Button size="small" variant="quiet" disabled={busy !== null} onClick={() => void changeStorage(unitsOf(plan) - 1)}>
+                Remove {STORAGE_ADDON_GB} GB
+              </Button>
+            )}
+            <span className="muted small">
+              {dollars(STORAGE_ADDON_PRICE_USD)} a year per {STORAGE_ADDON_GB} GB, charged for the rest of this year now.
+            </span>
+          </div>
+        )}
+      </section>
+
+      {notice && <Snackbar message={notice} tone="info" duration={6000} onDismiss={() => setNotice(null)} />}
+    </div>
+  );
+}
+
+/** The state in a heading and a sentence; see `Plan`. */
+function PlanState({ plan }: { plan: AccountPlan }) {
+  const sub = plan.subscription;
+  if (plan.state === 'inactive') {
+    return (
+      <>
+        <h3>Read-only</h3>
+        <p>
+          {plan.until ? `Your plan ended on ${formatDay(plan.until)}. ` : 'Your plan has ended. '}
+          Everything still opens, searches and exports, and anything can be deleted; subscribe to edit again.
+        </p>
+      </>
+    );
+  }
+  if (plan.state === 'trial') {
+    return (
+      <>
+        <h3>Free trial</h3>
+        <p>{plan.until ? `Your trial ends on ${formatDay(plan.until)}.` : 'Your trial is under way.'} Nothing is charged until you subscribe.</p>
+      </>
+    );
+  }
+  if (plan.source === 'comp') {
+    return (
+      <>
+        <h3>Complimentary</h3>
+        <p>{plan.until ? `This account is on the house until ${formatDay(plan.until)}.` : 'This account is on the house, with no end date.'}</p>
+      </>
+    );
+  }
+  if (sub?.pastDue) {
+    return (
+      <>
+        <h3>Payment failed</h3>
+        <p>
+          The last renewal could not be collected. Paddle will try again; update the card to keep the plan
+          {plan.until ? ` past ${formatDay(plan.until)}` : ''}.
+        </p>
+      </>
+    );
+  }
+  if (sub?.cancelsAt) {
+    return (
+      <>
+        <h3>Cancelling</h3>
+        <p>The subscription ends on {formatDay(sub.cancelsAt)}. Your notes stay readable and exportable after that.</p>
+      </>
+    );
+  }
+  return (
+    <>
+      <h3>Subscribed</h3>
+      <p>{plan.until ? `Renews on ${formatDay(plan.until)}.` : 'Active.'}</p>
+    </>
+  );
+}
+
+/** What the account holds against what it may: a bar and the numbers. */
+function StorageMeter({ plan }: { plan: AccountPlan }) {
+  const quota = storageQuotaBytes(plan.storageGb);
+  const used = plan.usedBytes;
+  const share = used === undefined ? 0 : Math.min(1, used / quota);
+  return (
+    <>
+      <div className="progress-bar plan-meter" role="meter" aria-valuemin={0} aria-valuemax={quota} aria-valuenow={used ?? 0} aria-label="Storage used">
+        <div className={`progress-fill${share >= 0.95 ? ' plan-meter-full' : ''}`} style={{ width: `${Math.round(share * 100)}%` }} />
+      </div>
+      <p className="muted small">
+        {used === undefined ? 'Usage could not be read right now' : `${formatBytes(used)} used`} of {plan.storageGb} GB.
+      </p>
+    </>
+  );
+}

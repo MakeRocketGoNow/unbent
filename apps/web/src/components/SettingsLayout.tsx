@@ -4,6 +4,8 @@ import { BackArrow } from './BackArrow.js';
 import { isHosted, postToApp } from '../app-bridge.js';
 import { useImportRunning } from '../import-run.js';
 import { useOperator } from '../use-operator.js';
+import { useQuery } from '@tanstack/react-query';
+import { configQuery } from '../queries.js';
 
 const TABS = [
   { to: '/settings/notebooks', label: 'Notebooks' },
@@ -14,9 +16,17 @@ const TABS = [
   { to: '/settings/maintenance', label: 'Maintenance' },
   { to: '/settings/security', label: 'Security' },
   { to: '/settings/connected-apps', label: 'Connected apps' },
-  // Last: what the app is, read rarely, after everything that configures it.
-  { to: '/settings/about', label: 'About' },
 ] as const;
+
+/**
+ * The plan (MAK-108), drawn only where the instance sells one (`config.billing`). After
+ * the pages that configure the app and before About: it is about the account's standing
+ * rather than its settings, and a self-hosted instance never has it.
+ */
+const PLAN_TAB = { to: '/settings/plan', label: 'Plan' } as const;
+
+// Last: what the app is, read rarely, after everything that configures it.
+const ABOUT_TAB = { to: '/settings/about', label: 'About' } as const;
 
 /**
  * The operator's page, drawn only for a session that runs the instance (`useOperator`).
@@ -36,7 +46,8 @@ const OPERATOR_TAB = { to: '/settings/operator', label: 'Operator' } as const;
 export function SettingsLayout({ children }: { children: ReactNode }) {
   const importRunning = useImportRunning();
   const operator = useOperator();
-  const tabs = operator ? [...TABS, OPERATOR_TAB] : TABS;
+  const billing = useQuery(configQuery()).data?.billing !== undefined;
+  const tabs = [...TABS, ...(billing ? [PLAN_TAB] : []), ABOUT_TAB, ...(operator ? [OPERATOR_TAB] : [])];
 
   return (
     <>
