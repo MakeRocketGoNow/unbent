@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
-import { STORAGE_ADDON_GB } from '@unbent/shared';
+import { BASE_STORAGE_GB, STORAGE_ADDON_GB, storageQuotaBytes } from '@unbent/shared';
 import { planPatchFor, type PaddleEvent } from '../lib/billing-events.js';
 import { accountPlanOf, planFor, planRowByCustomer, planStateOf, updatePlan, updatePlanStatement } from '../lib/plan.js';
 import {
@@ -133,7 +133,7 @@ export const billing = new Hono<AppEnv>()
     }
     try {
       const sub = await setSubscriptionStorage(paddle, row.paddleSubscriptionId, c.req.valid('json').storage);
-      return c.json({ status: sub.status, storageGb: STORAGE_ADDON_GB * c.req.valid('json').storage });
+      return c.json({ status: sub.status, storageGb: BASE_STORAGE_GB + STORAGE_ADDON_GB * c.req.valid('json').storage });
     } catch (err) {
       return paddleRefused(err, 'change the storage', userId);
     }
