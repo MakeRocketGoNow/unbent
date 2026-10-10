@@ -278,11 +278,12 @@ export class LibraryOpenTimeoutError extends Error {
 }
 
 /**
- * An open that timed out on this page, kept so nothing tries again until a reload. The
- * open it gave up on is still running, and a second one beside it would open the same
- * file and the same outbox twice from one tab; what wedged the first — another tab
- * holding the outbox's database, or the collections' leadership, see `store/wipe.ts` —
- * would wedge the second the same way. A reload is what clears it.
+ * An open that timed out, kept while the open it gave up on is still in hand: a second
+ * open beside it would open the same file and the same outbox twice from one tab, and
+ * what wedged the first — another tab holding the outbox's database, or the
+ * collections' leadership, see `store/wipe.ts` — would wedge the second the same way.
+ * Cleared once the abandoned open has settled and closed itself, so a sign-in after
+ * that gets its library; an open that never settles keeps it until a reload.
  */
 let gaveUp: Promise<never> | null = null;
 
@@ -302,7 +303,8 @@ export function acquireLibrary(userId: string): Promise<Library> {
      * the error is reported. Whatever the open does finish later is closed, so a tab
      * that recovers does not hold the file against the next one.
      */
-    const opening = open(userId);
+    const abandon = new AbortController();
+    const opening = open(userId, abandon.signal);
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(new LibraryOpenTimeoutError()), LIBRARY_OPEN_TIMEOUT_MS);
@@ -311,10 +313,19 @@ export function acquireLibrary(userId: string): Promise<Library> {
       return await Promise.race([opening, timeout]);
     } catch (err) {
       if (err instanceof LibraryOpenTimeoutError) {
-        gaveUp = Promise.reject(err);
-        gaveUp.catch(() => {});
+        const failed = Promise.reject<never>(err);
+        failed.catch(() => {});
+        gaveUp = failed;
         reportError(err, 'error');
-        void opening.then((l) => l.close()).catch(() => {});
+        // `open` closes what it built when abandoned; once that open has settled either
+        // way, nothing of it is left and the next sign-in may try again.
+        abandon.abort(err);
+        void opening.then(
+          () => {},
+          () => {},
+        ).then(() => {
+          if (gaveUp === failed) gaveUp = null;
+        });
       }
       throw err;
     } finally {
@@ -434,7 +445,7 @@ export async function fetchJson<T>(path: string, stop?: AbortSignal): Promise<T>
   }
 }
 
-async function open(userId: string): Promise<Library> {
+async function open(userId: string, abandon: AbortSignal): Promise<Library> {
   const store = await openLocalStore(userId);
   const listeners = new Set<(state: FeedState) => void>();
   let latest: FeedState | null = null;
@@ -668,6 +679,53 @@ async function open(userId: string): Promise<Library> {
     keptNow = status.kept;
     search?.sync.touchFiles();
   });
+
+  const close = async () => {
+    closed = true;
+    engine.stop();
+    window.removeEventListener('pageshow', onPageShow);
+    document.removeEventListener('visibilitychange', onVisible);
+    window.removeEventListener('online', pull);
+    unsubscribeConnectivity();
+    if (reconnect) clearTimeout(reconnect);
+    socket?.close();
+    stopKeeping();
+    stopKeptWatch();
+    keeper.stop();
+    giveUp.abort();
+    await searchReady;
+    await search?.sync.stop();
+    await outbox.dispose();
+    await engine.settled();
+    for (const s of subscriptions) s.unsubscribe();
+    if (collections) {
+      await Promise.all(Object.values(collections).map((c) => c.cleanup()));
+    }
+    // After its sync has stopped: a pass in hand finishes its write, and the file is free for a wipe.
+    await search?.index.close().catch(() => {});
+    await closeLocalStore();
+  };
+
+  /*
+   * The one wait in here that can wedge — the outbox's database held by another tab's
+   * queued delete (`store/wipe.ts`) — comes last, after everything above has been set
+   * up and can be torn down, and under the caller's signal: `acquireLibrary` gives up
+   * on an open that takes too long, and what was built here — the socket, the engine's
+   * pulls, the listeners — must not go on running in a tab that has no library
+   * (found in review). Abandoned, this closes itself; the caller gets nothing.
+   */
+  if (abandon.aborted) {
+    await close();
+    throw abandon.reason;
+  }
+  const onAbandon = () => void close();
+  abandon.addEventListener('abort', onAbandon, { once: true });
+  try {
+    await outbox.ready;
+  } finally {
+    abandon.removeEventListener('abort', onAbandon);
+  }
+  if (abandon.aborted) throw abandon.reason;
 
   return {
     ...collections,

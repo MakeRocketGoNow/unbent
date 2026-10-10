@@ -122,6 +122,23 @@ describe('acquireLibrary', () => {
     expect(openLocalStore).toHaveBeenCalledTimes(1);
   });
 
+  it('tries again once the open it gave up on has settled, without a reload', async () => {
+    vi.useFakeTimers();
+    let fail!: (err: Error) => void;
+    vi.mocked(openLocalStore).mockImplementationOnce(() => new Promise((_, reject) => (fail = reject)));
+    const first = acquireLibrary('u1');
+    const settled = expect(first).rejects.toBeInstanceOf(LibraryOpenTimeoutError);
+    await vi.advanceTimersByTimeAsync(LIBRARY_OPEN_TIMEOUT_MS);
+    await settled;
+    await expect(acquireLibrary('u1')).rejects.toBeInstanceOf(LibraryOpenTimeoutError);
+    // The abandoned open ends: nothing of it is left, and the next sign-in may try.
+    fail(new Error('store gone'));
+    await vi.advanceTimersByTimeAsync(0);
+    vi.mocked(openLocalStore).mockRejectedValueOnce(new Error('no OPFS'));
+    await expect(acquireLibrary('u1')).rejects.toThrow('no OPFS');
+    expect(openLocalStore).toHaveBeenCalledTimes(2);
+  });
+
   it('is not a timeout that fires under an open that settled in time', async () => {
     vi.useFakeTimers();
     // A store whose open fails at once: the library is unavailable for that reason, not for time.
