@@ -76,9 +76,9 @@ function harness(initial: string) {
     }),
     createRoute({
       getParentRoute: () => rootRoute,
-      path: '/embed/notes/$noteId',
-      loader: () => load('/embed/notes/$noteId'),
-      component: () => <p>embedded note</p>,
+      path: '/embed/index-files',
+      loader: () => load('/embed/index-files'),
+      component: () => <p>indexing</p>,
     }),
   ]);
 
@@ -190,15 +190,16 @@ describe('the session gate', () => {
   });
 
   /**
-   * The Android app puts a cookie in place before loading the WebView and draws its own
-   * chrome around it. A sign-in screen inside that is nobody's idea of a note.
+   * The Android app puts a cookie in place before loading the indexer off screen, and
+   * hears about a missing session through the bridge. A sign-in screen nobody sees would
+   * only hang it.
    */
   it('leaves the app’s embedded pages alone', async () => {
     signedOut();
-    const router = harness('/embed/notes/abc-123');
-    await waitFor(() => expect(screen.getByText('embedded note')).toBeTruthy());
-    expect(router.state.location.pathname).toBe('/embed/notes/abc-123');
-    expect(load).toHaveBeenCalledWith('/embed/notes/$noteId');
+    const router = harness('/embed/index-files');
+    await waitFor(() => expect(screen.getByText('indexing')).toBeTruthy());
+    expect(router.state.location.pathname).toBe('/embed/index-files');
+    expect(load).toHaveBeenCalledWith('/embed/index-files');
   });
 
   /**

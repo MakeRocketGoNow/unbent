@@ -234,6 +234,7 @@ says otherwise; `pnpm exec wrangler secret put NAME` from `apps/api`, or the das
 | `OPERATOR_NAME`, `OPERATOR_EMAIL` | the built-in privacy policy and terms | both or neither; see [Who runs this instance](#who-runs-this-instance) |
 | `OPERATOR_EMAILS` | who is shown what only the people running the instance can fix | comma-separated, like `ALLOWED_EMAILS`; unset means nobody. A separate list from the pair above, which is one legal contact rather than a set of sign-ins. `DEV_OPERATOR_EMAILS` as a GitHub secret carries a list to the dev instance and previews |
 | `LEGAL_PRIVACY_URL`, `LEGAL_TERMS_URL` | legal pages hosted elsewhere | both or neither; win over the built-in ones |
+| `LEGAL_VERSION` | asking everyone to agree again | only with your own documents; see [Who runs this instance](#who-runs-this-instance) |
 | `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_REPLY_TO` | codes by email, password reset | the first two or neither; see [Choosing sign-in methods](#choosing-sign-in-methods) |
 | `<PROVIDER>_CLIENT_ID`, `<PROVIDER>_CLIENT_SECRET` | any of Better Auth's OAuth providers | both or neither; the callback is `/api/auth/callback/<provider>` on your origin |
 | `AUTH_PASSWORD`, `AUTH_PASSKEY` | forcing a method on or off | rarely needed; the defaults are explained in the sign-in section |
@@ -282,6 +283,24 @@ and point `LEGAL_PRIVACY_URL` and `LEGAL_TERMS_URL` at them.
 
 The software is called Unbent throughout either way. That is this program's name, not the
 name of whoever is answerable for running it.
+
+Wherever there are documents to link to, a signed-in account is asked to agree to them
+before the app opens: once, on a screen of its own, with both documents linked and an
+"Agree and continue" press. The version agreed to and when are kept on the account. Signing
+in and signing up are the same press here, so the sign-in screen only gives notice; the
+agreement is the screen after it, and the Android and iOS apps reach it as the site. Someone
+who does not agree can still sign out, or export their notes and delete the account. The
+server holds the same line for the two ways a program gets a credential of its own —
+approving an OAuth client and approving a CLI's device code — which are refused to an
+account that has not agreed, however they are called. Connections that already exist keep
+working.
+
+Moving `LEGAL_VERSION` in `packages/shared/src/legal.ts` asks everyone again, worded as an
+update, with `LEGAL_CHANGE` beside it to say what changed. Move it for a change worth
+interrupting people for, not for every correction: the documents' effective dates move for
+those on their own. An operator with their own documents sets `LEGAL_VERSION` in the
+environment instead, since only they know when those change; unset, everyone is asked once,
+and a change to the built-in documents never asks them again.
 
 Set them per deployment rather than in `wrangler.toml`, which everyone who self-hosts
 checks out:

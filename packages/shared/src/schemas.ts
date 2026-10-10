@@ -261,9 +261,15 @@ export interface AppConfig {
    * `/privacy` and `/terms` for the built-in ones.
    *
    * Absent means this instance publishes neither, and nothing links to them anywhere — a
-   * link to a page that says "nothing here" is worse than no link at all.
+   * link to a page that says "nothing here" is worse than no link at all. Absent also means
+   * nobody is asked to agree to anything: there is nothing to agree to.
+   *
+   * `version` is what a signed-in account must have agreed to before the app opens, and
+   * `change` what is new in it for someone who agreed to an earlier one. See
+   * `LEGAL_VERSION`. Optional only so a client stays compatible with an instance older
+   * than the agreement step, which it reads as one that asks for none.
    */
-  legal?: { privacy: string; terms: string };
+  legal?: { privacy: string; terms: string; version?: string; change?: string };
   /**
    * The error-tracking service this instance reports browser crashes to, if it has one.
    *

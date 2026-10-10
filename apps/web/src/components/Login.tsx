@@ -355,17 +355,18 @@ export function Login({ redirectTo, refusal }: LoginProps) {
 
       {error && <p className="bad">{error}</p>}
 
-      {/* Under the card rather than beside the button: this is the moment consent is
-          given, and it is also the only route to these pages for someone who has no
-          account and cannot reach the account menu.
+      {/* Notice, not agreement. Signing in and signing up are one press here, so the
+          agreement is asked for after it, on a screen of its own (`LegalAgreement`); this
+          line used to say "By continuing you agree", which became a second, different
+          claim about when someone agreed, one screen before the real one. It stays as the
+          only route to these pages for someone who has no account and cannot reach the
+          account menu.
 
           The whole line goes when the instance publishes neither document, rather than
-          losing its links and leaving "By continuing you agree to the Terms and Privacy
-          Policy" as unlinked text. That sentence is a claim about documents a reader can
-          go and read; without them it asks people to agree to nothing they can see. */}
+          leaving a sentence about documents a reader cannot go and read. */}
       {legal && (
         <p className="login-legal">
-          By continuing you agree to the <LegalLink href={legal.terms}>Terms</LegalLink> and{' '}
+          Using Unbent is subject to its <LegalLink href={legal.terms}>Terms</LegalLink> and{' '}
           <LegalLink href={legal.privacy}>Privacy Policy</LegalLink>.
         </p>
       )}

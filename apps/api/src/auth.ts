@@ -303,7 +303,7 @@ interface AuthInstance {
   handler: (request: Request) => Promise<Response>;
   api: {
     getSession: (context: { headers: Headers }) => Promise<{
-      user?: { id: string; email: string; name: string; image?: string | null };
+      user?: { id: string; email: string; name: string; image?: string | null; legalVersion?: string | null };
     } | null>;
     /**
      * The two discovery documents, which routes/well-known.ts serves from the root. They
@@ -674,6 +674,20 @@ function createAuth(env: Env): AuthInstance {
       },
     },
     user: {
+      /**
+       * The version of the terms and privacy policy this account agreed to (MAK-209),
+       * carried on the session so the app can ask for an agreement without a request of
+       * its own. Null until the person has agreed to any; see `LEGAL_VERSION`.
+       *
+       * `input: false`, so neither sign-up nor `/update-user` can set it: an agreement is
+       * recorded only by `POST /api/legal/agree`, which checks the version against the one
+       * this instance publishes and stamps the time itself. The times, one per version
+       * agreed to, are in `legal_agreement` (migration 0044): a record rather than something
+       * the app reads, so they never travel in the session.
+       */
+      additionalFields: {
+        legalVersion: { type: 'string', required: false, input: false },
+      },
       /**
        * Deleting an account, and why it takes an email to do it.
        *

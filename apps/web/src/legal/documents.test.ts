@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { LEGAL_VERSION } from '@unbent/shared';
 import { legalDocuments, type LegalDocument } from './documents.js';
 
 const OPERATOR = {
@@ -132,5 +133,29 @@ describe('legalDocuments and backups', () => {
 
   it('leaves the terms alone', () => {
     expect(text(with_.terms)).toBe(text(without.terms));
+  });
+});
+
+/**
+ * The version people agree to (MAK-209) moves only for a change worth asking about, and
+ * the documents' dates move for every change — so a date older than the version means a
+ * version was moved without the documents saying they changed, and people would be asked
+ * to agree again to text dated before the change they were told about.
+ */
+describe('the agreement version', () => {
+  const docs = legalDocuments(OPERATOR, { errorTracking: false, backups: false });
+
+  it('is not newer than either document', () => {
+    expect(docs.terms.effective >= LEGAL_VERSION).toBe(true);
+    expect(docs.privacy.effective >= LEGAL_VERSION).toBe(true);
+  });
+
+  /** What the policy says about the device is what lets this instance show no banner. */
+  it('is agreed to under a policy that says what is kept on the device', () => {
+    const body = text(docs.privacy);
+    expect(body).toContain('Cookies, and what is kept on your device');
+    expect(body).toContain('no cookie banner');
+    expect(body).toContain('Global Privacy Control');
+    expect(body).toContain('If you are in California');
   });
 });

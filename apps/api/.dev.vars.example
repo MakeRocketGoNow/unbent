@@ -196,6 +196,10 @@ ALLOWED_EMAILS=
 # is wrong for you, these two are the way out.
 # LEGAL_PRIVACY_URL=https://example.com/privacy
 # LEGAL_TERMS_URL=https://example.com/terms
+#
+# With your own documents, move this whenever they change in a way people should agree to
+# again: every account is asked on its next visit. Unset, each account is asked once.
+# LEGAL_VERSION=2026-10-09
 
 # The Android app-links document, served at /.well-known/assetlinks.json: which apps, by
 # package name and signing certificate, this origin vouches for. Android reads it to open

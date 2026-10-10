@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { LEGAL_VERSION } from '@unbent/shared';
 import {
   frontPageOf,
   isOperator,
   legalLinksOf,
+  legalVersionOf,
   operatorEmails,
   operatorOf,
   posthogAssetsHost,
@@ -81,7 +83,7 @@ describe('legalLinksOf', () => {
   };
 
   it('points at the built-in documents when an operator is named', () => {
-    expect(legalLinksOf(env(OPERATOR))).toEqual({ privacy: '/privacy', terms: '/terms' });
+    expect(legalLinksOf(env(OPERATOR))).toEqual({ privacy: '/privacy', terms: '/terms', version: LEGAL_VERSION });
   });
 
   /** Someone who published their own documents went to the trouble; believe them. */
@@ -89,6 +91,7 @@ describe('legalLinksOf', () => {
     expect(legalLinksOf(env({ ...OPERATOR, ...EXTERNAL }))).toEqual({
       privacy: 'https://example.com/privacy',
       terms: 'https://example.com/terms',
+      version: '1',
     });
   });
 
@@ -99,12 +102,38 @@ describe('legalLinksOf', () => {
    */
   it('ignores half a pair of external URLs', () => {
     const half = { ...OPERATOR, LEGAL_PRIVACY_URL: 'https://example.com/privacy' };
-    expect(legalLinksOf(env(half))).toEqual({ privacy: '/privacy', terms: '/terms' });
+    expect(legalLinksOf(env(half))).toEqual({ privacy: '/privacy', terms: '/terms', version: LEGAL_VERSION });
     expect(legalLinksOf(env({ LEGAL_TERMS_URL: 'https://example.com/terms' }))).toBeUndefined();
   });
 
   it('has nothing to link to when the instance publishes neither', () => {
     expect(legalLinksOf(env({}))).toBeUndefined();
+  });
+});
+
+/**
+ * Which version everyone must have agreed to (MAK-209). The built-in documents' version
+ * unless an operator who publishes their own says otherwise, since only they know when
+ * those change.
+ */
+describe('legalVersionOf', () => {
+  it('asks for the built-in version, whatever the environment says', () => {
+    expect(legalVersionOf(env({}), 'built-in').version).toBe(LEGAL_VERSION);
+    expect(legalVersionOf(env({ LEGAL_VERSION: '2027-01-01' }), 'built-in').version).toBe(LEGAL_VERSION);
+  });
+
+  it('asks for the operator’s own version for their own documents', () => {
+    expect(legalVersionOf(env({ LEGAL_VERSION: ' 2027-01-01 ' }), 'own')).toEqual({ version: '2027-01-01' });
+  });
+
+  /*
+   * Never the repository's: a fork with its own documents would otherwise be asked again
+   * every time the built-in ones changed, under a sentence about documents it does not
+   * publish.
+   */
+  it('gives an operator’s own documents a fixed version of their own when unset', () => {
+    expect(legalVersionOf(env({}), 'own')).toEqual({ version: '1' });
+    expect(legalVersionOf(env({ LEGAL_VERSION: '  ' }), 'own')).toEqual({ version: '1' });
   });
 });
 

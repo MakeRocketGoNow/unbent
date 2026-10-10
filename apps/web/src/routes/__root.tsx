@@ -1,6 +1,6 @@
-import { createRootRouteWithContext, Outlet, useNavigate } from '@tanstack/react-router';
-import { useEffect, useRef } from 'react';
-import { useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { createRootRouteWithContext, Outlet, useNavigate, useRouterState } from '@tanstack/react-router';
+import { useEffect, useRef, type ReactNode } from 'react';
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useAppSession } from '../useAppSession.js';
 import { useSignOut } from '../useSignOut.js';
 import { requireSession, useShell } from '../auth-gate.js';
@@ -24,6 +24,8 @@ import { SyncingLine } from '../components/SyncingLine.js';
 import { UpdateSnackbar } from '../components/UpdateSnackbar.js';
 import { claimImportFor, getImportRun, subscribeImport } from '../import-run.js';
 import { takeUpdate } from '../sw-register.js';
+import { configQuery } from '../queries.js';
+import { AgreementPending, LegalAgreement, agreementGate } from '../components/LegalAgreement.js';
 
 export interface RouterContext {
   queryClient: QueryClient;
@@ -55,11 +57,12 @@ export const Route = createRootRouteWithContext<RouterContext>()({
  * Three shells, chosen by what is rendered — `useShell` decides, and the same answer
  * decides what the gate above lets through unauthenticated.
  *
- * `/embed/` is a page the Android app hosts inside a WebView, with its own chrome around
- * it: the app draws the title, the filing and the back button, and it has already put a
- * session cookie in place before loading the page. So that shell has no topbar and no
- * gate — an unauthenticated load is reported to the app through the bridge rather than
- * redirected to a sign-in screen inside someone else's screen.
+ * `/embed/` is the page the Android app loads off screen to extract a PDF's text after a
+ * capture (`/embed/index-files`). Nobody sees it, and the app has already put a session
+ * cookie in place before loading it. So that shell has no chrome and no gate — an
+ * unauthenticated load is reported to the app through the bridge rather than redirected
+ * to a sign-in screen nobody would see — and no agreement to the terms either, which is
+ * asked for on the screens a person does see.
  *
  * `plain` is the pages that exist because there is no session: the sign-in screen and the
  * far end of a password-reset mail. They are centred on an otherwise empty page, with no
@@ -81,17 +84,21 @@ function RootLayout() {
 
 function EmbedShell() {
   return (
-    <main className="shell embed">
+    <main className="shell">
       <Outlet />
     </main>
   );
 }
 
-function PlainShell() {
+/**
+ * Takes `children` for the one signed-in screen drawn in the same frame: the agreement to
+ * the terms, which stands in for the app's routes rather than being one of them.
+ */
+function PlainShell({ children }: { children?: ReactNode }) {
   return (
     <main className="shell centered">
       <InstanceRibbon placement="page" />
-      <Outlet />
+      {children ?? <Outlet />}
     </main>
   );
 }
@@ -121,7 +128,9 @@ function FrontShell() {
  * is not mistaken for either.
  */
 function AppShell() {
-  const { session, isPending } = useAppSession();
+  const { session, isPending, unreachable } = useAppSession();
+  const config = useQuery(configQuery());
+  const pathname = useRouterState({ select: (s) => (s.resolvedLocation ?? s.location).pathname });
   const offline = useOffline();
   const navigate = useNavigate();
   const signOutAndLeave = useSignOut();
@@ -226,11 +235,29 @@ function AppShell() {
     void navigate({ to: '/login', replace: true });
   }, [isPending, session, navigate]);
 
-  if (!session?.user) {
+  const gate = session?.user
+    ? agreementGate({ unreachable, config, agreed: session.user.legalVersion, pathname })
+    : ({ kind: 'wait' } as const);
+  if (!session?.user || gate.kind === 'wait') {
     return (
       <main className="shell">
         <p className="muted">Loading…</p>
       </main>
+    );
+  }
+
+  // The agreement to the terms, in place of the app until it is given; see
+  // `agreementGate` for when it is asked and `LegalAgreement` for why it is asked here.
+  if (gate.kind === 'ask') {
+    // The sign-out's question about unsynced writes and its failure notice are mounted
+    // here too: Sign out is this screen's way out, and `useSignOut` hands both to these
+    // components, so without them a press with writes waiting would do nothing at all.
+    return (
+      <PlainShell>
+        <LegalAgreement legal={gate.legal} agreed={session.user.legalVersion} onSignOut={signOutAndLeave} />
+        <SignOutSnackbar />
+        <SignOutConfirm />
+      </PlainShell>
     );
   }
 
@@ -265,6 +292,7 @@ function AppShell() {
             stylesheet hides it above the breakpoint, where the rail is the chrome. */}
         <Topbar email={session.user.email} onSignOut={signOutAndLeave} />
         <OfflineBanner />
+        {gate.kind === 'open' && gate.pending && <AgreementPending />}
         <LibraryStatus />
         <SyncingLine />
         <Outlet />

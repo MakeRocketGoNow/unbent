@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { INSTANCE_KINDS, type AppConfig, type InstanceKind } from '@unbent/shared';
 import { accountDeletionOffered, getAuth, offeredProviders } from '../auth.js';
 import { frontPageOf, legalLinksOf, operatorOf, posthogOf } from '../lib/instance.js';
+import { refuseGrantsWithoutAgreement } from './legal.js';
 import { previewRelayOrigin } from '../lib/preview-relay.js';
 import { canAutofill } from '../lib/jev.js';
 import type { AppEnv, Env } from '../types.js';
@@ -10,8 +11,10 @@ export const authRoutes = new Hono<AppEnv>()
   /**
    * Better Auth owns everything under /api/auth — the OAuth start and callback URLs,
    * sign-out, and session endpoints. It receives the raw Request and returns a Response.
+   * Two of them, the ones that grant a program a credential, first need the account to
+   * have agreed to the terms; see `refuseGrantsWithoutAgreement`.
    */
-  .all('/auth/*', (c) => getAuth(c.env).handler(c.req.raw))
+  .all('/auth/*', refuseGrantsWithoutAgreement, (c) => getAuth(c.env).handler(c.req.raw))
 
   /** Who am I? Returns null rather than 401 so the SPA can render a logged-out state. */
   .get('/me', (c) => c.json({ user: c.get('user') ?? null }))

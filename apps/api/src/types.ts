@@ -213,6 +213,13 @@ export interface Env {
   LEGAL_PRIVACY_URL?: string;
   LEGAL_TERMS_URL?: string;
   /**
+   * The version of the documents every account must have agreed to, when the operator
+   * publishes their own (above) and changes them: moving it asks everyone to agree again.
+   * Unset, each account is asked once. Ignored for the built-in documents, whose version
+   * is `LEGAL_VERSION` in `@unbent/shared`. See `legalVersionOf`.
+   */
+  LEGAL_VERSION?: string;
+  /**
    * The Digital Asset Links document this origin serves at /.well-known/assetlinks.json:
    * which Android apps, by package and signing certificate, it vouches for. Verbatim JSON.
    *
@@ -320,6 +327,8 @@ export interface SessionUser {
   email: string;
   name: string;
   image: string | null;
+  /** The version of the terms this account agreed to, null before any (MAK-209). */
+  legalVersion: string | null;
 }
 
 /** Hono context variables populated by middleware. */

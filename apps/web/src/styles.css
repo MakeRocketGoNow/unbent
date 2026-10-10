@@ -49,8 +49,7 @@
   --instance-mark: var(--instance-local);
   /*
      A chip's fill and ink — a chosen select option, a tag. Derived from the accent here,
-     so the site draws them as it always has; the Android app's embed sets them to
-     Material's primaryContainer pair, which is what a chip is on that platform.
+     so the site draws them as it always has, in a browser and inside the apps alike.
   */
   --chip-bg: color-mix(in srgb, var(--accent) 12%, transparent);
   --chip-fg: var(--accent);
@@ -97,10 +96,8 @@
    Every checkbox and radio is the app's green, not the browser's blue.
 
    The editor's task boxes, the preview's, a field's, a settings row's: one control, one
-   colour, everywhere it appears — and inside the Android app's embed that colour is the
-   app's primary, which is what makes a ticked task in the WebView match the native
-   checkbox on the notebooks screen above it. `accent-color` is the whole mechanism; the
-   platform keeps drawing the control.
+   colour, everywhere it appears. `accent-color` is the whole mechanism; the platform keeps
+   drawing the control.
 */
 input[type='checkbox'],
 input[type='radio'] {
@@ -573,6 +570,28 @@ button.link {
 }
 
 /* The glyph keeps its size when the sentence wraps to two lines on a phone. */
+/*
+   The line above export and account deletion while the terms are still to be agreed to
+   (`AgreementPending`): the offline banner's shape, for the same reason — a state, not an
+   error — with its link in the line's own ink so it does not outshout the sentence.
+*/
+.agreement-pending {
+  margin: 0 0 var(--shell-pad-top);
+  padding: 0.45rem 0.75rem;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.35;
+}
+
+.agreement-pending a {
+  color: var(--fg);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  white-space: nowrap;
+}
+
 .offline-banner > svg {
   flex: none;
 }
@@ -1751,8 +1770,8 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
 /*
    The property list — notebook, tags, then the fields — in flow above the body.
 
-   One placement at every width now: the site's phone and desktop layouts and the Android
-   app's embed all draw this block, which is why it is not in the phone block. The column
+   One placement at every width now: the site's phone and desktop layouts both draw this
+   block, which is why it is not in the phone block. The column
    it sits in scrolls as one document (see `.workspace-main`), so the list is simply the
    top of the note and takes the height it needs.
 
@@ -1785,83 +1804,9 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
   align-self: center;
 }
 
-/*
-   No sizes of its own for the property rows the app hosts.
-
-   They were once put at Material's list sizes — bodyLarge on 44dp rows, chips at 32dp —
-   to sit under the native title in the app's own scale. Against the site's phone page,
-   which draws the same list at 0.85rem, that read as the same note in two sizes, and
-   the one that was wrong was the app's: the list is the site's, and its density is part
-   of what makes it recognisable. So the embed takes the phone layout's sizes unchanged,
-   and only the face and the palette are the host's; see `.shell.embed`.
-*/
-
 /* "Add field" and "Manage fields" are about the notebook, not a value: a breath before
    them keeps the last field from reading as a row that happens to have two buttons. */
 .fields-inline .note-fields-foot { margin-top: 0.25rem; }
-
-/*
-   The shell for a page the Android app hosts in a WebView.
-
-   No padding and no topbar: the app draws the chrome, and every pixel of the page is the
-   note. The shell is the note's one scroll region, the way `.workspace-main` is in the
-   phone block: the filing rows, the attachments strip and the editor scroll as one
-   document under the app's title bar, which stays put above the WebView. It used to keep
-   the desktop's height chain instead — the fields capped and scrolling within themselves,
-   the editor pane scrolling inside a box — which on a phone read as a note broken into
-   two windows, each with a scrollbar of its own, under a title that was a third.
-
-   A definite height rather than the document scrolling, so the docked bar and the
-   reading view's fixed editor have a viewport to be fixed against. `dvh` because a
-   WebView that shrinks for the keyboard reports that through the viewport, and `vh`
-   alone would keep the page laid out to the old height underneath it; the app shrinks
-   the WebView above the keys, so the region's bottom is always above them and no
-   keyboard inset is needed here.
-*/
-.shell.embed {
-  /*
-     The host's type.
-
-     The page sits under a native title in Roboto, so it takes the same face; the sizes
-     are the site's own phone sizes, for the reason given at the `.embedded` list rules.
-     The colours arrive on the URL; see `useHostTheme` in the embed route.
-  */
-  --font-ui: Roboto, "Noto Sans", system-ui, sans-serif;
-  --font-prose: Roboto, "Noto Sans", system-ui, sans-serif;
-  max-width: none;
-  padding: 0;
-  height: 100vh;
-  height: 100dvh;
-  overflow-y: auto;
-  /* A flick past the end stays in the page; the WebView has no pull-to-refresh to
-     hand it to, but nor should it hand a rubber-band to the app's screen. */
-  overscroll-behavior: contain;
-}
-
-/*
-   The note as a document in flow: the fields, the attachments strip, the editor. Nothing
-   here is sized to fit, so each grows to its content and the shell scrolls the lot.
-
-   The bottom padding is room for the docked bar, at every width rather than only below
-   the phone breakpoint: the bar is always docked here, whatever width the WebView has.
-*/
-.embedded {
-  padding: 0 0.75rem 3.5rem;
-}
-
-/* The pane no longer scrolls; the shell does. See the phone block for `.editor-host`. */
-.embedded .pane { overflow: visible; }
-
-/*
-   The reading view's hidden editor, fixed rather than absolute for the reason given at
-   the phone block's copy of this rule: an absolutely positioned pane still adds its
-   height — the whole note's — to the shell's scrollable overflow.
-*/
-.embedded .panes.reading > .editor-pane {
-  position: fixed;
-  inset: 0;
-  overflow: hidden;
-}
 
 .placeholder { margin-top: 3rem; text-align: center; }
 
@@ -9037,13 +8982,8 @@ button.settings-nav-item {
      this rule and earlier in the file, so this wins by source order alone; the bare rule
      excludes `.wide` because the row itself has no padding to narrow, and a rule that
      tied with `.shell-main` on specificity would otherwise inset the notes twice.
-
-     `:not(.embed)` because the WebView shell deliberately runs to the edge — the Android
-     app draws the chrome and every pixel of the page is the note. Its rule sits earlier in
-     this file at the same specificity, so without this it would be a source-order accident
-     that the two never collide.
   */
-  .shell:not(.embed):not(.wide),
+  .shell:not(.wide),
   .shell-main { padding-inline: 0.75rem; }
 
   /*

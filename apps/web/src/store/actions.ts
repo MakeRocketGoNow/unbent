@@ -1273,7 +1273,7 @@ export async function tagNotes(ids: string[], change: { add?: string[]; remove?:
  *
  * With a connection and nothing of the note's waiting, this is the request it always
  * was: the answer is the server's, a refusal — too big, over quota — is the caller's to
- * show where the file was dropped, and the caller's abort stops it.
+ * show where the file was dropped.
  *
  * Without one, or behind a write of the note's that has not gone through (a note made a
  * moment ago does not exist on the server yet), the file is kept and queued: its bytes
@@ -1285,7 +1285,7 @@ export async function tagNotes(ids: string[], change: { add?: string[]; remove?:
  * something about it: a file over the upload cap, a name the route does not take, and a
  * file the device has no room to hold.
  */
-export async function uploadFile(noteId: string, file: File, opts: { signal?: AbortSignal } = {}): Promise<api.UploadedFile> {
+export async function uploadFile(noteId: string, file: File): Promise<api.UploadedFile> {
   /*
    * Before the first `await`, while the drop or the click that brought the file is still
    * what the browser sees this as part of: a browser that asks the person asks only then,
@@ -1308,14 +1308,14 @@ export async function uploadFile(noteId: string, file: File, opts: { signal?: Ab
    * under a new one it stored `scan-2.pdf` beside it and said so (review of #236).
    */
   const attachmentId = crypto.randomUUID();
-  const direct = () => pulled(api.uploadFile(noteId, file, { ...opts, id: attachmentId }), { ids: [noteId], refiles: false });
+  const direct = () => pulled(api.uploadFile(noteId, file, { id: attachmentId }), { ids: [noteId], refiles: false });
   if (!lib || !filesSupported() || !lib.notes.has(noteId)) return direct();
   if (!offlineNow() && !lib.outbox.status().waiting.has(noteId)) {
     try {
       return await direct();
     } catch (err) {
       // The connection went while the bytes were on their way: keep the file after all.
-      if (!isOfflineError(err) || opts.signal?.aborted) throw err;
+      if (!isOfflineError(err)) throw err;
     }
   }
 

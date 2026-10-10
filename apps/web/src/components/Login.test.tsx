@@ -402,14 +402,14 @@ describe('Login', () => {
     await waitFor(() => expect(screen.getByText(/If that address has an account/)).toBeTruthy());
   });
   /*
-   * The consent sentence is a claim about documents a reader can go and read. On an
-   * instance publishing neither, it would ask people to agree to nothing they can see, so
-   * the whole line goes rather than only its links.
+   * The notice is a sentence about documents a reader can go and read. On an instance
+   * publishing neither, it would point at nothing they can see, so the whole line goes
+   * rather than only its links.
    */
   it('drops the consent line where the instance publishes no documents', async () => {
     harness(['password'], {});
     await waitFor(() => expect(screen.getByLabelText('Email')).toBeTruthy());
-    expect(screen.queryByText(/By continuing/)).toBeNull();
+    expect(screen.queryByText(/Using Unbent is subject to/)).toBeNull();
   });
 
   it('links the consent line at the built-in documents', async () => {
