@@ -43,8 +43,8 @@ describe('shouldApplyUpdate', () => {
   });
 
   it('stays out of the Android app’s embed pages', () => {
-    expect(shouldApplyUpdate({ ...ready, from: '/embed/notes/a', to: '/notes' })).toBe(false);
-    expect(shouldApplyUpdate({ ...ready, from: '/notes', to: '/embed/notes/a' })).toBe(false);
+    expect(shouldApplyUpdate({ ...ready, from: '/embed/index-files', to: '/notes' })).toBe(false);
+    expect(shouldApplyUpdate({ ...ready, from: '/notes', to: '/embed/index-files' })).toBe(false);
   });
 });
 
@@ -68,7 +68,7 @@ describe('shouldApplyOnReturn', () => {
   });
 
   it('stays out of the Android app’s embed pages', () => {
-    expect(shouldApplyOnReturn({ ...back, path: '/embed/notes/a' })).toBe(false);
+    expect(shouldApplyOnReturn({ ...back, path: '/embed/index-files' })).toBe(false);
   });
 });
 
@@ -108,7 +108,7 @@ describe('shouldApplyOnArrival', () => {
   });
 
   it('stays out of the Android app’s embed pages', () => {
-    expect(shouldApplyOnArrival({ ...loaded, path: '/embed/notes/a' })).toBe(false);
+    expect(shouldApplyOnArrival({ ...loaded, path: '/embed/index-files' })).toBe(false);
   });
 
   /* A preview is tried right after a push; a tester already scrolling when the new build
@@ -128,7 +128,7 @@ describe('shouldApplyOnArrival', () => {
   });
 
   it('still stays out of the embed pages on a preview', () => {
-    expect(shouldApplyOnArrival({ ...loaded, untouched: false, path: '/embed/notes/a', kind: 'preview' })).toBe(false);
+    expect(shouldApplyOnArrival({ ...loaded, untouched: false, path: '/embed/index-files', kind: 'preview' })).toBe(false);
   });
 });
 

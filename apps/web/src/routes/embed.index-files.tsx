@@ -83,7 +83,7 @@ export function IndexFiles({ note }: { note: string }) {
   }, [note]);
 
   return (
-    <section className="embedded">
+    <section>
       <p className="muted placeholder">{line}</p>
     </section>
   );

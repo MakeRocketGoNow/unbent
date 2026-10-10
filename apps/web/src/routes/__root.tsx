@@ -57,11 +57,12 @@ export const Route = createRootRouteWithContext<RouterContext>()({
  * Three shells, chosen by what is rendered — `useShell` decides, and the same answer
  * decides what the gate above lets through unauthenticated.
  *
- * `/embed/` is a page the Android app hosts inside a WebView, with its own chrome around
- * it: the app draws the title, the filing and the back button, and it has already put a
- * session cookie in place before loading the page. So that shell has no topbar and no
- * gate — an unauthenticated load is reported to the app through the bridge rather than
- * redirected to a sign-in screen inside someone else's screen.
+ * `/embed/` is the page the Android app loads off screen to extract a PDF's text after a
+ * capture (`/embed/index-files`). Nobody sees it, and the app has already put a session
+ * cookie in place before loading it. So that shell has no chrome and no gate — an
+ * unauthenticated load is reported to the app through the bridge rather than redirected
+ * to a sign-in screen nobody would see — and no agreement to the terms either, which is
+ * asked for on the screens a person does see.
  *
  * `plain` is the pages that exist because there is no session: the sign-in screen and the
  * far end of a password-reset mail. They are centred on an otherwise empty page, with no
@@ -83,7 +84,7 @@ function RootLayout() {
 
 function EmbedShell() {
   return (
-    <main className="shell embed">
+    <main className="shell">
       <Outlet />
     </main>
   );

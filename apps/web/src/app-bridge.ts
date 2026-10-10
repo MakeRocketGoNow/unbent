@@ -1,5 +1,3 @@
-import type { SaveState } from './useAutosave.js';
-
 /**
  * The seam between this site and the app hosting this page (Android or iOS).
  *
@@ -43,16 +41,10 @@ import type { SaveState } from './useAutosave.js';
  * The indexing page says `ready`, then `index-progress` as it goes, and ends with exactly
  * one of `index-done`, `unauthorized` or `index-error`. The app has nothing to ask it.
  *
- * `save`, `upload`, `missing`, `flush` and `abandonUploads` belong to the embedded note
- * page (`/embed/notes/:id`) that earlier versions of the app drew their own screen around.
- * They stay until those versions are gone from the store; see that route.
  */
 export type AppMessage =
   | { type: 'ready' }
-  | { type: 'save'; state: SaveState }
-  | { type: 'upload'; pending: number }
   | { type: 'unauthorized' }
-  | { type: 'missing' }
   | { type: 'signed-out' }
   | { type: 'app-settings' }
   | { type: 'edge-to-edge' }
@@ -66,8 +58,6 @@ export interface AppHandlers {
   back?(canGoBack: boolean): boolean;
   /** Navigates to a path on this site without reloading it. True when it did. */
   open?(path: string): boolean;
-  flush?(): Promise<void>;
-  abandonUploads?(): void;
 }
 
 /**

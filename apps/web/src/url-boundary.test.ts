@@ -58,7 +58,6 @@ describe('url boundary', () => {
 
     const allowed = [
       'notes-api.ts',
-      'embed.notes.$noteId.tsx',
       'settings.operator.tsx',
       'attachment-viewer.ts',
       'url-boundary.test.ts',

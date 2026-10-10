@@ -13,8 +13,8 @@ import { findAbsoluteAttachmentLinks, formatAttachmentMarkdown } from '@unbent/s
  * `view.state.facet(attachConfig)`. The alternatives were a callback prop threaded from
  * `Workspace` to the toolbar (neither owns the routine, so the toolbar would have reached
  * the editor two ways for one job) and a `StateEffect` the toolbar dispatches (starting
- * fetches from a transaction listener is indirection, and abandon and the pending count
- * would each have needed another effect).
+ * fetches from a transaction listener is indirection, and the pending count would have
+ * needed another effect).
  *
  * What an upload looks like in the document: a placeholder `![uploading NAME…](#upload-…)`
  * goes in at once, and is replaced by the real link when the upload finishes. Uploads are
@@ -58,16 +58,6 @@ class PendingUploads implements PluginValue {
 
   remove(token: string) {
     if (this.jobs.delete(token)) this.notify();
-  }
-
-  /** Aborts everything and returns the tokens whose placeholders are now stale. */
-  abandon(): string[] {
-    const tokens = [...this.jobs.keys()];
-    const controllers = [...this.jobs.values()];
-    this.jobs.clear();
-    for (const controller of controllers) controller.abort();
-    if (tokens.length > 0) this.notify();
-    return tokens;
   }
 
   destroy() {
@@ -202,32 +192,6 @@ export async function insertUploads(
       pending.remove(token);
     }
   }
-}
-
-/**
- * Aborts every upload in flight and takes their placeholders out of the document.
- *
- * For a host that is about to throw the view away — the Android app, when the user
- * presses Back mid-upload. Without this the placeholder would be what the page last
- * saved, and it would sit in the note forever, because the WebView that could have
- * replaced it dies with the screen. Returns whether the document changed.
- */
-export function abandonUploads(view: EditorView): boolean {
-  const pending = view.plugin(pendingPlugin);
-  if (!pending || pending.jobs.size === 0) return false;
-
-  const tokens = pending.abandon();
-  const doc = view.state.doc.toString();
-  const changes = tokens.flatMap((token) => {
-    const from = doc.indexOf(token);
-    if (from === -1) return []; // the user already deleted it
-    const end = from + token.length;
-    // The newline that went in with it, so a removed placeholder leaves no blank line.
-    return [{ from, to: doc[end] === '\n' ? end + 1 : end }];
-  });
-  if (changes.length === 0) return false;
-  view.dispatch({ changes });
-  return true;
 }
 
 /** The tokens for `ownParagraph`, with the line breaks `at` lacks on either side. */
