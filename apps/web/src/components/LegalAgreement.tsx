@@ -42,8 +42,9 @@ export function needsAgreement(
  * their native sign-in screens they are this site.
  *
  * Its own press, "Agree and continue", with both documents linked above it. Not a "by
- * continuing you agree" line, which the sign-in screen still carries as notice: an
- * agreement someone can be held to is one they visibly made, to documents they were shown.
+ * continuing you agree" line, which the sign-in screen used to carry and now gives only as
+ * notice: an agreement someone can be held to is one they visibly made, to documents they
+ * were shown.
  *
  * The same screen says when the documents have changed since someone agreed, with what
  * changed if the instance says (`LEGAL_CHANGE`). It always offers a way out — signing out,
