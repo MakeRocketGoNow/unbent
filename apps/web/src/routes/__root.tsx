@@ -1,6 +1,6 @@
-import { createRootRouteWithContext, Outlet, useNavigate } from '@tanstack/react-router';
+import { createRootRouteWithContext, Outlet, useNavigate, useRouterState } from '@tanstack/react-router';
 import { useEffect, useRef } from 'react';
-import { useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useAppSession } from '../useAppSession.js';
 import { useSignOut } from '../useSignOut.js';
 import { requireSession, useShell } from '../auth-gate.js';
@@ -24,6 +24,8 @@ import { SyncingLine } from '../components/SyncingLine.js';
 import { UpdateSnackbar } from '../components/UpdateSnackbar.js';
 import { claimImportFor, getImportRun, subscribeImport } from '../import-run.js';
 import { takeUpdate } from '../sw-register.js';
+import { configQuery } from '../queries.js';
+import { LegalAgreement, needsAgreement } from '../components/LegalAgreement.js';
 
 export interface RouterContext {
   queryClient: QueryClient;
@@ -121,7 +123,9 @@ function FrontShell() {
  * is not mistaken for either.
  */
 function AppShell() {
-  const { session, isPending } = useAppSession();
+  const { session, isPending, unreachable } = useAppSession();
+  const config = useQuery(configQuery());
+  const pathname = useRouterState({ select: (s) => (s.resolvedLocation ?? s.location).pathname });
   const offline = useOffline();
   const navigate = useNavigate();
   const signOutAndLeave = useSignOut();
@@ -226,10 +230,33 @@ function AppShell() {
     void navigate({ to: '/login', replace: true });
   }, [isPending, session, navigate]);
 
-  if (!session?.user) {
+  // Until the config says whether there are terms to agree to, so the app is not drawn
+  // and then replaced by the agreement. A config that cannot be fetched at all — offline
+  // with nothing cached — lets the app through, as the remembered session does.
+  if (!session?.user || config.isPending) {
     return (
       <main className="shell">
         <p className="muted">Loading…</p>
+      </main>
+    );
+  }
+
+  /*
+   * The agreement to the terms, in place of the app until it is given; see
+   * `LegalAgreement`. Only on an answer from the server: a session remembered for
+   * offline use does not carry the version, and asking someone with no connection to
+   * agree to something the server cannot record would lock them out of their notes.
+   */
+  const legal = config.data?.legal;
+  if (!unreachable && legal?.version && needsAgreement(legal, session.user.legalVersion, pathname)) {
+    return (
+      <main className="shell centered">
+        <InstanceRibbon placement="page" />
+        <LegalAgreement
+          legal={{ ...legal, version: legal.version }}
+          agreed={session.user.legalVersion}
+          onSignOut={signOutAndLeave}
+        />
       </main>
     );
   }

@@ -22,6 +22,7 @@ import { admin } from './routes/admin.js';
 import { search } from './routes/search.js';
 import { importEnmlRoutes, importNotebookRoutes, importRoutes } from './routes/import.js';
 import { connectedApps } from './routes/connected-apps.js';
+import { legal } from './routes/legal.js';
 import { previewRelay } from './routes/preview-relay.js';
 import { mcpRoutes } from './routes/mcp.js';
 import { clientErrors } from './routes/client-errors.js';
@@ -87,6 +88,7 @@ const routes = app
   .route('/api', importEnmlRoutes)
   .route('/api', mcpRoutes)
   .route('/api', connectedApps)
+  .route('/api', legal)
   .route('/api', previewRelay)
   .route('/api', clientErrors)
   .route('/api', changes);

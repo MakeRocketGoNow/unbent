@@ -92,7 +92,13 @@ export const oauth2 = authClient.oauth2 as unknown as ConsentClient;
  * not depend on directly, and TypeScript refuses to name that in an export (TS2742).
  */
 export interface Session {
-  user: { id: string; email: string; name?: string };
+  /**
+   * `legalVersion` is the version of the terms the account agreed to, null before any
+   * (MAK-209). Absent rather than null on a session remembered for offline use, which
+   * keeps only who it was; see `useAppSession` for why the agreement is only asked about
+   * on an answer from the server.
+   */
+  user: { id: string; email: string; name?: string; legalVersion?: string | null };
 }
 
 /**

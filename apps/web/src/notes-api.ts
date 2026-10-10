@@ -462,6 +462,22 @@ export async function getConfig(): Promise<AppConfig> {
   return json<AppConfig>(await request('/api/config'));
 }
 
+/**
+ * Records that the signed-in account agreed to this version of the terms and privacy
+ * policy (MAK-209). A 409 means the instance publishes a newer version than the one shown;
+ * the caller reloads the config and shows that instead. The answer replaces the session
+ * cookie, so the next read of the session carries the new version.
+ */
+export async function agreeToLegal(version: string): Promise<void> {
+  await json(
+    await request('/api/legal/agree', {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ version }),
+    }),
+  );
+}
+
 /** A tag as the list reports it: its id, which a rename addresses, and how many live notes carry it. */
 export interface TagSummary {
   id: string;

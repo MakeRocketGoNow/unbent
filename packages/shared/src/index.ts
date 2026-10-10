@@ -12,3 +12,4 @@ export * from './search.js';
 export * from './text-facts.js';
 export * from './operator.js';
 export * from './names.js';
+export * from './legal.js';

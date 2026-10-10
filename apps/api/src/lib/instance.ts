@@ -1,4 +1,4 @@
-import type { AppConfig } from '@unbent/shared';
+import { LEGAL_CHANGE, LEGAL_VERSION, type AppConfig } from '@unbent/shared';
 import type { Env } from '../types.js';
 
 /**
@@ -72,9 +72,25 @@ export function isOperator(env: Env, email: string | undefined): boolean {
 export function legalLinksOf(env: Env): AppConfig['legal'] | undefined {
   const privacy = env.LEGAL_PRIVACY_URL?.trim();
   const terms = env.LEGAL_TERMS_URL?.trim();
-  if (privacy && terms) return { privacy, terms };
-  if (operatorOf(env)) return { privacy: '/privacy', terms: '/terms' };
+  if (privacy && terms) return { privacy, terms, ...legalVersionOf(env) };
+  if (operatorOf(env)) return { privacy: '/privacy', terms: '/terms', ...legalVersionOf(env) };
   return undefined;
+}
+
+/**
+ * Which version of the documents a signed-in account must have agreed to, and what is new
+ * in it. See `LEGAL_VERSION`.
+ *
+ * `LEGAL_VERSION` in the environment is for an operator who publishes their own documents:
+ * this repository cannot know when those change, so the operator moves it, and everyone is
+ * asked again. Unset, they are asked once, against the built-in version. The built-in
+ * documents' own sentence on what changed is only said under their own version — beside an
+ * operator's it would describe a change to documents nobody there agreed to.
+ */
+export function legalVersionOf(env: Pick<Env, 'LEGAL_VERSION'>): { version: string; change?: string } {
+  const own = env.LEGAL_VERSION?.trim();
+  if (own && own !== LEGAL_VERSION) return { version: own };
+  return { version: LEGAL_VERSION, ...(LEGAL_CHANGE ? { change: LEGAL_CHANGE } : {}) };
 }
 
 /**

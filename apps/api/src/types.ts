@@ -213,6 +213,13 @@ export interface Env {
   LEGAL_PRIVACY_URL?: string;
   LEGAL_TERMS_URL?: string;
   /**
+   * The version of the documents every account must have agreed to, when the operator
+   * publishes their own (above) and changes them: moving it asks everyone to agree again.
+   * Unset means the built-in `LEGAL_VERSION`, and each account is asked once. See
+   * `legalVersionOf`.
+   */
+  LEGAL_VERSION?: string;
+  /**
    * The Digital Asset Links document this origin serves at /.well-known/assetlinks.json:
    * which Android apps, by package and signing certificate, it vouches for. Verbatim JSON.
    *
