@@ -1,4 +1,4 @@
-import { STORAGE_FULL_CODE, storageQuotaBytes } from '@unbent/shared';
+import { GB, STORAGE_FULL_CODE, storageQuotaBytes } from '@unbent/shared';
 import type { AttachmentsRepo } from './attachments-repo.js';
 import { billingOn, type PaddleEnv } from './paddle.js';
 import { planFor, type PlanRow } from './plan.js';
@@ -27,8 +27,6 @@ export class StorageFull extends Error {
     this.name = 'StorageFull';
   }
 }
-
-const GB = 1024 ** 3;
 
 /** The sentence a refused upload is answered with, in round gigabytes, with what to do about it. */
 export function storageFullMessage(usedBytes: number, quotaBytes: number): string {

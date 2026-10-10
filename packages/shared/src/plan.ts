@@ -38,16 +38,23 @@ export const INACTIVE_KEPT_DAYS = 365;
 export const GB = 1024 * 1024 * 1024;
 
 /**
+ * The most storage blocks one checkout or change may ask for: a terabyte on top, past
+ * any archive this app has seen. The API refuses more; the Plan page offers fewer in its
+ * list and says where to ask for the rest.
+ */
+export const MAX_STORAGE_UNITS = 40;
+
+/**
  * The `code` on the 402 a lapsed account's write is answered with, so a client tells it
  * from any other refusal and shows the plan rather than the message. The message beside
  * it is the sentence for a client that does not.
  */
 export const PLAN_INACTIVE_CODE = 'PLAN_INACTIVE';
+export const PLAN_INACTIVE_MESSAGE =
+  'This account is read-only: its plan has ended. Everything still opens, searches and exports, and anything can be deleted; subscribe under Settings → Plan to edit again.';
 
 /** The `code` on the 402 an upload past the plan's storage is answered with. */
 export const STORAGE_FULL_CODE = 'STORAGE_FULL';
-export const PLAN_INACTIVE_MESSAGE =
-  'This account is read-only: its plan has ended. Everything still opens, searches and exports, and anything can be deleted; subscribe under Settings → Plan to edit again.';
 
 /**
  * Where an account stands.

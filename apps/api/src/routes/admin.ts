@@ -38,13 +38,6 @@ const sweepByToken = createMiddleware<AppEnv>(async (c, next) => {
   return c.json(await sweepStores(c.env, { restart: c.req.query('restart') === '1' }));
 });
 
-/**
- * Destructive maintenance, all scoped to the caller's own data.
- *
- * Every route here enumerates or deletes under `users/{me}/` and reads the session user's
- * own note store, so none of them can see or touch another account. An operator-wide sweep would
- * need separate, deliberately privileged handling.
- */
 const testPlanBody = z.object({
   plan: z.enum(['trial', 'active', 'inactive']),
   until: z.number().int().nullable(),
@@ -58,6 +51,13 @@ const compBody = z.discriminatedUnion('action', [
   z.object({ action: z.literal('end') }),
 ]);
 
+/**
+ * Destructive maintenance, all scoped to the caller's own data.
+ *
+ * Every route here enumerates or deletes under `users/{me}/` and reads the session user's
+ * own note store, so none of them can see or touch another account. An operator-wide sweep would
+ * need separate, deliberately privileged handling.
+ */
 export const admin = new Hono<AppEnv>()
   /**
    * Deletes R2 objects with no attachment row pointing at them.
@@ -858,7 +858,7 @@ export const admin = new Hono<AppEnv>()
       return c.json({ error: 'This account has a Paddle subscription. Cancel it in Paddle before comping the account.' }, 409);
     }
     if (body.action === 'end') {
-      await updatePlan(c.env.DB, target, { plan: 'inactive', planUntil: now, source: row.source === 'comp' ? 'comp' : row.source }, now);
+      await updatePlan(c.env.DB, target, { plan: 'inactive', planUntil: now }, now);
     } else {
       if (body.until !== null && body.until <= now) return c.json({ error: 'The end date has to be ahead.' }, 400);
       await updatePlan(

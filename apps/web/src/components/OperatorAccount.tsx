@@ -1061,22 +1061,6 @@ function Resync({ userId, email }: { userId: string; email: string }) {
 }
 
 /**
- * Deleting the account: for a sign-up that should not exist — a bot, a test account,
- * someone who asked by other means. The same deletion a person makes of their own from
- * Maintenance, by the same server code, without the emailed link that proves an account
- * is theirs.
- *
- * Last on the page, below everything that can be undone, and typed to confirm as
- * "Delete all notes" is, since it is the one action here with no undo at all: a wind-back
- * and a load each record a bookmark to go back to, and this leaves no account to load a
- * dump into. The confirm names what goes from the store's own counts, falling back to
- * the sweep's while those are not in, and says that the dumps stay — they are not
- * deleted, and age out under the bucket's rules.
- *
- * Not offered on the operator's own account, which the server refuses too: that deletion
- * is Maintenance's, with its link, and this one would end the session making it.
- */
-/**
  * The account's plan, and the comp (MAK-108): the one way an account is paid for without
  * Paddle — the owner, a gifted friend, someone whose trial ran out mid-import. An end
  * date or none, and the storage to give it; a comp of an account that has a Paddle
@@ -1170,6 +1154,22 @@ function PlanSection({ userId, email, plan }: { userId: string; email: string; p
   );
 }
 
+/**
+ * Deleting the account: for a sign-up that should not exist — a bot, a test account,
+ * someone who asked by other means. The same deletion a person makes of their own from
+ * Maintenance, by the same server code, without the emailed link that proves an account
+ * is theirs.
+ *
+ * Last on the page, below everything that can be undone, and typed to confirm as
+ * "Delete all notes" is, since it is the one action here with no undo at all: a wind-back
+ * and a load each record a bookmark to go back to, and this leaves no account to load a
+ * dump into. The confirm names what goes from the store's own counts, falling back to
+ * the sweep's while those are not in, and says that the dumps stay — they are not
+ * deleted, and age out under the bucket's rules.
+ *
+ * Not offered on the operator's own account, which the server refuses too: that deletion
+ * is Maintenance's, with its link, and this one would end the session making it.
+ */
 function DeleteAccount({
   userId,
   email,
