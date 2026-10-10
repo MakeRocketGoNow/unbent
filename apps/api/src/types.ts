@@ -215,8 +215,8 @@ export interface Env {
   /**
    * The version of the documents every account must have agreed to, when the operator
    * publishes their own (above) and changes them: moving it asks everyone to agree again.
-   * Unset means the built-in `LEGAL_VERSION`, and each account is asked once. See
-   * `legalVersionOf`.
+   * Unset, each account is asked once. Ignored for the built-in documents, whose version
+   * is `LEGAL_VERSION` in `@unbent/shared`. See `legalVersionOf`.
    */
   LEGAL_VERSION?: string;
   /**

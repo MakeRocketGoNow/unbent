@@ -295,7 +295,8 @@ Moving `LEGAL_VERSION` in `packages/shared/src/legal.ts` asks everyone again, wo
 update, with `LEGAL_CHANGE` beside it to say what changed. Move it for a change worth
 interrupting people for, not for every correction: the documents' effective dates move for
 those on their own. An operator with their own documents sets `LEGAL_VERSION` in the
-environment instead, since only they know when those change; unset, everyone is asked once.
+environment instead, since only they know when those change; unset, everyone is asked once,
+and a change to the built-in documents never asks them again.
 
 Set them per deployment rather than in `wrangler.toml`, which everyone who self-hosts
 checks out:

@@ -91,7 +91,7 @@ describe('legalLinksOf', () => {
     expect(legalLinksOf(env({ ...OPERATOR, ...EXTERNAL }))).toEqual({
       privacy: 'https://example.com/privacy',
       terms: 'https://example.com/terms',
-      version: LEGAL_VERSION,
+      version: '1',
     });
   });
 
@@ -117,16 +117,23 @@ describe('legalLinksOf', () => {
  * those change.
  */
 describe('legalVersionOf', () => {
-  it('asks for the built-in version by default', () => {
-    expect(legalVersionOf(env({})).version).toBe(LEGAL_VERSION);
+  it('asks for the built-in version, whatever the environment says', () => {
+    expect(legalVersionOf(env({}), 'built-in').version).toBe(LEGAL_VERSION);
+    expect(legalVersionOf(env({ LEGAL_VERSION: '2027-01-01' }), 'built-in').version).toBe(LEGAL_VERSION);
   });
 
-  it('asks for the operator’s own version when one is set', () => {
-    expect(legalVersionOf(env({ LEGAL_VERSION: ' 2027-01-01 ' }))).toEqual({ version: '2027-01-01' });
+  it('asks for the operator’s own version for their own documents', () => {
+    expect(legalVersionOf(env({ LEGAL_VERSION: ' 2027-01-01 ' }), 'own')).toEqual({ version: '2027-01-01' });
   });
 
-  it('treats a blank setting as unset', () => {
-    expect(legalVersionOf(env({ LEGAL_VERSION: '  ' })).version).toBe(LEGAL_VERSION);
+  /*
+   * Never the repository's: a fork with its own documents would otherwise be asked again
+   * every time the built-in ones changed, under a sentence about documents it does not
+   * publish.
+   */
+  it('gives an operator’s own documents a fixed version of their own when unset', () => {
+    expect(legalVersionOf(env({}), 'own')).toEqual({ version: '1' });
+    expect(legalVersionOf(env({ LEGAL_VERSION: '  ' }), 'own')).toEqual({ version: '1' });
   });
 });
 
