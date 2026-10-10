@@ -160,7 +160,7 @@ export function Plan() {
           <>
             <label className="plan-storage-choice">
               <span>Storage</span>
-              <select value={chosenUnits} onChange={(e) => setUnits(Number(e.target.value))} disabled={busy !== null}>
+              <select className="search-field" value={chosenUnits} onChange={(e) => setUnits(Number(e.target.value))} disabled={busy !== null}>
                 {Array.from({ length: MAX_UNITS + 1 }, (_, n) => (
                   <option key={n} value={n}>
                     {BASE_STORAGE_GB + n * STORAGE_ADDON_GB} GB

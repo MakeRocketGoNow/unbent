@@ -625,7 +625,7 @@ button.link {
   margin: 0 0 0.7rem;
   font-size: 0.9rem;
 }
-.plan-storage-choice select { font: inherit; }
+.plan-storage-choice .search-field { width: auto; }
 
 .notes {
   display: grid;
