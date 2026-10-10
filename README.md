@@ -243,6 +243,7 @@ says otherwise; `pnpm exec wrangler secret put NAME` from `apps/api`, or the das
 | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | Auto-fill's language model: reading a note's pictures and text-less scans on a press, and writing its title and text fields | see [Reading images](#reading-images); `DEV_ANTHROPIC_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
 | `ANTHROPIC_READ_MODEL`, `ANTHROPIC_TITLE_MODEL`, `ANTHROPIC_FIELDS_MODEL`, `ANTHROPIC_READ_EFFORT` | a model per job, and the reading's effort | each unset falls back to `ANTHROPIC_MODEL`; see [Reading images](#reading-images) |
 | `AUTOFILL_DAILY_CAP` | a ceiling on Auto-fill presses per account per UTC day | a whole number; unset means none. Every press and the model's tokens are counted either way, and Maintenance shows the year's; see [Filing a note from what it says](#filing-a-note-from-what-it-says) |
+| `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`, `PADDLE_CLIENT_TOKEN`, `PADDLE_PLAN_PRICE_ID`, `PADDLE_STORAGE_PRICE_ID` | selling the plan through Paddle | all five or none; unset, every account is active for good and nothing about billing is drawn. unbent.app's own, so leave them unset on yours; see [Selling the plan](#selling-the-plan) |
 | `ANDROID_ASSET_LINKS` | an Android build of your own | see [Android app](#android-app) |
 | `APPLE_APP_SITE_ASSOCIATION` | an iOS build of your own | see [iOS app](#ios-app) |
 | `APPLE_BUNDLE_ID` | Sign in with Apple from an iOS build of your own | comma-separated bundle ids, beside `APPLE_CLIENT_ID`; see [iOS app](#ios-app) |
@@ -1320,6 +1321,28 @@ For local development, `pnpm --filter @unbent/api reset:local` clears D1, R2 and
 stores entirely and rebuilds the schema, backing up D1 and the stores first. Use that rather
 than the in-app sweep to clear fixtures left by deleted test users — the scoped sweep cannot
 reach another account's prefix by design.
+
+## Selling the plan
+
+unbent.app sells one plan, $36 a year, with 10 GB of attachments and 25 GB more for $12 a
+year (the reasoning is in MAK-47). Paddle is the merchant of record: it takes the payment,
+handles VAT and sales tax, and tells the Worker what happened over a webhook. Nothing about
+it exists on an instance that has not set the five `PADDLE_*` settings — every account is
+active for good there, and no Plan tab is drawn — so a fork never has to think about it.
+The numbers the pages quote are in `packages/shared/src/plan.ts`; the prices Paddle charges
+are in its catalog, and the two are changed together.
+
+Every account starts with a fortnight's trial, no card asked for. When it runs out, or a
+subscription lapses, the account turns **inactive**: everything still opens, searches and
+exports, and every write but a delete is refused with a 402 that the app shows as a
+read-only banner. The same state, and the same code path, for an expired trial, a lapsed
+subscription and a comp that ended (`requireActivePlan` in the API). After a year inactive
+the account is deleted, with reminders to export first.
+
+Comps do not go through Paddle. A 100% discount there still asks for a card and charges it
+when the discount ends, so an account that should not pay — the owner, a gifted friend — is
+comped from the operator's page, with an end date or none, and Paddle never hears of it.
+Paddle discount codes are for marketing.
 
 ## Deleting an account
 

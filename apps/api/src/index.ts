@@ -27,6 +27,7 @@ import { previewRelay } from './routes/preview-relay.js';
 import { mcpRoutes } from './routes/mcp.js';
 import { clientErrors } from './routes/client-errors.js';
 import { changes } from './routes/changes.js';
+import { billing } from './routes/billing.js';
 
 /**
  * The per-account note store, exported so the runtime can construct it. This is one of
@@ -91,7 +92,8 @@ const routes = app
   .route('/api', legal)
   .route('/api', previewRelay)
   .route('/api', clientErrors)
-  .route('/api', changes);
+  .route('/api', changes)
+  .route('/api', billing);
 
 /** Consumed by the SPA through `hc<AppType>()` for end-to-end types with no codegen. */
 export type AppType = typeof routes;

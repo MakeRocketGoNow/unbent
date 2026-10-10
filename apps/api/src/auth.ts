@@ -10,6 +10,7 @@ import { canSendEmail, sendEmail } from './lib/email.js';
 import { signInCodeEmail } from './lib/sign-in-code-email.js';
 import { deleteKeys } from './lib/blobs.js';
 import { ensureDirectoryRow } from './lib/directory.js';
+import { ensurePlanRow } from './lib/plan.js';
 import { SESSION_CACHE_SECONDS, clearAccount, tombstoneAccount } from './lib/account-deletion.js';
 
 /**
@@ -615,6 +616,14 @@ function createAuth(env: Env): AuthInstance {
               // The sweep heals a missing row within the hour, so a failed write here must
               // not fail the sign-up the user row already succeeded at.
               console.error(`directory row for ${user.id} not written; the sweep will add it:`, err);
+            }
+            // The fortnight starts now (MAK-108). Written on every instance, billing or
+            // not, so an instance that turns billing on later finds every account dated.
+            // Healed on first read by `planFor`, so this failing costs the sign-up nothing.
+            try {
+              await ensurePlanRow(env.DB, user.id);
+            } catch (err) {
+              console.error(`plan row for ${user.id} not written; the first read will add it:`, err);
             }
           },
         },

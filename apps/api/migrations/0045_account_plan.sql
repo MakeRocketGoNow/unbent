@@ -1,0 +1,84 @@
+-- Which plan each account is on, and the subscription behind it (MAK-108).
+--
+-- One row per account. `plan` is what the row says the account is — on its trial, paid
+-- for, or lapsed — and `plan_until` is when that stops being true: the trial's end, the
+-- end of the period a subscription has paid for, the end of a comp. What the account *is*
+-- right now is worked out from the two against the clock (`planStateOf` in lib/plan.ts),
+-- so a trial that ran out at midnight reads as `inactive` from midnight without a job
+-- having to come round and say so. `plan` moves only when something is decided: a
+-- subscription starting, Paddle reporting its status, an operator comping the account.
+--
+-- A comp is a row with `source = 'comp'`, `plan = 'active'`, an end or null for none, and
+-- no Paddle ids: the owner, a gifted friend. Paddle never hears of it — a discount of
+-- 100% there still asks for a card and charges it when the discount ends — and the
+-- webhook finds rows by Paddle's ids alone, so it cannot touch one. Set from the
+-- operator's page (`POST /api/admin/accounts/:id/plan`).
+--
+-- The Paddle columns are the join to Paddle's side. The customer id is written at the
+-- first checkout, before the transaction is made, and is what every event is matched by;
+-- the subscription id follows with the first event that names it. `paddle_status` is
+-- Paddle's own word for the subscription, kept for the Plan page's sentence ("renews",
+-- "cancels on", "payment failed"), `paddle_cancels_at` a cancellation asked for and still
+-- ahead (Paddle keeps the status `active` until it takes effect), and `paddle_event_at`
+-- is when the newest event applied to this row happened, so an event delivered late —
+-- Paddle promises delivery, not order — does not write an older status over a newer one.
+--
+-- `storage_gb` is what the account may hold: the plan's base plus the add-ons bought,
+-- written by the webhook from the subscription's items, or whatever an operator comped.
+-- The quota is enforced on upload against the store's own count of its files' bytes.
+--
+-- `lapse_notified_at` is when the account was told it had gone `inactive` (the sweep
+-- sends the mail, lib/plan-mail.ts), and is cleared when it becomes active again, so the
+-- next lapse is told once more.
+--
+-- With the account (`ON DELETE CASCADE`), like `legal_agreement`: a plan row is a record
+-- about a person. Not the directory's reason for having no foreign key — nothing here
+-- needs to outlive the account; the subscription is cancelled with Paddle before the row
+-- goes (lib/account-deletion.ts).
+--
+-- Backfilled: every account that exists today starts its fortnight now, as a new account
+-- would. On an instance with billing on, the operator comps whoever should not be asked
+-- to pay before the fortnight is up. On one without, the rows are never read.
+CREATE TABLE account_plan (
+  user_id                TEXT PRIMARY KEY REFERENCES user(id) ON DELETE CASCADE,
+  plan                   TEXT NOT NULL CHECK (plan IN ('trial', 'active', 'inactive')),
+  plan_until             INTEGER,
+  storage_gb             INTEGER NOT NULL DEFAULT 10,
+  source                 TEXT CHECK (source IN ('paddle', 'comp')),
+  paddle_customer_id     TEXT,
+  paddle_subscription_id TEXT,
+  paddle_status          TEXT,
+  paddle_cancels_at      INTEGER,
+  paddle_event_at        TEXT,
+  lapse_notified_at      INTEGER,
+  created_at             INTEGER NOT NULL,
+  updated_at             INTEGER NOT NULL
+);
+
+-- The webhook's way in: one row per Paddle customer, found by their id. Unique, because
+-- two accounts under one Paddle customer would both be moved by one subscription.
+CREATE UNIQUE INDEX idx_account_plan_customer ON account_plan(paddle_customer_id)
+  WHERE paddle_customer_id IS NOT NULL;
+
+-- The sweep's: the accounts whose end has passed and have not been told. Partial on the
+-- two conditions the one statement that reads it repeats (`LAPSE_DUE_SQL` in
+-- lib/plan.ts), so a walk finds the few rows that are due and nothing else. The planner
+-- takes any index it can use (AGENTS.md, "Rows read are still the budget"), and the
+-- table's other statements go by `user_id` or the customer id, which this cannot serve.
+CREATE INDEX idx_account_plan_lapse_due ON account_plan(plan_until)
+  WHERE lapse_notified_at IS NULL AND plan_until IS NOT NULL AND plan <> 'inactive';
+
+-- Every Paddle event applied, by its id, so a redelivery — Paddle retries anything not
+-- answered 200 within five seconds — applies nothing twice. Written in the same batch as
+-- the change the event made; a row here and no change cannot happen. Never read but by
+-- the insert that refuses a repeat, so the key is its only index.
+CREATE TABLE billing_event (
+  event_id    TEXT PRIMARY KEY,
+  event_type  TEXT NOT NULL,
+  occurred_at TEXT NOT NULL,
+  received_at INTEGER NOT NULL
+);
+
+INSERT INTO account_plan (user_id, plan, plan_until, created_at, updated_at)
+SELECT id, 'trial', unixepoch() * 1000 + 14 * 86400 * 1000, unixepoch() * 1000, unixepoch() * 1000
+  FROM user;

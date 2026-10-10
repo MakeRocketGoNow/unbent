@@ -13,3 +13,4 @@ export * from './text-facts.js';
 export * from './operator.js';
 export * from './names.js';
 export * from './legal.js';
+export * from './plan.js';

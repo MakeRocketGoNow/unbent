@@ -1,0 +1,106 @@
+import { describe, expect, it } from 'vitest';
+import { BASE_STORAGE_GB, TRIAL_DAYS } from '@unbent/shared';
+import { accountPlanOf, planStateOf, trialEnd, type PlanRow } from './plan.js';
+import { billingOf, paddleOf } from './paddle.js';
+
+const NOW = Date.UTC(2026, 9, 10, 12);
+const DAY = 24 * 60 * 60 * 1000;
+
+function row(over: Partial<PlanRow> = {}): PlanRow {
+  return {
+    userId: 'u',
+    plan: 'trial',
+    planUntil: trialEnd(NOW),
+    storageGb: BASE_STORAGE_GB,
+    source: null,
+    paddleCustomerId: null,
+    paddleSubscriptionId: null,
+    paddleStatus: null,
+    paddleCancelsAt: null,
+    paddleEventAt: null,
+    lapseNotifiedAt: null,
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...over,
+  };
+}
+
+describe('planStateOf', () => {
+  it('is a trial from sign-up until the fortnight is up, then inactive', () => {
+    expect(trialEnd(NOW) - NOW).toBe(TRIAL_DAYS * DAY);
+    expect(planStateOf(row(), NOW)).toBe('trial');
+    expect(planStateOf(row(), trialEnd(NOW) - 1)).toBe('trial');
+    expect(planStateOf(row(), trialEnd(NOW))).toBe('inactive');
+  });
+
+  it('reads a missing row as a trial, since the first read makes one', () => {
+    expect(planStateOf(null, NOW)).toBe('trial');
+  });
+
+  it('keeps a subscription active to the end of what it paid for, whatever Paddle says since', () => {
+    const paid = row({ plan: 'active', source: 'paddle', paddleStatus: 'canceled', planUntil: NOW + 30 * DAY });
+    expect(planStateOf(paid, NOW)).toBe('active');
+    expect(planStateOf(paid, NOW + 30 * DAY)).toBe('inactive');
+  });
+
+  it('gives a comp no end unless one was set', () => {
+    expect(planStateOf(row({ plan: 'active', source: 'comp', planUntil: null }), NOW + 3650 * DAY)).toBe('active');
+    expect(planStateOf(row({ plan: 'active', source: 'comp', planUntil: NOW + DAY }), NOW + 2 * DAY)).toBe('inactive');
+  });
+
+  it('takes the row at its word when it says inactive, whatever the date', () => {
+    expect(planStateOf(row({ plan: 'inactive', planUntil: NOW + DAY }), NOW)).toBe('inactive');
+  });
+});
+
+describe('accountPlanOf', () => {
+  it('says nothing of a subscription for a trial or a comp', () => {
+    expect(accountPlanOf(row(), NOW).subscription).toBeNull();
+    expect(accountPlanOf(row({ plan: 'active', source: 'comp', planUntil: null }), NOW).subscription).toBeNull();
+  });
+
+  it('names a cancellation still ahead, scheduled or taken effect, and not one that has passed', () => {
+    const scheduled = row({ plan: 'active', source: 'paddle', paddleStatus: 'active', planUntil: NOW + 20 * DAY, paddleCancelsAt: NOW + 20 * DAY });
+    expect(accountPlanOf(scheduled, NOW).subscription).toEqual({ status: 'active', cancelsAt: NOW + 20 * DAY, pastDue: false });
+    const effected = row({ plan: 'active', source: 'paddle', paddleStatus: 'canceled', planUntil: NOW + 20 * DAY });
+    expect(accountPlanOf(effected, NOW).subscription?.cancelsAt).toBe(NOW + 20 * DAY);
+    expect(accountPlanOf(effected, NOW + 21 * DAY).subscription?.cancelsAt).toBeNull();
+    expect(accountPlanOf(effected, NOW + 21 * DAY).state).toBe('inactive');
+  });
+
+  it('flags a renewal Paddle could not collect', () => {
+    const due = row({ plan: 'active', source: 'paddle', paddleStatus: 'past_due', planUntil: NOW + 5 * DAY });
+    expect(accountPlanOf(due, NOW).subscription?.pastDue).toBe(true);
+  });
+});
+
+describe('paddleOf', () => {
+  const all = {
+    PADDLE_API_KEY: 'pdl_sdbx_apikey_x',
+    PADDLE_WEBHOOK_SECRET: 'pdl_ntfset_x',
+    PADDLE_CLIENT_TOKEN: 'test_x',
+    PADDLE_PLAN_PRICE_ID: 'pri_plan',
+    PADDLE_STORAGE_PRICE_ID: 'pri_storage',
+  };
+
+  it('is off with any setting missing, and on with all five', () => {
+    expect(paddleOf({})).toBeUndefined();
+    for (const key of Object.keys(all) as Array<keyof typeof all>) {
+      expect(paddleOf({ ...all, [key]: ' ' }), key).toBeUndefined();
+    }
+    expect(paddleOf(all)?.environment).toBe('sandbox');
+    expect(paddleOf(all)?.apiUrl).toBe('https://sandbox-api.paddle.com');
+  });
+
+  it('reads the environment off the key, and lets a stand-in take the calls', () => {
+    const live = paddleOf({ ...all, PADDLE_API_KEY: 'pdl_live_apikey_x' });
+    expect(live?.environment).toBe('live');
+    expect(live?.apiUrl).toBe('https://api.paddle.com');
+    expect(paddleOf({ ...all, PADDLE_API_URL: 'http://localhost:9999/' })?.apiUrl).toBe('http://localhost:9999');
+  });
+
+  it('tells the page only what the page needs', () => {
+    expect(billingOf(all)).toEqual({ environment: 'sandbox', clientToken: 'test_x' });
+    expect(billingOf({})).toBeUndefined();
+  });
+});

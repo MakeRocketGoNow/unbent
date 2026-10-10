@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { DUMP_SQL, OPERATOR_PAGE_SQL } from './lib/directory.js';
+import { LAPSE_DUE_SQL } from './lib/plan.js';
 import { RESTORES_SQL } from './lib/restores.js';
 
 /**
@@ -165,6 +166,20 @@ describe.skipIf(!sqlite3)('the directory\'s query plans', () => {
     const due = plan(DUMP_SQL.due.replace('?1', '1').replace('?2', '20'));
     const status = plan(DUMP_SQL.status.replace('?1', '1').replace(/\?2/g, '50'));
     for (const p of [due, status]) expect(p).not.toContain('sqlite_autoindex_user_2');
+  });
+
+  /**
+   * The plan table's one walk (0045): the sweep asking which accounts have run out and
+   * not been told. Its partial index serves exactly that statement, and the table's other
+   * statements go by key or by the customer's unique index, so it changes nothing else.
+   */
+  it('find the plans that have run out from their own partial index', () => {
+    const p = plan(LAPSE_DUE_SQL.replace('?1', '1').replace('?2', '5'));
+    // `IS NOT NULL` becomes the range's lower bound, so the index is read from its first entry.
+    expect(p).toContain('SEARCH p USING INDEX idx_account_plan_lapse_due (plan_until>? AND plan_until<?)');
+    expect(p).toContain('SEARCH u USING INDEX sqlite_autoindex_user_1 (id=?)');
+    expect(p).not.toContain('TEMP B-TREE');
+    expect(plan(`SELECT * FROM account_plan WHERE paddle_customer_id = 'ctm_x'`)).toContain('idx_account_plan_customer');
   });
 
   it('drop the activity index the list no longer reads', () => {

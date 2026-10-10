@@ -6,6 +6,7 @@ import { whoAmI } from '../lib/session.js';
 import { refuseGrantsWithoutAgreement } from './legal.js';
 import { previewRelayOrigin } from '../lib/preview-relay.js';
 import { canAutofill } from '../lib/jev.js';
+import { billingOf } from '../lib/paddle.js';
 import type { AppEnv, Env } from '../types.js';
 
 export const authRoutes = new Hono<AppEnv>()
@@ -45,6 +46,10 @@ export const authRoutes = new Hono<AppEnv>()
    * `backups` says whether a `BACKUPS` bucket is bound, so the privacy policy and the
    * deletion page describe the daily dumps only where they are made (MAK-171, part 7).
    *
+   * `billing` is the same convention for the plan (MAK-108): present where the Worker has
+   * the Paddle secrets, and the Plan tab and the trial banner are drawn on its presence
+   * alone. It carries the client-side token, which is public by design — see `billingOf`.
+   *
    * `satisfies` rather than a return annotation: the fields whose value is `undefined` are
    * dropped by `JSON.stringify` on the way out, which is exactly the "absent means not
    * offered" reading the client already applies to `accountDeletion`.
@@ -64,6 +69,7 @@ export const authRoutes = new Hono<AppEnv>()
       instanceKind: instanceKindOf(c.env),
       frontPage: frontPageOf(c.env),
       backups: c.env.BACKUPS ? true : undefined,
+      billing: billingOf(c.env),
     } satisfies AppConfig);
   });
 
