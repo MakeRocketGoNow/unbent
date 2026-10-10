@@ -2165,11 +2165,11 @@ a.overflow-item { text-decoration: none; }
   margin: 0;
   border: 0;
   max-width: min(18rem, calc(100vw - 1rem));
-  padding: 0.3rem 0.55rem;
+  padding: 0.35rem 0.6rem;
   border-radius: 0.4rem;
   background: var(--fg);
   color: var(--bg);
-  font: 500 0.78rem/1.35 var(--font-ui);
+  font: 500 0.8rem/1.35 var(--font-ui);
   text-align: center;
   pointer-events: none;
   box-shadow: 0 4px 12px color-mix(in srgb, var(--fg) 25%, transparent);
