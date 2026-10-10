@@ -30,6 +30,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
   accountRestores: vi.fn(),
   operatorAccount: vi.fn(),
   storeStats: vi.fn(),
+  compAccount: vi.fn(),
 }));
 
 const api = await import('../notes-api.js');
@@ -661,5 +662,45 @@ describe('OperatorAccount: the store', () => {
     // The ways back come from the store's own marker, so a reload or a second operator still has them.
     expect(notice.textContent).toContain('2026-10-06T12-00-00Z-before-load.sql, is in the list below');
     expect(screen.getByRole('button', { name: 'Undo the load' })).toBeTruthy();
+  });
+});
+
+describe('OperatorAccount: the plan', () => {
+  afterEach(cleanup);
+
+  /** Drawn only where the row carries a plan, which is only where the instance sells one. */
+  it('is absent where the instance sells no plan', async () => {
+    harness();
+    await screen.findByRole('heading', { name: 'Store' });
+    expect(screen.queryByRole('heading', { name: 'Plan' })).toBeNull();
+  });
+
+  it('shows where the account stands and comps it, with an end or none', async () => {
+    vi.mocked(api.compAccount).mockResolvedValue({ state: 'active', until: null, source: 'comp', storageGb: 60, subscription: null });
+    harness(undefined, undefined, { ...account, plan: { state: 'trial', until: now + 5 * 86_400_000, source: null, storageGb: 10, subscription: null } });
+    const section = (await screen.findByRole('heading', { name: 'Plan' })).closest('section')!;
+    expect(section.textContent).toContain('Free trial.');
+    expect(section.textContent).toContain('Their trial ends on');
+    expect(within(section).queryByRole('button', { name: 'End comp' })).toBeNull();
+    fireEvent.change(within(section).getByLabelText('Storage, GB'), { target: { value: '60' } });
+    fireEvent.click(within(section).getByRole('button', { name: 'Comp with no end' }));
+    await waitFor(() => expect(api.compAccount).toHaveBeenCalledWith('u1', { action: 'comp', until: null, storageGb: 60 }));
+    expect(await within(section).findByText('Comped.')).toBeTruthy();
+  });
+
+  it('ends a comp behind a confirm, and refuses to comp over a Paddle subscription', async () => {
+    harness(undefined, undefined, { ...account, plan: { state: 'active', until: null, source: 'comp', storageGb: 10, subscription: null } });
+    const section = (await screen.findByRole('heading', { name: 'Plan' })).closest('section')!;
+    expect(section.textContent).toContain('Complimentary.');
+    fireEvent.click(within(section).getByRole('button', { name: 'End comp' }));
+    const confirm = await screen.findByRole('group', { name: 'Confirm ending the comp' });
+    expect(confirm.textContent).toContain('read-only now');
+    fireEvent.click(within(confirm).getByRole('button', { name: 'End comp' }));
+    await waitFor(() => expect(api.compAccount).toHaveBeenCalledWith('u1', { action: 'end' }));
+    cleanup();
+    harness(undefined, undefined, { ...account, plan: { state: 'active', until: now + 300 * 86_400_000, source: 'paddle', storageGb: 10, subscription: { status: 'active', cancelsAt: null, pastDue: false } } });
+    const paid = (await screen.findByRole('heading', { name: 'Plan' })).closest('section')!;
+    expect(paid.textContent).toContain('Paid through Paddle');
+    expect(within(paid).queryByRole('button')).toBeNull();
   });
 });

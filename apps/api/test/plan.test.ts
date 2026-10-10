@@ -11,6 +11,7 @@
  * it on; nothing here reaches Paddle.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { signWebhook } from '../src/lib/paddle.js';
 
 const BASE = process.env['API_URL'] ?? 'http://localhost:8787';
 const ORIGIN = process.env['APP_URL'] ?? 'http://localhost:5173';
@@ -91,10 +92,77 @@ describe('a lapsed account', () => {
     expect((await call('POST', '/api/billing/checkout', { storage: 0 })).status).not.toBe(402);
   });
 
+  it('cannot be comped by anyone but an operator', async (ctx) => {
+    if (!billing) return ctx.skip();
+    const me = ((await (await call('GET', '/api/me')).json()) as { user: { id: string } }).user.id;
+    expect((await call('POST', `/api/admin/accounts/${me}/plan`, { action: 'comp', until: null })).status).toBe(404);
+  });
+
   it('writes again once the plan is back', async (ctx) => {
     if (!billing) return ctx.skip();
     await setPlan('active', null);
     expect((await call('PATCH', `/api/notes/${noteId}`, { title: 'renamed' })).status).toBe(200);
     expect(((await (await call('GET', '/api/me/plan')).json()) as { state: string }).state).toBe('active');
+  });
+});
+
+/**
+ * Paddle's webhook, with a body signed the way Paddle signs one. Needs the dev server's
+ * own secret, which the suite is given as `PADDLE_WEBHOOK_SECRET`; without it the cases
+ * skip, since a signature with any other key is refused by design.
+ */
+describe('the webhook', () => {
+  const secret = process.env['PADDLE_WEBHOOK_SECRET'];
+  const customer = `ctm_test_${crypto.randomUUID().slice(0, 8)}`;
+
+  async function deliver(event: Record<string, unknown>, key = secret ?? 'wrong'): Promise<Response> {
+    const body = JSON.stringify(event);
+    return fetch(`${BASE}/api/billing/webhook`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Paddle-Signature': await signWebhook(key, body, Math.floor(Date.now() / 1000)) },
+      body,
+    });
+  }
+
+  const subscription = (over: Record<string, unknown> = {}) => ({
+    id: 'sub_test',
+    status: 'active',
+    customer_id: customer,
+    custom_data: null,
+    current_billing_period: { starts_at: '2026-10-10T00:00:00Z', ends_at: '2027-10-10T00:00:00Z' },
+    scheduled_change: null,
+    items: [{ status: 'active', quantity: 1, price: { id: 'pri_local_plan' } }, { status: 'active', quantity: 1, price: { id: 'pri_local_storage' } }],
+    canceled_at: null,
+    ...over,
+  });
+
+  it('refuses a body it cannot verify', async (ctx) => {
+    if (!billing) return ctx.skip();
+    expect((await deliver({ event_id: 'evt_x', event_type: 'subscription.created', occurred_at: '2026-10-10T00:00:00Z', data: subscription() }, 'pdl_ntfset_wrong')).status).toBe(401);
+  });
+
+  it('applies an event once, ignores it again, and keeps an older one from writing over a newer', async (ctx) => {
+    if (!billing || !secret) return ctx.skip();
+    // The actor's row names the customer, which is how the event finds it.
+    await call('POST', '/api/admin/test/plan', { plan: 'trial', until: Date.now() + 86_400_000, paddleCustomerId: customer });
+
+    const created = await deliver({ event_id: `evt_${customer}_1`, event_type: 'subscription.created', occurred_at: '2026-10-10T00:00:05Z', data: subscription() });
+    expect(await created.json()).toEqual({ applied: true });
+    let plan = (await (await call('GET', '/api/me/plan')).json()) as { state: string; storageGb: number; source: string; until: number };
+    expect(plan).toMatchObject({ state: 'active', source: 'paddle', storageGb: 35, until: Date.parse('2027-10-10T00:00:00Z') });
+
+    const again = await deliver({ event_id: `evt_${customer}_1`, event_type: 'subscription.created', occurred_at: '2026-10-10T00:00:05Z', data: subscription() });
+    expect(await again.json()).toEqual({ applied: false, reason: 'duplicate' });
+
+    // A newer event, then an older one delivered late: the row stays with the newer.
+    const later = subscription({ status: 'canceled', current_billing_period: null, items: [{ status: 'active', quantity: 1, price: { id: 'pri_local_plan' } }] });
+    expect(await (await deliver({ event_id: `evt_${customer}_3`, event_type: 'subscription.canceled', occurred_at: '2026-10-12T00:00:00Z', data: later })).json()).toEqual({ applied: true });
+    expect(await (await deliver({ event_id: `evt_${customer}_2`, event_type: 'subscription.updated', occurred_at: '2026-10-11T00:00:00Z', data: subscription() })).json()).toEqual({ applied: true });
+    plan = (await (await call('GET', '/api/me/plan')).json()) as typeof plan;
+    expect(plan).toMatchObject({ state: 'active', storageGb: 10, until: Date.parse('2027-10-10T00:00:00Z') });
+    expect(((await (await call('GET', '/api/me/plan')).json()) as { subscription: { status: string } }).subscription.status).toBe('canceled');
+
+    // An event for a customer no row holds is accepted and ignored.
+    expect(await (await deliver({ event_id: `evt_${customer}_9`, event_type: 'subscription.created', occurred_at: '2026-10-12T00:00:00Z', data: subscription({ customer_id: 'ctm_nobody' }) })).json()).toEqual({ applied: false, reason: 'no account' });
   });
 });

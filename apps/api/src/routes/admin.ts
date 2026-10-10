@@ -2,7 +2,8 @@ import { Hono, type Context } from 'hono';
 import { createMiddleware } from 'hono/factory';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { planFor, updatePlan } from '../lib/plan.js';
+import { accountPlanOf, planFor, updatePlan } from '../lib/plan.js';
+import { billingOn } from '../lib/paddle.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import { deleteKeys } from '../lib/blobs.js';
@@ -44,7 +45,18 @@ const sweepByToken = createMiddleware<AppEnv>(async (c, next) => {
  * own note store, so none of them can see or touch another account. An operator-wide sweep would
  * need separate, deliberately privileged handling.
  */
-const testPlanBody = z.object({ plan: z.enum(['trial', 'active', 'inactive']), until: z.number().int().nullable() });
+const testPlanBody = z.object({
+  plan: z.enum(['trial', 'active', 'inactive']),
+  until: z.number().int().nullable(),
+  /** A Paddle customer id to put on the row, so the suite can send the webhook an event that finds it. */
+  paddleCustomerId: z.string().max(64).optional(),
+});
+
+/** The comp: `comp` with an end (epoch ms, or null for none) and the storage in GB, or `end`. */
+const compBody = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('comp'), until: z.number().int().nullable(), storageGb: z.number().int().min(1).max(10_000).optional() }),
+  z.object({ action: z.literal('end') }),
+]);
 
 export const admin = new Hono<AppEnv>()
   /**
@@ -223,7 +235,11 @@ export const admin = new Hono<AppEnv>()
     if (!parsed.success) return c.json({ error: 'plan and until, please' }, 400);
     const userId = c.get('userId')!;
     await planFor(c.env.DB, userId);
-    await updatePlan(c.env.DB, userId, { plan: parsed.data.plan, planUntil: parsed.data.until });
+    await updatePlan(c.env.DB, userId, {
+      plan: parsed.data.plan,
+      planUntil: parsed.data.until,
+      ...(parsed.data.paddleCustomerId !== undefined ? { paddleCustomerId: parsed.data.paddleCustomerId } : {}),
+    });
     return c.json({ ok: true });
   })
 
@@ -812,7 +828,48 @@ export const admin = new Hono<AppEnv>()
     const id = c.req.param('id');
     console.log(`[store] operator=${email} account user=${id}`);
     const account = await operatorAccountRow(c.env.DB, id);
-    return account ? c.json(account) : c.json({ error: 'No such account' }, 404);
+    if (!account) return c.json({ error: 'No such account' }, 404);
+    // The plan beside the directory's facts, where the instance sells one (MAK-108): the
+    // page shows it and comps from it. One more read by key.
+    if (billingOn(c.env)) account.plan = accountPlanOf(await planFor(c.env.DB, id), Date.now());
+    return c.json(account);
+  })
+
+  /**
+   * Comps an account, or ends a comp (MAK-108): the one way an account is paid for
+   * without Paddle. A comp is `source = 'comp'`, `plan = 'active'`, an end or null for
+   * none, and the storage the operator gives it; Paddle discount codes are for
+   * marketing, since a 100% discount there still asks for a card and charges it when
+   * the discount ends. Ending one sets the row inactive now, which is what a lapsed
+   * trial becomes, and subscribing from there is the normal checkout.
+   *
+   * Refused on an account with a live Paddle subscription: two sources of truth for one
+   * row, and the next webhook would write over the comp. The operator cancels in Paddle
+   * first. Logged with both ids, as every operator write to someone's account is.
+   */
+  .post('/admin/accounts/:id/plan', requireAuth, zValidator('json', compBody), async (c) => {
+    const target = await operatorAccount(c, c.req.param('id'));
+    if (target instanceof Response) return target;
+    if (!billingOn(c.env)) return c.json({ error: 'This instance sells no plan, so every account is active for good.' }, 404);
+    const body = c.req.valid('json');
+    const now = Date.now();
+    const row = await planFor(c.env.DB, target, now);
+    if (row.source === 'paddle' && row.paddleStatus && row.paddleStatus !== 'canceled') {
+      return c.json({ error: 'This account has a Paddle subscription. Cancel it in Paddle before comping the account.' }, 409);
+    }
+    if (body.action === 'end') {
+      await updatePlan(c.env.DB, target, { plan: 'inactive', planUntil: now, source: row.source === 'comp' ? 'comp' : row.source }, now);
+    } else {
+      if (body.until !== null && body.until <= now) return c.json({ error: 'The end date has to be ahead.' }, 400);
+      await updatePlan(
+        c.env.DB,
+        target,
+        { plan: 'active', source: 'comp', planUntil: body.until, storageGb: body.storageGb ?? row.storageGb, lapseNotifiedAt: null },
+        now,
+      );
+    }
+    console.log(`[billing] operator=${c.get('user')?.email} ${body.action === 'end' ? 'ended the comp of' : 'comped'} user=${target}`);
+    return c.json(accountPlanOf(await planFor(c.env.DB, target, now), now));
   })
 
   /**

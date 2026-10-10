@@ -506,6 +506,16 @@ export async function portalLinks(): Promise<{ overview: string; cancel: string 
   return json(await request('/api/billing/portal'));
 }
 
+/** The operator's comp of someone's account, or the end of one; answers the plan as it now stands. */
+export async function compAccount(
+  userId: string,
+  body: { action: 'comp'; until: number | null; storageGb?: number } | { action: 'end' },
+): Promise<AccountPlan> {
+  return json<AccountPlan>(
+    await request(`/api/admin/accounts/${encodeURIComponent(userId)}/plan`, { method: 'POST', headers: jsonHeaders, body: JSON.stringify(body) }),
+  );
+}
+
 /** The plan read back from Paddle and applied, for the moment after a checkout, before the webhook lands. */
 export async function refreshPlan(): Promise<AccountPlan> {
   return json<AccountPlan>(await request('/api/billing/refresh', { method: 'POST' }));

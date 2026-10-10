@@ -217,59 +217,54 @@ export function Plan() {
   );
 }
 
-/** The state in a heading and a sentence; see `Plan`. */
-function PlanState({ plan }: { plan: AccountPlan }) {
+/**
+ * Where the account stands, as a title and a sentence: the Plan page's heading, and the
+ * operator page's line about someone else's account. One function, so the two agree.
+ */
+export function describePlan(plan: AccountPlan): { title: string; sentence: string } {
   const sub = plan.subscription;
   if (plan.state === 'inactive') {
-    return (
-      <>
-        <h3>Read-only</h3>
-        <p>
-          {plan.until ? `Your plan ended on ${formatDay(plan.until)}. ` : 'Your plan has ended. '}
-          Everything still opens, searches and exports, and anything can be deleted; subscribe to edit again.
-        </p>
-      </>
-    );
+    return {
+      title: 'Read-only',
+      sentence:
+        (plan.until ? `Your plan ended on ${formatDay(plan.until)}. ` : 'Your plan has ended. ') +
+        'Everything still opens, searches and exports, and anything can be deleted; subscribe to edit again.',
+    };
   }
   if (plan.state === 'trial') {
-    return (
-      <>
-        <h3>Free trial</h3>
-        <p>{plan.until ? `Your trial ends on ${formatDay(plan.until)}.` : 'Your trial is under way.'} Nothing is charged until you subscribe.</p>
-      </>
-    );
+    return {
+      title: 'Free trial',
+      sentence: `${plan.until ? `Your trial ends on ${formatDay(plan.until)}.` : 'Your trial is under way.'} Nothing is charged until you subscribe.`,
+    };
   }
   if (plan.source === 'comp') {
-    return (
-      <>
-        <h3>Complimentary</h3>
-        <p>{plan.until ? `This account is on the house until ${formatDay(plan.until)}.` : 'This account is on the house, with no end date.'}</p>
-      </>
-    );
+    return {
+      title: 'Complimentary',
+      sentence: plan.until ? `This account is on the house until ${formatDay(plan.until)}.` : 'This account is on the house, with no end date.',
+    };
   }
   if (sub?.pastDue) {
-    return (
-      <>
-        <h3>Payment failed</h3>
-        <p>
-          The last renewal could not be collected. Paddle will try again; update the card to keep the plan
-          {plan.until ? ` past ${formatDay(plan.until)}` : ''}.
-        </p>
-      </>
-    );
+    return {
+      title: 'Payment failed',
+      sentence: `The last renewal could not be collected. Paddle will try again; update the card to keep the plan${plan.until ? ` past ${formatDay(plan.until)}` : ''}.`,
+    };
   }
   if (sub?.cancelsAt) {
-    return (
-      <>
-        <h3>Cancelling</h3>
-        <p>The subscription ends on {formatDay(sub.cancelsAt)}. Your notes stay readable and exportable after that.</p>
-      </>
-    );
+    return {
+      title: 'Cancelling',
+      sentence: `The subscription ends on ${formatDay(sub.cancelsAt)}. Your notes stay readable and exportable after that.`,
+    };
   }
+  return { title: 'Subscribed', sentence: plan.until ? `Renews on ${formatDay(plan.until)}.` : 'Active.' };
+}
+
+/** The state in a heading and a sentence; see `describePlan`. */
+function PlanState({ plan }: { plan: AccountPlan }) {
+  const { title, sentence } = describePlan(plan);
   return (
     <>
-      <h3>Subscribed</h3>
-      <p>{plan.until ? `Renews on ${formatDay(plan.until)}.` : 'Active.'}</p>
+      <h3>{title}</h3>
+      <p>{sentence}</p>
     </>
   );
 }
