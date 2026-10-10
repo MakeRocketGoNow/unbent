@@ -35,7 +35,11 @@ export const legal = new Hono<AppEnv>().post('/legal/agree', requireAuth, async 
     return c.json({ error: 'The terms have changed since this page loaded.', version: current }, 409);
   }
 
-  await c.env.DB.prepare('UPDATE user SET legalVersion = ?, legalAgreedAt = ? WHERE id = ?')
+  // Only when the version moves: a second press of the same agreement — another device,
+  // or a tab still holding the cached session — must not rewrite when it was first given.
+  await c.env.DB.prepare(
+    'UPDATE user SET legalVersion = ?1, legalAgreedAt = ?2 WHERE id = ?3 AND legalVersion IS NOT ?1',
+  )
     .bind(current, new Date().toISOString(), c.get('userId')!)
     .run();
 

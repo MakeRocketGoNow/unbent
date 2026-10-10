@@ -93,6 +93,15 @@ describe('POST /api/legal/agree', () => {
     expect(await agreedVersion()).toBe(legal.version);
   });
 
+  /** A second device pressing the same agreement records nothing new, and still lets it in. */
+  it('agrees again to the same version without complaint', async () => {
+    if (!legal?.version) return;
+    const res = await agree(legal.version);
+    expect(res.status).toBe(200);
+    jar.take(res);
+    expect(await agreedVersion()).toBe(legal.version);
+  });
+
   /** An app holding an older config must not record agreement to documents it never showed. */
   it('refuses a version this instance does not publish', async () => {
     if (!legal?.version) return;
