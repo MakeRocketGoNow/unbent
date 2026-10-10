@@ -11,8 +11,9 @@ import { isHosted } from '../app-bridge.js';
 const { PlanBanner } = await import('./PlanBanner.js');
 
 const DAY = 24 * 60 * 60 * 1000;
-// Local noon, so a day either side is the day either side in whatever zone runs this.
-const NOW = new Date(2026, 9, 10, 12).getTime();
+// The real clock: the hook works the plan out against it too, so an end in the past
+// reads as lapsed whatever `now` the banner is handed for its wording.
+const NOW = Date.now();
 
 function harness(plan: Partial<AccountPlan> | null, billing = true) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -52,7 +53,7 @@ describe('PlanBanner', () => {
     harness({ until: NOW + DAY - 1 });
     expect(await screen.findByText('Your free trial ends tomorrow.')).toBeTruthy();
     cleanup();
-    harness({ until: NOW + 1000 });
+    harness({ until: NOW + 60_000 });
     expect(await screen.findByText('Your free trial ends today.')).toBeTruthy();
   });
 

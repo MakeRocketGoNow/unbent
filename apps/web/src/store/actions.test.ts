@@ -474,10 +474,18 @@ describe('a replayed write', () => {
     }
     expect(fake.queue).toHaveLength(2);
 
-    vi.mocked(api.deleteNotes).mockRejectedValueOnce(new ApiError(403, '403: Forbidden'));
+    // The plan's 402 is kept — it changes when the person subscribes — and the storage's
+    // is not: the account is full until something goes (MAK-108).
+    vi.mocked(api.deleteNotes).mockRejectedValueOnce(new ApiError(402, '402: read-only', 'PLAN_INACTIVE'));
+    expect(await fake.replayOne()).toBe('kept');
+    expect(fake.queue).toHaveLength(2);
+    vi.mocked(api.deleteNotes).mockRejectedValueOnce(new ApiError(402, '402: full', 'STORAGE_FULL'));
     expect(await fake.replayOne()).toBe('refused');
     expect(fake.queue).toHaveLength(1);
-    expect(fake.queue[0]?.metadata).toEqual({ ids: ['n2'] });
+
+    vi.mocked(api.deleteNotes).mockRejectedValueOnce(new ApiError(403, '403: Forbidden'));
+    expect(await fake.replayOne()).toBe('refused');
+    expect(fake.queue).toHaveLength(0);
   });
 
   it('takes a note the server no longer has as done', async () => {

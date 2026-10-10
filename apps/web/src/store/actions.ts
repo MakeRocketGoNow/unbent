@@ -1,6 +1,7 @@
 import { IndexedDBAdapter, NonRetriableError, startOfflineExecutor, type OfflineExecutor, type OnlineDetector, type StorageAdapter } from '@tanstack/offline-transactions';
 import type { Transaction } from '@tanstack/db';
-import { MAX_ATTACHMENT_BYTES, filenameSchema, foldNoCase, type FeedNote, type FieldDef, type FieldValue, type Note, type NoteFieldValue, type NotebookDefinition, type RestoredNote } from '@unbent/shared';
+import {
+  PLAN_INACTIVE_CODE, MAX_ATTACHMENT_BYTES, filenameSchema, foldNoCase, type FeedNote, type FieldDef, type FieldValue, type Note, type NoteFieldValue, type NotebookDefinition, type RestoredNote } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { ApiError, isNoteChanged, isOfflineError, NoteChangedError } from '../notes-api.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
@@ -11,6 +12,7 @@ import { askToPersist, filesSupported, readFile, removeFile, writeFile } from '.
 import { FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE } from '../sw/routes.js';
 import { isWhole, refusedForGood, type FeedEngine } from './feed.js';
 import { CallUnsettledError, LibraryMovedError, SEND_ONCE } from './client-library.js';
+import { planRefused } from '../plan-refused.js';
 import { outboxLeaderName, outboxName } from './names.js';
 import { OutboxLeader } from './leader.js';
 
@@ -271,9 +273,23 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
    * not take, a file over the cap, a note that is gone — and ending the entry lets the
    * ones behind it move. Three are not that, and `refusedForGood` in `feed.ts` names
    * them for the walk and the queue alike: 401 replays after the sign-in that follows.
+   *
+   * A fourth is the plan's 402 (MAK-108), told by its code rather than its status: the
+   * account's plan ended, and the answer changes the moment the person subscribes, as a
+   * lapsed session's changes at the sign-in. Ending the entry would roll the row back
+   * to the server's copy — the text typed in a flight whose trial ran out mid-air — and
+   * for a queued upload delete the one copy of the bytes. So it is kept, like a 401, and
+   * replays after the checkout; and the plan is read again now (`planRefused`), so the
+   * banner and the read-only editor say why nothing goes. A 402 for the storage, the
+   * other code on that status, is for good as the server stands: the account is full
+   * until something is deleted, and the notice under the file says so.
    */
   const refusal = (err: unknown): never => {
     if (isOfflineError(err)) throw err;
+    if (err instanceof ApiError && err.code === PLAN_INACTIVE_CODE) {
+      planRefused();
+      throw err;
+    }
     if (err instanceof ApiError && refusedForGood(err.status)) {
       throw new NonRetriableError(err.message);
     }

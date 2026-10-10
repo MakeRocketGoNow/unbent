@@ -30,11 +30,12 @@ export const TRIAL_WARNING_DAYS = 3;
  * Inside the apps the way out is the web, and the line says so instead of linking to a
  * page whose buttons are not drawn there (see `Plan`).
  */
-export function PlanBanner({ now = Date.now() }: { now?: number }) {
-  const { plan } = usePlan();
+export function PlanBanner({ now: fixed }: { now?: number } = {}) {
+  const { plan, inactive, now: clock } = usePlan();
+  const now = fixed ?? clock;
   const hosted = isHosted();
   let line: string | null = null;
-  if (plan?.state === 'inactive') {
+  if (inactive) {
     line = 'Your plan has ended, so your notes are read-only. Everything still opens, searches and exports.';
   } else if (plan?.state === 'trial' && plan.until !== null && plan.until - now <= TRIAL_WARNING_DAYS * DAY) {
     const days = daysAhead(plan.until, now);

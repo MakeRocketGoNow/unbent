@@ -51,6 +51,12 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /**
+     * The body's `code`, when the route gave one: `PLAN_INACTIVE` and `STORAGE_FULL` on a
+     * 402, `TERMS_NOT_AGREED` on a 403. What lets a caller tell two refusals with one
+     * status apart without reading the sentence.
+     */
+    readonly code?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -159,26 +165,34 @@ const MAX_DETAIL = 200;
  * and nothing a reader could act on. Naming the case is what makes it legible.
  */
 export async function httpErrorMessage(res: Response): Promise<string> {
+  return (await httpErrorDetail(res)).message;
+}
+
+/** The message, and the body's `code` when ours gave one; see `ApiError.code`. */
+export async function httpErrorDetail(res: Response): Promise<{ message: string; code?: string }> {
   // HTTP/2 has no reason phrase, so `statusText` is routinely empty and must not be padded in.
   const status = `${res.status}${res.statusText ? ` ${res.statusText}` : ''}`;
   const body = (await res.text().catch(() => '')).trim();
-  if (!body) return status;
+  if (!body) return { message: status };
 
-  // Ours are `{ error }`. A JSON body shaped some other way falls through and is quoted raw.
+  // Ours are `{ error }`, with a `code` on the few refusals a caller branches on. A JSON
+  // body shaped some other way falls through and is quoted raw.
   if (res.headers.get('Content-Type')?.includes('json')) {
     try {
-      const { error } = JSON.parse(body) as { error?: unknown };
-      if (typeof error === 'string' && error) return `${status}: ${error}`;
+      const { error, code } = JSON.parse(body) as { error?: unknown; code?: unknown };
+      if (typeof error === 'string' && error) {
+        return { message: `${status}: ${error}`, ...(typeof code === 'string' && code ? { code } : {}) };
+      }
     } catch {
       // Mislabelled as JSON; treat it as text like anything else.
     }
   }
 
   if (body.startsWith('<')) {
-    return `${status} — the request did not reach the API; an error page came back instead`;
+    return { message: `${status} — the request did not reach the API; an error page came back instead` };
   }
 
-  return `${status}: ${body.slice(0, MAX_DETAIL)}`;
+  return { message: `${status}: ${body.slice(0, MAX_DETAIL)}` };
 }
 
 /**
@@ -194,7 +208,10 @@ export function errorText(err: unknown): string {
 }
 
 async function json<T>(res: Response): Promise<T> {
-  if (!res.ok) throw new ApiError(res.status, await httpErrorMessage(res));
+  if (!res.ok) {
+    const { message, code } = await httpErrorDetail(res);
+    throw new ApiError(res.status, message, code);
+  }
   return res.json() as Promise<T>;
 }
 
