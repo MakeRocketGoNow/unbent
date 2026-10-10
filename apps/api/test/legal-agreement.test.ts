@@ -38,8 +38,9 @@ class Jar {
 let jar: Jar;
 let legal: { version?: string } | undefined;
 
-beforeAll(async () => {
-  jar = new Jar();
+/** A fresh account that has agreed to nothing, signed in, with its cookies in a jar. */
+async function signUp(): Promise<Jar> {
+  const fresh = new Jar();
   const email = `legal-${crypto.randomUUID()}@example.test`;
   const res = await fetch(`${BASE}/api/auth/sign-up/email`, {
     method: 'POST',
@@ -47,14 +48,19 @@ beforeAll(async () => {
     body: JSON.stringify({ email, password: 'correct horse battery', name: 'Legal' }),
   });
   if (!res.ok) throw new Error(`sign-up failed: ${res.status} ${await res.text()}`);
-  jar.take(res);
+  fresh.take(res);
+  return fresh;
+}
+
+beforeAll(async () => {
+  jar = await signUp();
   ({ legal } = (await (await fetch(`${BASE}/api/config`)).json()) as { legal?: { version?: string } });
 });
 
-function agree(version: unknown): Promise<Response> {
+function agree(version: unknown, as: Jar = jar): Promise<Response> {
   return fetch(`${BASE}/api/legal/agree`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Origin: ORIGIN, Cookie: jar.header() },
+    headers: { 'Content-Type': 'application/json', Origin: ORIGIN, Cookie: as.header() },
     body: JSON.stringify({ version }),
   });
 }
@@ -115,5 +121,55 @@ describe('POST /api/legal/agree', () => {
   it('refuses a body with no version', async (ctx) => {
     if (!legal?.version) return ctx.skip();
     expect((await agree(undefined)).status).toBe(400);
+  });
+});
+
+/**
+ * The two endpoints that give a program a credential of its own refuse an account that
+ * has not agreed (`refuseGrantsWithoutAgreement`). The bodies name no real device code or
+ * authorization, so past the check Better Auth refuses them for its own reasons; what is
+ * asserted is only whether the refusal is ours. Called by path, so an upgrade of Better
+ * Auth that renamed either endpoint fails here rather than letting the grant through.
+ */
+describe('granting a credential before agreeing', () => {
+  let fresh: Jar;
+  beforeAll(async () => {
+    fresh = await signUp();
+  });
+
+  async function refusal(path: string, body: unknown): Promise<string | undefined> {
+    const res = await fetch(`${BASE}/api/auth/${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: ORIGIN, Cookie: fresh.header() },
+      body: JSON.stringify(body),
+    });
+    const answer = (await res.json().catch(() => null)) as { code?: string } | null;
+    return res.status === 403 ? answer?.code : undefined;
+  }
+
+  it('refuses to approve a device or an app until the terms are agreed', async (ctx) => {
+    if (!legal?.version) return ctx.skip();
+    expect(await refusal('device/approve', { userCode: 'ABCD-EFGH' })).toBe('TERMS_NOT_AGREED');
+    expect(await refusal('oauth2/consent', { accept: true })).toBe('TERMS_NOT_AGREED');
+  });
+
+  /** Declining grants nothing, so there is nothing to agree to first. */
+  it('lets an app be declined without agreeing', async (ctx) => {
+    if (!legal?.version) return ctx.skip();
+    expect(await refusal('oauth2/consent', { accept: false })).not.toBe('TERMS_NOT_AGREED');
+  });
+
+  it('stops refusing once the terms are agreed', async (ctx) => {
+    if (!legal?.version) return ctx.skip();
+    const res = await agree(legal.version, fresh);
+    expect(res.status).toBe(200);
+    fresh.take(res);
+    expect(await refusal('device/approve', { userCode: 'ABCD-EFGH' })).not.toBe('TERMS_NOT_AGREED');
+    expect(await refusal('oauth2/consent', { accept: true })).not.toBe('TERMS_NOT_AGREED');
+  });
+
+  it('never refuses where no documents are published', async (ctx) => {
+    if (legal?.version) return ctx.skip();
+    expect(await refusal('device/approve', { userCode: 'ABCD-EFGH' })).not.toBe('TERMS_NOT_AGREED');
   });
 });

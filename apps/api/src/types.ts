@@ -327,6 +327,8 @@ export interface SessionUser {
   email: string;
   name: string;
   image: string | null;
+  /** The version of the terms this account agreed to, null before any (MAK-209). */
+  legalVersion: string | null;
 }
 
 /** Hono context variables populated by middleware. */

@@ -303,7 +303,7 @@ interface AuthInstance {
   handler: (request: Request) => Promise<Response>;
   api: {
     getSession: (context: { headers: Headers }) => Promise<{
-      user?: { id: string; email: string; name: string; image?: string | null };
+      user?: { id: string; email: string; name: string; image?: string | null; legalVersion?: string | null };
     } | null>;
     /**
      * The two discovery documents, which routes/well-known.ts serves from the root. They

@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { createMiddleware } from 'hono/factory';
 import { z } from 'zod';
 import { getAuth } from '../auth.js';
 import { legalLinksOf } from '../lib/instance.js';
@@ -50,4 +51,49 @@ export const legal = new Hono<AppEnv>().post('/legal/agree', requireAuth, async 
   );
   for (const cookie of refreshed.headers.getSetCookie()) c.header('Set-Cookie', cookie, { append: true });
   return c.json({ version: current });
+});
+
+/**
+ * The two Better Auth endpoints that hand a program a credential of its own: approving an
+ * OAuth client (an assistant connecting over MCP) and approving a CLI's device code. Both
+ * are POSTs, and both outlive the session that made them.
+ */
+const GRANTS: ReadonlySet<string> = new Set(['/api/auth/oauth2/consent', '/api/auth/device/approve']);
+
+/**
+ * Refuses a new credential to an account that has not agreed to the current terms.
+ *
+ * The app already asks before either of these: the consent page and `/device` are inside
+ * the signed-in shell, which shows the agreement first. This is the same rule for a client
+ * that calls the endpoints directly, which could otherwise sign in with a code and mint a
+ * long-lived token without ever being shown the terms. Grants that already exist keep
+ * working — refusing them would break a connected assistant mid-task over a page it cannot
+ * press — and so does refusing a consent (`accept: false`), which grants nothing.
+ *
+ * In front of Better Auth's handler rather than in one of its hooks, because the session
+ * is already resolved here (`sessionMiddleware`) and the check is this app's rule, not
+ * Better Auth's. The paths are its plugins' own, so an upgrade that renamed one would let
+ * that grant through unchecked: `test/legal-agreement.test.ts` calls both and fails if
+ * either stops being refused.
+ *
+ * No session, or nothing published to agree to, passes through: Better Auth refuses the
+ * first itself, and there is nothing to ask for in the second.
+ */
+export const refuseGrantsWithoutAgreement = createMiddleware<AppEnv>(async (c, next) => {
+  if (c.req.method !== 'POST' || !GRANTS.has(c.req.path)) return next();
+  const version = legalLinksOf(c.env)?.version;
+  const user = c.get('user');
+  if (!version || !user || user.legalVersion === version) return next();
+  if (c.req.path.endsWith('/consent')) {
+    // A clone, so Better Auth still has the body to read.
+    const body = (await c.req.raw.clone().json().catch(() => null)) as { accept?: unknown } | null;
+    if (body?.accept === false) return next();
+  }
+  return c.json(
+    {
+      code: 'TERMS_NOT_AGREED',
+      message: 'Open Unbent and agree to its Terms and Privacy Policy before connecting an app.',
+    },
+    403,
+  );
 });

@@ -289,7 +289,11 @@ before the app opens: once, on a screen of its own, with both documents linked a
 "Agree and continue" press. The version agreed to and when are kept on the account. Signing
 in and signing up are the same press here, so the sign-in screen only gives notice; the
 agreement is the screen after it, and the Android and iOS apps reach it as the site. Someone
-who does not agree can still sign out, or export their notes and delete the account.
+who does not agree can still sign out, or export their notes and delete the account. The
+server holds the same line for the two ways a program gets a credential of its own —
+approving an OAuth client and approving a CLI's device code — which are refused to an
+account that has not agreed, however they are called. Connections that already exist keep
+working.
 
 Moving `LEGAL_VERSION` in `packages/shared/src/legal.ts` asks everyone again, worded as an
 update, with `LEGAL_CHANGE` beside it to say what changed. Move it for a change worth

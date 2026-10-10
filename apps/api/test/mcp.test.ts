@@ -51,7 +51,25 @@ async function signUp(email: string, password: string, name: string): Promise<st
   if (!res.ok) throw new Error(`sign-up failed for ${email}: ${res.status} ${await res.text()}`);
   const cookie = (res.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
   if (!cookie) throw new Error(`no session cookie for ${email}`);
+  await agreeToTerms(cookie);
   return cookie;
+}
+
+/**
+ * Agrees to the instance's terms, as a person does on first opening the app: connecting
+ * an app is refused until they have (`refuseGrantsWithoutAgreement`), and these actors
+ * connect one. Nothing to do where the instance publishes no documents.
+ */
+async function agreeToTerms(cookie: string): Promise<void> {
+  const config = (await (await fetch(`${BASE}/api/config`)).json()) as { legal?: { version?: string } };
+  const version = config.legal?.version;
+  if (!version) return;
+  const res = await fetch(`${BASE}/api/legal/agree`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: cookie, Origin: ORIGIN },
+    body: JSON.stringify({ version }),
+  });
+  if (!res.ok) throw new Error(`agreeing to the terms failed: ${res.status} ${await res.text()}`);
 }
 
 async function registerClient(name: string): Promise<string> {
