@@ -70,7 +70,7 @@ export const LIBRARY_ROOTS: ReadonlySet<string> = new Set(['notes', 'note', 'tra
  * `LIBRARY_OPEN_TIMEOUT_MS` — the same promise while the open is quick, a refusal after
  * the bound, and the library again once a slow open has finished (`acquireLibrary`).
  */
-let current: { userId: string; library: Promise<Library>; opened: Promise<Library> } | null = null;
+let current: { userId: string; library: Promise<Library>; opened: Promise<Library>; halt: () => void } | null = null;
 let forTests: ReadableLibrary | null = null;
 
 const libraryListeners = new Set<() => void>();
@@ -297,18 +297,23 @@ export class LibraryOpenTimeoutError extends Error {
  * here, since the store is only ever touched inside one; a new way to open or close the
  * library is a new call to `enqueue`, and nothing else.
  *
- * Not a chain closes were added to by hand, and not a queue that abandons a step: the
- * first draft kept one promise for closes in flight and had each open wait on it, and
- * every review found one more open or close beside it; the second gave up on a slow
- * open, tore down what it had built and barred the account until the teardown was
- * done, and every review found a hole in that — a teardown outside the queue, a bar
- * that caught every account, no bar and a fresh twenty-second wait on every click. A
- * step is never abandoned. It runs to its end, and what is bounded is what a caller
- * sees: an open answers its caller within `LIBRARY_OPEN_TIMEOUT_MS` whatever the queue
- * is doing, and a wipe waits on the queue for a bounded time too (`closeLocalStores`).
+ * Two designs were tried and rejected. A chain of closes that each open waited on, kept
+ * by hand: every open or close added later had to be added to it too, and the ones
+ * that were missed raced the store. A queue that gave up on a slow open, tore down what
+ * it had built and barred the account until the teardown was done: the teardown was one
+ * more thing beside the queue, and the bar was either too wide (every account) or absent
+ * (a fresh wait on every click). So a step is never abandoned; it runs to its end, and
+ * what is bounded is what a caller sees — an open answers within
+ * `LIBRARY_OPEN_TIMEOUT_MS` whatever the queue is doing, and a wipe waits on the queue
+ * for a bounded time (`closeLocalStores`) — with the page reading the server meanwhile.
+ *
  * A step that never settles — an open held by another tab's queued delete of the
- * outbox, or by a leader that is not running — holds the steps after it, and nothing
- * else: the page reads the server, and a reload is what clears it.
+ * outbox, or by a leader that is not running — holds the steps after it until a reload.
+ * What it holds besides is the store's file and the outbox's connection, and nothing
+ * live: the moment a close or a switch takes its entry, the open's engine, socket and
+ * listeners are halted (`halt` in `open`), since a bounded wipe lets a sign-out move on
+ * past such an open, and an engine left pulling would pull the next person's feed into
+ * the old account's file (found in review).
  */
 let queue: Promise<void> = Promise.resolve();
 
@@ -321,36 +326,35 @@ function enqueue<T>(step: () => Promise<T>): Promise<T> {
   return run;
 }
 
+/** The handle an open gives its entry, so a close can halt its engine and socket before the step ends. */
+type Halting = { run: () => void };
+
 export function acquireLibrary(userId: string): Promise<Library> {
   if (current?.userId === userId) return current.library;
   const previous = current;
+  previous?.halt();
+  const halting: Halting = { run: () => {} };
   const opened = enqueue(async () => {
     // The account before this one, closed first; what it was told is the queue's.
     if (previous) await previous.opened.then((l) => l.close()).catch(() => {});
-    return open(userId);
+    return open(userId, halting);
   });
   /*
-   * Bounded, so the app is never dead on a storage wedge. The open waits on things
-   * outside this tab — the outbox's IndexedDB database, which another tab's delete can
-   * hold queued for good, and the collections' leader, which can be a tab that is not
-   * running — and before this it waited for ever: every screen sat on "Opening your
-   * notes…" with no error anywhere (2026-10-10). Past the bound the caller is refused
-   * and the error reported; there is no local copy on this page load, which is the app
-   * as it is on a device that cannot keep one, and the queries read the server.
-   *
-   * The open itself is not given up on. It stays the account's entry here, with the
-   * refusal as its answer, so every later ask for this account — the root `beforeLoad`
-   * asks on every navigation — is answered at once rather than with a fresh
-   * twenty-second wait (found in review); and if it does finish, it is the library from
-   * then on, with the hooks told. A close takes the entry as it takes any other, and
-   * its step waits for the open to settle, as every step after it does.
+   * Bounded, so the app is never dead on a storage wedge: an open can wait for good on
+   * things outside this tab (`store/wipe.ts`), and before this it did, with every screen
+   * on "Opening your notes…". Past the bound the caller is refused and the error
+   * reported; the queries read the server, which is the app as it is on a device that
+   * cannot keep a copy. The open itself goes on (see `queue`) and stays the account's
+   * entry, so every later ask — the root `beforeLoad` asks on every navigation — is
+   * answered at once with the same refusal, and if it does finish it is the library from
+   * then on, with the hooks told.
    */
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(new LibraryOpenTimeoutError()), LIBRARY_OPEN_TIMEOUT_MS);
   });
   const library = Promise.race([opened, timeout]).finally(() => clearTimeout(timer));
-  const entry = { userId, library, opened };
+  const entry = { userId, library, opened, halt: () => halting.run() };
   current = entry;
   libraryChanged();
   let late = false;
@@ -397,7 +401,11 @@ export function resetLibraryForTests(): void {
 function closeStep(then?: () => Promise<void>): Promise<void> {
   const open = current;
   current = null;
-  if (open) libraryChanged();
+  if (open) {
+    libraryChanged();
+    // At once, not in the step: the step may be a long way behind a stuck open.
+    open.halt();
+  }
   return enqueue(async () => {
     // The open itself, not the bounded answer its callers were given: an open its caller
     // was refused is still a library once it finishes, and this step runs after it has.
@@ -492,7 +500,7 @@ export async function fetchJson<T>(path: string, stop?: AbortSignal): Promise<T>
   }
 }
 
-async function open(userId: string): Promise<Library> {
+async function open(userId: string, halting: Halting): Promise<Library> {
   const store = await openLocalStore(userId);
   const listeners = new Set<(state: FeedState) => void>();
   let latest: FeedState | null = null;
@@ -635,6 +643,40 @@ async function open(userId: string): Promise<Library> {
     },
   });
 
+  /**
+   * Stops what no caller can use any more: the engine's pulls, the socket and the
+   * listeners that make it pull, and the reopen after a back/forward-cache restore. Run
+   * by the close or the switch that takes this library's entry, at once, and again as
+   * the first thing `close` does. Not the store, the outbox or the collections, which
+   * stay the step's: a bounded wipe lets a sign-out move on past an open that is stuck
+   * below, and an engine left running would go on pulling with whatever cookie the tab
+   * has next, into a file named for this account (found in review).
+   */
+  let halted = false;
+  const halt = () => {
+    if (halted) return;
+    halted = true;
+    closed = true;
+    engine.stop();
+    window.removeEventListener('pageshow', onPageShow);
+    document.removeEventListener('visibilitychange', onVisible);
+    window.removeEventListener('online', pull);
+    unsubscribeConnectivity();
+    if (reconnect) clearTimeout(reconnect);
+    socket?.close();
+  };
+  halting.run = halt;
+
+  /*
+   * The one wait in here that can wedge — the outbox's database held by another tab's
+   * queued delete (`store/wipe.ts`) — and so the one that can hold this step, and the
+   * queue behind it, for good. Not given up on: a step runs to its end (see `queue`),
+   * and what `acquireLibrary` bounds is its caller's wait, not this. Before the keeper
+   * and the search index are started, so an open stuck here holds the store and this
+   * connection and nothing else.
+   */
+  await outbox.ready;
+
   /*
    * The kept notebooks' files follow the library: a file the feed delivers into one is
    * fetched, one that leaves is dropped. Nudged by any change that can move a file or a
@@ -733,14 +775,7 @@ async function open(userId: string): Promise<Library> {
   });
 
   const close = async () => {
-    closed = true;
-    engine.stop();
-    window.removeEventListener('pageshow', onPageShow);
-    document.removeEventListener('visibilitychange', onVisible);
-    window.removeEventListener('online', pull);
-    unsubscribeConnectivity();
-    if (reconnect) clearTimeout(reconnect);
-    socket?.close();
+    halt();
     stopKeeping();
     stopKeptWatch();
     keeper.stop();
@@ -757,14 +792,6 @@ async function open(userId: string): Promise<Library> {
     await search?.index.close().catch(() => {});
     await closeLocalStore();
   };
-
-  /*
-   * The one wait in here that can wedge — the outbox's database held by another tab's
-   * queued delete (`store/wipe.ts`) — and so the one that can hold this step, and the
-   * queue behind it, for good. Not given up on: a step runs to its end (see `queue`),
-   * and what `acquireLibrary` bounds is its caller's wait, not this.
-   */
-  await outbox.ready;
 
   return {
     ...collections,

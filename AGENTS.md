@@ -673,7 +673,10 @@ server — so a wedge is a page with no local copy rather than a dead app. Every
 close of the library is a step on one queue in `library.ts` (`enqueue`), run only after
 every step before it has settled and never abandoned; a new way to open or close the
 library is a new step there, never a call beside the queue, and what is bounded is what
-a caller waits, never the step (a wipe's wait is `CLOSE_WAIT_MS` in `store/wipe.ts`). The
+a caller waits, never the step (a wipe's wait is `CLOSE_WAIT_MS` in `store/wipe.ts`). A
+close that takes a stuck open's entry halts its engine, socket and listeners at once
+(`halt` in `open`), so an open a sign-out moved on past pulls nothing into a file the
+account no longer owns; the store and the outbox stay the step's. The
 other tabs' closes race the wipe: the outbox's delete completes once their connections
 have closed, and the store's files are tried again for a moment, since a file another
 tab's worker still holds cannot be removed. A tab told to close then asks the server who

@@ -1,11 +1,31 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { FEED_TIMEOUT_MS, FeedTimeoutError, LIBRARY_OPEN_TIMEOUT_MS, LIBRARY_ROOTS, LibraryOpenTimeoutError, acquireLibrary, closeLibraryAndStore, currentLibrary, fetchJson, resetLibraryForTests, rootsOfNoteChanges } from './library.js';
+import { FEED_TIMEOUT_MS, FeedTimeoutError, LIBRARY_OPEN_TIMEOUT_MS, LIBRARY_ROOTS, LibraryOpenTimeoutError, acquireLibrary, closeLibraryAndStore, currentLibrary, fetchJson, resetLibraryForTests, rootsOfNoteChanges, settleWrites, subscribeLibrary } from './library.js';
 import { openLocalStore } from './db.js';
 import { reportError } from '../report-error.js';
+import { FeedEngine } from './feed.js';
+import { createCollections } from './collections.js';
+import { createOutbox } from './actions.js';
+import { createKeeper } from './keep.js';
 
 vi.mock('./db.js', () => ({ openLocalStore: vi.fn(), closeLocalStore: vi.fn(async () => {}), openSearchDatabase: vi.fn() }));
 import { closeLocalStore } from './db.js';
 vi.mock('../report-error.js', () => ({ reportError: vi.fn() }));
+/*
+ * What `open` builds on, stood in for so the lifecycle — the queue, the bound, a close
+ * taking a stuck open's entry — can be driven end to end without a worker or a file. The
+ * engine is real; its pull never starts, since the stand-in collections never register.
+ */
+vi.mock('./collections.js', () => ({ createCollections: vi.fn(), cursorStore: vi.fn() }));
+vi.mock('./actions.js', async (importOriginal) => ({ ...(await importOriginal<typeof import('./actions.js')>()), createOutbox: vi.fn() }));
+vi.mock('./keep.js', () => ({ createKeeper: vi.fn() }));
+vi.mock('./search-index.js', () => ({
+  SearchIndex: class {
+    ready = async () => {};
+    close = async () => {};
+  },
+}));
+vi.mock('./search-sync.js', () => ({ createSearchSync: vi.fn(() => ({ touch() {}, touchFiles() {}, wake() {}, startOver() {}, stop: async () => {}, opened: async () => {} })) }));
+vi.mock('./files.js', () => ({ askToPersist: vi.fn(), readKeptNotebooks: vi.fn(async () => new Set()) }));
 
 /**
  * Which queries a change to the notes collection reaches. A save that changed only the
@@ -103,12 +123,135 @@ describe('fetchJson', () => {
  * account keeps its refusal so no navigation waits again, and a close or a later open
  * waits behind it.
  */
+/**
+ * A page with a store to open: the stand-ins above, a socket that records itself, and
+ * an outbox whose `ready` the test holds. What `open` reaches before that wait — the
+ * engine, the socket, the listeners — is real.
+ */
+function page(opts: { ready?: Promise<void>; pending?: number } = {}) {
+  class FakeSocket {
+    static all: FakeSocket[] = [];
+    closed = false;
+    constructor(readonly url: string) {
+      FakeSocket.all.push(this);
+    }
+    addEventListener() {}
+    close() {
+      this.closed = true;
+    }
+  }
+  vi.stubGlobal('WebSocket', FakeSocket);
+  const collection = () => ({ subscribeChanges: () => ({ unsubscribe() {} }), values: () => [], cleanup: vi.fn(async () => {}), preload: async () => {}, get: () => undefined, has: () => false });
+  const collections = { notes: collection(), notebooks: collection(), tags: collection(), attachments: collection(), syncState: collection() };
+  vi.mocked(createCollections).mockReturnValue(collections as never);
+  let pending = opts.pending ?? 0;
+  const listeners = new Set<(s: { pending: number }) => void>();
+  const outbox = {
+    ready: opts.ready ?? Promise.resolve(),
+    executor: { isOfflineEnabled: true },
+    dispose: vi.fn(async () => {}),
+    subscribe: (l: (s: { pending: number }) => void) => {
+      listeners.add(l);
+      return () => void listeners.delete(l);
+    },
+    status: () => ({ pending, durable: true, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map() }),
+    /** The writes went: what a drained outbox tells its subscribers. */
+    drain: () => {
+      pending = 0;
+      listeners.forEach((l) => l({ pending }));
+    },
+  };
+  vi.mocked(createOutbox).mockReturnValue(outbox as never);
+  vi.mocked(createKeeper).mockReturnValue({ status: () => ({ kept: new Set() }), subscribe: () => () => {}, stop: vi.fn(), nudge: vi.fn() } as never);
+  vi.mocked(openLocalStore).mockResolvedValue({ userId: 'u1', persistence: {}, coordinator: {}, database: {} } as never);
+  const stop = vi.spyOn(FeedEngine.prototype, 'stop');
+  return { sockets: FakeSocket.all, outbox, collections, stop };
+}
+
 describe('acquireLibrary', () => {
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
     resetLibraryForTests();
     vi.mocked(openLocalStore).mockReset();
     vi.mocked(reportError).mockReset();
+  });
+
+  it('halts a stuck open’s engine and socket the moment a sign-out takes its entry, and closes it fully once the open ends', async () => {
+    vi.useFakeTimers();
+    let ready!: () => void;
+    const { sockets, outbox, collections, stop } = page({ ready: new Promise((r) => (ready = r)) });
+    const first = acquireLibrary('u1');
+    first.catch(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    // Built up to the one wait that can wedge: the socket is up, the engine is live.
+    expect(sockets).toHaveLength(1);
+    expect(sockets[0]!.closed).toBe(false);
+    expect(stop).not.toHaveBeenCalled();
+    // A sign-out. Its close is behind the stuck open on the queue, but the open's engine
+    // and socket stop now: a bounded wipe lets the sign-out move on, and the next
+    // person's feed must not be pulled into this account's file.
+    const closing = closeLibraryAndStore();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(sockets[0]!.closed).toBe(true);
+    expect(outbox.dispose).not.toHaveBeenCalled();
+    expect(closeLocalStore).not.toHaveBeenCalled();
+    // The open ends: the close step runs it down, store last.
+    ready();
+    await vi.advanceTimersByTimeAsync(10);
+    await closing;
+    expect(outbox.dispose).toHaveBeenCalledTimes(1);
+    expect(collections.notes.cleanup).toHaveBeenCalledTimes(1);
+    // The store after the collections' cleanup, as `db.ts` requires; the library's own
+    // close and the wipe's step both ask, and the second ask is a no-op in `db.ts`.
+    expect(closeLocalStore).toHaveBeenCalled();
+    expect(vi.mocked(closeLocalStore).mock.invocationCallOrder[0]).toBeGreaterThan(collections.notes.cleanup.mock.invocationCallOrder[0]!);
+  });
+
+  it('becomes the library once an open its caller was refused finishes, and tells the hooks', async () => {
+    vi.useFakeTimers();
+    let ready!: () => void;
+    page({ ready: new Promise((r) => (ready = r)) });
+    const first = acquireLibrary('u1');
+    const refused = expect(first).rejects.toBeInstanceOf(LibraryOpenTimeoutError);
+    await vi.advanceTimersByTimeAsync(LIBRARY_OPEN_TIMEOUT_MS);
+    await refused;
+    const heard = vi.fn();
+    const stopListening = subscribeLibrary(heard);
+    ready();
+    await vi.advanceTimersByTimeAsync(10);
+    expect(heard).toHaveBeenCalled();
+    await expect(currentLibrary()).resolves.toMatchObject({ userId: 'u1' });
+    await expect(acquireLibrary('u1')).resolves.toMatchObject({ userId: 'u1' });
+    stopListening();
+  });
+
+  it('does not let Sign out wait on an open past the sign-out’s own bound', async () => {
+    vi.useFakeTimers();
+    page({ ready: new Promise(() => {}) });
+    const first = acquireLibrary('u1');
+    first.catch(() => {});
+    let left: number | null = null;
+    void settleWrites(5_000).then((n) => (left = n));
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(left).toBeNull();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(left).toBe(0);
+  });
+
+  it('gives a library with writes waiting the rest of the sign-out’s bound to drain them', async () => {
+    vi.useFakeTimers();
+    const { outbox } = page({ pending: 2 });
+    await acquireLibrary('u1');
+    let left: number | null = null;
+    void settleWrites(5_000).then((n) => (left = n));
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(left).toBeNull();
+    outbox.drain();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(left).toBe(0);
   });
 
   it('refuses its caller when an open does not settle, reports it, and answers every later ask at once', async () => {
