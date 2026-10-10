@@ -41,7 +41,7 @@ export async function wipeLocalStores(except?: string): Promise<void> {
    * take up to `STORE_FILE_RETRIES` × `STORE_FILE_RETRY_MS` longer, a second and a half,
    * when a file will not go. A sign-in does not: the wipe that keeps the arriving
    * account runs on the route guard's path, before the first page loads, and nothing
-   * that account loads needs the other accounts' files gone first (found in review).
+   * that account loads needs the other accounts' files gone first.
    */
   await wipeOutboxes(keep?.outbox);
   if (await wipeStoreFiles(keep?.stores, keep?.files)) return;
@@ -78,8 +78,8 @@ const STORE_FILE_RETRY_MS = 500;
  * The wipe that keeps one account's copy (`except`) is that account signing in, and the
  * message carries it: a tab already holding that account's library keeps it, since
  * nothing the wipe removes is that tab's, and closing it would have left someone typing
- * in it without an outbox until their next navigation (found in review). Every other
- * tab closes whatever else it holds. A browser without the channel has nothing to tell;
+ * in it without an outbox until their next navigation. Every other tab closes whatever
+ * else it holds. A browser without the channel has nothing to tell;
  * the delete's own bounded wait is what it had before.
  */
 const CHANNEL = 'unbent-libraries';

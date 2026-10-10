@@ -525,7 +525,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
        * After `keys()`, not after `waitForInit`: the adapter opens its database on first
        * use, and on init only the tab that leads the outbox uses it (it restores the
        * entries); in every other tab — the ones a sign-out elsewhere is about — the
-       * connection does not exist until the read above (found in review).
+       * connection does not exist until the read above.
        */
       const db = connection();
       if (db) {
