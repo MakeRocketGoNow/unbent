@@ -305,6 +305,10 @@ export function acquireLibrary(userId: string): Promise<Library> {
      * the error is reported. Whatever the open does finish later is closed, so a tab
      * that recovers does not hold the file against the next one.
      */
+    // After any close in hand, an abandoned open's included: the store is one per tab
+    // (`db.ts`), and an open that started while a close was still cleaning up got the
+    // store the close then shut under it (found in review).
+    await closing;
     const abandon = new AbortController();
     const opening = open(userId, abandon.signal);
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -319,8 +323,8 @@ export function acquireLibrary(userId: string): Promise<Library> {
         failed.catch(() => {});
         gaveUp = failed;
         reportError(err, 'error');
-        // `open` closes what it built when abandoned; once that open has settled either
-        // way, nothing of it is left and the next sign-in may try again.
+        // `open` closes what it built when abandoned, and settles only once that close
+        // has; nothing of it is left then, and the next sign-in may try again.
         abandon.abort(err);
         void opening.then(
           () => {},
@@ -366,14 +370,19 @@ export function resetLibraryForTests(): void {
  */
 let closing: Promise<void> = Promise.resolve();
 
+/** Puts a close on the chain every other close and every open waits for; resolves once all of them have. */
+function trackClose(close: Promise<void>): Promise<void> {
+  closing = Promise.all([closing, close.catch(() => {})]).then(() => {});
+  return closing;
+}
+
 /** Closes the open library, if any, before the store is closed or wiped. */
 export async function closeLibrary(): Promise<void> {
   const open = current;
   current = null;
   if (open) {
     libraryChanged();
-    const done = open.library.then((l) => l.close()).catch(() => {});
-    closing = Promise.all([closing, done]).then(() => {});
+    trackClose(open.library.then((l) => l.close()));
   }
   await closing;
 }
@@ -717,17 +726,23 @@ async function open(userId: string, abandon: AbortSignal): Promise<Library> {
    * (found in review). Abandoned, this closes itself; the caller gets nothing.
    */
   if (abandon.aborted) {
-    await close();
+    await trackClose(close());
     throw abandon.reason;
   }
-  const onAbandon = () => void close();
+  // On the chain, so a wipe or a new open waits for it (`closing`); and this open does
+  // not settle until the close has, since its settling is what lets the next open try.
+  let abandoned: Promise<void> | null = null;
+  const onAbandon = () => void (abandoned = trackClose(close()));
   abandon.addEventListener('abort', onAbandon, { once: true });
   try {
     await outbox.ready;
   } finally {
     abandon.removeEventListener('abort', onAbandon);
   }
-  if (abandon.aborted) throw abandon.reason;
+  if (abandon.aborted) {
+    await abandoned;
+    throw abandon.reason;
+  }
 
   return {
     ...collections,
