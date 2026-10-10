@@ -31,6 +31,12 @@ export function needsAgreement(
   return agreed !== legal.version;
 }
 
+/** What the signed-in shell draws, as far as the agreement decides it. See `agreementGate`. */
+export type AgreementGate =
+  | { kind: 'open' }
+  | { kind: 'wait' }
+  | { kind: 'ask'; legal: NonNullable<AppConfig['legal']> & { version: string } };
+
 /**
  * What the signed-in shell draws, as far as the agreement decides it: the app, the
  * agreement in its place, or nothing yet.
@@ -46,11 +52,6 @@ export function needsAgreement(
  * regression in any of them either locks people out offline or lets the app through
  * without asking.
  */
-export type AgreementGate =
-  | { kind: 'open' }
-  | { kind: 'wait' }
-  | { kind: 'ask'; legal: NonNullable<AppConfig['legal']> & { version: string } };
-
 export function agreementGate(opts: {
   unreachable: boolean;
   config: { isPending: boolean; data?: AppConfig };
