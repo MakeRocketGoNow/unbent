@@ -30,7 +30,7 @@ import { findAbsoluteAttachmentLinks, formatAttachmentMarkdown } from '@unbent/s
  */
 export interface AttachConfig {
   /** Uploads one file; resolves to its relative markdown path. Absent: uploads unsupported. */
-  upload?: (file: File, signal: AbortSignal) => Promise<string>;
+  upload?: (file: File) => Promise<string>;
   /** Uploads in flight for this view, whenever the number changes. */
   onPending?: (count: number) => void;
 }
@@ -40,19 +40,19 @@ export const attachConfig = Facet.define<AttachConfig, AttachConfig>({
 });
 
 /**
- * The uploads a view has in flight, so they can be counted and abandoned.
+ * The uploads a view has in flight, so they can be counted.
  *
  * A view plugin rather than a module-level map because this state belongs to one view
- * and should go when the view goes. `destroy` reports zero but does not abort: a file
- * half-way to the server is worth having even if the view that sent it has gone.
+ * and should go when the view goes. `destroy` reports zero and lets the uploads finish: a
+ * file half-way to the server is worth having even if the view that sent it has gone.
  */
 class PendingUploads implements PluginValue {
-  readonly jobs = new Map<string, AbortController>();
+  readonly jobs = new Set<string>();
 
   constructor(private readonly view: EditorView) {}
 
-  add(token: string, controller: AbortController) {
-    this.jobs.set(token, controller);
+  add(token: string) {
+    this.jobs.add(token);
     this.notify();
   }
 
@@ -155,7 +155,6 @@ export async function insertUploads(
   const jobs = files.map((file) => ({
     file,
     token: `![uploading ${file.name}…](#upload-${uniqueId()})`,
-    controller: new AbortController(),
   }));
 
   const tokens = jobs.map((job) => job.token);
@@ -171,23 +170,17 @@ export async function insertUploads(
     // already visible is a no-op.
     effects: EditorView.scrollIntoView(at),
   });
-  for (const job of jobs) pending.add(job.token, job.controller);
+  for (const job of jobs) pending.add(job.token);
 
-  for (const { file, token, controller } of jobs) {
-    // Abandoned while an earlier file was still going: its placeholder is already gone.
-    if (controller.signal.aborted) continue;
+  for (const { file, token } of jobs) {
     try {
-      const path = await upload(file, controller.signal);
+      const path = await upload(file);
       const link = formatAttachmentMarkdown(file.name, path, {
         image: file.type.startsWith('image/'),
       });
       replaceToken(view, token, link);
     } catch (err) {
-      // An abort is not a failure the note should record; the placeholder was removed by
-      // whoever aborted, and a comment in its place would be the very junk they avoided.
-      if (!controller.signal.aborted) {
-        replaceToken(view, token, `<!-- upload failed: ${(err as Error).message} -->`);
-      }
+      replaceToken(view, token, `<!-- upload failed: ${(err as Error).message} -->`);
     } finally {
       pending.remove(token);
     }

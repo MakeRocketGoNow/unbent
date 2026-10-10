@@ -757,7 +757,7 @@ export async function uploadFile(
    * `id`: the id the file should have, for an upload made from the outbox, which may be
    * sent twice — the server answers a second one with the file the first one made.
    */
-  opts: { signal?: AbortSignal; id?: string } = {},
+  opts: { id?: string } = {},
 ): Promise<UploadedFile> {
   const res = await request(`/api/notes/${noteId}/files`, {
     method: 'PUT',
@@ -767,8 +767,6 @@ export async function uploadFile(
       ...(opts.id ? { 'X-Attachment-Id': opts.id } : {}),
     },
     body: file,
-    // The editor aborts an upload the user walked away from; see editor/attach.ts.
-    signal: opts.signal,
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => '');

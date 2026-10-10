@@ -12,19 +12,15 @@ import {
  * The upload routine drop, paste and the Attach button share.
  *
  * What matters is the shape of the document at each step: a placeholder the moment the
- * file is chosen, the real link when the upload lands, a comment when it fails, and
- * nothing at all when it is abandoned — that last one is the case the Android app
- * depends on, because a placeholder left in a saved note is permanent once the WebView
- * that could have replaced it is gone.
+ * file is chosen, the real link when the upload lands, and a comment when it fails.
  */
 
-/** An upload the test finishes by hand, and the signal it was given. */
+/** An upload the test finishes by hand. */
 function deferredUpload() {
-  const calls: { file: File; signal: AbortSignal; resolve: (p: string) => void; reject: (e: Error) => void }[] = [];
-  const upload: AttachConfig['upload'] = (file, signal) =>
+  const calls: { file: File; resolve: (p: string) => void; reject: (e: Error) => void }[] = [];
+  const upload: AttachConfig['upload'] = (file) =>
     new Promise<string>((resolve, reject) => {
-      calls.push({ file, signal, resolve, reject });
-      signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+      calls.push({ file, resolve, reject });
     });
   /** The n-th upload asked for; a test that reaches for one that never came fails here. */
   const call = (n: number) => {
