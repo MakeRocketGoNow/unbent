@@ -18,7 +18,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
 }));
 vi.mock('../auth-client.js', () => ({ refreshSession: () => refreshSession() }));
 
-const { LegalAgreement, needsAgreement } = await import('./LegalAgreement.js');
+const { LegalAgreement, agreementGate, needsAgreement } = await import('./LegalAgreement.js');
 
 const LEGAL = { privacy: '/privacy', terms: '/terms', version: '2026-10-09' };
 
@@ -51,6 +51,30 @@ describe('needsAgreement', () => {
     expect(needsAgreement(LEGAL, null, '/settings/export')).toBe(false);
     expect(needsAgreement(LEGAL, null, '/settings/maintenance/')).toBe(false);
     expect(needsAgreement(LEGAL, null, '/settings/security')).toBe(true);
+  });
+});
+
+describe('agreementGate', () => {
+  const config = (legal?: typeof LEGAL) => ({ isPending: false, data: { providers: [], legal } });
+  const base = { unreachable: false, agreed: null, pathname: '/notes' };
+
+  /** What keeps someone in their notes with no connection. */
+  it('never asks a session the server could not be asked about, and does not wait', () => {
+    expect(agreementGate({ ...base, unreachable: true, config: config(LEGAL) }).kind).toBe('open');
+    expect(agreementGate({ ...base, unreachable: true, config: { isPending: true } }).kind).toBe('open');
+  });
+
+  it('waits for the config rather than drawing the app and then replacing it', () => {
+    expect(agreementGate({ ...base, config: { isPending: true } }).kind).toBe('wait');
+  });
+
+  it('opens the app when the config could not be fetched', () => {
+    expect(agreementGate({ ...base, config: { isPending: false } }).kind).toBe('open');
+  });
+
+  it('asks an account that has not agreed to this version, and no other', () => {
+    expect(agreementGate({ ...base, config: config(LEGAL) })).toEqual({ kind: 'ask', legal: LEGAL });
+    expect(agreementGate({ ...base, agreed: LEGAL.version, config: config(LEGAL) }).kind).toBe('open');
   });
 });
 

@@ -32,6 +32,39 @@ export function needsAgreement(
 }
 
 /**
+ * What the signed-in shell draws, as far as the agreement decides it: the app, the
+ * agreement in its place, or nothing yet.
+ *
+ * - **Never asked without the server.** A session remembered for offline use does not
+ *   carry the version, and asking someone with no connection to agree to something the
+ *   server cannot record would lock them out of their notes. So an unreachable session
+ *   opens the app at once, without waiting on a config fetch that cannot answer either.
+ * - **Wait for the config**, so the app is not drawn and then replaced by the agreement.
+ * - **A config that could not be fetched opens the app**, as the remembered session does.
+ *
+ * Pure, and here rather than in `AppShell`, so these three rules are tested by name: a
+ * regression in any of them either locks people out offline or lets the app through
+ * without asking.
+ */
+export type AgreementGate =
+  | { kind: 'open' }
+  | { kind: 'wait' }
+  | { kind: 'ask'; legal: NonNullable<AppConfig['legal']> & { version: string } };
+
+export function agreementGate(opts: {
+  unreachable: boolean;
+  config: { isPending: boolean; data?: AppConfig };
+  agreed: string | null | undefined;
+  pathname: string;
+}): AgreementGate {
+  if (opts.unreachable) return { kind: 'open' };
+  if (opts.config.isPending) return { kind: 'wait' };
+  const legal = opts.config.data?.legal;
+  if (!legal?.version || !needsAgreement(legal, opts.agreed, opts.pathname)) return { kind: 'open' };
+  return { kind: 'ask', legal: { ...legal, version: legal.version } };
+}
+
+/**
  * The agreement to the terms and privacy policy, asked for in place of the app (MAK-209).
  *
  * After sign-in rather than on the sign-in screen, because signing in and signing up are

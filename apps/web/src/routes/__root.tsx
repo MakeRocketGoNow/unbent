@@ -25,7 +25,7 @@ import { UpdateSnackbar } from '../components/UpdateSnackbar.js';
 import { claimImportFor, getImportRun, subscribeImport } from '../import-run.js';
 import { takeUpdate } from '../sw-register.js';
 import { configQuery } from '../queries.js';
-import { LegalAgreement, needsAgreement } from '../components/LegalAgreement.js';
+import { LegalAgreement, agreementGate } from '../components/LegalAgreement.js';
 
 export interface RouterContext {
   queryClient: QueryClient;
@@ -234,10 +234,10 @@ function AppShell() {
     void navigate({ to: '/login', replace: true });
   }, [isPending, session, navigate]);
 
-  // Until the config says whether there are terms to agree to, so the app is not drawn
-  // and then replaced by the agreement. A config that cannot be fetched at all — offline
-  // with nothing cached — lets the app through, as the remembered session does.
-  if (!session?.user || config.isPending) {
+  const gate = session?.user
+    ? agreementGate({ unreachable, config, agreed: session.user.legalVersion, pathname })
+    : ({ kind: 'wait' } as const);
+  if (!session?.user || gate.kind === 'wait') {
     return (
       <main className="shell">
         <p className="muted">Loading…</p>
@@ -245,24 +245,15 @@ function AppShell() {
     );
   }
 
-  /*
-   * The agreement to the terms, in place of the app until it is given; see
-   * `LegalAgreement`. Only on an answer from the server: a session remembered for
-   * offline use does not carry the version, and asking someone with no connection to
-   * agree to something the server cannot record would lock them out of their notes.
-   */
-  const legal = config.data?.legal;
-  if (!unreachable && legal?.version && needsAgreement(legal, session.user.legalVersion, pathname)) {
+  // The agreement to the terms, in place of the app until it is given; see
+  // `agreementGate` for when it is asked and `LegalAgreement` for why it is asked here.
+  if (gate.kind === 'ask') {
     // The sign-out's question about unsynced writes and its failure notice are mounted
     // here too: Sign out is this screen's way out, and `useSignOut` hands both to these
     // components, so without them a press with writes waiting would do nothing at all.
     return (
       <PlainShell>
-        <LegalAgreement
-          legal={{ ...legal, version: legal.version }}
-          agreed={session.user.legalVersion}
-          onSignOut={signOutAndLeave}
-        />
+        <LegalAgreement legal={gate.legal} agreed={session.user.legalVersion} onSignOut={signOutAndLeave} />
         <SignOutSnackbar />
         <SignOutConfirm />
       </PlainShell>
