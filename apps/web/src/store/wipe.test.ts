@@ -1,9 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { closeLocalStores, installLibraryCloser, wipeLocalStores } from './wipe.js';
 
-vi.mock('./library.js', () => ({ closeLibrary: vi.fn(async () => {}), currentLibraryUser: vi.fn(() => null) }));
-vi.mock('./db.js', () => ({ closeLocalStore: vi.fn(async () => {}) }));
-import { closeLibrary, currentLibraryUser } from './library.js';
+vi.mock('./library.js', () => ({ closeLibraryAndStore: vi.fn(async () => {}), currentLibraryUser: vi.fn(() => null) }));
+import { closeLibraryAndStore as closeLibrary, currentLibraryUser } from './library.js';
 
 /**
  * What the wipe removes, against a stand-in file system and IndexedDB: every account's

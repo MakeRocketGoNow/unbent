@@ -1,5 +1,4 @@
-import { closeLocalStore } from './db.js';
-import { closeLibrary, currentLibraryUser } from './library.js';
+import { closeLibraryAndStore, currentLibraryUser } from './library.js';
 import { filesDirName, isFilesDir, isOutbox, isStoreFile, outboxName, searchFileName, storeFileName } from './names.js';
 
 /**
@@ -101,8 +100,7 @@ export function installLibraryCloser(): () => void {
 /** Closes the open library and its store, keeping every file: what a refused session does. */
 export async function closeLocalStores(): Promise<void> {
   try {
-    await closeLibrary();
-    await closeLocalStore();
+    await closeLibraryAndStore();
   } catch {
     // Closing can fail if the worker is already gone; a removal that follows still applies.
   }

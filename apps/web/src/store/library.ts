@@ -388,6 +388,19 @@ export async function closeLibrary(): Promise<void> {
 }
 
 /**
+ * Closes the open library and then the store, both on the chain an open waits for. What
+ * a wipe does (`closeLocalStores`). Not `closeLibrary` then `closeLocalStore` from the
+ * caller: an open waiting on the chain resumed between the two, since it had queued its
+ * continuation first, took a fresh store from `db.ts`, and had it closed under it by the
+ * store close that ran next (found in review). Chained here, synchronously, the store
+ * close is part of what that open waits for.
+ */
+export function closeLibraryAndStore(): Promise<void> {
+  void closeLibrary();
+  return trackClose(closing.then(() => closeLocalStore()));
+}
+
+/**
  * A failed pull, to the error reports. `reportError` already drops an `OfflineError` and
  * says each message once a page load, so a retry failing the same way is one report. A
  * lapsed session is dropped here too: the app answers a 401 by asking for a sign-in, and
