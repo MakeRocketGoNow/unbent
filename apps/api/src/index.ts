@@ -5,6 +5,7 @@ import { MANIFEST_PATH, serveManifest } from './lib/manifest.js';
 import { dumpStores } from './lib/backups.js';
 import { cronJob } from './lib/cron.js';
 import { sweepStores } from './lib/sweep.js';
+import { notifyLapsedPlans } from './lib/plan-mail.js';
 
 /**
  * The per-account note store, exported so the runtime can construct it. This is one of
@@ -41,10 +42,20 @@ export default {
    * One trigger rather than two so that both run on every instance from one line, and
    * each is its own invocation with its own subrequests, so neither can spend the
    * other's. Told apart by the minute the run was scheduled for (`cronJob`). `waitUntil`
-   * so neither is cut off at the handler's return, and nothing here needs `APP_URL`
-   * settled.
+   * so neither is cut off at the handler's return.
+   *
+   * The sweep's run also tells a few accounts whose plan has run out (MAK-108,
+   * lib/plan-mail.ts), before the walk. The mail names the address in `APP_URL`, which
+   * no request is here to settle, so an instance that has not set it sends none and
+   * says so. A few mails on top of the walk's budget is past Workers Free's fifty
+   * subrequests, which is accepted: an instance with billing on is one an operator
+   * switched on, and unbent.app is on Paid.
    */
   scheduled(controller: ScheduledController, env: RawEnv, ctx: ExecutionContext): void {
-    ctx.waitUntil(cronJob(controller.scheduledTime) === 'sweep' ? sweepStores(env) : dumpStores(env));
+    ctx.waitUntil(
+      cronJob(controller.scheduledTime) === 'sweep'
+        ? notifyLapsedPlans(env).catch((err) => console.error('[billing] lapse mail failed:', err)).then(() => sweepStores(env))
+        : dumpStores(env),
+    );
   },
 };
