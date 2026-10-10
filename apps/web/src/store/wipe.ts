@@ -72,12 +72,19 @@ const STORE_FILE_RETRY_MS = 500;
  */
 const CHANNEL = 'unbent-libraries';
 
+/**
+ * This tab's one channel object, the listener's, posted on as well as listened to. A
+ * message reaches every *other* channel object of the name — the browser never delivers
+ * one back to the object that posted it, but it does deliver to a second object in the
+ * same tab. Posted from a fresh object, the wipe was heard by this tab's own listener,
+ * which closed the library a wipe `except` an account had just set out to keep (found in
+ * review). Null until the listener is installed, and then there is nobody to tell.
+ */
+let channel: BroadcastChannel | null = null;
+
 function closeLibrariesInOtherTabs(): void {
-  if (typeof BroadcastChannel === 'undefined') return;
   try {
-    const channel = new BroadcastChannel(CHANNEL);
-    channel.postMessage({ type: 'close' });
-    channel.close();
+    channel?.postMessage({ type: 'close' });
   } catch {
     // Nothing to tell.
   }
@@ -86,15 +93,20 @@ function closeLibrariesInOtherTabs(): void {
 /**
  * Hears another tab's wipe, and closes this tab's library and store for it, keeping every
  * file: what `closeLocalStores` does for a refused session, for the same reason — this tab
- * decides nothing about the account; the one wiping has. Installed once, at start.
+ * decides nothing about the account; the one wiping has. Installed once, at start, and
+ * before any wipe can post: the wipe posts on this listener's own object.
  */
 export function installLibraryCloser(): () => void {
   if (typeof BroadcastChannel === 'undefined') return () => {};
-  const channel = new BroadcastChannel(CHANNEL);
-  channel.onmessage = (event: MessageEvent<{ type?: string }>) => {
+  const mine = new BroadcastChannel(CHANNEL);
+  mine.onmessage = (event: MessageEvent<{ type?: string }>) => {
     if (event.data?.type === 'close') void closeLocalStores();
   };
-  return () => channel.close();
+  channel = mine;
+  return () => {
+    mine.close();
+    if (channel === mine) channel = null;
+  };
 }
 
 /** Closes the open library and its store, keeping every file: what a refused session does. */

@@ -103,18 +103,41 @@ function channels(order: string[] = []) {
     }
   }
   vi.stubGlobal('BroadcastChannel', FakeChannel);
+  /** Another tab's listener on the same channel: counts the closes it was told of. */
+  const anotherTab = () => {
+    const heard: unknown[] = [];
+    const theirs = new FakeChannel('unbent-libraries');
+    theirs.onmessage = (e) => heard.push(e.data);
+    return heard;
+  };
+  return { anotherTab };
 }
 
 describe('other tabs', () => {
   it('are told to close their libraries before the wipe deletes or removes anything', async () => {
     const { order } = device(files, dbs);
-    channels(order);
+    const { anotherTab } = channels(order);
     const stop = installLibraryCloser();
+    const theirs = anotherTab();
     await wipeLocalStores();
-    // The listener's close is this module's own `closeLocalStores`, through the mocked library.
-    expect(closeLibrary).toHaveBeenCalledTimes(2);
+    expect(theirs).toEqual([{ type: 'close' }]);
+    // This tab's own close is the wipe's, once; its own listener does not hear its post.
+    expect(closeLibrary).toHaveBeenCalledTimes(1);
     expect(order[0]).toBe('post');
     expect(order.filter((o) => o === 'post')).toHaveLength(1);
+    stop();
+  });
+
+  it('hear a wipe that keeps one account, while the tab keeping it does not close its own', async () => {
+    device(files, dbs);
+    const { anotherTab } = channels();
+    vi.mocked(currentLibraryUser).mockReturnValue('a');
+    const stop = installLibraryCloser();
+    const theirs = anotherTab();
+    await wipeLocalStores('a');
+    expect(theirs).toEqual([{ type: 'close' }]);
+    // The kept account's library, open here, stays open: a wipe `except` it is a sign-in, not a sign-out.
+    expect(closeLibrary).not.toHaveBeenCalled();
     stop();
   });
 
@@ -148,22 +171,15 @@ describe('other tabs', () => {
     }
   });
 
-  it('are told on a wipe that keeps one account, since the tab wiping is the one deciding', async () => {
-    device(files, dbs);
-    channels();
-    vi.mocked(currentLibraryUser).mockReturnValue('a');
-    const stop = installLibraryCloser();
-    await wipeLocalStores('a');
-    expect(closeLibrary).toHaveBeenCalledTimes(1);
-    stop();
-  });
-
-  it('hear nothing once the listener is stopped', async () => {
-    device(files, dbs);
-    channels();
+  it('hear nothing once the listener is stopped, and the wipe still goes', async () => {
+    const { deleted } = device(files, dbs);
+    const { anotherTab } = channels();
     installLibraryCloser()();
+    const theirs = anotherTab();
     await wipeLocalStores();
+    expect(theirs).toEqual([]);
     expect(closeLibrary).toHaveBeenCalledTimes(1);
+    expect(deleted.sort()).toEqual(['unbent-outbox-a', 'unbent-outbox-b']);
   });
 
   it('are not a reason a browser without the channel cannot wipe', async () => {
