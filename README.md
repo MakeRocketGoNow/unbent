@@ -1332,8 +1332,10 @@ active for good there, and no Plan tab is drawn — so a fork never has to think
 The numbers the pages quote are in `packages/shared/src/plan.ts`; the prices Paddle charges
 are in its catalog, and the two are changed together.
 
-Every account starts with a fortnight's trial, no card asked for. When it runs out, or a
-subscription lapses, the account turns **inactive**: everything still opens, searches and
+Every account starts with a fortnight's trial, no card asked for — counted from its first
+request after billing is on, so an account that existed before the keys went on gets its
+fortnight from then, not from the deploy. When it runs out, or a subscription lapses, the
+account turns **inactive**: everything still opens, searches and
 exports, and every write but a delete is refused with a 402 that the app shows as a
 read-only banner. The same state, and the same code path, for an expired trial, a lapsed
 subscription and a comp that ended (`requireActivePlan` in the API). After a year inactive

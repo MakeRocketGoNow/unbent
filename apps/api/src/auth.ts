@@ -11,6 +11,7 @@ import { signInCodeEmail } from './lib/sign-in-code-email.js';
 import { deleteKeys } from './lib/blobs.js';
 import { ensureDirectoryRow } from './lib/directory.js';
 import { ensurePlanRow } from './lib/plan.js';
+import { billingOn } from './lib/paddle.js';
 import { SESSION_CACHE_SECONDS, clearAccount, tombstoneAccount } from './lib/account-deletion.js';
 
 /**
@@ -617,13 +618,17 @@ function createAuth(env: Env): AuthInstance {
               // not fail the sign-up the user row already succeeded at.
               console.error(`directory row for ${user.id} not written; the sweep will add it:`, err);
             }
-            // The fortnight starts now (MAK-108). Written on every instance, billing or
-            // not, so an instance that turns billing on later finds every account dated.
-            // Healed on first read by `planFor`, so this failing costs the sign-up nothing.
-            try {
-              await ensurePlanRow(env.DB, user.id);
-            } catch (err) {
-              console.error(`plan row for ${user.id} not written; the first read will add it:`, err);
+            // The fortnight starts now (MAK-108) — only while billing is on. A row dated
+            // from a sign-up made while it was off would be a trial already run out the
+            // day billing came on; without one, `planFor` starts the fortnight at the
+            // account's first request after that. Healed on first read either way, so
+            // this failing costs the sign-up nothing.
+            if (billingOn(env)) {
+              try {
+                await ensurePlanRow(env.DB, user.id);
+              } catch (err) {
+                console.error(`plan row for ${user.id} not written; the first read will add it:`, err);
+              }
             }
           },
         },

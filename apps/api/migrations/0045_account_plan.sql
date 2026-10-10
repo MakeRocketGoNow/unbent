@@ -36,9 +36,14 @@
 -- needs to outlive the account; the subscription is cancelled with Paddle before the row
 -- goes (lib/account-deletion.ts).
 --
--- Backfilled: every account that exists today starts its fortnight now, as a new account
--- would. On an instance with billing on, the operator comps whoever should not be asked
--- to pay before the fortnight is up. On one without, the rows are never read.
+-- Not backfilled, and the sign-up hook writes a row only while billing is on. A trial
+-- dated from this migration, or from a sign-up made while billing was off, would run out
+-- before anyone knew there was a trial: the live Paddle keys follow this deploy by days,
+-- and the day they went on every account older than a fortnight would have turned
+-- read-only at once and been mailed about a trial it was never told of. Instead an
+-- account's fortnight starts at its first request after billing is on (`planFor` heals
+-- a missing row), which is the first moment the Plan tab and the trial banner can say so.
+-- The operator comps whoever should not be asked to pay before it is up.
 CREATE TABLE account_plan (
   user_id                TEXT PRIMARY KEY REFERENCES user(id) ON DELETE CASCADE,
   plan                   TEXT NOT NULL CHECK (plan IN ('trial', 'active', 'inactive')),
@@ -78,7 +83,3 @@ CREATE TABLE billing_event (
   occurred_at TEXT NOT NULL,
   received_at INTEGER NOT NULL
 );
-
-INSERT INTO account_plan (user_id, plan, plan_until, created_at, updated_at)
-SELECT id, 'trial', unixepoch() * 1000 + 14 * 86400 * 1000, unixepoch() * 1000, unixepoch() * 1000
-  FROM user;
