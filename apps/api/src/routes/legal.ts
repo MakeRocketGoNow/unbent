@@ -73,8 +73,9 @@ const GRANTS: ReadonlySet<string> = new Set(['/api/auth/oauth2/consent', '/api/a
  * In front of Better Auth's handler rather than in one of its hooks, because the session
  * is already resolved here (`sessionMiddleware`) and the check is this app's rule, not
  * Better Auth's. The paths are its plugins' own, so an upgrade that renamed one would let
- * that grant through unchecked: `test/legal-agreement.test.ts` calls both and fails if
- * either stops being refused.
+ * that grant through unchecked — and this check would go on refusing the old path, so
+ * a refusal proves nothing. `test/legal-agreement.test.ts` also calls both once the
+ * account has agreed, and fails if either is no longer Better Auth's endpoint.
  *
  * No session, or nothing published to agree to, passes through: Better Auth refuses the
  * first itself, and there is nothing to ask for in the second.

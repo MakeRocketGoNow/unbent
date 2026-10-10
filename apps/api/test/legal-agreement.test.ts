@@ -127,9 +127,9 @@ describe('POST /api/legal/agree', () => {
 /**
  * The two endpoints that give a program a credential of its own refuse an account that
  * has not agreed (`refuseGrantsWithoutAgreement`). The bodies name no real device code or
- * authorization, so past the check Better Auth refuses them for its own reasons; what is
- * asserted is only whether the refusal is ours. Called by path, so an upgrade of Better
- * Auth that renamed either endpoint fails here rather than letting the grant through.
+ * authorization, so past the check Better Auth refuses them for its own reasons. Before
+ * agreeing, the refusal must be ours; after, it must be Better Auth's, and not its 404 — so
+ * an upgrade that renamed either endpoint fails here rather than leaving it unguarded.
  */
 describe('granting a credential before agreeing', () => {
   let fresh: Jar;
@@ -137,14 +137,19 @@ describe('granting a credential before agreeing', () => {
     fresh = await signUp();
   });
 
-  async function refusal(path: string, body: unknown): Promise<string | undefined> {
+  async function answer(path: string, body: unknown): Promise<{ status: number; code?: string }> {
     const res = await fetch(`${BASE}/api/auth/${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Origin: ORIGIN, Cookie: fresh.header() },
       body: JSON.stringify(body),
     });
-    const answer = (await res.json().catch(() => null)) as { code?: string } | null;
-    return res.status === 403 ? answer?.code : undefined;
+    const json = (await res.json().catch(() => null)) as { code?: string } | null;
+    return { status: res.status, code: json?.code };
+  }
+
+  async function refusal(path: string, body: unknown): Promise<string | undefined> {
+    const { status, code } = await answer(path, body);
+    return status === 403 ? code : undefined;
   }
 
   it('refuses to approve a device or an app until the terms are agreed', async (ctx) => {
@@ -164,8 +169,20 @@ describe('granting a credential before agreeing', () => {
     const res = await agree(legal.version, fresh);
     expect(res.status).toBe(200);
     fresh.take(res);
-    expect(await refusal('device/approve', { userCode: 'ABCD-EFGH' })).not.toBe('TERMS_NOT_AGREED');
-    expect(await refusal('oauth2/consent', { accept: true })).not.toBe('TERMS_NOT_AGREED');
+    /*
+     * Past the check, each path must still be Better Auth's own endpoint. The check runs
+     * first and refuses by path, so it refuses a path Better Auth no longer serves just as
+     * readily: only this side of it notices a rename, as the 404 Better Auth gives an
+     * unknown path.
+     */
+    for (const [path, body] of [
+      ['device/approve', { userCode: 'ABCD-EFGH' }],
+      ['oauth2/consent', { accept: true }],
+    ] as const) {
+      const { status, code } = await answer(path, body);
+      expect(code, path).not.toBe('TERMS_NOT_AGREED');
+      expect(status, `${path} is no longer Better Auth's endpoint`).not.toBe(404);
+    }
   });
 
   it('never refuses where no documents are published', async (ctx) => {
