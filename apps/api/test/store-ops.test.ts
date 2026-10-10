@@ -64,7 +64,7 @@ describe('store stats', () => {
     expect(stats.userId).toBe(alice.userId);
     expect(stats.counts.notes).toBe(1);
     expect(stats.counts.tags).toBe(1);
-    expect(stats.migrations).toEqual(['0001-init', '0002-changes', '0003-revisions', '0004-revision-props', '0005-deleted-blobs', '0006-tags-nocase']);
+    expect(stats.migrations).toEqual(['0001-init', '0002-changes', '0003-revisions', '0004-revision-props', '0005-deleted-blobs', '0006-tags-nocase', '0007-llm-usage', '0008-attachment-bytes']);
     expect(stats.wiped).toBe(false);
   });
 
@@ -117,7 +117,7 @@ describe('store dump', () => {
     expect(query('SELECT live FROM note_counts')).toBe('1');
     expect(query('SELECT note_count FROM tags')).toBe('1');
     expect(query("SELECT title FROM notes WHERE rowid IN (SELECT rowid FROM notes_fts WHERE notes_fts MATCH 'counted')")).toBe('Counted');
-    expect(query('SELECT name FROM _migrations')).toBe('0001-init\n0002-changes\n0003-revisions\n0004-revision-props\n0005-deleted-blobs\n0006-tags-nocase');
+    expect(query('SELECT name FROM _migrations')).toBe('0001-init\n0002-changes\n0003-revisions\n0004-revision-props\n0005-deleted-blobs\n0006-tags-nocase\n0007-llm-usage\n0008-attachment-bytes');
   });
 
   it('is the caller\'s own unless they are an operator', async () => {

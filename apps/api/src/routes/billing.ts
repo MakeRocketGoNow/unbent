@@ -15,6 +15,7 @@ import {
   setSubscriptionStorage,
   verifyWebhookSignature,
 } from '../lib/paddle.js';
+import { reposFor } from '../lib/repos.js';
 import { requireAuth } from '../lib/session.js';
 import type { AppEnv } from '../types.js';
 
@@ -61,8 +62,18 @@ export const billing = new Hono<AppEnv>()
    */
   .get('/me/plan', requireAuth, async (c) => {
     if (!billingOn(c.env)) return c.json({ error: 'This instance has no plan to report.' }, 404);
-    const row = await planFor(c.env.DB, c.get('userId')!);
-    return c.json(accountPlanOf(row, Date.now()));
+    const userId = c.get('userId')!;
+    const row = await planFor(c.env.DB, userId);
+    // What the account holds, from its store: one more call, and the one number on the
+    // page that is not the row's. Left out rather than failed when the store cannot say
+    // — reset by a deploy, or being loaded — since the plan is still the plan.
+    let usedBytes: number | undefined;
+    try {
+      usedBytes = await reposFor(c.env, userId).attachments.storageUsed();
+    } catch (err) {
+      console.warn(`[billing] storage used for user=${userId} unavailable:`, (err as Error).message);
+    }
+    return c.json({ ...accountPlanOf(row, Date.now()), ...(usedBytes !== undefined ? { usedBytes } : {}) });
   })
 
   /**

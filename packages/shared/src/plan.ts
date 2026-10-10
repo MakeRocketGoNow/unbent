@@ -43,6 +43,9 @@ export const GB = 1024 * 1024 * 1024;
  * it is the sentence for a client that does not.
  */
 export const PLAN_INACTIVE_CODE = 'PLAN_INACTIVE';
+
+/** The `code` on the 402 an upload past the plan's storage is answered with. */
+export const STORAGE_FULL_CODE = 'STORAGE_FULL';
 export const PLAN_INACTIVE_MESSAGE =
   'This account is read-only: its plan has ended. Everything still opens, searches and exports, and anything can be deleted; subscribe under Settings → Plan to edit again.';
 

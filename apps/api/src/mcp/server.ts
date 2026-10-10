@@ -3,6 +3,7 @@ import { appLinks } from '../lib/app-links.js';
 import { canUseLlm } from '../lib/llm.js';
 import { billingOn } from '../lib/paddle.js';
 import { planFor, planStateOf } from '../lib/plan.js';
+import { quotaFor } from '../lib/quota.js';
 import { reposFor } from '../lib/repos.js';
 import { UploadGrantsRepo } from '../lib/upload-grants.js';
 import type { Env } from '../types.js';
@@ -46,7 +47,7 @@ export function createUnbentMcpHandler(
     registerWriteTools(gated, notes, links);
     // Upload links stay in D1: the token is looked up before anyone knows whose it is.
     const uploads = new UploadGrantsRepo(env.DB, userId);
-    registerAttachmentTools(gated, env, ctx, { notes, attachments, uploads }, links);
+    registerAttachmentTools(gated, env, ctx, { notes, attachments, uploads }, links, () => quotaFor(env, env.DB, userId));
     return server;
   });
 }

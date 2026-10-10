@@ -6,6 +6,7 @@ import {
 } from '@unbent/shared';
 import type { AttachmentsRepo } from './attachments-repo.js';
 import type { NotesRepo } from './notes-repo.js';
+import { assertRoom, StorageFull } from './quota.js';
 import { readAttachment, serverCanRead, uploadReaders } from './read-attachment.js';
 import type { Env } from '../types.js';
 
@@ -53,6 +54,18 @@ export interface StoreAttachmentInput {
    * archive's text and replace it with different ones.
    */
   textSupplied?: boolean;
+  /**
+   * The plan's storage in bytes, or null for no limit (lib/quota.ts). Required rather
+   * than defaulted so that every way bytes come in decides: a caller with the plan row on
+   * its context passes `quotaOf`, one without reads `quotaFor`.
+   */
+  quota: number | null;
+  /**
+   * How many bytes are coming, when the caller knows before they move — a request's
+   * Content-Length. Checked against the quota before R2 is touched; the true size is
+   * checked again after, since this is a claim.
+   */
+  declaredBytes?: number | undefined;
 }
 
 /**
@@ -97,9 +110,30 @@ export async function storeAttachment(
    */
   const contentType = normalizeContentType(input.contentType) || FALLBACK_CONTENT_TYPE;
 
+  // Before the bytes move, on what was declared; the stream is cancelled so the client
+  // stops sending into a refusal it has already been given.
+  if (input.declaredBytes !== undefined) {
+    try {
+      await assertRoom(attachments, input.quota, input.declaredBytes);
+    } catch (err) {
+      if (err instanceof StorageFull && input.body instanceof ReadableStream) await input.body.cancel().catch(() => {});
+      throw err;
+    }
+  }
+
   const object = await env.BLOBS.put(key, input.body, { httpMetadata: { contentType } });
   // Null only when a precondition was given and failed; none is, so this is unreachable.
   if (!object) throw new Error('Upload failed');
+
+  // And after, on what R2 counted, for a caller that could not say beforehand (a fetched
+  // picture with no length) or one whose claim was short. The object goes before the
+  // refusal, since no row will ever name it.
+  try {
+    await assertRoom(attachments, input.quota, object.size);
+  } catch (err) {
+    if (err instanceof StorageFull) await env.BLOBS.delete(key).catch(() => {});
+    throw err;
+  }
 
   // R2 reports the true byte count; anything the caller declared was a claim.
   const info = await attachments.record({

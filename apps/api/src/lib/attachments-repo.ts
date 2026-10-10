@@ -35,6 +35,11 @@ export class AttachmentsRepo extends StoreRepo {
     return this.call((s) => s.filesForNote(noteId));
   }
 
+  /** The bytes of files the account holds, for the plan's quota; see `UserStore.attachmentBytes`. */
+  storageUsed(): Promise<number> {
+    return this.call((s) => s.attachmentBytes());
+  }
+
   /** True when the note exists and is not deleted. Ownership is the object's; see `reposFor`. */
   ownsNote(noteId: string): Promise<boolean> {
     return this.call((s) => s.ownsNote(noteId));

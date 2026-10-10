@@ -15,6 +15,7 @@ import { serverCanRead } from '../lib/read-attachment.js';
 import { fetchWebImage } from '../lib/web-image.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
+import { StorageFull, assertRoom, quotaOf, storageFullBody } from '../lib/quota.js';
 import { storeAttachment } from '../lib/store-attachment.js';
 import type { AppEnv } from '../types.js';
 
@@ -122,20 +123,31 @@ export const attachments = new Hono<AppEnv>()
      */
     const link = c.req.query('link') !== undefined;
 
-    const { filename, contentType, size, path, indexing } = await storeAttachment(
-      c.env,
-      c.executionCtx,
-      { attachments: repo, notes: c.get('notes') },
-      {
-        noteId,
-        id: claimed,
-        filename: parsed.data,
-        contentType: c.req.header('Content-Type'),
-        body: c.req.raw.body,
-        link,
-        textSupplied,
-      },
-    );
+    let stored;
+    try {
+      stored = await storeAttachment(
+        c.env,
+        c.executionCtx,
+        { attachments: repo, notes: c.get('notes') },
+        {
+          noteId,
+          id: claimed,
+          filename: parsed.data,
+          contentType: c.req.header('Content-Type'),
+          body: c.req.raw.body,
+          link,
+          textSupplied,
+          quota: quotaOf(c.env, c.get('plan')),
+          declaredBytes: declared > 0 ? declared : undefined,
+        },
+      );
+    } catch (err) {
+      // Past the plan's storage: a 402 like a lapsed plan's, with the numbers, so the
+      // panel can say how full and point at the Plan page.
+      if (err instanceof StorageFull) return c.json(storageFullBody(err), 402);
+      throw err;
+    }
+    const { filename, contentType, size, path, indexing } = stored;
 
     // `path` is the relative destination the editor inserts into the markdown.
     return c.json({ filename, contentType, size, path, indexing }, 201);
@@ -163,12 +175,17 @@ export const attachments = new Hono<AppEnv>()
     if (from === to) return c.json({ error: 'Source and destination are the same note' }, 400);
     if (!(await attachments.ownsNote(from))) return c.json({ error: 'Source note not found' }, 404);
 
-    const result = await copyAttachments(
-      c.env.BLOBS,
-      { attachments, notes: c.get('notes') },
-      { from, to, filenames, move, link },
-    );
-    return c.json(result);
+    try {
+      const result = await copyAttachments(
+        c.env.BLOBS,
+        { attachments, notes: c.get('notes') },
+        { from, to, filenames, move, link, quota: quotaOf(c.env, c.get('plan')) },
+      );
+      return c.json(result);
+    } catch (err) {
+      if (err instanceof StorageFull) return c.json(storageFullBody(err), 402);
+      throw err;
+    }
   })
 
   /**
@@ -189,6 +206,13 @@ export const attachments = new Hono<AppEnv>()
       allowLoopback: c.env.ALLOW_TEST_CREDENTIALS === '1',
     });
     if (!fetched.ok) return c.json({ error: fetched.error }, fetched.status);
+
+    try {
+      await assertRoom(repo, quotaOf(c.env, c.get('plan')), fetched.bytes.byteLength);
+    } catch (err) {
+      if (err instanceof StorageFull) return c.json(storageFullBody(err), 402);
+      throw err;
+    }
 
     const filename = await repo.availableFilename(noteId, fetched.filename);
     const id = crypto.randomUUID();

@@ -6,6 +6,7 @@ import { chooseContentType } from '../lib/fetch-attachment.js';
 import { billingOn } from '../lib/paddle.js';
 import { planFor, planStateOf } from '../lib/plan.js';
 import { reposFor } from '../lib/repos.js';
+import { StorageFull, quotaFor, storageFullBody } from '../lib/quota.js';
 import { storeAttachment } from '../lib/store-attachment.js';
 import { claimUploadGrant } from '../lib/upload-grants.js';
 import type { AppEnv } from '../types.js';
@@ -87,6 +88,7 @@ export const uploads = new Hono<AppEnv>().use('/uploads/*', anyOrigin).put('/upl
   if (billingOn(c.env) && planStateOf(await planFor(c.env.DB, grant.userId), Date.now()) === 'inactive') {
     return c.json({ code: PLAN_INACTIVE_CODE, error: PLAN_INACTIVE_MESSAGE }, 402);
   }
+  const quota = await quotaFor(c.env, c.env.DB, grant.userId);
 
   const { attachments, notes } = reposFor(c.env, grant.userId);
   // Trashed, or gone, in the minutes since the link was made.
@@ -113,6 +115,8 @@ export const uploads = new Hono<AppEnv>().use('/uploads/*', anyOrigin).put('/upl
         contentType,
         body: c.req.raw.body,
         link: grant.link,
+        quota,
+        declaredBytes: declared,
       },
     );
     // add_attachment's answer, url included, since prepare_attachment_upload promises the
@@ -122,6 +126,7 @@ export const uploads = new Hono<AppEnv>().use('/uploads/*', anyOrigin).put('/upl
       201,
     );
   } catch (err) {
+    if (err instanceof StorageFull) return c.json(storageFullBody(err), 402);
     // A transfer cut short: the link is spent, and nothing was attached.
     console.error('Upload through a prepared link failed:', err);
     return c.json({ error: `The upload did not complete, and nothing was attached. ${ASK_AGAIN}` }, 400);

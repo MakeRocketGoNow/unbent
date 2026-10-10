@@ -5,6 +5,7 @@ import {
 } from '@unbent/shared';
 import type { AttachmentsRepo } from './attachments-repo.js';
 import type { NotesRepo } from './notes-repo.js';
+import { assertRoom } from './quota.js';
 
 /** One file after a copy: what it was asked for as, and what it is called now. */
 export interface CopiedAttachment extends AttachmentInfo {
@@ -61,11 +62,23 @@ export async function copyAttachments(
      * deletes the object it had already written.
      */
     skipExisting?: boolean;
+    /**
+     * The plan's storage in bytes, or null for no limit (lib/quota.ts). A copy adds its
+     * files' bytes to the account and is checked before the first one moves, on the
+     * sizes the rows hold; a move adds nothing and is not.
+     */
+    quota: number | null;
   },
 ): Promise<CopyAttachmentsResult> {
   const { attachments } = repos;
   const files: CopiedAttachment[] = [];
   const missing: string[] = [];
+
+  if (!input.move) {
+    const wanted = new Set(input.filenames);
+    const adding = (await attachments.listForNote(input.from)).filter((f) => wanted.has(f.filename)).reduce((n, f) => n + f.size, 0);
+    await assertRoom(attachments, input.quota, adding);
+  }
 
   // Read once, after the copies: the body that matters is the one stored when the
   // deletion is decided, not one read before the loop started.

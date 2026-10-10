@@ -14,6 +14,7 @@ import {
 import { NothingToRead } from '../lib/autofill.js';
 import { press } from '../lib/autofill-press.js';
 import { copyAttachments } from '../lib/copy-attachments.js';
+import { StorageFull, quotaOf, storageFullBody } from '../lib/quota.js';
 import { canAutofill, JevError, jevFrom } from '../lib/jev.js';
 import { canUseLlm, llmFrom } from '../lib/llm.js';
 import { dailyCap } from '../lib/llm-usage.js';
@@ -241,7 +242,14 @@ export const notes = new Hono<AppEnv>()
     const have = existing ? new Set((await attachments.listForNote(note.id)).map((f) => f.filename)) : new Set<string>();
     const missing = files.map((f) => f.filename).filter((f) => !have.has(f));
     if (missing.length > 0) {
-      await copyAttachments(c.env.BLOBS, { attachments, notes }, { from: id, to: note.id, filenames: missing, skipExisting: true });
+      try {
+        await copyAttachments(c.env.BLOBS, { attachments, notes }, { from: id, to: note.id, filenames: missing, skipExisting: true, quota: quotaOf(c.env, c.get('plan')) });
+      } catch (err) {
+        // The copy of the note stands, without the files it had no room for: a note with
+        // no files is still the note, and the 402 says why the files are missing.
+        if (err instanceof StorageFull) return c.json({ ...storageFullBody(err), note }, 402);
+        throw err;
+      }
     }
     return c.json(note, existing ? 200 : 201);
   })
