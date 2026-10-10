@@ -113,12 +113,27 @@ export function installLibraryCloser(): () => void {
   };
 }
 
-/** Closes the open library and its store, keeping every file: what a refused session does. */
+/**
+ * How long a wipe waits for the library's close. A close is milliseconds; the wait is
+ * for the queue in front of it (`library.ts`), which an open held by another tab can
+ * hold for good, and the sign-out that awaits this would hang with it. Past the bound
+ * the removals go ahead: the outbox's delete waits for its connections on its own, and a
+ * store file still held fails and is tried again by the next wipe, so nothing is lost by
+ * not waiting — only the store's file is left behind until then. Not
+ * `LIBRARY_OPEN_TIMEOUT_MS`, which is sized for a cold open on a phone; a close that has
+ * not finished in a few seconds is wedged, not slow.
+ */
+const CLOSE_WAIT_MS = 5_000;
+
+/** Closes the open library and its store, keeping every file: what a refused session does. Bounded; see `CLOSE_WAIT_MS`. */
 export async function closeLocalStores(): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    await closeLibraryAndStore();
+    await Promise.race([closeLibraryAndStore(), new Promise<void>((resolve) => (timer = setTimeout(resolve, CLOSE_WAIT_MS)))]);
   } catch {
     // Closing can fail if the worker is already gone; a removal that follows still applies.
+  } finally {
+    clearTimeout(timer);
   }
 }
 

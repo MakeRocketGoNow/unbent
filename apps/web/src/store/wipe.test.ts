@@ -199,4 +199,23 @@ describe('closeLocalStores', () => {
     expect(removed).toEqual([]);
     expect(deleted).toEqual([]);
   });
+
+  it('does not wait for ever on a close the queue never reaches, so a sign-out still ends', async () => {
+    vi.useFakeTimers();
+    try {
+      const { deleted } = device(files, dbs);
+      vi.mocked(closeLibrary).mockImplementationOnce(() => new Promise(() => {}));
+      const wipe = wipeLocalStores();
+      let done = false;
+      void wipe.then(() => (done = true));
+      await vi.advanceTimersByTimeAsync(4_000);
+      expect(done).toBe(false);
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(done).toBe(true);
+      // The removals went ahead; a file still held would fail and be tried by the next wipe.
+      expect(deleted.sort()).toEqual(['unbent-outbox-a', 'unbent-outbox-b']);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
