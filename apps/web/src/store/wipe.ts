@@ -112,14 +112,15 @@ function closeLibrariesInOtherTabs(except?: string): void {
  * decides nothing about the account; the one wiping has. Installed once, at start, and
  * before any wipe can post: the wipe posts on this listener's own object.
  *
- * `onClosed` runs once a close has settled, and not for a library kept. The caller
- * passes a check of the session with the server (`main.tsx`): this tab's session store
- * still names the account the other tab just signed out, and its next navigation would
- * open that account's library again from the cached answer — making the files the wipe
- * just removed anew, and for a different person's sign-in, pulling their feed into a
- * file named for the old account (found in review). Passed in rather than imported,
- * since `auth-client` reaches this module through `offline-cache` and the import would
- * be a cycle.
+ * `onClosed` runs once the close has settled or the wipe's wait for it (`CLOSE_WAIT_MS`)
+ * has run out — so not on the library being closed, which a stuck queue can still be
+ * holding — and not for a library kept. The caller passes a check of the session with
+ * the server (`main.tsx`): this tab's session store still names the account the other
+ * tab just signed out, and its next navigation would open that account's library again
+ * from the cached answer — making the files the wipe just removed anew, and for a
+ * different person's sign-in, pulling their feed into a file named for the old account.
+ * Passed in rather than imported, since `auth-client` reaches this module through
+ * `offline-cache` and the import would be a cycle.
  */
 export function installLibraryCloser(onClosed?: () => void): () => void {
   if (typeof BroadcastChannel === 'undefined') return () => {};
