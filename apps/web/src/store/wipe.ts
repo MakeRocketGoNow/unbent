@@ -24,7 +24,7 @@ import { filesDirName, isFilesDir, isOutbox, isStoreFile, outboxName, searchFile
  */
 export async function wipeLocalStores(except?: string): Promise<void> {
   const keep = except === undefined ? null : { stores: [storeFileName(except), searchFileName(except)], outbox: outboxName(except), files: filesDirName(except) };
-  closeLibrariesInOtherTabs();
+  closeLibrariesInOtherTabs(except);
   if (!keep || currentLibraryUser() !== except) await closeLocalStores();
   /*
    * The other tabs' closes race this: told, each one is still stopping its search sync,
@@ -75,11 +75,12 @@ const STORE_FILE_RETRY_MS = 500;
  * file, the connection and the leadership — in their own time; `wipeLocalStores` says
  * what waits for that and what is tried again.
  *
- * Every other tab closes whatever it holds, whoever it is for: the wipe that keeps one
- * account's copy (`except`) is a different person signing in, and the tab still signed in
- * as the kept account reopens its library on its next navigation (`acquireLibrary` in the
- * root `beforeLoad`), reading the server meanwhile. A browser without the channel has
- * nothing to tell; the delete's own bounded wait is what it had before.
+ * The wipe that keeps one account's copy (`except`) is that account signing in, and the
+ * message carries it: a tab already holding that account's library keeps it, since
+ * nothing the wipe removes is that tab's, and closing it would have left someone typing
+ * in it without an outbox until their next navigation (found in review). Every other
+ * tab closes whatever else it holds. A browser without the channel has nothing to tell;
+ * the delete's own bounded wait is what it had before.
  */
 const CHANNEL = 'unbent-libraries';
 
@@ -93,9 +94,13 @@ const CHANNEL = 'unbent-libraries';
  */
 let channel: BroadcastChannel | null = null;
 
-function closeLibrariesInOtherTabs(): void {
+/** What the wipe posts: close, except the library of the account the wipe keeps, if any. */
+type CloseMessage = { type: 'close'; except?: string };
+
+function closeLibrariesInOtherTabs(except?: string): void {
   try {
-    channel?.postMessage({ type: 'close' });
+    const message: CloseMessage = except ? { type: 'close', except } : { type: 'close' };
+    channel?.postMessage(message);
   } catch {
     // Nothing to tell.
   }
@@ -107,7 +112,7 @@ function closeLibrariesInOtherTabs(): void {
  * decides nothing about the account; the one wiping has. Installed once, at start, and
  * before any wipe can post: the wipe posts on this listener's own object.
  *
- * `onClosed` runs once the close has settled. The caller passes a check of the session
+ * `onClosed` runs once a close has settled, and not for a library kept. The caller passes a check of the session
  * with the server (`main.tsx`): this tab's session store still names the account the
  * other tab just signed out, and its next navigation would open that account's library
  * again from the cached answer — making the files the wipe just removed anew, and for a
@@ -118,8 +123,10 @@ function closeLibrariesInOtherTabs(): void {
 export function installLibraryCloser(onClosed?: () => void): () => void {
   if (typeof BroadcastChannel === 'undefined') return () => {};
   const mine = new BroadcastChannel(CHANNEL);
-  mine.onmessage = (event: MessageEvent<{ type?: string }>) => {
-    if (event.data?.type === 'close') void closeLocalStores().then(onClosed);
+  mine.onmessage = (event: MessageEvent<Partial<CloseMessage>>) => {
+    if (event.data?.type !== 'close') return;
+    if (event.data.except !== undefined && currentLibraryUser() === event.data.except) return;
+    void closeLocalStores().then(onClosed);
   };
   channel = mine;
   return () => {

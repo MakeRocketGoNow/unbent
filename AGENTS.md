@@ -664,7 +664,8 @@ name in order, so an open queued behind a waiting delete — the next sign-in's 
 good, in every tab, until all of them are closed (seen with three tabs, 2026-10-10). Three
 things keep that from happening, and a new way to hold or wipe the library has to keep
 them: the wipe tells the other tabs, over the channel in `store/wipe.ts`
-(`installLibraryCloser`), and `recordSession` closes the library in any tab whose session
+(`installLibraryCloser`) — all but a tab holding the account a sign-in's wipe keeps, which
+keeps its library — and `recordSession` closes the library in any tab whose session
 the server has refused, so a tab left on the sign-in screen holds nothing; the outbox
 closes its connection on `versionchange`, which is how IndexedDB asks, and the library
 closes with it; and `acquireLibrary` answers its caller within `LIBRARY_OPEN_TIMEOUT_MS`

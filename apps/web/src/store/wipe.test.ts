@@ -128,17 +128,57 @@ describe('other tabs', () => {
     stop();
   });
 
-  it('hear a wipe that keeps one account, while the tab keeping it does not close its own', async () => {
+  it('hear which account a wipe keeps, while the tab keeping it does not close its own', async () => {
     device(files, dbs);
     const { anotherTab } = channels();
     vi.mocked(currentLibraryUser).mockReturnValue('a');
     const stop = installLibraryCloser();
     const theirs = anotherTab();
     await wipeLocalStores('a');
-    expect(theirs).toEqual([{ type: 'close' }]);
+    expect(theirs).toEqual([{ type: 'close', except: 'a' }]);
     // The kept account's library, open here, stays open: a wipe `except` it is a sign-in, not a sign-out.
     expect(closeLibrary).not.toHaveBeenCalled();
     stop();
+  });
+
+  it('keep the kept account’s library when told of a wipe that keeps it, and close any other', async () => {
+    device(files, dbs);
+    channels();
+    const onClosed = vi.fn();
+    const stop = installLibraryCloser(onClosed);
+    const theirs = new BroadcastChannel('unbent-libraries');
+    // This tab holds the account the other tab's sign-in keeps: nothing of this tab's is wiped.
+    vi.mocked(currentLibraryUser).mockReturnValue('a');
+    theirs.postMessage({ type: 'close', except: 'a' });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(closeLibrary).not.toHaveBeenCalled();
+    expect(onClosed).not.toHaveBeenCalled();
+    // This tab holds another account: the wipe takes it, and the session is checked after.
+    vi.mocked(currentLibraryUser).mockReturnValue('b');
+    theirs.postMessage({ type: 'close', except: 'a' });
+    await vi.waitFor(() => expect(closeLibrary).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(onClosed).toHaveBeenCalledTimes(1));
+    stop();
+  });
+
+  it('do not hold a sign-in on the store-file retries, which still run', async () => {
+    vi.useFakeTimers();
+    try {
+      const { removed, attempts } = device(files, dbs, { refuse: (name, attempt) => name === 'unbent-b.sqlite' && attempt < 3 });
+      vi.mocked(currentLibraryUser).mockReturnValue('a');
+      let done = false;
+      void wipeLocalStores('a').then(() => (done = true));
+      await vi.advanceTimersByTimeAsync(0);
+      // The sign-in's wipe has returned with the file still held…
+      expect(done).toBe(true);
+      expect(removed).not.toContain('unbent-b.sqlite');
+      // …and the tries go on behind it.
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(removed).toContain('unbent-b.sqlite');
+      expect(attempts.get('unbent-b.sqlite')).toBe(3);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('get a moment to let go of the store’s file: a removal they still hold is tried again', async () => {
