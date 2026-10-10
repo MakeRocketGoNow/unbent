@@ -1,5 +1,5 @@
 import { createRootRouteWithContext, Outlet, useNavigate, useRouterState } from '@tanstack/react-router';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useAppSession } from '../useAppSession.js';
 import { useSignOut } from '../useSignOut.js';
@@ -89,11 +89,15 @@ function EmbedShell() {
   );
 }
 
-function PlainShell() {
+/**
+ * Takes `children` for the one signed-in screen drawn in the same frame: the agreement to
+ * the terms, which stands in for the app's routes rather than being one of them.
+ */
+function PlainShell({ children }: { children?: ReactNode }) {
   return (
     <main className="shell centered">
       <InstanceRibbon placement="page" />
-      <Outlet />
+      {children ?? <Outlet />}
     </main>
   );
 }
@@ -249,15 +253,19 @@ function AppShell() {
    */
   const legal = config.data?.legal;
   if (!unreachable && legal?.version && needsAgreement(legal, session.user.legalVersion, pathname)) {
+    // The sign-out's question about unsynced writes and its failure notice are mounted
+    // here too: Sign out is this screen's way out, and `useSignOut` hands both to these
+    // components, so without them a press with writes waiting would do nothing at all.
     return (
-      <main className="shell centered">
-        <InstanceRibbon placement="page" />
+      <PlainShell>
         <LegalAgreement
           legal={{ ...legal, version: legal.version }}
           agreed={session.user.legalVersion}
           onSignOut={signOutAndLeave}
         />
-      </main>
+        <SignOutSnackbar />
+        <SignOutConfirm />
+      </PlainShell>
     );
   }
 
