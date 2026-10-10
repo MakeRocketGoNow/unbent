@@ -667,6 +667,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
                   variant="quiet"
                   size="small"
                   aria-label={`Move ${field.name} up`}
+                  data-tip="Move up"
                   disabled={busy || index === 0}
                   onClick={() => move(index, -1)}
                 >
@@ -676,6 +677,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
                   variant="quiet"
                   size="small"
                   aria-label={`Move ${field.name} down`}
+                  data-tip="Move down"
                   disabled={busy || index === list.length - 1}
                   onClick={() => move(index, 1)}
                 >
