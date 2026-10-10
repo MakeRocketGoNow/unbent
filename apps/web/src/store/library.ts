@@ -326,18 +326,24 @@ function enqueue<T>(step: () => Promise<T>): Promise<T> {
   return run;
 }
 
-/** The handle an open gives its entry, so a close can halt its engine and socket before the step ends. */
-type Halting = { run: () => void };
+/**
+ * What a close or a switch uses to halt an open's engine and socket before the step
+ * ends: a signal, so a halt asked for while the open is still booting the store — a
+ * sign-out pressed during a cold open on a phone — is honoured when the open arms the
+ * handle, rather than dropped (found in review). The open checks the signal when it
+ * has something to halt, and listens from then on.
+ */
+type Halting = AbortSignal;
 
 export function acquireLibrary(userId: string): Promise<Library> {
   if (current?.userId === userId) return current.library;
   const previous = current;
   previous?.halt();
-  const halting: Halting = { run: () => {} };
+  const halting = new AbortController();
   const opened = enqueue(async () => {
     // The account before this one, closed first; what it was told is the queue's.
     if (previous) await previous.opened.then((l) => l.close()).catch(() => {});
-    return open(userId, halting);
+    return open(userId, halting.signal);
   });
   /*
    * Bounded, so the app is never dead on a storage wedge: an open can wait for good on
@@ -354,7 +360,7 @@ export function acquireLibrary(userId: string): Promise<Library> {
     timer = setTimeout(() => reject(new LibraryOpenTimeoutError()), LIBRARY_OPEN_TIMEOUT_MS);
   });
   const library = Promise.race([opened, timeout]).finally(() => clearTimeout(timer));
-  const entry = { userId, library, opened, halt: () => halting.run() };
+  const entry = { userId, library, opened, halt: () => halting.abort() };
   current = entry;
   libraryChanged();
   let late = false;
@@ -665,7 +671,10 @@ async function open(userId: string, halting: Halting): Promise<Library> {
     if (reconnect) clearTimeout(reconnect);
     socket?.close();
   };
-  halting.run = halt;
+  // Nothing awaits between the store opening and here, so a halt asked for meanwhile
+  // closes the socket before its `open` event could pull.
+  if (halting.aborted) halt();
+  else halting.addEventListener('abort', halt, { once: true });
 
   /*
    * The one wait in here that can wedge — the outbox's database held by another tab's

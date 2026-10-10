@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FEED_TIMEOUT_MS, FeedTimeoutError, LIBRARY_OPEN_TIMEOUT_MS, LIBRARY_ROOTS, LibraryOpenTimeoutError, acquireLibrary, closeLibraryAndStore, currentLibrary, fetchJson, resetLibraryForTests, rootsOfNoteChanges, settleWrites, subscribeLibrary } from './library.js';
-import { openLocalStore } from './db.js';
+import { openLocalStore, type LocalStore } from './db.js';
 import { reportError } from '../report-error.js';
 import { FeedEngine } from './feed.js';
 import { createCollections } from './collections.js';
@@ -208,6 +208,27 @@ describe('acquireLibrary', () => {
     // close and the wipe's step both ask, and the second ask is a no-op in `db.ts`.
     expect(closeLocalStore).toHaveBeenCalled();
     expect(vi.mocked(closeLocalStore).mock.invocationCallOrder[0]).toBeGreaterThan(collections.notes.cleanup.mock.invocationCallOrder[0]!);
+  });
+
+  it('honours a halt asked for while the store was still opening', async () => {
+    vi.useFakeTimers();
+    let opened!: (store: LocalStore) => void;
+    const { sockets, stop } = page({ ready: new Promise(() => {}) });
+    vi.mocked(openLocalStore).mockImplementationOnce(() => new Promise<LocalStore>((resolve) => (opened = resolve)));
+    const first = acquireLibrary('u1');
+    first.catch(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sockets).toHaveLength(0);
+    // A sign-out during the cold open: nothing to halt yet, and the request must keep.
+    void closeLibraryAndStore();
+    await vi.advanceTimersByTimeAsync(0);
+    opened({ userId: 'u1', persistence: {}, coordinator: {}, database: {} } as never);
+    await vi.advanceTimersByTimeAsync(0);
+    // The open built its engine and socket, and halted them at once; it is now stuck on
+    // the outbox, holding the store and nothing live.
+    expect(sockets).toHaveLength(1);
+    expect(sockets[0]!.closed).toBe(true);
+    expect(stop).toHaveBeenCalled();
   });
 
   it('becomes the library once an open its caller was refused finishes, and tells the hooks', async () => {
