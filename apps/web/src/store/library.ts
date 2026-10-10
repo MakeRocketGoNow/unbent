@@ -265,9 +265,11 @@ export function rootsOfNoteChanges(changes: ReadonlyArray<NoteChange>): Readonly
  * How long opening the library may take before the app stops waiting for it and reads
  * the server instead. A warm open is milliseconds; a first open on a phone fetches and
  * boots the persistence worker and restores the outbox, several seconds on a slow
- * connection, and a minute of margin over that is still an answer someone gets.
+ * connection. Twenty is several times that, and the cost of cutting a slow open off is
+ * one page load that reads the server, where the cost of waiting is a status line and
+ * nothing else for as long as this is (review of the first draft, which said a minute).
  */
-export const LIBRARY_OPEN_TIMEOUT_MS = 60_000;
+export const LIBRARY_OPEN_TIMEOUT_MS = 20_000;
 
 /** The library did not open in time; reported, since nothing on the device or the server would otherwise say. */
 export class LibraryOpenTimeoutError extends Error {
