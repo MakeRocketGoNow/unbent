@@ -261,19 +261,73 @@ export function rootsOfNoteChanges(changes: ReadonlyArray<NoteChange>): Readonly
   return roots;
 }
 
+/**
+ * How long opening the library may take before the app stops waiting for it and reads
+ * the server instead. A warm open is milliseconds; a first open on a phone fetches and
+ * boots the persistence worker and restores the outbox, several seconds on a slow
+ * connection, and a minute of margin over that is still an answer someone gets.
+ */
+export const LIBRARY_OPEN_TIMEOUT_MS = 60_000;
+
+/** The library did not open in time; reported, since nothing on the device or the server would otherwise say. */
+export class LibraryOpenTimeoutError extends Error {
+  constructor() {
+    super(`The library did not open within ${LIBRARY_OPEN_TIMEOUT_MS / 1000} s`);
+    this.name = 'LibraryOpenTimeoutError';
+  }
+}
+
+/**
+ * An open that timed out on this page, kept so nothing tries again until a reload. The
+ * open it gave up on is still running, and a second one beside it would open the same
+ * file and the same outbox twice from one tab; what wedged the first — another tab
+ * holding the outbox's database, or the collections' leadership, see `store/wipe.ts` —
+ * would wedge the second the same way. A reload is what clears it.
+ */
+let gaveUp: Promise<never> | null = null;
+
 export function acquireLibrary(userId: string): Promise<Library> {
   if (current?.userId === userId) return current.library;
+  if (gaveUp) return gaveUp;
   const previous = current;
   const library = (async () => {
     if (previous) await previous.library.then((l) => l.close()).catch(() => {});
-    return open(userId);
+    /*
+     * Bounded, so the app is never dead on a storage wedge. The open waits on things
+     * outside this tab — the outbox's IndexedDB database, which another tab's delete can
+     * hold queued for good, and the collections' leader, which can be a tab that is not
+     * running — and before this it waited for ever: every screen sat on "Opening your
+     * notes…" with no error anywhere (2026-10-10). Timed out, there is no local copy on
+     * this page load, which is the app as it is on a device that cannot keep one, and
+     * the error is reported. Whatever the open does finish later is closed, so a tab
+     * that recovers does not hold the file against the next one.
+     */
+    const opening = open(userId);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new LibraryOpenTimeoutError()), LIBRARY_OPEN_TIMEOUT_MS);
+    });
+    try {
+      return await Promise.race([opening, timeout]);
+    } catch (err) {
+      if (err instanceof LibraryOpenTimeoutError) {
+        gaveUp = Promise.reject(err);
+        gaveUp.catch(() => {});
+        reportError(err, 'error');
+        void opening.then((l) => l.close()).catch(() => {});
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
   })();
   current = { userId, library };
   libraryChanged();
   library.catch((err) => {
     // A browser without the origin-private file system, or one refusing it in a private
     // window: there is no local copy here, and the queries read the server instead (see
-    // `queries.ts`). Said once in the console; the next sign-in tries again.
+    // `queries.ts`). Said once in the console; the next sign-in tries again — after a
+    // reload, when the open timed out.
     console.warn('[library] not available on this device; reading from the server instead:', err);
     if (current?.library === library) {
       current = null;
@@ -281,6 +335,12 @@ export function acquireLibrary(userId: string): Promise<Library> {
     }
   });
   return library;
+}
+
+/** For tests: forgets an open that timed out, as a reload would. */
+export function resetLibraryForTests(): void {
+  gaveUp = null;
+  current = null;
 }
 
 /** Closes the open library, if any, before the store is closed or wiped. */

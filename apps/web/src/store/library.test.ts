@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { FEED_TIMEOUT_MS, FeedTimeoutError, LIBRARY_ROOTS, fetchJson, rootsOfNoteChanges } from './library.js';
+import { FEED_TIMEOUT_MS, FeedTimeoutError, LIBRARY_OPEN_TIMEOUT_MS, LIBRARY_ROOTS, LibraryOpenTimeoutError, acquireLibrary, currentLibrary, fetchJson, resetLibraryForTests, rootsOfNoteChanges } from './library.js';
+import { openLocalStore } from './db.js';
+import { reportError } from '../report-error.js';
+
+vi.mock('./db.js', () => ({ openLocalStore: vi.fn(), closeLocalStore: vi.fn(async () => {}), openSearchDatabase: vi.fn() }));
+vi.mock('../report-error.js', () => ({ reportError: vi.fn() }));
 
 /**
  * Which queries a change to the notes collection reaches. A save that changed only the
@@ -86,5 +91,44 @@ describe('fetchJson', () => {
   it('names the route alone when the server refuses, so every page groups as one report', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 503, headers: new Headers() }) as unknown as Response));
     await expect(fetchJson('/api/changes?since=10&epoch=e1&limit=200')).rejects.toMatchObject({ status: 503, message: '/api/changes answered 503' });
+  });
+});
+
+/**
+ * Opening the library is bounded. It waits on things outside the tab — the outbox's
+ * database, the collections' leader — and an open that never settled left every screen
+ * on "Opening your notes…" with nothing reported. Timed out, the page reads the server,
+ * the error is reported, and nothing tries again until a reload.
+ */
+describe('acquireLibrary', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    resetLibraryForTests();
+    vi.mocked(openLocalStore).mockReset();
+    vi.mocked(reportError).mockReset();
+  });
+
+  it('gives up on an open that does not settle, reports it, and does not try again until a reload', async () => {
+    vi.useFakeTimers();
+    vi.mocked(openLocalStore).mockImplementation(() => new Promise(() => {}));
+    const first = acquireLibrary('u1');
+    const settled = expect(first).rejects.toBeInstanceOf(LibraryOpenTimeoutError);
+    await vi.advanceTimersByTimeAsync(LIBRARY_OPEN_TIMEOUT_MS);
+    await settled;
+    expect(reportError).toHaveBeenCalledWith(expect.any(LibraryOpenTimeoutError), 'error');
+    // No library on this page load: the queries read the server.
+    expect(currentLibrary()).toBeNull();
+    await expect(acquireLibrary('u1')).rejects.toBeInstanceOf(LibraryOpenTimeoutError);
+    expect(openLocalStore).toHaveBeenCalledTimes(1);
+  });
+
+  it('is not a timeout that fires under an open that settled in time', async () => {
+    vi.useFakeTimers();
+    // A store whose open fails at once: the library is unavailable for that reason, not for time.
+    vi.mocked(openLocalStore).mockRejectedValue(new Error('no OPFS'));
+    await expect(acquireLibrary('u1')).rejects.toThrow('no OPFS');
+    await vi.advanceTimersByTimeAsync(LIBRARY_OPEN_TIMEOUT_MS);
+    expect(reportError).not.toHaveBeenCalled();
+    expect(currentLibrary()).toBeNull();
   });
 });
