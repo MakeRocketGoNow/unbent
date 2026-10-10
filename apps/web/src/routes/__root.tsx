@@ -230,9 +230,7 @@ function AppShell() {
    */
   useEffect(() => {
     if (isPending || session?.user) return;
-    // What this tab held of the account — the store's file, the outbox's connection, the
-    // collections' leadership — is closed by `recordSession` on the same answer, so a tab
-    // left on the sign-in screen holds nothing; see `clearOfflineCaches`.
+    // The library is closed by `recordSession` on the same answer; see `store/wipe.ts`.
     // The app, if there is one, takes over from here; see `requireSession`.
     postToApp({ type: 'unauthorized' });
     void navigate({ to: '/login', replace: true });
