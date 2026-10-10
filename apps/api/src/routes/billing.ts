@@ -46,6 +46,16 @@ const eventSchema = z.object({
   data: z.object({ customer_id: z.string().nullable() }).passthrough(),
 });
 
+/**
+ * An event's time as the row keeps and compares it: parsed and written back as
+ * milliseconds in ISO 8601, so Paddle's microsecond stamps and this code's millisecond
+ * ones order by value rather than by whichever is the longer string.
+ */
+function eventStamp(rfc3339: string): string {
+  const t = Date.parse(rfc3339);
+  return Number.isFinite(t) ? new Date(t).toISOString() : rfc3339;
+}
+
 function paddleRefused(err: unknown, what: string, userId: string): Response {
   if (!(err instanceof PaddleError)) throw err;
   console.error(`[billing] ${what} for user=${userId} refused:`, err.message);
@@ -161,6 +171,13 @@ export const billing = new Hono<AppEnv>()
    * old thing, and this is the same answer a moment sooner. Also the way back when a
    * webhook was lost for longer than Paddle retries. Writes nothing for an account with
    * no subscription.
+   *
+   * Stamped with Paddle's own `updated_at`, never this Worker's clock. After a lapse and
+   * a second checkout the row still names the old, canceled subscription, and a read of
+   * that stamped "now" would be newer than the new subscription's own events, which
+   * `notBefore` would then refuse for good — a paying customer kept read-only. For the
+   * same reason a canceled subscription is not applied at all: nothing about it will
+   * change, and the row's next news is a new subscription's, which the webhook brings.
    */
   .post('/billing/refresh', requireAuth, async (c) => {
     const paddle = paddleOf(c.env);
@@ -171,10 +188,12 @@ export const billing = new Hono<AppEnv>()
     if (!row.paddleSubscriptionId) return c.json(accountPlanOf(row, now));
     try {
       const sub = await getSubscription(paddle, row.paddleSubscriptionId);
-      // As an `updated` event of this moment, so the ordering guard reads it as newest.
-      const event: PaddleEvent = { event_id: `read-${now}`, event_type: 'subscription.updated', occurred_at: new Date(now).toISOString(), data: sub };
-      const patch = planPatchFor(paddle, event, row);
-      if (patch) await updatePlanStatement(c.env.DB, userId, patch, now, { notBefore: event.occurred_at }).run();
+      if (sub.status !== 'canceled' && sub.updated_at) {
+        const at = eventStamp(sub.updated_at);
+        const event: PaddleEvent = { event_id: `read-${at}`, event_type: 'subscription.updated', occurred_at: at, data: sub };
+        const patch = planPatchFor(paddle, event, row);
+        if (patch) await updatePlanStatement(c.env.DB, userId, patch, now, { notBefore: at }).run();
+      }
       return c.json(accountPlanOf(await planFor(c.env.DB, userId, now), now));
     } catch (err) {
       return paddleRefused(err, 'read the subscription', userId);
@@ -215,7 +234,8 @@ export const billing = new Hono<AppEnv>()
     }
     const event = eventSchema.safeParse(parsed);
     if (!event.success) return c.json({ error: 'Not a Paddle event' }, 400);
-    const { event_id, event_type, occurred_at, data } = event.data;
+    const { event_id, event_type, data } = event.data;
+    const occurred_at = eventStamp(event.data.occurred_at);
 
     const seen = await c.env.DB.prepare(`SELECT 1 AS seen FROM billing_event WHERE event_id = ?1`).bind(event_id).first();
     if (seen) {
@@ -240,7 +260,14 @@ export const billing = new Hono<AppEnv>()
       console.log(`[billing] ${event_type} ${event_id} for user=${row.userId}: nothing to apply`);
       return c.json({ applied: false, reason: 'not followed' });
     }
-    await c.env.DB.batch([record, updatePlanStatement(c.env.DB, row.userId, patch, now, { notBefore: occurred_at })]);
+    const [, written] = await c.env.DB.batch([record, updatePlanStatement(c.env.DB, row.userId, patch, now, { notBefore: occurred_at })]);
+    // The guard can let the batch succeed and change nothing: an event older than the
+    // row's newest, delivered late. Said as such, since that is the case to see in the
+    // log when a row is not where an event should have put it.
+    if (!written?.meta.changes) {
+      console.log(`[billing] ${event_type} ${event_id} for user=${row.userId}: skipped, older than the row's newest event`);
+      return c.json({ applied: false, reason: 'older' });
+    }
     console.log(`[billing] ${event_type} ${event_id} for user=${row.userId}: ${patch.paddleStatus ?? 'transaction'} until ${patch.planUntil ?? 'as before'}`);
     return c.json({ applied: true });
   });

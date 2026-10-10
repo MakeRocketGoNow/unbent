@@ -57,19 +57,23 @@ export function storageGbOf(paddle: PaddleConfig, items: Array<{ price: { id: st
  * A subscription event carries the whole subscription, so the row is written from it
  * whole: Paddle's status, the end of the period paid for, the storage the items buy, and
  * a cancellation scheduled ahead. The plan is `active` for as long as there is a period
- * paid for — `canceled` and `paused` included, since the end date decides the rest:
- * Paddle sets `canceled` when a scheduled cancellation takes effect, at the period's end,
- * and a cancellation made effective at once still leaves the period paid for, which the
- * account keeps. Neither carries a period any more, so the end date the row already
- * holds stands, and a row that never had one (a subscription that was never active)
- * ends at the event.
+ * paid for, and the end date decides the rest. Only an event whose subscription is
+ * `active` or `trialing` moves that date, since only those name a period that has been
+ * paid for: a `past_due` subscription's current period is the one whose renewal failed,
+ * and a `canceled` one — a scheduled cancellation taking effect at the period's end, a
+ * cancellation made effective at once, or dunning giving up — carries no period at all.
+ * For those the end date the row already holds stands, which is the end of the last
+ * period paid for; the account keeps that, and no more. A row that never had one (a
+ * subscription that was never active) ends at the event.
  *
  * A completed transaction is the other way the first checkout reaches the row: Paddle
  * sends it and `subscription.created` for the same moment in no promised order, so
- * either makes the account active with the period the transaction covers, and the
- * subscription id if the row has none yet. The storage is left to the subscription
- * event, which names the items as they stand; a proration's items name what was bought
- * then, not the whole. A transaction with no subscription is not the plan's.
+ * either makes the account active with the period the transaction covers. The
+ * subscription it names replaces the row's when it is a different one — a subscriber
+ * who lapsed and subscribed again has a new subscription, and the old canceled one must
+ * not keep answering for the row. The storage is left to the subscription event, which
+ * names the items as they stand; a proration's items name what was bought then, not the
+ * whole. A transaction with no subscription is not the plan's.
  *
  * `lapseNotifiedAt` is cleared whenever a paid period is ahead, so an account that
  * lapses, pays and lapses again is told the second time too.
@@ -78,7 +82,8 @@ export function planPatchFor(paddle: PaddleConfig, event: PaddleEvent, row: Plan
   const at = ms(event.occurred_at) ?? Date.now();
   if (SUBSCRIPTION_EVENTS.has(event.event_type)) {
     const sub = event.data as PaddleSubscription;
-    const periodEnd = ms(sub.current_billing_period?.ends_at);
+    const paidFor = sub.status === 'active' || sub.status === 'trialing';
+    const periodEnd = paidFor ? ms(sub.current_billing_period?.ends_at) : null;
     const planUntil = periodEnd ?? row.planUntil ?? at;
     return {
       plan: 'active',
@@ -96,12 +101,12 @@ export function planPatchFor(paddle: PaddleConfig, event: PaddleEvent, row: Plan
     const txn = event.data as PaddleTransaction;
     if (!txn.subscription_id) return null;
     const periodEnd = ms(txn.billing_period?.ends_at);
+    const newSubscription = txn.subscription_id !== row.paddleSubscriptionId;
     return {
       plan: 'active',
       source: 'paddle',
       ...(periodEnd !== null ? { planUntil: periodEnd } : {}),
-      ...(row.paddleSubscriptionId ? {} : { paddleSubscriptionId: txn.subscription_id }),
-      ...(row.paddleStatus ? {} : { paddleStatus: 'active' }),
+      ...(newSubscription ? { paddleSubscriptionId: txn.subscription_id, paddleStatus: 'active', paddleCancelsAt: null } : {}),
       paddleEventAt: event.occurred_at,
       ...(periodEnd !== null && periodEnd > at ? { lapseNotifiedAt: null } : {}),
     };

@@ -99,11 +99,41 @@ describe('planPatchFor', () => {
     expect(planPatchFor(paddle, event('subscription.canceled', canceled, T1), { ...row, planUntil: null })?.planUntil).toBe(Date.parse(T1));
   });
 
-  it('does not clear the lapse notice when the period it reports is already over', () => {
-    const over = sub({ status: 'past_due', current_billing_period: { starts_at: '2025-10-10T12:00:00Z', ends_at: '2026-10-09T12:00:00Z' } });
-    const patch = planPatchFor(paddle, event('subscription.past_due', over, T0), row)!;
+  it('keeps a past-due subscription to the end of the last period paid for, not the one whose renewal failed', () => {
+    const paidTo = Date.parse('2026-10-10T12:00:00Z');
+    const paid: PlanRow = { ...row, plan: 'active', source: 'paddle', paddleSubscriptionId: 'sub_1', paddleStatus: 'active', planUntil: paidTo };
+    // Paddle moves the period on at the failed renewal; the account does not move with it.
+    const unpaid = sub({ status: 'past_due', current_billing_period: { starts_at: T0, ends_at: NEXT_YEAR } });
+    const patch = planPatchFor(paddle, event('subscription.past_due', unpaid, T1), paid)!;
     expect(patch.paddleStatus).toBe('past_due');
+    expect(patch.planUntil).toBe(paidTo);
     expect('lapseNotifiedAt' in patch).toBe(false);
+    // And when dunning gives up, the same end stands.
+    const gaveUp = sub({ status: 'canceled', current_billing_period: null });
+    expect(planPatchFor(paddle, event('subscription.canceled', gaveUp, NEXT_YEAR), { ...paid, paddleStatus: 'past_due' })?.planUntil).toBe(paidTo);
+    // A renewal that goes through afterwards moves it.
+    expect(planPatchFor(paddle, event('subscription.updated', sub(), NEXT_YEAR), { ...paid, paddleStatus: 'past_due' })?.planUntil).toBe(Date.parse(NEXT_YEAR));
+  });
+
+  it('takes a new subscription over a lapsed one from the transaction that paid for it', () => {
+    const lapsed: PlanRow = { ...row, plan: 'active', source: 'paddle', paddleSubscriptionId: 'sub_old', paddleStatus: 'canceled', paddleCancelsAt: Date.parse('2026-09-01T00:00:00Z'), planUntil: Date.parse('2026-09-01T00:00:00Z') };
+    const txn: PaddleTransaction = {
+      id: 'txn_2',
+      status: 'completed',
+      customer_id: 'ctm_1',
+      subscription_id: 'sub_new',
+      custom_data: null,
+      billing_period: { starts_at: T0, ends_at: NEXT_YEAR },
+      items: [],
+      checkout: null,
+    };
+    expect(planPatchFor(paddle, event('transaction.completed', txn), lapsed)).toMatchObject({
+      plan: 'active',
+      planUntil: Date.parse(NEXT_YEAR),
+      paddleSubscriptionId: 'sub_new',
+      paddleStatus: 'active',
+      paddleCancelsAt: null,
+    });
   });
 
   it('activates from a completed transaction when it arrives first, and defers the rest to the subscription', () => {
@@ -123,6 +153,7 @@ describe('planPatchFor', () => {
       planUntil: Date.parse(NEXT_YEAR),
       paddleSubscriptionId: 'sub_1',
       paddleStatus: 'active',
+      paddleCancelsAt: null,
       paddleEventAt: T0,
       lapseNotifiedAt: null,
     });

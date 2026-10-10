@@ -195,6 +195,8 @@ export async function createCheckoutTransaction(
 export interface PaddleSubscription {
   id: string;
   status: string;
+  /** When Paddle last changed it, RFC 3339: what a read of it is stamped with on the row. */
+  updated_at?: string;
   customer_id: string;
   custom_data: Record<string, unknown> | null;
   current_billing_period: { starts_at: string; ends_at: string } | null;

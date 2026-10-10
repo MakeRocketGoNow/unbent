@@ -73,7 +73,10 @@ export function Plan() {
     );
   }
 
-  const subscribed = plan.subscription !== null && plan.subscription.status !== 'canceled';
+  // A subscription in its paid period, cancelling or not, is managed in the portal; one
+  // that has lapsed cannot be revived there, and a new checkout is the way back. The
+  // checkout route draws the same line.
+  const subscribed = plan.subscription !== null && plan.state !== 'inactive';
   const canSubscribe = !hosted && !subscribed && plan.source !== 'comp';
   const chosenUnits = units ?? unitsOf(plan);
   const refresh = () => queryClient.invalidateQueries({ queryKey: keys.plan() });
