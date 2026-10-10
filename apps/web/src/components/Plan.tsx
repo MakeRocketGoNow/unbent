@@ -104,6 +104,11 @@ export function Plan() {
    * a `window.open` after an `await` is a pop-up to the browser, and blocked. So the tab
    * is opened blank on the press and pointed at the link when it arrives; a browser that
    * refused even that is sent there in this tab instead.
+   *
+   * What was done there is read back when this tab is next looked at: a cancellation or
+   * a new card is Paddle's news, and the webhook may or may not have landed by then, so
+   * the subscription is read from Paddle rather than the row (`refreshPlan`). Once, on
+   * the first return, since the listener is removed as it fires.
    */
   async function openPortal(which: 'overview' | 'payment') {
     setBusy('portal');
@@ -114,8 +119,12 @@ export function Plan() {
       const url = (which === 'payment' && links.payment) || links.overview;
       if (tab) tab.location.href = url;
       else window.location.href = url;
-      // Whatever was done there, the plan is read again on the way back.
-      setTimeout(() => void refresh(), 1500);
+      const onReturn = () => {
+        if (document.visibilityState !== 'visible') return;
+        document.removeEventListener('visibilitychange', onReturn);
+        void api.refreshPlan().catch(() => undefined).then(refresh);
+      };
+      document.addEventListener('visibilitychange', onReturn);
     } catch (err) {
       tab?.close();
       setError((err as Error).message || 'The portal could not be opened.');
@@ -221,41 +230,49 @@ export function Plan() {
 }
 
 /**
- * Where the account stands, as a title and a sentence: the Plan page's heading, and the
- * operator page's line about someone else's account. One function, so the two agree.
+ * Where the account stands, as a title and a sentence: the Plan page's heading, to the
+ * person whose plan it is, and the operator page's line about someone else's account.
+ * One function with both voices side by side, so the two cannot drift: an operator is
+ * not the one being asked to subscribe or to update a card, and a sentence rewritten by
+ * pattern from the other voice broke the moment a sentence changed.
  */
-export function describePlan(plan: AccountPlan): { title: string; sentence: string } {
+export function describePlan(plan: AccountPlan, voice: 'owner' | 'operator' = 'owner'): { title: string; sentence: string } {
   const sub = plan.subscription;
+  const own = voice === 'owner';
   if (plan.state === 'inactive') {
+    const ended = plan.until ? `ended on ${formatDay(plan.until)}` : 'has ended';
     return {
       title: 'Read-only',
-      sentence:
-        (plan.until ? `Your plan ended on ${formatDay(plan.until)}. ` : 'Your plan has ended. ') +
-        'Everything still opens, searches and exports, and anything can be deleted; subscribe to edit again.',
+      sentence: own
+        ? `Your plan ${ended}. Everything still opens, searches and exports, and anything can be deleted; subscribe to edit again.`
+        : `Their plan ${ended}. Everything still opens and exports; nothing can be edited until they subscribe or are comped.`,
     };
   }
   if (plan.state === 'trial') {
+    const ends = plan.until ? `ends on ${formatDay(plan.until)}` : 'is under way';
     return {
       title: 'Free trial',
-      sentence: `${plan.until ? `Your trial ends on ${formatDay(plan.until)}.` : 'Your trial is under way.'} Nothing is charged until you subscribe.`,
+      sentence: own ? `Your trial ${ends}. Nothing is charged until you subscribe.` : `Their trial ${ends}.`,
     };
   }
   if (plan.source === 'comp') {
-    return {
-      title: 'Complimentary',
-      sentence: plan.until ? `This account is on the house until ${formatDay(plan.until)}.` : 'This account is on the house, with no end date.',
-    };
+    const until = plan.until ? `until ${formatDay(plan.until)}` : 'with no end date';
+    return { title: 'Complimentary', sentence: `${own ? 'This account' : 'The account'} is on the house, ${until}.` };
   }
   if (sub?.pastDue) {
+    const past = plan.until ? ` past ${formatDay(plan.until)}` : '';
     return {
       title: 'Payment failed',
-      sentence: `The last renewal could not be collected. Paddle will try again; update the card to keep the plan${plan.until ? ` past ${formatDay(plan.until)}` : ''}.`,
+      sentence: own
+        ? `The last renewal could not be collected. Paddle will try again; update the card to keep the plan${past}.`
+        : `The last renewal could not be collected. Paddle is retrying; the plan lapses${past} unless the card is updated.`,
     };
   }
   if (sub?.cancelsAt) {
+    const ends = `The subscription ends on ${formatDay(sub.cancelsAt)}.`;
     return {
       title: 'Cancelling',
-      sentence: `The subscription ends on ${formatDay(sub.cancelsAt)}. Your notes stay readable and exportable after that.`,
+      sentence: own ? `${ends} Your notes stay readable and exportable after that.` : `${ends} The account turns read-only then.`,
     };
   }
   return { title: 'Subscribed', sentence: plan.until ? `Renews on ${formatDay(plan.until)}.` : 'Active.' };

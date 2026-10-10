@@ -1089,7 +1089,7 @@ function Resync({ userId, email }: { userId: string; email: string }) {
  */
 function PlanSection({ userId, email, plan }: { userId: string; email: string; plan: NonNullable<Account['plan']> }) {
   const queryClient = useQueryClient();
-  const { title, sentence } = describePlan(plan);
+  const { title, sentence } = describePlan(plan, 'operator');
   const [until, setUntil] = useState('');
   const [storageGb, setStorageGb] = useState(String(plan.storageGb));
   const [busy, setBusy] = useState(false);
@@ -1118,14 +1118,7 @@ function PlanSection({ userId, email, plan }: { userId: string; email: string; p
     <section className="settings-section">
       <h3>Plan</h3>
       <p>
-        {/* The Plan page's sentence, turned to the third person: it is about someone else,
-            and the operator is not the one being asked to subscribe. */}
-        <strong>{title}.</strong>{' '}
-        {sentence
-          .replace(/^Your /, 'Their ')
-          .replace(/^This account is/, 'The account is')
-          .replace(' Nothing is charged until you subscribe.', '')
-          .replace('; subscribe to edit again', '')}
+        <strong>{title}.</strong> {sentence}
         {' '}
         <span className="muted">{plan.storageGb} GB of storage.</span>
       </p>
