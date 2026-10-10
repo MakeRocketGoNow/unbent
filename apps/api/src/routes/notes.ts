@@ -246,8 +246,10 @@ export const notes = new Hono<AppEnv>()
         await copyAttachments(c.env.BLOBS, { attachments, notes }, { from: id, to: note.id, filenames: missing, skipExisting: true, quota: quotaOf(c.env, c.get('plan')) });
       } catch (err) {
         // The copy of the note stands, without the files it had no room for: a note with
-        // no files is still the note, and the 402 says why the files are missing.
-        if (err instanceof StorageFull) return c.json({ ...storageFullBody(err), note }, 402);
+        // no files is still the note. Answered as the success it is, with `filesSkipped`
+        // saying why the files are missing — a 4xx would have the outbox take the copy
+        // back as if nothing had been written, and the next pull bring it again.
+        if (err instanceof StorageFull) return c.json({ ...note, filesSkipped: storageFullBody(err) }, existing ? 200 : 201);
         throw err;
       }
     }
