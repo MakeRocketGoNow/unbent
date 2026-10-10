@@ -20,6 +20,7 @@ import {
   rebaseAfterAck,
   rememberFieldDefs,
   seedFrom,
+  seedFromKeepingHeld,
   unstoreableFieldIds,
   type NoteDraft,
 } from '../note-patch.js';
@@ -455,7 +456,9 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       const clean = isClean();
       if (clean) {
         setBase(id, updated);
-        if (JSON.stringify(seedFrom(updated)) !== JSON.stringify(draftRef.current)) reseed(updated);
+        if (JSON.stringify(seedFrom(updated)) !== JSON.stringify(draftRef.current)) {
+          reseed(updated, draftRef.current);
+        }
         return;
       }
       setBase(id, updated);
@@ -471,7 +474,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
    */
   function rebaseDraft(sent: NoteDraft, answer: Note) {
     setDraft((d) => {
-      const next = rebaseAfterAck(d, sent, answer);
+      const next = rebaseAfterAck(d, sent, answer, knownFieldDefs);
       return JSON.stringify(next) === JSON.stringify(d) ? d : next;
     });
   }
@@ -482,10 +485,16 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
    * throw away the caret and the undo history. The bump to `seedGeneration` makes the
    * autosave take the new copy as its baseline rather than as an edit to save.
    */
-  function reseed(from: Note) {
+  /**
+   * `keep` is the draft on screen when this reseed is automatic — a save's answer, or
+   * the feed. Half-typed field values live only there; without them, `seedFrom` drops
+   * the digits the person is still looking at. An explicit replace (theirs, a restore)
+   * passes nothing, and takes the copy whole.
+   */
+  function reseed(from: Note, keep?: NoteDraft) {
     setBase(from.id, from);
     queryClient.setQueryData(keys.note(from.id), from);
-    showDraft(seedFrom(from));
+    showDraft(keep ? seedFromKeepingHeld(from, keep, knownFieldDefs) : seedFrom(from));
   }
 
   /**
@@ -591,7 +600,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       queryClient.setQueryData(keys.note(noteId), outcome);
       if (noteIdRef.current === noteId) {
         if (draftRef.current !== value) rebaseDraft(value, outcome);
-        else if (JSON.stringify(seedFrom(outcome)) !== JSON.stringify(value)) reseed(outcome);
+        else if (JSON.stringify(seedFrom(outcome)) !== JSON.stringify(value)) reseed(outcome, value);
       }
     }
     return undefined;
@@ -672,7 +681,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
         if (typeof outcome !== 'object') return;
         setBase(id, outcome);
         queryClient.setQueryData(keys.note(id), outcome);
-        if (noteIdRef.current === id) reseed(outcome);
+        if (noteIdRef.current === id) reseed(outcome, draftRef.current);
       },
       (err: unknown) => {
         if (api.isNoteChanged(err) && noteIdRef.current === id) setConflict({ id, current: err.current });
@@ -743,7 +752,9 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     */
     if (!clean) return;
     setBase(noteId, note);
-    if (JSON.stringify(seedFrom(note)) !== JSON.stringify(draftRef.current)) reseed(note);
+    if (JSON.stringify(seedFrom(note)) !== JSON.stringify(draftRef.current)) {
+      reseed(note, draftRef.current);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing, noteId, note?.updatedAt, conflicted, whole]);
 

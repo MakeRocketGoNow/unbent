@@ -169,3 +169,89 @@ describe('a save answered while typing', () => {
     expect(vi.mocked(api.updateNote).mock.calls[0]).toEqual([server.id, { title: 'Trip notes, typed', ifUpdatedAt: 101 }]);
   });
 });
+
+/**
+ * A number at "12." is left out of the patch so the title typed beside it still saves.
+ * The answer then does not have those digits, and a reseed from it used to put the
+ * stored value back while the person was still looking at Unsaved.
+ */
+describe('a save that left a half-typed field out of the patch', () => {
+  const amountId = '11111111-1111-1111-1111-111111111111';
+  const receipt: Note = {
+    ...server,
+    notebook: 'Receipts',
+    fields: [
+      {
+        fieldId: amountId,
+        name: 'Amount',
+        type: 'number',
+        value: 10,
+        notebookId: 'nb-receipts',
+        notebook: 'Receipts',
+      },
+    ],
+  };
+
+  function mountReceipts() {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    client.setQueryData(keys.attachments(receipt.id), []);
+    client.setQueryData(keys.tags(), []);
+    client.setQueryData(keys.config(), { providers: [], autofill: false });
+    const rootRoute = createRootRoute({ component: () => <Workspace noteId={receipt.id} /> });
+    const notesRoute = createRoute({ getParentRoute: () => rootRoute, path: '/notes' });
+    const router = createRouter({
+      routeTree: rootRoute.addChildren([notesRoute]),
+      history: createMemoryHistory({ initialEntries: ['/'] }),
+    });
+    render(
+      <QueryClientProvider client={client}>
+        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+        <RouterProvider router={router as any} />
+      </QueryClientProvider>,
+    );
+  }
+
+  beforeEach(() => {
+    lib.uninstall();
+    const { tags: _t, notebook: _n, ...row } = receipt;
+    lib = installTestLibrary({
+      notes: [{ ...row, notebookId: 'nb-receipts', tagIds: [], files: [] }],
+      notebooks: [
+        {
+          id: 'nb-receipts',
+          name: 'Receipts',
+          purpose: null,
+          emoji: null,
+          fieldDefs: [
+            {
+              id: amountId,
+              notebookId: 'nb-receipts',
+              name: 'Amount',
+              type: 'number',
+              options: [],
+              scale: null,
+              currency: null,
+              position: 0,
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it('keeps the half-typed value after the title save comes back', async () => {
+    vi.mocked(useOutbox).mockReturnValue(outbox(() => {}));
+    vi.mocked(api.updateNote).mockImplementation(async (_id, patch) => ({ ...receipt, ...patch, updatedAt: 101 }) as Note);
+    mountReceipts();
+
+    await type('Trip notes, lunch');
+    const amount = await screen.findByLabelText<HTMLInputElement>('Amount');
+    await act(async () => {
+      fireEvent.change(amount, { target: { value: '12.' } });
+    });
+    await waitFor(() => expect(api.updateNote).toHaveBeenCalled(), { timeout: 3000 });
+    expect(vi.mocked(api.updateNote).mock.calls.some(([, patch]) => 'fields' in (patch as object))).toBe(false);
+    await waitFor(() => expect(screen.getByText('Unsaved')).toBeTruthy());
+    expect(screen.getByLabelText<HTMLInputElement>('Amount').value).toBe('12.');
+  });
+});

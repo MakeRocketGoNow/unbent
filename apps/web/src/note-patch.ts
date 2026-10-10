@@ -100,16 +100,27 @@ function sameTagSet(a: string[], b: string[]): boolean {
  * with empty and absent alike. Only tags edited while their local copy was stale still
  * send the short set; that edit's own save carries it, and the feed's ordering of a
  * merge (`renameTag`) is what keeps that window small.
+ *
+ * A field value the type cannot store yet is an exception: it was in `sent` but never
+ * written, so draft and sent match and the server still has the old value. Taking that
+ * would snap the field back while the head still said Unsaved. `definitions` is how
+ * those ids are told; without it, a stored row's type is enough.
  */
 export function rebaseAfterAck(
   draft: NoteDraft,
   sent: NoteDraft,
   server: Pick<Note, 'title' | 'body' | 'tags' | 'notebook' | 'fields'>,
+  definitions?: FieldDef[],
 ): NoteDraft {
   const was = sent;
   const now = seedFrom(server);
   const fields = { ...draft.fields };
+  // A half-typed number or URL was in `sent` but never stored, so draft === sent for
+  // that id and the loop below would take the server's old value — the bug: the field
+  // snapped back while the head still said Unsaved. Those ids stay on the draft.
+  const held = new Set(unstoreableFieldIds(draft, server, definitions));
   for (const id of new Set([...Object.keys(now.fields), ...Object.keys(was.fields)])) {
+    if (held.has(id)) continue;
     if (sameOrBothEmpty(draft.fields[id] ?? null, was.fields[id] ?? null)) fields[id] = now.fields[id] ?? null;
   }
   return {
@@ -119,6 +130,30 @@ export function rebaseAfterAck(
     notebook: draft.notebook === was.notebook ? now.notebook : draft.notebook,
     fields,
   };
+}
+
+/**
+ * The draft after an automatic reseed — a save's answer, or the feed — when a field
+ * value is still only local. `seedFrom` alone would drop "12." or "http://": those are
+ * left out of the patch so the title beside them can save, and the server's copy does
+ * not have them. The head keeps saying Unsaved for exactly this remaining work; taking
+ * the server's copy while the person is still on the note would wipe the digits they
+ * were in the middle of typing. Walking away still loses them — they exist nowhere else
+ * — which is the trade the hold already documents.
+ */
+export function seedFromKeepingHeld(
+  note: Pick<Note, 'title' | 'body' | 'tags' | 'notebook' | 'fields'>,
+  draft: NoteDraft,
+  definitions?: FieldDef[],
+): NoteDraft {
+  const next = seedFrom(note);
+  const held = unstoreableFieldIds(draft, note, definitions);
+  if (held.length === 0) return next;
+  const fields = { ...next.fields };
+  for (const id of held) {
+    if (id in draft.fields) fields[id] = draft.fields[id] ?? null;
+  }
+  return { ...next, fields };
 }
 
 function sameOrBothEmpty(a: FieldValue | null, b: FieldValue | null): boolean {
