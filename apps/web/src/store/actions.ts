@@ -280,6 +280,8 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     );
 
   const adapter = new IndexedDBAdapter(outboxName(userId));
+  /** The adapter's connection: a private field, pinned by `pins.test.ts`; null until its first use. */
+  const connection = () => (adapter as unknown as { db?: IDBDatabase | null }).db ?? null;
   const storage = watched(adapter, () => touch());
   const executor = startOfflineExecutor({
     // Both, so a reload restores an upload's row as it restores a save's text.
@@ -514,22 +516,18 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     .then(() => Promise.all([executor.peekOutbox(), storage.keys()]))
     .then(async ([entries, keys]) => {
       /*
-       * The adapter's connection, closed the moment another tab asks for the database
-       * to be deleted or opened at a newer version, which IndexedDB tells every
-       * connection through `versionchange`. The adapter sets no handler, so a delete
-       * requested while this tab was open waited on it for ever, and every open of the
-       * same database after it — the next sign-in's — queued behind the delete (seen
-       * with three tabs open, 2026-10-10). Closing is what the standard pattern asks of a
-       * connection and what lets the delete go through; the library is told and closes
-       * itself with the outbox. The same private field `dispose` closes, pinned by
-       * `pins.test.ts`.
+       * Closed the moment another tab asks for the database to be deleted or opened at
+       * a newer version, which IndexedDB tells every connection through `versionchange`
+       * and which the adapter does not listen for. A delete held open by this handler's
+       * absence is what wedged every later sign-in on the device; the story is on
+       * `CHANNEL` in `store/wipe.ts`. The library is told, and closes with the outbox.
        *
        * After `keys()`, not after `waitForInit`: the adapter opens its database on first
        * use, and on init only the tab that leads the outbox uses it (it restores the
        * entries); in every other tab — the ones a sign-out elsewhere is about — the
        * connection does not exist until the read above (found in review).
        */
-      const db = (adapter as unknown as { db?: IDBDatabase | null }).db;
+      const db = connection();
       if (db) {
         db.onversionchange = () => {
           db.close();
@@ -650,7 +648,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
        * once, after the executor has stopped. A pinned version; the fallback is a database
        * left behind, which holds no rows after `dispose` and is removed on the next wipe.
        */
-      (adapter as unknown as { db?: IDBDatabase | null }).db?.close?.();
+      connection()?.close?.();
     },
   };
 }
