@@ -140,20 +140,23 @@ export function subscribeWrites(listener: (pending: number) => void): () => void
 export async function settleWrites(ms: number): Promise<number> {
   const open = current?.library;
   if (!open) return 0;
-  let lib: Library;
-  try {
-    lib = await open;
-  } catch {
-    return 0;
-  }
-  if (lib.outbox.status().pending === 0) return 0;
+  // The library itself is waited for under the same `ms`: Sign out pressed while an open
+  // is still inside its own bound would otherwise sit for that bound first, with nothing
+  // said (found in review). A library that has not opened has no outbox to drain.
+  const deadline = Date.now() + ms;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const lib = await Promise.race([
+    open.catch(() => null),
+    new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), ms))),
+  ]).finally(() => clearTimeout(timer));
+  if (!lib || lib.outbox.status().pending === 0) return 0;
   await new Promise<void>((resolve) => {
-    const timer = setTimeout(done, ms);
+    const left = setTimeout(done, Math.max(0, deadline - Date.now()));
     const stop = lib.outbox.subscribe((s) => {
       if (s.pending === 0) done();
     });
     function done() {
-      clearTimeout(timer);
+      clearTimeout(left);
       stop();
       resolve();
     }
