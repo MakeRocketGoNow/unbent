@@ -669,7 +669,10 @@ the server has refused, so a tab left on the sign-in screen holds nothing; the o
 closes its connection on `versionchange`, which is how IndexedDB asks, and the library
 closes with it; and `acquireLibrary` gives up after `LIBRARY_OPEN_TIMEOUT_MS`, closes
 what it built, and reads the server, reporting the timeout, so a wedge is a page with no
-local copy rather than a dead app. The other tabs' closes race the wipe: the outbox's
+local copy rather than a dead app. Every open and close of the library is a step on one
+queue in `library.ts` (`enqueue`), run only after every step before it has settled; a
+new way to open or close the library is a new step there, never a call beside the
+queue, which is what each of four review rounds found one more of. The other tabs' closes race the wipe: the outbox's
 delete completes once their connections have closed, and the store's files are tried
 again for a moment, since a file another tab's worker still holds cannot be removed.
 The leader that stops answering — a tab Chrome has frozen in the background holds its

@@ -109,7 +109,7 @@ describe('acquireLibrary', () => {
     vi.mocked(reportError).mockReset();
   });
 
-  it('gives up on an open that does not settle, reports it, and does not try again until a reload', async () => {
+  it('gives up on an open that does not settle, and reports it', async () => {
     vi.useFakeTimers();
     vi.mocked(openLocalStore).mockImplementation(() => new Promise(() => {}));
     const first = acquireLibrary('u1');
@@ -119,25 +119,49 @@ describe('acquireLibrary', () => {
     expect(reportError).toHaveBeenCalledWith(expect.any(LibraryOpenTimeoutError), 'error');
     // No library on this page load: the queries read the server.
     expect(currentLibrary()).toBeNull();
-    await expect(acquireLibrary('u1')).rejects.toBeInstanceOf(LibraryOpenTimeoutError);
-    expect(openLocalStore).toHaveBeenCalledTimes(1);
   });
 
-  it('tries again once the open it gave up on has settled, without a reload', async () => {
+  it('queues a second open behind the one it gave up on, and tries again once that has settled', async () => {
     vi.useFakeTimers();
     let fail!: (err: Error) => void;
     vi.mocked(openLocalStore).mockImplementationOnce(() => new Promise((_, reject) => (fail = reject)));
     const first = acquireLibrary('u1');
-    const settled = expect(first).rejects.toBeInstanceOf(LibraryOpenTimeoutError);
+    const firstSettled = expect(first).rejects.toBeInstanceOf(LibraryOpenTimeoutError);
     await vi.advanceTimersByTimeAsync(LIBRARY_OPEN_TIMEOUT_MS);
-    await settled;
-    await expect(acquireLibrary('u1')).rejects.toBeInstanceOf(LibraryOpenTimeoutError);
+    await firstSettled;
+    // Behind the first, which is still in hand: nothing opens the same store twice, and
+    // the second gives up on its own clock rather than wait for ever.
+    const second = acquireLibrary('u1');
+    const secondSettled = expect(second).rejects.toBeInstanceOf(LibraryOpenTimeoutError);
+    await vi.advanceTimersByTimeAsync(LIBRARY_OPEN_TIMEOUT_MS);
+    await secondSettled;
+    expect(openLocalStore).toHaveBeenCalledTimes(1);
     // The abandoned open ends: nothing of it is left, and the next sign-in may try.
     fail(new Error('store gone'));
     await vi.advanceTimersByTimeAsync(0);
     vi.mocked(openLocalStore).mockRejectedValueOnce(new Error('no OPFS'));
     await expect(acquireLibrary('u1')).rejects.toThrow('no OPFS');
     expect(openLocalStore).toHaveBeenCalledTimes(2);
+  });
+
+  it('closes the account before a switch inside the queue, so a wipe meanwhile waits for it too', async () => {
+    vi.useFakeTimers();
+    // An account whose open never settles, then a switch to another: the switch's open is
+    // behind the first's step, and gives up on its own clock.
+    vi.mocked(openLocalStore).mockImplementation(() => new Promise(() => {}));
+    const first = acquireLibrary('u1');
+    first.catch(() => {});
+    const second = acquireLibrary('u2');
+    const secondSettled = expect(second).rejects.toBeInstanceOf(LibraryOpenTimeoutError);
+    await vi.advanceTimersByTimeAsync(LIBRARY_OPEN_TIMEOUT_MS);
+    await secondSettled;
+    expect(openLocalStore).toHaveBeenCalledTimes(1);
+    // A wipe queued behind both does not reach the store while they are in hand.
+    let wiped = false;
+    void closeLibraryAndStore().then(() => (wiped = true));
+    await vi.advanceTimersByTimeAsync(LIBRARY_OPEN_TIMEOUT_MS);
+    expect(wiped).toBe(false);
+    expect(closeLocalStore).not.toHaveBeenCalled();
   });
 
   it('does not start an open while a close is in hand, and gives up on a close that never ends', async () => {
