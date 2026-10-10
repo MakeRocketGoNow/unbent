@@ -225,6 +225,10 @@ export function recordSession(state: Pick<SessionState, 'data' | 'error' | 'isPe
   }
   if (!state.isPending && (state.error == null || state.error.status === 401)) {
     forgetSession();
+    // Closed in every tab the answer reaches, not only the one that signed out: a tab
+    // left on the sign-in screen with its library open held the store's file, the
+    // outbox's connection and the collections' leadership against the wipe in the tab
+    // that did, and against every sign-in after it (`store/wipe.ts`).
     return clearOfflineCaches('none');
   }
   return Promise.resolve();
