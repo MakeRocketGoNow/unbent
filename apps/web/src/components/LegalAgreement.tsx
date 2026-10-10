@@ -89,7 +89,7 @@ export function LegalAgreement({
   };
 
   return (
-    <div className="login legal-agreement">
+    <div className="login">
       <h1>Unbent</h1>
       {updated ? (
         <>
@@ -125,7 +125,7 @@ export function LegalAgreement({
         </Button>
       </div>
 
-      {error && <p className="bad">{error}</p>}
+      {error && <p className="bad" role="alert">{error}</p>}
 
       <p className="login-legal">
         Don’t agree? You can still <Link to="/settings/export">export your notes</Link> and{' '}
