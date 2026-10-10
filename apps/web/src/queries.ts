@@ -231,6 +231,7 @@ export const keys = {
   config: () => ['config'] as const,
   /** The account's plan (MAK-108), its own root: nothing a note write does changes it. */
   plan: () => ['plan'] as const,
+  planUsage: () => ['plan', 'usage'] as const,
   autofillUsage: () => ['autofill', 'usage'] as const,
   /** The operator page's reads, under one root so an action can invalidate all of them at once. */
   operatorBackups: () => ['operator', 'backups'] as const,
@@ -455,6 +456,14 @@ export const configQuery = () =>
  */
 export const planQuery = (enabled: boolean) =>
   queryOptions({ queryKey: keys.plan(), queryFn: () => api.getPlan(), staleTime: 60_000, refetchOnWindowFocus: true, enabled });
+
+/**
+ * The same, with what the account holds, which is a call to its store: under the plan's
+ * key so a change to the plan invalidates both, and asked only by the Plan page, which
+ * is the one place the figure is shown.
+ */
+export const planUsageQuery = (enabled: boolean) =>
+  queryOptions({ queryKey: keys.planUsage(), queryFn: () => api.getPlan({ usage: true }), staleTime: 60_000, refetchOnWindowFocus: true, enabled });
 
 /**
  * What Auto-fill has cost the account this year, for Maintenance. The server's alone: the

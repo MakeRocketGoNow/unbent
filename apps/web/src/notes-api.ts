@@ -1,6 +1,6 @@
-import {
-  type AccountPlan, DEFAULT_NOTE_SORT } from '@unbent/shared';
+import { DEFAULT_NOTE_SORT } from '@unbent/shared';
 import type {
+  AccountPlan,
   AppConfig,
   AttachmentInfo,
   AutofillSuggestion,
@@ -503,9 +503,9 @@ export async function getConfig(): Promise<AppConfig> {
 // Every call here answers 404 on an instance with billing off; nothing asks unless
 // `/api/config` carries `billing`.
 
-/** The account's plan as the server works it out now, with what it holds. */
-export async function getPlan(): Promise<AccountPlan> {
-  return json<AccountPlan>(await request('/api/me/plan'));
+/** The account's plan as the server works it out now; with `usage`, what it holds too, which asks its store. */
+export async function getPlan(opts: { usage?: boolean } = {}): Promise<AccountPlan> {
+  return json<AccountPlan>(await request(opts.usage ? '/api/me/plan?usage=1' : '/api/me/plan'));
 }
 
 /** A checkout for `storage` add-ons beside the plan: the transaction Paddle.js opens. */
