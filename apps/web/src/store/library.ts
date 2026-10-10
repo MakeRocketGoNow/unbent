@@ -313,9 +313,17 @@ export class LibraryOpenTimeoutError extends Error {
  * live: the moment a close or a switch takes its entry, the open's engine, socket and
  * listeners are halted (`halt` in `open`), since a bounded wipe lets a sign-out move on
  * past such an open, and an engine left pulling would pull the next person's feed into
- * the old account's file (found in review).
+ * the old account's file.
  */
 let queue: Promise<void> = Promise.resolve();
+
+/**
+ * Moves whenever which library this tab holds changes: an open for an account, or a
+ * close. What a reopen queued earlier checks before it opens, since a close is now a
+ * step that can wait behind a stuck open for as long as that open hangs, and a sign-out
+ * or another account's sign-in may have happened meanwhile (`onPageShow` in `open`).
+ */
+let generation = 0;
 
 function enqueue<T>(step: () => Promise<T>): Promise<T> {
   const run = queue.then(step);
@@ -506,7 +514,7 @@ export async function fetchJson<T>(path: string, stop?: AbortSignal): Promise<T>
   }
 }
 
-async function open(userId: string, halting: Halting): Promise<Library> {
+async function open(userId: string, halting: Halting, isMine: () => boolean): Promise<Library> {
   const store = await openLocalStore(userId);
   const listeners = new Set<(state: FeedState) => void>();
   let latest: FeedState | null = null;
@@ -631,19 +639,32 @@ async function open(userId: string, halting: Halting): Promise<Library> {
   const onPageShow = (event: PageTransitionEvent) => {
     if (!event.persisted) return;
     window.removeEventListener('pageshow', onPageShow);
-    void closeLibrary().then(() => acquireLibrary(userId)).catch(() => {});
+    const closing = closeLibrary();
+    const asOf = generation;
+    void closing
+      .then(() => {
+        // Only if nothing has changed what this tab holds since: the close is a step
+        // that can wait behind a stuck open, and a sign-out or another account's
+        // sign-in meanwhile decides what is open, not this. Reopened regardless, a
+        // sign-out's wipe had its store file made anew, and another account's library
+        // was closed and this one opened in its place.
+        if (generation === asOf) return acquireLibrary(userId);
+        return undefined;
+      })
+      .catch(() => {});
   };
   window.addEventListener('pageshow', onPageShow);
 
   const outbox = createOutbox(userId, { ...collections, userId, engine }, {
     // Another tab is wiping this device's copies, or a newer deploy there is opening
     // the outbox at a newer version: this library goes with its outbox, keeping every
-    // file, as `closeLocalStores` does for a refused session. This library's, not
-    // whichever is current — a later account's open is not this outbox's. Said in the
-    // console, since the second case closes a library mid-session with nothing else to
-    // show for it, and its reopen on the next navigation fails at the old version.
+    // file, as `closeLocalStores` does for a refused session. This library only, by
+    // identity (`isMine`): neither a later account's open nor this account's own
+    // reopen is this outbox's to close. Said in the console, since the second case
+    // closes a library mid-session with nothing else to show for it, and its reopen on
+    // the next navigation fails at the old version.
     onAskedToClose: () => {
-      if (currentLibraryUser() !== userId) return;
+      if (!isMine()) return;
       console.warn('[library] closed: another tab deleted this account’s outbox or opened it at a newer version');
       void closeLibrary();
     },
