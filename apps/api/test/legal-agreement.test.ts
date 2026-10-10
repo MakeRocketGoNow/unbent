@@ -8,7 +8,9 @@
  * pass even if the agreement left that cookie saying the opposite.
  *
  * An instance that publishes no documents has nothing to agree to, and says so; which of
- * the two this suite checks depends on whether the dev server names an operator.
+ * the two this suite checks depends on whether the dev server names an operator
+ * (`OPERATOR_NAME` and `OPERATOR_EMAIL` in `.dev.vars`), and the cases it cannot check
+ * are reported as skipped rather than passed.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 
@@ -38,7 +40,7 @@ let legal: { version?: string } | undefined;
 
 beforeAll(async () => {
   jar = new Jar();
-  const email = `legal-${crypto.randomUUID()}@example.com`;
+  const email = `legal-${crypto.randomUUID()}@example.test`;
   const res = await fetch(`${BASE}/api/auth/sign-up/email`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
@@ -76,13 +78,13 @@ describe('POST /api/legal/agree', () => {
     expect(res.status).toBe(401);
   });
 
-  it('has nothing to agree to where no documents are published', async () => {
-    if (legal?.version) return;
+  it('has nothing to agree to where no documents are published', async (ctx) => {
+    if (legal?.version) return ctx.skip();
     expect((await agree('anything')).status).toBe(404);
   });
 
-  it('records the agreement on the session, through the cached cookie', async () => {
-    if (!legal?.version) return;
+  it('records the agreement on the session, through the cached cookie', async (ctx) => {
+    if (!legal?.version) return ctx.skip();
     // The cookie cache is what has to be replaced; without it this proves less.
     expect(jar.has('session_data')).toBe(true);
     expect(await agreedVersion()).toBeNull();
@@ -94,8 +96,8 @@ describe('POST /api/legal/agree', () => {
   });
 
   /** A second device pressing the same agreement records nothing new, and still lets it in. */
-  it('agrees again to the same version without complaint', async () => {
-    if (!legal?.version) return;
+  it('agrees again to the same version without complaint', async (ctx) => {
+    if (!legal?.version) return ctx.skip();
     const res = await agree(legal.version);
     expect(res.status).toBe(200);
     jar.take(res);
@@ -103,15 +105,15 @@ describe('POST /api/legal/agree', () => {
   });
 
   /** An app holding an older config must not record agreement to documents it never showed. */
-  it('refuses a version this instance does not publish', async () => {
-    if (!legal?.version) return;
+  it('refuses a version this instance does not publish', async (ctx) => {
+    if (!legal?.version) return ctx.skip();
     const res = await agree('1999-01-01');
     expect(res.status).toBe(409);
     expect(((await res.json()) as { version: string }).version).toBe(legal.version);
   });
 
-  it('refuses a body with no version', async () => {
-    if (!legal?.version) return;
+  it('refuses a body with no version', async (ctx) => {
+    if (!legal?.version) return ctx.skip();
     expect((await agree(undefined)).status).toBe(400);
   });
 });
