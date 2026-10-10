@@ -95,7 +95,7 @@ describe('NotebookEditor', () => {
     expect(screen.getByText('Merchant')).toBeTruthy();
     expect(selectValue('Type of Merchant')).toBe('text');
     expect(selectValue('Type of Amount')).toBe('number');
-    expect(screen.getByTitle('12 notes with a value').textContent).toBe('12');
+    expect(document.querySelector('[data-tip="12 notes with a value"]')?.textContent).toBe('12');
   });
 
   it('autosaves a name change once, and not a name typed back to itself', async () => {

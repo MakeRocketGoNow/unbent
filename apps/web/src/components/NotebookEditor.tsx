@@ -621,7 +621,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
                   <FieldTypeIcon type={field.type} rating={isRatingField(field)} currency={isCurrencyField(field)} />
                   {field.name}
                   {field.valueCount !== undefined && field.valueCount > 0 && (
-                    <span className="tag-count" title={`${plural(field.valueCount, 'note')} with a value`}>
+                    <span className="tag-count" data-tip={`${plural(field.valueCount, 'note')} with a value`}>
                       {field.valueCount}
                     </span>
                   )}

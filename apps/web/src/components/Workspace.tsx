@@ -1503,12 +1503,15 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
 
         <div className="workspace-actions">
           {/* Cut with an ellipsis before the title is, and carried whole in the tooltip;
-              see `.workspace-status`. */}
+              see `.workspace-status`. The `title` is on the words, not the row: on the row
+              it reached the not-synced cloud beside them too, and resting there showed
+              "Not synced yet" and then, a second later, "Saved". */}
           <span
             className={`workspace-status ${(saveState === 'error' && !unsavedOffline) || saveState === 'conflict' ? 'bad' : 'muted'} small`}
-            title={webImagesStatus ?? saveLabel}
           >
-            <span className="workspace-status-text">{readOnly ? 'In trash' : (webImagesStatus ?? saveLabel)}</span>
+            <span className="workspace-status-text" title={webImagesStatus ?? saveLabel}>
+              {readOnly ? 'In trash' : (webImagesStatus ?? saveLabel)}
+            </span>
             {notSynced && <NotSyncedMark />}
           </span>
 
