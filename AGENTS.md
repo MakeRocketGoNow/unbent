@@ -655,6 +655,24 @@ what waited. Sign-out first waits a few seconds for the outbox to drain. The nam
 `store/names.ts` and nowhere else. A new way for the account on a device to change hands
 has to call it too, and say which of the three it is.
 
+**Every tab of the origin holds the library, and all of them have to let go.** A library
+open in a tab holds the store's file through its worker, a connection to the outbox's
+IndexedDB database, and, in one tab, the leadership of each collection, through which the
+other tabs' writes go. A wipe in one tab runs against all of that: the outbox's
+`deleteDatabase` waits on every open connection, and IndexedDB serves the requests on one
+name in order, so an open queued behind a waiting delete — the next sign-in's — waits for
+good, in every tab, until all of them are closed (seen with three tabs, 2026-10-10). Three
+things keep that from happening, and a new way to hold or wipe the library has to keep
+them: the wipe tells the other tabs first, over the channel in `store/wipe.ts`
+(`installLibraryCloser`), and the signed-in shell closes the library the moment a session
+goes away under it, so a tab left on the sign-in screen holds nothing; the outbox closes
+its connection on `versionchange`, which is how IndexedDB asks, and the library closes with
+it; and `acquireLibrary` gives up after `LIBRARY_OPEN_TIMEOUT_MS` and reads the server,
+reporting the timeout, so a wedge is a page with no local copy rather than a dead app.
+The leader that stops answering — a tab Chrome has frozen in the background holds its
+Web Locks and sends no heartbeats — is not something this code can release from another
+tab; the timeout is what bounds it.
+
 **Offline is not `readOnly`, and it no longer locks.** The trash's `readOnly` turns the
 autosave off and drops the draft. Offline, the note is as editable as ever and the head
 still says "Saved" — one word, because beside a title on a phone the head has room for
