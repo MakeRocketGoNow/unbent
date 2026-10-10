@@ -681,9 +681,9 @@ function createAuth(env: Env): AuthInstance {
        *
        * `input: false`, so neither sign-up nor `/update-user` can set it: an agreement is
        * recorded only by `POST /api/legal/agree`, which checks the version against the one
-       * this instance publishes and stamps the time itself. The time (`legalAgreedAt`,
-       * migration 0043) is a record rather than something the app reads, so it is not
-       * declared here and never travels in the session.
+       * this instance publishes and stamps the time itself. The times, one per version
+       * agreed to, are in `legal_agreement` (migration 0044): a record rather than something
+       * the app reads, so they never travel in the session.
        */
       additionalFields: {
         legalVersion: { type: 'string', required: false, input: false },

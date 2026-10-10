@@ -15,7 +15,7 @@ const agreeBody = z.object({ version: z.string().min(1).max(64) });
  * holding an older config — open in a tab across a deploy that moved `LEGAL_VERSION` —
  * would otherwise record agreement to documents it never showed, so it is told 409 and
  * reloads the config, which shows the new ones. The time is the server's, never the
- * client's: it is the record of when.
+ * client's: it is the record of when, kept for every version in `legal_agreement`.
  *
  * The answer carries a fresh session cookie. The session is served from a signed cookie
  * for up to five minutes (`cookieCache` in `auth.ts`), and that cookie still says the
@@ -36,13 +36,18 @@ export const legal = new Hono<AppEnv>().post('/legal/agree', requireAuth, async 
     return c.json({ error: 'The terms have changed since this page loaded.', version: current }, 409);
   }
 
-  // Only when the version moves: a second press of the same agreement — another device,
-  // or a tab still holding the cached session — must not rewrite when it was first given.
-  await c.env.DB.prepare(
-    'UPDATE user SET legalVersion = ?1, legalAgreedAt = ?2 WHERE id = ?3 AND legalVersion IS NOT ?1',
-  )
-    .bind(current, new Date().toISOString(), c.get('userId')!)
-    .run();
+  // The history first, then the version the session carries, in one batch. `OR IGNORE`
+  // keeps the first time each version was agreed to: a second press — another device, or
+  // a tab still holding the cached session — must not move it. See migration 0044.
+  const userId = c.get('userId')!;
+  await c.env.DB.batch([
+    c.env.DB.prepare('INSERT OR IGNORE INTO legal_agreement (user_id, version, agreed_at) VALUES (?, ?, ?)').bind(
+      userId,
+      current,
+      new Date().toISOString(),
+    ),
+    c.env.DB.prepare('UPDATE user SET legalVersion = ? WHERE id = ?').bind(current, userId),
+  ]);
 
   // Only the cookie: this is a GET of the session, and the POST's own headers (its body's
   // type and length among them) describe a request it is not.
