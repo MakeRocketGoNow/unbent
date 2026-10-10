@@ -44,12 +44,29 @@ export const legal = new Hono<AppEnv>().post('/legal/agree', requireAuth, async 
     .bind(current, new Date().toISOString(), c.get('userId')!)
     .run();
 
+  // Only the cookie: this is a GET of the session, and the POST's own headers (its body's
+  // type and length among them) describe a request it is not.
+  const cookie = c.req.header('cookie');
   const refreshed = await getAuth(c.env).handler(
     new Request(new URL('/api/auth/get-session?disableCookieCache=true', c.req.url), {
-      headers: c.req.raw.headers,
+      headers: cookie ? { cookie } : {},
     }),
   );
-  for (const cookie of refreshed.headers.getSetCookie()) c.header('Set-Cookie', cookie, { append: true });
+  const cookies = refreshed.headers.getSetCookie();
+  /*
+   * Said out loud rather than answered 200. Without a fresh cookie the app re-reads the
+   * cached session, which still says nothing was agreed, and the screen stays put with no
+   * word of why. Pressing again is the remedy, and it works: the agreement is already
+   * saved, so a second press only retries this refresh. A request with no cookie at all
+   * (a bearer session) has no cache to replace, and nothing is missing.
+   */
+  if (!refreshed.ok || (cookie && cookies.length === 0)) {
+    return c.json(
+      { error: 'Your agreement was saved, but this device could not be updated. Press Agree again.' },
+      503,
+    );
+  }
+  for (const set of cookies) c.header('Set-Cookie', set, { append: true });
   return c.json({ version: current });
 });
 
