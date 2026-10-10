@@ -21,7 +21,7 @@ export const LEGAL_VERSION = '2026-10-09';
 
 /**
  * One sentence on what changed in `LEGAL_VERSION`, for the people who agreed to an earlier
- * one. Shown under "We've updated our Terms and Privacy Policy", so they can tell a new
+ * one. Shown under "We’ve updated our terms", so they can tell a new
  * clause from a reworded one without reading both documents again.
  *
  * Undefined for the first version, which nobody had agreed to before. Set it in the same
