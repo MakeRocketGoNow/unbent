@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
-import { BASE_STORAGE_GB, STORAGE_ADDON_GB, storageQuotaBytes } from '@unbent/shared';
+import { BASE_STORAGE_GB, GB, MAX_STORAGE_UNITS, STORAGE_ADDON_GB, storageQuotaBytes } from '@unbent/shared';
 import { planPatchFor, type PaddleEvent } from '../lib/billing-events.js';
 import { accountPlanOf, planFor, planRowByCustomer, planStateOf, updatePlan, updatePlanStatement } from '../lib/plan.js';
 import {
@@ -32,9 +32,6 @@ import type { AppEnv } from '../types.js';
  * person can do something about — try again. Logged with the account, since a 502 the
  * page shows says nothing about which call it was.
  */
-
-/** The most storage blocks a checkout or a change may ask for in one go: a terabyte, past any archive this app has seen. */
-const MAX_STORAGE_UNITS = 40;
 
 const storageBody = z.object({ storage: z.number().int().min(0).max(MAX_STORAGE_UNITS) });
 
@@ -69,19 +66,24 @@ export const billing = new Hono<AppEnv>()
    * the row (`planFor`). Read on open and after anything that changes it — a checkout, a
    * portal visit — rather than on every write: the 402 a lapsed write gets is the guard,
    * and this is what lets the page say so before anyone types.
+   *
+   * What the account holds comes from its store, which is a call to the account's
+   * object: asked for with `?usage=1`, which only the Plan page passes, so the banner
+   * and the editor — which read this on every open and every focus in every tab —
+   * cost a D1 row and nothing more. Left out rather than failed when the store cannot
+   * say (reset by a deploy, or being loaded), since the plan is still the plan.
    */
   .get('/me/plan', requireAuth, async (c) => {
     if (!billingOn(c.env)) return c.json({ error: 'This instance has no plan to report.' }, 404);
     const userId = c.get('userId')!;
     const row = await planFor(c.env.DB, userId);
-    // What the account holds, from its store: one more call, and the one number on the
-    // page that is not the row's. Left out rather than failed when the store cannot say
-    // — reset by a deploy, or being loaded — since the plan is still the plan.
     let usedBytes: number | undefined;
-    try {
-      usedBytes = await reposFor(c.env, userId).attachments.storageUsed();
-    } catch (err) {
-      console.warn(`[billing] storage used for user=${userId} unavailable:`, (err as Error).message);
+    if (c.req.query('usage') === '1') {
+      try {
+        usedBytes = await reposFor(c.env, userId).attachments.storageUsed();
+      } catch (err) {
+        console.warn(`[billing] storage used for user=${userId} unavailable:`, (err as Error).message);
+      }
     }
     return c.json({ ...accountPlanOf(row, Date.now()), ...(usedBytes !== undefined ? { usedBytes } : {}) });
   })
@@ -122,6 +124,11 @@ export const billing = new Hono<AppEnv>()
    * `storage`, prorated and charged now. The answer is the subscription as Paddle has it
    * after the change; the row follows from the webhook, which is what every change to
    * the plan waits for, so the page re-reads its plan rather than trusting this.
+   *
+   * Less is refused while the account holds more than the smaller quota would allow:
+   * the change would go through and every upload after it would be refused, for a
+   * reason the person was not shown. The sentence names the numbers; deleting files
+   * first is the way.
    */
   .post('/billing/storage', requireAuth, zValidator('json', storageBody), async (c) => {
     const paddle = paddleOf(c.env);
@@ -130,6 +137,14 @@ export const billing = new Hono<AppEnv>()
     const row = await planFor(c.env.DB, userId);
     if (!row.paddleSubscriptionId || row.paddleStatus === 'canceled') {
       return c.json({ error: 'Storage is added to a subscription. Subscribe first.' }, 409);
+    }
+    const storage = c.req.valid('json').storage;
+    const after = BASE_STORAGE_GB + STORAGE_ADDON_GB * storage;
+    if (after < row.storageGb) {
+      const used = await reposFor(c.env, userId).attachments.storageUsed();
+      if (used > storageQuotaBytes(after)) {
+        return c.json({ error: `This account holds ${(used / GB).toFixed(1)} GB, more than the ${after} GB it would have. Delete some files first.` }, 409);
+      }
     }
     try {
       const sub = await setSubscriptionStorage(paddle, row.paddleSubscriptionId, c.req.valid('json').storage);

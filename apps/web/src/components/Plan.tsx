@@ -1,26 +1,31 @@
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BASE_STORAGE_GB,
+  MAX_STORAGE_UNITS,
   PLAN_PRICE_USD,
   STORAGE_ADDON_GB,
   STORAGE_ADDON_PRICE_USD,
   storageQuotaBytes,
   type AccountPlan,
-  type BillingConfig,
 } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { isHosted } from '../app-bridge.js';
 import { formatBytes } from '../format-bytes.js';
 import { openCheckout } from '../paddle.js';
-import { keys } from '../queries.js';
+import { keys, planUsageQuery } from '../queries.js';
 import { usePlan } from '../use-plan.js';
 import { Button } from './Button.js';
+import { Confirm } from './Confirm.js';
 import { Snackbar } from './Snackbar.js';
 import { formatDay } from './format-when.js';
 
-/** The most storage blocks the page offers in one go; the API caps the same. */
-const MAX_UNITS = 8;
+/**
+ * The most storage blocks the page lists: two hundred gigabytes on top is past any
+ * archive this app has seen, and a list of forty is a list nobody reads. The API allows
+ * `MAX_STORAGE_UNITS`, for an operator's or a support request.
+ */
+const MAX_UNITS = Math.min(8, MAX_STORAGE_UNITS);
 
 /** How many add-on blocks a quota is, for the storage control. */
 function unitsOf(plan: AccountPlan): number {
@@ -53,15 +58,30 @@ const dollars = (n: number) => `$${n}`;
  * not a few seconds later.
  */
 export function Plan() {
-  const { billing, plan } = usePlan();
+  const { billing, plan: standing } = usePlan();
+  // This page alone asks the store what the account holds; the banner and the editor
+  // read the plan without it. The two answers are the same row, so the one with the
+  // figure stands in for the other here once it has arrived.
+  const usage = useQuery(planUsageQuery(standing !== undefined));
+  const plan = usage.data ?? standing;
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState<'checkout' | 'portal' | 'storage' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [units, setUnits] = useState<number | null>(null);
+  const [adding, setAdding] = useState(false);
   const hosted = isHosted();
 
-  if (!billing) return null;
+  if (!billing) {
+    return (
+      <div className="panel">
+        <div className="panel-head">
+          <h2>Plan</h2>
+        </div>
+        <p className="muted small">This instance sells no plan: every account is active, with nothing to pay for.</p>
+      </div>
+    );
+  }
   if (!plan) {
     return (
       <div className="panel">
@@ -80,6 +100,10 @@ export function Plan() {
   const canSubscribe = !hosted && !subscribed && plan.source !== 'comp';
   const chosenUnits = units ?? unitsOf(plan);
   const refresh = () => queryClient.invalidateQueries({ queryKey: keys.plan() });
+  // Less storage than the account holds would refuse every upload after it; the server
+  // refuses the change, and the button says why before the press.
+  const smaller = storageQuotaBytes(plan.storageGb - STORAGE_ADDON_GB);
+  const overSmaller = plan.usedBytes !== undefined && plan.usedBytes > smaller;
 
   async function subscribe() {
     setBusy('checkout');
@@ -135,6 +159,7 @@ export function Plan() {
 
   async function changeStorage(next: number) {
     setBusy('storage');
+    setAdding(false);
     setError(null);
     try {
       await api.setStorage(next);
@@ -207,20 +232,36 @@ export function Plan() {
       <section className="settings-section">
         <h3>Storage</h3>
         <StorageMeter plan={plan} />
-        {subscribed && !hosted && (
+        {subscribed && !hosted && !adding && (
           <div className="backfill-row">
-            <Button size="small" disabled={busy !== null || unitsOf(plan) >= MAX_UNITS} onClick={() => void changeStorage(unitsOf(plan) + 1)}>
+            <Button size="small" disabled={busy !== null || unitsOf(plan) >= MAX_STORAGE_UNITS} onClick={() => setAdding(true)}>
               {busy === 'storage' ? 'Changing…' : `Add ${STORAGE_ADDON_GB} GB`}
             </Button>
             {unitsOf(plan) > 0 && (
-              <Button size="small" variant="quiet" disabled={busy !== null} onClick={() => void changeStorage(unitsOf(plan) - 1)}>
+              <Button
+                size="small"
+                variant="quiet"
+                disabled={busy !== null || overSmaller}
+                tip={overSmaller ? `The account holds more than ${plan.storageGb - STORAGE_ADDON_GB} GB; delete some files first` : undefined}
+                onClick={() => void changeStorage(unitsOf(plan) - 1)}
+              >
                 Remove {STORAGE_ADDON_GB} GB
               </Button>
             )}
-            <span className="muted small">
-              {dollars(STORAGE_ADDON_PRICE_USD)} a year per {STORAGE_ADDON_GB} GB, charged for the rest of this year now.
-            </span>
+            <span className="muted small">{dollars(STORAGE_ADDON_PRICE_USD)} a year per {STORAGE_ADDON_GB} GB.</span>
           </div>
+        )}
+        {/* A charge on the card is a confirm, not a press: the amount and when it is
+            taken are the question, in the box with the action. */}
+        {adding && (
+          <Confirm
+            label="Confirm adding storage"
+            question={<>Add {STORAGE_ADDON_GB} GB for {dollars(STORAGE_ADDON_PRICE_USD)} a year?</>}
+            detail="Charged to the card on file now, for the rest of this year, and in full with each renewal."
+            actions={[{ label: `Add ${STORAGE_ADDON_GB} GB`, busyLabel: 'Adding…', tone: 'primary', onConfirm: () => changeStorage(unitsOf(plan!) + 1) }]}
+            busy={busy !== null}
+            onCancel={() => setAdding(false)}
+          />
         )}
       </section>
 
