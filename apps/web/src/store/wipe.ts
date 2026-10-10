@@ -25,8 +25,58 @@ import { filesDirName, isFilesDir, isOutbox, isStoreFile, outboxName, searchFile
  */
 export async function wipeLocalStores(except?: string): Promise<void> {
   const keep = except === undefined ? null : { stores: [storeFileName(except), searchFileName(except)], outbox: outboxName(except), files: filesDirName(except) };
+  closeLibrariesInOtherTabs();
   if (!keep || currentLibraryUser() !== except) await closeLocalStores();
   await Promise.all([wipeStoreFiles(keep?.stores, keep?.files), wipeOutboxes(keep?.outbox)]);
+}
+
+/**
+ * The channel on which a tab wiping this device tells every other tab of the origin to
+ * let go of its library first.
+ *
+ * A library is held by more than the tab that signed out. Every tab the account was open
+ * in holds the store's file through its worker, a connection to the outbox's IndexedDB
+ * database, and — for one of them — the leadership of each collection, through which the
+ * others' writes go. None of that went away when the account did: a tab signed out from
+ * underneath bounced to the sign-in screen and kept the lot, and the wipe below then ran
+ * against it. The outbox's `deleteDatabase` waited on a connection the other tab never
+ * closed, and because IndexedDB serves the requests on one name in order, the next
+ * sign-in's open of the same database queued behind that delete, for good: the app sat
+ * on "Opening your notes…" in every tab until all of them were closed (seen with three
+ * tabs open, 2026-10-10). Told, the other tabs close their libraries, which releases the
+ * file, the connection and the leadership before anything here waits on them.
+ *
+ * Every other tab closes whatever it holds, whoever it is for: the wipe that keeps one
+ * account's copy (`except`) is a different person signing in, and the tab still signed in
+ * as the kept account reopens its library on its next navigation (`acquireLibrary` in the
+ * root `beforeLoad`), reading the server meanwhile. A browser without the channel has
+ * nothing to tell; the delete's own bounded wait is what it had before.
+ */
+const CHANNEL = 'unbent-libraries';
+
+function closeLibrariesInOtherTabs(): void {
+  if (typeof BroadcastChannel === 'undefined') return;
+  try {
+    const channel = new BroadcastChannel(CHANNEL);
+    channel.postMessage({ type: 'close' });
+    channel.close();
+  } catch {
+    // Nothing to tell.
+  }
+}
+
+/**
+ * Hears another tab's wipe, and closes this tab's library and store for it, keeping every
+ * file: what `closeLocalStores` does for a refused session, for the same reason — this tab
+ * decides nothing about the account; the one wiping has. Installed once, at start.
+ */
+export function installLibraryCloser(): () => void {
+  if (typeof BroadcastChannel === 'undefined') return () => {};
+  const channel = new BroadcastChannel(CHANNEL);
+  channel.onmessage = (event: MessageEvent<{ type?: string }>) => {
+    if (event.data?.type === 'close') void closeLocalStores();
+  };
+  return () => channel.close();
 }
 
 /** Closes the open library and its store, keeping every file: what a refused session does. */

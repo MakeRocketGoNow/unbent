@@ -26,6 +26,7 @@ import { claimImportFor, getImportRun, subscribeImport } from '../import-run.js'
 import { takeUpdate } from '../sw-register.js';
 import { configQuery } from '../queries.js';
 import { AgreementPending, LegalAgreement, agreementGate } from '../components/LegalAgreement.js';
+import { closeLocalStores } from '../store/wipe.js';
 
 export interface RouterContext {
   queryClient: QueryClient;
@@ -230,6 +231,13 @@ function AppShell() {
    */
   useEffect(() => {
     if (isPending || session?.user) return;
+    // Whatever this tab held of the account goes with the session: the store's file, the
+    // outbox's connection, the leadership of the collections. Kept, a tab left on the
+    // sign-in screen held all three against the tab that signed out, and against every
+    // sign-in after it; see `installLibraryCloser` in `store/wipe.ts`. Closed, not wiped:
+    // the account's files are the business of the tab that ended the session, and a
+    // sign-in here reopens them.
+    void closeLocalStores();
     // The app, if there is one, takes over from here; see `requireSession`.
     postToApp({ type: 'unauthorized' });
     void navigate({ to: '/login', replace: true });

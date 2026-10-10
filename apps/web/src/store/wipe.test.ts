@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { closeLocalStores, wipeLocalStores } from './wipe.js';
+import { closeLocalStores, installLibraryCloser, wipeLocalStores } from './wipe.js';
 
 vi.mock('./library.js', () => ({ closeLibrary: vi.fn(async () => {}), currentLibraryUser: vi.fn(() => null) }));
 vi.mock('./db.js', () => ({ closeLocalStore: vi.fn(async () => {}) }));
@@ -68,6 +68,66 @@ describe('wipeLocalStores', () => {
     vi.mocked(currentLibraryUser).mockReturnValue('b');
     await wipeLocalStores('a');
     expect(closeLibrary).toHaveBeenCalled();
+  });
+});
+
+/**
+ * A stand-in for the channel between tabs: every instance under a name hears what the
+ * others post, and nothing it posted itself, as the real one does.
+ */
+function channels() {
+  const open = new Map<string, Set<{ onmessage: ((e: { data: unknown }) => void) | null }>>();
+  class FakeChannel {
+    onmessage: ((e: { data: unknown }) => void) | null = null;
+    constructor(readonly name: string) {
+      if (!open.has(name)) open.set(name, new Set());
+      open.get(name)!.add(this);
+    }
+    postMessage(data: unknown) {
+      for (const other of open.get(this.name) ?? []) if (other !== this) other.onmessage?.({ data });
+    }
+    close() {
+      open.get(this.name)?.delete(this);
+    }
+  }
+  vi.stubGlobal('BroadcastChannel', FakeChannel);
+}
+
+describe('other tabs', () => {
+  it('are told to close their libraries before the wipe waits on anything they hold', async () => {
+    device(files, dbs);
+    channels();
+    const stop = installLibraryCloser();
+    await wipeLocalStores();
+    // The listener's close is this module's own `closeLocalStores`, through the mocked library.
+    expect(closeLibrary).toHaveBeenCalledTimes(2);
+    stop();
+  });
+
+  it('are told on a wipe that keeps one account, since the tab wiping is the one deciding', async () => {
+    device(files, dbs);
+    channels();
+    vi.mocked(currentLibraryUser).mockReturnValue('a');
+    const stop = installLibraryCloser();
+    await wipeLocalStores('a');
+    expect(closeLibrary).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  it('hear nothing once the listener is stopped', async () => {
+    device(files, dbs);
+    channels();
+    installLibraryCloser()();
+    await wipeLocalStores();
+    expect(closeLibrary).toHaveBeenCalledTimes(1);
+  });
+
+  it('are not a reason a browser without the channel cannot wipe', async () => {
+    const { deleted } = device(files, dbs);
+    vi.stubGlobal('BroadcastChannel', undefined);
+    expect(installLibraryCloser()).toBeTypeOf('function');
+    await wipeLocalStores();
+    expect(deleted.sort()).toEqual(['unbent-outbox-a', 'unbent-outbox-b']);
   });
 });
 

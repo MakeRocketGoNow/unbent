@@ -16,6 +16,7 @@ import { installConnectivity } from './connectivity.js';
 import { installSessionRecheck } from './auth-client.js';
 import { isOfflineError } from './notes-api.js';
 import { onUploaded } from './store/actions.js';
+import { installLibraryCloser } from './store/wipe.js';
 import { indexUploadedFile } from './index-files.js';
 import { refuseStrayFileDrops } from './file-drop-guard.js';
 import { installTooltips } from './tooltips.js';
@@ -79,6 +80,12 @@ installConnectivity(queryClient);
  */
 installLibraryQueries(queryClient);
 installSessionRecheck();
+
+/*
+ * A sign-out or a change of account in another tab of this origin closes the library
+ * here, so the wipe there is not held behind what this tab holds; see `store/wipe.ts`.
+ */
+installLibraryCloser();
 
 /*
  * A file added with no connection is uploaded from the outbox when there is one, by which
