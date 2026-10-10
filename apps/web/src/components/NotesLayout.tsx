@@ -31,6 +31,7 @@ import { NotebookMissing, isNotebookMissing } from './NotebookMissing.js';
 import { countMenuItems, offersCountMenu } from './count-menu.js';
 import { startExport, useExportRunning } from '../export-archive.js';
 import { useOffline } from '../connectivity.js';
+import { usePlan } from '../use-plan.js';
 import { TagPicker } from './TagPicker.js';
 import { FilterRow } from './FilterRow.js';
 import { DatePicker } from './DatePicker.js';
@@ -788,6 +789,15 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
      and `countMenuItems` for what. */
   const exportRunning = useExportRunning();
   const offline = useOffline();
+  /*
+     The one control on this page that makes something, faded while the plan has ended
+     (MAK-108): the server refuses the note, and a New that made one on the device and
+     took it back when the refusal came would read as the app breaking rather than the
+     plan ending. Faded with the reason rather than withdrawn, the rule offline controls
+     follow; the banner above says the rest.
+  */
+  const { inactive: planInactive } = usePlan();
+  const noNewNotes = planInactive ? 'Not while the plan has ended' : undefined;
   const countMenu =
     offersCountMenu({
       searching: results !== null,
@@ -915,6 +925,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             isMobile ? undefined : (
               <Button
                 variant={libraryEmpty || notebookMissing ? 'secondary' : 'primary'}
+                disabled={planInactive}
+                tip={noNewNotes}
                 onClick={() => void newNote()}
               >
                 New
@@ -1181,6 +1193,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             type="button"
             className="fab"
             aria-label="New note"
+            disabled={planInactive}
+            data-tip={noNewNotes}
+            aria-description={noNewNotes}
             onClick={() => void newNote()}
           >
             <PlusIcon />
