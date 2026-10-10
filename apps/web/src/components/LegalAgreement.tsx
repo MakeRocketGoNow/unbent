@@ -31,9 +31,13 @@ export function needsAgreement(
   return agreed !== legal.version;
 }
 
-/** What the signed-in shell draws, as far as the agreement decides it. See `agreementGate`. */
+/**
+ * What the signed-in shell draws, as far as the agreement decides it. See `agreementGate`.
+ * `pending` is an open page the account may use without agreeing — export, or account
+ * deletion — while the agreement is still owed.
+ */
 export type AgreementGate =
-  | { kind: 'open' }
+  | { kind: 'open'; pending?: boolean }
   | { kind: 'wait' }
   | { kind: 'ask'; legal: NonNullable<AppConfig['legal']> & { version: string } };
 
@@ -61,8 +65,29 @@ export function agreementGate(opts: {
   if (opts.unreachable) return { kind: 'open' };
   if (opts.config.isPending) return { kind: 'wait' };
   const legal = opts.config.data?.legal;
-  if (!legal?.version || !needsAgreement(legal, opts.agreed, opts.pathname)) return { kind: 'open' };
+  if (!legal?.version || opts.agreed === legal.version) return { kind: 'open' };
+  if (!needsAgreement(legal, opts.agreed, opts.pathname)) return { kind: 'open', pending: true };
   return { kind: 'ask', legal: { ...legal, version: legal.version } };
+}
+
+/**
+ * The line above export and account deletion while the agreement is still owed.
+ *
+ * Those two pages stay open without agreeing (`OPEN_WITHOUT_AGREEMENT`), so they are drawn
+ * in the whole app, and every other way out of them — the rail, the other settings tabs —
+ * leads back to the agreement. Without a word that reads as a broken app; this says the
+ * dead ends are deliberate and offers the way back. In the offline banner's quiet shape,
+ * because it is a state to know about, not something gone wrong.
+ */
+export function AgreementPending() {
+  return (
+    <p className="agreement-pending" role="status">
+      <span>
+        You can export your notes or delete your account without agreeing to the terms.
+      </span>{' '}
+      <Link to="/notes">Back to the terms</Link>
+    </p>
+  );
 }
 
 /**

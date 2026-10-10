@@ -25,7 +25,7 @@ import { UpdateSnackbar } from '../components/UpdateSnackbar.js';
 import { claimImportFor, getImportRun, subscribeImport } from '../import-run.js';
 import { takeUpdate } from '../sw-register.js';
 import { configQuery } from '../queries.js';
-import { LegalAgreement, agreementGate } from '../components/LegalAgreement.js';
+import { AgreementPending, LegalAgreement, agreementGate } from '../components/LegalAgreement.js';
 
 export interface RouterContext {
   queryClient: QueryClient;
@@ -292,6 +292,7 @@ function AppShell() {
             stylesheet hides it above the breakpoint, where the rail is the chrome. */}
         <Topbar email={session.user.email} onSignOut={signOutAndLeave} />
         <OfflineBanner />
+        {gate.kind === 'open' && gate.pending && <AgreementPending />}
         <LibraryStatus />
         <SyncingLine />
         <Outlet />

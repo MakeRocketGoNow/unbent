@@ -74,7 +74,14 @@ describe('agreementGate', () => {
 
   it('asks an account that has not agreed to this version, and no other', () => {
     expect(agreementGate({ ...base, config: config(LEGAL) })).toEqual({ kind: 'ask', legal: LEGAL });
-    expect(agreementGate({ ...base, agreed: LEGAL.version, config: config(LEGAL) }).kind).toBe('open');
+    expect(agreementGate({ ...base, agreed: LEGAL.version, config: config(LEGAL) })).toEqual({ kind: 'open' });
+  });
+
+  /** Export and deletion open without agreeing, and say the agreement is still owed. */
+  it('marks the pages open without agreeing as pending, until it is given', () => {
+    const exportPage = { ...base, pathname: '/settings/export', config: config(LEGAL) };
+    expect(agreementGate(exportPage)).toEqual({ kind: 'open', pending: true });
+    expect(agreementGate({ ...exportPage, agreed: LEGAL.version })).toEqual({ kind: 'open' });
   });
 });
 

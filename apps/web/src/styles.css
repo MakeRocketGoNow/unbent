@@ -570,6 +570,28 @@ button.link {
 }
 
 /* The glyph keeps its size when the sentence wraps to two lines on a phone. */
+/*
+   The line above export and account deletion while the terms are still to be agreed to
+   (`AgreementPending`): the offline banner's shape, for the same reason — a state, not an
+   error — with its link in the line's own ink so it does not outshout the sentence.
+*/
+.agreement-pending {
+  margin: 0 0 var(--shell-pad-top);
+  padding: 0.45rem 0.75rem;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.35;
+}
+
+.agreement-pending a {
+  color: var(--fg);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  white-space: nowrap;
+}
+
 .offline-banner > svg {
   flex: none;
 }
