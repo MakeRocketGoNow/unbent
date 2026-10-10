@@ -36,26 +36,37 @@ const h = vi.hoisted(async () => {
     static databases = databases;
     /** Every adapter made, newest last, for a test that needs the connection itself. */
     static instances: MemoryAdapter[] = [];
-    /** The connection the real adapter keeps under `db`: closable, and told of a delete. */
-    db: { close: () => void; onversionchange: null | (() => void); closed: boolean };
+    /**
+     * The connection the real adapter keeps under `db`: closable, told of a delete, and
+     * opened on first use as the real one is — null until then, which is what a tab that
+     * does not lead the outbox has when its executor's init settles.
+     */
+    db: { close: () => void; onversionchange: null | (() => void); closed: boolean } | null = null;
     rows: Map<string, string>;
     constructor(readonly name: string) {
       this.rows = databases.get(name) ?? new Map();
       databases.set(name, this.rows);
-      const db = { closed: false, onversionchange: null, close: () => void (db.closed = true) };
-      this.db = db;
       MemoryAdapter.instances.push(this);
     }
+    private open() {
+      if (this.db) return;
+      const db = { closed: false, onversionchange: null, close: () => void (db.closed = true) };
+      this.db = db;
+    }
     async get(key: string) {
+      this.open();
       return this.rows.get(key) ?? null;
     }
     async set(key: string, value: string) {
+      this.open();
       this.rows.set(key, value);
     }
     async delete(key: string) {
+      this.open();
       this.rows.delete(key);
     }
     async keys() {
+      this.open();
       return [...this.rows.keys()];
     }
     async clear() {
@@ -1377,14 +1388,16 @@ describe('a write made here', () => {
  */
 describe('the outbox’s connection', () => {
   it('closes when another tab deletes the database, and tells the library', async () => {
-    const onDeleted = vi.fn();
+    const onAskedToClose = vi.fn();
     const { lib } = library([row('n1', { title: 'a' })]);
-    const outbox = createOutbox('u1', lib, { onDeleted });
-    await outbox.ready;
+    const outbox = createOutbox('u1', lib, { onAskedToClose });
     const adapter = MemoryAdapter.instances[MemoryAdapter.instances.length - 1]!;
-    expect(adapter.db.onversionchange).toBeTypeOf('function');
-    adapter.db.onversionchange!();
-    expect(adapter.db.closed).toBe(true);
-    expect(onDeleted).toHaveBeenCalledTimes(1);
+    // Not open at init in a tab that does not lead; the outbox's own first read opens it.
+    expect(adapter.db).toBeNull();
+    await outbox.ready;
+    expect(adapter.db?.onversionchange).toBeTypeOf('function');
+    adapter.db!.onversionchange!();
+    expect(adapter.db!.closed).toBe(true);
+    expect(onAskedToClose).toHaveBeenCalledTimes(1);
   });
 });

@@ -551,10 +551,12 @@ async function open(userId: string): Promise<Library> {
 
   const outbox = createOutbox(userId, { ...collections, userId, engine }, {
     // Another tab is wiping this device's copies: this library goes with its outbox,
-    // keeping every file, as `closeLocalStores` does for a refused session.
-    onDeleted: () => void closeLibrary(),
+    // keeping every file, as `closeLocalStores` does for a refused session. This
+    // library's, not whichever is current — a later account's open is not this outbox's.
+    onAskedToClose: () => {
+      if (currentLibraryUser() === userId) void closeLibrary();
+    },
   });
-  await outbox.ready;
 
   /*
    * The kept notebooks' files follow the library: a file the feed delivers into one is
