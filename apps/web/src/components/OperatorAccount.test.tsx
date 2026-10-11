@@ -14,6 +14,8 @@ vi.mock('@tanstack/react-router', () => ({
 let signedInAs = 'op1';
 // Whether the instance offers a person's own deletion, which is where that section points them.
 let selfDeletion = true;
+// Whether the instance sells a plan, which is the only time the Plan section is drawn.
+let sellsPlan = false;
 vi.mock('../useAppSession.js', () => ({
   useAppSession: () => ({ session: { user: { id: signedInAs } }, isPending: false, unreachable: false }),
 }));
@@ -90,7 +92,7 @@ function harness(
   restores: StoreRestore[] = [],
 ) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  client.setQueryData(keys.config(), { accountDeletion: selfDeletion } as Awaited<ReturnType<typeof api.getConfig>>);
+  client.setQueryData(keys.config(), { accountDeletion: selfDeletion, ...(sellsPlan ? { billing: { environment: 'sandbox', clientToken: 'test_x' } } : {}) } as Awaited<ReturnType<typeof api.getConfig>>);
   client.setQueryData(keys.operatorAccount('u1'), who);
   if (seeded) client.setQueryData(keys.storeStats('u1'), seeded);
   vi.mocked(api.accountDumps).mockImplementation(answerDumps);
@@ -666,16 +668,29 @@ describe('OperatorAccount: the store', () => {
 });
 
 describe('OperatorAccount: the plan', () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    sellsPlan = false;
+  });
 
-  /** Drawn only where the row carries a plan, which is only where the instance sells one. */
+  /** Drawn only where the instance sells a plan. */
   it('is absent where the instance sells no plan', async () => {
     harness();
     await screen.findByRole('heading', { name: 'Store' });
     expect(screen.queryByRole('heading', { name: 'Plan' })).toBeNull();
   });
 
+  /** A row is read, never made, by looking: an account with none has not started its fortnight. */
+  it('says no trial has started for an account with no row, and still offers the comp', async () => {
+    sellsPlan = true;
+    harness();
+    const section = (await screen.findByRole('heading', { name: 'Plan' })).closest('section')!;
+    expect(section.textContent).toContain('No trial yet.');
+    expect(within(section).getByRole('button', { name: 'Comp with no end' })).toBeTruthy();
+  });
+
   it('shows where the account stands and comps it, with an end or none', async () => {
+    sellsPlan = true;
     vi.mocked(api.compAccount).mockResolvedValue({ state: 'active', until: null, source: 'comp', storageGb: 60, subscription: null });
     harness(undefined, undefined, { ...account, plan: { state: 'trial', until: now + 5 * 86_400_000, source: null, storageGb: 10, subscription: null } });
     const section = (await screen.findByRole('heading', { name: 'Plan' })).closest('section')!;
@@ -689,6 +704,7 @@ describe('OperatorAccount: the plan', () => {
   });
 
   it('ends a comp behind a confirm, and refuses to comp over a Paddle subscription', async () => {
+    sellsPlan = true;
     harness(undefined, undefined, { ...account, plan: { state: 'active', until: null, source: 'comp', storageGb: 10, subscription: null } });
     const section = (await screen.findByRole('heading', { name: 'Plan' })).closest('section')!;
     expect(section.textContent).toContain('Complimentary.');

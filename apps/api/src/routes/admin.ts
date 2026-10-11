@@ -2,7 +2,7 @@ import { Hono, type Context } from 'hono';
 import { createMiddleware } from 'hono/factory';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { accountPlanOf, planFor, updatePlan } from '../lib/plan.js';
+import { accountPlanOf, planFor, planRow, updatePlan } from '../lib/plan.js';
 import { billingOn } from '../lib/paddle.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
@@ -830,8 +830,13 @@ export const admin = new Hono<AppEnv>()
     const account = await operatorAccountRow(c.env.DB, id);
     if (!account) return c.json({ error: 'No such account' }, 404);
     // The plan beside the directory's facts, where the instance sells one (MAK-108): the
-    // page shows it and comps from it. One more read by key.
-    if (billingOn(c.env)) account.plan = accountPlanOf(await planFor(c.env.DB, id), Date.now());
+    // page shows it and comps from it. Read, never made: `planFor` would start a dormant
+    // account's fortnight at the operator's glance, and the sweep would mail them about
+    // a trial they were never shown. Absent means no trial has started.
+    if (billingOn(c.env)) {
+      const row = await planRow(c.env.DB, id);
+      if (row) account.plan = accountPlanOf(row, Date.now());
+    }
     return c.json(account);
   })
 

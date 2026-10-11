@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { DELETED_FILES_KEPT_DAYS, DUMPS_KEPT_DAYS, MIRROR_KEPT_DAYS, RESTORES_LISTED, RESTORE_WINDOW_DAYS, type AccountDump, type OperatorAccount as Account, type StoreRestore } from '@unbent/shared';
+import { BASE_STORAGE_GB, DELETED_FILES_KEPT_DAYS, DUMPS_KEPT_DAYS, MIRROR_KEPT_DAYS, RESTORES_LISTED, RESTORE_WINDOW_DAYS, type AccountDump, type OperatorAccount as Account, type StoreRestore } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { ApiError, LoadFailedError, errorText } from '../notes-api.js';
 import { formatBytes } from '../format-bytes.js';
@@ -36,6 +36,7 @@ export function OperatorAccount({ userId }: { userId: string }) {
   const row = useQuery(operatorAccountQuery(userId));
   const account = row.data ?? null;
   const stats = useQuery(storeStatsQuery(userId));
+  const config = useQuery(configQuery());
   // Moved each time a section below asks to change the store — in `finally`, since a
   // request that failed may still have been applied — and each section is keyed on the
   // others'. An answer a section keeps can carry an undo (when the history failed to
@@ -95,7 +96,7 @@ export function OperatorAccount({ userId }: { userId: string }) {
 
       {account && <AccountFacts account={account} lastWriteAt={live} reading={stats.isPending} />}
 
-      {account?.plan && <PlanSection userId={userId} email={account.email} plan={account.plan} />}
+      {account && config.data?.billing && <PlanSection userId={userId} email={account.email} plan={account.plan ?? null} />}
 
       <section className="settings-section">
         <h3>Store</h3>
@@ -1071,16 +1072,18 @@ function Resync({ userId, email }: { userId: string; email: string }) {
  * above the store's facts, since it is the first thing an operator looking at an
  * account that has written to say it cannot write wants to see.
  */
-function PlanSection({ userId, email, plan }: { userId: string; email: string; plan: NonNullable<Account['plan']> }) {
+function PlanSection({ userId, email, plan }: { userId: string; email: string; plan: Account['plan'] | null }) {
   const queryClient = useQueryClient();
-  const { title, sentence } = describePlan(plan, 'operator');
+  // No row yet: the account has made no request since billing came on, so its fortnight
+  // has not started. Read rather than made by the route, so looking does not start it.
+  const { title, sentence } = plan ? describePlan(plan, 'operator') : { title: 'No trial yet', sentence: 'The account has not been used since billing came on; its fortnight starts at its next request.' };
   const [until, setUntil] = useState('');
-  const [storageGb, setStorageGb] = useState(String(plan.storageGb));
+  const [storageGb, setStorageGb] = useState(String(plan?.storageGb ?? BASE_STORAGE_GB));
   const [busy, setBusy] = useState(false);
   const [ending, setEnding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
-  const subscribed = plan.subscription !== null && plan.subscription.status !== 'canceled';
+  const subscribed = plan != null && plan.subscription !== null && plan.subscription.status !== 'canceled';
 
   async function send(body: Parameters<typeof api.compAccount>[1]) {
     setBusy(true);
@@ -1103,8 +1106,7 @@ function PlanSection({ userId, email, plan }: { userId: string; email: string; p
       <h3>Plan</h3>
       <p>
         <strong>{title}.</strong> {sentence}
-        {' '}
-        <span className="muted">{plan.storageGb} GB of storage.</span>
+        {plan && <span className="muted"> {plan.storageGb} GB of storage.</span>}
       </p>
       {subscribed ? (
         <p className="muted small">Paid through Paddle. To comp this account instead, cancel the subscription in Paddle first.</p>
@@ -1131,7 +1133,7 @@ function PlanSection({ userId, email, plan }: { userId: string; email: string; p
           >
             {busy ? 'Saving…' : until ? 'Comp until then' : 'Comp with no end'}
           </Button>
-          {plan.source === 'comp' && plan.state === 'active' && !ending && (
+          {plan !== null && plan !== undefined && plan.source === 'comp' && plan.state === 'active' && !ending && (
             <Button variant="quiet" tone="danger" disabled={busy} onClick={() => setEnding(true)}>
               End comp
             </Button>
