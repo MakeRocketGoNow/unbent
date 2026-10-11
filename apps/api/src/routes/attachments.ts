@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import {
+  type AttachmentInfo,
   MAX_ATTACHMENT_BYTES,
   attachmentTextsSchema,
   copyAttachmentsSchema,
@@ -207,8 +208,11 @@ export const attachments = new Hono<AppEnv>()
     });
     if (!fetched.ok) return c.json({ error: fetched.error }, fetched.status);
 
+    // Before the bytes are stored, on their length, which is known; decided again as the
+    // row is recorded, with the sum, so two tabs saving images cannot both take the last block.
+    const quota = quotaOf(c.env, c.get('plan'));
     try {
-      await assertRoom(repo, quotaOf(c.env, c.get('plan')), fetched.bytes.byteLength);
+      await assertRoom(repo, quota, fetched.bytes.byteLength);
     } catch (err) {
       if (err instanceof StorageFull) return c.json(storageFullBody(err), 402);
       throw err;
@@ -222,14 +226,14 @@ export const attachments = new Hono<AppEnv>()
     });
     if (!object) return c.json({ error: 'Upload failed' }, 500);
 
-    const info = await repo.record({
-      id,
-      noteId,
-      filename,
-      contentType: fetched.contentType,
-      size: object.size,
-      r2Key: key,
-    });
+    let info: AttachmentInfo;
+    try {
+      info = await repo.record({ id, noteId, filename, contentType: fetched.contentType, size: object.size, r2Key: key }, { quota });
+    } catch (err) {
+      if (!(err instanceof StorageFull)) throw err;
+      await c.env.BLOBS.delete(key).catch(() => {});
+      return c.json(storageFullBody(err), 402);
+    }
     return c.json({ ...info, path: `files/${filename}`, url }, 201);
   })
 

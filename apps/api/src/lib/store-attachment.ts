@@ -6,7 +6,7 @@ import {
 } from '@unbent/shared';
 import type { AttachmentsRepo } from './attachments-repo.js';
 import type { NotesRepo } from './notes-repo.js';
-import { assertRoom, StorageFull, storageExceeded } from './quota.js';
+import { assertRoom, StorageFull } from './quota.js';
 import { readAttachment, serverCanRead, uploadReaders } from './read-attachment.js';
 import type { Env } from '../types.js';
 
@@ -127,16 +127,15 @@ export async function storeAttachment(
 
   // R2 reports the true byte count; anything the caller declared was a claim. The quota
   // is decided again on that count, in the transaction that records the row, so two
-  // uploads in flight cannot both take the last block (`AttachmentsStore.record`). The
-  // object goes before the refusal, since no row will ever name it.
+  // uploads in flight cannot both take the last block (`AttachmentsStore.record`); the
+  // refusal arrives as `StorageFull` (`translateStoreError`). The object goes before
+  // it, since no row will ever name it.
   let info: AttachmentInfo;
   try {
     info = await attachments.record({ id, noteId, filename, contentType, size: object.size, r2Key: key }, { quota: input.quota });
   } catch (err) {
-    const full = storageExceeded(err);
-    if (!full) throw err;
-    await env.BLOBS.delete(key).catch(() => {});
-    throw full;
+    if (err instanceof StorageFull) await env.BLOBS.delete(key).catch(() => {});
+    throw err;
   }
 
   const path = `files/${filename}`;

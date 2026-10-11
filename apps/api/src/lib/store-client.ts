@@ -1,6 +1,8 @@
 import { InvalidFieldValue } from '@unbent/shared';
 import type { UserStore } from '../store/user-store.js';
 import type { Env } from '../types.js';
+import { STORAGE_FULL_CODE } from '@unbent/shared';
+import { StorageFull } from './quota.js';
 
 /**
  * The Worker's side of the per-account note store: how a request reaches its user's
@@ -63,9 +65,14 @@ const TRANSIENT = /overloaded|reset because its code was updated|transient|netwo
  */
 export function translateStoreError(err: unknown): unknown {
   if (err && typeof err === 'object') {
-    const e = err as { name?: unknown; message?: unknown; fieldName?: unknown; retryable?: unknown; overloaded?: unknown };
+    const e = err as { name?: unknown; message?: unknown; fieldName?: unknown; retryable?: unknown; overloaded?: unknown; code?: unknown; usedBytes?: unknown; quotaBytes?: unknown; addingBytes?: unknown };
     if (e.name === 'InvalidFieldValue' && typeof e.fieldName === 'string') {
       return new InvalidFieldValue(e.fieldName, typeof e.message === 'string' ? e.message : '');
+    }
+    // The store's refusal of a file past the plan's storage (`StorageExceeded` in
+    // store/attachments.ts), rebuilt as the Worker's own so a route keeps `instanceof`.
+    if (e.code === STORAGE_FULL_CODE && typeof e.usedBytes === 'number' && typeof e.quotaBytes === 'number') {
+      return new StorageFull(e.usedBytes, e.quotaBytes, typeof e.addingBytes === 'number' ? e.addingBytes : 0);
     }
     if (e.retryable === true || e.overloaded === true) return new StoreUnavailable(err);
     if (typeof e.message === 'string' && TRANSIENT.test(e.message)) return new StoreUnavailable(err);
