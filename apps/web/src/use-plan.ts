@@ -26,8 +26,30 @@ export function usePlan(): { billing: BillingConfig | undefined; plan: AccountPl
   const billing = config.data?.billing;
   const plan = useQuery(planQuery(billing !== undefined));
   const queryClient = useQueryClient();
-  const now = useClock(plan.data?.state !== 'inactive' ? plan.data?.until ?? null : null);
+  const until = plan.data?.state !== 'inactive' ? plan.data?.until ?? null : null;
+  const now = useClock(until);
 
+  // The end reached on the clock is also a reason to ask again: a renewing subscription's
+  // end is its renewal, and the webhook has moved the date by the time the timer fires
+  // — or will shortly, which the executor's retries and the next focus cover.
+  const reached = until !== null && until <= now;
+  useEffect(() => {
+    if (reached) void queryClient.invalidateQueries({ queryKey: keys.plan() });
+  }, [reached, queryClient]);
+
+  const data = plan.data;
+  const inactive = data !== undefined && (data.state === 'inactive' || (data.until !== null && data.until <= now));
+  return { billing, plan: data, inactive, now };
+}
+
+/**
+ * The one listener for the outbox's word that a write was refused for the plan: the
+ * plan read again. Mounted once, by the banner, which is on every signed-in page;
+ * `usePlan` itself is on several components at once, and a listener per caller made
+ * one refusal three reads, each cancelling the last.
+ */
+export function usePlanRefusalListener(): void {
+  const queryClient = useQueryClient();
   useEffect(
     () =>
       onPlanRefused(() => {
@@ -35,10 +57,6 @@ export function usePlan(): { billing: BillingConfig | undefined; plan: AccountPl
       }),
     [queryClient],
   );
-
-  const data = plan.data;
-  const inactive = data !== undefined && (data.state === 'inactive' || (data.until !== null && data.until <= now));
-  return { billing, plan: data, inactive, now };
 }
 
 const DAY = 24 * 60 * 60 * 1000;

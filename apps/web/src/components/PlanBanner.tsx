@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import { isHosted } from '../app-bridge.js';
-import { usePlan } from '../use-plan.js';
+import { usePlan, usePlanRefusalListener } from '../use-plan.js';
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -32,6 +32,7 @@ export const TRIAL_WARNING_DAYS = 3;
  */
 export function PlanBanner({ now: fixed }: { now?: number } = {}) {
   const { plan, inactive, now: clock } = usePlan();
+  usePlanRefusalListener();
   const now = fixed ?? clock;
   const hosted = isHosted();
   let line: string | null = null;
