@@ -39,8 +39,8 @@ export const GB = 1024 * 1024 * 1024;
 
 /**
  * The most storage blocks one checkout or change may ask for: a terabyte on top, past
- * any archive this app has seen. The API refuses more; the Plan page offers fewer in its
- * list and says where to ask for the rest.
+ * any archive this app has seen. The API refuses more; the Plan page's checkout lists
+ * fewer, and adding storage later goes up to this.
  */
 export const MAX_STORAGE_UNITS = 40;
 

@@ -4,6 +4,7 @@ import type { Feed } from './feed.js';
 import { placeholders, runs } from './notes-shared.js';
 import type { Sql } from './sql.js';
 import { textSummary, TEXT_SUMMARY_SOURCE_CHARS } from './text-summary.js';
+import { STORAGE_FULL_CODE } from '@unbent/shared';
 
 export interface AttachmentRow {
   id: string;
@@ -220,6 +221,23 @@ export function summarize(
 export const TEXT_PAGE_BYTES = 1024 * 1024;
 
 /**
+ * A file the plan's storage has no room for, thrown by `record` inside its transaction.
+ * The properties are what cross RPC: the Worker reads `code` off whatever arrived, since
+ * `instanceof` fails on the other side, and answers with the numbers.
+ */
+export class StorageExceeded extends Error {
+  readonly code = STORAGE_FULL_CODE;
+  constructor(
+    readonly usedBytes: number,
+    readonly quotaBytes: number,
+    readonly addingBytes: number,
+  ) {
+    super(`the account holds ${usedBytes} bytes of ${quotaBytes}, and ${addingBytes} more would not fit`);
+    this.name = 'StorageExceeded';
+  }
+}
+
+/**
  * Attachment metadata for one account, inside that account's own SQLite.
  *
  * `AttachmentsRepo` moved onto the per-user store, with the same three differences
@@ -231,23 +249,6 @@ export const TEXT_PAGE_BYTES = 1024 * 1024;
  * R2 keys are stored here and handed back, never built: the key names the user, and the
  * Worker builds it from the session (`buildKey` on the facade). Bytes never come this way.
  */
-/**
- * A file the plan's storage has no room for, thrown by `record` inside its transaction.
- * The properties are what cross RPC: the Worker reads `code` off whatever arrived, since
- * `instanceof` fails on the other side, and answers with the numbers.
- */
-export class StorageExceeded extends Error {
-  readonly code = 'STORAGE_FULL';
-  constructor(
-    readonly usedBytes: number,
-    readonly quotaBytes: number,
-    readonly addingBytes: number,
-  ) {
-    super(`the account holds ${usedBytes} bytes of ${quotaBytes}, and ${addingBytes} more would not fit`);
-    this.name = 'StorageExceeded';
-  }
-}
-
 export class AttachmentsStore {
   /** `deletedBlobs` is the object's one `DeletedBlobs`: `remove` adds to it and `record` takes from it. */
   constructor(
