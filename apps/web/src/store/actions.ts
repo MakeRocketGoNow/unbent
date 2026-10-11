@@ -410,10 +410,18 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
       duplicateNote: async ({ transaction }) => {
         const { sourceId, copyId } = transaction.metadata as unknown as { sourceId: string; copyId: string };
         try {
-          const copy = await api.duplicateNote(sourceId, copyId).catch(refusal);
+          const answer = await api.duplicateNote(sourceId, copyId).catch(refusal);
           // The copy's row goes in now; its files are the server's to make, and the
-          // pull brings their rows.
+          // pull brings their rows. A copy whose files had no room (`filesSkipped`,
+          // MAK-108) is still the copy, said so under its files rather than kept on the row.
+          const { filesSkipped, ...copy } = answer as typeof answer & { filesSkipped?: { error: string } };
           took(copy);
+          if (filesSkipped) {
+            notice(
+              { noteId: copy.id, attachmentId: `files-skipped-${copy.id}`, filename: 'Files not copied', contentType: '', size: 0 },
+              filesSkipped.error,
+            );
+          }
           await settled();
           ended(transaction.id);
         } catch (err) {
