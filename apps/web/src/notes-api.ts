@@ -847,13 +847,17 @@ export async function uploadFile(
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
     let message = detail || `${res.status}`;
+    let code: string | undefined;
     try {
-      message = (JSON.parse(detail) as { error?: string }).error ?? message;
+      const parsed = JSON.parse(detail) as { error?: string; code?: unknown };
+      message = parsed.error ?? message;
+      if (typeof parsed.code === 'string') code = parsed.code;
     } catch {
       // Not JSON: the edge's own error page, say. The text is the message.
     }
-    // With the status, so the outbox can tell a refusal from a server that is down.
-    throw new ApiError(res.status, message);
+    // With the status and the code, so the outbox can tell a refusal from a server that
+    // is down, and the plan's refusal, which it keeps, from the storage's, which it does not.
+    throw new ApiError(res.status, message, code);
   }
   return res.json() as Promise<UploadedFile>;
 }
