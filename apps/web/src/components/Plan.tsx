@@ -249,7 +249,9 @@ export function Plan() {
                 disabled={busy !== null || overSmaller}
                 tip={
                   plan.usedBytes === undefined
-                    ? 'Reading what the account holds…'
+                    ? usage.isPending
+                      ? 'Reading what the account holds…'
+                      : 'What the account holds could not be read'
                     : overSmaller
                       ? `The account holds more than ${plan.storageGb - STORAGE_ADDON_GB} GB; delete some files first`
                       : undefined
