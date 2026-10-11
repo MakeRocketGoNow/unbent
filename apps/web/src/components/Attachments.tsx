@@ -297,7 +297,10 @@ export function Attachments({
       // A file still waiting to upload is taken back on this device; anything else is the
       // server's to delete.
       await deleteOrCancelAttachment(startedFor, filename);
-      if (stillLinked && noteIdRef.current === startedFor) {
+      // Not while the plan has ended: the editor takes no edits and the autosave is off,
+      // so a rewrite would show the link gone until the note was reopened and then bring
+      // it back, pointing at nothing. The link stays, and the confirm said it would.
+      if (stillLinked && !lapsed && noteIdRef.current === startedFor) {
         onBodyRewrite(removeAttachmentLinks(bodyRef.current, filename));
       }
       await queryClient.invalidateQueries({ queryKey: keys.attachments(startedFor) });
@@ -508,7 +511,9 @@ export function Attachments({
                     waiting
                       ? `It has not uploaded, so this device holds the only copy.${isLinked ? ' Its link in this note will be removed too.' : ''}`
                       : isLinked
-                        ? 'It is still linked in this note; the link will be removed too.'
+                        ? lapsed
+                          ? 'It is still linked in this note; the link stays until the plan is active again. This cannot be undone.'
+                          : 'It is still linked in this note; the link will be removed too.'
                         : 'This cannot be undone.'
                   }
                   busy={busy === file.filename}
