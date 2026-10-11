@@ -973,6 +973,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     await flush();
     const copy = await actions.duplicateNote(noteId);
     void queryClient.invalidateQueries({ queryKey: ['search'] });
+    // The copy is made without the files the plan's storage had no room for (MAK-108).
+    if (copy.filesSkipped) setSnackbar({ message: `Copied without its files. ${copy.filesSkipped}`, tone: 'error' });
     void navigate({ to: '/notes/$noteId', params: { noteId: copy.id }, search: (p) => p });
   }
 

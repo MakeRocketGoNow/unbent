@@ -320,7 +320,12 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
             planAccepted();
             return out;
           } catch (err) {
-            if (err instanceof NonRetriableError) throw err;
+            // Ended for good, the head of the queue is gone either way, and the next
+            // refusal sets the flag again; see `planLapsed`.
+            if (err instanceof NonRetriableError) {
+              planAccepted();
+              throw err;
+            }
             // The executor records the message and not the cause, so this is the one
             // place a queue stuck on a 429 or a lapsed session says so outside a debugger.
             console.debug('[outbox] kept:', err);
@@ -330,6 +335,8 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
       ]),
     );
 
+  // A fresh outbox has nothing refused waiting in it, whatever the last account's had.
+  planAccepted();
   const adapter = new IndexedDBAdapter(outboxName(userId), OUTBOX_STORE);
   /** The adapter's connection: a private field, pinned by `pins.test.ts`; null until its first use. */
   const connection = () => (adapter as unknown as { db?: IDBDatabase | null }).db ?? null;
@@ -1381,14 +1388,23 @@ export async function createNote(input: { title: string; body: string; tags: str
   return toNote(row, lookups(snapshot(lib)));
 }
 
-/** A copy of a note, under an id minted here before it is sent anywhere, as `createNote`'s is; the server copies its files. */
-export async function duplicateNote(sourceId: string, copyId: string = crypto.randomUUID()): Promise<{ id: string }> {
+/**
+ * A copy of a note, under an id minted here before it is sent anywhere, as `createNote`'s
+ * is; the server copies its files. A copy whose files had no room (MAK-108) comes back
+ * with `filesSkipped`, the reason in a sentence, for the caller to show; the queued copy
+ * leaves the same under its files instead.
+ */
+export async function duplicateNote(sourceId: string, copyId: string = crypto.randomUUID()): Promise<{ id: string; filesSkipped?: string }> {
   const far = await away();
   if (far) return far('duplicateNote', [sourceId, copyId], { ids: [], refiles: true });
   const lib = await queueable();
-  if (!lib) return pulled(api.duplicateNote(sourceId, copyId), { ids: [], refiles: true });
+  const direct = async () => {
+    const { filesSkipped, ...note } = (await pulled(api.duplicateNote(sourceId, copyId), { ids: [], refiles: true })) as Awaited<ReturnType<typeof api.duplicateNote>> & { filesSkipped?: { error: string } };
+    return { id: note.id, ...(filesSkipped ? { filesSkipped: filesSkipped.error } : {}) };
+  };
+  if (!lib) return direct();
   const source = lib.notes.get(sourceId);
-  if (!source) return pulled(api.duplicateNote(sourceId, copyId), { ids: [], refiles: true });
+  if (!source) return direct();
   const now = Date.now();
   queue(lib, 'duplicateNote', { sourceId, copyId }, () => {
     lib.notes.insert({ ...source, id: copyId, createdAt: now, updatedAt: now, files: [] });
@@ -1444,7 +1460,14 @@ export async function clearHistory(noteId: string): Promise<number> {
   if (far) return far('clearHistory', [noteId]);
   const lib = await resolve();
   if (lib && !(await drained(lib, noteId, RESTORE_DRAIN_MS))) {
-    throw new Error('This note has changes that have not synced yet. Try again in a moment.');
+    // Waiting is still right while the plan has ended — a save landing after the clear
+    // would keep a copy of the very text being cleared — but "try again in a moment" is
+    // not true then: the edit waits for the subscription.
+    throw new Error(
+      planLapsed()
+        ? 'This note has an edit waiting for the plan to be active again; its history can be cleared once that has gone.'
+        : 'This note has changes that have not synced yet. Try again in a moment.',
+    );
   }
   return api.clearRevisions(noteId);
 }
@@ -1495,12 +1518,29 @@ export async function restoreRevision(noteId: string, revisionId: number, opts: 
  * first and would hold them behind it until the person subscribed, and a lapsed account
  * is promised exactly these. Direct means a connection, which a lapsed account's delete
  * needs anyway, and the refusal of the one that could not wait is the ordinary one.
+ *
+ * Only for a note the server holds, though. A note made here whose creation is the
+ * write that was refused — the one written in the flight whose trial ran out — is not
+ * on the server to delete; its delete queues behind the creation as before, and the two
+ * replay in order once the person subscribes, or the trash is emptied here. The queue's
+ * own list of what is waiting is how the two are told apart.
  */
+function roundTheQueue(lib: WritableLibrary, noteId: string): boolean {
+  return planLapsed() && !lib.outbox.status().waiting.has(noteId);
+}
+
+/** A bulk action's ids while a refusal waits: the ones that go to the server now, and the ones that queue. */
+function roundOrQueued(lib: WritableLibrary, ids: string[]): { direct: string[]; queued: string[] } {
+  if (!planLapsed()) return { direct: [], queued: ids };
+  const waiting = lib.outbox.status().waiting;
+  return { direct: ids.filter((id) => !waiting.has(id)), queued: ids.filter((id) => waiting.has(id)) };
+}
+
 export async function trashNote(noteId: string): Promise<void> {
   const far = await away();
   if (far) return far('trashNote', [noteId], { ids: [noteId], refiles: true });
   const lib = await queueable();
-  if (!lib || notCopiedYet(lib, noteId) || planLapsed()) return pulled(api.deleteNote(noteId), { ids: [noteId], refiles: true });
+  if (!lib || notCopiedYet(lib, noteId) || roundTheQueue(lib, noteId)) return pulled(api.deleteNote(noteId), { ids: [noteId], refiles: true });
   queue(lib, 'trashNote', { noteId }, () => {
     lib.notes.update(noteId, (row) => {
       row.deletedAt = Date.now();
@@ -1512,7 +1552,7 @@ export async function restoreNote(noteId: string): Promise<void> {
   const far = await away();
   if (far) return far('restoreNote', [noteId], { ids: [noteId], refiles: true });
   const lib = await queueable();
-  if (!lib || notCopiedYet(lib, noteId) || planLapsed()) return pulled(api.restoreNote(noteId).then(() => undefined), { ids: [noteId], refiles: true });
+  if (!lib || notCopiedYet(lib, noteId) || roundTheQueue(lib, noteId)) return pulled(api.restoreNote(noteId).then(() => undefined), { ids: [noteId], refiles: true });
   queue(lib, 'restoreNote', { noteId }, () => {
     lib.notes.update(noteId, (row) => {
       delete row.deletedAt;
@@ -1524,7 +1564,7 @@ export async function purgeNote(noteId: string): Promise<void> {
   const far = await away();
   if (far) return far('purgeNote', [noteId], { ids: [noteId], refiles: true });
   const lib = await queueable();
-  if (!lib || notCopiedYet(lib, noteId) || planLapsed()) return pulled(api.deleteNotePermanently(noteId), { ids: [noteId], refiles: true });
+  if (!lib || notCopiedYet(lib, noteId) || roundTheQueue(lib, noteId)) return pulled(api.deleteNotePermanently(noteId), { ids: [noteId], refiles: true });
   queue(lib, 'purgeNote', { noteId }, () => {
     lib.notes.delete(noteId);
   });
@@ -1559,9 +1599,11 @@ export async function trashNotes(ids: string[]): Promise<number> {
   const far = await away();
   if (far) return far('trashNotes', [ids], { ids, refiles: true });
   const lib = await queueable();
-  if (!lib || planLapsed()) return pulled(api.deleteNotes(ids).then((r) => r.trashed), { ids, refiles: true });
-  const { here, there } = split(lib, ids);
-  const remote = there.length > 0 ? await pulled(api.deleteNotes(there).then((r) => r.trashed), { ids: there, refiles: true }) : 0;
+  if (!lib) return pulled(api.deleteNotes(ids).then((r) => r.trashed), { ids, refiles: true });
+  const { here: held, there } = split(lib, ids);
+  const { direct, queued: here } = roundOrQueued(lib, held);
+  const sent = [...there, ...direct];
+  const remote = away.length > 0 ? await pulled(api.deleteNotes(away).then((r) => r.trashed), { ids: away, refiles: true }) : 0;
   if (here.length > 0) {
     queue(lib, 'trashNotes', { ids: here }, () => {
       const now = Date.now();
@@ -1575,9 +1617,11 @@ export async function restoreNotes(ids: string[]): Promise<number> {
   const far = await away();
   if (far) return far('restoreNotes', [ids], { ids, refiles: true });
   const lib = await queueable();
-  if (!lib || planLapsed()) return pulled(api.restoreNotes(ids).then((r) => r.restored), { ids, refiles: true });
-  const { here, there } = split(lib, ids);
-  const remote = there.length > 0 ? await pulled(api.restoreNotes(there).then((r) => r.restored), { ids: there, refiles: true }) : 0;
+  if (!lib) return pulled(api.restoreNotes(ids).then((r) => r.restored), { ids, refiles: true });
+  const { here: held, there } = split(lib, ids);
+  const { direct, queued: here } = roundOrQueued(lib, held);
+  const sent = [...there, ...direct];
+  const remote = away.length > 0 ? await pulled(api.restoreNotes(away).then((r) => r.restored), { ids: away, refiles: true }) : 0;
   if (here.length > 0) {
     queue(lib, 'restoreNotes', { ids: here }, () => {
       for (const id of here) lib.notes.update(id, (row) => void delete row.deletedAt);
@@ -1590,9 +1634,11 @@ export async function purgeNotes(ids: string[]): Promise<number> {
   const far = await away();
   if (far) return far('purgeNotes', [ids], { ids, refiles: true });
   const lib = await queueable();
-  if (!lib || planLapsed()) return pulled(api.deleteNotesPermanently(ids).then((r) => r.deleted), { ids, refiles: true });
-  const { here, there } = split(lib, ids);
-  const remote = there.length > 0 ? await pulled(api.deleteNotesPermanently(there).then((r) => r.deleted), { ids: there, refiles: true }) : 0;
+  if (!lib) return pulled(api.deleteNotesPermanently(ids).then((r) => r.deleted), { ids, refiles: true });
+  const { here: held, there } = split(lib, ids);
+  const { direct, queued: here } = roundOrQueued(lib, held);
+  const sent = [...there, ...direct];
+  const remote = away.length > 0 ? await pulled(api.deleteNotesPermanently(away).then((r) => r.deleted), { ids: away, refiles: true }) : 0;
   if (here.length > 0) {
     queue(lib, 'purgeNotes', { ids: here }, () => {
       for (const id of here) lib.notes.delete(id);

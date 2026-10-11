@@ -457,7 +457,7 @@ describe('a replayed write', () => {
   });
 
   it('ends for good on a 4xx the server would give again, and is kept for one that may change', async () => {
-    const { fake } = library([row('n1'), row('n2')]);
+    const { fake } = library([row('n1'), row('n2'), row('n3')]);
     await actions.trashNotes(['n1']);
     await actions.trashNotes(['n2']);
     await tick();
@@ -1248,6 +1248,29 @@ describe('a file added to a note', () => {
    * upload's own error path builds the error, so this is the case that proves it carries
    * the code the outbox reads.
    */
+  /**
+   * A note made here whose creation the plan refused is not on the server: its delete
+   * queues behind the creation, as it did before deletes went round a kept refusal, so
+   * the person who decides not to subscribe can still throw away what they wrote.
+   */
+  it('queues the delete of a note whose creation the plan refused, behind it', async () => {
+    const { lib, fake } = library([row('n1')]);
+    const made = await actions.createNote({ title: 'In the flight', body: '', tags: [], notebook: null });
+    await tick();
+    vi.mocked(api.createNote).mockRejectedValueOnce(new ApiError(402, 'read-only', 'PLAN_INACTIVE'));
+    expect(await fake.replayOne()).toBe('kept');
+    expect(planLapsed()).toBe(true);
+    expect(await actions.trashNotes([made.id])).toBe(1);
+    await tick();
+    expect(api.deleteNotes).not.toHaveBeenCalled();
+    expect(fake.queue.map((e) => e.mutationFnName)).toEqual(['createNote', 'trashNotes']);
+    expect(lib.notes.get(made.id)?.deletedAt).toBeDefined();
+    // A note the server holds still goes round the kept entry.
+    vi.mocked(api.deleteNotes).mockResolvedValueOnce({ trashed: 1 });
+    await actions.trashNotes(['n1']);
+    expect(api.deleteNotes).toHaveBeenLastCalledWith(['n1']);
+  });
+
   it('is kept, bytes and all, when the plan\'s 402 refuses it', async () => {
     const { lib, fake } = library([row('n1')]);
     setReachableForTests(false);
