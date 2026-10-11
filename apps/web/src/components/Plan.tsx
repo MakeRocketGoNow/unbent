@@ -107,7 +107,7 @@ export function Plan() {
   // Less storage than the account holds would refuse every upload after it; the server
   // refuses the change, and the button says why before the press.
   const smaller = storageQuotaBytes(plan.storageGb - STORAGE_ADDON_GB);
-  const overSmaller = plan.usedBytes !== undefined && plan.usedBytes > smaller;
+  const overSmaller = plan.usedBytes === undefined || plan.usedBytes > smaller;
 
   async function subscribe() {
     setBusy('checkout');
@@ -163,13 +163,14 @@ export function Plan() {
 
   async function changeStorage(next: number) {
     setBusy('storage');
-    setAdding(false);
     setError(null);
     try {
       await api.setStorage(next);
       await api.refreshPlan().catch(() => undefined);
       await refresh();
       setNotice(next > unitsOf(plan!) ? `Added ${STORAGE_ADDON_GB} GB.` : `Removed ${STORAGE_ADDON_GB} GB.`);
+      // Closed once the change has landed, so the confirm's own "Adding…" is what waits.
+      setAdding(false);
     } catch (err) {
       setError((err as Error).message || 'The storage could not be changed.');
     } finally {
@@ -235,7 +236,7 @@ export function Plan() {
 
       <section className="settings-section">
         <h3>Storage</h3>
-        <StorageMeter plan={plan} />
+        <StorageMeter plan={plan} reading={usage.isPending} />
         {canChangeStorage && !hosted && !adding && (
           <div className="backfill-row">
             <Button size="small" disabled={busy !== null || unitsOf(plan) >= MAX_STORAGE_UNITS} onClick={() => setAdding(true)}>
@@ -246,7 +247,13 @@ export function Plan() {
                 size="small"
                 variant="quiet"
                 disabled={busy !== null || overSmaller}
-                tip={overSmaller ? `The account holds more than ${plan.storageGb - STORAGE_ADDON_GB} GB; delete some files first` : undefined}
+                tip={
+                  plan.usedBytes === undefined
+                    ? 'Reading what the account holds…'
+                    : overSmaller
+                      ? `The account holds more than ${plan.storageGb - STORAGE_ADDON_GB} GB; delete some files first`
+                      : undefined
+                }
                 onClick={() => void changeStorage(unitsOf(plan) - 1)}
               >
                 Remove {STORAGE_ADDON_GB} GB
@@ -340,8 +347,8 @@ function PlanState({ plan }: { plan: AccountPlan }) {
   );
 }
 
-/** What the account holds against what it may: a bar and the numbers. */
-function StorageMeter({ plan }: { plan: AccountPlan }) {
+/** What the account holds against what it may: a bar and the numbers. `reading` while the store has not answered yet. */
+function StorageMeter({ plan, reading }: { plan: AccountPlan; reading: boolean }) {
   const quota = storageQuotaBytes(plan.storageGb);
   const used = plan.usedBytes;
   const share = used === undefined ? 0 : Math.min(1, used / quota);
@@ -351,7 +358,7 @@ function StorageMeter({ plan }: { plan: AccountPlan }) {
         <div className={`progress-fill${share >= 0.95 ? ' plan-meter-full' : ''}`} style={{ width: `${Math.round(share * 100)}%` }} />
       </div>
       <p className="muted small">
-        {used === undefined ? 'Usage could not be read right now' : `${formatBytes(used)} used`} of {plan.storageGb} GB.
+        {used !== undefined ? `${formatBytes(used)} used` : reading ? 'Reading what is held…' : 'Usage could not be read right now'} of {plan.storageGb} GB.
       </p>
     </>
   );
