@@ -106,7 +106,8 @@ export async function notifyLapsedPlans(
     try {
       await sendEmail(env, { to: row.email, ...lapseMessage(kind, planUrl) });
     } catch (err) {
-      if (err instanceof EmailRejected && err.status < 500) {
+      // A 4xx but not a rate limit or a timeout, which are the provider's day, not the address's.
+      if (err instanceof EmailRejected && err.status < 500 && err.status !== 429 && err.status !== 408) {
         console.error(`[billing] lapse mail for user=${row.user_id} refused by the provider; marked as told:`, err.message);
         await updatePlanStatement(env.DB, row.user_id, { lapseNotifiedAt: now }, now).run();
         continue;

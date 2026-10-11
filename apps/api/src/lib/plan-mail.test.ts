@@ -71,6 +71,7 @@ describe('the lapse mail', () => {
         sent.push(body.to);
         if (body.to === 'bad@example.com') return new Response('nope', { status: 422 });
         if (body.to === 'down@example.com') return new Response('later', { status: 503 });
+        if (body.to === 'slow@example.com') return new Response('too many', { status: 429 });
         return new Response('{}', { status: 200 });
       }),
     );
@@ -78,11 +79,12 @@ describe('the lapse mail', () => {
       { user_id: 'u1', plan: 'trial', plan_until: 1, source: null, email: 'one@example.com' },
       { user_id: 'u2', plan: 'active', plan_until: 1, source: 'paddle', email: 'bad@example.com' },
       { user_id: 'u3', plan: 'active', plan_until: 1, source: 'comp', email: 'down@example.com' },
+      { user_id: 'u4', plan: 'active', plan_until: 1, source: 'paddle', email: 'slow@example.com' },
     ]);
     expect(await notifyLapsedPlans({ ...paddle, DB: db }, 10)).toBe(1);
-    expect(sent).toEqual(['one@example.com', 'bad@example.com', 'down@example.com']);
+    expect(sent).toEqual(['one@example.com', 'bad@example.com', 'down@example.com', 'slow@example.com']);
     // The due query with now and the limit, then a mark for the one that went and the
-    // one refused for good; the provider's outage is tried again next run.
+    // one refused for good; the provider's outage and its rate limit are tried again next run.
     expect(ran[0]!.binds).toEqual([10, 5]);
     expect(ran.slice(1).map((r) => r.binds[0])).toEqual(['u1', 'u2']);
     expect(ran[1]!.sql).toContain('lapse_notified_at');
