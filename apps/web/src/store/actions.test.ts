@@ -14,6 +14,7 @@ import { lookups, toNote } from './derive.js';
 import { feedControls, type Collections, type LocalNote } from './collections.js';
 import { FeedEngine, type Position } from './feed.js';
 import { installMemoryOpfs, type MemoryDirectory } from './test-opfs.js';
+import { planLapsed, resetPlanRefused } from '../plan-refused.js';
 
 /**
  * The rules the outbox holds, against a stand-in for the executor that keeps the real
@@ -364,6 +365,7 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 const settles = <T,>(p: Promise<T>) => Promise.race([p, new Promise<'stuck'>((r) => setTimeout(() => r('stuck'), 1000))]);
 
 beforeEach(() => {
+  resetPlanRefused();
   resetConnectivity();
 });
 
@@ -475,9 +477,16 @@ describe('a replayed write', () => {
     expect(fake.queue).toHaveLength(2);
 
     // The plan's 402 is kept — it changes when the person subscribes — and the storage's
-    // is not: the account is full until something goes (MAK-108).
+    // is not: the account is full until something goes (MAK-108). While the kept one
+    // waits at the head of the queue, a delete goes to the server directly rather than
+    // behind it, since the queue would hold it there until the subscription.
     vi.mocked(api.deleteNotes).mockRejectedValueOnce(new ApiError(402, '402: read-only', 'PLAN_INACTIVE'));
     expect(await fake.replayOne()).toBe('kept');
+    expect(fake.queue).toHaveLength(2);
+    expect(planLapsed()).toBe(true);
+    vi.mocked(api.deleteNotes).mockResolvedValueOnce({ trashed: 1 });
+    await actions.trashNotes(['n3']);
+    expect(api.deleteNotes).toHaveBeenLastCalledWith(['n3']);
     expect(fake.queue).toHaveLength(2);
     vi.mocked(api.deleteNotes).mockRejectedValueOnce(new ApiError(402, '402: full', 'STORAGE_FULL'));
     expect(await fake.replayOne()).toBe('refused');
@@ -1231,6 +1240,26 @@ describe('a file added to a note', () => {
     expect(root.paths()).toEqual([]);
     expect(lib.outbox.status().waiting.has('n1')).toBe(false);
     expect(lib.outbox.status().uploadNotices.size).toBe(0);
+  });
+
+  /**
+   * The plan's refusal keeps a queued upload as it keeps a save (MAK-108): the bytes on
+   * the shelf are the one copy, and the answer changes when the person subscribes. The
+   * upload's own error path builds the error, so this is the case that proves it carries
+   * the code the outbox reads.
+   */
+  it('is kept, bytes and all, when the plan\'s 402 refuses it', async () => {
+    const { lib, fake } = library([row('n1')]);
+    setReachableForTests(false);
+    await actions.uploadFile('n1', photo());
+    await tick();
+    setReachableForTests(true);
+    vi.mocked(api.uploadFile).mockRejectedValueOnce(new ApiError(402, 'read-only', 'PLAN_INACTIVE'));
+    expect(await fake.replayOne()).toBe('kept');
+    expect(root.paths()).toEqual(['unbent-files-u1/pending/n1/photo.jpg']);
+    expect(fake.queue.map((e) => e.mutationFnName)).toEqual(['uploadFile']);
+    expect(lib.outbox.status().uploadNotices.size).toBe(0);
+    expect(planLapsed()).toBe(true);
   });
 
   it('is queued under the id the request carried when the connection went mid-upload, so the replay finds what the server may have stored', async () => {

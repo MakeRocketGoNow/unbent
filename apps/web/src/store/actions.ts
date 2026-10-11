@@ -12,7 +12,7 @@ import { askToPersist, filesSupported, readFile, removeFile, writeFile } from '.
 import { FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE } from '../sw/routes.js';
 import { isWhole, refusedForGood, type FeedEngine } from './feed.js';
 import { CallUnsettledError, LibraryMovedError, SEND_ONCE } from './client-library.js';
-import { planRefused } from '../plan-refused.js';
+import { planAccepted, planLapsed, planRefused } from '../plan-refused.js';
 import { outboxLeaderName, outboxName } from './names.js';
 import { OutboxLeader } from './leader.js';
 
@@ -280,8 +280,9 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
    * to the server's copy — the text typed in a flight whose trial ran out mid-air — and
    * for a queued upload delete the one copy of the bytes. So it is kept, like a 401, and
    * replays after the checkout; and the plan is read again now (`planRefused`), so the
-   * banner and the read-only editor say why nothing goes. A 402 for the storage, the
-   * other code on that status, is for good as the server stands: the account is full
+   * banner and the read-only editor say why nothing goes. The deletes made meanwhile go
+   * round the kept entry rather than behind it; see `planLapsed`. A 402 for the storage,
+   * the other code on that status, is for good as the server stands: the account is full
    * until something is deleted, and the notice under the file says so.
    */
   const refusal = (err: unknown): never => {
@@ -314,7 +315,10 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
         name,
         async (params) => {
           try {
-            return await fn(params);
+            const out = await fn(params);
+            // A write the server took is a plan that is active; see `planLapsed`.
+            planAccepted();
+            return out;
           } catch (err) {
             if (err instanceof NonRetriableError) throw err;
             // The executor records the message and not the cause, so this is the one
@@ -1477,11 +1481,18 @@ export async function restoreRevision(noteId: string, revisionId: number, opts: 
   return restored;
 }
 
+/*
+ * The deletes, and the way back out of the trash, go to the server directly while a
+ * write refused for the plan waits in the queue (`planLapsed`): the queue runs oldest
+ * first and would hold them behind it until the person subscribed, and a lapsed account
+ * is promised exactly these. Direct means a connection, which a lapsed account's delete
+ * needs anyway, and the refusal of the one that could not wait is the ordinary one.
+ */
 export async function trashNote(noteId: string): Promise<void> {
   const far = await away();
   if (far) return far('trashNote', [noteId], { ids: [noteId], refiles: true });
   const lib = await queueable();
-  if (!lib || notCopiedYet(lib, noteId)) return pulled(api.deleteNote(noteId), { ids: [noteId], refiles: true });
+  if (!lib || notCopiedYet(lib, noteId) || planLapsed()) return pulled(api.deleteNote(noteId), { ids: [noteId], refiles: true });
   queue(lib, 'trashNote', { noteId }, () => {
     lib.notes.update(noteId, (row) => {
       row.deletedAt = Date.now();
@@ -1493,7 +1504,7 @@ export async function restoreNote(noteId: string): Promise<void> {
   const far = await away();
   if (far) return far('restoreNote', [noteId], { ids: [noteId], refiles: true });
   const lib = await queueable();
-  if (!lib || notCopiedYet(lib, noteId)) return pulled(api.restoreNote(noteId).then(() => undefined), { ids: [noteId], refiles: true });
+  if (!lib || notCopiedYet(lib, noteId) || planLapsed()) return pulled(api.restoreNote(noteId).then(() => undefined), { ids: [noteId], refiles: true });
   queue(lib, 'restoreNote', { noteId }, () => {
     lib.notes.update(noteId, (row) => {
       delete row.deletedAt;
@@ -1505,7 +1516,7 @@ export async function purgeNote(noteId: string): Promise<void> {
   const far = await away();
   if (far) return far('purgeNote', [noteId], { ids: [noteId], refiles: true });
   const lib = await queueable();
-  if (!lib || notCopiedYet(lib, noteId)) return pulled(api.deleteNotePermanently(noteId), { ids: [noteId], refiles: true });
+  if (!lib || notCopiedYet(lib, noteId) || planLapsed()) return pulled(api.deleteNotePermanently(noteId), { ids: [noteId], refiles: true });
   queue(lib, 'purgeNote', { noteId }, () => {
     lib.notes.delete(noteId);
   });
@@ -1540,7 +1551,7 @@ export async function trashNotes(ids: string[]): Promise<number> {
   const far = await away();
   if (far) return far('trashNotes', [ids], { ids, refiles: true });
   const lib = await queueable();
-  if (!lib) return pulled(api.deleteNotes(ids).then((r) => r.trashed), { ids, refiles: true });
+  if (!lib || planLapsed()) return pulled(api.deleteNotes(ids).then((r) => r.trashed), { ids, refiles: true });
   const { here, there } = split(lib, ids);
   const remote = there.length > 0 ? await pulled(api.deleteNotes(there).then((r) => r.trashed), { ids: there, refiles: true }) : 0;
   if (here.length > 0) {
@@ -1556,7 +1567,7 @@ export async function restoreNotes(ids: string[]): Promise<number> {
   const far = await away();
   if (far) return far('restoreNotes', [ids], { ids, refiles: true });
   const lib = await queueable();
-  if (!lib) return pulled(api.restoreNotes(ids).then((r) => r.restored), { ids, refiles: true });
+  if (!lib || planLapsed()) return pulled(api.restoreNotes(ids).then((r) => r.restored), { ids, refiles: true });
   const { here, there } = split(lib, ids);
   const remote = there.length > 0 ? await pulled(api.restoreNotes(there).then((r) => r.restored), { ids: there, refiles: true }) : 0;
   if (here.length > 0) {
@@ -1571,7 +1582,7 @@ export async function purgeNotes(ids: string[]): Promise<number> {
   const far = await away();
   if (far) return far('purgeNotes', [ids], { ids, refiles: true });
   const lib = await queueable();
-  if (!lib) return pulled(api.deleteNotesPermanently(ids).then((r) => r.deleted), { ids, refiles: true });
+  if (!lib || planLapsed()) return pulled(api.deleteNotesPermanently(ids).then((r) => r.deleted), { ids, refiles: true });
   const { here, there } = split(lib, ids);
   const remote = there.length > 0 ? await pulled(api.deleteNotesPermanently(there).then((r) => r.deleted), { ids: there, refiles: true }) : 0;
   if (here.length > 0) {
