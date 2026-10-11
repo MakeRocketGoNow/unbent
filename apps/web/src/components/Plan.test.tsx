@@ -79,6 +79,21 @@ describe('Plan', () => {
     expect(screen.getByRole('button', { name: 'Update payment method' })).toBeTruthy();
   });
 
+  /** Past its paid period, a past-due account is read-only, and the card is the way back — never a second checkout. */
+  it('sends a past-due account past its paid period to the card form, not to a checkout', async () => {
+    harness({ state: 'inactive', source: 'paddle', until: NOW - DAY, subscription: { status: 'past_due', cancelsAt: null, pastDue: true } });
+    expect(await screen.findByRole('heading', { name: 'Payment failed' })).toBeTruthy();
+    expect(screen.getByText(/read-only. Update the card/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Subscribe/ })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Update payment method' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Manage subscription' })).toBeTruthy();
+    // And a canceled subscription whose period is over is offered the checkout, with no storage to change.
+    cleanup();
+    harness({ state: 'inactive', source: 'paddle', until: NOW - DAY, subscription: { status: 'canceled', cancelsAt: null, pastDue: false } });
+    expect(await screen.findByRole('button', { name: /^Subscribe/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Add 25 GB' })).toBeNull();
+  });
+
   it('asks a comped account for nothing', async () => {
     harness({ state: 'active', source: 'comp', until: null });
     expect(await screen.findByRole('heading', { name: 'Complimentary' })).toBeTruthy();

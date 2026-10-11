@@ -34,20 +34,24 @@ function fakeDb(rows: unknown[]) {
 
 describe('the lapse mail', () => {
   it('says the notes are still there, whatever kind of plan ended', () => {
-    for (const kind of ['trial', 'subscription', 'comp'] as const) {
+    for (const kind of ['trial', 'subscription', 'past_due', 'comp'] as const) {
       const { subject, text } = lapseMessage(kind, 'https://notes.example.com/settings/plan');
-      expect(subject).toContain('ended');
+      expect(subject).toMatch(/ended|could not be collected/);
       expect(text).toContain('Your notes are still there');
       expect(text).toContain('read, search and export');
       expect(text).toContain('https://notes.example.com/settings/plan');
       expect(text).toContain('1 year');
     }
     expect(lapseMessage('trial', 'x').subject).toBe('Your Unbent trial has ended');
+    // A failed renewal says to update the card, never to subscribe again.
+    expect(lapseMessage('past_due', 'x').text).toContain('Update the card');
+    expect(lapseMessage('past_due', 'x').text).not.toContain('Subscribe at');
   });
 
   it('tells a trial from a subscription from a comp by the row', () => {
     expect(lapseKind({ plan: 'trial', source: null })).toBe('trial');
     expect(lapseKind({ plan: 'active', source: 'paddle' })).toBe('subscription');
+    expect(lapseKind({ plan: 'active', source: 'paddle', paddle_status: 'past_due' })).toBe('past_due');
     expect(lapseKind({ plan: 'active', source: 'comp' })).toBe('comp');
   });
 

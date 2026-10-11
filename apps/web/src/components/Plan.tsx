@@ -93,11 +93,15 @@ export function Plan() {
     );
   }
 
-  // A subscription in its paid period, cancelling or not, is managed in the portal; one
-  // that has lapsed cannot be revived there, and a new checkout is the way back. The
-  // checkout route draws the same line.
-  const subscribed = plan.subscription !== null && plan.state !== 'inactive';
+  // The checkout route's line, word for word: only a canceled subscription whose period
+  // is over makes way for a new checkout. One still in its paid period, cancelling or
+  // not, is managed in the portal; and a past-due one past its paid period is read-only
+  // until the card is updated, which is the portal's form too — a new checkout would be
+  // a second subscription beside the one Paddle is still trying to collect.
+  const subscribed = plan.subscription !== null && !(plan.subscription.status === 'canceled' && plan.state === 'inactive');
   const canSubscribe = !hosted && !subscribed && plan.source !== 'comp';
+  // Storage is changed on a subscription Paddle will bill; a canceled one is refused.
+  const canChangeStorage = subscribed && plan.subscription?.status !== 'canceled';
   const chosenUnits = units ?? unitsOf(plan);
   const refresh = () => queryClient.invalidateQueries({ queryKey: keys.plan() });
   // Less storage than the account holds would refuse every upload after it; the server
@@ -232,7 +236,7 @@ export function Plan() {
       <section className="settings-section">
         <h3>Storage</h3>
         <StorageMeter plan={plan} />
-        {subscribed && !hosted && !adding && (
+        {canChangeStorage && !hosted && !adding && (
           <div className="backfill-row">
             <Button size="small" disabled={busy !== null || unitsOf(plan) >= MAX_STORAGE_UNITS} onClick={() => setAdding(true)}>
               {busy === 'storage' ? 'Changing…' : `Add ${STORAGE_ADDON_GB} GB`}
@@ -280,6 +284,21 @@ export function Plan() {
 export function describePlan(plan: AccountPlan, voice: 'owner' | 'operator' = 'owner'): { title: string; sentence: string } {
   const sub = plan.subscription;
   const own = voice === 'owner';
+  // Before the read-only case: a renewal Paddle could not collect leaves the account
+  // read-only past its paid period, and the way back is the card, not a new checkout.
+  if (sub?.pastDue) {
+    const lapsed = plan.state === 'inactive';
+    return {
+      title: 'Payment failed',
+      sentence: own
+        ? lapsed
+          ? 'The last renewal could not be collected, so the account is read-only. Update the card to edit again; Paddle will try again once it is.'
+          : `The last renewal could not be collected. Paddle will try again; update the card to keep the plan${plan.until ? ` past ${formatDay(plan.until)}` : ''}.`
+        : lapsed
+          ? 'The last renewal could not be collected, and the account is read-only until the card is updated.'
+          : `The last renewal could not be collected. Paddle is retrying; the plan lapses${plan.until ? ` past ${formatDay(plan.until)}` : ''} unless the card is updated.`,
+    };
+  }
   if (plan.state === 'inactive') {
     const ended = plan.until ? `ended on ${formatDay(plan.until)}` : 'has ended';
     return {
@@ -299,15 +318,6 @@ export function describePlan(plan: AccountPlan, voice: 'owner' | 'operator' = 'o
   if (plan.source === 'comp') {
     const until = plan.until ? `until ${formatDay(plan.until)}` : 'with no end date';
     return { title: 'Complimentary', sentence: `${own ? 'This account' : 'The account'} is on the house, ${until}.` };
-  }
-  if (sub?.pastDue) {
-    const past = plan.until ? ` past ${formatDay(plan.until)}` : '';
-    return {
-      title: 'Payment failed',
-      sentence: own
-        ? `The last renewal could not be collected. Paddle will try again; update the card to keep the plan${past}.`
-        : `The last renewal could not be collected. Paddle is retrying; the plan lapses${past} unless the card is updated.`,
-    };
   }
   if (sub?.cancelsAt) {
     const ends = `The subscription ends on ${formatDay(sub.cancelsAt)}.`;

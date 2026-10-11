@@ -31,15 +31,23 @@ interface DueRow {
   plan: PlanState;
   plan_until: number;
   source: PlanSource | null;
+  paddle_status: string | null;
   email: string;
 }
 
-/** The message for a lapse of each kind. `planUrl` is where to subscribe. */
-export function lapseMessage(kind: 'trial' | 'subscription' | 'comp', planUrl: string): { subject: string; text: string } {
+export type LapseKind = 'trial' | 'subscription' | 'past_due' | 'comp';
+
+/** The message for a lapse of each kind. `planUrl` is where to subscribe, or where the card is updated from. */
+export function lapseMessage(kind: LapseKind, planUrl: string): { subject: string; text: string } {
   const still =
     'Your notes are still there, and everything still opens: you can read, search and export them, and delete anything, for as long as you like. What has stopped is editing and adding.';
   const keep = `Subscribe at ${planUrl} to pick up where you left off. An account that stays read-only for ${Math.round(INACTIVE_KEPT_DAYS / 365)} year is deleted, with reminders to export first.`;
   switch (kind) {
+    case 'past_due':
+      return {
+        subject: 'Your Unbent renewal could not be collected',
+        text: `Your Unbent subscription's renewal could not be collected, so the account is now read-only.\n\n${still}\n\nUpdate the card from ${planUrl} and Paddle will try again; nothing else is needed. An account that stays read-only for ${Math.round(INACTIVE_KEPT_DAYS / 365)} year is deleted, with reminders to export first.`,
+      };
     case 'trial':
       return {
         subject: 'Your Unbent trial has ended',
@@ -58,9 +66,11 @@ export function lapseMessage(kind: 'trial' | 'subscription' | 'comp', planUrl: s
   }
 }
 
-export function lapseKind(row: { plan: PlanState; source: PlanSource | null }): 'trial' | 'subscription' | 'comp' {
+export function lapseKind(row: { plan: PlanState; source: PlanSource | null; paddle_status?: string | null }): LapseKind {
   if (row.plan === 'trial') return 'trial';
-  return row.source === 'comp' ? 'comp' : 'subscription';
+  if (row.source === 'comp') return 'comp';
+  // A renewal Paddle is still trying to collect: the card is the way back, not a checkout.
+  return row.paddle_status === 'past_due' ? 'past_due' : 'subscription';
 }
 
 /**

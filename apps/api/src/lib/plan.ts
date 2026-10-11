@@ -231,7 +231,7 @@ export async function updatePlan(db: D1Database, userId: string, patch: PlanPatc
  * conditions this repeats word for word so the planner takes it; `migrations.test.ts`
  * pins the plan. Binds: now, and the most to take.
  */
-export const LAPSE_DUE_SQL = `SELECT p.user_id, p.plan, p.plan_until, p.source, u.email
+export const LAPSE_DUE_SQL = `SELECT p.user_id, p.plan, p.plan_until, p.source, p.paddle_status, u.email
     FROM account_plan p JOIN user u ON u.id = p.user_id
    WHERE p.lapse_notified_at IS NULL AND p.plan_until IS NOT NULL AND p.plan <> 'inactive'
      AND p.plan_until <= ?1
