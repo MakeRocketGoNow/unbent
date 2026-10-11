@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router';
 import { isHosted } from '../app-bridge.js';
-import { usePlan, usePlanRefusalListener } from '../use-plan.js';
+import { usePlan, usePlanRefresh } from '../use-plan.js';
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -32,12 +32,16 @@ export const TRIAL_WARNING_DAYS = 3;
  */
 export function PlanBanner({ now: fixed }: { now?: number } = {}) {
   const { plan, inactive, now: clock } = usePlan();
-  usePlanRefusalListener();
+  usePlanRefresh();
   const now = fixed ?? clock;
   const hosted = isHosted();
   let line: string | null = null;
+  // A failed renewal is the one lapse whose way back is the card, not a checkout.
+  const pastDue = plan?.subscription?.pastDue === true;
   if (inactive) {
-    line = 'Your plan has ended, so your notes are read-only. Everything still opens, searches and exports.';
+    line = pastDue
+      ? 'The last renewal could not be collected, so your notes are read-only. Everything still opens, searches and exports.'
+      : 'Your plan has ended, so your notes are read-only. Everything still opens, searches and exports.';
   } else if (plan?.state === 'trial' && plan.until !== null && plan.until - now <= TRIAL_WARNING_DAYS * DAY) {
     const days = daysAhead(plan.until, now);
     line = `Your free trial ends ${days <= 0 ? 'today' : days === 1 ? 'tomorrow' : `in ${days} days`}.`;
@@ -48,9 +52,9 @@ export function PlanBanner({ now: fixed }: { now?: number } = {}) {
         <p className="plan-banner">
           <span>{line}</span>{' '}
           {hosted ? (
-            <span>Subscribe on the web.</span>
+            <span>{pastDue ? 'Update the card on the web.' : 'Subscribe on the web.'}</span>
           ) : (
-            <Link to="/settings/plan">Subscribe</Link>
+            <Link to="/settings/plan">{pastDue ? 'Update the card' : 'Subscribe'}</Link>
           )}
         </p>
       )}
