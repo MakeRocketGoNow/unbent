@@ -1133,7 +1133,7 @@ function PlanSection({ userId, email, plan }: { userId: string; email: string; p
           >
             {busy ? 'Saving…' : until ? 'Comp until then' : 'Comp with no end'}
           </Button>
-          {plan !== null && plan !== undefined && plan.source === 'comp' && plan.state === 'active' && !ending && (
+          {plan?.source === 'comp' && plan.state === 'active' && !ending && (
             <Button variant="quiet" tone="danger" disabled={busy} onClick={() => setEnding(true)}>
               End comp
             </Button>

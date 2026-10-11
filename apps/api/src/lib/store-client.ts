@@ -1,7 +1,6 @@
-import { InvalidFieldValue } from '@unbent/shared';
+import { InvalidFieldValue, STORAGE_FULL_CODE } from '@unbent/shared';
 import type { UserStore } from '../store/user-store.js';
 import type { Env } from '../types.js';
-import { STORAGE_FULL_CODE } from '@unbent/shared';
 import { StorageFull } from './quota.js';
 
 /**
