@@ -15,7 +15,13 @@ import { settleWrites, subscribeWrites } from './store/library.js';
  * comes back here.
  */
 export interface UnsyncedQuestion {
-  count: number;
+  /**
+   * How many writes are still waiting, or `null` when the outbox could not be
+   * counted — a library that has not opened yet, and a peek of its durable store
+   * that did not answer. The confirm then asks without a number rather than
+   * treating "unknown" as nothing waiting, which is what the wipe would take.
+   */
+  count: number | null;
   /** Leave anyway, and lose them. */
   leave: () => void;
   /** Stay signed in; the outbox keeps trying. */
@@ -49,7 +55,7 @@ export function useUnsyncedQuestion(): UnsyncedQuestion | null {
  * it shows is the current one until then. A second press of Sign out while a question is
  * up answers the first one with "stay" rather than leaving its chain hanging.
  */
-function askToLeave(count: number): Promise<boolean> {
+function askToLeave(count: number | null): Promise<boolean> {
   unsynced?.stay();
   return new Promise((resolve) => {
     let stop = () => {};
@@ -58,7 +64,7 @@ function askToLeave(count: number): Promise<boolean> {
       setUnsynced(null);
       resolve(leave);
     };
-    const ask = (n: number) => setUnsynced({ count: n, leave: () => answer(true), stay: () => answer(false) });
+    const ask = (n: number | null) => setUnsynced({ count: n, leave: () => answer(true), stay: () => answer(false) });
     ask(count);
     stop = subscribeWrites((pending) => {
       if (!unsynced) return;
@@ -133,7 +139,7 @@ export function useSignOut(): () => void {
     */
     void settleWrites(5000)
       .then(async (left) => {
-        if (left > 0 && !(await askToLeave(left))) return 'stayed';
+        if (left !== 0 && !(await askToLeave(left))) return 'stayed';
         return signOut();
       })
       .then((res) => (res === 'stayed' ? 'stayed' : !res?.error), () => false)

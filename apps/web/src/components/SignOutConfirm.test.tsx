@@ -108,4 +108,17 @@ describe('signing out with unsynced changes', () => {
     expect(screen.queryByText(/synced yet/)).toBeNull();
     expect(signOut).toHaveBeenCalled();
   });
+
+  it('asks without a count when the outbox could not be read, rather than signing out', async () => {
+    vi.mocked(settleWrites).mockResolvedValue(null);
+    render(<Host />);
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
+    await flush();
+    expect(screen.getByText("This device may still have changes that haven't synced. Sign out anyway?")).toBeTruthy();
+    expect(signOut).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await flush();
+    expect(signOut).not.toHaveBeenCalled();
+    expect(clearOfflineCaches).not.toHaveBeenCalled();
+  });
 });

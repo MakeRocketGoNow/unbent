@@ -4,7 +4,7 @@ import { reportError } from '../report-error.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
 import { openLocalStore, openSearchDatabase, closeLocalStore } from './db.js';
 import { createCollections, cursorStore, type Collections, type LocalNote } from './collections.js';
-import { createOutbox, provideLibrary, type Outbox } from './actions.js';
+import { countStoredWrites, createOutbox, provideLibrary, type Outbox } from './actions.js';
 import { FeedEngine, isWhole, type FeedState } from './feed.js';
 import { createKeeper, type Keeper } from './keep.js';
 import { askToPersist, readKeptNotebooks } from './files.js';
@@ -111,12 +111,15 @@ export function currentLibraryUser(): string | null {
 
 /**
  * Hears how many writes the open library's outbox holds, as it changes, starting now.
- * Nothing until the library has opened; nothing at all on a device without one.
+ * Nothing until the library has opened; nothing at all on a device without one. The
+ * open itself, not the bounded answer its callers were given: after a timeout the
+ * bounded promise is already refused, but the outbox is still coming, and a sign-out
+ * confirm that subscribed to the refusal would never hear the drain.
  */
 export function subscribeWrites(listener: (pending: number) => void): () => void {
   let stop: (() => void) | undefined;
   let alive = true;
-  const open = current?.library;
+  const open = current?.opened;
   if (open) {
     open.then(
       (lib) => {
@@ -132,36 +135,50 @@ export function subscribeWrites(listener: (pending: number) => void): () => void
 }
 
 /**
- * Waits, for at most `ms`, for the writes the open library's outbox holds to reach the
- * server, and answers with how many are still waiting. What a sign-out does first: the
- * wipe that follows removes the outbox, and the menu offers Sign out only with a
- * connection, so what waits is usually mid-replay and gone in a moment.
+ * Waits, for at most `ms`, for the writes this account's outbox holds to reach the
+ * server, and answers with how many are still waiting — or `null` if they could not
+ * be counted. What a sign-out does first: the wipe that follows removes the outbox.
+ *
+ * The open itself is waited for, not the bounded promise callers see. After
+ * `LIBRARY_OPEN_TIMEOUT_MS` that bounded promise is already refused, and treating
+ * the refusal as "nothing waiting" deleted the durable outbox from the last session
+ * without a question: the entries live in IndexedDB until `outbox.ready`, and a
+ * cold open on a phone sits well past the sign-out's own bound. If the open does
+ * not finish in time, the durable store is counted directly (`countStoredWrites`).
  */
-export async function settleWrites(ms: number): Promise<number> {
-  const open = current?.library;
-  if (!open) return 0;
-  // The library itself is waited for under the same `ms`: Sign out pressed while an open
-  // is still inside its own bound would otherwise sit for that bound first, with nothing
-  // said. A library that has not opened has no outbox to drain.
+export async function settleWrites(ms: number): Promise<number | null> {
+  const entry = current;
+  if (!entry) return 0;
   const deadline = Date.now() + ms;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const lib = await Promise.race([
-    open.catch(() => null),
+    entry.opened.catch(() => null),
     new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), ms))),
   ]).finally(() => clearTimeout(timer));
-  if (!lib || lib.outbox.status().pending === 0) return 0;
-  await new Promise<void>((resolve) => {
-    const left = setTimeout(done, Math.max(0, deadline - Date.now()));
-    const stop = lib.outbox.subscribe((s) => {
-      if (s.pending === 0) done();
+  if (lib) {
+    if (lib.outbox.status().pending === 0) return 0;
+    await new Promise<void>((resolve) => {
+      const left = setTimeout(done, Math.max(0, deadline - Date.now()));
+      const stop = lib.outbox.subscribe((s) => {
+        if (s.pending === 0) done();
+      });
+      function done() {
+        clearTimeout(left);
+        stop();
+        resolve();
+      }
     });
-    function done() {
-      clearTimeout(left);
-      stop();
-      resolve();
-    }
-  });
-  return lib.outbox.status().pending;
+    return lib.outbox.status().pending;
+  }
+  // Still not open: look at the durable store the wipe is about to remove. Bounded
+  // too, so a blocked IndexedDB open cannot hold the sign-out. Half a second even
+  // when the wait above used the whole bound — the peek is a read, not a drain.
+  let peekTimer: ReturnType<typeof setTimeout> | undefined;
+  const peekMs = Math.max(500, deadline - Date.now());
+  return Promise.race([
+    countStoredWrites(entry.userId),
+    new Promise<null>((resolve) => (peekTimer = setTimeout(() => resolve(null), peekMs))),
+  ]).finally(() => clearTimeout(peekTimer));
 }
 
 /**

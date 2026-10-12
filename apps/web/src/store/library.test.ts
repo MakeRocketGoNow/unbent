@@ -4,7 +4,7 @@ import { openLocalStore, type LocalStore } from './db.js';
 import { reportError } from '../report-error.js';
 import { FeedEngine } from './feed.js';
 import { createCollections } from './collections.js';
-import { createOutbox } from './actions.js';
+import { countStoredWrites, createOutbox } from './actions.js';
 import { createKeeper } from './keep.js';
 
 vi.mock('./db.js', () => ({ openLocalStore: vi.fn(), closeLocalStore: vi.fn(async () => {}), openSearchDatabase: vi.fn() }));
@@ -16,7 +16,11 @@ vi.mock('../report-error.js', () => ({ reportError: vi.fn() }));
  * engine is real; its pull never starts, since the stand-in collections never register.
  */
 vi.mock('./collections.js', () => ({ createCollections: vi.fn(), cursorStore: vi.fn() }));
-vi.mock('./actions.js', async (importOriginal) => ({ ...(await importOriginal<typeof import('./actions.js')>()), createOutbox: vi.fn() }));
+vi.mock('./actions.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./actions.js')>()),
+  createOutbox: vi.fn(),
+  countStoredWrites: vi.fn(async () => 0),
+}));
 vi.mock('./keep.js', () => ({ createKeeper: vi.fn() }));
 vi.mock('./search-index.js', () => ({
   SearchIndex: class {
@@ -176,6 +180,8 @@ describe('acquireLibrary', () => {
     resetLibraryForTests();
     vi.mocked(openLocalStore).mockReset();
     vi.mocked(reportError).mockReset();
+    vi.mocked(countStoredWrites).mockReset();
+    vi.mocked(countStoredWrites).mockResolvedValue(0);
   });
 
   it('halts a stuck open’s engine and socket the moment a sign-out takes its entry, and closes it fully once the open ends', async () => {
@@ -314,6 +320,52 @@ describe('acquireLibrary', () => {
     outbox.drain();
     await vi.advanceTimersByTimeAsync(0);
     expect(left).toBe(0);
+  });
+
+  it('drains an open that finished after its caller was refused, instead of treating the refusal as nothing waiting', async () => {
+    vi.useFakeTimers();
+    let ready!: () => void;
+    const { outbox } = page({ ready: new Promise((r) => (ready = r)), pending: 2 });
+    const first = acquireLibrary('u1');
+    first.catch(() => {});
+    await vi.advanceTimersByTimeAsync(LIBRARY_OPEN_TIMEOUT_MS);
+    let left: number | null | undefined;
+    void settleWrites(5_000).then((n) => (left = n));
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(left).toBeUndefined();
+    ready();
+    await vi.advanceTimersByTimeAsync(10);
+    expect(left).toBeUndefined();
+    outbox.drain();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(left).toBe(0);
+  });
+
+  it('counts writes still in the durable outbox when the open does not finish in the sign-out’s bound', async () => {
+    vi.useFakeTimers();
+    vi.mocked(countStoredWrites).mockResolvedValue(3);
+    page({ ready: new Promise(() => {}) });
+    const first = acquireLibrary('u1');
+    first.catch(() => {});
+    await vi.advanceTimersByTimeAsync(LIBRARY_OPEN_TIMEOUT_MS);
+    let left: number | null | undefined;
+    void settleWrites(5_000).then((n) => (left = n));
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(left).toBe(3);
+    expect(countStoredWrites).toHaveBeenCalledWith('u1');
+  });
+
+  it('asks rather than wiping when the durable outbox could not be counted', async () => {
+    vi.useFakeTimers();
+    vi.mocked(countStoredWrites).mockResolvedValue(null);
+    page({ ready: new Promise(() => {}) });
+    const first = acquireLibrary('u1');
+    first.catch(() => {});
+    await vi.advanceTimersByTimeAsync(LIBRARY_OPEN_TIMEOUT_MS);
+    let left: number | null | undefined;
+    void settleWrites(5_000).then((n) => (left = n));
+    await vi.advanceTimersByTimeAsync(5_500);
+    expect(left).toBeNull();
   });
 
   it('refuses its caller when an open does not settle, reports it, and answers every later ask at once', async () => {
