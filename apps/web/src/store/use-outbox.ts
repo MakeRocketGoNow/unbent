@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react';
-import { useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { currentLibrary, libraryElsewhere, subscribeLibrary } from './library.js';
 import type { Outbox, SyncStatus } from './actions.js';
 import type { KeepStatus, Keeper } from './keep.js';
