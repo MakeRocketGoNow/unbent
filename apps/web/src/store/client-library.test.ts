@@ -500,6 +500,27 @@ describe('a client of the holding tab', () => {
     expect(bystander).not.toContain('answer');
   });
 
+  it('is forwarded nothing by a holder with no client, and nothing more after it says bye', async () => {
+    const h = holder(channel.port(), { notes: [note('n1')] });
+    const changes = () => channel.posted.filter((m) => m.type === 'changes').length;
+    h.notes.upsert({ ...note('n1'), title: 'alone', updatedAt: 2 });
+    h.moveSync({ pending: 1 });
+    await settle();
+    expect(changes()).toBe(0);
+    expect(channel.posted.filter((m) => m.type === 'status')).toHaveLength(0);
+    const lib = await client();
+    h.notes.upsert({ ...note('n1'), title: 'heard', updatedAt: 3 });
+    await settle();
+    expect(changes()).toBe(1);
+    expect(lib.notes.get('n1')?.title).toBe('heard');
+    await lib.close();
+    await settle();
+    expect(channel.posted.filter((m) => m.type === 'bye')).toHaveLength(1);
+    h.notes.upsert({ ...note('n1'), title: 'unheard', updatedAt: 4 });
+    await settle();
+    expect(changes()).toBe(1);
+  });
+
   it('ignores rows and answers meant for another client', async () => {
     holder(channel.port(), { notes: [note('n1')] });
     const a = await client();

@@ -62,7 +62,9 @@ export type ClientMessage =
   | { type: 'hello'; client: string }
   | { type: 'call'; client: string; id: number; name: string; args: unknown[] }
   /** Is the holder still there? Answered with `pong`; see `HOLDER_SILENT_MS`. */
-  | { type: 'ping'; client: string };
+  | { type: 'ping'; client: string }
+  /** A client closing, or its page going: the holder stops counting it. */
+  | { type: 'bye'; client: string };
 
 export type HolderMessage =
   /** A holder has started serving: every client says hello again, to it. */
@@ -153,6 +155,9 @@ export function openPort(userId: string, clientId?: string): Port | null {
  * `Error` with the subclass gone, and the callers branch on the subclass: `isNoteChanged`
  * puts a conflict to the person, `isOfflineError` keeps an entry rather than ending it.
  * So what is sent is the name, the message and the two fields those classes carry.
+ * These two and `ApiError` are the classes that cross; a forwarded action that throws
+ * another class its caller branches on must be added here and in `revive`, or the
+ * caller sees a plain `Error` with the name and nothing else.
  */
 export function carry(err: unknown): Carried {
   if (err instanceof NoteChangedError) return { name: err.name, message: err.message, status: err.status, current: err.current };

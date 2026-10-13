@@ -329,6 +329,19 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
     });
   };
 
+  /** Told to the holder once, on close or when the page goes, so it stops forwarding for nobody. */
+  let said = false;
+  const sayBye = () => {
+    if (said) return;
+    said = true;
+    try {
+      port.post({ type: 'bye', client: me });
+    } catch {
+      // The channel is closed.
+    }
+  };
+  if (typeof window !== 'undefined') window.addEventListener('pagehide', sayBye);
+
   const close = async () => {
     if (closed) return;
     closed = true;
@@ -336,6 +349,8 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
     stopPinging();
     stopListening();
     halting.removeEventListener('abort', onHalt);
+    if (typeof window !== 'undefined') window.removeEventListener('pagehide', sayBye);
+    sayBye();
     port.close();
     for (const p of pending.values()) p.reject(new LibraryMovedError());
     pending.clear();
