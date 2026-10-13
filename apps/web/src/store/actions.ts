@@ -43,13 +43,17 @@ import { OutboxLeader } from './leader.js';
  * body collapsed at replay by reading the whole queue per entry (review of #232). A lost
  * connection and a 5xx are retried.
  *
- * Only the tab holding the outbox's lock queues. In any other tab the library hands back
- * a plain transaction that runs the write at once and rolls the change back if it fails,
- * and offline it fails — so such a tab's writes are not "queued", they are never made,
- * and saying otherwise would show "Saved" over text that was gone (review of #232). Every
- * function here therefore asks `durable` first, and in a tab that is not it does what
- * it does with no library at all: one request, the answer the server's, the refusal the
- * caller's to show, and the local copy brought up to date by a pull.
+ * Only the tab holding the outbox's lock queues. A tab whose library another tab holds
+ * is that tab's client and sends each write there by name (`away`), where it is queued
+ * as the holder's own. In a tab that holds the library but not yet the outbox's lock —
+ * a moment during a hand-over, or for good in a browser without Web Locks — the
+ * library hands back a plain transaction that runs the write at once and rolls the
+ * change back if it fails, and offline it fails — so such a tab's writes are not
+ * "queued", they are never made, and saying otherwise would show "Saved" over text that
+ * was gone (review of #232). Every function here therefore asks `durable` first, and in
+ * a tab that is not it does what it does with no library at all: one request, the
+ * answer the server's, the refusal the caller's to show, and the local copy brought up
+ * to date by a pull.
  *
  * Every function here looks the open library up and works on it; with none — a browser
  * without the file system the local copy lives in — it does what the app did before,
@@ -79,8 +83,9 @@ export interface SyncStatus {
   pending: number;
   /**
    * Whether a write queued in this tab outlives it. Only the tab holding the outbox's lock
-   * stores entries; in any other tab a write is a request made at once, and offline it
-   * fails as one (see `durable` below).
+   * stores entries; in a client tab this is the holder's answer, mirrored, since its
+   * writes are queued there; in a tab that holds the library but not the lock a write
+   * is a request made at once, and offline it fails as one (see `durable` below).
    */
   durable: boolean;
   /**
