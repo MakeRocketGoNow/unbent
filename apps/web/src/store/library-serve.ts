@@ -118,7 +118,11 @@ export function serveLibrary(port: Port, lib: Serving): Server {
     if (stopped) return;
     const m = message as ClientMessage;
     if (m.type === 'hello') return void hello(m.client);
-    if (m.type === 'bye') return void clients.delete(m.client);
+    if (m.type === 'bye') {
+      clients.delete(m.client);
+      port.forget(m.client);
+      return;
+    }
     if (m.type === 'ping') return port.post({ type: 'pong', holder, client: m.client });
     if (m.type === 'call') {
       // Answered even after `stop`: a call that was running when this holder began to

@@ -95,6 +95,8 @@ export interface Port {
   post: (message: Message) => void;
   /** Hears every message other tabs post for this tab; never this tab's own. */
   listen: (handler: (message: Message) => void) => () => void;
+  /** Closes the channel to a client that has said bye; a holder opens one per client it answers, and a reload is a new client. */
+  forget: (clientId: string) => void;
   close: () => void;
 }
 
@@ -139,6 +141,10 @@ export function openPort(userId: string, clientId?: string): Port | null {
     listen: (handler) => {
       handlers.add(handler);
       return () => void handlers.delete(handler);
+    },
+    forget: (id) => {
+      clients.get(id)?.close();
+      clients.delete(id);
     },
     close: () => {
       handlers.clear();

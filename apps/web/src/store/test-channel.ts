@@ -32,6 +32,7 @@ export function fakeChannel(): { port: (clientId?: string) => Port; posted: Mess
           mine.handlers.add(handler);
           return () => void mine.handlers.delete(handler);
         },
+        forget: () => {},
         close: () => {
           mine.handlers.clear();
           ports.delete(mine);

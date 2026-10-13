@@ -97,9 +97,11 @@ export function useLibraryElsewhere(): string | null {
 }
 
 /**
- * Whether this tab's library is a client of another tab's (`store/client-library.ts`),
- * attached and working through it — as opposed to the holder's, none, or one still
- * waiting for a holder to answer. For Settings → Offline, which says which the tab is.
+ * Whether this tab's library is another tab's client library (`store/client-library.ts`)
+ * — one that has attached to a holder at least once, and works through whichever holder
+ * serves — as opposed to the holder's own, none, or an attach no holder has answered
+ * yet, which is refused after the open's bound and reads the server. For Settings →
+ * Offline, which says which the tab is.
  */
 export function useLibraryClient(): boolean {
   const [client, setClient] = useState(false);
