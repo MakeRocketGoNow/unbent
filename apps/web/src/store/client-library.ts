@@ -290,7 +290,6 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
     port.post({ type: 'call', client: me, to: holder, id, name: p.name, args: p.args });
   };
 
-  /** Lets go of the holder; with `watch`, bounds the wait for the next one (a takeover already asked for needs no bound). */
   /** Puts one message's changes into the maps, collection by collection. */
   const apply = (batches: Array<{ entity: keyof Maps; changes: RowChange[] }>) => {
     for (const b of batches) {
@@ -301,6 +300,7 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
     }
   };
 
+  /** Lets go of the holder; with `watch`, bounds the wait for the next one (a takeover already asked for needs no bound). */
   const detach = (watch = true) => {
     holder = null;
     incoming = null;
