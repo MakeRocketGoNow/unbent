@@ -1,9 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { LibraryStatus } from './LibraryStatus.js';
 
 vi.mock('../store/use-feed-state.js', () => ({ useLibraryArriving: vi.fn() }));
+vi.mock('../store/use-outbox.js', () => ({ useLibraryElsewhere: vi.fn(() => null) }));
+vi.mock('../store/library.js', () => ({ takeOverLibrary: vi.fn(() => Promise.resolve()) }));
 import { useLibraryArriving } from '../store/use-feed-state.js';
+import { useLibraryElsewhere } from '../store/use-outbox.js';
+import { takeOverLibrary } from '../store/library.js';
 
 /**
  * The line says the library is on its way in both of its stages, and says nothing once
@@ -32,5 +36,19 @@ describe('LibraryStatus', () => {
     vi.mocked(useLibraryArriving).mockReturnValue(null);
     render(<LibraryStatus />);
     expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  /* Another tab holds the library: the line says so and holds the one way to take it,
+     a button whose tip says what happens to the other tab, read out as its description. */
+  it('says the notes are open in another tab, and takes them over on Open here', () => {
+    vi.mocked(useLibraryArriving).mockReturnValue(null);
+    vi.mocked(useLibraryElsewhere).mockReturnValue('u1');
+    render(<LibraryStatus />);
+    expect(screen.getByRole('status').textContent).toContain('Your notes are open in another tab.');
+    const button = screen.getByRole('button', { name: 'Open here' });
+    expect(button.getAttribute('aria-description')).toMatch(/other tab or window/);
+    fireEvent.click(button);
+    expect(takeOverLibrary).toHaveBeenCalledTimes(1);
+    vi.mocked(useLibraryElsewhere).mockReturnValue(null);
   });
 });
