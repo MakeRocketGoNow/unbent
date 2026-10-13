@@ -566,6 +566,36 @@ describe('acquireLibrary', () => {
       expect(openLocalStore).toHaveBeenCalledTimes(2);
     });
 
+    it('does not join the lock’s queue for an account a sign-out or a switch has already left', async () => {
+      vi.useFakeTimers();
+      const locks = fakeLocks();
+      setLocksForTests(locks);
+      const { outbox } = page();
+      let letGo!: () => void;
+      void locks.request(lock, { mode: 'exclusive' }, () => new Promise<void>((r) => (letGo = r)));
+      theirs();
+      await vi.advanceTimersByTimeAsync(0);
+      // The open for u1 is queued behind u2's close, which is still in hand when the switch comes.
+      await acquireLibrary('u2');
+      let disposed!: () => void;
+      outbox.dispose.mockImplementationOnce(() => new Promise<void>((resolve) => (disposed = resolve)));
+      const first = acquireLibrary('u1');
+      first.catch(() => {});
+      await vi.advanceTimersByTimeAsync(0);
+      // Another account signs in before u1's step has run.
+      const switched = acquireLibrary('u2');
+      switched.catch(() => {});
+      disposed();
+      await vi.advanceTimersByTimeAsync(10);
+      await expect(currentLibrary()).resolves.toMatchObject({ userId: 'u2' });
+      expect(libraryElsewhere()).toBeNull();
+      // u1's holder lets go: nothing opens u1 here.
+      letGo();
+      await vi.advanceTimersByTimeAsync(10);
+      await expect(currentLibrary()).resolves.toMatchObject({ userId: 'u2' });
+      expect(vi.mocked(openLocalStore).mock.calls.map(([id]) => id)).not.toContain('u1');
+    });
+
     it('stops waiting for another tab’s library on a sign-out', async () => {
       vi.useFakeTimers();
       const locks = fakeLocks();

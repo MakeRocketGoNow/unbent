@@ -210,9 +210,12 @@ function standAside(userId: string, refusal?: Promise<never>): void {
   if (refusal) entry.refusal = refusal;
   elsewhere = entry;
   libraryChanged();
+  // Only if nothing has changed what this tab holds since: a sign-out or another
+  // account's sign-in meanwhile decides what is open, not the lock's queue.
+  const asOf = generation;
   whenLibraryFree(userId, waiting.signal).then(
     () => {
-      if (elsewhere !== entry) return;
+      if (elsewhere !== entry || generation !== asOf) return;
       elsewhere = null;
       // Opened anew even though a client library is current: the open closes it.
       void openFor(userId, false).catch(() => {});
@@ -479,6 +482,9 @@ function openFor(userId: string, takeOver: boolean): Promise<AnyLibrary> {
     // reads the server.
     const hold = await holdLibrary(userId, takeOver);
     if (!hold) {
+      // A close or a switch took this entry while the step waited: that decided what is
+      // open, and this tab must not join the lock's queue for an account it has left.
+      if (halting.signal.aborted) throw new DOMException('The open was halted before it attached', 'AbortError');
       const port = openPort(userId);
       if (!port) throw new LibraryElsewhereError();
       // In the lock's queue from now, not from the attach: the holder may be a page on
