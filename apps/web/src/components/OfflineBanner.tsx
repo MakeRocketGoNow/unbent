@@ -24,9 +24,12 @@ import { OfflineIcon } from './icons.js';
  * The second sentence is a promise only the tab holding the outbox can keep: in any other
  * tab of the same account a write is a request, and offline it fails. That tab says so
  * instead, and says where the changes are kept — another tab, since tabs have no order
- * anyone can see. A device with no library at all (a browser without the file system it
- * lives in) keeps nothing and queues nothing, and is told what the old shell told it; a
- * library still opening is not that, and gets the promise, since it is about to keep it.
+ * anyone can see. That other tab does exist: a tab that is not the holder is in the
+ * lock's queue and leads the moment the holder goes (`store/leader.ts`), so the line is
+ * never about a tab that has closed. A device with no library at all (a browser without
+ * the file system it lives in) keeps nothing and queues nothing, and is told what the old
+ * shell told it; a library still opening is not that, and gets the promise, since it is
+ * about to keep it.
  */
 export function OfflineBanner() {
   const offline = useOffline();

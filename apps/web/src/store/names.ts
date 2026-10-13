@@ -38,6 +38,12 @@ export const storeFileName = (userId: string) => `${STORE_PREFIX}${safe(userId)}
  */
 export const searchFileName = (userId: string) => `${STORE_PREFIX}${safe(userId)}.search.sqlite`;
 export const outboxName = (userId: string) => `${OUTBOX_PREFIX}${safe(userId)}`;
+/**
+ * The Web Lock the tab replaying an account's outbox holds (`store/leader.ts`). Named for
+ * the account, not the origin: a window holding another account's library must not stop
+ * this one's writes from going.
+ */
+export const outboxLeaderName = (userId: string) => `${OUTBOX_PREFIX}leader-${safe(userId)}`;
 export const filesDirName = (userId: string) => `${FILES_PREFIX}${safe(userId)}`;
 
 /**

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { filesDirName, isFilesDir, isOutbox, isStoreFile, outboxName, searchFileName, storeFileName } from './names.js';
+import { filesDirName, isFilesDir, isOutbox, isStoreFile, outboxLeaderName, outboxName, searchFileName, storeFileName } from './names.js';
 
 describe('local store names', () => {
   it('carry the account and nothing a file system refuses', () => {
@@ -7,6 +7,7 @@ describe('local store names', () => {
     expect(storeFileName('a/b:c')).toBe('unbent-a_b_c.sqlite');
     expect(searchFileName('a/b:c')).toBe('unbent-a_b_c.search.sqlite');
     expect(outboxName('Ab12xy')).toBe('unbent-outbox-Ab12xy');
+    expect(outboxLeaderName('a/b:c')).toBe('unbent-outbox-leader-a_b_c');
     expect(filesDirName('a/b:c')).toBe('unbent-files-a_b_c');
   });
 

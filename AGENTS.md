@@ -548,8 +548,10 @@ growing wait. Two rules keep the queue from sticking, each with a test: every an
 server would give again — a 4xx other than a lapsed session, a timeout or a rate limit, a
 refused precondition — is a `NonRetriableError` that ends its entry, and a `saveNote` whose
 note has a later entry in the queue does nothing, since each save carries the whole draft.
-Only the tab holding the Web Lock replays; a second tab's writes made offline are not
-durable. A file added to a note goes the same way (`uploadFile`): with a connection and
+Only the tab holding the account's leader lock replays (`store/leader.ts`); a second tab's
+writes made offline are not durable, and it waits in the lock's queue and leads the moment
+the holder goes, rather than staying a follower until it reloads, as the outbox library's
+own one-shot election left it. A file added to a note goes the same way (`uploadFile`): with a connection and
 nothing of the note's waiting it is the request it always was, and otherwise its bytes go to
 the account's `pending` shelf, its row is made at once and marked `pending`, and its upload
 is an entry in the same outbox, behind the note's own. The upload names its file's id
