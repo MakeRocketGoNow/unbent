@@ -212,6 +212,17 @@ self.addEventListener('activate', (event) => {
 });
 
 /**
+ * Navigation preload: the browser starts the page load's request the moment the load
+ * begins, in parallel with starting this worker, and hands it to the route as
+ * `preloadResponse`. Without it the request waited for the worker to boot and match its
+ * routes first, which on a phone's WebView is a noticeable share of a cold start — and a
+ * cold start is now a round trip to the server by design (the navigation route).
+ */
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.registration.navigationPreload?.enable() ?? Promise.resolve());
+});
+
+/**
  * How long a page load waits for the network before the cached shell answers instead.
  * The page is two kilobytes; a connection that has not answered in this long is one
  * that carries nothing, and the shell is the right answer on it. A device with no
@@ -253,8 +264,14 @@ registerRoute(
   ({ request, url }) => request.mode === 'navigate' && servesShell(url),
   async ({ event, request }) => {
     const cached = shell.matchPrecache('/index.html');
+    // The browser's preloaded request where there is one, the worker's own otherwise;
+    // one request either way, which the fallback below hands on rather than starting a
+    // second while the first is still in flight.
+    const network: Promise<Response> = ((event as FetchEvent).preloadResponse ?? Promise.resolve(undefined)).then(
+      (preloaded: Response | undefined) => preloaded ?? fetch(request),
+    );
     const fresh = await within(
-      fetch(request).then((response) => (response.ok ? response : null)),
+      network.then((response) => (response.ok ? response : null)),
       NAVIGATION_TIMEOUT_MS,
       null,
     );
