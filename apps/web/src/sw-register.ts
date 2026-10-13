@@ -53,13 +53,13 @@ export function registerServiceWorker(): void {
   const worker = (wb = new Workbox('/sw.js'));
   /*
      A worker took charge of this page: this build's, found during this load, or a newer
-     one. Only a newer one is worth a word. The browser's own event, not workbox-window's
+     one. Only another build is worth a word. The browser's own event, not workbox-window's
      `controlling`: workbox-window counts an update found more than a minute after
      registering, or any second one, as somebody else's, keeps pointing at the worker it
      started with, and stops listening — so a deploy found on a return to the tab, which
      is the case the notice exists for, was never said.
   */
-  navigator.serviceWorker.addEventListener('controllerchange', () => void sayIfNewer());
+  navigator.serviceWorker.addEventListener('controllerchange', () => void sayIfOther());
   /*
      A page already under a worker registers at once and asks for a new one straight
      away. Workbox otherwise waits for the window's `load`, so as not to compete with a
@@ -89,7 +89,7 @@ export function isOtherBuild(page: string | null, worker: string | null): boolea
   return page !== null && worker !== null && page !== worker;
 }
 
-async function sayIfNewer(): Promise<void> {
+async function sayIfOther(): Promise<void> {
   const controller = navigator.serviceWorker.controller;
   if (!controller) return;
   const commit = await within(askBuild(controller), 5_000, null).catch(() => null);
