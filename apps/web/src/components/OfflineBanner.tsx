@@ -1,5 +1,5 @@
 import { useOffline } from '../connectivity.js';
-import { useLibraryPresence, useSyncStatus } from '../store/use-outbox.js';
+import { useLibraryElsewhere, useLibraryPresence, useSyncStatus } from '../store/use-outbox.js';
 import { OfflineIcon } from './icons.js';
 
 /**
@@ -34,10 +34,13 @@ import { OfflineIcon } from './icons.js';
 export function OfflineBanner() {
   const offline = useOffline();
   const presence = useLibraryPresence();
+  const elsewhere = useLibraryElsewhere();
   const { durable } = useSyncStatus();
   const line =
     presence === 'none'
-      ? "You're offline. Changes can't be saved until you're back."
+      ? elsewhere
+        ? "You're offline. Your notes are open in another tab, and changes can't be saved from this one until you're back."
+        : "You're offline. Changes can't be saved until you're back."
       : presence === 'opening' || durable
         ? "You're offline. Your notes are here, and what you change will sync when you're back."
         : "You're offline. Changes can't be saved from this tab while offline — another Unbent tab is keeping your changes.";

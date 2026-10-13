@@ -665,16 +665,24 @@ what waited. Sign-out first waits a few seconds for the outbox to drain. The nam
 `store/names.ts` and nowhere else. A new way for the account on a device to change hands
 has to call it too, and say which of the three it is.
 
-**Every tab of the origin holds the library, and all of them have to let go.** A library
-open in a tab holds the store's file through its worker, a connection to the outbox's
-IndexedDB database, and, in one tab, the leadership of each collection, through which the
-other tabs' writes go. A wipe in one tab runs against all of that: the outbox's
-`deleteDatabase` waits on every open connection, and IndexedDB serves the requests on one
-name in order, so an open queued behind a waiting delete — the next sign-in's — waits for
-good, in every tab, until all of them are closed (seen with three tabs, 2026-10-10). The
-leader that stops answering — a tab Chrome has frozen in the background holds its Web
-Locks and sends no heartbeats — is not something this code can release from another tab;
-the open's bound, below, is what covers it.
+**One tab holds an account's library on a device; the others read the server.** A Web
+Lock named for the account (`store/library-lock.ts`, `libraryLockName`) says whose: a tab
+that finds it held opens nothing, reads the server as a browser without a file system
+does, and the status line says "Your notes are open in another tab" with Open here beside
+it (`LibraryStatus`). Open here takes the lock with `steal`; the tab that held it closes
+its library and stands aside. A tab standing aside waits in the lock's queue and opens the
+library on its own the moment the holder's page goes or closes its library, so closing
+the holding tab needs no press. This replaced every tab holding the library at once — each
+its own connection to the store's file, taking turns on its one access handle; each a
+connection to the outbox's database; one the leader of each collection, with the others'
+writes going through it by message; one the outbox's leader. Four coordinators that knew
+nothing of each other made states nobody designed (a follower left behind by a closed
+leader, an open waiting for good on a handle a frozen tab held, a wipe blocked on a
+connection in a tab on the sign-in screen), and forty commits in four days bounded and
+queued around them (2026-10-07 to 10-10). The trade is no editing of one account in two
+tabs of one device at once: the second tab's writes are requests, as a non-leader's
+always were. The libraries' cross-tab paths are still underneath, and untested, since
+nothing exercises them now; do not build on them.
 
 Three things keep a wipe from wedging the next sign-in, and a new way to hold or wipe the
 library has to keep them. The wipe tells the other tabs, over the channel in
@@ -686,10 +694,10 @@ account again from the session it remembers. The outbox closes its connection on
 `versionchange`, which is how IndexedDB asks, and the library closes with it. And
 `acquireLibrary` answers its caller within `LIBRARY_OPEN_TIMEOUT_MS` whatever the open is
 doing — a refusal past the bound, reported, and the page reads the server — so a wedge is
-a page with no local copy rather than a dead app. The other tabs' closes race the wipe:
-the outbox's delete completes once their connections have closed, and the store's files
-are tried again for a moment, since a file another tab's worker still holds cannot be
-removed.
+a page with no local copy rather than a dead app. A tab that holds the library and does
+not answer — frozen by the browser, or wedged on something it waits for — is what Open
+here in another tab is for: the lock is taken from it, and its library closes if the tab
+ever runs again.
 
 Every open and close of the library is a step on one queue in `library.ts` (`enqueue`),
 run only after every step before it has settled and never abandoned. A new way to open or

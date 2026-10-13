@@ -10,6 +10,7 @@ import { createKeeper, type Keeper } from './keep.js';
 import { askToPersist, readKeptNotebooks } from './files.js';
 import { SearchIndex } from './search-index.js';
 import { createSearchSync, type SearchSync } from './search-sync.js';
+import { holdLibrary, whenLibraryFree, type LibraryHold } from './library-lock.js';
 
 /**
  * One account's library on this device: its local store, the collections in it, the
@@ -107,6 +108,67 @@ export function currentLibrary(): Promise<ReadableLibrary> | null {
 /** Whose library is open now, if anyone's; for the wipe that keeps one account's files. */
 export function currentLibraryUser(): string | null {
   return current?.userId ?? null;
+}
+
+/** Another tab of this device holds the account's library; this one reads the server. */
+export class LibraryElsewhereError extends Error {
+  constructor() {
+    super('Another tab holds this account’s library');
+    this.name = 'LibraryElsewhereError';
+  }
+}
+
+/**
+ * The account whose library another tab holds, while this tab waits its turn: what the
+ * status line says, with the way to take the library over (`library-lock.ts`). `waiting`
+ * is the request in the lock's queue; `refusal` is what every ask for the library gets
+ * meanwhile, one promise with its catch attached rather than a fresh rejection per
+ * navigation.
+ */
+let elsewhere: { userId: string; waiting: AbortController; refusal: Promise<never> } | null = null;
+
+/** The account whose library another tab holds, or null; follows `subscribeLibrary`. */
+export function libraryElsewhere(): string | null {
+  return elsewhere?.userId ?? null;
+}
+
+/**
+ * Takes the account's library from the tab that holds it: that tab closes its library
+ * and stands aside, and this one opens it. The way out of a tab that holds the library
+ * and does not answer — frozen, or wedged on something it waits for — as much as of a
+ * window someone forgot.
+ */
+export function takeOverLibrary(): Promise<Library> | undefined {
+  const userId = elsewhere?.userId;
+  if (!userId) return undefined;
+  return acquireLibrary(userId, { takeOver: true });
+}
+
+/** Stops waiting for another tab's library, on any change to what this tab holds. */
+function standDown(): void {
+  if (!elsewhere) return;
+  elsewhere.waiting.abort();
+  elsewhere = null;
+}
+
+/**
+ * Another tab holds the account's library: this one reads the server, says so, and waits
+ * in the lock's queue to open the library the moment that tab lets go.
+ */
+function standAside(userId: string, refusal: Promise<never>): void {
+  standDown();
+  const waiting = new AbortController();
+  const entry = { userId, waiting, refusal };
+  elsewhere = entry;
+  libraryChanged();
+  whenLibraryFree(userId, waiting.signal).then(
+    () => {
+      if (elsewhere !== entry) return;
+      elsewhere = null;
+      void acquireLibrary(userId).catch(() => {});
+    },
+    () => {},
+  );
 }
 
 /**
@@ -344,8 +406,12 @@ function enqueue<T>(step: () => Promise<T>): Promise<T> {
  */
 type Halting = AbortSignal;
 
-export function acquireLibrary(userId: string): Promise<Library> {
+export function acquireLibrary(userId: string, options: { takeOver?: boolean } = {}): Promise<Library> {
   if (current?.userId === userId) return current.library;
+  // Another tab holds it and nobody asked to take it: the same refusal as last time,
+  // since the root `beforeLoad` asks on every navigation.
+  if (!options.takeOver && elsewhere?.userId === userId) return elsewhere.refusal;
+  standDown();
   generation += 1;
   const previous = current;
   previous?.halt();
@@ -353,11 +419,20 @@ export function acquireLibrary(userId: string): Promise<Library> {
   const opened: Promise<Library> = enqueue(async () => {
     // The account before this one, closed first; what it was told is the queue's.
     if (previous) await previous.opened.then((l) => l.close()).catch(() => {});
-    // Whether the library this open makes is still the one this tab holds: the entry's
-    // own step, which the late-finish replacement of the entry copies. Not the account —
-    // a reopen after a back/forward-cache restore, or a slow open finishing late, is the
-    // same account's and a different library.
-    return open(userId, halting.signal, () => current?.opened === opened);
+    // One tab holds an account's library (`library-lock.ts`): this one, or another, in
+    // which case nothing is opened and the page reads the server.
+    const hold = await holdLibrary(userId, options.takeOver);
+    if (!hold) throw new LibraryElsewhereError();
+    try {
+      // Whether the library this open makes is still the one this tab holds: the
+      // entry's own step, which the late-finish replacement of the entry copies. Not the
+      // account — a reopen after a back/forward-cache restore, or a slow open finishing
+      // late, is the same account's and a different library.
+      return await open(userId, halting.signal, () => current?.opened === opened, hold);
+    } catch (err) {
+      hold.release();
+      throw err;
+    }
   });
   /*
    * Bounded, so the app is never dead on a storage wedge: an open can wait for good on
@@ -384,14 +459,21 @@ export function acquireLibrary(userId: string): Promise<Library> {
       reportError(err, 'error');
       return;
     }
-    // A browser without the origin-private file system, or one refusing it in a private
-    // window: there is no local copy here, and the queries read the server instead (see
-    // `queries.ts`). Said once in the console; the next sign-in tries again.
-    console.warn('[library] not available on this device; reading from the server instead:', err);
     if (current === entry) {
       current = null;
       libraryChanged();
     }
+    if (err instanceof LibraryElsewhereError) {
+      // Not a fault: the status line says so, and this tab opens the library when the
+      // holding tab lets go, or when asked to take it over.
+      console.info('[library] another tab holds this account’s library; reading from the server until it lets go');
+      standAside(userId, library as Promise<never>);
+      return;
+    }
+    // A browser without the origin-private file system, or one refusing it in a private
+    // window: there is no local copy here, and the queries read the server instead (see
+    // `queries.ts`). Said once in the console; the next sign-in tries again.
+    console.warn('[library] not available on this device; reading from the server instead:', err);
   });
   opened.then(
     (lib) => {
@@ -413,6 +495,7 @@ export function acquireLibrary(userId: string): Promise<Library> {
 
 /** For tests: forgets what is open and every step still queued, as a reload would. */
 export function resetLibraryForTests(): void {
+  standDown();
   current = null;
   queue = Promise.resolve();
 }
@@ -420,6 +503,9 @@ export function resetLibraryForTests(): void {
 /** The close of what is open now, if anything, as a step: the library's close, then whatever `then` adds. */
 function closeStep(then?: () => Promise<void>): Promise<void> {
   generation += 1;
+  // A tab waiting for another's library stops: a sign-out or a switch decides what is
+  // open, not the lock's queue.
+  standDown();
   const open = current;
   current = null;
   if (open) {
@@ -521,7 +607,7 @@ export async function fetchJson<T>(path: string, stop?: AbortSignal): Promise<T>
   }
 }
 
-async function open(userId: string, halting: Halting, isMine: () => boolean): Promise<Library> {
+async function open(userId: string, halting: Halting, isMine: () => boolean, hold: LibraryHold): Promise<Library> {
   const store = await openLocalStore(userId);
   const listeners = new Set<(state: FeedState) => void>();
   let latest: FeedState | null = null;
@@ -705,6 +791,20 @@ async function open(userId: string, halting: Halting, isMine: () => boolean): Pr
   else halting.addEventListener('abort', halt, { once: true });
 
   /*
+   * Another tab took the library over (`takeOverLibrary` there): this library closes,
+   * and this tab stands aside, reading the server and waiting its turn in the lock's
+   * queue. Only while it is still this tab's library: a close or a switch that already
+   * took its entry has decided for it.
+   */
+  void hold.taken.then(() => {
+    if (!isMine()) return;
+    console.info('[library] another tab took this account’s library over; reading from the server until it lets go');
+    const refusal = Promise.reject(new LibraryElsewhereError());
+    refusal.catch(() => {});
+    void closeLibrary().then(() => standAside(userId, refusal as Promise<never>));
+  });
+
+  /*
    * The one wait in here that can wedge — the outbox's database held by another tab's
    * queued delete (`store/wipe.ts`) — and so the one that can hold this step, and the
    * queue behind it, for good. Not given up on: a step runs to its end (see `queue`),
@@ -828,6 +928,8 @@ async function open(userId: string, halting: Halting, isMine: () => boolean): Pr
     // After its sync has stopped: a pass in hand finishes its write, and the file is free for a wipe.
     await search?.index.close().catch(() => {});
     await closeLocalStore();
+    // Last, once the file is let go: the next tab in the queue opens the store on its own.
+    hold.release();
   };
 
   return {

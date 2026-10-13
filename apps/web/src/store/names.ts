@@ -44,6 +44,8 @@ export const outboxName = (userId: string) => `${OUTBOX_PREFIX}${safe(userId)}`;
  * this one's writes from going.
  */
 export const outboxLeaderName = (userId: string) => `${OUTBOX_PREFIX}leader-${safe(userId)}`;
+/** The Web Lock the one tab holding an account's library holds (`store/library-lock.ts`). */
+export const libraryLockName = (userId: string) => `${STORE_PREFIX}library-${safe(userId)}`;
 export const filesDirName = (userId: string) => `${FILES_PREFIX}${safe(userId)}`;
 
 /**

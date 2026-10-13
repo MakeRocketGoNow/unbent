@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { FEED_TIMEOUT_MS, FeedTimeoutError, LIBRARY_OPEN_TIMEOUT_MS, LIBRARY_ROOTS, LibraryOpenTimeoutError, acquireLibrary, closeLibraryAndStore, currentLibrary, fetchJson, resetLibraryForTests, rootsOfNoteChanges, settleWrites, subscribeLibrary } from './library.js';
+import { FEED_TIMEOUT_MS, FeedTimeoutError, LIBRARY_OPEN_TIMEOUT_MS, LIBRARY_ROOTS, LibraryElsewhereError, LibraryOpenTimeoutError, acquireLibrary, closeLibraryAndStore, currentLibrary, fetchJson, libraryElsewhere, resetLibraryForTests, rootsOfNoteChanges, settleWrites, subscribeLibrary, takeOverLibrary } from './library.js';
+import { setLocksForTests } from './library-lock.js';
+import { fakeLocks } from './test-locks.js';
+import { libraryLockName } from './names.js';
 import { openLocalStore, type LocalStore } from './db.js';
 import { reportError } from '../report-error.js';
 import { FeedEngine } from './feed.js';
@@ -174,6 +177,7 @@ describe('acquireLibrary', () => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     resetLibraryForTests();
+    setLocksForTests(undefined);
     vi.mocked(openLocalStore).mockReset();
     vi.mocked(reportError).mockReset();
   });
@@ -375,6 +379,109 @@ describe('acquireLibrary', () => {
     await vi.advanceTimersByTimeAsync(LIBRARY_OPEN_TIMEOUT_MS);
     expect(wiped).toBe(false);
     expect(closeLocalStore).not.toHaveBeenCalled();
+  });
+
+  /*
+   * One tab holds an account's library (`library-lock.ts`). The tests below play the
+   * other tab with the fake lock manager directly: a request it holds is that tab's
+   * library, open.
+   */
+  describe('with another tab', () => {
+    const lock = libraryLockName('u1');
+
+    it('reads the server while another tab holds the library, and opens it once that tab lets go', async () => {
+      vi.useFakeTimers();
+      const locks = fakeLocks();
+      setLocksForTests(locks);
+      page();
+      let letGo!: () => void;
+      void locks.request(lock, { mode: 'exclusive' }, () => new Promise<void>((r) => (letGo = r)));
+      await vi.advanceTimersByTimeAsync(0);
+      const first = acquireLibrary('u1');
+      await expect(first).rejects.toBeInstanceOf(LibraryElsewhereError);
+      expect(currentLibrary()).toBeNull();
+      expect(libraryElsewhere()).toBe('u1');
+      expect(openLocalStore).not.toHaveBeenCalled();
+      expect(reportError).not.toHaveBeenCalled();
+      // Every ask meanwhile is the same refusal, with no second request to the lock.
+      expect(acquireLibrary('u1')).toBe(first);
+      // The other tab lets go: this one opens the library on its own, and the hooks hear.
+      const heard = vi.fn();
+      const stop = subscribeLibrary(heard);
+      letGo();
+      await vi.advanceTimersByTimeAsync(10);
+      expect(libraryElsewhere()).toBeNull();
+      await expect(currentLibrary()).resolves.toMatchObject({ userId: 'u1' });
+      expect(heard).toHaveBeenCalled();
+      expect(locks.held(lock)).toBe(true);
+      stop();
+    });
+
+    it('takes the library over on request', async () => {
+      vi.useFakeTimers();
+      const locks = fakeLocks();
+      setLocksForTests(locks);
+      page();
+      const other = locks.request(lock, { mode: 'exclusive' }, () => new Promise<void>(() => {}));
+      other.catch(() => {});
+      await vi.advanceTimersByTimeAsync(0);
+      await expect(acquireLibrary('u1')).rejects.toBeInstanceOf(LibraryElsewhereError);
+      const taken = takeOverLibrary();
+      await vi.advanceTimersByTimeAsync(10);
+      await expect(taken).resolves.toMatchObject({ userId: 'u1' });
+      // The other tab's hold ended under it, which is how it learns to stand aside.
+      await expect(other).rejects.toMatchObject({ name: 'AbortError' });
+      expect(libraryElsewhere()).toBeNull();
+    });
+
+    it('closes its library and stands aside when another tab takes it over, and has it back when that tab goes', async () => {
+      vi.useFakeTimers();
+      const locks = fakeLocks();
+      setLocksForTests(locks);
+      const { outbox } = page();
+      await acquireLibrary('u1');
+      expect(locks.held(lock)).toBe(true);
+      // Another tab presses Open here.
+      let letGo!: () => void;
+      void locks.request(lock, { mode: 'exclusive', steal: true }, () => new Promise<void>((r) => (letGo = r)));
+      await vi.advanceTimersByTimeAsync(10);
+      expect(outbox.dispose).toHaveBeenCalledTimes(1);
+      expect(closeLocalStore).toHaveBeenCalled();
+      expect(currentLibrary()).toBeNull();
+      expect(libraryElsewhere()).toBe('u1');
+      // That tab closes: this one opens the library again without being asked.
+      letGo();
+      await vi.advanceTimersByTimeAsync(10);
+      await expect(currentLibrary()).resolves.toMatchObject({ userId: 'u1' });
+      expect(openLocalStore).toHaveBeenCalledTimes(2);
+    });
+
+    it('stops waiting for another tab’s library on a sign-out', async () => {
+      vi.useFakeTimers();
+      const locks = fakeLocks();
+      setLocksForTests(locks);
+      page();
+      let letGo!: () => void;
+      void locks.request(lock, { mode: 'exclusive' }, () => new Promise<void>((r) => (letGo = r)));
+      await vi.advanceTimersByTimeAsync(0);
+      await expect(acquireLibrary('u1')).rejects.toBeInstanceOf(LibraryElsewhereError);
+      await closeLibraryAndStore();
+      expect(libraryElsewhere()).toBeNull();
+      letGo();
+      await vi.advanceTimersByTimeAsync(10);
+      expect(currentLibrary()).toBeNull();
+      expect(openLocalStore).not.toHaveBeenCalled();
+    });
+
+    it('lets go of the lock when its library closes, for the next tab', async () => {
+      vi.useFakeTimers();
+      const locks = fakeLocks();
+      setLocksForTests(locks);
+      page();
+      await acquireLibrary('u1');
+      await closeLibraryAndStore();
+      expect(locks.held(lock)).toBe(false);
+    });
   });
 
   it('is not a timeout that fires under an open that settled in time', async () => {

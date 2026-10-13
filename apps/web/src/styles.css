@@ -596,6 +596,16 @@ button.link {
   flex: none;
 }
 
+/*
+   The status line's one action, "Open here" when another tab holds the library: at the
+   line's far end, where an action on a row goes, and quiet, since the line is a state.
+   The sentence may wrap on a phone; the button does not, and keeps its hit area.
+*/
+.library-status .library-status-action {
+  margin-left: auto;
+  flex: none;
+}
+
 .notes {
   display: grid;
   /*
