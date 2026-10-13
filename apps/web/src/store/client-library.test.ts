@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createCollection, type Collection } from '@tanstack/db';
 import type { FeedNote, FeedNotebook, FeedTag, FeedAttachment } from '@unbent/shared';
 import { ApiError, NoteChangedError, OfflineError } from '../notes-api.js';
-import { attachClientLibrary, ATTACH_STALL_MS, CallUnsettledError, HELLO_RETRY_MS, HOLDER_SILENT_MS, LibraryMovedError, ORPHANED_MS, PING_MS, type ClientHooks, type ClientLibrary } from './client-library.js';
+import { attachClientLibrary, ATTACH_STALL_MS, CallUnsettledError, HELLO_RETRY_MAX_MS, HELLO_RETRY_MS, HOLDER_SILENT_MS, LibraryMovedError, ORPHANED_MS, PING_MS, type ClientHooks, type ClientLibrary } from './client-library.js';
 import { serveLibrary, HELLO_DEDUPE_MS, ROWS_PER_MESSAGE, type Serving, type Server } from './library-serve.js';
 import { carry, revive, type Message, type Port } from './library-channel.js';
 import { LIBRARY_ROOTS } from './library-roots.js';
@@ -352,15 +352,20 @@ describe('a client of the holding tab', () => {
     await expect(asked).rejects.toBeInstanceOf(OfflineError);
   });
 
-  it('keeps saying hello until a holder serves, and attaches to one that starts later', async () => {
+  it('keeps saying hello, less and less often, until a holder serves, and attaches to one that starts later', async () => {
     const hk = hooks();
     const halting = new AbortController();
     const attaching = attach(hk, halting);
     let attached = false;
     void attaching.then(() => (attached = true));
-    await vi.advanceTimersByTimeAsync(HELLO_RETRY_MS * 2);
+    const hellos = () => channel.posted.filter((m) => m.type === 'hello').length;
+    await vi.advanceTimersByTimeAsync(HELLO_RETRY_MS * 3);
     expect(attached).toBe(false);
-    expect(channel.posted.filter((m) => m.type === 'hello')).toHaveLength(3);
+    // At once, after two seconds, after four more: three in six seconds.
+    expect(hellos()).toBe(3);
+    await vi.advanceTimersByTimeAsync(HELLO_RETRY_MAX_MS * 4);
+    // Capped at one every thirty seconds.
+    expect(hellos()).toBeLessThan(12);
     holder(channel.port(), { notes: [note('n1')] });
     await settle();
     await settle();
@@ -369,9 +374,9 @@ describe('a client of the holding tab', () => {
     expect(attached).toBe(true);
     expect(lib.notes.size).toBe(1);
     // Attached: the asking stops.
-    const hellos = channel.posted.filter((m) => m.type === 'hello').length;
-    await vi.advanceTimersByTimeAsync(HELLO_RETRY_MS * 3);
-    expect(channel.posted.filter((m) => m.type === 'hello')).toHaveLength(hellos);
+    const asked = hellos();
+    await vi.advanceTimersByTimeAsync(HELLO_RETRY_MAX_MS * 2);
+    expect(hellos()).toBe(asked);
   });
 
   it('keeps its rows and holds its calls when the holder closes, and attaches to the next holder, which answers them', async () => {
@@ -440,17 +445,33 @@ describe('a client of the holding tab', () => {
     halting.abort();
   });
 
-  it('pings an attached holder, and asks to take the library over from one that stops answering', async () => {
+  it('pings its holder only while a call is in hand, and asks to take the library over from one that stops answering', async () => {
     const port = channel.port();
     holder(port, { notes: [note('n1')] });
     const hk = hooks();
     const lib = await client(hk);
     const pings = () => channel.posted.filter((m) => m.type === 'ping').length;
     const pongs = () => channel.posted.filter((m) => m.type === 'pong').length;
+    // Idle: nothing is asked of anyone.
+    await vi.advanceTimersByTimeAsync(PING_MS * 3 + 10);
+    expect(pings()).toBe(0);
+    // A call in hand: pinged until it is answered, then quiet again.
+    let finish!: (v: string) => void;
+    vi.mocked(forwardable.trashNote!).mockImplementationOnce(() => new Promise<string>((r) => (finish = r)) as never);
+    const slow = lib.call('trashNote', ['n1']);
+    await settle();
     await vi.advanceTimersByTimeAsync(PING_MS * 3 + 10);
     expect(pings()).toBe(3);
     expect(pongs()).toBe(3);
+    finish('trashed n1');
+    await expect(slow).resolves.toBe('trashed n1');
+    await vi.advanceTimersByTimeAsync(PING_MS * 3);
+    expect(pings()).toBe(3);
     expect(hk.silent).toBe(0);
+    // Pinged again, with a call in hand, through a throttled interval.
+    vi.mocked(forwardable.trashNote!).mockImplementationOnce(() => new Promise<string>(() => {}) as never);
+    lib.call('trashNote', ['n1']).catch(() => {});
+    await settle();
     // A hidden client's interval runs once a minute: a live, idle holder is not silent.
     for (let i = 0; i < 3; i++) {
       vi.setSystemTime(Date.now() + 60_000 - PING_MS);
@@ -459,13 +480,9 @@ describe('a client of the holding tab', () => {
     expect(hk.silent).toBe(0);
     expect(lib.attached()).toBe(true);
     // The holder's tab is frozen: it hears nothing and says nothing, and still holds the
-    // lock. An idle client only notices; one with a save in hand takes the library over.
+    // lock. With a call in hand, the client takes the library over.
     port.close();
     await vi.advanceTimersByTimeAsync(HOLDER_SILENT_MS + PING_MS * 2);
-    expect(hk.silent).toBe(0);
-    const stuck = lib.call('trashNote', ['n1']);
-    stuck.catch(() => {});
-    await vi.advanceTimersByTimeAsync(PING_MS * 2);
     expect(hk.silent).toBe(1);
     expect(lib.attached()).toBe(false);
     // The rows stay readable meanwhile, and a call waits for whatever comes next.

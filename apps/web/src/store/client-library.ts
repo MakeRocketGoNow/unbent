@@ -64,8 +64,14 @@ export class CallUnsettledError extends Error {
  */
 export const SEND_ONCE: ReadonlySet<string> = new Set(['emptyTrash', 'applyNotebookTemplate', 'restoreRevision']);
 
-/** How often a client without a holder says hello; a holder announces itself too, so this only covers one that was serving before the client opened. */
+/**
+ * How long a client without a holder waits before saying hello again, doubling each time
+ * to `HELLO_RETRY_MAX_MS`. A holder announces itself, so this only covers one that was
+ * serving before the client opened; a holder whose open is wedged would otherwise be
+ * asked every two seconds for as long as the tab is open.
+ */
 export const HELLO_RETRY_MS = 2000;
+export const HELLO_RETRY_MAX_MS = 30_000;
 /**
  * How long after the first of a holder's rows the client waits for `attached` before
  * asking again. The asking stops the moment rows arrive — an archive is tens of
@@ -74,7 +80,7 @@ export const HELLO_RETRY_MS = 2000;
  * short, by a holder that closed mid-way, starts it again.
  */
 export const ATTACH_STALL_MS = 15_000;
-/** How often an attached client asks its holder whether it is still there. */
+/** How often a client with a call in hand asks its holder whether it is still there; an idle client asks nothing, since a holder gone costs it nothing until it has something to send. */
 export const PING_MS = 5_000;
 /**
  * How long, and how many pings, a holder may leave unanswered before its client stops
@@ -200,21 +206,27 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
   let nextId = 1;
   let closed = false;
 
-  let hello: ReturnType<typeof setInterval> | null = null;
+  let hello: ReturnType<typeof setTimeout> | null = null;
   let stall: ReturnType<typeof setTimeout> | null = null;
   const sayHello = () => port.post({ type: 'hello', client: me });
   const stopAsking = () => {
-    if (hello) clearInterval(hello);
+    if (hello) clearTimeout(hello);
     hello = null;
     if (stall) clearTimeout(stall);
     stall = null;
   };
-  /** Says hello now and keeps saying it, once per `HELLO_RETRY_MS`, until a holder's rows arrive. */
+  /** Says hello now and keeps saying it, each wait twice the last, until a holder's rows arrive. */
   const askNow = () => {
     if (closed) return;
     stopAsking();
     sayHello();
-    hello = setInterval(sayHello, HELLO_RETRY_MS);
+    let wait = HELLO_RETRY_MS;
+    const again = () => {
+      sayHello();
+      wait = Math.min(wait * 2, HELLO_RETRY_MAX_MS);
+      hello = setTimeout(again, wait);
+    };
+    hello = setTimeout(again, wait);
   };
 
   let attachedOnce = false;
@@ -226,8 +238,9 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
     if (pinger) clearInterval(pinger);
     pinger = null;
   };
+  /** Pings while a call is in hand, and not otherwise: see `PING_MS`. */
   const startPinging = () => {
-    stopPinging();
+    if (pinger) return;
     unanswered = 0;
     pinger = setInterval(() => {
       if (!holder) return;
@@ -318,7 +331,7 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
         holder = m.holder;
         incoming = null;
         stopOrphanWatch();
-        startPinging();
+        if (pending.size > 0) startPinging();
         version += 1;
         feed = m.state;
         status = m.status;
@@ -390,6 +403,7 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
         const p = pending.get(m.id);
         if (!p) return;
         pending.delete(m.id);
+        if (pending.size === 0) stopPinging();
         if (m.ok) p.resolve(m.value);
         else p.reject(revive(m.error));
         return;
@@ -411,10 +425,13 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
       const id = nextId++;
       const p: Pending = { name, args, sentTo: null, resolve, reject };
       pending.set(id, p);
-      // Sent now when a holder is serving; else when the next one attaches, which is
-      // waited for under the bound from now, if it was not already.
-      if (holder) send(id, p);
-      else if (!orphaned) watchForHolder();
+      // Sent now when a holder is serving, and watched for an answer; else when the
+      // next one attaches, which is waited for under the bound from now, if it was not
+      // already.
+      if (holder) {
+        send(id, p);
+        startPinging();
+      } else if (!orphaned) watchForHolder();
     });
   };
 
