@@ -84,9 +84,6 @@ export function serveLibrary(port: Port, lib: Serving, holder: string): Server {
     }
     if (!Object.hasOwn(forwardable, name)) throw new Error(`No such call: ${name}`);
     const action = forwardable[name as keyof typeof forwardable] as (...a: unknown[]) => Promise<unknown>;
-    // A save says which tab it came from, so the outbox can tell two editors of one
-    // note apart (`saveNote`); the holder's own saves carry nothing.
-    if (name === 'saveNote') args = [{ ...(args[0] as object), origin: client }];
     return action(...args);
   };
 

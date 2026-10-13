@@ -172,9 +172,14 @@ export interface WritableLibrary extends Collections {
  * so the patch is still only what was typed here and lands on top of theirs.
  */
 /**
- * `origin` is the client tab the save came from (`library-serve.ts` sets it), and absent
- * for the holder's own: what tells two editors of one note apart in one outbox.
+ * This tab, as the origin of the saves it makes: minted once per page, so a save made
+ * here as a client and one made here as the holder are the same editor's, and a save
+ * restored from the outbox by the next holder is still the tab's that made it. What
+ * tells two editors of one note apart in one outbox (`saveNote`).
  */
+export const TAB_ORIGIN: string = crypto.randomUUID();
+
+/** `origin` is the tab the save came from (`TAB_ORIGIN` there); a client sends its own with the call. */
 type Save = { noteId: string; value: NoteDraft; base: Note; against?: number; origin?: string };
 
 /** The key a conflict is kept under in the outbox's storage; its entries are the `tx:` keys. */
@@ -1104,7 +1109,7 @@ async function saveViaRequest(input: Save): Promise<'unchanged' | Note> {
  */
 export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | Note> {
   const far = await away();
-  if (far) return far('saveNote', [input], { ids: [input.noteId], refiles: input.value.notebook !== input.base.notebook || JSON.stringify(input.value.tags) !== JSON.stringify(input.base.tags) });
+  if (far) return far('saveNote', [{ ...input, origin: TAB_ORIGIN }], { ids: [input.noteId], refiles: input.value.notebook !== input.base.notebook || JSON.stringify(input.value.tags) !== JSON.stringify(input.base.tags) });
   const lib = await queueable();
   if (!lib || notCopiedYet(lib, input.noteId)) {
     // No local copy on this device, a tab that does not queue, or a note the copy
@@ -1133,8 +1138,9 @@ export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | No
    * changes, and is otherwise refused as the server would refuse it, with the row as it
    * stands, which the workspace puts to the person as a conflict.
    */
+  const origin = input.origin ?? TAB_ORIGIN;
   const waiting = lib.outbox.waitingSave(input.noteId);
-  if (waiting && waiting.origin !== input.origin) {
+  if (waiting && waiting.origin !== origin) {
     const theirs = { ...waiting.base, title: waiting.value.title, body: waiting.value.body, tags: waiting.value.tags, notebook: waiting.value.notebook, fields: valuesOf(waiting.value, lib) };
     if (!holdsTheirChanges(input.value, input.base, theirs)) {
       const row = lib.notes.get(input.noteId);
@@ -1146,7 +1152,7 @@ export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | No
   const patch = buildNotePatch(input.value, base, [...lookups(snapshot(lib)).fieldDefs.values()]);
   if (!patch) return 'unchanged';
   const { value } = input;
-  const entry: Save = { noteId: input.noteId, value, base, against: input.against ?? carried?.against, origin: input.origin };
+  const entry: Save = { noteId: input.noteId, value, base, against: input.against ?? carried?.against, origin };
   const queued = queue(
     lib,
     'saveNote',
@@ -1162,7 +1168,7 @@ export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | No
     },
     patch.notebook !== undefined || patch.tags !== undefined,
   );
-  lib.outbox.trackSave(input.noteId, { ...queued, value, base, against: entry.against, origin: input.origin });
+  lib.outbox.trackSave(input.noteId, { ...queued, value, base, against: entry.against, origin });
   return 'queued';
 }
 

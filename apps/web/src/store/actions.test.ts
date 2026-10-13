@@ -8,7 +8,7 @@ import { resetConnectivity, setReachableForTests } from '../connectivity.js';
 import { seedFrom } from '../note-patch.js';
 import { installLibraryQueries, keys } from '../queries.js';
 import * as actions from './actions.js';
-import { createOutbox, provideForwarder, provideLibrary, type WritableLibrary } from './actions.js';
+import { createOutbox, provideForwarder, provideLibrary, TAB_ORIGIN, type WritableLibrary } from './actions.js';
 import { CallUnsettledError, LibraryMovedError } from './client-library.js';
 import { lookups, toNote } from './derive.js';
 import { feedControls, type Collections, type LocalNote } from './collections.js';
@@ -655,8 +655,32 @@ describe('saves of one note', () => {
     await tick();
     expect(lib.notes.get('n1')).toMatchObject({ title: 'renamed', body: 'typed' });
     expect(lib.outbox.status().pending).toBe(1);
-    // The holder's own save, with no origin, is another editor too.
+    // This tab's own save carries the tab's origin, which is another editor's than B's.
     await expect(actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'mine' }, base })).rejects.toBeInstanceOf(NoteChangedError);
+  });
+
+  it('are the same editor’s whether this tab made them as a client or as the holder', async () => {
+    const { lib, note } = library([row('n1', { title: 'old' })]);
+    await lib.outbox.ready;
+    const base = note('n1');
+    // Made here as a client: the save went to a holder with this tab's origin, and is
+    // restored by this tab once it holds the library.
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'renamed' }, base, origin: TAB_ORIGIN });
+    await tick();
+    // Typed back as the holder: the same editor's, so the waiting save is retired, not a conflict.
+    await expect(actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'old' }, base })).resolves.toBe('unchanged');
+    expect(lib.notes.get('n1')?.title).toBe('old');
+    expect(lib.outbox.status().pending).toBe(0);
+  });
+
+  it('sends this tab’s origin with a save forwarded to the holder', async () => {
+    library([row('n1')]);
+    const sent: unknown[] = [];
+    provideForwarder(async () => async (_name, args) => void sent.push(args[0]));
+    const base: Note = { id: 'n1', title: 'old', body: '', tags: [], notebook: null, createdAt: 1, updatedAt: 100, fields: [] };
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'new' }, base });
+    provideForwarder(async () => null);
+    expect(sent[0]).toMatchObject({ origin: TAB_ORIGIN });
   });
 
   it('typed back to what the server holds, retires the waiting save and sends nothing', async () => {
