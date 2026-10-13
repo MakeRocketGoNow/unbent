@@ -1,5 +1,5 @@
 import { useOffline } from '../connectivity.js';
-import { useLibraryElsewhere, useLibraryPresence } from '../store/use-outbox.js';
+import { useLibraryElsewhere, useLibraryPresence, useSyncStatus } from '../store/use-outbox.js';
 import { OfflineIcon } from './icons.js';
 
 /**
@@ -21,28 +21,28 @@ import { OfflineIcon } from './icons.js';
  * screen reader announce the change; a region inserted already holding its text is often
  * read out by none of them.
  *
- * The second sentence is a promise the tab holding the library can keep: it holds the
- * outbox too, since one tab holds an account's library on a device (`store/library-lock.ts`)
- * and that tab leads its outbox (`store/leader.ts`). A tab without the library — another
- * tab has it — makes every write a request, and offline those fail; it says so, and says
- * where the notes are, since the status line beside it is where Open here is. A device
- * with no library at all (a browser without the file system it lives in) keeps nothing
- * and queues nothing, and is told what the old shell told it; a library still opening is
- * not that, and gets the promise, since it is about to keep it. There used to be a fourth
- * line, for a tab that held the library but not the outbox's lock, blaming "another
- * Unbent tab"; that state lasts a moment now, during a hand-over, and a line that showed
- * for a moment and named a tab nobody could find was the confusing one.
+ * The second sentence is a promise only a tab whose outbox is durable can keep: the tab
+ * holding the account's library, once it leads the outbox too, which it does a moment
+ * after opening (`store/leader.ts`). Any other tab makes every write a request, and
+ * offline those fail, so it is told that and nothing more: where the notes are, and the
+ * way to take them over, is the status line's to say (`LibraryStatus`), and the two sit
+ * one above the other. A device with no library at all (a browser without the file
+ * system it lives in) keeps nothing and queues nothing, and gets the same words; a
+ * library still opening is about to keep the promise, and gets it. There used to be a
+ * line blaming "another Unbent tab" for the non-durable case; it named a tab nobody could
+ * find, since the state it described lasted a moment, and now one tab holds the library.
  */
 export function OfflineBanner() {
   const offline = useOffline();
   const presence = useLibraryPresence();
   const elsewhere = useLibraryElsewhere();
+  const { durable } = useSyncStatus();
   const line =
-    presence === 'none'
-      ? elsewhere
-        ? "You're offline. Your notes are open in another tab, and changes can't be saved from this one until you're back."
-        : "You're offline. Changes can't be saved until you're back."
-      : "You're offline. Your notes are here, and what you change will sync when you're back.";
+    presence === 'opening' || (presence === 'open' && durable)
+      ? "You're offline. Your notes are here, and what you change will sync when you're back."
+      : elsewhere
+        ? "You're offline. Changes can't be saved from this tab until you're back."
+        : "You're offline. Changes can't be saved until you're back.";
   return (
     <div className="offline-status" role="status">
       {offline && (
