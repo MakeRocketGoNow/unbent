@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
-import { Workbox } from 'workbox-window';
+import { Workbox, messageSW } from 'workbox-window';
+import { within } from './sw/routes.js';
 import { pageBusy } from './busy.js';
 import { buildInfo } from './build-info.js';
 
@@ -49,12 +50,15 @@ export function registerServiceWorker(): void {
   recoverFromMissingChunks();
   if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
   const worker = (wb = new Workbox('/sw.js'));
-  // A new deploy's worker has installed: it takes charge now. Fires for a worker that
-  // installed during this visit and for one already waiting when the page loaded.
-  worker.addEventListener('waiting', () => worker.messageSkipWaiting());
-  // A worker took charge of this page: this build's, found during this load, or a newer
-  // one. Only a newer one is worth a word.
-  worker.addEventListener('controlling', () => void sayIfNewer(worker));
+  /*
+     A worker took charge of this page: this build's, found during this load, or a newer
+     one. Only a newer one is worth a word. The browser's own event, not workbox-window's
+     `controlling`: workbox-window counts an update found more than a minute after
+     registering, or any second one, as somebody else's, keeps pointing at the worker it
+     started with, and stops listening — so a deploy found on a return to the tab, which
+     is the case the notice exists for, was never said.
+  */
+  navigator.serviceWorker.addEventListener('controllerchange', () => void sayIfNewer());
   /*
      A page already under a worker registers at once and asks for a new one straight
      away. Workbox otherwise waits for the window's `load`, so as not to compete with a
@@ -76,22 +80,24 @@ export function registerServiceWorker(): void {
 /**
  * Whether the worker now in charge is a newer build than this page, which a reload would
  * bring: the worker's commit, asked of it, against the page's own. A page whose load
- * found and installed this build's own worker hears `controlling` too, and has nothing to
- * be told. Unknown on either side is not newer: a word that might be wrong is worse than
+ * found and installed this build's own worker hears `controllerchange` too, and has nothing
+ * to be told. Unknown on either side is not newer: a word that might be wrong is worse than
  * none, and the next load brings the newest build regardless.
  */
 export function isNewerBuild(page: string | null, worker: string | null): boolean {
   return page !== null && worker !== null && page !== worker;
 }
 
-async function sayIfNewer(worker: Workbox): Promise<void> {
-  const commit = await askBuild(worker).catch(() => null);
+async function sayIfNewer(): Promise<void> {
+  const controller = navigator.serviceWorker.controller;
+  if (!controller) return;
+  const commit = await within(askBuild(controller), 5_000, null).catch(() => null);
   if (isNewerBuild(PAGE_COMMIT, commit)) setNotice(true);
 }
 
 /** The commit the worker in charge was built from, from the page it holds (`BUILD` in `sw.ts`). */
-function askBuild(worker: Workbox): Promise<string | null> {
-  return worker.messageSW({ type: 'BUILD' }).then((answer: unknown) => (answer as { commit?: string | null } | null)?.commit ?? null);
+function askBuild(controller: ServiceWorker): Promise<string | null> {
+  return messageSW(controller, { type: 'BUILD' }).then((answer: unknown) => (answer as { commit?: string | null } | null)?.commit ?? null);
 }
 
 export type OfflineReady = 'ready' | 'installing' | 'unavailable';

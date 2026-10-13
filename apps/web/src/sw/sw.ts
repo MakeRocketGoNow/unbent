@@ -142,8 +142,15 @@ function unredirected(response: Response): Response {
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers: response.headers });
 }
 
+/**
+ * Once the shell is in, take charge: the previous build's shell stays cached for the
+ * pages still running it, so there is nothing to wait for. The page used to say when
+ * (`SKIP_WAITING`), through workbox-window's `waiting` event — which it fires only for
+ * the first update a page sees within a minute of registering; every later deploy sat
+ * in `waiting` until the last tab closed.
+ */
 self.addEventListener('install', (event) => {
-  event.waitUntil(fillShell());
+  event.waitUntil(fillShell().then(() => self.skipWaiting()));
 });
 
 /**
@@ -467,10 +474,6 @@ registerRoute(
 /**
  * Messages from the page.
  *
- * `SKIP_WAITING`: a new deploy's worker has installed; the page tells it to take charge
- * as soon as it hears (`sw-register.ts`). Safe at any moment, since the previous build's
- * shell stays cached for the pages still running it.
- *
  * `BUILD`: which deploy this worker is. Answered on the port the page sent, with the
  * commit read out of the precached page — the one place the worker can learn it without
  * the build plumbing it through — so a page can tell whether the worker now in charge
@@ -480,7 +483,6 @@ registerRoute(
  */
 self.addEventListener('message', (event) => {
   const type = (event.data as { type?: unknown } | null)?.type;
-  if (type === 'SKIP_WAITING') void self.skipWaiting();
   if (type === 'BUILD') event.waitUntil(answerBuild(event.ports[0]));
   if (type === FILES_CHANGED) event.waitUntil(ledger.sweep());
 });
