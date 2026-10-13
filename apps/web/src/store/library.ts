@@ -127,7 +127,8 @@ provideForwarder(async () => {
   if (forTests || !current) return null;
   try {
     const lib = await current.library;
-    return lib.remote ? lib.call : null;
+    if (!lib.remote) return null;
+    return Object.assign((name: Parameters<typeof lib.call>[0], args: unknown[]) => lib.call(name, args), { stillMine: () => current?.userId === lib.userId });
   } catch {
     return null;
   }

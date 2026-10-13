@@ -783,7 +783,10 @@ export function provideLibrary(fn: () => Promise<WritableLibrary | null>): void 
  * order with the holder's own. Before 2026-10-13 such a tab made every write a request,
  * which offline was a save refused.
  */
-export type Forward = (name: string, args: unknown[]) => Promise<unknown>;
+export type Forward = ((name: keyof typeof forwardable, args: unknown[]) => Promise<unknown>) & {
+  /** Whether the account the call was for is still the one this tab holds; absent means yes. */
+  stillMine?: () => boolean;
+};
 
 let forward: () => Promise<Forward | null> = async () => null;
 
@@ -824,6 +827,10 @@ async function away(): Promise<Away | null> {
     } catch (err) {
       if (err instanceof LibraryMovedError) {
         if (err.sent && SEND_ONCE.has(name)) throw new CallUnsettledError(name);
+        // Where the library now is may be another account's: a switch, with the call
+        // in hand, replaces the client before its refusal is handled. The thing is not
+        // done again as them.
+        if (fwd.stillMine && !fwd.stillMine()) throw new Error('The account on this tab changed while this was in hand');
         // Run here, once: with a client still current that refuses again, forwarding
         // from the re-run would be this same catch without end.
         runningHere += 1;

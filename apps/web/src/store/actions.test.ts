@@ -1524,6 +1524,22 @@ describe('a tab that is a client of the holder', () => {
     await expect(actions.emptyTrash(['n1'])).resolves.toMatchObject({ notesDeleted: 1 });
   });
 
+  it('does not do the thing again here when the account changed under the call', async () => {
+    const { lib } = library([row('n1')]);
+    await lib.outbox.ready;
+    provideForwarder(async () =>
+      Object.assign(
+        async () => {
+          throw new LibraryMovedError(false);
+        },
+        { stillMine: () => false },
+      ),
+    );
+    await expect(actions.trashNote('n1')).rejects.toThrow('account on this tab changed');
+    expect(lib.notes.get('n1')?.deletedAt).toBeUndefined();
+    expect(lib.outbox.status().pending).toBe(0);
+  });
+
   it('brings any other failure back to the caller as it came', async () => {
     library([row('n1')]);
     provideForwarder(async () => async () => {
