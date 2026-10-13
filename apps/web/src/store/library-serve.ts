@@ -123,6 +123,7 @@ export function serveLibrary(port: Port, lib: Serving): Server {
     if (m.type === 'hello') return void hello(m.client);
     if (m.type === 'bye') {
       clients.delete(m.client);
+      answered.delete(m.client);
       port.forget(m.client);
       return;
     }
