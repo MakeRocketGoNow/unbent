@@ -9,7 +9,7 @@ import { seedFrom } from '../note-patch.js';
 import { installLibraryQueries, keys } from '../queries.js';
 import * as actions from './actions.js';
 import { createOutbox, provideForwarder, provideLibrary, type WritableLibrary } from './actions.js';
-import { LibraryMovedError } from './client-library.js';
+import { CallUnsettledError, LibraryMovedError } from './client-library.js';
 import { lookups, toNote } from './derive.js';
 import { feedControls, type Collections, type LocalNote } from './collections.js';
 import { FeedEngine, type Position } from './feed.js';
@@ -1456,7 +1456,7 @@ describe('a tab that is a client of the holder', () => {
       // The first ask finds a client whose holder is gone; by the second this tab holds the library.
       if (calls++ > 0) return null;
       return async () => {
-        throw new LibraryMovedError();
+        throw new LibraryMovedError(true);
       };
     });
     await actions.trashNote('n1');
@@ -1507,6 +1507,21 @@ describe('a tab that is a client of the holder', () => {
     await expect(actions.emptyTrash(['n1'])).rejects.toThrow('refused');
     stop();
     expect(heard).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not empty the trash again after a holder had the call and went', async () => {
+    library([row('n1')]);
+    provideForwarder(async () => async () => {
+      throw new LibraryMovedError(true);
+    });
+    await expect(actions.emptyTrash(['n1'])).rejects.toBeInstanceOf(CallUnsettledError);
+    expect(api.purgeNotes).not.toHaveBeenCalled();
+    // One the holder never had is done here.
+    provideForwarder(async () => async () => {
+      throw new LibraryMovedError(false);
+    });
+    vi.mocked(api.purgeNotes).mockResolvedValueOnce({ notesDeleted: 1 } as api.PurgeResult);
+    await expect(actions.emptyTrash(['n1'])).resolves.toMatchObject({ notesDeleted: 1 });
   });
 
   it('brings any other failure back to the caller as it came', async () => {

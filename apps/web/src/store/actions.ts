@@ -10,7 +10,7 @@ import type { Collections, LocalNote } from './collections.js';
 import { askToPersist, filesSupported, readFile, removeFile, writeFile } from './files.js';
 import { FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE } from '../sw/routes.js';
 import { isWhole, refusedForGood, type FeedEngine } from './feed.js';
-import { LibraryMovedError } from './client-library.js';
+import { CallUnsettledError, LibraryMovedError, SEND_ONCE } from './client-library.js';
 import { outboxLeaderName, outboxName } from './names.js';
 import { OutboxLeader } from './leader.js';
 
@@ -804,10 +804,17 @@ type Away = <K extends keyof Forwardable>(name: K, args: Parameters<Forwardable[
  * lands: the change comes back as the holder's rows, and the list has to have measured
  * itself before then. A call refused because the library moved — this tab became the
  * holder, or attached to a new one, with the call in hand — is simply made again, where
- * the library now is.
+ * the library now is; unless it had reached a holder and is one that must not run twice
+ * (`SEND_ONCE`), when the caller is told it may not have finished.
  */
+/** Set while a call refused as moved is being run again here, so that run does not forward. */
+let runningHere = 0;
+
 async function away(): Promise<Away | null> {
-  const fwd = await forward();
+  // Read before the first await: the re-run below sets this for the synchronous start
+  // of the action it calls, which reaches here before anything else.
+  const here = runningHere > 0;
+  const fwd = here ? null : await forward();
   if (!fwd) return null;
   return async <K extends keyof Forwardable>(name: K, args: Parameters<Forwardable[K]>, write?: LocalWrite): Promise<Awaited<ReturnType<Forwardable[K]>>> => {
     type Out = Awaited<ReturnType<Forwardable[K]>>;
@@ -815,7 +822,17 @@ async function away(): Promise<Away | null> {
     try {
       return (await fwd(name, args)) as Out;
     } catch (err) {
-      if (err instanceof LibraryMovedError) return (forwardable[name] as (...a: unknown[]) => Promise<Out>)(...args);
+      if (err instanceof LibraryMovedError) {
+        if (err.sent && SEND_ONCE.has(name)) throw new CallUnsettledError(name);
+        // Run here, once: with a client still current that refuses again, forwarding
+        // from the re-run would be this same catch without end.
+        runningHere += 1;
+        try {
+          return (forwardable[name] as (...a: unknown[]) => Promise<Out>)(...args);
+        } finally {
+          runningHere -= 1;
+        }
+      }
       throw err;
     }
   };

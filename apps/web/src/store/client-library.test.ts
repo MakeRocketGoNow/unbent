@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createCollection, type Collection } from '@tanstack/db';
 import type { FeedNote, FeedNotebook, FeedTag, FeedAttachment } from '@unbent/shared';
 import { ApiError, NoteChangedError, OfflineError } from '../notes-api.js';
-import { attachClientLibrary, ATTACH_STALL_MS, HELLO_RETRY_MS, HOLDER_SILENT_MS, LibraryMovedError, ORPHANED_MS, PING_MS, type ClientHooks, type ClientLibrary } from './client-library.js';
+import { attachClientLibrary, ATTACH_STALL_MS, CallUnsettledError, HELLO_RETRY_MS, HOLDER_SILENT_MS, LibraryMovedError, ORPHANED_MS, PING_MS, type ClientHooks, type ClientLibrary } from './client-library.js';
 import { serveLibrary, HELLO_DEDUPE_MS, ROWS_PER_MESSAGE, type Serving, type Server } from './library-serve.js';
 import { carry, revive, type Message, type Port } from './library-channel.js';
 import { LIBRARY_ROOTS } from './library-roots.js';
@@ -14,6 +14,7 @@ import type { KeepStatus } from './keep.js';
 vi.mock('./actions.js', () => ({
   forwardable: {
     trashNote: vi.fn(async (noteId: string) => `trashed ${noteId}`),
+    emptyTrash: vi.fn(async () => ({ notesDeleted: 1 })),
     saveNote: vi.fn(async () => {
       throw new NoteChangedError({ id: 'n1', title: 'theirs', body: '', tags: [], notebook: null, createdAt: 1, updatedAt: 9, fields: [] } as never);
     }),
@@ -524,6 +525,33 @@ describe('a client of the holding tab', () => {
     }
     expect(hk.silent).toBe(0);
     expect(lib.attached()).toBe(false);
+  });
+
+  it('refuses, rather than re-sends, a call that must not run twice once it has reached a holder', async () => {
+    let finish!: (v: unknown) => void;
+    vi.mocked(forwardable.emptyTrash!).mockImplementationOnce(() => new Promise((r) => (finish = r)) as never);
+    const first = holder(channel.port());
+    const lib = await client();
+    const emptying = lib.call('emptyTrash', [['n1']]);
+    emptying.catch(() => {});
+    const neverSent = lib.call('trashNote', ['n2']);
+    await settle();
+    // The holder goes without answering; the next one serves.
+    first.server.stop();
+    first.notes.upsert(note('x'));
+    holder(channel.port());
+    await settle();
+    await settle();
+    await expect(emptying).rejects.toBeInstanceOf(CallUnsettledError);
+    expect(forwardable.emptyTrash).toHaveBeenCalledTimes(1);
+    // A call that is safe twice, or never reached the old holder, goes to the new one.
+    await expect(neverSent).resolves.toBe('trashed n2');
+    finish(undefined);
+    // Closed with a sent call in hand, the refusal says it was sent.
+    const sent = lib.call('trashNote', ['n3']);
+    sent.catch(() => {});
+    await lib.close();
+    await expect(sent).rejects.toMatchObject({ name: 'LibraryMovedError', sent: true });
   });
 
   it('attaches to a new holder that announces itself while the old one never said it was closing', async () => {

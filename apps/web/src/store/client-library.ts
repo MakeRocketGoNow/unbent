@@ -34,13 +34,35 @@ import { revive, type HolderMessage, type Message, type Port } from './library-c
  * second request under an id it has with the thing the first one made.
  */
 
-/** A client was closed with a call still in hand; the caller does the thing again where the library now is. */
+/**
+ * A client was closed with a call still in hand; the caller does the thing again where
+ * the library now is — unless the call had reached a holder and is one that must not run
+ * twice (`SEND_ONCE`), in which case the caller is told it may not have finished.
+ */
 export class LibraryMovedError extends Error {
-  constructor() {
+  constructor(readonly sent: boolean) {
     super('The library moved to another tab while this was in hand');
     this.name = 'LibraryMovedError';
   }
 }
+
+/** A call that reached a holder whose answer never came, and that must not be sent again; what the caller shows. */
+export class CallUnsettledError extends Error {
+  constructor(name: string) {
+    super(`${name} may not have finished: the tab it was sent to went before answering. Check, then try again.`);
+    this.name = 'CallUnsettledError';
+  }
+}
+
+/**
+ * The calls that are not safe to run twice, and so are never sent to a second holder or
+ * run here after reaching one: emptying the trash purges whatever is in it when it runs,
+ * a notebook made from a template answers "taken" to its own second run, and a restore
+ * with a precondition is refused by the one that went through. Everything else either
+ * carries an id the server answers again with the thing the first run made, or is a
+ * save, a filing or a read that comes out the same twice.
+ */
+export const SEND_ONCE: ReadonlySet<string> = new Set(['emptyTrash', 'applyNotebookTemplate', 'restoreRevision']);
 
 /** How often a client without a holder says hello; a holder announces itself too, so this only covers one that was serving before the client opened. */
 export const HELLO_RETRY_MS = 2000;
@@ -307,8 +329,17 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
         keepListeners.forEach((l) => l(keep));
         // The calls in hand go to this holder — unless it has them already: a holder
         // answers every hello, and a second hello reached it before this client heard
-        // the first answer.
-        for (const [id, p] of pending) if (p.sentTo !== m.holder) send(id, p);
+        // the first answer. One that reached another holder and must not run twice is
+        // refused instead.
+        for (const [id, p] of pending) {
+          if (p.sentTo === m.holder) continue;
+          if (p.sentTo !== null && SEND_ONCE.has(p.name)) {
+            pending.delete(id);
+            p.reject(new CallUnsettledError(p.name));
+            continue;
+          }
+          send(id, p);
+        }
         if (!attachedOnce) {
           attachedOnce = true;
           resolveAttach(lib);
@@ -375,7 +406,7 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
   const stopListening = port.listen(onMessage);
 
   const call = (name: string, args: unknown[]): Promise<unknown> => {
-    if (closed) return Promise.reject(new LibraryMovedError());
+    if (closed) return Promise.reject(new LibraryMovedError(false));
     return new Promise((resolve, reject) => {
       const id = nextId++;
       const p: Pending = { name, args, sentTo: null, resolve, reject };
@@ -429,7 +460,7 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
     }
     sayBye();
     port.close();
-    for (const p of pending.values()) p.reject(new LibraryMovedError());
+    for (const p of pending.values()) p.reject(new LibraryMovedError(p.sentTo !== null));
     pending.clear();
     if (!attachedOnce) rejectAttach(new DOMException('The open was halted before a holder answered', 'AbortError'));
   };
