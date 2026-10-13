@@ -1140,7 +1140,9 @@ export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | No
    */
   const origin = input.origin ?? TAB_ORIGIN;
   const waiting = lib.outbox.waitingSave(input.noteId);
-  if (waiting && waiting.origin !== origin) {
+  // A waiting save with no origin was written before saves carried one; whose it was is
+  // not known, and it merges as every save did then.
+  if (waiting && waiting.origin !== undefined && waiting.origin !== origin) {
     const theirs = { ...waiting.base, title: waiting.value.title, body: waiting.value.body, tags: waiting.value.tags, notebook: waiting.value.notebook, fields: valuesOf(waiting.value, lib) };
     if (!holdsTheirChanges(input.value, input.base, theirs)) {
       const row = lib.notes.get(input.noteId);
