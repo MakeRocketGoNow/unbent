@@ -229,6 +229,17 @@ describe('request', () => {
     expect(offlineNow()).toBe(true);
   });
 
+  /*
+     A file's bytes are served `immutable`, so the browser's own HTTP cache answers them
+     with no network and no mark from the worker. They are not evidence.
+   */
+  it('does not come back online because the HTTP cache answered a file', async () => {
+    setReachableForTests(false);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('bytes', { status: 200 })));
+    await request('/api/notes/n1/files/scan.pdf');
+    expect(offlineNow()).toBe(true);
+  });
+
   it('does not come back online because another origin answered', async () => {
     setReachableForTests(false);
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })));
