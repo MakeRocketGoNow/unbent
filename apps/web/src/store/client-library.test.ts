@@ -451,7 +451,10 @@ describe('a client of the holding tab', () => {
     expect(pongs()).toBe(3);
     expect(hk.silent).toBe(0);
     // A hidden client's interval runs once a minute: a live, idle holder is not silent.
-    for (let i = 0; i < 3; i++) await vi.advanceTimersByTimeAsync(60_000);
+    for (let i = 0; i < 3; i++) {
+      vi.setSystemTime(Date.now() + 60_000 - PING_MS);
+      await vi.advanceTimersByTimeAsync(PING_MS);
+    }
     expect(hk.silent).toBe(0);
     expect(lib.attached()).toBe(true);
     // The holder's tab is frozen: it hears nothing and says nothing, and still holds the
