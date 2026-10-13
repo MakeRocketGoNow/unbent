@@ -2,7 +2,7 @@ import { IndexedDBAdapter, NonRetriableError, startOfflineExecutor, type Offline
 import type { Transaction } from '@tanstack/db';
 import { MAX_ATTACHMENT_BYTES, filenameSchema, foldNoCase, type FeedNote, type FieldDef, type FieldValue, type Note, type NoteFieldValue, type NotebookDefinition, type RestoredNote } from '@unbent/shared';
 import * as api from '../notes-api.js';
-import { ApiError, isNoteChanged, isOfflineError } from '../notes-api.js';
+import { ApiError, isNoteChanged, isOfflineError, NoteChangedError } from '../notes-api.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
 import { buildNotePatch, seedFrom, holdsTheirChanges, type NoteDraft } from '../note-patch.js';
 import { availableFilename, lookups, toNote, type Snapshot } from './derive.js';
@@ -135,8 +135,10 @@ export interface Outbox {
    * preconditioned on.
    */
   supersedeSave: (noteId: string) => { base: Note; against?: number | undefined } | null;
+  /** The save of this note still waiting, as it stands: the draft, its base and where it came from. */
+  waitingSave: (noteId: string) => { value: NoteDraft; base: Note; origin?: string | undefined } | null;
   /** Records the save of this note now waiting: its entry's id, what it carries, and how to take its change off the row. */
-  trackSave: (noteId: string, entry: { id: string; base: Note; against?: number | undefined; retire: () => void }) => void;
+  trackSave: (noteId: string, entry: { id: string; value: NoteDraft; base: Note; against?: number | undefined; origin?: string | undefined; retire: () => void }) => void;
   /** Records an upload now waiting: its entry's id, what it carries, and how to take its row off. */
   trackUpload: (attachmentId: string, entry: { id: string; upload: { noteId: string; filename: string }; retire: () => void }) => void;
   /**
@@ -169,7 +171,11 @@ export interface WritableLibrary extends Collections {
  * mine", the date to precondition on instead of the base's — the other device's copy,
  * so the patch is still only what was typed here and lands on top of theirs.
  */
-type Save = { noteId: string; value: NoteDraft; base: Note; against?: number };
+/**
+ * `origin` is the client tab the save came from (`library-serve.ts` sets it), and absent
+ * for the holder's own: what tells two editors of one note apart in one outbox.
+ */
+type Save = { noteId: string; value: NoteDraft; base: Note; against?: number; origin?: string };
 
 /** The key a conflict is kept under in the outbox's storage; its entries are the `tx:` keys. */
 const conflictKey = (noteId: string) => `conflict:${noteId}`;
@@ -229,7 +235,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
   const defs = (): FieldDef[] => [...lookups(snapshot(lib)).fieldDefs.values()];
 
   /** The save of each note still waiting, by entry id, and the entries a later save retired. */
-  const waitingSaves = new Map<string, { id: string; base: Note; against?: number | undefined; retire: () => void }>();
+  const waitingSaves = new Map<string, { id: string; value: NoteDraft; base: Note; against?: number | undefined; origin?: string | undefined; retire: () => void }>();
   const superseded = new Set<string>();
 
   /**
@@ -564,7 +570,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
          * (`pins.test.ts`); without the method the change stays until the entry's turn.
          */
         const cleanup = (executor as unknown as { cleanupRestorationTransaction?: (id: string, rollback: boolean) => void }).cleanupRestorationTransaction;
-        if (m && !waitingSaves.has(m.noteId)) waitingSaves.set(m.noteId, { id: t.id, base: m.base, against: m.against, retire: () => cleanup?.call(executor, t.id, true) });
+        if (m && !waitingSaves.has(m.noteId)) waitingSaves.set(m.noteId, { id: t.id, value: m.value, base: m.base, against: m.against, origin: m.origin, retire: () => cleanup?.call(executor, t.id, true) });
       }
       for (const key of keys) {
         if (key.startsWith('upload-notice:')) {
@@ -618,6 +624,10 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
       void executor.removeFromOutbox(waiting.id).catch(() => {});
       waiting.retire();
       return { base: waiting.base, against: waiting.against };
+    },
+    waitingSave: (noteId) => {
+      const waiting = waitingSaves.get(noteId);
+      return waiting ? { value: waiting.value, base: waiting.base, origin: waiting.origin } : null;
     },
     trackSave: (noteId, entry) => {
       waitingSaves.set(noteId, entry);
@@ -1087,13 +1097,32 @@ export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | No
    * the server holds has nothing to send, and retiring the waiting save is the revert.
    * Deciding "nothing to send" first, against the newer base, left the retired save in
    * the queue to write the undone text (review of #232).
+   *
+   * That holds for one editor, whose every draft contains the one before. Two tabs of
+   * one device now share this outbox (`client-library.ts`), and a tab's open editor
+   * does not take up another tab's write while it waits here — the optimistic row keeps
+   * its date, so the workspace reads it as nothing new — so its next autosave would
+   * retire the other tab's save and patch against the oldest base, where the other
+   * tab's change reads as unchanged: a rename made offline in one tab, gone on the
+   * next keystroke in the other, with both saying "Saved" (review of #354). So a save
+   * from another origin merges only when its draft already holds the waiting one's
+   * changes, and is otherwise refused as the server would refuse it, with the row as it
+   * stands, which the workspace puts to the person as a conflict.
    */
+  const waiting = lib.outbox.waitingSave(input.noteId);
+  if (waiting && waiting.origin !== input.origin) {
+    const theirs = { ...waiting.base, title: waiting.value.title, body: waiting.value.body, tags: waiting.value.tags, notebook: waiting.value.notebook, fields: valuesOf(waiting.value, lib) };
+    if (!holdsTheirChanges(input.value, input.base, theirs)) {
+      const row = lib.notes.get(input.noteId);
+      throw new NoteChangedError(row ? toNote(row, lookups(snapshot(lib))) : theirs);
+    }
+  }
   const carried = lib.outbox.supersedeSave(input.noteId);
   const base = carried && carried.base.updatedAt < input.base.updatedAt ? carried.base : input.base;
   const patch = buildNotePatch(input.value, base, [...lookups(snapshot(lib)).fieldDefs.values()]);
   if (!patch) return 'unchanged';
   const { value } = input;
-  const entry: Save = { noteId: input.noteId, value, base, against: input.against ?? carried?.against };
+  const entry: Save = { noteId: input.noteId, value, base, against: input.against ?? carried?.against, origin: input.origin };
   const queued = queue(
     lib,
     'saveNote',
@@ -1109,7 +1138,7 @@ export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | No
     },
     patch.notebook !== undefined || patch.tags !== undefined,
   );
-  lib.outbox.trackSave(input.noteId, { ...queued, base, against: entry.against });
+  lib.outbox.trackSave(input.noteId, { ...queued, value, base, against: entry.against, origin: input.origin });
   return 'queued';
 }
 

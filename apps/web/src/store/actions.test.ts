@@ -636,6 +636,29 @@ describe('saves of one note', () => {
     expect(lib.outbox.status().pending).toBe(0);
   });
 
+  it('from another tab, merge only when the draft holds the waiting change, and are otherwise refused as a conflict', async () => {
+    const { lib, fake, note } = library([row('n1', { title: 'old', body: 'b' })]);
+    await lib.outbox.ready;
+    const base = note('n1');
+    // Tab A renames the note; its save waits.
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'renamed' }, base, origin: 'A' });
+    await tick();
+    // Tab B, whose editor still shows the old title, types in the body: refused, with the
+    // row as it stands, rather than retiring A's rename.
+    const refused = actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), body: 'typed' }, base, origin: 'B' });
+    await expect(refused).rejects.toBeInstanceOf(NoteChangedError);
+    await expect(refused).rejects.toMatchObject({ current: { title: 'renamed' } });
+    expect(lib.notes.get('n1')?.title).toBe('renamed');
+    expect(fake.queue).toHaveLength(1);
+    // B's editor took the rename up and types again: the two merge, as one editor's would.
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'renamed', body: 'typed' }, base, origin: 'B' });
+    await tick();
+    expect(lib.notes.get('n1')).toMatchObject({ title: 'renamed', body: 'typed' });
+    expect(lib.outbox.status().pending).toBe(1);
+    // The holder's own save, with no origin, is another editor too.
+    await expect(actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'mine' }, base })).rejects.toBeInstanceOf(NoteChangedError);
+  });
+
   it('typed back to what the server holds, retires the waiting save and sends nothing', async () => {
     const { lib, fake, landPull, note } = library([row('n1', { title: 'old' })]);
     await lib.outbox.ready;

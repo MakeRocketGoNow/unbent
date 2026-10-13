@@ -66,7 +66,7 @@ export function serveLibrary(port: Port, lib: Serving): Server {
   const entities = { note: collections.notes, notebook: collections.notebooks, tag: collections.tags, attachment: collections.attachments } as const;
   let stopped = false;
 
-  const run = async (name: string, args: unknown[]): Promise<unknown> => {
+  const run = async (name: string, args: unknown[], client: string): Promise<unknown> => {
     const [scope, method] = name.split('.', 2);
     if (scope === 'index' && method && INDEX_CALLS.has(method)) {
       await lib.searchReady;
@@ -82,6 +82,9 @@ export function serveLibrary(port: Port, lib: Serving): Server {
     if (scope === 'outbox' && method && OUTBOX_CALLS.has(method)) return (lib.outbox[method as 'cancelUpload'] as (...a: unknown[]) => unknown)(...args);
     if (!Object.hasOwn(forwardable, name)) throw new Error(`No such call: ${name}`);
     const action = forwardable[name as keyof typeof forwardable] as (...a: unknown[]) => Promise<unknown>;
+    // A save says which tab it came from, so the outbox can tell two editors of one
+    // note apart (`saveNote`); the holder's own saves carry nothing.
+    if (name === 'saveNote') args = [{ ...(args[0] as object), origin: client }];
     return action(...args);
   };
 
@@ -137,7 +140,7 @@ export function serveLibrary(port: Port, lib: Serving): Server {
           // The channel is closed.
         }
       };
-      void run(m.name, m.args).then(
+      void run(m.name, m.args, m.client).then(
         (value) => answer({ type: 'answer', holder, client: m.client, id: m.id, ok: true, value }),
         (err: unknown) => answer({ type: 'answer', holder, client: m.client, id: m.id, ok: false, error: carry(err) }),
       );
