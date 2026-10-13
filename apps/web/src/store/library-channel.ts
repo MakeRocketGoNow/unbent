@@ -72,8 +72,8 @@ export type HolderMessage =
   | { type: 'rows'; holder: string; client: string; entity: FeedEntity; rows: object[] }
   /** The rows are all sent; what else the client mirrors, as it stands now. */
   | { type: 'attached'; holder: string; client: string; state: FeedState; status: SyncStatus; keep: KeepStatus }
-  /** One collection's changes, and the query roots they reach (`rootsOfNoteChanges`). */
-  | { type: 'changes'; holder: string; entity: FeedEntity; changes: RowChange[]; roots: string[] }
+  /** The changes of one task of the holder's, by collection, and the query roots they reach (`rootsOfNoteChanges`). */
+  | { type: 'changes'; holder: string; batches: Array<{ entity: FeedEntity; changes: RowChange[] }>; roots: string[] }
   | { type: 'state'; holder: string; state: FeedState }
   | { type: 'status'; holder: string; status: SyncStatus }
   | { type: 'keep'; holder: string; status: KeepStatus }

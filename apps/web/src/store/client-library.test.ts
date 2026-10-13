@@ -219,15 +219,17 @@ describe('a client of the holding tab', () => {
     expect(hk.changes).toHaveLength(2);
     expect([...hk.changes[1]!].sort()).toEqual(['note', 'notes']);
     hk.changes.length = 0;
-    // A row arriving reaches everything; a row going too.
+    // A row arriving reaches everything; a row going too. Three changes in one task
+    // cross as one message, and the client derives once for them.
     h.notes.upsert(note('n2'));
     h.tags.upsert({ id: 't1', name: 'tax' });
     h.notes.remove('n1');
     await settle();
     expect([...lib.notes.values()].map((n) => n.id)).toEqual(['n2']);
     expect(lib.tags.get('t1')?.name).toBe('tax');
-    expect(hk.changes.length).toBeGreaterThan(0);
-    expect(hk.changes.every((roots) => roots.size === LIBRARY_ROOTS.size)).toBe(true);
+    expect(hk.changes).toHaveLength(1);
+    expect(hk.changes[0]!.size).toBe(LIBRARY_ROOTS.size);
+    expect(channel.posted.filter((m) => m.type === 'changes').at(-1)).toMatchObject({ batches: [{ entity: 'note' }, { entity: 'tag' }, { entity: 'note' }] });
   });
 
   it('mirrors the feed’s state, the outbox’s status, the keeper’s, acknowledgements and the index moving', async () => {

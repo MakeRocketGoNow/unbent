@@ -148,18 +148,33 @@ export function serveLibrary(port: Port, lib: Serving): Server {
     }
   };
 
+  /**
+   * The changes of the task in hand, by collection, posted as one message once the task
+   * ends — as the holder's own queries are told once per task (`changed` in
+   * `library.ts`). A message per collection had a client re-deriving its views once per
+   * collection a feed page touched.
+   */
+  let batches: Array<{ entity: keyof typeof entities; changes: RowChange[] }> = [];
+  let roots = new Set<string>();
+  let flushing = false;
+  const flush = () => {
+    flushing = false;
+    const sent = batches;
+    const reached = roots;
+    batches = [];
+    roots = new Set();
+    if (sent.length === 0 || stopped) return;
+    port.post({ type: 'changes', holder, batches: sent, roots: [...reached] });
+  };
   /** Forwards one collection's changes as they are reported, less what the client does not read. */
   const forwarding = <T extends object>(entity: keyof typeof entities, collection: Collection<T, string>) => {
     const subscription = collection.subscribeChanges((changes) => {
       if (!anyone()) return;
-      const roots = entity === 'note' ? rootsOfNoteChanges(changes) : LIBRARY_ROOTS;
-      port.post({
-        type: 'changes',
-        holder,
-        entity,
-        changes: changes.map((c): RowChange => (c.type === 'delete' ? { type: 'delete', key: String(c.key) } : { type: c.type, value: c.value })),
-        roots: [...roots],
-      });
+      for (const r of entity === 'note' ? rootsOfNoteChanges(changes) : LIBRARY_ROOTS) roots.add(r);
+      batches.push({ entity, changes: changes.map((c): RowChange => (c.type === 'delete' ? { type: 'delete', key: String(c.key) } : { type: c.type, value: c.value })) });
+      if (flushing) return;
+      flushing = true;
+      queueMicrotask(flush);
     });
     return () => subscription.unsubscribe();
   };

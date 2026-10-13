@@ -6,7 +6,7 @@ import type { Outbox, SyncStatus } from './actions.js';
 import type { KeepStatus, Keeper } from './keep.js';
 import type { SearchReader } from './search-index.js';
 import type { ReadableLibrary } from './library.js';
-import { revive, type HolderMessage, type Message, type Port } from './library-channel.js';
+import { revive, type HolderMessage, type Message, type Port, type RowChange } from './library-channel.js';
 
 /**
  * An account's library as a tab that does not hold it sees it: the holder's rows,
@@ -287,6 +287,16 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
   };
 
   /** Lets go of the holder; with `watch`, bounds the wait for the next one (a takeover already asked for needs no bound). */
+  /** Puts one message's changes into the maps, collection by collection. */
+  const apply = (batches: Array<{ entity: keyof Maps; changes: RowChange[] }>) => {
+    for (const b of batches) {
+      for (const c of b.changes) {
+        if (c.type === 'delete') maps[b.entity].rows.delete(c.key);
+        else maps[b.entity].rows.set((c.value as { id: string }).id, c.value as never);
+      }
+    }
+  };
+
   const detach = (watch = true) => {
     holder = null;
     incoming = null;
@@ -362,10 +372,7 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
       }
       case 'changes':
         if (m.holder !== holder) return;
-        for (const c of m.changes) {
-          if (c.type === 'delete') maps[m.entity].rows.delete(c.key);
-          else maps[m.entity].rows.set((c.value as { id: string }).id, c.value as never);
-        }
+        apply(m.batches);
         version += 1;
         hooks.onChange(new Set(m.roots));
         return;
