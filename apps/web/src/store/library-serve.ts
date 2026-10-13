@@ -136,7 +136,10 @@ export function serveLibrary(port: Port, lib: Serving, holder: string): Server {
     if (m.type === 'bye') {
       clients.delete(m.client);
       answered.delete(m.client);
-      sends.delete(m.client);
+      // Not forgotten but moved on: a send running at the bye stops at its next chunk,
+      // and a later hello from the same id — a page back from the back/forward cache —
+      // numbers past it rather than from one again, which could meet the old send.
+      sends.set(m.client, (sends.get(m.client) ?? 0) + 1);
       port.forget(m.client);
       return;
     }

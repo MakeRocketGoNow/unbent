@@ -479,6 +479,9 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
   const onShow = (event: PageTransitionEvent) => {
     if (!event.persisted || closed) return;
     said = false;
+    // A send that was on its way when the page went is the holder's to have stopped; its
+    // chunks, if any still come, are not the next send's.
+    incoming = null;
     detach();
   };
   if (typeof window !== 'undefined') {
