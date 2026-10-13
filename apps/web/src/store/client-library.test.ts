@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createCollection, type Collection } from '@tanstack/db';
 import type { FeedNote, FeedNotebook, FeedTag, FeedAttachment } from '@unbent/shared';
 import { ApiError, NoteChangedError, OfflineError } from '../notes-api.js';
-import { attachClientLibrary, ATTACH_STALL_MS, HELLO_RETRY_MS, LibraryMovedError, type ClientHooks, type ClientLibrary } from './client-library.js';
+import { attachClientLibrary, ATTACH_STALL_MS, HELLO_RETRY_MS, HOLDER_SILENT_MS, LibraryMovedError, PING_MS, type ClientHooks, type ClientLibrary } from './client-library.js';
 import { serveLibrary, HELLO_DEDUPE_MS, ROWS_PER_MESSAGE, type Serving, type Server } from './library-serve.js';
 import { carry, revive, type Message, type Port } from './library-channel.js';
 import { LIBRARY_ROOTS } from './library-roots.js';
@@ -125,16 +125,18 @@ function holder(port: Port, rows: { notes?: FeedNote[]; notebooks?: FeedNotebook
   };
 }
 
-function hooks(): ClientHooks & { changes: ReadonlySet<string>[]; attached: number; resets: number; indexed: number } {
+function hooks(): ClientHooks & { changes: ReadonlySet<string>[]; attached: number; resets: number; indexed: number; silent: number } {
   const h = {
     changes: [] as ReadonlySet<string>[],
     attached: 0,
     resets: 0,
     indexed: 0,
+    silent: 0,
     onChange: (roots: ReadonlySet<string>) => void h.changes.push(roots),
     onAttached: () => void (h.attached += 1),
     onReset: () => void (h.resets += 1),
     onIndexed: () => void (h.indexed += 1),
+    onSilent: () => void (h.silent += 1),
   };
   return h;
 }
@@ -417,6 +419,28 @@ describe('a client of the holding tab', () => {
     await vi.advanceTimersByTimeAsync(ATTACH_STALL_MS);
     expect(hellos().length).toBeGreaterThan(before);
     halting.abort();
+  });
+
+  it('pings an attached holder, and asks to take the library over from one that stops answering', async () => {
+    const port = channel.port();
+    holder(port, { notes: [note('n1')] });
+    const hk = hooks();
+    const lib = await client(hk);
+    const pings = () => channel.posted.filter((m) => m.type === 'ping').length;
+    const pongs = () => channel.posted.filter((m) => m.type === 'pong').length;
+    await vi.advanceTimersByTimeAsync(PING_MS * 3 + 10);
+    expect(pings()).toBe(3);
+    expect(pongs()).toBe(3);
+    expect(hk.silent).toBe(0);
+    // The holder's tab is frozen: it hears nothing and says nothing, and still holds the lock.
+    port.close();
+    await vi.advanceTimersByTimeAsync(HOLDER_SILENT_MS + PING_MS + 10);
+    expect(hk.silent).toBe(1);
+    expect(lib.attached()).toBe(false);
+    // The rows stay readable meanwhile, and a call waits for whatever comes next.
+    expect(lib.notes.size).toBe(1);
+    await vi.advanceTimersByTimeAsync(PING_MS * 4);
+    expect(hk.silent).toBe(1);
   });
 
   it('attaches to a new holder that announces itself while the old one never said it was closing', async () => {

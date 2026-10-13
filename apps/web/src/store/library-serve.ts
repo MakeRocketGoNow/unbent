@@ -108,6 +108,7 @@ export function serveLibrary(port: Port, lib: Serving): Server {
     if (stopped) return;
     const m = message as ClientMessage;
     if (m.type === 'hello') return void hello(m.client);
+    if (m.type === 'ping') return port.post({ type: 'pong', holder, client: m.client });
     if (m.type === 'call') {
       void run(m.name, m.args).then(
         (value) => !stopped && port.post({ type: 'answer', holder, client: m.client, id: m.id, ok: true, value }),

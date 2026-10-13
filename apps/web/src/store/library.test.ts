@@ -3,6 +3,7 @@ import { FEED_TIMEOUT_MS, FeedTimeoutError, LIBRARY_OPEN_TIMEOUT_MS, LIBRARY_ROO
 import { setLocksForTests } from './library-lock.js';
 import { fakeLocks } from './test-locks.js';
 import { fakeChannel } from './test-channel.js';
+import { HOLDER_SILENT_MS, PING_MS } from './client-library.js';
 import { serveLibrary } from './library-serve.js';
 import type { Port } from './library-channel.js';
 import { libraryLockName } from './names.js';
@@ -495,6 +496,28 @@ describe('acquireLibrary', () => {
       expect(openLocalStore).toHaveBeenCalledTimes(1);
       // The attach that was in hand was halted, not reported as a fault.
       expect(reportError).not.toHaveBeenCalled();
+    });
+
+    it('takes the library over itself when the holder it is a client of stops answering', async () => {
+      vi.useFakeTimers();
+      const locks = fakeLocks();
+      setLocksForTests(locks);
+      page();
+      const other = locks.request(lock, { mode: 'exclusive' }, () => new Promise<void>(() => {}));
+      other.catch(() => {});
+      const theirPort = channel.port();
+      theirs(theirPort);
+      await vi.advanceTimersByTimeAsync(0);
+      const client = acquireLibrary('u1');
+      await vi.advanceTimersByTimeAsync(10);
+      await expect(client).resolves.toMatchObject({ remote: true });
+      // The holder's tab freezes: it keeps the lock and answers nothing.
+      theirPort.close();
+      await vi.advanceTimersByTimeAsync(HOLDER_SILENT_MS + PING_MS * 2);
+      await vi.advanceTimersByTimeAsync(10);
+      await expect(other).rejects.toMatchObject({ name: 'AbortError' });
+      await expect(currentLibrary()).resolves.toSatisfy((lib: { userId: string; remote?: true }) => lib.userId === 'u1' && !lib.remote);
+      expect(libraryElsewhere()).toBeNull();
     });
 
     it('takes the library over on request', async () => {

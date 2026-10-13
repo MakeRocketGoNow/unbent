@@ -444,13 +444,20 @@ export function acquireLibrary(userId: string, options: { takeOver?: boolean } =
   return openFor(userId, options.takeOver ?? false);
 }
 
-/** The hooks a client library tells this module through: the same listeners the holder's library fires. */
-const clientHooks = {
+/**
+ * The hooks a client library tells this module through: the same listeners the holder's
+ * library fires, and the one thing a client decides for itself — that its holder has
+ * gone silent, on which it takes the library over, if it is still this tab's library.
+ */
+const clientHooks = (userId: string, isMine: () => boolean) => ({
   onChange: (roots: ReadonlySet<string>) => changeListeners.forEach((l) => l(roots)),
   onAttached: () => changeListeners.forEach((l) => l(LIBRARY_ROOTS)),
   onReset: () => resetListeners.forEach((l) => l()),
   onIndexed: () => indexedListeners.forEach((l) => l()),
-};
+  onSilent: () => {
+    if (isMine()) void openFor(userId, true).catch(() => {});
+  },
+});
 
 /**
  * Opens the account's library in this tab as a step on the queue, closing whatever was
@@ -479,7 +486,7 @@ function openFor(userId: string, takeOver: boolean): Promise<AnyLibrary> {
       // moment after this ask found it held, and nobody would answer hello. The queue
       // then gives this tab the library, and the open that follows closes this attach.
       standAside(userId);
-      return attachClientLibrary(userId, port, clientHooks, halting.signal);
+      return attachClientLibrary(userId, port, clientHooks(userId, () => current?.opened === opened), halting.signal);
     }
     try {
       // Whether the library this open makes is still the one this tab holds: the

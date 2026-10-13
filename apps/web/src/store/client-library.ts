@@ -49,6 +49,19 @@ export const HELLO_RETRY_MS = 2000;
  * short, by a holder that closed mid-way, starts it again.
  */
 export const ATTACH_STALL_MS = 15_000;
+/** How often an attached client asks its holder whether it is still there. */
+export const PING_MS = 5_000;
+/**
+ * How long a holder may say nothing before its client stops waiting on it. A holder tab
+ * the browser has frozen — a background tab on a phone, routinely — still holds the lock
+ * and answers nothing, and a client's save would otherwise wait on it for good, with
+ * the typing held nowhere but that tab. Three pings unanswered is a holder that is not
+ * coming back on its own; the client takes the library over (`onSilent`), which closes
+ * this client and sends its calls in hand to wherever the library is next
+ * (`LibraryMovedError`). A holder busy on its main thread answers a ping between its
+ * tasks; only one that runs nothing at all for this long reads as silent.
+ */
+export const HOLDER_SILENT_MS = 15_000;
 
 /** What the queries read of a collection; the holder's TanStack collections answer it, and so do the client's maps. */
 export interface Rows<T> {
@@ -88,6 +101,8 @@ export interface ClientLibrary {
 export interface ClientHooks {
   /** A batch of changes arrived, reaching these query roots. */
   onChange: (roots: ReadonlySet<string>) => void;
+  /** The holder has answered nothing for `HOLDER_SILENT_MS`; the client has detached and asks to take the library over. */
+  onSilent: () => void;
   /** The rows were replaced whole: a holder attached, or attached again. */
   onAttached: () => void;
   onReset: () => void;
@@ -156,6 +171,27 @@ export function attachClientLibrary(userId: string, port: Port, hooks: ClientHoo
     hello = setInterval(sayHello, HELLO_RETRY_MS);
   };
 
+  /** When the holder this client is attached to was last heard from. */
+  let lastHeard = 0;
+  let pinger: ReturnType<typeof setInterval> | null = null;
+  const stopPinging = () => {
+    if (pinger) clearInterval(pinger);
+    pinger = null;
+  };
+  const startPinging = () => {
+    stopPinging();
+    pinger = setInterval(() => {
+      if (!holder) return;
+      if (Date.now() - lastHeard > HOLDER_SILENT_MS) {
+        console.warn('[library] the tab holding this account’s library has stopped answering; taking it over');
+        detach();
+        hooks.onSilent();
+        return;
+      }
+      port.post({ type: 'ping', client: me });
+    }, PING_MS);
+  };
+
   const send = (id: number, p: Pending) => {
     p.sentTo = holder;
     port.post({ type: 'call', client: me, id, name: p.name, args: p.args });
@@ -164,6 +200,7 @@ export function attachClientLibrary(userId: string, port: Port, hooks: ClientHoo
   const detach = () => {
     holder = null;
     incoming = null;
+    stopPinging();
     askNow();
   };
 
@@ -178,6 +215,7 @@ export function attachClientLibrary(userId: string, port: Port, hooks: ClientHoo
   const onMessage = (message: Message) => {
     if (closed) return;
     const m = message as HolderMessage;
+    if ('holder' in m && m.holder === holder) lastHeard = Date.now();
     switch (m.type) {
       case 'serving':
         // A holder other than the one this tab is attached to: the one before it has
@@ -199,6 +237,8 @@ export function attachClientLibrary(userId: string, port: Port, hooks: ClientHoo
         maps = incoming.maps;
         holder = m.holder;
         incoming = null;
+        lastHeard = Date.now();
+        startPinging();
         version += 1;
         feed = m.state;
         status = m.status;
@@ -268,6 +308,8 @@ export function attachClientLibrary(userId: string, port: Port, hooks: ClientHoo
       case 'closing':
         if (m.holder === holder) detach();
         return;
+      case 'pong':
+        return;
       default:
         return;
     }
@@ -289,6 +331,7 @@ export function attachClientLibrary(userId: string, port: Port, hooks: ClientHoo
     if (closed) return;
     closed = true;
     stopAsking();
+    stopPinging();
     stopListening();
     halting.removeEventListener('abort', onHalt);
     port.close();

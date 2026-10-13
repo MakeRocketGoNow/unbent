@@ -55,7 +55,9 @@ export interface Carried {
 export type ClientMessage =
   /** A tab that wants the rows: the holder answers with `rows` then `attached`, to it alone. */
   | { type: 'hello'; client: string }
-  | { type: 'call'; client: string; id: number; name: string; args: unknown[] };
+  | { type: 'call'; client: string; id: number; name: string; args: unknown[] }
+  /** Is the holder still there? Answered with `pong`; see `HOLDER_SILENT_MS`. */
+  | { type: 'ping'; client: string };
 
 export type HolderMessage =
   /** A holder has started serving: every client says hello again, to it. */
@@ -72,6 +74,7 @@ export type HolderMessage =
   | { type: 'indexed'; holder: string }
   /** The holder's collections have been emptied for a walk from nothing; the rows come again as inserts. */
   | { type: 'reset'; holder: string }
+  | { type: 'pong'; holder: string; client: string }
   | { type: 'answer'; holder: string; client: string; id: number; ok: true; value: unknown }
   | { type: 'answer'; holder: string; client: string; id: number; ok: false; error: Carried }
   /** The holder is closing its library; its clients wait for the next one. */
