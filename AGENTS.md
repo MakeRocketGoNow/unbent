@@ -548,9 +548,9 @@ growing wait. Two rules keep the queue from sticking, each with a test: every an
 server would give again — a 4xx other than a lapsed session, a timeout or a rate limit, a
 refused precondition — is a `NonRetriableError` that ends its entry, and a `saveNote` whose
 note has a later entry in the queue does nothing, since each save carries the whole draft.
-Only the tab holding the account's leader lock replays (`store/leader.ts`), and it waits
-in the lock's queue and leads the moment the holder goes, rather than staying a follower
-until it reloads, as the outbox library's own one-shot election left it. A tab that does
+Only the tab holding the account's leader lock replays (`store/leader.ts`); another tab
+waits in the lock's queue and leads the moment the holder goes, rather than staying a
+follower until it reloads, as the outbox library's own one-shot election left it. A tab that does
 not hold the library sends its writes to the tab that does, by name over the account's
 channel (`forwardable` in `actions.ts`, `store/library-serve.ts`), so they land in that
 outbox and are as durable as the holder's own. A file added to a note goes the same way (`uploadFile`): with a connection and
