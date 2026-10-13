@@ -30,8 +30,9 @@ import { buildInfo } from './build-info.js';
  * from the network first, so a reload is always the newest build; and the previous
  * build's shell stays cached, so a page in use keeps working after the new worker takes
  * charge. The worker is told to take charge the moment it has installed, no page is
- * ever reloaded by this file, and the one thing left to say is that a reload would bring
- * a newer build (`useUpdateNotice`), which is said only when it is so.
+ * ever reloaded by this file except one whose next chunk is gone
+ * (`recoverFromMissingChunks`), and the one thing left to say is that a reload would
+ * bring another build (`useUpdateNotice`), which is said only when it is so.
  */
 let wb: Workbox | undefined;
 
@@ -78,13 +79,13 @@ export function registerServiceWorker(): void {
 }
 
 /**
- * Whether the worker now in charge is a newer build than this page, which a reload would
- * bring: the worker's commit, asked of it, against the page's own. A page whose load
+ * Whether the worker now in charge is another build than this page, which a reload would
+ * bring — newer, almost always; after a rollback, older, and still what a reload brings: the worker's commit, asked of it, against the page's own. A page whose load
  * found and installed this build's own worker hears `controllerchange` too, and has nothing
- * to be told. Unknown on either side is not newer: a word that might be wrong is worse than
+ * to be told. Unknown on either side is not another: a word that might be wrong is worse than
  * none, and the next load brings the newest build regardless.
  */
-export function isNewerBuild(page: string | null, worker: string | null): boolean {
+export function isOtherBuild(page: string | null, worker: string | null): boolean {
   return page !== null && worker !== null && page !== worker;
 }
 
@@ -92,7 +93,7 @@ async function sayIfNewer(): Promise<void> {
   const controller = navigator.serviceWorker.controller;
   if (!controller) return;
   const commit = await within(askBuild(controller), 5_000, null).catch(() => null);
-  if (isNewerBuild(PAGE_COMMIT, commit)) setNotice(true);
+  if (isOtherBuild(PAGE_COMMIT, commit)) setNotice(true);
 }
 
 /** The commit the worker in charge was built from, from the page it holds (`BUILD` in `sw.ts`). */
