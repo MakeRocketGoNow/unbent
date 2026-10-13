@@ -190,7 +190,7 @@ function standDown(): void {
   if (!elsewhere) return;
   elsewhere.waiting.abort();
   elsewhere = null;
-  // The status line follows this: a wipe heard from another tab clears it with no
+  // Settings → Offline follows this: a wipe heard from another tab clears it with no
   // library open, and `closeStep` tells the hooks only for a library.
   libraryChanged();
 }
@@ -536,7 +536,7 @@ function openFor(userId: string, takeOver: boolean): Promise<AnyLibrary> {
     if (err instanceof LibraryElsewhereError) {
       // Not a fault: Settings → Offline says so, and this tab opens the library when
       // the holding tab lets go, or when asked to take it over.
-      console.info('[library] another tab holds this account’s library; reading from the server until it lets go');
+      console.info('[library] another tab holds this account’s library and there is no channel to join it over; reading from the server until it lets go');
       standAside(userId, library as Promise<never>);
       return;
     }
@@ -870,7 +870,7 @@ async function open(userId: string, halting: Halting, isMine: () => boolean, hol
 
   /*
    * Another tab took the library over (`takeOverLibrary` there): this library closes,
-   * and this tab stands aside, reading the server and waiting its turn in the lock's
+   * and this tab attaches to that one as its client, waiting its turn in the lock's
    * queue. Only while it is still this tab's library: a close or a switch that already
    * took its entry has decided for it.
    */
