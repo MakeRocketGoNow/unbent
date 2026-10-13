@@ -135,8 +135,10 @@ export function libraryElsewhere(): string | null {
 /**
  * Takes the account's library from the tab that holds it: that tab closes its library
  * and stands aside, and this one opens it. The way out of a tab that holds the library
- * and does not answer — frozen, or wedged on something it waits for — as much as of a
- * window someone forgot.
+ * and is wedged on something it waits for, as much as of a window someone forgot. Not of
+ * a tab the browser has frozen: its worker cannot hand the store's file over, so this
+ * tab's open waits out its bound and reads the server until that tab is closed or
+ * resumed, when the open finishes on its own.
  */
 export function takeOverLibrary(): Promise<Library> | undefined {
   const userId = elsewhere?.userId;

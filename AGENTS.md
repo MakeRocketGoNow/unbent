@@ -694,10 +694,12 @@ account again from the session it remembers. The outbox closes its connection on
 `versionchange`, which is how IndexedDB asks, and the library closes with it. And
 `acquireLibrary` answers its caller within `LIBRARY_OPEN_TIMEOUT_MS` whatever the open is
 doing — a refusal past the bound, reported, and the page reads the server — so a wedge is
-a page with no local copy rather than a dead app. A tab that holds the library and does
-not answer — frozen by the browser, or wedged on something it waits for — is what Open
-here in another tab is for: the lock is taken from it, and its library closes if the tab
-ever runs again.
+a page with no local copy rather than a dead app. A tab that holds the library and is
+wedged on something it waits for, or a window someone forgot, is what Open here in another
+tab is for: the lock is taken from it and its library closes. A tab the browser has frozen
+is not: its worker cannot hand the store's file over, so the taking tab's open waits out
+`LIBRARY_OPEN_TIMEOUT_MS` and reads the server until the frozen tab is closed or resumed,
+when the open finishes on its own.
 
 Every open and close of the library is a step on one queue in `library.ts` (`enqueue`),
 run only after every step before it has settled and never abandoned. A new way to open or
