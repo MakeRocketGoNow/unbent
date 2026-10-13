@@ -674,6 +674,17 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     // preconditioned on theirs, so it lands on top of their version rather than over it.
     void actions.saveNote({ noteId: id, value: draftRef.current, base, against: theirs.updatedAt }).then(
       (outcome) => {
+        if (outcome === 'queued') {
+          // Theirs was another tab's save waiting in this device's outbox, and the
+          // holder queued this draft put over it (`saveNote`): no answer reseeds the
+          // editor, and the row keeps its date. So the same draft goes on screen here,
+          // as the baseline, with theirs as the base, or the next keystroke would be
+          // patched against the old base, where what theirs changed reads as unchanged
+          // and drops out (review of #354).
+          setBase(id, theirs);
+          if (noteIdRef.current === id) showDraft(rebaseAfterAck(draftRef.current, seedFrom(base), theirs));
+          return;
+        }
         if (typeof outcome !== 'object') return;
         setBase(id, outcome);
         queryClient.setQueryData(keys.note(id), outcome);
