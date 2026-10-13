@@ -8,7 +8,8 @@ import { resetConnectivity, setReachableForTests } from '../connectivity.js';
 import { seedFrom } from '../note-patch.js';
 import { installLibraryQueries, keys } from '../queries.js';
 import * as actions from './actions.js';
-import { createOutbox, provideLibrary, type WritableLibrary } from './actions.js';
+import { createOutbox, provideForwarder, provideLibrary, type WritableLibrary } from './actions.js';
+import { LibraryMovedError } from './client-library.js';
 import { lookups, toNote } from './derive.js';
 import { feedControls, type Collections, type LocalNote } from './collections.js';
 import { FeedEngine, type Position } from './feed.js';
@@ -1378,6 +1379,74 @@ describe('a write made here', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+/**
+ * A tab that is a client of the tab holding the library (`client-library.ts`): its writes
+ * are sent to the holder by name rather than run here, and are heard here as writes made
+ * here, before they go. A call refused because the library moved — this tab became the
+ * holder with the call in hand — is made again where the library now is.
+ */
+describe('a tab that is a client of the holder', () => {
+  afterEach(() => provideForwarder(async () => null));
+
+  it('sends a write to the holder by name, and is heard before it goes', async () => {
+    const { lib } = library([row('n1')]);
+    await lib.outbox.ready;
+    const sent: Array<[string, unknown[]]> = [];
+    provideForwarder(async () => async (name, args) => {
+      sent.push([name, args]);
+      return `${name} done`;
+    });
+    const heard = vi.fn();
+    const stop = actions.onLocalWrite(heard);
+    await expect(actions.trashNote('n1')).resolves.toBe('trashNote done');
+    stop();
+    expect(sent).toEqual([['trashNote', ['n1']]]);
+    expect(heard).toHaveBeenCalledWith({ ids: ['n1'], refiles: true });
+    // Nothing ran here: the row is as it was, and the outbox has nothing.
+    expect(lib.notes.get('n1')?.deletedAt).toBeUndefined();
+    expect(lib.outbox.status().pending).toBe(0);
+  });
+
+  it('says whether a forwarded save can refile the note', async () => {
+    const { note } = library([row('n1')]);
+    provideForwarder(async () => async () => 'queued');
+    const writes: actions.LocalWrite[] = [];
+    const stop = actions.onLocalWrite((write) => writes.push(write));
+    const base = note('n1');
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'retyped' }, base });
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), tags: ['new'] }, base });
+    stop();
+    expect(writes).toEqual([
+      { ids: ['n1'], refiles: false },
+      { ids: ['n1'], refiles: true },
+    ]);
+  });
+
+  it('does the write here when the call was refused because the library moved to this tab', async () => {
+    const { lib } = library([row('n1')]);
+    await lib.outbox.ready;
+    let calls = 0;
+    provideForwarder(async () => {
+      // The first ask finds a client whose holder is gone; by the second this tab holds the library.
+      if (calls++ > 0) return null;
+      return async () => {
+        throw new LibraryMovedError();
+      };
+    });
+    await actions.trashNote('n1');
+    expect(lib.notes.get('n1')?.deletedAt).toBeDefined();
+    expect(lib.outbox.status().pending).toBe(1);
+  });
+
+  it('brings any other failure back to the caller as it came', async () => {
+    library([row('n1')]);
+    provideForwarder(async () => async () => {
+      throw new ApiError(404, 'Not found');
+    });
+    await expect(actions.trashNote('n1')).rejects.toMatchObject({ status: 404 });
   });
 });
 

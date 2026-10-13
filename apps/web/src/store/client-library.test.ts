@@ -1,0 +1,434 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createCollection, type Collection } from '@tanstack/db';
+import type { FeedNote, FeedNotebook, FeedTag, FeedAttachment } from '@unbent/shared';
+import { ApiError, NoteChangedError, OfflineError } from '../notes-api.js';
+import { attachClientLibrary, HELLO_RETRY_MS, LibraryMovedError, type ClientHooks, type ClientLibrary } from './client-library.js';
+import { serveLibrary, ROWS_PER_MESSAGE, type Serving, type Server } from './library-serve.js';
+import { carry, revive, type Message, type Port } from './library-channel.js';
+import { LIBRARY_ROOTS } from './library-roots.js';
+import { fakeChannel } from './test-channel.js';
+import type { FeedState } from './feed.js';
+import type { SyncStatus } from './actions.js';
+import type { KeepStatus } from './keep.js';
+
+vi.mock('./actions.js', () => ({
+  forwardable: {
+    trashNote: vi.fn(async (noteId: string) => `trashed ${noteId}`),
+    saveNote: vi.fn(async () => {
+      throw new NoteChangedError({ id: 'n1', title: 'theirs', body: '', tags: [], notebook: null, createdAt: 1, updatedAt: 9, fields: [] } as never);
+    }),
+  },
+}));
+import { forwardable } from './actions.js';
+
+/**
+ * The channel between the tab holding the library and the account's other tabs
+ * (`library-channel.ts`): a holder served from collections in memory, a client attached
+ * over the fake channel, and what crosses between them — the rows once, the changes
+ * after, the statuses, the calls and their answers — and what happens when the holder
+ * goes.
+ */
+
+/** A collection a test fills through its sync path, as a feed page or a queued write would. */
+function collection<T extends object>(id: string, seed: T[]): Collection<T, string> & { upsert: (row: T) => void; remove: (id: string) => void } {
+  let controls!: { begin: () => void; write: (m: { type: 'insert' | 'update'; value: T } | { type: 'delete'; key: string }) => void; commit: () => unknown };
+  const c = createCollection<T, string>({
+    id: `${id}-${Math.random().toString(36).slice(2)}`,
+    getKey: (row) => (row as { id: string }).id,
+    startSync: true,
+    sync: {
+      sync: ({ begin, write, commit, markReady }) => {
+        controls = { begin, write, commit };
+        begin();
+        for (const row of seed) write({ type: 'insert', value: row });
+        commit();
+        markReady();
+      },
+    },
+  });
+  return Object.assign(c, {
+    upsert: (row: T) => {
+      controls.begin();
+      controls.write({ type: c.has((row as { id: string }).id) ? 'update' : 'insert', value: row });
+      controls.commit();
+    },
+    remove: (key: string) => {
+      controls.begin();
+      controls.write({ type: 'delete', key });
+      controls.commit();
+    },
+  });
+}
+
+const note = (id: string, title = id): FeedNote => ({ id, title, body: `body of ${id}`, createdAt: 1, updatedAt: 1, tagIds: [], notebookId: null, fields: [], files: [] });
+const state = (over: Partial<FeedState> = {}): FeedState => ({ phase: 'current', cursor: { seq: 5, epoch: 'e' }, lastError: null, total: null, applied: 0, pulls: 1, resets: 0, ...over });
+const status = (over: Partial<SyncStatus> = {}): SyncStatus => ({ pending: 0, durable: true, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map(), ...over });
+const keeping = (over: Partial<KeepStatus> = {}): KeepStatus => ({ supported: true, kept: new Set(['nb1']), counted: true, wanted: { files: 2, bytes: 20 }, have: { files: 1, bytes: 10 }, fetching: false, problem: null, ...over });
+
+/** A holder: collections in memory and stand-ins for the engine's state, the outbox and the keeper, each with a way to move. */
+function holder(port: Port, rows: { notes?: FeedNote[]; notebooks?: FeedNotebook[]; tags?: FeedTag[]; attachments?: FeedAttachment[] } = {}, opts: { index?: boolean } = {}) {
+  const notes = collection<FeedNote>('notes', rows.notes ?? []);
+  const notebooks = collection<FeedNotebook>('notebooks', rows.notebooks ?? []);
+  const tags = collection<FeedTag>('tags', rows.tags ?? []);
+  const attachments = collection<FeedAttachment>('attachments', rows.attachments ?? []);
+  let feed = state();
+  const feedListeners = new Set<(s: FeedState) => void>();
+  let sync = status();
+  const syncListeners = new Set<(s: SyncStatus) => void>();
+  const acks = new Set<(id: string, note: unknown, sent: unknown) => void>();
+  let keep = keeping();
+  const keepListeners = new Set<(s: KeepStatus) => void>();
+  const index = { candidates: vi.fn(async () => [{ id: 'n1', rank: 1 }]), snippets: vi.fn(async () => new Map([['n1', 'snip']])), meta: vi.fn(async () => 'yes'), held: vi.fn(async () => 1) };
+  const sync_ = { opened: vi.fn(async () => {}) };
+  const keeper = { status: () => keep, subscribe: (l: (s: KeepStatus) => void) => (keepListeners.add(l), l(keep), () => void keepListeners.delete(l)), keep: vi.fn(async () => {}), release: vi.fn(async () => {}), releaseAll: vi.fn(async () => {}), nudge: () => {}, stop: () => {} };
+  const outbox = {
+    status: () => sync,
+    subscribe: (l: (s: SyncStatus) => void) => (syncListeners.add(l), l(sync), () => void syncListeners.delete(l)),
+    onAcknowledged: (l: (id: string, note: unknown, sent: unknown) => void) => (acks.add(l), () => void acks.delete(l)),
+    resolveConflict: vi.fn(),
+    dismissUploadNotices: vi.fn(),
+    cancelUpload: vi.fn(async () => 'cancelled' as const),
+  };
+  const serving: Serving = {
+    collections: { notes, notebooks, tags, attachments, syncState: null as never },
+    state: () => feed,
+    onState: (l) => (feedListeners.add(l), () => void feedListeners.delete(l)),
+    outbox: outbox as never,
+    keeper,
+    search: () => (opts.index === false ? null : { index: index as never, sync: sync_ as never }),
+    searchReady: Promise.resolve(),
+  };
+  const server: Server = serveLibrary(port, serving);
+  return {
+    server,
+    notes,
+    notebooks,
+    tags,
+    attachments,
+    index,
+    sync_,
+    keeper,
+    outbox,
+    moveFeed: (over: Partial<FeedState>) => {
+      feed = state(over);
+      feedListeners.forEach((l) => l(feed));
+    },
+    moveSync: (over: Partial<SyncStatus>) => {
+      sync = status(over);
+      syncListeners.forEach((l) => l(sync));
+    },
+    moveKeep: (over: Partial<KeepStatus>) => {
+      keep = keeping(over);
+      keepListeners.forEach((l) => l(keep));
+    },
+    acknowledge: (id: string, note: unknown, sent: unknown) => acks.forEach((l) => l(id, note, sent)),
+  };
+}
+
+function hooks(): ClientHooks & { changes: ReadonlySet<string>[]; attached: number; resets: number; indexed: number } {
+  const h = {
+    changes: [] as ReadonlySet<string>[],
+    attached: 0,
+    resets: 0,
+    indexed: 0,
+    onChange: (roots: ReadonlySet<string>) => void h.changes.push(roots),
+    onAttached: () => void (h.attached += 1),
+    onReset: () => void (h.resets += 1),
+    onIndexed: () => void (h.indexed += 1),
+  };
+  return h;
+}
+
+/** Lets every microtask the fake channel queued run. */
+const settle = () => vi.advanceTimersByTimeAsync(0);
+
+describe('a client of the holding tab', () => {
+  let channel: ReturnType<typeof fakeChannel>;
+  const open: ClientLibrary[] = [];
+  beforeEach(() => {
+    vi.useFakeTimers();
+    channel = fakeChannel();
+  });
+  afterEach(async () => {
+    for (const lib of open.splice(0)) await lib.close();
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+
+  async function client(h = hooks(), halting = new AbortController()) {
+    const attaching = attachClientLibrary('u1', channel.port(), h, halting.signal);
+    await settle();
+    const lib = await attaching;
+    open.push(lib);
+    return lib;
+  }
+
+  it('mirrors the holder’s rows, state and statuses on attach, and derives from the rows', async () => {
+    const h = holder(channel.port(), { notes: [note('n1'), note('n2')], tags: [{ id: 't1', name: 'tax' }] });
+    h.moveFeed({ applied: 7 });
+    const hk = hooks();
+    const lib = await client(hk);
+    expect(lib.remote).toBe(true);
+    expect(lib.attached()).toBe(true);
+    expect([...lib.notes.values()].map((n) => n.id)).toEqual(['n1', 'n2']);
+    expect(lib.notes.get('n2')?.body).toBe('body of n2');
+    expect(lib.notes.has('n3')).toBe(false);
+    expect(lib.tags.size).toBe(1);
+    expect(lib.notebooks.size).toBe(0);
+    expect(lib.state().applied).toBe(7);
+    expect(lib.outbox.status().durable).toBe(true);
+    expect(lib.keeper.status().kept.has('nb1')).toBe(true);
+    expect(hk.attached).toBe(1);
+    // The rows are the holder's by value, as the browser would clone them, not by reference.
+    expect(lib.notes.get('n1')).not.toBe(h.notes.get('n1'));
+    expect(lib.notes.get('n1')).toEqual(h.notes.get('n1'));
+  });
+
+  it('sends a large collection in chunks and the client holds all of it', async () => {
+    const many = Array.from({ length: ROWS_PER_MESSAGE * 2 + 5 }, (_, i) => note(`n${i}`));
+    holder(channel.port(), { notes: many });
+    const lib = await client();
+    expect(lib.notes.size).toBe(many.length);
+    expect(channel.posted.filter((m) => m.type === 'rows' && m.entity === 'note')).toHaveLength(3);
+  });
+
+  it('follows the holder’s changes, with the roots each batch reaches, and the version moves', async () => {
+    const h = holder(channel.port(), { notes: [note('n1')] });
+    const hk = hooks();
+    const lib = await client(hk);
+    const before = lib.version();
+    hk.changes.length = 0;
+    // A change of text alone reaches the list and the note — from the second change to a
+    // row on: the collection reports the first change to a row a subscription has not
+    // seen as an insert with no previous value, which reaches everything, in the holder's
+    // own tab as much as here.
+    h.notes.upsert({ ...note('n1'), title: 'renamed', updatedAt: 2 });
+    await settle();
+    h.notes.upsert({ ...note('n1'), title: 'renamed again', updatedAt: 3 });
+    await settle();
+    expect(lib.notes.get('n1')?.title).toBe('renamed again');
+    expect(lib.version()).toBeGreaterThan(before);
+    expect(hk.changes).toHaveLength(2);
+    expect([...hk.changes[1]!].sort()).toEqual(['note', 'notes']);
+    hk.changes.length = 0;
+    // A row arriving reaches everything; a row going too.
+    h.notes.upsert(note('n2'));
+    h.tags.upsert({ id: 't1', name: 'tax' });
+    h.notes.remove('n1');
+    await settle();
+    expect([...lib.notes.values()].map((n) => n.id)).toEqual(['n2']);
+    expect(lib.tags.get('t1')?.name).toBe('tax');
+    expect(hk.changes.length).toBeGreaterThan(0);
+    expect(hk.changes.every((roots) => roots.size === LIBRARY_ROOTS.size)).toBe(true);
+  });
+
+  it('mirrors the feed’s state, the outbox’s status, the keeper’s, acknowledgements and the index moving', async () => {
+    const h = holder(channel.port());
+    const hk = hooks();
+    const lib = await client(hk);
+    const feeds: FeedState[] = [];
+    const syncs: SyncStatus[] = [];
+    const keeps: KeepStatus[] = [];
+    const acked: unknown[] = [];
+    lib.subscribe((s) => feeds.push(s));
+    lib.outbox.subscribe((s) => syncs.push(s));
+    lib.keeper.subscribe((s) => keeps.push(s));
+    lib.outbox.onAcknowledged((id, n, sent) => acked.push([id, n, sent]));
+    // Each subscribe answered at once with what is held, as the holder's do.
+    expect(feeds).toHaveLength(1);
+    expect(syncs).toHaveLength(1);
+    expect(keeps).toHaveLength(1);
+    h.moveFeed({ phase: 'hydrating', applied: 3 });
+    h.moveSync({ pending: 2, waiting: new Set(['n1']) });
+    h.moveKeep({ fetching: true });
+    h.acknowledge('n1', { id: 'n1' }, { title: 't' });
+    h.server.indexed();
+    await settle();
+    expect(lib.state().phase).toBe('hydrating');
+    expect(feeds.at(-1)?.applied).toBe(3);
+    expect(lib.outbox.status().pending).toBe(2);
+    expect(lib.outbox.status().waiting.has('n1')).toBe(true);
+    expect(lib.keeper.status().fetching).toBe(true);
+    expect(acked).toEqual([['n1', { id: 'n1' }, { title: 't' }]]);
+    expect(hk.indexed).toBe(1);
+  });
+
+  it('empties its rows on the holder’s reset and fills again from the inserts that follow', async () => {
+    const h = holder(channel.port(), { notes: [note('n1')] });
+    const hk = hooks();
+    const lib = await client(hk);
+    h.server.reset();
+    await settle();
+    expect(lib.notes.size).toBe(0);
+    expect(hk.resets).toBe(1);
+    h.notes.upsert({ ...note('n1'), title: 'back', updatedAt: 2 });
+    await settle();
+    expect(lib.notes.size).toBe(1);
+  });
+
+  it('runs a write on the holder by name and answers with its result', async () => {
+    holder(channel.port());
+    const lib = await client();
+    const answer = lib.call('trashNote', ['n1']);
+    await settle();
+    await expect(answer).resolves.toBe('trashed n1');
+    expect(forwardable.trashNote).toHaveBeenCalledWith('n1');
+  });
+
+  it('brings a failure back as the class it was', async () => {
+    holder(channel.port());
+    const lib = await client();
+    const answer = lib.call('saveNote', [{}]);
+    answer.catch(() => {});
+    await settle();
+    await expect(answer).rejects.toBeInstanceOf(NoteChangedError);
+    await expect(answer).rejects.toMatchObject({ current: { title: 'theirs' } });
+    const unknown = lib.call('noSuchThing', []);
+    unknown.catch(() => {});
+    await settle();
+    await expect(unknown).rejects.toThrow('No such call: noSuchThing');
+  });
+
+  it('asks the holder’s index, keeper and outbox by name, and only what is listed', async () => {
+    const h = holder(channel.port());
+    const lib = await client();
+    const candidates = lib.search.index.candidates('note', 'tax', 50);
+    const snippets = lib.search.index.snippets('note', 'tax', ['n1']);
+    const meta = lib.search.index.meta('built');
+    const held = lib.search.index.held('file', ['f1']);
+    const opened = lib.search.sync.opened('n1');
+    const kept = lib.keeper.keep('nb2');
+    const cancelled = lib.outbox.cancelUpload('a1');
+    lib.outbox.resolveConflict('n1');
+    lib.outbox.dismissUploadNotices('n1');
+    await settle();
+    await settle();
+    await expect(candidates).resolves.toEqual([{ id: 'n1', rank: 1 }]);
+    await expect(snippets).resolves.toEqual(new Map([['n1', 'snip']]));
+    await expect(meta).resolves.toBe('yes');
+    await expect(held).resolves.toBe(1);
+    await opened;
+    await kept;
+    await expect(cancelled).resolves.toBe('cancelled');
+    expect(h.index.candidates).toHaveBeenCalledWith('note', 'tax', 50);
+    expect(h.sync_.opened).toHaveBeenCalledWith('n1');
+    expect(h.keeper.keep).toHaveBeenCalledWith('nb2');
+    expect(h.outbox.resolveConflict).toHaveBeenCalledWith('n1');
+    expect(h.outbox.dismissUploadNotices).toHaveBeenCalledWith('n1');
+    // The index's writes are the holder's sync's, not a client's to ask for.
+    const put = lib.call('index.put', ['note', []]);
+    put.catch(() => {});
+    await settle();
+    await expect(put).rejects.toThrow('No such call: index.put');
+  });
+
+  it('answers a search with no index as offline', async () => {
+    holder(channel.port(), {}, { index: false });
+    const lib = await client();
+    const asked = lib.search.index.meta('built');
+    asked.catch(() => {});
+    await settle();
+    await expect(asked).rejects.toBeInstanceOf(OfflineError);
+  });
+
+  it('keeps saying hello until a holder serves, and attaches to one that starts later', async () => {
+    const hk = hooks();
+    const halting = new AbortController();
+    const attaching = attachClientLibrary('u1', channel.port(), hk, halting.signal);
+    let attached = false;
+    void attaching.then(() => (attached = true));
+    await vi.advanceTimersByTimeAsync(HELLO_RETRY_MS * 2);
+    expect(attached).toBe(false);
+    expect(channel.posted.filter((m) => m.type === 'hello')).toHaveLength(3);
+    holder(channel.port(), { notes: [note('n1')] });
+    await settle();
+    await settle();
+    const lib = await attaching;
+    open.push(lib);
+    expect(attached).toBe(true);
+    expect(lib.notes.size).toBe(1);
+    // Attached: the asking stops.
+    const hellos = channel.posted.filter((m) => m.type === 'hello').length;
+    await vi.advanceTimersByTimeAsync(HELLO_RETRY_MS * 3);
+    expect(channel.posted.filter((m) => m.type === 'hello')).toHaveLength(hellos);
+  });
+
+  it('keeps its rows and holds its calls when the holder closes, and attaches to the next holder, which answers them', async () => {
+    const first = holder(channel.port(), { notes: [note('n1')] });
+    const hk = hooks();
+    const lib = await client(hk);
+    first.server.stop();
+    await settle();
+    expect(lib.attached()).toBe(false);
+    // The rows stay, the reads keep working, and a write waits.
+    expect(lib.notes.size).toBe(1);
+    const waiting = lib.call('trashNote', ['n1']);
+    await vi.advanceTimersByTimeAsync(HELLO_RETRY_MS);
+    expect(forwardable.trashNote).not.toHaveBeenCalled();
+    // A change the old holder posts after closing is not this client's.
+    first.notes.upsert(note('n9'));
+    await settle();
+    expect(lib.notes.size).toBe(1);
+    // The next holder serves: the client attaches to it, with its rows, and the call goes.
+    holder(channel.port(), { notes: [note('n1'), note('n2')] });
+    await settle();
+    await settle();
+    expect(lib.attached()).toBe(true);
+    expect(lib.notes.size).toBe(2);
+    expect(hk.attached).toBe(2);
+    await expect(waiting).resolves.toBe('trashed n1');
+  });
+
+  it('attaches to a new holder that announces itself while the old one never said it was closing', async () => {
+    holder(channel.port(), { notes: [note('n1')] });
+    const lib = await client();
+    holder(channel.port(), { notes: [note('n1'), note('n2'), note('n3')] });
+    await settle();
+    await settle();
+    expect(lib.notes.size).toBe(3);
+  });
+
+  it('refuses the calls in hand when closed, and is halted before a holder answered', async () => {
+    holder(channel.port());
+    const lib = await client();
+    const inHand = lib.call('trashNote', ['n1']);
+    inHand.catch(() => {});
+    await lib.close();
+    await expect(inHand).rejects.toBeInstanceOf(LibraryMovedError);
+    await expect(lib.call('trashNote', ['n1'])).rejects.toBeInstanceOf(LibraryMovedError);
+    // Halted before any holder answered: the attach is refused as an abort, not a fault.
+    const halting = new AbortController();
+    const attaching = attachClientLibrary('u1', channel.port(), hooks(), halting.signal);
+    attaching.catch(() => {});
+    halting.abort();
+    await expect(attaching).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('ignores rows and answers meant for another client', async () => {
+    holder(channel.port(), { notes: [note('n1')] });
+    const a = await client();
+    const b = await client();
+    expect(a.notes.size).toBe(1);
+    expect(b.notes.size).toBe(1);
+    const fromA = a.call('trashNote', ['n1']);
+    await settle();
+    await expect(fromA).resolves.toBe('trashed n1');
+    const answers = channel.posted.filter((m): m is Extract<Message, { type: 'answer' }> => m.type === 'answer');
+    expect(answers).toHaveLength(1);
+  });
+});
+
+describe('carry and revive', () => {
+  it('keeps the class and what it carries across the channel', () => {
+    const changed = revive(carry(new NoteChangedError({ id: 'n1' } as never)));
+    expect(changed).toBeInstanceOf(NoteChangedError);
+    expect((changed as NoteChangedError).current).toEqual({ id: 'n1' });
+    expect(revive(carry(new OfflineError()))).toBeInstanceOf(OfflineError);
+    const api = revive(carry(new ApiError(404, 'Not found')));
+    expect(api).toBeInstanceOf(ApiError);
+    expect(api).toMatchObject({ status: 404, message: 'Not found' });
+    const plain = revive(carry(new RangeError('too big')));
+    expect(plain).toMatchObject({ name: 'RangeError', message: 'too big' });
+    expect(revive(carry('oops'))).toMatchObject({ message: 'oops' });
+  });
+});

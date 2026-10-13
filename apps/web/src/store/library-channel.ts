@@ -1,0 +1,134 @@
+import type { FeedEntity, Note } from '@unbent/shared';
+import type { NoteDraft } from '../note-patch.js';
+import { ApiError, NoteChangedError, OfflineError } from '../notes-api.js';
+import type { FeedState } from './feed.js';
+import type { SyncStatus } from './actions.js';
+import type { KeepStatus } from './keep.js';
+import { libraryChannelName } from './names.js';
+
+/**
+ * The channel between the one tab that holds an account's library and the account's
+ * other tabs on the device, which are its clients (`client-library.ts`).
+ *
+ * One tab holds the library (`library-lock.ts`); until 2026-10-13 every other tab read
+ * the server and made each write a request, which online was slower than the copy and
+ * offline was nothing. The shape most local-first apps land on is one owner and many
+ * clients: one process holds the database, every tab talks to it. On the desktop the
+ * owner could be a SharedWorker; Android Chrome has none, so the owner is the holding
+ * tab, elected by the lock that already exists — and this protocol does not care which,
+ * so a worker can take the holder's seat later with no change on the client's side.
+ *
+ * The client does not ask the holder its queries. It is sent the holder's four
+ * collections as rows, once, when it attaches, and every change to them after, and it
+ * derives what it draws from those rows itself, as the holder does (`derive.ts` works
+ * from any snapshot). The holder is then a mirror's source and a queue's door, and
+ * answers nothing per keystroke in another tab. What does cross as a call is what only
+ * the holder can do: a write, which lands in its outbox and replays in order with its
+ * own; a search of its index, since the FTS tables are in its file; keeping a notebook;
+ * and the few things the outbox is asked by name. A call's answer and its failure come
+ * back under the call's id, with the failure's class carried across (`carry`, `revive`),
+ * since the workspace tells a refused precondition from a lost connection by class.
+ *
+ * A BroadcastChannel, not a MessagePort: a port cannot be sent over a BroadcastChannel,
+ * and the only other way to one is a worker, which is the thing Android has not got.
+ * So every tab hears every message, and the ones meant for one client name it; what is
+ * not for this tab is dropped on arrival, before any of its rows are read. The cost of
+ * that is the clone the browser makes for each listener, paid once per tab per attach.
+ *
+ * Why not TanStack DB's own cross-tab paths, or wa-sqlite's cooperative access handle,
+ * which are still underneath: they are what wedged before one tab held the library
+ * (forty commits in four days, see `library-lock.ts`), and nothing exercises them now.
+ * This is one channel with one owner, and its every message is listed here.
+ */
+
+/** A change to one row of a collection, as the holder's collection reported it, less what the client does not need. */
+export type RowChange = { type: 'insert' | 'update'; value: object } | { type: 'delete'; key: string };
+
+/** A failure carried across the channel: what `revive` needs to make the same class again. */
+export interface Carried {
+  name: string;
+  message: string;
+  status?: number;
+  current?: Note;
+}
+
+export type ClientMessage =
+  /** A tab that wants the rows: the holder answers with `rows` then `attached`, to it alone. */
+  | { type: 'hello'; client: string }
+  | { type: 'call'; client: string; id: number; name: string; args: unknown[] };
+
+export type HolderMessage =
+  /** A holder has started serving: every client says hello again, to it. */
+  | { type: 'serving'; holder: string }
+  | { type: 'rows'; holder: string; client: string; entity: FeedEntity; rows: object[] }
+  /** The rows are all sent; what else the client mirrors, as it stands now. */
+  | { type: 'attached'; holder: string; client: string; state: FeedState; status: SyncStatus; keep: KeepStatus }
+  /** One collection's changes, and the query roots they reach (`rootsOfNoteChanges`). */
+  | { type: 'changes'; holder: string; entity: FeedEntity; changes: RowChange[]; roots: string[] }
+  | { type: 'state'; holder: string; state: FeedState }
+  | { type: 'status'; holder: string; status: SyncStatus }
+  | { type: 'keep'; holder: string; status: KeepStatus }
+  | { type: 'acknowledged'; holder: string; noteId: string; note: Note; sent: NoteDraft }
+  | { type: 'indexed'; holder: string }
+  /** The holder's collections have been emptied for a walk from nothing; the rows come again as inserts. */
+  | { type: 'reset'; holder: string }
+  | { type: 'answer'; holder: string; client: string; id: number; ok: true; value: unknown }
+  | { type: 'answer'; holder: string; client: string; id: number; ok: false; error: Carried }
+  /** The holder is closing its library; its clients wait for the next one. */
+  | { type: 'closing'; holder: string };
+
+export type Message = ClientMessage | HolderMessage;
+
+/** One end of the account's channel, as both sides use it. */
+export interface Port {
+  post: (message: Message) => void;
+  /** Hears every message other tabs post; never this tab's own. */
+  listen: (handler: (message: Message) => void) => () => void;
+  close: () => void;
+}
+
+/** The account's channel in this tab, or null in a browser without BroadcastChannel, where there is nothing to join. */
+export function openPort(userId: string): Port | null {
+  if (typeof BroadcastChannel === 'undefined') return null;
+  const channel = new BroadcastChannel(libraryChannelName(userId));
+  const handlers = new Set<(message: Message) => void>();
+  channel.onmessage = (event: MessageEvent<Message>) => {
+    const message = event.data;
+    if (!message || typeof message !== 'object' || typeof message.type !== 'string') return;
+    handlers.forEach((h) => h(message));
+  };
+  return {
+    post: (message) => channel.postMessage(message),
+    listen: (handler) => {
+      handlers.add(handler);
+      return () => void handlers.delete(handler);
+    },
+    close: () => {
+      handlers.clear();
+      channel.close();
+    },
+  };
+}
+
+/**
+ * A failure as it crosses the channel. An `Error` is cloneable but arrives as a plain
+ * `Error` with the subclass gone, and the callers branch on the subclass: `isNoteChanged`
+ * puts a conflict to the person, `isOfflineError` keeps an entry rather than ending it.
+ * So what is sent is the name, the message and the two fields those classes carry.
+ */
+export function carry(err: unknown): Carried {
+  if (err instanceof NoteChangedError) return { name: err.name, message: err.message, status: err.status, current: err.current };
+  if (err instanceof ApiError) return { name: err.name, message: err.message, status: err.status };
+  if (err instanceof Error) return { name: err.name, message: err.message };
+  return { name: 'Error', message: String(err) };
+}
+
+/** The failure `carry` sent, as the class it was. */
+export function revive(carried: Carried): Error {
+  if (carried.name === 'NoteChangedError' && carried.current) return new NoteChangedError(carried.current);
+  if (carried.name === 'OfflineError') return new OfflineError();
+  if (carried.status !== undefined) return new ApiError(carried.status, carried.message);
+  const err = new Error(carried.message);
+  err.name = carried.name;
+  return err;
+}

@@ -10,6 +10,7 @@ import type { Collections, LocalNote } from './collections.js';
 import { askToPersist, filesSupported, readFile, removeFile, writeFile } from './files.js';
 import { FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE } from '../sw/routes.js';
 import { isWhole, refusedForGood, type FeedEngine } from './feed.js';
+import { LibraryMovedError } from './client-library.js';
 import { outboxLeaderName, outboxName } from './names.js';
 import { OutboxLeader } from './leader.js';
 
@@ -758,6 +759,51 @@ export function provideLibrary(fn: () => Promise<WritableLibrary | null>): void 
   resolve = fn;
 }
 
+/**
+ * A tab that does not hold the account's library is a client of the tab that does
+ * (`client-library.ts`), and its writes are the holder's to queue: each action below
+ * asks here first and, given a way across, sends its name and arguments rather than
+ * running. The holder runs the same function — the one registered in `forwardable` —
+ * where the client's `forward` is null and the write lands in its outbox, durable and in
+ * order with the holder's own. Before 2026-10-13 such a tab made every write a request,
+ * which offline was a save refused.
+ */
+export type Forward = (name: string, args: unknown[]) => Promise<unknown>;
+
+let forward: () => Promise<Forward | null> = async () => null;
+
+/** How the actions find the holder's door when this tab is a client; set by `store/library.ts`. */
+export function provideForwarder(fn: () => Promise<Forward | null>): void {
+  forward = fn;
+}
+
+/** The actions a client may ask the holder to run, by name; filled at the end of this file. */
+export const forwardable: Record<string, (...args: never[]) => Promise<unknown>> = {};
+
+type Away = <T>(name: string, args: unknown[], write?: LocalWrite) => Promise<T>;
+
+/**
+ * The way across to the holder, or null when this tab runs its writes itself. Told to
+ * `onLocalWrite` before the call goes, as a queued write is told before its change
+ * lands: the change comes back as the holder's rows, and the list has to have measured
+ * itself before then. A call refused because the library moved — this tab became the
+ * holder, or attached to a new one, with the call in hand — is simply made again, where
+ * the library now is.
+ */
+async function away(): Promise<Away | null> {
+  const fwd = await forward();
+  if (!fwd) return null;
+  return async <T>(name: string, args: unknown[], write?: LocalWrite): Promise<T> => {
+    if (write) aboutToWrite(write);
+    try {
+      return (await fwd(name, args)) as T;
+    } catch (err) {
+      if (err instanceof LibraryMovedError) return forwardable[name]!(...(args as never[])) as Promise<T>;
+      throw err;
+    }
+  };
+}
+
 /** Whether a write made here goes to the outbox and outlives the tab; see the module comment. */
 const durable = (lib: WritableLibrary) => lib.outbox.executor.isOfflineEnabled;
 
@@ -1016,6 +1062,8 @@ async function saveViaRequest(input: Save): Promise<'unchanged' | Note> {
  * `conflicts` when it refused one and the person has to choose.
  */
 export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | Note> {
+  const far = await away();
+  if (far) return far<'queued' | 'unchanged' | Note>('saveNote', [input], { ids: [input.noteId], refiles: input.value.notebook !== input.base.notebook || JSON.stringify(input.value.tags) !== JSON.stringify(input.base.tags) });
   const lib = await queueable();
   if (!lib || notCopiedYet(lib, input.noteId)) {
     // No local copy on this device, a tab that does not queue, or a note the copy
@@ -1060,6 +1108,8 @@ export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | No
 
 /** Makes a note, with an id minted here, and answers with it at once. */
 export async function createNote(input: { title: string; body: string; tags: string[]; notebook: string | null }): Promise<Note> {
+  const far = await away();
+  if (far) return far<Note>('createNote', [input], { ids: [], refiles: true });
   const lib = await queueable();
   if (!lib) return pulled(api.createNote(input), { ids: [], refiles: true });
   const id = crypto.randomUUID();
@@ -1073,6 +1123,8 @@ export async function createNote(input: { title: string; body: string; tags: str
 
 /** A copy of a note, under an id minted here; the server copies its files. */
 export async function duplicateNote(sourceId: string): Promise<{ id: string }> {
+  const far = await away();
+  if (far) return far<{ id: string }>('duplicateNote', [sourceId], { ids: [], refiles: true });
   const lib = await queueable();
   if (!lib) return pulled(api.duplicateNote(sourceId), { ids: [], refiles: true });
   const source = lib.notes.get(sourceId);
@@ -1112,6 +1164,8 @@ function drained(lib: WritableLibrary, noteId: string, timeout: number): Promise
  * making once the save that may have just added to it has landed.
  */
 export async function synced(noteId: string, timeout = RESTORE_DRAIN_MS): Promise<boolean> {
+  const far = await away();
+  if (far) return far<boolean>('synced', [noteId, timeout]);
   const lib = await resolve();
   return lib ? drained(lib, noteId, timeout) : true;
 }
@@ -1127,6 +1181,8 @@ export async function synced(noteId: string, timeout = RESTORE_DRAIN_MS): Promis
  * told was clear. So a queue that will not drain refuses the clear.
  */
 export async function clearHistory(noteId: string): Promise<number> {
+  const far = await away();
+  if (far) return far<number>('clearHistory', [noteId]);
   const lib = await resolve();
   if (lib && !(await drained(lib, noteId, RESTORE_DRAIN_MS))) {
     throw new Error('This note has changes that have not synced yet. Try again in a moment.');
@@ -1160,6 +1216,8 @@ export async function clearHistory(noteId: string): Promise<number> {
  * a `NoteChangedError` when the note has been saved since the date given.
  */
 export async function restoreRevision(noteId: string, revisionId: number, opts: { ifUpdatedAt?: number } = {}): Promise<RestoredNote> {
+  const far = await away();
+  if (far) return far<RestoredNote>('restoreRevision', [noteId, revisionId, opts], { ids: [noteId], refiles: false });
   const lib = await resolve();
   if (lib && !(await drained(lib, noteId, RESTORE_DRAIN_MS))) {
     throw new Error('This note has changes that have not synced yet. Try again in a moment.');
@@ -1173,6 +1231,8 @@ export async function restoreRevision(noteId: string, revisionId: number, opts: 
 }
 
 export async function trashNote(noteId: string): Promise<void> {
+  const far = await away();
+  if (far) return far<void>('trashNote', [noteId], { ids: [noteId], refiles: true });
   const lib = await queueable();
   if (!lib || notCopiedYet(lib, noteId)) return pulled(api.deleteNote(noteId), { ids: [noteId], refiles: true });
   queue(lib, 'trashNote', { noteId }, () => {
@@ -1183,6 +1243,8 @@ export async function trashNote(noteId: string): Promise<void> {
 }
 
 export async function restoreNote(noteId: string): Promise<void> {
+  const far = await away();
+  if (far) return far<void>('restoreNote', [noteId], { ids: [noteId], refiles: true });
   const lib = await queueable();
   if (!lib || notCopiedYet(lib, noteId)) return pulled(api.restoreNote(noteId).then(() => undefined), { ids: [noteId], refiles: true });
   queue(lib, 'restoreNote', { noteId }, () => {
@@ -1193,6 +1255,8 @@ export async function restoreNote(noteId: string): Promise<void> {
 }
 
 export async function purgeNote(noteId: string): Promise<void> {
+  const far = await away();
+  if (far) return far<void>('purgeNote', [noteId], { ids: [noteId], refiles: true });
   const lib = await queueable();
   if (!lib || notCopiedYet(lib, noteId)) return pulled(api.deleteNotePermanently(noteId), { ids: [noteId], refiles: true });
   queue(lib, 'purgeNote', { noteId }, () => {
@@ -1207,6 +1271,8 @@ export async function purgeNote(noteId: string): Promise<void> {
  * `ids` are the trashed notes on screen, which the list follows out, and the count rolls.
  */
 export async function emptyTrash(ids: readonly string[]): Promise<api.PurgeResult> {
+  const far = await away();
+  if (far) return far<api.PurgeResult>('emptyTrash', [ids], { ids, refiles: true });
   return pulled(api.purgeNotes('trashed'), { ids, refiles: true });
 }
 
@@ -1217,6 +1283,8 @@ export async function emptyTrash(ids: readonly string[]): Promise<api.PurgeResul
  */
 
 export async function trashNotes(ids: string[]): Promise<number> {
+  const far = await away();
+  if (far) return far<number>('trashNotes', [ids], { ids, refiles: true });
   const lib = await queueable();
   if (!lib) return pulled(api.deleteNotes(ids).then((r) => r.trashed), { ids, refiles: true });
   const { here, there } = split(lib, ids);
@@ -1231,6 +1299,8 @@ export async function trashNotes(ids: string[]): Promise<number> {
 }
 
 export async function restoreNotes(ids: string[]): Promise<number> {
+  const far = await away();
+  if (far) return far<number>('restoreNotes', [ids], { ids, refiles: true });
   const lib = await queueable();
   if (!lib) return pulled(api.restoreNotes(ids).then((r) => r.restored), { ids, refiles: true });
   const { here, there } = split(lib, ids);
@@ -1244,6 +1314,8 @@ export async function restoreNotes(ids: string[]): Promise<number> {
 }
 
 export async function purgeNotes(ids: string[]): Promise<number> {
+  const far = await away();
+  if (far) return far<number>('purgeNotes', [ids], { ids, refiles: true });
   const lib = await queueable();
   if (!lib) return pulled(api.deleteNotesPermanently(ids).then((r) => r.deleted), { ids, refiles: true });
   const { here, there } = split(lib, ids);
@@ -1257,6 +1329,8 @@ export async function purgeNotes(ids: string[]): Promise<number> {
 }
 
 export async function moveNotes(ids: string[], notebook: string | null): Promise<void> {
+  const far = await away();
+  if (far) return far<void>('moveNotes', [ids, notebook], { ids, refiles: true });
   const lib = await queueable();
   if (!lib) return pulled(api.updateNotes(ids, { notebook }).then(() => undefined), { ids, refiles: true });
   const { here, there } = split(lib, ids);
@@ -1269,6 +1343,8 @@ export async function moveNotes(ids: string[], notebook: string | null): Promise
 }
 
 export async function tagNotes(ids: string[], change: { add?: string[]; remove?: string[] }): Promise<void> {
+  const far = await away();
+  if (far) return far<void>('tagNotes', [ids, change], { ids, refiles: true });
   const lib = await queueable();
   if (!lib) {
     return pulled(api.updateNotes(ids, { addTags: change.add, removeTags: change.remove }).then(() => undefined), {
@@ -1337,6 +1413,9 @@ export async function uploadFile(noteId: string, file: File): Promise<api.Upload
    * not come; the next file added offline asks properly.
    */
   if (offlineNow()) askToPersist();
+  // The holder's, as a call: the bytes cross with it, and the holder keeps or sends them.
+  const far = await away();
+  if (far) return far<api.UploadedFile>('uploadFile', [noteId, file], { ids: [noteId], refiles: false });
   const lib = await queueable();
   /*
    * One id for the file, whichever way it goes. A request made directly can lose its
@@ -1391,6 +1470,8 @@ export async function uploadFile(noteId: string, file: File): Promise<api.Upload
  * and in a moment the file is an ordinary one that can be deleted.
  */
 export async function cancelUpload(noteId: string, filename: string): Promise<boolean> {
+  const far = await away();
+  if (far) return far<boolean>('cancelUpload', [noteId, filename]);
   const lib = await resolve();
   if (!lib) return false;
   const row = [...lib.attachments.values()].find((a) => a.pending && a.noteId === noteId && a.filename === filename);
@@ -1430,6 +1511,8 @@ function syncedRow(lib: WritableLibrary, noteId: string): LocalNote | undefined 
  * that value changed, queued like any other, answering with the note as it now shows.
  */
 export async function setNoteField(noteId: string, def: FieldDef, value: FieldValue | null): Promise<Note> {
+  const far = await away();
+  if (far) return far<Note>('setNoteField', [noteId, def, value], { ids: [noteId], refiles: false });
   const lib = await queueable();
   const row = lib ? syncedRow(lib, noteId) : undefined;
   if (!lib || !row) return pulled(api.updateNote(noteId, { fields: { [def.id]: value } }), { ids: [noteId], refiles: false });
@@ -1459,6 +1542,8 @@ export async function applyNotebookTemplate(
   definition: NotebookDefinition,
   opts: { create: boolean },
 ): Promise<{ id: string; skipped: api.NotebookImportSkip[] } | 'taken'> {
+  const far = await away();
+  if (far) return far<{ id: string; skipped: api.NotebookImportSkip[] } | 'taken'>('applyNotebookTemplate', [definition, opts]);
   const out = await api.importNotebook(definition, opts);
   if (out === 'taken') return out;
   directListeners.forEach((l) => l());
@@ -1467,3 +1552,33 @@ export async function applyNotebookTemplate(
   else if (lib) void lib.engine.pull();
   return out;
 }
+
+/*
+ * What a client may ask the holder to run (`library-serve.ts`). Every write above, and
+ * the two that wait on a note's queued writes before a request (`clearHistory`,
+ * `restoreRevision`), since the queue they wait on is the holder's. Not
+ * `deleteOrCancelAttachment`, which composes `cancelUpload` and a request and runs
+ * where it is called; nor `onUploaded`'s listeners, which fire in the holder for an
+ * upload its queue got through — a client's own upload answers the client that made it.
+ */
+Object.assign(forwardable, {
+  saveNote,
+  createNote,
+  duplicateNote,
+  synced,
+  clearHistory,
+  restoreRevision,
+  trashNote,
+  restoreNote,
+  purgeNote,
+  emptyTrash,
+  trashNotes,
+  restoreNotes,
+  purgeNotes,
+  moveNotes,
+  tagNotes,
+  uploadFile,
+  cancelUpload,
+  setNoteField,
+  applyNotebookTemplate,
+});
