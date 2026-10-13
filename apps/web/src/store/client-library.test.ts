@@ -277,6 +277,19 @@ describe('a client of the holding tab', () => {
     expect(forwardable.trashNote).toHaveBeenCalledWith('n1');
   });
 
+  it('still answers a call that was running when the holder stopped', async () => {
+    let finish!: (v: string) => void;
+    vi.mocked(forwardable.trashNote!).mockImplementationOnce(() => new Promise<string>((r) => (finish = r)) as never);
+    const h = holder(channel.port());
+    const lib = await client();
+    const answer = lib.call('trashNote', ['n1']);
+    await settle();
+    h.server.stop();
+    finish('trashed late');
+    await settle();
+    await expect(answer).resolves.toBe('trashed late');
+  });
+
   it('brings a failure back as the class it was', async () => {
     holder(channel.port());
     const lib = await client();

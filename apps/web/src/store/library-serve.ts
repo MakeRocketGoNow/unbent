@@ -110,9 +110,21 @@ export function serveLibrary(port: Port, lib: Serving): Server {
     if (m.type === 'hello') return void hello(m.client);
     if (m.type === 'ping') return port.post({ type: 'pong', holder, client: m.client });
     if (m.type === 'call') {
+      // Answered even after `stop`: a call that was running when this holder began to
+      // close has still run, and its client would otherwise send it to the next holder
+      // as if it had not. The port outlives `stop` until the library's close; a post
+      // after that is the one thing here that can throw, and the answer is then lost
+      // as a crashed tab's would be (`client-library.ts` says what that costs).
+      const answer = (message: Message) => {
+        try {
+          port.post(message);
+        } catch {
+          // The channel is closed.
+        }
+      };
       void run(m.name, m.args).then(
-        (value) => !stopped && port.post({ type: 'answer', holder, client: m.client, id: m.id, ok: true, value }),
-        (err: unknown) => !stopped && port.post({ type: 'answer', holder, client: m.client, id: m.id, ok: false, error: carry(err) }),
+        (value) => answer({ type: 'answer', holder, client: m.client, id: m.id, ok: true, value }),
+        (err: unknown) => answer({ type: 'answer', holder, client: m.client, id: m.id, ok: false, error: carry(err) }),
       );
     }
   };
