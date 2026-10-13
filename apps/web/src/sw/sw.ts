@@ -1,8 +1,8 @@
-import { PrecacheController, PrecacheRoute, cleanupOutdatedCaches } from 'workbox-precaching';
+import { PrecacheController, PrecacheRoute } from 'workbox-precaching';
 import { registerRoute } from 'workbox-routing';
 import { CacheFirst, NetworkFirst, type StrategyOptions } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
-import { API_CACHE, FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE, SERVED_HEADER, VIEW_HEADER, classify, servesShell, shelved, within } from './routes.js';
+import { API_CACHE, FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE, SERVED_HEADER, SHELL_CACHE_PREFIX, VIEW_HEADER, classify, isAsset, isShellFallback, servesShell, shellCacheName, shelved, within } from './routes.js';
 import { createFilesLedger } from './budget.js';
 import { findFile } from '../store/files.js';
 
@@ -18,6 +18,20 @@ import { findFile } from '../store/files.js';
  * Typechecked by its own program, `tsconfig.sw.json`. The app's program loads the Workers
  * types for the API client, and those declare a `ServiceWorkerGlobalScope` of their own —
  * the Workers runtime's, which has no `clients`, `registration` or `skipWaiting`.
+ *
+ * What it does, in order of what matters:
+ *
+ * - A page load is answered from the network first, and from the cached shell only when
+ *   the network does not answer. So a reload is always the newest build, and the whole
+ *   question of *when* to move a page onto a new deploy — a change of section, five
+ *   minutes away, nothing touched yet — goes away with the rules that answered it.
+ * - Each build's shell is kept in a cache of its own, and the previous build's cache is
+ *   kept until the one after it. A tab still running the previous build asks for its
+ *   chunks under their old names, and finds them: a new worker taking charge no longer
+ *   pulls the code out from under every other tab (see the assets route).
+ * - What the shell is filled with is checked: a chunk that no longer exists is answered
+ *   by the Worker with `index.html` and a 200, and a fill that took that for a chunk
+ *   stored HTML under a script's name.
  */
 declare const self: ServiceWorkerGlobalScope;
 
@@ -26,16 +40,23 @@ declare const self: ServiceWorkerGlobalScope;
  * pdf.js with its WebAssembly decoders, so a PDF someone opened can still be drawn. The
  * list and what it leaves out is in `vite.config.ts`.
  *
- * Fetched in the background when the worker installs, and again only for files whose
- * revision changed — the hashed chunks of an unchanged route cost nothing on the next
- * deploy.
+ * In a cache named for this build — the revision of its `index.html`, which carries the
+ * commit and so changes with every deploy — rather than Workbox's one cache for every
+ * build. With one cache, activating a new worker deleted every chunk the previous build
+ * had and the current one does not, in every tab at once, and only the tab that asked
+ * for the hand-off was reloaded; the rest ran on with their next route's chunk gone,
+ * answered by the Worker with `index.html`, and showed the router's error screen inside
+ * a drawn shell. Now the previous build's cache outlives its worker (`tidyShellCaches`),
+ * and those tabs keep working until they reload.
  *
  * A controller of our own rather than `precacheAndRoute`, only so the install below can
  * be ours; the route and the activate step are Workbox's, unchanged.
  */
-const shell = new PrecacheController();
-shell.addToCacheList(self.__WB_MANIFEST);
-registerRoute(new PrecacheRoute(shell));
+const manifest = self.__WB_MANIFEST;
+const BUILD = manifest.find((entry) => (typeof entry === 'string' ? entry : entry.url).replace(/^\.?\//, '') === 'index.html');
+const SHELL_CACHE = shellCacheName(typeof BUILD === 'object' ? (BUILD.revision ?? 'unversioned') : 'unversioned');
+const shell = new PrecacheController({ cacheName: SHELL_CACHE });
+shell.addToCacheList(manifest);
 self.addEventListener('activate', shell.activate);
 
 /**
@@ -60,6 +81,13 @@ self.addEventListener('activate', shell.activate);
  * Workbox stores it: the Worker answers `/index.html` with a redirect to `/`, and a
  * response that remembers being redirected cannot be given to a page load (see below).
  *
+ * Every answer is checked for being the page in disguise (`isShellFallback`): the asset
+ * layer answers a path it does not have with `index.html` and a 200, so a fill that
+ * straddled a deploy, or a refill by a worker older than the live deploy, stored HTML
+ * under a chunk's name and then served it to a `<script>`. Online that was a reload;
+ * offline it was a blank page. Such an answer fails the fill, and the fill is tried
+ * again on the next install or page load.
+ *
  * Ours rather than `PrecacheStrategy`'s because it runs twice over: from the install
  * event, and again from a page load that found the cache empty (`refillShell`). Workbox
  * stores what it fetches outside the install only when the manifest carries integrity
@@ -82,6 +110,7 @@ async function fillShell(): Promise<void> {
       }),
     );
     if (response.status !== 200) throw new Error(`${url}: ${response.status}`);
+    if (isShellFallback(new URL(url), response.headers.get('Content-Type'))) throw new Error(`${url}: answered with the page, not the file`);
     await cache.put(cacheKey, response.redirected ? unredirected(response) : response);
   };
   const entries = [...shell.getURLsToCacheKeys()];
@@ -132,10 +161,34 @@ function refillShell(): Promise<void> {
 }
 
 /**
- * The previous build's shell, once this one is in charge. Without it every deploy would
- * leave another copy of the app in the cache for good.
+ * The shell caches that are neither this build's nor the one before it, once this worker
+ * is in charge — and the one cache Workbox used to keep every build in, from before each
+ * build had its own.
+ *
+ * The previous build is kept on purpose: a tab still running it keeps finding its chunks
+ * (the assets route) until it reloads. A tab that outlives two deploys without a reload
+ * loses them, and gets the reload `recoverFromMissingChunks` does for a chunk that is
+ * gone. Which build was previous is remembered in a cache of its own, since cache names
+ * carry no order.
  */
-cleanupOutdatedCaches();
+const SHELL_META = `${SHELL_CACHE_PREFIX}meta`;
+const PREVIOUS_KEY = '/previous';
+
+async function tidyShellCaches(): Promise<void> {
+  const meta = await caches.open(SHELL_META);
+  const before = await meta.match(PREVIOUS_KEY).then((r) => r?.text()).catch(() => undefined);
+  const previous = before && before !== SHELL_CACHE ? before : undefined;
+  for (const name of await caches.keys()) {
+    const ours = name.startsWith(SHELL_CACHE_PREFIX) && name !== SHELL_META;
+    const workbox = name.includes('-precache-');
+    if ((ours && name !== SHELL_CACHE && name !== previous) || workbox) await caches.delete(name);
+  }
+  await meta.put(PREVIOUS_KEY, new Response(SHELL_CACHE));
+}
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(tidyShellCaches());
+});
 
 /**
  * Take charge of the pages already open the moment this worker is active, rather than
@@ -144,47 +197,92 @@ cleanupOutdatedCaches();
  * Without this the page that registers the worker is never under it: the first session
  * after installing the app — sign in, open a note, walk into a tunnel — kept nothing,
  * because none of its reads passed through the worker. On the phone that first session
- * is the one a reviewer tries. It is also what makes the deploy hand-off prompt: the
- * `controlling` event `takeUpdate` waits for fires only when the new worker claims the
- * page, and without a claim it fell back to its timer every time.
- *
- * Safe for an update, because this worker activates only when the page has asked it to
- * (`SKIP_WAITING`) and is about to load its destination fresh anyway.
+ * is the one a reviewer tries. Safe for an update, because the previous build's shell
+ * stays cached: a page still running it goes on finding its chunks under this worker.
  */
 self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
 /**
- * Every page load of the app is answered with the cached `index.html`, and the router
- * takes it from there — the same thing the Worker's SPA fallback does, without needing
- * the Worker.
+ * How long a page load waits for the network before the cached shell answers instead.
+ * The page is two kilobytes; a connection that has not answered in this long is one
+ * that carries nothing, and the shell is the right answer on it. A device with no
+ * network at all fails the fetch at once and never waits this long.
+ */
+const NAVIGATION_TIMEOUT_MS = 3000;
+
+/**
+ * Every page load of the app: from the network first, so a reload is the newest build,
+ * and from the cached `index.html` when the network does not answer in time, which is
+ * what lets the installed app open on a plane. The router takes it from there either way.
  *
- * Online too, which is the point of an app shell: the page is the version this worker
- * holds, and a new deploy reaches it through the worker's own update rather than through
- * whichever load happens to hit the network first.
+ * It used to be the other way round — the cached shell always, online too — which is
+ * what an app shell classically is, and what made a deploy unreachable: a reload drew the
+ * build the worker held, and a set of rules grew around when the page could be moved
+ * onto the new one (a change of section, five minutes away, nothing touched since the
+ * load), each one the answer to a reload that showed the old build or a reload that
+ * lost someone's place. Network first costs one round trip on a cold load online and
+ * answers all of them: the newest build is whatever the next load draws, and a page in
+ * use is never moved.
  *
- * When the cache does not hold it, the load goes to the network as itself — the request
- * the browser made, which the Worker answers with `index.html` directly — and the shell
- * is fetched again in the background. `index.html` is the one file looked for because
+ * Registered before the precache route, which would otherwise answer `/` itself from the
+ * cache, as `index.html`, and never come here. `/index.html` is not a route of the app
+ * (`servesShell`) and stays the precache route's: on a miss it fetches that address,
+ * whose redirect to `/` a page load cannot be given (the fetch spec's rule for
+ * `redirect: 'manual'`), but nothing loads that address on purpose.
+ *
+ * A miss on the cache under a live worker is a real state: Chrome's "Clear cached images
+ * and files" removes the worker's caches and leaves the worker registered, and so does a
+ * device short of storage. Every page load looks, whether the network answered it or
+ * not, and the shell is fetched again in the background when it is missing: looked for
+ * only on the loads the network failed, an emptied cache stayed empty for as long as the
+ * network kept answering, which is until the one load that needed it (the first run of
+ * the offline gate against this route). `index.html` is the one file looked for because
  * `fillShell` stores it last, once every other file is in: its presence means the whole
- * shell is, and its absence means a fill is owed. The cache can be empty under a live worker:
- * Chrome's "Clear cached images and files" removes the worker's caches and leaves the
- * worker registered, and so does a device short of storage. Workbox's handler bound to
- * `/index.html` fetched that address on a miss and handed the page load what came back
- * — the Worker's redirect to `/`, followed — and a response that was redirected is a
- * network error for a navigation (the fetch spec's rule for `redirect: 'manual'`). Every
- * page load then failed with "This site can't be reached", on every tab, until the next
- * deploy installed a worker with a full cache, since the strategy repairs nothing without
- * integrity hashes. Seen on 2026-10-09, after clearing the cache to get a fresh load.
+ * shell is, and its absence means a fill is owed (seen on 2026-10-09).
  */
 registerRoute(
   ({ request, url }) => request.mode === 'navigate' && servesShell(url),
   async ({ event, request }) => {
-    const cached = await shell.matchPrecache('/index.html');
-    if (cached) return cached;
+    const cached = shell.matchPrecache('/index.html');
+    const fresh = await within(
+      fetch(request).then((response) => (response.ok ? response : null)),
+      NAVIGATION_TIMEOUT_MS,
+      null,
+    );
+    if (fresh) {
+      event.waitUntil(cached.then((hit) => (hit ? undefined : refillShell())));
+      return fresh;
+    }
+    const hit = await cached;
+    if (hit) return hit;
     event.waitUntil(refillShell());
     return fetch(request);
+  },
+);
+
+registerRoute(new PrecacheRoute(shell));
+
+/**
+ * A hashed asset this build's shell does not hold: the previous build's, asked for by a
+ * tab still running it. Answered from whichever shell cache has it, and otherwise from
+ * the network — unless the network answers with the page, which is the asset layer
+ * saying the file is gone: that is turned into the 404 it is, so the import fails as a
+ * missing module and the page reloads itself (`recoverFromMissingChunks`), rather than
+ * failing as HTML where a script was expected, which it does too, but later and less
+ * clearly. The precache route, registered before this, answers this build's own assets.
+ */
+registerRoute(
+  ({ request, url }) => isAsset(url, self.location.origin) && request.mode !== 'navigate',
+  async ({ request, url }) => {
+    const kept = await caches.match(request, { ignoreSearch: true });
+    if (kept) return kept;
+    const response = await fetch(request);
+    if (response.ok && isShellFallback(url, response.headers.get('Content-Type'))) {
+      return new Response(null, { status: 404, statusText: 'Not Found' });
+    }
+    return response;
   },
 );
 
@@ -367,14 +465,30 @@ registerRoute(
 );
 
 /**
- * A new deploy's worker installs and then waits, because taking over at once would hand
- * a page still running the previous build a cache that no longer holds its chunks. The
- * page decides when: on its next change of page, when nothing it holds would be lost —
- * see `takeUpdate` in `sw-register.ts`, whose `messageSkipWaiting` sends this.
+ * Messages from the page.
+ *
+ * `SKIP_WAITING`: a new deploy's worker has installed; the page tells it to take charge
+ * as soon as it hears (`sw-register.ts`). Safe at any moment, since the previous build's
+ * shell stays cached for the pages still running it.
+ *
+ * `BUILD`: which deploy this worker is. Answered on the port the page sent, with the
+ * commit read out of the precached page — the one place the worker can learn it without
+ * the build plumbing it through — so a page can tell whether the worker now in charge
+ * is a newer build than itself, and say that a reload would bring it (`UpdateSnackbar`).
+ *
+ * `FILES_CHANGED`: the page put a file in the files cache itself.
  */
 self.addEventListener('message', (event) => {
   const type = (event.data as { type?: unknown } | null)?.type;
   if (type === 'SKIP_WAITING') void self.skipWaiting();
-  // The page put a file in the files cache itself; see `FILES_CHANGED`.
+  if (type === 'BUILD') event.waitUntil(answerBuild(event.ports[0]));
   if (type === FILES_CHANGED) event.waitUntil(ledger.sweep());
 });
+
+async function answerBuild(port: MessagePort | undefined): Promise<void> {
+  if (!port) return;
+  const page = await shell.matchPrecache('/index.html').catch(() => undefined);
+  const html = (await page?.text().catch(() => '')) ?? '';
+  const commit = /<meta name="unbent-commit" content="([^"]+)"/.exec(html)?.[1] ?? null;
+  port.postMessage({ type: 'BUILD', commit });
+}

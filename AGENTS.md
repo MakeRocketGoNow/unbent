@@ -747,11 +747,21 @@ too. The index tests run on the same `wa-sqlite.wasm` the browser loads
 (`store/test-search-db.ts`), and `pnpm gate:offline` checks the whole path with the
 network cut.
 
-**Deploys wait for a change of section.** A new worker installs and waits; the next time
-someone goes to another section (notes to settings, not list to note), or comes back to the
-app after five minutes away, and nothing a reload would lose is in flight (`busy.ts`), the
-app loads the page from the new deploy. An outbox entry is not in flight: it is durable, and
-the executor restores it after the reload.
+**A deploy's worker takes charge at once, and no page is ever moved onto it.** A page load
+is answered from the network first and from the cached shell only when the network does
+not answer (`sw.ts`), so a reload is always the newest build. Each build's shell is in a
+cache named for the build (`shellCacheName`), and the previous build's cache outlives its
+worker, so a tab still running the previous build keeps finding its chunks after the new
+worker has taken charge; only a tab that outlives two deploys without a reload loses them,
+and `recoverFromMissingChunks` reloads it once when a chunk is gone. The one thing the
+page says is that a reload would bring a newer build (`UpdateSnackbar`), and only when the
+worker's commit differs from the page's (`BUILD` in `sw.ts`). The rules this replaced — a
+change of section, five minutes away, nothing touched since the load, at once on dev and
+previews — each answered a reload that drew the old build or lost someone's place, and
+between them still moved every other tab onto a worker that had deleted their chunks.
+`pnpm gate:offline` checks that a removed chunk is a 404 and that the shell is kept under
+the build's name; a deploy while a tab is open is checked by hand (a second build, then
+`update()` from the page).
 
 **Never delete `sw.js`.** The Worker answers an unknown path with `index.html`, so a deleted
 worker script is a 200 the browser cannot install, and the old worker stays in charge on

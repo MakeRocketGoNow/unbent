@@ -11,7 +11,7 @@ import { configQuery, installLibraryQueries } from './queries.js';
 import { applyInstanceMarker } from './instance-marker.js';
 import { adoptHostLayout } from './app-bridge.js';
 import { openSitePath } from './useHostApp.js';
-import { registerServiceWorker, setInstanceKind } from './sw-register.js';
+import { registerServiceWorker } from './sw-register.js';
 import { installConnectivity } from './connectivity.js';
 import { installSessionRecheck, refreshSession } from './auth-client.js';
 import { isOfflineError } from './notes-api.js';
@@ -127,8 +127,6 @@ void queryClient
     // Before the error tracker, which needs nothing from it: a scratch instance's tab
     // should say so as early as the page can know it is one.
     applyInstanceMarker(config);
-    // Dev and previews take a new deploy at once; see `takesDeploysAtOnce`.
-    setInstanceKind(config.instanceKind);
     return config.posthog ? installPosthog(config.posthog) : undefined;
   })
   .catch(() => {});
@@ -196,12 +194,11 @@ installLaunchQueue({
 });
 
 /*
- * The service worker, which lets the installed app open with no connection, and the
- * hand-off to a new deploy; see `sw-register.ts`. After the router, so nothing it does
- * can delay the first render, and given the router's committed path so a deploy can be
- * taken on a change of page rather than a change of filter.
+ * The service worker, which lets the installed app open with no connection, and the word
+ * that a newer build is in charge; see `sw-register.ts`. After the router, so nothing it
+ * does can delay the first render.
  */
-registerServiceWorker(() => (router.state.resolvedLocation ?? router.state.location).pathname);
+registerServiceWorker();
 
 declare module '@tanstack/react-router' {
   interface Register {

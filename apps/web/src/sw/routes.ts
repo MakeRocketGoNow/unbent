@@ -53,6 +53,32 @@ export const API_CACHE = 'api-v1';
 export const FILES_CACHE = 'files-v1';
 
 /**
+ * The caches the app's shell is kept in: one per build, named for the build, so the
+ * previous build's survives the next worker taking charge (`sw.ts`). The page never
+ * empties these; a deploy tidies them.
+ */
+export const SHELL_CACHE_PREFIX = 'unbent-shell-';
+export const shellCacheName = (build: string) => `${SHELL_CACHE_PREFIX}${build}`;
+
+/** A hashed file of a build: what Vite writes under `/assets/`. */
+export function isAsset(url: URL, origin: string): boolean {
+  return url.origin === origin && url.pathname.startsWith('/assets/');
+}
+
+/**
+ * Whether an answer for a file of the shell is the page in disguise. The asset layer
+ * answers any path it does not have with `index.html` and a 200 — the SPA fallback — so
+ * a chunk that a newer deploy dropped, or that a deploy in progress has not written yet,
+ * comes back as HTML with a script's name. A fill that stored it served HTML to a
+ * `<script>`; a tab that fetched it got a module error. Only the page itself may be HTML.
+ */
+export function isShellFallback(url: URL, contentType: string | null): boolean {
+  if (!contentType || !/text\/html/i.test(contentType)) return false;
+  const last = url.pathname.slice(url.pathname.lastIndexOf('/') + 1);
+  return last !== 'index.html' && last.includes('.');
+}
+
+/**
  * Twenty megabytes: the largest file the cache of opened files keeps. A file over it is
  * still shown online and simply not kept: a scanned archive has the odd enormous PDF, and
  * a phone's storage is better spent on the many ordinary files someone opened than on one
