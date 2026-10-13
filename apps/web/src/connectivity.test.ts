@@ -1,20 +1,29 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
 import {
+  connectivityReport,
   installConnectivity,
   offlineNow,
   recheck,
   resetConnectivity,
   setReachableForTests,
 } from './connectivity.js';
-import { OfflineError, request } from './notes-api.js';
+import { OFFLINE_WRITE_TIMEOUT, OfflineError, request } from './notes-api.js';
 
 /**
- * Only two things decide whether the app is offline: the browser's own `navigator.onLine`,
- * and a check of the server with a timeout. Everything else — a failed request, a read the
- * worker answered from its cache, a slow save, a kept file answering while offline — only
- * asks for a check. These cases are the ones that used to decide on their own, and flicker.
+ * Evidence decides whether the app is offline. The server out of reach — a check with no
+ * answer, or the browser's `offline` with nothing answered since — is offline; the server
+ * answering anything, a check or a request of the page's, is online, whatever the browser's
+ * flag says. A failed request, a read the worker answered from its cache, a slow save and a
+ * kept file answering while offline only ask for a check: those used to decide on their
+ * own, and flicker. The browser's flag used to be a veto, and a browser that was wrong
+ * about its network left the app offline for good.
  */
+
+/** The browser's own flag, which jsdom pins to true. */
+function browserSays(onLine: boolean): void {
+  Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => onLine });
+}
 const health = (answer: () => Promise<Response>) =>
   vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
     String(input) === '/api/health'
@@ -32,6 +41,7 @@ beforeEach(() => resetConnectivity());
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  browserSays(true);
   resetConnectivity();
 });
 
@@ -106,6 +116,58 @@ describe('connectivity', () => {
   });
 
   /*
+     The case of 2026-10-13: a laptop whose browser reports no network while every request
+     succeeds. The browser's flag must not stop the server's own answer from counting, and
+     must not stop a check from being made.
+   */
+  it('comes back online on any answer from the server, even while the browser says offline', async () => {
+    installConnectivity(new QueryClient());
+    browserSays(false);
+    setReachableForTests(false);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })));
+    expect(offlineNow()).toBe(true);
+    await request('/api/changes?since=1');
+    expect(offlineNow()).toBe(false);
+    expect(connectivityReport().decided.by).toBe('answer');
+    expect(connectivityReport().browserOnLine).toBe(false);
+  });
+
+  it('still checks the server while the browser says offline', async () => {
+    vi.useFakeTimers();
+    installConnectivity(new QueryClient());
+    browserSays(false);
+    const fetch = health(ok);
+    vi.stubGlobal('fetch', fetch);
+    setReachableForTests(false);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(fetch).toHaveBeenCalled();
+    expect(offlineNow()).toBe(false);
+  });
+
+  it('goes offline at once on the browser’s offline event, and comes back on the next answer', async () => {
+    vi.useFakeTimers();
+    installConnectivity(new QueryClient());
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })));
+    window.dispatchEvent(new Event('offline'));
+    expect(offlineNow()).toBe(true);
+    expect(connectivityReport().decided.by).toBe('browser');
+    // The check the event started answers within seconds, before any request would.
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(offlineNow()).toBe(false);
+  });
+
+  it('does not go offline on a check that fails after the server answered a request', async () => {
+    vi.useFakeTimers();
+    const fetch = health(never);
+    vi.stubGlobal('fetch', fetch);
+    recheck();
+    fetch.mockImplementation(async () => new Response('{}', { status: 200 }));
+    await request('/api/notes');
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(offlineNow()).toBe(false);
+  });
+
+  /*
      Back online, what was read during the outage — maybe from the worker's cache — and what
      failed then are fetched again. What was read before it came from the server and is left
      to React Query's staleness.
@@ -146,32 +208,59 @@ describe('request', () => {
   });
 
   /*
-     A file the worker kept answers with no network. While the app is offline that answer
-     says nothing about the server, and must not bring the app back online on its own — it
-     used to unlock the editor on a connection that carried nothing.
+     A file the worker kept answers with no network, marked as the worker's. While the app
+     is offline that answer says nothing about the server, and must not bring the app back
+     online on its own — it used to unlock the editor on a connection that carried nothing.
+     The same for a file from the device's shelves.
    */
   it('does not come back online because a kept file answered', async () => {
     setReachableForTests(false);
     vi.stubGlobal(
       'fetch',
       vi.fn((input: RequestInfo | URL) =>
-        String(input) === '/api/health' ? refused() : Promise.resolve(new Response('bytes', { status: 200 })),
+        String(input) === '/api/health'
+          ? refused()
+          : Promise.resolve(new Response('bytes', { status: 200, headers: { 'X-Unbent-Served': String(input).endsWith('.png') ? 'cache' : 'device' } })),
       ),
     );
-    const res = await request('/api/notes/n1/files/receipt.png');
-    expect(res.status).toBe(200);
+    expect((await request('/api/notes/n1/files/receipt.png')).status).toBe(200);
+    expect((await request('/api/notes/n1/files/scan.pdf')).status).toBe(200);
     await new Promise((r) => setTimeout(r, 20));
     expect(offlineNow()).toBe(true);
   });
 
-  it('refuses a write at once when offline, but still sends a read', async () => {
+  it('does not come back online because another origin answered', async () => {
     setReachableForTests(false);
-    const fetch = vi.fn(async () => new Response('{}', { status: 200, headers: { 'X-Unbent-Served': 'cache' } }));
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })));
+    await request('https://example.com/image.png');
+    expect(offlineNow()).toBe(true);
+  });
+
+  /*
+     A write used to be refused before it was sent while the app believed it was offline.
+     The belief can be wrong, and a save refused on a belief is a save lost on a working
+     connection: it goes out, bounded, and its answer is what puts the app back online.
+   */
+  it('sends a write while the app believes it is offline, bounded by a short wait', async () => {
+    vi.useFakeTimers();
+    setReachableForTests(false);
+    const fetch = vi.fn(
+      (input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_, reject) =>
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError'))),
+        ),
+    );
     vi.stubGlobal('fetch', fetch);
-    await expect(request('/api/notes/1', { method: 'PATCH' })).rejects.toBeInstanceOf(OfflineError);
-    expect(fetch).not.toHaveBeenCalled();
-    await request('/api/notes/1');
+    const save = request('/api/notes/1', { method: 'PATCH' });
+    const settled = expect(save).rejects.toBeInstanceOf(OfflineError);
     expect(fetch).toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(OFFLINE_WRITE_TIMEOUT);
+    await settled;
+    expect(offlineNow()).toBe(true);
+
+    fetch.mockImplementation(async () => new Response('{}', { status: 200 }));
+    expect((await request('/api/notes/1', { method: 'PATCH' })).status).toBe(200);
+    expect(offlineNow()).toBe(false);
   });
 
   /*

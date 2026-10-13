@@ -624,11 +624,19 @@ the one Keep offline was pressed in; a `BroadcastChannel` only makes that prompt
 in the cache says "Not available offline" where its preview would be (`offline-file.ts`):
 one phrase, in the note's body, never a spinner and never in the head.
 
-**Only two things say the app is offline:** the browser's `navigator.onLine`, and a check
-of `/api/health` with a timeout (`connectivity.ts`). Nothing else decides — not the outbox,
-whose online detector is backed by the same store, not a request that got no answer, not a
-socket that dropped; each only asks for a check (`recheck`). Letting request outcomes flip
-the state directly was tried, and every new kind of answer became a new way to flicker.
+**Evidence decides whether the app is offline, never a hint** (`connectivity.ts`). The app
+is offline while the server is out of reach: a check of `/api/health` with a timeout got no
+answer, or the browser fired `offline` and nothing has answered since. It is online the
+moment the server answers anything — a check, or any answer to a request the API client
+made that the worker did not serve from a cache or a shelf (`confirmReachable`, called by
+`request()`; the worker marks what it served, `X-Unbent-Served`). `navigator.onLine` only
+starts a check, and is never allowed to veto one: while it was a veto, a laptop whose
+browser was wrong about its network sat on the banner for a day with every request
+succeeding, refusing saves (2026-10-13). A failed request, a socket that dropped and a save
+that timed out still only ask for a check (`recheck`): letting failures flip the state was
+tried first, and every new kind of failure became a new way to flicker. Settings → Offline
+says what decided the current answer and when. Nothing else decides — not the outbox,
+whose online detector is backed by the same store.
 
 **API calls from the page go through `request()` in `notes-api.ts`,** which is where those
 checks are asked for: a fetch with no answer becomes an `OfflineError`, which the outbox

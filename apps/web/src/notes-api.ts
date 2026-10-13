@@ -27,7 +27,7 @@ import type {
   StoreRestores,
 } from '@unbent/shared';
 import { OPERATOR_PAGE_SIZE } from '@unbent/shared';
-import { offlineNow, recheck } from './connectivity.js';
+import { confirmReachable, offlineNow, recheck } from './connectivity.js';
 import { SERVED_HEADER } from './sw/routes.js';
 
 /**
@@ -82,28 +82,41 @@ export function isOfflineError(err: unknown): err is OfflineError {
 }
 
 /**
+ * How long a write waits for an answer while the app already believes it is offline. It
+ * used to be refused before it was sent: the banner had said changes can't be saved, so
+ * why wait on a socket. But the belief can be wrong — it was, for a day, on a laptop whose
+ * browser reported no network while every request succeeded (see `connectivity.ts`) — and
+ * a write refused on a belief is a save lost on a working connection. So it is sent, and
+ * what is bounded is the wait: a device with no network fails it at once, and a
+ * connection that carries nothing fails it in a few seconds rather than minutes.
+ */
+export const OFFLINE_WRITE_TIMEOUT = 5_000;
+
+/**
  * Every call below goes through this rather than `fetch`, so there is one place that
  * notices the connection may have changed.
  *
- * A fetch that rejects before any answer becomes an `OfflineError`. That, an answer the
- * service worker served from its cache because the network failed (`X-Unbent-Served:
- * cache`), and any answer while the app believes it is offline all ask the connectivity
- * store to check the server (`recheck`) — none of them decides by itself, since a kept
- * file answers with no network and a slow save fails with one (see `connectivity.ts`).
- * The caller's own abort is passed through untouched — the editor cancels uploads, and
- * that is not a lost connection.
- *
- * A write made while the store already says offline fails at once rather than waiting on
- * a socket: the banner has already said changes can't be saved. A read still goes out,
- * because the worker may hold its answer.
+ * A fetch that rejects before any answer becomes an `OfflineError`, and asks the
+ * connectivity store to check the server (`recheck`); so does an answer the service
+ * worker served from its cache because the network failed (`X-Unbent-Served: cache`).
+ * Neither decides by itself, since a slow save fails on a connection that works. An
+ * answer the server itself gave — one the worker marked as neither its cache's nor the
+ * device's — is the evidence the store exists to find, and says so (`confirmReachable`):
+ * the app is online the moment the server answers anything, whatever the browser's own
+ * flag says. Only for the app's own API: a path, not another origin's address. The
+ * caller's own abort is passed through untouched — the editor cancels uploads, and that
+ * is not a lost connection.
  *
  * `timeout` is for the autosave, which must not hang: on a connection that is up and
  * carries nothing, a save with no answer used to leave the editor accepting typing for
- * minutes. After it the save fails, and the check decides whether the editor locks.
+ * minutes. After it the save fails, and the check decides whether the editor locks. A
+ * write with no timeout of its own gets `OFFLINE_WRITE_TIMEOUT` while the app believes
+ * it is offline.
  */
 export async function request(input: string, init: RequestInit & { timeout?: number } = {}): Promise<Response> {
-  const { timeout, signal: callerSignal, ...rest } = init;
-  if ((rest.method ?? 'GET').toUpperCase() !== 'GET' && offlineNow()) throw new OfflineError();
+  const { timeout: asked, signal: callerSignal, ...rest } = init;
+  const write = (rest.method ?? 'GET').toUpperCase() !== 'GET';
+  const timeout = asked ?? (write && offlineNow() ? OFFLINE_WRITE_TIMEOUT : undefined);
 
   const controller = timeout ? new AbortController() : undefined;
   const timer = controller ? setTimeout(() => controller.abort(), timeout) : undefined;
@@ -123,7 +136,9 @@ export async function request(input: string, init: RequestInit & { timeout?: num
   } finally {
     clearTimeout(timer);
   }
-  if (res.headers.get(SERVED_HEADER) === 'cache' || offlineNow()) recheck();
+  const served = res.headers.get(SERVED_HEADER);
+  if (served === 'cache') recheck();
+  else if (served === null && input.startsWith('/')) confirmReachable();
   return res;
 }
 

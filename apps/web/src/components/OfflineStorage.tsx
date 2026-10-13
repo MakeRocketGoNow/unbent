@@ -12,6 +12,7 @@ import { Button } from './Button';
 import { Confirm } from './Confirm.js';
 import { useDeviceRoom } from './KeepOffline.js';
 import { useOfflineReady } from '../sw-register.js';
+import { useConnectivityReport } from '../connectivity.js';
 
 const count = (n: number) => `${n.toLocaleString()} file${n === 1 ? '' : 's'}`;
 
@@ -84,6 +85,7 @@ export function OfflineStorage() {
             someone relying on it for a flight should know before the flight. */}
         {persisted === false && ' This browser has not agreed to keep it if the device runs low on space; installing the app usually settles that.'}
       </p>
+      <ConnectionLine />
       {/* Before anything else: if the app itself is not on the device yet, nothing below it
           matters offline, and going offline too soon leaves no app to open at all. */}
       {appReady === 'ready' && <p className="muted small">The app itself is on this device and opens with no connection.</p>}
@@ -163,6 +165,36 @@ export function OfflineStorage() {
         </section>
       )}
     </div>
+  );
+}
+
+const clock = (at: number) => new Date(at).toLocaleTimeString(undefined, { timeStyle: 'short' });
+
+/**
+ * What the app believes about its connection and why: what decided it and when, and the
+ * browser's own flag when that disagrees. Here so the next "it says I'm offline" comes with
+ * its cause rather than a screenshot of a Network tab full of 200s — which is how the
+ * one on 2026-10-13 arrived, and why it took a day to read (`connectivity.ts`).
+ */
+function ConnectionLine() {
+  const { offline, browserOnLine, decided, lastCheck } = useConnectivityReport();
+  const by =
+    decided.by === 'answer'
+      ? 'a reply from the server'
+      : decided.by === 'check'
+        ? `a check of the server${lastCheck ? `, answered in ${lastCheck.ms} ms` : ''}`
+        : decided.by === 'browser'
+          ? 'the browser reporting no network'
+          : 'nothing yet';
+  return (
+    <p className="muted small" aria-live="polite">
+      {offline
+        ? `Not connected since ${clock(decided.at)}, going by ${by}. The server is checked again while this lasts.`
+        : decided.by === 'start'
+          ? 'Connected, as far as the app can tell; nothing has been asked of the server yet.'
+          : `Connected, confirmed by ${by} at ${clock(decided.at)}.`}
+      {!browserOnLine && !offline && ' The browser reports no network, but the server is answering, so the browser is wrong.'}
+    </p>
   );
 }
 
