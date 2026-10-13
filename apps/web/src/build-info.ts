@@ -1,12 +1,12 @@
 /**
  * Which commit this page was built from, written in by `vite.config.ts` at build time.
  *
- * The page's own build rather than the server's, and deliberately: the service worker
- * keeps the built app on the device and waits for a change of section before it loads a
- * new deploy (`sw-register.ts`), so for a while after a merge the Worker answering is newer
- * than the page on screen. "Is my fix live here?" is a question about the page, and only
- * the bundle can answer it. The Worker and the page ship from one build, so once the page
- * has caught up the two are the same commit.
+ * The page's own build rather than the server's, and deliberately: a page in use keeps
+ * running the build it loaded until it is reloaded (`sw-register.ts`), so for a while
+ * after a merge the Worker answering is newer than the page on screen. "Is my fix live
+ * here?" is a question about the page, and only the bundle can answer it. The Worker and
+ * the page ship from one build, so once the page has been reloaded the two are the same
+ * commit.
  *
  * Shown in two places. Settings › About is its home on every instance. On dev and
  * previews the account menu's instance line carries the short form as well, since that is

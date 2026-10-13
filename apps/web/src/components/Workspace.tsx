@@ -127,10 +127,12 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
      What offline does stop is what needs the server now — Auto-fill, the ⋯ menu's
      actions, a file upload — and those fade in place rather than the whole note locking.
 
-     Except in a tab that does not hold the outbox: only one tab of an account queues
-     writes, and in any other a save is a request made now, which offline fails and rolls
-     back. Typing there would be lost on the next keystroke's save, so that tab locks the
-     note while offline and the banner says which tab to use (`stranded`, below).
+     Except in a tab that holds the library but not yet its outbox's lock — a moment
+     during a hand-over, or for good in a browser without Web Locks: a save there is a
+     request made now, which offline fails and rolls back, so that tab locks the note
+     while offline (`stranded`, below). A tab whose library another tab holds has no
+     outbox at all and is not locked: its saves fail as "Not saved — offline" and keep
+     the typing, which goes out when the connection returns, as the banner says.
   */
   const offline = useOffline();
   const notebooks = useQuery(notebooksQuery());
@@ -397,7 +399,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
      Leaving a note with the question unanswered drops what was typed there, as Reload
      would. The refused save is still held for a retry, and the switch would flush it: refused
      again, it set the save state the incoming note shows to "Not saved" with no notice to
-     say why, kept the page held against a deploy, and went out again on every tab hide.
+     say why, kept the page held against the notice's Reload, and went out again on every tab hide.
 
      Declared before the autosave so this runs ahead of its own reset, which is where the
      flush happens.
