@@ -1,4 +1,4 @@
-import { browserLocks, type Locks } from './leader.js';
+import { browserLocks, holdLock, type Locks } from './locks.js';
 import { libraryLockName } from './names.js';
 
 /**
@@ -56,43 +56,11 @@ function uncontested(): LibraryHold {
  * `takeOver`, takes it from that tab, whose hold is then told. One request probes and
  * holds, so no two tabs can both believe they hold it.
  */
-export function holdLibrary(userId: string, takeOver = false): Promise<LibraryHold | null> {
+export async function holdLibrary(userId: string, takeOver = false): Promise<LibraryHold | null> {
   const manager = locks;
-  if (!manager) return Promise.resolve(uncontested());
-  return new Promise((resolve) => {
-    let granted = false;
-    let release: () => void = () => {};
-    let taken: () => void = () => {};
-    const hold: LibraryHold = {
-      release: () => release(),
-      taken: new Promise<void>((r) => (taken = r)),
-    };
-    const options: LockOptions = takeOver ? { mode: 'exclusive', steal: true } : { mode: 'exclusive', ifAvailable: true };
-    manager
-      .request(libraryLockName(userId), options, (lock) => {
-        if (!lock) {
-          resolve(null);
-          return undefined;
-        }
-        granted = true;
-        resolve(hold);
-        return new Promise<void>((done) => {
-          release = done;
-        });
-      })
-      .then(
-        () => {},
-        (err: unknown) => {
-          // Rejected under a tab that holds the lock: another tab took it with `steal`.
-          if (granted) {
-            taken();
-            return;
-          }
-          console.warn('[library] the library lock could not be asked for:', err);
-          resolve(null);
-        },
-      );
-  });
+  if (!manager) return uncontested();
+  const held = await holdLock(manager, libraryLockName(userId), takeOver ? { steal: true } : { ifAvailable: true });
+  return held && { release: held.release, taken: held.lost };
 }
 
 /**

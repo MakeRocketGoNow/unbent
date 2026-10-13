@@ -1,12 +1,5 @@
 import type { LeaderElection } from '@tanstack/offline-transactions';
-
-/** The one call of Web Locks this uses, so a test can stand in for the browser (`test-locks.ts`). */
-export interface Locks {
-  request(name: string, options: LockOptions, callback: (lock: Lock | null) => Promise<unknown> | unknown): Promise<unknown>;
-}
-
-/** The browser's Web Locks, where there are any. */
-export const browserLocks = (): Locks | undefined => (typeof navigator !== 'undefined' && 'locks' in navigator ? navigator.locks : undefined);
+import { browserLocks, holdLock, type Hold, type Locks } from './locks.js';
 
 /**
  * Which tab replays an account's outbox: the one holding a Web Lock named for the
@@ -34,8 +27,8 @@ export const browserLocks = (): Locks | undefined => (typeof navigator !== 'unde
 export class OutboxLeader implements LeaderElection {
   private leader = false;
   private readonly listeners = new Set<(isLeader: boolean) => void>();
-  /** Lets go of the lock this tab holds; null while it holds none. */
-  private release: (() => void) | null = null;
+  /** The lock this tab holds; null while it holds none. */
+  private held: Hold | null = null;
   /** The request waiting its turn in the lock's queue; null while there is none. */
   private queued: AbortController | null = null;
 
@@ -55,8 +48,7 @@ export class OutboxLeader implements LeaderElection {
   releaseLeadership(): void {
     this.queued?.abort();
     this.queued = null;
-    this.release?.();
-    this.release = null;
+    this.held?.release();
     this.lost();
   }
 
@@ -69,45 +61,18 @@ export class OutboxLeader implements LeaderElection {
     return () => void this.listeners.delete(callback);
   }
 
-  /**
-   * One request that probes and holds: granted, the callback keeps the lock until
-   * `release` is called, and the answer is given the moment it is granted rather than
-   * when it is let go. Settles false when the lock is held elsewhere (`ifAvailable`), when
-   * the request is aborted before its turn, or when Web Locks refuse.
-   */
-  private hold(options: { ifAvailable?: boolean; signal?: AbortSignal }): Promise<boolean> {
-    const asked: LockOptions = { mode: 'exclusive' };
-    if (options.ifAvailable) asked.ifAvailable = true;
-    if (options.signal) asked.signal = options.signal;
-    return new Promise<boolean>((resolve) => {
-      let granted = false;
-      this.locks!.request(this.name, asked, (lock) => {
-        if (!lock) {
-          resolve(false);
-          return undefined;
-        }
-        granted = true;
-        this.queued = null;
-        this.leader = true;
-        resolve(true);
-        for (const listener of this.listeners) listener(true);
-        return new Promise<void>((done) => {
-          this.release = done;
-        });
-      }).then(
-        () => {
-          // The hold ended: `release` was called, or the lock was taken from this tab.
-          if (granted) this.lost();
-        },
-        (err: unknown) => {
-          if (!granted && !(err instanceof DOMException && err.name === 'AbortError')) {
-            console.warn('[outbox] the leader lock could not be asked for:', err);
-          }
-          resolve(false);
-          if (granted) this.lost();
-        },
-      );
+  /** Asks for the lock (`holdLock`); true the moment it is granted, and the tab leads until it is let go or taken. */
+  private async hold(options: { ifAvailable?: boolean; signal?: AbortSignal }): Promise<boolean> {
+    const held = await holdLock(this.locks!, this.name, options);
+    if (!held) return false;
+    this.queued = null;
+    this.held = held;
+    this.leader = true;
+    for (const listener of this.listeners) listener(true);
+    void held.lost.then(() => {
+      if (this.held === held) this.lost();
     });
+    return true;
   }
 
   /** Waits in the lock's queue, so this tab leads once the holder lets go. */
@@ -123,7 +88,7 @@ export class OutboxLeader implements LeaderElection {
   private lost(): void {
     if (!this.leader) return;
     this.leader = false;
-    this.release = null;
+    this.held = null;
     for (const listener of this.listeners) listener(false);
   }
 }

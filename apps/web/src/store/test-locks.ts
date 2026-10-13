@@ -1,4 +1,4 @@
-import type { Locks } from './leader.js';
+import type { Locks } from './locks.js';
 
 type Callback = (lock: Lock | null) => Promise<unknown> | unknown;
 type Waiter = { callback: Callback; settle: (value: unknown) => void; fail: (err: unknown) => void };
