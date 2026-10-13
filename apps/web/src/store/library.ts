@@ -17,8 +17,6 @@ import { serveLibrary, type Server } from './library-serve.js';
 import { LIBRARY_ROOTS, rootsOfNoteChanges } from './library-roots.js';
 import type { FeedNotebook, FeedTag } from '@unbent/shared';
 
-export { LIBRARY_ROOTS, rootsOfNoteChanges };
-
 /**
  * One account's library on this device: its local store, the collections in it, the
  * engine that keeps them current, and the things that make the engine pull — the tab
