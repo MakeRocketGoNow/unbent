@@ -25,10 +25,12 @@ import { revive, type HolderMessage, type Message, type Port } from './library-c
  * lock's queue decides who that is (`library-lock.ts`): often this very tab, in which
  * case this client is closed by the open that replaces it, and a call still in hand is
  * refused with `LibraryMovedError`, which its caller answers by doing the thing again
- * where the library now is (`forwarding` in `actions.ts`). A call the old holder ran but
- * never answered — its tab crashed between the two — is sent to the next holder again,
- * and a note made that way could be made twice; the window is a crash in a millisecond,
- * and nothing the person typed is lost by it.
+ * where the library now is (`away` in `actions.ts`). A call the old holder ran but never
+ * answered — its tab went between the two, or was taken over with an upload still on its
+ * way — is sent to the next holder again, or run here. So a call must be safe to run
+ * twice: the writes that make something new mint its id where the person acted and
+ * carry it (`createNote`, `duplicateNote`, `uploadFile`), and the server answers a
+ * second request under an id it has with the thing the first one made.
  */
 
 /** A client was closed with a call still in hand; the caller does the thing again where the library now is. */

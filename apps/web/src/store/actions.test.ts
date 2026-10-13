@@ -1441,6 +1441,30 @@ describe('a tab that is a client of the holder', () => {
     expect(lib.outbox.status().pending).toBe(1);
   });
 
+  it('mints the id of a note, a copy or a file here and sends it with the call, so a call run twice makes one', async () => {
+    library([row('n1')]);
+    const sent: Array<[string, unknown[]]> = [];
+    provideForwarder(async () => async (name, args) => {
+      sent.push([name, args]);
+      return { id: 'x' };
+    });
+    const file = new File(['x'], 'scan.pdf', { type: 'application/pdf' });
+    await actions.createNote({ title: 't', body: '', tags: [], notebook: null });
+    await actions.duplicateNote('n1');
+    await actions.uploadFile('n1', file);
+    expect(sent.map(([name]) => name)).toEqual(['createNote', 'duplicateNote', 'uploadFile']);
+    const uuid = /^[0-9a-f-]{36}$/;
+    expect(sent[0]![1][1]).toMatch(uuid);
+    expect(sent[1]![1][1]).toMatch(uuid);
+    expect(sent[2]![1][2]).toMatch(uuid);
+    // The holder runs the same function with the id it was sent.
+    vi.mocked(api.createNote).mockResolvedValueOnce({ id: 'given' } as Note);
+    provideLibrary(async () => null);
+    provideForwarder(async () => null);
+    await actions.createNote({ title: 't', body: '', tags: [], notebook: null }, 'given');
+    expect(api.createNote).toHaveBeenCalledWith(expect.objectContaining({ id: 'given' }));
+  });
+
   it('brings any other failure back to the caller as it came', async () => {
     library([row('n1')]);
     provideForwarder(async () => async () => {

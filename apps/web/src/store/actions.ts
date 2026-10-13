@@ -1106,13 +1106,17 @@ export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | No
   return 'queued';
 }
 
-/** Makes a note, with an id minted here, and answers with it at once. */
-export async function createNote(input: { title: string; body: string; tags: string[]; notebook: string | null }): Promise<Note> {
+/**
+ * Makes a note, with an id minted here, and answers with it at once. The id is minted
+ * before the write is sent anywhere and travels with it, so a write that runs twice —
+ * sent to the holder and run here after the library moved, or as a request after a
+ * holder answered nothing — makes one note (`createOrFind` on the server).
+ */
+export async function createNote(input: { title: string; body: string; tags: string[]; notebook: string | null }, id: string = crypto.randomUUID()): Promise<Note> {
   const far = await away();
-  if (far) return far<Note>('createNote', [input], { ids: [], refiles: true });
+  if (far) return far<Note>('createNote', [input, id], { ids: [], refiles: true });
   const lib = await queueable();
-  if (!lib) return pulled(api.createNote(input), { ids: [], refiles: true });
-  const id = crypto.randomUUID();
+  if (!lib) return pulled(api.createNote({ ...input, id }), { ids: [], refiles: true });
   const now = Date.now();
   const row: LocalNote = { id, title: input.title, body: input.body, createdAt: now, updatedAt: now, tagIds: [], tagNames: input.tags, notebookId: null, notebookName: input.notebook, files: [] };
   queue(lib, 'createNote', { id, ...input }, () => {
@@ -1121,15 +1125,14 @@ export async function createNote(input: { title: string; body: string; tags: str
   return toNote(row, lookups(snapshot(lib)));
 }
 
-/** A copy of a note, under an id minted here; the server copies its files. */
-export async function duplicateNote(sourceId: string): Promise<{ id: string }> {
+/** A copy of a note, under an id minted here before it is sent anywhere, as `createNote`'s is; the server copies its files. */
+export async function duplicateNote(sourceId: string, copyId: string = crypto.randomUUID()): Promise<{ id: string }> {
   const far = await away();
-  if (far) return far<{ id: string }>('duplicateNote', [sourceId], { ids: [], refiles: true });
+  if (far) return far<{ id: string }>('duplicateNote', [sourceId, copyId], { ids: [], refiles: true });
   const lib = await queueable();
-  if (!lib) return pulled(api.duplicateNote(sourceId), { ids: [], refiles: true });
+  if (!lib) return pulled(api.duplicateNote(sourceId, copyId), { ids: [], refiles: true });
   const source = lib.notes.get(sourceId);
-  if (!source) return pulled(api.duplicateNote(sourceId), { ids: [], refiles: true });
-  const copyId = crypto.randomUUID();
+  if (!source) return pulled(api.duplicateNote(sourceId, copyId), { ids: [], refiles: true });
   const now = Date.now();
   queue(lib, 'duplicateNote', { sourceId, copyId }, () => {
     lib.notes.insert({ ...source, id: copyId, createdAt: now, updatedAt: now, files: [] });
@@ -1398,7 +1401,7 @@ export async function tagNotes(ids: string[], change: { add?: string[]; remove?:
  * something about it: a file over the upload cap, a name the route does not take, and a
  * file the device has no room to hold.
  */
-export async function uploadFile(noteId: string, file: File): Promise<api.UploadedFile> {
+export async function uploadFile(noteId: string, file: File, attachmentId: string = crypto.randomUUID()): Promise<api.UploadedFile> {
   /*
    * Before the first `await`, while the drop or the click that brought the file is still
    * what the browser sees this as part of: a browser that asks the person asks only then,
@@ -1413,17 +1416,19 @@ export async function uploadFile(noteId: string, file: File): Promise<api.Upload
    * not come; the next file added offline asks properly.
    */
   if (offlineNow()) askToPersist();
-  // The holder's, as a call: the bytes cross with it, and the holder keeps or sends them.
+  // The holder's, as a call: the bytes cross with it, and the holder keeps or sends
+  // them, under the id minted here, so a call that runs twice stores one file.
   const far = await away();
-  if (far) return far<api.UploadedFile>('uploadFile', [noteId, file], { ids: [noteId], refiles: false });
+  if (far) return far<api.UploadedFile>('uploadFile', [noteId, file, attachmentId], { ids: [noteId], refiles: false });
   const lib = await queueable();
   /*
    * One id for the file, whichever way it goes. A request made directly can lose its
    * answer after the server has stored the file — a phone on one bar does this — and the
    * file is then queued: under the same id, the replay finds what the first request made;
-   * under a new one it stored `scan-2.pdf` beside it and said so (review of #236).
+   * under a new one it stored `scan-2.pdf` beside it and said so (review of #236). The
+   * id is a parameter for the same reason one step out: a client's call that ran on the
+   * holder and runs again here carries it.
    */
-  const attachmentId = crypto.randomUUID();
   const direct = () => pulled(api.uploadFile(noteId, file, { id: attachmentId }), { ids: [noteId], refiles: false });
   if (!lib || !filesSupported() || !lib.notes.has(noteId)) return direct();
   if (!offlineNow() && !lib.outbox.status().waiting.has(noteId)) {
