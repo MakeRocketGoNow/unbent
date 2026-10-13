@@ -453,6 +453,35 @@ describe('acquireLibrary', () => {
       expect(reportError).not.toHaveBeenCalled();
     });
 
+    it('stays a client when another tab wins the lock the holder let go, and opens when that one goes', async () => {
+      vi.useFakeTimers();
+      const locks = fakeLocks();
+      setLocksForTests(locks);
+      page();
+      let letGo!: () => void;
+      void locks.request(lock, { mode: 'exclusive' }, () => new Promise<void>((r) => (letGo = r)));
+      theirs();
+      await vi.advanceTimersByTimeAsync(0);
+      const attaching = acquireLibrary('u1');
+      await vi.advanceTimersByTimeAsync(10);
+      const client = await attaching;
+      expect(client.remote).toBe(true);
+      // A third tab is in the queue behind this one, and is granted the lock the moment
+      // this tab's wait is answered and let go.
+      let thirdGoes!: () => void;
+      void locks.request(lock, { mode: 'exclusive' }, () => new Promise<void>((r) => (thirdGoes = r)));
+      letGo();
+      await vi.advanceTimersByTimeAsync(10);
+      // This tab opened nothing and kept its client, which the third tab's serving reattaches.
+      expect(openLocalStore).not.toHaveBeenCalled();
+      await expect(currentLibrary()).resolves.toBe(client);
+      expect(libraryElsewhere()).toBe('u1');
+      thirdGoes();
+      await vi.advanceTimersByTimeAsync(10);
+      await expect(currentLibrary()).resolves.toSatisfy((lib: { userId: string; remote?: true }) => lib.userId === 'u1' && !lib.remote);
+      expect(locks.held(lock)).toBe(true);
+    });
+
     it('takes the library over itself when the holder it is a client of stops answering', async () => {
       vi.useFakeTimers();
       const locks = fakeLocks();

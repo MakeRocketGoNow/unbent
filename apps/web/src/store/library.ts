@@ -213,11 +213,24 @@ function standAside(userId: string, refusal?: Promise<never>): void {
   // account's sign-in meanwhile decides what is open, not the lock's queue.
   const asOf = generation;
   whenLibraryFree(userId, waiting.signal).then(
-    () => {
+    async () => {
       if (elsewhere !== entry || generation !== asOf) return;
       elsewhere = null;
-      // Opened anew even though a client library is current: the open closes it.
-      void openFor(userId, false).catch(() => {});
+      // The lock first, and the client's close only with it in hand: every waiting
+      // tab is woken when the holder goes, one after another, and all but one would
+      // otherwise have closed a working client — dropping its rows and refusing its
+      // calls — to find the lock taken and attach again from nothing (review of #354).
+      // A tab that lost the race stays the client it is and waits again.
+      const hold = await holdLibrary(userId);
+      if (generation !== asOf) {
+        hold?.release();
+        return;
+      }
+      if (!hold) {
+        standAside(userId);
+        return;
+      }
+      void openFor(userId, false, hold).catch(() => {});
     },
     () => {},
   );
@@ -467,7 +480,7 @@ const clientHooks = (userId: string, isMine: () => boolean) => ({
  * holder has gone (`standAside`) or Open here was pressed (`takeOver`). Holds the
  * lock when it can; otherwise attaches to the tab that holds it, as its client.
  */
-function openFor(userId: string, takeOver: boolean): Promise<AnyLibrary> {
+function openFor(userId: string, takeOver: boolean, held?: LibraryHold): Promise<AnyLibrary> {
   standDown();
   generation += 1;
   const previous = current;
@@ -479,7 +492,7 @@ function openFor(userId: string, takeOver: boolean): Promise<AnyLibrary> {
     // One tab holds an account's library (`library-lock.ts`): this one, or another, in
     // which case this tab is that one's client — or, with no channel to be one over,
     // reads the server.
-    const hold = await holdLibrary(userId, takeOver);
+    const hold = held ?? (await holdLibrary(userId, takeOver));
     if (!hold) {
       // A close or a switch took this entry while the step waited: that decided what is
       // open, and this tab must not join the lock's queue for an account it has left.
