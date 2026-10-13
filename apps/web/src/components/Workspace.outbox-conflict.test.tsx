@@ -126,22 +126,23 @@ describe('a conflict that comes back from the outbox', () => {
   it('after Keep mine over another tab’s waiting save, the editor takes theirs for what it never touched', async () => {
     const { tags: _t, notebook: _n, ...row } = server;
     const lib = installTestLibrary({ notes: [{ ...row, tagIds: [], files: [] }] });
-    // The other tab's save waits in this device's outbox: theirs has a body this draft
-    // never typed, and the holder queues Keep mine's draft over it with no answer.
-    const otherTab = { ...theirs, body: 'written in the other tab', updatedAt: 200 };
-    const o = outbox(new Map([[server.id, { current: otherTab, draft: { ...typed, body: server.body }, base: server }]]));
+    // The other tab's save waits in this device's outbox: theirs renamed the note, this
+    // draft typed in the body and left the title alone, and the holder queues Keep
+    // mine's draft over theirs with no answer.
+    const otherTab = { ...theirs, title: 'Renamed in the other tab', body: server.body, updatedAt: 200 };
+    const o = outbox(new Map([[server.id, { current: otherTab, draft: { ...typed, title: server.title }, base: server }]]));
     vi.mocked(useOutbox).mockReturnValue(o);
     const queued = vi.spyOn(actions, 'saveNote').mockResolvedValue('queued');
     mount();
-    await waitFor(async () => expect((await title()).value).toBe(typed.title));
+    await waitFor(() => expect(document.querySelector('.cm-content')?.textContent).toContain('and a line typed on the plane'));
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Keep mine' }));
     });
     await waitFor(() => expect(queued).toHaveBeenCalled());
     expect(queued.mock.calls[0]![0]).toMatchObject({ noteId: server.id, against: 200 });
-    // The title typed here stays; the body, never typed here, is the other tab's.
-    await waitFor(() => expect(document.querySelector('.cm-content')?.textContent).toContain('written in the other tab'));
-    expect((await title()).value).toBe(typed.title);
+    // The body typed here stays; the title, never touched here, is the other tab's.
+    await waitFor(async () => expect((await title()).value).toBe('Renamed in the other tab'));
+    expect(document.querySelector('.cm-content')?.textContent).toContain('and a line typed on the plane');
     queued.mockRestore();
     lib.uninstall();
   });
