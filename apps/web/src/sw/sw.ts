@@ -194,10 +194,13 @@ const DAY = 24 * 60 * 60;
 type Plugin = NonNullable<StrategyOptions['plugins']>[number];
 
 /**
- * Marks a read answered from the cache, so the page knows the network failed without
- * having to ask again (`SERVED_HEADER`). Network-first only reads its cache when the
- * network has failed or timed out, so every response this sees is one of those. The body
- * is passed through as it is; only the headers are copied.
+ * Marks a read answered from a cache (`SERVED_HEADER`), so the page can tell it from an
+ * answer the server gave. On the network-first config read that is how the page learns
+ * the network failed without asking again: that strategy reads its cache only when the
+ * network has failed or timed out. On the cache-first file reads it is the opposite
+ * guard: an answer with no mark is taken by `request` in `notes-api.ts` as the server
+ * being reachable, and a picture drawn from the cache on a plane must not say so. The
+ * body is passed through as it is; only the headers are copied.
  */
 const servedFromCache: Plugin = {
   cachedResponseWillBeUsed: async ({ cachedResponse }) => {
@@ -311,7 +314,7 @@ const emptiedWhenFull = new ExpirationPlugin({ maxEntries: Number.MAX_SAFE_INTEG
  * the attachment. Only what was looked at, never what the indexer or an export read in
  * bulk — see `classify` for why that distinction is the whole rule.
  */
-const openedFiles = new CacheFirst({ cacheName: FILES_CACHE, plugins: [keepableFile, budgeted, emptiedWhenFull] });
+const openedFiles = new CacheFirst({ cacheName: FILES_CACHE, plugins: [keepableFile, budgeted, emptiedWhenFull, servedFromCache] });
 
 /**
  * A file's bytes, from the nearest place that has them: the account's own shelves, then

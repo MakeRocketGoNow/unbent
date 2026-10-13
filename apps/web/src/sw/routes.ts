@@ -82,9 +82,12 @@ export const FILES_CHANGED = 'FILES_CHANGED';
 export const VIEW_HEADER = 'X-Unbent-View';
 
 /**
- * The header the worker adds to a read it answered from its cache because the network
- * failed — how the page learns it is offline from the very request that needed the network
- * (`request` in `notes-api.ts`), rather than from a second request asking.
+ * The header the worker adds to a read it answered itself: `cache` for one from its
+ * caches, `device` for one from the account's shelves. Its absence on an answer is what
+ * `request` in `notes-api.ts` takes as the server having answered, which is what puts
+ * the app online; `cache` on the network-first config read is how the page learns the
+ * network failed from the very request that needed it, rather than from a second request
+ * asking. Every answer the worker makes without the network must carry it.
  */
 export const SERVED_HEADER = 'X-Unbent-Served';
 
