@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { notebookFilesQuery, notebooksQuery } from '../queries.js';
-import { useKeeper, useLibraryElsewhere, useSyncStatus } from '../store/use-outbox.js';
+import { useKeeper, useLibraryClient, useLibraryElsewhere, useSyncStatus } from '../store/use-outbox.js';
 import { currentLibraryUser } from '../store/library.js';
 import { listShelf, storagePersisted } from '../store/files.js';
 import { FILES_BUDGET, openedFilesUsage } from '../sw/budget.js';
@@ -13,7 +13,6 @@ import { Confirm } from './Confirm.js';
 import { useDeviceRoom } from './KeepOffline.js';
 import { useOfflineReady } from '../sw-register.js';
 import { useConnectivityReport } from '../connectivity.js';
-import { OPEN_HERE_TIP } from './LibraryStatus.js';
 import { takeOverLibrary } from '../store/library.js';
 
 const count = (n: number) => `${n.toLocaleString()} file${n === 1 ? '' : 's'}`;
@@ -34,6 +33,7 @@ const count = (n: number) => `${n.toLocaleString()} file${n === 1 ? '' : 's'}`;
 export function OfflineStorage() {
   const { keeper, status } = useKeeper();
   const elsewhere = useLibraryElsewhere();
+  const client = useLibraryClient();
   const sync = useSyncStatus();
   const { room, refresh: remeasure } = useDeviceRoom();
   const appReady = useOfflineReady();
@@ -82,9 +82,14 @@ export function OfflineStorage() {
         <h2>Offline</h2>
       </div>
       <p className="muted small">
-        {elsewhere
-          ? 'Your notes are always on this device. Another tab or window holds them, and this one works through it; their files are kept when you open one, and for whole notebooks you choose.'
-          : 'Your notes are always on this device. Their files are kept when you open one, and for whole notebooks you choose.'}
+        {/* Three tabs: the holder; a client, which works as the holder does; and one that
+            could not join the holder — a browser with no channel, or a client the holder
+            has not answered yet — which keeps nothing and reads the server. */}
+        {elsewhere && client
+          ? 'Your notes are always on this device. Another tab or window has them open, and this one works through it. The files are kept when you open one, and for whole notebooks you choose.'
+          : elsewhere
+            ? 'Your notes are open in another tab or window, and this one cannot reach it, so it keeps nothing on the device and reads from the server.'
+            : 'Your notes are always on this device. Their files are kept when you open one, and for whole notebooks you choose.'}
         {room ? ` Unbent is using ${formatBytes(room.usage)} of the ${formatBytes(room.quota)} this device allows it.` : ''}
         {/* Said only when it is not so: what is kept here can then go without a word, and
             someone relying on it for a flight should know before the flight. */}
@@ -175,6 +180,9 @@ export function OfflineStorage() {
 }
 
 const clock = (at: number) => new Date(at).toLocaleTimeString(undefined, { timeStyle: 'short' });
+
+/** What Open here does to the tab it takes the library from, said on the button. */
+const OPEN_HERE_TIP = 'Moves your notes to this tab. The other tab or window keeps working, through this one.';
 
 /**
  * The way to bring the library to this tab, when another holds it. Nothing else in the

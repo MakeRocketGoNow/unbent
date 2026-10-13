@@ -96,6 +96,42 @@ export function useLibraryElsewhere(): string | null {
   return useSyncExternalStore(subscribeLibrary, libraryElsewhere, () => null);
 }
 
+/**
+ * Whether this tab's library is a client of another tab's (`store/client-library.ts`),
+ * attached and working through it — as opposed to the holder's, none, or one still
+ * waiting for a holder to answer. For Settings → Offline, which says which the tab is.
+ */
+export function useLibraryClient(): boolean {
+  const [client, setClient] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    let generation = 0;
+    const follow = () => {
+      const mine = ++generation;
+      const open = currentLibrary();
+      if (!open) {
+        setClient(false);
+        return;
+      }
+      open.then(
+        (lib) => {
+          if (alive && mine === generation) setClient('remote' in lib && lib.remote === true);
+        },
+        () => {
+          if (alive && mine === generation) setClient(false);
+        },
+      );
+    };
+    follow();
+    const stop = subscribeLibrary(follow);
+    return () => {
+      alive = false;
+      stop();
+    };
+  }, []);
+  return client;
+}
+
 /** How many writes wait for the server, and the conflicts waiting on a choice. */
 export function useSyncStatus(): SyncStatus {
   const outbox = useOutbox();
