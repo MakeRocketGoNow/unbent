@@ -5,9 +5,11 @@ import { LibraryStatus } from './LibraryStatus.js';
 vi.mock('../store/use-feed-state.js', () => ({ useLibraryArriving: vi.fn() }));
 vi.mock('../store/use-outbox.js', () => ({ useLibraryElsewhere: vi.fn(() => null) }));
 vi.mock('../store/library.js', () => ({ takeOverLibrary: vi.fn(() => Promise.resolve()) }));
+vi.mock('../connectivity.js', () => ({ useOffline: vi.fn(() => false) }));
 import { useLibraryArriving } from '../store/use-feed-state.js';
 import { useLibraryElsewhere } from '../store/use-outbox.js';
 import { takeOverLibrary } from '../store/library.js';
+import { useOffline } from '../connectivity.js';
 
 /**
  * The line says the library is on its way in both of its stages, and says nothing once
@@ -38,11 +40,23 @@ describe('LibraryStatus', () => {
     expect(screen.queryByRole('status')).toBeNull();
   });
 
-  /* Another tab holds the library: the line says so and holds the one way to take it,
-     a button whose tip says what happens to the other tab, read out as its description. */
-  it('says the notes are open in another tab, and takes them over on Open here', () => {
+  /* Another tab holds the library. Online that is no concern of the person's — this tab
+     works through the server — so the line says nothing. */
+  it('says nothing online when another tab holds the library', () => {
     vi.mocked(useLibraryArriving).mockReturnValue(null);
     vi.mocked(useLibraryElsewhere).mockReturnValue('u1');
+    render(<LibraryStatus />);
+    expect(screen.queryByRole('status')).toBeNull();
+    vi.mocked(useLibraryElsewhere).mockReturnValue(null);
+  });
+
+  /* Offline it is: this tab can neither read nor save, so the line says where the notes
+     are and holds the one way to take them, a button whose tip says what happens to the
+     other tab, read out as its description. */
+  it('offline, says the notes are open in another tab, and takes them over on Open here', () => {
+    vi.mocked(useLibraryArriving).mockReturnValue(null);
+    vi.mocked(useLibraryElsewhere).mockReturnValue('u1');
+    vi.mocked(useOffline).mockReturnValue(true);
     render(<LibraryStatus />);
     expect(screen.getByRole('status').textContent).toContain('Your notes are open in another tab.');
     const button = screen.getByRole('button', { name: 'Open here' });
@@ -50,5 +64,6 @@ describe('LibraryStatus', () => {
     fireEvent.click(button);
     expect(takeOverLibrary).toHaveBeenCalledTimes(1);
     vi.mocked(useLibraryElsewhere).mockReturnValue(null);
+    vi.mocked(useOffline).mockReturnValue(false);
   });
 });

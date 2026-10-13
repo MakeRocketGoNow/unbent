@@ -668,8 +668,10 @@ has to call it too, and say which of the three it is.
 **One tab holds an account's library on a device; the others read the server.** A Web
 Lock named for the account (`store/library-lock.ts`, `libraryLockName`) says whose: a tab
 that finds it held opens nothing, reads the server as a browser without a file system
-does, and the status line says "Your notes are open in another tab" with Open here beside
-it (`LibraryStatus`). Open here takes the lock with `steal`; the tab that held it closes
+does, and says so with Open here beside it — on Settings → Offline at all times, and in
+the status line only while offline, since online a second tab works as the app always
+did and a line saying otherwise all day read as one tab at a time (`LibraryStatus`).
+Open here takes the lock with `steal`; the tab that held it closes
 its library and stands aside. A tab standing aside waits in the lock's queue and opens the
 library on its own the moment the holder's page goes or closes its library, so closing
 the holding tab needs no press. This replaced every tab holding the library at once — each

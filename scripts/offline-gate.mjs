@@ -321,9 +321,11 @@ async function run(BASE, chrome, keepSocket) {
 
     // 2c
     {
-      // One tab holds the library. A second tab says so and reads the server; Open here
-      // moves the library to it; closing it gives the library back to the first tab.
-      const second = await send('Target.createTarget', { url: `${BASE}/notes` });
+      // One tab holds the library. A second tab says so on Settings → Offline (the status
+      // line says it only offline) and reads the server; Open here moves the library to
+      // it; closing it gives the library back to the first tab.
+      await goto(`${BASE}/settings/offline`);
+      const second = await send('Target.createTarget', { url: `${BASE}/settings/offline` });
       const secondId = second.result?.targetId;
       const a = secondId && (await send('Target.attachToTarget', { targetId: secondId, flatten: true }));
       const other = a?.result?.sessionId;
@@ -336,9 +338,9 @@ async function run(BASE, chrome, keepSocket) {
         const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, session);
         return r.result?.result?.value;
       };
-      const line = (session) => evIn(session, `document.querySelector('.library-status')?.textContent??''`);
+      const line = (session) => evIn(session, `document.querySelector('.library-elsewhere')?'open in another tab':''`);
       const secondSays = other && (await until(async () => (/open in another tab/.test(await line(other)) ? true : null), 15000));
-      if (secondSays) await evIn(other, `[...document.querySelectorAll('.library-status button')].find(b=>b.textContent.trim()==='Open here')?.click()`);
+      if (secondSays) await evIn(other, `[...document.querySelectorAll('.library-elsewhere button')].find(b=>b.textContent.trim()==='Open here')?.click()`);
       const firstSays = secondSays && (await until(async () => (/open in another tab/.test(await line(page)) ? true : null), 15000));
       const secondHolds = firstSays && (await until(async () => (!/open in another tab/.test(await line(other)) ? true : null), 15000));
       if (secondId) {
