@@ -96,7 +96,7 @@ export const MAX_KEPT_FILE = 20 * 1024 * 1024;
  * itself (`remember` in `store/actions.ts`): the worker's index learns of a file only when
  * the worker stores one or starts, so until then Settings counted one file too few, and
  * the budget did not count it at all. The worker answers by bringing the index in line
- * (`sweep` in `budget.ts`). A message type, beside `SKIP_WAITING`.
+ * (`sweep` in `budget.ts`). A message type, beside `BUILD`.
  */
 export const FILES_CHANGED = 'FILES_CHANGED';
 
