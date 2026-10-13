@@ -142,8 +142,8 @@ function hooks(): ClientHooks & { changes: ReadonlySet<string>[]; attached: numb
   return h;
 }
 
-/** Lets every microtask the fake channel queued run. */
-const settle = () => vi.advanceTimersByTimeAsync(0);
+/** Lets every microtask the fake channel queued run, and the tasks a holder's chunked send takes. */
+const settle = () => vi.advanceTimersByTimeAsync(20);
 
 describe('a client of the holding tab', () => {
   let channel: ReturnType<typeof fakeChannel>;
@@ -192,12 +192,42 @@ describe('a client of the holding tab', () => {
     expect(lib.notes.get('n1')).toEqual(h.notes.get('n1'));
   });
 
-  it('sends a large collection in chunks and the client holds all of it', async () => {
+  it('sends a large collection in chunks, a task apart, and the client holds all of it', async () => {
     const many = Array.from({ length: ROWS_PER_MESSAGE * 2 + 5 }, (_, i) => note(`n${i}`));
     holder(channel.port(), { notes: many });
     const lib = await client();
     expect(lib.notes.size).toBe(many.length);
     expect(channel.posted.filter((m) => m.type === 'rows' && m.entity === 'note')).toHaveLength(3);
+  });
+
+  it('applies a change the holder posted while its rows were still arriving, over the rows', async () => {
+    const many = Array.from({ length: ROWS_PER_MESSAGE + 5 }, (_, i) => note(`n${i}`));
+    const h = holder(channel.port(), { notes: many });
+    const hk = hooks();
+    const attaching = attach(hk);
+    // The first chunk has gone; the holder changes a row in it and one not yet sent, and
+    // drops one that had never changed since it began serving.
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(0);
+    h.notes.upsert({ ...note('n0'), title: 'changed early', updatedAt: 2 });
+    h.notes.upsert({ ...note(`n${ROWS_PER_MESSAGE + 2}`), title: 'changed late', updatedAt: 2 });
+    h.notes.remove('n1');
+    await settle();
+    const lib = await attaching;
+    open.push(lib);
+    expect(lib.notes.get('n0')?.title).toBe('changed early');
+    expect(lib.notes.get(`n${ROWS_PER_MESSAGE + 2}`)?.title).toBe('changed late');
+    expect(lib.notes.has('n1')).toBe(false);
+    expect(lib.notes.size).toBe(many.length - 1);
+  });
+
+  it('forwards the removal of a row that never changed since the holder began serving', async () => {
+    const h = holder(channel.port(), { notes: [note('n1'), note('n2')] });
+    const lib = await client();
+    h.notes.remove('n1');
+    await settle();
+    expect(lib.notes.has('n1')).toBe(false);
+    expect(lib.notes.size).toBe(1);
   });
 
   it('follows the holder’s changes, with the roots each batch reaches, and the version moves', async () => {

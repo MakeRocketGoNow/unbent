@@ -16,11 +16,13 @@ import { LIBRARY_ROOTS, rootsOfNoteChanges } from './library-roots.js';
  * On a client's hello it sends the four collections as rows, chunked, then `attached`
  * with the feed's state and the outbox's and keeper's status; from then on it forwards
  * every change the collections report, with the query roots the batch reaches, and
- * every move of those three statuses. The rows are read and posted in one go, with no
- * await between the first and the last, so a change that fires meanwhile is posted
- * after the snapshot it is already in, and a change that fired before it is in the
- * snapshot and was posted to a client not yet attached, which drops it. Every apply on
- * the client is an upsert by id, so a change seen twice is harmless.
+ * every move of those three statuses. The rows are read in one go — a snapshot of the
+ * collections as they stand — and posted a chunk at a time with a task between, so the
+ * holder's own tab is not held for the whole clone of an archive. A change that fires
+ * between two chunks is posted between them, before the snapshot that already holds it
+ * has all arrived; the client keeps every change a holder posts from its first rows on
+ * and applies them after the rows (`early` in `client-library.ts`), and every apply is
+ * an upsert by id, so a change applied over a snapshot that holds it is harmless.
  *
  * A call is run by name: the actions, which land in this outbox; the index, whose FTS
  * tables are in this tab's file; the keeper; and the few things the outbox is asked.
@@ -106,14 +108,17 @@ export function serveLibrary(port: Port, lib: Serving): Server {
     answered.set(client, now);
     await Promise.all([collections.notes.preload(), collections.notebooks.preload(), collections.tags.preload(), collections.attachments.preload()]);
     if (stopped) return;
-    for (const [entity, collection] of Object.entries(entities)) {
-      const rows = [...collection.values()] as object[];
-      for (let at = 0; at < rows.length; at += ROWS_PER_MESSAGE) {
-        port.post({ type: 'rows', holder, client, entity: entity as keyof typeof entities, rows: rows.slice(at, at + ROWS_PER_MESSAGE) });
-      }
+    // The snapshot now, as references; the clone happens in each post, one chunk a task.
+    const snapshot = Object.entries(entities).map(([entity, collection]) => [entity as keyof typeof entities, [...collection.values()] as object[]] as const);
+    for (const [entity, rows] of snapshot) {
       // A collection with no rows still names itself, so the client holds an empty map for it.
-      if (rows.length === 0) port.post({ type: 'rows', holder, client, entity: entity as keyof typeof entities, rows: [] });
+      for (let at = 0; at < Math.max(rows.length, 1); at += ROWS_PER_MESSAGE) {
+        if (stopped) return;
+        port.post({ type: 'rows', holder, client, entity, rows: rows.slice(at, at + ROWS_PER_MESSAGE) });
+        await new Promise((r) => setTimeout(r, 0));
+      }
     }
+    if (stopped) return;
     port.post({ type: 'attached', holder, client, state: lib.state(), status: lib.outbox.status(), keep: lib.keeper.status() });
   };
 
@@ -166,7 +171,14 @@ export function serveLibrary(port: Port, lib: Serving): Server {
     if (sent.length === 0 || stopped) return;
     port.post({ type: 'changes', holder, batches: sent, roots: [...reached] });
   };
-  /** Forwards one collection's changes as they are reported, less what the client does not read. */
+  /**
+   * Forwards one collection's changes as they are reported, less what the client does
+   * not read. Subscribed with the collection's state included, which it emits once as
+   * inserts, to nobody, since no client is attached before the library is built: a
+   * subscription without it reports only the rows it has emitted before, and the
+   * removal of a row that never changed since the holder began serving — a note purged
+   * on another device, say — was never reported, and stayed in every client's mirror.
+   */
   const forwarding = <T extends object>(entity: keyof typeof entities, collection: Collection<T, string>) => {
     const subscription = collection.subscribeChanges((changes) => {
       if (!anyone()) return;
@@ -175,7 +187,7 @@ export function serveLibrary(port: Port, lib: Serving): Server {
       if (flushing) return;
       flushing = true;
       queueMicrotask(flush);
-    });
+    }, { includeInitialState: true });
     return () => subscription.unsubscribe();
   };
 

@@ -192,7 +192,8 @@ type Pending = { name: string; args: unknown[]; sentTo: string | null; resolve: 
  */
 export function attachClientLibrary(userId: string, me: string, port: Port, hooks: ClientHooks, halting: AbortSignal): Promise<ClientLibrary> {
   let holder: string | null = null;
-  let incoming: { holder: string; maps: Maps } | null = null;
+  /** The rows arriving from a holder, and the changes it posted while they did, applied after them. */
+  let incoming: { holder: string; maps: Maps; early: Array<Array<{ entity: keyof Maps; changes: RowChange[] }>> } | null = null;
   let maps = freshMaps();
   let version = 0;
   let feed = starting;
@@ -325,7 +326,7 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
         return;
       case 'rows':
         if (m.client !== me) return;
-        if (!incoming || incoming.holder !== m.holder) incoming = { holder: m.holder, maps: freshMaps() };
+        if (!incoming || incoming.holder !== m.holder) incoming = { holder: m.holder, maps: freshMaps(), early: [] };
         for (const row of m.rows) incoming.maps[m.entity].rows.set((row as { id: string }).id, row as never);
         // The rows are on their way: no more hellos, unless `attached` never follows.
         stopAsking();
@@ -338,6 +339,10 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
         // Rows that never came, or came from another holder: ask again.
         if (!incoming || incoming.holder !== m.holder) return sayHello();
         maps = incoming.maps;
+        // The changes the holder posted while its rows were on their way, over the
+        // rows: a change the snapshot already holds comes out the same, and one it
+        // does not is the holder's latest.
+        for (const batches of incoming.early) apply(batches);
         holder = m.holder;
         incoming = null;
         stopOrphanWatch();
@@ -371,7 +376,10 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
         return;
       }
       case 'changes':
-        if (m.holder !== holder) return;
+        if (m.holder !== holder) {
+          if (incoming?.holder === m.holder) incoming.early.push(m.batches);
+          return;
+        }
         apply(m.batches);
         version += 1;
         hooks.onChange(new Set(m.roots));
