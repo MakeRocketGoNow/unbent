@@ -1275,7 +1275,14 @@ export async function purgeNote(noteId: string): Promise<void> {
  */
 export async function emptyTrash(ids: readonly string[]): Promise<api.PurgeResult> {
   const far = await away();
-  if (far) return far<api.PurgeResult>('emptyTrash', [ids], { ids, refiles: true });
+  if (far) {
+    // A request on the holder too, so told to `onLocalWrite` once the answer is in, as
+    // `pulled` tells it, and not at all for a refusal — not before the call goes, as a
+    // queued write is told.
+    const out = await far<api.PurgeResult>('emptyTrash', [ids]);
+    aboutToWrite({ ids, refiles: true });
+    return out;
+  }
   return pulled(api.purgeNotes('trashed'), { ids, refiles: true });
 }
 

@@ -1465,6 +1465,27 @@ describe('a tab that is a client of the holder', () => {
     expect(api.createNote).toHaveBeenCalledWith(expect.objectContaining({ id: 'given' }));
   });
 
+  it('tells the list about emptying the trash once the holder has answered, and not for a refusal', async () => {
+    library([row('n1')]);
+    let answer: () => void = () => {};
+    provideForwarder(async () => async () => new Promise((resolve) => (answer = () => resolve({ notesDeleted: 1 }))));
+    const heard = vi.fn();
+    const stop = actions.onLocalWrite(heard);
+    const emptying = actions.emptyTrash(['n1']);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(heard).not.toHaveBeenCalled();
+    answer();
+    await expect(emptying).resolves.toMatchObject({ notesDeleted: 1 });
+    expect(heard).toHaveBeenCalledWith({ ids: ['n1'], refiles: true });
+    provideForwarder(async () => async () => {
+      throw new ApiError(403, 'refused');
+    });
+    await expect(actions.emptyTrash(['n1'])).rejects.toThrow('refused');
+    stop();
+    expect(heard).toHaveBeenCalledTimes(1);
+  });
+
   it('brings any other failure back to the caller as it came', async () => {
     library([row('n1')]);
     provideForwarder(async () => async () => {
