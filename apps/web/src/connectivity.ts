@@ -42,6 +42,8 @@ export interface ConnectivityReport {
   browserOnLine: boolean;
   /** What last decided the answer, and when. */
   decided: { by: 'start' | 'answer' | 'check' | 'browser'; at: number };
+  /** What took the app offline and when, for as long as it is; null while online. A failed poll later moves `decided`, not this. */
+  since: { by: 'check' | 'browser'; at: number } | null;
   /** The last check of the server, if one has run. */
   lastCheck: { at: number; reached: boolean; ms: number } | null;
 }
@@ -51,6 +53,7 @@ let unreachable = typeof navigator !== 'undefined' && navigator.onLine === false
 let offline = unreachable;
 let decided: ConnectivityReport['decided'] = { by: 'start', at: Date.now() };
 let lastCheck: ConnectivityReport['lastCheck'] = null;
+let since: ConnectivityReport['since'] = offline ? { by: 'browser', at: decided.at } : null;
 /** When the server last answered a request of the page's, for a check that fails after it. */
 let answeredAt = -Infinity;
 /**
@@ -66,6 +69,7 @@ let recover: (since: number) => void = () => {};
 function set(next: boolean): void {
   if (next === offline) return;
   offline = next;
+  since = offline && decided.by !== 'start' && decided.by !== 'answer' ? { by: decided.by, at: decided.at } : null;
   console.info(`[connectivity] ${offline ? 'offline' : 'online'}: decided by ${decided.by}`);
   for (const listener of listeners) listener();
 }
@@ -114,7 +118,7 @@ let report: ConnectivityReport | null = null;
 
 /** Why the app believes what it does; the same object until something changes. */
 export function connectivityReport(): ConnectivityReport {
-  report ??= { offline, browserOnLine: browserOnLine(), decided, lastCheck };
+  report ??= { offline, browserOnLine: browserOnLine(), decided, since, lastCheck };
   return report;
 }
 
@@ -299,6 +303,7 @@ export function installConnectivity(queryClient: QueryClient): void {
   // the first request the page makes will answer for it sooner.
   if (unreachable) {
     decided = { by: 'browser', at: Date.now() };
+    since = { by: 'browser', at: decided.at };
     schedulePoll();
   }
 }
@@ -315,6 +320,7 @@ export function resetConnectivity(): void {
   unreachable = false;
   offline = false;
   decided = { by: 'start', at: Date.now() };
+  since = null;
   lastCheck = null;
   answeredAt = -Infinity;
   doubtSince = Infinity;

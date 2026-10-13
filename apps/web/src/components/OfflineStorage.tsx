@@ -174,19 +174,27 @@ const clock = (at: number) => new Date(at).toLocaleTimeString(undefined, { timeS
  * What the app believes about its connection and why: what decided it and when, and the
  * browser's own flag when that disagrees. Here so the next "it says I'm offline" comes with
  * its cause rather than a screenshot of a Network tab full of 200s — which is how the
- * one on 2026-10-13 arrived, and why it took a day to read (`connectivity.ts`).
+ * one on 2026-10-13 arrived, and why it took a day to read (`connectivity.ts`). "Since"
+ * is when the outage began, not when the last poll failed: every failed poll moves what
+ * decided the answer, and the line would otherwise creep forward every few minutes.
  */
 function ConnectionLine() {
-  const { offline, browserOnLine, decided } = useConnectivityReport();
-  const line = offline
-    ? `Not connected since ${clock(decided.at)}: ${decided.by === 'browser' ? 'the browser reported no network' : 'a check of the server got no answer'}. Checking again.`
-    : decided.by === 'start'
-      ? 'Connected. Nothing has been asked of the server yet.'
-      : `Connected. Confirmed by ${decided.by === 'answer' ? 'a reply from' : 'a check of'} the server at ${clock(decided.at)}.`;
+  const { offline, browserOnLine, decided, since } = useConnectivityReport();
+  const line =
+    offline && since
+      ? `Not connected since ${clock(since.at)}: ${since.by === 'browser' ? 'the browser reported no network' : 'a check of the server got no answer'}. Checking again.`
+      : offline
+        ? 'Not connected. Checking again.'
+        : decided.by === 'start'
+          ? 'Connected. Nothing has been asked of the server yet.'
+          : `Connected. Confirmed by ${decided.by === 'answer' ? 'a reply from' : 'a check of'} the server at ${clock(decided.at)}.`;
+  // Not a live region: the time of the last confirmation moves while the page is open,
+  // and a screen reader would read the line out again on every move. The banner is what
+  // announces the state changing.
   return (
-    <p className="muted small" aria-live="polite">
+    <p className="muted small">
       {line}
-      {!browserOnLine && !offline && ' The browser reports no network; the server is answering, so the browser is wrong.'}
+      {!browserOnLine && !offline && ' The browser reports no network, but the server is answering.'}
     </p>
   );
 }
