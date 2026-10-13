@@ -4,7 +4,7 @@ import { MAX_ATTACHMENT_BYTES, filenameSchema, foldNoCase, type FeedNote, type F
 import * as api from '../notes-api.js';
 import { ApiError, isNoteChanged, isOfflineError, NoteChangedError } from '../notes-api.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
-import { buildNotePatch, seedFrom, holdsTheirChanges, type NoteDraft } from '../note-patch.js';
+import { buildNotePatch, seedFrom, holdsTheirChanges, rebaseAfterAck, type NoteDraft } from '../note-patch.js';
 import { availableFilename, lookups, toNote, type Snapshot } from './derive.js';
 import type { Collections, LocalNote } from './collections.js';
 import { askToPersist, filesSupported, readFile, removeFile, writeFile } from './files.js';
@@ -1136,7 +1136,11 @@ export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | No
    * next keystroke in the other, with both saying "Saved" (review of #354). So a save
    * from another origin merges only when its draft already holds the waiting one's
    * changes, and is otherwise refused as the server would refuse it, with the row as it
-   * stands, which the workspace puts to the person as a conflict.
+   * stands, which the workspace puts to the person as a conflict. Keep mine, pressed on
+   * that conflict, comes back with `against`: a choice made with theirs in view, so it
+   * is not refused again, and the draft is put over theirs — what the person changed
+   * stays theirs, what they never touched takes the other tab's — rather than retiring
+   * the waiting save with whatever it changed that the draft never had.
    */
   const origin = input.origin ?? TAB_ORIGIN;
   const waiting = lib.outbox.waitingSave(input.noteId);
@@ -1144,7 +1148,8 @@ export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | No
   // not known, and it merges as every save did then.
   if (waiting && waiting.origin !== undefined && waiting.origin !== origin) {
     const theirs = { ...waiting.base, title: waiting.value.title, body: waiting.value.body, tags: waiting.value.tags, notebook: waiting.value.notebook, fields: valuesOf(waiting.value, lib) };
-    if (!holdsTheirChanges(input.value, input.base, theirs)) {
+    if (input.against !== undefined) input = { ...input, value: rebaseAfterAck(input.value, seedFrom(input.base), theirs) };
+    else if (!holdsTheirChanges(input.value, input.base, theirs)) {
       const row = lib.notes.get(input.noteId);
       throw new NoteChangedError(row ? toNote(row, lookups(snapshot(lib))) : theirs);
     }

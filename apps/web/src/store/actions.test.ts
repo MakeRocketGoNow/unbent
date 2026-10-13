@@ -659,6 +659,22 @@ describe('saves of one note', () => {
     await expect(actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'mine' }, base })).rejects.toBeInstanceOf(NoteChangedError);
   });
 
+  it('from another tab, Keep mine puts the draft over the waiting change rather than refusing it again', async () => {
+    const { lib, note } = library([row('n1', { title: 'old', body: 'b' })]);
+    await lib.outbox.ready;
+    const base = note('n1');
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'renamed' }, base, origin: 'A' });
+    await tick();
+    const refused = actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), body: 'typed' }, base, origin: 'B' });
+    await expect(refused).rejects.toBeInstanceOf(NoteChangedError);
+    // Keep mine: the body is B's, the title B never touched is A's, and one save waits.
+    const theirs = (await refused.catch((e: NoteChangedError) => e)).current;
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), body: 'typed' }, base, against: theirs.updatedAt, origin: 'B' });
+    await tick();
+    expect(lib.notes.get('n1')).toMatchObject({ title: 'renamed', body: 'typed' });
+    expect(lib.outbox.status().pending).toBe(1);
+  });
+
   it('are the same editor’s whether this tab made them as a client or as the holder', async () => {
     const { lib, note } = library([row('n1', { title: 'old' })]);
     await lib.outbox.ready;
