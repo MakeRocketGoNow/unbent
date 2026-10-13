@@ -1177,7 +1177,9 @@ the browser's private storage, copied from the server the first time you sign in
 app picks up where it stopped) and kept current by the change feed
 after — on open, when you come back to the tab, and the moment another device saves,
 through a socket that says only that something changed. A warm open draws the list with no
-request at all.
+request at all. One tab or window holds the library at a time: open the app in a second
+one and it says so, reads from the server while there is a connection, and offers to take
+the library over with one press.
 
 Edits land on the device first. A note you write, make, file, tag, trash or restore with
 no connection is saved here at once — the note head says "Saved", with a small cloud
