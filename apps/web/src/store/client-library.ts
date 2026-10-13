@@ -61,7 +61,7 @@ export const PING_MS = 5_000;
  * pings unanswered, never time since the holder last spoke: a hidden tab's interval
  * runs once a minute under Chrome's throttling, and a tab resumed from a freeze fires
  * its overdue timer before the pong queued for it, so a clock alone read a live, idle
- * holder as gone and took the library from the tab the person was using (review).
+ * holder as gone and took the library from the tab the person was using (review of #354).
  * `SILENT_PINGS` unanswered over at least this long is a holder that is not coming
  * back on its own; the client takes the library over (`onSilent`), which closes this
  * client and sends its calls in hand to wherever the library is next
@@ -233,7 +233,7 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
    * `closing`, a `serving`, each chunk of rows — never from `closing` alone, since the
    * next holder's open on a phone and the library's arrival after it can together
    * outlast the bound, and a client that fired then took the library from the very tab
-   * the person had pressed Open here in (review). Only ever fires with a call waiting:
+   * the person had pressed Open here in (review of #354). Only ever fires with a call waiting:
    * an idle client has nothing a frozen or missing holder can lose it, and a steal
    * from one undid a person's Open here elsewhere in favour of a background tab.
    */
