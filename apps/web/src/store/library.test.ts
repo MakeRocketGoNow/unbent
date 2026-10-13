@@ -466,7 +466,10 @@ describe('acquireLibrary', () => {
       const client = acquireLibrary('u1');
       await vi.advanceTimersByTimeAsync(10);
       await expect(client).resolves.toMatchObject({ remote: true });
-      // The holder's tab freezes: it keeps the lock and answers nothing.
+      // A save goes to the holder, whose tab then freezes: it keeps the lock and answers
+      // nothing, and the save is what the takeover is for.
+      const attached = await client;
+      if (attached.remote) attached.call('trashNote', ['n1']).catch(() => {});
       theirPort.close();
       await vi.advanceTimersByTimeAsync(HOLDER_SILENT_MS + PING_MS * 2);
       await vi.advanceTimersByTimeAsync(10);

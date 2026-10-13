@@ -454,9 +454,14 @@ describe('a client of the holding tab', () => {
     for (let i = 0; i < 3; i++) await vi.advanceTimersByTimeAsync(60_000);
     expect(hk.silent).toBe(0);
     expect(lib.attached()).toBe(true);
-    // The holder's tab is frozen: it hears nothing and says nothing, and still holds the lock.
+    // The holder's tab is frozen: it hears nothing and says nothing, and still holds the
+    // lock. An idle client only notices; one with a save in hand takes the library over.
     port.close();
     await vi.advanceTimersByTimeAsync(HOLDER_SILENT_MS + PING_MS * 2);
+    expect(hk.silent).toBe(0);
+    const stuck = lib.call('trashNote', ['n1']);
+    stuck.catch(() => {});
+    await vi.advanceTimersByTimeAsync(PING_MS * 2);
     expect(hk.silent).toBe(1);
     expect(lib.attached()).toBe(false);
     // The rows stay readable meanwhile, and a call waits for whatever comes next.
@@ -471,6 +476,9 @@ describe('a client of the holding tab', () => {
     const lib = await client(hk);
     h.server.stop();
     await settle();
+    // Nothing to send: nothing to take over for, however long nobody serves.
+    await vi.advanceTimersByTimeAsync(ORPHANED_MS * 2);
+    expect(hk.silent).toBe(0);
     const waiting = lib.call('trashNote', ['n1']);
     waiting.catch(() => {});
     await vi.advanceTimersByTimeAsync(ORPHANED_MS / 2);
@@ -490,6 +498,29 @@ describe('a client of the holding tab', () => {
     await settle();
     await vi.advanceTimersByTimeAsync(ORPHANED_MS + 10);
     expect(hk.silent).toBe(1);
+  });
+
+  it('waits for a holder whose rows are still arriving, however slowly', async () => {
+    const h = holder(channel.port(), { notes: [note('n1')] });
+    const hk = hooks();
+    const lib = await client(hk);
+    const me = channel.posted.find((m): m is Extract<Message, { type: 'hello' }> => m.type === 'hello')!.client;
+    h.server.stop();
+    await settle();
+    const waiting = lib.call('trashNote', ['n1']);
+    waiting.catch(() => {});
+    // The next holder opens slowly, then sends the library a chunk at a time, each
+    // chunk further apart than the bound allows from `closing` alone.
+    await vi.advanceTimersByTimeAsync(ORPHANED_MS - 1000);
+    const ghost = channel.port();
+    ghost.post({ type: 'serving', holder: 'slow' });
+    for (let i = 0; i < 4; i++) {
+      await vi.advanceTimersByTimeAsync(ORPHANED_MS / 2);
+      ghost.post({ type: 'rows', holder: 'slow', client: me, entity: 'note', rows: [note(`n${i}`)] });
+      await settle();
+    }
+    expect(hk.silent).toBe(0);
+    expect(lib.attached()).toBe(false);
   });
 
   it('attaches to a new holder that announces itself while the old one never said it was closing', async () => {

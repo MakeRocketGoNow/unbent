@@ -82,7 +82,8 @@ export const SILENT_PINGS = 3;
  * holder that said `closing` is usually followed within seconds by the next tab in the
  * lock's queue opening the library; but that tab may be one the browser has frozen,
  * granted the lock and never to open, or the old holder's close may have wedged before
- * letting go. A save in hand would wait for good either way, so after this the client
+ * letting go. A save in hand would wait for good either way, so after this long with
+ * no sign of a holder — a `serving`, a chunk of rows — and a call waiting, the client
  * asks to take the library over as it does from a silent holder. As long as the open's
  * own bound (`LIBRARY_OPEN_TIMEOUT_MS`), since a hand-over is an open on a phone.
  */
@@ -210,7 +211,7 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
     unanswered = 0;
     pinger = setInterval(() => {
       if (!holder) return;
-      if (unanswered >= SILENT_PINGS && Date.now() - firstUnanswered > HOLDER_SILENT_MS) {
+      if (unanswered >= SILENT_PINGS && Date.now() - firstUnanswered > HOLDER_SILENT_MS && pending.size > 0) {
         console.warn('[library] the tab holding this account’s library has stopped answering; taking it over');
         detach(false);
         hooks.onSilent();
@@ -227,6 +228,25 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
     if (orphaned) clearTimeout(orphaned);
     orphaned = null;
   };
+  /**
+   * Starts, or starts again, the wait for a holder: counted from the last sign of one —
+   * `closing`, a `serving`, each chunk of rows — never from `closing` alone, since the
+   * next holder's open on a phone and the library's arrival after it can together
+   * outlast the bound, and a client that fired then took the library from the very tab
+   * the person had pressed Open here in (review). Only ever fires with a call waiting:
+   * an idle client has nothing a frozen or missing holder can lose it, and a steal
+   * from one undid a person's Open here elsewhere in favour of a background tab.
+   */
+  const watchForHolder = () => {
+    stopOrphanWatch();
+    if (!attachedOnce || closed) return;
+    orphaned = setTimeout(() => {
+      orphaned = null;
+      if (holder || closed || pending.size === 0) return;
+      console.warn('[library] no tab has served this account’s library since the last one closed; taking it over');
+      hooks.onSilent();
+    }, ORPHANED_MS);
+  };
 
   const send = (id: number, p: Pending) => {
     p.sentTo = holder;
@@ -239,14 +259,8 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
     incoming = null;
     stopPinging();
     askNow();
-    if (watch && attachedOnce && !orphaned) {
-      orphaned = setTimeout(() => {
-        orphaned = null;
-        if (holder || closed) return;
-        console.warn('[library] no tab has served this account’s library since the last one closed; taking it over');
-        hooks.onSilent();
-      }, ORPHANED_MS);
-    }
+    if (watch) watchForHolder();
+    else stopOrphanWatch();
   };
 
   let resolveAttach!: (lib: ClientLibrary) => void;
@@ -273,6 +287,8 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
         // The rows are on their way: no more hellos, unless `attached` never follows.
         stopAsking();
         stall = setTimeout(askNow, ATTACH_STALL_MS);
+        // And a holder sending them is alive: the wait for one starts over.
+        if (!holder) watchForHolder();
         return;
       case 'attached': {
         if (m.client !== me) return;
@@ -366,8 +382,10 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
       const id = nextId++;
       const p: Pending = { name, args, sentTo: null, resolve, reject };
       pending.set(id, p);
-      // Sent now when a holder is serving; else when the next one attaches.
+      // Sent now when a holder is serving; else when the next one attaches, which is
+      // waited for under the bound from now, if it was not already.
       if (holder) send(id, p);
+      else if (!orphaned) watchForHolder();
     });
   };
 
