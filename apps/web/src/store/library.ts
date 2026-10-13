@@ -801,7 +801,14 @@ async function open(userId: string, halting: Halting, isMine: () => boolean, hol
     console.info('[library] another tab took this account’s library over; reading from the server until it lets go');
     const refusal = Promise.reject(new LibraryElsewhereError());
     refusal.catch(() => {});
-    void closeLibrary().then(() => standAside(userId, refusal as Promise<never>));
+    const closing = closeLibrary();
+    // The close is a step that can wait; a sign-out or another account's sign-in
+    // meanwhile decides what this tab holds, and standing aside for the old account
+    // would open its library again when the other tab let go.
+    const asOf = generation;
+    void closing.then(() => {
+      if (generation === asOf) standAside(userId, refusal as Promise<never>);
+    });
   });
 
   /*
