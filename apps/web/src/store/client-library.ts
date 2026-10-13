@@ -255,7 +255,7 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
       }
       if (unanswered === 0) firstUnanswered = Date.now();
       unanswered += 1;
-      port.post({ type: 'ping', client: me });
+      port.post({ type: 'ping', client: me, to: holder });
     }, PING_MS);
   };
   /** Between holders: the bound on waiting for the next one (`ORPHANED_MS`). */
@@ -285,8 +285,9 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
   };
 
   const send = (id: number, p: Pending) => {
+    if (!holder) return;
     p.sentTo = holder;
-    port.post({ type: 'call', client: me, id, name: p.name, args: p.args });
+    port.post({ type: 'call', client: me, to: holder, id, name: p.name, args: p.args });
   };
 
   /** Lets go of the holder; with `watch`, bounds the wait for the next one (a takeover already asked for needs no bound). */

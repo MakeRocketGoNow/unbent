@@ -1022,9 +1022,12 @@ async function open(userId: string, halting: Halting, isMine: () => boolean, hol
    * Stopped by `halt`, at once, so a client waits for the next holder rather than on a
    * library that is being closed.
    */
-  const port = openPort(userId);
+  const holderId = crypto.randomUUID();
+  const port = openPort(userId, holderId);
   if (port && !halted) {
-    server = serveLibrary(port, {
+    server = serveLibrary(
+      port,
+      {
       collections,
       state: () => latest ?? engine.state,
       onState: (listener) => {
@@ -1035,7 +1038,9 @@ async function open(userId: string, halting: Halting, isMine: () => boolean, hol
       keeper,
       search: () => search,
       searchReady,
-    });
+      },
+      holderId,
+    );
   }
 
   const close = async () => {

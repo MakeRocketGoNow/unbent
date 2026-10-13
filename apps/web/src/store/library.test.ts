@@ -361,11 +361,13 @@ describe('acquireLibrary', () => {
     afterEach(() => vi.mocked(openPort).mockReset().mockImplementation(() => null));
 
     /** The other tab's library, served over the channel from the stand-in collections. */
-    function theirs(port: Port = channel.port()) {
+    function theirs() {
+      const id = crypto.randomUUID();
+      const port: Port = channel.port(id);
       const collection = () => ({ subscribeChanges: () => ({ unsubscribe() {} }), values: () => [{ id: 'n1', title: 'theirs' }], preload: async () => {}, get: () => undefined, has: () => false });
       const outbox = { status: () => ({ pending: 3, durable: true, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map() }), subscribe: () => () => {}, onAcknowledged: () => () => {} };
       const keeper = { status: () => ({ supported: true, kept: new Set(['nb1']) }), subscribe: () => () => {} };
-      return serveLibrary(port, {
+      const server = serveLibrary(port, {
         collections: { notes: collection(), notebooks: collection(), tags: collection(), attachments: collection(), syncState: collection() } as never,
         state: () => ({ phase: 'current', cursor: { seq: 9, epoch: 'e' }, lastError: null, total: null, applied: 0, pulls: 1, resets: 0 }),
         onState: () => () => {},
@@ -373,7 +375,8 @@ describe('acquireLibrary', () => {
         keeper: keeper as never,
         search: () => null,
         searchReady: Promise.resolve(),
-      });
+      }, id);
+      return { server, port };
     }
 
     it('is a client of the tab that holds the library, and opens it once that tab lets go', async () => {
@@ -489,8 +492,7 @@ describe('acquireLibrary', () => {
       page();
       const other = locks.request(lock, { mode: 'exclusive' }, () => new Promise<void>(() => {}));
       other.catch(() => {});
-      const theirPort = channel.port();
-      theirs(theirPort);
+      const { port: theirPort } = theirs();
       await vi.advanceTimersByTimeAsync(0);
       const client = acquireLibrary('u1');
       await vi.advanceTimersByTimeAsync(10);

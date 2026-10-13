@@ -1,4 +1,4 @@
-import { PRIVATE, type Message, type Port } from './library-channel.js';
+import { addressee, type Message, type Port } from './library-channel.js';
 
 /**
  * The channels between tabs, for tests: every port hears what the others post on the
@@ -21,7 +21,7 @@ export function fakeChannel(): { port: (clientId?: string) => Port; posted: Mess
         post: (message) => {
           posted.push(message);
           const copy = structuredClone(message);
-          const addressed = PRIVATE.has(message.type) && 'client' in message ? message.client : null;
+          const addressed = addressee(message);
           for (const other of ports) {
             if (other === mine) continue;
             if (addressed !== null && other.clientId !== addressed) continue;

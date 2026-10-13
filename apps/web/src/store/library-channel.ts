@@ -32,10 +32,11 @@ import { libraryChannelName } from './names.js';
  * BroadcastChannels, not a MessagePort: a port cannot be sent over a BroadcastChannel,
  * and the only other way to one is a worker, which is the thing Android has not got.
  * One channel is the account's, which every tab of the account listens on: hellos,
- * calls, pings and the holder's announcements, and the changes and statuses every
- * client wants. What is for one client alone — its rows, which are the whole library,
- * its `attached`, its answers and its pongs — goes on a channel named for that client,
- * which it alone listens on. A browser decodes a message in every tab that listens
+ * byes, the holder's announcements, and the changes and statuses every client wants.
+ * What is for one tab alone goes on a channel named for that tab, which it alone
+ * listens on: a client's rows, which are the whole library, its `attached`, its answers
+ * and its pongs; and the holder's calls and pings, since a call carries a draft and
+ * only the holder runs it. A browser decodes a message in every tab that listens
  * before any of them can drop it, so the library sent on the shared channel would have
  * been decoded by every tab of the account, tens of megabytes each, whenever any one of
  * them reloaded.
@@ -82,9 +83,10 @@ export type HolderCall = (typeof HOLDER_CALLS)[number];
 export type ClientMessage =
   /** A tab that wants the rows: the holder answers with `rows` then `attached`, to it alone. */
   | { type: 'hello'; client: string }
-  | { type: 'call'; client: string; id: number; name: string; args: unknown[] }
+  /** For one holder, on its own channel (`to`): a call carries a draft, and only the holder reads it. */
+  | { type: 'call'; client: string; to: string; id: number; name: string; args: unknown[] }
   /** Is the holder still there? Answered with `pong`; see `HOLDER_SILENT_MS`. */
-  | { type: 'ping'; client: string }
+  | { type: 'ping'; client: string; to: string }
   /** A client closing, or its page going: the holder stops counting it. */
   | { type: 'bye'; client: string };
 
@@ -122,11 +124,18 @@ export interface Port {
   close: () => void;
 }
 
-/** The messages that go to one client's channel rather than the account's. */
+/** The messages that go to one client's channel rather than the account's; a message with `to` goes to that holder's. */
 export const PRIVATE: ReadonlySet<Message['type']> = new Set<Message['type']>(['rows', 'attached', 'answer', 'pong']);
 
-/** The channel one client alone listens on. */
+/** The channel one tab alone listens on, named for its client id or, for a holder, its holder id. */
 export const clientChannelName = (userId: string, clientId: string) => `${libraryChannelName(userId)}-${clientId}`;
+
+/** Which tab a message is for, or null for every tab of the account. */
+export function addressee(message: Message): string | null {
+  if ('to' in message) return message.to;
+  if (PRIVATE.has(message.type) && 'client' in message) return message.client;
+  return null;
+}
 
 /**
  * The account's channels in this tab — and, given this tab's client id, the one for it
@@ -157,7 +166,8 @@ export function openPort(userId: string, clientId?: string): Port | null {
   };
   return {
     post: (message) => {
-      if (PRIVATE.has(message.type) && 'client' in message) to(message.client).postMessage(message);
+      const target = addressee(message);
+      if (target) to(target).postMessage(message);
       else shared.postMessage(message);
     },
     listen: (handler) => {

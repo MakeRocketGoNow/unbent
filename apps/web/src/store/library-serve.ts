@@ -60,8 +60,8 @@ export interface Server {
 
 const holderCalls: ReadonlySet<string> = new Set(HOLDER_CALLS);
 
-export function serveLibrary(port: Port, lib: Serving): Server {
-  const holder = crypto.randomUUID();
+/** `holder` is this holder's id, which the port was opened with so this tab alone hears the calls and pings addressed to it. */
+export function serveLibrary(port: Port, lib: Serving, holder: string): Server {
   const { collections } = lib;
   const entities = { note: collections.notes, notebook: collections.notebooks, tag: collections.tags, attachment: collections.attachments } as const;
   let stopped = false;

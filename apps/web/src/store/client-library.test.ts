@@ -67,7 +67,9 @@ const status = (over: Partial<SyncStatus> = {}): SyncStatus => ({ pending: 0, du
 const keeping = (over: Partial<KeepStatus> = {}): KeepStatus => ({ supported: true, kept: new Set(['nb1']), counted: true, wanted: { files: 2, bytes: 20 }, have: { files: 1, bytes: 10 }, fetching: false, problem: null, ...over });
 
 /** A holder: collections in memory and stand-ins for the engine's state, the outbox and the keeper, each with a way to move. */
-function holder(port: Port, rows: { notes?: FeedNote[]; notebooks?: FeedNotebook[]; tags?: FeedTag[]; attachments?: FeedAttachment[] } = {}, opts: { index?: boolean } = {}) {
+function holder(channel: ReturnType<typeof fakeChannel>, rows: { notes?: FeedNote[]; notebooks?: FeedNotebook[]; tags?: FeedTag[]; attachments?: FeedAttachment[] } = {}, opts: { index?: boolean } = {}) {
+  const id = crypto.randomUUID();
+  const port: Port = channel.port(id);
   const notes = collection<FeedNote>('notes', rows.notes ?? []);
   const notebooks = collection<FeedNotebook>('notebooks', rows.notebooks ?? []);
   const tags = collection<FeedTag>('tags', rows.tags ?? []);
@@ -99,9 +101,10 @@ function holder(port: Port, rows: { notes?: FeedNote[]; notebooks?: FeedNotebook
     search: () => (opts.index === false ? null : { index: index as never, sync: sync_ as never }),
     searchReady: Promise.resolve(),
   };
-  const server: Server = serveLibrary(port, serving);
+  const server: Server = serveLibrary(port, serving, id);
   return {
     server,
+    port,
     notes,
     notebooks,
     tags,
@@ -172,7 +175,7 @@ describe('a client of the holding tab', () => {
   }
 
   it('mirrors the holder’s rows, state and statuses on attach, and derives from the rows', async () => {
-    const h = holder(channel.port(), { notes: [note('n1'), note('n2')], tags: [{ id: 't1', name: 'tax' }] });
+    const h = holder(channel, { notes: [note('n1'), note('n2')], tags: [{ id: 't1', name: 'tax' }] });
     h.moveFeed({ applied: 7 });
     const hk = hooks();
     const lib = await client(hk);
@@ -194,7 +197,7 @@ describe('a client of the holding tab', () => {
 
   it('sends a large collection in chunks, a task apart, and the client holds all of it', async () => {
     const many = Array.from({ length: ROWS_PER_MESSAGE * 2 + 5 }, (_, i) => note(`n${i}`));
-    holder(channel.port(), { notes: many });
+    holder(channel, { notes: many });
     const lib = await client();
     expect(lib.notes.size).toBe(many.length);
     expect(channel.posted.filter((m) => m.type === 'rows' && m.entity === 'note')).toHaveLength(3);
@@ -202,7 +205,7 @@ describe('a client of the holding tab', () => {
 
   it('applies a change the holder posted while its rows were still arriving, over the rows', async () => {
     const many = Array.from({ length: ROWS_PER_MESSAGE + 5 }, (_, i) => note(`n${i}`));
-    const h = holder(channel.port(), { notes: many });
+    const h = holder(channel, { notes: many });
     const hk = hooks();
     const attaching = attach(hk);
     // The first chunk has gone; the holder changes a row in it and one not yet sent, and
@@ -222,7 +225,7 @@ describe('a client of the holding tab', () => {
   });
 
   it('forwards the removal of a row that never changed since the holder began serving', async () => {
-    const h = holder(channel.port(), { notes: [note('n1'), note('n2')] });
+    const h = holder(channel, { notes: [note('n1'), note('n2')] });
     const lib = await client();
     h.notes.remove('n1');
     await settle();
@@ -231,7 +234,7 @@ describe('a client of the holding tab', () => {
   });
 
   it('follows the holder’s changes, with the roots each batch reaches, and the version moves', async () => {
-    const h = holder(channel.port(), { notes: [note('n1')] });
+    const h = holder(channel, { notes: [note('n1')] });
     const hk = hooks();
     const lib = await client(hk);
     const before = lib.version();
@@ -263,7 +266,7 @@ describe('a client of the holding tab', () => {
   });
 
   it('mirrors the feed’s state, the outbox’s status, the keeper’s, acknowledgements and the index moving', async () => {
-    const h = holder(channel.port());
+    const h = holder(channel);
     const hk = hooks();
     const lib = await client(hk);
     const feeds: FeedState[] = [];
@@ -294,7 +297,7 @@ describe('a client of the holding tab', () => {
   });
 
   it('empties its rows on the holder’s reset and fills again from the inserts that follow', async () => {
-    const h = holder(channel.port(), { notes: [note('n1')] });
+    const h = holder(channel, { notes: [note('n1')] });
     const hk = hooks();
     const lib = await client(hk);
     h.server.reset();
@@ -307,7 +310,7 @@ describe('a client of the holding tab', () => {
   });
 
   it('runs a write on the holder by name and answers with its result', async () => {
-    holder(channel.port());
+    holder(channel);
     const lib = await client();
     const answer = lib.call('trashNote', ['n1']);
     await settle();
@@ -318,7 +321,7 @@ describe('a client of the holding tab', () => {
   it('still answers a call that was running when the holder stopped', async () => {
     let finish!: (v: string) => void;
     vi.mocked(forwardable.trashNote!).mockImplementationOnce(() => new Promise<string>((r) => (finish = r)) as never);
-    const h = holder(channel.port());
+    const h = holder(channel);
     const lib = await client();
     const answer = lib.call('trashNote', ['n1']);
     await settle();
@@ -329,7 +332,7 @@ describe('a client of the holding tab', () => {
   });
 
   it('brings a failure back as the class it was', async () => {
-    holder(channel.port());
+    holder(channel);
     const lib = await client();
     const answer = lib.call('saveNote', [{}]);
     answer.catch(() => {});
@@ -343,7 +346,7 @@ describe('a client of the holding tab', () => {
   });
 
   it('asks the holder’s index, keeper and outbox by name, and only what is listed', async () => {
-    const h = holder(channel.port());
+    const h = holder(channel);
     const lib = await client();
     const candidates = lib.search.index.candidates('note', 'tax', 50);
     const snippets = lib.search.index.snippets('note', 'tax', ['n1']);
@@ -376,7 +379,7 @@ describe('a client of the holding tab', () => {
   });
 
   it('answers a search with no index as offline', async () => {
-    holder(channel.port(), {}, { index: false });
+    holder(channel, {}, { index: false });
     const lib = await client();
     const asked = lib.search.index.meta('built');
     asked.catch(() => {});
@@ -398,7 +401,7 @@ describe('a client of the holding tab', () => {
     await vi.advanceTimersByTimeAsync(HELLO_RETRY_MAX_MS * 4);
     // Capped at one every thirty seconds.
     expect(hellos()).toBeLessThan(12);
-    holder(channel.port(), { notes: [note('n1')] });
+    holder(channel, { notes: [note('n1')] });
     await settle();
     await settle();
     const lib = await attaching;
@@ -412,7 +415,7 @@ describe('a client of the holding tab', () => {
   });
 
   it('keeps its rows and holds its calls when the holder closes, and attaches to the next holder, which answers them', async () => {
-    const first = holder(channel.port(), { notes: [note('n1')] });
+    const first = holder(channel, { notes: [note('n1')] });
     const hk = hooks();
     const lib = await client(hk);
     first.server.stop();
@@ -428,7 +431,7 @@ describe('a client of the holding tab', () => {
     await settle();
     expect(lib.notes.size).toBe(1);
     // The next holder serves: the client attaches to it, with its rows, and the call goes.
-    holder(channel.port(), { notes: [note('n1'), note('n2')] });
+    holder(channel, { notes: [note('n1'), note('n2')] });
     await settle();
     await settle();
     expect(lib.attached()).toBe(true);
@@ -438,7 +441,7 @@ describe('a client of the holding tab', () => {
   });
 
   it('sends a call in hand once to a holder that attaches it twice, and stops asking once rows arrive', async () => {
-    holder(channel.port(), { notes: [note('n1')] });
+    holder(channel, { notes: [note('n1')] });
     const lib = await client();
     const hellos = () => channel.posted.filter((m) => m.type === 'hello');
     const attachedTimes = () => channel.posted.filter((m) => m.type === 'attached').length;
@@ -478,8 +481,7 @@ describe('a client of the holding tab', () => {
   });
 
   it('pings its holder only while a call is in hand, and asks to take the library over from one that stops answering', async () => {
-    const port = channel.port();
-    holder(port, { notes: [note('n1')] });
+    const { port } = holder(channel, { notes: [note('n1')] });
     const hk = hooks();
     const lib = await client(hk);
     const pings = () => channel.posted.filter((m) => m.type === 'ping').length;
@@ -524,7 +526,7 @@ describe('a client of the holding tab', () => {
   });
 
   it('asks to take the library over when no holder serves for long after the last one closed', async () => {
-    const h = holder(channel.port(), { notes: [note('n1')] });
+    const h = holder(channel, { notes: [note('n1')] });
     const hk = hooks();
     const lib = await client(hk);
     h.server.stop();
@@ -539,14 +541,14 @@ describe('a client of the holding tab', () => {
     await vi.advanceTimersByTimeAsync(ORPHANED_MS / 2 + 10);
     expect(hk.silent).toBe(1);
     // A next holder that does serve in time is waited for, and the watch stops with it.
-    const again = holder(channel.port(), { notes: [note('n1')] });
+    const again = holder(channel, { notes: [note('n1')] });
     await settle();
     await settle();
     expect(lib.attached()).toBe(true);
     await expect(waiting).resolves.toBe('trashed n1');
     again.server.stop();
     await settle();
-    holder(channel.port(), { notes: [note('n1')] });
+    holder(channel, { notes: [note('n1')] });
     await settle();
     await settle();
     await vi.advanceTimersByTimeAsync(ORPHANED_MS + 10);
@@ -554,7 +556,7 @@ describe('a client of the holding tab', () => {
   });
 
   it('waits for a holder whose rows are still arriving, however slowly', async () => {
-    const h = holder(channel.port(), { notes: [note('n1')] });
+    const h = holder(channel, { notes: [note('n1')] });
     const hk = hooks();
     const lib = await client(hk);
     const me = channel.posted.find((m): m is Extract<Message, { type: 'hello' }> => m.type === 'hello')!.client;
@@ -579,7 +581,7 @@ describe('a client of the holding tab', () => {
   it('refuses, rather than re-sends, a call that must not run twice once it has reached a holder', async () => {
     let finish!: (v: unknown) => void;
     vi.mocked(forwardable.emptyTrash!).mockImplementationOnce(() => new Promise((r) => (finish = r)) as never);
-    const first = holder(channel.port());
+    const first = holder(channel);
     const lib = await client();
     const emptying = lib.call('emptyTrash', [['n1']]);
     emptying.catch(() => {});
@@ -588,7 +590,7 @@ describe('a client of the holding tab', () => {
     // The holder goes without answering; the next one serves.
     first.server.stop();
     first.notes.upsert(note('x'));
-    holder(channel.port());
+    holder(channel);
     await settle();
     await settle();
     await expect(emptying).rejects.toBeInstanceOf(CallUnsettledError);
@@ -604,16 +606,16 @@ describe('a client of the holding tab', () => {
   });
 
   it('attaches to a new holder that announces itself while the old one never said it was closing', async () => {
-    holder(channel.port(), { notes: [note('n1')] });
+    holder(channel, { notes: [note('n1')] });
     const lib = await client();
-    holder(channel.port(), { notes: [note('n1'), note('n2'), note('n3')] });
+    holder(channel, { notes: [note('n1'), note('n2'), note('n3')] });
     await settle();
     await settle();
     expect(lib.notes.size).toBe(3);
   });
 
   it('refuses the calls in hand when closed, and is halted before a holder answered', async () => {
-    holder(channel.port());
+    holder(channel);
     const lib = await client();
     const inHand = lib.call('trashNote', ['n1']);
     inHand.catch(() => {});
@@ -629,7 +631,7 @@ describe('a client of the holding tab', () => {
   });
 
   it('hears only what is for it on its own channel, and the account’s on the shared one', async () => {
-    holder(channel.port(), { notes: [note('n1')] });
+    holder(channel, { notes: [note('n1')] });
     const bystander: Message['type'][] = [];
     channel.port().listen((m) => bystander.push(m.type));
     const lib = await client();
@@ -637,13 +639,14 @@ describe('a client of the holding tab', () => {
     await settle();
     await expect(answer).resolves.toBe('trashed n1');
     expect(bystander).toContain('hello');
+    expect(bystander).not.toContain('call');
     expect(bystander).not.toContain('rows');
     expect(bystander).not.toContain('attached');
     expect(bystander).not.toContain('answer');
   });
 
   it('is forwarded nothing by a holder with no client, and nothing more after it says bye', async () => {
-    const h = holder(channel.port(), { notes: [note('n1')] });
+    const h = holder(channel, { notes: [note('n1')] });
     const changes = () => channel.posted.filter((m) => m.type === 'changes').length;
     h.notes.upsert({ ...note('n1'), title: 'alone', updatedAt: 2 });
     h.moveSync({ pending: 1 });
@@ -664,7 +667,7 @@ describe('a client of the holding tab', () => {
   });
 
   it('ignores rows and answers meant for another client', async () => {
-    holder(channel.port(), { notes: [note('n1')] });
+    holder(channel, { notes: [note('n1')] });
     const a = await client();
     const b = await client();
     expect(a.notes.size).toBe(1);
