@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createCollection, type Collection } from '@tanstack/db';
 import type { FeedNote, FeedNotebook, FeedTag, FeedAttachment } from '@unbent/shared';
 import { ApiError, NoteChangedError, OfflineError } from '../notes-api.js';
-import { attachClientLibrary, ATTACH_STALL_MS, HELLO_RETRY_MS, HOLDER_SILENT_MS, LibraryMovedError, PING_MS, type ClientHooks, type ClientLibrary } from './client-library.js';
+import { attachClientLibrary, ATTACH_STALL_MS, HELLO_RETRY_MS, HOLDER_SILENT_MS, LibraryMovedError, ORPHANED_MS, PING_MS, type ClientHooks, type ClientLibrary } from './client-library.js';
 import { serveLibrary, HELLO_DEDUPE_MS, ROWS_PER_MESSAGE, type Serving, type Server } from './library-serve.js';
 import { carry, revive, type Message, type Port } from './library-channel.js';
 import { LIBRARY_ROOTS } from './library-roots.js';
@@ -462,6 +462,33 @@ describe('a client of the holding tab', () => {
     // The rows stay readable meanwhile, and a call waits for whatever comes next.
     expect(lib.notes.size).toBe(1);
     await vi.advanceTimersByTimeAsync(PING_MS * 4);
+    expect(hk.silent).toBe(1);
+  });
+
+  it('asks to take the library over when no holder serves for long after the last one closed', async () => {
+    const h = holder(channel.port(), { notes: [note('n1')] });
+    const hk = hooks();
+    const lib = await client(hk);
+    h.server.stop();
+    await settle();
+    const waiting = lib.call('trashNote', ['n1']);
+    waiting.catch(() => {});
+    await vi.advanceTimersByTimeAsync(ORPHANED_MS / 2);
+    expect(hk.silent).toBe(0);
+    await vi.advanceTimersByTimeAsync(ORPHANED_MS / 2 + 10);
+    expect(hk.silent).toBe(1);
+    // A next holder that does serve in time is waited for, and the watch stops with it.
+    const again = holder(channel.port(), { notes: [note('n1')] });
+    await settle();
+    await settle();
+    expect(lib.attached()).toBe(true);
+    await expect(waiting).resolves.toBe('trashed n1');
+    again.server.stop();
+    await settle();
+    holder(channel.port(), { notes: [note('n1')] });
+    await settle();
+    await settle();
+    await vi.advanceTimersByTimeAsync(ORPHANED_MS + 10);
     expect(hk.silent).toBe(1);
   });
 

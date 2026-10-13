@@ -77,6 +77,16 @@ export const PING_MS = 5_000;
  */
 export const HOLDER_SILENT_MS = 15_000;
 export const SILENT_PINGS = 3;
+/**
+ * How long a client that was attached waits for the next holder with no one serving. A
+ * holder that said `closing` is usually followed within seconds by the next tab in the
+ * lock's queue opening the library; but that tab may be one the browser has frozen,
+ * granted the lock and never to open, or the old holder's close may have wedged before
+ * letting go. A save in hand would wait for good either way, so after this the client
+ * asks to take the library over as it does from a silent holder. As long as the open's
+ * own bound (`LIBRARY_OPEN_TIMEOUT_MS`), since a hand-over is an open on a phone.
+ */
+export const ORPHANED_MS = 20_000;
 
 /** What the queries read of a collection; the holder's TanStack collections answer it, and so do the client's maps. */
 export interface Rows<T> {
@@ -202,7 +212,7 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
       if (!holder) return;
       if (unanswered >= SILENT_PINGS && Date.now() - firstUnanswered > HOLDER_SILENT_MS) {
         console.warn('[library] the tab holding this account’s library has stopped answering; taking it over');
-        detach();
+        detach(false);
         hooks.onSilent();
         return;
       }
@@ -211,17 +221,32 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
       port.post({ type: 'ping', client: me });
     }, PING_MS);
   };
+  /** Between holders: the bound on waiting for the next one (`ORPHANED_MS`). */
+  let orphaned: ReturnType<typeof setTimeout> | null = null;
+  const stopOrphanWatch = () => {
+    if (orphaned) clearTimeout(orphaned);
+    orphaned = null;
+  };
 
   const send = (id: number, p: Pending) => {
     p.sentTo = holder;
     port.post({ type: 'call', client: me, id, name: p.name, args: p.args });
   };
 
-  const detach = () => {
+  /** Lets go of the holder; with `watch`, bounds the wait for the next one (a takeover already asked for needs no bound). */
+  const detach = (watch = true) => {
     holder = null;
     incoming = null;
     stopPinging();
     askNow();
+    if (watch && attachedOnce && !orphaned) {
+      orphaned = setTimeout(() => {
+        orphaned = null;
+        if (holder || closed) return;
+        console.warn('[library] no tab has served this account’s library since the last one closed; taking it over');
+        hooks.onSilent();
+      }, ORPHANED_MS);
+    }
   };
 
   let resolveAttach!: (lib: ClientLibrary) => void;
@@ -256,6 +281,7 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
         maps = incoming.maps;
         holder = m.holder;
         incoming = null;
+        stopOrphanWatch();
         startPinging();
         version += 1;
         feed = m.state;
@@ -363,6 +389,7 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
     closed = true;
     stopAsking();
     stopPinging();
+    stopOrphanWatch();
     stopListening();
     halting.removeEventListener('abort', onHalt);
     if (typeof window !== 'undefined') window.removeEventListener('pagehide', sayBye);
