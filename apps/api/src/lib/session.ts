@@ -38,10 +38,49 @@ import type { AppEnv } from '../types.js';
  * store, not the client. A malformed or wrongly signed cookie does not throw — better-call
  * reads it as no cookie and `getSession` resolves null — so it was never in question.
  */
+/**
+ * How long resolving the session may take before the request goes on without one. On
+ * 2026-10-13 every request carrying one person's real session cookie sat in `getSession`
+ * for the better part of ten minutes, repeatedly, while requests with no cookie or a fake
+ * one answered in under a second and D1 answered in under a millisecond; the invocations
+ * ended only when the browser gave up on them. The web app read its timed-out health
+ * check as the device being offline, and the person saw "You're offline" with a working
+ * connection, lists that never filled, and a navigation that emptied and refilled.
+ * Bounded, a stall is a 503 with Retry-After on a protected route and a plain answer on
+ * a public one, both of which every client already retries. The stall itself is logged
+ * with its duration and the cookies' names, so the next one says which path hung.
+ */
+export const SESSION_CHECK_MS = 8_000;
+/** Slower than this is said in the log, so a stall that resolves still leaves a trace. */
+const SLOW_SESSION_MS = 2_000;
+
+class SessionCheckTimeout extends Error {
+  constructor() {
+    super(`Resolving the session took longer than ${SESSION_CHECK_MS} ms`);
+    this.name = 'SessionCheckTimeout';
+  }
+}
+
+/** Which of Better Auth's cookies the request carried, by name: the cached session, the token, or neither. */
+function cookieShape(headers: Headers): string {
+  const names = (headers.get('cookie') ?? '').split(';').map((part) => part.trim().split('=')[0] ?? '').filter(Boolean);
+  const auth = names.filter((n) => n.includes('better-auth'));
+  return auth.length ? auth.join(',') : 'none';
+}
+
 export const sessionMiddleware = createMiddleware<AppEnv>(async (c, next) => {
+  const started = Date.now();
   try {
     const auth = getAuth(c.env);
-    const session = await auth.api.getSession({ headers: c.req.raw.headers });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const session = await Promise.race([
+      auth.api.getSession({ headers: c.req.raw.headers }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new SessionCheckTimeout()), SESSION_CHECK_MS);
+      }),
+    ]).finally(() => clearTimeout(timer));
+    const took = Date.now() - started;
+    if (took >= SLOW_SESSION_MS) console.warn(`[session] resolved in ${took} ms (cookies: ${cookieShape(c.req.raw.headers)}, user: ${session?.user ? 'yes' : 'no'})`);
 
     if (session?.user) {
       c.set('userId', session.user.id);
@@ -54,8 +93,13 @@ export const sessionMiddleware = createMiddleware<AppEnv>(async (c, next) => {
       });
     }
   } catch (err) {
-    console.error('Session resolution failed; continuing unauthenticated:', err);
-    if (!(err instanceof APIError && err.statusCode < 500)) c.set('sessionUnavailable', true);
+    if (err instanceof SessionCheckTimeout) {
+      console.error(`[session] ${err.message} (cookies: ${cookieShape(c.req.raw.headers)}); continuing unauthenticated`);
+      c.set('sessionUnavailable', true);
+    } else {
+      console.error('Session resolution failed; continuing unauthenticated:', err);
+      if (!(err instanceof APIError && err.statusCode < 500)) c.set('sessionUnavailable', true);
+    }
   }
 
   await next();
