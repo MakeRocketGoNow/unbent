@@ -194,8 +194,8 @@ type Pending = { name: string; args: unknown[]; sentTo: string | null; resolve: 
  */
 export function attachClientLibrary(userId: string, me: string, port: Port, hooks: ClientHooks, halting: AbortSignal): Promise<ClientLibrary> {
   let holder: string | null = null;
-  /** The rows arriving from a holder, and the changes it posted while they did, applied after them. */
-  let incoming: { holder: string; maps: Maps; early: Array<Array<{ entity: keyof Maps; changes: RowChange[] }>> } | null = null;
+  /** The rows arriving from a holder's numbered send, and the changes it posted while they did, applied after them. */
+  let incoming: { holder: string; send: number; maps: Maps; early: Array<Array<{ entity: keyof Maps; changes: RowChange[] }>> } | null = null;
   let maps = freshMaps();
   let version = 0;
   let feed = starting;
@@ -329,7 +329,10 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
         return;
       case 'rows':
         if (m.client !== me) return;
-        if (!incoming || incoming.holder !== m.holder) incoming = { holder: m.holder, maps: freshMaps(), early: [] };
+        // A send started after the one in hand replaces it; a chunk of an earlier one
+        // still on its way is not for the maps being filled.
+        if (incoming && incoming.holder === m.holder && m.send < incoming.send) return;
+        if (!incoming || incoming.holder !== m.holder || incoming.send !== m.send) incoming = { holder: m.holder, send: m.send, maps: freshMaps(), early: [] };
         for (const row of m.rows) incoming.maps[m.entity].rows.set((row as { id: string }).id, row as never);
         // The rows are on their way: no more hellos, unless `attached` never follows.
         stopAsking();
@@ -339,8 +342,10 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
         return;
       case 'attached': {
         if (m.client !== me) return;
-        // Rows that never came, or came from another holder: ask again.
+        // Rows that never came, or came from another holder: ask again. The end of a
+        // send a later one replaced is not an attach.
         if (!incoming || incoming.holder !== m.holder) return sayHello();
+        if (incoming.send !== m.send) return;
         maps = incoming.maps;
         // The changes the holder posted while its rows were on their way, over the
         // rows: a change the snapshot already holds comes out the same, and one it
@@ -379,10 +384,10 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
         return;
       }
       case 'changes':
-        if (m.holder !== holder) {
-          if (incoming?.holder === m.holder) incoming.early.push(m.batches);
-          return;
-        }
+        // Kept for a send on its way from this holder, attached to it already or not:
+        // the snapshot that send took may predate this change.
+        if (incoming?.holder === m.holder) incoming.early.push(m.batches);
+        if (m.holder !== holder) return;
         apply(m.batches);
         version += 1;
         hooks.onChange(new Set(m.roots));

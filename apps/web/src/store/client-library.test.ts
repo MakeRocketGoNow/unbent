@@ -224,6 +224,29 @@ describe('a client of the holding tab', () => {
     expect(lib.notes.size).toBe(many.length - 1);
   });
 
+  it('keeps only the latest of two sends to one client, so the mirror is never part of each', async () => {
+    const many = Array.from({ length: ROWS_PER_MESSAGE * 2 + 5 }, (_, i) => note(`n${i}`));
+    holder(channel, { notes: many, tags: [{ id: 't1', name: 'tax' }] });
+    const hk = hooks();
+    const attaching = attach(hk);
+    const hellos = () => channel.posted.filter((m): m is Extract<Message, { type: 'hello' }> => m.type === 'hello');
+    // The first chunk has gone out; the client asks again, past the holder's dedupe
+    // window, as one does whose first chunk is slow to arrive.
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(0);
+    vi.setSystemTime(Date.now() + HELLO_DEDUPE_MS + 1);
+    channel.port().post(hellos()[0]!);
+    await settle();
+    await settle();
+    const lib = await attaching;
+    open.push(lib);
+    expect(lib.notes.size).toBe(many.length);
+    expect(lib.tags.size).toBe(1);
+    expect(hk.attached).toBe(1);
+    // The first send stopped short; only the second said attached.
+    expect(channel.posted.filter((m) => m.type === 'attached')).toHaveLength(1);
+  });
+
   it('forwards the removal of a row that never changed since the holder began serving', async () => {
     const h = holder(channel, { notes: [note('n1'), note('n2')] });
     const lib = await client();
@@ -470,7 +493,7 @@ describe('a client of the holding tab', () => {
     const hellos = () => channel.posted.filter((m): m is Extract<Message, { type: 'hello' }> => m.type === 'hello');
     const me = hellos()[0]!.client;
     // A holder's rows start to arrive, and stop: the holder closed mid-send.
-    channel.port().post({ type: 'rows', holder: 'ghost', client: me, entity: 'note', rows: [] });
+    channel.port().post({ type: 'rows', holder: 'ghost', client: me, send: 1, entity: 'note', rows: [] });
     await settle();
     const before = hellos().length;
     await vi.advanceTimersByTimeAsync(HELLO_RETRY_MS * 3);
@@ -571,7 +594,7 @@ describe('a client of the holding tab', () => {
     ghost.post({ type: 'serving', holder: 'slow' });
     for (let i = 0; i < 4; i++) {
       await vi.advanceTimersByTimeAsync(ORPHANED_MS / 2);
-      ghost.post({ type: 'rows', holder: 'slow', client: me, entity: 'note', rows: [note(`n${i}`)] });
+      ghost.post({ type: 'rows', holder: 'slow', client: me, send: 1, entity: 'note', rows: [note(`n${i}`)] });
       await settle();
     }
     expect(hk.silent).toBe(0);

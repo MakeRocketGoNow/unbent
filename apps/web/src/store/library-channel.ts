@@ -93,9 +93,10 @@ export type ClientMessage =
 export type HolderMessage =
   /** A holder has started serving: every client says hello again, to it. */
   | { type: 'serving'; holder: string }
-  | { type: 'rows'; holder: string; client: string; entity: FeedEntity; rows: object[] }
+  /** `send` numbers the holder's sends to this client: a hello answered while one is on its way starts another, and the client keeps only the latest. */
+  | { type: 'rows'; holder: string; client: string; send: number; entity: FeedEntity; rows: object[] }
   /** The rows are all sent; what else the client mirrors, as it stands now. */
-  | { type: 'attached'; holder: string; client: string; state: FeedState; status: SyncStatus; keep: KeepStatus }
+  | { type: 'attached'; holder: string; client: string; send: number; state: FeedState; status: SyncStatus; keep: KeepStatus }
   /** The changes of one task of the holder's, by collection, and the query roots they reach (`rootsOfNoteChanges`). */
   | { type: 'changes'; holder: string; batches: Array<{ entity: FeedEntity; changes: RowChange[] }>; roots: string[] }
   | { type: 'state'; holder: string; state: FeedState }

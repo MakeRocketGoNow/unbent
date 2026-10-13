@@ -98,25 +98,35 @@ export function serveLibrary(port: Port, lib: Serving, holder: string): Server {
   const anyone = () => clients.size > 0;
   /** When each client was last sent the rows. */
   const answered = new Map<string, number>();
+  /**
+   * Each client's latest send, numbered. A send is a chunk a task, so a hello that
+   * arrives while one is on its way — a client that asked again before the first chunk
+   * reached it — starts a second, and the two would otherwise interleave; the earlier
+   * one stops, and its number tells the client which chunks to keep.
+   */
+  const sends = new Map<string, number>();
   const hello = async (client: string) => {
     clients.add(client);
     const now = Date.now();
     if (now - (answered.get(client) ?? -Infinity) < HELLO_DEDUPE_MS) return;
     answered.set(client, now);
+    const send = (sends.get(client) ?? 0) + 1;
+    sends.set(client, send);
+    const superseded = () => stopped || sends.get(client) !== send;
     await Promise.all([collections.notes.preload(), collections.notebooks.preload(), collections.tags.preload(), collections.attachments.preload()]);
-    if (stopped) return;
+    if (superseded()) return;
     // The snapshot now, as references; the clone happens in each post, one chunk a task.
     const snapshot = Object.entries(entities).map(([entity, collection]) => [entity as keyof typeof entities, [...collection.values()] as object[]] as const);
     for (const [entity, rows] of snapshot) {
       // A collection with no rows still names itself, so the client holds an empty map for it.
       for (let at = 0; at < Math.max(rows.length, 1); at += ROWS_PER_MESSAGE) {
-        if (stopped) return;
-        port.post({ type: 'rows', holder, client, entity, rows: rows.slice(at, at + ROWS_PER_MESSAGE) });
+        if (superseded()) return;
+        port.post({ type: 'rows', holder, client, send, entity, rows: rows.slice(at, at + ROWS_PER_MESSAGE) });
         await new Promise((r) => setTimeout(r, 0));
       }
     }
-    if (stopped) return;
-    port.post({ type: 'attached', holder, client, state: lib.state(), status: lib.outbox.status(), keep: lib.keeper.status() });
+    if (superseded()) return;
+    port.post({ type: 'attached', holder, client, send, state: lib.state(), status: lib.outbox.status(), keep: lib.keeper.status() });
   };
 
   const onMessage = (message: Message) => {
@@ -126,6 +136,7 @@ export function serveLibrary(port: Port, lib: Serving, holder: string): Server {
     if (m.type === 'bye') {
       clients.delete(m.client);
       answered.delete(m.client);
+      sends.delete(m.client);
       port.forget(m.client);
       return;
     }
