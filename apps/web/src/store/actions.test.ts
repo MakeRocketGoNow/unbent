@@ -668,8 +668,8 @@ describe('saves of one note', () => {
     const refused = actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), body: 'typed' }, base, origin: 'B' });
     await expect(refused).rejects.toBeInstanceOf(NoteChangedError);
     // Keep mine: the body is B's, the title B never touched is A's, and one save waits.
-    const theirs = (await refused.catch((e: NoteChangedError) => e)).current;
-    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), body: 'typed' }, base, against: theirs.updatedAt, origin: 'B' });
+    const theirs = (await refused.catch((e: NoteChangedError) => e)) as NoteChangedError;
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), body: 'typed' }, base, against: theirs.current.updatedAt, origin: 'B' });
     await tick();
     expect(lib.notes.get('n1')).toMatchObject({ title: 'renamed', body: 'typed' });
     expect(lib.outbox.status().pending).toBe(1);
