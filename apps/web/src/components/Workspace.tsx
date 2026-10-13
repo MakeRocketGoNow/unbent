@@ -585,9 +585,10 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       // The server answered the save itself — no local copy, or a note the copy does
       // not hold yet — so no acknowledgement follows, and the answer is taken here as it
       // is there. A client tab's save is queued on the holder and comes back
-      // `'queued'`, with the acknowledgement mirrored from there. Nothing typed since: a reseed, whose new reset key re-arms the autosave's
-      // baseline. A rebase alone would leave the baseline at what was sent, read the
-      // answer's changes as an edit, and wipe "Saved" with a save that finds nothing.
+      // `'queued'`, with the acknowledgement mirrored from there. Nothing typed since:
+      // a reseed, whose new reset key re-arms the autosave's baseline. A rebase alone
+      // would leave the baseline at what was sent, read the answer's changes as an
+      // edit, and wipe "Saved" with a save that finds nothing.
       // "Typed since" goes by identity, not content: a keystroke typed and taken back is
       // equal to what was sent but already the autosave's pending value, and only a
       // rebase replaces that with the answer's tags and notebook before it goes out.
