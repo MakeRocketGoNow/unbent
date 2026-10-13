@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createCollection, type Collection } from '@tanstack/db';
 import { QueryClient } from '@tanstack/react-query';
-import type { FeedEntity, FeedNote, FeedPage, Note } from '@unbent/shared';
+import type { FeedEntity, FeedNote, FeedNotebook, FeedPage, FieldDef, Note } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { ApiError, NoteChangedError, OfflineError } from '../notes-api.js';
 import { resetConnectivity, setReachableForTests } from '../connectivity.js';
@@ -232,6 +232,19 @@ function collection<T extends object>(seed: T[], keyOf: (row: T) => string): { c
 
 const row = (id: string, over: Partial<FeedNote> = {}): LocalNote => ({ id, title: id, body: '', createdAt: 1, updatedAt: 100, tagIds: [], notebookId: null, files: [], ...over });
 
+const amount: FieldDef = {
+  id: '11111111-1111-1111-1111-111111111111',
+  notebookId: 'nb1',
+  name: 'Amount',
+  type: 'number',
+  options: [],
+  scale: null,
+  currency: null,
+  position: 0,
+};
+
+const receipts: FeedNotebook = { id: 'nb1', name: 'Receipts', purpose: null, emoji: null, fieldDefs: [amount] };
+
 /** The server's copy as the feed would deliver it. */
 const delivered = (lib: WritableLibrary, feed: Controls<LocalNote>, note: LocalNote) => {
   feed.begin();
@@ -239,9 +252,9 @@ const delivered = (lib: WritableLibrary, feed: Controls<LocalNote>, note: LocalN
   feed.commit();
 };
 
-function library(notes: LocalNote[]) {
+function library(notes: LocalNote[], notebooks: FeedNotebook[] = []) {
   const n = collection(notes, (r) => r.id);
-  const nb = collection<{ id: string }>([], (r) => r.id);
+  const nb = collection(notebooks, (r) => r.id);
   const t = collection<{ id: string }>([], (r) => r.id);
   const a = collection<{ id: string }>([], (r) => r.id);
   const s = collection<{ id: string }>([], (r) => r.id);
@@ -869,6 +882,27 @@ describe('a tab that does not hold the outbox', () => {
     expect(lib.notes.get('n1')?.title).toBe('old');
     expect(lib.outbox.status()).toMatchObject({ pending: 0, durable: false });
   });
+
+  it('sends a newly typed field, reading the type from the library this tab still holds', async () => {
+    // A second tab does not queue, but it has the notebook's definitions. Passing none
+    // used to skip Amount as a leftover id, so the autosave reported "Saved" and the
+    // number existed nowhere but the draft — gone on the next open.
+    const { fake, note } = library([row('n1', { title: 'old', notebookId: 'nb1' })], [receipts]);
+    fake.lead(false);
+    const base = note('n1');
+    vi.mocked(api.updateNote).mockResolvedValueOnce({
+      ...base,
+      fields: [{ fieldId: amount.id, name: 'Amount', type: 'number', value: 12.5, notebookId: 'nb1', notebook: 'Receipts' }],
+      updatedAt: 101,
+    });
+    await actions.saveNote({
+      noteId: 'n1',
+      value: { ...seedFrom(base), fields: { [amount.id]: 12.5 } },
+      base,
+    });
+    expect(api.updateNote).toHaveBeenCalledWith('n1', { fields: { [amount.id]: 12.5 }, ifUpdatedAt: 100 });
+    expect(fake.queue).toHaveLength(0);
+  });
 });
 
 describe('the no-library path', () => {
@@ -896,14 +930,34 @@ describe('the no-library path', () => {
     expect(out).toMatchObject({ title: 'new' });
     expect(api.updateNote).toHaveBeenCalledWith('n1', { title: 'new', ifUpdatedAt: 100 });
   });
+
+  it('sends a newly typed field from the definitions the editor already loaded', async () => {
+    // No OPFS on this device, so there is no library to read types from. The editor
+    // still has them (`rememberFieldDefs`); without them Amount was skipped and the
+    // title saved alone, then the reseed from that answer wiped the draft's number.
+    provideLibrary(async () => null);
+    const base: Note = { id: 'n1', title: 'old', body: '', tags: [], notebook: 'Receipts', createdAt: 1, updatedAt: 100, fields: [] };
+    vi.mocked(api.updateNote).mockResolvedValue({ ...base, title: 'Invoice', updatedAt: 101 });
+    await actions.saveNote({
+      noteId: 'n1',
+      value: { ...seedFrom(base), title: 'Invoice', fields: { [amount.id]: 12.5 } },
+      base,
+      definitions: [amount],
+    });
+    expect(api.updateNote).toHaveBeenCalledWith('n1', {
+      title: 'Invoice',
+      fields: { [amount.id]: 12.5 },
+      ifUpdatedAt: 100,
+    });
+  });
 });
 
 describe('a note the copy does not hold yet', () => {
   const missing: Note = { id: 'n-missing', title: 'old', body: '', tags: [], notebook: null, createdAt: 1, updatedAt: 100, fields: [] };
 
   /** A library whose first copy is still walking: no snapshot has been taken. */
-  function copying(notes: LocalNote[]) {
-    const out = library(notes);
+  function copying(notes: LocalNote[], notebooks: FeedNotebook[] = []) {
+    const out = library(notes, notebooks);
     out.engine.state.cursor = null;
     return out;
   }
@@ -923,6 +977,29 @@ describe('a note the copy does not hold yet', () => {
     expect(api.updateNote).toHaveBeenCalledWith(missing.id, { title: 'new', ifUpdatedAt: 100 });
     expect(fake.queue).toHaveLength(0);
     expect(engine.pull).toHaveBeenCalled();
+  });
+
+  it('sends a newly typed field on that request, from the library’s definitions', async () => {
+    // The note came from the server during the first walk; the notebook's definitions
+    // can already be here. Skipping them used to save the title and drop Amount.
+    const { fake } = copying([], [receipts]);
+    vi.mocked(api.updateNote).mockResolvedValue({
+      ...missing,
+      title: 'new',
+      fields: [{ fieldId: amount.id, name: 'Amount', type: 'number', value: 12.5, notebookId: 'nb1', notebook: 'Receipts' }],
+      updatedAt: 101,
+    });
+    await actions.saveNote({
+      noteId: missing.id,
+      value: { ...seedFrom(missing), title: 'new', fields: { [amount.id]: 12.5 } },
+      base: missing,
+    });
+    expect(api.updateNote).toHaveBeenCalledWith(missing.id, {
+      title: 'new',
+      fields: { [amount.id]: 12.5 },
+      ifUpdatedAt: 100,
+    });
+    expect(fake.queue).toHaveLength(0);
   });
 
   it('trashes, restores and purges it as a request', async () => {

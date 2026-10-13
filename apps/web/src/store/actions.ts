@@ -161,8 +161,13 @@ export interface WritableLibrary extends Collections {
  * A save: the whole draft, the copy it is diffed against for the patch, and, for "Keep
  * mine", the date to precondition on instead of the base's — the other device's copy,
  * so the patch is still only what was typed here and lands on top of theirs.
+ *
+ * `definitions` is what the editor has already loaded (`rememberFieldDefs`). A request-
+ * path save has no stored row for a first-time value, so the patch can encode it only
+ * from a type; the queued path reads the library's set and does not need this. Empty is
+ * "not yet", not "none".
  */
-type Save = { noteId: string; value: NoteDraft; base: Note; against?: number };
+type Save = { noteId: string; value: NoteDraft; base: Note; against?: number; definitions?: FieldDef[] };
 
 /** The key a conflict is kept under in the outbox's storage; its entries are the `tx:` keys. */
 const conflictKey = (noteId: string) => `conflict:${noteId}`;
@@ -986,9 +991,29 @@ function split(lib: WritableLibrary, ids: string[]): { here: string[]; there: st
   return { here, there };
 }
 
+/**
+ * Field types a request-path save can encode a first-time value from.
+ *
+ * `buildNotePatch` skips a value that has no stored row and no definition, treating it
+ * as a leftover id so a stale draft key cannot 400 the rest of the save. This path
+ * used to pass `undefined` even when the tab held a library — it just did not hold the
+ * outbox — so filling Amount for the first time in a second tab, or on a note opened
+ * during the first copy, reported "Saved" and left the number nowhere. The queued path
+ * already reads the library's definitions; this one does too, and takes any the editor
+ * has already loaded when there is no library at all.
+ *
+ * The editor's list first: it accumulates across notebook changes (`rememberFieldDefs`).
+ * Empty is "not yet", so the library's own set still has a say.
+ */
+function definitionsFor(lib: WritableLibrary | null, handed?: FieldDef[]): FieldDef[] | undefined {
+  if (handed && handed.length > 0) return handed;
+  if (lib) return [...lookups(snapshot(lib)).fieldDefs.values()];
+  return undefined;
+}
+
 /** The save as a request: no local row to change, or a tab that does not queue. */
 async function saveViaRequest(input: Save): Promise<'unchanged' | Note> {
-  const patch = buildNotePatch(input.value, input.base, undefined);
+  const patch = buildNotePatch(input.value, input.base, definitionsFor(await resolve(), input.definitions));
   if (!patch) return 'unchanged';
   const refiles = patch.notebook !== undefined || patch.tags !== undefined;
   return pulled(
