@@ -149,6 +149,9 @@ function standDown(): void {
   if (!elsewhere) return;
   elsewhere.waiting.abort();
   elsewhere = null;
+  // The status line follows this: a wipe heard from another tab clears it with no
+  // library open, and `closeStep` tells the hooks only for a library.
+  libraryChanged();
 }
 
 /**
