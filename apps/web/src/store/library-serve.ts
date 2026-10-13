@@ -80,14 +80,24 @@ export function serveLibrary(port: Port, lib: Serving): Server {
     }
     if (scope === 'keeper' && method && KEEPER_CALLS.has(method)) return (lib.keeper[method as 'keep'] as (...a: unknown[]) => unknown)(...args);
     if (scope === 'outbox' && method && OUTBOX_CALLS.has(method)) return (lib.outbox[method as 'cancelUpload'] as (...a: unknown[]) => unknown)(...args);
-    const action = forwardable[name];
-    if (!action) throw new Error(`No such call: ${name}`);
-    return action(...(args as never[]));
+    if (!Object.hasOwn(forwardable, name)) throw new Error(`No such call: ${name}`);
+    const action = forwardable[name as keyof typeof forwardable] as (...a: unknown[]) => Promise<unknown>;
+    return action(...args);
   };
 
+  /**
+   * The clients attached, by their hellos and byes. With none, nothing is forwarded:
+   * `postMessage` clones in the sender whether or not anyone listens, and one tab is
+   * the usual case, so a holder alone would otherwise clone every feed page of a first
+   * copy and every autosave for nobody. A client whose page went without a bye is
+   * counted until the holder closes, which costs what every holder cost before.
+   */
+  const clients = new Set<string>();
+  const anyone = () => clients.size > 0;
   /** When each client was last sent the rows. */
   const answered = new Map<string, number>();
   const hello = async (client: string) => {
+    clients.add(client);
     const now = Date.now();
     if (now - (answered.get(client) ?? -Infinity) < HELLO_DEDUPE_MS) return;
     answered.set(client, now);
@@ -108,6 +118,7 @@ export function serveLibrary(port: Port, lib: Serving): Server {
     if (stopped) return;
     const m = message as ClientMessage;
     if (m.type === 'hello') return void hello(m.client);
+    if (m.type === 'bye') return void clients.delete(m.client);
     if (m.type === 'ping') return port.post({ type: 'pong', holder, client: m.client });
     if (m.type === 'call') {
       // Answered even after `stop`: a call that was running when this holder began to
@@ -132,6 +143,7 @@ export function serveLibrary(port: Port, lib: Serving): Server {
   /** Forwards one collection's changes as they are reported, less what the client does not read. */
   const forwarding = <T extends object>(entity: keyof typeof entities, collection: Collection<T, string>) => {
     const subscription = collection.subscribeChanges((changes) => {
+      if (!anyone()) return;
       const roots = entity === 'note' ? rootsOfNoteChanges(changes) : LIBRARY_ROOTS;
       port.post({
         type: 'changes',
@@ -150,17 +162,17 @@ export function serveLibrary(port: Port, lib: Serving): Server {
     forwarding('notebook', collections.notebooks),
     forwarding('tag', collections.tags),
     forwarding('attachment', collections.attachments),
-    lib.onState((state) => port.post({ type: 'state', holder, state })),
-    lib.outbox.subscribe((status) => port.post({ type: 'status', holder, status })),
-    lib.outbox.onAcknowledged((noteId, note, sent) => port.post({ type: 'acknowledged', holder, noteId, note, sent })),
-    lib.keeper.subscribe((status) => port.post({ type: 'keep', holder, status })),
+    lib.onState((state) => anyone() && port.post({ type: 'state', holder, state })),
+    lib.outbox.subscribe((status) => anyone() && port.post({ type: 'status', holder, status })),
+    lib.outbox.onAcknowledged((noteId, note, sent) => anyone() && port.post({ type: 'acknowledged', holder, noteId, note, sent })),
+    lib.keeper.subscribe((status) => anyone() && port.post({ type: 'keep', holder, status })),
   ];
 
   port.post({ type: 'serving', holder });
 
   return {
-    indexed: () => port.post({ type: 'indexed', holder }),
-    reset: () => port.post({ type: 'reset', holder }),
+    indexed: () => anyone() && port.post({ type: 'indexed', holder }),
+    reset: () => anyone() && port.post({ type: 'reset', holder }),
     stop: () => {
       if (stopped) return;
       stopped = true;
