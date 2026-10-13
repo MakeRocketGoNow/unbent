@@ -1,8 +1,7 @@
 import { foldNoCase, toFtsQuery, type SearchResult, type SearchResultRow } from '@unbent/shared';
 import { lookups as buildLookups, matches, tagNames, toSummary, type ListFilter, type LocalNote, type Lookups, type Snapshot } from './derive.js';
 import type { LocalAttachment } from './collections.js';
-import { SHED, type Entry, type Kind } from './search-index.js';
-import type { SearchReader } from './client-library.js';
+import { SHED, type Entry, type Kind, type SearchReader } from './search-index.js';
 
 /**
  * A search answered on the device: the server's `search`, with the library's rows doing

@@ -4,7 +4,8 @@ import type { FeedState } from './feed.js';
 import type { LocalAttachment, LocalNote } from './collections.js';
 import type { Outbox, SyncStatus } from './actions.js';
 import type { KeepStatus, Keeper } from './keep.js';
-import type { SearchIndex } from './search-index.js';
+import type { SearchReader } from './search-index.js';
+import type { ReadableLibrary } from './library.js';
 import { revive, type HolderMessage, type Message, type Port } from './library-channel.js';
 
 /**
@@ -101,9 +102,6 @@ export interface Rows<T> {
 /** The outbox as a component sees it: `useOutbox` in `use-outbox.ts`. The holder's outbox has the rest. */
 export type OutboxView = Pick<Outbox, 'status' | 'subscribe' | 'onAcknowledged' | 'resolveConflict' | 'dismissUploadNotices' | 'cancelUpload'>;
 
-/** What a search asks of the index (`searchLocal`): the holder's index answers it, and so does the client's proxy to it. */
-export type SearchReader = Pick<SearchIndex, 'candidates' | 'snippets' | 'meta' | 'held'>;
-
 export interface ClientLibrary {
   readonly remote: true;
   userId: string;
@@ -116,7 +114,7 @@ export interface ClientLibrary {
   subscribe: (listener: (state: FeedState) => void) => () => void;
   outbox: OutboxView;
   keeper: Keeper;
-  search: { index: SearchReader; sync: { opened: (noteId: string) => Promise<void> } };
+  search: NonNullable<ReadableLibrary['search']>;
   searchReady: Promise<void>;
   /** Whether a holder is serving this tab now. */
   attached: () => boolean;
