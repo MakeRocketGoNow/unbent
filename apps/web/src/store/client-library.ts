@@ -2,11 +2,13 @@ import type { FeedNotebook, FeedTag, Note } from '@unbent/shared';
 import type { NoteDraft } from '../note-patch.js';
 import type { FeedState } from './feed.js';
 import type { LocalAttachment, LocalNote } from './collections.js';
-import type { Outbox, SyncStatus } from './actions.js';
+import type { forwardable, Outbox, SyncStatus } from './actions.js';
 import type { KeepStatus, Keeper } from './keep.js';
 import type { SearchReader } from './search-index.js';
 import type { ReadableLibrary } from './library.js';
-import { revive, type HolderMessage, type Message, type Port, type RowChange } from './library-channel.js';
+import { revive, type HolderCall, type HolderMessage, type Message, type Port, type RowChange } from './library-channel.js';
+/** Everything a client may ask the holder by name: an action, or one of the holder's own (`HOLDER_CALLS`). */
+export type CallName = keyof typeof forwardable | HolderCall;
 
 /**
  * An account's library as a tab that does not hold it sees it: the holder's rows,
@@ -146,7 +148,7 @@ export interface ClientLibrary {
   searchReady: Promise<void>;
   /** Whether a holder is serving this tab now. */
   attached: () => boolean;
-  call: (name: string, args: unknown[]) => Promise<unknown>;
+  call: (name: CallName, args: unknown[]) => Promise<unknown>;
   close: () => Promise<void>;
 }
 
@@ -434,7 +436,7 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
   };
   const stopListening = port.listen(onMessage);
 
-  const call = (name: string, args: unknown[]): Promise<unknown> => {
+  const call = (name: CallName, args: unknown[]): Promise<unknown> => {
     if (closed) return Promise.reject(new LibraryMovedError(false));
     return new Promise((resolve, reject) => {
       const id = nextId++;

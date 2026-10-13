@@ -336,7 +336,7 @@ describe('a client of the holding tab', () => {
     await settle();
     await expect(answer).rejects.toBeInstanceOf(NoteChangedError);
     await expect(answer).rejects.toMatchObject({ current: { title: 'theirs' } });
-    const unknown = lib.call('noSuchThing', []);
+    const unknown = lib.call('noSuchThing' as never, []);
     unknown.catch(() => {});
     await settle();
     await expect(unknown).rejects.toThrow('No such call: noSuchThing');
@@ -369,7 +369,7 @@ describe('a client of the holding tab', () => {
     expect(h.outbox.resolveConflict).toHaveBeenCalledWith('n1');
     expect(h.outbox.dismissUploadNotices).toHaveBeenCalledWith('n1');
     // The index's writes are the holder's sync's, not a client's to ask for.
-    const put = lib.call('index.put', ['note', []]);
+    const put = lib.call('index.put' as never, ['note', []]);
     put.catch(() => {});
     await settle();
     await expect(put).rejects.toThrow('No such call: index.put');

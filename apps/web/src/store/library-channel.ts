@@ -57,6 +57,28 @@ export interface Carried {
   current?: Note;
 }
 
+/**
+ * What a client may ask of the holder besides the actions in `forwardable`
+ * (`actions.ts`): the four reads a search makes of the index, a note opened for the
+ * index to want its files' text, keeping a notebook, and the three things a component
+ * asks the outbox. One list, typed, so a name that is not here is a compile error on
+ * the client rather than `No such call` on the holder.
+ */
+export const HOLDER_CALLS = [
+  'index.candidates',
+  'index.snippets',
+  'index.meta',
+  'index.held',
+  'search.opened',
+  'keeper.keep',
+  'keeper.release',
+  'keeper.releaseAll',
+  'outbox.resolveConflict',
+  'outbox.dismissUploadNotices',
+  'outbox.cancelUpload',
+] as const;
+export type HolderCall = (typeof HOLDER_CALLS)[number];
+
 export type ClientMessage =
   /** A tab that wants the rows: the holder answers with `rows` then `attached`, to it alone. */
   | { type: 'hello'; client: string }

@@ -6,7 +6,7 @@ import type { FeedState } from './feed.js';
 import type { Keeper } from './keep.js';
 import type { SearchIndex } from './search-index.js';
 import type { SearchSync } from './search-sync.js';
-import { carry, type ClientMessage, type Message, type Port, type RowChange } from './library-channel.js';
+import { carry, HOLDER_CALLS, type ClientMessage, type HolderCall, type Message, type Port, type RowChange } from './library-channel.js';
 import { LIBRARY_ROOTS, rootsOfNoteChanges } from './library-roots.js';
 
 /**
@@ -58,9 +58,7 @@ export interface Server {
   stop: () => void;
 }
 
-const INDEX_CALLS = new Set(['candidates', 'snippets', 'meta', 'held']);
-const KEEPER_CALLS = new Set(['keep', 'release', 'releaseAll']);
-const OUTBOX_CALLS = new Set(['resolveConflict', 'dismissUploadNotices', 'cancelUpload']);
+const holderCalls: ReadonlySet<string> = new Set(HOLDER_CALLS);
 
 export function serveLibrary(port: Port, lib: Serving): Server {
   const holder = crypto.randomUUID();
@@ -69,19 +67,21 @@ export function serveLibrary(port: Port, lib: Serving): Server {
   let stopped = false;
 
   const run = async (name: string, args: unknown[], client: string): Promise<unknown> => {
-    const [scope, method] = name.split('.', 2);
-    if (scope === 'index' && method && INDEX_CALLS.has(method)) {
-      await lib.searchReady;
-      const search = lib.search();
-      if (!search) throw new OfflineError();
-      return (search.index[method as 'candidates'] as (...a: unknown[]) => unknown)(...args);
+    if (holderCalls.has(name)) {
+      const [scope, method] = (name as HolderCall).split('.') as [string, string];
+      if (scope === 'index') {
+        await lib.searchReady;
+        const search = lib.search();
+        if (!search) throw new OfflineError();
+        return (search.index[method as 'candidates'] as (...a: unknown[]) => unknown)(...args);
+      }
+      if (scope === 'search') {
+        await lib.searchReady;
+        return lib.search()?.sync.opened(args[0] as string);
+      }
+      if (scope === 'keeper') return (lib.keeper[method as 'keep'] as (...a: unknown[]) => unknown)(...args);
+      return (lib.outbox[method as 'cancelUpload'] as (...a: unknown[]) => unknown)(...args);
     }
-    if (name === 'search.opened') {
-      await lib.searchReady;
-      return lib.search()?.sync.opened(args[0] as string);
-    }
-    if (scope === 'keeper' && method && KEEPER_CALLS.has(method)) return (lib.keeper[method as 'keep'] as (...a: unknown[]) => unknown)(...args);
-    if (scope === 'outbox' && method && OUTBOX_CALLS.has(method)) return (lib.outbox[method as 'cancelUpload'] as (...a: unknown[]) => unknown)(...args);
     if (!Object.hasOwn(forwardable, name)) throw new Error(`No such call: ${name}`);
     const action = forwardable[name as keyof typeof forwardable] as (...a: unknown[]) => Promise<unknown>;
     // A save says which tab it came from, so the outbox can tell two editors of one
