@@ -167,11 +167,6 @@ export interface WritableLibrary extends Collections {
 }
 
 /**
- * A save: the whole draft, the copy it is diffed against for the patch, and, for "Keep
- * mine", the date to precondition on instead of the base's — the other device's copy,
- * so the patch is still only what was typed here and lands on top of theirs.
- */
-/**
  * This tab, as the origin of the saves it makes: minted once per page, so a save made
  * here as a client and one made here as the holder are the same editor's, and a save
  * restored from the outbox by the next holder is still the tab's that made it. What
@@ -179,7 +174,13 @@ export interface WritableLibrary extends Collections {
  */
 export const TAB_ORIGIN: string = crypto.randomUUID();
 
-/** `origin` is the tab the save came from (`TAB_ORIGIN` there); a client sends its own with the call. */
+/**
+ * A save: the whole draft, the copy it is diffed against for the patch, and, for "Keep
+ * mine", the date to precondition on instead of the base's — the other device's copy,
+ * so the patch is still only what was typed here and lands on top of theirs. `origin`
+ * is the tab the save came from (`TAB_ORIGIN` there); a client sends its own with the
+ * call.
+ */
 type Save = { noteId: string; value: NoteDraft; base: Note; against?: number; origin?: string };
 
 /** The key a conflict is kept under in the outbox's storage; its entries are the `tx:` keys. */
