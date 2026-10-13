@@ -41,6 +41,14 @@ export class LibraryMovedError extends Error {
 
 /** How often a client without a holder says hello; a holder announces itself too, so this only covers one that was serving before the client opened. */
 export const HELLO_RETRY_MS = 2000;
+/**
+ * How long after the first of a holder's rows the client waits for `attached` before
+ * asking again. The asking stops the moment rows arrive — an archive is tens of
+ * megabytes, which a phone takes longer than `HELLO_RETRY_MS` to receive, and every
+ * hello sent meanwhile was answered with the whole library again — and only a send cut
+ * short, by a holder that closed mid-way, starts it again.
+ */
+export const ATTACH_STALL_MS = 15_000;
 
 /** What the queries read of a collection; the holder's TanStack collections answer it, and so do the client's maps. */
 export interface Rows<T> {
@@ -104,7 +112,8 @@ const starting: FeedState = { phase: 'starting', cursor: null, lastError: null, 
 const nothingWaiting: SyncStatus = { pending: 0, durable: false, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map() };
 const keepingNothing: KeepStatus = { supported: false, kept: new Set(), counted: false, wanted: { files: 0, bytes: 0 }, have: { files: 0, bytes: 0 }, fetching: false, problem: null };
 
-type Pending = { name: string; args: unknown[]; resolve: (value: unknown) => void; reject: (err: unknown) => void };
+/** A call in hand: what it asks, and which holder it has been sent to, so a holder that attaches this client twice is not asked twice. */
+type Pending = { name: string; args: unknown[]; sentTo: string | null; resolve: (value: unknown) => void; reject: (err: unknown) => void };
 
 /**
  * Joins the account's channel as a client and answers once a holder has sent its rows.
@@ -131,23 +140,31 @@ export function attachClientLibrary(userId: string, port: Port, hooks: ClientHoo
   let closed = false;
 
   let hello: ReturnType<typeof setInterval> | null = null;
+  let stall: ReturnType<typeof setTimeout> | null = null;
   const sayHello = () => port.post({ type: 'hello', client: me });
-  const keepAsking = () => {
-    if (hello || closed) return;
-    sayHello();
-    hello = setInterval(sayHello, HELLO_RETRY_MS);
-  };
   const stopAsking = () => {
     if (hello) clearInterval(hello);
     hello = null;
+    if (stall) clearTimeout(stall);
+    stall = null;
+  };
+  /** Says hello now and keeps saying it, once per `HELLO_RETRY_MS`, until a holder's rows arrive. */
+  const askNow = () => {
+    if (closed) return;
+    stopAsking();
+    sayHello();
+    hello = setInterval(sayHello, HELLO_RETRY_MS);
   };
 
-  const send = (id: number, p: Pending) => port.post({ type: 'call', client: me, id, name: p.name, args: p.args });
+  const send = (id: number, p: Pending) => {
+    p.sentTo = holder;
+    port.post({ type: 'call', client: me, id, name: p.name, args: p.args });
+  };
 
   const detach = () => {
     holder = null;
     incoming = null;
-    keepAsking();
+    askNow();
   };
 
   let attachedOnce = false;
@@ -164,16 +181,16 @@ export function attachClientLibrary(userId: string, port: Port, hooks: ClientHoo
     switch (m.type) {
       case 'serving':
         // A holder other than the one this tab is attached to: the one before it has
-        // gone, whether or not its `closing` arrived.
-        if (m.holder !== holder) {
-          detach();
-          sayHello();
-        }
+        // gone, whether or not its `closing` arrived. One hello, from `detach`.
+        if (m.holder !== holder) detach();
         return;
       case 'rows':
         if (m.client !== me) return;
         if (!incoming || incoming.holder !== m.holder) incoming = { holder: m.holder, maps: freshMaps() };
         for (const row of m.rows) incoming.maps[m.entity].rows.set((row as { id: string }).id, row as never);
+        // The rows are on their way: no more hellos, unless `attached` never follows.
+        stopAsking();
+        stall = setTimeout(askNow, ATTACH_STALL_MS);
         return;
       case 'attached': {
         if (m.client !== me) return;
@@ -190,7 +207,10 @@ export function attachClientLibrary(userId: string, port: Port, hooks: ClientHoo
         feedListeners.forEach((l) => l(feed));
         statusListeners.forEach((l) => l(status));
         keepListeners.forEach((l) => l(keep));
-        for (const [id, p] of pending) send(id, p);
+        // The calls in hand go to this holder — unless it has them already: a holder
+        // answers every hello, and a second hello reached it before this client heard
+        // the first answer.
+        for (const [id, p] of pending) if (p.sentTo !== m.holder) send(id, p);
         if (!attachedOnce) {
           attachedOnce = true;
           resolveAttach(lib);
@@ -258,7 +278,7 @@ export function attachClientLibrary(userId: string, port: Port, hooks: ClientHoo
     if (closed) return Promise.reject(new LibraryMovedError());
     return new Promise((resolve, reject) => {
       const id = nextId++;
-      const p = { name, args, resolve, reject };
+      const p: Pending = { name, args, sentTo: null, resolve, reject };
       pending.set(id, p);
       // Sent now when a holder is serving; else when the next one attaches.
       if (holder) send(id, p);
@@ -346,6 +366,6 @@ export function attachClientLibrary(userId: string, port: Port, hooks: ClientHoo
     close,
   };
 
-  if (!closed) keepAsking();
+  if (!closed) askNow();
   return attach;
 }

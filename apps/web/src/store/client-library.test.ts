@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createCollection, type Collection } from '@tanstack/db';
 import type { FeedNote, FeedNotebook, FeedTag, FeedAttachment } from '@unbent/shared';
 import { ApiError, NoteChangedError, OfflineError } from '../notes-api.js';
-import { attachClientLibrary, HELLO_RETRY_MS, LibraryMovedError, type ClientHooks, type ClientLibrary } from './client-library.js';
-import { serveLibrary, ROWS_PER_MESSAGE, type Serving, type Server } from './library-serve.js';
+import { attachClientLibrary, ATTACH_STALL_MS, HELLO_RETRY_MS, LibraryMovedError, type ClientHooks, type ClientLibrary } from './client-library.js';
+import { serveLibrary, HELLO_DEDUPE_MS, ROWS_PER_MESSAGE, type Serving, type Server } from './library-serve.js';
 import { carry, revive, type Message, type Port } from './library-channel.js';
 import { LIBRARY_ROOTS } from './library-roots.js';
 import { fakeChannel } from './test-channel.js';
@@ -377,6 +377,46 @@ describe('a client of the holding tab', () => {
     expect(lib.notes.size).toBe(2);
     expect(hk.attached).toBe(2);
     await expect(waiting).resolves.toBe('trashed n1');
+  });
+
+  it('sends a call in hand once to a holder that attaches it twice, and stops asking once rows arrive', async () => {
+    holder(channel.port(), { notes: [note('n1')] });
+    const lib = await client();
+    const hellos = () => channel.posted.filter((m) => m.type === 'hello');
+    const attachedTimes = () => channel.posted.filter((m) => m.type === 'attached').length;
+    expect(hellos()).toHaveLength(1);
+    expect(attachedTimes()).toBe(1);
+    // A second hello from this client reaches the holder — one sent before the first
+    // answer arrived, say — once the holder's dedupe window has passed.
+    vi.setSystemTime(Date.now() + HELLO_DEDUPE_MS + 1);
+    const waiting = lib.call('trashNote', ['n1']);
+    channel.port().post(hellos()[0]!);
+    await settle();
+    await settle();
+    expect(attachedTimes()).toBe(2);
+    await expect(waiting).resolves.toBe('trashed n1');
+    expect(forwardable.trashNote).toHaveBeenCalledTimes(1);
+    // And one inside the window is not answered at all.
+    channel.port().post(hellos()[0]!);
+    await settle();
+    expect(attachedTimes()).toBe(2);
+  });
+
+  it('asks again only when a holder’s rows stop short of attached', async () => {
+    const halting = new AbortController();
+    const attaching = attachClientLibrary('u1', channel.port(), hooks(), halting.signal);
+    attaching.catch(() => {});
+    const hellos = () => channel.posted.filter((m): m is Extract<Message, { type: 'hello' }> => m.type === 'hello');
+    const me = hellos()[0]!.client;
+    // A holder's rows start to arrive, and stop: the holder closed mid-send.
+    channel.port().post({ type: 'rows', holder: 'ghost', client: me, entity: 'note', rows: [] });
+    await settle();
+    const before = hellos().length;
+    await vi.advanceTimersByTimeAsync(HELLO_RETRY_MS * 3);
+    expect(hellos()).toHaveLength(before);
+    await vi.advanceTimersByTimeAsync(ATTACH_STALL_MS);
+    expect(hellos().length).toBeGreaterThan(before);
+    halting.abort();
   });
 
   it('attaches to a new holder that announces itself while the old one never said it was closing', async () => {

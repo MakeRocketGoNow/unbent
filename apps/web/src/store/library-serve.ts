@@ -29,6 +29,13 @@ import { LIBRARY_ROOTS, rootsOfNoteChanges } from './library-roots.js';
 
 /** How many rows one `rows` message carries; a message per chunk keeps each clone short. */
 export const ROWS_PER_MESSAGE = 1000;
+/**
+ * A hello from a client that was answered this recently is not answered again. A client
+ * says hello every `HELLO_RETRY_MS` until rows arrive, and two of its hellos can be in
+ * the holder's queue before the first answer has left; the whole library twice is the
+ * one thing a phone must not be sent.
+ */
+export const HELLO_DEDUPE_MS = 1000;
 
 export interface Serving {
   collections: Collections;
@@ -78,7 +85,12 @@ export function serveLibrary(port: Port, lib: Serving): Server {
     return action(...(args as never[]));
   };
 
+  /** When each client was last sent the rows. */
+  const answered = new Map<string, number>();
   const hello = async (client: string) => {
+    const now = Date.now();
+    if (now - (answered.get(client) ?? -Infinity) < HELLO_DEDUPE_MS) return;
+    answered.set(client, now);
     await Promise.all([collections.notes.preload(), collections.notebooks.preload(), collections.tags.preload(), collections.attachments.preload()]);
     if (stopped) return;
     for (const [entity, collection] of Object.entries(entities)) {
