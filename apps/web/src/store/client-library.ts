@@ -400,7 +400,22 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
       // The channel is closed.
     }
   };
-  if (typeof window !== 'undefined') window.addEventListener('pagehide', sayBye);
+  /**
+   * A page restored from the back/forward cache said bye on its way in: the holder
+   * stopped counting it, and forwards nothing while it is the only client. Said hello
+   * again, it is counted again and sent the rows it missed. Whether a browser keeps a
+   * page with an open channel and a queued lock request in that cache is not known; the
+   * listener costs nothing if none does.
+   */
+  const onShow = (event: PageTransitionEvent) => {
+    if (!event.persisted || closed) return;
+    said = false;
+    detach();
+  };
+  if (typeof window !== 'undefined') {
+    window.addEventListener('pagehide', sayBye);
+    window.addEventListener('pageshow', onShow);
+  }
 
   const close = async () => {
     if (closed) return;
@@ -410,7 +425,10 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
     stopOrphanWatch();
     stopListening();
     halting.removeEventListener('abort', onHalt);
-    if (typeof window !== 'undefined') window.removeEventListener('pagehide', sayBye);
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('pagehide', sayBye);
+      window.removeEventListener('pageshow', onShow);
+    }
     sayBye();
     port.close();
     for (const p of pending.values()) p.reject(new LibraryMovedError());
