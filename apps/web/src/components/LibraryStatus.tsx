@@ -1,8 +1,5 @@
 import { useLibraryArriving } from '../store/use-feed-state.js';
 
-/** What Open here does to the tab it takes the library from, said on the button where it is drawn (Settings → Offline). */
-export const OPEN_HERE_TIP = 'Moves your notes to this tab. The other tab or window keeps working, through this one.';
-
 /**
  * One line while the library is still arriving on this device: while the store opens,
  * and then while the notes are copied for the first time. An archive is thousands of
@@ -20,8 +17,7 @@ export const OPEN_HERE_TIP = 'Moves your notes to this tab. The other tab or win
  * where a second tab could neither read nor save. Now a tab that does not hold the
  * library is the holder's client and works as the holder does, offline included
  * (`store/client-library.ts`), so there is nothing for the chrome to say; Settings →
- * Offline still says which tab holds the file and offers to bring it here, with
- * `OPEN_HERE_TIP` on the button.
+ * Offline still says which tab holds the file and offers to bring it here.
  */
 export function LibraryStatus() {
   const arriving = useLibraryArriving();
