@@ -29,11 +29,16 @@ import { libraryChannelName } from './names.js';
  * back under the call's id, with the failure's class carried across (`carry`, `revive`),
  * since the workspace tells a refused precondition from a lost connection by class.
  *
- * A BroadcastChannel, not a MessagePort: a port cannot be sent over a BroadcastChannel,
+ * BroadcastChannels, not a MessagePort: a port cannot be sent over a BroadcastChannel,
  * and the only other way to one is a worker, which is the thing Android has not got.
- * So every tab hears every message, and the ones meant for one client name it; what is
- * not for this tab is dropped on arrival, before any of its rows are read. The cost of
- * that is the clone the browser makes for each listener, paid once per tab per attach.
+ * One channel is the account's, which every tab of the account listens on: hellos,
+ * calls, pings and the holder's announcements, and the changes and statuses every
+ * client wants. What is for one client alone — its rows, which are the whole library,
+ * its `attached`, its answers and its pongs — goes on a channel named for that client,
+ * which it alone listens on. A browser decodes a message in every tab that listens
+ * before any of them can drop it, so the library sent on the shared channel would have
+ * been decoded by every tab of the account, tens of megabytes each, whenever any one of
+ * them reloaded.
  *
  * Why not TanStack DB's own cross-tab paths, or wa-sqlite's cooperative access handle,
  * which are still underneath: they are what wedged before one tab held the library
@@ -82,33 +87,63 @@ export type HolderMessage =
 
 export type Message = ClientMessage | HolderMessage;
 
-/** One end of the account's channel, as both sides use it. */
+/** One end of the account's channels, as both sides use it. */
 export interface Port {
+  /** Posts to the account's channel, or, for a message that is one client's alone, to that client's. */
   post: (message: Message) => void;
-  /** Hears every message other tabs post; never this tab's own. */
+  /** Hears every message other tabs post for this tab; never this tab's own. */
   listen: (handler: (message: Message) => void) => () => void;
   close: () => void;
 }
 
-/** The account's channel in this tab, or null in a browser without BroadcastChannel, where there is nothing to join. */
-export function openPort(userId: string): Port | null {
+/** The messages that go to one client's channel rather than the account's. */
+export const PRIVATE: ReadonlySet<Message['type']> = new Set<Message['type']>(['rows', 'attached', 'answer', 'pong']);
+
+/** The channel one client alone listens on. */
+export const clientChannelName = (userId: string, clientId: string) => `${libraryChannelName(userId)}-${clientId}`;
+
+/**
+ * The account's channels in this tab — and, given this tab's client id, the one for it
+ * alone — or null in a browser without BroadcastChannel, where there is nothing to
+ * join. A holder opens a client's channel the first time it posts to that client and
+ * keeps it until it closes.
+ */
+export function openPort(userId: string, clientId?: string): Port | null {
   if (typeof BroadcastChannel === 'undefined') return null;
-  const channel = new BroadcastChannel(libraryChannelName(userId));
   const handlers = new Set<(message: Message) => void>();
-  channel.onmessage = (event: MessageEvent<Message>) => {
+  const hear = (event: MessageEvent<Message>) => {
     const message = event.data;
     if (!message || typeof message !== 'object' || typeof message.type !== 'string') return;
     handlers.forEach((h) => h(message));
   };
+  const shared = new BroadcastChannel(libraryChannelName(userId));
+  shared.onmessage = hear;
+  const own = clientId ? new BroadcastChannel(clientChannelName(userId, clientId)) : null;
+  if (own) own.onmessage = hear;
+  const clients = new Map<string, BroadcastChannel>();
+  const to = (id: string) => {
+    let channel = clients.get(id);
+    if (!channel) {
+      channel = new BroadcastChannel(clientChannelName(userId, id));
+      clients.set(id, channel);
+    }
+    return channel;
+  };
   return {
-    post: (message) => channel.postMessage(message),
+    post: (message) => {
+      if (PRIVATE.has(message.type) && 'client' in message) to(message.client).postMessage(message);
+      else shared.postMessage(message);
+    },
     listen: (handler) => {
       handlers.add(handler);
       return () => void handlers.delete(handler);
     },
     close: () => {
       handlers.clear();
-      channel.close();
+      shared.close();
+      own?.close();
+      for (const c of clients.values()) c.close();
+      clients.clear();
     },
   };
 }

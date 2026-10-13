@@ -485,14 +485,15 @@ function openFor(userId: string, takeOver: boolean): Promise<AnyLibrary> {
       // A close or a switch took this entry while the step waited: that decided what is
       // open, and this tab must not join the lock's queue for an account it has left.
       if (halting.signal.aborted) throw new DOMException('The open was halted before it attached', 'AbortError');
-      const port = openPort(userId);
+      const me = crypto.randomUUID();
+      const port = openPort(userId, me);
       if (!port) throw new LibraryElsewhereError();
       // In the lock's queue from now, not from the attach: the holder may be a page on
       // its way out — this tab's own previous page, on a reload — whose lock is let go a
       // moment after this ask found it held, and nobody would answer hello. The queue
       // then gives this tab the library, and the open that follows closes this attach.
       standAside(userId);
-      return attachClientLibrary(userId, port, clientHooks(userId, () => current?.opened === opened), halting.signal);
+      return attachClientLibrary(userId, me, port, clientHooks(userId, () => current?.opened === opened), halting.signal);
     }
     try {
       // Whether the library this open makes is still the one this tab holds: the

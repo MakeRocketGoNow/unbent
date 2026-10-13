@@ -133,14 +133,14 @@ const keepingNothing: KeepStatus = { supported: false, kept: new Set(), counted:
 type Pending = { name: string; args: unknown[]; sentTo: string | null; resolve: (value: unknown) => void; reject: (err: unknown) => void };
 
 /**
- * Joins the account's channel as a client and answers once a holder has sent its rows.
- * Rejects only when `halting` aborts first — a close or a switch took this open's entry
+ * Joins the account's channel as a client — `me` is this client's id, which the port was
+ * opened with so this tab alone hears what is for it — and answers once a holder has
+ * sent its rows. Rejects only when `halting` aborts first — a close or a switch took this open's entry
  * — with an `AbortError`; a holder that never answers is waited for, since the caller's
  * wait is bounded elsewhere (`acquireLibrary`) and the step it is in must end on the
  * queue's terms.
  */
-export function attachClientLibrary(userId: string, port: Port, hooks: ClientHooks, halting: AbortSignal): Promise<ClientLibrary> {
-  const me = crypto.randomUUID();
+export function attachClientLibrary(userId: string, me: string, port: Port, hooks: ClientHooks, halting: AbortSignal): Promise<ClientLibrary> {
   let holder: string | null = null;
   let incoming: { holder: string; maps: Maps } | null = null;
   let maps = freshMaps();

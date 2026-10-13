@@ -157,8 +157,13 @@ describe('a client of the holding tab', () => {
     vi.clearAllMocks();
   });
 
+  /** A client with its own id, its port opened for it. */
+  const attach = (h = hooks(), halting = new AbortController()) => {
+    const me = crypto.randomUUID();
+    return attachClientLibrary('u1', me, channel.port(me), h, halting.signal);
+  };
   async function client(h = hooks(), halting = new AbortController()) {
-    const attaching = attachClientLibrary('u1', channel.port(), h, halting.signal);
+    const attaching = attach(h, halting);
     await settle();
     const lib = await attaching;
     open.push(lib);
@@ -349,7 +354,7 @@ describe('a client of the holding tab', () => {
   it('keeps saying hello until a holder serves, and attaches to one that starts later', async () => {
     const hk = hooks();
     const halting = new AbortController();
-    const attaching = attachClientLibrary('u1', channel.port(), hk, halting.signal);
+    const attaching = attach(hk, halting);
     let attached = false;
     void attaching.then(() => (attached = true));
     await vi.advanceTimersByTimeAsync(HELLO_RETRY_MS * 2);
@@ -419,7 +424,7 @@ describe('a client of the holding tab', () => {
 
   it('asks again only when a holder’s rows stop short of attached', async () => {
     const halting = new AbortController();
-    const attaching = attachClientLibrary('u1', channel.port(), hooks(), halting.signal);
+    const attaching = attach(hooks(), halting);
     attaching.catch(() => {});
     const hellos = () => channel.posted.filter((m): m is Extract<Message, { type: 'hello' }> => m.type === 'hello');
     const me = hellos()[0]!.client;
@@ -475,10 +480,24 @@ describe('a client of the holding tab', () => {
     await expect(lib.call('trashNote', ['n1'])).rejects.toBeInstanceOf(LibraryMovedError);
     // Halted before any holder answered: the attach is refused as an abort, not a fault.
     const halting = new AbortController();
-    const attaching = attachClientLibrary('u1', channel.port(), hooks(), halting.signal);
+    const attaching = attach(hooks(), halting);
     attaching.catch(() => {});
     halting.abort();
     await expect(attaching).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('hears only what is for it on its own channel, and the account’s on the shared one', async () => {
+    holder(channel.port(), { notes: [note('n1')] });
+    const bystander: Message['type'][] = [];
+    channel.port().listen((m) => bystander.push(m.type));
+    const lib = await client();
+    const answer = lib.call('trashNote', ['n1']);
+    await settle();
+    await expect(answer).resolves.toBe('trashed n1');
+    expect(bystander).toContain('hello');
+    expect(bystander).not.toContain('rows');
+    expect(bystander).not.toContain('attached');
+    expect(bystander).not.toContain('answer');
   });
 
   it('ignores rows and answers meant for another client', async () => {

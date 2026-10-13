@@ -684,7 +684,10 @@ moment the holder's page goes or closes its library, keeping its rows and holdin
 calls meanwhile, so closing the holding tab needs no press; a call in hand when the
 library moves to this tab is made again here (`LibraryMovedError`). A new thing a client
 needs of the holder is a message in the channel's one list, or a name the holder's
-dispatcher runs, never a second channel. A browser without `BroadcastChannel` reads the
+dispatcher runs. There are two channels, and no third: the account's, which every tab
+of the account hears, and one per client for what is that client's alone — the rows
+above all, since a browser decodes a message in every listening tab before any can drop
+it, and the library is tens of megabytes. A browser without `BroadcastChannel` reads the
 server as every second tab did before 2026-10-13, under `LibraryElsewhereError`.
 
 This replaced every tab holding the library at once — each its own connection to the

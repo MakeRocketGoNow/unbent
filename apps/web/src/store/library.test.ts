@@ -401,7 +401,7 @@ describe('acquireLibrary', () => {
     let channel: ReturnType<typeof fakeChannel>;
     beforeEach(() => {
       channel = fakeChannel();
-      vi.mocked(openPort).mockImplementation(() => channel.port());
+      vi.mocked(openPort).mockImplementation((_userId, clientId) => channel.port(clientId));
     });
     afterEach(() => vi.mocked(openPort).mockReset().mockImplementation(() => null));
 
@@ -625,7 +625,7 @@ describe('acquireLibrary', () => {
       await acquireLibrary('u1');
       expect(channel.posted.some((m) => m.type === 'serving')).toBe(true);
       // A client says hello: it is sent the rows and attached.
-      const client = channel.port();
+      const client = channel.port('c1');
       const heard: string[] = [];
       client.listen((m) => heard.push(m.type));
       client.post({ type: 'hello', client: 'c1' });
