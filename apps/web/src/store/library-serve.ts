@@ -66,7 +66,7 @@ export function serveLibrary(port: Port, lib: Serving, holder: string): Server {
   const entities = { note: collections.notes, notebook: collections.notebooks, tag: collections.tags, attachment: collections.attachments } as const;
   let stopped = false;
 
-  const run = async (name: string, args: unknown[], client: string): Promise<unknown> => {
+  const run = async (name: string, args: unknown[]): Promise<unknown> => {
     if (holderCalls.has(name)) {
       const [scope, method] = (name as HolderCall).split('.') as [string, string];
       if (scope === 'index') {
@@ -157,7 +157,7 @@ export function serveLibrary(port: Port, lib: Serving, holder: string): Server {
           // The channel is closed.
         }
       };
-      void run(m.name, m.args, m.client).then(
+      void run(m.name, m.args).then(
         (value) => answer({ type: 'answer', holder, client: m.client, id: m.id, ok: true, value }),
         (err: unknown) => answer({ type: 'answer', holder, client: m.client, id: m.id, ok: false, error: carry(err) }),
       );
