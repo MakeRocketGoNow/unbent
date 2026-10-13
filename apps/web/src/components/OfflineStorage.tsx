@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { notebookFilesQuery, notebooksQuery } from '../queries.js';
-import { useKeeper, useSyncStatus } from '../store/use-outbox.js';
+import { useKeeper, useLibraryElsewhere, useSyncStatus } from '../store/use-outbox.js';
 import { currentLibraryUser } from '../store/library.js';
 import { listShelf, storagePersisted } from '../store/files.js';
 import { FILES_BUDGET, openedFilesUsage } from '../sw/budget.js';
@@ -12,6 +12,9 @@ import { Button } from './Button';
 import { Confirm } from './Confirm.js';
 import { useDeviceRoom } from './KeepOffline.js';
 import { useOfflineReady } from '../sw-register.js';
+import { useConnectivityReport } from '../connectivity.js';
+import { OPEN_HERE_TIP } from './LibraryStatus.js';
+import { takeOverLibrary } from '../store/library.js';
 
 const count = (n: number) => `${n.toLocaleString()} file${n === 1 ? '' : 's'}`;
 
@@ -30,6 +33,7 @@ const count = (n: number) => `${n.toLocaleString()} file${n === 1 ? '' : 's'}`;
  */
 export function OfflineStorage() {
   const { keeper, status } = useKeeper();
+  const elsewhere = useLibraryElsewhere();
   const sync = useSyncStatus();
   const { room, refresh: remeasure } = useDeviceRoom();
   const appReady = useOfflineReady();
@@ -78,12 +82,16 @@ export function OfflineStorage() {
         <h2>Offline</h2>
       </div>
       <p className="muted small">
-        Your notes are always on this device. Their files are kept when you open one, and for whole notebooks you choose.
+        {elsewhere
+          ? 'Your notes are open in another tab or window, so this one keeps nothing on the device and reads from the server.'
+          : 'Your notes are always on this device. Their files are kept when you open one, and for whole notebooks you choose.'}
         {room ? ` Unbent is using ${formatBytes(room.usage)} of the ${formatBytes(room.quota)} this device allows it.` : ''}
         {/* Said only when it is not so: what is kept here can then go without a word, and
             someone relying on it for a flight should know before the flight. */}
         {persisted === false && ' This browser has not agreed to keep it if the device runs low on space; installing the app usually settles that.'}
       </p>
+      <ConnectionLine />
+      <LibraryHolderLine />
       {/* Before anything else: if the app itself is not on the device yet, nothing below it
           matters offline, and going offline too soon leaves no app to open at all. */}
       {appReady === 'ready' && <p className="muted small">The app itself is on this device and opens with no connection.</p>}
@@ -163,6 +171,56 @@ export function OfflineStorage() {
         </section>
       )}
     </div>
+  );
+}
+
+const clock = (at: number) => new Date(at).toLocaleTimeString(undefined, { timeStyle: 'short' });
+
+/**
+ * The way to bring the library to this tab, when another holds it. The status line
+ * offers it only offline (`LibraryStatus`); here it is offered at all times, since this
+ * is the page for what is on this device, and the intro above has just said that for
+ * this tab the answer is nothing. Outlined, not quiet: it is the one action of its state
+ * and sits alone, not in a row.
+ */
+function LibraryHolderLine() {
+  const elsewhere = useLibraryElsewhere();
+  if (!elsewhere) return null;
+  return (
+    <p className="library-elsewhere">
+      <Button variant="secondary" size="small" tip={OPEN_HERE_TIP} onClick={() => void takeOverLibrary()?.catch(() => {})}>
+        Open here
+      </Button>
+    </p>
+  );
+}
+
+/**
+ * What the app believes about its connection and why: what decided it and when, and the
+ * browser's own flag when that disagrees. Here so the next "it says I'm offline" comes with
+ * its cause rather than a screenshot of a Network tab full of 200s — which is how the
+ * one on 2026-10-13 arrived, and why it took a day to read (`connectivity.ts`). "Since"
+ * is when the outage began, not when the last poll failed: every failed poll moves what
+ * decided the answer, and the line would otherwise creep forward every few minutes.
+ */
+function ConnectionLine() {
+  const { offline, browserOnLine, decided, since } = useConnectivityReport();
+  const line =
+    offline && since
+      ? `Not connected since ${clock(since.at)}: ${since.by === 'browser' ? 'the browser reported no network' : 'a check of the server got no answer'}. Checking again.`
+      : offline
+        ? 'Not connected. Checking again.'
+        : decided.by === 'start'
+          ? 'Connected. Nothing has been asked of the server yet.'
+          : `Connected. Confirmed by ${decided.by === 'answer' ? 'a reply from' : 'a check of'} the server at ${clock(decided.at)}.`;
+  // Not a live region: the time of the last confirmation moves while the page is open,
+  // and a screen reader would read the line out again on every move. The banner is what
+  // announces the state changing.
+  return (
+    <p className="muted small">
+      {line}
+      {!browserOnLine && !offline && ' The browser reports no network, but the server is answering.'}
+    </p>
   );
 }
 

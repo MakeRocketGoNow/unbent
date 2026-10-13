@@ -23,7 +23,6 @@ import { SignOutConfirm } from '../components/SignOutConfirm.js';
 import { SyncingLine } from '../components/SyncingLine.js';
 import { UpdateSnackbar } from '../components/UpdateSnackbar.js';
 import { claimImportFor, getImportRun, subscribeImport } from '../import-run.js';
-import { takeUpdate } from '../sw-register.js';
 import { configQuery } from '../queries.js';
 import { AgreementPending, LegalAgreement, agreementGate } from '../components/LegalAgreement.js';
 
@@ -42,11 +41,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
    * What the tab holds for one person is handed over in the same breath, and for the same
    * timing reason: this is the last moment before the loaders run. See `handOver`.
    */
-  beforeLoad: async ({ location, context, preload }) => {
-    // First, so a waiting deploy loads the destination fresh instead of it being drawn in
-    // the old build and then replaced; see `takeUpdate`.
-    const update = takeUpdate(location, preload);
-    if (update) await update;
+  beforeLoad: async ({ location, context }) => {
     const session = await requireSession(location);
     handOver(context.queryClient, session?.user.id);
   },

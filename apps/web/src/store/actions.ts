@@ -10,7 +10,8 @@ import type { Collections, LocalNote } from './collections.js';
 import { askToPersist, filesSupported, readFile, removeFile, writeFile } from './files.js';
 import { FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE } from '../sw/routes.js';
 import { isWhole, refusedForGood, type FeedEngine } from './feed.js';
-import { outboxName } from './names.js';
+import { outboxLeaderName, outboxName } from './names.js';
+import { OutboxLeader } from './leader.js';
 
 /**
  * Writes to notes: made on the local copy at once and replayed to the server through a
@@ -288,6 +289,9 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     collections: { notes: lib.notes, attachments: lib.attachments },
     storage,
     onlineDetector: connectivityDetector(),
+    // Ours rather than the library's: per account, and a follower is promoted when the
+    // holder goes, rather than left making every write a request for good (`leader.ts`).
+    leaderElection: new OutboxLeader(outboxLeaderName(userId)),
     onLeadershipChange: () => touch(),
     mutationFns: decided({
       saveNote: async ({ transaction }) => {

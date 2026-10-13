@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { currentLibrary, subscribeLibrary } from './library.js';
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import { currentLibrary, libraryElsewhere, subscribeLibrary } from './library.js';
 import type { Outbox, SyncStatus } from './actions.js';
 import type { KeepStatus, Keeper } from './keep.js';
 
@@ -79,6 +79,15 @@ export function useLibraryPresence(): 'none' | 'opening' | 'open' {
     };
   }, []);
   return presence;
+}
+
+/**
+ * The account whose library another tab of this device holds, or null. For the status
+ * line that says so and offers to take it over, and for the offline banner, which must
+ * not promise to keep changes from a tab that holds no library (`library-lock.ts`).
+ */
+export function useLibraryElsewhere(): string | null {
+  return useSyncExternalStore(subscribeLibrary, libraryElsewhere, () => null);
 }
 
 /** How many writes wait for the server, and the conflicts waiting on a choice. */

@@ -548,8 +548,10 @@ growing wait. Two rules keep the queue from sticking, each with a test: every an
 server would give again — a 4xx other than a lapsed session, a timeout or a rate limit, a
 refused precondition — is a `NonRetriableError` that ends its entry, and a `saveNote` whose
 note has a later entry in the queue does nothing, since each save carries the whole draft.
-Only the tab holding the Web Lock replays; a second tab's writes made offline are not
-durable. A file added to a note goes the same way (`uploadFile`): with a connection and
+Only the tab holding the account's leader lock replays (`store/leader.ts`); a second tab's
+writes made offline are not durable, and it waits in the lock's queue and leads the moment
+the holder goes, rather than staying a follower until it reloads, as the outbox library's
+own one-shot election left it. A file added to a note goes the same way (`uploadFile`): with a connection and
 nothing of the note's waiting it is the request it always was, and otherwise its bytes go to
 the account's `pending` shelf, its row is made at once and marked `pending`, and its upload
 is an entry in the same outbox, behind the note's own. The upload names its file's id
@@ -624,11 +626,19 @@ the one Keep offline was pressed in; a `BroadcastChannel` only makes that prompt
 in the cache says "Not available offline" where its preview would be (`offline-file.ts`):
 one phrase, in the note's body, never a spinner and never in the head.
 
-**Only two things say the app is offline:** the browser's `navigator.onLine`, and a check
-of `/api/health` with a timeout (`connectivity.ts`). Nothing else decides — not the outbox,
-whose online detector is backed by the same store, not a request that got no answer, not a
-socket that dropped; each only asks for a check (`recheck`). Letting request outcomes flip
-the state directly was tried, and every new kind of answer became a new way to flicker.
+**Evidence decides whether the app is offline, never a hint** (`connectivity.ts`). The app
+is offline while the server is out of reach: a check of `/api/health` with a timeout got no
+answer, or the browser fired `offline` and nothing has answered since. It is online the
+moment the server answers anything — a check, or any answer to a request the API client
+made that the worker did not serve from a cache or a shelf (`confirmReachable`, called by
+`request()`; the worker marks what it served, `X-Unbent-Served`). `navigator.onLine` only
+starts a check, and is never allowed to veto one: while it was a veto, a laptop whose
+browser was wrong about its network sat on the banner for a day with every request
+succeeding, refusing saves (2026-10-13). A failed request, a socket that dropped and a save
+that timed out still only ask for a check (`recheck`): letting failures flip the state was
+tried first, and every new kind of failure became a new way to flicker. Settings → Offline
+says what decided the current answer and when. Nothing else decides — not the outbox,
+whose online detector is backed by the same store.
 
 **API calls from the page go through `request()` in `notes-api.ts`,** which is where those
 checks are asked for: a fetch with no answer becomes an `OfflineError`, which the outbox
@@ -655,16 +665,26 @@ what waited. Sign-out first waits a few seconds for the outbox to drain. The nam
 `store/names.ts` and nowhere else. A new way for the account on a device to change hands
 has to call it too, and say which of the three it is.
 
-**Every tab of the origin holds the library, and all of them have to let go.** A library
-open in a tab holds the store's file through its worker, a connection to the outbox's
-IndexedDB database, and, in one tab, the leadership of each collection, through which the
-other tabs' writes go. A wipe in one tab runs against all of that: the outbox's
-`deleteDatabase` waits on every open connection, and IndexedDB serves the requests on one
-name in order, so an open queued behind a waiting delete — the next sign-in's — waits for
-good, in every tab, until all of them are closed (seen with three tabs, 2026-10-10). The
-leader that stops answering — a tab Chrome has frozen in the background holds its Web
-Locks and sends no heartbeats — is not something this code can release from another tab;
-the open's bound, below, is what covers it.
+**One tab holds an account's library on a device; the others read the server.** A Web
+Lock named for the account (`store/library-lock.ts`, `libraryLockName`) says whose: a tab
+that finds it held opens nothing, reads the server as a browser without a file system
+does, and says so with Open here beside it — on Settings → Offline at all times, and in
+the status line only while offline, since online a second tab works as the app always
+did and a line saying otherwise all day read as one tab at a time (`LibraryStatus`).
+Open here takes the lock with `steal`; the tab that held it closes
+its library and stands aside. A tab standing aside waits in the lock's queue and opens the
+library on its own the moment the holder's page goes or closes its library, so closing
+the holding tab needs no press. This replaced every tab holding the library at once — each
+its own connection to the store's file, taking turns on its one access handle; each a
+connection to the outbox's database; one the leader of each collection, with the others'
+writes going through it by message; one the outbox's leader. Four coordinators that knew
+nothing of each other made states nobody designed (a follower left behind by a closed
+leader, an open waiting for good on a handle a frozen tab held, a wipe blocked on a
+connection in a tab on the sign-in screen), and forty commits in four days bounded and
+queued around them (2026-10-07 to 10-10). The trade is no editing of one account in two
+tabs of one device at once: the second tab's writes are requests, as a non-leader's
+always were. The libraries' cross-tab paths are still underneath, and untested, since
+nothing exercises them now; do not build on them.
 
 Three things keep a wipe from wedging the next sign-in, and a new way to hold or wipe the
 library has to keep them. The wipe tells the other tabs, over the channel in
@@ -676,10 +696,12 @@ account again from the session it remembers. The outbox closes its connection on
 `versionchange`, which is how IndexedDB asks, and the library closes with it. And
 `acquireLibrary` answers its caller within `LIBRARY_OPEN_TIMEOUT_MS` whatever the open is
 doing — a refusal past the bound, reported, and the page reads the server — so a wedge is
-a page with no local copy rather than a dead app. The other tabs' closes race the wipe:
-the outbox's delete completes once their connections have closed, and the store's files
-are tried again for a moment, since a file another tab's worker still holds cannot be
-removed.
+a page with no local copy rather than a dead app. A tab that holds the library and is
+wedged on something it waits for, or a window someone forgot, is what Open here in another
+tab is for: the lock is taken from it and its library closes. A tab the browser has frozen
+is not: its worker cannot hand the store's file over, so the taking tab's open waits out
+`LIBRARY_OPEN_TIMEOUT_MS` and reads the server until the frozen tab is closed or resumed,
+when the open finishes on its own.
 
 Every open and close of the library is a step on one queue in `library.ts` (`enqueue`),
 run only after every step before it has settled and never abandoned. A new way to open or
@@ -729,11 +751,21 @@ too. The index tests run on the same `wa-sqlite.wasm` the browser loads
 (`store/test-search-db.ts`), and `pnpm gate:offline` checks the whole path with the
 network cut.
 
-**Deploys wait for a change of section.** A new worker installs and waits; the next time
-someone goes to another section (notes to settings, not list to note), or comes back to the
-app after five minutes away, and nothing a reload would lose is in flight (`busy.ts`), the
-app loads the page from the new deploy. An outbox entry is not in flight: it is durable, and
-the executor restores it after the reload.
+**A deploy's worker takes charge at once, and no page is ever moved onto it.** A page load
+is answered from the network first and from the cached shell only when the network does
+not answer (`sw.ts`), so a reload is always the newest build. Each build's shell is in a
+cache named for the build (`shellCacheName`), and the previous build's cache outlives its
+worker, so a tab still running the previous build keeps finding its chunks after the new
+worker has taken charge; only a tab that outlives two deploys without a reload loses them,
+and `recoverFromMissingChunks` reloads it once when a chunk is gone. The one thing the
+page says is that a reload would bring a newer build (`UpdateSnackbar`), and only when the
+worker's commit differs from the page's (`BUILD` in `sw.ts`). The rules this replaced — a
+change of section, five minutes away, nothing touched since the load, at once on dev and
+previews — each answered a reload that drew the old build or lost someone's place, and
+between them still moved every other tab onto a worker that had deleted their chunks.
+`pnpm gate:offline` checks that a removed chunk is a 404 and that the shell is kept under
+the build's name; a deploy while a tab is open is checked by hand (a second build, then
+`update()` from the page).
 
 **Never delete `sw.js`.** The Worker answers an unknown path with `index.html`, so a deleted
 worker script is a 200 the browser cannot install, and the old worker stays in charge on
