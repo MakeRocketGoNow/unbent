@@ -176,7 +176,9 @@ function refillShell(): Promise<void> {
  * (the assets route) until it reloads. A tab that outlives two deploys without a reload
  * loses them, and gets the reload `recoverFromMissingChunks` does for a chunk that is
  * gone. Which build was previous is remembered in a cache of its own, since cache names
- * carry no order.
+ * carry no order. A worker of the same build activating again — the registration removed
+ * and made anew — finds its own name remembered as previous and keeps no older build;
+ * accepted, since that is not a deploy and no page is running an older build under it.
  */
 const SHELL_META = `${SHELL_CACHE_PREFIX}meta`;
 const PREVIOUS_KEY = '/previous';
@@ -282,7 +284,7 @@ registerRoute(
     const hit = await cached;
     if (hit) return hit;
     event.waitUntil(refillShell());
-    return fetch(request);
+    return network;
   },
 );
 
