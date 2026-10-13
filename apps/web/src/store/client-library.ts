@@ -54,16 +54,29 @@ export const ATTACH_STALL_MS = 15_000;
 /** How often an attached client asks its holder whether it is still there. */
 export const PING_MS = 5_000;
 /**
- * How long a holder may say nothing before its client stops waiting on it. A holder tab
- * the browser has frozen — a background tab on a phone, routinely — still holds the lock
- * and answers nothing, and a client's save would otherwise wait on it for good, with
- * the typing held nowhere but that tab. Three pings unanswered is a holder that is not
- * coming back on its own; the client takes the library over (`onSilent`), which closes
- * this client and sends its calls in hand to wherever the library is next
+ * How long, and how many pings, a holder may leave unanswered before its client stops
+ * waiting on it. A holder tab the browser has frozen — a background tab on a phone,
+ * routinely — still holds the lock and answers nothing, and a client's save would
+ * otherwise wait on it for good, with the typing held nowhere but that tab. Silence is
+ * pings unanswered, never time since the holder last spoke: a hidden tab's interval
+ * runs once a minute under Chrome's throttling, and a tab resumed from a freeze fires
+ * its overdue timer before the pong queued for it, so a clock alone read a live, idle
+ * holder as gone and took the library from the tab the person was using (review).
+ * `SILENT_PINGS` unanswered over at least this long is a holder that is not coming
+ * back on its own; the client takes the library over (`onSilent`), which closes this
+ * client and sends its calls in hand to wherever the library is next
  * (`LibraryMovedError`). A holder busy on its main thread answers a ping between its
- * tasks; only one that runs nothing at all for this long reads as silent.
+ * tasks; only one that runs nothing at all reads as silent.
+ *
+ * The cost of the takeover, decided and accepted: this client's rows go with it, and
+ * the open that follows waits on the frozen tab's file for up to the open's bound
+ * before the tab reads the server, so a working mirror becomes nothing for that long.
+ * The save is what a frozen holder loses for good, and the rows are only stale; keeping
+ * the maps serving reads under an open in progress would be a second library behind
+ * `current`, and was not worth that.
  */
 export const HOLDER_SILENT_MS = 15_000;
+export const SILENT_PINGS = 3;
 
 /** What the queries read of a collection; the holder's TanStack collections answer it, and so do the client's maps. */
 export interface Rows<T> {
@@ -173,8 +186,10 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
     hello = setInterval(sayHello, HELLO_RETRY_MS);
   };
 
-  /** When the holder this client is attached to was last heard from. */
-  let lastHeard = 0;
+  let attachedOnce = false;
+  /** Pings sent since the holder last said anything, and when the first of them went. */
+  let unanswered = 0;
+  let firstUnanswered = 0;
   let pinger: ReturnType<typeof setInterval> | null = null;
   const stopPinging = () => {
     if (pinger) clearInterval(pinger);
@@ -182,14 +197,17 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
   };
   const startPinging = () => {
     stopPinging();
+    unanswered = 0;
     pinger = setInterval(() => {
       if (!holder) return;
-      if (Date.now() - lastHeard > HOLDER_SILENT_MS) {
+      if (unanswered >= SILENT_PINGS && Date.now() - firstUnanswered > HOLDER_SILENT_MS) {
         console.warn('[library] the tab holding this account’s library has stopped answering; taking it over');
         detach();
         hooks.onSilent();
         return;
       }
+      if (unanswered === 0) firstUnanswered = Date.now();
+      unanswered += 1;
       port.post({ type: 'ping', client: me });
     }, PING_MS);
   };
@@ -206,7 +224,6 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
     askNow();
   };
 
-  let attachedOnce = false;
   let resolveAttach!: (lib: ClientLibrary) => void;
   let rejectAttach!: (err: unknown) => void;
   const attach = new Promise<ClientLibrary>((resolve, reject) => {
@@ -217,7 +234,7 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
   const onMessage = (message: Message) => {
     if (closed) return;
     const m = message as HolderMessage;
-    if ('holder' in m && m.holder === holder) lastHeard = Date.now();
+    if ('holder' in m && m.holder === holder) unanswered = 0;
     switch (m.type) {
       case 'serving':
         // A holder other than the one this tab is attached to: the one before it has
@@ -239,7 +256,6 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
         maps = incoming.maps;
         holder = m.holder;
         incoming = null;
-        lastHeard = Date.now();
         startPinging();
         version += 1;
         feed = m.state;
