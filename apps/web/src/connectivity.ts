@@ -136,7 +136,16 @@ export function useConnectivityReport(): ConnectivityReport {
  */
 export function confirmReachable(): void {
   answeredAt = Date.now();
-  if (!unreachable && doubtSince === Infinity) return;
+  if (!unreachable && doubtSince === Infinity) {
+    // Already online: only the record of what last confirmed it moves, and not on every
+    // request — Settings reads it, and a line redrawn on each pull of the feed is churn.
+    if (decided.by !== 'answer' || answeredAt - decided.at >= ANSWER_NOTE_GAP) {
+      decided = { by: 'answer', at: answeredAt };
+      report = null;
+      for (const listener of reportListeners) listener();
+    }
+    return;
+  }
   decide('answer', true);
   // A doubt the server has answered without the app ever going offline — one request
   // failed and the next did not — still leaves that request's query failed, so it ends
@@ -144,6 +153,8 @@ export function confirmReachable(): void {
   endDoubt();
 }
 
+/** How often, at most, an answer while already online moves the record of when the server last confirmed it. */
+const ANSWER_NOTE_GAP = 60_000;
 /** How long a check may take before it counts as no answer. */
 const CHECK_TIMEOUT = 10_000;
 /** The least time between two checks, so a page of kept images asks once, not twenty times. */

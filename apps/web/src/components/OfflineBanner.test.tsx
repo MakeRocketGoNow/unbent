@@ -5,51 +5,49 @@ import { OfflineBanner } from './OfflineBanner.js';
 
 vi.mock('../store/use-outbox.js', () => ({
   useLibraryPresence: vi.fn(),
-  useSyncStatus: vi.fn(),
+  useLibraryElsewhere: vi.fn(() => null),
 }));
-import { useLibraryPresence, useSyncStatus } from '../store/use-outbox.js';
+import { useLibraryElsewhere, useLibraryPresence } from '../store/use-outbox.js';
 
 /**
- * What the banner promises depends on whether this tab can keep the promise: only the tab
- * holding the outbox queues writes, a device with no library queues nothing, and a
- * library still opening is about to.
+ * What the banner promises depends on whether this tab can keep the promise: the tab
+ * holding the library queues writes, a tab whose library another tab holds does not and
+ * says where the notes are, a device with no library queues nothing, and a library still
+ * opening is about to.
  */
-const status = (durable: boolean) => ({ pending: 0, durable, waiting: new Set<string>(), conflicts: new Map(), uploadNotices: new Map() });
 const promise = /what you change will sync when you're back/;
 
 afterEach(() => {
   cleanup();
   resetConnectivity();
   vi.clearAllMocks();
+  vi.mocked(useLibraryElsewhere).mockReturnValue(null);
 });
 
 describe('OfflineBanner', () => {
   it('says nothing while online', () => {
     vi.mocked(useLibraryPresence).mockReturnValue('open');
-    vi.mocked(useSyncStatus).mockReturnValue(status(true));
     render(<OfflineBanner />);
     expect(screen.queryByText(/offline/)).toBeNull();
   });
 
-  it('promises the sync in the tab that holds the outbox', () => {
+  it('promises the sync in the tab that holds the library', () => {
     vi.mocked(useLibraryPresence).mockReturnValue('open');
-    vi.mocked(useSyncStatus).mockReturnValue(status(true));
     setReachableForTests(false);
     render(<OfflineBanner />);
     expect(screen.getByText(promise)).toBeTruthy();
   });
 
-  it('says where the changes are kept in any other tab of the account', () => {
-    vi.mocked(useLibraryPresence).mockReturnValue('open');
-    vi.mocked(useSyncStatus).mockReturnValue(status(false));
+  it('says where the notes are when another tab holds them', () => {
+    vi.mocked(useLibraryPresence).mockReturnValue('none');
+    vi.mocked(useLibraryElsewhere).mockReturnValue('u1');
     setReachableForTests(false);
     render(<OfflineBanner />);
-    expect(screen.getByText("You're offline. Changes can't be saved from this tab while offline — another Unbent tab is keeping your changes.")).toBeTruthy();
+    expect(screen.getByText("You're offline. Your notes are open in another tab, and changes can't be saved from this one until you're back.")).toBeTruthy();
   });
 
   it('promises nothing on a device with no library', () => {
     vi.mocked(useLibraryPresence).mockReturnValue('none');
-    vi.mocked(useSyncStatus).mockReturnValue(status(false));
     setReachableForTests(false);
     render(<OfflineBanner />);
     expect(screen.getByText("You're offline. Changes can't be saved until you're back.")).toBeTruthy();
@@ -57,7 +55,6 @@ describe('OfflineBanner', () => {
 
   it('keeps the promise while the library is still opening', () => {
     vi.mocked(useLibraryPresence).mockReturnValue('opening');
-    vi.mocked(useSyncStatus).mockReturnValue(status(false));
     setReachableForTests(false);
     render(<OfflineBanner />);
     expect(screen.getByText(promise)).toBeTruthy();

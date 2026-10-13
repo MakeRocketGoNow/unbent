@@ -177,23 +177,16 @@ const clock = (at: number) => new Date(at).toLocaleTimeString(undefined, { timeS
  * one on 2026-10-13 arrived, and why it took a day to read (`connectivity.ts`).
  */
 function ConnectionLine() {
-  const { offline, browserOnLine, decided, lastCheck } = useConnectivityReport();
-  const by =
-    decided.by === 'answer'
-      ? 'a reply from the server'
-      : decided.by === 'check'
-        ? `a check of the server${lastCheck ? `, answered in ${lastCheck.ms} ms` : ''}`
-        : decided.by === 'browser'
-          ? 'the browser reporting no network'
-          : 'nothing yet';
+  const { offline, browserOnLine, decided } = useConnectivityReport();
+  const line = offline
+    ? `Not connected since ${clock(decided.at)}: ${decided.by === 'browser' ? 'the browser reported no network' : 'a check of the server got no answer'}. Checking again.`
+    : decided.by === 'start'
+      ? 'Connected. Nothing has been asked of the server yet.'
+      : `Connected. Confirmed by ${decided.by === 'answer' ? 'a reply from' : 'a check of'} the server at ${clock(decided.at)}.`;
   return (
     <p className="muted small" aria-live="polite">
-      {offline
-        ? `Not connected since ${clock(decided.at)}, going by ${by}. The server is checked again while this lasts.`
-        : decided.by === 'start'
-          ? 'Connected, as far as the app can tell; nothing has been asked of the server yet.'
-          : `Connected, confirmed by ${by} at ${clock(decided.at)}.`}
-      {!browserOnLine && !offline && ' The browser reports no network, but the server is answering, so the browser is wrong.'}
+      {line}
+      {!browserOnLine && !offline && ' The browser reports no network; the server is answering, so the browser is wrong.'}
     </p>
   );
 }

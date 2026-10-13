@@ -19,6 +19,9 @@ import { Button } from './Button';
  * connection and not without one, and the way to take the library over is on the line
  * itself, since there is nowhere else anyone would look for it. A button, not a link: it
  * changes which tab holds the library. Quiet, because the line is a state, not an error.
+ * Its tip says what happens to the other tab, which is the one consequence of the press
+ * that lands out of sight; the line itself stays short, and says "tab" where the other
+ * one may be the installed app's window, which the tip allows for.
  */
 export function LibraryStatus() {
   const arriving = useLibraryArriving();
@@ -27,7 +30,13 @@ export function LibraryStatus() {
     return (
       <p className="offline-banner library-status" role="status">
         <span>Your notes are open in another tab.</span>
-        <Button variant="quiet" size="small" className="library-status-action" onClick={() => void takeOverLibrary()?.catch(() => {})}>
+        <Button
+          variant="quiet"
+          size="small"
+          className="library-status-action"
+          tip="Moves your notes to this tab. The other tab or window keeps working, reading from the server instead."
+          onClick={() => void takeOverLibrary()?.catch(() => {})}
+        >
           Open here
         </Button>
       </p>
