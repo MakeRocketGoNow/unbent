@@ -548,10 +548,12 @@ growing wait. Two rules keep the queue from sticking, each with a test: every an
 server would give again — a 4xx other than a lapsed session, a timeout or a rate limit, a
 refused precondition — is a `NonRetriableError` that ends its entry, and a `saveNote` whose
 note has a later entry in the queue does nothing, since each save carries the whole draft.
-Only the tab holding the account's leader lock replays (`store/leader.ts`); a second tab's
-writes made offline are not durable, and it waits in the lock's queue and leads the moment
-the holder goes, rather than staying a follower until it reloads, as the outbox library's
-own one-shot election left it. A file added to a note goes the same way (`uploadFile`): with a connection and
+Only the tab holding the account's leader lock replays (`store/leader.ts`), and it waits
+in the lock's queue and leads the moment the holder goes, rather than staying a follower
+until it reloads, as the outbox library's own one-shot election left it. A tab that does
+not hold the library sends its writes to the tab that does, by name over the account's
+channel (`forwardable` in `actions.ts`, `store/library-serve.ts`), so they land in that
+outbox and are as durable as the holder's own. A file added to a note goes the same way (`uploadFile`): with a connection and
 nothing of the note's waiting it is the request it always was, and otherwise its bytes go to
 the account's `pending` shelf, its row is made at once and marked `pending`, and its upload
 is an entry in the same outbox, behind the note's own. The upload names its file's id
@@ -665,26 +667,37 @@ what waited. Sign-out first waits a few seconds for the outbox to drain. The nam
 `store/names.ts` and nowhere else. A new way for the account on a device to change hands
 has to call it too, and say which of the three it is.
 
-**One tab holds an account's library on a device; the others read the server.** A Web
-Lock named for the account (`store/library-lock.ts`, `libraryLockName`) says whose: a tab
-that finds it held opens nothing, reads the server as a browser without a file system
-does, and says so with Open here beside it — on Settings → Offline at all times, and in
-the status line only while offline, since online a second tab works as the app always
-did and a line saying otherwise all day read as one tab at a time (`LibraryStatus`).
-Open here takes the lock with `steal`; the tab that held it closes
-its library and stands aside. A tab standing aside waits in the lock's queue and opens the
-library on its own the moment the holder's page goes or closes its library, so closing
-the holding tab needs no press. This replaced every tab holding the library at once — each
-its own connection to the store's file, taking turns on its one access handle; each a
-connection to the outbox's database; one the leader of each collection, with the others'
-writes going through it by message; one the outbox's leader. Four coordinators that knew
-nothing of each other made states nobody designed (a follower left behind by a closed
-leader, an open waiting for good on a handle a frozen tab held, a wipe blocked on a
-connection in a tab on the sign-in screen), and forty commits in four days bounded and
-queued around them (2026-10-07 to 10-10). The trade is no editing of one account in two
-tabs of one device at once: the second tab's writes are requests, as a non-leader's
-always were. The libraries' cross-tab paths are still underneath, and untested, since
-nothing exercises them now; do not build on them.
+**One tab holds an account's library on a device; the others are its clients.** A Web
+Lock named for the account (`store/library-lock.ts`, `libraryLockName`) says whose. A tab
+that finds it held opens nothing of its own: it joins the account's `BroadcastChannel`
+(`store/library-channel.ts`), is sent the holder's four collections as rows and every
+change to them after, and derives what it draws from those rows itself, as the holder
+does from its collections (`store/client-library.ts`); the feed's state, the outbox's
+status and the keeper's are mirrored the same way, so every hook and query reads a client
+as it reads the holder and nothing in the chrome tells the tabs apart. What crosses as a
+call is what only the holder can do — a write, a search of its index, keeping a notebook,
+a conflict resolved — and a call's failure comes back as the class it was (`carry`,
+`revive`). Settings → Offline still says which tab holds the file, with Open here beside
+it: that takes the lock with `steal`, the tab that held it closes its library and attaches
+as a client. A client waits in the lock's queue and opens the library on its own the
+moment the holder's page goes or closes its library, keeping its rows and holding its
+calls meanwhile, so closing the holding tab needs no press; a call in hand when the
+library moves to this tab is made again here (`LibraryMovedError`). A new thing a client
+needs of the holder is a message in the channel's one list, or a name the holder's
+dispatcher runs, never a second channel. A browser without `BroadcastChannel` reads the
+server as every second tab did before 2026-10-13, under `LibraryElsewhereError`.
+
+This replaced every tab holding the library at once — each its own connection to the
+store's file, taking turns on its one access handle; each a connection to the outbox's
+database; one the leader of each collection, with the others' writes going through it by
+message; one the outbox's leader. Four coordinators that knew nothing of each other made
+states nobody designed (a follower left behind by a closed leader, an open waiting for
+good on a handle a frozen tab held, a wipe blocked on a connection in a tab on the
+sign-in screen), and forty commits in four days bounded and queued around them
+(2026-10-07 to 10-10). The libraries' cross-tab paths are still underneath, and untested,
+since nothing exercises them now; do not build on them. The owner could be a
+SharedWorker on the desktop later; the protocol does not care which tab or worker
+answers, and Android Chrome has no SharedWorker, so the holding tab is the owner for now.
 
 Three things keep a wipe from wedging the next sign-in, and a new way to hold or wipe the
 library has to keep them. The wipe tells the other tabs, over the channel in
@@ -701,7 +714,9 @@ wedged on something it waits for, or a window someone forgot, is what Open here 
 tab is for: the lock is taken from it and its library closes. A tab the browser has frozen
 is not: its worker cannot hand the store's file over, so the taking tab's open waits out
 `LIBRARY_OPEN_TIMEOUT_MS` and reads the server until the frozen tab is closed or resumed,
-when the open finishes on its own.
+when the open finishes on its own. A client whose holder is frozen is in the same place:
+its hello goes unanswered until the holder resumes or goes, and meanwhile it reads the
+rows it has and holds its writes.
 
 Every open and close of the library is a step on one queue in `library.ts` (`enqueue`),
 run only after every step before it has settled and never abandoned. A new way to open or
