@@ -539,7 +539,8 @@ async function run(BASE, chrome, keepSocket) {
           return v && typeof v === 'object' && v.hits.some((t) => t.includes(PDF_TITLE) && /\.pdf/.test(t)) ? v : null;
         }, 15000);
       }
-      report('offline, the same phrase finds its note once the notebook is kept', !!ok, !asked ? `no Keep offline button on the notebook's page (notebook ${notebookId})` : !kept ? 'the notebook was never kept' : !fed ? 'the text of its files was never asked for' : `saw ${JSON.stringify(await searched())}`);
+      const page9 = async () => `alive ${JSON.stringify(await ev('1+1'))}; page ${JSON.stringify(await ev(`({url:location.pathname,heads:[...document.querySelectorAll('h3')].map(h=>h.textContent),elsewhere:!!document.querySelector('.library-elsewhere'),status:document.querySelector('.library-status')?.textContent??null,body:document.body.textContent.slice(0,200)})`))}; locks ${JSON.stringify(await ev(`navigator.locks.query().then(q=>({held:q.held.filter(h=>h.name.startsWith('unbent-')).map(h=>h.name),pending:q.pending.filter(h=>h.name.startsWith('unbent-')).map(h=>h.name)}))`))}`;
+      report('offline, the same phrase finds its note once the notebook is kept', !!ok, !asked ? `no Keep offline button on the notebook's page (notebook ${notebookId}); page ${JSON.stringify(await page9())}` : !kept ? 'the notebook was never kept' : !fed ? 'the text of its files was never asked for' : `saw ${JSON.stringify(await searched())}`);
     }
 
     // 10
