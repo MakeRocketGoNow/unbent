@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { notebookFilesQuery, notebooksQuery } from '../queries.js';
-import { useKeeper, useLibraryClient, useLibraryElsewhere, useSyncStatus } from '../store/use-outbox.js';
+import { useKeeper, useLibraryElsewhere, useLibraryPresence, useSyncStatus } from '../store/use-outbox.js';
 import { currentLibraryUser } from '../store/library.js';
 import { listShelf, storagePersisted } from '../store/files.js';
 import { FILES_BUDGET, openedFilesUsage } from '../sw/budget.js';
@@ -33,7 +33,7 @@ const count = (n: number) => `${n.toLocaleString()} file${n === 1 ? '' : 's'}`;
 export function OfflineStorage() {
   const { keeper, status } = useKeeper();
   const elsewhere = useLibraryElsewhere();
-  const client = useLibraryClient();
+  const presence = useLibraryPresence();
   const sync = useSyncStatus();
   const { room, refresh: remeasure } = useDeviceRoom();
   const appReady = useOfflineReady();
@@ -82,10 +82,11 @@ export function OfflineStorage() {
         <h2>Offline</h2>
       </div>
       <p className="muted small">
-        {/* Three tabs: the holder; a client, which works as the holder does; and one that
-            could not join the holder — a browser with no channel, or a client the holder
-            has not answered yet — which keeps nothing and reads the server. */}
-        {elsewhere && client
+        {/* Three tabs: the holder; a client, attached or still attaching, which works as
+            the holder does; and one with no library at all — a browser with no channel to
+            join the holder over, or an attach the open's bound refused — which keeps
+            nothing and reads the server. */}
+        {elsewhere && presence !== 'none'
           ? 'Your notes are always on this device. Another tab or window has them open, and this one works through it. The files are kept when you open one, and for whole notebooks you choose.'
           : elsewhere
             ? 'Your notes are open in another tab or window, and this one cannot reach it, so it keeps nothing on the device and reads from the server.'
