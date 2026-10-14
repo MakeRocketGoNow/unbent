@@ -33,15 +33,7 @@
  * email delivery service", and the operator's postal address is not here at all.
  */
 
-import {
-  BASE_STORAGE_GB,
-  INACTIVE_KEPT_DAYS,
-  PLAN_PRICE_USD,
-  STORAGE_ADDON_GB,
-  STORAGE_ADDON_PRICE_USD,
-  TRIAL_DAYS,
-  type AppConfig,
-} from '@unbent/shared';
+import { INACTIVE_KEPT_DAYS, type AppConfig } from '@unbent/shared';
 
 export interface LegalSection {
   heading?: string;
@@ -677,10 +669,14 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
 /**
  * The terms' two sections about money, for an instance that sells a plan.
  *
- * What Paddle's website review reads for: the price, that Paddle is the merchant of record,
- * that the plan renews and how to stop it, and a refund policy. The numbers come from
- * `@unbent/shared`'s `plan.ts`, the same constants the front page and the Plan page quote,
- * so the terms cannot name a price the pages have moved on from.
+ * What Paddle's website review reads for: that there is a price, that Paddle is the
+ * merchant of record, that the plan renews and how to stop it, and a refund policy.
+ *
+ * No numbers — not the price, the storage or the trial's length. The front page and the
+ * checkout state those, and terms that quoted `plan.ts`'s constants would be rewritten by a
+ * price change without their effective date moving or anyone being asked to agree, which
+ * is the one way legal text must never change. The refund window and how long a lapsed
+ * account is kept are here because they are promises, not prices.
  *
  * Two promises here are behaviour, not prose, and hold only while the code keeps them:
  * cancelling keeps the year already paid for (`planStateOf` reads a canceled subscription
@@ -693,11 +689,11 @@ function payment(operator: Operator): LegalSection[] {
     {
       heading: 'Plans and payment',
       body: [
-        `A new account has ${TRIAL_DAYS} days free, with no card asked for. After that, writing ` +
-          `in Unbent needs a plan: $${PLAN_PRICE_USD} a year, with ${BASE_STORAGE_GB} GB for ` +
-          `attachments, and ${STORAGE_ADDON_GB} GB more for each $${STORAGE_ADDON_PRICE_USD} a ` +
-          `year of added storage. Prices are in US dollars, and sales tax or VAT is added where ` +
-          `it applies.`,
+        'A new account starts with a free trial, with no card asked for. After that, writing ' +
+          'in Unbent needs a plan, billed yearly, and more storage can be added to it. The ' +
+          'price, and what a plan includes, are the ones shown on our pricing page and at ' +
+          'checkout when you subscribe. Prices are in US dollars, and sales tax or VAT is ' +
+          'added where it applies.',
         'Our order process is conducted by our online reseller Paddle.com. Paddle is the ' +
           'merchant of record for every order: it takes the payment, issues the receipt and ' +
           'handles tax, and its own buyer terms apply to the purchase alongside these.',

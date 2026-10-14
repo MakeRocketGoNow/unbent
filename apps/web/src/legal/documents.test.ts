@@ -154,14 +154,22 @@ describe('legalDocuments and billing', () => {
     }
   });
 
-  it('states the price, the merchant of record, renewal and how to cancel', () => {
+  it('states the merchant of record, renewal and how to cancel', () => {
     const body = text(with_.terms);
-    expect(body).toContain('$36 a year');
-    expect(body).toContain('14 days free, with no card asked for');
+    expect(body).toContain('free trial, with no card asked for');
     expect(body).toContain('Paddle is the merchant of record');
     expect(body).toContain('renews automatically');
     expect(body).toContain('Manage subscription');
     expect(body).toContain('becomes read-only');
+  });
+
+  /* The price lives on the pricing page and at checkout. Quoted here, a price change would
+     rewrite the terms without moving their date or asking anyone to agree. */
+  it('quotes no price, storage or trial length', () => {
+    const body = text(with_.terms);
+    expect(body).not.toContain('$');
+    expect(body).not.toMatch(/\d+ GB/);
+    expect(body).toContain('shown on our pricing page and at checkout');
   });
 
   it('has a refund policy under the anchor the footer links to', () => {

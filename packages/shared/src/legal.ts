@@ -34,6 +34,6 @@ export const LEGAL_VERSION = '2026-10-14';
  * sentence about terms its readers will not find (`legalVersionOf` in the API).
  */
 export const LEGAL_CHANGE: { text: string; billingOnly: boolean } | undefined = {
-  text: 'The terms now say what a plan costs, how it renews and how to cancel it, and that any charge is refunded in full if you ask within 14 days.',
+  text: 'The terms now say how a plan is billed, how it renews and how to cancel it, and that any charge is refunded in full if you ask within 14 days.',
   billingOnly: true,
 };
