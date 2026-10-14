@@ -831,8 +831,17 @@ function createAuth(env: Env): AuthInstance {
        * Required by the provider below rather than optional: it is what lets the MCP route
        * verify a token by checking a signature instead of reading the database on every
        * tool call, which matters when a single agent turn makes a dozen of them.
+       *
+       * The plugin also hooks `/get-session` to answer every session check with a signed
+       * JWT in a `set-auth-jwt` header, for clients that would rather carry a token than a
+       * cookie. Nothing here reads it — the web app, Android and iOS all send the cookie,
+       * and the MCP route verifies the OAuth tokens the provider below issues — and it was
+       * not free: a read of the `jwks` table, a decryption of the private key and a
+       * signature, on every request, including the ones the cookie cache would otherwise
+       * have answered without touching the database at all. Off, so a request with a
+       * fresh session cookie costs no query.
        */
-      jwt(),
+      jwt({ disableSettingJwtHeader: true }),
       /**
        * Makes this instance an OAuth 2.1 authorization server, so an AI assistant can be
        * given access to someone's notes.
