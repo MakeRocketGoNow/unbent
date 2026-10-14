@@ -1129,6 +1129,8 @@ describe('rows read on an archive-sized store', () => {
       await measure('search rows in a notebook', () => stub.searchRows('receipt', 50, { notebook: 'Notebook 0' })),
       // What the sweep reads every hour, for every account: it must never scan a table.
       await measure('usage', () => stub.usage()),
+      // What every upload reads for the plan's quota (lib/quota.ts): the counts row alone.
+      await measure('attachment bytes', () => stub.attachmentBytes()),
       await measure('sweep visit', () => stub.sweepVisit(now)),
       await measure('forget expired files', () => stub.forgetBlobs(Array.from({ length: 5 }, (_, i) => `users/u/gone/${i}`), now)),
       await measure('sweep visit with nothing due', () => stub.sweepVisit(now)),
@@ -1261,6 +1263,9 @@ describe('rows read on an archive-sized store', () => {
       'autofill usage': 1600,
       // The counts row and the newest feed row, off its primary key.
       usage: 5,
+      // One column of the counts row; the triggers (schema 0008) keep it, so it never
+      // reads the files table however many files the account holds.
+      'attachment bytes': 2,
       // The counts row and the five due keys off the retention index; the five hundred
       // tombstones not yet due are never read (7, measured 2026-10-05), and with nothing
       // due the visit is the counts row and one index entry (2). The hourly sweep makes
