@@ -109,10 +109,16 @@ describe('a lapsed account', () => {
 /**
  * Paddle's webhook, with a body signed the way Paddle signs one. Needs the dev server's
  * own secret, which the suite is given as `PADDLE_WEBHOOK_SECRET`; without it the cases
- * skip, since a signature with any other key is refused by design.
+ * skip, since a signature with any other key is refused by design. The price ids the
+ * server holds are given the same way (`PADDLE_PLAN_PRICE_ID`, `PADDLE_STORAGE_PRICE_ID`)
+ * once `.dev.vars` carries the sandbox's rather than the stand-ins.
  */
 describe('the webhook', () => {
   const secret = process.env['PADDLE_WEBHOOK_SECRET'];
+  // The price ids the dev server holds, so an event's items are read as the plan and
+  // the add-on; the stand-ins the worktree's `.dev.vars` starts with unless given.
+  const PLAN_PRICE = process.env['PADDLE_PLAN_PRICE_ID'] ?? 'pri_local_plan';
+  const STORAGE_PRICE = process.env['PADDLE_STORAGE_PRICE_ID'] ?? 'pri_local_storage';
   const customer = `ctm_test_${crypto.randomUUID().slice(0, 8)}`;
 
   async function deliver(event: Record<string, unknown>, key = secret ?? 'wrong'): Promise<Response> {
@@ -131,7 +137,7 @@ describe('the webhook', () => {
     custom_data: null,
     current_billing_period: { starts_at: '2026-10-10T00:00:00Z', ends_at: '2027-10-10T00:00:00Z' },
     scheduled_change: null,
-    items: [{ status: 'active', quantity: 1, price: { id: 'pri_local_plan' } }, { status: 'active', quantity: 1, price: { id: 'pri_local_storage' } }],
+    items: [{ status: 'active', quantity: 1, price: { id: PLAN_PRICE } }, { status: 'active', quantity: 1, price: { id: STORAGE_PRICE } }],
     canceled_at: null,
     ...over,
   });
@@ -155,7 +161,7 @@ describe('the webhook', () => {
     expect(await again.json()).toEqual({ applied: false, reason: 'duplicate' });
 
     // A newer event, then an older one delivered late: the row stays with the newer.
-    const later = subscription({ status: 'canceled', current_billing_period: null, items: [{ status: 'active', quantity: 1, price: { id: 'pri_local_plan' } }] });
+    const later = subscription({ status: 'canceled', current_billing_period: null, items: [{ status: 'active', quantity: 1, price: { id: PLAN_PRICE } }] });
     expect(await (await deliver({ event_id: `evt_${customer}_3`, event_type: 'subscription.canceled', occurred_at: '2026-10-12T00:00:00Z', data: later })).json()).toEqual({ applied: true });
     expect(await (await deliver({ event_id: `evt_${customer}_2`, event_type: 'subscription.updated', occurred_at: '2026-10-11T00:00:00Z', data: subscription() })).json()).toEqual({ applied: false, reason: 'older' });
     plan = (await (await call('GET', '/api/me/plan')).json()) as typeof plan;

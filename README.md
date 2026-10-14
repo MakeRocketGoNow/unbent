@@ -1386,9 +1386,10 @@ sandbox first.
 Locally, Paddle cannot reach a webhook on `localhost`; a tunnel (`cloudflared tunnel
 --url http://localhost:<API_PORT>`) gives it an address for a session, or the sandbox's
 simulator sends a sample event to one. The live suite proves the rest with a signed body
-of its own (`apps/api/test/plan.test.ts`), given the dev server's secret as
-`PADDLE_WEBHOOK_SECRET`. Test cards are in Paddle's sandbox docs; `4242 4242 4242 4242`
-with any future date succeeds.
+of its own (`apps/api/test/plan.test.ts`), given the dev server's secret and price ids as
+`PADDLE_WEBHOOK_SECRET`, `PADDLE_PLAN_PRICE_ID` and `PADDLE_STORAGE_PRICE_ID` — the same
+lines as `.dev.vars`. Test cards are in Paddle's sandbox docs; `4242 4242 4242 4242` with
+any future date succeeds.
 
 Going live is the same five settings from the live account, after its verification. The
 website review wants the pricing public, and terms, a privacy policy and a refund policy
