@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, beforeAll, beforeEach, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
+import { act, render, screen, cleanup, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   createRootRoute,
@@ -69,7 +69,7 @@ function mount(seed: FieldDef[] = fields, emoji: string | null = null) {
       <RouterProvider router={router as any} />
     </QueryClientProvider>,
   );
-  return { onChanged, onDeleted, unmount };
+  return { client, onChanged, onDeleted, unmount };
 }
 
 describe('NotebookEditor', () => {
@@ -215,6 +215,37 @@ describe('NotebookEditor', () => {
     expect((screen.getByLabelText('Move Merchant up') as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByLabelText('Move Merchant down') as HTMLButtonElement).disabled).toBe(false);
     expect((screen.getByLabelText('Move Amount down') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  /*
+     The fields are read from the device's library, which hears of a new order from the
+     change feed a beat after the request. A refetch in between answers the old order;
+     the rows must not jump back to it and then forward again.
+  */
+  it('keeps a moved field where it was put while the library still has the old order', async () => {
+    vi.spyOn(api, 'reorderNotebookFields').mockResolvedValue(undefined);
+    const { client, onChanged } = mount();
+    // The refetch `onChanged` sets off, answered from a library the feed has not reached.
+    onChanged.mockImplementation(() => client.setQueryData(keys.notebookFieldCounts('nb1'), [...fields]));
+    const names = () => screen.getAllByLabelText(/^Type of /).map((el) => el.getAttribute('aria-label'));
+
+    fireEvent.click(await screen.findByLabelText('Move Amount up'));
+    await waitFor(() => expect(api.reorderNotebookFields).toHaveBeenCalledWith('nb1', ['f1', 'f3', 'f2']));
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(names()).toEqual(['Type of Merchant', 'Type of Amount', 'Type of Category']);
+
+    // The feed arrives with the new order; from then on the list follows the query again.
+    const moved = [fields[0]!, fields[2]!, fields[1]!];
+    // The query's observers hear of a change on a timer, not a microtask.
+    const answer = async (list: FieldDef[]) =>
+      act(async () => {
+        client.setQueryData(keys.notebookFieldCounts('nb1'), list);
+        await new Promise((r) => setTimeout(r, 10));
+      });
+    await answer(moved);
+    expect(names()).toEqual(['Type of Merchant', 'Type of Amount', 'Type of Category']);
+    await answer([...fields]);
+    expect(names()).toEqual(['Type of Merchant', 'Type of Category', 'Type of Amount']);
   });
 
   it('gives a select field an editor for its options, and only a select field', async () => {
