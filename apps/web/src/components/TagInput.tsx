@@ -295,10 +295,12 @@ export function TagInput({
                 // the field the commit just emptied. A soft keyboard's own action key can
                 // still move focus despite preventDefault, so this puts it back.
                 if (e.key !== 'Tab') inputRef.current?.focus();
-              } else if (e.key === 'Backspace' && draft === '' && tags.length > 0) {
-                // Backspace on an empty field removes the last tag, as chips usually behave.
-                remove(tags[tags.length - 1]!);
               }
+              // Backspace on an empty field does nothing to the tags. It used to remove the
+              // last one, as many chip inputs do, but clearing a typo means pressing it a few
+              // times too many, and each extra press then took a tag off the note — saved at
+              // once, with nothing to say it happened. The same field edits a notebook
+              // field's options, where it deleted those. A chip's own × is the way to remove.
             },
           })}
         />
