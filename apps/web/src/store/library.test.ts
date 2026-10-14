@@ -82,6 +82,9 @@ describe('fetchJson', () => {
   });
 });
 
+/** A note as the collection holds it, for a test that seeds a real one. */
+const row = { id: 'n1', title: 'a', body: 'b', updatedAt: 1, deletedAt: undefined, notebookId: 'nb', tagIds: ['t1', 't2'], fields: [{ fieldId: 'f', value: 1 }] };
+
 /**
  * Opening the library is bounded for its caller. It waits on things outside the tab —
  * the outbox's database, the collections' leader — and an open that never settled left
@@ -95,9 +98,6 @@ describe('fetchJson', () => {
  * an outbox whose `ready` the test holds. What `open` reaches before that wait — the
  * engine, the socket, the listeners — is real.
  */
-/** A note as the collection holds it, for a test that seeds a real one. */
-const row = { id: 'n1', title: 'a', body: 'b', updatedAt: 1, deletedAt: undefined, notebookId: 'nb', tagIds: ['t1', 't2'], fields: [{ fieldId: 'f', value: 1 }] };
-
 function page(opts: { ready?: Promise<void>; pending?: number; notes?: Collection<typeof row, string> } = {}) {
   class FakeSocket {
     static all: FakeSocket[] = [];
