@@ -93,7 +93,7 @@ export type AnyLibrary = Library | ClientLibrary;
  * `LIBRARY_OPEN_TIMEOUT_MS` — the same promise while the open is quick, a refusal after
  * the bound, and the library again once a slow open has finished (`acquireLibrary`).
  */
-let current: { userId: string; library: Promise<AnyLibrary>; opened: Promise<AnyLibrary>; halt: () => void; deadline: number } | null = null;
+let current: { userId: string; library: Promise<AnyLibrary>; opened: Promise<AnyLibrary>; halt: () => void } | null = null;
 let forTests: ReadableLibrary | null = null;
 
 const libraryListeners = new Set<() => void>();
@@ -583,7 +583,7 @@ function openFor(userId: string, takeOver: boolean, held?: LibraryHold, inherite
     timer = setTimeout(() => reject(new LibraryOpenTimeoutError()), Math.max(0, deadline - Date.now()));
   });
   const library = Promise.race([opened, timeout]).finally(() => clearTimeout(timer));
-  const entry = { userId, library, opened, halt: () => halting.abort(), deadline };
+  const entry = { userId, library, opened, halt: () => halting.abort() };
   current = entry;
   libraryChanged();
   let late = false;
