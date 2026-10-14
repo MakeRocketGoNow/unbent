@@ -360,7 +360,11 @@ function StorageMeter({ plan, reading }: { plan: AccountPlan; reading: boolean }
         <div className={`progress-fill${share >= 0.95 ? ' plan-meter-full' : ''}`} style={{ width: `${Math.round(share * 100)}%` }} />
       </div>
       <p className="muted small">
-        {used !== undefined ? `${formatBytes(used)} used` : reading ? 'Reading what is held…' : 'Usage could not be read right now'} of {plan.storageGb} GB.
+        {used !== undefined
+          ? `${formatBytes(used)} used of ${plan.storageGb} GB.`
+          : reading
+            ? `Reading what is held, of ${plan.storageGb} GB…`
+            : `Usage could not be read right now; the plan allows ${plan.storageGb} GB.`}
       </p>
     </>
   );
