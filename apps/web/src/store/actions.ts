@@ -704,9 +704,10 @@ async function remember(noteId: string, filename: string, file: File): Promise<v
 }
 
 /**
- * IndexedDBAdapter's default object store (`storeName`). The peek a sign-out does when
- * the library has not opened yet reads this store; a rename would make that peek count
- * nothing and the wipe would take the writes without asking.
+ * The object store the outbox's entries live in, named to `IndexedDBAdapter` by
+ * `createOutbox` and read directly by `countStoredWrites`. It is the adapter's own
+ * default, so it is already the store on every device's outbox: renaming it orphans
+ * whatever is waiting there, and the sign-out's peek would count nothing.
  */
 export const OUTBOX_STORE = 'transactions';
 

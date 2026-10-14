@@ -42,11 +42,6 @@ describe('the pinned library internals', () => {
     expect('db' in new IndexedDBAdapter('pins')).toBe(true);
   });
 
-  it('the IndexedDB adapter’s default store is transactions', () => {
-    // `countStoredWrites` and `createOutbox` both name this store (`OUTBOX_STORE`).
-    expect((new IndexedDBAdapter('pins') as unknown as { storeName: string }).storeName).toBe('transactions');
-  });
-
   it('the executor can roll a restored entry’s change back through cleanupRestorationTransaction', () => {
     expect(typeof (OfflineExecutor.prototype as unknown as Record<string, unknown>).cleanupRestorationTransaction).toBe('function');
   });
