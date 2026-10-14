@@ -115,9 +115,6 @@ export function rebaseAfterAck(
   const was = sent;
   const now = seedFrom(server);
   const fields = { ...draft.fields };
-  // A half-typed number or URL was in `sent` but never stored, so draft === sent for
-  // that id and the loop below would take the server's old value — the bug: the field
-  // snapped back while the head still said Unsaved. Those ids stay on the draft.
   const held = new Set(unstoreableFieldIds(draft, server, definitions));
   for (const id of new Set([...Object.keys(now.fields), ...Object.keys(was.fields)])) {
     if (held.has(id)) continue;
