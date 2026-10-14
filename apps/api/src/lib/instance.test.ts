@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LEGAL_VERSION } from '@unbent/shared';
+import { LEGAL_CHANGE, LEGAL_VERSION } from '@unbent/shared';
 import {
   frontPageOf,
   isOperator,
@@ -120,6 +120,23 @@ describe('legalVersionOf', () => {
   it('asks for the built-in version, whatever the environment says', () => {
     expect(legalVersionOf(env({}), 'built-in').version).toBe(LEGAL_VERSION);
     expect(legalVersionOf(env({ LEGAL_VERSION: '2027-01-01' }), 'built-in').version).toBe(LEGAL_VERSION);
+  });
+
+  /*
+   * A sentence about the price and refunds is not said where there is no sale: those
+   * sections are not in that instance's terms (MAK-108).
+   */
+  it('says a billing-only change only where billing is on', () => {
+    const paddle = {
+      PADDLE_API_KEY: 'pdl_sdbx_x',
+      PADDLE_WEBHOOK_SECRET: 'pdl_ntfset_x',
+      PADDLE_CLIENT_TOKEN: 'test_x',
+      PADDLE_PLAN_PRICE_ID: 'pri_plan',
+      PADDLE_STORAGE_PRICE_ID: 'pri_storage',
+    };
+    expect(LEGAL_CHANGE?.billingOnly).toBe(true);
+    expect(legalVersionOf(env(paddle), 'built-in').change).toBe(LEGAL_CHANGE?.text);
+    expect(legalVersionOf(env({}), 'built-in')).toEqual({ version: LEGAL_VERSION });
   });
 
   it('asks for the operator’s own version for their own documents', () => {

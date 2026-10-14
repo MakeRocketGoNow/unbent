@@ -1,5 +1,6 @@
 import { LEGAL_CHANGE, LEGAL_VERSION, type AppConfig } from '@unbent/shared';
 import type { Env } from '../types.js';
+import { billingOn, type PaddleEnv } from './paddle.js';
 
 /**
  * What this instance says about itself, beyond how to sign in to it.
@@ -95,13 +96,18 @@ const OWN_DOCUMENTS_VERSION = '1';
  * know when those change, so the operator moves it, and everyone is asked again. Unset,
  * everyone is asked once. No sentence on what changed — the built-in one describes other
  * documents, and an operator who wants one can say it in their own.
+ *
+ * A sentence about the sections only an instance that sells a plan publishes
+ * (`billingOnly`) is left out where billing is off; the version still moves there, as it
+ * does for any change here, and the prompt is the plain "We’ve updated our terms".
  */
 export function legalVersionOf(
-  env: Pick<Env, 'LEGAL_VERSION'>,
+  env: Pick<Env, 'LEGAL_VERSION'> & PaddleEnv,
   documents: 'built-in' | 'own',
 ): { version: string; change?: string } {
   if (documents === 'own') return { version: env.LEGAL_VERSION?.trim() || OWN_DOCUMENTS_VERSION };
-  return { version: LEGAL_VERSION, ...(LEGAL_CHANGE ? { change: LEGAL_CHANGE } : {}) };
+  const change = LEGAL_CHANGE && (!LEGAL_CHANGE.billingOnly || billingOn(env)) ? LEGAL_CHANGE.text : undefined;
+  return { version: LEGAL_VERSION, ...(change ? { change } : {}) };
 }
 
 /**

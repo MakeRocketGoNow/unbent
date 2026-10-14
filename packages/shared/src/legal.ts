@@ -17,7 +17,7 @@
  * `/api/config` and refuses an agreement to any other, while the web app's tests check
  * the documents' dates are not older than it.
  */
-export const LEGAL_VERSION = '2026-10-09';
+export const LEGAL_VERSION = '2026-10-14';
 
 /**
  * One sentence on what changed in `LEGAL_VERSION`, for the people who agreed to an earlier
@@ -27,5 +27,13 @@ export const LEGAL_VERSION = '2026-10-09';
  * Undefined for the first version, which nobody had agreed to before. Set it in the same
  * commit that moves the version, and say what changed for the reader, not which sections
  * were edited.
+ *
+ * `billingOnly` when what changed is only in the sections an instance publishes because it
+ * sells a plan — the price, renewal and refunds. An instance with no billing does not
+ * publish them, so it asks again with the plain "We’ve updated our terms" rather than a
+ * sentence about terms its readers will not find (`legalVersionOf` in the API).
  */
-export const LEGAL_CHANGE: string | undefined = undefined;
+export const LEGAL_CHANGE: { text: string; billingOnly: boolean } | undefined = {
+  text: 'The terms now say what a plan costs, how it renews and how to cancel it, and that any charge is refunded in full if you ask within 14 days.',
+  billingOnly: true,
+};
