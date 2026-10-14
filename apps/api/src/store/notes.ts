@@ -96,6 +96,13 @@ export interface ListOptions {
    * `summaryRows`.
    */
   compact?: boolean | undefined;
+  /**
+   * A compact page that still carries each note's field values, for a caller that walks a
+   * notebook to fill or check a field and needs a value or two beside each title: the
+   * body and the files stay out, which is what made compact worth having. MCP's
+   * `list_notes` picks the named fields out of these (MAK-216).
+   */
+  compactFields?: boolean | undefined;
   sort?: NoteSort | undefined;
   order?: 'asc' | 'desc' | undefined;
   from?: string | undefined;
@@ -464,7 +471,7 @@ export class NotesStore {
       page,
       binds,
       `${byField ? '(n.sort_key IS NULL) ASC, ' : ''}n.sort_key ${direction}, n.id ${direction}`,
-      { compact: opts.compact },
+      { compact: opts.compact, compactFields: opts.compactFields },
     );
   }
 
@@ -478,13 +485,15 @@ export class NotesStore {
    * to be five times the size of a full one, and that is what makes it matter here rather
    * than in whoever drops the columns afterwards: five hundred bodies are read into the
    * object to be excerpted and discarded — a body may be 1.8 MB — and the two subqueries
-   * are a probe each per note for values nobody is shown.
+   * are a probe each per note for values nobody is shown. `compactFields` puts the values
+   * back for a caller that is shown them; the probe is the cheap half, an index lookup per
+   * note, and the bodies stay out.
    */
   private summaryRows(
     page: string,
     binds: Bind[],
     orderBy: string,
-    opts: { tags?: boolean; compact?: boolean | undefined } = {},
+    opts: { tags?: boolean; compact?: boolean | undefined; compactFields?: boolean | undefined } = {},
   ): SummaryRow[] {
     const tags =
       opts.tags === false
@@ -496,7 +505,7 @@ export class NotesStore {
       `SELECT n.id, n.title, ${opts.compact ? `''` : 'n.body'} AS body, n.created_at, n.updated_at, n.deleted_at,
               nb.name AS notebook, n.notebook_id,
               ${tags},
-              ${opts.compact ? 'NULL AS fields' : FIELDS_SUBQUERY},
+              ${opts.compact && !opts.compactFields ? 'NULL AS fields' : FIELDS_SUBQUERY},
               ${opts.compact ? 'NULL AS attachments' : ATTACHMENTS_SUBQUERY}
          FROM (${page}) n
          LEFT JOIN notebooks nb ON nb.id = n.notebook_id

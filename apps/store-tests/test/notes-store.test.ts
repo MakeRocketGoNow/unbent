@@ -275,6 +275,10 @@ describe('notes: listing and counting', () => {
     expect(compact).not.toHaveProperty('fields');
     // Paging is by the sort key, which a compact row still carries.
     expect(compact!.createdAt).toBe(full!.createdAt);
+
+    // Asked for, the values come back and the body still does not (MAK-216).
+    const [withFields] = await stub.list({ limit: 50, compact: true, compactFields: true });
+    expect(withFields).toMatchObject({ excerpt: '', fields: [expect.objectContaining({ fieldId: store.id, value: 'Acme' })] });
   });
 
   it('finds a notebook by name whatever its case, with its own fields and no other notebook\'s', async () => {

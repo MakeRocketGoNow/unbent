@@ -1370,3 +1370,33 @@ describe('list_notes cursors (MAK-217)', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('list_notes compact with include (MAK-216)', () => {
+  async function call(name: string, args: Record<string, unknown>) {
+    return JSON.parse(toolText((await mcp(alice.token, 'tools/call', { name, arguments: args })).body));
+  }
+
+  it('carries just the named fields beside each title', async () => {
+    const notebook = `Watch Later ${Date.now()}`;
+    const { id: notebookId } = await call('create_notebook', { name: notebook });
+    await call('create_notebook_field', { notebookId, name: 'Type', type: 'select', options: ['Movie', 'Series'] });
+    await call('create_notebook_field', { notebookId, name: 'URL', type: 'url' });
+    await call('create_notebook_field', { notebookId, name: 'Notes', type: 'text' });
+    await call('create_note', {
+      title: 'Coyote Returns',
+      notebook,
+      fields: { Type: 'Movie', URL: 'https://example.com/coyote', Notes: 'long' },
+    });
+
+    const page = await call('list_notes', { notebook, compact: true, include: ['type', 'URL'] });
+    expect(page.notes).toEqual([
+      {
+        id: expect.any(String),
+        title: 'Coyote Returns',
+        notebook,
+        tags: [],
+        fields: { Type: 'Movie', URL: 'https://example.com/coyote' },
+      },
+    ]);
+  });
+});
