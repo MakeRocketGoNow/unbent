@@ -33,7 +33,15 @@
  * email delivery service", and the operator's postal address is not here at all.
  */
 
-import type { AppConfig } from '@unbent/shared';
+import {
+  BASE_STORAGE_GB,
+  INACTIVE_KEPT_DAYS,
+  PLAN_PRICE_USD,
+  STORAGE_ADDON_GB,
+  STORAGE_ADDON_PRICE_USD,
+  TRIAL_DAYS,
+  type AppConfig,
+} from '@unbent/shared';
 
 export interface LegalSection {
   heading?: string;
@@ -51,6 +59,14 @@ export interface LegalSection {
    * four-item bulleted list reads as a description of the process rather than the process.
    */
   steps?: string[];
+  /**
+   * The section's anchor, for a link that has to land on it rather than on the document.
+   *
+   * Only the refund policy has one: Paddle's website review looks for a refund policy
+   * linked from the site, and the front page's footer links to it here rather than to a
+   * page of its own, since a refund is a term of the sale and belongs in the terms.
+   */
+  id?: string;
 }
 
 export interface LegalDocument {
@@ -83,15 +99,40 @@ export interface LegalOptions {
    * where they exist; a fork with no bucket keeps the shorter text, which is true of it.
    */
   backups: boolean;
+  /**
+   * Whether this instance sells a plan — `AppConfig.billing`, present where the Paddle
+   * secrets are set (MAK-108).
+   *
+   * The terms say what is charged, how it renews, how to cancel and the refund policy, and
+   * the policy names Paddle, only where there is a sale. A self-hosted instance charges
+   * nothing, and terms describing a price and a payment processor it never uses would be a
+   * promise about a sale that cannot happen.
+   */
+  billing: boolean;
 }
 
-const EFFECTIVE = '2026-10-09';
+/** The anchor the refund policy is linked by, from the front page's footer. */
+export const REFUNDS_ID = 'refunds';
+
+/**
+ * How long after a charge it can be refunded in full, for any reason.
+ *
+ * Fourteen days because that is the floor Paddle's review accepts, and the right to cancel
+ * that a consumer in Europe or the UK has anyway. It covers a renewal as much as a first
+ * charge: a renewal is the charge someone is most likely to have forgotten was coming.
+ */
+const REFUND_DAYS = 14;
+
+/** How long a lapsed account is kept, as the sentence says it. */
+const KEPT = INACTIVE_KEPT_DAYS === 365 ? 'a year' : `${INACTIVE_KEPT_DAYS} days`;
+
+const EFFECTIVE = '2026-10-14';
 
 /**
  * How many "other kinds of service" the policy lists, as the word the sentence needs. Two
  * always (sign-in, email); error tracking and the backups' GitHub job each add one.
  */
-const COUNT = ['', '', 'Two', 'Three', 'Four'] as const;
+const COUNT = ['', '', 'Two', 'Three', 'Four', 'Five'] as const;
 
 /**
  * The privacy policy's own date, moved when its terms change — "How long it is kept"
@@ -105,8 +146,11 @@ const COUNT = ['', '', 'Two', 'Three', 'Four'] as const;
  * saying how a change is put to people. That is also the first `LEGAL_VERSION`, which is
  * the version people agree to; it moves only for a change worth asking everyone about,
  * and these dates move for every change. `documents.test.ts` checks neither is older.
+ *
+ * Both moved again on 14 October 2026, with `LEGAL_VERSION`, when the terms gained the
+ * plan, its renewal and the refund policy, and the policy Paddle (MAK-108).
  */
-const PRIVACY_EFFECTIVE = '2026-10-09';
+const PRIVACY_EFFECTIVE = '2026-10-14';
 
 export interface LegalDocuments {
   privacy: LegalDocument;
@@ -168,6 +212,14 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
             'Sessions expire after thirty days of disuse.',
           'Your content — the notes you write, their titles, tags and notebooks, and any files you ' +
             'attach. Text extracted from PDFs you upload, so that searching finds words inside them.',
+          ...(opts.billing
+            ? [
+                'Your plan — whether the account is on a trial or a plan, when that ends, how much ' +
+                  'storage it includes, and the identifiers Paddle gives your customer record and ' +
+                  'subscription, so that the two can be matched. Your card and billing address go ' +
+                  'to Paddle and never reach us.',
+              ]
+            : []),
           'Nothing else. We do not collect your location, your contacts, your device identifiers, ' +
             'or anything from other apps.',
         ],
@@ -177,8 +229,9 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
         body: [
           'To run the service and nothing else: to show you your notes, to search them, to sync ' +
             'between your devices, and to sign you in. Email is used to reach you about your own ' +
-            'account — a sign-in code, a password reset, a verification link. There is no marketing ' +
-            'mail, and no newsletter to unsubscribe from.',
+            'account — a sign-in code, a password reset, a verification link' +
+            (opts.billing ? ', and word that a trial or a plan has ended' : '') +
+            '. There is no marketing mail, and no newsletter to unsubscribe from.',
           'We do not sell personal information, and we do not share it for advertising or for ' +
             'anyone else to build a profile from.',
         ],
@@ -190,7 +243,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
             'stored with our hosting provider there, which also keeps ordinary request logs, as ' +
             'any web host does. Text inside PDFs you upload is extracted on those same systems ' +
             'so that search can find it; the file is used for that and nothing else.',
-          `${COUNT[2 + Number(opts.errorTracking) + Number(opts.backups)]} other kinds of service ` +
+          `${COUNT[2 + Number(opts.errorTracking) + Number(opts.backups) + Number(opts.billing)]} other kinds of service ` +
             `are involved, each for one narrow job:`,
         ],
         list: [
@@ -212,6 +265,14 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
                   'your files and our sign-in records — to a second account with our hosting ' +
                   'provider, as described under “How long it is kept”. The copy passes through ' +
                   'those servers on the way and none of your content is kept on them.',
+              ]
+            : []),
+          ...(opts.billing
+            ? [
+                'Paddle, which sells the plan as merchant of record. When you subscribe it collects ' +
+                  'your name, email address, billing address and payment details, under its own ' +
+                  'privacy policy, and tells us only whether the account is paid for, until when, ' +
+                  'and how much storage it includes. It never sees your notes.',
               ]
             : []),
         ],
@@ -279,6 +340,13 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
                   'account you delete leaves every one of them within about three months. They are ' +
                   'for restoring the service after a fault, not a way to bring one note back; keep ' +
                   'an export for that.',
+              ]
+            : []),
+          ...(opts.billing
+            ? [
+                `An account whose trial or plan has ended is kept, read-only, for ${KEPT}, ` +
+                  `and may then be deleted, after we have emailed you to export it first. Paddle ` +
+                  `keeps its own record of what you bought for as long as tax law requires.`,
               ]
             : []),
         ],
@@ -379,6 +447,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
             'else’s behalf without their knowledge.',
         ],
       },
+      ...(opts.billing ? payment(operator) : []),
       {
         heading: 'Your content is yours',
         body: [
@@ -421,7 +490,11 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
         body: [
           'You may delete your account at any time, from Settings, then Maintenance. We email a ' +
             'confirmation link and delete the account once you open it and confirm. Deletion ' +
-            'removes your notes, files and account record, and cannot be undone.',
+            'removes your notes, files and account record, and cannot be undone.' +
+            (opts.billing
+              ? ' It also cancels your plan at once, so nothing renews; what is left of the ' +
+                'year is not refunded, except as “Refunds” describes.'
+              : ''),
           'We may suspend or close an account that breaks these terms or the law, or where we are ' +
             'required to. Except where the law or an ongoing investigation prevents it, we will ' +
             'tell you why and give you an opportunity to export your notes first.',
@@ -599,4 +672,61 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
   };
 
   return { privacy, terms, deletion };
+}
+
+/**
+ * The terms' two sections about money, for an instance that sells a plan.
+ *
+ * What Paddle's website review reads for: the price, that Paddle is the merchant of record,
+ * that the plan renews and how to stop it, and a refund policy. The numbers come from
+ * `@unbent/shared`'s `plan.ts`, the same constants the front page and the Plan page quote,
+ * so the terms cannot name a price the pages have moved on from.
+ *
+ * Two promises here are behaviour, not prose, and hold only while the code keeps them:
+ * cancelling keeps the year already paid for (`planStateOf` reads a canceled subscription
+ * as active until its period ends), and a lapsed account reads, searches, exports and
+ * deletes (`requireActivePlan`). The deletion of an account a year after it lapsed is not
+ * built yet (`INACTIVE_KEPT_DAYS`), which is why it says "may".
+ */
+function payment(operator: Operator): LegalSection[] {
+  return [
+    {
+      heading: 'Plans and payment',
+      body: [
+        `A new account has ${TRIAL_DAYS} days free, with no card asked for. After that, writing ` +
+          `in Unbent needs a plan: $${PLAN_PRICE_USD} a year, with ${BASE_STORAGE_GB} GB for ` +
+          `attachments, and ${STORAGE_ADDON_GB} GB more for each $${STORAGE_ADDON_PRICE_USD} a ` +
+          `year of added storage. Prices are in US dollars, and sales tax or VAT is added where ` +
+          `it applies.`,
+        'Our order process is conducted by our online reseller Paddle.com. Paddle is the ' +
+          'merchant of record for every order: it takes the payment, issues the receipt and ' +
+          'handles tax, and its own buyer terms apply to the purchase alongside these.',
+        'A plan renews automatically each year, and is charged again at the price then current, ' +
+          'until you cancel it. If the price is going to change we will email you at least 30 ' +
+          'days before the renewal it applies to.',
+        'You can cancel at any time, on the website, from Settings, then Plan, then Manage ' +
+          'subscription. Cancelling stops the next renewal; the account keeps everything it had until the end ' +
+          'of the year already paid for.',
+        `When a trial ends without a plan, or a plan ends, the account becomes read-only rather ` +
+          `than disappearing: every note still opens, searches and exports, and you can still ` +
+          `delete, but nothing new can be written until you subscribe again. A read-only ` +
+          `account is kept for ${KEPT}, and we will email you to export it before then. After ` +
+          `that we may delete it, as if you had deleted it yourself.`,
+      ],
+    },
+    {
+      heading: 'Refunds',
+      id: REFUNDS_ID,
+      body: [
+        `If Unbent is not for you, ask for a refund within ${REFUND_DAYS} days of any charge — ` +
+          `the first year or a renewal, the plan or added storage — and you will get the whole ` +
+          `of that charge back. No reason is needed. Write to ${operator.email} from the ` +
+          `address on the account, or ask Paddle directly with the link in your receipt.`,
+        'A refunded plan is cancelled, so it does not renew. After ' +
+          `${REFUND_DAYS} days a charge is not refunded, though cancelling still stops the ` +
+          'next one. Where the law where you live gives you a longer right to cancel or to a ' +
+          'refund, you have it regardless of this section.',
+      ],
+    },
+  ];
 }

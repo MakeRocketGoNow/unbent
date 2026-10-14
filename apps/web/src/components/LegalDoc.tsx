@@ -36,7 +36,7 @@ export function LegalDoc({ doc }: { doc: LegalDocument }) {
       ))}
 
       {doc.sections.map((section) => (
-        <section key={section.heading ?? section.body?.[0] ?? section.steps?.[0]}>
+        <section key={section.heading ?? section.body?.[0] ?? section.steps?.[0]} id={section.id}>
           {section.heading && <h2>{section.heading}</h2>}
           {section.body?.map((text, i) => <p key={i}>{text}</p>)}
           {section.steps && (
