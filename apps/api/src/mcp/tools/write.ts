@@ -245,11 +245,13 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo, links: A
       description:
         `Create up to ${MAX_CREATE_NOTES} notes in one call, each as create_note takes it — ` +
         'title, body, tags, notebook and fields — for an import or any list of notes to make. ' +
-        'Every field value in the batch is checked before anything is written, and if one is ' +
-        'refused nothing is created: the error names each note that needs fixing, by its ' +
-        'position, so the whole batch can be sent again. With skipExisting, a note whose ' +
-        'title its notebook already has (whatever the case) is not made again, and answers ' +
-        'with the note that is there; a title given twice in the batch is made once. Answers ' +
+        'Every field value in the batch is checked before anything is written — those of ' +
+        'notes skipExisting would skip too — and if one is refused nothing is created: the ' +
+        'error names each note that needs fixing, by its position, so the whole batch can be ' +
+        'sent again. With skipExisting, a note whose title its notebook already has (whatever ' +
+        'the case) is not made again, and answers with the note that is there; a title given ' +
+        'twice in the batch is made once. If an answer is lost, send the batch again with ' +
+        'skipExisting, so nothing is made twice. Answers ' +
         'with each note in the order given: its id, url and title, and skipped when it was ' +
         'already there. The bodies may come to ' +
         `${MAX_CREATE_NOTES_BYTES / 1_000_000} MB between them; split a longer import.` +
@@ -342,9 +344,14 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo, links: A
         });
       } catch (err) {
         // A definition changed between the check and the write. The batch was one
-        // transaction, so nothing was created and the same batch can be sent again.
+        // transaction, so nothing was created and the same batch can be sent again. The
+        // store's error does not know which note, so the message says what happened
+        // instead, which is what tells the model a fresh look and a retry will do.
         if (err instanceof InvalidFieldValue) {
-          return toolError(`Nothing was created: ${err.fieldName} ${err.message}.`);
+          return toolError(
+            `Nothing was created: a field changed while the batch was being written, and ${err.fieldName} ` +
+              `${err.message}. Check the notebook's fields with list_notebooks and send the batch again.`,
+          );
         }
         throw err;
       }

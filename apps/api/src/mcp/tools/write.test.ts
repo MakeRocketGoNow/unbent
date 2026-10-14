@@ -825,6 +825,7 @@ describe('create_notes (MAK-214)', () => {
     } as unknown as NotesRepo;
     const result = await collect(repo).get('create_notes')!({ notes: [make({ title: 'A' })], skipExisting: false });
     expect(result.isError).toBe(true);
-    expect(result.content[0]!.text).toBe('Nothing was created: Year must be a number.');
+    expect(result.content[0]!.text).toContain('Nothing was created: a field changed');
+    expect(result.content[0]!.text).toContain('Year must be a number.');
   });
 });
