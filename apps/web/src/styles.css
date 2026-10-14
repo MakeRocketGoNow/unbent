@@ -6496,6 +6496,21 @@ button.settings-nav-item {
   flex: 1;
   overflow-y: auto;
   overscroll-behavior: contain;
+  /*
+     Never scrolled by the browser on its own. Scroll anchoring keeps a scroller's content
+     still when something above the viewport changes size, by picking a visible box as its
+     reference and moving the scroll position as that box moves. Here it picked the hover
+     pill (`.drawer-list::before`, below): a box inside this scroller that sits on whichever
+     row the pointer is over, glides between rows, and falls back to the top of the list
+     when the pointer is on none. Each of those is a move of the reference, and anchoring
+     followed it — on a mouse wheel in Chromium, the list went from wherever it was to 0,
+     with nothing in the page having touched it (2026-10-14). Safari has neither anchor
+     positioning nor scroll anchoring and never showed it. Off for the whole list rather
+     than the pill alone: what this list should keep still is the person's place, and
+     nothing that moves in it — a count rolling over, a row appearing above — is a reason
+     to move that.
+  */
+  overflow-anchor: none;
 }
 
 .drawer-item {
