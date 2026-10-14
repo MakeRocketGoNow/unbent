@@ -103,13 +103,14 @@ describe('the per-account store', () => {
   /**
    * Note data lives in the object, and a route that queried D1 for it would be reading a
    * frozen table. The routes that may still name `env.DB` are the ones whose data stays in
-   * D1 — the health check, the upload-grant claim, connected apps — and admin.ts, whose
-   * one use is the test-fixture purge, which lists the throwaway accounts by their `user`
-   * rows. A new route that needs the database is either a control-plane route, added here
+   * D1 — the health check, the upload-grant claim, connected apps, the agreement to the
+   * terms, which is a column on Better Auth's `user` row — and admin.ts, whose one use is
+   * the test-fixture purge, which lists the throwaway accounts by their `user` rows. A new
+   * route that needs the database is either a control-plane route, added here
    * with a reason, or a mistake.
    */
   it('keeps env.DB out of every route that is not on the control plane', () => {
-    const allowed = new Set(['routes/health.ts', 'routes/uploads.ts', 'routes/connected-apps.ts', 'routes/admin.ts']);
+    const allowed = new Set(['routes/health.ts', 'routes/uploads.ts', 'routes/connected-apps.ts', 'routes/legal.ts', 'routes/admin.ts']);
     for (const file of walk(join(SRC, 'routes'))) {
       if (/\benv\.DB\b/.test(code(file))) {
         expect(allowed.has(rel(file)), `${rel(file)} reaches env.DB`).toBe(true);

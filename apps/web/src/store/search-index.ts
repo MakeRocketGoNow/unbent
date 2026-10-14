@@ -87,6 +87,12 @@ export const SHED = 'shed:';
 const WRITE_ROWS = 200;
 const WRITE_BYTES = 2 * 1024 * 1024;
 
+/**
+ * What a search asks of the index (`searchLocal`): the four reads. The holder's index
+ * answers it, and so does a client tab's proxy to it (`client-library.ts`).
+ */
+export type SearchReader = Pick<SearchIndex, 'candidates' | 'snippets' | 'meta' | 'held'>;
+
 export class SearchIndex {
   private queue: Promise<unknown> = Promise.resolve();
   private prepared: Promise<void> | null = null;

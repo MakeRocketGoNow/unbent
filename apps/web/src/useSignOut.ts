@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { signOut, refreshSession } from './auth-client.js';
 import { isHosted, postToApp } from './app-bridge.js';
-import { forgetSession } from './session-memory.js';
+import { forgetSession, rememberedSession } from './session-memory.js';
 import { clearOfflineCaches } from './offline-cache.js';
 import { claimImportFor } from './import-run.js';
 import { settleWrites, subscribeWrites } from './store/library.js';
@@ -11,11 +11,17 @@ import { settleWrites, subscribeWrites } from './store/library.js';
  * Changes the server has not taken, when Sign out was pressed and the outbox did not
  * drain in time — put to the person before the wipe takes them. In a store beside the
  * failure below, for the same reason: the menu that was pressed has closed, so the
- * question is asked by `SignOutConfirm` in the shell, with the count, and the answer
- * comes back here.
+ * question is asked by `SignOutConfirm` in the shell, with the count or without one when
+ * it could not be counted, and the answer comes back here.
  */
 export interface UnsyncedQuestion {
-  count: number;
+  /**
+   * How many writes are still waiting, or `null` when the outbox could not be
+   * counted — a library that has not opened yet, and a peek of its durable store
+   * that did not answer. The confirm then asks without a number rather than
+   * treating "unknown" as nothing waiting, which is what the wipe would take.
+   */
+  count: number | null;
   /** Leave anyway, and lose them. */
   leave: () => void;
   /** Stay signed in; the outbox keeps trying. */
@@ -49,7 +55,7 @@ export function useUnsyncedQuestion(): UnsyncedQuestion | null {
  * it shows is the current one until then. A second press of Sign out while a question is
  * up answers the first one with "stay" rather than leaving its chain hanging.
  */
-function askToLeave(count: number): Promise<boolean> {
+function askToLeave(count: number | null): Promise<boolean> {
   unsynced?.stay();
   return new Promise((resolve) => {
     let stop = () => {};
@@ -58,7 +64,7 @@ function askToLeave(count: number): Promise<boolean> {
       setUnsynced(null);
       resolve(leave);
     };
-    const ask = (n: number) => setUnsynced({ count: n, leave: () => answer(true), stay: () => answer(false) });
+    const ask = (n: number | null) => setUnsynced({ count: n, leave: () => answer(true), stay: () => answer(false) });
     ask(count);
     stop = subscribeWrites((pending) => {
       if (!unsynced) return;
@@ -128,12 +134,14 @@ export function useSignOut(): () => void {
        below removes the outbox with them, and the menu offers Sign out only with a
        connection, so what waits is mid-replay and usually gone in a moment. What is still
        waiting after that — the server having a bad minute — is put to the person with the
-       count, since the wipe would take it (`SignOutConfirm`); staying is the safe answer
-       and the outbox keeps trying.
+       count, or without one when the outbox could not be counted (`settleWrites` answers
+       `null`), since the wipe would take it (`SignOutConfirm`); staying is the safe answer
+       and the outbox keeps trying. The account is named so that an outbox whose library
+       never opened in this tab is still counted.
     */
-    void settleWrites(5000)
+    void settleWrites(5000, rememberedSession()?.user.id ?? null)
       .then(async (left) => {
-        if (left > 0 && !(await askToLeave(left))) return 'stayed';
+        if (left !== 0 && !(await askToLeave(left))) return 'stayed';
         return signOut();
       })
       .then((res) => (res === 'stayed' ? 'stayed' : !res?.error), () => false)

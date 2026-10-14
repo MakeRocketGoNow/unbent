@@ -177,7 +177,7 @@ describe('Rail', () => {
     localStorage.setItem('unbent.rail', '"collapsed"');
     const { findByRole } = harness('/notes', true);
     const trash = await findByRole('link', { name: /^Trash/ });
-    expect(trash.getAttribute('title')).toBe('Trash');
+    expect(trash.dataset.tip).toBe('Trash');
     expect(trash.textContent).toContain('Trash');
   });
 

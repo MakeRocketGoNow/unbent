@@ -304,7 +304,7 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
               type="button"
               className="icon-btn"
               aria-label="Restore"
-              title="Restore"
+              data-tip="Restore"
               disabled={empty.busy}
               onClick={() => void restoreSelected()}
             >
@@ -314,7 +314,7 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
               type="button"
               className="icon-btn danger"
               aria-label="Delete forever"
-              title="Delete forever"
+              data-tip="Delete forever"
               disabled={empty.busy}
               onClick={() => setPending('selected')}
             >

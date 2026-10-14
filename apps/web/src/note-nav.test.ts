@@ -44,7 +44,7 @@ describe('the paths', () => {
     expect(isListPath('/notes/n1')).toBe(false);
     expect(isNotePath('/notes')).toBe(false);
     expect(isNotePath('/settings/notebooks')).toBe(false);
-    expect(isNotePath('/embed/notes/n1')).toBe(false);
+    expect(isNotePath('/embed/index-files')).toBe(false);
   });
 });
 

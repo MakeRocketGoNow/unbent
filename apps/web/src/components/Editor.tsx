@@ -25,7 +25,7 @@ interface EditorProps {
    * Absent, files are refused rather than inserted: a read-only note has no uploader, and
    * without the handler CodeMirror's own drop would paste a file's bytes in as text.
    */
-  onUpload?: (file: File, signal: AbortSignal) => Promise<string>;
+  onUpload?: (file: File) => Promise<string>;
   /** How many uploads are in flight, whenever that changes. The Android app shows it. */
   onUploadsPending?: (count: number) => void;
   /**
@@ -288,10 +288,10 @@ export function Editor({
           */
           attachments({
             upload: onUpload
-              ? (file, signal) => {
+              ? (file) => {
                   const upload = onUploadRef.current;
                   if (!upload) throw new Error('Uploads are switched off for this note');
-                  return upload(file, signal);
+                  return upload(file);
                 }
               : undefined,
             onPending: (count) => onUploadsPendingRef.current?.(count),

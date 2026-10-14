@@ -382,12 +382,12 @@ function TemplatePreview({
           type="submit"
           variant="primary"
           disabled={busy || !trimmed || nameTaken || offline}
-          title={offlineTitle}
+          tip={offlineTitle}
         >
           Create notebook
         </Button>
         {clash && (
-          <Button disabled={busy || offline} title={offlineTitle} onClick={() => void addToExisting(clash)}>
+          <Button disabled={busy || offline} tip={offlineTitle} onClick={() => void addToExisting(clash)}>
             Add these fields to {clash}
           </Button>
         )}

@@ -38,7 +38,7 @@ interface SelectionBarProps {
 export function SelectionBar({ count, total, onClear, onSelectAll, children }: SelectionBarProps) {
   return (
     <div className="selection-bar" role="toolbar" aria-label="Selected notes">
-      <button type="button" className="icon-btn" aria-label="Clear selection" onClick={onClear}>
+      <button type="button" className="icon-btn" aria-label="Clear selection" data-tip="Clear selection" onClick={onClear}>
         <CancelIcon />
       </button>
       {/* The word is dropped from sight on a narrow phone, where the bar's five 44px

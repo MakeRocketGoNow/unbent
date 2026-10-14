@@ -93,6 +93,26 @@ class UnbentApiTest {
         assertEquals("a@b.c", api.me()?.email)
     }
 
+    /**
+     * The server answers 503 when it could not check the session at all — a lookup that
+     * stalled, or a session store that failed. `MainActivity.checkSession` keeps the stored
+     * session on anything but a 401, so this must throw with its status, never read as the
+     * null user above, which signs the phone out.
+     */
+    @Test
+    fun `me fails rather than reporting no user when the session could not be checked`() {
+        server.enqueue(
+            MockResponse().setResponseCode(503).setHeader("Retry-After", "60")
+                .setBody("""{"error":"Your session could not be checked right now. Try again shortly."}"""),
+        )
+        try {
+            api.me()
+            fail("expected ApiException")
+        } catch (e: ApiException) {
+            assertEquals(503, e.status)
+        }
+    }
+
     @Test
     fun `listAttachments reads the note's files`() {
         server.enqueue(

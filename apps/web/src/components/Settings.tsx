@@ -5,8 +5,11 @@ import { LabelEditor, type LabelItem } from './LabelEditor.js';
 import { NotebookChooser } from './NotebookChooser.js';
 import { rememberedSort } from '../notebook-sort.js';
 import { DeleteNotebookConfirm } from './DeleteNotebookConfirm.js';
-import { DownloadIcon, FieldsIcon } from './icons.js';
+import { DownloadIcon, FieldsIcon, KeptIcon } from './icons.js';
 import { startExport, useExportRunning } from '../export-archive.js';
+import { useKeeper } from '../store/use-outbox.js';
+import type { KeepStatus } from '../store/keep.js';
+import { useOffline } from '../connectivity.js';
 
 interface SettingsProps {
   /** Called after any change, so the note list and sidebar refetch. */
@@ -46,6 +49,8 @@ interface SettingsProps {
  */
 export function Settings({ onChanged, createRequested = false, onCreateRequested }: SettingsProps) {
   const exportRunning = useExportRunning();
+  const { status: keep } = useKeeper();
+  const offline = useOffline();
   const navigate = useNavigate();
   /*
    * Whether the chooser is open. Null until someone opens or closes it, and while it is
@@ -135,14 +140,21 @@ export function Settings({ onChanged, createRequested = false, onCreateRequested
         /* The note count sits right after the name, the way a field's value count sits
            after the field name on the notebook's own page. It said at the far right, a
            second bare number beside "Fields N", read as more fields; against the name it
-           is plainly the notebook's size. Silent at zero, as it is there. */
-        renderNameCount={(item) =>
-          item.count > 0 ? (
-            <span className="tag-count" title={`${item.count} note${item.count === 1 ? '' : 's'}`}>
-              {item.count}
-            </span>
-          ) : null
-        }
+           is plainly the notebook's size. Silent at zero, as it is there.
+
+           After it, on a notebook kept on this device, a mark saying so: which notebooks a
+           device keeps is otherwise said only under Settings → Offline, and this list is
+           where someone checks before going without a connection. See `KeptMark`. */
+        renderNameCount={(item) => (
+          <>
+            {item.count > 0 && (
+              <span className="tag-count" data-tip={`${item.count} note${item.count === 1 ? '' : 's'}`}>
+                {item.count}
+              </span>
+            )}
+            {keep.kept.has(item.id) && <KeptMark status={keep} offline={offline} />}
+          </>
+        )}
         /* The row leads to the notebook's page now, so the old "Fields" link here — a second
            way to the same place — is gone. What it also carried, the field count, comes back
            as a plain glyph-and-number: how many custom fields the notebook has, which is what
@@ -161,7 +173,7 @@ export function Settings({ onChanged, createRequested = false, onCreateRequested
               {fields > 0 && (
                 <span
                   className="label-field-count muted small"
-                  title={`${fields} custom field${fields === 1 ? '' : 's'}`}
+                  data-tip={`${fields} custom field${fields === 1 ? '' : 's'}`}
                 >
                   <FieldsIcon />
                   {fields}
@@ -172,7 +184,7 @@ export function Settings({ onChanged, createRequested = false, onCreateRequested
                 className="icon-btn label-download"
                 disabled={exportRunning}
                 onClick={() => startExport({ notebook: item.name })}
-                title={`Download ${item.name} as a zip`}
+                data-tip={`Download ${item.name} as a zip`}
                 aria-label={`Download ${item.name} as a zip`}
               >
                 <DownloadIcon />
@@ -229,5 +241,46 @@ export function Settings({ onChanged, createRequested = false, onCreateRequested
         />
       )}
     </div>
+  );
+}
+
+/**
+ * The mark on a kept notebook's row: whether this device keeps its files, and whether
+ * they have all arrived.
+ *
+ * Status, not a control. A switch on every row was the obvious alternative and was
+ * turned down: keeping is asked on the notebook's own page because the question names a
+ * size — "Keep 1.2 GB on this device?" — against the room the device has, and a switch
+ * that skipped that would fill a phone on a tap, while one that kept it would be a button
+ * drawn as a switch. A switch also says "on now", and a notebook is kept only once its
+ * files are here; in a settings list it reads as an account setting too, when keeping is
+ * this device's alone. And the row already repeats three things, so a fourth control on
+ * every row would outweigh the names it sits beside.
+ *
+ * Drawn only on the rows that are kept — a few among many — so it stands out where it is
+ * and costs the others nothing. Beside the name, after the note count, where Google Drive
+ * puts its own "available offline" mark beside a file's name. It was first drawn among
+ * the facts at the right, ahead of the field count, and there it landed in a different
+ * place on a notebook with fields than on one without, and on the latter sat where the
+ * field counts are and read as one. Not a link of its own: it is inside the name, which
+ * already leads to the page where keeping is changed.
+ *
+ * The keeper counts every kept notebook together, so "still arriving" is said of all of
+ * them rather than claimed of this one, as `KeepOffline` does on the notebook's page.
+ */
+function KeptMark({ status, offline }: { status: KeepStatus; offline: boolean }) {
+  const complete = status.counted && status.have.files >= status.wanted.files;
+  const whose = status.kept.size === 1 ? 'its files' : 'the kept notebooks’ files';
+  // Before the first count there is nothing true to add, so the circle stays open and the
+  // words stay plain.
+  const tip = complete || !status.counted
+    ? 'Kept on this device'
+    : offline
+    ? `Kept on this device; ${whose} arrive when there is a connection`
+    : `Kept on this device; ${whose} are still arriving`;
+  return (
+    <span className="label-kept" role="img" aria-label={tip} data-tip={tip}>
+      <KeptIcon complete={complete} />
+    </span>
   );
 }

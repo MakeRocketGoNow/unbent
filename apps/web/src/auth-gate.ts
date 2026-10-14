@@ -36,10 +36,10 @@ export const HOW_TO_DELETE = '/delete-my-account';
  * Which of the three shells a path belongs to — and, because the same answer decides both,
  * whether it needs a session.
  *
- * `embed` is the Android app's WebView: it has its own chrome around the page, and it has
- * already put a session cookie in place before loading it, so an unauthenticated load is
- * reported to the app through the bridge rather than redirected to a sign-in screen inside
- * somebody else's screen.
+ * `embed` is the page the Android app loads off screen to index a capture's PDFs. The app
+ * has already put a session cookie in place before loading it, so an unauthenticated load
+ * is reported to the app through the bridge rather than redirected to a sign-in screen
+ * nobody would see.
  *
  * `plain` is the pages that have to render for someone with no session, enumerated in
  * `PUBLIC` below. Two kinds. Some exist precisely because there is no session: the sign-in

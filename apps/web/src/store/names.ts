@@ -38,6 +38,20 @@ export const storeFileName = (userId: string) => `${STORE_PREFIX}${safe(userId)}
  */
 export const searchFileName = (userId: string) => `${STORE_PREFIX}${safe(userId)}.search.sqlite`;
 export const outboxName = (userId: string) => `${OUTBOX_PREFIX}${safe(userId)}`;
+/**
+ * The Web Lock the tab replaying an account's outbox holds (`store/leader.ts`). Named for
+ * the account, not the origin: a window holding another account's library must not stop
+ * this one's writes from going.
+ */
+export const outboxLeaderName = (userId: string) => `${OUTBOX_PREFIX}leader-${safe(userId)}`;
+/** The Web Lock the one tab holding an account's library holds (`store/library-lock.ts`). */
+export const libraryLockName = (userId: string) => `${STORE_PREFIX}library-${safe(userId)}`;
+/**
+ * The channel between the tab holding an account's library and the account's other tabs
+ * (`store/library-channel.ts`). Per account for the lock's reason: a window on another
+ * account must hear nothing of this one's rows.
+ */
+export const libraryChannelName = (userId: string) => `${STORE_PREFIX}library-channel-${safe(userId)}`;
 export const filesDirName = (userId: string) => `${FILES_PREFIX}${safe(userId)}`;
 
 /**

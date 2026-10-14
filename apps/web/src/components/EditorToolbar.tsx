@@ -205,7 +205,7 @@ function TableButton({ view, disabled = false }: { view: EditorView | null; disa
       <button
         type="button"
         className="tb-btn"
-        title="Table (⌘⇧T)"
+        data-tip="Table (⌘⇧T)"
         aria-label="Table"
         aria-expanded={open}
         aria-haspopup="dialog"
@@ -272,7 +272,7 @@ function AttachButton({
       <button
         type="button"
         className="tb-btn"
-        title="Attach file"
+        data-tip="Attach file"
         aria-label="Attach file"
         disabled={disabled || !canUpload}
         onMouseDown={(e) => e.preventDefault()}
@@ -404,7 +404,7 @@ export function EditorToolbar({
             key={action.title}
             type="button"
             className={`tb-btn ${action.className ?? ''}`}
-            title={action.title}
+            data-tip={action.title}
             aria-label={action.title}
             disabled={!view || !canEdit}
             // onMouseDown, not onClick: a click would blur the editor first and drop the
@@ -439,7 +439,7 @@ export function EditorToolbar({
           <button
             type="button"
             className="tb-btn tb-split"
-            title={noteView.split.on ? 'Hide the preview beside the source' : 'Show a preview beside the source'}
+            data-tip={noteView.split.on ? 'Hide the preview beside the source' : 'Show a preview beside the source'}
             aria-label="Preview beside source"
             aria-pressed={noteView.split.on}
             onMouseDown={(e) => {
@@ -465,7 +465,8 @@ export function EditorToolbar({
               className="tb-seg"
               role="radio"
               aria-checked={noteView.current === value}
-              title={title}
+              data-tip={title}
+              aria-description={title}
               onMouseDown={(e) => {
                 e.preventDefault();
                 noteView.onChange(value);
@@ -494,7 +495,7 @@ export function EditorToolbar({
           <button
             type="button"
             className="tb-btn tb-hide-keyboard"
-            title="Hide keyboard"
+            data-tip="Hide keyboard"
             aria-label="Hide keyboard"
             onMouseDown={(e) => {
               e.preventDefault();

@@ -1,4 +1,4 @@
-import type { AppConfig } from '@unbent/shared';
+import { LEGAL_CHANGE, LEGAL_VERSION, type AppConfig } from '@unbent/shared';
 import type { Env } from '../types.js';
 
 /**
@@ -72,9 +72,36 @@ export function isOperator(env: Env, email: string | undefined): boolean {
 export function legalLinksOf(env: Env): AppConfig['legal'] | undefined {
   const privacy = env.LEGAL_PRIVACY_URL?.trim();
   const terms = env.LEGAL_TERMS_URL?.trim();
-  if (privacy && terms) return { privacy, terms };
-  if (operatorOf(env)) return { privacy: '/privacy', terms: '/terms' };
+  if (privacy && terms) return { privacy, terms, ...legalVersionOf(env, 'own') };
+  if (operatorOf(env)) return { privacy: '/privacy', terms: '/terms', ...legalVersionOf(env, 'built-in') };
   return undefined;
+}
+
+/**
+ * The version an operator's own documents stand at until the operator says otherwise.
+ *
+ * Fixed, and never the built-in `LEGAL_VERSION`: that one moves with this repository, and
+ * borrowing it would ask every account on a fork to agree again each time the documents
+ * here changed — documents that fork does not publish — under a sentence describing them.
+ */
+const OWN_DOCUMENTS_VERSION = '1';
+
+/**
+ * Which version of the documents a signed-in account must have agreed to, and what is new
+ * in it. See `LEGAL_VERSION`.
+ *
+ * For the built-in documents, the repository's version and its sentence on what changed.
+ * For an operator's own, `LEGAL_VERSION` from the environment: this repository cannot
+ * know when those change, so the operator moves it, and everyone is asked again. Unset,
+ * everyone is asked once. No sentence on what changed — the built-in one describes other
+ * documents, and an operator who wants one can say it in their own.
+ */
+export function legalVersionOf(
+  env: Pick<Env, 'LEGAL_VERSION'>,
+  documents: 'built-in' | 'own',
+): { version: string; change?: string } {
+  if (documents === 'own') return { version: env.LEGAL_VERSION?.trim() || OWN_DOCUMENTS_VERSION };
+  return { version: LEGAL_VERSION, ...(LEGAL_CHANGE ? { change: LEGAL_CHANGE } : {}) };
 }
 
 /**

@@ -71,7 +71,6 @@ describe('shellFor', () => {
   });
 
   it('leaves the app WebView to the app', () => {
-    expect(shellFor('/embed/notes/abc-123')).toBe('embed');
     expect(shellFor('/embed/index-files')).toBe('embed');
   });
 

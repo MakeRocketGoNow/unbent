@@ -159,7 +159,7 @@ export function PdfPreview({ src, label }: PdfPreviewProps) {
               type="button"
               className="icon-btn pdf-preview-expand"
               aria-label="Full screen"
-              title="Full screen"
+              data-tip="Full screen"
               onClick={expand}
             >
               <ExpandIcon />

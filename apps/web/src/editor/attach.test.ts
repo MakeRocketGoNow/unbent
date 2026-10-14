@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from 'vitest';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import {
-  abandonUploads,
   attachments,
   insertUploads,
   pendingUploads,
@@ -13,19 +12,15 @@ import {
  * The upload routine drop, paste and the Attach button share.
  *
  * What matters is the shape of the document at each step: a placeholder the moment the
- * file is chosen, the real link when the upload lands, a comment when it fails, and
- * nothing at all when it is abandoned — that last one is the case the Android app
- * depends on, because a placeholder left in a saved note is permanent once the WebView
- * that could have replaced it is gone.
+ * file is chosen, the real link when the upload lands, and a comment when it fails.
  */
 
-/** An upload the test finishes by hand, and the signal it was given. */
+/** An upload the test finishes by hand. */
 function deferredUpload() {
-  const calls: { file: File; signal: AbortSignal; resolve: (p: string) => void; reject: (e: Error) => void }[] = [];
-  const upload: AttachConfig['upload'] = (file, signal) =>
+  const calls: { file: File; resolve: (p: string) => void; reject: (e: Error) => void }[] = [];
+  const upload: AttachConfig['upload'] = (file) =>
     new Promise<string>((resolve, reject) => {
-      calls.push({ file, signal, resolve, reject });
-      signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+      calls.push({ file, resolve, reject });
     });
   /** The n-th upload asked for; a test that reaches for one that never came fails here. */
   const call = (n: number) => {
@@ -186,36 +181,6 @@ describe('insertUploads, as a paragraph of its own', () => {
 
   it('gives each of several files a paragraph', async () => {
     expect(await dropApart('one', 3, [png(), pdf()])).toBe('one\n\nFILE\n\nFILE\n');
-  });
-});
-
-describe('abandonUploads', () => {
-  it('removes the placeholders, aborts the uploads, and writes no failure comment', async () => {
-    const { upload, calls, call } = deferredUpload();
-    const onPending = vi.fn();
-    const view = mount('keep', { upload, onPending });
-    const done = insertUploads(view, [png(), pdf()], 0);
-
-    expect(abandonUploads(view)).toBe(true);
-    expect(view.state.doc.toString()).toBe('keep');
-    expect(pendingUploads(view)).toBe(0);
-    expect(call(0).signal.aborted).toBe(true);
-    expect(onPending).toHaveBeenLastCalledWith(0);
-
-    // The aborted upload rejects; the routine must not turn that into a comment, and the
-    // second file, never started, must not start now.
-    await done;
-    expect(view.state.doc.toString()).toBe('keep');
-    expect(calls).toHaveLength(1);
-    view.destroy();
-  });
-
-  it('is a no-op with nothing in flight', () => {
-    const { upload } = deferredUpload();
-    const view = mount('doc', { upload });
-    expect(abandonUploads(view)).toBe(false);
-    expect(view.state.doc.toString()).toBe('doc');
-    view.destroy();
   });
 });
 

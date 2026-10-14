@@ -2,15 +2,17 @@ import { IndexedDBAdapter, NonRetriableError, startOfflineExecutor, type Offline
 import type { Transaction } from '@tanstack/db';
 import { MAX_ATTACHMENT_BYTES, filenameSchema, foldNoCase, type FeedNote, type FieldDef, type FieldValue, type Note, type NoteFieldValue, type NotebookDefinition, type RestoredNote } from '@unbent/shared';
 import * as api from '../notes-api.js';
-import { ApiError, isNoteChanged, isOfflineError } from '../notes-api.js';
+import { ApiError, isNoteChanged, isOfflineError, NoteChangedError } from '../notes-api.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
-import { buildNotePatch, seedFrom, holdsTheirChanges, type NoteDraft } from '../note-patch.js';
+import { buildNotePatch, seedFrom, holdsTheirChanges, rebaseAfterAck, type NoteDraft } from '../note-patch.js';
 import { availableFilename, lookups, toNote, type Snapshot } from './derive.js';
 import type { Collections, LocalNote } from './collections.js';
 import { askToPersist, filesSupported, readFile, removeFile, writeFile } from './files.js';
 import { FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE } from '../sw/routes.js';
 import { isWhole, refusedForGood, type FeedEngine } from './feed.js';
-import { outboxName } from './names.js';
+import { CallUnsettledError, LibraryMovedError, SEND_ONCE } from './client-library.js';
+import { outboxLeaderName, outboxName } from './names.js';
+import { OutboxLeader } from './leader.js';
 
 /**
  * Writes to notes: made on the local copy at once and replayed to the server through a
@@ -41,13 +43,17 @@ import { outboxName } from './names.js';
  * body collapsed at replay by reading the whole queue per entry (review of #232). A lost
  * connection and a 5xx are retried.
  *
- * Only the tab holding the outbox's lock queues. In any other tab the library hands back
- * a plain transaction that runs the write at once and rolls the change back if it fails,
- * and offline it fails — so such a tab's writes are not "queued", they are never made,
- * and saying otherwise would show "Saved" over text that was gone (review of #232). Every
- * function here therefore asks `durable` first, and in a tab that is not it does what
- * it does with no library at all: one request, the answer the server's, the refusal the
- * caller's to show, and the local copy brought up to date by a pull.
+ * Only the tab holding the outbox's lock queues. A tab whose library another tab holds
+ * is that tab's client and sends each write there by name (`away`), where it is queued
+ * as the holder's own. In a tab that holds the library but not yet the outbox's lock —
+ * a moment during a hand-over, or for good in a browser without Web Locks — the
+ * library hands back a plain transaction that runs the write at once and rolls the
+ * change back if it fails, and offline it fails — so such a tab's writes are not
+ * "queued", they are never made, and saying otherwise would show "Saved" over text that
+ * was gone (review of #232). Every function here therefore asks `durable` first, and in
+ * a tab that is not it does what it does with no library at all: one request, the
+ * answer the server's, the refusal the caller's to show, and the local copy brought up
+ * to date by a pull.
  *
  * Every function here looks the open library up and works on it; with none — a browser
  * without the file system the local copy lives in — it does what the app did before,
@@ -77,8 +83,9 @@ export interface SyncStatus {
   pending: number;
   /**
    * Whether a write queued in this tab outlives it. Only the tab holding the outbox's lock
-   * stores entries; in any other tab a write is a request made at once, and offline it
-   * fails as one (see `durable` below).
+   * stores entries; in a client tab this is the holder's answer, mirrored, since its
+   * writes are queued there; in a tab that holds the library but not the lock a write
+   * is a request made at once, and offline it fails as one (see `durable` below).
    */
   durable: boolean;
   /**
@@ -128,8 +135,10 @@ export interface Outbox {
    * preconditioned on.
    */
   supersedeSave: (noteId: string) => { base: Note; against?: number | undefined } | null;
+  /** The save of this note still waiting, as it stands: the draft, its base and where it came from. */
+  waitingSave: (noteId: string) => { value: NoteDraft; base: Note; origin?: string | undefined } | null;
   /** Records the save of this note now waiting: its entry's id, what it carries, and how to take its change off the row. */
-  trackSave: (noteId: string, entry: { id: string; base: Note; against?: number | undefined; retire: () => void }) => void;
+  trackSave: (noteId: string, entry: { id: string; value: NoteDraft; base: Note; against?: number | undefined; origin?: string | undefined; retire: () => void }) => void;
   /** Records an upload now waiting: its entry's id, what it carries, and how to take its row off. */
   trackUpload: (attachmentId: string, entry: { id: string; upload: { noteId: string; filename: string }; retire: () => void }) => void;
   /**
@@ -158,17 +167,33 @@ export interface WritableLibrary extends Collections {
 }
 
 /**
+ * This tab, as the origin of the saves it makes: minted once per page, so a save made
+ * here as a client and one made here as the holder are the same editor's, and a save
+ * restored from the outbox by the next holder is still the tab's that made it. What
+ * tells two editors of one note apart in one outbox (`saveNote`).
+ */
+export const TAB_ORIGIN: string = crypto.randomUUID();
+
+/**
  * A save: the whole draft, the copy it is diffed against for the patch, and, for "Keep
  * mine", the date to precondition on instead of the base's — the other device's copy,
- * so the patch is still only what was typed here and lands on top of theirs.
+ * so the patch is still only what was typed here and lands on top of theirs. `origin`
+ * is the tab the save came from (`TAB_ORIGIN` there); a client sends its own with the
+ * call.
+ *
+ * `definitions` is what the editor has already loaded (`rememberFieldDefs`). A request-
+ * path save has no stored row for a first-time value, so the patch can encode it only
+ * from a type; the queued path reads the library's set and does not need this. Empty is
+ * "not yet", not "none".
  */
-/**
- * A save of a note's draft. `definitions` are the caller's field definitions, for the save
- * that goes as a request: with no library to read them from, a first value in a field the
- * note has no row for would have no type to encode it by, and would never be sent. Never
- * stored in the queue — a queued save reads the library's own.
- */
-type Save = { noteId: string; value: NoteDraft; base: Note; against?: number; definitions?: FieldDef[] };
+type Save = {
+  noteId: string;
+  value: NoteDraft;
+  base: Note;
+  against?: number;
+  origin?: string;
+  definitions?: FieldDef[];
+};
 
 /** The key a conflict is kept under in the outbox's storage; its entries are the `tx:` keys. */
 const conflictKey = (noteId: string) => `conflict:${noteId}`;
@@ -182,7 +207,19 @@ const noticeKey = (attachmentId: string) => `upload-notice:${attachmentId}`;
 /** What an outbox entry runs; the library does not export the name. */
 type MutationFn = Parameters<typeof startOfflineExecutor>[0]['mutationFns'][string];
 
-export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'>): Outbox {
+/**
+ * What the outbox tells the library about: IndexedDB asking this tab's connection to
+ * close, because another tab is deleting the database — a sign-out removes every
+ * account's outbox (`store/wipe.ts`) — or opening it at a newer version, which a later
+ * deploy's schema would. The connection is closed at once so the other tab's request
+ * can go through, and the library it belongs to is told, since an outbox with no
+ * connection is not one anything can queue on.
+ */
+export interface OutboxEvents {
+  onAskedToClose?: () => void;
+}
+
+export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'>, events: OutboxEvents = {}): Outbox {
   const conflicts = new Map<string, Conflict>();
   /** The notes each waiting entry is about, by entry id. */
   const entryNotes = new Map<string, string[]>();
@@ -216,7 +253,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
   const defs = (): FieldDef[] => [...lookups(snapshot(lib)).fieldDefs.values()];
 
   /** The save of each note still waiting, by entry id, and the entries a later save retired. */
-  const waitingSaves = new Map<string, { id: string; base: Note; against?: number | undefined; retire: () => void }>();
+  const waitingSaves = new Map<string, { id: string; value: NoteDraft; base: Note; against?: number | undefined; origin?: string | undefined; retire: () => void }>();
   const superseded = new Set<string>();
 
   /**
@@ -273,13 +310,18 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
       ]),
     );
 
-  const adapter = new IndexedDBAdapter(outboxName(userId));
+  const adapter = new IndexedDBAdapter(outboxName(userId), OUTBOX_STORE);
+  /** The adapter's connection: a private field, pinned by `pins.test.ts`; null until its first use. */
+  const connection = () => (adapter as unknown as { db?: IDBDatabase | null }).db ?? null;
   const storage = watched(adapter, () => touch());
   const executor = startOfflineExecutor({
     // Both, so a reload restores an upload's row as it restores a save's text.
     collections: { notes: lib.notes, attachments: lib.attachments },
     storage,
     onlineDetector: connectivityDetector(),
+    // Ours rather than the library's: per account, and a follower is promoted when the
+    // holder goes, rather than left making every write a request for good (`leader.ts`).
+    leaderElection: new OutboxLeader(outboxLeaderName(userId)),
     onLeadershipChange: () => touch(),
     mutationFns: decided({
       saveNote: async ({ transaction }) => {
@@ -507,6 +549,25 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     .waitForInit()
     .then(() => Promise.all([executor.peekOutbox(), storage.keys()]))
     .then(async ([entries, keys]) => {
+      /*
+       * Closed the moment another tab asks for the database to be deleted or opened at
+       * a newer version, which IndexedDB tells every connection through `versionchange`
+       * and which the adapter does not listen for. A delete held open by this handler's
+       * absence is what wedged every later sign-in on the device; the story is on
+       * `CHANNEL` in `store/wipe.ts`. The library is told, and closes with the outbox.
+       *
+       * After `keys()`, not after `waitForInit`: the adapter opens its database on first
+       * use, and on init only the tab that leads the outbox uses it (it restores the
+       * entries); in every other tab — the ones a sign-out elsewhere is about — the
+       * connection does not exist until the read above.
+       */
+      const db = connection();
+      if (db) {
+        db.onversionchange = () => {
+          db.close();
+          events.onAskedToClose?.();
+        };
+      }
       for (const t of entries) {
         entryNotes.set(t.id, notesOf(t.metadata as Record<string, unknown> | undefined));
         // The executor's private cleanup, for the reason given below; an upload a reload
@@ -527,7 +588,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
          * (`pins.test.ts`); without the method the change stays until the entry's turn.
          */
         const cleanup = (executor as unknown as { cleanupRestorationTransaction?: (id: string, rollback: boolean) => void }).cleanupRestorationTransaction;
-        if (m && !waitingSaves.has(m.noteId)) waitingSaves.set(m.noteId, { id: t.id, base: m.base, against: m.against, retire: () => cleanup?.call(executor, t.id, true) });
+        if (m && !waitingSaves.has(m.noteId)) waitingSaves.set(m.noteId, { id: t.id, value: m.value, base: m.base, against: m.against, origin: m.origin, retire: () => cleanup?.call(executor, t.id, true) });
       }
       for (const key of keys) {
         if (key.startsWith('upload-notice:')) {
@@ -582,6 +643,10 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
       waiting.retire();
       return { base: waiting.base, against: waiting.against };
     },
+    waitingSave: (noteId) => {
+      const waiting = waitingSaves.get(noteId);
+      return waiting ? { value: waiting.value, base: waiting.base, origin: waiting.origin } : null;
+    },
     trackSave: (noteId, entry) => {
       waitingSaves.set(noteId, entry);
     },
@@ -621,7 +686,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
        * once, after the executor has stopped. A pinned version; the fallback is a database
        * left behind, which holds no rows after `dispose` and is removed on the next wipe.
        */
-      (adapter as unknown as { db?: IDBDatabase | null }).db?.close?.();
+      connection()?.close?.();
     },
   };
 }
@@ -651,6 +716,116 @@ async function remember(noteId: string, filename: string, file: File): Promise<v
 }
 
 /**
+ * The object store the outbox's entries live in, named to `IndexedDBAdapter` by
+ * `createOutbox` and read directly by `countStoredWrites`. It is the adapter's own
+ * default, so it is already the store on every device's outbox: renaming it orphans
+ * whatever is waiting there, and the sign-out's peek would count nothing.
+ */
+export const OUTBOX_STORE = 'transactions';
+
+/** The keys `watched` counts as waiting writes. The executor's own marker is an update of the same prefix. */
+const OUTBOX_ENTRY_PREFIX = 'tx:';
+
+/**
+ * How many writes the durable outbox still holds for this account, without opening the
+ * library. What a sign-out asks when the library itself has not opened in time: the
+ * outbox is IndexedDB, restored only after `outbox.ready`, and a cold open on a phone
+ * can sit past the sign-out's own bound — after which the wipe removes the database.
+ * Treating "not open" as "nothing waiting" deleted those writes without a question.
+ *
+ * Opens a short-lived connection and closes it before answering, so the wipe's
+ * `deleteDatabase` is not blocked by this peek. Does not go through `IndexedDBAdapter`:
+ * reading through one would create the database if it were absent (its open runs an
+ * upgrade that makes the store), and would leave its connection open (`db` is private
+ * and only `dispose` on the outbox closes it).
+ *
+ * `null` when the database could not be read — blocked, aborted, no answer — which is
+ * "do not know", not "nothing there".
+ */
+export function countStoredWrites(userId: string, signal?: AbortSignal): Promise<number | null> {
+  if (typeof indexedDB === 'undefined') return Promise.resolve(0);
+  const name = outboxName(userId);
+  return new Promise((resolve) => {
+    let settled = false;
+    let db: IDBDatabase | undefined;
+    const close = () => {
+      try {
+        db?.close();
+      } catch {
+        // Already closed.
+      }
+    };
+    const done = (n: number | null) => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener('abort', stop);
+      resolve(n);
+    };
+    // The caller stopped waiting (`peekStoredWrites`' bound). An open request cannot be
+    // taken back, so a connection already held closes now — a close lets a read in
+    // progress finish and starts no other — and one that opens later closes on arrival
+    // (`onsuccess`), so neither the real outbox nor a wipe waits behind a peek nobody
+    // is reading.
+    const stop = () => {
+      close();
+      done(null);
+    };
+    if (signal?.aborted) return done(null);
+    signal?.addEventListener('abort', stop);
+    let req: IDBOpenDBRequest;
+    try {
+      req = indexedDB.open(name);
+    } catch {
+      done(null);
+      return;
+    }
+    // Our own abort below has already answered 0; any other failure is not knowing.
+    req.onerror = () => done(null);
+    req.onblocked = () => done(null);
+    req.onupgradeneeded = () => {
+      // No database yet: nothing stored. Abort so this open does not create one the
+      // wipe would then have to delete, and so a concurrent real open does not race
+      // an empty schema we just wrote.
+      req.transaction?.abort();
+      done(0);
+    };
+    req.onsuccess = () => {
+      db = req.result;
+      // Answered already — blocked, or no longer waited for: nothing to read.
+      if (settled) return close();
+      // A wipe asks with `versionchange`. If the sign-out's bound ran out while the read
+      // was still going, the wipe comes next, and its `deleteDatabase` would wait behind
+      // this connection — the outbox's own does the same (`createOutbox`).
+      db.onversionchange = () => {
+        close();
+        done(null);
+      };
+      if (!db.objectStoreNames.contains(OUTBOX_STORE)) {
+        close();
+        done(0);
+        return;
+      }
+      try {
+        const tx = db.transaction(OUTBOX_STORE, 'readonly');
+        const keys = tx.objectStore(OUTBOX_STORE).getAllKeys();
+        keys.onsuccess = () => {
+          const n = keys.result.filter((key) => String(key).startsWith(OUTBOX_ENTRY_PREFIX)).length;
+          close();
+          done(n);
+        };
+        keys.onerror = () => {
+          close();
+          done(null);
+        };
+      } catch {
+        close();
+        done(null);
+      }
+    };
+  });
+}
+
+/**
  * The outbox's storage, watched. Every entry passes through the adapter — stored when
  * queued, restored after a reload, removed when a replay settles — so counting the keys it
  * holds is what waits for the server, at every moment. The executor's own count is its
@@ -662,7 +837,7 @@ async function remember(noteId: string, filename: string, file: File): Promise<v
  */
 function watched(inner: StorageAdapter, onChange: () => void): StorageAdapter & { held: () => number } {
   const keys = new Set<string>();
-  const entry = (key: string) => key.startsWith('tx:');
+  const entry = (key: string) => key.startsWith(OUTBOX_ENTRY_PREFIX);
   const changed = () => onChange();
   return {
     get: (key) => inner.get(key),
@@ -725,6 +900,77 @@ let resolve: () => Promise<WritableLibrary | null> = async () => null;
 /** How the actions find the open library; set by `store/library.ts`. */
 export function provideLibrary(fn: () => Promise<WritableLibrary | null>): void {
   resolve = fn;
+}
+
+/**
+ * A tab that does not hold the account's library is a client of the tab that does
+ * (`client-library.ts`), and its writes are the holder's to queue: each action below
+ * asks here first and, given a way across, sends its name and arguments rather than
+ * running. The holder runs the same function — the one registered in `forwardable` —
+ * where the client's `forward` is null and the write lands in its outbox, durable and in
+ * order with the holder's own. Before 2026-10-13 such a tab made every write a request,
+ * which offline was a save refused.
+ */
+export type Forward = ((name: keyof typeof forwardable, args: unknown[]) => Promise<unknown>) & {
+  /** Whether the account the call was for is still the one this tab holds; absent means yes. */
+  stillMine?: () => boolean;
+};
+
+let forward: () => Promise<Forward | null> = async () => null;
+
+/** How the actions find the holder's door when this tab is a client; set by `store/library.ts`. */
+export function provideForwarder(fn: () => Promise<Forward | null>): void {
+  forward = fn;
+}
+
+/** The actions a client may ask the holder to run, by name: `forwardable`, at the end of this file. */
+type Forwardable = typeof forwardable;
+
+/** A call to the holder, typed by the registry, so a name or an argument list that does not match an action is a compile error here rather than `No such call` on the holder. */
+type Away = <K extends keyof Forwardable>(name: K, args: Parameters<Forwardable[K]>, write?: LocalWrite) => Promise<Awaited<ReturnType<Forwardable[K]>>>;
+
+/**
+ * The way across to the holder, or null when this tab runs its writes itself. Told to
+ * `onLocalWrite` before the call goes, as a queued write is told before its change
+ * lands: the change comes back as the holder's rows, and the list has to have measured
+ * itself before then. A call refused because the library moved — this tab became the
+ * holder, or attached to a new one, with the call in hand — is simply made again, where
+ * the library now is; unless it had reached a holder and is one that must not run twice
+ * (`SEND_ONCE`), when the caller is told it may not have finished.
+ */
+/** Set while a call refused as moved is being run again here, so that run does not forward. */
+let runningHere = 0;
+
+async function away(): Promise<Away | null> {
+  // Read before the first await: the re-run below sets this for the synchronous start
+  // of the action it calls, which reaches here before anything else.
+  const here = runningHere > 0;
+  const fwd = here ? null : await forward();
+  if (!fwd) return null;
+  return async <K extends keyof Forwardable>(name: K, args: Parameters<Forwardable[K]>, write?: LocalWrite): Promise<Awaited<ReturnType<Forwardable[K]>>> => {
+    type Out = Awaited<ReturnType<Forwardable[K]>>;
+    if (write) aboutToWrite(write);
+    try {
+      return (await fwd(name, args)) as Out;
+    } catch (err) {
+      if (err instanceof LibraryMovedError) {
+        if (err.sent && SEND_ONCE.has(name)) throw new CallUnsettledError(name);
+        // Where the library now is may be another account's: a switch, with the call
+        // in hand, replaces the client before its refusal is handled. The thing is not
+        // done again as them.
+        if (fwd.stillMine && !fwd.stillMine()) throw new Error('The account on this tab changed while this was in hand');
+        // Run here, once: with a client still current that refuses again, forwarding
+        // from the re-run would be this same catch without end.
+        runningHere += 1;
+        try {
+          return (forwardable[name] as (...a: unknown[]) => Promise<Out>)(...args);
+        } finally {
+          runningHere -= 1;
+        }
+      }
+      throw err;
+    }
+  };
 }
 
 /** Whether a write made here goes to the outbox and outlives the tab; see the module comment. */
@@ -959,9 +1205,38 @@ function split(lib: WritableLibrary, ids: string[]): { here: string[]; there: st
   return { here, there };
 }
 
-/** The save as a request: no local row to change, or a tab that does not queue. */
-async function saveViaRequest(input: Save): Promise<'unchanged' | Note> {
-  const patch = buildNotePatch(input.value, input.base, input.definitions);
+/**
+ * Field types a request-path save can encode a first-time value from.
+ *
+ * `buildNotePatch` skips a value that has no stored row and no definition, treating it
+ * as a leftover id so a stale draft key cannot 400 the rest of the save. This path
+ * used to pass `undefined` even when the tab held a library — one whose outbox is not
+ * durable, or a note opened during the first copy — and always on a device with no
+ * library, so filling Amount for the first time there reported "Saved" and left the
+ * number nowhere. (A client tab forwards its save to the holder, which takes whichever
+ * path applies there.) The queued path already reads the library's definitions; this
+ * one does too, and takes any the editor has already loaded for what the library does
+ * not hold.
+ *
+ * The library's copy wins by id: the feed keeps it current, while the editor's list
+ * (`rememberFieldDefs`) keeps every definition it has seen, so a field converted in
+ * another tab would otherwise be encoded with its old type and 400 the whole save. The
+ * editor's list still fills in what the library lacks — everything, on a device with no
+ * library, and a notebook the first copy has not reached yet.
+ */
+function definitionsFor(lib: WritableLibrary | null, handed?: FieldDef[]): FieldDef[] | undefined {
+  const held = lib ? [...lookups(snapshot(lib)).fieldDefs.values()] : [];
+  if (!handed?.length) return lib ? held : undefined;
+  return [...new Map([...handed, ...held].map((d) => [d.id, d])).values()];
+}
+
+/**
+ * The save as a request: no local row to change, or a tab that does not queue. `open` is
+ * the library `saveNote` resolved, durable or not, so the types come from the library
+ * that sent the save down this path rather than one resolved again across a switch.
+ */
+async function saveViaRequest(input: Save, open: WritableLibrary | null): Promise<'unchanged' | Note> {
+  const patch = buildNotePatch(input.value, input.base, definitionsFor(open, input.definitions));
   if (!patch) return 'unchanged';
   const refiles = patch.notebook !== undefined || patch.tags !== undefined;
   return pulled(
@@ -985,12 +1260,17 @@ async function saveViaRequest(input: Save): Promise<'unchanged' | Note> {
  * `conflicts` when it refused one and the person has to choose.
  */
 export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | Note> {
-  const lib = await queueable();
+  const far = await away();
+  if (far) return far('saveNote', [{ ...input, origin: TAB_ORIGIN }], { ids: [input.noteId], refiles: input.value.notebook !== input.base.notebook || JSON.stringify(input.value.tags) !== JSON.stringify(input.base.tags) });
+  // `queueable()` inlined: the request path wants the open library even when it does
+  // not queue, for its field types.
+  const open = await resolve();
+  const lib = open && durable(open) ? open : null;
   if (!lib || notCopiedYet(lib, input.noteId)) {
     // No local copy on this device, a tab that does not queue, or a note the copy
     // does not hold yet: the save is the request, and its answer is the server's
     // copy — or the refusal, which the caller puts to the person.
-    return saveViaRequest(input);
+    return saveViaRequest(input, open);
   }
   /*
    * One save per note in the queue. The one still waiting is retired first, and this one
@@ -1001,13 +1281,40 @@ export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | No
    * the server holds has nothing to send, and retiring the waiting save is the revert.
    * Deciding "nothing to send" first, against the newer base, left the retired save in
    * the queue to write the undone text (review of #232).
+   *
+   * That holds for one editor, whose every draft contains the one before. Two tabs of
+   * one device now share this outbox (`client-library.ts`), and a tab's open editor
+   * does not take up another tab's write while it waits here — the optimistic row keeps
+   * its date, so the workspace reads it as nothing new — so its next autosave would
+   * retire the other tab's save and patch against the oldest base, where the other
+   * tab's change reads as unchanged: a rename made offline in one tab, gone on the
+   * next keystroke in the other, with both saying "Saved" (review of #354). So a save
+   * from another origin merges only when its draft already holds the waiting one's
+   * changes, and is otherwise refused as the server would refuse it, with the row as it
+   * stands, which the workspace puts to the person as a conflict. Keep mine, pressed on
+   * that conflict, comes back with `against`: a choice made with theirs in view, so it
+   * is not refused again, and the draft is put over theirs — what the person changed
+   * stays theirs, what they never touched takes the other tab's — rather than retiring
+   * the waiting save with whatever it changed that the draft never had.
    */
+  const origin = input.origin ?? TAB_ORIGIN;
+  const waiting = lib.outbox.waitingSave(input.noteId);
+  // A waiting save with no origin was written before saves carried one; whose it was is
+  // not known, and it merges as every save did then.
+  if (waiting && waiting.origin !== undefined && waiting.origin !== origin) {
+    const theirs = { ...waiting.base, title: waiting.value.title, body: waiting.value.body, tags: waiting.value.tags, notebook: waiting.value.notebook, fields: valuesOf(waiting.value, lib) };
+    if (input.against !== undefined) input = { ...input, value: rebaseAfterAck(input.value, seedFrom(input.base), theirs) };
+    else if (!holdsTheirChanges(input.value, input.base, theirs)) {
+      const row = lib.notes.get(input.noteId);
+      throw new NoteChangedError(row ? toNote(row, lookups(snapshot(lib))) : theirs);
+    }
+  }
   const carried = lib.outbox.supersedeSave(input.noteId);
   const base = carried && carried.base.updatedAt < input.base.updatedAt ? carried.base : input.base;
   const patch = buildNotePatch(input.value, base, [...lookups(snapshot(lib)).fieldDefs.values()]);
   if (!patch) return 'unchanged';
   const { value } = input;
-  const entry: Save = { noteId: input.noteId, value, base, against: input.against ?? carried?.against };
+  const entry: Save = { noteId: input.noteId, value, base, against: input.against ?? carried?.against, origin };
   const queued = queue(
     lib,
     'saveNote',
@@ -1023,15 +1330,21 @@ export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | No
     },
     patch.notebook !== undefined || patch.tags !== undefined,
   );
-  lib.outbox.trackSave(input.noteId, { ...queued, base, against: entry.against });
+  lib.outbox.trackSave(input.noteId, { ...queued, value, base, against: entry.against, origin });
   return 'queued';
 }
 
-/** Makes a note, with an id minted here, and answers with it at once. */
-export async function createNote(input: { title: string; body: string; tags: string[]; notebook: string | null }): Promise<Note> {
+/**
+ * Makes a note, with an id minted here, and answers with it at once. The id is minted
+ * before the write is sent anywhere and travels with it, so a write that runs twice —
+ * sent to the holder and run here after the library moved, or as a request after a
+ * holder answered nothing — makes one note (`createOrFind` on the server).
+ */
+export async function createNote(input: { title: string; body: string; tags: string[]; notebook: string | null }, id: string = crypto.randomUUID()): Promise<Note> {
+  const far = await away();
+  if (far) return far('createNote', [input, id], { ids: [], refiles: true });
   const lib = await queueable();
-  if (!lib) return pulled(api.createNote(input), { ids: [], refiles: true });
-  const id = crypto.randomUUID();
+  if (!lib) return pulled(api.createNote({ ...input, id }), { ids: [], refiles: true });
   const now = Date.now();
   const row: LocalNote = { id, title: input.title, body: input.body, createdAt: now, updatedAt: now, tagIds: [], tagNames: input.tags, notebookId: null, notebookName: input.notebook, files: [] };
   queue(lib, 'createNote', { id, ...input }, () => {
@@ -1040,13 +1353,14 @@ export async function createNote(input: { title: string; body: string; tags: str
   return toNote(row, lookups(snapshot(lib)));
 }
 
-/** A copy of a note, under an id minted here; the server copies its files. */
-export async function duplicateNote(sourceId: string): Promise<{ id: string }> {
+/** A copy of a note, under an id minted here before it is sent anywhere, as `createNote`'s is; the server copies its files. */
+export async function duplicateNote(sourceId: string, copyId: string = crypto.randomUUID()): Promise<{ id: string }> {
+  const far = await away();
+  if (far) return far('duplicateNote', [sourceId, copyId], { ids: [], refiles: true });
   const lib = await queueable();
-  if (!lib) return pulled(api.duplicateNote(sourceId), { ids: [], refiles: true });
+  if (!lib) return pulled(api.duplicateNote(sourceId, copyId), { ids: [], refiles: true });
   const source = lib.notes.get(sourceId);
-  if (!source) return pulled(api.duplicateNote(sourceId), { ids: [], refiles: true });
-  const copyId = crypto.randomUUID();
+  if (!source) return pulled(api.duplicateNote(sourceId, copyId), { ids: [], refiles: true });
   const now = Date.now();
   queue(lib, 'duplicateNote', { sourceId, copyId }, () => {
     lib.notes.insert({ ...source, id: copyId, createdAt: now, updatedAt: now, files: [] });
@@ -1081,6 +1395,8 @@ function drained(lib: WritableLibrary, noteId: string, timeout: number): Promise
  * making once the save that may have just added to it has landed.
  */
 export async function synced(noteId: string, timeout = RESTORE_DRAIN_MS): Promise<boolean> {
+  const far = await away();
+  if (far) return far('synced', [noteId, timeout]);
   const lib = await resolve();
   return lib ? drained(lib, noteId, timeout) : true;
 }
@@ -1096,6 +1412,8 @@ export async function synced(noteId: string, timeout = RESTORE_DRAIN_MS): Promis
  * told was clear. So a queue that will not drain refuses the clear.
  */
 export async function clearHistory(noteId: string): Promise<number> {
+  const far = await away();
+  if (far) return far('clearHistory', [noteId]);
   const lib = await resolve();
   if (lib && !(await drained(lib, noteId, RESTORE_DRAIN_MS))) {
     throw new Error('This note has changes that have not synced yet. Try again in a moment.');
@@ -1129,6 +1447,8 @@ export async function clearHistory(noteId: string): Promise<number> {
  * a `NoteChangedError` when the note has been saved since the date given.
  */
 export async function restoreRevision(noteId: string, revisionId: number, opts: { ifUpdatedAt?: number } = {}): Promise<RestoredNote> {
+  const far = await away();
+  if (far) return far('restoreRevision', [noteId, revisionId, opts], { ids: [noteId], refiles: false });
   const lib = await resolve();
   if (lib && !(await drained(lib, noteId, RESTORE_DRAIN_MS))) {
     throw new Error('This note has changes that have not synced yet. Try again in a moment.');
@@ -1142,6 +1462,8 @@ export async function restoreRevision(noteId: string, revisionId: number, opts: 
 }
 
 export async function trashNote(noteId: string): Promise<void> {
+  const far = await away();
+  if (far) return far('trashNote', [noteId], { ids: [noteId], refiles: true });
   const lib = await queueable();
   if (!lib || notCopiedYet(lib, noteId)) return pulled(api.deleteNote(noteId), { ids: [noteId], refiles: true });
   queue(lib, 'trashNote', { noteId }, () => {
@@ -1152,6 +1474,8 @@ export async function trashNote(noteId: string): Promise<void> {
 }
 
 export async function restoreNote(noteId: string): Promise<void> {
+  const far = await away();
+  if (far) return far('restoreNote', [noteId], { ids: [noteId], refiles: true });
   const lib = await queueable();
   if (!lib || notCopiedYet(lib, noteId)) return pulled(api.restoreNote(noteId).then(() => undefined), { ids: [noteId], refiles: true });
   queue(lib, 'restoreNote', { noteId }, () => {
@@ -1162,6 +1486,8 @@ export async function restoreNote(noteId: string): Promise<void> {
 }
 
 export async function purgeNote(noteId: string): Promise<void> {
+  const far = await away();
+  if (far) return far('purgeNote', [noteId], { ids: [noteId], refiles: true });
   const lib = await queueable();
   if (!lib || notCopiedYet(lib, noteId)) return pulled(api.deleteNotePermanently(noteId), { ids: [noteId], refiles: true });
   queue(lib, 'purgeNote', { noteId }, () => {
@@ -1176,6 +1502,15 @@ export async function purgeNote(noteId: string): Promise<void> {
  * `ids` are the trashed notes on screen, which the list follows out, and the count rolls.
  */
 export async function emptyTrash(ids: readonly string[]): Promise<api.PurgeResult> {
+  const far = await away();
+  if (far) {
+    // A request on the holder too, so told to `onLocalWrite` once the answer is in, as
+    // `pulled` tells it, and not at all for a refusal — not before the call goes, as a
+    // queued write is told.
+    const out = await far('emptyTrash', [ids]);
+    aboutToWrite({ ids, refiles: true });
+    return out;
+  }
   return pulled(api.purgeNotes('trashed'), { ids, refiles: true });
 }
 
@@ -1186,6 +1521,8 @@ export async function emptyTrash(ids: readonly string[]): Promise<api.PurgeResul
  */
 
 export async function trashNotes(ids: string[]): Promise<number> {
+  const far = await away();
+  if (far) return far('trashNotes', [ids], { ids, refiles: true });
   const lib = await queueable();
   if (!lib) return pulled(api.deleteNotes(ids).then((r) => r.trashed), { ids, refiles: true });
   const { here, there } = split(lib, ids);
@@ -1200,6 +1537,8 @@ export async function trashNotes(ids: string[]): Promise<number> {
 }
 
 export async function restoreNotes(ids: string[]): Promise<number> {
+  const far = await away();
+  if (far) return far('restoreNotes', [ids], { ids, refiles: true });
   const lib = await queueable();
   if (!lib) return pulled(api.restoreNotes(ids).then((r) => r.restored), { ids, refiles: true });
   const { here, there } = split(lib, ids);
@@ -1213,6 +1552,8 @@ export async function restoreNotes(ids: string[]): Promise<number> {
 }
 
 export async function purgeNotes(ids: string[]): Promise<number> {
+  const far = await away();
+  if (far) return far('purgeNotes', [ids], { ids, refiles: true });
   const lib = await queueable();
   if (!lib) return pulled(api.deleteNotesPermanently(ids).then((r) => r.deleted), { ids, refiles: true });
   const { here, there } = split(lib, ids);
@@ -1226,6 +1567,8 @@ export async function purgeNotes(ids: string[]): Promise<number> {
 }
 
 export async function moveNotes(ids: string[], notebook: string | null): Promise<void> {
+  const far = await away();
+  if (far) return far('moveNotes', [ids, notebook], { ids, refiles: true });
   const lib = await queueable();
   if (!lib) return pulled(api.updateNotes(ids, { notebook }).then(() => undefined), { ids, refiles: true });
   const { here, there } = split(lib, ids);
@@ -1238,6 +1581,8 @@ export async function moveNotes(ids: string[], notebook: string | null): Promise
 }
 
 export async function tagNotes(ids: string[], change: { add?: string[]; remove?: string[] }): Promise<void> {
+  const far = await away();
+  if (far) return far('tagNotes', [ids, change], { ids, refiles: true });
   const lib = await queueable();
   if (!lib) {
     return pulled(api.updateNotes(ids, { addTags: change.add, removeTags: change.remove }).then(() => undefined), {
@@ -1279,7 +1624,7 @@ export async function tagNotes(ids: string[], change: { add?: string[]; remove?:
  *
  * With a connection and nothing of the note's waiting, this is the request it always
  * was: the answer is the server's, a refusal — too big, over quota — is the caller's to
- * show where the file was dropped, and the caller's abort stops it.
+ * show where the file was dropped.
  *
  * Without one, or behind a write of the note's that has not gone through (a note made a
  * moment ago does not exist on the server yet), the file is kept and queued: its bytes
@@ -1291,7 +1636,7 @@ export async function tagNotes(ids: string[], change: { add?: string[]; remove?:
  * something about it: a file over the upload cap, a name the route does not take, and a
  * file the device has no room to hold.
  */
-export async function uploadFile(noteId: string, file: File, opts: { signal?: AbortSignal } = {}): Promise<api.UploadedFile> {
+export async function uploadFile(noteId: string, file: File, attachmentId: string = crypto.randomUUID()): Promise<api.UploadedFile> {
   /*
    * Before the first `await`, while the drop or the click that brought the file is still
    * what the browser sees this as part of: a browser that asks the person asks only then,
@@ -1306,22 +1651,27 @@ export async function uploadFile(noteId: string, file: File, opts: { signal?: Ab
    * not come; the next file added offline asks properly.
    */
   if (offlineNow()) askToPersist();
+  // The holder's, as a call: the bytes cross with it, and the holder keeps or sends
+  // them, under the id minted here, so a call that runs twice stores one file.
+  const far = await away();
+  if (far) return far('uploadFile', [noteId, file, attachmentId], { ids: [noteId], refiles: false });
   const lib = await queueable();
   /*
    * One id for the file, whichever way it goes. A request made directly can lose its
    * answer after the server has stored the file — a phone on one bar does this — and the
    * file is then queued: under the same id, the replay finds what the first request made;
-   * under a new one it stored `scan-2.pdf` beside it and said so (review of #236).
+   * under a new one it stored `scan-2.pdf` beside it and said so (review of #236). The
+   * id is a parameter for the same reason one step out: a client's call that ran on the
+   * holder and runs again here carries it.
    */
-  const attachmentId = crypto.randomUUID();
-  const direct = () => pulled(api.uploadFile(noteId, file, { ...opts, id: attachmentId }), { ids: [noteId], refiles: false });
+  const direct = () => pulled(api.uploadFile(noteId, file, { id: attachmentId }), { ids: [noteId], refiles: false });
   if (!lib || !filesSupported() || !lib.notes.has(noteId)) return direct();
   if (!offlineNow() && !lib.outbox.status().waiting.has(noteId)) {
     try {
       return await direct();
     } catch (err) {
       // The connection went while the bytes were on their way: keep the file after all.
-      if (!isOfflineError(err) || opts.signal?.aborted) throw err;
+      if (!isOfflineError(err)) throw err;
     }
   }
 
@@ -1360,6 +1710,8 @@ export async function uploadFile(noteId: string, file: File, opts: { signal?: Ab
  * and in a moment the file is an ordinary one that can be deleted.
  */
 export async function cancelUpload(noteId: string, filename: string): Promise<boolean> {
+  const far = await away();
+  if (far) return far('cancelUpload', [noteId, filename]);
   const lib = await resolve();
   if (!lib) return false;
   const row = [...lib.attachments.values()].find((a) => a.pending && a.noteId === noteId && a.filename === filename);
@@ -1399,6 +1751,8 @@ function syncedRow(lib: WritableLibrary, noteId: string): LocalNote | undefined 
  * that value changed, queued like any other, answering with the note as it now shows.
  */
 export async function setNoteField(noteId: string, def: FieldDef, value: FieldValue | null): Promise<Note> {
+  const far = await away();
+  if (far) return far('setNoteField', [noteId, def, value], { ids: [noteId], refiles: false });
   const lib = await queueable();
   const row = lib ? syncedRow(lib, noteId) : undefined;
   if (!lib || !row) return pulled(api.updateNote(noteId, { fields: { [def.id]: value } }), { ids: [noteId], refiles: false });
@@ -1428,6 +1782,8 @@ export async function applyNotebookTemplate(
   definition: NotebookDefinition,
   opts: { create: boolean },
 ): Promise<{ id: string; skipped: api.NotebookImportSkip[] } | 'taken'> {
+  const far = await away();
+  if (far) return far('applyNotebookTemplate', [definition, opts]);
   const out = await api.importNotebook(definition, opts);
   if (out === 'taken') return out;
   directListeners.forEach((l) => l());
@@ -1436,3 +1792,38 @@ export async function applyNotebookTemplate(
   else if (lib) void lib.engine.pull();
   return out;
 }
+
+/*
+ * What a client may ask the holder to run (`library-serve.ts`). Every write above, and
+ * the two that wait on a note's queued writes before a request (`clearHistory`,
+ * `restoreRevision`), since the queue they wait on is the holder's. Not
+ * `deleteOrCancelAttachment`, which composes `cancelUpload` and a request and runs
+ * where it is called; nor `onUploaded`'s listeners, which fire in the holder for an
+ * upload its queue got through — a client's own upload answers the client that made it.
+ *
+ * A failure crosses back as its class only for the classes `carry` and `revive` in
+ * `library-channel.ts` know; an action added here that throws a class its caller
+ * branches on with `instanceof` must be added there too, or the caller sees a plain
+ * `Error`.
+ */
+export const forwardable = {
+  saveNote,
+  createNote,
+  duplicateNote,
+  synced,
+  clearHistory,
+  restoreRevision,
+  trashNote,
+  restoreNote,
+  purgeNote,
+  emptyTrash,
+  trashNotes,
+  restoreNotes,
+  purgeNotes,
+  moveNotes,
+  tagNotes,
+  uploadFile,
+  cancelUpload,
+  setNoteField,
+  applyNotebookTemplate,
+};

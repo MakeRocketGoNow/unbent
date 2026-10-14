@@ -1,14 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createCollection, type Collection } from '@tanstack/db';
 import { QueryClient } from '@tanstack/react-query';
-import type { FeedEntity, FeedNote, FeedPage, FieldDef, Note } from '@unbent/shared';
+import type { FeedEntity, FeedNote, FeedNotebook, FeedPage, FieldDef, Note } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { ApiError, NoteChangedError, OfflineError } from '../notes-api.js';
 import { resetConnectivity, setReachableForTests } from '../connectivity.js';
 import { seedFrom } from '../note-patch.js';
 import { installLibraryQueries, keys } from '../queries.js';
 import * as actions from './actions.js';
-import { createOutbox, provideLibrary, type WritableLibrary } from './actions.js';
+import { createOutbox, provideForwarder, provideLibrary, TAB_ORIGIN, type WritableLibrary } from './actions.js';
+import { CallUnsettledError, LibraryMovedError } from './client-library.js';
 import { lookups, toNote } from './derive.js';
 import { feedControls, type Collections, type LocalNote } from './collections.js';
 import { FeedEngine, type Position } from './feed.js';
@@ -34,22 +35,39 @@ const h = vi.hoisted(async () => {
   const databases = new Map<string, Map<string, string>>();
   class MemoryAdapter {
     static databases = databases;
-    db: null = null;
+    /** Every adapter made, newest last, for a test that needs the connection itself. */
+    static instances: MemoryAdapter[] = [];
+    /**
+     * The connection the real adapter keeps under `db`: closable, told of a delete, and
+     * opened on first use as the real one is — null until then, which is what a tab that
+     * does not lead the outbox has when its executor's init settles.
+     */
+    db: { close: () => void; onversionchange: null | (() => void); closed: boolean } | null = null;
     rows: Map<string, string>;
     constructor(readonly name: string) {
       this.rows = databases.get(name) ?? new Map();
       databases.set(name, this.rows);
+      MemoryAdapter.instances.push(this);
+    }
+    private open() {
+      if (this.db) return;
+      const db = { closed: false, onversionchange: null, close: () => void (db.closed = true) };
+      this.db = db;
     }
     async get(key: string) {
+      this.open();
       return this.rows.get(key) ?? null;
     }
     async set(key: string, value: string) {
+      this.open();
       this.rows.set(key, value);
     }
     async delete(key: string) {
+      this.open();
       this.rows.delete(key);
     }
     async keys() {
+      this.open();
       return [...this.rows.keys()];
     }
     async clear() {
@@ -215,6 +233,19 @@ function collection<T extends object>(seed: T[], keyOf: (row: T) => string): { c
 
 const row = (id: string, over: Partial<FeedNote> = {}): LocalNote => ({ id, title: id, body: '', createdAt: 1, updatedAt: 100, tagIds: [], notebookId: null, files: [], ...over });
 
+const amount: FieldDef = {
+  id: '11111111-1111-1111-1111-111111111111',
+  notebookId: 'nb1',
+  name: 'Amount',
+  type: 'number',
+  options: [],
+  scale: null,
+  currency: null,
+  position: 0,
+};
+
+const receipts: FeedNotebook = { id: 'nb1', name: 'Receipts', purpose: null, emoji: null, fieldDefs: [amount] };
+
 /** The server's copy as the feed would deliver it. */
 const delivered = (lib: WritableLibrary, feed: Controls<LocalNote>, note: LocalNote) => {
   feed.begin();
@@ -222,9 +253,9 @@ const delivered = (lib: WritableLibrary, feed: Controls<LocalNote>, note: LocalN
   feed.commit();
 };
 
-function library(notes: LocalNote[]) {
+function library(notes: LocalNote[], notebooks: FeedNotebook[] = []) {
   const n = collection(notes, (r) => r.id);
-  const nb = collection<{ id: string }>([], (r) => r.id);
+  const nb = collection(notebooks, (r) => r.id);
   const t = collection<{ id: string }>([], (r) => r.id);
   const a = collection<{ id: string }>([], (r) => r.id);
   const s = collection<{ id: string }>([], (r) => r.id);
@@ -618,6 +649,69 @@ describe('saves of one note', () => {
     expect(lib.outbox.status().pending).toBe(0);
   });
 
+  it('from another tab, merge only when the draft holds the waiting change, and are otherwise refused as a conflict', async () => {
+    const { lib, fake, note } = library([row('n1', { title: 'old', body: 'b' })]);
+    await lib.outbox.ready;
+    const base = note('n1');
+    // Tab A renames the note; its save waits.
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'renamed' }, base, origin: 'A' });
+    await tick();
+    // Tab B, whose editor still shows the old title, types in the body: refused, with the
+    // row as it stands, rather than retiring A's rename.
+    const refused = actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), body: 'typed' }, base, origin: 'B' });
+    await expect(refused).rejects.toBeInstanceOf(NoteChangedError);
+    await expect(refused).rejects.toMatchObject({ current: { title: 'renamed' } });
+    expect(lib.notes.get('n1')?.title).toBe('renamed');
+    expect(fake.queue).toHaveLength(1);
+    // B's editor took the rename up and types again: the two merge, as one editor's would.
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'renamed', body: 'typed' }, base, origin: 'B' });
+    await tick();
+    expect(lib.notes.get('n1')).toMatchObject({ title: 'renamed', body: 'typed' });
+    expect(lib.outbox.status().pending).toBe(1);
+    // This tab's own save carries the tab's origin, which is another editor's than B's.
+    await expect(actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'mine' }, base })).rejects.toBeInstanceOf(NoteChangedError);
+  });
+
+  it('from another tab, Keep mine puts the draft over the waiting change rather than refusing it again', async () => {
+    const { lib, note } = library([row('n1', { title: 'old', body: 'b' })]);
+    await lib.outbox.ready;
+    const base = note('n1');
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'renamed' }, base, origin: 'A' });
+    await tick();
+    const refused = actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), body: 'typed' }, base, origin: 'B' });
+    await expect(refused).rejects.toBeInstanceOf(NoteChangedError);
+    // Keep mine: the body is B's, the title B never touched is A's, and one save waits.
+    const theirs = (await refused.catch((e: NoteChangedError) => e)) as NoteChangedError;
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), body: 'typed' }, base, against: theirs.current.updatedAt, origin: 'B' });
+    await tick();
+    expect(lib.notes.get('n1')).toMatchObject({ title: 'renamed', body: 'typed' });
+    expect(lib.outbox.status().pending).toBe(1);
+  });
+
+  it('are the same editor’s whether this tab made them as a client or as the holder', async () => {
+    const { lib, note } = library([row('n1', { title: 'old' })]);
+    await lib.outbox.ready;
+    const base = note('n1');
+    // Made here as a client: the save went to a holder with this tab's origin, and is
+    // restored by this tab once it holds the library.
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'renamed' }, base, origin: TAB_ORIGIN });
+    await tick();
+    // Typed back as the holder: the same editor's, so the waiting save is retired, not a conflict.
+    await expect(actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'old' }, base })).resolves.toBe('unchanged');
+    expect(lib.notes.get('n1')?.title).toBe('old');
+    expect(lib.outbox.status().pending).toBe(0);
+  });
+
+  it('sends this tab’s origin with a save forwarded to the holder', async () => {
+    library([row('n1')]);
+    const sent: unknown[] = [];
+    provideForwarder(async () => async (_name, args) => void sent.push(args[0]));
+    const base: Note = { id: 'n1', title: 'old', body: '', tags: [], notebook: null, createdAt: 1, updatedAt: 100, fields: [] };
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'new' }, base });
+    provideForwarder(async () => null);
+    expect(sent[0]).toMatchObject({ origin: TAB_ORIGIN });
+  });
+
   it('typed back to what the server holds, retires the waiting save and sends nothing', async () => {
     const { lib, fake, landPull, note } = library([row('n1', { title: 'old' })]);
     await lib.outbox.ready;
@@ -852,6 +946,45 @@ describe('a tab that does not hold the outbox', () => {
     expect(lib.notes.get('n1')?.title).toBe('old');
     expect(lib.outbox.status()).toMatchObject({ pending: 0, durable: false });
   });
+
+  it('sends a newly typed field, reading the type from the library this tab still holds', async () => {
+    // A library whose outbox is not durable does not queue, but it has the notebook's
+    // definitions. Passing none used to skip Amount as a leftover id, so the autosave
+    // reported "Saved" and the number existed nowhere but the draft — gone on the next
+    // open.
+    const { fake, note } = library([row('n1', { title: 'old', notebookId: 'nb1' })], [receipts]);
+    fake.lead(false);
+    const base = note('n1');
+    vi.mocked(api.updateNote).mockResolvedValueOnce({
+      ...base,
+      fields: [{ fieldId: amount.id, name: 'Amount', type: 'number', value: 12.5, notebookId: 'nb1', notebook: 'Receipts' }],
+      updatedAt: 101,
+    });
+    await actions.saveNote({
+      noteId: 'n1',
+      value: { ...seedFrom(base), fields: { [amount.id]: 12.5 } },
+      base,
+    });
+    expect(api.updateNote).toHaveBeenCalledWith('n1', { fields: { [amount.id]: 12.5 }, ifUpdatedAt: 100 });
+    expect(fake.queue).toHaveLength(0);
+  });
+
+  it('reads a field’s type from the library over the editor’s older copy of it', async () => {
+    // The editor remembers Amount as text from before another tab converted it to a
+    // number; the library has the conversion. Encoding from the editor's copy would
+    // send "twelve" to a number field and 400 the title with it.
+    const { fake, note } = library([row('n1', { title: 'old', notebookId: 'nb1' })], [receipts]);
+    fake.lead(false);
+    const base = note('n1');
+    vi.mocked(api.updateNote).mockResolvedValueOnce({ ...base, title: 'new', updatedAt: 101 });
+    await actions.saveNote({
+      noteId: 'n1',
+      value: { ...seedFrom(base), title: 'new', fields: { [amount.id]: 'twelve' } },
+      base,
+      definitions: [{ ...amount, type: 'text' }],
+    });
+    expect(api.updateNote).toHaveBeenCalledWith('n1', { title: 'new', ifUpdatedAt: 100 });
+  });
 });
 
 describe('the no-library path', () => {
@@ -880,25 +1013,24 @@ describe('the no-library path', () => {
     expect(api.updateNote).toHaveBeenCalledWith('n1', { title: 'new', ifUpdatedAt: 100 });
   });
 
-  it('sends a first value in an empty field by the caller’s definitions', async () => {
-    // No library to read the definitions from, and no stored row to read a type from:
-    // only the caller knows Amount is a number, and without it "12" was never sent.
+  it('sends a newly typed field from the definitions the editor already loaded', async () => {
+    // No OPFS on this device, so there is no library to read types from. The editor
+    // still has them (`rememberFieldDefs`); without them Amount was skipped and the
+    // title saved alone, then the reseed from that answer wiped the draft's number.
     provideLibrary(async () => null);
-    const amount: FieldDef = {
-      id: '11111111-1111-1111-1111-111111111111',
-      notebookId: 'nb-receipts',
-      name: 'Amount',
-      type: 'number',
-      options: [],
-      scale: null,
-      currency: null,
-      position: 0,
-    };
     const base: Note = { id: 'n1', title: 'old', body: '', tags: [], notebook: 'Receipts', createdAt: 1, updatedAt: 100, fields: [] };
-    vi.mocked(api.updateNote).mockResolvedValue({ ...base, updatedAt: 101 });
-    const value = { ...seedFrom(base), fields: { [amount.id]: 12 } };
-    expect(await actions.saveNote({ noteId: 'n1', value, base, definitions: [amount] })).toMatchObject({ updatedAt: 101 });
-    expect(vi.mocked(api.updateNote).mock.calls[0]![1].fields).toHaveProperty(amount.id);
+    vi.mocked(api.updateNote).mockResolvedValue({ ...base, title: 'Invoice', updatedAt: 101 });
+    await actions.saveNote({
+      noteId: 'n1',
+      value: { ...seedFrom(base), title: 'Invoice', fields: { [amount.id]: 12.5 } },
+      base,
+      definitions: [amount],
+    });
+    expect(api.updateNote).toHaveBeenCalledWith('n1', {
+      title: 'Invoice',
+      fields: { [amount.id]: 12.5 },
+      ifUpdatedAt: 100,
+    });
   });
 });
 
@@ -906,8 +1038,8 @@ describe('a note the copy does not hold yet', () => {
   const missing: Note = { id: 'n-missing', title: 'old', body: '', tags: [], notebook: null, createdAt: 1, updatedAt: 100, fields: [] };
 
   /** A library whose first copy is still walking: no snapshot has been taken. */
-  function copying(notes: LocalNote[]) {
-    const out = library(notes);
+  function copying(notes: LocalNote[], notebooks: FeedNotebook[] = []) {
+    const out = library(notes, notebooks);
     out.engine.state.cursor = null;
     return out;
   }
@@ -927,6 +1059,29 @@ describe('a note the copy does not hold yet', () => {
     expect(api.updateNote).toHaveBeenCalledWith(missing.id, { title: 'new', ifUpdatedAt: 100 });
     expect(fake.queue).toHaveLength(0);
     expect(engine.pull).toHaveBeenCalled();
+  });
+
+  it('sends a newly typed field on that request, from the library’s definitions', async () => {
+    // The note came from the server during the first walk; the notebook's definitions
+    // can already be here. Skipping them used to save the title and drop Amount.
+    const { fake } = copying([], [receipts]);
+    vi.mocked(api.updateNote).mockResolvedValue({
+      ...missing,
+      title: 'new',
+      fields: [{ fieldId: amount.id, name: 'Amount', type: 'number', value: 12.5, notebookId: 'nb1', notebook: 'Receipts' }],
+      updatedAt: 101,
+    });
+    await actions.saveNote({
+      noteId: missing.id,
+      value: { ...seedFrom(missing), title: 'new', fields: { [amount.id]: 12.5 } },
+      base: missing,
+    });
+    expect(api.updateNote).toHaveBeenCalledWith(missing.id, {
+      title: 'new',
+      fields: { [amount.id]: 12.5 },
+      ifUpdatedAt: 100,
+    });
+    expect(fake.queue).toHaveLength(0);
   });
 
   it('trashes, restores and purges it as a request', async () => {
@@ -1382,5 +1537,170 @@ describe('a write made here', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+/**
+ * A tab that is a client of the tab holding the library (`client-library.ts`): its writes
+ * are sent to the holder by name rather than run here, and are heard here as writes made
+ * here, before they go. A call refused because the library moved — this tab became the
+ * holder with the call in hand — is made again where the library now is.
+ */
+describe('a tab that is a client of the holder', () => {
+  afterEach(() => provideForwarder(async () => null));
+
+  it('sends a write to the holder by name, and is heard before it goes', async () => {
+    const { lib } = library([row('n1')]);
+    await lib.outbox.ready;
+    const sent: Array<[string, unknown[]]> = [];
+    provideForwarder(async () => async (name, args) => {
+      sent.push([name, args]);
+      return `${name} done`;
+    });
+    const heard = vi.fn();
+    const stop = actions.onLocalWrite(heard);
+    await expect(actions.trashNote('n1')).resolves.toBe('trashNote done');
+    stop();
+    expect(sent).toEqual([['trashNote', ['n1']]]);
+    expect(heard).toHaveBeenCalledWith({ ids: ['n1'], refiles: true });
+    // Nothing ran here: the row is as it was, and the outbox has nothing.
+    expect(lib.notes.get('n1')?.deletedAt).toBeUndefined();
+    expect(lib.outbox.status().pending).toBe(0);
+  });
+
+  it('says whether a forwarded save can refile the note', async () => {
+    const { note } = library([row('n1')]);
+    provideForwarder(async () => async () => 'queued');
+    const writes: actions.LocalWrite[] = [];
+    const stop = actions.onLocalWrite((write) => writes.push(write));
+    const base = note('n1');
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'retyped' }, base });
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), tags: ['new'] }, base });
+    stop();
+    expect(writes).toEqual([
+      { ids: ['n1'], refiles: false },
+      { ids: ['n1'], refiles: true },
+    ]);
+  });
+
+  it('does the write here when the call was refused because the library moved to this tab', async () => {
+    const { lib } = library([row('n1')]);
+    await lib.outbox.ready;
+    let calls = 0;
+    provideForwarder(async () => {
+      // The first ask finds a client whose holder is gone; by the second this tab holds the library.
+      if (calls++ > 0) return null;
+      return async () => {
+        throw new LibraryMovedError(true);
+      };
+    });
+    await actions.trashNote('n1');
+    expect(lib.notes.get('n1')?.deletedAt).toBeDefined();
+    expect(lib.outbox.status().pending).toBe(1);
+  });
+
+  it('mints the id of a note, a copy or a file here and sends it with the call, so a call run twice makes one', async () => {
+    library([row('n1')]);
+    const sent: Array<[string, unknown[]]> = [];
+    provideForwarder(async () => async (name, args) => {
+      sent.push([name, args]);
+      return { id: 'x' };
+    });
+    const file = new File(['x'], 'scan.pdf', { type: 'application/pdf' });
+    await actions.createNote({ title: 't', body: '', tags: [], notebook: null });
+    await actions.duplicateNote('n1');
+    await actions.uploadFile('n1', file);
+    expect(sent.map(([name]) => name)).toEqual(['createNote', 'duplicateNote', 'uploadFile']);
+    const uuid = /^[0-9a-f-]{36}$/;
+    expect(sent[0]![1][1]).toMatch(uuid);
+    expect(sent[1]![1][1]).toMatch(uuid);
+    expect(sent[2]![1][2]).toMatch(uuid);
+    // The holder runs the same function with the id it was sent.
+    vi.mocked(api.createNote).mockResolvedValueOnce({ id: 'given' } as Note);
+    provideLibrary(async () => null);
+    provideForwarder(async () => null);
+    await actions.createNote({ title: 't', body: '', tags: [], notebook: null }, 'given');
+    expect(api.createNote).toHaveBeenCalledWith(expect.objectContaining({ id: 'given' }));
+  });
+
+  it('tells the list about emptying the trash once the holder has answered, and not for a refusal', async () => {
+    library([row('n1')]);
+    let answer: () => void = () => {};
+    provideForwarder(async () => async () => new Promise((resolve) => (answer = () => resolve({ notesDeleted: 1 }))));
+    const heard = vi.fn();
+    const stop = actions.onLocalWrite(heard);
+    const emptying = actions.emptyTrash(['n1']);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(heard).not.toHaveBeenCalled();
+    answer();
+    await expect(emptying).resolves.toMatchObject({ notesDeleted: 1 });
+    expect(heard).toHaveBeenCalledWith({ ids: ['n1'], refiles: true });
+    provideForwarder(async () => async () => {
+      throw new ApiError(403, 'refused');
+    });
+    await expect(actions.emptyTrash(['n1'])).rejects.toThrow('refused');
+    stop();
+    expect(heard).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not empty the trash again after a holder had the call and went', async () => {
+    library([row('n1')]);
+    provideForwarder(async () => async () => {
+      throw new LibraryMovedError(true);
+    });
+    await expect(actions.emptyTrash(['n1'])).rejects.toBeInstanceOf(CallUnsettledError);
+    expect(api.purgeNotes).not.toHaveBeenCalled();
+    // One the holder never had is done here.
+    provideForwarder(async () => async () => {
+      throw new LibraryMovedError(false);
+    });
+    vi.mocked(api.purgeNotes).mockResolvedValueOnce({ notesDeleted: 1 } as api.PurgeResult);
+    await expect(actions.emptyTrash(['n1'])).resolves.toMatchObject({ notesDeleted: 1 });
+  });
+
+  it('does not do the thing again here when the account changed under the call', async () => {
+    const { lib } = library([row('n1')]);
+    await lib.outbox.ready;
+    provideForwarder(async () =>
+      Object.assign(
+        async () => {
+          throw new LibraryMovedError(false);
+        },
+        { stillMine: () => false },
+      ),
+    );
+    await expect(actions.trashNote('n1')).rejects.toThrow('account on this tab changed');
+    expect(lib.notes.get('n1')?.deletedAt).toBeUndefined();
+    expect(lib.outbox.status().pending).toBe(0);
+  });
+
+  it('brings any other failure back to the caller as it came', async () => {
+    library([row('n1')]);
+    provideForwarder(async () => async () => {
+      throw new ApiError(404, 'Not found');
+    });
+    await expect(actions.trashNote('n1')).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+/**
+ * The outbox's database being deleted under it, by a sign-out in another tab. IndexedDB
+ * tells every open connection through `versionchange`; the connection has to close for
+ * the delete to go through, and the library is told so it closes with the outbox.
+ */
+describe('the outbox’s connection', () => {
+  it('closes when another tab deletes the database, and tells the library', async () => {
+    const onAskedToClose = vi.fn();
+    const { lib } = library([row('n1', { title: 'a' })]);
+    const outbox = createOutbox('u1', lib, { onAskedToClose });
+    const adapter = MemoryAdapter.instances[MemoryAdapter.instances.length - 1]!;
+    // Not open at init in a tab that does not lead; the outbox's own first read opens it.
+    expect(adapter.db).toBeNull();
+    await outbox.ready;
+    expect(adapter.db?.onversionchange).toBeTypeOf('function');
+    adapter.db!.onversionchange!();
+    expect(adapter.db!.closed).toBe(true);
+    expect(onAskedToClose).toHaveBeenCalledTimes(1);
   });
 });

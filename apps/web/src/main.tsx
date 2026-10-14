@@ -11,13 +11,15 @@ import { configQuery, installLibraryQueries } from './queries.js';
 import { applyInstanceMarker } from './instance-marker.js';
 import { adoptHostLayout } from './app-bridge.js';
 import { openSitePath } from './useHostApp.js';
-import { registerServiceWorker, setInstanceKind } from './sw-register.js';
+import { registerServiceWorker } from './sw-register.js';
 import { installConnectivity } from './connectivity.js';
-import { installSessionRecheck } from './auth-client.js';
+import { installSessionRecheck, refreshSession } from './auth-client.js';
 import { isOfflineError } from './notes-api.js';
 import { onUploaded } from './store/actions.js';
+import { installLibraryCloser } from './store/wipe.js';
 import { indexUploadedFile } from './index-files.js';
 import { refuseStrayFileDrops } from './file-drop-guard.js';
+import { installTooltips } from './tooltips.js';
 import { canTypeTransitions, noteTransitionTypes, trackWhatIsBehind, watchHistoryMoves } from './note-nav.js';
 import './styles.css';
 
@@ -80,6 +82,14 @@ installLibraryQueries(queryClient);
 installSessionRecheck();
 
 /*
+ * A sign-out or a change of account in another tab of this origin closes the library
+ * here, so the wipe there is not held behind what this tab holds, and then asks the
+ * server who is signed in, so this tab does not open the old account again from the
+ * session it remembers; see `store/wipe.ts`.
+ */
+installLibraryCloser(() => void refreshSession().catch(() => null));
+
+/*
  * A file added with no connection is uploaded from the outbox when there is one, by which
  * time the editor that took it may be long gone. Its text is read for search then, from
  * the bytes the queue still holds, exactly as an upload made online has its text read
@@ -92,6 +102,11 @@ onUploaded(indexUploadedFile);
  * browser in place of the app; see `file-drop-guard.ts`.
  */
 refuseStrayFileDrops();
+
+/*
+ * Every `data-tip` in the app, from one listener and one bubble; see `tooltips.ts`.
+ */
+installTooltips();
 
 /*
  * Error tracking, on the instances that have it — see `posthog.ts`.
@@ -112,8 +127,6 @@ void queryClient
     // Before the error tracker, which needs nothing from it: a scratch instance's tab
     // should say so as early as the page can know it is one.
     applyInstanceMarker(config);
-    // Dev and previews take a new deploy at once; see `takesDeploysAtOnce`.
-    setInstanceKind(config.instanceKind);
     return config.posthog ? installPosthog(config.posthog) : undefined;
   })
   .catch(() => {});
@@ -181,12 +194,11 @@ installLaunchQueue({
 });
 
 /*
- * The service worker, which lets the installed app open with no connection, and the
- * hand-off to a new deploy; see `sw-register.ts`. After the router, so nothing it does
- * can delay the first render, and given the router's committed path so a deploy can be
- * taken on a change of page rather than a change of filter.
+ * The service worker, which lets the installed app open with no connection, and the word
+ * that a newer build is in charge; see `sw-register.ts`. After the router, so nothing it
+ * does can delay the first render.
  */
-registerServiceWorker(() => (router.state.resolvedLocation ?? router.state.location).pathname);
+registerServiceWorker();
 
 declare module '@tanstack/react-router' {
   interface Register {

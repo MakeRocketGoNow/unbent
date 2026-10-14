@@ -447,9 +447,9 @@ function WindBack({ userId, email, onChanged }: { userId: string; email: string;
   }
 
   async function windBack(ms: number) {
-    // Held for the whole request, like an upload: a waiting deploy reloads the page on
-    // the next change of section unless something is in flight (`busy.ts`), and a reload
-    // here drops the request and the undo bookmark its answer carries.
+    // Held for the whole request, like an upload: the update notice's Reload waits for
+    // nothing to be in flight (`busy.ts`), and a reload here drops the request and the
+    // undo bookmark its answer carries.
     const release = holdPage();
     setBusy(true);
     setError(null);

@@ -615,13 +615,13 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
                 <button
                   type="button"
                   className="notebook-admin-name"
-                  title="Rename"
+                  data-tip="Rename"
                   onClick={() => setEditing({ id: field.id, value: field.name })}
                 >
                   <FieldTypeIcon type={field.type} rating={isRatingField(field)} currency={isCurrencyField(field)} />
                   {field.name}
                   {field.valueCount !== undefined && field.valueCount > 0 && (
-                    <span className="tag-count" title={`${plural(field.valueCount, 'note')} with a value`}>
+                    <span className="tag-count" data-tip={`${plural(field.valueCount, 'note')} with a value`}>
                       {field.valueCount}
                     </span>
                   )}
@@ -667,6 +667,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
                   variant="quiet"
                   size="small"
                   aria-label={`Move ${field.name} up`}
+                  data-tip="Move up"
                   disabled={busy || index === 0}
                   onClick={() => move(index, -1)}
                 >
@@ -676,6 +677,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
                   variant="quiet"
                   size="small"
                   aria-label={`Move ${field.name} down`}
+                  data-tip="Move down"
                   disabled={busy || index === list.length - 1}
                   onClick={() => move(index, 1)}
                 >

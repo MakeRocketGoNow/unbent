@@ -3,12 +3,32 @@ import { render, cleanup, screen, waitFor } from '@testing-library/react';
 import { createRootRoute, createRouter, createMemoryHistory, RouterProvider } from '@tanstack/react-router';
 import type { NotebookSummary } from '@unbent/shared';
 import * as api from '../notes-api.js';
+import { useKeeper } from '../store/use-outbox.js';
+import type { KeepStatus } from '../store/keep.js';
 import { Settings } from './Settings.js';
 
 vi.mock('../notes-api.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../notes-api.js')>()),
   listNotebooks: vi.fn(),
 }));
+
+vi.mock('../store/use-outbox.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../store/use-outbox.js')>()),
+  useKeeper: vi.fn(() => ({ keeper: null, status: keeping([]) })),
+}));
+
+function keeping(ids: string[], counts: Partial<KeepStatus> = {}): KeepStatus {
+  return {
+    supported: true,
+    kept: new Set(ids),
+    counted: true,
+    wanted: { files: 4, bytes: 400 },
+    have: { files: 4, bytes: 400 },
+    fetching: false,
+    problem: null,
+    ...counts,
+  };
+}
 
 /**
  * When the notebooks page opens its chooser by itself: on an empty list, where making the
@@ -48,5 +68,17 @@ describe('Settings, notebooks', () => {
     await waitFor(() => expect(onCreateRequested).toHaveBeenCalled());
     // No line about what a notebook is: the list beside the chooser already shows one.
     expect(screen.queryByText(/Each note lives in one notebook/)).toBeNull();
+  });
+
+  it('marks only the notebooks kept on this device, and says when their files are still arriving', async () => {
+    vi.mocked(useKeeper).mockReturnValue({ keeper: null, status: keeping(['Travel']) });
+    mount([nb('Travel'), nb('Recipes')]);
+    expect(await screen.findByRole('img', { name: 'Kept on this device' })).toBeTruthy();
+    expect(screen.getAllByRole('img', { name: /^Kept/ })).toHaveLength(1);
+    cleanup();
+
+    vi.mocked(useKeeper).mockReturnValue({ keeper: null, status: keeping(['Travel'], { have: { files: 1, bytes: 100 } }) });
+    mount([nb('Travel'), nb('Recipes')]);
+    expect(await screen.findByRole('img', { name: 'Kept on this device; its files are still arriving' })).toBeTruthy();
   });
 });

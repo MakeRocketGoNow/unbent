@@ -293,7 +293,7 @@ export function Sheet({
         {/* The head is part of the handle: see the note on `useGripDrag`. */}
         <div className="sheet-head" {...grip}>
           {onBack && (
-            <button ref={backRef} type="button" className="icon-btn sheet-back" aria-label="Back" onClick={onBack}>
+            <button ref={backRef} type="button" className="icon-btn sheet-back" aria-label="Back" data-tip="Back" onClick={onBack}>
               <BackArrow />
             </button>
           )}
@@ -306,6 +306,7 @@ export function Sheet({
               type="button"
               className="icon-btn sheet-close"
               aria-label="Close"
+              data-tip="Close"
               onClick={onClose}
             >
               <CloseIcon />

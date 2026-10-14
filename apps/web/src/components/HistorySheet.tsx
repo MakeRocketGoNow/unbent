@@ -356,7 +356,8 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore, 
                   role="radio"
                   aria-checked={view === value}
                   tabIndex={view === value ? 0 : -1}
-                  title={title}
+                  data-tip={title}
+                  aria-description={title}
                   disabled={!copy.isSuccess}
                   ref={(el) => {
                     if (el) viewButtons.current.set(value, el);
@@ -403,7 +404,7 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore, 
             <Button
               variant="primary"
               disabled={restoring || !copy.isSuccess || offline}
-              title={offlineTitle}
+              tip={offlineTitle}
               onClick={() => void restore()}
             >
               {restoring ? 'Restoring…' : 'Restore this version'}
@@ -437,7 +438,8 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore, 
                       else rows.current.delete(revision.id);
                     }}
                     disabled={offline}
-                    title={offlineTitle}
+                    data-tip={offlineTitle}
+                    aria-description={offlineTitle}
                     onClick={() => setPicked(revision)}
                   >
                     <span className="history-row-text">
@@ -467,7 +469,7 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore, 
                   tone="danger"
                   size="small"
                   disabled={offline}
-                  title={offlineTitle}
+                  tip={offlineTitle}
                   onClick={() => {
                     setFailure(null);
                     setClearing('asking');

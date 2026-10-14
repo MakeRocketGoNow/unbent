@@ -418,7 +418,7 @@ function toolButton(className: string, label: string, glyph: string): HTMLButton
   button.type = 'button';
   button.className = `attachment-tool ${className}`;
   button.setAttribute('aria-label', label);
-  button.title = label;
+  button.dataset.tip = label;
   button.innerHTML = glyph;
   ownEvents(button);
   return button;
@@ -483,7 +483,7 @@ function attachmentToolbar(
     download.href = downloadUrl(opts.target.src);
     download.download = opts.stored.filename;
     download.setAttribute('aria-label', 'Download');
-    download.title = 'Download';
+    download.dataset.tip = 'Download';
     download.innerHTML = downloadIconMarkup();
     ownEvents(download);
     download.addEventListener('click', (event) => event.stopPropagation());
@@ -589,10 +589,10 @@ function askToDelete(tools: HTMLElement, onConfirm: () => Promise<void>): void {
           | undefined;
         if (bin) {
           bin.setAttribute('aria-label', 'Couldn’t delete');
-          bin.title = 'Couldn’t delete';
+          bin.dataset.tip = 'Couldn’t delete';
           setTimeout(() => {
             bin.setAttribute('aria-label', 'Delete file');
-            bin.title = 'Delete file';
+            bin.dataset.tip = 'Delete file';
           }, COPIED_FOR_MS);
         }
       },
@@ -627,16 +627,19 @@ async function deleteStored(
  */
 function copyButton(filename: string, kind: 'image' | 'pdf', copy: CopyAttachment): HTMLButtonElement {
   const button = toolButton('zoom-copy', 'Copy', copyIconMarkup());
-  button.title = 'Copy, to paste into another note';
+  // The tip says what Copy is for, which the one word does not, so it is read out too.
   const idle = () => {
     button.innerHTML = copyIconMarkup();
     button.setAttribute('aria-label', 'Copy');
-    button.title = 'Copy, to paste into another note';
+    button.dataset.tip = 'Copy, to paste into another note';
+    button.setAttribute('aria-description', button.dataset.tip);
   };
+  idle();
   const say = (label: string, glyph: string) => {
     button.innerHTML = glyph;
     button.setAttribute('aria-label', label);
-    button.title = label;
+    button.dataset.tip = label;
+    button.removeAttribute('aria-description');
   };
   let timer: ReturnType<typeof setTimeout> | null = null;
   button.addEventListener('click', (event) => {
@@ -677,7 +680,7 @@ function saveButton(
     if (busy || view.state.readOnly) return;
     busy = true;
     button.setAttribute('aria-label', 'Saving…');
-    button.title = 'Saving…';
+    button.dataset.tip = 'Saving…';
     save(url).then(
       (filename) => {
         const node = findWidgetNode(view, host, 'Image');
@@ -695,10 +698,10 @@ function saveButton(
       () => {
         busy = false;
         button.setAttribute('aria-label', 'Couldn’t save');
-        button.title = 'Couldn’t save';
+        button.dataset.tip = 'Couldn’t save';
         setTimeout(() => {
           button.setAttribute('aria-label', 'Save to note');
-          button.title = 'Save to note';
+          button.dataset.tip = 'Save to note';
         }, COPIED_FOR_MS);
       },
     );

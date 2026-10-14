@@ -92,7 +92,13 @@ export const oauth2 = authClient.oauth2 as unknown as ConsentClient;
  * not depend on directly, and TypeScript refuses to name that in an export (TS2742).
  */
 export interface Session {
-  user: { id: string; email: string; name?: string };
+  /**
+   * `legalVersion` is the version of the terms the account agreed to, null before any
+   * (MAK-209). Absent rather than null on a session remembered for offline use, which
+   * keeps only who it was; see `useAppSession` for why the agreement is only asked about
+   * on an answer from the server.
+   */
+  user: { id: string; email: string; name?: string; legalVersion?: string | null };
 }
 
 /**
@@ -219,6 +225,10 @@ export function recordSession(state: Pick<SessionState, 'data' | 'error' | 'isPe
   }
   if (!state.isPending && (state.error == null || state.error.status === 401)) {
     forgetSession();
+    // Closed in every tab the answer reaches, not only the one that signed out: a tab
+    // left on the sign-in screen with its library open held the store's file, the
+    // outbox's connection and the collections' leadership against the wipe in the tab
+    // that did, and against every sign-in after it (`store/wipe.ts`).
     return clearOfflineCaches('none');
   }
   return Promise.resolve();

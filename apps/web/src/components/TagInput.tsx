@@ -222,6 +222,7 @@ export function TagInput({
                 type="button"
                 className="tag-move"
                 aria-label={`Move ${label} ${t} earlier`}
+                data-tip="Move earlier"
                 disabled={index === 0}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -234,6 +235,7 @@ export function TagInput({
                 type="button"
                 className="tag-move"
                 aria-label={`Move ${label} ${t} later`}
+                data-tip="Move later"
                 disabled={index === tags.length - 1}
                 onClick={(e) => {
                   e.stopPropagation();
