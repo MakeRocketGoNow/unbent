@@ -4,6 +4,7 @@ import { RouterProvider, createRouter } from '@tanstack/react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { routeTree } from './routeTree.gen.js';
 import { installErrorReporting } from './report-error.js';
+import { installRailWatch } from './rail-watch.js';
 import { installPosthog } from './posthog.js';
 import { launchFiles } from './launch-files.js';
 import { installLaunchQueue } from './launch-queue.js';
@@ -29,6 +30,13 @@ import './styles.css';
  * is invisible to Play's crash reporting — see `report-error.ts`.
  */
 installErrorReporting();
+
+/*
+ * Temporary: records the rail's list jumping to its top and sends what led up to it to
+ * the Worker's log. Before the first render, so a load is watched from its first frame;
+ * see `rail-watch.ts`.
+ */
+installRailWatch();
 
 /*
  * Before the first render, so the page is never drawn once inside the safe area and
