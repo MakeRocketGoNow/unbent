@@ -6,7 +6,7 @@ import { chooseContentType } from '../lib/fetch-attachment.js';
 import { billingOn } from '../lib/paddle.js';
 import { planFor, planStateOf } from '../lib/plan.js';
 import { reposFor } from '../lib/repos.js';
-import { StorageFull, quotaFor, storageFullBody } from '../lib/quota.js';
+import { StorageFull, quotaOf, storageFullBody } from '../lib/quota.js';
 import { storeAttachment } from '../lib/store-attachment.js';
 import { claimUploadGrant } from '../lib/upload-grants.js';
 import type { AppEnv } from '../types.js';
@@ -85,10 +85,12 @@ export const uploads = new Hono<AppEnv>().use('/uploads/*', anyOrigin).put('/upl
      was minted by a tool the gate let through, but a plan can end in the minutes between.
      Same answer as any other write's, so the assistant relaying it reads one sentence.
   */
-  if (billingOn(c.env) && planStateOf(await planFor(c.env.DB, grant.userId), Date.now()) === 'inactive') {
+  const plan = billingOn(c.env) ? await planFor(c.env.DB, grant.userId) : undefined;
+  if (plan && planStateOf(plan, Date.now()) === 'inactive') {
     return c.json({ code: PLAN_INACTIVE_CODE, error: PLAN_INACTIVE_MESSAGE }, 402);
   }
-  const quota = await quotaFor(c.env, c.env.DB, grant.userId);
+  // The same row answers the quota; `quotaFor` would read it a second time.
+  const quota = quotaOf(c.env, plan);
 
   const { attachments, notes } = reposFor(c.env, grant.userId);
   // Trashed, or gone, in the minutes since the link was made.
