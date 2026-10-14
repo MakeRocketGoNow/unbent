@@ -723,8 +723,9 @@ const OUTBOX_ENTRY_PREFIX = 'tx:';
  *
  * Opens a short-lived connection and closes it before answering, so the wipe's
  * `deleteDatabase` is not blocked by this peek. Does not go through `IndexedDBAdapter`:
- * constructing one would create the database if it were absent, and would leave its
- * connection open (`db` is private and only `dispose` on the outbox closes it).
+ * reading through one would create the database if it were absent (its open runs an
+ * upgrade that makes the store), and would leave its connection open (`db` is private
+ * and only `dispose` on the outbox closes it).
  *
  * `null` when the database could not be read — blocked, aborted, no answer — which is
  * "do not know", not "nothing there".
