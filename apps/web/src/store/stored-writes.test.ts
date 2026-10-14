@@ -14,9 +14,12 @@ function fakeIndexedDB(opts: {
   blocked?: boolean;
   fail?: boolean;
   noStore?: boolean;
+  /** The read never answers, as one cut off by the sign-out's bound. */
+  hang?: boolean;
 }) {
   const closed: string[] = [];
   let aborted = false;
+  let opened: { onversionchange: (() => void) | null } | undefined;
   vi.stubGlobal('indexedDB', {
     open(name: string) {
       const req = {
@@ -49,6 +52,7 @@ function fakeIndexedDB(opts: {
           return;
         }
         const db = {
+          onversionchange: null as (() => void) | null,
           objectStoreNames: { contains: (store: string) => !opts.noStore && store === OUTBOX_STORE },
           transaction() {
             return {
@@ -56,7 +60,7 @@ function fakeIndexedDB(opts: {
                 return {
                   getAllKeys() {
                     const keysReq = { result: opts.keys ?? [], onsuccess: null as (() => void) | null, onerror: null as (() => void) | null };
-                    queueMicrotask(() => keysReq.onsuccess?.());
+                    if (!opts.hang) queueMicrotask(() => keysReq.onsuccess?.());
                     return keysReq;
                   },
                 };
@@ -67,13 +71,14 @@ function fakeIndexedDB(opts: {
             closed.push(name);
           },
         };
+        opened = db;
         req.result = db as unknown as IDBDatabase;
         req.onsuccess?.();
       });
       return req;
     },
   });
-  return { closed, get aborted() { return aborted; } };
+  return { closed, get aborted() { return aborted; }, get db() { return opened; } };
 }
 
 afterEach(() => {
@@ -113,5 +118,14 @@ describe('countStoredWrites', () => {
     const { closed } = fakeIndexedDB({ noStore: true, keys: ['tx:a'] });
     await expect(countStoredWrites('u1')).resolves.toBe(0);
     expect(closed).toEqual([outboxName('u1')]);
+  });
+
+  it('lets a wipe through when the read is still going, and answers unknown', async () => {
+    const fake = fakeIndexedDB({ hang: true, keys: ['tx:a'] });
+    const left = countStoredWrites('u1');
+    await new Promise((r) => setTimeout(r, 0));
+    fake.db?.onversionchange?.();
+    await expect(left).resolves.toBeNull();
+    expect(fake.closed).toEqual([outboxName('u1')]);
   });
 });

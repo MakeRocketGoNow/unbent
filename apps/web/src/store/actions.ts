@@ -760,8 +760,15 @@ export function countStoredWrites(userId: string): Promise<number | null> {
         try {
           db.close();
         } catch {
-          // Already closed by the abort, or the versionchange of a wipe.
+          // Already closed.
         }
+      };
+      // A wipe asks with `versionchange`. If the sign-out's bound ran out while the read
+      // was still going, the wipe comes next, and its `deleteDatabase` would wait behind
+      // this connection — the outbox's own does the same (`createOutbox`).
+      db.onversionchange = () => {
+        close();
+        done(null);
       };
       if (!db.objectStoreNames.contains(OUTBOX_STORE)) {
         close();
