@@ -168,6 +168,17 @@ describe('the webhook', () => {
     expect(plan).toMatchObject({ state: 'active', storageGb: 10, until: Date.parse('2027-10-10T00:00:00Z') });
     expect(((await (await call('GET', '/api/me/plan')).json()) as { subscription: { status: string } }).subscription.status).toBe('canceled');
 
+    // The first checkout's transaction, delivered before the subscription event that
+    // happened a moment earlier: the row goes active from the transaction, and the
+    // subscription event still applies with the storage only it carries.
+    const customer2 = `${customer}b`;
+    await call('POST', '/api/admin/test/plan', { plan: 'trial', until: Date.now() + 86_400_000, paddleCustomerId: customer2 });
+    const txn = { id: 'txn_first', status: 'completed', customer_id: customer2, subscription_id: 'sub_first', custom_data: null, billing_period: { starts_at: '2026-10-10T00:00:00Z', ends_at: '2027-10-10T00:00:00Z' }, items: [], checkout: null };
+    expect(await (await deliver({ event_id: `evt_${customer2}_t`, event_type: 'transaction.completed', occurred_at: '2026-10-10T00:00:06Z', data: txn })).json()).toEqual({ applied: true });
+    expect(await (await deliver({ event_id: `evt_${customer2}_s`, event_type: 'subscription.created', occurred_at: '2026-10-10T00:00:05Z', data: subscription({ id: 'sub_first', customer_id: customer2 }) })).json()).toEqual({ applied: true });
+    plan = (await (await call('GET', '/api/me/plan')).json()) as typeof plan;
+    expect(plan).toMatchObject({ state: 'active', source: 'paddle', storageGb: 35 });
+
     // An event for a customer no row holds is accepted and ignored.
     expect(await (await deliver({ event_id: `evt_${customer}_9`, event_type: 'subscription.created', occurred_at: '2026-10-12T00:00:00Z', data: subscription({ customer_id: 'ctm_nobody' }) })).json()).toEqual({ applied: false, reason: 'no account' });
   });

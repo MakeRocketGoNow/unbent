@@ -238,7 +238,12 @@ export const admin = new Hono<AppEnv>()
     await updatePlan(c.env.DB, userId, {
       plan: parsed.data.plan,
       planUntil: parsed.data.until,
-      ...(parsed.data.paddleCustomerId !== undefined ? { paddleCustomerId: parsed.data.paddleCustomerId } : {}),
+      // A customer id starts a new Paddle story for the row: what an earlier case's events
+      // left on it — the subscription, its status, the stamp the guard orders by — would
+      // otherwise refuse the next case's first event as older.
+      ...(parsed.data.paddleCustomerId !== undefined
+        ? { paddleCustomerId: parsed.data.paddleCustomerId, paddleSubscriptionId: null, paddleStatus: null, paddleCancelsAt: null, paddleEventAt: null, source: null }
+        : {}),
     });
     return c.json({ ok: true });
   })

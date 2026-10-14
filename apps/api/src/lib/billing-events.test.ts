@@ -154,7 +154,6 @@ describe('planPatchFor', () => {
       paddleSubscriptionId: 'sub_1',
       paddleStatus: 'active',
       paddleCancelsAt: null,
-      paddleEventAt: T0,
       lapseNotifiedAt: null,
     });
     // Once the subscription is known, a proration's transaction names nothing new.
@@ -164,6 +163,26 @@ describe('planPatchFor', () => {
     expect(patch.storageGb).toBeUndefined();
     // A one-off charge is not the plan's.
     expect(planPatchFor(paddle, event('transaction.completed', { ...txn, subscription_id: null }), row)).toBeNull();
+  });
+
+  /**
+   * The subscription event for a checkout happens before its transaction completes. A
+   * transaction that stamped the row would have the guard refuse that event as older,
+   * and the storage it alone carries would never land.
+   */
+  it('leaves the event stamp to the subscription events, so the one behind a transaction still applies', () => {
+    const txn: PaddleTransaction = {
+      id: 'txn_1',
+      status: 'completed',
+      customer_id: 'ctm_1',
+      subscription_id: 'sub_1',
+      custom_data: null,
+      billing_period: { starts_at: T0, ends_at: NEXT_YEAR },
+      items: [{ price: { id: 'pri_storage' }, quantity: 1 }],
+      checkout: null,
+    };
+    expect(planPatchFor(paddle, event('transaction.completed', txn, T1), row)).not.toHaveProperty('paddleEventAt');
+    expect(planPatchFor(paddle, event('subscription.created', sub(), T0), row)).toMatchObject({ paddleEventAt: T0 });
   });
 
   it('ignores what it does not follow', () => {

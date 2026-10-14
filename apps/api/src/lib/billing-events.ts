@@ -75,6 +75,15 @@ export function storageGbOf(paddle: PaddleConfig, items: Array<{ price: { id: st
  * names the items as they stand; a proration's items name what was bought then, not the
  * whole. A transaction with no subscription is not the plan's.
  *
+ * For that reason a transaction does not move the row's event stamp. The subscription
+ * event for the same checkout happened a moment *before* the transaction completed, so
+ * a transaction delivered first and stamped would have `notBefore` refuse the
+ * subscription event as older — and with it the storage the person had just paid for,
+ * which only the subscription event carries; `/billing/refresh` could not mend it
+ * either, since the subscription's `updated_at` is older still. The stamp orders
+ * subscription snapshots against each other, which is the one ordering that matters:
+ * a transaction writes nothing a later subscription event does not write again.
+ *
  * `lapseNotifiedAt` is cleared whenever a paid period is ahead, so an account that
  * lapses, pays and lapses again is told the second time too.
  */
@@ -107,7 +116,6 @@ export function planPatchFor(paddle: PaddleConfig, event: PaddleEvent, row: Plan
       source: 'paddle',
       ...(periodEnd !== null ? { planUntil: periodEnd } : {}),
       ...(newSubscription ? { paddleSubscriptionId: txn.subscription_id, paddleStatus: 'active', paddleCancelsAt: null } : {}),
-      paddleEventAt: event.occurred_at,
       ...(periodEnd !== null && periodEnd > at ? { lapseNotifiedAt: null } : {}),
     };
   }
