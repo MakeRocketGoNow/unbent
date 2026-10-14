@@ -366,7 +366,8 @@ function StorageMeter({ plan, reading }: { plan: AccountPlan; reading: boolean }
   const share = used === undefined ? 0 : Math.min(1, used / quota);
   return (
     <>
-      <div className="progress-bar plan-meter" role="meter" aria-valuemin={0} aria-valuemax={quota} aria-valuenow={used ?? 0} aria-label="Storage used">
+      {/* No `aria-valuenow` while the figure is unknown: zero would be a figure. */}
+      <div className="progress-bar plan-meter" role="meter" aria-valuemin={0} aria-valuemax={quota} {...(used !== undefined ? { 'aria-valuenow': used } : {})} aria-label="Storage used">
         <div className={`progress-fill${share >= 0.95 ? ' plan-meter-full' : ''}`} style={{ width: `${Math.round(share * 100)}%` }} />
       </div>
       <p className="muted small">
