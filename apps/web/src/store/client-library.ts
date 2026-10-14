@@ -78,20 +78,27 @@ export const HELLO_RETRY_MAX_MS = 30_000;
  * How many hellos a client that has never been served sends with nothing heard from any
  * holder, and over at least how long, before it takes the library over. A live holder
  * answers a hello from its message handler, which the browser runs even in a hidden
- * tab, so three in six seconds (now, two seconds on, four more) with no `serving`, no
- * rows and no `opening` is a tab that holds the lock and runs nothing for this account:
- * one frozen by the browser, or one on a build from before the channel existed, which
- * cannot answer a hello at all. Until this, such a tab cost every reload the whole of
- * `LIBRARY_OPEN_TIMEOUT_MS` — twenty seconds of nothing, then the server — which is
- * what a deploy looked like with an older tab left open (2026-10-14).
+ * tab, and a tab still opening answers it with `opening`, so three hellos with no
+ * `serving`, no rows and no `opening` is a tab that holds the lock and runs nothing for
+ * this account: one frozen by the browser, or one on a build from before the channel
+ * existed, which cannot answer a hello at all. Until this, such a tab cost every reload
+ * the whole of `LIBRARY_OPEN_TIMEOUT_MS` — twenty seconds of nothing, then the server —
+ * which is what a deploy looked like with an older tab left open (2026-10-14).
+ *
+ * The two numbers are not the same bound. The count is what decides, and where the
+ * third hello lands depends on the backoff: six seconds from a cold start (now, two
+ * seconds on, four more), and later after an `opening` started the count over, since
+ * the backoff goes on doubling. The clock is a floor under the count, not a bound of
+ * its own: a tab resumed from a freeze fires its overdue hello timers in a burst, and
+ * three sent in a moment would otherwise read a live holder as silent before its
+ * queued answer was processed. Don't change one to match the other.
  *
  * Only before the first attach. A client that was served once has its rows, and from
  * then on a holder gone quiet is judged by pings with a call in hand (`SILENT_PINGS`),
- * since a steal from an idle client undid a person's Open here elsewhere. And a count
- * as well as a clock, for the reason `SILENT_PINGS` gives: a tab resumed from a freeze
- * fires its overdue timers before the answers queued for it. A tab that was granted the
- * lock says `opening` before its open, which starts the count over: the open on a phone
- * takes seconds, and a hand-off is exactly when a client is waiting on one.
+ * since a steal from an idle client undid a person's Open here elsewhere. A tab that
+ * was granted the lock says `opening` before its open and again to every hello until it
+ * serves, each of which starts the count over: the open on a phone takes seconds, and a
+ * hand-off is exactly when a client is waiting on one.
  */
 export const UNANSWERED_HELLOS = 3;
 export const HELLO_UNANSWERED_MS = 5_000;
