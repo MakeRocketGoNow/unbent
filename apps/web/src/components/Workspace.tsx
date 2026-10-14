@@ -496,8 +496,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
    * only when the body is what changed — a title or a tag from elsewhere has no reason to
    * throw away the caret and the undo history. The bump to `seedGeneration` makes the
    * autosave take the new copy as its baseline rather than as an edit to save.
-   */
-  /**
+   *
    * `keep` is the draft on screen when this reseed is automatic — a save's answer, or
    * the feed. Half-typed field values live only there; without them, `seedFrom` drops
    * the digits the person is still looking at. An explicit replace (theirs, a restore)
