@@ -3,7 +3,7 @@ import { FEED_TIMEOUT_MS, FeedTimeoutError, LIBRARY_OPEN_TIMEOUT_MS, LibraryElse
 import { setLocksForTests } from './library-lock.js';
 import { fakeLocks } from './test-locks.js';
 import { fakeChannel } from './test-channel.js';
-import { HOLDER_SILENT_MS, PING_MS } from './client-library.js';
+import { HOLDER_SILENT_MS, PING_MS, HELLO_RETRY_MS } from './client-library.js';
 import { serveLibrary } from './library-serve.js';
 import type { Port } from './library-channel.js';
 import { libraryLockName } from './names.js';
@@ -414,23 +414,56 @@ describe('acquireLibrary', () => {
       stop();
     });
 
-    it('is a library its caller is refused while no holder answers, and the client once one does', async () => {
+    it('takes the library over from a holder that answers nothing, rather than waiting out the bound', async () => {
+      vi.useFakeTimers();
+      const locks = fakeLocks();
+      setLocksForTests(locks);
+      page();
+      // A tab that holds the lock and says nothing: frozen by the browser, or on a build
+      // from before the channel existed, which cannot answer a hello.
+      const theirHold = locks.request(lock, { mode: 'exclusive' }, () => new Promise<void>(() => {}));
+      theirHold.catch(() => {});
+      await vi.advanceTimersByTimeAsync(0);
+      const first = acquireLibrary('u1');
+      first.catch(() => {});
+      await vi.advanceTimersByTimeAsync(HELLO_RETRY_MS * 3 - 10);
+      expect(libraryElsewhere()).toBe('u1');
+      expect(openLocalStore).not.toHaveBeenCalled();
+      // Three hellos in six seconds, none answered: the lock is taken from that tab, and
+      // this one opens the library — well inside the bound it used to wait out.
+      await vi.advanceTimersByTimeAsync(20);
+      await expect(theirHold).rejects.toMatchObject({ name: 'AbortError' });
+      await vi.advanceTimersByTimeAsync(10);
+      await expect(currentLibrary()).resolves.toSatisfy((lib: { userId: string; remote?: true }) => lib.userId === 'u1' && !lib.remote);
+      expect(libraryElsewhere()).toBeNull();
+      expect(locks.held(lock)).toBe(true);
+      expect(openLocalStore).toHaveBeenCalledTimes(1);
+      // Nothing was reported: the attach in hand was halted by the open, not timed out.
+      expect(reportError).not.toHaveBeenCalled();
+      // And the other tabs were told before the open, so none of them does the same.
+      expect(channel.posted.map((m) => m.type)).toContain('opening');
+    });
+
+    it('waits for a tab that said it is opening the library, and is its client once it serves', async () => {
       vi.useFakeTimers();
       const locks = fakeLocks();
       setLocksForTests(locks);
       page();
       void locks.request(lock, { mode: 'exclusive' }, () => new Promise<void>(() => {}));
       await vi.advanceTimersByTimeAsync(0);
-      // The holding tab is still opening, or frozen: nothing answers hello.
       const first = acquireLibrary('u1');
-      const refused = expect(first).rejects.toBeInstanceOf(LibraryOpenTimeoutError);
-      await vi.advanceTimersByTimeAsync(LIBRARY_OPEN_TIMEOUT_MS);
-      await refused;
-      // It answers: this tab attaches, and is a client from then on.
+      await vi.advanceTimersByTimeAsync(10);
+      // The holding tab is a hand-off still opening — seconds, on a phone — and says so.
+      channel.port('other').post({ type: 'opening', holder: 'other' });
+      await vi.advanceTimersByTimeAsync(HELLO_RETRY_MS * 3);
+      expect(libraryElsewhere()).toBe('u1');
+      expect(openLocalStore).not.toHaveBeenCalled();
+      // It serves: this tab attaches, and is a client from then on.
       theirs();
       await vi.advanceTimersByTimeAsync(10);
-      await expect(currentLibrary()).resolves.toMatchObject({ remote: true });
+      await expect(first).resolves.toMatchObject({ remote: true });
       expect(libraryElsewhere()).toBe('u1');
+      expect(reportError).not.toHaveBeenCalled();
     });
 
     it('opens the library itself when the lock frees before any holder has answered', async () => {

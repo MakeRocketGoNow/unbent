@@ -91,6 +91,13 @@ export type ClientMessage =
   | { type: 'bye'; client: string };
 
 export type HolderMessage =
+  /**
+   * A tab has been granted the lock and is opening the library: a client waiting for a
+   * holder keeps waiting rather than taking the library over from a tab that answers
+   * nothing (`UNANSWERED_HELLOS` in `client-library.ts`). Sent before the open, so a
+   * hand-off on a phone, where the open takes seconds, is not read as silence.
+   */
+  | { type: 'opening'; holder: string }
   /** A holder has started serving: every client says hello again, to it. */
   | { type: 'serving'; holder: string }
   /** `send` numbers the holder's sends to this client: a hello answered while one is on its way starts another, and the client keeps only the latest. */

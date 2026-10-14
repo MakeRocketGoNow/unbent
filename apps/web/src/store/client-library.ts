@@ -75,6 +75,27 @@ export const SEND_ONCE: ReadonlySet<string> = new Set(['emptyTrash', 'applyNoteb
 export const HELLO_RETRY_MS = 2000;
 export const HELLO_RETRY_MAX_MS = 30_000;
 /**
+ * How many hellos a client that has never been served sends with nothing heard from any
+ * holder, and over at least how long, before it takes the library over. A live holder
+ * answers a hello from its message handler, which the browser runs even in a hidden
+ * tab, so three in six seconds (now, two seconds on, four more) with no `serving`, no
+ * rows and no `opening` is a tab that holds the lock and runs nothing for this account:
+ * one frozen by the browser, or one on a build from before the channel existed, which
+ * cannot answer a hello at all. Until this, such a tab cost every reload the whole of
+ * `LIBRARY_OPEN_TIMEOUT_MS` — twenty seconds of nothing, then the server — which is
+ * what a deploy looked like with an older tab left open (2026-10-14).
+ *
+ * Only before the first attach. A client that was served once has its rows, and from
+ * then on a holder gone quiet is judged by pings with a call in hand (`SILENT_PINGS`),
+ * since a steal from an idle client undid a person's Open here elsewhere. And a count
+ * as well as a clock, for the reason `SILENT_PINGS` gives: a tab resumed from a freeze
+ * fires its overdue timers before the answers queued for it. A tab that was granted the
+ * lock says `opening` before its open, which starts the count over: the open on a phone
+ * takes seconds, and a hand-off is exactly when a client is waiting on one.
+ */
+export const UNANSWERED_HELLOS = 3;
+export const HELLO_UNANSWERED_MS = 5_000;
+/**
  * How long after the first of a holder's rows the client waits for `attached` before
  * asking again. The asking stops the moment rows arrive — an archive is tens of
  * megabytes, which a phone takes longer than `HELLO_RETRY_MS` to receive, and every
@@ -211,7 +232,26 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
 
   let hello: ReturnType<typeof setTimeout> | null = null;
   let stall: ReturnType<typeof setTimeout> | null = null;
-  const sayHello = () => port.post({ type: 'hello', client: me });
+  let attachedOnce = false;
+  /** Hellos sent since any holder last said anything, and when the first of them went: see `UNANSWERED_HELLOS`. */
+  let silentHellos = 0;
+  let firstSilentHello = 0;
+  let askedToTakeOver = false;
+  /** A holder spoke — any holder, anything — so the tab is not one that runs nothing. */
+  const heard = () => {
+    silentHellos = 0;
+  };
+  const sayHello = () => {
+    port.post({ type: 'hello', client: me });
+    if (attachedOnce || askedToTakeOver) return;
+    if (silentHellos === 0) firstSilentHello = Date.now();
+    silentHellos += 1;
+    if (silentHellos >= UNANSWERED_HELLOS && Date.now() - firstSilentHello >= HELLO_UNANSWERED_MS) {
+      askedToTakeOver = true;
+      console.warn('[library] the tab holding this account’s library answers nothing; taking it over');
+      hooks.onSilent();
+    }
+  };
   const stopAsking = () => {
     if (hello) clearTimeout(hello);
     hello = null;
@@ -232,7 +272,6 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
     hello = setTimeout(again, wait);
   };
 
-  let attachedOnce = false;
   /** Pings sent since the holder last said anything, and when the first of them went. */
   let unanswered = 0;
   let firstUnanswered = 0;
@@ -321,7 +360,11 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
     if (closed) return;
     const m = message as HolderMessage;
     if ('holder' in m && m.holder === holder) unanswered = 0;
+    if ('holder' in m) heard();
     switch (m.type) {
+      case 'opening':
+        // A tab granted the lock, about to open: heard, above, and nothing else yet.
+        return;
       case 'serving':
         // A holder other than the one this tab is attached to: the one before it has
         // gone, whether or not its `closing` arrived. One hello, from `detach`.

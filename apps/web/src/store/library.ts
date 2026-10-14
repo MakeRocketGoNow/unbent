@@ -476,6 +476,21 @@ const clientHooks = (userId: string, isMine: () => boolean) => ({
 });
 
 /**
+ * Tells the account's other tabs that this one has the lock and is opening the library,
+ * before the open: a client waiting for a holder takes the library over from a tab that
+ * answers nothing (`UNANSWERED_HELLOS` in `client-library.ts`), and an open on a phone
+ * takes longer than that silence. A port of its own, closed at once, since the holder's
+ * is made inside `open` with its id; a message posted before the close is still
+ * delivered.
+ */
+function announceOpening(userId: string): void {
+  const port = openPort(userId);
+  if (!port) return;
+  port.post({ type: 'opening', holder: crypto.randomUUID() });
+  port.close();
+}
+
+/**
  * Opens the account's library in this tab as a step on the queue, closing whatever was
  * current first — another account's library, or this account's client library when the
  * holder has gone (`standAside`) or Open here was pressed (`takeOver`). Holds the
@@ -508,6 +523,7 @@ function openFor(userId: string, takeOver: boolean, held?: LibraryHold): Promise
       standAside(userId);
       return attachClientLibrary(userId, me, port, clientHooks(userId, () => current?.opened === opened), halting.signal);
     }
+    announceOpening(userId);
     try {
       // Whether the library this open makes is still the one this tab holds: the
       // entry's own step, which the late-finish replacement of the entry copies. Not the
