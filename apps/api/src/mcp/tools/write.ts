@@ -116,11 +116,11 @@ async function notebookIdByName(notes: NotesRepo, name: string): Promise<string 
 }
 
 /**
- * The field definitions of the notebook a new note is filed into, by name, from one
- * `notebooksOverview` call: what `create_note` and `create_notes` resolve values against.
- * One store call rather than the notebooks and then their fields, which is two billable
- * object requests for the one lookup. Empty for no notebook, or one that does not exist
- * yet — it is made by the create, with no fields.
+ * The field definitions of the notebook a new note is filed into, by name, out of one
+ * `notebooksOverview`: what `create_notes` resolves values against, since a batch may name
+ * many notebooks and one call for all of them beats a call each. Matched as the store
+ * matches a name (`sameName`). Empty for no notebook, or one that does not exist yet — it
+ * is made by the create, with no fields.
  */
 function defsOfNotebook(
   overview: { notebooks: Array<{ id: string; name: string }>; fields?: FieldDef[] },
@@ -229,8 +229,10 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo, links: A
       let patch: NoteFieldsPatch | undefined;
       if (fields && Object.keys(fields).length > 0) {
         // Fields belong to a notebook, so values need one to be resolved against. A
-        // notebook that does not exist yet has no fields, which the error says.
-        const defs = defsOfNotebook(await notes.notebooksOverview({ fields: true }), target);
+        // notebook that does not exist yet has no fields, which the error says. One
+        // notebook, so `notebookByName` — a dozen rows — and not the whole account's
+        // definitions that `create_notes` reads for a batch naming many.
+        const defs = target ? ((await notes.notebookByName(target))?.fields ?? []) : [];
         const resolved = resolveFieldNames(fields, defs, [], target ?? null);
         if ('error' in resolved) return toolError(resolved.error);
         patch = resolved.patch;
