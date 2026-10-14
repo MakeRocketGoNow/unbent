@@ -59,7 +59,7 @@ const dollars = (n: number) => `$${n}`;
  * not a few seconds later.
  */
 export function Plan() {
-  const { billing, plan: standing } = usePlan();
+  const { billing, plan: standing, unavailable } = usePlan();
   // This page alone asks the store what the account holds; the banner and the editor
   // read the plan without it. The two answers are the same row, so the one with the
   // figure stands in for the other here once it has arrived.
@@ -92,7 +92,18 @@ export function Plan() {
         <div className="panel-head">
           <h2>Plan</h2>
         </div>
-        <p className="muted small">Reading your plan…</p>
+        {/* A read that failed — offline, or the server's day — says so and offers the one
+            thing to do, rather than "Reading…" for as long as the page is open. */}
+        {unavailable ? (
+          <div className="backfill-row">
+            <span className="bad small">Your plan could not be read right now.</span>
+            <Button size="small" onClick={() => void queryClient.invalidateQueries({ queryKey: keys.plan() })}>
+              Try again
+            </Button>
+          </div>
+        ) : (
+          <p className="muted small">Reading your plan…</p>
+        )}
       </div>
     );
   }

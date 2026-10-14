@@ -24,7 +24,14 @@ import { configQuery, keys, planQuery } from './queries.js';
  * refusal that the plan ended, the plan is read again at once (`onPlanRefused`), so the
  * banner and the read-only editor appear without waiting a minute.
  */
-export function usePlan(): { billing: BillingConfig | undefined; plan: AccountPlan | undefined; inactive: boolean; now: number } {
+export function usePlan(): {
+  billing: BillingConfig | undefined;
+  plan: AccountPlan | undefined;
+  inactive: boolean;
+  now: number;
+  /** The plan could not be read and there is no earlier answer to show: the page's own state, since `plan` is simply undefined. */
+  unavailable: boolean;
+} {
   const config = useQuery(configQuery());
   const billing = config.data?.billing;
   const plan = useQuery(planQuery(billing !== undefined));
@@ -32,7 +39,7 @@ export function usePlan(): { billing: BillingConfig | undefined; plan: AccountPl
 
   const data = plan.data;
   const inactive = data !== undefined && (data.state === 'inactive' || (data.readOnlyAt !== null && data.readOnlyAt <= now));
-  return { billing, plan: data, inactive, now };
+  return { billing, plan: data, inactive, now, unavailable: data === undefined && plan.isError };
 }
 
 /** The instants the plan's reading changes at, for a plan that still has one ahead. */

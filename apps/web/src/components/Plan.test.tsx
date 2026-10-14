@@ -138,6 +138,22 @@ describe('Plan', () => {
     expect(screen.getByText('You’re subscribed. Thank you.')).toBeTruthy();
   });
 
+  it('says so, with a way to try again, when the plan cannot be read', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'down' }, { status: 503 })));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(keys.config(), { providers: ['password'], billing: { environment: 'sandbox', clientToken: 'test_x' } });
+    const rootRoute = createRootRoute({ component: () => <Plan /> });
+    const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory({ initialEntries: ['/settings/plan'] }) });
+    render(
+      <QueryClientProvider client={client}>
+        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+        <RouterProvider router={router as any} />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText('Your plan could not be read right now.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+  });
+
   it('is nothing where the instance sells no plan', () => {
     const { container } = harness({}, false);
     expect(container.textContent).toBe('');
