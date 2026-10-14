@@ -163,11 +163,14 @@ function normalizeNotebook(value: string | null | undefined): string | null | un
 const MAX_CREATE_NOTES = 100;
 
 /**
- * And how much body text, between them. A hundred notes at the body limit would be far
- * past what one call to the store can carry (32 MiB), and a transaction that size holds
- * up every other write to the account while it runs.
+ * And how much body text, between them. The MCP transport refuses a request over 4 MiB
+ * (`maxRequestBodySize`, left at its default in `mcp/server.ts`) with a bare 413 before
+ * any tool runs, and a body's JSON escaping makes the request larger than its text, so
+ * this sits well under that, where a refusal can still be a tool error that says what to
+ * do — and the description states it, so a model can size its batches before sending.
+ * The two are decided together: raise this only by raising that.
  */
-const MAX_CREATE_NOTES_BYTES = 8_000_000;
+const MAX_CREATE_NOTES_BYTES = 3_000_000;
 
 function utf8Length(text: string): number {
   return new TextEncoder().encode(text).length;
@@ -248,7 +251,8 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo, links: A
         'title its notebook already has (whatever the case) is not made again, and answers ' +
         'with the note that is there; a title given twice in the batch is made once. Answers ' +
         'with each note in the order given: its id, url and title, and skipped when it was ' +
-        'already there.' +
+        'already there. The bodies may come to ' +
+        `${MAX_CREATE_NOTES_BYTES / 1_000_000} MB between them; split a longer import.` +
         SHARE_NOTE_LINKS,
       inputSchema: z.object({
         notes: z

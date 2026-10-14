@@ -810,7 +810,7 @@ describe('create_notes (MAK-214)', () => {
 
   it('refuses a batch whose bodies are too much for one call', async () => {
     const { calls, tool } = batchRepo();
-    const body = 'x'.repeat(1_700_000);
+    const body = 'x'.repeat(700_000);
     const result = await tool({ notes: Array.from({ length: 5 }, () => make({ body })), skipExisting: false });
     expect(result.isError).toBe(true);
     expect(result.content[0]!.text).toContain('smaller batches');
