@@ -223,7 +223,7 @@ export function NoteTable({
 
           {hasNextPage && (
             <tr>
-              <td colSpan={span}>
+              <td colSpan={span} className="note-table-more">
                 <button
                   ref={autoLoad}
                   type="button"
