@@ -87,7 +87,7 @@ describe('searchQuery', () => {
     await vi.waitFor(() => expect(observer.getCurrentResult().data?.local?.files).toEqual({ searched: 0, total: 1 }));
 
     // The text of the file arrives, as a pass would put it, and the pass says so.
-    await lib.search!.index.put('file', [{ id: 'x1', stamp: '9', columns: ['a scanned passport page'] }]);
+    await (lib.search!.index as SearchIndex).put('file', [{ id: 'x1', stamp: '9', columns: ['a scanned passport page'] }]);
     notifySearchIndexed();
     await vi.waitFor(() => expect(observer.getCurrentResult().data?.local?.files).toEqual({ searched: 1, total: 1 }));
     expect(observer.getCurrentResult().data?.results.map((r) => r.id).sort()).toEqual(['a', 'far']);

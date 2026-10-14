@@ -2,8 +2,8 @@ import { browserLocks, holdLock, type Locks } from './locks.js';
 import { libraryLockName } from './names.js';
 
 /**
- * One tab holds an account's library on a device; the others read the server and can take
- * it over.
+ * One tab holds an account's library on a device; the others are its clients
+ * (`client-library.ts`) and can take it over.
  *
  * Until 2026-10-13 every tab of the origin opened the library: each its own connection to
  * the SQLite file, taking turns on its one access handle through wa-sqlite's cooperative
@@ -17,17 +17,16 @@ import { libraryLockName } from './names.js';
  * each fix moved the wedge rather than removing it.
  *
  * So the library is one tab's. A Web Lock named for the account says whose: a tab that
- * finds it held does not open the library, reads the server as a browser without a file
- * system does, and says so where the library's status is said, with the way to take it
+ * finds it held does not open the library but attaches to the holder as its client
+ * (`library.ts`, `openFor`), and Settings → Offline says so, with the way to take it
  * over one press away. The lock is taken with `steal`, and the tab that held it closes
- * its library and stands aside — waiting in the lock's queue, so when the taking tab
- * goes, this one has it back without a press. A tab that has not been asked anything
- * also waits: close the holding tab and the next one opens the library on its own.
+ * its library and attaches as a client in turn — waiting in the lock's queue, so when
+ * the taking tab goes, this one has it back without a press. A tab that has not been
+ * asked anything also waits: close the holding tab and the next one opens the library
+ * on its own.
  *
- * The trade is no editing of one account in two tabs of one device at once; the second
- * tab's writes are requests, as they were when it was not the outbox's leader. Under it
- * the cross-tab paths of the libraries are still there and still untested, because
- * nothing exercises them now.
+ * Under this the cross-tab paths of the libraries are still there and still untested,
+ * because nothing exercises them now.
  *
  * Without Web Locks the library is held by whoever asks, which is the one-tab world this
  * assumes anyway.
