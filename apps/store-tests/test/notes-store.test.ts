@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { runInDurableObject } from 'cloudflare:test';
-import { REVISIONS_KEPT, UNFILED } from '@unbent/shared';
+import { REVISIONS_KEPT, UNFILED, encodeCursor } from '@unbent/shared';
 import { beginDump } from '@unbent/api/lib/dump';
 import { DUMP_TABLES } from '@unbent/api/store/tables';
 import { freshStore } from './helpers.js';
@@ -968,7 +968,7 @@ describe('composites', () => {
     // Both big bodies would pass the budget, so the page stops after the first and says where.
     expect(first.notes.map((n) => n.title)).toEqual(['One']);
     expect(first.total).toBe(3);
-    expect(first.cursor).toBe(`1\u001F${one.id}`);
+    expect(first.cursor).toBe(encodeCursor(1, one.id));
     // The second big body and the small one fit together; a short page is the end.
     const second = await stub.exportPage({ limit: 10, sort: 'created', order: 'asc', cursor: first.cursor! }, null);
     expect(second.notes.map((n) => n.title)).toEqual(['Two', 'Three']);
@@ -978,7 +978,7 @@ describe('composites', () => {
     // A full page that fits gets the ordinary cursor.
     const paged = await stub.exportPage({ limit: 1, sort: 'created', order: 'asc', cursor: first.cursor! }, null);
     expect(paged.notes.map((n) => n.title)).toEqual(['Two']);
-    expect(paged.cursor).toBe(`2\u001F${two.id}`);
+    expect(paged.cursor).toBe(encodeCursor(2, two.id));
   });
 });
 

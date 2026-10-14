@@ -1341,3 +1341,32 @@ describe('reorganising notebooks and tags through MCP', () => {
     expect((await call('get_note', { noteId: a.id })).notebook ?? null).toBeNull();
   });
 });
+
+describe('list_notes cursors (MAK-217)', () => {
+  async function call(name: string, args: Record<string, unknown>) {
+    return mcp(alice.token, 'tools/call', { name, arguments: args });
+  }
+
+  it('are printable, page on, and a mangled one is refused rather than read as page one', async () => {
+    const notebook = `Cursors ${Date.now()}`;
+    for (const title of ['One', 'Two', 'Three']) await call('create_note', { title, notebook });
+
+    const first = JSON.parse(toolText((await call('list_notes', { notebook, limit: 2, sort: 'title', order: 'asc' })).body));
+    expect(first.cursor).toMatch(/^[A-Za-z0-9_-]+$/);
+    const second = JSON.parse(
+      toolText((await call('list_notes', { notebook, limit: 2, sort: 'title', order: 'asc', cursor: first.cursor })).body),
+    );
+    expect(second.notes.map((n: { title: string }) => n.title)).toEqual(['Two']);
+
+    // The shape of the cursor that went wrong: the separator written back as six characters.
+    const mangled = await call('list_notes', { notebook, limit: 2, cursor: `1790651018892\\u001f${aliceNoteId}` });
+    expect(mangled.body.result?.isError ?? Boolean(mangled.body.error)).toBe(true);
+    expect(JSON.stringify(mangled.body)).toContain('Not a cursor from a previous page');
+
+    // The HTTP list refuses the same cursor with a 400, rather than answering page one.
+    const res = await fetch(`${BASE}/api/notes?cursor=${encodeURIComponent('not-a-cursor!')}`, {
+      headers: { Cookie: alice.cookie, Origin: ORIGIN },
+    });
+    expect(res.status).toBe(400);
+  });
+});

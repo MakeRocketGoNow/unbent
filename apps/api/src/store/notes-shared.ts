@@ -1,5 +1,6 @@
 import {
   decodeFieldValue,
+  encodeCursor,
   endOfDay,
   fieldRangeBound,
   fieldHasOptions,
@@ -731,27 +732,11 @@ export function fieldSort(def: FieldDef) {
 }
 
 /**
- * The cursor is the sort key *and* the id of the last row.
- *
- * Comparing the sort key alone is only safe when it is unique. Titles are not — an
- * archive is full of notes called "Receipt" — and a strict `<` on the key would step
- * over every row sharing the boundary value. Carrying the id makes the comparison a
- * lexicographic one on `(key, id)`, which is exactly the order the rows came back in.
- *
- * The id is appended after a separator that cannot occur in a uuid, so a title containing
- * the separator still round-trips: only the final segment is the id.
+ * The cursor's encoding, and why it is base64url rather than the key and id side by side,
+ * is in `@unbent/shared` (`cursor.ts`), where the request schemas can refuse one that
+ * does not decode. Re-exported so the store reads the same functions it always did.
  */
-export const CURSOR_SEP = '\u001F';
-
-export function encodeCursor(key: string | number, id: string): string {
-  return `${key}${CURSOR_SEP}${id}`;
-}
-
-export function decodeCursor(cursor: string): { key: string; id: string } | null {
-  const at = cursor.lastIndexOf(CURSOR_SEP);
-  if (at === -1) return null;
-  return { key: cursor.slice(0, at), id: cursor.slice(at + 1) };
-}
+export { decodeCursor, encodeCursor } from '@unbent/shared';
 
 /**
  * The cursor for the next page, or null if this page was not full.

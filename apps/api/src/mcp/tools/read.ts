@@ -7,6 +7,7 @@ import {
   MAX_TAG_LENGTH,
   UNFILED,
   formatAttachmentMarkdown,
+  cursorSchema,
   formatFieldFilter,
   parseFieldFilter,
   type FieldFilter,
@@ -281,7 +282,7 @@ export function registerReadTools(
           .max(COMPACT_LIST_LIMIT)
           .default(25)
           .describe(`At most ${FULL_LIST_LIMIT}, or ${COMPACT_LIST_LIMIT} with compact.`),
-        cursor: z.string().optional().describe('The cursor from a previous page.'),
+        cursor: cursorSchema.optional().describe('The cursor from a previous page, exactly as it was given.'),
         compact: z
           .boolean()
           .default(false)
