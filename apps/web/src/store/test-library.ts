@@ -1,7 +1,8 @@
 import { createCollection, type Collection } from '@tanstack/db';
 import type { FeedAttachment, FeedEntity, FeedNote, FeedNotebook, FeedTag } from '@unbent/shared';
 import type { Cursor, FeedState } from './feed.js';
-import { LIBRARY_ROOTS, notifyLibraryChange, rootsOfNoteChanges, setLibraryForTests, type ReadableLibrary, notifyLibraryReset } from './library.js';
+import { setLibraryForTests, type ReadableLibrary, notifyLibraryChange, notifyLibraryReset } from './library.js';
+import { LIBRARY_ROOTS, rootsOfNoteChanges } from './library-roots.js';
 
 /**
  * An in-memory library for component tests: the four collections with no persistence

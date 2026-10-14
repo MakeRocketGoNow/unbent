@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FeedNote } from '@unbent/shared';
 import { installTestLibrary } from './test-library.js';
-import { LIBRARY_ROOTS, onLibraryChange } from './library.js';
+import { onLibraryChange } from './library.js';
+import { LIBRARY_ROOTS } from './library-roots.js';
 
 /**
  * The test library tells the query bridge what the real one tells it, so a component

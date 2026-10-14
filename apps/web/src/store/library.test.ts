@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createCollection, type Collection } from '@tanstack/db';
-import { FEED_TIMEOUT_MS, FeedTimeoutError, LIBRARY_OPEN_TIMEOUT_MS, LIBRARY_ROOTS, LibraryElsewhereError, LibraryOpenTimeoutError, acquireLibrary, closeLibraryAndStore, currentLibrary, fetchJson, libraryElsewhere, onLibraryChange, resetLibraryForTests, settleWrites, subscribeLibrary, takeOverLibrary } from './library.js';
+import { FEED_TIMEOUT_MS, FeedTimeoutError, LIBRARY_OPEN_TIMEOUT_MS, LibraryElsewhereError, LibraryOpenTimeoutError, acquireLibrary, closeLibraryAndStore, currentLibrary, fetchJson, libraryElsewhere, onLibraryChange, resetLibraryForTests, settleWrites, subscribeLibrary, takeOverLibrary } from './library.js';
+import { LIBRARY_ROOTS } from './library-roots.js';
 import { setLocksForTests } from './library-lock.js';
 import { fakeLocks } from './test-locks.js';
 import { fakeChannel } from './test-channel.js';
