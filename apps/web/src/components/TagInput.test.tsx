@@ -59,6 +59,20 @@ describe('TagInput add affordance', () => {
     expect(container.querySelector('.tag-entry')!.className).toBe('tag-entry');
   });
 
+  /*
+   * Clearing a typo overshoots. Backspace in an empty field used to take the last tag off
+   * the note, one per extra press; the field now stays empty and the tags stay put.
+   */
+  it('leaves the tags alone when Backspace is pressed in the empty field', () => {
+    const onChange = vi.fn();
+    render(<TagInput tags={['Halloween', 'Dentist']} suggestions={[]} onChange={onChange} />);
+    const field = screen.getByLabelText('Add a tag');
+    fireEvent.focus(field);
+    for (let i = 0; i < 3; i++) fireEvent.keyDown(field, { key: 'Backspace' });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(screen.getByText('Halloween')).toBeTruthy();
+  });
+
   it('still commits a tag on Enter', () => {
     const onChange = vi.fn();
     render(<TagInput tags={[]} suggestions={[]} onChange={onChange} />);
