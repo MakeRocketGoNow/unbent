@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { currentLibrary, libraryElsewhere, subscribeLibrary } from './library.js';
-import type { Outbox, SyncStatus } from './actions.js';
+import type { SyncStatus } from './actions.js';
+import type { OutboxView } from './client-library.js';
 import type { KeepStatus, Keeper } from './keep.js';
 
 const nothing: SyncStatus = { pending: 0, durable: false, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map() };
@@ -8,12 +9,15 @@ const nothing: SyncStatus = { pending: 0, durable: false, waiting: new Set(), co
 /**
  * The open library's outbox, for a component that shows what the server has not taken
  * yet or hears a conflict; null until the library opens, and on a device with no local
- * copy, where every write is a request that has already been answered. Follows the
- * library: the one open at mount is not the one open after a back/forward-cache restore
- * or a change of account, and may not be open yet at all (`subscribeLibrary`).
+ * copy, where every write is a request that has already been answered. In a tab that is
+ * a client of the holding tab it is the holder's outbox as mirrored there
+ * (`client-library.ts`): the same status, the same conflicts, and the few actions a
+ * component takes on it sent across. Follows the library: the one open at mount is not
+ * the one open after a back/forward-cache restore or a change of account, and may not be
+ * open yet at all (`subscribeLibrary`).
  */
-export function useOutbox(): Outbox | null {
-  const [outbox, setOutbox] = useState<Outbox | null>(null);
+export function useOutbox(): OutboxView | null {
+  const [outbox, setOutbox] = useState<OutboxView | null>(null);
   useEffect(() => {
     let alive = true;
     let generation = 0;
@@ -26,7 +30,7 @@ export function useOutbox(): Outbox | null {
       }
       open.then(
         (lib) => {
-          if (alive && mine === generation) setOutbox('outbox' in lib ? (lib as { outbox: Outbox }).outbox : null);
+          if (alive && mine === generation) setOutbox('outbox' in lib ? (lib as { outbox: OutboxView }).outbox : null);
         },
         () => {
           if (alive && mine === generation) setOutbox(null);
@@ -82,9 +86,11 @@ export function useLibraryPresence(): 'none' | 'opening' | 'open' {
 }
 
 /**
- * The account whose library another tab of this device holds, or null. For the status
- * line that says so and offers to take it over, and for the offline banner, which must
- * not promise to keep changes from a tab that holds no library (`library-lock.ts`).
+ * The account whose library another tab of this device holds, or null. For Settings →
+ * Offline, which says so and offers to bring the library here (`library-lock.ts`). Not
+ * for the status line or the offline banner any more: a tab that does not hold the
+ * library is the holder's client and works as the holder does, offline included
+ * (`client-library.ts`), so nothing in the chrome tells the tabs apart.
  */
 export function useLibraryElsewhere(): string | null {
   return useSyncExternalStore(subscribeLibrary, libraryElsewhere, () => null);

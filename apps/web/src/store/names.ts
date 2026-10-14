@@ -46,6 +46,12 @@ export const outboxName = (userId: string) => `${OUTBOX_PREFIX}${safe(userId)}`;
 export const outboxLeaderName = (userId: string) => `${OUTBOX_PREFIX}leader-${safe(userId)}`;
 /** The Web Lock the one tab holding an account's library holds (`store/library-lock.ts`). */
 export const libraryLockName = (userId: string) => `${STORE_PREFIX}library-${safe(userId)}`;
+/**
+ * The channel between the tab holding an account's library and the account's other tabs
+ * (`store/library-channel.ts`). Per account for the lock's reason: a window on another
+ * account must hear nothing of this one's rows.
+ */
+export const libraryChannelName = (userId: string) => `${STORE_PREFIX}library-channel-${safe(userId)}`;
 export const filesDirName = (userId: string) => `${FILES_PREFIX}${safe(userId)}`;
 
 /**

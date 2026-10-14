@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { notebookFilesQuery, notebooksQuery } from '../queries.js';
-import { useKeeper, useLibraryElsewhere, useSyncStatus } from '../store/use-outbox.js';
+import { useKeeper, useLibraryElsewhere, useLibraryPresence, useSyncStatus } from '../store/use-outbox.js';
 import { currentLibraryUser } from '../store/library.js';
 import { listShelf, storagePersisted } from '../store/files.js';
 import { FILES_BUDGET, openedFilesUsage } from '../sw/budget.js';
@@ -13,7 +13,6 @@ import { Confirm } from './Confirm.js';
 import { useDeviceRoom } from './KeepOffline.js';
 import { useOfflineReady } from '../sw-register.js';
 import { useConnectivityReport } from '../connectivity.js';
-import { OPEN_HERE_TIP } from './LibraryStatus.js';
 import { takeOverLibrary } from '../store/library.js';
 
 const count = (n: number) => `${n.toLocaleString()} file${n === 1 ? '' : 's'}`;
@@ -34,6 +33,7 @@ const count = (n: number) => `${n.toLocaleString()} file${n === 1 ? '' : 's'}`;
 export function OfflineStorage() {
   const { keeper, status } = useKeeper();
   const elsewhere = useLibraryElsewhere();
+  const presence = useLibraryPresence();
   const sync = useSyncStatus();
   const { room, refresh: remeasure } = useDeviceRoom();
   const appReady = useOfflineReady();
@@ -82,9 +82,15 @@ export function OfflineStorage() {
         <h2>Offline</h2>
       </div>
       <p className="muted small">
-        {elsewhere
-          ? 'Your notes are open in another tab or window, so this one keeps nothing on the device and reads from the server.'
-          : 'Your notes are always on this device. Their files are kept when you open one, and for whole notebooks you choose.'}
+        {/* Three tabs: the holder; a client, attached or still attaching, which works as
+            the holder does; and one with no library at all — a browser with no channel to
+            join the holder over, or an attach the open's bound refused — which keeps
+            nothing and reads the server. */}
+        {elsewhere && presence !== 'none'
+          ? 'Your notes are always on this device. Another tab or window has them open, and this one works through it. The files are kept when you open one, and for whole notebooks you choose.'
+          : elsewhere
+            ? 'Your notes are open in another tab or window, and this one cannot reach it, so it keeps nothing on the device and reads from the server.'
+            : 'Your notes are always on this device. Their files are kept when you open one, and for whole notebooks you choose.'}
         {room ? ` Unbent is using ${formatBytes(room.usage)} of the ${formatBytes(room.quota)} this device allows it.` : ''}
         {/* Said only when it is not so: what is kept here can then go without a word, and
             someone relying on it for a flight should know before the flight. */}
@@ -176,12 +182,16 @@ export function OfflineStorage() {
 
 const clock = (at: number) => new Date(at).toLocaleTimeString(undefined, { timeStyle: 'short' });
 
+/** What Open here does to the tab it takes the library from, said on the button. */
+const OPEN_HERE_TIP = 'Moves your notes to this tab. The other tab or window keeps working, through this one.';
+
 /**
- * The way to bring the library to this tab, when another holds it. The status line
- * offers it only offline (`LibraryStatus`); here it is offered at all times, since this
- * is the page for what is on this device, and the intro above has just said that for
- * this tab the answer is nothing. Outlined, not quiet: it is the one action of its state
- * and sits alone, not in a row.
+ * The way to bring the library to this tab, when another holds it. Nothing else in the
+ * app says which tab that is, since a client tab works as the holder does
+ * (`store/client-library.ts`); this is the page for what is on this device and which
+ * tab has the file open is a fact about it, so the intro says it and this offers the
+ * move. Outlined, not quiet: it is the one action of its state and sits alone, not in a
+ * row.
  */
 function LibraryHolderLine() {
   const elsewhere = useLibraryElsewhere();

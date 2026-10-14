@@ -5,16 +5,15 @@ import { OfflineBanner } from './OfflineBanner.js';
 
 vi.mock('../store/use-outbox.js', () => ({
   useLibraryPresence: vi.fn(),
-  useLibraryElsewhere: vi.fn(() => null),
   useSyncStatus: vi.fn(),
 }));
-import { useLibraryElsewhere, useLibraryPresence, useSyncStatus } from '../store/use-outbox.js';
+import { useLibraryPresence, useSyncStatus } from '../store/use-outbox.js';
 
 /**
  * What the banner promises depends on whether this tab can keep the promise: the tab
- * holding the library and leading its outbox queues writes; a tab that holds neither
- * does not, and is told so in one sentence, since the status line beside it says where
- * the notes are; and a library still opening is about to keep the promise.
+ * holding the library and leading its outbox queues writes, and so does a client of it,
+ * whose status is the holder's; a device with no library does not, and is told so in
+ * one sentence; and a library still opening is about to keep the promise.
  */
 const status = (durable: boolean) => ({ pending: 0, durable, waiting: new Set<string>(), conflicts: new Map(), uploadNotices: new Map() });
 const promise = /what you change will sync when you're back/;
@@ -23,7 +22,6 @@ afterEach(() => {
   cleanup();
   resetConnectivity();
   vi.clearAllMocks();
-  vi.mocked(useLibraryElsewhere).mockReturnValue(null);
 });
 
 describe('OfflineBanner', () => {
@@ -48,15 +46,6 @@ describe('OfflineBanner', () => {
     setReachableForTests(false);
     render(<OfflineBanner />);
     expect(screen.getByText("You're offline. Changes can't be saved until you're back.")).toBeTruthy();
-  });
-
-  it('says only the offline part when another tab holds the notes, since the status line says where', () => {
-    vi.mocked(useLibraryPresence).mockReturnValue('none');
-    vi.mocked(useLibraryElsewhere).mockReturnValue('u1');
-    vi.mocked(useSyncStatus).mockReturnValue(status(false));
-    setReachableForTests(false);
-    render(<OfflineBanner />);
-    expect(screen.getByText("You're offline. Changes can't be saved from this tab until you're back.")).toBeTruthy();
   });
 
   it('promises nothing on a device with no library', () => {

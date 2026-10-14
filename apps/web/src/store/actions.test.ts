@@ -8,7 +8,8 @@ import { resetConnectivity, setReachableForTests } from '../connectivity.js';
 import { seedFrom } from '../note-patch.js';
 import { installLibraryQueries, keys } from '../queries.js';
 import * as actions from './actions.js';
-import { createOutbox, provideLibrary, type WritableLibrary } from './actions.js';
+import { createOutbox, provideForwarder, provideLibrary, TAB_ORIGIN, type WritableLibrary } from './actions.js';
+import { CallUnsettledError, LibraryMovedError } from './client-library.js';
 import { lookups, toNote } from './derive.js';
 import { feedControls, type Collections, type LocalNote } from './collections.js';
 import { FeedEngine, type Position } from './feed.js';
@@ -633,6 +634,69 @@ describe('saves of one note', () => {
     expect(await second).toBe('done');
     expect(vi.mocked(api.updateNote).mock.calls).toEqual([['n1', { title: 'ab', ifUpdatedAt: 100 }]]);
     expect(lib.outbox.status().pending).toBe(0);
+  });
+
+  it('from another tab, merge only when the draft holds the waiting change, and are otherwise refused as a conflict', async () => {
+    const { lib, fake, note } = library([row('n1', { title: 'old', body: 'b' })]);
+    await lib.outbox.ready;
+    const base = note('n1');
+    // Tab A renames the note; its save waits.
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'renamed' }, base, origin: 'A' });
+    await tick();
+    // Tab B, whose editor still shows the old title, types in the body: refused, with the
+    // row as it stands, rather than retiring A's rename.
+    const refused = actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), body: 'typed' }, base, origin: 'B' });
+    await expect(refused).rejects.toBeInstanceOf(NoteChangedError);
+    await expect(refused).rejects.toMatchObject({ current: { title: 'renamed' } });
+    expect(lib.notes.get('n1')?.title).toBe('renamed');
+    expect(fake.queue).toHaveLength(1);
+    // B's editor took the rename up and types again: the two merge, as one editor's would.
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'renamed', body: 'typed' }, base, origin: 'B' });
+    await tick();
+    expect(lib.notes.get('n1')).toMatchObject({ title: 'renamed', body: 'typed' });
+    expect(lib.outbox.status().pending).toBe(1);
+    // This tab's own save carries the tab's origin, which is another editor's than B's.
+    await expect(actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'mine' }, base })).rejects.toBeInstanceOf(NoteChangedError);
+  });
+
+  it('from another tab, Keep mine puts the draft over the waiting change rather than refusing it again', async () => {
+    const { lib, note } = library([row('n1', { title: 'old', body: 'b' })]);
+    await lib.outbox.ready;
+    const base = note('n1');
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'renamed' }, base, origin: 'A' });
+    await tick();
+    const refused = actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), body: 'typed' }, base, origin: 'B' });
+    await expect(refused).rejects.toBeInstanceOf(NoteChangedError);
+    // Keep mine: the body is B's, the title B never touched is A's, and one save waits.
+    const theirs = (await refused.catch((e: NoteChangedError) => e)) as NoteChangedError;
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), body: 'typed' }, base, against: theirs.current.updatedAt, origin: 'B' });
+    await tick();
+    expect(lib.notes.get('n1')).toMatchObject({ title: 'renamed', body: 'typed' });
+    expect(lib.outbox.status().pending).toBe(1);
+  });
+
+  it('are the same editor’s whether this tab made them as a client or as the holder', async () => {
+    const { lib, note } = library([row('n1', { title: 'old' })]);
+    await lib.outbox.ready;
+    const base = note('n1');
+    // Made here as a client: the save went to a holder with this tab's origin, and is
+    // restored by this tab once it holds the library.
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'renamed' }, base, origin: TAB_ORIGIN });
+    await tick();
+    // Typed back as the holder: the same editor's, so the waiting save is retired, not a conflict.
+    await expect(actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'old' }, base })).resolves.toBe('unchanged');
+    expect(lib.notes.get('n1')?.title).toBe('old');
+    expect(lib.outbox.status().pending).toBe(0);
+  });
+
+  it('sends this tab’s origin with a save forwarded to the holder', async () => {
+    library([row('n1')]);
+    const sent: unknown[] = [];
+    provideForwarder(async () => async (_name, args) => void sent.push(args[0]));
+    const base: Note = { id: 'n1', title: 'old', body: '', tags: [], notebook: null, createdAt: 1, updatedAt: 100, fields: [] };
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'new' }, base });
+    provideForwarder(async () => null);
+    expect(sent[0]).toMatchObject({ origin: TAB_ORIGIN });
   });
 
   it('typed back to what the server holds, retires the waiting save and sends nothing', async () => {
@@ -1378,6 +1442,150 @@ describe('a write made here', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+/**
+ * A tab that is a client of the tab holding the library (`client-library.ts`): its writes
+ * are sent to the holder by name rather than run here, and are heard here as writes made
+ * here, before they go. A call refused because the library moved — this tab became the
+ * holder with the call in hand — is made again where the library now is.
+ */
+describe('a tab that is a client of the holder', () => {
+  afterEach(() => provideForwarder(async () => null));
+
+  it('sends a write to the holder by name, and is heard before it goes', async () => {
+    const { lib } = library([row('n1')]);
+    await lib.outbox.ready;
+    const sent: Array<[string, unknown[]]> = [];
+    provideForwarder(async () => async (name, args) => {
+      sent.push([name, args]);
+      return `${name} done`;
+    });
+    const heard = vi.fn();
+    const stop = actions.onLocalWrite(heard);
+    await expect(actions.trashNote('n1')).resolves.toBe('trashNote done');
+    stop();
+    expect(sent).toEqual([['trashNote', ['n1']]]);
+    expect(heard).toHaveBeenCalledWith({ ids: ['n1'], refiles: true });
+    // Nothing ran here: the row is as it was, and the outbox has nothing.
+    expect(lib.notes.get('n1')?.deletedAt).toBeUndefined();
+    expect(lib.outbox.status().pending).toBe(0);
+  });
+
+  it('says whether a forwarded save can refile the note', async () => {
+    const { note } = library([row('n1')]);
+    provideForwarder(async () => async () => 'queued');
+    const writes: actions.LocalWrite[] = [];
+    const stop = actions.onLocalWrite((write) => writes.push(write));
+    const base = note('n1');
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'retyped' }, base });
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), tags: ['new'] }, base });
+    stop();
+    expect(writes).toEqual([
+      { ids: ['n1'], refiles: false },
+      { ids: ['n1'], refiles: true },
+    ]);
+  });
+
+  it('does the write here when the call was refused because the library moved to this tab', async () => {
+    const { lib } = library([row('n1')]);
+    await lib.outbox.ready;
+    let calls = 0;
+    provideForwarder(async () => {
+      // The first ask finds a client whose holder is gone; by the second this tab holds the library.
+      if (calls++ > 0) return null;
+      return async () => {
+        throw new LibraryMovedError(true);
+      };
+    });
+    await actions.trashNote('n1');
+    expect(lib.notes.get('n1')?.deletedAt).toBeDefined();
+    expect(lib.outbox.status().pending).toBe(1);
+  });
+
+  it('mints the id of a note, a copy or a file here and sends it with the call, so a call run twice makes one', async () => {
+    library([row('n1')]);
+    const sent: Array<[string, unknown[]]> = [];
+    provideForwarder(async () => async (name, args) => {
+      sent.push([name, args]);
+      return { id: 'x' };
+    });
+    const file = new File(['x'], 'scan.pdf', { type: 'application/pdf' });
+    await actions.createNote({ title: 't', body: '', tags: [], notebook: null });
+    await actions.duplicateNote('n1');
+    await actions.uploadFile('n1', file);
+    expect(sent.map(([name]) => name)).toEqual(['createNote', 'duplicateNote', 'uploadFile']);
+    const uuid = /^[0-9a-f-]{36}$/;
+    expect(sent[0]![1][1]).toMatch(uuid);
+    expect(sent[1]![1][1]).toMatch(uuid);
+    expect(sent[2]![1][2]).toMatch(uuid);
+    // The holder runs the same function with the id it was sent.
+    vi.mocked(api.createNote).mockResolvedValueOnce({ id: 'given' } as Note);
+    provideLibrary(async () => null);
+    provideForwarder(async () => null);
+    await actions.createNote({ title: 't', body: '', tags: [], notebook: null }, 'given');
+    expect(api.createNote).toHaveBeenCalledWith(expect.objectContaining({ id: 'given' }));
+  });
+
+  it('tells the list about emptying the trash once the holder has answered, and not for a refusal', async () => {
+    library([row('n1')]);
+    let answer: () => void = () => {};
+    provideForwarder(async () => async () => new Promise((resolve) => (answer = () => resolve({ notesDeleted: 1 }))));
+    const heard = vi.fn();
+    const stop = actions.onLocalWrite(heard);
+    const emptying = actions.emptyTrash(['n1']);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(heard).not.toHaveBeenCalled();
+    answer();
+    await expect(emptying).resolves.toMatchObject({ notesDeleted: 1 });
+    expect(heard).toHaveBeenCalledWith({ ids: ['n1'], refiles: true });
+    provideForwarder(async () => async () => {
+      throw new ApiError(403, 'refused');
+    });
+    await expect(actions.emptyTrash(['n1'])).rejects.toThrow('refused');
+    stop();
+    expect(heard).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not empty the trash again after a holder had the call and went', async () => {
+    library([row('n1')]);
+    provideForwarder(async () => async () => {
+      throw new LibraryMovedError(true);
+    });
+    await expect(actions.emptyTrash(['n1'])).rejects.toBeInstanceOf(CallUnsettledError);
+    expect(api.purgeNotes).not.toHaveBeenCalled();
+    // One the holder never had is done here.
+    provideForwarder(async () => async () => {
+      throw new LibraryMovedError(false);
+    });
+    vi.mocked(api.purgeNotes).mockResolvedValueOnce({ notesDeleted: 1 } as api.PurgeResult);
+    await expect(actions.emptyTrash(['n1'])).resolves.toMatchObject({ notesDeleted: 1 });
+  });
+
+  it('does not do the thing again here when the account changed under the call', async () => {
+    const { lib } = library([row('n1')]);
+    await lib.outbox.ready;
+    provideForwarder(async () =>
+      Object.assign(
+        async () => {
+          throw new LibraryMovedError(false);
+        },
+        { stillMine: () => false },
+      ),
+    );
+    await expect(actions.trashNote('n1')).rejects.toThrow('account on this tab changed');
+    expect(lib.notes.get('n1')?.deletedAt).toBeUndefined();
+    expect(lib.outbox.status().pending).toBe(0);
+  });
+
+  it('brings any other failure back to the caller as it came', async () => {
+    library([row('n1')]);
+    provideForwarder(async () => async () => {
+      throw new ApiError(404, 'Not found');
+    });
+    await expect(actions.trashNote('n1')).rejects.toMatchObject({ status: 404 });
   });
 });
 
