@@ -473,7 +473,11 @@ const clientHooks = (userId: string, isMine: () => boolean, deadline: number) =>
   // quiet after serving — pings unanswered with a call in hand, or no holder since the
   // last one closed — is a new ask, made minutes or hours later, and gets a bound of
   // its own: under the attach's it was refused at once, reported as a timeout, and the
-  // save it was for went out as a plain request (review of #358, twice).
+  // save it was for went out as a plain request (review of #358, twice). A hello
+  // takeover can itself come after the attach's bound — `opening` after `opening`, then
+  // silence, with the backoff grown to thirty seconds — and is then refused at once, as
+  // its callers already were; `reportError` says each message once a page, so that is
+  // not a second report.
   let inherited: number | undefined = deadline;
   return {
     onChange: (roots: ReadonlySet<string>) => changeListeners.forEach((l) => l(roots)),
