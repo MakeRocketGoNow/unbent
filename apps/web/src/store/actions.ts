@@ -1,7 +1,6 @@
 import { IndexedDBAdapter, NonRetriableError, startOfflineExecutor, type OfflineExecutor, type OnlineDetector, type StorageAdapter } from '@tanstack/offline-transactions';
 import type { Transaction } from '@tanstack/db';
-import {
-  PLAN_INACTIVE_CODE, MAX_ATTACHMENT_BYTES, filenameSchema, foldNoCase, type FeedNote, type FieldDef, type FieldValue, type Note, type NoteFieldValue, type NotebookDefinition, type RestoredNote } from '@unbent/shared';
+import { MAX_ATTACHMENT_BYTES, PLAN_INACTIVE_CODE, filenameSchema, foldNoCase, type FeedNote, type FieldDef, type FieldValue, type Note, type NoteFieldValue, type NotebookDefinition, type RestoredNote } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { ApiError, isNoteChanged, isOfflineError, NoteChangedError } from '../notes-api.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
