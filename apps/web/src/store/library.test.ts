@@ -340,6 +340,17 @@ describe('acquireLibrary', () => {
     expect(left).toBeNull();
   });
 
+  it('counts the durable outbox of the account signing out when its open failed and left no library', async () => {
+    vi.useFakeTimers();
+    vi.mocked(countStoredWrites).mockResolvedValue(3);
+    vi.mocked(openLocalStore).mockRejectedValue(new Error('damaged store'));
+    await expect(acquireLibrary('u1')).rejects.toThrow('damaged store');
+    await expect(settleWrites(5_000, 'u1')).resolves.toBe(3);
+    expect(countStoredWrites).toHaveBeenCalledWith('u1');
+    // With no account named there is nothing to peek, and nothing to ask about.
+    await expect(settleWrites(5_000)).resolves.toBe(0);
+  });
+
   it('refuses its caller when an open does not settle, reports it, and answers every later ask at once', async () => {
     vi.useFakeTimers();
     vi.mocked(openLocalStore).mockImplementation(() => new Promise(() => {}));

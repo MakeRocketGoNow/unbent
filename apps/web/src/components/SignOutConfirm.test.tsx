@@ -7,7 +7,7 @@ vi.mock('../store/library.js', () => ({ settleWrites: vi.fn(), subscribeWrites: 
 vi.mock('../auth-client.js', () => ({ signOut: vi.fn(async () => ({})), refreshSession: vi.fn(async () => null) }));
 vi.mock('../offline-cache.js', () => ({ clearOfflineCaches: vi.fn(async () => {}) }));
 vi.mock('../import-run.js', () => ({ claimImportFor: vi.fn() }));
-vi.mock('../session-memory.js', () => ({ forgetSession: vi.fn() }));
+vi.mock('../session-memory.js', () => ({ forgetSession: vi.fn(), rememberedSession: () => ({ user: { id: 'u1', email: 'a@example.com' } }) }));
 vi.mock('../app-bridge.js', () => ({ isHosted: () => false, postToApp: () => false }));
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => vi.fn(async () => {}) }));
 import { settleWrites, subscribeWrites } from '../store/library.js';
@@ -41,6 +41,8 @@ describe('signing out with unsynced changes', () => {
     render(<Host />);
     fireEvent.click(screen.getByRole('button', { name: 'Sign out' }));
     await flush();
+    // The account is named, so an outbox whose library never opened is still counted.
+    expect(settleWrites).toHaveBeenCalledWith(5000, 'u1');
     expect(screen.getByText("2 changes haven't synced yet. Sign out anyway?")).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     await flush();

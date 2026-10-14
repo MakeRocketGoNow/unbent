@@ -273,10 +273,15 @@ export function subscribeWrites(listener: (pending: number) => void): () => void
  * without a question: the entries live in IndexedDB until `outbox.ready`, and a
  * cold open on a phone sits well past the sign-out's own bound. If the open does
  * not finish in time, the durable store is counted directly (`countStoredWrites`).
+ * `userId` is the account signing out, for when this tab has no library entry at all.
  */
-export async function settleWrites(ms: number): Promise<number | null> {
+export async function settleWrites(ms: number, userId: string | null = null): Promise<number | null> {
   const entry = current;
-  if (!entry) return 0;
+  // No entry is not no outbox. An open that failed (a damaged store file, or one that
+  // timed out and then failed), and a tab told the library is held elsewhere, all leave
+  // `current` empty with the last session's entries still in IndexedDB — so the account
+  // the sign-out names is peeked as a stuck open's would be.
+  if (!entry) return userId ? peekStoredWrites(userId, ms) : 0;
   const deadline = Date.now() + ms;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const lib = await Promise.race([
@@ -298,15 +303,21 @@ export async function settleWrites(ms: number): Promise<number | null> {
     });
     return lib.outbox.status().pending;
   }
-  // Still not open: look at the durable store the wipe is about to remove. Bounded
-  // too, so a blocked IndexedDB open cannot hold the sign-out. Half a second even
-  // when the wait above used the whole bound — the peek is a read, not a drain.
-  let peekTimer: ReturnType<typeof setTimeout> | undefined;
-  const peekMs = Math.max(500, deadline - Date.now());
+  // Still not open: look at the durable store the wipe is about to remove. Half a second
+  // even when the wait above used the whole bound — the peek is a read, not a drain.
+  return peekStoredWrites(entry.userId, Math.max(500, deadline - Date.now()));
+}
+
+/**
+ * `countStoredWrites`, bounded, so a blocked IndexedDB open cannot hold the sign-out: no
+ * answer in `ms` is `null`, "do not know", never "nothing there".
+ */
+function peekStoredWrites(userId: string, ms: number): Promise<number | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   return Promise.race([
-    countStoredWrites(entry.userId),
-    new Promise<null>((resolve) => (peekTimer = setTimeout(() => resolve(null), peekMs))),
-  ]).finally(() => clearTimeout(peekTimer));
+    countStoredWrites(userId),
+    new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), ms))),
+  ]).finally(() => clearTimeout(timer));
 }
 
 /**

@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { signOut, refreshSession } from './auth-client.js';
 import { isHosted, postToApp } from './app-bridge.js';
-import { forgetSession } from './session-memory.js';
+import { forgetSession, rememberedSession } from './session-memory.js';
 import { clearOfflineCaches } from './offline-cache.js';
 import { claimImportFor } from './import-run.js';
 import { settleWrites, subscribeWrites } from './store/library.js';
@@ -137,7 +137,7 @@ export function useSignOut(): () => void {
        count, since the wipe would take it (`SignOutConfirm`); staying is the safe answer
        and the outbox keeps trying.
     */
-    void settleWrites(5000)
+    void settleWrites(5000, rememberedSession()?.user.id ?? null)
       .then(async (left) => {
         if (left !== 0 && !(await askToLeave(left))) return 'stayed';
         return signOut();
