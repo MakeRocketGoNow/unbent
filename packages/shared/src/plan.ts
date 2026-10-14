@@ -21,10 +21,17 @@ export const BASE_STORAGE_GB = 10;
 /** What each storage add-on adds. Sold by the block, never metered. */
 export const STORAGE_ADDON_GB = 25;
 
-/** The plan's price, a year at a time. The yearly figure is the only one there is. */
+/**
+ * The plan's price, a year at a time. The yearly figure is the only one there is.
+ *
+ * Raising this, or the storage price below, owes every subscriber an email at least 30
+ * days before the renewal it applies to — the terms promise it ("Plans and payment" in the
+ * web app's `legal/documents.ts`). Nothing sends that mail: it is written by hand, or built
+ * first. Changing the price in Paddle's catalog without it breaks the terms.
+ */
 export const PLAN_PRICE_USD = 36;
 
-/** One storage block's price, a year at a time. */
+/** One storage block's price, a year at a time. The same 30 days' notice applies. */
 export const STORAGE_ADDON_PRICE_USD = 12;
 
 /**
