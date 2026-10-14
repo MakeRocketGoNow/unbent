@@ -12,7 +12,7 @@ import { askToPersist, filesSupported, readFile, removeFile, writeFile } from '.
 import { FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE } from '../sw/routes.js';
 import { isWhole, refusedForGood, type FeedEngine } from './feed.js';
 import { CallUnsettledError, LibraryMovedError, SEND_ONCE } from './client-library.js';
-import { planAccepted, planLapsed, planRefused } from '../plan-refused.js';
+import { onPlanActive, planAccepted, planHeld, planLapsed, planRefused } from '../plan-refused.js';
 import { outboxLeaderName, outboxName } from './names.js';
 import { OutboxLeader } from './leader.js';
 
@@ -316,6 +316,10 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
         name,
         async (params) => {
           try {
+            // The plan has been read since the refusal and says inactive: the answer would
+            // be the same 402, so the entry waits without asking (`planHeld`). It is let
+            // go the moment the plan reads otherwise; see `connectivityDetector`.
+            if (planHeld()) throw new PlanHeld();
             const out = await fn(params);
             // A write the server took is a plan that is active; see `planLapsed`.
             planAccepted();
@@ -329,7 +333,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
             }
             // The executor records the message and not the cause, so this is the one
             // place a queue stuck on a 429 or a lapsed session says so outside a debugger.
-            console.debug('[outbox] kept:', err);
+            if (!(err instanceof PlanHeld)) console.debug('[outbox] kept:', err);
             throw new Error('Not sent yet; it will be tried again', { cause: err });
           }
         },
@@ -908,13 +912,33 @@ function notesOf(metadata: Record<string, unknown> | undefined): string[] {
   return [];
 }
 
-/** `connectivity.ts` is the one thing that decides whether the app is offline; the executor follows it. */
+/** A replay held back because the plan is known to be inactive; see `planHeld`. */
+class PlanHeld extends Error {
+  constructor() {
+    super('Held until the plan is active again');
+    this.name = 'PlanHeld';
+  }
+}
+
+/**
+ * `connectivity.ts` is the one thing that decides whether the app is offline; the
+ * executor follows it. The plan reading as active again is the other word to replay
+ * now, through the same door: a kept 402 waits on the checkout, not on the network.
+ */
 function connectivityDetector(): OnlineDetector {
   return {
-    subscribe: (cb) =>
-      subscribeConnectivity(() => {
+    subscribe: (cb) => {
+      const offConnectivity = subscribeConnectivity(() => {
         if (!offlineNow()) cb();
-      }),
+      });
+      const offPlan = onPlanActive(() => {
+        if (!offlineNow()) cb();
+      });
+      return () => {
+        offConnectivity();
+        offPlan();
+      };
+    },
     notifyOnline: () => recheck(),
     isOnline: () => !offlineNow(),
     dispose: () => {},

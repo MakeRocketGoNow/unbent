@@ -14,7 +14,7 @@ import { lookups, toNote } from './derive.js';
 import { feedControls, type Collections, type LocalNote } from './collections.js';
 import { FeedEngine, type Position } from './feed.js';
 import { installMemoryOpfs, type MemoryDirectory } from './test-opfs.js';
-import { planLapsed, resetPlanRefused } from '../plan-refused.js';
+import { planIs, planLapsed, resetPlanRefused } from '../plan-refused.js';
 
 /**
  * The rules the outbox holds, against a stand-in for the executor that keeps the real
@@ -86,6 +86,7 @@ const h = vi.hoisted(async () => {
     storage: MemoryAdapter;
     mutationFns: Record<string, (p: { transaction: { id: string; mutations: unknown[]; metadata: Record<string, unknown> } }) => Promise<void>>;
     onLeadershipChange?: (leader: boolean) => void;
+    onlineDetector: { subscribe: (cb: () => void) => () => void };
   };
 
   class FakeExecutor {
@@ -495,6 +496,37 @@ describe('a replayed write', () => {
     vi.mocked(api.deleteNotes).mockRejectedValueOnce(new ApiError(403, '403: Forbidden'));
     expect(await fake.replayOne()).toBe('refused');
     expect(fake.queue).toHaveLength(0);
+  });
+
+  /**
+   * Once the page has read the plan and it says inactive, the kept entry is not sent
+   * again — the answer would be the same 402, once a minute for as long as the tab is
+   * open — and the plan reading as active again replays it at once (MAK-108).
+   */
+  it('holds a write the plan refused while the plan reads inactive, and replays it the moment it reads active', async () => {
+    const { fake, landPull } = library([row('n1')]);
+    const replay = vi.fn();
+    fake.config.onlineDetector.subscribe(replay);
+    await actions.trashNotes(['n1']);
+    await tick();
+    vi.mocked(api.deleteNotes).mockRejectedValueOnce(new ApiError(402, '402: read-only', 'PLAN_INACTIVE'));
+    expect(await fake.replayOne()).toBe('kept');
+    expect(api.deleteNotes).toHaveBeenCalledTimes(1);
+    // The plan read and inactive: the next replay asks the server nothing.
+    planIs(true);
+    expect(await fake.replayOne()).toBe('kept');
+    expect(api.deleteNotes).toHaveBeenCalledTimes(1);
+    expect(planLapsed()).toBe(true);
+    // The plan active again: the executor is nudged, and the replay goes to the server.
+    planIs(false);
+    expect(replay).toHaveBeenCalledTimes(1);
+    expect(planLapsed()).toBe(false);
+    vi.mocked(api.deleteNotes).mockResolvedValueOnce({ trashed: 1 });
+    const done = fake.replayOne();
+    await tick();
+    landPull();
+    expect(await done).toBe('done');
+    expect(api.deleteNotes).toHaveBeenCalledTimes(2);
   });
 
   it('takes a note the server no longer has as done', async () => {

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AccountPlan, BillingConfig } from '@unbent/shared';
-import { onPlanRefused } from './plan-refused.js';
+import { onPlanRefused, planIs } from './plan-refused.js';
 import { configQuery, keys, planQuery } from './queries.js';
 
 /**
@@ -52,7 +52,13 @@ function boundariesOf(plan: AccountPlan | undefined): number[] {
  */
 export function usePlanRefresh(): void {
   const queryClient = useQueryClient();
-  const { plan, now } = usePlan();
+  const { plan, now, inactive } = usePlan();
+  // The outbox holds a refused write back while this says inactive, and replays it the
+  // moment it says otherwise; see `planIs`. Only once the plan has been read: an answer
+  // still on its way is not a plan that is active.
+  useEffect(() => {
+    if (plan !== undefined) planIs(inactive);
+  }, [plan, inactive]);
   // The latest boundary passed, so each one passing is one read and a second render at
   // the same moment is none.
   const passed = boundariesOf(plan).filter((t) => t <= now).reduce<number | null>((last, t) => (last === null || t > last ? t : last), null);
