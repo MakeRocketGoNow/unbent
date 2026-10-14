@@ -468,13 +468,25 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   }, [outbox, noteId]);
 
   /**
+   * The field definitions seen so far, read when called rather than at render.
+   * `rebaseDraft` and `reseed` run from the outbox's and the feed's subscriptions, which
+   * hold the render that subscribed — for a note opened straight from a load, one from
+   * before its notebook's definitions arrived. Without them a value typed into a field
+   * the note had no row for has no type to be judged by, is not held, and snaps back.
+   */
+  function liveFieldDefs(): FieldDef[] {
+    return [...seenFieldDefs.current.values()];
+  }
+
+  /**
    * Hands the open draft whatever the server's answer changed that the person has not
    * edited since `sent`, the draft the answered save carried. A functional update, so
    * typing that lands in the same tick is kept rather than overwritten.
    */
   function rebaseDraft(sent: NoteDraft, answer: Note) {
+    const defs = liveFieldDefs();
     setDraft((d) => {
-      const next = rebaseAfterAck(d, sent, answer, knownFieldDefs);
+      const next = rebaseAfterAck(d, sent, answer, defs);
       return JSON.stringify(next) === JSON.stringify(d) ? d : next;
     });
   }
@@ -494,7 +506,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   function reseed(from: Note, keep?: NoteDraft) {
     setBase(from.id, from);
     queryClient.setQueryData(keys.note(from.id), from);
-    showDraft(keep ? seedFromKeepingHeld(from, keep, knownFieldDefs) : seedFrom(from));
+    showDraft(keep ? seedFromKeepingHeld(from, keep, liveFieldDefs()) : seedFrom(from));
   }
 
   /**

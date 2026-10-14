@@ -254,4 +254,51 @@ describe('a save that left a half-typed field out of the patch', () => {
     await waitFor(() => expect(screen.getByText('Unsaved')).toBeTruthy());
     expect(screen.getByLabelText<HTMLInputElement>('Amount').value).toBe('12.');
   });
+
+  /*
+     The outbox's subscription holds the render it was made in. A note with no Amount yet
+     has no stored row to say the field is a number, so only the notebook's definitions
+     can — and the acknowledgement must read them as they are now, not as they were then.
+  */
+  it('keeps a first value in a field the note had none for when the outbox acknowledges', async () => {
+    lib.uninstall();
+    const { tags: _t, notebook: _n, ...row } = { ...receipt, fields: [] };
+    lib = installTestLibrary({
+      notes: [{ ...row, notebookId: 'nb-receipts', tagIds: [], files: [] }],
+      notebooks: [
+        {
+          id: 'nb-receipts',
+          name: 'Receipts',
+          purpose: null,
+          emoji: null,
+          fieldDefs: [
+            {
+              id: amountId,
+              notebookId: 'nb-receipts',
+              name: 'Amount',
+              type: 'number',
+              options: [],
+              scale: null,
+              currency: null,
+              position: 0,
+            },
+          ],
+        },
+      ],
+    });
+    let ack: Ack = () => {};
+    vi.mocked(useOutbox).mockReturnValue(outbox((l) => (ack = l)));
+    vi.mocked(api.updateNote).mockImplementation(async (_id, patch) => ({ ...receipt, fields: [], ...patch, updatedAt: 102 }) as Note);
+    mountReceipts();
+
+    await type('Trip notes, lunch');
+    const amount = await screen.findByLabelText<HTMLInputElement>('Amount');
+    await act(async () => {
+      fireEvent.change(amount, { target: { value: '12.' } });
+    });
+    // The save carried the draft whole; "12." was in it and left out of the patch.
+    const sent = { ...seedFrom({ ...receipt, fields: [] }), title: 'Trip notes, lunch', fields: { [amountId]: '12.' } };
+    await act(async () => ack(receipt.id, { ...receipt, fields: [], title: 'Trip notes, lunch', updatedAt: 101 }, sent));
+    expect(screen.getByLabelText<HTMLInputElement>('Amount').value).toBe('12.');
+  });
 });
