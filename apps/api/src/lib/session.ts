@@ -7,7 +7,8 @@ import type { AppEnv } from '../types.js';
 /**
  * Resolves the Better Auth session and puts the user id on the context. Applied globally
  * so handlers can read `c.get('userId')`, but it does not itself reject: public routes
- * (health, the auth endpoints themselves) need to run without a session.
+ * (the auth endpoints themselves, the instance's config) need to run without a session.
+ * Health is mounted ahead of this middleware and never reaches it; see app.ts.
  *
  * Failing to *resolve* a session is treated the same as not having one, rather than being
  * allowed to throw. `getSession` reads D1 (the session row, and the database-backed rate
@@ -45,8 +46,9 @@ import type { AppEnv } from '../types.js';
  * for the better part of ten minutes, repeatedly, while requests with no cookie or a fake
  * one answered in under a second and D1 answered in under a millisecond; the invocations
  * ended only when the browser gave up on them. The web app read its timed-out health
- * check as the device being offline, and the person saw "You're offline" with a working
- * connection, lists that never filled, and a navigation that emptied and refilled.
+ * check as the device being offline (health has since been mounted ahead of this
+ * middleware), and the person saw "You're offline" with a working connection, lists
+ * that never filled, and a navigation that emptied and refilled.
  * Bounded, a stall is a 503 with Retry-After on a protected route and a plain answer on
  * a public one, both of which every client already retries. `/api/me` is the exception:
  * it looks public but it *is* the session check the phones run before throwing a session
