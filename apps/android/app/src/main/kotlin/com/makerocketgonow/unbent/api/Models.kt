@@ -54,7 +54,11 @@ data class AppConfig(val providers: List<String> = emptyList()) {
 /** The methods the apps implement themselves; everything else reported is OAuth. */
 private val LOCAL_METHODS = setOf("password", "passkey", "email-otp")
 
-/** `GET /api/me`. The user is null rather than the call failing when there is no session. */
+/**
+ * `GET /api/me`. The user is null rather than the call failing when there is no session; when
+ * the server could not check the session at all, the call fails with 503, which is not a
+ * sign-out.
+ */
 @Serializable
 data class Me(val user: MeUser? = null)
 
