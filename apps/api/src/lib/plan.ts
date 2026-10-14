@@ -121,7 +121,10 @@ export function accountPlanOf(row: PlanRow, now: number): AccountPlan {
   return {
     state,
     until: row.planUntil,
-    readOnlyAt: state === 'inactive' ? row.planUntil : readOnlyAtOf(row),
+    // By the row's word when it says inactive — the operator's end, dated now — and
+    // otherwise where the end falls, which for a renewing subscription whose grace ran
+    // out is the grace's end, the instant it did turn read-only.
+    readOnlyAt: row.plan === 'inactive' ? row.planUntil : readOnlyAtOf(row),
     source: row.source,
     storageGb: row.storageGb,
     subscription: paddle
