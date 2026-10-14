@@ -403,7 +403,7 @@ export function registerReadTools(
           fields: fieldFilters,
           untagged,
           compact,
-          compactFields: included.length > 0,
+          compactFields: included.map((d) => d.id),
           sort,
           order,
           from,

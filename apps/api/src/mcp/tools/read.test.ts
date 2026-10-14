@@ -176,7 +176,7 @@ describe('list_notes compact with include (MAK-216)', () => {
   it('adds just the named fields to each row, by their stored names, null where unset', async () => {
     const { pages, list } = listRepo();
     const page = answer(await list({ limit: 500, compact: true, notebook: 'acme screenings', include: ['type', 'URL'] }));
-    expect(pages[0]?.['compactFields']).toBe(true);
+    expect(pages[0]?.['compactFields']).toEqual(['f-type', 'f-url']);
     expect(page.notes).toEqual([
       { id: 'n1', title: 'Coyote Returns', notebook: 'Acme Screenings', tags: [], fields: { Type: 'Movie', URL: null } },
       { id: 'n2', title: 'Acme: The Series', notebook: 'Acme Screenings', tags: ['tv'], fields: { Type: null, URL: null } },
@@ -199,7 +199,7 @@ describe('list_notes compact with include (MAK-216)', () => {
   it('asks for no field values when include is not given', async () => {
     const { pages, list } = listRepo();
     const page = answer(await list({ limit: 25, compact: true, notebook: 'Acme Screenings' }));
-    expect(pages[0]?.['compactFields']).toBe(false);
+    expect(pages[0]?.['compactFields']).toEqual([]);
     expect(page.notes[0]).not.toHaveProperty('fields');
   });
 

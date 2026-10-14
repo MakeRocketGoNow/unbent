@@ -276,9 +276,12 @@ describe('notes: listing and counting', () => {
     // Paging is by the sort key, which a compact row still carries.
     expect(compact!.createdAt).toBe(full!.createdAt);
 
-    // Asked for, the values come back and the body still does not (MAK-216).
-    const [withFields] = await stub.list({ limit: 50, compact: true, compactFields: true });
-    expect(withFields).toMatchObject({ excerpt: '', fields: [expect.objectContaining({ fieldId: store.id, value: 'Acme' })] });
+    // Asked for, the values named come back, no others, and still not the body (MAK-216).
+    const code = (await stub.createField(nb.id, { name: 'Code', type: 'text', options: [] })) as { id: string };
+    await stub.update(made.id, { fields: { [code.id]: 'TEN' } });
+    const [withFields] = await stub.list({ limit: 50, compact: true, compactFields: [store.id] });
+    expect(withFields).toMatchObject({ excerpt: '' });
+    expect(withFields!.fields).toEqual([expect.objectContaining({ fieldId: store.id, value: 'Acme' })]);
   });
 
   it('creates many notes in one call, all or none (MAK-214)', async () => {
@@ -1163,7 +1166,7 @@ describe('rows read on an archive-sized store', () => {
         stub.listPage({ limit: 50, untagged: true, notebook: 'Notebook 4' }, { untagged: true, notebook: 'Notebook 4' })),
       await measure('untagged page with its total', () => stub.listPage({ limit: 50, untagged: true }, { untagged: true })),
       await measure('compact page of 500', () => stub.list({ limit: 500, compact: true })),
-      await measure('compact page of 500 with field values', () => stub.list({ limit: 500, compact: true, compactFields: true })),
+      await measure('compact page of 500 with field values', () => stub.list({ limit: 500, compact: true, compactFields: ['amount'] })),
       await measure('notebook by name', () => stub.notebookByName('notebook 0')),
       await measure('field targets for 500 notes', () => stub.fieldTargets(Array.from({ length: 500 }, (_, k) => `n${String(k * 5).padStart(5, '0')}`))),
       await measure('get', () => stub.get('n01500')),
@@ -1309,8 +1312,10 @@ describe('rows read on an archive-sized store', () => {
       // names (1,749, measured 2026-10-04). The same page with its field values and files
       // read 2,885, and read every body into the object besides.
       'compact page of 500': 2000,
-      // The same page with its values, a probe of the values index per note and the
-      // definitions they name; still no bodies (2,195, measured 2026-10-14).
+      // The same page with one field's values: a probe of the values' key per note for
+      // the field named, and its definition for each value found. A note's other values
+      // are never read, so this does not grow with how many fields a notebook has (2,295,
+      // measured 2026-10-14).
       'compact page of 500 with field values': 2500,
       // A probe of the notebook's title index per note, a row or two, and the rows each
       // new note writes (228 read, measured 2026-10-14). A check that read the notebook

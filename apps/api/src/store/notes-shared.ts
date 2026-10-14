@@ -231,7 +231,24 @@ export function decodeFieldsJson(json: string | null, ownNotebookId: string | nu
  *
  * Callers must join the note's notebook as `nb`.
  */
-export const FIELDS_SUBQUERY = `(SELECT json_group_array(json_object(
+export const FIELDS_SUBQUERY = fieldsSubquery();
+
+/**
+ * `FIELDS_SUBQUERY`, or with `only` — the placeholder of a JSON array of field ids — just
+ * those fields' values: what a compact page carries when an assistant names the fields it
+ * wants beside each title (MAK-216). Driven from the ids, so each is one probe of the
+ * values' primary key, and a note's other values — a receipt notebook's dozen, say — are
+ * never read, nor the notebook of a leftover nobody asked for.
+ */
+export function fieldsSubquery(only?: string): string {
+  const from = only
+    ? `FROM json_each(${only}) want
+            JOIN note_fields nf ON nf.note_id = n.id AND nf.field_id = want.value
+            JOIN notebook_fields f ON f.id = nf.field_id`
+    : `FROM note_fields nf
+            JOIN notebook_fields f ON f.id = nf.field_id
+           WHERE nf.note_id = n.id`;
+  return `(SELECT json_group_array(json_object(
                  'fieldId', f.id, 'name', f.name, 'type', f.type, 'text', nf.value_text,
                  'scaleMax', f.scale_max, 'scaleStep', f.scale_step, 'currency', f.currency,
                  'position', f.position, 'notebookId', f.notebook_id,
@@ -239,9 +256,8 @@ export const FIELDS_SUBQUERY = `(SELECT json_group_array(json_object(
                    CASE WHEN f.notebook_id = n.notebook_id THEN nb.name END,
                    (SELECT name FROM notebooks WHERE id = f.notebook_id),
                    f.notebook_name)))
-            FROM note_fields nf
-            JOIN notebook_fields f ON f.id = nf.field_id
-           WHERE nf.note_id = n.id) AS fields`;
+            ${from}) AS fields`;
+}
 
 /**
  * Unit separator (U+001F): cannot occur in a tag name, so it is a safe group_concat

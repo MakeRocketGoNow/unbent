@@ -45,6 +45,7 @@ import type { Bind, Sql } from './sql.js';
 import {
   ATTACHMENTS_SUBQUERY,
   FIELDS_SUBQUERY,
+  fieldsSubquery,
   PURGE_PAGE,
   SCOPE_DRIVEN_SEARCH_MAX,
   SEARCH_OVERFETCH,
@@ -97,12 +98,12 @@ export interface ListOptions {
    */
   compact?: boolean | undefined;
   /**
-   * A compact page that still carries each note's field values, for a caller that walks a
+   * Field ids whose values a compact page still carries, for a caller that walks a
    * notebook to fill or check a field and needs a value or two beside each title: the
-   * body and the files stay out, which is what made compact worth having. MCP's
-   * `list_notes` picks the named fields out of these (MAK-216).
+   * body, the files and every other value stay out, which is what made compact worth
+   * having. MCP's `list_notes` `include` (MAK-216).
    */
-  compactFields?: boolean | undefined;
+  compactFields?: string[] | undefined;
   sort?: NoteSort | undefined;
   order?: 'asc' | 'desc' | undefined;
   from?: string | undefined;
@@ -485,15 +486,14 @@ export class NotesStore {
    * to be five times the size of a full one, and that is what makes it matter here rather
    * than in whoever drops the columns afterwards: five hundred bodies are read into the
    * object to be excerpted and discarded — a body may be 1.8 MB — and the two subqueries
-   * are a probe each per note for values nobody is shown. `compactFields` puts the values
-   * back for a caller that is shown them; the probe is the cheap half, an index lookup per
-   * note, and the bodies stay out.
+   * are a probe each per note for values nobody is shown. `compactFields` puts back the
+   * values of the fields named, and only those; see `fieldsSubquery`.
    */
   private summaryRows(
     page: string,
     binds: Bind[],
     orderBy: string,
-    opts: { tags?: boolean; compact?: boolean | undefined; compactFields?: boolean | undefined } = {},
+    opts: { tags?: boolean; compact?: boolean | undefined; compactFields?: string[] | undefined } = {},
   ): SummaryRow[] {
     const tags =
       opts.tags === false
@@ -501,11 +501,19 @@ export class NotesStore {
         : `(SELECT group_concat(t.name, char(31)) FROM note_tags nt
                  JOIN tags t ON t.id = nt.tag_id
                 WHERE nt.note_id = n.id) AS tags`;
+    const wanted = opts.compact ? (opts.compactFields ?? []) : [];
+    // Bound last, after everything the page bound, so the page's own numbering stands.
+    if (wanted.length > 0) binds = [...binds, JSON.stringify(wanted)];
+    const fields = !opts.compact
+      ? FIELDS_SUBQUERY
+      : wanted.length > 0
+        ? fieldsSubquery(`?${binds.length}`)
+        : 'NULL AS fields';
     return this.sql.exec<SummaryRow>(
       `SELECT n.id, n.title, ${opts.compact ? `''` : 'n.body'} AS body, n.created_at, n.updated_at, n.deleted_at,
               nb.name AS notebook, n.notebook_id,
               ${tags},
-              ${opts.compact && !opts.compactFields ? 'NULL AS fields' : FIELDS_SUBQUERY},
+              ${fields},
               ${opts.compact ? 'NULL AS attachments' : ATTACHMENTS_SUBQUERY}
          FROM (${page}) n
          LEFT JOIN notebooks nb ON nb.id = n.notebook_id
