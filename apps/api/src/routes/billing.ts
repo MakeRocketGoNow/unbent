@@ -11,6 +11,7 @@ import {
   createPortalSession,
   findOrCreateCustomer,
   getSubscription,
+  newestSubscription,
   paddleOf,
   setSubscriptionStorage,
   verifyWebhookSignature,
@@ -190,9 +191,12 @@ export const billing = new Hono<AppEnv>()
    * Stamped with Paddle's own `updated_at`, never this Worker's clock. After a lapse and
    * a second checkout the row still names the old, canceled subscription, and a read of
    * that stamped "now" would be newer than the new subscription's own events, which
-   * `notBefore` would then refuse for good — a paying customer kept read-only. For the
-   * same reason a canceled subscription is not applied at all: nothing about it will
-   * change, and the row's next news is a new subscription's, which the webhook brings.
+   * `notBefore` would then refuse for good — a paying customer kept read-only. So the
+   * subscription read is the customer's newest, not the one the row names: a row with
+   * none yet (the first checkout, before its webhook has landed — or where none will,
+   * which is every local instance) and a row naming a canceled one both find the new
+   * subscription this way, and only a subscription that is canceled and newest is left
+   * alone, since nothing about it will change.
    */
   .post('/billing/refresh', requireAuth, async (c) => {
     const paddle = paddleOf(c.env);
@@ -200,10 +204,13 @@ export const billing = new Hono<AppEnv>()
     const userId = c.get('userId')!;
     const now = Date.now();
     const row = await planFor(c.env.DB, userId, now);
-    if (!row.paddleSubscriptionId) return c.json(accountPlanOf(row, now));
+    if (!row.paddleCustomerId) return c.json(accountPlanOf(row, now));
     try {
-      const sub = await getSubscription(paddle, row.paddleSubscriptionId);
-      if (sub.status !== 'canceled' && sub.updated_at) {
+      const sub =
+        row.paddleSubscriptionId && row.paddleStatus !== 'canceled'
+          ? await getSubscription(paddle, row.paddleSubscriptionId)
+          : await newestSubscription(paddle, row.paddleCustomerId);
+      if (sub && sub.status !== 'canceled' && sub.updated_at) {
         const at = eventStamp(sub.updated_at);
         const event: PaddleEvent = { event_id: `read-${at}`, event_type: 'subscription.updated', occurred_at: at, data: sub };
         const patch = planPatchFor(paddle, event, row);

@@ -3,6 +3,7 @@ import {
   PaddleError,
   WEBHOOK_TOLERANCE_SECONDS,
   findOrCreateCustomer,
+  newestSubscription,
   paddleCall,
   setSubscriptionStorage,
   signWebhook,
@@ -86,6 +87,17 @@ describe('the Paddle calls', () => {
     ]);
     expect(await findOrCreateCustomer(paddle, 'jo@example.com', 'u1')).toEqual({ id: 'ctm_1', email: 'Jo@Example.com' });
     expect(calls[1]!.url).toContain('/customers?email=jo%40example.com');
+  });
+
+  it('finds a customer\'s newest subscription whatever its status, and none for a customer without one', async () => {
+    answer([[200, { data: [
+      { id: 'sub_old', status: 'canceled', created_at: '2025-10-01T00:00:00Z' },
+      { id: 'sub_new', status: 'active', created_at: '2026-10-14T20:28:03Z' },
+    ] }]]);
+    expect((await newestSubscription(paddle, 'ctm_1'))?.id).toBe('sub_new');
+    expect(calls[0]!.url).toContain('/subscriptions?customer_id=ctm_1&status=');
+    answer([[200, { data: [] }]]);
+    expect(await newestSubscription(paddle, 'ctm_1')).toBeNull();
   });
 
   it('sends the whole item list when changing storage, with the plan kept', async () => {

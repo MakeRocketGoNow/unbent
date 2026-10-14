@@ -202,6 +202,7 @@ export interface PaddleSubscription {
   status: string;
   /** When Paddle last changed it, RFC 3339: what a read of it is stamped with on the row. */
   updated_at?: string;
+  created_at?: string;
   customer_id: string;
   custom_data: Record<string, unknown> | null;
   current_billing_period: { starts_at: string; ends_at: string } | null;
@@ -212,6 +213,24 @@ export interface PaddleSubscription {
 
 export async function getSubscription(paddle: PaddleConfig, subscriptionId: string): Promise<PaddleSubscription> {
   return paddleCall<PaddleSubscription>(paddle, 'GET', `/subscriptions/${subscriptionId}`);
+}
+
+/**
+ * The customer's newest subscription, or null for a customer who has none. For a row
+ * that has a customer but no subscription yet: the first checkout's subscription reaches
+ * the row by webhook, and a page re-reading its plan the moment the overlay closes
+ * would otherwise find nothing to read until it lands — or never, for a webhook lost for
+ * longer than Paddle retries. Newest by creation, whatever its status, so a lapsed one
+ * is reported as lapsed rather than hidden.
+ */
+export async function newestSubscription(paddle: PaddleConfig, customerId: string): Promise<PaddleSubscription | null> {
+  const subs = await paddleCall<PaddleSubscription[]>(
+    paddle,
+    'GET',
+    `/subscriptions?customer_id=${encodeURIComponent(customerId)}&status=active,trialing,past_due,paused,canceled&per_page=50`,
+  );
+  if (subs.length === 0) return null;
+  return subs.reduce((newest, s) => ((s.created_at ?? '') > (newest.created_at ?? '') ? s : newest));
 }
 
 /**
