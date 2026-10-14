@@ -182,6 +182,33 @@ describe.skipIf(!sqlite3)('the directory\'s query plans', () => {
     expect(plan(`SELECT * FROM account_plan WHERE paddle_customer_id = 'ctm_x'`)).toContain('idx_account_plan_customer');
   });
 
+  /**
+   * The statement's filter on real rows, since `plan-mail.test.ts` fakes the database:
+   * a trial's `source` and `paddle_status` are NULL, and a `NOT (… = …)` over them is
+   * NULL, which once held every trial's mail back for the renewal grace.
+   */
+  it('find a lapsed trial and comp at once, and a renewing subscription only once its grace is up', () => {
+    const DAY = 24 * 60 * 60 * 1000;
+    const now = 10 * DAY;
+    query(`
+      INSERT INTO user (id, name, email, emailVerified, createdAt, updatedAt) VALUES
+        ('trial', 'T', 't@example.com', 0, 'n', 'n'), ('comp', 'C', 'c@example.com', 0, 'n', 'n'),
+        ('renewing', 'R', 'r@example.com', 0, 'n', 'n'), ('long-gone', 'L', 'l@example.com', 0, 'n', 'n'),
+        ('cancelling', 'X', 'x@example.com', 0, 'n', 'n');
+      INSERT INTO account_plan (user_id, plan, plan_until, storage_gb, source, paddle_status, paddle_cancels_at, created_at, updated_at) VALUES
+        ('trial', 'trial', ${now - 3_600_000}, 10, NULL, NULL, NULL, 1, 1),
+        ('comp', 'active', ${now - 3_600_000}, 10, 'comp', NULL, NULL, 1, 1),
+        ('renewing', 'active', ${now - 3_600_000}, 10, 'paddle', 'active', NULL, 1, 1),
+        ('long-gone', 'active', ${now - 2 * DAY}, 10, 'paddle', 'active', NULL, 1, 1),
+        ('cancelling', 'active', ${now - 3_600_000}, 10, 'paddle', 'active', ${now - 3_600_000}, 1, 1);
+    `);
+    const due = query(LAPSE_DUE_SQL.replace('?1', String(now)).replace('?2', '10').replace('?3', String(now - DAY)))
+      .split('\n')
+      .map((line) => line.split('|')[0]);
+    expect(due).toEqual(['long-gone', 'trial', 'comp', 'cancelling']);
+    query(`DELETE FROM account_plan; DELETE FROM user;`);
+  });
+
   it('drop the activity index the list no longer reads', () => {
     // Run, not planned: the plan of a read of the catalogue names no index whatever it holds.
     expect(query(`SELECT COUNT(*) FROM sqlite_master WHERE name = 'idx_account_directory_activity'`)).toBe('0');

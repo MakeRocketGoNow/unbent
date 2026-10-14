@@ -264,11 +264,14 @@ export async function updatePlan(db: D1Database, userId: string, patch: PlanPatc
  * (`RENEWAL_GRACE_MS`): its end has passed and its renewal's webhook has not landed,
  * which is the hour a paying customer must not be told their subscription ended. The
  * same rule as `planStateOf`, spelled in SQL, as a filter on the rows the range finds.
- * Binds: now, the most to take, and now less the grace.
+ * `IS`, not `=`: a trial's `source` and `paddle_status` are NULL, and `NOT (NULL AND …)`
+ * is NULL, which drops the row — every trial's mail waited out the grace until
+ * `migrations.test.ts` ran the statement against real rows. Binds: now, the most to
+ * take, and now less the grace.
  */
 export const LAPSE_DUE_SQL = `SELECT p.user_id, p.plan, p.plan_until, p.source, p.paddle_status, u.email
     FROM account_plan p JOIN user u ON u.id = p.user_id
    WHERE p.lapse_notified_at IS NULL AND p.plan_until IS NOT NULL AND p.plan <> 'inactive'
      AND p.plan_until <= ?1
-     AND NOT (p.source = 'paddle' AND p.paddle_status = 'active' AND p.paddle_cancels_at IS NULL AND p.plan_until > ?3)
+     AND NOT (p.source IS 'paddle' AND p.paddle_status IS 'active' AND p.paddle_cancels_at IS NULL AND p.plan_until > ?3)
    ORDER BY p.plan_until LIMIT ?2`;
