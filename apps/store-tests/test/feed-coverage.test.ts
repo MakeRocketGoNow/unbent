@@ -56,6 +56,7 @@ const WRITES: Record<string, (s: Seeded) => Promise<unknown>> = {
   create: (s) => s.stub.create({ id: crypto.randomUUID(), title: 'N', body: '', tags: [] }),
   duplicate: (s) => s.stub.duplicate(s.noteId, crypto.randomUUID()),
   createOrFind: (s) => s.stub.createOrFind({ id: crypto.randomUUID(), title: 'N', body: '', tags: [] }),
+  createMany: (s) => s.stub.createMany([{ id: crypto.randomUUID(), title: 'N', body: '', tags: [] }]),
   duplicateOrFind: (s) => s.stub.duplicateOrFind(s.noteId, crypto.randomUUID()),
   update: (s) => s.stub.update(s.noteId, { title: 'Changed' }),
   appendToBody: (s) => s.stub.appendToBody(s.noteId, 'more'),

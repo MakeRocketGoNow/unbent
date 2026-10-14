@@ -7,8 +7,10 @@ import {
   MAX_TAG_LENGTH,
   UNFILED,
   formatAttachmentMarkdown,
+  cursorSchema,
   formatFieldFilter,
   parseFieldFilter,
+  type FieldDef,
   type FieldFilter,
 } from '@unbent/shared';
 import type { McpServer } from '@modelcontextprotocol/server';
@@ -64,6 +66,13 @@ const LIST_DATE_RANGE =
  */
 const FULL_LIST_LIMIT = 100;
 const COMPACT_LIST_LIMIT = MAX_BATCH_NOTES;
+
+/**
+ * How many fields a compact page may name in `include` (MAK-216). Enough for the few a
+ * walk needs beside each title; past that a full page, which carries them all, is the
+ * better read.
+ */
+const MAX_INCLUDED_FIELDS = 10;
 
 /**
  * How many files' summaries one note carries on a page of `list_notes` or `search_notes`. The page is capped
@@ -147,34 +156,15 @@ const fieldFiltersSchema = z
  * than by a second copy of it. An unknown name lists the real ones, since the likeliest
  * cause is a misremembered name.
  */
-async function resolveFieldFilters(
-  notes: NotesRepo,
-  notebook: string | undefined,
+function resolveFieldFilters(
+  defs: FieldDef[],
+  notebook: string,
   filters: Array<{ field: string; op: FieldFilter['op']; value?: string | undefined }>,
-): Promise<{ filters: FieldFilter[] } | { error: string }> {
-  if (!notebook || notebook === UNFILED) {
-    return {
-      error:
-        'Field filters need a notebook, since fields belong to one. Pass notebook with the ' +
-        'name of the notebook whose fields you mean.',
-    };
-  }
-  // The notebook and its definitions in one call: this runs on each page of a walk, ahead
-  // of the page itself.
-  const found = await notes.notebookByName(notebook);
-  if (!found) return { error: `No such notebook: ${notebook}` };
-  const defs = found.fields;
-
+): { filters: FieldFilter[] } | { error: string } {
   const out: FieldFilter[] = [];
   for (const f of filters) {
-    const def = defs.find((d) => d.name.toLowerCase() === f.field.trim().toLowerCase());
-    if (!def) {
-      return {
-        error:
-          `No field called "${f.field}" on notebook "${notebook}". ` +
-          (defs.length ? `Its fields are: ${defs.map((d) => d.name).join(', ')}.` : 'It has no fields.'),
-      };
-    }
+    const def = defByName(defs, f.field, notebook);
+    if ('error' in def) return def;
     const valueless = f.op === 'set' || f.op === 'empty';
     if (valueless && f.value !== undefined) return { error: `Op "${f.op}" takes no value.` };
     if (!valueless && !f.value) return { error: `Op "${f.op}" needs a value.` };
@@ -189,6 +179,41 @@ async function resolveFieldFilters(
     out.push(parsed);
   }
   return { filters: out };
+}
+
+/**
+ * The field definitions of the notebook a list is scoped to, for the arguments that name
+ * fields — `fields` and `include` — which is why each of them needs one: a name means
+ * nothing outside a notebook, and two notebooks may each have a "Date". One call for the
+ * notebook and its definitions, made once whichever of the two asked: this runs on each
+ * page of a walk, ahead of the page itself.
+ */
+async function notebookFieldDefs(
+  notes: NotesRepo,
+  notebook: string | undefined,
+  argument: string,
+): Promise<{ defs: FieldDef[]; notebook: string } | { error: string }> {
+  if (!notebook || notebook === UNFILED) {
+    return {
+      error:
+        `${argument} a notebook, since fields belong to one. Pass notebook with the ` +
+        'name of the notebook whose fields you mean.',
+    };
+  }
+  const found = await notes.notebookByName(notebook);
+  if (!found) return { error: `No such notebook: ${notebook}` };
+  return { defs: found.fields, notebook };
+}
+
+/** A field by the name a model gave, without case; an unknown one lists the real ones. */
+function defByName(defs: FieldDef[], name: string, notebook: string): FieldDef | { error: string } {
+  const def = defs.find((d) => d.name.toLowerCase() === name.trim().toLowerCase());
+  if (def) return def;
+  return {
+    error:
+      `No field called "${name}" on notebook "${notebook}". ` +
+      (defs.length ? `Its fields are: ${defs.map((d) => d.name).join(', ')}.` : 'It has no fields.'),
+  };
 }
 
 /** A note's files as `list_notes` and `search_notes` carry them: the first few, and a count of the rest. */
@@ -281,7 +306,7 @@ export function registerReadTools(
           .max(COMPACT_LIST_LIMIT)
           .default(25)
           .describe(`At most ${FULL_LIST_LIMIT}, or ${COMPACT_LIST_LIMIT} with compact.`),
-        cursor: z.string().optional().describe('The cursor from a previous page.'),
+        cursor: cursorSchema.optional().describe('The cursor from a previous page, exactly as it was given.'),
         compact: z
           .boolean()
           .default(false)
@@ -290,6 +315,18 @@ export function registerReadTools(
               `or excerpt, and up to ${COMPACT_LIST_LIMIT} a page. For collecting the ids of a ` +
               'large set to pass to move_notes, update_note_tags or update_note_fields, while ' +
               'still seeing what each note is and where it is filed.',
+          ),
+        include: z
+          .array(z.string().trim().min(1))
+          .min(1)
+          .max(MAX_INCLUDED_FIELDS)
+          .optional()
+          .describe(
+            'With compact, the custom fields to add to each row, by name, as fields keyed by ' +
+              'name with null where a note has no value. Needs notebook, and every name must ' +
+              'be one of its fields. For walking a notebook to fill or check a field when a ' +
+              'value or two beside each title is all you need — a full page carries every ' +
+              'field and an excerpt, and holds a fifth as many notes.',
           ),
         attachmentSummaries: attachmentSummariesFlag("each note's", ' Not with compact.'),
         tag: tagFilter,
@@ -317,7 +354,7 @@ export function registerReadTools(
       }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    async ({ limit, cursor, compact, attachmentSummaries, tag, notebook, fields, untagged, sort, order, from, to, trashed }) => {
+    async ({ limit, cursor, compact, include, attachmentSummaries, tag, notebook, fields, untagged, sort, order, from, to, trashed }) => {
       if (attachmentSummaries && compact) {
         return toolError(
           'attachmentSummaries cannot be combined with compact: a compact page is up to ' +
@@ -333,14 +370,46 @@ export function registerReadTools(
       if (untagged && tag?.length) {
         return toolError('untagged means notes with no tags, so it cannot be combined with tag.');
       }
+      if (include && !compact) {
+        return toolError(
+          'include is for compact pages. A full page already carries every field of each note; ' +
+            'pass compact true to get only the fields you name.',
+        );
+      }
+      let scope: { defs: FieldDef[]; notebook: string } | undefined;
+      if (fields?.length || include) {
+        const found = await notebookFieldDefs(notes, notebook, fields?.length ? 'Field filters need' : 'include needs');
+        if ('error' in found) return toolError(found.error);
+        scope = found;
+      }
       let fieldFilters: FieldFilter[] | undefined;
       if (fields?.length) {
-        const resolved = await resolveFieldFilters(notes, notebook, fields);
+        const resolved = resolveFieldFilters(scope!.defs, scope!.notebook, fields);
         if ('error' in resolved) return toolError(resolved.error);
         fieldFilters = resolved.filters;
       }
+      const included: FieldDef[] = [];
+      for (const name of include ?? []) {
+        const def = defByName(scope!.defs, name, scope!.notebook);
+        if ('error' in def) return toolError(def.error);
+        if (!included.includes(def)) included.push(def);
+      }
       const { items, total, summaries } = await notes.listPage(
-        { limit, cursor, tags: tag, notebook, fields: fieldFilters, untagged, compact, sort, order, from, to, trashed },
+        {
+          limit,
+          cursor,
+          tags: tag,
+          notebook,
+          fields: fieldFilters,
+          untagged,
+          compact,
+          compactFields: included.map((d) => d.id),
+          sort,
+          order,
+          from,
+          to,
+          trashed,
+        },
         // Counted once, on the first page. A count that no stored number answers — a field
         // filter, a date range, `untagged` — reads every note in scope, and repeating it on
         // each page of a long walk cost more than the pages did: ten pages of the untagged
@@ -360,7 +429,22 @@ export function registerReadTools(
           ? // No url: compact is for collecting up to five hundred ids for a batch write,
             // where a link per row would double the page, and the batch's own answer
             // carries the link of every note it changed.
-            items.map((n) => ({ id: n.id, title: n.title, notebook: n.notebook ?? null, tags: n.tags }))
+            items.map((n) => ({
+              id: n.id,
+              title: n.title,
+              notebook: n.notebook ?? null,
+              tags: n.tags,
+              // By id, not by the name a value carries: a note may hold a leftover value
+              // from another notebook under the same name, and the field asked for is
+              // this notebook's. Every name asked for is a key, so "no value" is an answer.
+              ...(included.length > 0
+                ? {
+                    fields: Object.fromEntries(
+                      included.map((d) => [d.name, n.fields?.find((v) => v.fieldId === d.id)?.value ?? null]),
+                    ),
+                  }
+                : {}),
+            }))
           : items.map((n) => ({
               ...noteRef(n, links),
               // Every note gets the key when it was asked for, an empty list included, so

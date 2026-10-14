@@ -45,6 +45,7 @@ import type { Bind, Sql } from './sql.js';
 import {
   ATTACHMENTS_SUBQUERY,
   FIELDS_SUBQUERY,
+  fieldsSubquery,
   PURGE_PAGE,
   SCOPE_DRIVEN_SEARCH_MAX,
   SEARCH_OVERFETCH,
@@ -96,6 +97,13 @@ export interface ListOptions {
    * `summaryRows`.
    */
   compact?: boolean | undefined;
+  /**
+   * Field ids whose values a compact page still carries, for a caller that walks a
+   * notebook to fill or check a field and needs a value or two beside each title: the
+   * body, the files and every other value stay out, which is what made compact worth
+   * having. MCP's `list_notes` `include` (MAK-216).
+   */
+  compactFields?: string[] | undefined;
   sort?: NoteSort | undefined;
   order?: 'asc' | 'desc' | undefined;
   from?: string | undefined;
@@ -464,7 +472,7 @@ export class NotesStore {
       page,
       binds,
       `${byField ? '(n.sort_key IS NULL) ASC, ' : ''}n.sort_key ${direction}, n.id ${direction}`,
-      { compact: opts.compact },
+      { compact: opts.compact, compactFields: opts.compactFields },
     );
   }
 
@@ -478,13 +486,14 @@ export class NotesStore {
    * to be five times the size of a full one, and that is what makes it matter here rather
    * than in whoever drops the columns afterwards: five hundred bodies are read into the
    * object to be excerpted and discarded — a body may be 1.8 MB — and the two subqueries
-   * are a probe each per note for values nobody is shown.
+   * are a probe each per note for values nobody is shown. `compactFields` puts back the
+   * values of the fields named, and only those; see `fieldsSubquery`.
    */
   private summaryRows(
     page: string,
     binds: Bind[],
     orderBy: string,
-    opts: { tags?: boolean; compact?: boolean | undefined } = {},
+    opts: { tags?: boolean; compact?: boolean | undefined; compactFields?: string[] | undefined } = {},
   ): SummaryRow[] {
     const tags =
       opts.tags === false
@@ -492,11 +501,19 @@ export class NotesStore {
         : `(SELECT group_concat(t.name, char(31)) FROM note_tags nt
                  JOIN tags t ON t.id = nt.tag_id
                 WHERE nt.note_id = n.id) AS tags`;
+    const wanted = opts.compact ? (opts.compactFields ?? []) : [];
+    // Bound last, after everything the page bound, so the page's own numbering stands.
+    if (wanted.length > 0) binds = [...binds, JSON.stringify(wanted)];
+    const fields = !opts.compact
+      ? FIELDS_SUBQUERY
+      : wanted.length > 0
+        ? fieldsSubquery(`?${binds.length}`)
+        : 'NULL AS fields';
     return this.sql.exec<SummaryRow>(
       `SELECT n.id, n.title, ${opts.compact ? `''` : 'n.body'} AS body, n.created_at, n.updated_at, n.deleted_at,
               nb.name AS notebook, n.notebook_id,
               ${tags},
-              ${opts.compact ? 'NULL AS fields' : FIELDS_SUBQUERY},
+              ${fields},
               ${opts.compact ? 'NULL AS attachments' : ATTACHMENTS_SUBQUERY}
          FROM (${page}) n
          LEFT JOIN notebooks nb ON nb.id = n.notebook_id
@@ -752,6 +769,67 @@ export class NotesStore {
         notebookId,
       };
     });
+  }
+
+  /**
+   * Many notes in one transaction, for MCP's `create_notes` (MAK-214): an import through
+   * the assistant was one `create_note` call — one request, one object call — per note,
+   * three hundred of them for one list.
+   *
+   * All or nothing. Every value was checked at the edge before this was called, so what
+   * can still throw here is a definition changed in between; the transaction then takes
+   * every note before it too, and the caller can send the same batch again without making
+   * a duplicate of any. That is the reason for one transaction rather than a note at a
+   * time: a batch half written is the one outcome a retry cannot repair.
+   *
+   * With `skipExisting`, a note whose title a live note in the same notebook already has —
+   * without case, as the title index compares — is not made, and answers with the id of
+   * the one that is there; a title given twice in the batch is made once. An empty title
+   * is never a match, since every untitled note would be a duplicate of every other. The
+   * check is a probe of `idx_notes_notebook_title` per note, a row or two each.
+   *
+   * No copy is kept in the history: there is nothing before a new note to keep.
+   */
+  createMany(
+    inputs: Array<Parameters<NotesStore['create']>[0]>,
+    opts: { skipExisting?: boolean | undefined } = {},
+  ): Array<{ id: string; title: string; skipped: boolean }> {
+    return this.sql.tx(() => {
+      const made = new Map<string, { id: string; title: string }>();
+      // Folded as SQLite's NOCASE folds, ASCII only, so the batch and the index agree on
+      // what a duplicate is.
+      const key = (notebook: string | null | undefined, title: string) =>
+        `${foldNoCase(notebook?.trim() ?? '')}\u001F${foldNoCase(title)}`;
+      return inputs.map((input) => {
+        if (opts.skipExisting && input.title !== '') {
+          // Answered as the note that is there, in its own spelling, not the one sent.
+          const held = made.get(key(input.notebook, input.title)) ?? this.liveTitleIn(input.notebook, input.title);
+          if (held) return { id: held.id, title: held.title, skipped: true };
+        }
+        const note = this.create(input);
+        if (opts.skipExisting && input.title !== '') made.set(key(input.notebook, input.title), { id: note.id, title: note.title });
+        return { id: note.id, title: note.title, skipped: false };
+      });
+    });
+  }
+
+  /** A live note with this title in this notebook (or in none), without case. */
+  private liveTitleIn(notebook: string | null | undefined, title: string): { id: string; title: string } | null {
+    const name = notebook?.trim();
+    const row = name
+      ? this.sql.first<{ id: string; title: string }>(
+          `SELECT n.id, n.title FROM notes n
+             JOIN notebooks nb ON nb.id = n.notebook_id AND nb.name = ?1 COLLATE NOCASE
+            WHERE n.deleted_at IS NULL AND n.title = ?2 COLLATE NOCASE
+            LIMIT 1`,
+          name,
+          title,
+        )
+      : this.sql.first<{ id: string; title: string }>(
+          `SELECT id, title FROM notes WHERE notebook_id IS NULL AND deleted_at IS NULL AND title = ?1 COLLATE NOCASE LIMIT 1`,
+          title,
+        );
+    return row ?? null;
   }
 
   /**

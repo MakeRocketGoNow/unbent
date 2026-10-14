@@ -72,17 +72,21 @@ async function agreeToTerms(cookie: string): Promise<void> {
   if (!res.ok) throw new Error(`agreeing to the terms failed: ${res.status} ${await res.text()}`);
 }
 
-async function registerClient(name: string): Promise<string> {
+/**
+ * `application_type` is left out by default, as the MCP SDK leaves it out: a public client
+ * redirecting to this machine is registered as native without it (MAK-218).
+ */
+async function registerClient(name: string, metadata: Record<string, unknown> = {}): Promise<string> {
   const res = await fetch(`${BASE}/api/auth/oauth2/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
     body: JSON.stringify({
       client_name: name,
-      application_type: 'native',
       redirect_uris: ['http://127.0.0.1:9999/callback'],
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],
       token_endpoint_auth_method: 'none',
+      ...metadata,
     }),
   });
   const body = (await res.json()) as { client_id?: string };
@@ -235,6 +239,25 @@ describe('mcp endpoint', () => {
     // Without this header a client that has never seen this server cannot discover how to
     // authorize; it is the whole mechanism by which a connection can be set up at all.
     expect(res.headers.get('www-authenticate')).toContain('resource_metadata=');
+  });
+
+  it('refuses a web client a loopback redirect, and says to register it as native (MAK-218)', async () => {
+    const res = await fetch(`${BASE}/api/auth/oauth2/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
+      body: JSON.stringify({
+        client_name: 'Confidential Assistant',
+        redirect_uris: ['http://127.0.0.1:9999/callback'],
+        grant_types: ['authorization_code'],
+        response_types: ['code'],
+        token_endpoint_auth_method: 'client_secret_basic',
+      }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string; error_description: string };
+    expect(body.error).toBe('invalid_redirect_uri');
+    expect(body.error_description).toContain('"application_type": "native"');
+    expect(body.error_description).not.toContain('non-loopback');
   });
 
   it('refuses a token that is not a token', async () => {
@@ -439,7 +462,8 @@ describe('mcp cross-tenant isolation', () => {
     // asking for a token bound to somewhere else is refused at authorization with
     // `invalid_target`, so a foreign-audience token for this issuer cannot be obtained in
     // the first place. Asserted because it is the reason the endpoint never sees one.
-    const clientId = await registerClient('Other Resource Client');
+    // The one client here that says native itself, as a client written before MAK-218 did.
+    const clientId = await registerClient('Other Resource Client', { application_type: 'native' });
     const { challenge } = await pkce();
     const authorize = new URL(`${BASE}/api/auth/oauth2/authorize`);
     for (const [key, value] of Object.entries({
@@ -1339,5 +1363,112 @@ describe('reorganising notebooks and tags through MCP', () => {
     expect(gone).toEqual({ id: notebookId, name: notebook, deleted: true, unfiled: 3 });
     // The notes outlive the notebook, filed nowhere.
     expect((await call('get_note', { noteId: a.id })).notebook ?? null).toBeNull();
+  });
+});
+
+describe('list_notes cursors (MAK-217)', () => {
+  async function call(name: string, args: Record<string, unknown>) {
+    return mcp(alice.token, 'tools/call', { name, arguments: args });
+  }
+
+  it('are printable, page on, and a mangled one is refused rather than read as page one', async () => {
+    const notebook = `Cursors ${Date.now()}`;
+    for (const title of ['One', 'Two', 'Three']) await call('create_note', { title, notebook });
+
+    const first = JSON.parse(toolText((await call('list_notes', { notebook, limit: 2, sort: 'title', order: 'asc' })).body));
+    expect(first.cursor).toMatch(/^[A-Za-z0-9_-]+$/);
+    const second = JSON.parse(
+      toolText((await call('list_notes', { notebook, limit: 2, sort: 'title', order: 'asc', cursor: first.cursor })).body),
+    );
+    expect(second.notes.map((n: { title: string }) => n.title)).toEqual(['Two']);
+
+    // The shape of the cursor that went wrong: the separator written back as six characters.
+    const mangled = await call('list_notes', { notebook, limit: 2, cursor: `1790651018892\\u001f${aliceNoteId}` });
+    expect(mangled.body.result?.isError ?? Boolean(mangled.body.error)).toBe(true);
+    expect(JSON.stringify(mangled.body)).toContain('Not a cursor from a previous page');
+
+    // The HTTP list refuses the same cursor with a 400, rather than answering page one.
+    const res = await fetch(`${BASE}/api/notes?cursor=${encodeURIComponent('not-a-cursor!')}`, {
+      headers: { Cookie: alice.cookie, Origin: ORIGIN },
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('list_notes compact with include (MAK-216)', () => {
+  async function call(name: string, args: Record<string, unknown>) {
+    return JSON.parse(toolText((await mcp(alice.token, 'tools/call', { name, arguments: args })).body));
+  }
+
+  it('carries just the named fields beside each title', async () => {
+    const notebook = `Acme Screenings ${Date.now()}`;
+    const { id: notebookId } = await call('create_notebook', { name: notebook });
+    await call('create_notebook_field', { notebookId, name: 'Type', type: 'select', options: ['Movie', 'Series'] });
+    await call('create_notebook_field', { notebookId, name: 'URL', type: 'url' });
+    await call('create_notebook_field', { notebookId, name: 'Notes', type: 'text' });
+    await call('create_note', {
+      title: 'Coyote Returns',
+      notebook,
+      fields: { Type: 'Movie', URL: 'https://example.com/coyote', Notes: 'long' },
+    });
+
+    const page = await call('list_notes', { notebook, compact: true, include: ['type', 'URL'] });
+    expect(page.notes).toEqual([
+      {
+        id: expect.any(String),
+        title: 'Coyote Returns',
+        notebook,
+        tags: [],
+        fields: { Type: 'Movie', URL: 'https://example.com/coyote' },
+      },
+    ]);
+  });
+});
+
+describe('create_notes (MAK-214)', () => {
+  async function call(name: string, args: Record<string, unknown>) {
+    return mcp(alice.token, 'tools/call', { name, arguments: args });
+  }
+  const read = (r: { body: Record<string, any> }) => JSON.parse(toolText(r.body));
+
+  it('makes a batch in one call, refuses one with a bad value whole, and skips titles held', async () => {
+    const notebook = `Import ${Date.now()}`;
+    const { id: notebookId } = read(await call('create_notebook', { name: notebook }));
+    await call('create_notebook_field', { notebookId, name: 'Type', type: 'select', options: ['Movie', 'Series'] });
+
+    const refused = await call('create_notes', {
+      notes: [
+        { title: 'Coyote Returns', notebook, fields: { Type: 'Movie' } },
+        { title: 'Acme: The Series', notebook, fields: { Type: 'Documentary' } },
+      ],
+    });
+    expect(refused.body.result?.isError).toBe(true);
+    expect(toolText(refused.body)).toContain('notes[1] ("Acme: The Series")');
+    expect(read(await call('list_notes', { notebook })).total).toBe(0);
+
+    const made = read(
+      await call('create_notes', {
+        notes: [
+          { title: 'Coyote Returns', notebook, fields: { Type: 'Movie' }, tags: ['import'] },
+          { title: 'Acme: The Series', notebook, body: 'Season one', fields: { Type: 'Series' } },
+        ],
+      }),
+    );
+    expect(made.created).toBe(2);
+    expect(made.notes.map((n: { url: string; id: string }) => n.url)).toEqual(
+      made.notes.map((n: { id: string }) => `${ORIGIN}/notes/${n.id}`),
+    );
+    const coyote = read(await call('get_note', { noteId: made.notes[0].id }));
+    expect(coyote).toMatchObject({ notebook, tags: ['import'], fields: { Type: 'Movie' } });
+
+    const again = read(
+      await call('create_notes', {
+        notes: [{ title: 'coyote returns', notebook }, { title: 'Road Runner', notebook }],
+        skipExisting: true,
+      }),
+    );
+    expect(again).toMatchObject({ created: 1, skipped: 1 });
+    expect(again.notes[0]).toMatchObject({ id: made.notes[0].id, skipped: true });
+    expect(read(await call('list_notes', { notebook })).total).toBe(3);
   });
 });

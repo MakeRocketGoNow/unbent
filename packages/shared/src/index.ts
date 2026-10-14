@@ -14,3 +14,4 @@ export * from './operator.js';
 export * from './names.js';
 export * from './legal.js';
 export * from './plan.js';
+export * from './cursor.js';

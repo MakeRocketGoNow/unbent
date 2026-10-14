@@ -106,6 +106,14 @@ export class NotesRepo extends StoreRepo {
     return this.call((s) => s.createOrFind(input));
   }
 
+  /** Many notes in one transaction, all or none; see `NotesStore.createMany`. */
+  createMany(
+    inputs: Array<Parameters<NotesRepo['create']>[0]>,
+    opts: { skipExisting?: boolean | undefined } = {},
+  ): Promise<Array<{ id: string; title: string; skipped: boolean }>> {
+    return this.call((s) => s.createMany(inputs, opts));
+  }
+
   /** `duplicate` with the same replay rule for the copy's id. */
   duplicateOrFind(id: string, newId: string): Promise<{ note: Note; existing: boolean } | null> {
     return this.call((s) => s.duplicateOrFind(id, newId));
