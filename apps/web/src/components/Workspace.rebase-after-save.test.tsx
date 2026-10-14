@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createRootRoute, createRoute, createRouter, createMemoryHistory, RouterProvider } from '@tanstack/react-router';
 import type { Note } from '@unbent/shared';
 import * as api from '../notes-api.js';
+import { NoteChangedError } from '../notes-api.js';
 import { installTestLibrary } from '../store/test-library.js';
 import type { Outbox } from '../store/actions.js';
 import { installLibraryQueries, keys } from '../queries.js';
@@ -300,6 +301,50 @@ describe('a save that left a half-typed field out of the patch', () => {
     // The save carried the draft whole; "12." was in it and left out of the patch.
     const sent = { ...seedFrom({ ...receipt, fields: [] }), title: 'Trip notes, lunch', fields: { [amountId]: '12.' } };
     await act(async () => ack(receipt.id, { ...receipt, fields: [], title: 'Trip notes, lunch', updatedAt: 101 }, sent));
+    expect(screen.getByLabelText<HTMLInputElement>('Amount').value).toBe('12.');
+  });
+
+  it('keeps the half-typed value when the feed brings another device’s copy', async () => {
+    vi.mocked(useOutbox).mockReturnValue(outbox(() => {}));
+    vi.mocked(api.updateNote).mockImplementation(async (_id, patch) => ({ ...receipt, ...patch, updatedAt: 101 }) as Note);
+    const stop = installLibraryQueries(mountReceipts());
+
+    await type('Trip notes, lunch');
+    const amount = await screen.findByLabelText<HTMLInputElement>('Amount');
+    await act(async () => {
+      fireEvent.change(amount, { target: { value: '12.' } });
+    });
+    await waitFor(() => expect(api.updateNote).toHaveBeenCalled(), { timeout: 3000 });
+    await waitFor(() => expect(screen.getByText('Unsaved')).toBeTruthy());
+    // Another device renamed the note; its copy has the stored 10, not the digits here.
+    const { tags: _t, notebook: _n, ...row } = { ...receipt, title: 'Lunch, renamed', updatedAt: 200 };
+    await act(async () => lib.upsert('note', { ...row, notebookId: 'nb-receipts', tagIds: [], files: [] }));
+    await waitFor(async () => expect((await title()).value).toBe('Lunch, renamed'));
+    expect(screen.getByLabelText<HTMLInputElement>('Amount').value).toBe('12.');
+    stop();
+  });
+
+  it('keeps the half-typed value through Keep mine', async () => {
+    vi.mocked(useOutbox).mockReturnValue(outbox(() => {}));
+    // Another device renamed the note first; the first save is refused, Keep mine goes on top.
+    const theirs: Note = { ...receipt, title: 'Lunch, renamed', updatedAt: 200 };
+    vi.mocked(api.updateNote)
+      .mockRejectedValueOnce(new NoteChangedError(theirs))
+      .mockImplementation(async (_id, patch) => ({ ...theirs, ...patch, updatedAt: 201 }) as Note);
+    mountReceipts();
+
+    await type('Trip notes, lunch');
+    const amount = await screen.findByLabelText<HTMLInputElement>('Amount');
+    await act(async () => {
+      fireEvent.change(amount, { target: { value: '12.' } });
+    });
+    await screen.findByRole('alert', {}, { timeout: 3000 });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Keep mine' }));
+    });
+    await waitFor(() => expect(api.updateNote).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    expect((await title()).value).toBe('Trip notes, lunch');
     expect(screen.getByLabelText<HTMLInputElement>('Amount').value).toBe('12.');
   });
 
