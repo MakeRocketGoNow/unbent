@@ -19,6 +19,7 @@ function fakeIndexedDB(opts: {
 }) {
   const closed: string[] = [];
   let aborted = false;
+  let reads = 0;
   let opened: { onversionchange: (() => void) | null } | undefined;
   vi.stubGlobal('indexedDB', {
     open(name: string) {
@@ -55,6 +56,7 @@ function fakeIndexedDB(opts: {
           onversionchange: null as (() => void) | null,
           objectStoreNames: { contains: (store: string) => !opts.noStore && store === OUTBOX_STORE },
           transaction() {
+            reads++;
             return {
               objectStore() {
                 return {
@@ -78,7 +80,7 @@ function fakeIndexedDB(opts: {
       return req;
     },
   });
-  return { closed, get aborted() { return aborted; }, get db() { return opened; } };
+  return { closed, get aborted() { return aborted; }, get db() { return opened; }, get reads() { return reads; } };
 }
 
 afterEach(() => {
@@ -127,5 +129,26 @@ describe('countStoredWrites', () => {
     fake.db?.onversionchange?.();
     await expect(left).resolves.toBeNull();
     expect(fake.closed).toEqual([outboxName('u1')]);
+  });
+
+  it('lets its connection go when no longer waited for, mid-read', async () => {
+    const fake = fakeIndexedDB({ hang: true, keys: ['tx:a'] });
+    const giveUp = new AbortController();
+    const left = countStoredWrites('u1', giveUp.signal);
+    await new Promise((r) => setTimeout(r, 0));
+    giveUp.abort();
+    await expect(left).resolves.toBeNull();
+    expect(fake.closed).toEqual([outboxName('u1')]);
+  });
+
+  it('closes an open that arrives after it was given up on, without reading', async () => {
+    const fake = fakeIndexedDB({ keys: ['tx:a'] });
+    const giveUp = new AbortController();
+    const left = countStoredWrites('u1', giveUp.signal);
+    giveUp.abort();
+    await expect(left).resolves.toBeNull();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(fake.closed).toEqual([outboxName('u1')]);
+    expect(fake.reads).toBe(0);
   });
 });

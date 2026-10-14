@@ -324,7 +324,7 @@ describe('acquireLibrary', () => {
     void settleWrites(5_000).then((n) => (left = n));
     await vi.advanceTimersByTimeAsync(5_000);
     expect(left).toBe(3);
-    expect(countStoredWrites).toHaveBeenCalledWith('u1');
+    expect(countStoredWrites).toHaveBeenCalledWith('u1', expect.any(AbortSignal));
   });
 
   it('asks rather than wiping when the durable outbox could not be counted', async () => {
@@ -353,6 +353,8 @@ describe('acquireLibrary', () => {
     expect(left).toBeUndefined();
     await vi.advanceTimersByTimeAsync(1);
     expect(left).toBeNull();
+    // …and the peek is told so, to let its connection go.
+    expect(vi.mocked(countStoredWrites).mock.calls[0]?.[1]?.aborted).toBe(true);
   });
 
   it('counts the durable outbox of the account signing out when its open failed and left no library', async () => {
@@ -361,7 +363,7 @@ describe('acquireLibrary', () => {
     vi.mocked(openLocalStore).mockRejectedValue(new Error('damaged store'));
     await expect(acquireLibrary('u1')).rejects.toThrow('damaged store');
     await expect(settleWrites(5_000, 'u1')).resolves.toBe(3);
-    expect(countStoredWrites).toHaveBeenCalledWith('u1');
+    expect(countStoredWrites).toHaveBeenCalledWith('u1', expect.any(AbortSignal));
     // With no account named there is nothing to peek, and nothing to ask about.
     await expect(settleWrites(5_000)).resolves.toBe(0);
   });

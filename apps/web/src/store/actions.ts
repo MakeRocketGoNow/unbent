@@ -730,16 +730,36 @@ const OUTBOX_ENTRY_PREFIX = 'tx:';
  * `null` when the database could not be read — blocked, aborted, no answer — which is
  * "do not know", not "nothing there".
  */
-export function countStoredWrites(userId: string): Promise<number | null> {
+export function countStoredWrites(userId: string, signal?: AbortSignal): Promise<number | null> {
   if (typeof indexedDB === 'undefined') return Promise.resolve(0);
   const name = outboxName(userId);
   return new Promise((resolve) => {
     let settled = false;
+    let db: IDBDatabase | undefined;
+    const close = () => {
+      try {
+        db?.close();
+      } catch {
+        // Already closed.
+      }
+    };
     const done = (n: number | null) => {
       if (settled) return;
       settled = true;
+      signal?.removeEventListener('abort', stop);
       resolve(n);
     };
+    // The caller stopped waiting (`peekStoredWrites`' bound). An open request cannot be
+    // taken back, so a connection already held closes now — a close lets a read in
+    // progress finish and starts no other — and one that opens later closes on arrival
+    // (`onsuccess`), so neither the real outbox nor a wipe waits behind a peek nobody
+    // is reading.
+    const stop = () => {
+      close();
+      done(null);
+    };
+    if (signal?.aborted) return done(null);
+    signal?.addEventListener('abort', stop);
     let req: IDBOpenDBRequest;
     try {
       req = indexedDB.open(name);
@@ -758,14 +778,9 @@ export function countStoredWrites(userId: string): Promise<number | null> {
       done(0);
     };
     req.onsuccess = () => {
-      const db = req.result;
-      const close = () => {
-        try {
-          db.close();
-        } catch {
-          // Already closed.
-        }
-      };
+      db = req.result;
+      // Answered already — blocked, or no longer waited for: nothing to read.
+      if (settled) return close();
       // A wipe asks with `versionchange`. If the sign-out's bound ran out while the read
       // was still going, the wipe comes next, and its `deleteDatabase` would wait behind
       // this connection — the outbox's own does the same (`createOutbox`).

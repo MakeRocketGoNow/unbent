@@ -310,14 +310,20 @@ export async function settleWrites(ms: number, userId: string | null = null): Pr
 
 /**
  * `countStoredWrites`, bounded, so a blocked IndexedDB open cannot hold the sign-out: no
- * answer in `ms` is `null`, "do not know", never "nothing there".
+ * answer in `ms` is `null`, "do not know", never "nothing there". The peek is told when
+ * it is no longer waited for, and lets its connection go: whoever stays signed in opens
+ * the real outbox next, and a wipe deletes it, and neither should wait behind it.
  */
 function peekStoredWrites(userId: string, ms: number): Promise<number | null> {
+  const giveUp = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   return Promise.race([
-    countStoredWrites(userId),
+    countStoredWrites(userId, giveUp.signal),
     new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), ms))),
-  ]).finally(() => clearTimeout(timer));
+  ]).finally(() => {
+    clearTimeout(timer);
+    giveUp.abort();
+  });
 }
 
 /**
