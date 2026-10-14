@@ -444,6 +444,30 @@ describe('acquireLibrary', () => {
       expect(channel.posted.map((m) => m.type)).toContain('opening');
     });
 
+    it('answers every hello with opening while its own open runs, and stops once it serves', async () => {
+      vi.useFakeTimers();
+      setLocksForTests(fakeLocks());
+      let finishStore!: (store: unknown) => void;
+      const { store } = page();
+      vi.mocked(openLocalStore).mockImplementationOnce(() => new Promise((r) => (finishStore = r)) as never);
+      const opening = () => channel.posted.filter((m) => m.type === 'opening').length;
+      const first = acquireLibrary('u1');
+      await vi.advanceTimersByTimeAsync(10);
+      expect(opening()).toBe(1);
+      // A client arriving mid-open asks, and is told, rather than taking the library over.
+      const other = channel.port('c1');
+      other.post({ type: 'hello', client: 'c1' });
+      await vi.advanceTimersByTimeAsync(10);
+      expect(opening()).toBe(2);
+      finishStore(store);
+      await first;
+      other.post({ type: 'hello', client: 'c1' });
+      await vi.advanceTimersByTimeAsync(10);
+      // Served now: the holder answers hellos with rows, not with opening.
+      expect(opening()).toBe(2);
+      expect(channel.posted.some((m) => m.type === 'serving')).toBe(true);
+    });
+
     it('waits for a tab that said it is opening the library, and is its client once it serves', async () => {
       vi.useFakeTimers();
       const locks = fakeLocks();

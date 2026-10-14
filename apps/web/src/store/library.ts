@@ -476,18 +476,32 @@ const clientHooks = (userId: string, isMine: () => boolean) => ({
 });
 
 /**
- * Tells the account's other tabs that this one has the lock and is opening the library,
- * before the open: a client waiting for a holder takes the library over from a tab that
- * answers nothing (`UNANSWERED_HELLOS` in `client-library.ts`), and an open on a phone
- * takes longer than that silence. A port of its own, closed at once, since the holder's
- * is made inside `open` with its id; a message posted before the close is still
- * delivered.
+ * Tells the account's other tabs that this one has the lock and is opening the library:
+ * once at the start, and again in answer to every hello until the open has settled. A
+ * client waiting for a holder takes the library over from a tab that answers nothing
+ * (`UNANSWERED_HELLOS` in `client-library.ts`), and an open on a phone takes longer than
+ * that silence; a single announcement was not enough, since a client whose attach began
+ * after it never heard it, and one that did ran out of patience on the hellos after it
+ * (review of #358), and a live open stolen from mid-way steals back once it has
+ * finished. So "answers nothing" means exactly that. A port of its own, since the
+ * holder's is made inside `open` with its id, and closed by the returned function when
+ * the open settles or the hold is taken: `open` resolves only after the holder has begun
+ * serving, so the two never overlap. A tab wedged inside its open keeps answering, and
+ * its clients wait out the bound as they did before, which is what Open here is for.
  */
-function announceOpening(userId: string): void {
+function announceOpening(userId: string): () => void {
   const port = openPort(userId);
-  if (!port) return;
-  port.post({ type: 'opening', holder: crypto.randomUUID() });
-  port.close();
+  if (!port) return () => {};
+  const holder = crypto.randomUUID();
+  const say = () => port.post({ type: 'opening', holder });
+  say();
+  const stop = port.listen((m) => {
+    if (m.type === 'hello') say();
+  });
+  return () => {
+    stop();
+    port.close();
+  };
 }
 
 /**
@@ -523,7 +537,8 @@ function openFor(userId: string, takeOver: boolean, held?: LibraryHold): Promise
       standAside(userId);
       return attachClientLibrary(userId, me, port, clientHooks(userId, () => current?.opened === opened), halting.signal);
     }
-    announceOpening(userId);
+    const quiet = announceOpening(userId);
+    void hold.taken.then(quiet);
     try {
       // Whether the library this open makes is still the one this tab holds: the
       // entry's own step, which the late-finish replacement of the entry copies. Not the
@@ -533,6 +548,8 @@ function openFor(userId: string, takeOver: boolean, held?: LibraryHold): Promise
     } catch (err) {
       hold.release();
       throw err;
+    } finally {
+      quiet();
     }
   });
   /*

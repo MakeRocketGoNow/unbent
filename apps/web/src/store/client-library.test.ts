@@ -467,8 +467,27 @@ describe('a client of the holding tab', () => {
     open.push(lib);
     expect(patient.silent).toBe(0);
     expect(lib.notes.size).toBe(1);
-    // Served once, a quiet holder is judged by pings with a call in hand, never by hellos.
-    expect(hk.silent).toBe(1);
+  });
+
+  it('waits as long as a tab that is opening keeps answering its hellos, however slow the open', async () => {
+    const hk = hooks();
+    const attaching = attach(hk);
+    // A tab granted the lock, answering every hello with `opening` while its open runs.
+    const opening = channel.port('h3');
+    const stop = opening.listen((m) => {
+      if (m.type === 'hello') opening.post({ type: 'opening', holder: 'h3' });
+    });
+    await settle();
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(hk.silent).toBe(0);
+    stop();
+    holder(channel, { notes: [note('n1')] });
+    await settle();
+    await settle();
+    const lib = await attaching;
+    open.push(lib);
+    expect(hk.silent).toBe(0);
+    expect(lib.notes.size).toBe(1);
   });
 
   it('keeps its rows and holds its calls when the holder closes, and attaches to the next holder, which answers them', async () => {
