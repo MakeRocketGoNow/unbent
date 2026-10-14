@@ -340,6 +340,21 @@ describe('acquireLibrary', () => {
     expect(left).toBeNull();
   });
 
+  it('answers unknown when the durable outbox peek does not answer, rather than holding the sign-out', async () => {
+    vi.useFakeTimers();
+    vi.mocked(countStoredWrites).mockImplementation(() => new Promise(() => {}));
+    page({ ready: new Promise(() => {}) });
+    acquireLibrary('u1').catch(() => {});
+    await vi.advanceTimersByTimeAsync(LIBRARY_OPEN_TIMEOUT_MS);
+    let left: number | null | undefined;
+    void settleWrites(5_000).then((n) => (left = n));
+    // The open's wait takes the whole bound; the peek still gets its half second.
+    await vi.advanceTimersByTimeAsync(5_499);
+    expect(left).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(left).toBeNull();
+  });
+
   it('counts the durable outbox of the account signing out when its open failed and left no library', async () => {
     vi.useFakeTimers();
     vi.mocked(countStoredWrites).mockResolvedValue(3);
