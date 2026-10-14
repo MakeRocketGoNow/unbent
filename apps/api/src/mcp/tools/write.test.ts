@@ -717,3 +717,114 @@ describe('links in what the write tools return', () => {
     }
   });
 });
+
+describe('create_notes (MAK-214)', () => {
+  const def = (id: string, name: string, type: FieldDef['type'], options: string[] = []): FieldDef => ({
+    id,
+    notebookId: 'nb-watch',
+    name,
+    type,
+    options,
+    scale: null,
+    currency: null,
+    position: 0,
+  });
+  const defs = [def('f-type', 'Type', 'select', ['Movie', 'Series']), def('f-year', 'Year', 'number')];
+
+  function batchRepo() {
+    const calls: Array<{ inputs: Array<Record<string, unknown>>; opts: unknown }> = [];
+    let overviews = 0;
+    const repo = {
+      notebooksOverview: async () => {
+        overviews++;
+        return {
+          notebooks: [{ id: 'nb-watch', name: 'Watch Later' }],
+          unfiled: 0,
+          fields: [...defs, { ...def('f-other', 'Type', 'text'), notebookId: 'nb-other' }],
+        };
+      },
+      createMany: async (inputs: Array<Record<string, unknown>>, opts: unknown) => {
+        calls.push({ inputs, opts });
+        return inputs.map((n, i) => ({ id: n['id'] as string, title: n['title'] as string, skipped: i === 1 }));
+      },
+    } as unknown as NotesRepo;
+    return { calls, overviews: () => overviews, tool: collect(repo).get('create_notes')! };
+  }
+
+  const make = (over: Record<string, unknown>) => ({ title: '', body: '', tags: [], ...over });
+
+  it('resolves every note\'s fields by name and creates the batch in one call', async () => {
+    const { calls, overviews, tool } = batchRepo();
+    const result = await tool({
+      notes: [
+        make({ title: 'Coyote Returns', notebook: 'watch later', fields: { type: 'Movie', Year: 1999 } }),
+        make({ title: 'Acme: The Series', notebook: 'Watch Later', fields: { Type: 'Series' } }),
+        make({ title: 'No fields' }),
+      ],
+      skipExisting: true,
+    });
+    expect(result.isError).toBeFalsy();
+    expect(overviews()).toBe(1);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.opts).toEqual({ skipExisting: true });
+    expect(calls[0]!.inputs[0]!['fields']).toEqual({ 'f-type': 'Movie', 'f-year': 1999 });
+    expect(calls[0]!.inputs[2]).not.toHaveProperty('fields');
+
+    const answer = JSON.parse(result.content[0]!.text);
+    expect(answer.created).toBe(2);
+    expect(answer.skipped).toBe(1);
+    expect(answer.notes[0]).toEqual({
+      id: calls[0]!.inputs[0]!['id'],
+      url: `${APP_URL}/notes/${calls[0]!.inputs[0]!['id']}`,
+      title: 'Coyote Returns',
+    });
+    expect(answer.notes[1].skipped).toBe(true);
+  });
+
+  it('asks for no definitions when no note names a field', async () => {
+    const { overviews, tool } = batchRepo();
+    await tool({ notes: [make({ title: 'A' }), make({ title: 'B', notebook: 'Watch Later' })], skipExisting: false });
+    expect(overviews()).toBe(0);
+  });
+
+  it('refuses the whole batch, naming each note at fault, before writing any of it', async () => {
+    const { calls, tool } = batchRepo();
+    const result = await tool({
+      notes: [
+        make({ title: 'Fine', notebook: 'Watch Later', fields: { Type: 'Movie' } }),
+        make({ title: 'Wrong option', notebook: 'Watch Later', fields: { Type: 'Documentary' } }),
+        make({ title: 'Wrong name', notebook: 'Watch Later', fields: { Rating: 4 } }),
+        make({ title: 'No notebook', fields: { Type: 'Movie' } }),
+      ],
+      skipExisting: false,
+    });
+    expect(result.isError).toBe(true);
+    const text = result.content[0]!.text;
+    expect(text).toContain('Nothing was created: 3 of the 4 notes');
+    expect(text).toContain('notes[1] ("Wrong option"): Type');
+    expect(text).toContain('notes[2] ("Wrong name"): No field called "Rating"');
+    expect(text).toContain('notes[3] ("No notebook")');
+    expect(text).not.toContain('notes[0]');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('refuses a batch whose bodies are too much for one call', async () => {
+    const { calls, tool } = batchRepo();
+    const body = 'x'.repeat(1_700_000);
+    const result = await tool({ notes: Array.from({ length: 5 }, () => make({ body })), skipExisting: false });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toContain('smaller batches');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('reports a value the store refused as nothing created', async () => {
+    const repo = {
+      createMany: async () => {
+        throw new InvalidFieldValue('Year', 'must be a number');
+      },
+    } as unknown as NotesRepo;
+    const result = await collect(repo).get('create_notes')!({ notes: [make({ title: 'A' })], skipExisting: false });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toBe('Nothing was created: Year must be a number.');
+  });
+});

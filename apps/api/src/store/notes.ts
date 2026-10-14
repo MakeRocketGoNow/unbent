@@ -759,6 +759,66 @@ export class NotesStore {
   }
 
   /**
+   * Many notes in one transaction, for MCP's `create_notes` (MAK-214): an import through
+   * the assistant was one `create_note` call — one request, one object call — per note,
+   * three hundred of them for one list.
+   *
+   * All or nothing. Every value was checked at the edge before this was called, so what
+   * can still throw here is a definition changed in between; the transaction then takes
+   * every note before it too, and the caller can send the same batch again without making
+   * a duplicate of any. That is the reason for one transaction rather than a note at a
+   * time: a batch half written is the one outcome a retry cannot repair.
+   *
+   * With `skipExisting`, a note whose title a live note in the same notebook already has —
+   * without case, as the title index compares — is not made, and answers with the id of
+   * the one that is there; a title given twice in the batch is made once. An empty title
+   * is never a match, since every untitled note would be a duplicate of every other. The
+   * check is a probe of `idx_notes_notebook_title` per note, a row or two each.
+   *
+   * No copy is kept in the history: there is nothing before a new note to keep.
+   */
+  createMany(
+    inputs: Array<Parameters<NotesStore['create']>[0]>,
+    opts: { skipExisting?: boolean | undefined } = {},
+  ): Array<{ id: string; title: string; skipped: boolean }> {
+    return this.sql.tx(() => {
+      const made = new Map<string, string>();
+      // Folded as SQLite's NOCASE folds, ASCII only, so the batch and the index agree on
+      // what a duplicate is.
+      const key = (notebook: string | null | undefined, title: string) =>
+        `${foldNoCase(notebook?.trim() ?? '')}\u001F${foldNoCase(title)}`;
+      return inputs.map((input) => {
+        if (opts.skipExisting && input.title !== '') {
+          const held = made.get(key(input.notebook, input.title)) ?? this.liveTitleIn(input.notebook, input.title);
+          if (held) return { id: held, title: input.title, skipped: true };
+        }
+        const note = this.create(input);
+        if (opts.skipExisting && input.title !== '') made.set(key(input.notebook, input.title), note.id);
+        return { id: note.id, title: note.title, skipped: false };
+      });
+    });
+  }
+
+  /** The id of a live note with this title in this notebook (or in none), without case. */
+  private liveTitleIn(notebook: string | null | undefined, title: string): string | null {
+    const name = notebook?.trim();
+    const row = name
+      ? this.sql.first<{ id: string }>(
+          `SELECT n.id FROM notes n
+             JOIN notebooks nb ON nb.id = n.notebook_id AND nb.name = ?1 COLLATE NOCASE
+            WHERE n.deleted_at IS NULL AND n.title = ?2 COLLATE NOCASE
+            LIMIT 1`,
+          name,
+          title,
+        )
+      : this.sql.first<{ id: string }>(
+          `SELECT id FROM notes WHERE notebook_id IS NULL AND deleted_at IS NULL AND title = ?1 COLLATE NOCASE LIMIT 1`,
+          title,
+        );
+    return row?.id ?? null;
+  }
+
+  /**
    * A new note with this one's title, body, filing and field values. Null when there is
    * no such live note.
    *

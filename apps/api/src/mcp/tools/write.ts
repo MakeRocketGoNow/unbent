@@ -11,6 +11,8 @@ import {
   MIN_RATING_MAX,
   UNFILED,
   currencySchema,
+  encodeFieldValue,
+  expectedFieldValue,
   fieldNameSchema,
   fieldOptionsSchema,
   fieldScaleSchema,
@@ -153,6 +155,39 @@ function normalizeNotebook(value: string | null | undefined): string | null | un
   return value;
 }
 
+/**
+ * How many notes `create_notes` takes in one call (MAK-214). Lower than the other batch
+ * tools' five hundred because each note here is a whole note, body and all, written in
+ * one transaction, where theirs are ids.
+ */
+const MAX_CREATE_NOTES = 100;
+
+/**
+ * And how much body text, between them. A hundred notes at the body limit would be far
+ * past what one call to the store can carry (32 MiB), and a transaction that size holds
+ * up every other write to the account while it runs.
+ */
+const MAX_CREATE_NOTES_BYTES = 8_000_000;
+
+function utf8Length(text: string): number {
+  return new TextEncoder().encode(text).length;
+}
+
+/**
+ * The first value in a new note's patch its field cannot hold, as the store would word it,
+ * or null when all of them fit. The store checks again inside its transaction; this is so
+ * a batch can be refused whole, naming every note at fault, before any of it is written.
+ * A new note holds no value yet, so an option the field has dropped is not held either.
+ */
+function refusedValue(patch: NoteFieldsPatch, defs: FieldDef[]): string | null {
+  for (const [id, value] of Object.entries(patch)) {
+    if (value === null || value === undefined) continue;
+    const def = defs.find((d) => d.id === id);
+    if (def && encodeFieldValue(def, value) === null) return `${def.name} ${expectedFieldValue(def)}.`;
+  }
+  return null;
+}
+
 export function registerWriteTools(server: McpServer, notes: NotesRepo, links: AppLinks): void {
   server.registerTool(
     'create_note',
@@ -195,6 +230,118 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo, links: A
         return jsonResult(noteRef(note, links));
       } catch (err) {
         if (err instanceof InvalidFieldValue) return toolError(`${err.fieldName} ${err.message}.`);
+        throw err;
+      }
+    },
+  );
+
+  server.registerTool(
+    'create_notes',
+    {
+      title: 'Create several notes',
+      description:
+        `Create up to ${MAX_CREATE_NOTES} notes in one call, each as create_note takes it — ` +
+        'title, body, tags, notebook and fields — for an import or any list of notes to make. ' +
+        'Every field value in the batch is checked before anything is written, and if one is ' +
+        'refused nothing is created: the error names each note that needs fixing, by its ' +
+        'position, so the whole batch can be sent again. With skipExisting, a note whose ' +
+        'title its notebook already has (whatever the case) is not made again, and answers ' +
+        'with the note that is there; a title given twice in the batch is made once. Answers ' +
+        'with each note in the order given: its id, url and title, and skipped when it was ' +
+        'already there.' +
+        SHARE_NOTE_LINKS,
+      inputSchema: z.object({
+        notes: z
+          .array(
+            z.object({
+              title: z.string().max(MAX_TITLE_LENGTH).default(''),
+              body: bodySchema.default(''),
+              tags: tagsSchema.default([]),
+              notebook: notebookSchema.optional(),
+              fields: fieldsSchema.optional(),
+            }),
+          )
+          .min(1)
+          .max(MAX_CREATE_NOTES),
+        skipExisting: z
+          .boolean()
+          .default(false)
+          .describe(
+            'Leave out a note whose title a live note in its notebook (or in none, for an ' +
+              'unfiled note) already has, without case. Untitled notes are always made.',
+          ),
+      }),
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
+    },
+    async ({ notes: batch, skipExisting }) => {
+      let bytes = 0;
+      for (const n of batch) bytes += utf8Length(n.body);
+      if (bytes > MAX_CREATE_NOTES_BYTES) {
+        return toolError(
+          `These bodies come to ${Math.ceil(bytes / 1_000_000)} MB, and one call takes at most ` +
+            `${MAX_CREATE_NOTES_BYTES / 1_000_000} MB of them. Send the notes in smaller batches.`,
+        );
+      }
+
+      // Every value checked before anything is written. One call for every notebook and
+      // definition in the account, rather than one per notebook the batch names: a batch
+      // may span a dozen, and each call is a request against the invocation's budget.
+      const inputs: Array<Parameters<NotesRepo['create']>[0]> = [];
+      const problems: string[] = [];
+      const overview = batch.some((n) => n.fields && Object.keys(n.fields).length > 0)
+        ? await notes.notebooksOverview({ fields: true })
+        : null;
+      for (const [index, n] of batch.entries()) {
+        const target = normalizeNotebook(n.notebook);
+        let patch: NoteFieldsPatch | undefined;
+        if (overview && n.fields && Object.keys(n.fields).length > 0) {
+          const notebookId = target ? (overview.notebooks.find((nb) => sameName(nb.name, target.trim()))?.id ?? null) : null;
+          const defs = notebookId ? (overview.fields ?? []).filter((d) => d.notebookId === notebookId) : [];
+          const resolved = resolveFieldNames(n.fields, defs, [], target ?? null);
+          const refused = 'error' in resolved ? resolved.error : refusedValue(resolved.patch, defs);
+          if (refused || 'error' in resolved) {
+            problems.push(`notes[${index}]${n.title ? ` ("${n.title}")` : ''}: ${refused}`);
+            continue;
+          }
+          patch = resolved.patch;
+        }
+        inputs.push({
+          id: crypto.randomUUID(),
+          title: n.title,
+          body: n.body,
+          tags: n.tags,
+          notebook: target,
+          ...(patch ? { fields: patch } : {}),
+        });
+      }
+      if (problems.length > 0) {
+        return toolError(
+          `Nothing was created: ${problems.length} of the ${batch.length} notes ` +
+            `${problems.length === 1 ? 'has a value' : 'have values'} that cannot be stored. ` +
+            'Fix these and send the whole batch again:\n' +
+            problems.join('\n'),
+        );
+      }
+
+      try {
+        const made = await notes.createMany(inputs, { skipExisting });
+        const skipped = made.filter((m) => m.skipped).length;
+        return jsonResult({
+          created: made.length - skipped,
+          skipped,
+          notes: made.map((m) => ({
+            id: m.id,
+            url: links.note(m.id),
+            title: m.title,
+            ...(m.skipped ? { skipped: true } : {}),
+          })),
+        });
+      } catch (err) {
+        // A definition changed between the check and the write. The batch was one
+        // transaction, so nothing was created and the same batch can be sent again.
+        if (err instanceof InvalidFieldValue) {
+          return toolError(`Nothing was created: ${err.fieldName} ${err.message}.`);
+        }
         throw err;
       }
     },

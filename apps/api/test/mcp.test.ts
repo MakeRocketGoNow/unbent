@@ -1400,3 +1400,51 @@ describe('list_notes compact with include (MAK-216)', () => {
     ]);
   });
 });
+
+describe('create_notes (MAK-214)', () => {
+  async function call(name: string, args: Record<string, unknown>) {
+    return mcp(alice.token, 'tools/call', { name, arguments: args });
+  }
+  const read = (r: { body: Record<string, any> }) => JSON.parse(toolText(r.body));
+
+  it('makes a batch in one call, refuses one with a bad value whole, and skips titles held', async () => {
+    const notebook = `Import ${Date.now()}`;
+    const { id: notebookId } = read(await call('create_notebook', { name: notebook }));
+    await call('create_notebook_field', { notebookId, name: 'Type', type: 'select', options: ['Movie', 'Series'] });
+
+    const refused = await call('create_notes', {
+      notes: [
+        { title: 'Coyote Returns', notebook, fields: { Type: 'Movie' } },
+        { title: 'Acme: The Series', notebook, fields: { Type: 'Documentary' } },
+      ],
+    });
+    expect(refused.body.result?.isError).toBe(true);
+    expect(toolText(refused.body)).toContain('notes[1] ("Acme: The Series")');
+    expect(read(await call('list_notes', { notebook })).total).toBe(0);
+
+    const made = read(
+      await call('create_notes', {
+        notes: [
+          { title: 'Coyote Returns', notebook, fields: { Type: 'Movie' }, tags: ['import'] },
+          { title: 'Acme: The Series', notebook, body: 'Season one', fields: { Type: 'Series' } },
+        ],
+      }),
+    );
+    expect(made.created).toBe(2);
+    expect(made.notes.map((n: { url: string; id: string }) => n.url)).toEqual(
+      made.notes.map((n: { id: string }) => `${ORIGIN}/notes/${n.id}`),
+    );
+    const coyote = read(await call('get_note', { noteId: made.notes[0].id }));
+    expect(coyote).toMatchObject({ notebook, tags: ['import'], fields: { Type: 'Movie' } });
+
+    const again = read(
+      await call('create_notes', {
+        notes: [{ title: 'coyote returns', notebook }, { title: 'Road Runner', notebook }],
+        skipExisting: true,
+      }),
+    );
+    expect(again).toMatchObject({ created: 1, skipped: 1 });
+    expect(again.notes[0]).toMatchObject({ id: made.notes[0].id, skipped: true });
+    expect(read(await call('list_notes', { notebook })).total).toBe(3);
+  });
+});
