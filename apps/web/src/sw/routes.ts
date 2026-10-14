@@ -53,6 +53,32 @@ export const API_CACHE = 'api-v1';
 export const FILES_CACHE = 'files-v1';
 
 /**
+ * The caches the app's shell is kept in: one per build, named for the build, so the
+ * previous build's survives the next worker taking charge (`sw.ts`). The page never
+ * empties these; a deploy tidies them.
+ */
+export const SHELL_CACHE_PREFIX = 'unbent-shell-';
+export const shellCacheName = (build: string) => `${SHELL_CACHE_PREFIX}${build}`;
+
+/** A hashed file of a build: what Vite writes under `/assets/`. */
+export function isAsset(url: URL, origin: string): boolean {
+  return url.origin === origin && url.pathname.startsWith('/assets/');
+}
+
+/**
+ * Whether an answer for a file of the shell is the page in disguise. The asset layer
+ * answers any path it does not have with `index.html` and a 200 — the SPA fallback — so
+ * a chunk that a newer deploy dropped, or that a deploy in progress has not written yet,
+ * comes back as HTML with a script's name. A fill that stored it served HTML to a
+ * `<script>`; a tab that fetched it got a module error. Only the page itself may be HTML.
+ */
+export function isShellFallback(url: URL, contentType: string | null): boolean {
+  if (!contentType || !/text\/html/i.test(contentType)) return false;
+  const last = url.pathname.slice(url.pathname.lastIndexOf('/') + 1);
+  return last !== 'index.html' && last.includes('.');
+}
+
+/**
  * Twenty megabytes: the largest file the cache of opened files keeps. A file over it is
  * still shown online and simply not kept: a scanned archive has the odd enormous PDF, and
  * a phone's storage is better spent on the many ordinary files someone opened than on one
@@ -70,7 +96,7 @@ export const MAX_KEPT_FILE = 20 * 1024 * 1024;
  * itself (`remember` in `store/actions.ts`): the worker's index learns of a file only when
  * the worker stores one or starts, so until then Settings counted one file too few, and
  * the budget did not count it at all. The worker answers by bringing the index in line
- * (`sweep` in `budget.ts`). A message type, beside `SKIP_WAITING`.
+ * (`sweep` in `budget.ts`). A message type, beside `BUILD`.
  */
 export const FILES_CHANGED = 'FILES_CHANGED';
 
@@ -82,9 +108,12 @@ export const FILES_CHANGED = 'FILES_CHANGED';
 export const VIEW_HEADER = 'X-Unbent-View';
 
 /**
- * The header the worker adds to a read it answered from its cache because the network
- * failed — how the page learns it is offline from the very request that needed the network
- * (`request` in `notes-api.ts`), rather than from a second request asking.
+ * The header the worker adds to a read it answered itself: `cache` for one from its
+ * caches, `device` for one from the account's shelves. Its absence on an answer is what
+ * `request` in `notes-api.ts` takes as the server having answered, which is what puts
+ * the app online; `cache` on the network-first config read is how the page learns the
+ * network failed from the very request that needed it, rather than from a second request
+ * asking. Every answer the worker makes without the network must carry it.
  */
 export const SERVED_HEADER = 'X-Unbent-Served';
 

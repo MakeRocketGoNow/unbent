@@ -12,7 +12,12 @@
  *
  * It signs in as the demo account, opens a receipt that carries two PDFs and an image, and
  * then checks, in order: the worker is installed and in control; a page load with the
- * worker's caches emptied still loads, and fills them again; a file that is not on the
+ * worker's caches emptied still loads, and fills them again; a chunk a deploy removed is
+ * answered as a 404 rather than the page, and the shell is cached under the build's own
+ * name; the app comes back online on the server's answer while the browser still says
+ * offline; a second tab says the notes are open in another tab, takes them over, and
+ * gives them back when it closes; a second tab reads and saves offline as the holder's
+ * client, and its edit reaches the server on reconnect; a file that is not on the
  * device says so at once; the worker, its caches and the library survive being offline; a
  * file opened online draws again offline; and a file added offline goes to the device
  * and uploads when the connection returns. Then search, offline: a phrase from a note's
@@ -256,7 +261,7 @@ async function run(BASE, chrome, keepSocket) {
   await goto(`${BASE}/notes`);
   const libraryReady = () => ev(`document.querySelectorAll('a[href^="/notes/"]').length>0`);
 
-  const state = () => ev(`(async()=>{const out={};for(const n of await caches.keys())if(n.startsWith('workbox-precache'))out.precache=(await (await caches.open(n)).keys()).length;const regs=await navigator.serviceWorker.getRegistrations();const root=await navigator.storage.getDirectory();const opfs=[];for await (const [n] of root.entries())opfs.push(n);return {controlled:!!navigator.serviceWorker.controller,active:regs.some(r=>r.active?.state==='activated'),precache:out.precache??0,sqlite:opfs.some(n=>n.endsWith('.sqlite')),opfs}})()`);
+  const state = () => ev(`(async()=>{const out={};for(const n of await caches.keys())if(n.startsWith('unbent-shell-')&&n!=='unbent-shell-meta')out.precache=(await (await caches.open(n)).keys()).length;const regs=await navigator.serviceWorker.getRegistrations();const root=await navigator.storage.getDirectory();const opfs=[];for await (const [n] of root.entries())opfs.push(n);return {controlled:!!navigator.serviceWorker.controller,active:regs.some(r=>r.active?.state==='activated'),precache:out.precache??0,sqlite:opfs.some(n=>n.endsWith('.sqlite')),opfs}})()`);
 
   let precache = 0;
   try {
@@ -286,6 +291,141 @@ async function run(BASE, chrome, keepSocket) {
       const loaded = await until(async () => (!(await ev('!!window.__gateOld')) && (await libraryReady()) ? true : null), 20000);
       const filled = loaded && (await until(async () => { const v = await state(); return v && typeof v === 'object' && v.precache >= precache ? v : null; }, 30000));
       report('a page load with the caches emptied still loads, and fills them again', !!filled, loaded ? `precache ${(await state())?.precache} of ${precache}` : `page never rendered: ${JSON.stringify(await ev('location.href'))}`);
+    }
+
+    // 2a
+    {
+      // A chunk a deploy removed: the asset layer answers it with the page and a 200, and
+      // the worker must turn that into the 404 it is, so a module that is gone fails as a
+      // missing module (and the page reloads itself) rather than as HTML where a script
+      // was expected. The shell is in a cache named for the build, which is what lets the
+      // previous build's survive the next worker.
+      const gone = await ev(`fetch('/assets/gone-ABCDEF12.js').then(r=>r.status+' '+(r.headers.get('Content-Type')??''))`);
+      const names = await ev(`caches.keys().then(ns=>ns.filter(n=>n.startsWith('unbent-shell-')||n.includes('-precache-')))`);
+      const named = Array.isArray(names) && names.some((n) => /^unbent-shell-[^m]/.test(n)) && !names.some((n) => n.includes('-precache-'));
+      report('a chunk a deploy removed is answered as a 404, and the shell is kept under the build’s own name', String(gone).startsWith('404') && named, `chunk ${gone}, caches ${JSON.stringify(names)}`);
+    }
+
+    // 2b
+    {
+      // The browser wrong about its network — a laptop on a VPN, where Chrome reported no
+      // network while every request succeeded — must not keep the app offline: the next
+      // answer from the server puts it back, whatever the flag says.
+      await ev(`(()=>{Object.defineProperty(navigator,'onLine',{configurable:true,get:()=>false});window.dispatchEvent(new Event('offline'))})()`);
+      const banner = () => ev(`!!document.querySelector('.offline-banner:not(.library-status)')`);
+      const up = await until(async () => ((await banner()) === true ? true : null), 3000);
+      const down = up && (await until(async () => ((await banner()) === false ? true : null), 15000));
+      const onLine = await ev('navigator.onLine');
+      report('the app comes back online on the server’s answer while the browser still says offline', !!down, up ? `banner still up, navigator.onLine ${onLine}` : 'the browser’s offline event never showed the banner');
+      await ev(`(()=>{delete navigator.onLine;Object.defineProperty(navigator,'onLine',{configurable:true,get:()=>true})})()`);
+    }
+
+    // 2c
+    {
+      // One tab holds the library. A second tab says so on Settings → Offline, and nowhere
+      // else, since it works through the holder (2d below); Open here moves the library
+      // to it; closing it gives the library back to the first tab.
+      await goto(`${BASE}/settings/offline`);
+      const second = await send('Target.createTarget', { url: `${BASE}/settings/offline` });
+      const secondId = second.result?.targetId;
+      const a = secondId && (await send('Target.attachToTarget', { targetId: secondId, flatten: true }));
+      const other = a?.result?.sessionId;
+      if (other) {
+        sessions.set(secondId, other);
+        await send('Runtime.enable', {}, other);
+        await send('Network.enable', {}, other);
+      }
+      const evIn = async (session, expression) => {
+        const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, session);
+        return r.result?.result?.value;
+      };
+      const line = (session) => evIn(session, `document.querySelector('.library-elsewhere')?'open in another tab':''`);
+      const secondSays = other && (await until(async () => (/open in another tab/.test(await line(other)) ? true : null), 15000));
+      if (secondSays) await evIn(other, `[...document.querySelectorAll('.library-elsewhere button')].find(b=>b.textContent.trim()==='Open here')?.click()`);
+      const firstSays = secondSays && (await until(async () => (/open in another tab/.test(await line(page)) ? true : null), 15000));
+      const secondHolds = firstSays && (await until(async () => (!/open in another tab/.test(await line(other)) ? true : null), 15000));
+      if (secondId) {
+        sessions.delete(secondId);
+        await send('Target.closeTarget', { targetId: secondId });
+      }
+      const firstHoldsAgain = secondHolds && (await until(async () => (!/open in another tab/.test(await line(page)) && (await ev(`navigator.locks.query().then(q=>q.held.some(l=>l.name.startsWith('unbent-library-')))`)) === true ? true : null), 15000));
+      report('a second tab says the notes are open in another tab, takes them over on Open here, and gives them back when it closes', !!firstHoldsAgain, !other ? 'could not open a second tab' : !secondSays ? `second tab's line: ${JSON.stringify(await line(other))}` : !firstSays ? `first tab's line after Open here: ${JSON.stringify(await line(page))}` : !secondHolds ? 'the second tab never opened the library' : `first tab's line after the second closed: ${JSON.stringify(await line(page))}`);
+    }
+
+    // 2d
+    {
+      // A second tab is the holder's client (`store/client-library.ts`): it reads the
+      // holder's rows and sends its writes to the holder's outbox. So with the network cut
+      // it still lists the notes, an edit made in it is "Saved" and shows in the first tab,
+      // and when the connection returns the holder's queue carries the edit to the server.
+      // The first tab stays on the list: opening the note here online would draw its
+      // files into the worker's cache, and check 3 below needs them not to be there.
+      await network(false);
+      await goto(`${BASE}/notes`);
+      await until(async () => ((await libraryReady()) === true ? true : null), 15000);
+      const second = await send('Target.createTarget', { url: `${BASE}/settings/offline` });
+      const secondId = second.result?.targetId;
+      const a = secondId && (await send('Target.attachToTarget', { targetId: secondId, flatten: true }));
+      const other = a?.result?.sessionId;
+      if (other) {
+        sessions.set(secondId, other);
+        await send('Runtime.enable', {}, other);
+        await send('Network.enable', {}, other);
+      }
+      const evIn = async (session, expression) => {
+        const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, session);
+        return r.result?.result?.value;
+      };
+      const gotoIn = (session, url) => send('Page.navigate', { url }, session);
+      // A client, says Settings → Offline; and nothing of the kind in the chrome.
+      const isClient = other && (await until(async () => ((await evIn(other, `!!document.querySelector('.library-elsewhere')&&!document.querySelector('.library-status')`)) === true ? true : null), 15000));
+      // The network goes for both tabs; the client lists the notes from its mirror.
+      if (isClient) {
+        await network(true);
+        await gotoIn(other, `${BASE}/notes`);
+        await sleep(500);
+        await network(true);
+      }
+      const listsOffline = isClient && (await until(async () => ((await evIn(other, `document.querySelectorAll('a[href^="/notes/"]').length`)) > 0 ? true : null), 15000));
+      // An edit in the client, offline: typed into the editor as a person would.
+      const MARK = 'gate-client-edit';
+      let saidSaved = false;
+      let seenInFirst = false;
+      if (listsOffline) {
+        await gotoIn(other, noteUrl);
+        await sleep(500);
+        await network(true);
+        const focused = await until(async () => ((await evIn(other, `(()=>{const c=document.querySelector('.cm-content');if(!c)return false;c.focus();return document.activeElement===c})()`)) === true ? true : null), 15000);
+        if (focused) await send('Input.insertText', { text: `${MARK} ` }, other);
+        saidSaved = focused && (await until(async () => ((await evIn(other, `document.querySelector('.workspace-status')?.textContent?.trim()`)) === 'Saved' && (await evIn(other, `!!document.querySelector('.sync-mark')`)) === true ? true : null), 15000));
+        // The holder's row carries the edit: the first tab, opening the note offline, draws
+        // it. Opened by the router, not a page load: unloading the holder's page lets go of
+        // the lock, and the client tab, waiting in its queue, would become the holder.
+        if (saidSaved) {
+          await ev(`(()=>{history.pushState(null,'',${JSON.stringify(`/notes/${note.id}`)});window.dispatchEvent(new PopStateEvent('popstate'))})()`);
+          seenInFirst = await until(async () => ((await ev(`document.querySelector('.cm-content')?.textContent?.includes(${JSON.stringify(MARK)})`)) === true ? true : null), 15000);
+        }
+      }
+      // The second tab goes, and the first loads the list, both still offline: the note
+      // left open when the connection returns would draw its files into the worker's
+      // cache, which check 3 needs empty. A page load of the holder with no other tab
+      // hands the library to its own next page, with the edit restored from the outbox.
+      if (secondId) {
+        sessions.delete(secondId);
+        await send('Target.closeTarget', { targetId: secondId });
+      }
+      await goto(`${BASE}/notes`);
+      await sleep(500);
+      await network(true);
+      await until(async () => ((await libraryReady()) === true ? true : null), 15000);
+      // The connection returns: the holder's queue carries the client's edit to the server.
+      await network(false);
+      const onServer = seenInFirst && (await until(async () => ((await ev(`fetch('/api/notes/${note.id}').then(r=>r.json()).then(n=>n.body.includes(${JSON.stringify(MARK)}))`)) === true ? true : null), 20000));
+      report('a second tab reads and saves offline as the holder’s client, and its edit reaches the server on reconnect', !!onServer, !other ? 'could not open a second tab' : !isClient ? 'Settings → Offline in the second tab never said another tab holds the library' : !listsOffline ? 'the second tab listed nothing offline' : !saidSaved ? `the second tab's head said ${JSON.stringify(await evIn(other, `document.querySelector('.workspace-status')?.textContent?.trim()`))}` : !seenInFirst ? 'the first tab never drew the edit' : 'the edit never reached the server');
+      // The first tab holds the library throughout — its own client id on the lock, since
+      // `locks.query()` lists every tab's holds. The edit is undone by the restore at the end.
+      const firstHolds = await until(async () => ((await ev(`navigator.locks.request('gate-probe-'+Math.random(),async(l)=>{const q=await navigator.locks.query();const mine=q.held.find(h=>h.name===l.name)?.clientId;return q.held.some(h=>h.name.startsWith('unbent-library-')&&h.clientId===mine)})`)) === true ? true : null), 10000);
+      if (!firstHolds) report('the first tab still holds the library after the second tab worked through it', false, 'the lock is not the first tab’s');
     }
 
     // 3
@@ -399,7 +539,8 @@ async function run(BASE, chrome, keepSocket) {
           return v && typeof v === 'object' && v.hits.some((t) => t.includes(PDF_TITLE) && /\.pdf/.test(t)) ? v : null;
         }, 15000);
       }
-      report('offline, the same phrase finds its note once the notebook is kept', !!ok, !asked ? `no Keep offline button on the notebook's page (notebook ${notebookId})` : !kept ? 'the notebook was never kept' : !fed ? 'the text of its files was never asked for' : `saw ${JSON.stringify(await searched())}`);
+      const pageState = async () => `alive ${JSON.stringify(await ev('1+1'))}; page ${JSON.stringify(await ev(`({url:location.pathname,heads:[...document.querySelectorAll('h3')].map(h=>h.textContent),elsewhere:!!document.querySelector('.library-elsewhere'),status:document.querySelector('.library-status')?.textContent??null,body:document.body.textContent.slice(0,200)})`))}; locks ${JSON.stringify(await ev(`navigator.locks.query().then(q=>({held:q.held.filter(h=>h.name.startsWith('unbent-')).map(h=>h.name),pending:q.pending.filter(h=>h.name.startsWith('unbent-')).map(h=>h.name)}))`))}`;
+      report('offline, the same phrase finds its note once the notebook is kept', !!ok, !asked ? `no Keep offline button on the notebook's page (notebook ${notebookId}); ${await pageState()}` : !kept ? 'the notebook was never kept' : !fed ? 'the text of its files was never asked for' : `saw ${JSON.stringify(await searched())}`);
     }
 
     // 10

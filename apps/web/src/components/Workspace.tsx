@@ -127,10 +127,13 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
      What offline does stop is what needs the server now — Auto-fill, the ⋯ menu's
      actions, a file upload — and those fade in place rather than the whole note locking.
 
-     Except in a tab that does not hold the outbox: only one tab of an account queues
-     writes, and in any other a save is a request made now, which offline fails and rolls
-     back. Typing there would be lost on the next keystroke's save, so that tab locks the
-     note while offline and the banner says which tab to use (`stranded`, below).
+     Except in a tab that holds the library but not yet its outbox's lock — a moment
+     during a hand-over, or for good in a browser without Web Locks: a save there is a
+     request made now, which offline fails and rolls back, so that tab locks the note
+     while offline (`stranded`, below). A tab whose library another tab holds is that
+     tab's client (`store/client-library.ts`): its saves go to the holder's outbox and
+     its `durable` is the holder's, mirrored, so it is stranded exactly when the holder
+     is.
   */
   const offline = useOffline();
   const notebooks = useQuery(notebooksQuery());
@@ -397,7 +400,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
      Leaving a note with the question unanswered drops what was typed there, as Reload
      would. The refused save is still held for a retry, and the switch would flush it: refused
      again, it set the save state the incoming note shows to "Not saved" with no notice to
-     say why, kept the page held against a deploy, and went out again on every tab hide.
+     say why, kept the page held against the notice's Reload, and went out again on every tab hide.
 
      Declared before the autosave so this runs ahead of its own reset, which is where the
      flush happens.
@@ -579,11 +582,13 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     }
     if (outcome === 'unchanged') return 'unchanged';
     if (typeof outcome === 'object') {
-      // The server answered the save itself — no local copy, or another tab holds the
-      // outbox — so no acknowledgement follows, and the answer is taken here as it is
-      // there. Nothing typed since: a reseed, whose new reset key re-arms the autosave's
-      // baseline. A rebase alone would leave the baseline at what was sent, read the
-      // answer's changes as an edit, and wipe "Saved" with a save that finds nothing.
+      // The server answered the save itself — no local copy, or a note the copy does
+      // not hold yet — so no acknowledgement follows, and the answer is taken here as it
+      // is there. A client tab's save is queued on the holder and comes back
+      // `'queued'`, with the acknowledgement mirrored from there. Nothing typed since:
+      // a reseed, whose new reset key re-arms the autosave's baseline. A rebase alone
+      // would leave the baseline at what was sent, read the answer's changes as an
+      // edit, and wipe "Saved" with a save that finds nothing.
       // "Typed since" goes by identity, not content: a keystroke typed and taken back is
       // equal to what was sent but already the autosave's pending value, and only a
       // rebase replaces that with the answer's tags and notebook before it goes out.
@@ -669,6 +674,17 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     // preconditioned on theirs, so it lands on top of their version rather than over it.
     void actions.saveNote({ noteId: id, value: draftRef.current, base, against: theirs.updatedAt }).then(
       (outcome) => {
+        if (outcome === 'queued') {
+          // Theirs was another tab's save waiting in this device's outbox, and the
+          // holder queued this draft put over it (`saveNote`): no answer reseeds the
+          // editor, and the row keeps its date. So the same draft goes on screen here,
+          // as the baseline, with theirs as the base, or the next keystroke would be
+          // patched against the old base, where what theirs changed reads as unchanged
+          // and drops out (review of #354).
+          setBase(id, theirs);
+          if (noteIdRef.current === id) showDraft(rebaseAfterAck(draftRef.current, seedFrom(base), theirs));
+          return;
+        }
         if (typeof outcome !== 'object') return;
         setBase(id, outcome);
         queryClient.setQueryData(keys.note(id), outcome);

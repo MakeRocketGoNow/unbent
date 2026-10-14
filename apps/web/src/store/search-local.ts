@@ -1,7 +1,7 @@
 import { foldNoCase, toFtsQuery, type SearchResult, type SearchResultRow } from '@unbent/shared';
 import { lookups as buildLookups, matches, tagNames, toSummary, type ListFilter, type LocalNote, type Lookups, type Snapshot } from './derive.js';
 import type { LocalAttachment } from './collections.js';
-import { SHED, type Entry, type Kind, type SearchIndex } from './search-index.js';
+import { SHED, type Entry, type Kind, type SearchReader } from './search-index.js';
 
 /**
  * A search answered on the device: the server's `search`, with the library's rows doing
@@ -108,7 +108,8 @@ interface Hit {
 }
 
 export interface LocalSearchOptions {
-  index: SearchIndex;
+  /** The index, or a client tab's proxy to the holder's (`client-library.ts`): the four reads a search makes. */
+  index: SearchReader;
   snapshot: Snapshot;
   lookups?: Lookups;
   query: string;
@@ -260,7 +261,7 @@ export async function searchLocal(opts: LocalSearchOptions): Promise<LocalSearch
  * nothing, and the line under the results has to be able to say that is why.
  */
 async function coverageOf(
-  index: SearchIndex,
+  index: SearchReader,
   snapshot: Snapshot,
   notes: Map<string, LocalNote>,
   inScope: (note: LocalNote) => boolean,

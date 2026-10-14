@@ -1177,7 +1177,10 @@ the browser's private storage, copied from the server the first time you sign in
 app picks up where it stopped) and kept current by the change feed
 after — on open, when you come back to the tab, and the moment another device saves,
 through a socket that says only that something changed. A warm open draws the list with no
-request at all.
+request at all. One tab or window holds the library file at a time, and every other tab
+of the same account works through it — reading the same copy, saving into the same queue,
+offline included — so nothing tells them apart. Settings → Offline says which tab holds
+the file and moves it to the one you are in with one press.
 
 Edits land on the device first. A note you write, make, file, tag, trash or restore with
 no connection is saved here at once — the note head says "Saved", with a small cloud
