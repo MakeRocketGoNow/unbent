@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { runInDurableObject } from 'cloudflare:test';
-import { REVISIONS_KEPT, UNFILED } from '@unbent/shared';
+import { REVISIONS_KEPT, UNFILED, encodeCursor } from '@unbent/shared';
 import { beginDump } from '@unbent/api/lib/dump';
 import { DUMP_TABLES } from '@unbent/api/store/tables';
 import { freshStore } from './helpers.js';
@@ -275,6 +275,68 @@ describe('notes: listing and counting', () => {
     expect(compact).not.toHaveProperty('fields');
     // Paging is by the sort key, which a compact row still carries.
     expect(compact!.createdAt).toBe(full!.createdAt);
+
+    // Asked for, the values named come back, no others, and still not the body (MAK-216).
+    const code = (await stub.createField(nb.id, { name: 'Code', type: 'text', options: [] })) as { id: string };
+    await stub.update(made.id, { fields: { [code.id]: 'TEN' } });
+    const [withFields] = await stub.list({ limit: 50, compact: true, compactFields: [store.id] });
+    expect(withFields).toMatchObject({ excerpt: '' });
+    expect(withFields!.fields).toEqual([expect.objectContaining({ fieldId: store.id, value: 'Acme' })]);
+  });
+
+  it('creates many notes in one call, all or none (MAK-214)', async () => {
+    const { stub } = freshStore('create-many');
+    const nb = (await stub.createNotebook('Acme Screenings'))!;
+    const year = (await stub.createField(nb.id, { name: 'Year', type: 'number', options: [] })) as { id: string };
+
+    const made = await stub.createMany([
+      note({ title: 'Coyote Returns', notebook: 'Acme Screenings', fields: { [year.id]: 1999 } }),
+      note({ title: 'Acme: The Series', notebook: 'Acme Screenings', tags: ['tv'] }),
+    ]);
+    expect(made.map((m) => [m.title, m.skipped])).toEqual([['Coyote Returns', false], ['Acme: The Series', false]]);
+    expect((await stub.get(made[0]!.id))?.fields?.[0]?.value).toBe(1999);
+    expect((await stub.get(made[1]!.id))?.tags).toEqual(['tv']);
+
+    // A value that does not fit takes the whole batch with it, the good note before it too.
+    await expect(
+      stub.createMany([
+        note({ title: 'Fine', notebook: 'Acme Screenings' }),
+        note({ title: 'Bad', notebook: 'Acme Screenings', fields: { [year.id]: 'soon' } }),
+      ]),
+    ).rejects.toThrow();
+    expect(await stub.count({ notebook: 'Acme Screenings' })).toBe(2);
+  });
+
+  it('skips a title its notebook already holds, and one given twice, when asked', async () => {
+    const { stub } = freshStore('create-many-skip');
+    const held = await stub.create(note({ title: 'Coyote Returns', notebook: 'Acme Screenings' }));
+    await stub.create(note({ title: 'Elsewhere', notebook: 'Podcast Bookmarks' }));
+    const loose = await stub.create(note({ title: 'Loose' }));
+
+    const made = await stub.createMany(
+      [
+        note({ title: 'coyote returns', notebook: 'acme screenings' }),
+        // The same title in another notebook is not a duplicate.
+        note({ title: 'Elsewhere', notebook: 'Acme Screenings' }),
+        note({ title: 'New one', notebook: 'Acme Screenings' }),
+        note({ title: 'NEW ONE', notebook: 'Acme Screenings' }),
+        note({ title: 'Loose' }),
+        // Untitled notes are never one another's duplicates.
+        note({ title: '', notebook: 'Acme Screenings' }),
+        note({ title: '', notebook: 'Acme Screenings' }),
+      ],
+      { skipExisting: true },
+    );
+    expect(made.map((m) => m.skipped)).toEqual([true, false, false, true, true, false, false]);
+    expect(made[0]).toEqual({ id: held.id, title: 'Coyote Returns', skipped: true });
+    expect(made[3]).toEqual({ id: made[2]!.id, title: 'New one', skipped: true });
+    expect(made[3]!.id).toBe(made[2]!.id);
+    expect(made[4]!.id).toBe(loose.id);
+    expect(await stub.count({ notebook: 'Acme Screenings' })).toBe(5);
+
+    // Without the flag, a title is only a title.
+    const again = await stub.createMany([note({ title: 'Coyote Returns', notebook: 'Acme Screenings' })]);
+    expect(again[0]!.skipped).toBe(false);
   });
 
   it('finds a notebook by name whatever its case, with its own fields and no other notebook\'s', async () => {
@@ -968,7 +1030,7 @@ describe('composites', () => {
     // Both big bodies would pass the budget, so the page stops after the first and says where.
     expect(first.notes.map((n) => n.title)).toEqual(['One']);
     expect(first.total).toBe(3);
-    expect(first.cursor).toBe(`1\u001F${one.id}`);
+    expect(first.cursor).toBe(encodeCursor(1, one.id));
     // The second big body and the small one fit together; a short page is the end.
     const second = await stub.exportPage({ limit: 10, sort: 'created', order: 'asc', cursor: first.cursor! }, null);
     expect(second.notes.map((n) => n.title)).toEqual(['Two', 'Three']);
@@ -978,7 +1040,7 @@ describe('composites', () => {
     // A full page that fits gets the ordinary cursor.
     const paged = await stub.exportPage({ limit: 1, sort: 'created', order: 'asc', cursor: first.cursor! }, null);
     expect(paged.notes.map((n) => n.title)).toEqual(['Two']);
-    expect(paged.cursor).toBe(`2\u001F${two.id}`);
+    expect(paged.cursor).toBe(encodeCursor(2, two.id));
   });
 });
 
@@ -1105,6 +1167,7 @@ describe('rows read on an archive-sized store', () => {
         stub.listPage({ limit: 50, untagged: true, notebook: 'Notebook 4' }, { untagged: true, notebook: 'Notebook 4' })),
       await measure('untagged page with its total', () => stub.listPage({ limit: 50, untagged: true }, { untagged: true })),
       await measure('compact page of 500', () => stub.list({ limit: 500, compact: true })),
+      await measure('compact page of 500 with field values', () => stub.list({ limit: 500, compact: true, compactFields: ['amount'] })),
       await measure('notebook by name', () => stub.notebookByName('notebook 0')),
       await measure('field targets for 500 notes', () => stub.fieldTargets(Array.from({ length: 500 }, (_, k) => `n${String(k * 5).padStart(5, '0')}`))),
       await measure('get', () => stub.get('n01500')),
@@ -1181,6 +1244,28 @@ describe('rows read on an archive-sized store', () => {
         'bulk change inside the window',
         () => stub.updateMany(Array.from({ length: 50 }, (_, k) => `n${String(100 + k).padStart(5, '0')}`), { addTags: ['refiled'] }),
       ),
+      // Fifty new notes into a big notebook, half of them titles it already holds: a probe
+      // of the notebook's title index each, and the writes of the twenty-five made.
+      await measure('create fifty, skipping titles held', () =>
+        stub.createMany(
+          Array.from({ length: 50 }, (_, k) => ({
+            id: crypto.randomUUID(),
+            title: k % 2 === 0 ? `Title ${String(k * 5).padStart(3, '0')}` : `Fresh ${k}`,
+            body: '',
+            tags: [],
+            notebook: 'Notebook 0',
+          })),
+          { skipExisting: true },
+        ),
+      ),
+      // The same for notes filed nowhere, the other statement the check has: the index's
+      // null notebook run, which no note of this store is in.
+      await measure('create fifty unfiled, skipping titles held', () =>
+        stub.createMany(
+          Array.from({ length: 50 }, (_, k) => ({ id: crypto.randomUUID(), title: `Fresh unfiled ${k % 25}`, body: '', tags: [] })),
+          { skipExisting: true },
+        ),
+      ),
       await measure('history list', () => stub.listRevisions('n00021')),
       await measure('history copy', async () => stub.getRevision('n00021', (await stub.listRevisions('n00021'))![5]!.id)),
       await measure('history restore', async () => stub.restoreRevision('n00021', (await stub.listRevisions('n00021'))![5]!.id)),
@@ -1236,6 +1321,18 @@ describe('rows read on an archive-sized store', () => {
       // names (1,749, measured 2026-10-04). The same page with its field values and files
       // read 2,885, and read every body into the object besides.
       'compact page of 500': 2000,
+      // The same page with one field's values: a probe of the values' key per note for
+      // the field named, and its definition for each value found. A note's other values
+      // are never read, so this does not grow with how many fields a notebook has (2,295,
+      // measured 2026-10-14).
+      'compact page of 500 with field values': 2500,
+      // A probe of the notebook's title index per note, a row or two, and the rows each
+      // new note writes (228 read, measured 2026-10-14). A check that read the notebook
+      // would be six hundred rows for each note.
+      'create fifty, skipping titles held': 400,
+      // Unfiled, on the same index's null run; a plan that looked for the null notebook by
+      // walking the notes would read the store's three thousand (78, measured 2026-10-14).
+      'create fifty unfiled, skipping titles held': 200,
       // The notebook's row by name and its definitions: nothing that grows with the notes.
       'notebook by name': 12,
       // Five hundred notes of one notebook by id, two rows a note — the key, then the

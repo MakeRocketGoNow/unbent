@@ -3,6 +3,7 @@
  * API contract and the TypeScript type, so the two cannot drift.
  */
 import { z } from 'zod';
+import { cursorSchema } from './cursor.js';
 import { dateOnlySchema } from './dates.js';
 import {
   MAX_FIELD_NAME_LENGTH,
@@ -634,7 +635,7 @@ export const noteSortSchema = z.enum(NOTE_SORTS).default(DEFAULT_NOTE_SORT);
 export const noteOrderSchema = z.enum(['asc', 'desc']).default('desc');
 
 export const listNotesQuerySchema = z.object({
-  cursor: z.string().optional(),
+  cursor: cursorSchema.optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   tag: tagFilterSchema,
   notebook: z.string().optional(),
@@ -727,7 +728,7 @@ export const exportQuerySchema = z.object({
  */
 export const exportPageQuerySchema = exportQuerySchema
   .extend({
-    cursor: z.string().optional(),
+    cursor: cursorSchema.optional(),
     limit: z.coerce.number().int().min(1).max(100).default(50),
     /**
      * Only these notes: an export of a selection, which no filter can describe. Given once

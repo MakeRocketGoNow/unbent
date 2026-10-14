@@ -889,6 +889,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   create(input: Parameters<NotesStore['create']>[0]) { return this.writing(() => this.notes.create(input)); }
   duplicate(id: string, newId: string) { return this.writing(() => this.notes.duplicate(id, newId)); }
   createOrFind(input: Parameters<NotesStore['createOrFind']>[0]) { return this.writing(() => this.notes.createOrFind(input)); }
+  createMany(inputs: Parameters<NotesStore['createMany']>[0], opts?: Parameters<NotesStore['createMany']>[1]) { return this.writing(() => this.notes.createMany(inputs, opts)); }
   duplicateOrFind(id: string, newId: string) { return this.writing(() => this.notes.duplicateOrFind(id, newId)); }
   update(id: string, patch: Parameters<NotesStore['update']>[1]) { return this.writing(() => this.notes.update(id, patch)); }
   appendToBody(id: string, markdown: string) { return this.writing(() => this.notes.appendToBody(id, markdown)); }

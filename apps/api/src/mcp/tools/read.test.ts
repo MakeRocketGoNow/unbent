@@ -121,6 +121,102 @@ describe('list_notes with field filters', () => {
   });
 });
 
+describe('list_notes compact with include (MAK-216)', () => {
+  const def = (id: string, name: string): FieldDef => ({
+    id,
+    notebookId: 'nb-1',
+    name,
+    type: 'text',
+    options: [],
+    scale: null,
+    currency: null,
+    position: 0,
+  });
+  const fields = [def('f-type', 'Type'), def('f-url', 'URL'), def('f-year', 'Year')];
+  const value = (fieldId: string, name: string, v: string, notebookId = 'nb-1') => ({
+    fieldId,
+    name,
+    type: 'text',
+    value: v,
+    notebookId,
+    notebook: notebookId === 'nb-1' ? 'Acme Screenings' : 'Elsewhere',
+    position: 0,
+  });
+
+  function listRepo() {
+    const pages: Array<Record<string, unknown>> = [];
+    let lookups = 0;
+    const repo = {
+      notebookByName: async (name: string) => {
+        lookups++;
+        return name.toLowerCase() === 'acme screenings' ? { id: 'nb-1', name: 'Acme Screenings', fields } : null;
+      },
+      listPage: async (list: Record<string, unknown>) => {
+        pages.push(list);
+        return {
+          items: [
+            {
+              id: 'n1',
+              title: 'Coyote Returns',
+              notebook: 'Acme Screenings',
+              notebookId: 'nb-1',
+              tags: [],
+              // A leftover "Type" from another notebook must not stand in for this one's.
+              fields: [value('f-other', 'Type', 'Wrong'), value('f-type', 'Type', 'Movie'), value('f-year', 'Year', '1999')],
+            },
+            { id: 'n2', title: 'Acme: The Series', notebook: 'Acme Screenings', notebookId: 'nb-1', tags: ['tv'] },
+          ],
+          total: 2,
+        };
+      },
+    } as unknown as NotesRepo;
+    return { pages, lookups: () => lookups, list: collect(repo).get('list_notes')! };
+  }
+
+  it('adds just the named fields to each row, by their stored names, null where unset', async () => {
+    const { pages, list } = listRepo();
+    const page = answer(await list({ limit: 500, compact: true, notebook: 'acme screenings', include: ['type', 'URL'] }));
+    expect(pages[0]?.['compactFields']).toEqual(['f-type', 'f-url']);
+    expect(page.notes).toEqual([
+      { id: 'n1', title: 'Coyote Returns', notebook: 'Acme Screenings', tags: [], fields: { Type: 'Movie', URL: null } },
+      { id: 'n2', title: 'Acme: The Series', notebook: 'Acme Screenings', tags: ['tv'], fields: { Type: null, URL: null } },
+    ]);
+  });
+
+  it('looks the notebook up once when include and a field filter both need it', async () => {
+    const { lookups, list } = listRepo();
+    const result = await list({
+      limit: 25,
+      compact: true,
+      notebook: 'Acme Screenings',
+      include: ['Year'],
+      fields: [{ field: 'Type', op: 'set' }],
+    });
+    expect(result.isError).toBeFalsy();
+    expect(lookups()).toBe(1);
+  });
+
+  it('asks for no field values when include is not given', async () => {
+    const { pages, list } = listRepo();
+    const page = answer(await list({ limit: 25, compact: true, notebook: 'Acme Screenings' }));
+    expect(pages[0]?.['compactFields']).toEqual([]);
+    expect(page.notes[0]).not.toHaveProperty('fields');
+  });
+
+  it('refuses an unknown name, a missing notebook, and a full page', async () => {
+    const { pages, list } = listRepo();
+    const unknown = await list({ limit: 25, compact: true, notebook: 'Acme Screenings', include: ['Rating'] });
+    expect(unknown.isError).toBe(true);
+    expect(unknown.content[0]!.text).toContain('Type, URL, Year');
+    const noNotebook = await list({ limit: 25, compact: true, include: ['Type'] });
+    expect(noNotebook.content[0]!.text).toContain('include needs a notebook');
+    const full = await list({ limit: 25, notebook: 'Acme Screenings', include: ['Type'] });
+    expect(full.isError).toBe(true);
+    expect(full.content[0]!.text).toContain('compact');
+    expect(pages).toHaveLength(0);
+  });
+});
+
 describe('list_tags with a notebook or tags', () => {
   function tagsRepo() {
     const calls: Array<{ method: string; arg?: unknown }> = [];

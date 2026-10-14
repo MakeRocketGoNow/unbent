@@ -803,8 +803,8 @@ anything else that speaks the protocol can work with your notes directly. The se
 
 Connecting runs the ordinary OAuth flow: the client registers itself, a browser opens on the
 consent screen, and approving it hands the client a token of its own. The tools cover
-search and list, reading a note in full, create, edit, tag, move, trash and restore — the
-last four for several notes at once — attaching a file, and notebook management. Note bodies are Markdown and pass whole in both
+search and list, reading a note in full, create, edit, tag, move, trash and restore — create
+and the last four for several notes at once — attaching a file, and notebook management. Note bodies are Markdown and pass whole in both
 directions, so an assistant writes a complete note in one call.
 
 Three are worth knowing about:
@@ -863,7 +863,10 @@ replaces is kept: see [Undoing an edit](#undoing-an-edit).
 Client registration is open, because clients register themselves at connect time and there
 is no way to pre-provision credentials for software you have never heard of. A registered
 client with no approved consent can read nothing; the registration endpoint is rate limited
-so the table cannot grow quickly.
+so the table cannot grow quickly. A public client whose redirects are all `http://localhost`,
+`127.0.0.1` or `[::1]` is registered as a native app even when it does not say so, as the
+MCP SDK does not; one that keeps a secret and redirects to this machine is refused with a
+message saying to register it as native.
 
 Locally, point the client at the **SPA** origin rather than the Worker's — the port
 `pnpm dev` prints first. Tokens are bound to the MCP endpoint's URL as their audience, and
