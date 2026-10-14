@@ -321,6 +321,16 @@ describe('unstoreableFieldIds', () => {
     expect(unstoreableFieldIds(draft({ fields: { [amount.id]: null } }), note(), [amount])).toEqual([]);
   });
 
+  it('names only a field the editor can type into, when it says which those are', () => {
+    // Stored, so the row's type alone says "12." is not a number yet — but carried from a
+    // notebook the note has left, there is no input to finish it in.
+    const carried = note({ fields: [value(amount, 10)] });
+    const typing = draft({ fields: { [amount.id]: '12.' } });
+    expect(unstoreableFieldIds(typing, carried, [], new Set())).toEqual([]);
+    expect(unstoreableFieldIds(typing, carried, [])).toEqual([amount.id]);
+    expect(unstoreableFieldIds(typing, carried, [amount], new Set([amount.id]))).toEqual([amount.id]);
+  });
+
   /*
      Neither of these is something the user can finish typing, so neither belongs in an
      indicator asking them to: the field is gone, and the retired select value is one the

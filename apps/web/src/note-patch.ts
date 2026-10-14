@@ -104,18 +104,20 @@ function sameTagSet(a: string[], b: string[]): boolean {
  * A field value the type cannot store yet is an exception: it was in `sent` but never
  * written, so draft and sent match and the server still has the old value. Taking that
  * would snap the field back while the head still said Unsaved. `definitions` is how
- * those ids are told; without it, a stored row's type is enough.
+ * those ids are told; without it, a stored row's type is enough. `editable` narrows
+ * them to the fields the editor can type into (`unstoreableFieldIds`).
  */
 export function rebaseAfterAck(
   draft: NoteDraft,
   sent: NoteDraft,
   server: Pick<Note, 'title' | 'body' | 'tags' | 'notebook' | 'fields'>,
   definitions?: FieldDef[],
+  editable?: ReadonlySet<string>,
 ): NoteDraft {
   const was = sent;
   const now = seedFrom(server);
   const fields = { ...draft.fields };
-  const held = new Set(unstoreableFieldIds(draft, server, definitions));
+  const held = new Set(unstoreableFieldIds(draft, server, definitions, editable));
   for (const id of new Set([...Object.keys(now.fields), ...Object.keys(was.fields)])) {
     if (held.has(id)) continue;
     if (sameOrBothEmpty(draft.fields[id] ?? null, was.fields[id] ?? null)) fields[id] = now.fields[id] ?? null;
@@ -142,9 +144,10 @@ export function seedFromKeepingHeld(
   note: Pick<Note, 'title' | 'body' | 'tags' | 'notebook' | 'fields'>,
   draft: NoteDraft,
   definitions?: FieldDef[],
+  editable?: ReadonlySet<string>,
 ): NoteDraft {
   const next = seedFrom(note);
-  const held = unstoreableFieldIds(draft, note, definitions);
+  const held = unstoreableFieldIds(draft, note, definitions, editable);
   if (held.length === 0) return next;
   const fields = { ...next.fields };
   for (const id of held) {
@@ -232,13 +235,22 @@ export function buildNotePatch(
  *
  * An id the notebook no longer defines is not in here. There is nothing to type that
  * would make it storeable, and nothing for the editor to point at.
+ *
+ * `editable` is how the editor says which those are, once it knows: the ids of the fields
+ * it draws an input for. A stored row is enough to say a value's type, so without it a
+ * field carried from a notebook the note has left — drawn as a read-only row, with only
+ * Clear beside it — would still hold "12.", and the head would say Unsaved over nothing
+ * the person can finish. Absent, every id with a type counts, as the save's own callers
+ * (`actions.ts`) need.
  */
 export function unstoreableFieldIds(
   draft: NoteDraft,
   note: Pick<Note, 'fields'>,
   definitions: FieldDef[] | undefined,
+  editable?: ReadonlySet<string>,
 ): string[] {
-  return diffFields(draft.fields, note.fields ?? [], definitions).held;
+  const { held } = diffFields(draft.fields, note.fields ?? [], definitions);
+  return editable ? held.filter((id) => editable.has(id)) : held;
 }
 
 function sameTags(a: string[], b: string[]): boolean {

@@ -170,17 +170,21 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   const seenFieldDefs = useRef(new Map<string, FieldDef>());
   const knownFieldDefs = rememberFieldDefs(seenFieldDefs.current, fieldDefs.data);
   /*
-     The definitions the editor draws, which is what decides whether a half-typed value
-     is held — not every one seen. A value whose field the notebook no longer has (filed
-     elsewhere, or deleted in another tab) is not on screen, so holding it would keep the
-     head on Unsaved over nothing the person can finish or clear. An unfiled note draws
-     none. While the notebook's are loading, every one seen stands in, or a first value
-     typed a moment before would snap back in the gap. In a ref because the outbox's and
-     the feed's subscriptions read it, and they hold the render that subscribed.
+     The fields the editor draws an input for, which is what decides whether a half-typed
+     value is held — not every one seen. A value whose field the notebook no longer has
+     (filed elsewhere, or deleted in another tab) has no input: at most a read-only row
+     carried from the old notebook. Holding it would keep the head on Unsaved over
+     nothing the person can finish. An unfiled note draws none. Undefined while the
+     notebook's are loading, and then nothing is narrowed, or a first value typed a moment
+     before would snap back in the gap. In a ref because the outbox's and the feed's
+     subscriptions read it, and they hold the render that subscribed.
   */
-  const drawnFieldDefs = draft.notebook === null ? [] : fieldDefs.data;
-  const drawnFieldDefsRef = useRef(drawnFieldDefs);
-  drawnFieldDefsRef.current = drawnFieldDefs;
+  const editableFieldIds = useMemo(
+    () => (draft.notebook === null ? new Set<string>() : fieldDefs.data && new Set(fieldDefs.data.map((d) => d.id))),
+    [draft.notebook, fieldDefs.data],
+  );
+  const editableFieldIdsRef = useRef(editableFieldIds);
+  editableFieldIdsRef.current = editableFieldIds;
   /** Which note `draft` was seeded from; guards autosave against a not-yet-seeded draft. */
   const [draftFor, setDraftFor] = useState<string | null>(null);
   /**
@@ -493,20 +497,16 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     return [...seenFieldDefs.current.values()];
   }
 
-  /** What a reseed or a rebase judges a held value by: the drawn ones, read when called. */
-  function heldFieldDefs(): FieldDef[] {
-    return drawnFieldDefsRef.current ?? liveFieldDefs();
-  }
-
   /**
    * Hands the open draft whatever the server's answer changed that the person has not
    * edited since `sent`, the draft the answered save carried. A functional update, so
    * typing that lands in the same tick is kept rather than overwritten.
    */
   function rebaseDraft(sent: NoteDraft, answer: Note) {
-    const defs = heldFieldDefs();
+    const defs = liveFieldDefs();
+    const editable = editableFieldIdsRef.current;
     setDraft((d) => {
-      const next = rebaseAfterAck(d, sent, answer, defs);
+      const next = rebaseAfterAck(d, sent, answer, defs, editable);
       return JSON.stringify(next) === JSON.stringify(d) ? d : next;
     });
   }
@@ -525,7 +525,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   function reseed(from: Note, keep?: NoteDraft) {
     setBase(from.id, from);
     queryClient.setQueryData(keys.note(from.id), from);
-    showDraft(keep ? seedFromKeepingHeld(from, keep, heldFieldDefs()) : seedFrom(from));
+    showDraft(keep ? seedFromKeepingHeld(from, keep, liveFieldDefs(), editableFieldIdsRef.current) : seedFrom(from));
   }
 
   /**
@@ -720,7 +720,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
           // patched against the old base, where what theirs changed reads as unchanged
           // and drops out (review of #354).
           setBase(id, theirs);
-          if (noteIdRef.current === id) showDraft(rebaseAfterAck(draftRef.current, seedFrom(base), theirs, heldFieldDefs()));
+          if (noteIdRef.current === id) showDraft(rebaseAfterAck(draftRef.current, seedFrom(base), theirs, definitions, editableFieldIdsRef.current));
           return;
         }
         if (typeof outcome !== 'object') return;
@@ -835,7 +835,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
      state machine is left alone — the save did succeed, and failing it would put back the
      400 that took the body down with it.
   */
-  const holdingField = editing && unstoreableFieldIds(draft, note, drawnFieldDefs ?? knownFieldDefs).length > 0;
+  const holdingField = editing && unstoreableFieldIds(draft, note, knownFieldDefs, editableFieldIds).length > 0;
   /*
      A save that failed because the connection went is not "Save failed" in red: nothing is
      wrong with the note, the typing is held, and it goes when the connection does. The
