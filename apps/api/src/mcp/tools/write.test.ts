@@ -738,7 +738,7 @@ describe('create_notes (MAK-214)', () => {
       notebooksOverview: async () => {
         overviews++;
         return {
-          notebooks: [{ id: 'nb-watch', name: 'Watch Later' }],
+          notebooks: [{ id: 'nb-watch', name: 'Acme Screenings' }],
           unfiled: 0,
           fields: [...defs, { ...def('f-other', 'Type', 'text'), notebookId: 'nb-other' }],
         };
@@ -757,8 +757,8 @@ describe('create_notes (MAK-214)', () => {
     const { calls, overviews, tool } = batchRepo();
     const result = await tool({
       notes: [
-        make({ title: 'Coyote Returns', notebook: 'watch later', fields: { type: 'Movie', Year: 1999 } }),
-        make({ title: 'Acme: The Series', notebook: 'Watch Later', fields: { Type: 'Series' } }),
+        make({ title: 'Coyote Returns', notebook: 'acme screenings', fields: { type: 'Movie', Year: 1999 } }),
+        make({ title: 'Acme: The Series', notebook: 'Acme Screenings', fields: { Type: 'Series' } }),
         make({ title: 'No fields' }),
       ],
       skipExisting: true,
@@ -783,7 +783,7 @@ describe('create_notes (MAK-214)', () => {
 
   it('asks for no definitions when no note names a field', async () => {
     const { overviews, tool } = batchRepo();
-    await tool({ notes: [make({ title: 'A' }), make({ title: 'B', notebook: 'Watch Later' })], skipExisting: false });
+    await tool({ notes: [make({ title: 'A' }), make({ title: 'B', notebook: 'Acme Screenings' })], skipExisting: false });
     expect(overviews()).toBe(0);
   });
 
@@ -791,9 +791,9 @@ describe('create_notes (MAK-214)', () => {
     const { calls, tool } = batchRepo();
     const result = await tool({
       notes: [
-        make({ title: 'Fine', notebook: 'Watch Later', fields: { Type: 'Movie' } }),
-        make({ title: 'Wrong option', notebook: 'Watch Later', fields: { Type: 'Documentary' } }),
-        make({ title: 'Wrong name', notebook: 'Watch Later', fields: { Rating: 4 } }),
+        make({ title: 'Fine', notebook: 'Acme Screenings', fields: { Type: 'Movie' } }),
+        make({ title: 'Wrong option', notebook: 'Acme Screenings', fields: { Type: 'Documentary' } }),
+        make({ title: 'Wrong name', notebook: 'Acme Screenings', fields: { Rating: 4 } }),
         make({ title: 'No notebook', fields: { Type: 'Movie' } }),
       ],
       skipExisting: false,

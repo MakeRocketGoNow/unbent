@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { loopbackRegistration } from './oauth-registration.js';
 
 const publicClient = (redirect_uris: unknown, extra: Record<string, unknown> = {}) => ({
-  client_name: 'Podcast Bookmarks',
+  client_name: 'Acme Assistant',
   redirect_uris,
   grant_types: ['authorization_code', 'refresh_token'],
   response_types: ['code'],

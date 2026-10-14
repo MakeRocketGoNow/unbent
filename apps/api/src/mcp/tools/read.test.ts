@@ -139,7 +139,7 @@ describe('list_notes compact with include (MAK-216)', () => {
     type: 'text',
     value: v,
     notebookId,
-    notebook: notebookId === 'nb-1' ? 'Watch Later' : 'Elsewhere',
+    notebook: notebookId === 'nb-1' ? 'Acme Screenings' : 'Elsewhere',
     position: 0,
   });
 
@@ -149,7 +149,7 @@ describe('list_notes compact with include (MAK-216)', () => {
     const repo = {
       notebookByName: async (name: string) => {
         lookups++;
-        return name.toLowerCase() === 'watch later' ? { id: 'nb-1', name: 'Watch Later', fields } : null;
+        return name.toLowerCase() === 'acme screenings' ? { id: 'nb-1', name: 'Acme Screenings', fields } : null;
       },
       listPage: async (list: Record<string, unknown>) => {
         pages.push(list);
@@ -158,13 +158,13 @@ describe('list_notes compact with include (MAK-216)', () => {
             {
               id: 'n1',
               title: 'Coyote Returns',
-              notebook: 'Watch Later',
+              notebook: 'Acme Screenings',
               notebookId: 'nb-1',
               tags: [],
               // A leftover "Type" from another notebook must not stand in for this one's.
               fields: [value('f-other', 'Type', 'Wrong'), value('f-type', 'Type', 'Movie'), value('f-year', 'Year', '1999')],
             },
-            { id: 'n2', title: 'Acme: The Series', notebook: 'Watch Later', notebookId: 'nb-1', tags: ['tv'] },
+            { id: 'n2', title: 'Acme: The Series', notebook: 'Acme Screenings', notebookId: 'nb-1', tags: ['tv'] },
           ],
           total: 2,
         };
@@ -175,11 +175,11 @@ describe('list_notes compact with include (MAK-216)', () => {
 
   it('adds just the named fields to each row, by their stored names, null where unset', async () => {
     const { pages, list } = listRepo();
-    const page = answer(await list({ limit: 500, compact: true, notebook: 'watch later', include: ['type', 'URL'] }));
+    const page = answer(await list({ limit: 500, compact: true, notebook: 'acme screenings', include: ['type', 'URL'] }));
     expect(pages[0]?.['compactFields']).toBe(true);
     expect(page.notes).toEqual([
-      { id: 'n1', title: 'Coyote Returns', notebook: 'Watch Later', tags: [], fields: { Type: 'Movie', URL: null } },
-      { id: 'n2', title: 'Acme: The Series', notebook: 'Watch Later', tags: ['tv'], fields: { Type: null, URL: null } },
+      { id: 'n1', title: 'Coyote Returns', notebook: 'Acme Screenings', tags: [], fields: { Type: 'Movie', URL: null } },
+      { id: 'n2', title: 'Acme: The Series', notebook: 'Acme Screenings', tags: ['tv'], fields: { Type: null, URL: null } },
     ]);
   });
 
@@ -188,7 +188,7 @@ describe('list_notes compact with include (MAK-216)', () => {
     const result = await list({
       limit: 25,
       compact: true,
-      notebook: 'Watch Later',
+      notebook: 'Acme Screenings',
       include: ['Year'],
       fields: [{ field: 'Type', op: 'set' }],
     });
@@ -198,19 +198,19 @@ describe('list_notes compact with include (MAK-216)', () => {
 
   it('asks for no field values when include is not given', async () => {
     const { pages, list } = listRepo();
-    const page = answer(await list({ limit: 25, compact: true, notebook: 'Watch Later' }));
+    const page = answer(await list({ limit: 25, compact: true, notebook: 'Acme Screenings' }));
     expect(pages[0]?.['compactFields']).toBe(false);
     expect(page.notes[0]).not.toHaveProperty('fields');
   });
 
   it('refuses an unknown name, a missing notebook, and a full page', async () => {
     const { pages, list } = listRepo();
-    const unknown = await list({ limit: 25, compact: true, notebook: 'Watch Later', include: ['Rating'] });
+    const unknown = await list({ limit: 25, compact: true, notebook: 'Acme Screenings', include: ['Rating'] });
     expect(unknown.isError).toBe(true);
     expect(unknown.content[0]!.text).toContain('Type, URL, Year');
     const noNotebook = await list({ limit: 25, compact: true, include: ['Type'] });
     expect(noNotebook.content[0]!.text).toContain('include needs a notebook');
-    const full = await list({ limit: 25, notebook: 'Watch Later', include: ['Type'] });
+    const full = await list({ limit: 25, notebook: 'Acme Screenings', include: ['Type'] });
     expect(full.isError).toBe(true);
     expect(full.content[0]!.text).toContain('compact');
     expect(pages).toHaveLength(0);

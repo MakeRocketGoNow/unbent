@@ -283,12 +283,12 @@ describe('notes: listing and counting', () => {
 
   it('creates many notes in one call, all or none (MAK-214)', async () => {
     const { stub } = freshStore('create-many');
-    const nb = (await stub.createNotebook('Watch Later'))!;
+    const nb = (await stub.createNotebook('Acme Screenings'))!;
     const year = (await stub.createField(nb.id, { name: 'Year', type: 'number', options: [] })) as { id: string };
 
     const made = await stub.createMany([
-      note({ title: 'Coyote Returns', notebook: 'Watch Later', fields: { [year.id]: 1999 } }),
-      note({ title: 'Acme: The Series', notebook: 'Watch Later', tags: ['tv'] }),
+      note({ title: 'Coyote Returns', notebook: 'Acme Screenings', fields: { [year.id]: 1999 } }),
+      note({ title: 'Acme: The Series', notebook: 'Acme Screenings', tags: ['tv'] }),
     ]);
     expect(made.map((m) => [m.title, m.skipped])).toEqual([['Coyote Returns', false], ['Acme: The Series', false]]);
     expect((await stub.get(made[0]!.id))?.fields?.[0]?.value).toBe(1999);
@@ -297,30 +297,30 @@ describe('notes: listing and counting', () => {
     // A value that does not fit takes the whole batch with it, the good note before it too.
     await expect(
       stub.createMany([
-        note({ title: 'Fine', notebook: 'Watch Later' }),
-        note({ title: 'Bad', notebook: 'Watch Later', fields: { [year.id]: 'soon' } }),
+        note({ title: 'Fine', notebook: 'Acme Screenings' }),
+        note({ title: 'Bad', notebook: 'Acme Screenings', fields: { [year.id]: 'soon' } }),
       ]),
     ).rejects.toThrow();
-    expect(await stub.count({ notebook: 'Watch Later' })).toBe(2);
+    expect(await stub.count({ notebook: 'Acme Screenings' })).toBe(2);
   });
 
   it('skips a title its notebook already holds, and one given twice, when asked', async () => {
     const { stub } = freshStore('create-many-skip');
-    const held = await stub.create(note({ title: 'Coyote Returns', notebook: 'Watch Later' }));
+    const held = await stub.create(note({ title: 'Coyote Returns', notebook: 'Acme Screenings' }));
     await stub.create(note({ title: 'Elsewhere', notebook: 'Podcast Bookmarks' }));
     const loose = await stub.create(note({ title: 'Loose' }));
 
     const made = await stub.createMany(
       [
-        note({ title: 'coyote returns', notebook: 'watch later' }),
+        note({ title: 'coyote returns', notebook: 'acme screenings' }),
         // The same title in another notebook is not a duplicate.
-        note({ title: 'Elsewhere', notebook: 'Watch Later' }),
-        note({ title: 'New one', notebook: 'Watch Later' }),
-        note({ title: 'NEW ONE', notebook: 'Watch Later' }),
+        note({ title: 'Elsewhere', notebook: 'Acme Screenings' }),
+        note({ title: 'New one', notebook: 'Acme Screenings' }),
+        note({ title: 'NEW ONE', notebook: 'Acme Screenings' }),
         note({ title: 'Loose' }),
         // Untitled notes are never one another's duplicates.
-        note({ title: '', notebook: 'Watch Later' }),
-        note({ title: '', notebook: 'Watch Later' }),
+        note({ title: '', notebook: 'Acme Screenings' }),
+        note({ title: '', notebook: 'Acme Screenings' }),
       ],
       { skipExisting: true },
     );
@@ -328,10 +328,10 @@ describe('notes: listing and counting', () => {
     expect(made[0]!.id).toBe(held.id);
     expect(made[3]!.id).toBe(made[2]!.id);
     expect(made[4]!.id).toBe(loose.id);
-    expect(await stub.count({ notebook: 'Watch Later' })).toBe(5);
+    expect(await stub.count({ notebook: 'Acme Screenings' })).toBe(5);
 
     // Without the flag, a title is only a title.
-    const again = await stub.createMany([note({ title: 'Coyote Returns', notebook: 'Watch Later' })]);
+    const again = await stub.createMany([note({ title: 'Coyote Returns', notebook: 'Acme Screenings' })]);
     expect(again[0]!.skipped).toBe(false);
   });
 

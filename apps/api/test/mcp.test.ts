@@ -1401,7 +1401,7 @@ describe('list_notes compact with include (MAK-216)', () => {
   }
 
   it('carries just the named fields beside each title', async () => {
-    const notebook = `Watch Later ${Date.now()}`;
+    const notebook = `Acme Screenings ${Date.now()}`;
     const { id: notebookId } = await call('create_notebook', { name: notebook });
     await call('create_notebook_field', { notebookId, name: 'Type', type: 'select', options: ['Movie', 'Series'] });
     await call('create_notebook_field', { notebookId, name: 'URL', type: 'url' });
