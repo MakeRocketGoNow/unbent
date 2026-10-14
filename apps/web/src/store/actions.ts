@@ -110,7 +110,8 @@ export interface SyncStatus {
 export interface UploadNotice {
   /** The upload's file id: what a dismissal names. */
   id: string;
-  filename: string;
+  /** The file the notice is about; absent for one about the note's files as a whole. */
+  filename?: string;
   message: string;
 }
 
@@ -239,8 +240,8 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     void storage.set(conflictKey(noteId), JSON.stringify(conflict)).catch((err: unknown) => console.error('[outbox] conflict not kept:', err));
   };
   const notices = new Map<string, UploadNotice[]>();
-  const notice = (upload: Upload, message: string) => {
-    const said = { id: upload.attachmentId, filename: upload.filename, message };
+  const notice = (upload: Pick<Upload, 'noteId' | 'attachmentId'> & { filename?: string }, message: string) => {
+    const said: UploadNotice = { id: upload.attachmentId, ...(upload.filename !== undefined ? { filename: upload.filename } : {}), message };
     notices.set(upload.noteId, [...(notices.get(upload.noteId) ?? []).filter((n) => n.id !== said.id), said]);
     void storage.set(noticeKey(upload.attachmentId), JSON.stringify({ noteId: upload.noteId, ...said })).catch((err: unknown) => console.error('[outbox] upload notice not kept:', err));
   };
@@ -420,15 +421,11 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
           const answer = await api.duplicateNote(sourceId, copyId).catch(refusal);
           // The copy's row goes in now; its files are the server's to make, and the
           // pull brings their rows. A copy whose files had no room (`filesSkipped`,
-          // MAK-108) is still the copy, said so under its files rather than kept on the row.
+          // MAK-108) is still the copy, said so under its files rather than kept on the
+          // row — about the files as a whole, so it names none.
           const { filesSkipped, ...copy } = answer as typeof answer & { filesSkipped?: { error: string } };
           took(copy);
-          if (filesSkipped) {
-            notice(
-              { noteId: copy.id, attachmentId: `files-skipped-${copy.id}`, filename: 'Files not copied', contentType: '', size: 0 },
-              filesSkipped.error,
-            );
-          }
+          if (filesSkipped) notice({ noteId: copy.id, attachmentId: `files-skipped-${copy.id}` }, filesSkipped.error);
           await settled();
           ended(transaction.id);
         } catch (err) {

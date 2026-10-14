@@ -323,7 +323,8 @@ export function Attachments({
     <div className="attachments-notices" role="status">
       {notices.map((n) => (
         <p key={n.id} className="bad small">
-          “{n.filename}”: {n.message}
+          {n.filename !== undefined && <>“{n.filename}”: </>}
+          {n.message}
         </p>
       ))}
       <Button variant="quiet" size="small" onClick={() => outbox?.dismissUploadNotices(noteId)}>
