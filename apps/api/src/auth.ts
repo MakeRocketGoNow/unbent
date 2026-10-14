@@ -488,8 +488,29 @@ export function confirmDeletionUrl(env: Env, token: string): string {
 function createAuth(env: Env): AuthInstance {
   warnIfOpenToAnyone(env);
   return betterAuth({
-    // Better Auth v1.5+ accepts a D1 binding directly and picks its own dialect.
-    // D1 has no interactive transactions; Better Auth falls back to batch() for atomicity.
+    /**
+     * Better Auth v1.5+ accepts a D1 binding directly and picks its own dialect. D1 has
+     * no interactive transactions; Better Auth falls back to batch() for atomicity.
+     *
+     * The D1 adapter's connection lock. Better Auth sends its queries through Kysely, and
+     * Kysely puts one lock around every query of an adapter that reports
+     * `supportsMultipleConnections: false` — Better Auth's D1 adapter does, by inheriting
+     * the answer from Kysely's own SQLite adapter, where it is right: better-sqlite3 is
+     * one synchronous handle. A D1 binding is not, and the lock is held by the Better Auth
+     * instance, which `getAuth` keeps per `env` and so shares with every request of the
+     * isolate. On Workers that wedges. A request the client cancels while its query is in
+     * flight — a timeout, a superseded fetch, a closed tab — has its I/O dropped, so the
+     * query never settles and the lock is never released; every later session check in
+     * the isolate then waits on it until the isolate is evicted. That was the stall of
+     * 2026-10-13, minutes long and only for requests carrying a real session (a bad or
+     * missing cookie never queries), and it reproduces on a preview with a handful of
+     * aborted requests. `patches/@better-auth__kysely-adapter@1.7.7.patch` makes the D1
+     * adapter answer `true`, which is the truth: D1 runs prepared statements concurrently
+     * and keeps no state on the connection, so the lock protected nothing. `pnpm patch`
+     * rather than our own dialect because the dialect is a private chunk of the adapter
+     * and Kysely is not a dependency of this package; the patch fails loudly on the next
+     * upgrade, and DEPENDENCIES.md says what to check then. `auth.test.ts` pins it.
+     */
     database: env.DB,
     baseURL: baseURLFor(env),
     // Apple's callback is a cross-origin POST; see providerOrigins.

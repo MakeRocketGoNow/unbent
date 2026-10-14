@@ -1,0 +1,25 @@
+diff --git a/dist/d1-sqlite-dialect-Cru74LbR.mjs b/dist/d1-sqlite-dialect-Cru74LbR.mjs
+index 6356a20f08a85395107f33207a02058205bb966a..5880083b6b889a01ee0e2af6674ffb9817012442 100644
+--- a/dist/d1-sqlite-dialect-Cru74LbR.mjs
++++ b/dist/d1-sqlite-dialect-Cru74LbR.mjs
+@@ -31,7 +31,19 @@ function createD1IndexIntrospector(database) {
+ 		}));
+ 	};
+ }
+-var D1SqliteAdapter = class extends SqliteAdapter {};
++var D1SqliteAdapter = class extends SqliteAdapter {
++	/**
++	* Patched (unbent): Kysely's SqliteAdapter answers false here, which makes RuntimeDriver
++	* take one ConnectionMutex around every query. That lock is for a single synchronous
++	* SQLite handle. A D1 binding has no connection state and runs prepared statements
++	* concurrently, so the lock protects nothing - and on Workers it wedges: a request
++	* cancelled while its query is in flight never releases it, and every later query in the
++	* isolate waits forever. See apps/api/src/auth.ts, "The D1 adapter's connection lock".
++	*/
++	get supportsMultipleConnections() {
++		return true;
++	}
++};
+ var D1SqliteDriver = class {
+ 	#config;
+ 	#connection;
