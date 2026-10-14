@@ -52,7 +52,9 @@ public struct AppConfig: Decodable, Equatable, Sendable {
     private static let localMethods: Set<String> = ["password", "passkey", "email-otp"]
 }
 
-/// `GET /api/me`. The user is nil rather than the call failing when there is no session.
+/// `GET /api/me`. The user is nil rather than the call failing when there is no session; when
+/// the server could not check the session at all, the call fails with 503, which is not a
+/// sign-out.
 public struct Me: Decodable, Sendable {
     public var user: MeUser?
 }

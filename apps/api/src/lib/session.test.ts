@@ -15,7 +15,7 @@ vi.mock('../auth.js', () => ({
 }));
 
 // Imported after the mock is registered, so the middleware closes over the stub.
-const { sessionMiddleware, requireAuth, SESSION_CHECK_MS } = await import('./session.js');
+const { sessionMiddleware, requireAuth, SESSION_CHECK_MS, whoAmI } = await import('./session.js');
 
 /** Only the shape the middleware hands to `getAuth`; the bindings are never touched here. */
 const env = { APP_URL: 'https://example.com' } as unknown as Env;
@@ -30,6 +30,7 @@ function app() {
   a.onError((_err, c) => c.json({ error: 'Internal error' }, 500));
   a.use('*', sessionMiddleware);
   a.get('/public', (c) => c.json({ userId: c.get('userId') ?? null }));
+  a.get('/me', whoAmI);
   a.get('/protected', requireAuth, (c) => c.json({ userId: c.get('userId') }));
   return a;
 }
@@ -128,5 +129,53 @@ describe('sessionMiddleware', () => {
     getSession.mockResolvedValue(null);
     const res = await call('/protected');
     expect(res.status).toBe(401);
+  });
+});
+
+describe('whoAmI', () => {
+  it('returns the user when a session resolves', async () => {
+    getSession.mockResolvedValue({ user: { id: 'u1', email: 'a@b.c', name: 'A', image: null } });
+    const res = await call('/me');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      user: { id: 'u1', email: 'a@b.c', name: 'A', image: null, legalVersion: null },
+    });
+  });
+
+  it('returns null rather than 401 when there is no session', async () => {
+    getSession.mockResolvedValue(null);
+    const res = await call('/me');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ user: null });
+  });
+
+  it('returns null, not 503, when Better Auth rejects the session itself', async () => {
+    getSession.mockRejectedValue(new APIError('UNAUTHORIZED', { message: 'Failed to get session' }));
+    const res = await call('/me');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ user: null });
+  });
+
+  /**
+   * The phones treat 200 with no user as a real sign-out: they clear the stored session
+   * and drop queued shares. A lookup that timed out is not that — it is the same failure
+   * `requireAuth` answers 503 for — and must not look like nobody is signed in.
+   */
+  it('answers 503 with Retry-After, not 200 with no user, when the session check never answers', async () => {
+    vi.useFakeTimers();
+    getSession.mockImplementation(() => new Promise(() => {}));
+    const pending = call('/me');
+    await vi.advanceTimersByTimeAsync(SESSION_CHECK_MS);
+    const res = await pending;
+    expect(res.status).toBe(503);
+    expect(res.headers.get('Retry-After')).toBe('60');
+    expect(await res.json()).not.toEqual({ user: null });
+  });
+
+  it('answers 503 when the session store fails', async () => {
+    getSession.mockRejectedValue(new Error('D1_ERROR: Network connection lost'));
+    const res = await call('/me');
+    expect(res.status).toBe(503);
+    expect(res.headers.get('Retry-After')).toBe('60');
   });
 });
