@@ -185,6 +185,28 @@ describe('planPatchFor', () => {
     expect(planPatchFor(paddle, event('subscription.created', sub(), T0), row)).toMatchObject({ paddleEventAt: T0 });
   });
 
+  /**
+   * A former subscriber who is comped keeps their customer id, so the webhook finds the
+   * row; and a person who lapsed and subscribed again has an old subscription whose late
+   * news must not take the row back.
+   */
+  it('leaves a comped account alone, and a live subscription to its own events', () => {
+    const comped: PlanRow = { ...row, plan: 'active', source: 'comp', planUntil: null, paddleSubscriptionId: 'sub_old', paddleStatus: 'canceled' };
+    expect(planPatchFor(paddle, event('subscription.updated', sub({ id: 'sub_old', status: 'canceled', current_billing_period: null })), comped)).toBeNull();
+    expect(planPatchFor(paddle, event('subscription.created', sub({ id: 'sub_new' })), comped)).toBeNull();
+    // A comp that has ended is a lapsed account, and a new subscription is its way back.
+    const ended: PlanRow = { ...comped, plan: 'inactive', planUntil: Date.parse('2026-10-01T00:00:00Z') };
+    expect(planPatchFor(paddle, event('subscription.created', sub({ id: 'sub_new' })), ended)).toMatchObject({ plan: 'active', source: 'paddle', paddleSubscriptionId: 'sub_new' });
+    const dated: PlanRow = { ...comped, plan: 'active', planUntil: Date.parse('2026-10-01T00:00:00Z') };
+    expect(planPatchFor(paddle, event('subscription.created', sub({ id: 'sub_new' })), dated)).not.toBeNull();
+
+    const live: PlanRow = { ...row, plan: 'active', source: 'paddle', paddleSubscriptionId: 'sub_new', paddleStatus: 'active' };
+    expect(planPatchFor(paddle, event('subscription.canceled', sub({ id: 'sub_old', status: 'canceled', current_billing_period: null })), live)).toBeNull();
+    const txn: PaddleTransaction = { id: 'txn_old', status: 'completed', customer_id: 'ctm_1', subscription_id: 'sub_old', custom_data: null, billing_period: { starts_at: T0, ends_at: NEXT_YEAR }, items: [], checkout: null };
+    expect(planPatchFor(paddle, event('transaction.completed', txn), live)).toBeNull();
+    expect(planPatchFor(paddle, event('subscription.updated', sub({ id: 'sub_new' })), live)).not.toBeNull();
+  });
+
   it('ignores what it does not follow', () => {
     expect(planPatchFor(paddle, event('subscription.imported', sub()), row)).toBeNull();
     expect(planPatchFor(paddle, event('customer.updated', sub()), row)).toBeNull();

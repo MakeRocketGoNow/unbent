@@ -37,6 +37,16 @@ export const SUBSCRIPTION_EVENTS: ReadonlySet<string> = new Set([
 /** Which events the destination is asked for, for the setup notes and the operator's check. */
 export const HANDLED_EVENTS: readonly string[] = [...SUBSCRIPTION_EVENTS, 'transaction.completed'];
 
+/** A comp still in force at `at`: `source` stays `comp` after one ends, so the dates say. */
+function compRunning(row: PlanRow, at: number): boolean {
+  return row.source === 'comp' && row.plan !== 'inactive' && (row.planUntil === null || row.planUntil > at);
+}
+
+/** Whether news of `subscriptionId` is the row's to take: it names the row's subscription, or the row's is canceled or none. */
+function theRows(row: PlanRow, subscriptionId: string): boolean {
+  return !row.paddleSubscriptionId || row.paddleStatus === 'canceled' || row.paddleSubscriptionId === subscriptionId;
+}
+
 function ms(rfc3339: string | null | undefined): number | null {
   if (!rfc3339) return null;
   const t = Date.parse(rfc3339);
@@ -86,11 +96,24 @@ export function storageGbOf(paddle: PaddleConfig, items: Array<{ price: { id: st
  *
  * `lapseNotifiedAt` is cleared whenever a paid period is ahead, so an account that
  * lapses, pays and lapses again is told the second time too.
+ *
+ * Two events change nothing however new they are. One about a subscription that is not
+ * the row's while the row's own is live: a former subscription's late news — a
+ * `subscription.canceled` for the one a person lapsed from, arriving after they
+ * subscribed again — would otherwise point the row back at the old subscription, and
+ * the account's deletion, which cancels what the row names, would then leave the live
+ * one charging. And any event while the account is comped: a comp keeps the customer id
+ * of a former subscriber, so the webhook can find the row, and a comp is the operator's
+ * word that the account is not Paddle's to move — the checkout route refuses a new
+ * subscription while one runs for the same reason. Once the comp has ended the row is a
+ * lapsed account like any other, and a new subscription's events are its way back.
  */
 export function planPatchFor(paddle: PaddleConfig, event: PaddleEvent, row: PlanRow): PlanPatch | null {
   const at = ms(event.occurred_at) ?? Date.now();
+  if (compRunning(row, at)) return null;
   if (SUBSCRIPTION_EVENTS.has(event.event_type)) {
     const sub = event.data as PaddleSubscription;
+    if (!theRows(row, sub.id)) return null;
     const paidFor = sub.status === 'active' || sub.status === 'trialing';
     const periodEnd = paidFor ? ms(sub.current_billing_period?.ends_at) : null;
     const planUntil = periodEnd ?? row.planUntil ?? at;
@@ -108,7 +131,7 @@ export function planPatchFor(paddle: PaddleConfig, event: PaddleEvent, row: Plan
   }
   if (event.event_type === 'transaction.completed') {
     const txn = event.data as PaddleTransaction;
-    if (!txn.subscription_id) return null;
+    if (!txn.subscription_id || !theRows(row, txn.subscription_id)) return null;
     const periodEnd = ms(txn.billing_period?.ends_at);
     const newSubscription = txn.subscription_id !== row.paddleSubscriptionId;
     return {

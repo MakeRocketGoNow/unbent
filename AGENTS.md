@@ -1057,9 +1057,10 @@ reads, search, export and an assistant's reads keep working. Three things hold t
   every tool, so its write tools check for themselves through `gatedRegistrar`
   (`mcp/plan-gate.ts`), keyed on each tool's `readOnlyHint`.
 - **What the account is, is derived.** `planStateOf` works the row out against the
-  clock; nothing flips rows on a timer. A comp is a row with no Paddle ids, which the
-  webhook can never match, and it is set from the operator's page, never with a Paddle
-  discount — a 100% discount there still asks for a card.
+  clock; nothing flips rows on a timer. A comp is set from the operator's page, never
+  with a Paddle discount — a 100% discount there still asks for a card — and while it
+  runs the webhook changes nothing on its row (`planPatchFor`), since a former
+  subscriber who is comped still has the customer id the webhook finds rows by.
 - **Bytes are checked where they come in.** Every path that stores or copies a file
   passes a `quota` to `storeAttachment` or `copyAttachments` (lib/quota.ts); the sum it
   is checked against is the store's own (schema 0008), never a read of the files table.

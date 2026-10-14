@@ -110,6 +110,13 @@ export const billing = new Hono<AppEnv>()
     const row = await planFor(c.env.DB, userId, now);
     const live = row.paddleSubscriptionId && !(row.paddleStatus === 'canceled' && planStateOf(row, now) === 'inactive');
     if (live) return c.json({ error: 'This account already has a subscription. Manage it from the portal.' }, 409);
+    // The page offers a running comp no checkout; the route refuses one too, since the
+    // webhook would then ignore the subscription's events (`planPatchFor`) and the
+    // person would be charged for a plan the row never took. A comp that has ended is a
+    // lapsed account, and subscribes as one.
+    if (row.source === 'comp' && planStateOf(row, now) !== 'inactive') {
+      return c.json({ error: 'This account is complimentary; there is nothing to pay for.' }, 409);
+    }
     try {
       const customerId = row.paddleCustomerId ?? (await findOrCreateCustomer(paddle, c.get('user')!.email, userId)).id;
       if (customerId !== row.paddleCustomerId) await updatePlan(c.env.DB, userId, { paddleCustomerId: customerId }, now);
