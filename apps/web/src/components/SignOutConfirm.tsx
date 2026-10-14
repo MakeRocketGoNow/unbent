@@ -30,7 +30,7 @@ export function SignOutConfirm() {
       <Confirm
         label="Confirm sign out with unsynced changes"
         question={questionText}
-        detail="Signing out removes them from this device. Staying signed in lets them finish syncing."
+        detail="Signing out removes them from this device. Stay signed in to keep them until they sync."
         onCancel={stay}
         focusCancel
         actions={[{ label: 'Sign out anyway', tone: 'danger', onConfirm: leave }]}
