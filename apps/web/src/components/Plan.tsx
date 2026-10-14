@@ -99,7 +99,10 @@ export function Plan() {
   // until the card is updated, which is the portal's form too — a new checkout would be
   // a second subscription beside the one Paddle is still trying to collect.
   const subscribed = plan.subscription !== null && !(plan.subscription.status === 'canceled' && plan.state === 'inactive');
-  const canSubscribe = !hosted && !subscribed && plan.source !== 'comp';
+  // A comp still running is asked for nothing; one that has ended is a lapsed account
+  // like any other, and the checkout is its way back — the operator's "end" and a dated
+  // comp running out both leave `source` as it was, so the source alone cannot say.
+  const canSubscribe = !hosted && !subscribed && !(plan.source === 'comp' && plan.state !== 'inactive');
   // Storage is changed on a subscription Paddle will bill; a canceled one is refused.
   const canChangeStorage = subscribed && plan.subscription?.status !== 'canceled';
   const chosenUnits = units ?? unitsOf(plan);

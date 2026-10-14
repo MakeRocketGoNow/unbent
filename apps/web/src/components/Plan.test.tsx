@@ -100,6 +100,12 @@ describe('Plan', () => {
     expect(screen.queryByRole('button')).toBeNull();
   });
 
+  it('offers a comp that has ended the checkout, as any lapsed account', async () => {
+    harness({ state: 'inactive', source: 'comp', until: NOW - DAY });
+    expect(await screen.findByRole('heading', { name: 'Read-only' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Subscribe/ })).toBeTruthy();
+  });
+
   /** Both stores forbid a web checkout inside the app; the page says where to go instead. */
   it('draws no buttons inside the apps, and says where the plan is managed', async () => {
     vi.mocked(isHosted).mockReturnValue(true);
