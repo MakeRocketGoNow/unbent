@@ -214,7 +214,8 @@ export async function sweepStores(
   // A visit costs up to two subrequests (a wipe and its `usage`), so the page gives up
   // half of what the mail spent: a batch of deletions on a mail-heavy hour then stays
   // under the budget, where only the expiries and finishes are budgeted below.
-  const rows = await listDirectory(env.DB, after, BATCH - Math.ceil((opts.spent ?? 0) / 2));
+  const page = Math.max(1, BATCH - Math.ceil((opts.spent ?? 0) / 2));
+  const rows = await listDirectory(env.DB, after, page);
   const writes: D1PreparedStatement[] = [];
   // The subrequests made so far, counted so the expiry can be budgeted; see
   // `SUBREQUEST_BUDGET`. The D1 queries are all counted up front, including the `batch`
@@ -285,7 +286,10 @@ export async function sweepStores(
     }
   }
 
-  report.done = rows.length < BATCH;
+  // Against the page asked for, not `BATCH`: a page shortened for the mail that came
+  // up short of twenty read as the end of the walk, and the cursor went back to the
+  // top every hour, so nothing past the first page was ever visited again.
+  report.done = rows.length < page;
   const next = report.done ? '' : rows[rows.length - 1]!.userId;
   writes.push(
     env.DB.prepare(`INSERT INTO _unbent_meta (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value`).bind(CURSOR_KEY, next),
