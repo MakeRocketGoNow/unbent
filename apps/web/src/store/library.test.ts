@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { FEED_TIMEOUT_MS, FeedTimeoutError, LIBRARY_OPEN_TIMEOUT_MS, LIBRARY_ROOTS, LibraryElsewhereError, LibraryOpenTimeoutError, acquireLibrary, closeLibraryAndStore, currentLibrary, fetchJson, libraryElsewhere, resetLibraryForTests, rootsOfNoteChanges, settleWrites, subscribeLibrary, takeOverLibrary } from './library.js';
+import { createCollection, type Collection } from '@tanstack/db';
+import { FEED_TIMEOUT_MS, FeedTimeoutError, LIBRARY_OPEN_TIMEOUT_MS, LIBRARY_ROOTS, LibraryElsewhereError, LibraryOpenTimeoutError, acquireLibrary, closeLibraryAndStore, currentLibrary, fetchJson, libraryElsewhere, onLibraryChange, resetLibraryForTests, rootsOfNoteChanges, settleWrites, subscribeLibrary, takeOverLibrary } from './library.js';
 import { setLocksForTests } from './library-lock.js';
 import { fakeLocks } from './test-locks.js';
 import { libraryLockName } from './names.js';
@@ -131,7 +132,7 @@ describe('fetchJson', () => {
  * an outbox whose `ready` the test holds. What `open` reaches before that wait — the
  * engine, the socket, the listeners — is real.
  */
-function page(opts: { ready?: Promise<void>; pending?: number } = {}) {
+function page(opts: { ready?: Promise<void>; pending?: number; notes?: Collection<typeof row, string> } = {}) {
   class FakeSocket {
     static all: FakeSocket[] = [];
     closed = false;
@@ -146,7 +147,7 @@ function page(opts: { ready?: Promise<void>; pending?: number } = {}) {
   vi.stubGlobal('WebSocket', FakeSocket);
   const collection = () => ({ subscribeChanges: () => ({ unsubscribe() {} }), values: () => [], cleanup: vi.fn(async () => {}), preload: async () => {}, get: () => undefined, has: () => false });
   const collections = { notes: collection(), notebooks: collection(), tags: collection(), attachments: collection(), syncState: collection() };
-  vi.mocked(createCollections).mockReturnValue(collections as never);
+  vi.mocked(createCollections).mockReturnValue({ ...collections, ...(opts.notes ? { notes: opts.notes } : {}) } as never);
   let pending = opts.pending ?? 0;
   const listeners = new Set<(s: { pending: number }) => void>();
   const outbox = {
@@ -482,6 +483,45 @@ describe('acquireLibrary', () => {
       await closeLibraryAndStore();
       expect(locks.held(lock)).toBe(false);
     });
+  });
+
+  /*
+   * The holder's own subscriptions, on a real collection. A subscription that is not
+   * told otherwise reports only the rows it has emitted before, and a tombstone for a
+   * note that had not changed since the open — purged on another device — never reached
+   * the query bridge, so the list kept the note until something else moved it.
+   */
+  it('re-runs the notes query for a tombstone of a note that had not changed since the open', async () => {
+    vi.useFakeTimers();
+    let feed!: { begin: () => void; write: (m: { type: 'delete'; key: string }) => void; commit: () => unknown };
+    const notes = createCollection<typeof row, string>({
+      id: 'notes-under-test',
+      getKey: (n) => n.id,
+      startSync: true,
+      sync: {
+        sync: ({ begin, write, commit, markReady }) => {
+          feed = { begin, write, commit };
+          begin();
+          write({ type: 'insert', value: row });
+          commit();
+          markReady();
+        },
+      },
+    });
+    page({ notes });
+    const opening = acquireLibrary('u1');
+    await vi.advanceTimersByTimeAsync(10);
+    await opening;
+    const heard = vi.fn();
+    const stopListening = onLibraryChange(heard);
+    feed.begin();
+    feed.write({ type: 'delete', key: row.id });
+    feed.commit();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(heard).toHaveBeenCalledTimes(1);
+    expect(heard).toHaveBeenCalledWith(LIBRARY_ROOTS);
+    expect(notes.has(row.id)).toBe(false);
+    stopListening();
   });
 
   it('is not a timeout that fires under an open that settled in time', async () => {
