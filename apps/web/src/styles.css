@@ -6345,6 +6345,78 @@ button.settings-nav-item {
 /* Inert during an import: still shown, so the section does not appear to lose pages. */
 .settings-nav-disabled { opacity: 0.45; cursor: default; }
 
+/*
+   The sidebar's gliding hover, on the Settings row: one pill per row that follows the
+   pointer from page to page, and the page picked filling in where the pointer already
+   is. The mechanism and its timing are the sidebar's (see "The hover tint glides from row
+   to row"); what differs here is said here.
+
+   The hover is the sidebar's 8% tint inside the outline rather than the accent outline
+   this row drew before. A ring that snapped from pill to pill beside a fill that glides
+   would be two motions for one hover, and the tint is what a hover looks like everywhere
+   else a pointer picks a place.
+
+   The pills sit in a row that wraps, with a 0.4rem gap on every side rather than the
+   sidebar's sliver between rows, so each pill's hit area reaches half a gap in every
+   direction (`::after`). Without it a slow pointer crossing a gap lands on nothing, the
+   pill drops out, and the glide becomes a blink. The reach counts the pill's 1px border,
+   because an absolute box is placed from inside it: -0.2rem alone stops 1px short on
+   each side and leaves a 2px hole in the middle of every gap. A pointer that leaves for
+   the inert App settings pill during an import lets the hover go the same way, on
+   purpose.
+
+   The pill is drawn under the pills, as in the sidebar, so the current page's solid
+   accent covers it: the page you are on does not need a hover to say it is a place.
+*/
+@media (hover: hover) {
+  @supports (anchor-name: --a) {
+    .settings-nav { position: relative; }
+
+    .settings-nav::before {
+      content: '';
+      position: absolute;
+      position-anchor: --settings-hover;
+      inset: anchor(top) anchor(right) anchor(bottom) anchor(left);
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--fg) 8%, transparent);
+      pointer-events: none;
+    }
+
+    .settings-nav-item { position: relative; }
+
+    .settings-nav-item::after {
+      content: '';
+      position: absolute;
+      inset: calc(-0.2rem - 1px);
+    }
+
+    .settings-nav-item:hover { anchor-name: --settings-hover; }
+    .settings-nav-item:not(.active):hover { border-color: var(--border); }
+  }
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  @supports (anchor-name: --a) {
+    .settings-nav::before {
+      transition: inset 0.4s cubic-bezier(0.05, 0.7, 0.1, 1);
+    }
+
+    /*
+       Picking a page fills the pill under the pointer with the accent, and the page that
+       was current lets it go, as the sidebar's current row does — for the sidebar's
+       reasons, on its curve and timing. The border goes with the fill, since here the
+       current pill is outlined in the same colour it is filled with. A pill drawn current
+       on load has nothing to fade from.
+    */
+    .settings-nav-item {
+      transition:
+        background-color 0.15s cubic-bezier(0.05, 0.7, 0.1, 1),
+        border-color 0.15s cubic-bezier(0.05, 0.7, 0.1, 1),
+        color 0.15s cubic-bezier(0.05, 0.7, 0.1, 1);
+    }
+  }
+}
+
 /* One maintenance operation: what it does, then the control that does it. */
 .settings-section {
   width: 100%;
