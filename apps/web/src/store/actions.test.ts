@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createCollection, type Collection } from '@tanstack/db';
 import { QueryClient } from '@tanstack/react-query';
-import type { FeedEntity, FeedNote, FeedPage, Note } from '@unbent/shared';
+import type { FeedEntity, FeedNote, FeedPage, FieldDef, Note } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { ApiError, NoteChangedError, OfflineError } from '../notes-api.js';
 import { resetConnectivity, setReachableForTests } from '../connectivity.js';
@@ -878,6 +878,27 @@ describe('the no-library path', () => {
     const out = await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'new' }, base });
     expect(out).toMatchObject({ title: 'new' });
     expect(api.updateNote).toHaveBeenCalledWith('n1', { title: 'new', ifUpdatedAt: 100 });
+  });
+
+  it('sends a first value in an empty field by the caller’s definitions', async () => {
+    // No library to read the definitions from, and no stored row to read a type from:
+    // only the caller knows Amount is a number, and without it "12" was never sent.
+    provideLibrary(async () => null);
+    const amount: FieldDef = {
+      id: '11111111-1111-1111-1111-111111111111',
+      notebookId: 'nb-receipts',
+      name: 'Amount',
+      type: 'number',
+      options: [],
+      scale: null,
+      currency: null,
+      position: 0,
+    };
+    const base: Note = { id: 'n1', title: 'old', body: '', tags: [], notebook: 'Receipts', createdAt: 1, updatedAt: 100, fields: [] };
+    vi.mocked(api.updateNote).mockResolvedValue({ ...base, updatedAt: 101 });
+    const value = { ...seedFrom(base), fields: { [amount.id]: 12 } };
+    expect(await actions.saveNote({ noteId: 'n1', value, base, definitions: [amount] })).toMatchObject({ updatedAt: 101 });
+    expect(vi.mocked(api.updateNote).mock.calls[0]![1].fields).toHaveProperty(amount.id);
   });
 });
 

@@ -162,7 +162,13 @@ export interface WritableLibrary extends Collections {
  * mine", the date to precondition on instead of the base's — the other device's copy,
  * so the patch is still only what was typed here and lands on top of theirs.
  */
-type Save = { noteId: string; value: NoteDraft; base: Note; against?: number };
+/**
+ * A save of a note's draft. `definitions` are the caller's field definitions, for the save
+ * that goes as a request: with no library to read them from, a first value in a field the
+ * note has no row for would have no type to encode it by, and would never be sent. Never
+ * stored in the queue — a queued save reads the library's own.
+ */
+type Save = { noteId: string; value: NoteDraft; base: Note; against?: number; definitions?: FieldDef[] };
 
 /** The key a conflict is kept under in the outbox's storage; its entries are the `tx:` keys. */
 const conflictKey = (noteId: string) => `conflict:${noteId}`;
@@ -955,7 +961,7 @@ function split(lib: WritableLibrary, ids: string[]): { here: string[]; there: st
 
 /** The save as a request: no local row to change, or a tab that does not queue. */
 async function saveViaRequest(input: Save): Promise<'unchanged' | Note> {
-  const patch = buildNotePatch(input.value, input.base, undefined);
+  const patch = buildNotePatch(input.value, input.base, input.definitions);
   if (!patch) return 'unchanged';
   const refiles = patch.notebook !== undefined || patch.tags !== undefined;
   return pulled(
