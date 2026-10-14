@@ -1,4 +1,5 @@
 import { APIError } from 'better-auth/api';
+import type { Context } from 'hono';
 import { createMiddleware } from 'hono/factory';
 import { getAuth } from '../auth.js';
 import type { AppEnv } from '../types.js';
@@ -47,8 +48,10 @@ import type { AppEnv } from '../types.js';
  * check as the device being offline, and the person saw "You're offline" with a working
  * connection, lists that never filled, and a navigation that emptied and refilled.
  * Bounded, a stall is a 503 with Retry-After on a protected route and a plain answer on
- * a public one, both of which every client already retries. The stall itself is logged
- * with its duration and the cookies' names, so the next one says which path hung.
+ * a public one, both of which every client already retries. `/api/me` is the exception:
+ * it looks public but it *is* the session check the phones run before throwing a session
+ * away, so a stall there is the same 503 — see `whoAmI`. The stall itself is logged with
+ * its duration and the cookies' names, so the next one says which path hung.
  */
 export const SESSION_CHECK_MS = 8_000;
 /** Slower than this is said in the log, so a stall that resolves still leaves a trace. */
@@ -106,17 +109,42 @@ export const sessionMiddleware = createMiddleware<AppEnv>(async (c, next) => {
 });
 
 /**
+ * 503 with Retry-After when the session could not be looked up. Shared by `requireAuth`
+ * and `whoAmI` so a stall cannot sign a client out on one path and ask it to retry on
+ * the other.
+ */
+function sessionUnavailableReply(c: Context<AppEnv>) {
+  c.header('Retry-After', '60');
+  return c.json({ error: 'Your session could not be checked right now. Try again shortly.' }, 503);
+}
+
+/**
  * Rejects unauthenticated requests. Mount on every route that touches user data; the
  * repos downstream cannot be constructed without the id this guarantees. A session that
  * could not be looked up is a 503, not a 401 — see `sessionMiddleware`.
  */
 export const requireAuth = createMiddleware<AppEnv>(async (c, next) => {
   if (!c.get('userId')) {
-    if (c.get('sessionUnavailable')) {
-      c.header('Retry-After', '60');
-      return c.json({ error: 'Your session could not be checked right now. Try again shortly.' }, 503);
-    }
+    if (c.get('sessionUnavailable')) return sessionUnavailableReply(c);
     return c.json({ error: 'Unauthorized' }, 401);
   }
   await next();
 });
+
+/**
+ * GET /api/me. Null when there is nobody; 503 when we could not tell.
+ *
+ * Returns null rather than 401 so a browser can render a logged-out state without
+ * treating "not signed in" as an error. That is the wrong answer when the lookup
+ * itself failed. The Android and iOS shells ask this before they throw a session
+ * away: the page posting `unauthorized` is only a hint — a tunnel looks the same —
+ * and 200 with no user is "the server no longer knows you". They then clear the
+ * thirty-day session and drop queued shares. A lookup that timed out, or whose store
+ * refused, used to produce that same 200, so the stall `requireAuth` answers 503 for
+ * still signed the phones out. Health and `/config` can answer without a user; this
+ * route cannot, because it is the answer to whether there is one.
+ */
+export function whoAmI(c: Context<AppEnv>) {
+  if (c.get('sessionUnavailable')) return sessionUnavailableReply(c);
+  return c.json({ user: c.get('user') ?? null });
+}

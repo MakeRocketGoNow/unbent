@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { INSTANCE_KINDS, type AppConfig, type InstanceKind } from '@unbent/shared';
 import { accountDeletionOffered, getAuth, offeredProviders } from '../auth.js';
 import { frontPageOf, legalLinksOf, operatorOf, posthogOf } from '../lib/instance.js';
+import { whoAmI } from '../lib/session.js';
 import { refuseGrantsWithoutAgreement } from './legal.js';
 import { previewRelayOrigin } from '../lib/preview-relay.js';
 import { canAutofill } from '../lib/jev.js';
@@ -16,8 +17,8 @@ export const authRoutes = new Hono<AppEnv>()
    */
   .all('/auth/*', refuseGrantsWithoutAgreement, (c) => getAuth(c.env).handler(c.req.raw))
 
-  /** Who am I? Returns null rather than 401 so the SPA can render a logged-out state. */
-  .get('/me', (c) => c.json({ user: c.get('user') ?? null }))
+  /** Who am I? Null when there is nobody, 503 when we could not tell — see `whoAmI`. */
+  .get('/me', whoAmI)
 
   /**
    * What this instance offers. Public by necessity: a login screen has to know which
