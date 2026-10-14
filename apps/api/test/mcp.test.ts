@@ -72,17 +72,21 @@ async function agreeToTerms(cookie: string): Promise<void> {
   if (!res.ok) throw new Error(`agreeing to the terms failed: ${res.status} ${await res.text()}`);
 }
 
-async function registerClient(name: string): Promise<string> {
+/**
+ * `application_type` is left out by default, as the MCP SDK leaves it out: a public client
+ * redirecting to this machine is registered as native without it (MAK-218).
+ */
+async function registerClient(name: string, metadata: Record<string, unknown> = {}): Promise<string> {
   const res = await fetch(`${BASE}/api/auth/oauth2/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
     body: JSON.stringify({
       client_name: name,
-      application_type: 'native',
       redirect_uris: ['http://127.0.0.1:9999/callback'],
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],
       token_endpoint_auth_method: 'none',
+      ...metadata,
     }),
   });
   const body = (await res.json()) as { client_id?: string };
@@ -235,6 +239,25 @@ describe('mcp endpoint', () => {
     // Without this header a client that has never seen this server cannot discover how to
     // authorize; it is the whole mechanism by which a connection can be set up at all.
     expect(res.headers.get('www-authenticate')).toContain('resource_metadata=');
+  });
+
+  it('refuses a web client a loopback redirect, and says to register it as native (MAK-218)', async () => {
+    const res = await fetch(`${BASE}/api/auth/oauth2/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
+      body: JSON.stringify({
+        client_name: 'Confidential Assistant',
+        redirect_uris: ['http://127.0.0.1:9999/callback'],
+        grant_types: ['authorization_code'],
+        response_types: ['code'],
+        token_endpoint_auth_method: 'client_secret_basic',
+      }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string; error_description: string };
+    expect(body.error).toBe('invalid_redirect_uri');
+    expect(body.error_description).toContain('"application_type": "native"');
+    expect(body.error_description).not.toContain('non-loopback');
   });
 
   it('refuses a token that is not a token', async () => {
@@ -439,7 +462,8 @@ describe('mcp cross-tenant isolation', () => {
     // asking for a token bound to somewhere else is refused at authorization with
     // `invalid_target`, so a foreign-audience token for this issuer cannot be obtained in
     // the first place. Asserted because it is the reason the endpoint never sees one.
-    const clientId = await registerClient('Other Resource Client');
+    // The one client here that says native itself, as a client written before MAK-218 did.
+    const clientId = await registerClient('Other Resource Client', { application_type: 'native' });
     const { challenge } = await pkce();
     const authorize = new URL(`${BASE}/api/auth/oauth2/authorize`);
     for (const [key, value] of Object.entries({
