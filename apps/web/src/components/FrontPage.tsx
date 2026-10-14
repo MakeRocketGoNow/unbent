@@ -5,7 +5,6 @@ import { configQuery } from '../queries.js';
 import { LOGIN } from '../auth-gate.js';
 import { EnexHelp, NotionHelp } from './ImportHelp.js';
 import { LegalLink } from './LegalLink.js';
-import { REFUNDS_ID } from '../legal/documents.js';
 import { ProviderIcon } from './provider-icons.js';
 import { BASE_STORAGE_GB, PLAN_PRICE_USD, STORAGE_ADDON_GB, STORAGE_ADDON_PRICE_USD, TRIAL_DAYS } from '@unbent/shared';
 import {
@@ -193,15 +192,6 @@ export function FrontPage() {
         <nav aria-label="About Unbent">
           {legal && <LegalLink href={legal.privacy}>Privacy</LegalLink>}
           {legal && <LegalLink href={legal.terms}>Terms</LegalLink>}
-          {/* The refund policy is a section of the built-in terms, so it has a link of its
-              own only where those are the terms and there is a sale to refund. Paddle's
-              website review looks for one by name, and a reader asking "can I get my money
-              back" should not have to know it is under Terms. */}
-          {legal?.terms.startsWith('/') && config.data?.billing && (
-            <Link to={legal.terms} hash={REFUNDS_ID}>
-              Refunds
-            </Link>
-          )}
           {operator && <a href={`mailto:${operator.email}`}>Contact</a>}
           {/* The mark says where the link goes before the word does — the one footer
               link that leaves for another site. The sign-in screen's copy of it, so

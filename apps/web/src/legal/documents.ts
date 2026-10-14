@@ -54,9 +54,11 @@ export interface LegalSection {
   /**
    * The section's anchor, for a link that has to land on it rather than on the document.
    *
-   * Only the refund policy has one: Paddle's website review looks for a refund policy
-   * linked from the site, and the front page's footer links to it here rather than to a
-   * page of its own, since a refund is a term of the sale and belongs in the terms.
+   * Only the refund policy has one, so that `/terms#refunds` can be handed to Paddle's
+   * website review or put in a reply to someone asking. It is a section of the terms
+   * rather than a page of its own because a refund is a term of the sale. Deliberately not
+   * linked from the footer: a Refunds link beside Terms reads as an invitation to leave,
+   * and the review accepts terms that contain the policy.
    */
   id?: string;
 }
@@ -103,7 +105,7 @@ export interface LegalOptions {
   billing: boolean;
 }
 
-/** The anchor the refund policy is linked by, from the front page's footer. */
+/** The refund policy's anchor in the terms: `/terms#refunds`. See `LegalSection.id`. */
 export const REFUNDS_ID = 'refunds';
 
 /**

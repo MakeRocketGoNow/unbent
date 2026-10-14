@@ -1407,8 +1407,9 @@ Going live is the same five settings from the live account, after its verificati
 website review wants the pricing public, and terms, a privacy policy and a refund policy
 naming Paddle as the merchant of record. The built-in documents say all of it wherever
 billing is on — the terms' "Plans and payment" and "Refunds", Paddle among the policy's
-services — and the front page's footer links Refunds to `/terms#refunds`. Everything an account is told — the trial's end, a lapse, the mail —
-is the same in both environments.
+services. The refund policy is at `/terms#refunds`, under the Terms link in the front
+page's footer rather than a link of its own. Everything an account is told — the trial's
+end, a lapse, the mail — is the same in both environments.
 
 ## Deleting an account
 

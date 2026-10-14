@@ -172,7 +172,7 @@ describe('legalDocuments and billing', () => {
     expect(body).toContain('shown on our pricing page and at checkout');
   });
 
-  it('has a refund policy under the anchor the footer links to', () => {
+  it('has a refund policy under its own anchor', () => {
     const refunds = with_.terms.sections.find((s) => s.id === REFUNDS_ID);
     expect(refunds?.heading).toBe('Refunds');
     expect(JSON.stringify(refunds)).toContain('within 14 days of any charge');
