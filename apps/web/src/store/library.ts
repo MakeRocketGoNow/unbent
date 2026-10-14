@@ -465,15 +465,62 @@ export function acquireLibrary(userId: string, options: { takeOver?: boolean } =
  * library fires, and the one thing a client decides for itself — that its holder has
  * gone silent, on which it takes the library over, if it is still this tab's library.
  */
-const clientHooks = (userId: string, isMine: () => boolean) => ({
-  onChange: (roots: ReadonlySet<string>) => changeListeners.forEach((l) => l(roots)),
-  onAttached: () => changeListeners.forEach((l) => l(LIBRARY_ROOTS)),
-  onReset: () => resetListeners.forEach((l) => l()),
-  onIndexed: () => indexedListeners.forEach((l) => l()),
-  onSilent: () => {
-    if (isMine()) void openFor(userId, true).catch(() => {});
-  },
-});
+const clientHooks = (userId: string, isMine: () => boolean, deadline: number) => {
+  // The attach's own deadline, until the first attach: a takeover on unanswered hellos
+  // is the same ask continued, and a frozen holder's file keeps the open waiting just
+  // as its silence kept the attach, so the caller is refused at the bound it was
+  // promised and not the hellos' six seconds later. A takeover from a holder that went
+  // quiet after serving — pings unanswered with a call in hand, or no holder since the
+  // last one closed — is a new ask, made minutes or hours later, and gets a bound of
+  // its own: under the attach's it was refused at once, reported as a timeout, and the
+  // save it was for went out as a plain request (review of #358, twice). A hello
+  // takeover can itself come after the attach's bound — `opening` after `opening`, then
+  // silence, with the backoff grown to thirty seconds — and is then refused at once, as
+  // its callers already were; `reportError` says each message once a page, so that is
+  // not a second report.
+  let inherited: number | undefined = deadline;
+  return {
+    onChange: (roots: ReadonlySet<string>) => changeListeners.forEach((l) => l(roots)),
+    onAttached: () => {
+      inherited = undefined;
+      changeListeners.forEach((l) => l(LIBRARY_ROOTS));
+    },
+    onReset: () => resetListeners.forEach((l) => l()),
+    onIndexed: () => indexedListeners.forEach((l) => l()),
+    onSilent: () => {
+      if (isMine()) void openFor(userId, true, undefined, inherited).catch(() => {});
+    },
+  };
+};
+
+/**
+ * Tells the account's other tabs that this one has the lock and is opening the library:
+ * once at the start, and again in answer to every hello until the open has settled. A
+ * client waiting for a holder takes the library over from a tab that answers nothing
+ * (`UNANSWERED_HELLOS` in `client-library.ts`), and an open on a phone takes longer than
+ * that silence; a single announcement was not enough, since a client whose attach began
+ * after it never heard it, and one that did ran out of patience on the hellos after it
+ * (review of #358), and a live open stolen from mid-way steals back once it has
+ * finished. So "answers nothing" means exactly that. A port of its own, since the
+ * holder's is made inside `open` with its id, and closed by the returned function when
+ * the open settles or the hold is taken: `open` resolves only after the holder has begun
+ * serving, so the two never overlap. A tab wedged inside its open keeps answering, and
+ * its clients wait out the bound as they did before, which is what Open here is for.
+ */
+function announceOpening(userId: string): () => void {
+  const port = openPort(userId);
+  if (!port) return () => {};
+  const holder = crypto.randomUUID();
+  const say = () => port.post({ type: 'opening', holder });
+  say();
+  const stop = port.listen((m) => {
+    if (m.type === 'hello') say();
+  });
+  return () => {
+    stop();
+    port.close();
+  };
+}
 
 /**
  * Opens the account's library in this tab as a step on the queue, closing whatever was
@@ -481,7 +528,8 @@ const clientHooks = (userId: string, isMine: () => boolean) => ({
  * holder has gone (`standAside`) or Open here was pressed (`takeOver`). Holds the
  * lock when it can; otherwise attaches to the tab that holds it, as its client.
  */
-function openFor(userId: string, takeOver: boolean, held?: LibraryHold): Promise<AnyLibrary> {
+function openFor(userId: string, takeOver: boolean, held?: LibraryHold, inherited?: number): Promise<AnyLibrary> {
+  const deadline = inherited ?? Date.now() + LIBRARY_OPEN_TIMEOUT_MS;
   standDown();
   generation += 1;
   const previous = current;
@@ -506,8 +554,10 @@ function openFor(userId: string, takeOver: boolean, held?: LibraryHold): Promise
       // moment after this ask found it held, and nobody would answer hello. The queue
       // then gives this tab the library, and the open that follows closes this attach.
       standAside(userId);
-      return attachClientLibrary(userId, me, port, clientHooks(userId, () => current?.opened === opened), halting.signal);
+      return attachClientLibrary(userId, me, port, clientHooks(userId, () => current?.opened === opened, deadline), halting.signal);
     }
+    const quiet = announceOpening(userId);
+    void hold.taken.then(quiet);
     try {
       // Whether the library this open makes is still the one this tab holds: the
       // entry's own step, which the late-finish replacement of the entry copies. Not the
@@ -517,6 +567,8 @@ function openFor(userId: string, takeOver: boolean, held?: LibraryHold): Promise
     } catch (err) {
       hold.release();
       throw err;
+    } finally {
+      quiet();
     }
   });
   /*
@@ -527,11 +579,12 @@ function openFor(userId: string, takeOver: boolean, held?: LibraryHold): Promise
    * cannot keep a copy. The open itself goes on (see `queue`) and stays the account's
    * entry, so every later ask — the root `beforeLoad` asks on every navigation — is
    * answered at once with the same refusal, and if it does finish it is the library from
-   * then on, with the hooks told.
+   * then on, with the hooks told. The deadline is `LIBRARY_OPEN_TIMEOUT_MS` from now, or
+   * the one a client's takeover inherited from its attach (`clientHooks`).
    */
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new LibraryOpenTimeoutError()), LIBRARY_OPEN_TIMEOUT_MS);
+    timer = setTimeout(() => reject(new LibraryOpenTimeoutError()), Math.max(0, deadline - Date.now()));
   });
   const library = Promise.race([opened, timeout]).finally(() => clearTimeout(timer));
   const entry = { userId, library, opened, halt: () => halting.abort() };

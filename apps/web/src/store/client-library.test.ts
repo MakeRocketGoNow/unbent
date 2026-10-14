@@ -437,6 +437,67 @@ describe('a client of the holding tab', () => {
     expect(hellos()).toBe(asked);
   });
 
+  it('asks to take the library over from a holder that answers nothing at all, and waits for one that said it is opening', async () => {
+    const hk = hooks();
+    const halting = new AbortController();
+    attach(hk, halting).catch(() => {});
+    // Two hellos in two seconds unanswered is not yet silence.
+    await vi.advanceTimersByTimeAsync(HELLO_RETRY_MS * 3 - 10);
+    expect(hk.silent).toBe(0);
+    // The third, at six seconds, is: the tab holds the lock and runs nothing for this account.
+    await vi.advanceTimersByTimeAsync(20);
+    expect(hk.silent).toBe(1);
+    // Asked once; the asking goes on until the open that replaces this attach halts it.
+    await vi.advanceTimersByTimeAsync(HELLO_RETRY_MAX_MS * 2);
+    expect(hk.silent).toBe(1);
+    halting.abort();
+
+    // A tab granted the lock says so before its open, which starts the count over.
+    const patient = hooks();
+    const attaching = attach(patient);
+    await settle();
+    channel.port('h2').post({ type: 'opening', holder: 'h2' });
+    await settle();
+    await vi.advanceTimersByTimeAsync(HELLO_RETRY_MS * 3);
+    expect(patient.silent).toBe(0);
+    const served = holder(channel, { notes: [note('n1')] });
+    await settle();
+    await settle();
+    const lib = await attaching;
+    open.push(lib);
+    expect(patient.silent).toBe(0);
+    expect(lib.notes.size).toBe(1);
+    // Served once, a client never counts hellos again: its holder closes, nothing serves
+    // for as long as it likes, and with no call in hand it stays where it is — a steal
+    // from an idle client undid a person's Open here elsewhere (review of #354).
+    served.server.stop();
+    await settle();
+    expect(lib.attached()).toBe(false);
+    await vi.advanceTimersByTimeAsync(HELLO_RETRY_MAX_MS * 2);
+    expect(patient.silent).toBe(0);
+  });
+
+  it('waits as long as a tab that is opening keeps answering its hellos, however slow the open', async () => {
+    const hk = hooks();
+    const attaching = attach(hk);
+    // A tab granted the lock, answering every hello with `opening` while its open runs.
+    const opening = channel.port('h3');
+    const stop = opening.listen((m) => {
+      if (m.type === 'hello') opening.post({ type: 'opening', holder: 'h3' });
+    });
+    await settle();
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(hk.silent).toBe(0);
+    stop();
+    holder(channel, { notes: [note('n1')] });
+    await settle();
+    await settle();
+    const lib = await attaching;
+    open.push(lib);
+    expect(hk.silent).toBe(0);
+    expect(lib.notes.size).toBe(1);
+  });
+
   it('keeps its rows and holds its calls when the holder closes, and attaches to the next holder, which answers them', async () => {
     const first = holder(channel, { notes: [note('n1')] });
     const hk = hooks();
