@@ -116,6 +116,21 @@ async function notebookIdByName(notes: NotesRepo, name: string): Promise<string 
 }
 
 /**
+ * The field definitions of the notebook a new note is filed into, by name, from one
+ * `notebooksOverview` call: what `create_note` and `create_notes` resolve values against.
+ * One store call rather than the notebooks and then their fields, which is two billable
+ * object requests for the one lookup. Empty for no notebook, or one that does not exist
+ * yet — it is made by the create, with no fields.
+ */
+function defsOfNotebook(
+  overview: { notebooks: Array<{ id: string; name: string }>; fields?: FieldDef[] },
+  target: string | null | undefined,
+): FieldDef[] {
+  const id = target ? (overview.notebooks.find((nb) => sameName(nb.name, target.trim()))?.id ?? null) : null;
+  return id ? (overview.fields ?? []).filter((d) => d.notebookId === id) : [];
+}
+
+/**
  * A tag from `listTags` by name, as the store finds one: without case, ASCII only
  * (`sameName`). The fold is the store's rather than `toLowerCase`, so a name the store keeps
  * as two tags is two here.
@@ -215,8 +230,7 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo, links: A
       if (fields && Object.keys(fields).length > 0) {
         // Fields belong to a notebook, so values need one to be resolved against. A
         // notebook that does not exist yet has no fields, which the error says.
-        const notebookId = target ? await notebookIdByName(notes, target) : null;
-        const defs = notebookId ? ((await notes.listFields(notebookId)) ?? []) : [];
+        const defs = defsOfNotebook(await notes.notebooksOverview({ fields: true }), target);
         const resolved = resolveFieldNames(fields, defs, [], target ?? null);
         if ('error' in resolved) return toolError(resolved.error);
         patch = resolved.patch;
@@ -301,8 +315,7 @@ export function registerWriteTools(server: McpServer, notes: NotesRepo, links: A
         const target = normalizeNotebook(n.notebook);
         let patch: NoteFieldsPatch | undefined;
         if (overview && n.fields && Object.keys(n.fields).length > 0) {
-          const notebookId = target ? (overview.notebooks.find((nb) => sameName(nb.name, target.trim()))?.id ?? null) : null;
-          const defs = notebookId ? (overview.fields ?? []).filter((d) => d.notebookId === notebookId) : [];
+          const defs = defsOfNotebook(overview, target);
           const resolved = resolveFieldNames(n.fields, defs, [], target ?? null);
           const refused = 'error' in resolved ? resolved.error : refusedValue(resolved.patch, defs);
           if (refused || 'error' in resolved) {
