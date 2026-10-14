@@ -92,8 +92,8 @@ export function lapseKind(row: { plan: PlanState; source: PlanSource | null; pad
  *
  * Except a mail the provider refuses outright (a 4xx: an address it will not take, a
  * suppressed one), which is marked as told all the same. The query takes the oldest
- * ends first, and five addresses refused for good would otherwise hold the five slots
- * on every run and no later account would ever be told.
+ * ends first, and a run's worth of addresses refused for good would otherwise hold
+ * every slot on every run and no later account would ever be told.
  */
 export async function notifyLapsedPlans(
   env: PaddleEnv & EmailEnv & { DB: D1Database; APP_URL?: string | undefined },
