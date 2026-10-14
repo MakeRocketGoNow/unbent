@@ -1118,9 +1118,13 @@ function definitionsFor(lib: WritableLibrary | null, handed?: FieldDef[]): Field
   return [...new Map([...handed, ...held].map((d) => [d.id, d])).values()];
 }
 
-/** The save as a request: no local row to change, or a tab that does not queue. */
-async function saveViaRequest(input: Save): Promise<'unchanged' | Note> {
-  const patch = buildNotePatch(input.value, input.base, definitionsFor(await resolve(), input.definitions));
+/**
+ * The save as a request: no local row to change, or a tab that does not queue. `open` is
+ * the library `saveNote` resolved, durable or not, so the types come from the library
+ * that sent the save down this path rather than one resolved again across a switch.
+ */
+async function saveViaRequest(input: Save, open: WritableLibrary | null): Promise<'unchanged' | Note> {
+  const patch = buildNotePatch(input.value, input.base, definitionsFor(open, input.definitions));
   if (!patch) return 'unchanged';
   const refiles = patch.notebook !== undefined || patch.tags !== undefined;
   return pulled(
@@ -1146,12 +1150,15 @@ async function saveViaRequest(input: Save): Promise<'unchanged' | Note> {
 export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | Note> {
   const far = await away();
   if (far) return far('saveNote', [{ ...input, origin: TAB_ORIGIN }], { ids: [input.noteId], refiles: input.value.notebook !== input.base.notebook || JSON.stringify(input.value.tags) !== JSON.stringify(input.base.tags) });
-  const lib = await queueable();
+  // `queueable()` inlined: the request path wants the open library even when it does
+  // not queue, for its field types.
+  const open = await resolve();
+  const lib = open && durable(open) ? open : null;
   if (!lib || notCopiedYet(lib, input.noteId)) {
     // No local copy on this device, a tab that does not queue, or a note the copy
     // does not hold yet: the save is the request, and its answer is the server's
     // copy — or the refusal, which the caller puts to the person.
-    return saveViaRequest(input);
+    return saveViaRequest(input, open);
   }
   /*
    * One save per note in the queue. The one still waiting is retired first, and this one
