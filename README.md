@@ -1339,7 +1339,8 @@ account turns **inactive**: everything still opens, searches and
 exports, and every write but a delete is refused with a 402 that the app shows as a
 read-only banner. The same state, and the same code path, for an expired trial, a lapsed
 subscription and a comp that ended (`requireActivePlan` in the API). After a year inactive
-the account is deleted, with reminders to export first.
+the account will be deleted, with reminders to export first; the job that does it and the
+reminders are a follow-up to MAK-108, and the terms will say so with MAK-45.
 
 Comps do not go through Paddle. A 100% discount there still asks for a card and charges it
 when the discount ends, so an account that should not pay — the owner, a gifted friend — is

@@ -44,12 +44,12 @@ export type LapseKind = 'trial' | 'subscription' | 'past_due' | 'comp';
 export function lapseMessage(kind: LapseKind, planUrl: string): { subject: string; text: string } {
   const still =
     'Your notes are still there, and everything still opens: you can read, search and export them, and delete anything, for as long as you like. What has stopped is editing and adding.';
-  const keep = `Subscribe at ${planUrl} to pick up where you left off. An account that stays read-only for ${Math.round(INACTIVE_KEPT_DAYS / 365)} year is deleted, with reminders to export first.`;
+  const keep = `Subscribe at ${planUrl} to pick up where you left off. An account that stays read-only for ${Math.round(INACTIVE_KEPT_DAYS / 365)} year will be deleted, with reminders to export first.`;
   switch (kind) {
     case 'past_due':
       return {
         subject: 'Your Unbent renewal could not be collected',
-        text: `Your Unbent subscription's renewal could not be collected, so the account is now read-only.\n\n${still}\n\nUpdate the card from ${planUrl} and Paddle will try again; nothing else is needed. An account that stays read-only for ${Math.round(INACTIVE_KEPT_DAYS / 365)} year is deleted, with reminders to export first.`,
+        text: `Your Unbent subscription's renewal could not be collected, so the account is now read-only.\n\n${still}\n\nUpdate the card from ${planUrl} and Paddle will try again; nothing else is needed. An account that stays read-only for ${Math.round(INACTIVE_KEPT_DAYS / 365)} year will be deleted, with reminders to export first.`,
       };
     case 'trial':
       return {

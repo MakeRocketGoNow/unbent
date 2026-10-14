@@ -29,9 +29,10 @@ export const STORAGE_ADDON_PRICE_USD = 12;
 
 /**
  * How long an `inactive` account is kept before it is deleted: a year of reading and
- * exporting, with reminders, as the terms say. Stewardship, not cost. The deletion itself
- * is a follow-up to MAK-108; the number is here so the pages that promise it and the job
- * that keeps it cannot disagree.
+ * exporting, with reminders, as the terms will say (MAK-45). Stewardship, not cost. The
+ * deletion and its reminders are a follow-up to MAK-108 and not built yet, which is why
+ * the pages and the mail say "will be"; the number is here so that, once the job exists,
+ * what they promise and what it does cannot disagree.
  */
 export const INACTIVE_KEPT_DAYS = 365;
 
