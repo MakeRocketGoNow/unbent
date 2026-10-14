@@ -746,7 +746,8 @@ export function countStoredWrites(userId: string): Promise<number | null> {
       done(null);
       return;
     }
-    req.onerror = () => done(req.error?.name === 'AbortError' ? 0 : null);
+    // Our own abort below has already answered 0; any other failure is not knowing.
+    req.onerror = () => done(null);
     req.onblocked = () => done(null);
     req.onupgradeneeded = () => {
       // No database yet: nothing stored. Abort so this open does not create one the
