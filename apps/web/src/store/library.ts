@@ -3,13 +3,20 @@ import { ApiError, isOfflineError, request } from '../notes-api.js';
 import { reportError } from '../report-error.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
 import { openLocalStore, openSearchDatabase, closeLocalStore } from './db.js';
-import { createCollections, cursorStore, type Collections, type LocalNote } from './collections.js';
-import { createOutbox, provideLibrary, type Outbox } from './actions.js';
+import { createCollections, cursorStore, type Collections, type LocalAttachment, type LocalNote } from './collections.js';
+import { createOutbox, provideForwarder, provideLibrary, type Outbox } from './actions.js';
 import { FeedEngine, isWhole, type FeedState } from './feed.js';
 import { createKeeper, type Keeper } from './keep.js';
 import { askToPersist, readKeptNotebooks } from './files.js';
 import { SearchIndex } from './search-index.js';
 import { createSearchSync, type SearchSync } from './search-sync.js';
+import { holdLibrary, whenLibraryFree, type LibraryHold } from './library-lock.js';
+import { attachClientLibrary, type ClientLibrary, type Rows } from './client-library.js';
+import type { SearchReader } from './search-index.js';
+import { openPort } from './library-channel.js';
+import { serveLibrary, type Server } from './library-serve.js';
+import { LIBRARY_ROOTS, rootsOfNoteChanges } from './library-roots.js';
+import type { FeedNotebook, FeedTag } from '@unbent/shared';
 
 /**
  * One account's library on this device: its local store, the collections in it, the
@@ -24,6 +31,8 @@ import { createSearchSync, type SearchSync } from './search-sync.js';
  * file, since the engine's worker holds the file open.
  */
 export interface Library extends Collections {
+  /** Never set on the holder's library; a client's says `true` (`client-library.ts`). */
+  readonly remote?: false;
   userId: string;
   engine: FeedEngine;
   /**
@@ -58,11 +67,25 @@ export interface Searching {
   sync: SearchSync;
 }
 
-/** What a reader of the library needs of it: the collections, the feed's state and the version — and the search index, where there is one. */
-export type ReadableLibrary = Pick<Library, 'notes' | 'notebooks' | 'tags' | 'attachments' | 'state' | 'version'> & Partial<Pick<Library, 'search' | 'searchReady'>>;
+/**
+ * What a reader of the library needs of it: the rows, the feed's state and the version —
+ * and the search index, where there is one. The holder's library answers it from its
+ * collections; a client tab's answers it from the rows the holder sent it
+ * (`client-library.ts`), and a test's from collections in memory (`test-library.ts`).
+ */
+export interface ReadableLibrary {
+  notes: Rows<LocalNote>;
+  notebooks: Rows<FeedNotebook>;
+  tags: Rows<FeedTag>;
+  attachments: Rows<LocalAttachment>;
+  state: () => FeedState;
+  version: () => number;
+  search?: { index: SearchReader; sync: { opened: (noteId: string) => Promise<void> } } | null;
+  searchReady?: Promise<void>;
+}
 
-/** The query roots a change to the library can reach; see `installLibraryQueries`. */
-export const LIBRARY_ROOTS: ReadonlySet<string> = new Set(['notes', 'note', 'trash', 'tags', 'notebooks', 'notebook-fields', 'attachments']);
+/** The library this tab holds, or the one it is a client of. */
+export type AnyLibrary = Library | ClientLibrary;
 
 /**
  * The account whose library this tab holds or is opening. `opened` is the open itself,
@@ -70,7 +93,7 @@ export const LIBRARY_ROOTS: ReadonlySet<string> = new Set(['notes', 'note', 'tra
  * `LIBRARY_OPEN_TIMEOUT_MS` — the same promise while the open is quick, a refusal after
  * the bound, and the library again once a slow open has finished (`acquireLibrary`).
  */
-let current: { userId: string; library: Promise<Library>; opened: Promise<Library>; halt: () => void } | null = null;
+let current: { userId: string; library: Promise<AnyLibrary>; opened: Promise<AnyLibrary>; halt: () => void } | null = null;
 let forTests: ReadableLibrary | null = null;
 
 const libraryListeners = new Set<() => void>();
@@ -92,7 +115,20 @@ const libraryChanged = () => libraryListeners.forEach((l) => l());
 provideLibrary(async () => {
   if (forTests || !current) return null;
   try {
-    return await current.library;
+    const lib = await current.library;
+    // A client's writes are the holder's: `provideForwarder` below is its way.
+    return lib.remote ? null : lib;
+  } catch {
+    return null;
+  }
+});
+
+provideForwarder(async () => {
+  if (forTests || !current) return null;
+  try {
+    const lib = await current.library;
+    if (!lib.remote) return null;
+    return Object.assign((name: Parameters<typeof lib.call>[0], args: unknown[]) => lib.call(name, args), { stillMine: () => current?.userId === lib.userId });
   } catch {
     return null;
   }
@@ -107,6 +143,98 @@ export function currentLibrary(): Promise<ReadableLibrary> | null {
 /** Whose library is open now, if anyone's; for the wipe that keeps one account's files. */
 export function currentLibraryUser(): string | null {
   return current?.userId ?? null;
+}
+
+/**
+ * Another tab of this device holds the account's library and this one cannot join it:
+ * a browser without BroadcastChannel, where there is no channel to be a client over. It
+ * reads the server, as it did for any second tab before 2026-10-13.
+ */
+export class LibraryElsewhereError extends Error {
+  constructor() {
+    super('Another tab holds this account’s library');
+    this.name = 'LibraryElsewhereError';
+  }
+}
+
+/**
+ * The account whose library another tab holds, while this tab is its client, or — in a
+ * browser with no channel to be one over — reads the server: what Settings → Offline
+ * says, with the way to bring the library here (`library-lock.ts`). `waiting` is the
+ * request in the lock's queue, so this tab opens the library on its own when the holder
+ * goes. `refusal` is only the no-channel case: what every ask for the library gets
+ * meanwhile, one promise with its catch attached rather than a fresh rejection per
+ * navigation. A client has a library to give instead.
+ */
+let elsewhere: { userId: string; waiting: AbortController; refusal?: Promise<never> } | null = null;
+
+/** The account whose library another tab holds, or null; follows `subscribeLibrary`. */
+export function libraryElsewhere(): string | null {
+  return elsewhere?.userId ?? null;
+}
+
+/**
+ * Takes the account's library from the tab that holds it: that tab closes its library
+ * and stands aside, and this one opens it. The way out of a tab that holds the library
+ * and is wedged on something it waits for, as much as of a window someone forgot. Not of
+ * a tab the browser has frozen: its worker cannot hand the store's file over, so this
+ * tab's open waits out its bound and reads the server until that tab is closed or
+ * resumed, when the open finishes on its own.
+ */
+export function takeOverLibrary(): Promise<AnyLibrary> | undefined {
+  const userId = elsewhere?.userId;
+  if (!userId) return undefined;
+  return openFor(userId, true);
+}
+
+/** Stops waiting for another tab's library, on any change to what this tab holds. */
+function standDown(): void {
+  if (!elsewhere) return;
+  elsewhere.waiting.abort();
+  elsewhere = null;
+  // Settings → Offline follows this: a wipe heard from another tab clears it with no
+  // library open, and `closeStep` tells the hooks only for a library.
+  libraryChanged();
+}
+
+/**
+ * Another tab holds the account's library: this one is its client (or, with no channel,
+ * reads the server), says so, and waits in the lock's queue to open the library the
+ * moment that tab lets go. Called from inside the open's step for a client, so the wait
+ * covers the attach too; what it starts is a new step, which closes the client.
+ */
+function standAside(userId: string, refusal?: Promise<never>): void {
+  standDown();
+  const waiting = new AbortController();
+  const entry: NonNullable<typeof elsewhere> = { userId, waiting };
+  if (refusal) entry.refusal = refusal;
+  elsewhere = entry;
+  libraryChanged();
+  // Only if nothing has changed what this tab holds since: a sign-out or another
+  // account's sign-in meanwhile decides what is open, not the lock's queue.
+  const asOf = generation;
+  whenLibraryFree(userId, waiting.signal).then(
+    async () => {
+      if (elsewhere !== entry || generation !== asOf) return;
+      elsewhere = null;
+      // The lock first, and the client's close only with it in hand: every waiting
+      // tab is woken when the holder goes, one after another, and all but one would
+      // otherwise have closed a working client — dropping its rows and refusing its
+      // calls — to find the lock taken and attach again from nothing (review of #354).
+      // A tab that lost the race stays the client it is and waits again.
+      const hold = await holdLibrary(userId);
+      if (generation !== asOf) {
+        hold?.release();
+        return;
+      }
+      if (!hold) {
+        standAside(userId);
+        return;
+      }
+      void openFor(userId, false, hold).catch(() => {});
+    },
+    () => {},
+  );
 }
 
 /**
@@ -245,31 +373,6 @@ export function notifyLibraryReset(): void {
   resetListeners.forEach((l) => l());
 }
 
-/** A change message as the collection reports it; the rows are read as notes. */
-type NoteChange = { type: string; value?: object | undefined; previousValue?: object | undefined };
-type LocalNoteLike = Pick<LocalNote, 'deletedAt' | 'notebookId' | 'notebookName' | 'tagIds' | 'tagNames' | 'fields'>;
-
-/** The roots a batch of note changes reaches: the text's alone when that is all that changed. */
-export function rootsOfNoteChanges(changes: ReadonlyArray<NoteChange>): ReadonlySet<string> {
-  const roots = new Set<string>(['notes', 'note']);
-  for (const c of changes) {
-    const v = c.value as LocalNoteLike | undefined;
-    const p = c.previousValue as LocalNoteLike | undefined;
-    if (c.type !== 'update' || !v || !p) return LIBRARY_ROOTS;
-    if (v.deletedAt !== undefined || p.deletedAt !== undefined) roots.add('trash');
-    const same =
-      v.deletedAt === p.deletedAt &&
-      v.notebookId === p.notebookId &&
-      v.notebookName === p.notebookName &&
-      v.tagIds.length === p.tagIds.length &&
-      v.tagIds.every((t, i) => t === p.tagIds[i]) &&
-      JSON.stringify(v.tagNames) === JSON.stringify(p.tagNames) &&
-      JSON.stringify(v.fields) === JSON.stringify(p.fields);
-    if (!same) return LIBRARY_ROOTS;
-  }
-  return roots;
-}
-
 /**
  * How long opening the library may take before the app stops waiting for it and reads
  * the server instead. A warm open is milliseconds; a first open on a phone fetches and
@@ -344,20 +447,129 @@ function enqueue<T>(step: () => Promise<T>): Promise<T> {
  */
 type Halting = AbortSignal;
 
-export function acquireLibrary(userId: string): Promise<Library> {
-  if (current?.userId === userId) return current.library;
+/**
+ * The account's library for this tab: the one it holds, the one it is a client of, or
+ * the open of either. Asked on every navigation (`hand-over.ts`), so what is already
+ * current is answered as it stands.
+ */
+export function acquireLibrary(userId: string, options: { takeOver?: boolean } = {}): Promise<AnyLibrary> {
+  if (current?.userId === userId && !options.takeOver) return current.library;
+  // Another tab holds it, this one cannot join it, and nobody asked to take it: the
+  // same refusal as last time.
+  if (!options.takeOver && elsewhere?.userId === userId && elsewhere.refusal) return elsewhere.refusal;
+  return openFor(userId, options.takeOver ?? false);
+}
+
+/**
+ * The hooks a client library tells this module through: the same listeners the holder's
+ * library fires, and the one thing a client decides for itself — that its holder has
+ * gone silent, on which it takes the library over, if it is still this tab's library.
+ */
+const clientHooks = (userId: string, isMine: () => boolean, deadline: number) => {
+  // The attach's own deadline, until the first attach: a takeover on unanswered hellos
+  // is the same ask continued, and a frozen holder's file keeps the open waiting just
+  // as its silence kept the attach, so the caller is refused at the bound it was
+  // promised and not the hellos' six seconds later. A takeover from a holder that went
+  // quiet after serving — pings unanswered with a call in hand, or no holder since the
+  // last one closed — is a new ask, made minutes or hours later, and gets a bound of
+  // its own: under the attach's it was refused at once, reported as a timeout, and the
+  // save it was for went out as a plain request (review of #358, twice). A hello
+  // takeover can itself come after the attach's bound — `opening` after `opening`, then
+  // silence, with the backoff grown to thirty seconds — and is then refused at once, as
+  // its callers already were; `reportError` says each message once a page, so that is
+  // not a second report.
+  let inherited: number | undefined = deadline;
+  return {
+    onChange: (roots: ReadonlySet<string>) => changeListeners.forEach((l) => l(roots)),
+    onAttached: () => {
+      inherited = undefined;
+      changeListeners.forEach((l) => l(LIBRARY_ROOTS));
+    },
+    onReset: () => resetListeners.forEach((l) => l()),
+    onIndexed: () => indexedListeners.forEach((l) => l()),
+    onSilent: () => {
+      if (isMine()) void openFor(userId, true, undefined, inherited).catch(() => {});
+    },
+  };
+};
+
+/**
+ * Tells the account's other tabs that this one has the lock and is opening the library:
+ * once at the start, and again in answer to every hello until the open has settled. A
+ * client waiting for a holder takes the library over from a tab that answers nothing
+ * (`UNANSWERED_HELLOS` in `client-library.ts`), and an open on a phone takes longer than
+ * that silence; a single announcement was not enough, since a client whose attach began
+ * after it never heard it, and one that did ran out of patience on the hellos after it
+ * (review of #358), and a live open stolen from mid-way steals back once it has
+ * finished. So "answers nothing" means exactly that. A port of its own, since the
+ * holder's is made inside `open` with its id, and closed by the returned function when
+ * the open settles or the hold is taken: `open` resolves only after the holder has begun
+ * serving, so the two never overlap. A tab wedged inside its open keeps answering, and
+ * its clients wait out the bound as they did before, which is what Open here is for.
+ */
+function announceOpening(userId: string): () => void {
+  const port = openPort(userId);
+  if (!port) return () => {};
+  const holder = crypto.randomUUID();
+  const say = () => port.post({ type: 'opening', holder });
+  say();
+  const stop = port.listen((m) => {
+    if (m.type === 'hello') say();
+  });
+  return () => {
+    stop();
+    port.close();
+  };
+}
+
+/**
+ * Opens the account's library in this tab as a step on the queue, closing whatever was
+ * current first — another account's library, or this account's client library when the
+ * holder has gone (`standAside`) or Open here was pressed (`takeOver`). Holds the
+ * lock when it can; otherwise attaches to the tab that holds it, as its client.
+ */
+function openFor(userId: string, takeOver: boolean, held?: LibraryHold, inherited?: number): Promise<AnyLibrary> {
+  const deadline = inherited ?? Date.now() + LIBRARY_OPEN_TIMEOUT_MS;
+  standDown();
   generation += 1;
   const previous = current;
   previous?.halt();
   const halting = new AbortController();
-  const opened: Promise<Library> = enqueue(async () => {
+  const opened: Promise<AnyLibrary> = enqueue(async () => {
     // The account before this one, closed first; what it was told is the queue's.
     if (previous) await previous.opened.then((l) => l.close()).catch(() => {});
-    // Whether the library this open makes is still the one this tab holds: the entry's
-    // own step, which the late-finish replacement of the entry copies. Not the account —
-    // a reopen after a back/forward-cache restore, or a slow open finishing late, is the
-    // same account's and a different library.
-    return open(userId, halting.signal, () => current?.opened === opened);
+    // One tab holds an account's library (`library-lock.ts`): this one, or another, in
+    // which case this tab is that one's client — or, with no channel to be one over,
+    // reads the server.
+    const hold = held ?? (await holdLibrary(userId, takeOver));
+    if (!hold) {
+      // A close or a switch took this entry while the step waited: that decided what is
+      // open, and this tab must not join the lock's queue for an account it has left.
+      if (halting.signal.aborted) throw new DOMException('The open was halted before it attached', 'AbortError');
+      const me = crypto.randomUUID();
+      const port = openPort(userId, me);
+      if (!port) throw new LibraryElsewhereError();
+      // In the lock's queue from now, not from the attach: the holder may be a page on
+      // its way out — this tab's own previous page, on a reload — whose lock is let go a
+      // moment after this ask found it held, and nobody would answer hello. The queue
+      // then gives this tab the library, and the open that follows closes this attach.
+      standAside(userId);
+      return attachClientLibrary(userId, me, port, clientHooks(userId, () => current?.opened === opened, deadline), halting.signal);
+    }
+    const quiet = announceOpening(userId);
+    void hold.taken.then(quiet);
+    try {
+      // Whether the library this open makes is still the one this tab holds: the
+      // entry's own step, which the late-finish replacement of the entry copies. Not the
+      // account — a reopen after a back/forward-cache restore, or a slow open finishing
+      // late, is the same account's and a different library.
+      return await open(userId, halting.signal, () => current?.opened === opened, hold);
+    } catch (err) {
+      hold.release();
+      throw err;
+    } finally {
+      quiet();
+    }
   });
   /*
    * Bounded, so the app is never dead on a storage wedge: an open can wait for good on
@@ -367,11 +579,12 @@ export function acquireLibrary(userId: string): Promise<Library> {
    * cannot keep a copy. The open itself goes on (see `queue`) and stays the account's
    * entry, so every later ask — the root `beforeLoad` asks on every navigation — is
    * answered at once with the same refusal, and if it does finish it is the library from
-   * then on, with the hooks told.
+   * then on, with the hooks told. The deadline is `LIBRARY_OPEN_TIMEOUT_MS` from now, or
+   * the one a client's takeover inherited from its attach (`clientHooks`).
    */
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new LibraryOpenTimeoutError()), LIBRARY_OPEN_TIMEOUT_MS);
+    timer = setTimeout(() => reject(new LibraryOpenTimeoutError()), Math.max(0, deadline - Date.now()));
   });
   const library = Promise.race([opened, timeout]).finally(() => clearTimeout(timer));
   const entry = { userId, library, opened, halt: () => halting.abort() };
@@ -384,14 +597,23 @@ export function acquireLibrary(userId: string): Promise<Library> {
       reportError(err, 'error');
       return;
     }
-    // A browser without the origin-private file system, or one refusing it in a private
-    // window: there is no local copy here, and the queries read the server instead (see
-    // `queries.ts`). Said once in the console; the next sign-in tries again.
-    console.warn('[library] not available on this device; reading from the server instead:', err);
     if (current === entry) {
       current = null;
       libraryChanged();
     }
+    if (err instanceof LibraryElsewhereError) {
+      // Not a fault: Settings → Offline says so, and this tab opens the library when
+      // the holding tab lets go, or when asked to take it over.
+      console.info('[library] another tab holds this account’s library and there is no channel to join it over; reading from the server until it lets go');
+      standAside(userId, library as Promise<never>);
+      return;
+    }
+    // A client's attach halted by a close or a switch: that decided what is open.
+    if (err instanceof DOMException && err.name === 'AbortError') return;
+    // A browser without the origin-private file system, or one refusing it in a private
+    // window: there is no local copy here, and the queries read the server instead (see
+    // `queries.ts`). Said once in the console; the next sign-in tries again.
+    console.warn('[library] not available on this device; reading from the server instead:', err);
   });
   opened.then(
     (lib) => {
@@ -413,6 +635,7 @@ export function acquireLibrary(userId: string): Promise<Library> {
 
 /** For tests: forgets what is open and every step still queued, as a reload would. */
 export function resetLibraryForTests(): void {
+  standDown();
   current = null;
   queue = Promise.resolve();
 }
@@ -420,6 +643,9 @@ export function resetLibraryForTests(): void {
 /** The close of what is open now, if anything, as a step: the library's close, then whatever `then` adds. */
 function closeStep(then?: () => Promise<void>): Promise<void> {
   generation += 1;
+  // A tab waiting for another's library stops: a sign-out or a switch decides what is
+  // open, not the lock's queue.
+  standDown();
   const open = current;
   current = null;
   if (open) {
@@ -521,7 +747,7 @@ export async function fetchJson<T>(path: string, stop?: AbortSignal): Promise<T>
   }
 }
 
-async function open(userId: string, halting: Halting, isMine: () => boolean): Promise<Library> {
+async function open(userId: string, halting: Halting, isMine: () => boolean, hold: LibraryHold): Promise<Library> {
   const store = await openLocalStore(userId);
   const listeners = new Set<(state: FeedState) => void>();
   let latest: FeedState | null = null;
@@ -536,7 +762,10 @@ async function open(userId: string, halting: Halting, isMine: () => boolean): Pr
     },
     // Once the old rows are gone, not when the count moves: a read in between would
     // cache them again, and nothing would drop that answer (found in review).
-    onTruncated: () => resetListeners.forEach((l) => l()),
+    onTruncated: () => {
+      resetListeners.forEach((l) => l());
+      server?.reset();
+    },
     onError: reportPullFailure,
     onStall: (err) => reportError(err, 'error'),
   });
@@ -565,22 +794,35 @@ async function open(userId: string, halting: Halting, isMine: () => boolean): Pr
    * everything.
    */
   let search: Searching | null = null;
+  /** The account's other tabs, served from here once the library is built (`library-serve.ts`). */
+  let server: Server | null = null;
+  /*
+   * `includeInitialState: false`, spelled out. Left unset, a subscription reports only
+   * the rows it has emitted before: a tombstone for a note that had not changed since
+   * the library opened — purged on another device, say — was dropped, so the list kept
+   * the note until something else moved it, and an update of such a row arrived as an
+   * insert, which reaches every query (`rootsOfNoteChanges`) rather than the note's own.
+   * `true` would fix both by emitting every row at open, which `rootsOfNoteChanges` would
+   * then walk for nothing (`library-serve.ts` takes that, since it emits to nobody);
+   * `false` marks the state as seen without emitting it, which is what is wanted here.
+   */
+  const every = { includeInitialState: false } as const;
   const subscriptions = [
     collections.notes.subscribeChanges((changes) => {
       const roots = rootsOfNoteChanges(changes);
       changed(roots);
       search?.sync.touch(changes.map((c) => String(c.key)), { textOnly: !roots.has('tags') });
-    }),
+    }, every),
     // A renamed field is read from its definition when a match is drawn; nothing indexed changes.
-    collections.notebooks.subscribeChanges(everything),
+    collections.notebooks.subscribeChanges(everything, every),
     collections.tags.subscribeChanges(() => {
       everything();
       search?.sync.touch([]);
-    }),
+    }, every),
     collections.attachments.subscribeChanges(() => {
       everything();
       search?.sync.touchFiles();
-    }),
+    }, every),
   ];
 
   // What makes the engine pull. None of these is a timer: a device that is open and
@@ -691,6 +933,7 @@ async function open(userId: string, halting: Halting, isMine: () => boolean): Pr
     if (halted) return;
     halted = true;
     closed = true;
+    server?.stop();
     engine.stop();
     window.removeEventListener('pageshow', onPageShow);
     document.removeEventListener('visibilitychange', onVisible);
@@ -703,6 +946,26 @@ async function open(userId: string, halting: Halting, isMine: () => boolean): Pr
   // closes the socket before its `open` event could pull.
   if (halting.aborted) halt();
   else halting.addEventListener('abort', halt, { once: true });
+
+  /*
+   * Another tab took the library over (`takeOverLibrary` there): this library closes,
+   * and this tab attaches to that one as its client, waiting its turn in the lock's
+   * queue. Only while it is still this tab's library: a close or a switch that already
+   * took its entry has decided for it.
+   */
+  void hold.taken.then(() => {
+    if (!isMine()) return;
+    console.info('[library] another tab took this account’s library over; this tab is its client until it lets go');
+    const closing = closeLibrary();
+    // The close is a step that can wait; a sign-out or another account's sign-in
+    // meanwhile decides what this tab holds, and opening for the old account would
+    // bring its library back when the other tab let go. The open finds the lock held
+    // and attaches to the tab that took it.
+    const asOf = generation;
+    void closing.then(() => {
+      if (generation === asOf) void openFor(userId, false).catch(() => {});
+    });
+  });
 
   /*
    * The one wait in here that can wedge — the outbox's database held by another tab's
@@ -788,7 +1051,10 @@ async function open(userId: string, halting: Halting, isMine: () => boolean): Pr
           },
           isOffline: isOfflineError,
           channel: `unbent-search-${userId}`,
-          onIndexed: notifySearchIndexed,
+          onIndexed: () => {
+            notifySearchIndexed();
+            server?.indexed();
+          },
         }),
       };
       if (resetUnheard) search.sync.startOver();
@@ -811,6 +1077,36 @@ async function open(userId: string, halting: Halting, isMine: () => boolean): Pr
     search?.sync.touchFiles();
   });
 
+  /*
+   * The account's other tabs on this device are this library's clients
+   * (`library-channel.ts`): from here on, the rows, the feed's state and the two
+   * statuses go to them as they move, and their writes come here to be queued. Started
+   * last, once the outbox is ready, so nothing a client asks for finds the library
+   * half built; a client that said hello before this hears `serving` and asks again.
+   * Stopped by `halt`, at once, so a client waits for the next holder rather than on a
+   * library that is being closed.
+   */
+  const holderId = crypto.randomUUID();
+  const port = openPort(userId, holderId);
+  if (port && !halted) {
+    server = serveLibrary(
+      port,
+      {
+      collections,
+      state: () => latest ?? engine.state,
+      onState: (listener) => {
+        listeners.add(listener);
+        return () => void listeners.delete(listener);
+      },
+      outbox,
+      keeper,
+      search: () => search,
+      searchReady,
+      },
+      holderId,
+    );
+  }
+
   const close = async () => {
     halt();
     stopKeeping();
@@ -828,6 +1124,9 @@ async function open(userId: string, halting: Halting, isMine: () => boolean): Pr
     // After its sync has stopped: a pass in hand finishes its write, and the file is free for a wipe.
     await search?.index.close().catch(() => {});
     await closeLocalStore();
+    port?.close();
+    // Last, once the file is let go: the next tab in the queue opens the store on its own.
+    hold.release();
   };
 
   return {

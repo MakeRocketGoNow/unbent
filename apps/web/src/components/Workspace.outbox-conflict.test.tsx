@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createRootRoute, createRoute, createRouter, createMemoryHistory, RouterProvider } from '@tanstack/react-router';
 import type { Note } from '@unbent/shared';
 import * as api from '../notes-api.js';
+import * as actions from '../store/actions.js';
 import { installTestLibrary } from '../store/test-library.js';
 import type { Outbox, SyncStatus } from '../store/actions.js';
 import { keys } from '../queries.js';
@@ -119,6 +120,30 @@ describe('a conflict that comes back from the outbox', () => {
     await waitFor(() => expect(api.updateNote).toHaveBeenCalled());
     expect(vi.mocked(api.updateNote).mock.calls[0]).toEqual([server.id, { title: typed.title, body: typed.body, ifUpdatedAt: 200 }]);
     expect(o.resolveConflict).toHaveBeenCalledWith(server.id);
+    lib.uninstall();
+  });
+
+  it('after Keep mine over another tab’s waiting save, the editor takes theirs for what it never touched', async () => {
+    const { tags: _t, notebook: _n, ...row } = server;
+    const lib = installTestLibrary({ notes: [{ ...row, tagIds: [], files: [] }] });
+    // The other tab's save waits in this device's outbox: theirs renamed the note, this
+    // draft typed in the body and left the title alone, and the holder queues Keep
+    // mine's draft over theirs with no answer.
+    const otherTab = { ...theirs, title: 'Renamed in the other tab', body: server.body, updatedAt: 200 };
+    const o = outbox(new Map([[server.id, { current: otherTab, draft: { ...typed, title: server.title }, base: server }]]));
+    vi.mocked(useOutbox).mockReturnValue(o);
+    const queued = vi.spyOn(actions, 'saveNote').mockResolvedValue('queued');
+    mount();
+    await waitFor(() => expect(document.querySelector('.cm-content')?.textContent).toContain('and a line typed on the plane'));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Keep mine' }));
+    });
+    await waitFor(() => expect(queued).toHaveBeenCalled());
+    expect(queued.mock.calls[0]![0]).toMatchObject({ noteId: server.id, against: 200 });
+    // The body typed here stays; the title, never touched here, is the other tab's.
+    await waitFor(async () => expect((await title()).value).toBe('Renamed in the other tab'));
+    expect(document.querySelector('.cm-content')?.textContent).toContain('and a line typed on the plane');
+    queued.mockRestore();
     lib.uninstall();
   });
 

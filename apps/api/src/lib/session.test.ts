@@ -15,7 +15,7 @@ vi.mock('../auth.js', () => ({
 }));
 
 // Imported after the mock is registered, so the middleware closes over the stub.
-const { sessionMiddleware, requireAuth } = await import('./session.js');
+const { sessionMiddleware, requireAuth, SESSION_CHECK_MS } = await import('./session.js');
 
 /** Only the shape the middleware hands to `getAuth`; the bindings are never touched here. */
 const env = { APP_URL: 'https://example.com' } as unknown as Env;
@@ -40,6 +40,7 @@ function call(path: string) {
 
 afterEach(() => {
   getSession.mockReset();
+  vi.useRealTimers();
 });
 
 describe('sessionMiddleware', () => {
@@ -101,6 +102,26 @@ describe('sessionMiddleware', () => {
     getSession.mockRejectedValue(new APIError('UNAUTHORIZED', { message: 'Failed to get session' }));
     const res = await call('/protected');
     expect(res.status).toBe(401);
+  });
+
+  /*
+     A session check that never answers held every request carrying one person's cookie
+     for minutes (2026-10-13). Past the bound the request goes on: a public route answers,
+     a protected one asks the client to retry, and neither waits for the browser to give up.
+   */
+  it('gives up on a session check that never answers, and answers the request anyway', async () => {
+    vi.useFakeTimers();
+    getSession.mockImplementation(() => new Promise(() => {}));
+    const pub = call('/public');
+    await vi.advanceTimersByTimeAsync(SESSION_CHECK_MS);
+    const res = await pub;
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ userId: null });
+    const prot = call('/protected');
+    await vi.advanceTimersByTimeAsync(SESSION_CHECK_MS);
+    const refused = await prot;
+    expect(refused.status).toBe(503);
+    expect(refused.headers.get('Retry-After')).toBe('60');
   });
 
   it('still answers 401 when there is simply no session', async () => {

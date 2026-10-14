@@ -10,6 +10,14 @@ import { useLibraryArriving } from '../store/use-feed-state.js';
  *
  * The count is of notes applied against the total the first page reported; the rest of
  * the library — notebooks, tags — comes with that first page. Opening has no count yet.
+ *
+ * Nothing here about which tab of this device holds the library. For a day in October
+ * 2026 this line said "Your notes are open in another tab" with an Open here button —
+ * at first on every view all day, which read as one tab at a time, then only offline,
+ * where a second tab could neither read nor save. Now a tab that does not hold the
+ * library is the holder's client and works as the holder does, offline included
+ * (`store/client-library.ts`), so there is nothing for the chrome to say; Settings →
+ * Offline still says which tab holds the file and offers to bring it here.
  */
 export function LibraryStatus() {
   const arriving = useLibraryArriving();

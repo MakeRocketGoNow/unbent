@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { WORKER_PREFIXES, classify, fileAddress, servesShell, shelved, within, type RequestFacts } from './routes.js';
+import { WORKER_PREFIXES, classify, fileAddress, isAsset, isShellFallback, servesShell, shelved, within, type RequestFacts } from './routes.js';
 
 const at = (path: string) => new URL(path, 'https://unbent.example');
 
@@ -151,6 +151,31 @@ describe('shelved', () => {
 
   it('declines an address that does not decode', () => {
     expect(fileAddress(at('/api/notes/8f0c/files/%E0%A4%A'))).toBeNull();
+  });
+});
+
+describe('isShellFallback', () => {
+  const html = 'text/html; charset=utf-8';
+
+  it('names an HTML answer for a script, a stylesheet or a wasm file as the page in disguise', () => {
+    expect(isShellFallback(new URL('https://unbent.app/assets/notes-abc123.js'), html)).toBe(true);
+    expect(isShellFallback(new URL('https://unbent.app/assets/index-abc123.css'), html)).toBe(true);
+    expect(isShellFallback(new URL('https://unbent.app/assets/pdf.wasm'), html)).toBe(true);
+  });
+
+  it('lets the page itself, and a file answered as itself, through', () => {
+    expect(isShellFallback(new URL('https://unbent.app/index.html'), html)).toBe(false);
+    expect(isShellFallback(new URL('https://unbent.app/assets/notes-abc123.js'), 'text/javascript; charset=utf-8')).toBe(false);
+    expect(isShellFallback(new URL('https://unbent.app/assets/notes-abc123.js'), null)).toBe(false);
+    expect(isShellFallback(new URL('https://unbent.app/notes'), html)).toBe(false);
+  });
+});
+
+describe('isAsset', () => {
+  it('is a hashed file of this origin under /assets/', () => {
+    expect(isAsset(new URL('https://unbent.app/assets/notes-abc123.js'), 'https://unbent.app')).toBe(true);
+    expect(isAsset(new URL('https://unbent.app/icons/icon-192.png'), 'https://unbent.app')).toBe(false);
+    expect(isAsset(new URL('https://cdn.example.com/assets/x.js'), 'https://unbent.app')).toBe(false);
   });
 });
 
