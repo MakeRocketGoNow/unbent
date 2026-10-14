@@ -6,7 +6,7 @@ import type { Note } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { installTestLibrary } from '../store/test-library.js';
 import type { Outbox } from '../store/actions.js';
-import { keys } from '../queries.js';
+import { installLibraryQueries, keys } from '../queries.js';
 import { seedFrom, type NoteDraft } from '../note-patch.js';
 import { Workspace } from './Workspace.js';
 
@@ -209,6 +209,7 @@ describe('a save that left a half-typed field out of the patch', () => {
         <RouterProvider router={router as any} />
       </QueryClientProvider>,
     );
+    return client;
   }
 
   beforeEach(() => {
@@ -300,5 +301,47 @@ describe('a save that left a half-typed field out of the patch', () => {
     const sent = { ...seedFrom({ ...receipt, fields: [] }), title: 'Trip notes, lunch', fields: { [amountId]: '12.' } };
     await act(async () => ack(receipt.id, { ...receipt, fields: [], title: 'Trip notes, lunch', updatedAt: 101 }, sent));
     expect(screen.getByLabelText<HTMLInputElement>('Amount').value).toBe('12.');
+  });
+
+  /*
+     Held is for a value the person can still finish. Once the notebook no longer defines
+     the field — deleted in another tab, or the note filed elsewhere — the editor does not
+     draw it, and holding it would leave the head on Unsaved over nothing on screen.
+  */
+  it('lets go of a half-typed value whose field the notebook no longer has', async () => {
+    lib.uninstall();
+    const { tags: _t, notebook: _n, ...row } = { ...receipt, fields: [] };
+    const notebook = {
+      id: 'nb-receipts',
+      name: 'Receipts',
+      purpose: null,
+      emoji: null,
+      fieldDefs: [
+        {
+          id: amountId,
+          notebookId: 'nb-receipts',
+          name: 'Amount',
+          type: 'number' as const,
+          options: [],
+          scale: null,
+          currency: null,
+          position: 0,
+        },
+      ],
+    };
+    lib = installTestLibrary({ notes: [{ ...row, notebookId: 'nb-receipts', tagIds: [], files: [] }], notebooks: [notebook] });
+    vi.mocked(useOutbox).mockReturnValue(outbox(() => {}));
+    vi.mocked(api.updateNote).mockImplementation(async (_id, patch) => ({ ...receipt, fields: [], ...patch, updatedAt: 101 }) as Note);
+    const stop = installLibraryQueries(mountReceipts());
+
+    await type('Trip notes, lunch');
+    const amount = await screen.findByLabelText<HTMLInputElement>('Amount');
+    await act(async () => {
+      fireEvent.change(amount, { target: { value: '12.' } });
+    });
+    await act(async () => lib.upsert('notebook', { ...notebook, fieldDefs: [] }));
+    await waitFor(() => expect(screen.queryByLabelText('Amount')).toBeNull());
+    await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy(), { timeout: 3000 });
+    stop();
   });
 });
