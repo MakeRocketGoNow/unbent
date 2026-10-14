@@ -725,7 +725,8 @@ no `serving`, no rows, no `opening` — is a tab that holds the lock and runs no
 this account, frozen or on a build from before the channel, and the client takes the
 library over (`UNANSWERED_HELLOS` in `client-library.ts`), under the deadline its attach
 was given, so beside a frozen tab whose worker still holds the file it is refused at the
-same twenty seconds as before and no later. A tab granted the lock says `opening` on the
+same twenty seconds as before and no later; a takeover by a tab that was served once is
+a new ask and gets a bound of its own. A tab granted the lock says `opening` on the
 channel before its open and in answer to every hello until it serves, for exactly this
 reason: a hand-off on a phone takes seconds, and a client waiting on one must not read
 that as silence. Before this, every reload with an older tab left open after a deploy

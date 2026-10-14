@@ -465,19 +465,29 @@ export function acquireLibrary(userId: string, options: { takeOver?: boolean } =
  * library fires, and the one thing a client decides for itself — that its holder has
  * gone silent, on which it takes the library over, if it is still this tab's library.
  */
-const clientHooks = (userId: string, isMine: () => boolean, deadline: number) => ({
-  onChange: (roots: ReadonlySet<string>) => changeListeners.forEach((l) => l(roots)),
-  onAttached: () => changeListeners.forEach((l) => l(LIBRARY_ROOTS)),
-  onReset: () => resetListeners.forEach((l) => l()),
-  onIndexed: () => indexedListeners.forEach((l) => l()),
-  onSilent: () => {
-    // Under the attach's own deadline, not a fresh bound: the takeover is the same ask
-    // continued, and a frozen holder's file keeps the open waiting just as its silence
-    // kept the attach, so the caller is refused at the bound it was promised and not
-    // the hellos' six seconds later (review of #358).
-    if (isMine()) void openFor(userId, true, undefined, deadline).catch(() => {});
-  },
-});
+const clientHooks = (userId: string, isMine: () => boolean, deadline: number) => {
+  // The attach's own deadline, until the first attach: a takeover on unanswered hellos
+  // is the same ask continued, and a frozen holder's file keeps the open waiting just
+  // as its silence kept the attach, so the caller is refused at the bound it was
+  // promised and not the hellos' six seconds later. A takeover from a holder that went
+  // quiet after serving — pings unanswered with a call in hand, or no holder since the
+  // last one closed — is a new ask, made minutes or hours later, and gets a bound of
+  // its own: under the attach's it was refused at once, reported as a timeout, and the
+  // save it was for went out as a plain request (review of #358, twice).
+  let inherited: number | undefined = deadline;
+  return {
+    onChange: (roots: ReadonlySet<string>) => changeListeners.forEach((l) => l(roots)),
+    onAttached: () => {
+      inherited = undefined;
+      changeListeners.forEach((l) => l(LIBRARY_ROOTS));
+    },
+    onReset: () => resetListeners.forEach((l) => l()),
+    onIndexed: () => indexedListeners.forEach((l) => l()),
+    onSilent: () => {
+      if (isMine()) void openFor(userId, true, undefined, inherited).catch(() => {});
+    },
+  };
+};
 
 /**
  * Tells the account's other tabs that this one has the lock and is opening the library:

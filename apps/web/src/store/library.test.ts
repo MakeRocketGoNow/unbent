@@ -580,10 +580,20 @@ describe('acquireLibrary', () => {
       const attached = await client;
       if (attached.remote) attached.call('trashNote', ['n1']).catch(() => {});
       theirPort.close();
+      // The open after the takeover takes a moment, as a real one does: it is a new ask
+      // long after the attach's own bound, and gets a bound of its own rather than being
+      // refused at once under the one that has passed (review of #358).
+      let finishStore!: () => void;
+      const store = { userId: 'u1', persistence: {}, coordinator: {}, database: {} };
+      vi.mocked(openLocalStore).mockImplementationOnce(() => new Promise((r) => (finishStore = () => r(store as never))));
       await vi.advanceTimersByTimeAsync(HOLDER_SILENT_MS + PING_MS * 2);
       await vi.advanceTimersByTimeAsync(10);
       await expect(other).rejects.toMatchObject({ name: 'AbortError' });
-      await expect(currentLibrary()).resolves.toSatisfy((lib: { userId: string; remote?: true }) => lib.userId === 'u1' && !lib.remote);
+      const opening = currentLibrary();
+      await vi.advanceTimersByTimeAsync(1000);
+      finishStore();
+      await expect(opening).resolves.toSatisfy((lib: { userId: string; remote?: true }) => lib.userId === 'u1' && !lib.remote);
+      expect(reportError).not.toHaveBeenCalled();
       expect(libraryElsewhere()).toBeNull();
     });
 
