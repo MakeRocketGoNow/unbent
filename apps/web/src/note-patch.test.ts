@@ -5,6 +5,7 @@ import {
   holdsTheirChanges,
   rebaseAfterAck,
   rememberFieldDefs,
+  seedFromKeepingHeld,
   unstoreableFieldIds,
   type NoteDraft,
 } from './note-patch.js';
@@ -461,6 +462,74 @@ describe('rebaseAfterAck', () => {
     });
     expect(rebaseAfterAck(draftOf({ fields: { [amount.id]: '14' } }), sentWith, { ...was, fields: value(13) }).fields).toEqual({
       [amount.id]: '14',
+    });
+  });
+
+  it('keeps a half-typed number that the save left out of the patch', () => {
+    // Sent and still on the draft: "12." is not a number yet, so the patch omitted it
+    // and the answer still has the stored 10. Measured as "unchanged" that would take 10.
+    const stored = { ...base, fields: [value(amount, 10)] };
+    const typing = { ...sent, fields: { [amount.id]: '12.' } };
+    expect(rebaseAfterAck(typing, typing, stored, [amount]).fields).toEqual({ [amount.id]: '12.' });
+  });
+
+  it('knows a first value is held only from the definitions when nothing is stored', () => {
+    // No stored row to read the type from: without the definition, "12." is an unknown
+    // id and the empty answer wins.
+    const empty = { ...base, fields: [] };
+    const typing = { ...sent, fields: { [amount.id]: '12.' } };
+    expect(rebaseAfterAck(typing, typing, empty, [amount]).fields).toEqual({ [amount.id]: '12.' });
+    expect(rebaseAfterAck(typing, typing, empty).fields).toEqual({ [amount.id]: null });
+  });
+});
+
+describe('seedFromKeepingHeld', () => {
+  it('keeps a half-typed number the server never stored, and takes everything else', () => {
+    const stored = note({ title: 'Trip, saved', fields: [value(amount, 10)] });
+    const draft: NoteDraft = {
+      title: 'Trip, saved',
+      body: 'paid',
+      tags: ['tax'],
+      notebook: 'Receipts',
+      fields: { [amount.id]: '12.' },
+    };
+    expect(seedFromKeepingHeld(stored, draft, [amount])).toEqual({
+      title: 'Trip, saved',
+      body: 'paid',
+      tags: ['tax'],
+      notebook: 'Receipts',
+      fields: { [amount.id]: '12.' },
+    });
+  });
+
+  it('knows a first value is held only from the definitions when nothing is stored', () => {
+    const empty = note({ title: 'Trip, saved', fields: [] });
+    const draft: NoteDraft = {
+      title: 'Trip, saved',
+      body: 'paid',
+      tags: ['tax'],
+      notebook: 'Receipts',
+      fields: { [amount.id]: '12.' },
+    };
+    expect(seedFromKeepingHeld(empty, draft, [amount]).fields).toEqual({ [amount.id]: '12.' });
+    expect(seedFromKeepingHeld(empty, draft).fields).toEqual({});
+  });
+
+  it('is seedFrom when nothing is being held', () => {
+    const stored = note({ title: 'Trip, saved', fields: [value(amount, 10)] });
+    const draft: NoteDraft = {
+      title: 'Trip, saved',
+      body: 'paid',
+      tags: ['tax'],
+      notebook: 'Receipts',
+      fields: { [amount.id]: 10 },
+    };
+    expect(seedFromKeepingHeld(stored, draft, [amount])).toEqual({
+      title: 'Trip, saved',
+      body: 'paid',
+      tags: ['tax'],
+      notebook: 'Receipts',
+      fields: { [amount.id]: 10 },
     });
   });
 });
