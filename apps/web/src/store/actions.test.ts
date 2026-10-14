@@ -504,29 +504,28 @@ describe('a replayed write', () => {
    * open — and the plan reading as active again replays it at once (MAK-108).
    */
   it('holds a write the plan refused while the plan reads inactive, and replays it the moment it reads active', async () => {
-    const { fake, landPull } = library([row('n1')]);
+    // A save, which is what the server refuses for the plan; a delete it never does.
+    const { fake, note } = library([row('n1', { title: 'old' })]);
+    const base = note('n1');
     const replay = vi.fn();
     fake.config.onlineDetector.subscribe(replay);
-    await actions.trashNotes(['n1']);
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'typed as the trial ran out' }, base });
     await tick();
-    vi.mocked(api.deleteNotes).mockRejectedValueOnce(new ApiError(402, '402: read-only', 'PLAN_INACTIVE'));
+    vi.mocked(api.updateNote).mockRejectedValueOnce(new ApiError(402, '402: read-only', 'PLAN_INACTIVE'));
     expect(await fake.replayOne()).toBe('kept');
-    expect(api.deleteNotes).toHaveBeenCalledTimes(1);
+    expect(api.updateNote).toHaveBeenCalledTimes(1);
     // The plan read and inactive: the next replay asks the server nothing.
     planIs(true);
     expect(await fake.replayOne()).toBe('kept');
-    expect(api.deleteNotes).toHaveBeenCalledTimes(1);
+    expect(api.updateNote).toHaveBeenCalledTimes(1);
     expect(planLapsed()).toBe(true);
     // The plan active again: the executor is nudged, and the replay goes to the server.
     planIs(false);
     expect(replay).toHaveBeenCalledTimes(1);
     expect(planLapsed()).toBe(false);
-    vi.mocked(api.deleteNotes).mockResolvedValueOnce({ trashed: 1 });
-    const done = fake.replayOne();
-    await tick();
-    landPull();
-    expect(await done).toBe('done');
-    expect(api.deleteNotes).toHaveBeenCalledTimes(2);
+    vi.mocked(api.updateNote).mockResolvedValueOnce({ ...base, title: 'typed as the trial ran out', updatedAt: 101 });
+    expect(await fake.replayOne()).toBe('done');
+    expect(api.updateNote).toHaveBeenCalledTimes(2);
   });
 
   it('takes a note the server no longer has as done', async () => {
