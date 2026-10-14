@@ -174,7 +174,7 @@ describe.skipIf(!sqlite3)('the directory\'s query plans', () => {
    * statements go by key or by the customer's unique index, so it changes nothing else.
    */
   it('find the plans that have run out from their own partial index', () => {
-    const p = plan(LAPSE_DUE_SQL.replace('?1', '1').replace('?2', '5'));
+    const p = plan(LAPSE_DUE_SQL.replace('?1', '1').replace('?2', '5').replace('?3', '0'));
     // `IS NOT NULL` becomes the range's lower bound, so the index is read from its first entry.
     expect(p).toContain('SEARCH p USING INDEX idx_account_plan_lapse_due (plan_until>? AND plan_until<?)');
     expect(p).toContain('SEARCH u USING INDEX sqlite_autoindex_user_1 (id=?)');

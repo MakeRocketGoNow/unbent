@@ -18,7 +18,7 @@ const NOW = Date.now();
 function harness(plan: Partial<AccountPlan> | null, billing = true) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   client.setQueryData(keys.config(), { providers: ['password'], ...(billing ? { billing: { environment: 'sandbox', clientToken: 'test_x' } } : {}) });
-  if (plan) client.setQueryData(keys.plan(), { state: 'trial', until: NOW + 10 * DAY, source: null, storageGb: 10, subscription: null, ...plan });
+  if (plan) client.setQueryData(keys.plan(), { state: 'trial', until: NOW + 10 * DAY, source: null, storageGb: 10, subscription: null, ...plan, readOnlyAt: plan.readOnlyAt ?? plan.until ?? NOW + 10 * DAY });
   const rootRoute = createRootRoute({ component: () => <PlanBanner now={NOW} /> });
   const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory({ initialEntries: ['/notes'] }) });
   return render(

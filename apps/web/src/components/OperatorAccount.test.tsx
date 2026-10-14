@@ -691,8 +691,8 @@ describe('OperatorAccount: the plan', () => {
 
   it('shows where the account stands and comps it, with an end or none', async () => {
     sellsPlan = true;
-    vi.mocked(api.compAccount).mockResolvedValue({ state: 'active', until: null, source: 'comp', storageGb: 60, subscription: null });
-    harness(undefined, undefined, { ...account, plan: { state: 'trial', until: now + 5 * 86_400_000, source: null, storageGb: 10, subscription: null } });
+    vi.mocked(api.compAccount).mockResolvedValue({ state: 'active', until: null, readOnlyAt: null, source: 'comp', storageGb: 60, subscription: null });
+    harness(undefined, undefined, { ...account, plan: { state: 'trial', until: now + 5 * 86_400_000, readOnlyAt: now + 5 * 86_400_000, source: null, storageGb: 10, subscription: null } });
     const section = (await screen.findByRole('heading', { name: 'Plan' })).closest('section')!;
     expect(section.textContent).toContain('Free trial.');
     expect(section.textContent).toContain('Their trial ends on');
@@ -705,7 +705,7 @@ describe('OperatorAccount: the plan', () => {
 
   it('ends a comp behind a confirm, and refuses to comp over a Paddle subscription', async () => {
     sellsPlan = true;
-    harness(undefined, undefined, { ...account, plan: { state: 'active', until: null, source: 'comp', storageGb: 10, subscription: null } });
+    harness(undefined, undefined, { ...account, plan: { state: 'active', until: null, readOnlyAt: null, source: 'comp', storageGb: 10, subscription: null } });
     const section = (await screen.findByRole('heading', { name: 'Plan' })).closest('section')!;
     expect(section.textContent).toContain('Complimentary.');
     fireEvent.click(within(section).getByRole('button', { name: 'End comp' }));
@@ -714,7 +714,7 @@ describe('OperatorAccount: the plan', () => {
     fireEvent.click(within(confirm).getByRole('button', { name: 'End comp' }));
     await waitFor(() => expect(api.compAccount).toHaveBeenCalledWith('u1', { action: 'end' }));
     cleanup();
-    harness(undefined, undefined, { ...account, plan: { state: 'active', until: now + 300 * 86_400_000, source: 'paddle', storageGb: 10, subscription: { status: 'active', cancelsAt: null, pastDue: false } } });
+    harness(undefined, undefined, { ...account, plan: { state: 'active', until: now + 300 * 86_400_000, readOnlyAt: now + 301 * 86_400_000, source: 'paddle', storageGb: 10, subscription: { status: 'active', cancelsAt: null, pastDue: false } } });
     const paid = (await screen.findByRole('heading', { name: 'Plan' })).closest('section')!;
     expect(paid.textContent).toContain('Paid through Paddle');
     expect(within(paid).queryByRole('button')).toBeNull();

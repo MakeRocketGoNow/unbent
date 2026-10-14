@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { lapseKind, lapseMessage, notifyLapsedPlans } from './plan-mail.js';
+import { RENEWAL_GRACE_MS } from './plan.js';
 
 const paddle = {
   PADDLE_API_KEY: 'pdl_sdbx_apikey_x',
@@ -83,9 +84,10 @@ describe('the lapse mail', () => {
     ]);
     expect(await notifyLapsedPlans({ ...paddle, DB: db }, 10)).toBe(1);
     expect(sent).toEqual(['one@example.com', 'bad@example.com', 'down@example.com', 'slow@example.com']);
-    // The due query with now and the limit, then a mark for the one that went and the
-    // one refused for good; the provider's outage and its rate limit are tried again next run.
-    expect(ran[0]!.binds).toEqual([10, 5]);
+    // The due query with now, the limit and the renewal grace's cutoff, then a mark for
+    // the one that went and the one refused for good; the provider's outage and its rate
+    // limit are tried again next run.
+    expect(ran[0]!.binds).toEqual([10, 5, 10 - RENEWAL_GRACE_MS]);
     expect(ran.slice(1).map((r) => r.binds[0])).toEqual(['u1', 'u2']);
     expect(ran[1]!.sql).toContain('lapse_notified_at');
     vi.unstubAllGlobals();

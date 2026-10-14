@@ -23,7 +23,7 @@ const NOW = Date.now();
 function harness(plan: Partial<AccountPlan>, billing = true) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   client.setQueryData(keys.config(), { providers: ['password'], ...(billing ? { billing: { environment: 'sandbox', clientToken: 'test_x' } } : {}) });
-  client.setQueryData(keys.plan(), { state: 'trial', until: NOW + 10 * DAY, source: null, storageGb: 10, usedBytes: 0, subscription: null, ...plan });
+  client.setQueryData(keys.plan(), { state: 'trial', until: NOW + 10 * DAY, source: null, storageGb: 10, usedBytes: 0, subscription: null, ...plan, readOnlyAt: plan.readOnlyAt ?? plan.until ?? NOW + 10 * DAY });
   const rootRoute = createRootRoute({ component: () => <Plan /> });
   const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory({ initialEntries: ['/settings/plan'] }) });
   return render(
@@ -123,7 +123,7 @@ describe('Plan', () => {
         calls.push(`${init?.method ?? 'GET'} ${url}`);
         if (url === '/api/billing/checkout') return Response.json({ transactionId: 'txn_1' });
         if (url === '/api/billing/refresh') return Response.json({ state: 'active' });
-        if (url === '/api/me/plan') return Response.json({ state: 'active', until: NOW + 365 * DAY, source: 'paddle', storageGb: 35, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
+        if (url === '/api/me/plan') return Response.json({ state: 'active', until: NOW + 365 * DAY, readOnlyAt: NOW + 366 * DAY, source: 'paddle', storageGb: 35, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
         return Response.json({}, { status: 404 });
       }),
     );

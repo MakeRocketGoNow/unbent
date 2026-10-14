@@ -72,6 +72,35 @@ export function trialEnd(now: number): number {
 }
 
 /**
+ * How long a renewing subscription stays active past the end of its paid period while
+ * the renewal's news is on its way. `plan_until` is the period's end, which is also the
+ * instant Paddle bills the renewal; the `transaction.completed` and `subscription.updated`
+ * that carry the next period land after the charge clears — usually minutes, but
+ * after the end and never before. Without a grace every subscriber in good standing
+ * read as `inactive` at their anniversary: 402s on every write, the editor locked, and
+ * the hourly mail able to tell a paying customer their subscription had ended. A day
+ * covers a slow charge and a webhook Paddle had to retry; a renewal that fails for good
+ * comes as `subscription.past_due`, which moves the status off `active` and ends the
+ * grace at once.
+ */
+export const RENEWAL_GRACE_MS = DAY_MS;
+
+/** A Paddle subscription in good standing with no cancellation ahead: one that will renew when its period ends. */
+export function renewing(row: PlanRow): boolean {
+  return row.source === 'paddle' && row.paddleStatus === 'active' && row.paddleCancelsAt === null;
+}
+
+/**
+ * When the account turns read-only unless something changes first: `plan_until`, or
+ * a renewing subscription's end plus the grace. Null for a plan with no end. What
+ * `planStateOf` decides on, and what the page is told so it locks at the same instant.
+ */
+export function readOnlyAtOf(row: PlanRow): number | null {
+  if (row.planUntil === null) return null;
+  return renewing(row) ? row.planUntil + RENEWAL_GRACE_MS : row.planUntil;
+}
+
+/**
  * What the account is at `now`: the row's word, unless its end has passed. A missing row
  * is a trial that starts now — `planFor` writes it, and a reader that reaches here with
  * null (the first request after sign-up, a hook that failed) is told what it would read
@@ -80,7 +109,8 @@ export function trialEnd(now: number): number {
 export function planStateOf(row: PlanRow | null, now: number): PlanState {
   if (!row) return 'trial';
   if (row.plan === 'inactive') return 'inactive';
-  if (row.planUntil !== null && row.planUntil <= now) return 'inactive';
+  const readOnlyAt = readOnlyAtOf(row);
+  if (readOnlyAt !== null && readOnlyAt <= now) return 'inactive';
   return row.plan;
 }
 
@@ -91,6 +121,7 @@ export function accountPlanOf(row: PlanRow, now: number): AccountPlan {
   return {
     state,
     until: row.planUntil,
+    readOnlyAt: state === 'inactive' ? row.planUntil : readOnlyAtOf(row),
     source: row.source,
     storageGb: row.storageGb,
     subscription: paddle
@@ -229,10 +260,15 @@ export async function updatePlan(db: D1Database, userId: string, patch: PlanPatc
  * The accounts whose plan has run out and have not been told, oldest end first: what the
  * sweep mails (lib/plan-mail.ts). A range on `idx_account_plan_lapse_due`, whose
  * conditions this repeats word for word so the planner takes it; `migrations.test.ts`
- * pins the plan. Binds: now, and the most to take.
+ * pins the plan. A renewing subscription is left out until its grace is up too
+ * (`RENEWAL_GRACE_MS`): its end has passed and its renewal's webhook has not landed,
+ * which is the hour a paying customer must not be told their subscription ended. The
+ * same rule as `planStateOf`, spelled in SQL, as a filter on the rows the range finds.
+ * Binds: now, the most to take, and now less the grace.
  */
 export const LAPSE_DUE_SQL = `SELECT p.user_id, p.plan, p.plan_until, p.source, p.paddle_status, u.email
     FROM account_plan p JOIN user u ON u.id = p.user_id
    WHERE p.lapse_notified_at IS NULL AND p.plan_until IS NOT NULL AND p.plan <> 'inactive'
      AND p.plan_until <= ?1
+     AND NOT (p.source = 'paddle' AND p.paddle_status = 'active' AND p.paddle_cancels_at IS NULL AND p.plan_until > ?3)
    ORDER BY p.plan_until LIMIT ?2`;

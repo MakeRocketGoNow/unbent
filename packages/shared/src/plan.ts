@@ -82,6 +82,14 @@ export interface AccountPlan {
    * became so.
    */
   until: number | null;
+  /**
+   * When the account turns read-only unless something changes first, which a client
+   * locks on rather than `until`: the same instant for a trial or a comp, and for a
+   * renewing subscription its end plus the server's renewal grace — the period's end is
+   * when Paddle bills, and the webhook carrying the next period lands after it. Null
+   * for a plan with no end; for an `inactive` account, when it became so.
+   */
+  readOnlyAt: number | null;
   source: PlanSource | null;
   /** The attachments the account may hold: `BASE_STORAGE_GB` plus the add-ons bought. */
   storageGb: number;

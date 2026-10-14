@@ -1,7 +1,7 @@
 import { INACTIVE_KEPT_DAYS, type PlanSource, type PlanState } from '@unbent/shared';
 import { EmailRejected, canSendEmail, sendEmail, type EmailEnv } from './email.js';
 import { billingOn, type PaddleEnv } from './paddle.js';
-import { LAPSE_DUE_SQL, updatePlanStatement } from './plan.js';
+import { LAPSE_DUE_SQL, RENEWAL_GRACE_MS, updatePlanStatement } from './plan.js';
 
 /**
  * Telling an account its plan has ended (MAK-108): the mail the sweep sends, once, to
@@ -98,7 +98,7 @@ export async function notifyLapsedPlans(
     console.warn('[billing] APP_URL is not set, so no lapse mail can name where to subscribe; none sent');
     return 0;
   }
-  const { results } = await env.DB.prepare(LAPSE_DUE_SQL).bind(now, limit).all<DueRow>();
+  const { results } = await env.DB.prepare(LAPSE_DUE_SQL).bind(now, limit, now - RENEWAL_GRACE_MS).all<DueRow>();
   const planUrl = `${appUrl.replace(/\/$/, '')}/settings/plan`;
   let told = 0;
   for (const row of results) {

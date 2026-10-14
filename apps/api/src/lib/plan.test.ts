@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BASE_STORAGE_GB, TRIAL_DAYS } from '@unbent/shared';
-import { accountPlanOf, planStateOf, trialEnd, type PlanRow } from './plan.js';
+import { RENEWAL_GRACE_MS, accountPlanOf, planStateOf, trialEnd, type PlanRow } from './plan.js';
 import { billingOf, paddleOf } from './paddle.js';
 
 const NOW = Date.UTC(2026, 9, 10, 12);
@@ -41,6 +41,23 @@ describe('planStateOf', () => {
     const paid = row({ plan: 'active', source: 'paddle', paddleStatus: 'canceled', planUntil: NOW + 30 * DAY });
     expect(planStateOf(paid, NOW)).toBe('active');
     expect(planStateOf(paid, NOW + 30 * DAY)).toBe('inactive');
+  });
+
+  /**
+   * The period's end is the instant Paddle bills the renewal, and the webhook with the
+   * next period lands after. A subscriber in good standing keeps editing through that
+   * gap; one cancelling, or whose renewal failed, does not.
+   */
+  it('keeps a renewing subscription active past its end for the grace, and nothing else', () => {
+    const end = NOW + 30 * DAY;
+    const renewing = row({ plan: 'active', source: 'paddle', paddleSubscriptionId: 'sub', paddleStatus: 'active', planUntil: end });
+    expect(planStateOf(renewing, end)).toBe('active');
+    expect(planStateOf(renewing, end + RENEWAL_GRACE_MS - 1)).toBe('active');
+    expect(planStateOf(renewing, end + RENEWAL_GRACE_MS)).toBe('inactive');
+    expect(accountPlanOf(renewing, NOW)).toMatchObject({ until: end, readOnlyAt: end + RENEWAL_GRACE_MS });
+    expect(planStateOf({ ...renewing, paddleCancelsAt: end }, end)).toBe('inactive');
+    expect(planStateOf({ ...renewing, paddleStatus: 'past_due' }, end)).toBe('inactive');
+    expect(accountPlanOf(row(), NOW)).toMatchObject({ until: trialEnd(NOW), readOnlyAt: trialEnd(NOW) });
   });
 
   it('gives a comp no end unless one was set', () => {
