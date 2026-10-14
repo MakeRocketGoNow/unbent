@@ -156,6 +156,28 @@ describe('Plan', () => {
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 
+  /** The returning subscriber's row names the old, canceled subscription, which the first read-back still finds. */
+  it('keeps reading the plan back after a lapsed subscriber\'s checkout until the new subscription is there', async () => {
+    const refreshes: number[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url === '/api/billing/checkout') return Response.json({ transactionId: 'txn_2' });
+        if (url === '/api/billing/refresh') {
+          refreshes.push(1);
+          return Response.json(refreshes.length > 1 ? { state: 'active', subscription: { status: 'active', cancelsAt: null, pastDue: false } } : { state: 'inactive', subscription: { status: 'canceled', cancelsAt: null, pastDue: false } });
+        }
+        if (url === '/api/me/plan') return Response.json({ state: 'active', until: NOW + 365 * DAY, readOnlyAt: NOW + 366 * DAY, source: 'paddle', storageGb: 10, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
+        return Response.json({}, { status: 404 });
+      }),
+    );
+    vi.mocked(openCheckout).mockResolvedValue('completed');
+    harness({ state: 'inactive', until: NOW - DAY, source: 'paddle', subscription: { status: 'canceled', cancelsAt: null, pastDue: false } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Subscribe for $36 a year' }));
+    expect(await screen.findByRole('heading', { name: 'Subscribed' }, { timeout: 4000 })).toBeTruthy();
+    expect(refreshes).toHaveLength(2);
+  });
+
   it('is nothing where the instance sells no plan', () => {
     const { container } = harness({}, false);
     expect(container.textContent).toBe('');

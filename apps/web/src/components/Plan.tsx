@@ -156,11 +156,15 @@ export function Plan() {
    * find the customer with no subscription yet and the page would say "Subscribed" over
    * a banner that still said read-only, until a focus or a reload. Bounded: a read that
    * keeps finding nothing is the webhook's to settle, and the page shows what it has.
+   *
+   * Not any subscription: a lapsed subscriber coming back still has the old, canceled
+   * one on the row, and the first read finds that one as newest until Paddle has made
+   * the new one. Settled means a subscription that is not canceled.
    */
   async function settleCheckout() {
     for (let attempt = 0; attempt < CHECKOUT_SETTLE_TRIES; attempt++) {
       const read = await api.refreshPlan().catch(() => undefined);
-      if (read?.subscription) return;
+      if (read?.subscription && read.subscription.status !== 'canceled') return;
       await new Promise((r) => setTimeout(r, CHECKOUT_SETTLE_WAIT_MS));
     }
   }
