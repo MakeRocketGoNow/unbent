@@ -948,9 +948,10 @@ describe('a tab that does not hold the outbox', () => {
   });
 
   it('sends a newly typed field, reading the type from the library this tab still holds', async () => {
-    // A second tab does not queue, but it has the notebook's definitions. Passing none
-    // used to skip Amount as a leftover id, so the autosave reported "Saved" and the
-    // number existed nowhere but the draft — gone on the next open.
+    // A library whose outbox is not durable does not queue, but it has the notebook's
+    // definitions. Passing none used to skip Amount as a leftover id, so the autosave
+    // reported "Saved" and the number existed nowhere but the draft — gone on the next
+    // open.
     const { fake, note } = library([row('n1', { title: 'old', notebookId: 'nb1' })], [receipts]);
     fake.lead(false);
     const base = note('n1');

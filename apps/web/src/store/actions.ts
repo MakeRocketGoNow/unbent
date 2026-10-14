@@ -1100,11 +1100,13 @@ function split(lib: WritableLibrary, ids: string[]): { here: string[]; there: st
  *
  * `buildNotePatch` skips a value that has no stored row and no definition, treating it
  * as a leftover id so a stale draft key cannot 400 the rest of the save. This path
- * used to pass `undefined` even when the tab held a library — it just did not hold the
- * outbox — so filling Amount for the first time in a second tab, or on a note opened
- * during the first copy, reported "Saved" and left the number nowhere. The queued path
- * already reads the library's definitions; this one does too, and takes any the editor
- * has already loaded for what the library does not hold.
+ * used to pass `undefined` even when the tab held a library — one whose outbox is not
+ * durable, or a note opened during the first copy — and always on a device with no
+ * library, so filling Amount for the first time there reported "Saved" and left the
+ * number nowhere. (A client tab forwards its save to the holder, which takes whichever
+ * path applies there.) The queued path already reads the library's definitions; this
+ * one does too, and takes any the editor has already loaded for what the library does
+ * not hold.
  *
  * The library's copy wins by id: the feed keeps it current, while the editor's list
  * (`rememberFieldDefs`) keeps every definition it has seen, so a field converted in
