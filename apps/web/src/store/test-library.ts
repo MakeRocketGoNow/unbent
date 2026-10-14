@@ -1,14 +1,15 @@
 import { createCollection, type Collection } from '@tanstack/db';
 import type { FeedAttachment, FeedEntity, FeedNote, FeedNotebook, FeedTag } from '@unbent/shared';
 import type { Cursor, FeedState } from './feed.js';
-import { setLibraryForTests, type ReadableLibrary, notifyLibraryReset } from './library.js';
+import { LIBRARY_ROOTS, notifyLibraryChange, rootsOfNoteChanges, setLibraryForTests, type ReadableLibrary, notifyLibraryReset } from './library.js';
 
 /**
  * An in-memory library for component tests: the four collections with no persistence
  * and no feed, seeded with rows, and a way to change them the way a feed page would —
- * through the collections' sync path, so a test that installs `installLibraryQueries`
- * sees the queries re-run. Installed as the library `queries.ts` reads until the test
- * uninstalls it.
+ * through the collections' sync path, and told to the query bridge as the real library
+ * tells it (`open` in `library.ts`, with the same roots and the same subscription
+ * options), so a test that installs `installLibraryQueries` sees the queries re-run.
+ * Installed as the library `queries.ts` reads until the test uninstalls it.
  */
 
 type Rows = {
@@ -66,6 +67,15 @@ export function installTestLibrary(rows: Rows = {}): TestLibrary {
   const listeners = new Set<(s: FeedState) => void>();
   const of = (entity: FeedEntity) => ({ note: lib.notes, notebook: lib.notebooks, tag: lib.tags, attachment: lib.attachments })[entity] as Collection<object, string>;
   let version = 0;
+  // Explicitly, as the real library: unset, a subscription drops the removal of a row it
+  // has not emitted — every seeded row, here — and the holder's own bug would not show.
+  const every = { includeInitialState: false } as const;
+  const subscriptions = [
+    lib.notes.subscribeChanges((changes) => notifyLibraryChange(rootsOfNoteChanges(changes)), every),
+    lib.notebooks.subscribeChanges(() => notifyLibraryChange(LIBRARY_ROOTS), every),
+    lib.tags.subscribeChanges(() => notifyLibraryChange(LIBRARY_ROOTS), every),
+    lib.attachments.subscribeChanges(() => notifyLibraryChange(LIBRARY_ROOTS), every),
+  ];
   const test: TestLibrary = {
     ...lib,
     state: () => state,
@@ -103,7 +113,10 @@ export function installTestLibrary(rows: Rows = {}): TestLibrary {
       c.commit();
       version += 1;
     },
-    uninstall: () => setLibraryForTests(null),
+    uninstall: () => {
+      subscriptions.forEach((s) => s.unsubscribe());
+      setLibraryForTests(null);
+    },
   };
   setLibraryForTests(test);
   return test;
