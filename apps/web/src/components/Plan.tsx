@@ -68,6 +68,9 @@ export function Plan() {
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState<'checkout' | 'portal' | 'storage' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The storage row's own, drawn under it: a refusal there answered under the
+  // subscription's heading, a section above, read as about the wrong control.
+  const [storageError, setStorageError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [units, setUnits] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
@@ -167,7 +170,7 @@ export function Plan() {
 
   async function changeStorage(next: number) {
     setBusy('storage');
-    setError(null);
+    setStorageError(null);
     try {
       await api.setStorage(next);
       await api.refreshPlan().catch(() => undefined);
@@ -176,7 +179,7 @@ export function Plan() {
       // Closed once the change has landed, so the confirm's own "Adding…" is what waits.
       setAdding(false);
     } catch (err) {
-      setError(errorText(err) || 'The storage could not be changed.');
+      setStorageError(errorText(err) || 'The storage could not be changed.');
     } finally {
       setBusy(null);
     }
@@ -243,8 +246,10 @@ export function Plan() {
         <StorageMeter plan={plan} reading={usage.isPending} />
         {canChangeStorage && !hosted && !adding && (
           <div className="backfill-row">
+            {/* Its press opens the confirm, which hides this row while it is open, so the
+                confirm's own "Adding…" is the only busy label Add ever needs. */}
             <Button size="small" disabled={busy !== null || unitsOf(plan) >= MAX_STORAGE_UNITS} onClick={() => setAdding(true)}>
-              {busy === 'storage' ? 'Changing…' : `Add ${STORAGE_ADDON_GB} GB`}
+              Add {STORAGE_ADDON_GB} GB
             </Button>
             {unitsOf(plan) > 0 && (
               <Button
@@ -262,12 +267,13 @@ export function Plan() {
                 }
                 onClick={() => void changeStorage(unitsOf(plan) - 1)}
               >
-                Remove {STORAGE_ADDON_GB} GB
+                {busy === 'storage' ? 'Removing…' : `Remove ${STORAGE_ADDON_GB} GB`}
               </Button>
             )}
             <span className="muted small">{dollars(STORAGE_ADDON_PRICE_USD)} a year per {STORAGE_ADDON_GB} GB.</span>
           </div>
         )}
+        {storageError && <p className="bad small">{storageError}</p>}
         {/* A charge on the card is a confirm, not a press: the amount and when it is
             taken are the question, in the box with the action. */}
         {adding && (
