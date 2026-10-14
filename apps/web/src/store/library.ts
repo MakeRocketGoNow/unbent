@@ -743,22 +743,33 @@ async function open(userId: string, halting: Halting, isMine: () => boolean, hol
   let search: Searching | null = null;
   /** The account's other tabs, served from here once the library is built (`library-serve.ts`). */
   let server: Server | null = null;
+  /*
+   * `includeInitialState: false`, spelled out. Left unset, a subscription reports only
+   * the rows it has emitted before: a tombstone for a note that had not changed since
+   * the library opened — purged on another device, say — was dropped, so the list kept
+   * the note until something else moved it, and an update of such a row arrived as an
+   * insert, which reaches every query (`rootsOfNoteChanges`) rather than the note's own.
+   * `true` would fix both by emitting every row at open, which `rootsOfNoteChanges` would
+   * then walk for nothing (`library-serve.ts` takes that, since it emits to nobody);
+   * `false` marks the state as seen without emitting it, which is what is wanted here.
+   */
+  const every = { includeInitialState: false } as const;
   const subscriptions = [
     collections.notes.subscribeChanges((changes) => {
       const roots = rootsOfNoteChanges(changes);
       changed(roots);
       search?.sync.touch(changes.map((c) => String(c.key)), { textOnly: !roots.has('tags') });
-    }),
+    }, every),
     // A renamed field is read from its definition when a match is drawn; nothing indexed changes.
-    collections.notebooks.subscribeChanges(everything),
+    collections.notebooks.subscribeChanges(everything, every),
     collections.tags.subscribeChanges(() => {
       everything();
       search?.sync.touch([]);
-    }),
+    }, every),
     collections.attachments.subscribeChanges(() => {
       everything();
       search?.sync.touchFiles();
-    }),
+    }, every),
   ];
 
   // What makes the engine pull. None of these is a timer: a device that is open and

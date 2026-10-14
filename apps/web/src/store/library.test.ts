@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { FEED_TIMEOUT_MS, FeedTimeoutError, LIBRARY_OPEN_TIMEOUT_MS, LibraryElsewhereError, LibraryOpenTimeoutError, acquireLibrary, closeLibraryAndStore, currentLibrary, fetchJson, libraryElsewhere, resetLibraryForTests, settleWrites, subscribeLibrary, takeOverLibrary } from './library.js';
+import { createCollection, type Collection } from '@tanstack/db';
+import { FEED_TIMEOUT_MS, FeedTimeoutError, LIBRARY_OPEN_TIMEOUT_MS, LibraryElsewhereError, LibraryOpenTimeoutError, acquireLibrary, closeLibraryAndStore, currentLibrary, fetchJson, libraryElsewhere, onLibraryChange, resetLibraryForTests, settleWrites, subscribeLibrary, takeOverLibrary } from './library.js';
+import { LIBRARY_ROOTS } from './library-roots.js';
 import { setLocksForTests } from './library-lock.js';
 import { fakeLocks } from './test-locks.js';
 import { fakeChannel } from './test-channel.js';
@@ -80,6 +82,9 @@ describe('fetchJson', () => {
   });
 });
 
+/** A note as the collection holds it, for a test that seeds a real one. */
+const row = { id: 'n1', title: 'a', body: 'b', updatedAt: 1, deletedAt: undefined, notebookId: 'nb', tagIds: ['t1', 't2'], fields: [{ fieldId: 'f', value: 1 }] };
+
 /**
  * Opening the library is bounded for its caller. It waits on things outside the tab —
  * the outbox's database, the collections' leader — and an open that never settled left
@@ -93,7 +98,7 @@ describe('fetchJson', () => {
  * an outbox whose `ready` the test holds. What `open` reaches before that wait — the
  * engine, the socket, the listeners — is real.
  */
-function page(opts: { ready?: Promise<void>; pending?: number } = {}) {
+function page(opts: { ready?: Promise<void>; pending?: number; notes?: Collection<typeof row, string> } = {}) {
   class FakeSocket {
     static all: FakeSocket[] = [];
     closed = false;
@@ -108,7 +113,7 @@ function page(opts: { ready?: Promise<void>; pending?: number } = {}) {
   vi.stubGlobal('WebSocket', FakeSocket);
   const collection = () => ({ subscribeChanges: () => ({ unsubscribe() {} }), values: () => [], cleanup: vi.fn(async () => {}), preload: async () => {}, get: () => undefined, has: () => false });
   const collections = { notes: collection(), notebooks: collection(), tags: collection(), attachments: collection(), syncState: collection() };
-  vi.mocked(createCollections).mockReturnValue(collections as never);
+  vi.mocked(createCollections).mockReturnValue({ ...collections, ...(opts.notes ? { notes: opts.notes } : {}) } as never);
   let pending = opts.pending ?? 0;
   const listeners = new Set<(s: { pending: number }) => void>();
   const outbox = {
@@ -657,6 +662,54 @@ describe('acquireLibrary', () => {
       expect(libraryElsewhere()).toBeNull();
       await expect(currentLibrary()).resolves.toMatchObject({ userId: 'u1' });
     });
+  });
+
+  /*
+   * The holder's own subscriptions, on a real collection. A subscription that is not
+   * told otherwise reports only the rows it has emitted before: a tombstone for a note
+   * that had not changed since the open — purged on another device — never reached the
+   * query bridge, so the list kept the note until something else moved it, and an update
+   * of such a note arrived as an insert, which re-ran every query rather than its own.
+   */
+  it('re-runs the notes query for a tombstone of a note that had not changed since the open', async () => {
+    vi.useFakeTimers();
+    let feed!: { begin: () => void; write: (m: { type: 'update'; value: typeof row } | { type: 'delete'; key: string }) => void; commit: () => unknown };
+    const notes = createCollection<typeof row, string>({
+      id: 'notes-under-test',
+      getKey: (n) => n.id,
+      startSync: true,
+      sync: {
+        sync: ({ begin, write, commit, markReady }) => {
+          feed = { begin, write, commit };
+          begin();
+          write({ type: 'insert', value: row });
+          commit();
+          markReady();
+        },
+      },
+    });
+    page({ notes });
+    const opening = acquireLibrary('u1');
+    await vi.advanceTimersByTimeAsync(10);
+    await opening;
+    const heard = vi.fn();
+    const stopListening = onLibraryChange(heard);
+    // A change of text alone, reported as the update it is: the list and the note.
+    feed.begin();
+    feed.write({ type: 'update', value: { ...row, body: 'c', updatedAt: 2 } });
+    feed.commit();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(heard).toHaveBeenCalledTimes(1);
+    expect([...(heard.mock.calls[0]![0] as ReadonlySet<string>)].sort()).toEqual(['note', 'notes']);
+    heard.mockClear();
+    feed.begin();
+    feed.write({ type: 'delete', key: row.id });
+    feed.commit();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(heard).toHaveBeenCalledTimes(1);
+    expect(heard).toHaveBeenCalledWith(LIBRARY_ROOTS);
+    expect(notes.has(row.id)).toBe(false);
+    stopListening();
   });
 
   it('is not a timeout that fires under an open that settled in time', async () => {
