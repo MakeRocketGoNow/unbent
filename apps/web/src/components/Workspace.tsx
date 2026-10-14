@@ -868,7 +868,10 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     : holdingField && saveState === 'saved'
       ? SAVE_LABEL.dirty
       : SAVE_LABEL[saveState];
-  const notSynced = !readOnly && sync.waiting.has(noteId);
+  // Not `readOnly`: a lapsed plan locks the editor but keeps the entry the 402 refused
+  // (MAK-108), and that entry is exactly what this glyph is for — the typing the server
+  // has not heard of. Only the trash, whose notes have no draft, has nothing to say.
+  const notSynced = !inTrash && sync.waiting.has(noteId);
 
   /**
    * Adds a definition to the note's notebook from the note itself. The definitions
