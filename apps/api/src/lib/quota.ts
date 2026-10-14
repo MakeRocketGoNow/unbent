@@ -9,11 +9,14 @@ import { planFor, type PlanRow } from './plan.js';
  * is the store's own sum of its files (`attachmentBytes`, schema 0008). Null is no quota
  * — an instance with billing off — and a caller that has null checks nothing.
  *
- * Checked before the bytes move where their size is known (a request's Content-Length,
- * a row's `size`), and again after R2 has them where it was not, since a declared length
- * is a claim: `storeAttachment` deletes what it just stored when the true size turns out
- * to be past the line. The sum is read once per check, a row from the store, which the
- * upload was going to reach anyway.
+ * Decided in the store, in the transaction that records the row, against the sum it
+ * keeps (`AttachmentsStore.record`), so two uploads in flight cannot both take the last
+ * block. `assertRoom` is a check ahead of that one, on the size declared, for the paths
+ * where refusing early saves something real: a streamed upload, so the client stops
+ * sending into a refusal, and a copy of several files, so none are copied to be deleted.
+ * It costs its own call to the account's object (`storageUsed`), one more per file than
+ * the record makes, so a path whose bytes are already in hand — a fetched picture —
+ * skips it and lets the record decide alone.
  */
 
 export class StorageFull extends Error {

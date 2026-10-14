@@ -16,7 +16,7 @@ import { serverCanRead } from '../lib/read-attachment.js';
 import { fetchWebImage } from '../lib/web-image.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
-import { StorageFull, assertRoom, quotaOf, storageFullBody } from '../lib/quota.js';
+import { StorageFull, quotaOf, storageFullBody } from '../lib/quota.js';
 import { storeAttachment } from '../lib/store-attachment.js';
 import type { AppEnv } from '../types.js';
 
@@ -208,15 +208,11 @@ export const attachments = new Hono<AppEnv>()
     });
     if (!fetched.ok) return c.json({ error: fetched.error }, fetched.status);
 
-    // Before the bytes are stored, on their length, which is known; decided again as the
-    // row is recorded, with the sum, so two tabs saving images cannot both take the last block.
+    // Decided once, as the row is recorded, with the store's sum, so two tabs saving
+    // images cannot both take the last block. No check before the put: the bytes are
+    // already in memory, so a refusal costs one R2 put and its delete, and a read of the
+    // sum first would be a store call on every picture saved to save that.
     const quota = quotaOf(c.env, c.get('plan'));
-    try {
-      await assertRoom(repo, quota, fetched.bytes.byteLength);
-    } catch (err) {
-      if (err instanceof StorageFull) return c.json(storageFullBody(err), 402);
-      throw err;
-    }
 
     const filename = await repo.availableFilename(noteId, fetched.filename);
     const id = crypto.randomUUID();
