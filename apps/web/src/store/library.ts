@@ -4,7 +4,7 @@ import { reportError } from '../report-error.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
 import { openLocalStore, openSearchDatabase, closeLocalStore } from './db.js';
 import { createCollections, cursorStore, type Collections, type LocalAttachment, type LocalNote } from './collections.js';
-import { createOutbox, provideForwarder, provideLibrary, type Outbox } from './actions.js';
+import { countStoredWrites, createOutbox, provideForwarder, provideLibrary, type Outbox } from './actions.js';
 import { FeedEngine, isWhole, type FeedState } from './feed.js';
 import { createKeeper, type Keeper } from './keep.js';
 import { askToPersist, readKeptNotebooks } from './files.js';
@@ -239,12 +239,15 @@ function standAside(userId: string, refusal?: Promise<never>): void {
 
 /**
  * Hears how many writes the open library's outbox holds, as it changes, starting now.
- * Nothing until the library has opened; nothing at all on a device without one.
+ * Nothing until the library has opened; nothing at all on a device without one. The
+ * open itself, not the bounded answer its callers were given: after a timeout the
+ * bounded promise is already refused, but the outbox is still coming, and a sign-out
+ * confirm that subscribed to the refusal would never hear the drain.
  */
 export function subscribeWrites(listener: (pending: number) => void): () => void {
   let stop: (() => void) | undefined;
   let alive = true;
-  const open = current?.library;
+  const open = current?.opened;
   if (open) {
     open.then(
       (lib) => {
@@ -260,36 +263,67 @@ export function subscribeWrites(listener: (pending: number) => void): () => void
 }
 
 /**
- * Waits, for at most `ms`, for the writes the open library's outbox holds to reach the
- * server, and answers with how many are still waiting. What a sign-out does first: the
- * wipe that follows removes the outbox, and the menu offers Sign out only with a
- * connection, so what waits is usually mid-replay and gone in a moment.
+ * Waits, for at most `ms`, for the writes this account's outbox holds to reach the
+ * server, and answers with how many are still waiting — or `null` if they could not
+ * be counted. What a sign-out does first: the wipe that follows removes the outbox.
+ *
+ * The open itself is waited for, not the bounded promise callers see. After
+ * `LIBRARY_OPEN_TIMEOUT_MS` that bounded promise is already refused, and treating
+ * the refusal as "nothing waiting" deleted the durable outbox from the last session
+ * without a question: the entries live in IndexedDB until `outbox.ready`, and a
+ * cold open on a phone sits well past the sign-out's own bound. If the open does
+ * not finish in time, the durable store is counted directly (`countStoredWrites`).
+ * `userId` is the account signing out, for when this tab has no library entry at all.
  */
-export async function settleWrites(ms: number): Promise<number> {
-  const open = current?.library;
-  if (!open) return 0;
-  // The library itself is waited for under the same `ms`: Sign out pressed while an open
-  // is still inside its own bound would otherwise sit for that bound first, with nothing
-  // said. A library that has not opened has no outbox to drain.
+export async function settleWrites(ms: number, userId: string | null = null): Promise<number | null> {
+  const entry = current;
+  // No entry is not no outbox. An open that failed (a damaged store file, or one that
+  // timed out and then failed), and a tab told the library is held elsewhere, all leave
+  // `current` empty with the last session's entries still in IndexedDB — so the account
+  // the sign-out names is peeked as a stuck open's would be.
+  if (!entry) return userId ? peekStoredWrites(userId, ms) : 0;
   const deadline = Date.now() + ms;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const lib = await Promise.race([
-    open.catch(() => null),
+    entry.opened.catch(() => null),
     new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), ms))),
   ]).finally(() => clearTimeout(timer));
-  if (!lib || lib.outbox.status().pending === 0) return 0;
-  await new Promise<void>((resolve) => {
-    const left = setTimeout(done, Math.max(0, deadline - Date.now()));
-    const stop = lib.outbox.subscribe((s) => {
-      if (s.pending === 0) done();
+  if (lib) {
+    if (lib.outbox.status().pending === 0) return 0;
+    await new Promise<void>((resolve) => {
+      const left = setTimeout(done, Math.max(0, deadline - Date.now()));
+      const stop = lib.outbox.subscribe((s) => {
+        if (s.pending === 0) done();
+      });
+      function done() {
+        clearTimeout(left);
+        stop();
+        resolve();
+      }
     });
-    function done() {
-      clearTimeout(left);
-      stop();
-      resolve();
-    }
+    return lib.outbox.status().pending;
+  }
+  // Still not open: look at the durable store the wipe is about to remove. Half a second
+  // even when the wait above used the whole bound — the peek is a read, not a drain.
+  return peekStoredWrites(entry.userId, Math.max(500, deadline - Date.now()));
+}
+
+/**
+ * `countStoredWrites`, bounded, so a blocked IndexedDB open cannot hold the sign-out: no
+ * answer in `ms` is `null`, "do not know", never "nothing there". The peek is told when
+ * it is no longer waited for, and lets its connection go: whoever stays signed in opens
+ * the real outbox next, and a wipe deletes it, and neither should wait behind it.
+ */
+function peekStoredWrites(userId: string, ms: number): Promise<number | null> {
+  const giveUp = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    countStoredWrites(userId, giveUp.signal),
+    new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), ms))),
+  ]).finally(() => {
+    clearTimeout(timer);
+    giveUp.abort();
   });
-  return lib.outbox.status().pending;
 }
 
 /**

@@ -310,7 +310,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
       ]),
     );
 
-  const adapter = new IndexedDBAdapter(outboxName(userId));
+  const adapter = new IndexedDBAdapter(outboxName(userId), OUTBOX_STORE);
   /** The adapter's connection: a private field, pinned by `pins.test.ts`; null until its first use. */
   const connection = () => (adapter as unknown as { db?: IDBDatabase | null }).db ?? null;
   const storage = watched(adapter, () => touch());
@@ -716,6 +716,116 @@ async function remember(noteId: string, filename: string, file: File): Promise<v
 }
 
 /**
+ * The object store the outbox's entries live in, named to `IndexedDBAdapter` by
+ * `createOutbox` and read directly by `countStoredWrites`. It is the adapter's own
+ * default, so it is already the store on every device's outbox: renaming it orphans
+ * whatever is waiting there, and the sign-out's peek would count nothing.
+ */
+export const OUTBOX_STORE = 'transactions';
+
+/** The keys `watched` counts as waiting writes. The executor's own marker is an update of the same prefix. */
+const OUTBOX_ENTRY_PREFIX = 'tx:';
+
+/**
+ * How many writes the durable outbox still holds for this account, without opening the
+ * library. What a sign-out asks when the library itself has not opened in time: the
+ * outbox is IndexedDB, restored only after `outbox.ready`, and a cold open on a phone
+ * can sit past the sign-out's own bound — after which the wipe removes the database.
+ * Treating "not open" as "nothing waiting" deleted those writes without a question.
+ *
+ * Opens a short-lived connection and closes it before answering, so the wipe's
+ * `deleteDatabase` is not blocked by this peek. Does not go through `IndexedDBAdapter`:
+ * reading through one would create the database if it were absent (its open runs an
+ * upgrade that makes the store), and would leave its connection open (`db` is private
+ * and only `dispose` on the outbox closes it).
+ *
+ * `null` when the database could not be read — blocked, aborted, no answer — which is
+ * "do not know", not "nothing there".
+ */
+export function countStoredWrites(userId: string, signal?: AbortSignal): Promise<number | null> {
+  if (typeof indexedDB === 'undefined') return Promise.resolve(0);
+  const name = outboxName(userId);
+  return new Promise((resolve) => {
+    let settled = false;
+    let db: IDBDatabase | undefined;
+    const close = () => {
+      try {
+        db?.close();
+      } catch {
+        // Already closed.
+      }
+    };
+    const done = (n: number | null) => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener('abort', stop);
+      resolve(n);
+    };
+    // The caller stopped waiting (`peekStoredWrites`' bound). An open request cannot be
+    // taken back, so a connection already held closes now — a close lets a read in
+    // progress finish and starts no other — and one that opens later closes on arrival
+    // (`onsuccess`), so neither the real outbox nor a wipe waits behind a peek nobody
+    // is reading.
+    const stop = () => {
+      close();
+      done(null);
+    };
+    if (signal?.aborted) return done(null);
+    signal?.addEventListener('abort', stop);
+    let req: IDBOpenDBRequest;
+    try {
+      req = indexedDB.open(name);
+    } catch {
+      done(null);
+      return;
+    }
+    // Our own abort below has already answered 0; any other failure is not knowing.
+    req.onerror = () => done(null);
+    req.onblocked = () => done(null);
+    req.onupgradeneeded = () => {
+      // No database yet: nothing stored. Abort so this open does not create one the
+      // wipe would then have to delete, and so a concurrent real open does not race
+      // an empty schema we just wrote.
+      req.transaction?.abort();
+      done(0);
+    };
+    req.onsuccess = () => {
+      db = req.result;
+      // Answered already — blocked, or no longer waited for: nothing to read.
+      if (settled) return close();
+      // A wipe asks with `versionchange`. If the sign-out's bound ran out while the read
+      // was still going, the wipe comes next, and its `deleteDatabase` would wait behind
+      // this connection — the outbox's own does the same (`createOutbox`).
+      db.onversionchange = () => {
+        close();
+        done(null);
+      };
+      if (!db.objectStoreNames.contains(OUTBOX_STORE)) {
+        close();
+        done(0);
+        return;
+      }
+      try {
+        const tx = db.transaction(OUTBOX_STORE, 'readonly');
+        const keys = tx.objectStore(OUTBOX_STORE).getAllKeys();
+        keys.onsuccess = () => {
+          const n = keys.result.filter((key) => String(key).startsWith(OUTBOX_ENTRY_PREFIX)).length;
+          close();
+          done(n);
+        };
+        keys.onerror = () => {
+          close();
+          done(null);
+        };
+      } catch {
+        close();
+        done(null);
+      }
+    };
+  });
+}
+
+/**
  * The outbox's storage, watched. Every entry passes through the adapter — stored when
  * queued, restored after a reload, removed when a replay settles — so counting the keys it
  * holds is what waits for the server, at every moment. The executor's own count is its
@@ -727,7 +837,7 @@ async function remember(noteId: string, filename: string, file: File): Promise<v
  */
 function watched(inner: StorageAdapter, onChange: () => void): StorageAdapter & { held: () => number } {
   const keys = new Set<string>();
-  const entry = (key: string) => key.startsWith('tx:');
+  const entry = (key: string) => key.startsWith(OUTBOX_ENTRY_PREFIX);
   const changed = () => onChange();
   return {
     get: (key) => inner.get(key),
