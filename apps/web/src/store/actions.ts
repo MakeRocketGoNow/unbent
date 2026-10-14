@@ -180,8 +180,20 @@ export const TAB_ORIGIN: string = crypto.randomUUID();
  * so the patch is still only what was typed here and lands on top of theirs. `origin`
  * is the tab the save came from (`TAB_ORIGIN` there); a client sends its own with the
  * call.
+ *
+ * `definitions` is what the editor has already loaded (`rememberFieldDefs`). A request-
+ * path save has no stored row for a first-time value, so the patch can encode it only
+ * from a type; the queued path reads the library's set and does not need this. Empty is
+ * "not yet", not "none".
  */
-type Save = { noteId: string; value: NoteDraft; base: Note; against?: number; origin?: string };
+type Save = {
+  noteId: string;
+  value: NoteDraft;
+  base: Note;
+  against?: number;
+  origin?: string;
+  definitions?: FieldDef[];
+};
 
 /** The key a conflict is kept under in the outbox's storage; its entries are the `tx:` keys. */
 const conflictKey = (noteId: string) => `conflict:${noteId}`;
@@ -1083,9 +1095,38 @@ function split(lib: WritableLibrary, ids: string[]): { here: string[]; there: st
   return { here, there };
 }
 
-/** The save as a request: no local row to change, or a tab that does not queue. */
-async function saveViaRequest(input: Save): Promise<'unchanged' | Note> {
-  const patch = buildNotePatch(input.value, input.base, undefined);
+/**
+ * Field types a request-path save can encode a first-time value from.
+ *
+ * `buildNotePatch` skips a value that has no stored row and no definition, treating it
+ * as a leftover id so a stale draft key cannot 400 the rest of the save. This path
+ * used to pass `undefined` even when the tab held a library — one whose outbox is not
+ * durable, or a note opened during the first copy — and always on a device with no
+ * library, so filling Amount for the first time there reported "Saved" and left the
+ * number nowhere. (A client tab forwards its save to the holder, which takes whichever
+ * path applies there.) The queued path already reads the library's definitions; this
+ * one does too, and takes any the editor has already loaded for what the library does
+ * not hold.
+ *
+ * The library's copy wins by id: the feed keeps it current, while the editor's list
+ * (`rememberFieldDefs`) keeps every definition it has seen, so a field converted in
+ * another tab would otherwise be encoded with its old type and 400 the whole save. The
+ * editor's list still fills in what the library lacks — everything, on a device with no
+ * library, and a notebook the first copy has not reached yet.
+ */
+function definitionsFor(lib: WritableLibrary | null, handed?: FieldDef[]): FieldDef[] | undefined {
+  const held = lib ? [...lookups(snapshot(lib)).fieldDefs.values()] : [];
+  if (!handed?.length) return lib ? held : undefined;
+  return [...new Map([...handed, ...held].map((d) => [d.id, d])).values()];
+}
+
+/**
+ * The save as a request: no local row to change, or a tab that does not queue. `open` is
+ * the library `saveNote` resolved, durable or not, so the types come from the library
+ * that sent the save down this path rather than one resolved again across a switch.
+ */
+async function saveViaRequest(input: Save, open: WritableLibrary | null): Promise<'unchanged' | Note> {
+  const patch = buildNotePatch(input.value, input.base, definitionsFor(open, input.definitions));
   if (!patch) return 'unchanged';
   const refiles = patch.notebook !== undefined || patch.tags !== undefined;
   return pulled(
@@ -1111,12 +1152,15 @@ async function saveViaRequest(input: Save): Promise<'unchanged' | Note> {
 export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | Note> {
   const far = await away();
   if (far) return far('saveNote', [{ ...input, origin: TAB_ORIGIN }], { ids: [input.noteId], refiles: input.value.notebook !== input.base.notebook || JSON.stringify(input.value.tags) !== JSON.stringify(input.base.tags) });
-  const lib = await queueable();
+  // `queueable()` inlined: the request path wants the open library even when it does
+  // not queue, for its field types.
+  const open = await resolve();
+  const lib = open && durable(open) ? open : null;
   if (!lib || notCopiedYet(lib, input.noteId)) {
     // No local copy on this device, a tab that does not queue, or a note the copy
     // does not hold yet: the save is the request, and its answer is the server's
     // copy — or the refusal, which the caller puts to the person.
-    return saveViaRequest(input);
+    return saveViaRequest(input, open);
   }
   /*
    * One save per note in the queue. The one still waiting is retired first, and this one

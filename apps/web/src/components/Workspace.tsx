@@ -568,7 +568,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     */
     let outcome: Awaited<ReturnType<typeof actions.saveNote>>;
     try {
-      outcome = await actions.saveNote({ noteId, value, base });
+      outcome = await actions.saveNote({ noteId, value, base, definitions: knownFieldDefs });
     } catch (err) {
       // No local copy on this device, so the server answered the save itself, and refused
       // it: the same choice, put the same way, now.
@@ -672,7 +672,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     setConflict(null);
     // Diffed against the copy the draft came from — only what was typed here — and
     // preconditioned on theirs, so it lands on top of their version rather than over it.
-    void actions.saveNote({ noteId: id, value: draftRef.current, base, against: theirs.updatedAt }).then(
+    void actions.saveNote({ noteId: id, value: draftRef.current, base, against: theirs.updatedAt, definitions: knownFieldDefs }).then(
       (outcome) => {
         if (outcome === 'queued') {
           // Theirs was another tab's save waiting in this device's outbox, and the
