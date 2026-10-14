@@ -76,7 +76,11 @@ CREATE INDEX idx_account_plan_lapse_due ON account_plan(plan_until)
 -- Every Paddle event applied, by its id, so a redelivery — Paddle retries anything not
 -- answered 200 within five seconds — applies nothing twice. Written in the same batch as
 -- the change the event made; a row here and no change cannot happen. Never read but by
--- the insert that refuses a repeat, so the key is its only index.
+-- the insert that refuses a repeat, so the key is its only index. Never trimmed, on
+-- purpose: a subscriber's year is a handful of events, so the table grows by rows a
+-- year per paying account, and a periodic delete would be a D1 write on every sweep to
+-- save less than that. If it ever matters, Paddle stops retrying after a few days, so
+-- anything older than a month can go.
 CREATE TABLE billing_event (
   event_id    TEXT PRIMARY KEY,
   event_type  TEXT NOT NULL,
