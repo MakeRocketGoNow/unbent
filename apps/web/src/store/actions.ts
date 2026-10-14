@@ -1104,15 +1104,18 @@ function split(lib: WritableLibrary, ids: string[]): { here: string[]; there: st
  * outbox — so filling Amount for the first time in a second tab, or on a note opened
  * during the first copy, reported "Saved" and left the number nowhere. The queued path
  * already reads the library's definitions; this one does too, and takes any the editor
- * has already loaded when there is no library at all.
+ * has already loaded for what the library does not hold.
  *
- * The editor's list first: it accumulates across notebook changes (`rememberFieldDefs`).
- * Empty is "not yet", so the library's own set still has a say.
+ * The library's copy wins by id: the feed keeps it current, while the editor's list
+ * (`rememberFieldDefs`) keeps every definition it has seen, so a field converted in
+ * another tab would otherwise be encoded with its old type and 400 the whole save. The
+ * editor's list still fills in what the library lacks — everything, on a device with no
+ * library, and a notebook the first copy has not reached yet.
  */
 function definitionsFor(lib: WritableLibrary | null, handed?: FieldDef[]): FieldDef[] | undefined {
-  if (handed && handed.length > 0) return handed;
-  if (lib) return [...lookups(snapshot(lib)).fieldDefs.values()];
-  return undefined;
+  const held = lib ? [...lookups(snapshot(lib)).fieldDefs.values()] : [];
+  if (!handed?.length) return lib ? held : undefined;
+  return [...new Map([...handed, ...held].map((d) => [d.id, d])).values()];
 }
 
 /** The save as a request: no local row to change, or a tab that does not queue. */

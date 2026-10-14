@@ -967,6 +967,23 @@ describe('a tab that does not hold the outbox', () => {
     expect(api.updateNote).toHaveBeenCalledWith('n1', { fields: { [amount.id]: 12.5 }, ifUpdatedAt: 100 });
     expect(fake.queue).toHaveLength(0);
   });
+
+  it('reads a field’s type from the library over the editor’s older copy of it', async () => {
+    // The editor remembers Amount as text from before another tab converted it to a
+    // number; the library has the conversion. Encoding from the editor's copy would
+    // send "twelve" to a number field and 400 the title with it.
+    const { fake, note } = library([row('n1', { title: 'old', notebookId: 'nb1' })], [receipts]);
+    fake.lead(false);
+    const base = note('n1');
+    vi.mocked(api.updateNote).mockResolvedValueOnce({ ...base, title: 'new', updatedAt: 101 });
+    await actions.saveNote({
+      noteId: 'n1',
+      value: { ...seedFrom(base), title: 'new', fields: { [amount.id]: 'twelve' } },
+      base,
+      definitions: [{ ...amount, type: 'text' }],
+    });
+    expect(api.updateNote).toHaveBeenCalledWith('n1', { title: 'new', ifUpdatedAt: 100 });
+  });
 });
 
 describe('the no-library path', () => {
