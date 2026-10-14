@@ -29,7 +29,7 @@ export const STORAGE_ADDON_PRICE_USD = 12;
 
 /**
  * How long an `inactive` account is kept before it is deleted: a year of reading and
- * exporting, with reminders, as the terms will say (MAK-45). Stewardship, not cost. The
+ * exporting, with reminders, as the terms say ("Plans and payment"). Stewardship, not cost. The
  * deletion and its reminders are a follow-up to MAK-108 and not built yet, which is why
  * the pages and the mail say "will be"; the number is here so that, once the job exists,
  * what they promise and what it does cannot disagree.

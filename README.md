@@ -1343,7 +1343,7 @@ exports, and every write but a delete is refused with a 402 that the app shows a
 read-only banner. The same state, and the same code path, for an expired trial, a lapsed
 subscription and a comp that ended (`requireActivePlan` in the API). After a year inactive
 the account will be deleted, with reminders to export first; the job that does it and the
-reminders are a follow-up to MAK-108, and the terms will say so with MAK-45.
+reminders are a follow-up to MAK-108; the terms already say it, as a "may".
 
 Comps do not go through Paddle. A 100% discount there still asks for a card and charges it
 when the discount ends, so an account that should not pay — the owner, a gifted friend — is
@@ -1405,8 +1405,9 @@ any future date succeeds.
 
 Going live is the same five settings from the live account, after its verification. The
 website review wants the pricing public, and terms, a privacy policy and a refund policy
-naming Paddle as the merchant of record, which the built-in documents do not yet say; that
-is MAK-45 and MAK-46. Everything an account is told — the trial's end, a lapse, the mail —
+naming Paddle as the merchant of record. The built-in documents say all of it wherever
+billing is on — the terms' "Plans and payment" and "Refunds", Paddle among the policy's
+services — and the front page's footer links Refunds to `/terms#refunds`. Everything an account is told — the trial's end, a lapse, the mail —
 is the same in both environments.
 
 ## Deleting an account
