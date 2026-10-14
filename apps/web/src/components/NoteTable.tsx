@@ -8,6 +8,7 @@ import { formatFieldValue } from './format-field.js';
 import { formatWhen } from './format-when.js';
 import { SortDirectionIcon } from './icons.js';
 import { loadMoreLabel } from './load-more.js';
+import { useAutoLoad } from './useAutoLoad.js';
 
 interface NoteTableProps {
   notes: NoteSummary[];
@@ -107,6 +108,11 @@ export function NoteTable({
   selection,
 }: NoteTableProps) {
   const span = columns.length + (selection ? 1 : 0);
+  const autoLoad = useAutoLoad({
+    enabled: hasNextPage && !isFetchingNextPage,
+    loaded: notes.length,
+    onLoad: onLoadMore,
+  });
   return (
     <div
       className="note-table-wrap"
@@ -219,6 +225,7 @@ export function NoteTable({
             <tr>
               <td colSpan={span}>
                 <button
+                  ref={autoLoad}
                   type="button"
                   className="load-more"
                   disabled={isFetchingNextPage}
