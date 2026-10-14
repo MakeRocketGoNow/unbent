@@ -35,6 +35,10 @@ function unitsOf(plan: AccountPlan): number {
 
 const dollars = (n: number) => `$${n}`;
 
+/** How often, and how many times, the plan is read back from Paddle after a checkout; see `settleCheckout`. */
+const CHECKOUT_SETTLE_WAIT_MS = 1500;
+const CHECKOUT_SETTLE_TRIES = 6;
+
 /**
  * The account's plan (MAK-108): where it stands, what it holds, and the three things
  * that change it — subscribing, managing the subscription in Paddle's portal, and buying
@@ -134,7 +138,7 @@ export function Plan() {
       const { transactionId } = await api.startCheckout(chosenUnits);
       const outcome = await openCheckout(billing!, transactionId);
       if (outcome === 'completed') {
-        await api.refreshPlan().catch(() => undefined);
+        await settleCheckout();
         await refresh();
         setNotice('You’re subscribed. Thank you.');
       }
@@ -142,6 +146,22 @@ export function Plan() {
       setError(errorText(err) || 'The checkout could not be opened.');
     } finally {
       setBusy(null);
+    }
+  }
+
+  /**
+   * The plan read back from Paddle until it names a subscription, a few times over a
+   * few seconds. The overlay reports the payment the moment the transaction completes,
+   * and Paddle makes the subscription from it a moment after, so the first read can
+   * find the customer with no subscription yet and the page would say "Subscribed" over
+   * a banner that still said read-only, until a focus or a reload. Bounded: a read that
+   * keeps finding nothing is the webhook's to settle, and the page shows what it has.
+   */
+  async function settleCheckout() {
+    for (let attempt = 0; attempt < CHECKOUT_SETTLE_TRIES; attempt++) {
+      const read = await api.refreshPlan().catch(() => undefined);
+      if (read?.subscription) return;
+      await new Promise((r) => setTimeout(r, CHECKOUT_SETTLE_WAIT_MS));
     }
   }
 

@@ -122,7 +122,8 @@ describe('Plan', () => {
       vi.fn(async (url: string, init?: RequestInit) => {
         calls.push(`${init?.method ?? 'GET'} ${url}`);
         if (url === '/api/billing/checkout') return Response.json({ transactionId: 'txn_1' });
-        if (url === '/api/billing/refresh') return Response.json({ state: 'active' });
+        // The first read is a moment too early for the subscription; the second has it.
+        if (url === '/api/billing/refresh') return Response.json(calls.filter((c) => c.endsWith('/refresh')).length > 1 ? { state: 'active', subscription: { status: 'active', cancelsAt: null, pastDue: false } } : { state: 'trial', subscription: null });
         if (url === '/api/me/plan') return Response.json({ state: 'active', until: NOW + 365 * DAY, readOnlyAt: NOW + 366 * DAY, source: 'paddle', storageGb: 35, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
         return Response.json({}, { status: 404 });
       }),
@@ -131,9 +132,10 @@ describe('Plan', () => {
     harness({});
     fireEvent.change(await screen.findByRole('combobox'), { target: { value: '1' } });
     fireEvent.click(screen.getByRole('button', { name: 'Subscribe for $48 a year' }));
-    expect(await screen.findByRole('heading', { name: 'Subscribed' })).toBeTruthy();
+    // The second read comes after `settleCheckout`'s wait, past the finder's default second.
+    expect(await screen.findByRole('heading', { name: 'Subscribed' }, { timeout: 4000 })).toBeTruthy();
     expect(calls).toContain('POST /api/billing/checkout');
-    expect(calls).toContain('POST /api/billing/refresh');
+    expect(calls.filter((c) => c === 'POST /api/billing/refresh')).toHaveLength(2);
     expect(vi.mocked(openCheckout)).toHaveBeenCalledWith({ environment: 'sandbox', clientToken: 'test_x' }, 'txn_1');
     expect(screen.getByText('You’re subscribed. Thank you.')).toBeTruthy();
   });
