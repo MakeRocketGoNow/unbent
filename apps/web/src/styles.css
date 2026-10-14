@@ -1600,7 +1600,37 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
   outline-offset: 1px;
 }
 
-.note-table .load-more { margin: 0.5rem 0; }
+/*
+   The table's Load more is as wide as what can be seen, and stays there as the table
+   scrolls sideways. Its cell spans every column, so it is as wide as the whole table; a
+   label centred in that sat in the middle of a row that could be twice the window, off
+   the screen at either end of a sideways scroll. Sticky and sized to the wrap's own width
+   (`100cqi` of the container the wrap declares), it is always the strip under the rows in
+   view. Most of the time it is only seen saying "Loading…" — see `useAutoLoad`.
+
+   The cell gives up what every first cell is given — the pin, the clip, the selection
+   column's width — since the button inside can only stick against the wrap if no cell
+   between them clips, and a pinned cell as wide as the table goes nowhere. `[colspan]`
+   is the specificity to outrank `.selectable td:first-child`. The button is a block, so
+   that rule's centring has nothing to centre: inline, it sat mid-table at the left edge.
+*/
+.note-table-wrap { container-type: inline-size; }
+.note-table td.note-table-more[colspan] {
+  position: static;
+  overflow: visible;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  padding: 0;
+  border-bottom: 0;
+}
+.note-table .load-more {
+  display: block;
+  position: sticky;
+  left: 0;
+  width: 100cqi;
+  margin: 0.5rem 0;
+}
 
 /* A cell's control is the value, sized to it, not a full-width field as in the property list. */
 .note-table td > select.note-field-input {

@@ -58,6 +58,7 @@ import { forgetSortField, hasRememberedSort, rememberSort, rememberedSort } from
 import { patchNoteFields, patchNotePages } from './note-table-edit.js';
 import { applySaveToLists } from '../list-cache.js';
 import { loadMoreLabel } from './load-more.js';
+import { useAutoLoad } from './useAutoLoad.js';
 import { scopeLabel, tagPlace } from './scope-label.js';
 import { useNotesView } from '../useNotesView.js';
 import { editOpenNoteField } from '../open-note-fields.js';
@@ -388,6 +389,13 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const hasPicks = picks.tags.length > 0 || picks.notebooks.length > 0;
 
   const notes = list.data?.pages.flatMap((p) => p.items) ?? [];
+  // The list's Load more asks for itself as it nears the bottom; see `useAutoLoad`. The
+  // table has its own, on its own button.
+  const autoLoad = useAutoLoad({
+    enabled: list.hasNextPage && !list.isFetchingNextPage,
+    loaded: notes.length,
+    onLoad: () => void list.fetchNextPage(),
+  });
   const total = list.data?.pages[0]?.total ?? null;
 
   /*
@@ -1276,6 +1284,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           {results === null && list.hasNextPage && (
             <li data-motion-key="more">
               <button
+                ref={autoLoad}
                 type="button"
                 className="load-more"
                 disabled={list.isFetchingNextPage}
