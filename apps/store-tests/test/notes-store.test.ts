@@ -328,7 +328,8 @@ describe('notes: listing and counting', () => {
       { skipExisting: true },
     );
     expect(made.map((m) => m.skipped)).toEqual([true, false, false, true, true, false, false]);
-    expect(made[0]!.id).toBe(held.id);
+    expect(made[0]).toEqual({ id: held.id, title: 'Coyote Returns', skipped: true });
+    expect(made[3]).toEqual({ id: made[2]!.id, title: 'New one', skipped: true });
     expect(made[3]!.id).toBe(made[2]!.id);
     expect(made[4]!.id).toBe(loose.id);
     expect(await stub.count({ notebook: 'Acme Screenings' })).toBe(5);

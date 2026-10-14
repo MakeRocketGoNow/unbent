@@ -790,40 +790,41 @@ export class NotesStore {
     opts: { skipExisting?: boolean | undefined } = {},
   ): Array<{ id: string; title: string; skipped: boolean }> {
     return this.sql.tx(() => {
-      const made = new Map<string, string>();
+      const made = new Map<string, { id: string; title: string }>();
       // Folded as SQLite's NOCASE folds, ASCII only, so the batch and the index agree on
       // what a duplicate is.
       const key = (notebook: string | null | undefined, title: string) =>
         `${foldNoCase(notebook?.trim() ?? '')}\u001F${foldNoCase(title)}`;
       return inputs.map((input) => {
         if (opts.skipExisting && input.title !== '') {
+          // Answered as the note that is there, in its own spelling, not the one sent.
           const held = made.get(key(input.notebook, input.title)) ?? this.liveTitleIn(input.notebook, input.title);
-          if (held) return { id: held, title: input.title, skipped: true };
+          if (held) return { id: held.id, title: held.title, skipped: true };
         }
         const note = this.create(input);
-        if (opts.skipExisting && input.title !== '') made.set(key(input.notebook, input.title), note.id);
+        if (opts.skipExisting && input.title !== '') made.set(key(input.notebook, input.title), { id: note.id, title: note.title });
         return { id: note.id, title: note.title, skipped: false };
       });
     });
   }
 
-  /** The id of a live note with this title in this notebook (or in none), without case. */
-  private liveTitleIn(notebook: string | null | undefined, title: string): string | null {
+  /** A live note with this title in this notebook (or in none), without case. */
+  private liveTitleIn(notebook: string | null | undefined, title: string): { id: string; title: string } | null {
     const name = notebook?.trim();
     const row = name
-      ? this.sql.first<{ id: string }>(
-          `SELECT n.id FROM notes n
+      ? this.sql.first<{ id: string; title: string }>(
+          `SELECT n.id, n.title FROM notes n
              JOIN notebooks nb ON nb.id = n.notebook_id AND nb.name = ?1 COLLATE NOCASE
             WHERE n.deleted_at IS NULL AND n.title = ?2 COLLATE NOCASE
             LIMIT 1`,
           name,
           title,
         )
-      : this.sql.first<{ id: string }>(
-          `SELECT id FROM notes WHERE notebook_id IS NULL AND deleted_at IS NULL AND title = ?1 COLLATE NOCASE LIMIT 1`,
+      : this.sql.first<{ id: string; title: string }>(
+          `SELECT id, title FROM notes WHERE notebook_id IS NULL AND deleted_at IS NULL AND title = ?1 COLLATE NOCASE LIMIT 1`,
           title,
         );
-    return row?.id ?? null;
+    return row ?? null;
   }
 
   /**
