@@ -666,13 +666,14 @@ describe('acquireLibrary', () => {
 
   /*
    * The holder's own subscriptions, on a real collection. A subscription that is not
-   * told otherwise reports only the rows it has emitted before, and a tombstone for a
-   * note that had not changed since the open — purged on another device — never reached
-   * the query bridge, so the list kept the note until something else moved it.
+   * told otherwise reports only the rows it has emitted before: a tombstone for a note
+   * that had not changed since the open — purged on another device — never reached the
+   * query bridge, so the list kept the note until something else moved it, and an update
+   * of such a note arrived as an insert, which re-ran every query rather than its own.
    */
   it('re-runs the notes query for a tombstone of a note that had not changed since the open', async () => {
     vi.useFakeTimers();
-    let feed!: { begin: () => void; write: (m: { type: 'delete'; key: string }) => void; commit: () => unknown };
+    let feed!: { begin: () => void; write: (m: { type: 'update'; value: typeof row } | { type: 'delete'; key: string }) => void; commit: () => unknown };
     const notes = createCollection<typeof row, string>({
       id: 'notes-under-test',
       getKey: (n) => n.id,
@@ -693,6 +694,14 @@ describe('acquireLibrary', () => {
     await opening;
     const heard = vi.fn();
     const stopListening = onLibraryChange(heard);
+    // A change of text alone, reported as the update it is: the list and the note.
+    feed.begin();
+    feed.write({ type: 'update', value: { ...row, body: 'c', updatedAt: 2 } });
+    feed.commit();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(heard).toHaveBeenCalledTimes(1);
+    expect([...(heard.mock.calls[0]![0] as ReadonlySet<string>)].sort()).toEqual(['note', 'notes']);
+    heard.mockClear();
     feed.begin();
     feed.write({ type: 'delete', key: row.id });
     feed.commit();
