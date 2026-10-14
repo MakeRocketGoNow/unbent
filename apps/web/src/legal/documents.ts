@@ -683,8 +683,8 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
  * Two promises here are behaviour, not prose, and hold only while the code keeps them:
  * cancelling keeps the year already paid for (`planStateOf` reads a canceled subscription
  * as active until its period ends), and a lapsed account reads, searches, exports and
- * deletes (`requireActivePlan`). The deletion of an account a year after it lapsed is not
- * built yet (`INACTIVE_KEPT_DAYS`), which is why it says "may".
+ * deletes (`requireActivePlan`). Deleting an account a year after it lapsed is a right
+ * reserved, not a job — "may", by decision (`INACTIVE_KEPT_DAYS`).
  */
 function payment(operator: Operator): LegalSection[] {
   return [

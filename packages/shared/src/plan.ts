@@ -35,11 +35,16 @@ export const PLAN_PRICE_USD = 36;
 export const STORAGE_ADDON_PRICE_USD = 12;
 
 /**
- * How long an `inactive` account is kept before it is deleted: a year of reading and
- * exporting, with reminders, as the terms say ("Plans and payment"). Stewardship, not cost. The
- * deletion and its reminders are a follow-up to MAK-108 and not built yet, which is why
- * the pages and the mail say "will be"; the number is here so that, once the job exists,
- * what they promise and what it does cannot disagree.
+ * How long an `inactive` account is kept before it *may* be deleted: at least a year of
+ * reading and exporting, as the terms say ("Plans and payment").
+ *
+ * "May", never "will", and decided on 14 October 2026 (MAK-47): the pages, the mail and
+ * the terms reserve the right and nothing deletes on a timer. The product's promise is
+ * that nothing is held hostage, and a cron job that removes a paperless archive because
+ * its owner missed a year of mail is the worst thing it could do to someone; a read-only
+ * account costs almost nothing to keep. The right is there for an abandoned trial that
+ * uploaded a lot, or abuse, decided by a person. Anything built later should be scoped to
+ * those, and must send the reminder to export first, which every one of these promises.
  */
 export const INACTIVE_KEPT_DAYS = 365;
 
