@@ -243,7 +243,7 @@ says otherwise; `pnpm exec wrangler secret put NAME` from `apps/api`, or the das
 | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | Auto-fill's language model: reading a note's pictures and text-less scans on a press, and writing its title and text fields | see [Reading images](#reading-images); `DEV_ANTHROPIC_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
 | `ANTHROPIC_READ_MODEL`, `ANTHROPIC_TITLE_MODEL`, `ANTHROPIC_FIELDS_MODEL`, `ANTHROPIC_READ_EFFORT` | a model per job, and the reading's effort | each unset falls back to `ANTHROPIC_MODEL`; see [Reading images](#reading-images) |
 | `AUTOFILL_DAILY_CAP` | a ceiling on Auto-fill presses per account per UTC day | a whole number; unset means none. Every press and the model's tokens are counted either way, and Maintenance shows the year's; see [Filing a note from what it says](#filing-a-note-from-what-it-says) |
-| `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`, `PADDLE_CLIENT_TOKEN`, `PADDLE_PLAN_PRICE_ID`, `PADDLE_STORAGE_PRICE_ID` | selling the plan through Paddle | all five or none; unset, every account is active for good and nothing about billing is drawn. unbent.app's own, so leave them unset on yours; see [Selling the plan](#selling-the-plan) |
+| `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`, `PADDLE_CLIENT_TOKEN`, `PADDLE_PLAN_PRICE_ID`, `PADDLE_STORAGE_PRICE_ID` | selling the plan through Paddle | all five or none; unset, every account is active for good and nothing about billing is drawn. unbent.app's own, so leave them unset on yours. `DEV_PADDLE_*` as GitHub secrets carry the sandbox's to the dev instance; see [Selling the plan](#selling-the-plan) |
 | `ANDROID_ASSET_LINKS` | an Android build of your own | see [Android app](#android-app) |
 | `APPLE_APP_SITE_ASSOCIATION` | an iOS build of your own | see [iOS app](#ios-app) |
 | `APPLE_BUNDLE_ID` | Sign in with Apple from an iOS build of your own | comma-separated bundle ids, beside `APPLE_CLIENT_ID`; see [iOS app](#ios-app) |
@@ -1380,8 +1380,11 @@ sandbox first.
 5. **The five settings** on the Worker, as secrets: `PADDLE_API_KEY`,
    `PADDLE_WEBHOOK_SECRET`, `PADDLE_CLIENT_TOKEN`, `PADDLE_PLAN_PRICE_ID` and
    `PADDLE_STORAGE_PRICE_ID`. Which environment they belong to is read off the key:
-   `pdl_sdbx_` is the sandbox, `pdl_live_` is live. In `.dev.vars` locally; `APP_URL`
-   must be set too, since the mail that says a plan has ended names it.
+   `pdl_sdbx_` is the sandbox, `pdl_live_` is live. In `.dev.vars` locally; as the
+   `DEV_PADDLE_*` GitHub secrets for the dev instance, which the deploy carries over with
+   the sandbox's values; and on production by hand, `pnpm exec wrangler secret put` from
+   `apps/api` for each, with the live account's. `APP_URL` must be set too, since the
+   mail that says a plan has ended names it.
 
 Locally, Paddle cannot reach a webhook on `localhost`; a tunnel (`cloudflared tunnel
 --url http://localhost:<API_PORT>`) gives it an address for a session, or the sandbox's
