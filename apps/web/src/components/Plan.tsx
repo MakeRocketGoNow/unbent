@@ -248,7 +248,12 @@ export function Plan() {
           <div className="backfill-row">
             {/* Its press opens the confirm, which hides this row while it is open, so the
                 confirm's own "Adding…" is the only busy label Add ever needs. */}
-            <Button size="small" disabled={busy !== null || unitsOf(plan) >= MAX_STORAGE_UNITS} onClick={() => setAdding(true)}>
+            <Button
+              size="small"
+              disabled={busy !== null || unitsOf(plan) >= MAX_STORAGE_UNITS}
+              tip={unitsOf(plan) >= MAX_STORAGE_UNITS ? 'The most storage a plan can hold; ask for more' : undefined}
+              onClick={() => setAdding(true)}
+            >
               Add {STORAGE_ADDON_GB} GB
             </Button>
             {unitsOf(plan) > 0 && (
