@@ -1258,6 +1258,14 @@ describe('rows read on an archive-sized store', () => {
           { skipExisting: true },
         ),
       ),
+      // The same for notes filed nowhere, the other statement the check has: the index's
+      // null notebook run, which no note of this store is in.
+      await measure('create fifty unfiled, skipping titles held', () =>
+        stub.createMany(
+          Array.from({ length: 50 }, (_, k) => ({ id: crypto.randomUUID(), title: `Fresh unfiled ${k % 25}`, body: '', tags: [] })),
+          { skipExisting: true },
+        ),
+      ),
       await measure('history list', () => stub.listRevisions('n00021')),
       await measure('history copy', async () => stub.getRevision('n00021', (await stub.listRevisions('n00021'))![5]!.id)),
       await measure('history restore', async () => stub.restoreRevision('n00021', (await stub.listRevisions('n00021'))![5]!.id)),
@@ -1322,6 +1330,9 @@ describe('rows read on an archive-sized store', () => {
       // new note writes (228 read, measured 2026-10-14). A check that read the notebook
       // would be six hundred rows for each note.
       'create fifty, skipping titles held': 400,
+      // Unfiled, on the same index's null run; a plan that looked for the null notebook by
+      // walking the notes would read the store's three thousand (78, measured 2026-10-14).
+      'create fifty unfiled, skipping titles held': 200,
       // The notebook's row by name and its definitions: nothing that grows with the notes.
       'notebook by name': 12,
       // Five hundred notes of one notebook by id, two rows a note — the key, then the
