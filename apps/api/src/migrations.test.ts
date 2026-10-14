@@ -197,10 +197,10 @@ describe.skipIf(!sqlite3)('the directory\'s query plans', () => {
         ('cancelling', 'X', 'x@example.com', 0, 'n', 'n');
       INSERT INTO account_plan (user_id, plan, plan_until, storage_gb, source, paddle_status, paddle_cancels_at, created_at, updated_at) VALUES
         ('trial', 'trial', ${now - 3_600_000}, 10, NULL, NULL, NULL, 1, 1),
-        ('comp', 'active', ${now - 3_600_000}, 10, 'comp', NULL, NULL, 1, 1),
-        ('renewing', 'active', ${now - 3_600_000}, 10, 'paddle', 'active', NULL, 1, 1),
+        ('comp', 'active', ${now - 3_500_000}, 10, 'comp', NULL, NULL, 1, 1),
+        ('renewing', 'active', ${now - 3_400_000}, 10, 'paddle', 'active', NULL, 1, 1),
         ('long-gone', 'active', ${now - 2 * DAY}, 10, 'paddle', 'active', NULL, 1, 1),
-        ('cancelling', 'active', ${now - 3_600_000}, 10, 'paddle', 'active', ${now - 3_600_000}, 1, 1);
+        ('cancelling', 'active', ${now - 3_300_000}, 10, 'paddle', 'active', ${now - 3_300_000}, 1, 1);
     `);
     const due = query(LAPSE_DUE_SQL.replace('?1', String(now)).replace('?2', '10').replace('?3', String(now - DAY)))
       .split('\n')
