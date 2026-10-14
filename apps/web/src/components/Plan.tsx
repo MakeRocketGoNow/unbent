@@ -10,6 +10,7 @@ import {
   type AccountPlan,
 } from '@unbent/shared';
 import * as api from '../notes-api.js';
+import { errorText } from '../notes-api.js';
 import { isHosted } from '../app-bridge.js';
 import { formatBytes } from '../format-bytes.js';
 import { openCheckout } from '../paddle.js';
@@ -124,7 +125,7 @@ export function Plan() {
         setNotice('You’re subscribed. Thank you.');
       }
     } catch (err) {
-      setError((err as Error).message || 'The checkout could not be opened.');
+      setError(errorText(err) || 'The checkout could not be opened.');
     } finally {
       setBusy(null);
     }
@@ -158,7 +159,7 @@ export function Plan() {
       document.addEventListener('visibilitychange', onReturn);
     } catch (err) {
       tab?.close();
-      setError((err as Error).message || 'The portal could not be opened.');
+      setError(errorText(err) || 'The portal could not be opened.');
     } finally {
       setBusy(null);
     }
@@ -175,7 +176,7 @@ export function Plan() {
       // Closed once the change has landed, so the confirm's own "Adding…" is what waits.
       setAdding(false);
     } catch (err) {
-      setError((err as Error).message || 'The storage could not be changed.');
+      setError(errorText(err) || 'The storage could not be changed.');
     } finally {
       setBusy(null);
     }
