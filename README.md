@@ -803,8 +803,8 @@ anything else that speaks the protocol can work with your notes directly. The se
 
 Connecting runs the ordinary OAuth flow: the client registers itself, a browser opens on the
 consent screen, and approving it hands the client a token of its own. The tools cover
-search and list, reading a note in full, create, edit, tag, move, trash and restore — the
-first and the last four for several notes at once — attaching a file, and notebook management. Note bodies are Markdown and pass whole in both
+search and list, reading a note in full, create, edit, tag, move, trash and restore — create
+and the last four for several notes at once — attaching a file, and notebook management. Note bodies are Markdown and pass whole in both
 directions, so an assistant writes a complete note in one call.
 
 Three are worth knowing about:
