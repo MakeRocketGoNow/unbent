@@ -1603,7 +1603,7 @@ export async function trashNotes(ids: string[]): Promise<number> {
   const { here: held, there } = split(lib, ids);
   const { direct, queued: here } = roundOrQueued(lib, held);
   const sent = [...there, ...direct];
-  const remote = away.length > 0 ? await pulled(api.deleteNotes(away).then((r) => r.trashed), { ids: away, refiles: true }) : 0;
+  const remote = sent.length > 0 ? await pulled(api.deleteNotes(sent).then((r) => r.trashed), { ids: sent, refiles: true }) : 0;
   if (here.length > 0) {
     queue(lib, 'trashNotes', { ids: here }, () => {
       const now = Date.now();
@@ -1621,7 +1621,7 @@ export async function restoreNotes(ids: string[]): Promise<number> {
   const { here: held, there } = split(lib, ids);
   const { direct, queued: here } = roundOrQueued(lib, held);
   const sent = [...there, ...direct];
-  const remote = away.length > 0 ? await pulled(api.restoreNotes(away).then((r) => r.restored), { ids: away, refiles: true }) : 0;
+  const remote = sent.length > 0 ? await pulled(api.restoreNotes(sent).then((r) => r.restored), { ids: sent, refiles: true }) : 0;
   if (here.length > 0) {
     queue(lib, 'restoreNotes', { ids: here }, () => {
       for (const id of here) lib.notes.update(id, (row) => void delete row.deletedAt);
@@ -1638,7 +1638,7 @@ export async function purgeNotes(ids: string[]): Promise<number> {
   const { here: held, there } = split(lib, ids);
   const { direct, queued: here } = roundOrQueued(lib, held);
   const sent = [...there, ...direct];
-  const remote = away.length > 0 ? await pulled(api.deleteNotesPermanently(away).then((r) => r.deleted), { ids: away, refiles: true }) : 0;
+  const remote = sent.length > 0 ? await pulled(api.deleteNotesPermanently(sent).then((r) => r.deleted), { ids: sent, refiles: true }) : 0;
   if (here.length > 0) {
     queue(lib, 'purgeNotes', { ids: here }, () => {
       for (const id of here) lib.notes.delete(id);
