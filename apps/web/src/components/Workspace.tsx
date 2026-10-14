@@ -1667,19 +1667,15 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
                      draft is flushed as the sheet opens, so by the time a version is
                      picked the server already has what is on screen.
                   */
-                  ...(planInactive
-                    ? []
-                    : [
-                        {
-                          label: 'History',
-                          disabled: frozen,
-                          onSelect: () => {
-                            historyFlush.current = flush();
-                            setHistoryMounted(true);
-                            setHistoryFor(noteId);
-                          },
-                        },
-                      ]),
+                  {
+                    label: 'History',
+                    disabled: frozen,
+                    onSelect: () => {
+                      historyFlush.current = flush();
+                      setHistoryMounted(true);
+                      setHistoryFor(noteId);
+                    },
+                  },
                   {
                     label: 'Delete',
                     tone: 'danger' as const,
@@ -1692,7 +1688,10 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
         </div>
       </div>
 
-      {!readOnly && historyMounted && (
+      {/* Not for the trash, whose menu has no History. A lapsed plan keeps it: reading a
+          version is a read and clearing the history is a delete, both of which the plan
+          promises; only Restore writes, and the sheet fades that one with the reason. */}
+      {!inTrash && historyMounted && (
         <HistorySheet
           open={historyOpen}
           onClose={() => setHistoryFor(null)}
@@ -1701,6 +1700,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
           saved={() => historyFlush.current}
           onRestore={restoreFromHistory}
           current={historyShown}
+          lapsed={planInactive}
         />
       )}
 
