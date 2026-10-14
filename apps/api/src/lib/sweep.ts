@@ -211,7 +211,10 @@ export async function sweepStores(
   ).run();
 
   const after = opts.restart ? '' : await readCursor(env.DB);
-  const rows = await listDirectory(env.DB, after, BATCH);
+  // A visit costs up to two subrequests (a wipe and its `usage`), so the page gives up
+  // half of what the mail spent: a batch of deletions on a mail-heavy hour then stays
+  // under the budget, where only the expiries and finishes are budgeted below.
+  const rows = await listDirectory(env.DB, after, BATCH - Math.ceil((opts.spent ?? 0) / 2));
   const writes: D1PreparedStatement[] = [];
   // The subrequests made so far, counted so the expiry can be budgeted; see
   // `SUBREQUEST_BUDGET`. The D1 queries are all counted up front, including the `batch`
