@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { lapseKind, lapseMessage, notifyLapsedPlans } from './plan-mail.js';
+import { LAPSE_MAIL_PER_RUN, lapseKind, lapseMessage, notifyLapsedPlans } from './plan-mail.js';
 import { RENEWAL_GRACE_MS } from './plan.js';
 
 const paddle = {
@@ -88,7 +88,7 @@ describe('the lapse mail', () => {
     // The due query with now, the limit and the renewal grace's cutoff, then a mark for
     // the one that went and the one refused for good; the provider's outage and its rate
     // limit are tried again next run.
-    expect(ran[0]!.binds).toEqual([10, 5, 10 - RENEWAL_GRACE_MS]);
+    expect(ran[0]!.binds).toEqual([10, LAPSE_MAIL_PER_RUN, 10 - RENEWAL_GRACE_MS]);
     expect(ran.slice(1).map((r) => r.binds[0])).toEqual(['u1', 'u2']);
     expect(ran[1]!.sql).toContain('lapse_notified_at');
     vi.unstubAllGlobals();

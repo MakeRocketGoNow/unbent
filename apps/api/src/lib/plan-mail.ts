@@ -26,8 +26,15 @@ import { LAPSE_DUE_SQL, RENEWAL_GRACE_MS, updatePlanStatement } from './plan.js'
  * without billing, sends nothing and reads nothing.
  */
 
-/** The most accounts told per run: five mails and their marks, out of the sweep's budget. */
-export const LAPSE_MAIL_PER_RUN = 5;
+/**
+ * The most accounts told per run. Two an hour is forty-eight a day, which leaves the
+ * sign-in codes more than half of the hundred a day Resend's free tier allows — the
+ * tier unbent.app is on — on the day a fortnight's trials end together. Five was the
+ * first number, and would have let the mail crowd the codes out; MAK-220 is raising it
+ * again once the mail tier allows. Nobody waits on this mail, so a backlog of lapses
+ * drains at two an hour and is told a little later, which is the right side to err on.
+ */
+export const LAPSE_MAIL_PER_RUN = 2;
 
 interface DueRow {
   user_id: string;

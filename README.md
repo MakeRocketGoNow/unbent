@@ -1388,12 +1388,12 @@ sandbox first.
    `DEV_PADDLE_*` GitHub secrets for the dev instance, which the deploy carries over with
    the sandbox's values; and on production by hand, `pnpm exec wrangler secret put` from
    `apps/api` for each, with the live account's. `APP_URL` must be set too, since the
-   mail that says a plan has ended names it. That mail goes out from the hourly sweep, up
-   to five an hour, through the same provider and allowance as the sign-in codes: on
-   Resend's free tier of a hundred a day, a cluster of trials ending together — every
-   account that existed when billing went on starts its fortnight at its first visit —
-   could crowd the codes out for a day. Size the mail tier for both, or lower
-   `LAPSE_MAIL_PER_RUN`.
+   mail that says a plan has ended names it. That mail goes out from the hourly sweep
+   through the same provider and allowance as the sign-in codes, so it is capped at two
+   an hour (`LAPSE_MAIL_PER_RUN`): on Resend's free tier of a hundred a day, a cluster of
+   trials ending together — every account that existed when billing went on starts its
+   fortnight at its first visit — must not crowd the codes out. On a paid mail tier the
+   cap can go up (MAK-220).
 
 Locally, Paddle cannot reach a webhook on `localhost`; a tunnel (`cloudflared tunnel
 --url http://localhost:<API_PORT>`) gives it an address for a session, or the sandbox's
