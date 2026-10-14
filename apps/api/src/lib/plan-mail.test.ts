@@ -58,8 +58,8 @@ describe('the lapse mail', () => {
 
   it('sends nothing where billing or mail is off, and reads nothing', async () => {
     const { db, ran } = fakeDb([{ user_id: 'u', plan: 'trial', plan_until: 1, source: null, email: 'a@example.com' }]);
-    expect(await notifyLapsedPlans({ ...paddle, RESEND_API_KEY: undefined, DB: db }, 10)).toBe(0);
-    expect(await notifyLapsedPlans({ ...paddle, PADDLE_API_KEY: undefined, DB: db }, 10)).toBe(0);
+    expect(await notifyLapsedPlans({ ...paddle, RESEND_API_KEY: undefined, DB: db }, 10)).toEqual({ told: 0, subrequests: 0 });
+    expect(await notifyLapsedPlans({ ...paddle, PADDLE_API_KEY: undefined, DB: db }, 10)).toEqual({ told: 0, subrequests: 0 });
     expect(ran).toEqual([]);
   });
 
@@ -82,7 +82,8 @@ describe('the lapse mail', () => {
       { user_id: 'u3', plan: 'active', plan_until: 1, source: 'comp', email: 'down@example.com' },
       { user_id: 'u4', plan: 'active', plan_until: 1, source: 'paddle', email: 'slow@example.com' },
     ]);
-    expect(await notifyLapsedPlans({ ...paddle, DB: db }, 10)).toBe(1);
+    // One told; the query, four sends and two marks spent.
+    expect(await notifyLapsedPlans({ ...paddle, DB: db }, 10)).toEqual({ told: 1, subrequests: 7 });
     expect(sent).toEqual(['one@example.com', 'bad@example.com', 'down@example.com', 'slow@example.com']);
     // The due query with now, the limit and the renewal grace's cutoff, then a mark for
     // the one that went and the one refused for good; the provider's outage and its rate

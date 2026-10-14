@@ -169,7 +169,13 @@ async function readCursor(db: D1Database): Promise<string> {
 
 export async function sweepStores(
   env: Pick<Env, 'DB' | 'USER_STORE' | 'STORE_JURISDICTION' | 'STORE_SWEEP' | 'BLOBS'>,
-  opts: { restart?: boolean } = {},
+  /**
+   * `spent`: subrequests the invocation has already made before the walk — the lapse
+   * mail's (lib/plan-mail.ts), which runs ahead of it in the cron's one invocation.
+   * Counted against the same budget, so a mail-heavy hour defers a few expiries rather
+   * than running the walk's tail past Free's fifty.
+   */
+  opts: { restart?: boolean; spent?: number } = {},
 ): Promise<SweepReport> {
   const started = Date.now();
   const report: SweepReport = {
@@ -211,7 +217,7 @@ export async function sweepStores(
   // `SUBREQUEST_BUDGET`. The D1 queries are all counted up front, including the `batch`
   // at the end. `now` is one moment for the whole batch, asked of every store and given
   // back to each on the forget, so a store forgets only what it said was due.
-  const budget = { spent: D1_PER_BATCH };
+  const budget = { spent: D1_PER_BATCH + (opts.spent ?? 0) };
   const now = Date.now();
   const due: Array<{ userId: string; keys: string[] }> = [];
   const finishing: string[] = [];

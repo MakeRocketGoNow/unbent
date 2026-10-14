@@ -17,13 +17,16 @@ import { LAPSE_DUE_SQL, RENEWAL_GRACE_MS, updatePlanStatement } from './plan.js'
  * of the read-only state (MAK-47), and what a person whose trial ran out most needs to
  * hear before they decide anything.
  *
- * Runs in the sweep's invocation, a few accounts a run (`LAPSE_MAIL_PER_RUN`), each mail
- * one subrequest. That is sized for Workers Paid, where unbent.app runs: an instance
- * with billing on is one an operator switched on, and the five settings that turn it on
- * say so. An instance without mail, or without billing, sends nothing and reads nothing.
+ * Runs in the sweep's invocation, ahead of the walk, a few accounts a run
+ * (`LAPSE_MAIL_PER_RUN`): one query, then a mail and a mark per account, every one a
+ * subrequest out of the invocation's fifty on Workers Free. What it spent is handed to
+ * the walk (`sweepStores`'s `spent`), which budgets its expiries around it, so an
+ * instance with billing on stays inside Free's limit on a mail-heavy hour by deferring
+ * a few expiries rather than by failing the walk's tail. An instance without mail, or
+ * without billing, sends nothing and reads nothing.
  */
 
-/** The most accounts told per run: five mails, on top of the sweep's own budget. */
+/** The most accounts told per run: five mails and their marks, out of the sweep's budget. */
 export const LAPSE_MAIL_PER_RUN = 5;
 
 interface DueRow {
@@ -74,8 +77,9 @@ export function lapseKind(row: { plan: PlanState; source: PlanSource | null; pad
 }
 
 /**
- * Tells up to `limit` accounts whose plan has run out. Returns how many were told. The
- * mark is written after the mail is accepted, so a mail that fails is tried again on
+ * Tells up to `limit` accounts whose plan has run out. Returns how many were told, and
+ * how many subrequests it took — the query, each send and each mark — for the walk's
+ * budget. The mark is written after the mail is accepted, so a mail that fails is tried again on
  * the next run rather than lost; one that is accepted and then fails to be marked would
  * be sent twice, which is the better of the two mistakes.
  *
@@ -88,36 +92,41 @@ export async function notifyLapsedPlans(
   env: PaddleEnv & EmailEnv & { DB: D1Database; APP_URL?: string | undefined },
   now = Date.now(),
   limit = LAPSE_MAIL_PER_RUN,
-): Promise<number> {
-  if (!billingOn(env) || !canSendEmail(env)) return 0;
+): Promise<{ told: number; subrequests: number }> {
+  const none = { told: 0, subrequests: 0 };
+  if (!billingOn(env) || !canSendEmail(env)) return none;
   // The cron has no request to settle the address from (lib/app-url.ts); a deployed
   // instance with billing on has set it, as the README says, and one that has not is
   // told rather than mailed a link to nowhere.
   const appUrl = env.APP_URL?.trim();
   if (!appUrl) {
     console.warn('[billing] APP_URL is not set, so no lapse mail can name where to subscribe; none sent');
-    return 0;
+    return none;
   }
   const { results } = await env.DB.prepare(LAPSE_DUE_SQL).bind(now, limit, now - RENEWAL_GRACE_MS).all<DueRow>();
+  let subrequests = 1;
   const planUrl = `${appUrl.replace(/\/$/, '')}/settings/plan`;
   let told = 0;
   for (const row of results) {
     const kind = lapseKind(row);
+    subrequests += 1;
     try {
       await sendEmail(env, { to: row.email, ...lapseMessage(kind, planUrl) });
     } catch (err) {
       // A 4xx but not a rate limit or a timeout, which are the provider's day, not the address's.
       if (err instanceof EmailRejected && err.status < 500 && err.status !== 429 && err.status !== 408) {
         console.error(`[billing] lapse mail for user=${row.user_id} refused by the provider; marked as told:`, err.message);
+        subrequests += 1;
         await updatePlanStatement(env.DB, row.user_id, { lapseNotifiedAt: now }, now).run();
         continue;
       }
       console.error(`[billing] lapse mail for user=${row.user_id} failed; will retry next run:`, (err as Error).message);
       continue;
     }
+    subrequests += 1;
     await updatePlanStatement(env.DB, row.user_id, { lapseNotifiedAt: now }, now).run();
     console.log(`[billing] told user=${row.user_id} their ${kind} ended`);
     told += 1;
   }
-  return told;
+  return { told, subrequests };
 }
