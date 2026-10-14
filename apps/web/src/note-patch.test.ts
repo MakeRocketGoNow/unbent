@@ -472,6 +472,15 @@ describe('rebaseAfterAck', () => {
     const typing = { ...sent, fields: { [amount.id]: '12.' } };
     expect(rebaseAfterAck(typing, typing, stored, [amount]).fields).toEqual({ [amount.id]: '12.' });
   });
+
+  it('knows a first value is held only from the definitions when nothing is stored', () => {
+    // No stored row to read the type from: without the definition, "12." is an unknown
+    // id and the empty answer wins.
+    const empty = { ...base, fields: [] };
+    const typing = { ...sent, fields: { [amount.id]: '12.' } };
+    expect(rebaseAfterAck(typing, typing, empty, [amount]).fields).toEqual({ [amount.id]: '12.' });
+    expect(rebaseAfterAck(typing, typing, empty).fields).toEqual({ [amount.id]: null });
+  });
 });
 
 describe('seedFromKeepingHeld', () => {
@@ -491,6 +500,19 @@ describe('seedFromKeepingHeld', () => {
       notebook: 'Receipts',
       fields: { [amount.id]: '12.' },
     });
+  });
+
+  it('knows a first value is held only from the definitions when nothing is stored', () => {
+    const empty = note({ title: 'Trip, saved', fields: [] });
+    const draft: NoteDraft = {
+      title: 'Trip, saved',
+      body: 'paid',
+      tags: ['tax'],
+      notebook: 'Receipts',
+      fields: { [amount.id]: '12.' },
+    };
+    expect(seedFromKeepingHeld(empty, draft, [amount]).fields).toEqual({ [amount.id]: '12.' });
+    expect(seedFromKeepingHeld(empty, draft).fields).toEqual({});
   });
 
   it('is seedFrom when nothing is being held', () => {
