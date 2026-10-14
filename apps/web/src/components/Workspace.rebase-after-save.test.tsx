@@ -389,4 +389,27 @@ describe('a save that left a half-typed field out of the patch', () => {
     await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy(), { timeout: 3000 });
     stop();
   });
+
+  /*
+     The same, with a value stored: what filing the note elsewhere leaves. The editor
+     draws the stored 10 as a read-only row from the old notebook, so "12." has nowhere to
+     be finished, though the stored row still says the field is a number.
+  */
+  it('lets go of a half-typed value whose field is only carried from another notebook', async () => {
+    vi.mocked(useOutbox).mockReturnValue(outbox(() => {}));
+    vi.mocked(api.updateNote).mockImplementation(async (_id, patch) => ({ ...receipt, ...patch, updatedAt: 101 }) as Note);
+    const stop = installLibraryQueries(mountReceipts());
+
+    await type('Trip notes, lunch');
+    const amount = await screen.findByLabelText<HTMLInputElement>('Amount');
+    await act(async () => {
+      fireEvent.change(amount, { target: { value: '12.' } });
+    });
+    const notebook = lib.notebooks.get('nb-receipts')!;
+    await act(async () => lib.upsert('notebook', { ...notebook, fieldDefs: [] }));
+    await waitFor(() => expect(screen.queryByLabelText('Amount')).toBeNull());
+    expect(screen.getByText('from Receipts')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy(), { timeout: 3000 });
+    stop();
+  });
 });
