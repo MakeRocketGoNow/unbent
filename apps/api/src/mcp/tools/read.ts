@@ -326,7 +326,7 @@ export function registerReadTools(
               'name with null where a note has no value. Needs notebook, and every name must ' +
               'be one of its fields. For walking a notebook to fill or check a field when a ' +
               'value or two beside each title is all you need — a full page carries every ' +
-              'field and an excerpt, and is a fifth of the size.',
+              'field and an excerpt, and holds a fifth as many notes.',
           ),
         attachmentSummaries: attachmentSummariesFlag("each note's", ' Not with compact.'),
         tag: tagFilter,
