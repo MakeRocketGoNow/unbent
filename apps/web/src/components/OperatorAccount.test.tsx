@@ -14,6 +14,8 @@ vi.mock('@tanstack/react-router', () => ({
 let signedInAs = 'op1';
 // Whether the instance offers a person's own deletion, which is where that section points them.
 let selfDeletion = true;
+// Whether the instance sells a plan, which is the only time the Plan section is drawn.
+let sellsPlan = false;
 vi.mock('../useAppSession.js', () => ({
   useAppSession: () => ({ session: { user: { id: signedInAs } }, isPending: false, unreachable: false }),
 }));
@@ -30,6 +32,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
   accountRestores: vi.fn(),
   operatorAccount: vi.fn(),
   storeStats: vi.fn(),
+  compAccount: vi.fn(),
 }));
 
 const api = await import('../notes-api.js');
@@ -89,7 +92,7 @@ function harness(
   restores: StoreRestore[] = [],
 ) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  client.setQueryData(keys.config(), { accountDeletion: selfDeletion } as Awaited<ReturnType<typeof api.getConfig>>);
+  client.setQueryData(keys.config(), { accountDeletion: selfDeletion, ...(sellsPlan ? { billing: { environment: 'sandbox', clientToken: 'test_x' } } : {}) } as Awaited<ReturnType<typeof api.getConfig>>);
   client.setQueryData(keys.operatorAccount('u1'), who);
   if (seeded) client.setQueryData(keys.storeStats('u1'), seeded);
   vi.mocked(api.accountDumps).mockImplementation(answerDumps);
@@ -661,5 +664,59 @@ describe('OperatorAccount: the store', () => {
     // The ways back come from the store's own marker, so a reload or a second operator still has them.
     expect(notice.textContent).toContain('2026-10-06T12-00-00Z-before-load.sql, is in the list below');
     expect(screen.getByRole('button', { name: 'Undo the load' })).toBeTruthy();
+  });
+});
+
+describe('OperatorAccount: the plan', () => {
+  afterEach(() => {
+    cleanup();
+    sellsPlan = false;
+  });
+
+  /** Drawn only where the instance sells a plan. */
+  it('is absent where the instance sells no plan', async () => {
+    harness();
+    await screen.findByRole('heading', { name: 'Store' });
+    expect(screen.queryByRole('heading', { name: 'Plan' })).toBeNull();
+  });
+
+  /** A row is read, never made, by looking: an account with none has not started its fortnight. */
+  it('says no trial has started for an account with no row, and still offers the comp', async () => {
+    sellsPlan = true;
+    harness();
+    const section = (await screen.findByRole('heading', { name: 'Plan' })).closest('section')!;
+    expect(section.textContent).toContain('No trial yet.');
+    expect(within(section).getByRole('button', { name: 'Comp with no end' })).toBeTruthy();
+  });
+
+  it('shows where the account stands and comps it, with an end or none', async () => {
+    sellsPlan = true;
+    vi.mocked(api.compAccount).mockResolvedValue({ state: 'active', until: null, readOnlyAt: null, source: 'comp', storageGb: 60, subscription: null });
+    harness(undefined, undefined, { ...account, plan: { state: 'trial', until: now + 5 * 86_400_000, readOnlyAt: now + 5 * 86_400_000, source: null, storageGb: 10, subscription: null } });
+    const section = (await screen.findByRole('heading', { name: 'Plan' })).closest('section')!;
+    expect(section.textContent).toContain('Free trial.');
+    expect(section.textContent).toContain('Their trial ends on');
+    expect(within(section).queryByRole('button', { name: 'End comp' })).toBeNull();
+    fireEvent.change(within(section).getByLabelText('Storage, GB'), { target: { value: '60' } });
+    fireEvent.click(within(section).getByRole('button', { name: 'Comp with no end' }));
+    await waitFor(() => expect(api.compAccount).toHaveBeenCalledWith('u1', { action: 'comp', until: null, storageGb: 60 }));
+    expect(await within(section).findByText('Comped.')).toBeTruthy();
+  });
+
+  it('ends a comp behind a confirm, and refuses to comp over a Paddle subscription', async () => {
+    sellsPlan = true;
+    harness(undefined, undefined, { ...account, plan: { state: 'active', until: null, readOnlyAt: null, source: 'comp', storageGb: 10, subscription: null } });
+    const section = (await screen.findByRole('heading', { name: 'Plan' })).closest('section')!;
+    expect(section.textContent).toContain('Complimentary.');
+    fireEvent.click(within(section).getByRole('button', { name: 'End comp' }));
+    const confirm = await screen.findByRole('group', { name: 'Confirm ending the comp' });
+    expect(confirm.textContent).toContain('read-only now');
+    fireEvent.click(within(confirm).getByRole('button', { name: 'End comp' }));
+    await waitFor(() => expect(api.compAccount).toHaveBeenCalledWith('u1', { action: 'end' }));
+    cleanup();
+    harness(undefined, undefined, { ...account, plan: { state: 'active', until: now + 300 * 86_400_000, readOnlyAt: now + 301 * 86_400_000, source: 'paddle', storageGb: 10, subscription: { status: 'active', cancelsAt: null, pastDue: false } } });
+    const paid = (await screen.findByRole('heading', { name: 'Plan' })).closest('section')!;
+    expect(paid.textContent).toContain('Paid through Paddle');
+    expect(within(paid).queryByRole('button')).toBeNull();
   });
 });

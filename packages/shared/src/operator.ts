@@ -1,3 +1,4 @@
+import type { AccountPlan } from './plan.js';
 /**
  * What the operator page reads (MAK-171, part 5): the two status files the backup
  * leaves in the backups bucket, and the directory's view of each account. Shared
@@ -114,6 +115,13 @@ export interface OperatorAccount {
   noteCount: number;
   storageBytes: number;
   lastActiveAt: number | null;
+  /**
+   * The account's plan as the Plan page reads it (MAK-108), from its row rather than the
+   * sweep; absent where the instance sells no plan. The single-account route carries it;
+   * the list does not, since a list that read a second table per row would be two reads
+   * a row for a column most pages never look at.
+   */
+  plan?: AccountPlan;
   /** The daily backup's record of the account's newest dump (migration 0037). */
   dump: {
     at: number | null;

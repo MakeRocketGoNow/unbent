@@ -64,7 +64,7 @@ const MAX_ASSISTANT_TEXT_CHARS = 100_000;
  * the editor.
  */
 export function registerAttachmentTools(
-  server: McpServer,
+  server: Pick<McpServer, 'registerTool'>,
   env: Pick<
     Env,
     'APP_URL' | 'BLOBS' | 'AI' | 'ALLOW_TEST_CREDENTIALS' | 'ANTHROPIC_API_KEY' | 'ATTACHMENT_FETCH_USER_AGENT'
@@ -72,6 +72,8 @@ export function registerAttachmentTools(
   ctx: { waitUntil(promise: Promise<unknown>): void },
   repos: { notes: NotesRepo; attachments: AttachmentsRepo; uploads: UploadGrantsRepo },
   links: AppLinks,
+  /** The plan's storage in bytes when a file is about to be stored, or null for no limit; see lib/quota.ts. */
+  quota: () => Promise<number | null>,
 ): void {
   // Loopback is fetchable only where the web-image route allows it too: local development,
   // flagged the same way. Deployed, this is false, so neither server-side fetcher can be
@@ -307,6 +309,7 @@ export function registerAttachmentTools(
           contentType,
           body: source.body,
           link,
+          quota: await quota(),
         });
         return jsonResult({ noteId, url: links.note(noteId), ...stored, linked: link });
       } catch (err) {

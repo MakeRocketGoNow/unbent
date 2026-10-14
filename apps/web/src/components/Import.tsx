@@ -15,6 +15,7 @@ import { describeImportFile } from './import-file.js';
 import { importPercent } from './import-progress.js';
 import { formatBytes } from '../format-bytes.js';
 import { ImportSkips } from './ImportSkips.js';
+import { usePlan } from '../use-plan.js';
 
 /** `1 note`, `3,325 notes`. */
 function count(n: number, noun: string): string {
@@ -29,6 +30,7 @@ function count(n: number, noun: string): string {
  * means nothing once a run has started.
  */
 export function Import() {
+  const { inactive: planInactive } = usePlan();
   const { status, file, zip, progress, failures, skips, error, startedAt, endedAt, run } = useImportRun();
   const [extractText, setExtractText] = useState(true);
   /** The Notion units to import, by key; every non-empty one until the person unticks it. */
@@ -141,9 +143,14 @@ export function Import() {
           <EnexHelp />
           <NotionHelp />
 
+          {/* An import is nothing but writes, every one of which the server refuses
+              while the plan has ended (MAK-108): the picker is faded with the reason
+              rather than left to fail a note at a time. */}
+          {planInactive && <p className="muted small">Importing needs an active plan. Everything already here still opens and exports.</p>}
           <input
             type="file"
             accept=".enex,.zip,.md,application/xml,text/xml,application/zip,text/markdown"
+            disabled={planInactive}
             onChange={(e) => pickImportFile(e.target.files?.[0] ?? null)}
           />
 
@@ -185,7 +192,7 @@ export function Import() {
             </span>
           </label>
 
-          <Button variant="primary" disabled={!canStart} onClick={start}>
+          <Button variant="primary" disabled={!canStart || planInactive} tip={planInactive ? 'Not while the plan has ended' : undefined} onClick={start}>
             Start import
           </Button>
 

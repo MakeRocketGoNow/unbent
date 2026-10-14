@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { DELETED_FILES_KEPT_DAYS, DUMPS_KEPT_DAYS, MIRROR_KEPT_DAYS, RESTORES_LISTED, RESTORE_WINDOW_DAYS, type AccountDump, type OperatorAccount as Account, type StoreRestore } from '@unbent/shared';
+import { BASE_STORAGE_GB, DELETED_FILES_KEPT_DAYS, DUMPS_KEPT_DAYS, MIRROR_KEPT_DAYS, RESTORES_LISTED, RESTORE_WINDOW_DAYS, type AccountDump, type OperatorAccount as Account, type StoreRestore } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { ApiError, LoadFailedError, errorText } from '../notes-api.js';
 import { formatBytes } from '../format-bytes.js';
@@ -12,6 +12,7 @@ import { useAppSession } from '../useAppSession.js';
 import { Button } from './Button.js';
 import { Confirm } from './Confirm.js';
 import { LastDump } from './Operator.js';
+import { describePlan } from './Plan.js';
 
 /**
  * One account, for the operator: what the directory and its store say of it, its dumps,
@@ -35,6 +36,7 @@ export function OperatorAccount({ userId }: { userId: string }) {
   const row = useQuery(operatorAccountQuery(userId));
   const account = row.data ?? null;
   const stats = useQuery(storeStatsQuery(userId));
+  const config = useQuery(configQuery());
   // Moved each time a section below asks to change the store — in `finally`, since a
   // request that failed may still have been applied — and each section is keyed on the
   // others'. An answer a section keeps can carry an undo (when the history failed to
@@ -93,6 +95,8 @@ export function OperatorAccount({ userId }: { userId: string }) {
       </div>
 
       {account && <AccountFacts account={account} lastWriteAt={live} reading={stats.isPending} />}
+
+      {account && config.data?.billing && <PlanSection userId={userId} email={account.email} plan={account.plan ?? null} />}
 
       <section className="settings-section">
         <h3>Store</h3>
@@ -1053,6 +1057,101 @@ function Resync({ userId, email }: { userId: string; email: string }) {
       )}
       {done && <p className="good small">Done. Every device of the account will copy the library again.</p>}
       {error && <p className="bad small">{error}</p>}
+    </section>
+  );
+}
+
+/**
+ * The account's plan, and the comp (MAK-108): the one way an account is paid for without
+ * Paddle — the owner, a gifted friend, someone whose trial ran out mid-import. An end
+ * date or none, and the storage to give it; a comp of an account that has a Paddle
+ * subscription is refused by the route, and the sentence says so. Ending a comp makes
+ * the account read-only at once, which is a confirm: it is someone else's account.
+ *
+ * Only where the instance sells a plan — the row carries `plan` only then — and drawn
+ * above the store's facts, since it is the first thing an operator looking at an
+ * account that has written to say it cannot write wants to see.
+ */
+function PlanSection({ userId, email, plan }: { userId: string; email: string; plan: Account['plan'] | null }) {
+  const queryClient = useQueryClient();
+  // No row yet: the account has made no request since billing came on, so its fortnight
+  // has not started. Read rather than made by the route, so looking does not start it.
+  const { title, sentence } = plan ? describePlan(plan, 'operator') : { title: 'No trial yet', sentence: 'The account has not been used since billing came on; its fortnight starts at its next request.' };
+  const [until, setUntil] = useState('');
+  const [storageGb, setStorageGb] = useState(String(plan?.storageGb ?? BASE_STORAGE_GB));
+  const [busy, setBusy] = useState(false);
+  const [ending, setEnding] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  const subscribed = plan != null && plan.subscription !== null && plan.subscription.status !== 'canceled';
+
+  async function send(body: Parameters<typeof api.compAccount>[1]) {
+    setBusy(true);
+    setError(null);
+    setDone(null);
+    try {
+      await api.compAccount(userId, body);
+      setEnding(false);
+      setDone(body.action === 'end' ? 'Ended. The account is read-only.' : 'Comped.');
+      void queryClient.invalidateQueries({ queryKey: keys.operatorAccount(userId) });
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="settings-section">
+      <h3>Plan</h3>
+      <p>
+        <strong>{title}.</strong> {sentence}
+        {plan && <span className="muted"> {plan.storageGb} GB of storage.</span>}
+      </p>
+      {subscribed ? (
+        <p className="muted small">Paid through Paddle. To comp this account instead, cancel the subscription in Paddle first.</p>
+      ) : (
+        <div className="operator-row">
+          <label>
+            <span className="muted">Comp until</span>
+            <input type="date" className="search-field" value={until} onChange={(e) => setUntil(e.target.value)} disabled={busy} />
+          </label>
+          <label>
+            <span className="muted">Storage, GB</span>
+            <input type="number" className="search-field" min={1} max={10000} value={storageGb} onChange={(e) => setStorageGb(e.target.value)} disabled={busy} />
+          </label>
+          <Button
+            disabled={busy || !/^\d+$/.test(storageGb) || Number(storageGb) < 1}
+            onClick={() =>
+              void send({
+                action: 'comp',
+                // End of the chosen day, in this browser's zone, or no end.
+                until: until ? new Date(`${until}T23:59:59`).getTime() : null,
+                storageGb: Number(storageGb),
+              })
+            }
+          >
+            {busy ? 'Saving…' : until ? 'Comp until then' : 'Comp with no end'}
+          </Button>
+          {plan?.source === 'comp' && plan.state === 'active' && !ending && (
+            <Button variant="quiet" tone="danger" disabled={busy} onClick={() => setEnding(true)}>
+              End comp
+            </Button>
+          )}
+        </div>
+      )}
+      {ending && (
+        <Confirm
+          label="Confirm ending the comp"
+          question={<>End the comp on {email}?</>}
+          detail="The account turns read-only now: everything still opens and exports, and nothing can be edited until they subscribe."
+          actions={[{ label: 'End comp', busyLabel: 'Ending…', tone: 'danger', onConfirm: () => send({ action: 'end' }) }]}
+          busy={busy}
+          onCancel={() => setEnding(false)}
+        />
+      )}
+      {error && <p className="bad small">{error}</p>}
+      {done && <p className="good small">{done}</p>}
     </section>
   );
 }

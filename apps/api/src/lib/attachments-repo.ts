@@ -35,6 +35,11 @@ export class AttachmentsRepo extends StoreRepo {
     return this.call((s) => s.filesForNote(noteId));
   }
 
+  /** The bytes of files the account holds, for the plan's quota; see `UserStore.attachmentBytes`. */
+  storageUsed(): Promise<number> {
+    return this.call((s) => s.attachmentBytes());
+  }
+
   /** True when the note exists and is not deleted. Ownership is the object's; see `reposFor`. */
   ownsNote(noteId: string): Promise<boolean> {
     return this.call((s) => s.ownsNote(noteId));
@@ -61,9 +66,9 @@ export class AttachmentsRepo extends StoreRepo {
     contentType: string;
     size: number;
     r2Key: string;
-  }): Promise<AttachmentInfo>;
-  record(input: Parameters<AttachmentsStore['record']>[0], opts: { ifAbsent: true }): Promise<AttachmentInfo | null>;
-  record(input: Parameters<AttachmentsStore['record']>[0], opts?: { ifAbsent?: boolean }): Promise<AttachmentInfo | null> {
+  }, opts?: { quota?: number | null }): Promise<AttachmentInfo>;
+  record(input: Parameters<AttachmentsStore['record']>[0], opts: { ifAbsent: true; quota?: number | null }): Promise<AttachmentInfo | null>;
+  record(input: Parameters<AttachmentsStore['record']>[0], opts?: { ifAbsent?: boolean; quota?: number | null }): Promise<AttachmentInfo | null> {
     return this.call((s) => s.recordAttachment(input, opts));
   }
 

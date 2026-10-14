@@ -631,13 +631,17 @@ export class NotesStore {
                            WHERE nt.tag_id = tags.id AND n.deleted_at IS NULL)`;
     const actualTotals = `SELECT COALESCE(SUM(deleted_at IS NULL), 0) AS live,
                                  COALESCE(SUM(deleted_at IS NULL AND notebook_id IS NULL), 0) AS unfiled,
-                                 COALESCE(SUM(deleted_at IS NOT NULL), 0) AS trashed
+                                 COALESCE(SUM(deleted_at IS NOT NULL), 0) AS trashed,
+                                 (SELECT COALESCE(SUM(size), 0) FROM attachments) AS attachment_bytes
                             FROM notes`;
-    type Totals = { live: number; unfiled: number; trashed: number };
+    type Totals = { live: number; unfiled: number; trashed: number; attachment_bytes: number };
 
     return this.sql.tx(() => {
       const was = this.totals();
       const is = this.sql.first<Totals>(actualTotals)!;
+      // The files' bytes (0008) are recounted with the rest: the one sum an upload is
+      // refused on, so a drift here would refuse uploads or let too many through.
+      const bytesWere = this.sql.first<{ n: number }>(`SELECT attachment_bytes AS n FROM note_counts WHERE id = 1`)?.n ?? 0;
       const notebooks = this.sql.exec<{ id: string }>(
         `UPDATE notebooks SET note_count = ${liveInNotebook}
           WHERE note_count <> ${liveInNotebook}
@@ -651,13 +655,14 @@ export class NotesStore {
       // The `WHERE 1` does nothing but let SQLite parse the ON CONFLICT after it as an
       // upsert: straight after a FROM it would be read as the start of a join constraint.
       this.sql.exec(
-        `INSERT INTO note_counts (id, live, unfiled, trashed)
-         SELECT 1, live, unfiled, trashed FROM (${actualTotals}) WHERE 1
+        `INSERT INTO note_counts (id, live, unfiled, trashed, attachment_bytes)
+         SELECT 1, live, unfiled, trashed, attachment_bytes FROM (${actualTotals}) WHERE 1
          ON CONFLICT(id) DO UPDATE
-           SET live = excluded.live, unfiled = excluded.unfiled, trashed = excluded.trashed`,
+           SET live = excluded.live, unfiled = excluded.unfiled, trashed = excluded.trashed,
+               attachment_bytes = excluded.attachment_bytes`,
       );
       const wrongTotals = (['live', 'unfiled', 'trashed'] as const).filter((k) => was[k] !== is[k]).length;
-      return notebooks.length + tags.length + wrongTotals;
+      return notebooks.length + tags.length + wrongTotals + (bytesWere !== is.attachment_bytes ? 1 : 0);
     });
   }
 

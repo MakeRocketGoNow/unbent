@@ -6,6 +6,7 @@ import { LOGIN } from '../auth-gate.js';
 import { EnexHelp, NotionHelp } from './ImportHelp.js';
 import { LegalLink } from './LegalLink.js';
 import { ProviderIcon } from './provider-icons.js';
+import { BASE_STORAGE_GB, PLAN_PRICE_USD, STORAGE_ADDON_GB, STORAGE_ADDON_PRICE_USD, TRIAL_DAYS } from '@unbent/shared';
 import {
   AndroidFeatureIcon,
   AssistantFeatureIcon,
@@ -34,9 +35,9 @@ const SOURCE_URL = 'https://github.com/MakeRocketGoNow/unbent';
  * is. Both go to the sign-in screen today, because an account is created by signing in;
  * when checkout exists (MAK-108) the trial is where it would branch.
  *
- * The prices are unbent.app's, written here rather than served, because they are copy on a
- * page rather than data anything computes with. Billing is what will make them true or
- * false, so when it lands it should be the source and this should read from it.
+ * The prices are the shared constants (`packages/shared/src/plan.ts`), which the Plan page
+ * quotes too and which Paddle's catalog is kept in step with (MAK-108): one place to change
+ * a number, and this page and the checkout agree.
  *
  * The screenshots are of the demo library `pnpm seed:demo` loads — never of anyone's real
  * notes, which is a rule about this repository and not only about this page. They are WebP
@@ -76,7 +77,7 @@ export function FrontPage() {
             <Link to={LOGIN} className="btn btn-primary front-cta-button">
               Start your free trial
             </Link>
-            <p className="muted">14 days free, no card needed. Then $36 a year.</p>
+            <p className="muted">{TRIAL_DAYS} days free, no card needed. Then ${PLAN_PRICE_USD} a year.</p>
           </div>
         </section>
 
@@ -164,15 +165,15 @@ export function FrontPage() {
           <div className="front-pricing">
             <div className="front-plan">
               <p className="front-amount">
-                <strong>$36</strong> a year
+                <strong>${PLAN_PRICE_USD}</strong> a year
               </p>
               <ul>
                 <li>Unlimited notes</li>
-                <li>10 GB of attachments, and 25 GB more for $12 a year</li>
+                <li>{BASE_STORAGE_GB} GB of attachments, and {STORAGE_ADDON_GB} GB more for ${STORAGE_ADDON_PRICE_USD} a year</li>
                 <li>The web app, the Android app and AI assistants</li>
                 <li>Export everything, as often as you like</li>
               </ul>
-              <p className="muted">14 days free, with no card needed to start. Billed yearly.</p>
+              <p className="muted">{TRIAL_DAYS} days free, with no card needed to start. Billed yearly.</p>
             </div>
             <div className="front-lapse">
               <h3>If you stop paying</h3>

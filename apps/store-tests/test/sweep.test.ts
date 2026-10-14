@@ -159,6 +159,27 @@ describe('the store sweep', () => {
   });
 
   /**
+   * The lapse mail's subrequests shorten the page (`spent`), and a shorter page is
+   * still a page: the walk goes on from its last row, and only a page that comes up
+   * short of what was asked for is the end.
+   */
+  it('keeps walking past a page the lapse mail shortened', async () => {
+    const ids = Array.from({ length: BATCH + 5 }, (_, i) => uid(`short-${String(i).padStart(2, '0')}`));
+    for (const id of ids) {
+      await user(id);
+      await directory(id);
+    }
+    const first = await sweepStores(env, { restart: true, spent: 5 });
+    expect(first.visited).toBe(BATCH - 3);
+    expect(first.done).toBe(false);
+    const cursor = await env.DB.prepare(`SELECT value FROM _unbent_meta WHERE key = 'store_sweep_cursor'`).first<{ value: string }>();
+    expect(cursor?.value).not.toBe('');
+    const reports = await fullPass();
+    expect(reports[reports.length - 1]!.done).toBe(true);
+    for (const id of ids) expect((await row(id))!.storage_bytes).toBeGreaterThan(0);
+  });
+
+  /**
    * The deploy's pass must visit every account, but the cursor is the cron's and is
    * usually partway down the directory. A batch resumed from the bottom ends at once;
    * `restart` starts at the top whatever the cursor says.

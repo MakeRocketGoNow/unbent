@@ -3,6 +3,7 @@ import { Button } from './Button.js';
 import { EmptyLibraryIcon } from './icons.js';
 import { EmptyState } from './EmptyState.js';
 import { useCreateNote, useCreatingNote } from '../useCreateNote.js';
+import { usePlan } from '../use-plan.js';
 import { WELCOME_BODY, WELCOME_TITLE } from '../welcome-note.js';
 
 /**
@@ -26,7 +27,9 @@ import { WELCOME_BODY, WELCOME_TITLE } from '../welcome-note.js';
  *
  * Both buttons that make a note are disabled while one is being made, so a second press
  * cannot make a second note; a failure is logged, as New's always has been, and they
- * come back.
+ * come back. They fade with the reason once the plan has ended (MAK-108), as New does in
+ * the list: an account whose trial ran out before it wrote anything lands here, and a
+ * note made then would sit in the outbox refused, uneditable, with nothing to say why.
  *
  * Only for an account that is genuinely empty, which the callers decide with
  * `useLibraryTotal` — never for an empty notebook, tag, filter or search, where the list's
@@ -42,6 +45,8 @@ import { WELCOME_BODY, WELCOME_TITLE } from '../welcome-note.js';
 export function EmptyLibrary({ heading = 'h2' }: { heading?: 'h2' | 'h3' }) {
   const createNote = useCreateNote();
   const making = useCreatingNote();
+  const { inactive } = usePlan();
+  const lapsedTip = inactive ? 'Not while the plan has ended' : undefined;
   return (
     <EmptyState
       icon={<EmptyLibraryIcon />}
@@ -63,7 +68,8 @@ export function EmptyLibrary({ heading = 'h2' }: { heading?: 'h2' | 'h3' }) {
           <Button
             size="large"
             className="empty-state-action"
-            disabled={making}
+            disabled={making || inactive}
+            tip={lapsedTip}
             onClick={() => void createNote({ tags: [], notebook: null })}
           >
             New note
@@ -76,7 +82,8 @@ export function EmptyLibrary({ heading = 'h2' }: { heading?: 'h2' | 'h3' }) {
         <Button
           variant="quiet"
           size="large"
-          disabled={making}
+          disabled={making || inactive}
+          tip={lapsedTip}
           onClick={() => void createNote({ tags: [], notebook: null, title: WELCOME_TITLE, body: WELCOME_BODY })}
         >
           See a sample note

@@ -2,6 +2,7 @@
  * Runtime validation shared by the Worker and the SPA. Each schema is simultaneously the
  * API contract and the TypeScript type, so the two cannot drift.
  */
+import type { BillingConfig } from './plan.js';
 import { z } from 'zod';
 import { cursorSchema } from './cursor.js';
 import { dateOnlySchema } from './dates.js';
@@ -351,6 +352,15 @@ export interface AppConfig {
    * no backups to speak of.
    */
   backups?: boolean;
+  /**
+   * This instance sells a plan through Paddle (MAK-108): the client-side token the Plan
+   * page initialises Paddle.js with, and which of Paddle's environments it belongs to.
+   * Present exactly where the Worker has the Paddle secrets, and the Plan tab, the trial
+   * banner and the 402 on a lapsed account all exist on the strength of it. Absent, the
+   * instance has nothing to sell and every account is active for good — every
+   * self-hosted copy. See `BillingConfig`.
+   */
+  billing?: BillingConfig;
 }
 
 export const INSTANCE_KINDS = ['dev', 'preview', 'local'] as const;

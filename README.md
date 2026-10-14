@@ -243,6 +243,7 @@ says otherwise; `pnpm exec wrangler secret put NAME` from `apps/api`, or the das
 | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | Auto-fill's language model: reading a note's pictures and text-less scans on a press, and writing its title and text fields | see [Reading images](#reading-images); `DEV_ANTHROPIC_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
 | `ANTHROPIC_READ_MODEL`, `ANTHROPIC_TITLE_MODEL`, `ANTHROPIC_FIELDS_MODEL`, `ANTHROPIC_READ_EFFORT` | a model per job, and the reading's effort | each unset falls back to `ANTHROPIC_MODEL`; see [Reading images](#reading-images) |
 | `AUTOFILL_DAILY_CAP` | a ceiling on Auto-fill presses per account per UTC day | a whole number; unset means none. Every press and the model's tokens are counted either way, and Maintenance shows the year's; see [Filing a note from what it says](#filing-a-note-from-what-it-says) |
+| `PADDLE_API_KEY`, `PADDLE_WEBHOOK_SECRET`, `PADDLE_CLIENT_TOKEN`, `PADDLE_PLAN_PRICE_ID`, `PADDLE_STORAGE_PRICE_ID` | selling the plan through Paddle | all five or none; unset, every account is active for good and nothing about billing is drawn. unbent.app's own, so leave them unset on yours. `DEV_PADDLE_*` as GitHub secrets carry the sandbox's to the dev instance; see [Selling the plan](#selling-the-plan) |
 | `ANDROID_ASSET_LINKS` | an Android build of your own | see [Android app](#android-app) |
 | `APPLE_APP_SITE_ASSOCIATION` | an iOS build of your own | see [iOS app](#ios-app) |
 | `APPLE_BUNDLE_ID` | Sign in with Apple from an iOS build of your own | comma-separated bundle ids, beside `APPLE_CLIENT_ID`; see [iOS app](#ios-app) |
@@ -1323,6 +1324,90 @@ For local development, `pnpm --filter @unbent/api reset:local` clears D1, R2 and
 stores entirely and rebuilds the schema, backing up D1 and the stores first. Use that rather
 than the in-app sweep to clear fixtures left by deleted test users — the scoped sweep cannot
 reach another account's prefix by design.
+
+## Selling the plan
+
+unbent.app sells one plan, $36 a year, with 10 GB of attachments and 25 GB more for $12 a
+year (the reasoning is in MAK-47). Paddle is the merchant of record: it takes the payment,
+handles VAT and sales tax, and tells the Worker what happened over a webhook. Nothing about
+it exists on an instance that has not set the five `PADDLE_*` settings — every account is
+active for good there, and no Plan tab is drawn — so a fork never has to think about it.
+The numbers the pages quote are in `packages/shared/src/plan.ts`; the prices Paddle charges
+are in its catalog, and the two are changed together.
+
+Every account starts with a fortnight's trial, no card asked for — counted from its first
+request after billing is on, so an account that existed before the keys went on gets its
+fortnight from then, not from the deploy. When it runs out, or a subscription lapses, the
+account turns **inactive**: everything still opens, searches and
+exports, and every write but a delete is refused with a 402 that the app shows as a
+read-only banner. The same state, and the same code path, for an expired trial, a lapsed
+subscription and a comp that ended (`requireActivePlan` in the API). After a year inactive
+the account will be deleted, with reminders to export first; the job that does it and the
+reminders are a follow-up to MAK-108, and the terms will say so with MAK-45.
+
+Comps do not go through Paddle. A 100% discount there still asks for a card and charges it
+when the discount ends, so an account that should not pay — the owner, a gifted friend — is
+comped from the operator's page, with an end date or none, and Paddle never hears of it.
+Paddle discount codes are for marketing.
+
+Storage is enforced where bytes come in: an upload, a copy, a fetched picture or a
+duplicate past the plan's quota is a 402 that names the numbers, and the Plan page shows
+what the account holds against it. The sum is kept on each account's store by triggers
+(schema 0008), never by reading the files table.
+
+### Setting up Paddle
+
+Sandbox and live are two separate Paddle accounts, with separate logins, keys, prices and
+webhook secrets: [sandbox-vendors.paddle.com](https://sandbox-vendors.paddle.com) is for
+building against, and needs no approval; [vendors.paddle.com](https://vendors.paddle.com)
+is the real one, and its verification — the website review, the business and the
+identity checks — takes days, so start it early. Everything below is done in both, the
+sandbox first.
+
+1. **Catalog → Products.** Two products: the plan, with one price of $36 a year, and
+   the storage add-on, with one price of $12 a year and quantity turned on. The tax
+   category is Standard Digital Goods, which needs no approval. Copy both price ids,
+   `pri_…`.
+2. **Developer tools → Authentication.** An API key with `customer`, `transaction` and
+   `subscription` read and write and `customer_portal_session` write, which is shown
+   once; and a client-side token, which is public and ships in the page.
+3. **Checkout → Checkout configuration.** A default payment link — the homepage is fine,
+   and `https://localhost/` in the sandbox — and the payment methods to offer. The
+   checkout itself is Paddle's overlay on the Plan page, so no page of yours needs it.
+4. **Developer tools → Notifications.** A destination of type webhook at
+   `https://<host>/api/billing/webhook`, with the subscription events
+   (`subscription.created`, `activated`, `trialing`, `updated`, `past_due`, `paused`,
+   `resumed`, `canceled`) and `transaction.completed`. Its secret, `pdl_ntfset_…`, is
+   what every delivery is signed with. The Worker answers inside Paddle's five seconds
+   and applies each event once, in any order, so a retry or a late delivery changes
+   nothing.
+5. **The five settings** on the Worker, as secrets: `PADDLE_API_KEY`,
+   `PADDLE_WEBHOOK_SECRET`, `PADDLE_CLIENT_TOKEN`, `PADDLE_PLAN_PRICE_ID` and
+   `PADDLE_STORAGE_PRICE_ID`. Which environment they belong to is read off the key:
+   `pdl_sdbx_` is the sandbox, `pdl_live_` is live. In `.dev.vars` locally; as the
+   `DEV_PADDLE_*` GitHub secrets for the dev instance, which the deploy carries over with
+   the sandbox's values; and on production by hand, `pnpm exec wrangler secret put` from
+   `apps/api` for each, with the live account's. `APP_URL` must be set too, since the
+   mail that says a plan has ended names it. That mail goes out from the hourly sweep
+   through the same provider and allowance as the sign-in codes, so it is capped at two
+   an hour (`LAPSE_MAIL_PER_RUN`): on Resend's free tier of a hundred a day, a cluster of
+   trials ending together — every account that existed when billing went on starts its
+   fortnight at its first visit — must not crowd the codes out. On a paid mail tier the
+   cap can go up (MAK-220).
+
+Locally, Paddle cannot reach a webhook on `localhost`; a tunnel (`cloudflared tunnel
+--url http://localhost:<API_PORT>`) gives it an address for a session, or the sandbox's
+simulator sends a sample event to one. The live suite proves the rest with a signed body
+of its own (`apps/api/test/plan.test.ts`), given the dev server's secret and price ids as
+`PADDLE_WEBHOOK_SECRET`, `PADDLE_PLAN_PRICE_ID` and `PADDLE_STORAGE_PRICE_ID` — the same
+lines as `.dev.vars`. Test cards are in Paddle's sandbox docs; `4242 4242 4242 4242` with
+any future date succeeds.
+
+Going live is the same five settings from the live account, after its verification. The
+website review wants the pricing public, and terms, a privacy policy and a refund policy
+naming Paddle as the merchant of record, which the built-in documents do not yet say; that
+is MAK-45 and MAK-46. Everything an account is told — the trial's end, a lapse, the mail —
+is the same in both environments.
 
 ## Deleting an account
 

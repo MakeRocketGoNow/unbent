@@ -206,7 +206,7 @@ function refusedValue(patch: NoteFieldsPatch, defs: FieldDef[]): string | null {
   return null;
 }
 
-export function registerWriteTools(server: McpServer, notes: NotesRepo, links: AppLinks): void {
+export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, notes: NotesRepo, links: AppLinks): void {
   server.registerTool(
     'create_note',
     {

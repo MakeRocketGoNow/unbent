@@ -4,6 +4,7 @@ import type { Feed } from './feed.js';
 import { placeholders, runs } from './notes-shared.js';
 import type { Sql } from './sql.js';
 import { textSummary, TEXT_SUMMARY_SOURCE_CHARS } from './text-summary.js';
+import { STORAGE_FULL_CODE } from '@unbent/shared';
 
 export interface AttachmentRow {
   id: string;
@@ -220,6 +221,23 @@ export function summarize(
 export const TEXT_PAGE_BYTES = 1024 * 1024;
 
 /**
+ * A file the plan's storage has no room for, thrown by `record` inside its transaction.
+ * The properties are what cross RPC: the Worker reads `code` off whatever arrived, since
+ * `instanceof` fails on the other side, and answers with the numbers.
+ */
+export class StorageExceeded extends Error {
+  readonly code = STORAGE_FULL_CODE;
+  constructor(
+    readonly usedBytes: number,
+    readonly quotaBytes: number,
+    readonly addingBytes: number,
+  ) {
+    super(`the account holds ${usedBytes} bytes of ${quotaBytes}, and ${addingBytes} more would not fit`);
+    this.name = 'StorageExceeded';
+  }
+}
+
+/**
  * Attachment metadata for one account, inside that account's own SQLite.
  *
  * `AttachmentsRepo` moved onto the per-user store, with the same three differences
@@ -342,6 +360,14 @@ export class AttachmentsStore {
    * not become a second file when another request is copying the same name: two replays
    * of one duplicate, say. Decided here, where the two requests are serialised, rather
    * than by a check in the Worker that both would pass.
+   *
+   * `quota` is the plan's storage in bytes (MAK-108), and is decided here for the same
+   * reason: the bytes the account holds are the totals row's (0008), read and compared
+   * in the transaction that inserts, so two uploads in flight cannot both see room for
+   * the last block. Past it, nothing is written and `StorageExceeded` is thrown — plain
+   * properties, since an error's class does not cross RPC — for the Worker to delete
+   * the object it stored and answer the 402. A trashed note's files count; they are in
+   * the bucket until the trash is emptied.
    */
   record(
     input: {
@@ -352,9 +378,13 @@ export class AttachmentsStore {
       size: number;
       r2Key: string;
     },
-    opts: { ifAbsent?: boolean | undefined } = {},
+    opts: { ifAbsent?: boolean | undefined; quota?: number | null | undefined } = {},
   ): AttachmentInfo | null {
     return this.sql.tx(() => {
+      if (opts.quota !== undefined && opts.quota !== null) {
+        const used = this.sql.first<{ n: number }>(`SELECT attachment_bytes AS n FROM note_counts WHERE id = 1`)?.n ?? 0;
+        if (used + input.size > opts.quota) throw new StorageExceeded(used, opts.quota, input.size);
+      }
       const inserted = this.sql.exec<{ id: string }>(
         `INSERT INTO attachments (id, note_id, filename, content_type, size, r2_key, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)

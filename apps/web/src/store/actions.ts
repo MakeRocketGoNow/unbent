@@ -1,6 +1,6 @@
 import { IndexedDBAdapter, NonRetriableError, startOfflineExecutor, type OfflineExecutor, type OnlineDetector, type StorageAdapter } from '@tanstack/offline-transactions';
 import type { Transaction } from '@tanstack/db';
-import { MAX_ATTACHMENT_BYTES, filenameSchema, foldNoCase, type FeedNote, type FieldDef, type FieldValue, type Note, type NoteFieldValue, type NotebookDefinition, type RestoredNote } from '@unbent/shared';
+import { MAX_ATTACHMENT_BYTES, PLAN_INACTIVE_CODE, filenameSchema, foldNoCase, type FeedNote, type FieldDef, type FieldValue, type Note, type NoteFieldValue, type NotebookDefinition, type RestoredNote } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { ApiError, isNoteChanged, isOfflineError, NoteChangedError } from '../notes-api.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
@@ -11,6 +11,7 @@ import { askToPersist, filesSupported, readFile, removeFile, writeFile } from '.
 import { FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE } from '../sw/routes.js';
 import { isWhole, refusedForGood, type FeedEngine } from './feed.js';
 import { CallUnsettledError, LibraryMovedError, SEND_ONCE } from './client-library.js';
+import { onPlanActive, planAccepted, planHeld, planLapsed, planRefused } from '../plan-refused.js';
 import { outboxLeaderName, outboxName } from './names.js';
 import { OutboxLeader } from './leader.js';
 
@@ -108,7 +109,8 @@ export interface SyncStatus {
 export interface UploadNotice {
   /** The upload's file id: what a dismissal names. */
   id: string;
-  filename: string;
+  /** The file the notice is about; absent for one about the note's files as a whole. */
+  filename?: string;
   message: string;
 }
 
@@ -237,8 +239,8 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     void storage.set(conflictKey(noteId), JSON.stringify(conflict)).catch((err: unknown) => console.error('[outbox] conflict not kept:', err));
   };
   const notices = new Map<string, UploadNotice[]>();
-  const notice = (upload: Upload, message: string) => {
-    const said = { id: upload.attachmentId, filename: upload.filename, message };
+  const notice = (upload: Pick<Upload, 'noteId' | 'attachmentId'> & { filename?: string }, message: string) => {
+    const said: UploadNotice = { id: upload.attachmentId, ...(upload.filename !== undefined ? { filename: upload.filename } : {}), message };
     notices.set(upload.noteId, [...(notices.get(upload.noteId) ?? []).filter((n) => n.id !== said.id), said]);
     void storage.set(noticeKey(upload.attachmentId), JSON.stringify({ noteId: upload.noteId, ...said })).catch((err: unknown) => console.error('[outbox] upload notice not kept:', err));
   };
@@ -271,9 +273,24 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
    * not take, a file over the cap, a note that is gone — and ending the entry lets the
    * ones behind it move. Three are not that, and `refusedForGood` in `feed.ts` names
    * them for the walk and the queue alike: 401 replays after the sign-in that follows.
+   *
+   * A fourth is the plan's 402 (MAK-108), told by its code rather than its status: the
+   * account's plan ended, and the answer changes the moment the person subscribes, as a
+   * lapsed session's changes at the sign-in. Ending the entry would roll the row back
+   * to the server's copy — the text typed in a flight whose trial ran out mid-air — and
+   * for a queued upload delete the one copy of the bytes. So it is kept, like a 401, and
+   * replays after the checkout; and the plan is read again now (`planRefused`), so the
+   * banner and the read-only editor say why nothing goes. The deletes made meanwhile go
+   * round the kept entry rather than behind it; see `planLapsed`. A 402 for the storage,
+   * the other code on that status, is for good as the server stands: the account is full
+   * until something is deleted, and the notice under the file says so.
    */
   const refusal = (err: unknown): never => {
     if (isOfflineError(err)) throw err;
+    if (err instanceof ApiError && err.code === PLAN_INACTIVE_CODE) {
+      planRefused();
+      throw err;
+    }
     if (err instanceof ApiError && refusedForGood(err.status)) {
       throw new NonRetriableError(err.message);
     }
@@ -298,18 +315,32 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
         name,
         async (params) => {
           try {
-            return await fn(params);
+            // The plan has been read since the refusal and says inactive: the answer would
+            // be the same 402, so the entry waits without asking (`planHeld`). It is let
+            // go the moment the plan reads otherwise; see `connectivityDetector`.
+            if (planHeld()) throw new PlanHeld();
+            const out = await fn(params);
+            // A write the server took is a plan that is active; see `planLapsed`.
+            planAccepted();
+            return out;
           } catch (err) {
-            if (err instanceof NonRetriableError) throw err;
+            // Ended for good, the head of the queue is gone either way, and the next
+            // refusal sets the flag again; see `planLapsed`.
+            if (err instanceof NonRetriableError) {
+              planAccepted();
+              throw err;
+            }
             // The executor records the message and not the cause, so this is the one
             // place a queue stuck on a 429 or a lapsed session says so outside a debugger.
-            console.debug('[outbox] kept:', err);
+            if (!(err instanceof PlanHeld)) console.debug('[outbox] kept:', err);
             throw new Error('Not sent yet; it will be tried again', { cause: err });
           }
         },
       ]),
     );
 
+  // A fresh outbox has nothing refused waiting in it, whatever the last account's had.
+  planAccepted();
   const adapter = new IndexedDBAdapter(outboxName(userId), OUTBOX_STORE);
   /** The adapter's connection: a private field, pinned by `pins.test.ts`; null until its first use. */
   const connection = () => (adapter as unknown as { db?: IDBDatabase | null }).db ?? null;
@@ -390,10 +421,14 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
       duplicateNote: async ({ transaction }) => {
         const { sourceId, copyId } = transaction.metadata as unknown as { sourceId: string; copyId: string };
         try {
-          const copy = await api.duplicateNote(sourceId, copyId).catch(refusal);
+          const answer = await api.duplicateNote(sourceId, copyId).catch(refusal);
           // The copy's row goes in now; its files are the server's to make, and the
-          // pull brings their rows.
+          // pull brings their rows. A copy whose files had no room (`filesSkipped`,
+          // MAK-108) is still the copy, said so under its files rather than kept on the
+          // row — about the files as a whole, so it names none.
+          const { filesSkipped, ...copy } = answer as typeof answer & { filesSkipped?: { error: string } };
           took(copy);
+          if (filesSkipped) notice({ noteId: copy.id, attachmentId: `files-skipped-${copy.id}` }, filesSkipped.error);
           await settled();
           ended(transaction.id);
         } catch (err) {
@@ -876,13 +911,33 @@ function notesOf(metadata: Record<string, unknown> | undefined): string[] {
   return [];
 }
 
-/** `connectivity.ts` is the one thing that decides whether the app is offline; the executor follows it. */
+/** A replay held back because the plan is known to be inactive; see `planHeld`. */
+class PlanHeld extends Error {
+  constructor() {
+    super('Held until the plan is active again');
+    this.name = 'PlanHeld';
+  }
+}
+
+/**
+ * `connectivity.ts` is the one thing that decides whether the app is offline; the
+ * executor follows it. The plan reading as active again is the other word to replay
+ * now, through the same door: a kept 402 waits on the checkout, not on the network.
+ */
 function connectivityDetector(): OnlineDetector {
   return {
-    subscribe: (cb) =>
-      subscribeConnectivity(() => {
+    subscribe: (cb) => {
+      const offConnectivity = subscribeConnectivity(() => {
         if (!offlineNow()) cb();
-      }),
+      });
+      const offPlan = onPlanActive(() => {
+        if (!offlineNow()) cb();
+      });
+      return () => {
+        offConnectivity();
+        offPlan();
+      };
+    },
     notifyOnline: () => recheck(),
     isOnline: () => !offlineNow(),
     dispose: () => {},
@@ -1353,14 +1408,23 @@ export async function createNote(input: { title: string; body: string; tags: str
   return toNote(row, lookups(snapshot(lib)));
 }
 
-/** A copy of a note, under an id minted here before it is sent anywhere, as `createNote`'s is; the server copies its files. */
-export async function duplicateNote(sourceId: string, copyId: string = crypto.randomUUID()): Promise<{ id: string }> {
+/**
+ * A copy of a note, under an id minted here before it is sent anywhere, as `createNote`'s
+ * is; the server copies its files. A copy whose files had no room (MAK-108) comes back
+ * with `filesSkipped`, the reason in a sentence, for the caller to show; the queued copy
+ * leaves the same under its files instead.
+ */
+export async function duplicateNote(sourceId: string, copyId: string = crypto.randomUUID()): Promise<{ id: string; filesSkipped?: string }> {
   const far = await away();
   if (far) return far('duplicateNote', [sourceId, copyId], { ids: [], refiles: true });
   const lib = await queueable();
-  if (!lib) return pulled(api.duplicateNote(sourceId, copyId), { ids: [], refiles: true });
+  const direct = async () => {
+    const { filesSkipped, ...note } = (await pulled(api.duplicateNote(sourceId, copyId), { ids: [], refiles: true })) as Awaited<ReturnType<typeof api.duplicateNote>> & { filesSkipped?: { error: string } };
+    return { id: note.id, ...(filesSkipped ? { filesSkipped: filesSkipped.error } : {}) };
+  };
+  if (!lib) return direct();
   const source = lib.notes.get(sourceId);
-  if (!source) return pulled(api.duplicateNote(sourceId, copyId), { ids: [], refiles: true });
+  if (!source) return direct();
   const now = Date.now();
   queue(lib, 'duplicateNote', { sourceId, copyId }, () => {
     lib.notes.insert({ ...source, id: copyId, createdAt: now, updatedAt: now, files: [] });
@@ -1416,7 +1480,14 @@ export async function clearHistory(noteId: string): Promise<number> {
   if (far) return far('clearHistory', [noteId]);
   const lib = await resolve();
   if (lib && !(await drained(lib, noteId, RESTORE_DRAIN_MS))) {
-    throw new Error('This note has changes that have not synced yet. Try again in a moment.');
+    // Waiting is still right while the plan has ended — a save landing after the clear
+    // would keep a copy of the very text being cleared — but "try again in a moment" is
+    // not true then: the edit waits for the subscription.
+    throw new Error(
+      planLapsed()
+        ? 'This note has an edit waiting for the plan to be active again; its history can be cleared once that has gone.'
+        : 'This note has changes that have not synced yet. Try again in a moment.',
+    );
   }
   return api.clearRevisions(noteId);
 }
@@ -1461,11 +1532,35 @@ export async function restoreRevision(noteId: string, revisionId: number, opts: 
   return restored;
 }
 
+/*
+ * The deletes, and the way back out of the trash, go to the server directly while a
+ * write refused for the plan waits in the queue (`planLapsed`): the queue runs oldest
+ * first and would hold them behind it until the person subscribed, and a lapsed account
+ * is promised exactly these. Direct means a connection, which a lapsed account's delete
+ * needs anyway, and the refusal of the one that could not wait is the ordinary one.
+ *
+ * Only for a note the server holds, though. A note made here whose creation is the
+ * write that was refused — the one written in the flight whose trial ran out — is not
+ * on the server to delete; its delete queues behind the creation as before, and the two
+ * replay in order once the person subscribes, or the trash is emptied here. The queue's
+ * own list of what is waiting is how the two are told apart.
+ */
+function roundTheQueue(lib: WritableLibrary, noteId: string): boolean {
+  return planLapsed() && !lib.outbox.status().waiting.has(noteId);
+}
+
+/** A bulk action's ids while a refusal waits: the ones that go to the server now, and the ones that queue. */
+function roundOrQueued(lib: WritableLibrary, ids: string[]): { direct: string[]; queued: string[] } {
+  if (!planLapsed()) return { direct: [], queued: ids };
+  const waiting = lib.outbox.status().waiting;
+  return { direct: ids.filter((id) => !waiting.has(id)), queued: ids.filter((id) => waiting.has(id)) };
+}
+
 export async function trashNote(noteId: string): Promise<void> {
   const far = await away();
   if (far) return far('trashNote', [noteId], { ids: [noteId], refiles: true });
   const lib = await queueable();
-  if (!lib || notCopiedYet(lib, noteId)) return pulled(api.deleteNote(noteId), { ids: [noteId], refiles: true });
+  if (!lib || notCopiedYet(lib, noteId) || roundTheQueue(lib, noteId)) return pulled(api.deleteNote(noteId), { ids: [noteId], refiles: true });
   queue(lib, 'trashNote', { noteId }, () => {
     lib.notes.update(noteId, (row) => {
       row.deletedAt = Date.now();
@@ -1477,7 +1572,7 @@ export async function restoreNote(noteId: string): Promise<void> {
   const far = await away();
   if (far) return far('restoreNote', [noteId], { ids: [noteId], refiles: true });
   const lib = await queueable();
-  if (!lib || notCopiedYet(lib, noteId)) return pulled(api.restoreNote(noteId).then(() => undefined), { ids: [noteId], refiles: true });
+  if (!lib || notCopiedYet(lib, noteId) || roundTheQueue(lib, noteId)) return pulled(api.restoreNote(noteId).then(() => undefined), { ids: [noteId], refiles: true });
   queue(lib, 'restoreNote', { noteId }, () => {
     lib.notes.update(noteId, (row) => {
       delete row.deletedAt;
@@ -1489,7 +1584,7 @@ export async function purgeNote(noteId: string): Promise<void> {
   const far = await away();
   if (far) return far('purgeNote', [noteId], { ids: [noteId], refiles: true });
   const lib = await queueable();
-  if (!lib || notCopiedYet(lib, noteId)) return pulled(api.deleteNotePermanently(noteId), { ids: [noteId], refiles: true });
+  if (!lib || notCopiedYet(lib, noteId) || roundTheQueue(lib, noteId)) return pulled(api.deleteNotePermanently(noteId), { ids: [noteId], refiles: true });
   queue(lib, 'purgeNote', { noteId }, () => {
     lib.notes.delete(noteId);
   });
@@ -1525,8 +1620,10 @@ export async function trashNotes(ids: string[]): Promise<number> {
   if (far) return far('trashNotes', [ids], { ids, refiles: true });
   const lib = await queueable();
   if (!lib) return pulled(api.deleteNotes(ids).then((r) => r.trashed), { ids, refiles: true });
-  const { here, there } = split(lib, ids);
-  const remote = there.length > 0 ? await pulled(api.deleteNotes(there).then((r) => r.trashed), { ids: there, refiles: true }) : 0;
+  const { here: held, there } = split(lib, ids);
+  const { direct, queued: here } = roundOrQueued(lib, held);
+  const sent = [...there, ...direct];
+  const remote = sent.length > 0 ? await pulled(api.deleteNotes(sent).then((r) => r.trashed), { ids: sent, refiles: true }) : 0;
   if (here.length > 0) {
     queue(lib, 'trashNotes', { ids: here }, () => {
       const now = Date.now();
@@ -1541,8 +1638,10 @@ export async function restoreNotes(ids: string[]): Promise<number> {
   if (far) return far('restoreNotes', [ids], { ids, refiles: true });
   const lib = await queueable();
   if (!lib) return pulled(api.restoreNotes(ids).then((r) => r.restored), { ids, refiles: true });
-  const { here, there } = split(lib, ids);
-  const remote = there.length > 0 ? await pulled(api.restoreNotes(there).then((r) => r.restored), { ids: there, refiles: true }) : 0;
+  const { here: held, there } = split(lib, ids);
+  const { direct, queued: here } = roundOrQueued(lib, held);
+  const sent = [...there, ...direct];
+  const remote = sent.length > 0 ? await pulled(api.restoreNotes(sent).then((r) => r.restored), { ids: sent, refiles: true }) : 0;
   if (here.length > 0) {
     queue(lib, 'restoreNotes', { ids: here }, () => {
       for (const id of here) lib.notes.update(id, (row) => void delete row.deletedAt);
@@ -1556,8 +1655,10 @@ export async function purgeNotes(ids: string[]): Promise<number> {
   if (far) return far('purgeNotes', [ids], { ids, refiles: true });
   const lib = await queueable();
   if (!lib) return pulled(api.deleteNotesPermanently(ids).then((r) => r.deleted), { ids, refiles: true });
-  const { here, there } = split(lib, ids);
-  const remote = there.length > 0 ? await pulled(api.deleteNotesPermanently(there).then((r) => r.deleted), { ids: there, refiles: true }) : 0;
+  const { here: held, there } = split(lib, ids);
+  const { direct, queued: here } = roundOrQueued(lib, held);
+  const sent = [...there, ...direct];
+  const remote = sent.length > 0 ? await pulled(api.deleteNotesPermanently(sent).then((r) => r.deleted), { ids: sent, refiles: true }) : 0;
   if (here.length > 0) {
     queue(lib, 'purgeNotes', { ids: here }, () => {
       for (const id of here) lib.notes.delete(id);

@@ -13,6 +13,54 @@ describe('attachments', () => {
     r2Key: over.r2Key ?? `users/u/notes/${noteId}/files/${over.id ?? 'x'}-${over.filename ?? 'scan.pdf'}`,
   });
 
+  /**
+   * The bytes the account holds (0008), kept by triggers on every way a row comes and
+   * goes: recorded, removed by name, and taken by the cascade when the note is purged.
+   * What the plan's quota is measured against, so a miss here is an upload refused or
+   * let through for the wrong reason.
+   */
+  it('keeps the sum of its files\' bytes on the totals row', async () => {
+    const { stub } = freshStore('att-bytes');
+    expect(await stub.attachmentBytes()).toBe(0);
+    const n = await stub.create({ id: 'n1', title: 'T', body: '', tags: [] });
+    await stub.recordAttachment({ ...file(n.id, { id: 'a1' }), size: 1000 });
+    await stub.recordAttachment({ ...file(n.id, { id: 'a2', filename: 'two.pdf' }), size: 24 });
+    expect(await stub.attachmentBytes()).toBe(1024);
+    expect((await stub.usage()).attachmentBytes).toBe(1024);
+    await stub.removeAttachment(n.id, 'two.pdf');
+    expect(await stub.attachmentBytes()).toBe(1000);
+    // Trashed, the file still counts: it is still in the bucket. Purged, it does not.
+    await stub.remove(n.id);
+    expect(await stub.attachmentBytes()).toBe(1000);
+    await stub.purge('trashed');
+    expect(await stub.attachmentBytes()).toBe(0);
+    // And the recount agrees with the triggers.
+    expect(await stub.recountNotes()).toBe(0);
+  });
+
+  /**
+   * The plan's quota (MAK-108) is decided in the transaction that records the row, on
+   * the sum the triggers keep: a file that fits exactly fits, one byte more is refused
+   * with the numbers, and nothing of the refused one is written.
+   */
+  it('refuses a file past the quota as it records it, and writes nothing of it', async () => {
+    const { stub } = freshStore('att-quota');
+    const n = await stub.create({ id: 'n1', title: 'T', body: '', tags: [] });
+    await stub.recordAttachment({ ...file(n.id, { id: 'a1' }), size: 900 }, { quota: 1000 });
+    await expect(stub.recordAttachment({ ...file(n.id, { id: 'a2', filename: 'two.pdf' }), size: 101 }, { quota: 1000 })).rejects.toMatchObject({
+      code: 'STORAGE_FULL',
+      usedBytes: 900,
+      quotaBytes: 1000,
+      addingBytes: 101,
+    });
+    expect(await stub.attachmentBytes()).toBe(900);
+    expect((await stub.listAttachments(n.id)).map((f) => f.filename)).toEqual(['scan.pdf']);
+    // Exactly full fits; no quota means no check.
+    await stub.recordAttachment({ ...file(n.id, { id: 'a3', filename: 'three.pdf' }), size: 100 }, { quota: 1000 });
+    await stub.recordAttachment({ ...file(n.id, { id: 'a4', filename: 'four.pdf' }), size: 5000 }, { quota: null });
+    expect(await stub.attachmentBytes()).toBe(6000);
+  });
+
   it('records, resolves, lists, names around collisions and removes', async () => {
     const { stub } = freshStore('att');
     const n = await stub.create({ id: 'n1', title: 'T', body: '', tags: [] });

@@ -228,6 +228,30 @@ describe('Attachments on a locked note', () => {
     expect(onBodyRewrite).not.toHaveBeenCalled();
   });
 
+  /**
+   * A lapsed plan is narrower than a locked note (MAK-108): the server refuses every
+   * write but a delete, so the panel keeps the files to open, download and delete, and
+   * fades only what would write — a copy or move to another note, and a link into the
+   * body — under the plan's own tip rather than the offline one.
+   */
+  it('keeps Delete and the download for a lapsed account, and fades only the writes', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    seed(client, 'n1', [scan]);
+    render(
+      <QueryClientProvider client={client}>
+        <Attachments noteId="n1" body="no link here" editorView={null} onBodyRewrite={vi.fn()} lapsed />
+      </QueryClientProvider>,
+    );
+    openPanel();
+    const button = (name: string) => screen.getByRole<HTMLButtonElement>('button', { name });
+    expect(button('Insert link').disabled).toBe(true);
+    expect(button('Insert link').dataset.tip).toBe('Not while the plan has ended');
+    expect(button('More actions for scan.pdf').disabled).toBe(true);
+    expect(button('Delete').disabled).toBe(false);
+    expect(button('Copy').disabled).toBe(false);
+    expect(screen.getByRole('link', { name: 'scan.pdf' })).toBeTruthy();
+  });
+
   it('lists a file still waiting to upload as waiting, and holds back what would ask the server about it', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
     client.setQueryData(keys.attachments('n1'), [scan, { filename: 'photo.jpg', contentType: 'image/jpeg', size: 2_000, pending: true }]);

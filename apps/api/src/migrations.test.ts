@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { DUMP_SQL, OPERATOR_PAGE_SQL } from './lib/directory.js';
+import { LAPSE_DUE_SQL } from './lib/plan.js';
 import { RESTORES_SQL } from './lib/restores.js';
 
 /**
@@ -165,6 +166,47 @@ describe.skipIf(!sqlite3)('the directory\'s query plans', () => {
     const due = plan(DUMP_SQL.due.replace('?1', '1').replace('?2', '20'));
     const status = plan(DUMP_SQL.status.replace('?1', '1').replace(/\?2/g, '50'));
     for (const p of [due, status]) expect(p).not.toContain('sqlite_autoindex_user_2');
+  });
+
+  /**
+   * The plan table's one walk (0045): the sweep asking which accounts have run out and
+   * not been told. Its partial index serves exactly that statement, and the table's other
+   * statements go by key or by the customer's unique index, so it changes nothing else.
+   */
+  it('find the plans that have run out from their own partial index', () => {
+    const p = plan(LAPSE_DUE_SQL.replace('?1', '1').replace('?2', '5').replace('?3', '0'));
+    // `IS NOT NULL` becomes the range's lower bound, so the index is read from its first entry.
+    expect(p).toContain('SEARCH p USING INDEX idx_account_plan_lapse_due (plan_until>? AND plan_until<?)');
+    expect(p).toContain('SEARCH u USING INDEX sqlite_autoindex_user_1 (id=?)');
+    expect(p).not.toContain('TEMP B-TREE');
+    expect(plan(`SELECT * FROM account_plan WHERE paddle_customer_id = 'ctm_x'`)).toContain('idx_account_plan_customer');
+  });
+
+  /**
+   * The statement's filter on real rows, since `plan-mail.test.ts` fakes the database:
+   * a trial's `source` and `paddle_status` are NULL, and a `NOT (… = …)` over them is
+   * NULL, which once held every trial's mail back for the renewal grace.
+   */
+  it('find a lapsed trial and comp at once, and a renewing subscription only once its grace is up', () => {
+    const DAY = 24 * 60 * 60 * 1000;
+    const now = 10 * DAY;
+    query(`
+      INSERT INTO user (id, name, email, emailVerified, createdAt, updatedAt) VALUES
+        ('trial', 'T', 't@example.com', 0, 'n', 'n'), ('comp', 'C', 'c@example.com', 0, 'n', 'n'),
+        ('renewing', 'R', 'r@example.com', 0, 'n', 'n'), ('long-gone', 'L', 'l@example.com', 0, 'n', 'n'),
+        ('cancelling', 'X', 'x@example.com', 0, 'n', 'n');
+      INSERT INTO account_plan (user_id, plan, plan_until, storage_gb, source, paddle_status, paddle_cancels_at, created_at, updated_at) VALUES
+        ('trial', 'trial', ${now - 3_600_000}, 10, NULL, NULL, NULL, 1, 1),
+        ('comp', 'active', ${now - 3_500_000}, 10, 'comp', NULL, NULL, 1, 1),
+        ('renewing', 'active', ${now - 3_400_000}, 10, 'paddle', 'active', NULL, 1, 1),
+        ('long-gone', 'active', ${now - 2 * DAY}, 10, 'paddle', 'active', NULL, 1, 1),
+        ('cancelling', 'active', ${now - 3_300_000}, 10, 'paddle', 'active', ${now - 3_300_000}, 1, 1);
+    `);
+    const due = query(LAPSE_DUE_SQL.replace('?1', String(now)).replace('?2', '10').replace('?3', String(now - DAY)))
+      .split('\n')
+      .map((line) => line.split('|')[0]);
+    expect(due).toEqual(['long-gone', 'trial', 'comp', 'cancelling']);
+    query(`DELETE FROM account_plan; DELETE FROM user;`);
   });
 
   it('drop the activity index the list no longer reads', () => {

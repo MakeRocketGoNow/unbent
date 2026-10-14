@@ -233,14 +233,18 @@ describe('loading a dump', () => {
     const before = await stub.stats();
     const text = await dumpOf(stub, userId);
     // The dump as a store at 0004 would have written it: no deleted_blobs table, no rows
-    // for it, no record of 0005, and none of what came after — 0006's index, 0007's table.
+    // for it, no record of 0005, and none of what came after — 0006's index, 0007's table,
+    // 0008's column and triggers.
     const scan = scanStatements(text);
     const older =
-      scan.statements.filter((s) => !/deleted_blobs|0005-deleted-blobs|idx_tags_name_nocase|0006-tags-nocase|llm_usage|0007-llm-usage/.test(s)).join('') +
-      scan.rest;
+      scan.statements
+        .filter((s) => !/deleted_blobs|0005-deleted-blobs|idx_tags_name_nocase|0006-tags-nocase|llm_usage|0007-llm-usage|attachments_bytes_|0008-attachment-bytes/.test(s))
+        // 0008's column on the totals row: off the table, and off its one row.
+        .map((s) => s.replace(/,\s*attachment_bytes INTEGER NOT NULL DEFAULT 0/, '').replace(/, attachment_bytes\) VALUES \((.*), \d+\);/, ') VALUES ($1);'))
+        .join('') + scan.rest;
     expect(older).not.toBe(text);
     const result = await load(stub, older);
-    expect(result.migrated).toEqual(['0005-deleted-blobs', '0006-tags-nocase', '0007-llm-usage']);
+    expect(result.migrated).toEqual(['0005-deleted-blobs', '0006-tags-nocase', '0007-llm-usage', '0008-attachment-bytes']);
     expect(result.stats.migrations).toEqual(SCHEMA.map((f) => f.name));
     expect(result.stats.counts).toEqual({ ...before.counts, deleted_blobs: 0, llm_usage: 0 });
     // The table the file added is there to be written.

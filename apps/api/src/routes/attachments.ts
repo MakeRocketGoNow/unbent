@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import {
+  type AttachmentInfo,
   MAX_ATTACHMENT_BYTES,
   attachmentTextsSchema,
   copyAttachmentsSchema,
@@ -15,6 +16,7 @@ import { serverCanRead } from '../lib/read-attachment.js';
 import { fetchWebImage } from '../lib/web-image.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
+import { StorageFull, quotaOf, storageFullBody } from '../lib/quota.js';
 import { storeAttachment } from '../lib/store-attachment.js';
 import type { AppEnv } from '../types.js';
 
@@ -122,20 +124,31 @@ export const attachments = new Hono<AppEnv>()
      */
     const link = c.req.query('link') !== undefined;
 
-    const { filename, contentType, size, path, indexing } = await storeAttachment(
-      c.env,
-      c.executionCtx,
-      { attachments: repo, notes: c.get('notes') },
-      {
-        noteId,
-        id: claimed,
-        filename: parsed.data,
-        contentType: c.req.header('Content-Type'),
-        body: c.req.raw.body,
-        link,
-        textSupplied,
-      },
-    );
+    let stored;
+    try {
+      stored = await storeAttachment(
+        c.env,
+        c.executionCtx,
+        { attachments: repo, notes: c.get('notes') },
+        {
+          noteId,
+          id: claimed,
+          filename: parsed.data,
+          contentType: c.req.header('Content-Type'),
+          body: c.req.raw.body,
+          link,
+          textSupplied,
+          quota: quotaOf(c.env, c.get('plan')),
+          declaredBytes: declared > 0 ? declared : undefined,
+        },
+      );
+    } catch (err) {
+      // Past the plan's storage: a 402 like a lapsed plan's, with the numbers, so the
+      // panel can say how full and point at the Plan page.
+      if (err instanceof StorageFull) return c.json(storageFullBody(err), 402);
+      throw err;
+    }
+    const { filename, contentType, size, path, indexing } = stored;
 
     // `path` is the relative destination the editor inserts into the markdown.
     return c.json({ filename, contentType, size, path, indexing }, 201);
@@ -163,12 +176,17 @@ export const attachments = new Hono<AppEnv>()
     if (from === to) return c.json({ error: 'Source and destination are the same note' }, 400);
     if (!(await attachments.ownsNote(from))) return c.json({ error: 'Source note not found' }, 404);
 
-    const result = await copyAttachments(
-      c.env.BLOBS,
-      { attachments, notes: c.get('notes') },
-      { from, to, filenames, move, link },
-    );
-    return c.json(result);
+    try {
+      const result = await copyAttachments(
+        c.env.BLOBS,
+        { attachments, notes: c.get('notes') },
+        { from, to, filenames, move, link, quota: quotaOf(c.env, c.get('plan')) },
+      );
+      return c.json(result);
+    } catch (err) {
+      if (err instanceof StorageFull) return c.json(storageFullBody(err), 402);
+      throw err;
+    }
   })
 
   /**
@@ -190,6 +208,12 @@ export const attachments = new Hono<AppEnv>()
     });
     if (!fetched.ok) return c.json({ error: fetched.error }, fetched.status);
 
+    // Decided once, as the row is recorded, with the store's sum, so two tabs saving
+    // images cannot both take the last block. No check before the put: the bytes are
+    // already in memory, so a refusal costs one R2 put and its delete, and a read of the
+    // sum first would be a store call on every picture saved to save that.
+    const quota = quotaOf(c.env, c.get('plan'));
+
     const filename = await repo.availableFilename(noteId, fetched.filename);
     const id = crypto.randomUUID();
     const key = repo.buildKey(noteId, id, filename);
@@ -198,14 +222,14 @@ export const attachments = new Hono<AppEnv>()
     });
     if (!object) return c.json({ error: 'Upload failed' }, 500);
 
-    const info = await repo.record({
-      id,
-      noteId,
-      filename,
-      contentType: fetched.contentType,
-      size: object.size,
-      r2Key: key,
-    });
+    let info: AttachmentInfo;
+    try {
+      info = await repo.record({ id, noteId, filename, contentType: fetched.contentType, size: object.size, r2Key: key }, { quota });
+    } catch (err) {
+      if (!(err instanceof StorageFull)) throw err;
+      await c.env.BLOBS.delete(key).catch(() => {});
+      return c.json(storageFullBody(err), 402);
+    }
     return c.json({ ...info, path: `files/${filename}`, url }, 201);
   })
 

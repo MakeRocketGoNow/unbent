@@ -46,6 +46,7 @@ function collect(
       uploads: uploads as UploadGrantsRepo,
     },
     appLinks('https://notes.example.com'),
+    async () => null,
   );
   return tools;
 }

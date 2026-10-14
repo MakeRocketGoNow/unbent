@@ -1,32 +1,11 @@
-import { Hono } from 'hono';
-import { logger } from 'hono/logger';
-import type { AppEnv, RawEnv } from './types.js';
+import type { RawEnv } from './types.js';
+import { app } from './app.js';
 import { withAppUrl } from './lib/app-url.js';
 import { MANIFEST_PATH, serveManifest } from './lib/manifest.js';
-import { StoreUnavailable } from './lib/store-client.js';
 import { dumpStores } from './lib/backups.js';
 import { cronJob } from './lib/cron.js';
 import { sweepStores } from './lib/sweep.js';
-import { sessionMiddleware } from './lib/session.js';
-import { health } from './routes/health.js';
-import { authRoutes } from './routes/auth.js';
-import { wellKnown } from './routes/well-known.js';
-import { ingest } from './routes/ingest.js';
-import { notes } from './routes/notes.js';
-import { notebooks } from './routes/notebooks.js';
-import { tags } from './routes/tags.js';
-import { exportRoutes } from './routes/export.js';
-import { attachments } from './routes/attachments.js';
-import { uploads } from './routes/uploads.js';
-import { admin } from './routes/admin.js';
-import { search } from './routes/search.js';
-import { importEnmlRoutes, importNotebookRoutes, importRoutes } from './routes/import.js';
-import { connectedApps } from './routes/connected-apps.js';
-import { legal } from './routes/legal.js';
-import { previewRelay } from './routes/preview-relay.js';
-import { mcpRoutes } from './routes/mcp.js';
-import { clientErrors } from './routes/client-errors.js';
-import { changes } from './routes/changes.js';
+import { LAPSE_MAIL_PER_RUN, notifyLapsedPlans } from './lib/plan-mail.js';
 
 /**
  * The per-account note store, exported so the runtime can construct it. This is one of
@@ -34,67 +13,15 @@ import { changes } from './routes/changes.js';
  * is the other); everywhere else reaches the object through the `USER_STORE` binding and
  * an `import type`, so the Node-run unit tests never load a module that only exists in
  * workerd. A static test in src/store/ holds that line.
+ *
+ * The routes themselves are composed in app.ts, which imports none of this, so a unit
+ * test can read the route table (`plan-middleware.test.ts` does) without loading the
+ * object class.
  */
 export { UserStore } from './store/user-store.js';
 
-const app = new Hono<AppEnv>();
-
-app.use('*', logger());
-
-// Resolves the session for every request; individual routes opt into requiring it.
-app.use('*', sessionMiddleware);
-
-app.onError((err, c) => {
-  // The note store could not answer and will shortly — the object was reset by a deploy,
-  // or is overloaded. A 503 with Retry-After, the same shape `requireAuth` answers when
-  // the session cannot be checked, so every client already handles it: the web app
-  // retries, and the Android capture worker waits it out rather than failing the share.
-  if (err instanceof StoreUnavailable) {
-    console.warn('Store unavailable:', err.message);
-    c.header('Retry-After', String(err.retryAfterSeconds));
-    return c.json({ error: 'Your notes could not be reached right now. Try again shortly.' }, 503);
-  }
-  console.error('Unhandled error:', err);
-  return c.json({ error: 'Internal error' }, 500);
-});
-
-app.notFound((c) => c.json({ error: 'Not found' }, 404));
-
-const routes = app
-  /**
-   * Mounted at the root rather than under /api, because that is where an MCP client looks
-   * for them. See routes/well-known.ts, and the matching run_worker_first entries in
-   * wrangler.toml without which these paths never reach this Worker at all.
-   */
-  .route('/', wellKnown)
-  /**
-   * PostHog's traffic, forwarded so a content blocker does not drop it. At the root for the
-   * same reason as the block above — the SDK is pointed at a path, not at /api — and with
-   * the same requirement of a matching `run_worker_first` entry in wrangler.toml.
-   */
-  .route('/', ingest)
-  .route('/api', health)
-  .route('/api', authRoutes)
-  .route('/api', notes)
-  .route('/api', notebooks)
-  .route('/api', tags)
-  .route('/api', exportRoutes)
-  .route('/api', attachments)
-  .route('/api', uploads)
-  .route('/api', admin)
-  .route('/api', search)
-  .route('/api', importRoutes)
-  .route('/api', importNotebookRoutes)
-  .route('/api', importEnmlRoutes)
-  .route('/api', mcpRoutes)
-  .route('/api', connectedApps)
-  .route('/api', legal)
-  .route('/api', previewRelay)
-  .route('/api', clientErrors)
-  .route('/api', changes);
-
 /** Consumed by the SPA through `hc<AppType>()` for end-to-end types with no codegen. */
-export type AppType = typeof routes;
+export type { AppType } from './app.js';
 
 /**
  * The entry point settles `APP_URL` before Hono sees the request, so every route and
@@ -115,10 +42,26 @@ export default {
    * One trigger rather than two so that both run on every instance from one line, and
    * each is its own invocation with its own subrequests, so neither can spend the
    * other's. Told apart by the minute the run was scheduled for (`cronJob`). `waitUntil`
-   * so neither is cut off at the handler's return, and nothing here needs `APP_URL`
-   * settled.
+   * so neither is cut off at the handler's return.
+   *
+   * The sweep's run also tells a few accounts whose plan has run out (MAK-108,
+   * lib/plan-mail.ts), before the walk. The mail names the address in `APP_URL`, which
+   * no request is here to settle, so an instance that has not set it sends none and
+   * says so. What the mail spent is handed to the walk, which budgets its expiries
+   * around it: the two share one invocation's subrequests, and on Workers Free that is
+   * fifty for both.
    */
   scheduled(controller: ScheduledController, env: RawEnv, ctx: ExecutionContext): void {
-    ctx.waitUntil(cronJob(controller.scheduledTime) === 'sweep' ? sweepStores(env) : dumpStores(env));
+    ctx.waitUntil(
+      cronJob(controller.scheduledTime) === 'sweep'
+        ? notifyLapsedPlans(env)
+            .catch((err): { told: number; subrequests: number } => {
+              console.error('[billing] lapse mail failed:', err);
+              // A failure mid-run spent at most the query and a send and a mark per slot.
+              return { told: 0, subrequests: 1 + 2 * LAPSE_MAIL_PER_RUN };
+            })
+            .then(({ subrequests }) => sweepStores(env, { spent: subrequests }))
+        : dumpStores(env),
+    );
   },
 };

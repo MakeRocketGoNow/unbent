@@ -229,6 +229,9 @@ export const keys = {
     filter.trashed ? (['trash', 'exact-count'] as const) : (['notes', 'exact-count', filter] as const),
   search: (q: string, filter: NoteFilter = {}, rows = false) => ['search', q, filter, { rows }] as const,
   config: () => ['config'] as const,
+  /** The account's plan (MAK-108), its own root: nothing a note write does changes it. */
+  plan: () => ['plan'] as const,
+  planUsage: () => ['plan', 'usage'] as const,
   autofillUsage: () => ['autofill', 'usage'] as const,
   /** The operator page's reads, under one root so an action can invalidate all of them at once. */
   operatorBackups: () => ['operator', 'backups'] as const,
@@ -441,6 +444,26 @@ export const tagsQuery = () =>
  */
 export const configQuery = () =>
   queryOptions({ queryKey: keys.config(), queryFn: () => api.getConfig(), staleTime: Infinity });
+
+/**
+ * The account's plan: trial, paid or lapsed, and what it holds against its quota
+ * (MAK-108). A minute's staleness is right for it — a plan changes a few times a year,
+ * and the moments it does (a checkout, a portal visit) invalidate it by hand — and it is
+ * read again on focus, which the app turns off by default: a tab left open while the
+ * plan changed on another device, or in Paddle's portal, should notice on the way back.
+ * Only where the instance sells one: the caller passes `config.billing` as `enabled`,
+ * since the route answers 404 everywhere else.
+ */
+export const planQuery = (enabled: boolean) =>
+  queryOptions({ queryKey: keys.plan(), queryFn: () => api.getPlan(), staleTime: 60_000, refetchOnWindowFocus: true, enabled });
+
+/**
+ * The same, with what the account holds, which is a call to its store: under the plan's
+ * key so a change to the plan invalidates both, and asked only by the Plan page, which
+ * is the one place the figure is shown.
+ */
+export const planUsageQuery = (enabled: boolean) =>
+  queryOptions({ queryKey: keys.planUsage(), queryFn: () => api.getPlan({ usage: true }), staleTime: 60_000, refetchOnWindowFocus: true, enabled });
 
 /**
  * What Auto-fill has cost the account this year, for Maintenance. The server's alone: the

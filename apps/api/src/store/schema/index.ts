@@ -5,6 +5,7 @@ import revisionProps from './0004-revision-props.js';
 import deletedBlobs from './0005-deleted-blobs.js';
 import tagsNocase from './0006-tags-nocase.js';
 import llmUsage from './0007-llm-usage.js';
+import attachmentBytes from './0008-attachment-bytes.js';
 
 /** One schema file: its name, as recorded in `_migrations`, and the SQL it applies. */
 export interface SchemaFile {
@@ -35,4 +36,5 @@ export const SCHEMA: SchemaFile[] = [
   { name: '0005-deleted-blobs', sql: deletedBlobs },
   { name: '0006-tags-nocase', sql: tagsNocase },
   { name: '0007-llm-usage', sql: llmUsage },
+  { name: '0008-attachment-bytes', sql: attachmentBytes },
 ];

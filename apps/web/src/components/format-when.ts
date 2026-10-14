@@ -92,6 +92,13 @@ export function timeAgo(when: number | string, now = Date.now()): string {
   return `${days} days ago`;
 }
 
+/** A day alone, for a date that is a deadline rather than a moment: "24 Oct 2026". */
+export function formatDay(when: number | string): string {
+  const at = typeof when === 'number' ? when : Date.parse(when);
+  if (Number.isNaN(at)) return '';
+  return new Date(at).toLocaleDateString(undefined, { dateStyle: 'medium' });
+}
+
 /** The absolute form beside the relative one: the viewer's locale, date and time. */
 export function formatMoment(when: number | string): string {
   const at = typeof when === 'number' ? when : Date.parse(when);

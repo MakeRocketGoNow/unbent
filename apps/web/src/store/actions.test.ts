@@ -14,6 +14,7 @@ import { lookups, toNote } from './derive.js';
 import { feedControls, type Collections, type LocalNote } from './collections.js';
 import { FeedEngine, type Position } from './feed.js';
 import { installMemoryOpfs, type MemoryDirectory } from './test-opfs.js';
+import { planIs, planLapsed, resetPlanRefused } from '../plan-refused.js';
 
 /**
  * The rules the outbox holds, against a stand-in for the executor that keeps the real
@@ -85,6 +86,7 @@ const h = vi.hoisted(async () => {
     storage: MemoryAdapter;
     mutationFns: Record<string, (p: { transaction: { id: string; mutations: unknown[]; metadata: Record<string, unknown> } }) => Promise<void>>;
     onLeadershipChange?: (leader: boolean) => void;
+    onlineDetector: { subscribe: (cb: () => void) => () => void };
   };
 
   class FakeExecutor {
@@ -364,6 +366,7 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 const settles = <T,>(p: Promise<T>) => Promise.race([p, new Promise<'stuck'>((r) => setTimeout(() => r('stuck'), 1000))]);
 
 beforeEach(() => {
+  resetPlanRefused();
   resetConnectivity();
 });
 
@@ -455,7 +458,7 @@ describe('a replayed write', () => {
   });
 
   it('ends for good on a 4xx the server would give again, and is kept for one that may change', async () => {
-    const { fake } = library([row('n1'), row('n2')]);
+    const { fake } = library([row('n1'), row('n2'), row('n3')]);
     await actions.trashNotes(['n1']);
     await actions.trashNotes(['n2']);
     await tick();
@@ -474,10 +477,55 @@ describe('a replayed write', () => {
     }
     expect(fake.queue).toHaveLength(2);
 
-    vi.mocked(api.deleteNotes).mockRejectedValueOnce(new ApiError(403, '403: Forbidden'));
+    // The plan's 402 is kept — it changes when the person subscribes — and the storage's
+    // is not: the account is full until something goes (MAK-108). While the kept one
+    // waits at the head of the queue, a delete goes to the server directly rather than
+    // behind it, since the queue would hold it there until the subscription.
+    vi.mocked(api.deleteNotes).mockRejectedValueOnce(new ApiError(402, '402: read-only', 'PLAN_INACTIVE'));
+    expect(await fake.replayOne()).toBe('kept');
+    expect(fake.queue).toHaveLength(2);
+    expect(planLapsed()).toBe(true);
+    vi.mocked(api.deleteNotes).mockResolvedValueOnce({ trashed: 1 });
+    await actions.trashNotes(['n3']);
+    expect(api.deleteNotes).toHaveBeenLastCalledWith(['n3']);
+    expect(fake.queue).toHaveLength(2);
+    vi.mocked(api.deleteNotes).mockRejectedValueOnce(new ApiError(402, '402: full', 'STORAGE_FULL'));
     expect(await fake.replayOne()).toBe('refused');
     expect(fake.queue).toHaveLength(1);
-    expect(fake.queue[0]?.metadata).toEqual({ ids: ['n2'] });
+
+    vi.mocked(api.deleteNotes).mockRejectedValueOnce(new ApiError(403, '403: Forbidden'));
+    expect(await fake.replayOne()).toBe('refused');
+    expect(fake.queue).toHaveLength(0);
+  });
+
+  /**
+   * Once the page has read the plan and it says inactive, the kept entry is not sent
+   * again — the answer would be the same 402, once a minute for as long as the tab is
+   * open — and the plan reading as active again replays it at once (MAK-108).
+   */
+  it('holds a write the plan refused while the plan reads inactive, and replays it the moment it reads active', async () => {
+    // A save, which is what the server refuses for the plan; a delete it never does.
+    const { fake, note } = library([row('n1', { title: 'old' })]);
+    const base = note('n1');
+    const replay = vi.fn();
+    fake.config.onlineDetector.subscribe(replay);
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'typed as the trial ran out' }, base });
+    await tick();
+    vi.mocked(api.updateNote).mockRejectedValueOnce(new ApiError(402, '402: read-only', 'PLAN_INACTIVE'));
+    expect(await fake.replayOne()).toBe('kept');
+    expect(api.updateNote).toHaveBeenCalledTimes(1);
+    // The plan read and inactive: the next replay asks the server nothing.
+    planIs(true);
+    expect(await fake.replayOne()).toBe('kept');
+    expect(api.updateNote).toHaveBeenCalledTimes(1);
+    expect(planLapsed()).toBe(true);
+    // The plan active again: the executor is nudged, and the replay goes to the server.
+    planIs(false);
+    expect(replay).toHaveBeenCalledTimes(1);
+    expect(planLapsed()).toBe(false);
+    vi.mocked(api.updateNote).mockResolvedValueOnce({ ...base, title: 'typed as the trial ran out', updatedAt: 101 });
+    expect(await fake.replayOne()).toBe('done');
+    expect(api.updateNote).toHaveBeenCalledTimes(2);
   });
 
   it('takes a note the server no longer has as done', async () => {
@@ -1223,6 +1271,49 @@ describe('a file added to a note', () => {
     expect(root.paths()).toEqual([]);
     expect(lib.outbox.status().waiting.has('n1')).toBe(false);
     expect(lib.outbox.status().uploadNotices.size).toBe(0);
+  });
+
+  /**
+   * The plan's refusal keeps a queued upload as it keeps a save (MAK-108): the bytes on
+   * the shelf are the one copy, and the answer changes when the person subscribes. The
+   * upload's own error path builds the error, so this is the case that proves it carries
+   * the code the outbox reads.
+   */
+  /**
+   * A note made here whose creation the plan refused is not on the server: its delete
+   * queues behind the creation, as it did before deletes went round a kept refusal, so
+   * the person who decides not to subscribe can still throw away what they wrote.
+   */
+  it('queues the delete of a note whose creation the plan refused, behind it', async () => {
+    const { lib, fake } = library([row('n1')]);
+    const made = await actions.createNote({ title: 'In the flight', body: '', tags: [], notebook: null });
+    await tick();
+    vi.mocked(api.createNote).mockRejectedValueOnce(new ApiError(402, 'read-only', 'PLAN_INACTIVE'));
+    expect(await fake.replayOne()).toBe('kept');
+    expect(planLapsed()).toBe(true);
+    expect(await actions.trashNotes([made.id])).toBe(1);
+    await tick();
+    expect(api.deleteNotes).not.toHaveBeenCalled();
+    expect(fake.queue.map((e) => e.mutationFnName)).toEqual(['createNote', 'trashNotes']);
+    expect(lib.notes.get(made.id)?.deletedAt).toBeDefined();
+    // A note the server holds still goes round the kept entry.
+    vi.mocked(api.deleteNotes).mockResolvedValueOnce({ trashed: 1 });
+    await actions.trashNotes(['n1']);
+    expect(api.deleteNotes).toHaveBeenLastCalledWith(['n1']);
+  });
+
+  it('is kept, bytes and all, when the plan\'s 402 refuses it', async () => {
+    const { lib, fake } = library([row('n1')]);
+    setReachableForTests(false);
+    await actions.uploadFile('n1', photo());
+    await tick();
+    setReachableForTests(true);
+    vi.mocked(api.uploadFile).mockRejectedValueOnce(new ApiError(402, 'read-only', 'PLAN_INACTIVE'));
+    expect(await fake.replayOne()).toBe('kept');
+    expect(root.paths()).toEqual(['unbent-files-u1/pending/n1/photo.jpg']);
+    expect(fake.queue.map((e) => e.mutationFnName)).toEqual(['uploadFile']);
+    expect(lib.outbox.status().uploadNotices.size).toBe(0);
+    expect(planLapsed()).toBe(true);
   });
 
   it('is queued under the id the request carried when the connection went mid-upload, so the replay finds what the server may have stored', async () => {

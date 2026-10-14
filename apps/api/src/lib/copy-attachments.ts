@@ -5,6 +5,7 @@ import {
 } from '@unbent/shared';
 import type { AttachmentsRepo } from './attachments-repo.js';
 import type { NotesRepo } from './notes-repo.js';
+import { assertRoom, StorageFull } from './quota.js';
 
 /** One file after a copy: what it was asked for as, and what it is called now. */
 export interface CopiedAttachment extends AttachmentInfo {
@@ -61,11 +62,23 @@ export async function copyAttachments(
      * deletes the object it had already written.
      */
     skipExisting?: boolean;
+    /**
+     * The plan's storage in bytes, or null for no limit (lib/quota.ts). A copy adds its
+     * files' bytes to the account and is checked before the first one moves, on the
+     * sizes the rows hold; a move adds nothing and is not.
+     */
+    quota: number | null;
   },
 ): Promise<CopyAttachmentsResult> {
   const { attachments } = repos;
   const files: CopiedAttachment[] = [];
   const missing: string[] = [];
+
+  if (!input.move) {
+    const wanted = new Set(input.filenames);
+    const adding = (await attachments.listForNote(input.from)).filter((f) => wanted.has(f.filename)).reduce((n, f) => n + f.size, 0);
+    await assertRoom(attachments, input.quota, adding);
+  }
 
   // Read once, after the copies: the body that matters is the one stored when the
   // deletion is decided, not one read before the loop started.
@@ -100,7 +113,16 @@ export async function copyAttachments(
     if (!stored) throw new Error(`Copy failed for ${requested}`);
 
     const row = { id, noteId: input.to, filename, contentType: source.content_type, size: stored.size, r2Key: key };
-    const info = input.skipExisting ? await attachments.record(row, { ifAbsent: true }) : await attachments.record(row);
+    // The quota decided again as the row is recorded, atomically with the sum (see
+    // `AttachmentsStore.record`); a move adds nothing and is not checked.
+    const quota = input.move ? null : input.quota;
+    let info: AttachmentInfo | null;
+    try {
+      info = input.skipExisting ? await attachments.record(row, { ifAbsent: true, quota }) : await attachments.record(row, { quota });
+    } catch (err) {
+      if (err instanceof StorageFull) await blobs.delete(key).catch(() => {});
+      throw err;
+    }
     if (!info) {
       // Another request recorded this name first; its copy is the file. Ours is an orphan.
       await blobs.delete(key);

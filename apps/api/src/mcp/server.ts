@@ -1,9 +1,13 @@
 import { McpServer, createMcpHandler } from '@modelcontextprotocol/server';
 import { appLinks } from '../lib/app-links.js';
 import { canUseLlm } from '../lib/llm.js';
+import { billingOn } from '../lib/paddle.js';
+import { planFor, planStateOf } from '../lib/plan.js';
+import { quotaFor } from '../lib/quota.js';
 import { reposFor } from '../lib/repos.js';
 import { UploadGrantsRepo } from '../lib/upload-grants.js';
 import type { Env } from '../types.js';
+import { INACTIVE_TOOL_MESSAGE, gatedRegistrar, type PlanGate } from './plan-gate.js';
 import { registerAttachmentTools } from './tools/attachments.js';
 import { registerReadTools } from './tools/read.js';
 import { registerWriteTools } from './tools/write.js';
@@ -34,10 +38,16 @@ export function createUnbentMcpHandler(
     const server = new McpServer({ name: 'unbent', version: '1.0.0' });
     const { notes, attachments } = reposFor(env, userId);
     registerReadTools(server, notes, attachments, links, { vision: canUseLlm(env) });
-    registerWriteTools(server, notes, links);
+    // The write tools go through the plan's gate (mcp/plan-gate.ts): a lapsed account's
+    // assistant reads and deletes, and is told why it can do no more. Nothing is asked
+    // where billing is off.
+    const gate: PlanGate = async () =>
+      billingOn(env) && planStateOf(await planFor(env.DB, userId), Date.now()) === 'inactive' ? INACTIVE_TOOL_MESSAGE : null;
+    const gated = gatedRegistrar(server, gate);
+    registerWriteTools(gated, notes, links);
     // Upload links stay in D1: the token is looked up before anyone knows whose it is.
     const uploads = new UploadGrantsRepo(env.DB, userId);
-    registerAttachmentTools(server, env, ctx, { notes, attachments, uploads }, links);
+    registerAttachmentTools(gated, env, ctx, { notes, attachments, uploads }, links, () => quotaFor(env, env.DB, userId));
     return server;
   });
 }

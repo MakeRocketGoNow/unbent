@@ -556,45 +556,58 @@ button.link {
   flex: none;
 }
 
+/*
+   One shape for the three lines that say a state of the whole account, not an error:
+   the device is offline (`OfflineBanner`), the terms are still to be agreed to
+   (`AgreementPending`), and the plan has ended or is about to (`PlanBanner`, MAK-108).
+   Quiet on purpose, and defined once so they cannot drift apart the next time one is
+   tuned — they were three copies of these lines until the third arrived.
+*/
+.offline-banner,
+.agreement-pending,
+.plan-banner {
+  margin: 0 0 var(--shell-pad-top);
+  padding: 0.45rem 0.75rem;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.35;
+}
+
 .offline-banner {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin: 0 0 var(--shell-pad-top);
-  padding: 0.45rem 0.75rem;
-  border-radius: 0.5rem;
-  background: color-mix(in srgb, var(--fg) 6%, transparent);
-  color: var(--muted);
-  font-size: 0.875rem;
-  line-height: 1.35;
 }
 
 /* The glyph keeps its size when the sentence wraps to two lines on a phone. */
-/*
-   The line above export and account deletion while the terms are still to be agreed to
-   (`AgreementPending`): the offline banner's shape, for the same reason — a state, not an
-   error — with its link in the line's own ink so it does not outshout the sentence.
-*/
-.agreement-pending {
-  margin: 0 0 var(--shell-pad-top);
-  padding: 0.45rem 0.75rem;
-  border-radius: 0.5rem;
-  background: color-mix(in srgb, var(--fg) 6%, transparent);
-  color: var(--muted);
-  font-size: 0.875rem;
-  line-height: 1.35;
+.offline-banner > svg {
+  flex: none;
 }
 
-.agreement-pending a {
+/* A link in the line's own ink, so it does not outshout the sentence. */
+.agreement-pending a,
+.plan-banner a {
   color: var(--fg);
   text-decoration: underline;
   text-underline-offset: 0.15em;
   white-space: nowrap;
 }
 
-.offline-banner > svg {
-  flex: none;
+.plan-status { flex: none; }
+
+/* The Plan page: the storage meter and the choice of storage before a checkout. */
+.plan-meter { max-width: 24rem; margin: 0 0 0.5rem; }
+.plan-meter .plan-meter-full { background: var(--bad); }
+.plan-storage-choice {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0 0 0.7rem;
+  font-size: 0.9rem;
 }
+.plan-storage-choice .search-field { width: auto; }
 
 .notes {
   display: grid;

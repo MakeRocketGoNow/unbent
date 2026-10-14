@@ -46,6 +46,12 @@ interface HistorySheetProps {
    * field values with it, since a version holds those too (MAK-170).
    */
   current: HistoryCurrent;
+  /**
+   * The plan has ended (MAK-108): the versions still open and the history can still be
+   * cleared, since both are what a read-only account is promised, but a restore is a
+   * write the server would refuse, so Restore fades with the reason.
+   */
+  lapsed?: boolean;
 }
 
 /** The two ways of looking at a version; see `HistoryChanges` for the second. */
@@ -184,7 +190,7 @@ function VersionProps({ props }: { props: NoteRevisionProps }) {
  * is drawn by `HistoryChanges` against `current`, the note on screen (MAK-167). Restore
  * is the same button under either.
  */
-export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore, current }: HistorySheetProps) {
+export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore, current, lapsed = false }: HistorySheetProps) {
   const queryClient = useQueryClient();
   /*
      The connection can go while the sheet is open, though the menu it opened from fades
@@ -193,6 +199,7 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore, 
   */
   const offline = useOffline();
   const offlineTitle = offline ? 'Not available offline' : undefined;
+  const restoreTitle = offlineTitle ?? (lapsed ? 'Not while the plan has ended' : undefined);
   const [picked, setPicked] = useState<NoteRevisionSummary | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -403,8 +410,8 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore, 
             <p className="muted small">The note as it is now is kept in History, so this can be undone.</p>
             <Button
               variant="primary"
-              disabled={restoring || !copy.isSuccess || offline}
-              tip={offlineTitle}
+              disabled={restoring || !copy.isSuccess || offline || lapsed}
+              tip={restoreTitle}
               onClick={() => void restore()}
             >
               {restoring ? 'Restoring…' : 'Restore this version'}

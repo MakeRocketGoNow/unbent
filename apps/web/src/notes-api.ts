@@ -1,5 +1,6 @@
 import { DEFAULT_NOTE_SORT } from '@unbent/shared';
 import type {
+  AccountPlan,
   AppConfig,
   AttachmentInfo,
   AutofillSuggestion,
@@ -50,6 +51,12 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /**
+     * The body's `code`, when the route gave one: `PLAN_INACTIVE` and `STORAGE_FULL` on a
+     * 402, `TERMS_NOT_AGREED` on a 403. What lets a caller tell two refusals with one
+     * status apart without reading the sentence.
+     */
+    readonly code?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -158,26 +165,34 @@ const MAX_DETAIL = 200;
  * and nothing a reader could act on. Naming the case is what makes it legible.
  */
 export async function httpErrorMessage(res: Response): Promise<string> {
+  return (await httpErrorDetail(res)).message;
+}
+
+/** The message, and the body's `code` when ours gave one; see `ApiError.code`. */
+export async function httpErrorDetail(res: Response): Promise<{ message: string; code?: string }> {
   // HTTP/2 has no reason phrase, so `statusText` is routinely empty and must not be padded in.
   const status = `${res.status}${res.statusText ? ` ${res.statusText}` : ''}`;
   const body = (await res.text().catch(() => '')).trim();
-  if (!body) return status;
+  if (!body) return { message: status };
 
-  // Ours are `{ error }`. A JSON body shaped some other way falls through and is quoted raw.
+  // Ours are `{ error }`, with a `code` on the few refusals a caller branches on. A JSON
+  // body shaped some other way falls through and is quoted raw.
   if (res.headers.get('Content-Type')?.includes('json')) {
     try {
-      const { error } = JSON.parse(body) as { error?: unknown };
-      if (typeof error === 'string' && error) return `${status}: ${error}`;
+      const { error, code } = JSON.parse(body) as { error?: unknown; code?: unknown };
+      if (typeof error === 'string' && error) {
+        return { message: `${status}: ${error}`, ...(typeof code === 'string' && code ? { code } : {}) };
+      }
     } catch {
       // Mislabelled as JSON; treat it as text like anything else.
     }
   }
 
   if (body.startsWith('<')) {
-    return `${status} — the request did not reach the API; an error page came back instead`;
+    return { message: `${status} — the request did not reach the API; an error page came back instead` };
   }
 
-  return `${status}: ${body.slice(0, MAX_DETAIL)}`;
+  return { message: `${status}: ${body.slice(0, MAX_DETAIL)}` };
 }
 
 /**
@@ -193,7 +208,10 @@ export function errorText(err: unknown): string {
 }
 
 async function json<T>(res: Response): Promise<T> {
-  if (!res.ok) throw new ApiError(res.status, await httpErrorMessage(res));
+  if (!res.ok) {
+    const { message, code } = await httpErrorDetail(res);
+    throw new ApiError(res.status, message, code);
+  }
   return res.json() as Promise<T>;
 }
 
@@ -478,6 +496,46 @@ export async function deleteNotesPermanently(ids: string[]): Promise<{ deleted: 
  */
 export async function getConfig(): Promise<AppConfig> {
   return json<AppConfig>(await request('/api/config'));
+}
+
+// --- The plan (MAK-108) ------------------------------------------------------------------
+//
+// Every call here answers 404 on an instance with billing off; nothing asks unless
+// `/api/config` carries `billing`.
+
+/** The account's plan as the server works it out now; with `usage`, what it holds too, which asks its store. */
+export async function getPlan(opts: { usage?: boolean } = {}): Promise<AccountPlan> {
+  return json<AccountPlan>(await request(opts.usage ? '/api/me/plan?usage=1' : '/api/me/plan'));
+}
+
+/** A checkout for `storage` add-ons beside the plan: the transaction Paddle.js opens. */
+export async function startCheckout(storage: number): Promise<{ transactionId: string }> {
+  return json(await request('/api/billing/checkout', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ storage }) }));
+}
+
+/** The subscription's storage add-ons set to `storage`, charged now; the plan follows from the webhook. */
+export async function setStorage(storage: number): Promise<void> {
+  await json(await request('/api/billing/storage', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ storage }) }));
+}
+
+/** Fresh links into Paddle's portal: made per press, never kept. */
+export async function portalLinks(): Promise<{ overview: string; cancel: string | null; payment: string | null }> {
+  return json(await request('/api/billing/portal'));
+}
+
+/** The operator's comp of someone's account, or the end of one; answers the plan as it now stands. */
+export async function compAccount(
+  userId: string,
+  body: { action: 'comp'; until: number | null; storageGb?: number } | { action: 'end' },
+): Promise<AccountPlan> {
+  return json<AccountPlan>(
+    await request(`/api/admin/accounts/${encodeURIComponent(userId)}/plan`, { method: 'POST', headers: jsonHeaders, body: JSON.stringify(body) }),
+  );
+}
+
+/** The plan read back from Paddle and applied, for the moment after a checkout, before the webhook lands. */
+export async function refreshPlan(): Promise<AccountPlan> {
+  return json<AccountPlan>(await request('/api/billing/refresh', { method: 'POST' }));
 }
 
 /**
@@ -789,13 +847,17 @@ export async function uploadFile(
   if (!res.ok) {
     const detail = await res.text().catch(() => '');
     let message = detail || `${res.status}`;
+    let code: string | undefined;
     try {
-      message = (JSON.parse(detail) as { error?: string }).error ?? message;
+      const parsed = JSON.parse(detail) as { error?: string; code?: unknown };
+      message = parsed.error ?? message;
+      if (typeof parsed.code === 'string') code = parsed.code;
     } catch {
       // Not JSON: the edge's own error page, say. The text is the message.
     }
-    // With the status, so the outbox can tell a refusal from a server that is down.
-    throw new ApiError(res.status, message);
+    // With the status and the code, so the outbox can tell a refusal from a server that
+    // is down, and the plan's refusal, which it keeps, from the storage's, which it does not.
+    throw new ApiError(res.status, message, code);
   }
   return res.json() as Promise<UploadedFile>;
 }

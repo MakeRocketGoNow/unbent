@@ -41,6 +41,14 @@ interface AttachmentsProps {
    * read-only does not stop.
    */
   readOnly?: boolean;
+  /**
+   * The account's plan has ended (MAK-108): the server refuses every write but a delete.
+   * Narrower than `readOnly`, which is for a note that cannot be reached at all. Here
+   * the files still open, download and delete — that is what the banner promises — and
+   * only what would write goes: copying or moving a file to another note, and inserting
+   * a link, which edits the body.
+   */
+  lapsed?: boolean;
 }
 
 function fileUrl(noteId: string, filename: string): string {
@@ -60,7 +68,11 @@ export function Attachments({
   editorView,
   onBodyRewrite,
   readOnly = false,
+  lapsed = false,
 }: AttachmentsProps) {
+  /** The writes a lapsed account cannot make, and why; `readOnly`'s word wins when both hold. */
+  const noWrites = readOnly || lapsed;
+  const noWritesTip = readOnly ? 'Not available offline' : lapsed ? 'Not while the plan has ended' : undefined;
   const queryClient = useQueryClient();
   const { data: files = [], isLoading, error } = useQuery(attachmentsQuery(noteId));
   /*
@@ -147,16 +159,19 @@ export function Attachments({
   useEffect(() => {
     if (unlinkedCount > 0) setHadUnlinked(true);
   }, [unlinkedCount, noteId]);
-  // A question left open when the note locks would go on offering what it can no longer do.
+  // A question left open when the note locks would go on offering what it can no longer
+  // do. A lapse closes only the copy and move; a delete stays askable.
   useEffect(() => {
-    if (!readOnly) return;
-    setPending(null);
+    if (!readOnly && !lapsed) return;
+    if (readOnly) {
+      setPending(null);
+      setCleaning(false);
+    }
     setSending(null);
-    setCleaning(false);
-  }, [readOnly]);
+  }, [readOnly, lapsed]);
 
   function insertLink(file: AttachmentInfo) {
-    if (readOnly) return;
+    if (noWrites) return;
     const markdown = formatAttachmentMarkdown(file.filename, `files/${file.filename}`, {
       image: file.contentType.startsWith('image/'),
     });
@@ -282,7 +297,10 @@ export function Attachments({
       // A file still waiting to upload is taken back on this device; anything else is the
       // server's to delete.
       await deleteOrCancelAttachment(startedFor, filename);
-      if (stillLinked && noteIdRef.current === startedFor) {
+      // Not while the plan has ended: the editor takes no edits and the autosave is off,
+      // so a rewrite would show the link gone until the note was reopened and then bring
+      // it back, pointing at nothing. The link stays, and the confirm said it would.
+      if (stillLinked && !lapsed && noteIdRef.current === startedFor) {
         onBodyRewrite(removeAttachmentLinks(bodyRef.current, filename));
       }
       await queryClient.invalidateQueries({ queryKey: keys.attachments(startedFor) });
@@ -305,7 +323,8 @@ export function Attachments({
     <div className="attachments-notices" role="status">
       {notices.map((n) => (
         <p key={n.id} className="bad small">
-          “{n.filename}”: {n.message}
+          {n.filename !== undefined && <>“{n.filename}”: </>}
+          {n.message}
         </p>
       ))}
       <Button variant="quiet" size="small" onClick={() => outbox?.dismissUploadNotices(noteId)}>
@@ -430,8 +449,8 @@ export function Attachments({
                 <OverflowMenu
                   label={`More actions for ${file.filename}`}
                   className="attachments-more"
-                  disabled={readOnly || waiting}
-                  tip={held ?? (readOnly ? 'Not available offline' : undefined)}
+                  disabled={noWrites || waiting}
+                  tip={held ?? noWritesTip}
                   items={[
                     {
                       label: 'Copy to note…',
@@ -453,8 +472,8 @@ export function Attachments({
                   <Button
                     variant="quiet"
                     size="small"
-                    disabled={busy !== null || readOnly}
-                    tip={readOnly ? 'Not available offline' : undefined}
+                    disabled={busy !== null || noWrites}
+                    tip={noWritesTip}
                     onClick={() => insertLink(file)}
                   >
                     Insert link
@@ -493,7 +512,9 @@ export function Attachments({
                     waiting
                       ? `It has not uploaded, so this device holds the only copy.${isLinked ? ' Its link in this note will be removed too.' : ''}`
                       : isLinked
-                        ? 'It is still linked in this note; the link will be removed too.'
+                        ? lapsed
+                          ? 'It is still linked in this note; the link stays until the plan is active again. This cannot be undone.'
+                          : 'It is still linked in this note; the link will be removed too.'
                         : 'This cannot be undone.'
                   }
                   busy={busy === file.filename}

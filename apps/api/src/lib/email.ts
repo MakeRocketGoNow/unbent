@@ -63,6 +63,9 @@ export function canSendEmail(env: EmailEnv): boolean {
  * tested. It logs the body, so it must never be reached in production; `canSendEmail`
  * gates the feature so a deployed instance either has mail or does not offer the flow.
  */
+/** How long one send may take before it is given up on. Resend answers in well under a second. */
+export const EMAIL_TIMEOUT_MS = 10_000;
+
 export async function sendEmail(env: EmailEnv, message: Message): Promise<void> {
   if (!canSendEmail(env)) {
     console.log(
@@ -74,6 +77,11 @@ export async function sendEmail(env: EmailEnv, message: Message): Promise<void> 
 
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
+    // A provider that does not answer must not hold the caller: the lapse mail runs
+    // ahead of the hourly store sweep in one invocation (index.ts), and a sign-in code's
+    // request has a person waiting on it. A timeout is not an `EmailRejected`, so the
+    // lapse mail tries that account again next run rather than marking it told.
+    signal: AbortSignal.timeout(EMAIL_TIMEOUT_MS),
     headers: {
       Authorization: `Bearer ${env.RESEND_API_KEY}`,
       'Content-Type': 'application/json',
@@ -98,6 +106,22 @@ export async function sendEmail(env: EmailEnv, message: Message): Promise<void> 
      * message: it is an email address, and the caller already knows who it was sending to.
      */
     const detail = await res.text().catch(() => '');
-    throw new Error(`Resend rejected the message: ${res.status} ${detail.slice(0, 200)}`);
+    throw new EmailRejected(res.status, `Resend rejected the message: ${res.status} ${detail.slice(0, 200)}`);
+  }
+}
+
+/**
+ * The provider's refusal, with its status, for a caller that must decide whether to try
+ * again: a 4xx is this message as sent (an address it will not take) and a 5xx is the
+ * provider's day. `sendEmail` throws nothing else of its own; a fetch that fails throws
+ * as a fetch does.
+ */
+export class EmailRejected extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'EmailRejected';
   }
 }

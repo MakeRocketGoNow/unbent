@@ -1,9 +1,12 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { MAX_ATTACHMENT_BYTES } from '@unbent/shared';
+import { MAX_ATTACHMENT_BYTES, PLAN_INACTIVE_CODE, PLAN_INACTIVE_MESSAGE } from '@unbent/shared';
 import { appLinks } from '../lib/app-links.js';
 import { chooseContentType } from '../lib/fetch-attachment.js';
+import { billingOn } from '../lib/paddle.js';
+import { planFor, planStateOf } from '../lib/plan.js';
 import { reposFor } from '../lib/repos.js';
+import { StorageFull, quotaOf, storageFullBody } from '../lib/quota.js';
 import { storeAttachment } from '../lib/store-attachment.js';
 import { claimUploadGrant } from '../lib/upload-grants.js';
 import type { AppEnv } from '../types.js';
@@ -77,6 +80,18 @@ export const uploads = new Hono<AppEnv>().use('/uploads/*', anyOrigin).put('/upl
     return c.json({ error: `This upload link is unknown, already used, or expired. ${ASK_AGAIN}` }, 404);
   }
 
+  /*
+     The plan, since this route has no session for `requireActivePlan` to read: the link
+     was minted by a tool the gate let through, but a plan can end in the minutes between.
+     Same answer as any other write's, so the assistant relaying it reads one sentence.
+  */
+  const plan = billingOn(c.env) ? await planFor(c.env.DB, grant.userId) : undefined;
+  if (plan && planStateOf(plan, Date.now()) === 'inactive') {
+    return c.json({ code: PLAN_INACTIVE_CODE, error: PLAN_INACTIVE_MESSAGE }, 402);
+  }
+  // The same row answers the quota; `quotaFor` would read it a second time.
+  const quota = quotaOf(c.env, plan);
+
   const { attachments, notes } = reposFor(c.env, grant.userId);
   // Trashed, or gone, in the minutes since the link was made.
   if (!(await attachments.ownsNote(grant.noteId))) {
@@ -102,6 +117,8 @@ export const uploads = new Hono<AppEnv>().use('/uploads/*', anyOrigin).put('/upl
         contentType,
         body: c.req.raw.body,
         link: grant.link,
+        quota,
+        declaredBytes: declared,
       },
     );
     // add_attachment's answer, url included, since prepare_attachment_upload promises the
@@ -111,6 +128,7 @@ export const uploads = new Hono<AppEnv>().use('/uploads/*', anyOrigin).put('/upl
       201,
     );
   } catch (err) {
+    if (err instanceof StorageFull) return c.json(storageFullBody(err), 402);
     // A transfer cut short: the link is spent, and nothing was attached.
     console.error('Upload through a prepared link failed:', err);
     return c.json({ error: `The upload did not complete, and nothing was attached. ${ASK_AGAIN}` }, 400);

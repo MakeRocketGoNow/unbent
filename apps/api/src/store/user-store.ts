@@ -153,6 +153,8 @@ export interface StoreUsage {
   databaseSize: number;
   /** Live and trashed notes together: what the account holds. */
   notes: number;
+  /** The bytes of its files in R2, as `note_counts` keeps the sum (0008): what the plan's quota is measured against. */
+  attachmentBytes: number;
   /**
    * When the store was last written to: the newest change-feed row's time, which every
    * write records (`Feed.record`), or null for a store nothing has written yet. One row
@@ -334,14 +336,28 @@ export class UserStore extends DurableObject<StoreEnv> {
     const databaseSize = this.ctx.storage.sql.databaseSize;
     // Unavailable rather than empty: the sweep defers on it and records nothing.
     if (this.loading) throw new StoreLoading(this.loading);
-    if (this.wiped) return { databaseSize, notes: 0, lastWriteAt: null, wiped: true };
-    const counts = this.sql.first<{ live: number; trashed: number }>(`SELECT live, trashed FROM note_counts WHERE id = 1`);
+    if (this.wiped) return { databaseSize, notes: 0, attachmentBytes: 0, lastWriteAt: null, wiped: true };
+    const counts = this.sql.first<{ live: number; trashed: number; attachment_bytes: number }>(
+      `SELECT live, trashed, attachment_bytes FROM note_counts WHERE id = 1`,
+    );
     return {
       databaseSize,
       notes: (counts?.live ?? 0) + (counts?.trashed ?? 0),
+      attachmentBytes: counts?.attachment_bytes ?? 0,
       lastWriteAt: this.lastWriteAt(),
       wiped: false,
     };
+  }
+
+  /**
+   * The bytes of files the account holds, for the quota check before an upload
+   * (lib/quota.ts) and the Plan page. One column of the one `note_counts` row, so an
+   * upload pays a row for it; through `ready()`, since a store being loaded has no
+   * answer and must not give zero.
+   */
+  attachmentBytes(): number {
+    this.ready();
+    return this.sql.first<{ n: number }>(`SELECT attachment_bytes AS n FROM note_counts WHERE id = 1`)?.n ?? 0;
   }
 
   /**

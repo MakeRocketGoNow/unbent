@@ -33,11 +33,11 @@ const whole: NoteRevision = { ...gutted, body: 'Agreed: ship on Friday.' };
 /** The note as it is on screen, which Changes compares a version against. */
 const onScreen: HistoryCurrent = { title: 'Minutes', body: 'Agreed: ship on Monday.', notebook: null, tags: [], fields: [] };
 
-function mount(onRestore = vi.fn(async () => {}), onClose = vi.fn(), current = onScreen) {
+function mount(onRestore = vi.fn(async () => {}), onClose = vi.fn(), current = onScreen, lapsed = false) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const view = render(
     <QueryClientProvider client={client}>
-      <HistorySheet open onClose={onClose} noteId="n1" onRestore={onRestore} current={current} />
+      <HistorySheet open onClose={onClose} noteId="n1" onRestore={onRestore} current={current} lapsed={lapsed} />
     </QueryClientProvider>,
   );
   return { ...view, onRestore, onClose };
@@ -200,6 +200,20 @@ describe('HistorySheet', () => {
     await waitFor(() => expect(restore.disabled).toBe(true));
     expect(restore.dataset.tip).toBe('Not available offline');
     expect(restore.getAttribute('aria-description')).toBe('Not available offline');
+  });
+
+  /** A lapsed plan still reads its versions; only the write is refused, and the button says why. */
+  it('fades Restore alone, with the reason, once the plan has ended', async () => {
+    vi.mocked(api.listRevisions).mockResolvedValue([gutted]);
+    vi.mocked(api.getRevision).mockResolvedValue(whole);
+    mount(undefined, undefined, undefined, true);
+    const row = await screen.findByRole<HTMLButtonElement>('button', { name: /characters$/ });
+    expect(row.disabled).toBe(false);
+    fireEvent.click(row);
+    await screen.findByTestId('preview');
+    const restore = screen.getByRole<HTMLButtonElement>('button', { name: 'Restore this version' });
+    expect(restore.disabled).toBe(true);
+    expect(restore.dataset.tip).toBe('Not while the plan has ended');
   });
 
   it('does not offer Restore until the version has loaded', async () => {
