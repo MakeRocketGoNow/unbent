@@ -447,9 +447,10 @@ describe('acquireLibrary', () => {
     it('answers every hello with opening while its own open runs, and stops once it serves', async () => {
       vi.useFakeTimers();
       setLocksForTests(fakeLocks());
-      let finishStore!: (store: unknown) => void;
-      const { store } = page();
-      vi.mocked(openLocalStore).mockImplementationOnce(() => new Promise((r) => (finishStore = r)) as never);
+      let finishStore!: () => void;
+      page();
+      const store = { userId: 'u1', persistence: {}, coordinator: {}, database: {} };
+      vi.mocked(openLocalStore).mockImplementationOnce(() => new Promise((r) => (finishStore = () => r(store as never))));
       const opening = () => channel.posted.filter((m) => m.type === 'opening').length;
       const first = acquireLibrary('u1');
       await vi.advanceTimersByTimeAsync(10);
@@ -459,13 +460,33 @@ describe('acquireLibrary', () => {
       other.post({ type: 'hello', client: 'c1' });
       await vi.advanceTimersByTimeAsync(10);
       expect(opening()).toBe(2);
-      finishStore(store);
+      finishStore();
       await first;
       other.post({ type: 'hello', client: 'c1' });
       await vi.advanceTimersByTimeAsync(10);
       // Served now: the holder answers hellos with rows, not with opening.
       expect(opening()).toBe(2);
       expect(channel.posted.some((m) => m.type === 'serving')).toBe(true);
+    });
+
+    it('is refused at the bound it was promised when the tab it took over from holds the file, not six seconds later', async () => {
+      vi.useFakeTimers();
+      const locks = fakeLocks();
+      setLocksForTests(locks);
+      page();
+      // The holder is frozen: it answers nothing, and its worker keeps the store's file,
+      // so the open after the steal never finishes either.
+      locks.request(lock, { mode: 'exclusive' }, () => new Promise<void>(() => {})).catch(() => {});
+      vi.mocked(openLocalStore).mockImplementationOnce(() => new Promise(() => {}) as never);
+      await vi.advanceTimersByTimeAsync(0);
+      acquireLibrary('u1').catch(() => {});
+      await vi.advanceTimersByTimeAsync(HELLO_RETRY_MS * 3 + 10);
+      expect(openLocalStore).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(LIBRARY_OPEN_TIMEOUT_MS - HELLO_RETRY_MS * 3 - 100);
+      expect(reportError).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(200);
+      expect(reportError).toHaveBeenCalledWith(expect.any(LibraryOpenTimeoutError), 'error');
+      await expect(currentLibrary()).rejects.toBeInstanceOf(LibraryOpenTimeoutError);
     });
 
     it('waits for a tab that said it is opening the library, and is its client once it serves', async () => {

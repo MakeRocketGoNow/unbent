@@ -93,7 +93,7 @@ export type AnyLibrary = Library | ClientLibrary;
  * `LIBRARY_OPEN_TIMEOUT_MS` — the same promise while the open is quick, a refusal after
  * the bound, and the library again once a slow open has finished (`acquireLibrary`).
  */
-let current: { userId: string; library: Promise<AnyLibrary>; opened: Promise<AnyLibrary>; halt: () => void } | null = null;
+let current: { userId: string; library: Promise<AnyLibrary>; opened: Promise<AnyLibrary>; halt: () => void; deadline: number } | null = null;
 let forTests: ReadableLibrary | null = null;
 
 const libraryListeners = new Set<() => void>();
@@ -465,13 +465,17 @@ export function acquireLibrary(userId: string, options: { takeOver?: boolean } =
  * library fires, and the one thing a client decides for itself — that its holder has
  * gone silent, on which it takes the library over, if it is still this tab's library.
  */
-const clientHooks = (userId: string, isMine: () => boolean) => ({
+const clientHooks = (userId: string, isMine: () => boolean, deadline: number) => ({
   onChange: (roots: ReadonlySet<string>) => changeListeners.forEach((l) => l(roots)),
   onAttached: () => changeListeners.forEach((l) => l(LIBRARY_ROOTS)),
   onReset: () => resetListeners.forEach((l) => l()),
   onIndexed: () => indexedListeners.forEach((l) => l()),
   onSilent: () => {
-    if (isMine()) void openFor(userId, true).catch(() => {});
+    // Under the attach's own deadline, not a fresh bound: the takeover is the same ask
+    // continued, and a frozen holder's file keeps the open waiting just as its silence
+    // kept the attach, so the caller is refused at the bound it was promised and not
+    // the hellos' six seconds later (review of #358).
+    if (isMine()) void openFor(userId, true, undefined, deadline).catch(() => {});
   },
 });
 
@@ -510,7 +514,8 @@ function announceOpening(userId: string): () => void {
  * holder has gone (`standAside`) or Open here was pressed (`takeOver`). Holds the
  * lock when it can; otherwise attaches to the tab that holds it, as its client.
  */
-function openFor(userId: string, takeOver: boolean, held?: LibraryHold): Promise<AnyLibrary> {
+function openFor(userId: string, takeOver: boolean, held?: LibraryHold, inherited?: number): Promise<AnyLibrary> {
+  const deadline = inherited ?? Date.now() + LIBRARY_OPEN_TIMEOUT_MS;
   standDown();
   generation += 1;
   const previous = current;
@@ -535,7 +540,7 @@ function openFor(userId: string, takeOver: boolean, held?: LibraryHold): Promise
       // moment after this ask found it held, and nobody would answer hello. The queue
       // then gives this tab the library, and the open that follows closes this attach.
       standAside(userId);
-      return attachClientLibrary(userId, me, port, clientHooks(userId, () => current?.opened === opened), halting.signal);
+      return attachClientLibrary(userId, me, port, clientHooks(userId, () => current?.opened === opened, deadline), halting.signal);
     }
     const quiet = announceOpening(userId);
     void hold.taken.then(quiet);
@@ -560,14 +565,15 @@ function openFor(userId: string, takeOver: boolean, held?: LibraryHold): Promise
    * cannot keep a copy. The open itself goes on (see `queue`) and stays the account's
    * entry, so every later ask — the root `beforeLoad` asks on every navigation — is
    * answered at once with the same refusal, and if it does finish it is the library from
-   * then on, with the hooks told.
+   * then on, with the hooks told. The deadline is `LIBRARY_OPEN_TIMEOUT_MS` from now, or
+   * the one a client's takeover inherited from its attach (`clientHooks`).
    */
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new LibraryOpenTimeoutError()), LIBRARY_OPEN_TIMEOUT_MS);
+    timer = setTimeout(() => reject(new LibraryOpenTimeoutError()), Math.max(0, deadline - Date.now()));
   });
   const library = Promise.race([opened, timeout]).finally(() => clearTimeout(timer));
-  const entry = { userId, library, opened, halt: () => halting.abort() };
+  const entry = { userId, library, opened, halt: () => halting.abort(), deadline };
   current = entry;
   libraryChanged();
   let late = false;

@@ -723,11 +723,13 @@ and meanwhile it reads the rows it has and holds its writes. A tab that has neve
 served does not wait: three hellos in six seconds with nothing heard from any holder —
 no `serving`, no rows, no `opening` — is a tab that holds the lock and runs nothing for
 this account, frozen or on a build from before the channel, and the client takes the
-library over (`UNANSWERED_HELLOS` in `client-library.ts`). A tab granted the lock says
-`opening` on the channel before its open for exactly this reason: a hand-off on a phone
-takes seconds, and a client waiting on one must not read that as silence. Before this,
-every reload with an older tab left open after a deploy was twenty seconds of nothing
-and then the server (2026-10-14).
+library over (`UNANSWERED_HELLOS` in `client-library.ts`), under the deadline its attach
+was given, so beside a frozen tab whose worker still holds the file it is refused at the
+same twenty seconds as before and no later. A tab granted the lock says `opening` on the
+channel before its open and in answer to every hello until it serves, for exactly this
+reason: a hand-off on a phone takes seconds, and a client waiting on one must not read
+that as silence. Before this, every reload with an older tab left open after a deploy
+was twenty seconds of nothing and then the server (2026-10-14).
 
 Every open and close of the library is a step on one queue in `library.ts` (`enqueue`),
 run only after every step before it has settled and never abandoned. A new way to open or
