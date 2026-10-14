@@ -460,13 +460,21 @@ describe('a client of the holding tab', () => {
     await settle();
     await vi.advanceTimersByTimeAsync(HELLO_RETRY_MS * 3);
     expect(patient.silent).toBe(0);
-    holder(channel, { notes: [note('n1')] });
+    const served = holder(channel, { notes: [note('n1')] });
     await settle();
     await settle();
     const lib = await attaching;
     open.push(lib);
     expect(patient.silent).toBe(0);
     expect(lib.notes.size).toBe(1);
+    // Served once, a client never counts hellos again: its holder closes, nothing serves
+    // for as long as it likes, and with no call in hand it stays where it is — a steal
+    // from an idle client undid a person's Open here elsewhere (review of #354).
+    served.server.stop();
+    await settle();
+    expect(lib.attached()).toBe(false);
+    await vi.advanceTimersByTimeAsync(HELLO_RETRY_MAX_MS * 2);
+    expect(patient.silent).toBe(0);
   });
 
   it('waits as long as a tab that is opening keeps answering its hellos, however slow the open', async () => {
