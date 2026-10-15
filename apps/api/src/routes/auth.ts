@@ -115,6 +115,8 @@ async function registerClient(env: Env, request: Request): Promise<Response> {
   }
   const trimmed = withoutEmptyMetadata(body);
   const sent = trimmed ?? body;
+  // What was taken out, so a refusal still says whether empty metadata was part of it.
+  const emptied = trimmed ? Object.keys(body as Record<string, unknown>).filter((k) => !(k in trimmed)) : [];
   const response = await getAuth(env).handler(
     new Request(request, { body: trimmed ? JSON.stringify(trimmed) : text }),
   );
@@ -130,6 +132,7 @@ async function registerClient(env: Env, request: Request): Promise<Response> {
         error: answer?.error,
         reason: answer?.error_description ?? answer?.message,
         request: registrationSummary(sent),
+        emptied: emptied.length > 0 ? emptied.sort().slice(0, 40) : undefined,
       }),
     );
   }
