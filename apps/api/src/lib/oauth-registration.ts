@@ -121,9 +121,9 @@ export function withoutEmptyMetadata(body: unknown): Record<string, unknown> | n
  * The registration endpoint is unauthenticated and refusals were silent, so when an
  * assistant could not connect the only evidence was its own one-line message. This is the
  * request's shape — the fields it sent, how it wants to authenticate, which grants and
- * responses, which redirect *hosts* — beside the provider's reason. Hosts and not whole redirects, because
- * a relay's path can carry a per-user id (Google's does); the client's name, because it
- * is the program's and is how the line is found.
+ * responses, which redirect *hosts* — beside the provider's reason. Hosts and not whole
+ * redirects, because a relay's path can carry a per-user id (Google's does); the client's
+ * name, because it is the program's and is how the line is found.
  *
  * Every value is cut short, the keys and redirects counted off after a few dozen, and
  * anything that is not a string or a list of them reduced to its type: the endpoint
@@ -160,4 +160,57 @@ function clip(value: unknown, length = 60): unknown {
   if (typeof value === 'string') return value.slice(0, length);
   if (Array.isArray(value)) return value.slice(0, 10).map((v) => (typeof v === 'string' ? v.slice(0, length) : typeof v));
   return typeof value;
+}
+
+/**
+ * Dynamic client registration, with two things done around Better Auth's own (MAK-224).
+ *
+ * Metadata a client wrote out empty is taken out before Better Auth sees it, and a refusal
+ * is logged with its reason; `withoutEmptyMetadata` and `registrationSummary` say why
+ * each. Both are done around the handler, from the route, rather than in the auth config's
+ * hooks, because Better Auth checks a request's body against its schema before any hook
+ * runs: an empty `contacts` was refused before a `before` hook could take it out, and an
+ * `after` hook never heard of the refusal. The hook that registers loopback clients as
+ * native (MAK-218) stays in the config; it reads only fields the schema has already
+ * accepted.
+ *
+ * `handler` is Better Auth's, passed in so this can be tested without one. A body that is
+ * not JSON goes through untouched, so the provider's own message for it is the one the
+ * client gets.
+ */
+export async function registerClient(
+  handler: (request: Request) => Promise<Response>,
+  request: Request,
+): Promise<Response> {
+  const text = await request.text();
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    body = undefined;
+  }
+  const trimmed = withoutEmptyMetadata(body);
+  const sent = trimmed ?? body;
+  // What was taken out, so a refusal still says whether empty metadata was part of it.
+  const emptied = trimmed ? Object.keys(body as Record<string, unknown>).filter((k) => !(k in trimmed)) : [];
+  const response = await handler(new Request(request, { body: trimmed ? JSON.stringify(trimmed) : text }));
+  // A 429 is this server's own rate limit, not the provider judging the client; logging
+  // those would be ten lines a minute from anyone who cared to send them.
+  if (response.status >= 400 && response.status !== 429) {
+    const answer = (await response
+      .clone()
+      .json()
+      .catch(() => null)) as { error?: unknown; error_description?: unknown; message?: unknown } | null;
+    console.warn(
+      '[oauth] registration refused',
+      JSON.stringify({
+        status: response.status,
+        error: answer?.error,
+        reason: answer?.error_description ?? answer?.message,
+        request: registrationSummary(sent),
+        emptied: emptied.length > 0 ? emptied.sort().slice(0, 40) : undefined,
+      }),
+    );
+  }
+  return response;
 }

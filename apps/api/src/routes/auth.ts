@@ -7,7 +7,7 @@ import { refuseGrantsWithoutAgreement } from './legal.js';
 import { previewRelayOrigin } from '../lib/preview-relay.js';
 import { canAutofill } from '../lib/jev.js';
 import { billingOf } from '../lib/paddle.js';
-import { registrationSummary, withoutEmptyMetadata } from '../lib/oauth-registration.js';
+import { registerClient } from '../lib/oauth-registration.js';
 import type { AppEnv, Env } from '../types.js';
 
 export const authRoutes = new Hono<AppEnv>()
@@ -15,7 +15,7 @@ export const authRoutes = new Hono<AppEnv>()
    * Client registration, around Better Auth's handler; see `registerClient`. It has to
    * come before the catch-all below, which would otherwise answer it first.
    */
-  .post('/auth/oauth2/register', (c) => registerClient(c.env, c.req.raw))
+  .post('/auth/oauth2/register', (c) => registerClient(getAuth(c.env).handler, c.req.raw))
   /**
    * Better Auth owns everything under /api/auth — the OAuth start and callback URLs,
    * sign-out, and session endpoints. It receives the raw Request and returns a Response.
@@ -93,54 +93,4 @@ export function instanceLabelOf(env: Pick<Env, 'INSTANCE_LABEL'>): string | unde
 export function instanceKindOf(env: Pick<Env, 'INSTANCE_KIND'>): InstanceKind | undefined {
   const kind = env.INSTANCE_KIND?.trim().toLowerCase();
   return (INSTANCE_KINDS as readonly string[]).includes(kind ?? '') ? (kind as InstanceKind) : undefined;
-}
-
-/**
- * Dynamic client registration, with two things done around Better Auth's own (MAK-224).
- *
- * Metadata a client wrote out empty is taken out before Better Auth sees it, and a refusal
- * is logged with its reason; `withoutEmptyMetadata` and `registrationSummary` say why
- * each. Both are here, around the handler, rather than in the auth config's hooks, because
- * Better Auth checks a request's body against its schema before any hook runs: an empty
- * `contacts` was refused before a `before` hook could take it out, and an `after` hook
- * never heard of the refusal. The hook that registers loopback clients as native
- * (MAK-218) stays in the config; it reads only fields the schema has already accepted.
- *
- * A body that is not JSON goes through untouched, so the provider's own message for it
- * is the one the client gets.
- */
-async function registerClient(env: Env, request: Request): Promise<Response> {
-  const text = await request.text();
-  let body: unknown;
-  try {
-    body = JSON.parse(text);
-  } catch {
-    body = undefined;
-  }
-  const trimmed = withoutEmptyMetadata(body);
-  const sent = trimmed ?? body;
-  // What was taken out, so a refusal still says whether empty metadata was part of it.
-  const emptied = trimmed ? Object.keys(body as Record<string, unknown>).filter((k) => !(k in trimmed)) : [];
-  const response = await getAuth(env).handler(
-    new Request(request, { body: trimmed ? JSON.stringify(trimmed) : text }),
-  );
-  // A 429 is this server's own rate limit, not the provider judging the client; logging
-  // those would be ten lines a minute from anyone who cared to send them.
-  if (response.status >= 400 && response.status !== 429) {
-    const answer = (await response
-      .clone()
-      .json()
-      .catch(() => null)) as { error?: unknown; error_description?: unknown; message?: unknown } | null;
-    console.warn(
-      '[oauth] registration refused',
-      JSON.stringify({
-        status: response.status,
-        error: answer?.error,
-        reason: answer?.error_description ?? answer?.message,
-        request: registrationSummary(sent),
-        emptied: emptied.length > 0 ? emptied.sort().slice(0, 40) : undefined,
-      }),
-    );
-  }
-  return response;
 }

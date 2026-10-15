@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { loopbackRegistration, registrationSummary, withoutEmptyMetadata } from './oauth-registration.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { loopbackRegistration, registerClient, registrationSummary, withoutEmptyMetadata } from './oauth-registration.js';
 
 const publicClient = (redirect_uris: unknown, extra: Record<string, unknown> = {}) => ({
   client_name: 'Acme Assistant',
@@ -136,5 +136,68 @@ describe('registrationSummary (MAK-224)', () => {
 
   it('says what it was given when it was not a body', () => {
     expect(registrationSummary(undefined)).toEqual({ body: 'undefined' });
+  });
+});
+
+describe('registerClient (MAK-224)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** A stand-in for Better Auth's handler: records what it was sent and answers `status`. */
+  function fakeHandler(status: number, answer: unknown = {}) {
+    const seen: string[] = [];
+    const handler = async (request: Request) => {
+      seen.push(await request.text());
+      return Response.json(answer, { status });
+    };
+    return { handler, seen };
+  }
+
+  const post = (body: string) =>
+    new Request('https://unbent.example/api/auth/oauth2/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+
+  it('sends the provider the body with its empty details taken out, and logs nothing on success', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { handler, seen } = fakeHandler(201, { client_id: 'abc' });
+    const res = await registerClient(handler, post(JSON.stringify({ redirect_uris: ['https://x.example/cb'], contacts: [], logo_uri: null })));
+    expect(res.status).toBe(201);
+    expect(JSON.parse(seen[0]!)).toEqual({ redirect_uris: ['https://x.example/cb'] });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('logs one line for a refusal, naming the reason and what was taken out', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { handler } = fakeHandler(400, { error: 'invalid_redirect_uri', error_description: 'must use https' });
+    const res = await registerClient(handler, post(JSON.stringify({ redirect_uris: ['http://x.example/cb'], contacts: [] })));
+    expect(res.status).toBe(400);
+    expect(warn).toHaveBeenCalledTimes(1);
+    const [label, line] = warn.mock.calls[0]!;
+    expect(label).toBe('[oauth] registration refused');
+    expect(JSON.parse(line as string)).toMatchObject({
+      status: 400,
+      error: 'invalid_redirect_uri',
+      reason: 'must use https',
+      request: { fields: ['redirect_uris'], redirect_hosts: ['x.example'] },
+      emptied: ['contacts'],
+    });
+  });
+
+  it('does not log the rate limit, which is this server refusing and not the provider', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { handler } = fakeHandler(429);
+    await registerClient(handler, post(JSON.stringify({ redirect_uris: ['https://x.example/cb'] })));
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('passes a body that is not JSON through unchanged, for the provider to answer', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { handler, seen } = fakeHandler(400, { message: 'Invalid JSON in request body' });
+    await registerClient(handler, post('not json {'));
+    expect(seen).toEqual(['not json {']);
   });
 });
