@@ -1,52 +1,62 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { noteFromFiles, titleFor } from './launch-files.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { QueryClient } from '@tanstack/react-query';
+import type { Note } from '@unbent/shared';
+import * as actions from './store/actions.js';
+import { resetFileNotesForTests } from './file-notes.js';
+import { launchFiles } from './launch-files.js';
 
+vi.mock('./store/actions.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./store/actions.js')>()),
+  createNote: vi.fn(),
+  uploadFile: vi.fn(),
+  saveNote: vi.fn(),
+  trashNotes: vi.fn(),
+}));
 vi.mock('./index-files.js', () => ({ indexUploadedFile: vi.fn() }));
 
-afterEach(() => vi.unstubAllGlobals());
+/**
+ * A launch is a drop on the list with nowhere to file it: one note per file, through the
+ * same routine (`file-notes.ts`, tested there), and the first one opened.
+ */
 
-/** Answers the three calls a launch makes: create, one PUT per file, then the body patch. */
-function stubApi() {
-  const calls: { method: string; url: string; body?: unknown }[] = [];
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (url: string, init: RequestInit = {}) => {
-      const method = init.method ?? 'GET';
-      calls.push({
-        method,
-        url,
-        body: typeof init.body === 'string' ? JSON.parse(init.body) : init.body,
-      });
-      if (method === 'POST') return Response.json({ id: 'n1', title: 'x', body: '' });
-      if (method === 'PUT') {
-        const name = decodeURIComponent((init.headers as Record<string, string>)['X-Filename'] ?? '');
-        return Response.json({ filename: name, path: `files/${name}`, indexing: 'server' });
-      }
-      return Response.json({ id: 'n1' });
-    }),
-  );
-  return calls;
-}
-
-describe('titleFor', () => {
-  it('drops the extension and nothing else', () => {
-    expect(titleFor('2026-09-18 Water bill.pdf')).toBe('2026-09-18 Water bill');
-    expect(titleFor('scan')).toBe('scan');
+let n = 0;
+beforeEach(() => {
+  n = 0;
+  resetFileNotesForTests();
+  vi.mocked(actions.createNote).mockImplementation(async (input) => {
+    const note: Note = { id: `n${++n}`, ...input, createdAt: 1, updatedAt: 1, fields: [] };
+    return note;
   });
+  vi.mocked(actions.uploadFile).mockImplementation(async (_id, file) => ({
+    filename: file.name,
+    contentType: file.type,
+    size: file.size,
+    path: `files/${file.name}`,
+    indexing: 'server' as const,
+  }));
+  vi.mocked(actions.saveNote).mockResolvedValue('queued');
 });
+afterEach(() => vi.clearAllMocks());
 
-describe('noteFromFiles', () => {
-  it('names the note after the first file and links every upload', async () => {
-    const calls = stubApi();
-    const id = await noteFromFiles([
+describe('launchFiles', () => {
+  it('makes a note per file, unfiled, and opens the first', async () => {
+    const opened: string[] = [];
+    const handle = launchFiles(new QueryClient(), (id) => opened.push(id));
+    await handle([
       new File(['%PDF'], 'Water bill.pdf', { type: 'application/pdf' }),
       new File(['png'], 'page 2.png', { type: 'image/png' }),
     ]);
-    expect(id).toBe('n1');
-    expect(calls.map((c) => c.method)).toEqual(['POST', 'PUT', 'PUT', 'PATCH']);
-    expect(calls[0]?.body).toEqual({ title: 'Water bill', body: '' });
-    expect(calls[3]?.body).toEqual({
-      body: '[Water bill.pdf](<files/Water bill.pdf>)\n\n![page 2.png](<files/page 2.png>)\n',
-    });
+    expect(vi.mocked(actions.createNote).mock.calls.map((c) => c[0])).toEqual([
+      { title: 'Water bill', body: '[Water bill.pdf](<files/Water bill.pdf>)\n', tags: [], notebook: null },
+      { title: 'page 2', body: '![page 2.png](<files/page 2.png>)\n', tags: [], notebook: null },
+    ]);
+    expect(opened).toEqual(['n1']);
+  });
+
+  it('opens nothing when no note could be made', async () => {
+    vi.mocked(actions.createNote).mockRejectedValue(new Error('refused'));
+    const opened: string[] = [];
+    await launchFiles(new QueryClient(), (id) => opened.push(id))([new File(['x'], 'a.pdf', { type: 'application/pdf' })]);
+    expect(opened).toEqual([]);
   });
 });
