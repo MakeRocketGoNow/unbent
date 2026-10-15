@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   accountDeletionOffered,
   configuredSocials,
+  getAuth,
   offeredProviders,
   providerOrigins,
   socialConfig,
@@ -345,5 +346,51 @@ describe('accountDeletionOffered', () => {
   /** Locally `sendEmail` prints the link, which is how the flow is worked on offline. */
   it('offers it in local development, where the link goes to the console', () => {
     expect(accountDeletionOffered(env({ APP_URL: 'http://localhost:5173' }))).toBe(true);
+  });
+});
+
+/**
+ * The D1 adapter's connection lock; see `database` in auth.ts. Kysely serialises every
+ * query of an adapter that reports one connection, and the lock lives on the Better Auth
+ * instance every request of an isolate shares. A query that never settles — a request
+ * cancelled mid-flight — then holds every later one. `patches/` makes the D1 adapter
+ * report several connections, and this is what fails if an upgrade brings the lock back.
+ *
+ * The fake D1 answers nothing to its first query and everything to the rest. Unpatched,
+ * the second query never reaches it, so the answer is the proof, not
+ * the timeout, which only keeps a regression from hanging the suite.
+ */
+describe('the D1 adapter runs queries concurrently', () => {
+  it('lets a query through while an earlier one has not settled', async () => {
+    // Plugins query the store while the instance is set up (the MCP plugin reads its
+    // resource row), so it is the first *session* query that never answers, not the first.
+    let calls = 0;
+    const statement = (sql: string) => {
+      const self = {
+        bind: () => self,
+        all: () => (/\bsession\b/i.test(sql) && ++calls === 1 ? new Promise<never>(() => {}) : Promise.resolve({ results: [], meta: {} })),
+        first: async () => null,
+        run: async () => ({ results: [], meta: {} }),
+        raw: async () => [],
+      };
+      return self;
+    };
+    const DB = { prepare: statement, batch: async () => [], exec: async () => ({}), withSession: () => DB, dump: async () => new ArrayBuffer(0) };
+    // Deployed shape: on a localhost `APP_URL` Better Auth would check the schema first,
+    // through this same adapter, and that check would be the query that never settles.
+    const auth = getAuth(env({ BETTER_AUTH_SECRET: 'test-secret', DB } as unknown as Record<string, string>));
+    const ctx = (await auth.$context) as unknown as { adapter: { findOne: (q: unknown) => Promise<unknown> } };
+    const find = () => ctx.adapter.findOne({ model: 'session', where: [{ field: 'token', value: 'never' }] });
+
+    void find().catch(() => {});
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const second = await Promise.race([
+      find().then(() => 'answered'),
+      new Promise<string>((resolve) => {
+        timer = setTimeout(() => resolve('still waiting'), 2_000);
+      }),
+    ]).finally(() => clearTimeout(timer));
+    expect(second).toBe('answered');
+    expect(calls).toBe(2);
   });
 });

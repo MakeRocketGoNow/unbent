@@ -33,6 +33,19 @@ export const app = new Hono<AppEnv>();
 
 app.use('*', logger());
 
+/**
+ * Health is mounted ahead of the session check, so it never waits on one. It answers
+ * whether the Worker and D1 are reachable, which is all the web app's connectivity check
+ * asks of it (`connectivity.ts`: any HTTP answer, within a timeout, means online), and it
+ * reads nothing of the user. Behind the session middleware it inherited every stall of the
+ * auth store — on 2026-10-13 a wedged session check made health time out too, and the
+ * app told a person with a working connection that they were offline. Hono applies
+ * middleware only to routes registered after it, so this placement is the exemption. It
+ * is outside the `routes` chain below, so `AppType` does not carry it; the web app calls
+ * it with a plain `fetch` (connectivity.ts).
+ */
+app.route('/api', health);
+
 // Resolves the session for every request; individual routes opt into requiring it.
 app.use('*', sessionMiddleware);
 
@@ -70,7 +83,6 @@ const routes = app
    * the same requirement of a matching `run_worker_first` entry in wrangler.toml.
    */
   .route('/', ingest)
-  .route('/api', health)
   .route('/api', authRoutes)
   .route('/api', notes)
   .route('/api', notebooks)
