@@ -478,26 +478,41 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
     });
   }
 
+  /**
+   * The order the person last chose, held until the library agrees with it.
+   *
+   * Writing the move into the query cache was not enough: the fields here are read from
+   * the device's library, which learns the new order only when the change feed brings it,
+   * a beat after the request. `run`'s refetch in between read the old order back, so the
+   * rows jumped back and then forward again. The order is held here instead, over
+   * whatever the query answers, and let go once an answer has it — or once the write
+   * fails, when the next answer is what the server still has.
+   */
+  const [heldOrder, setHeldOrder] = useState<string[] | null>(null);
+  const answered = fields.data ?? [];
+  const list = heldOrder ? inOrder(answered, heldOrder) : answered;
+
+  useEffect(() => {
+    if (heldOrder && sameOrder(answered, heldOrder)) setHeldOrder(null);
+  }, [answered, heldOrder]);
+
   /** Optimistic: the row moves now, and the order is written behind it. */
   function move(index: number, by: -1 | 1) {
-    const current = fields.data ?? [];
     const target = index + by;
-    if (target < 0 || target >= current.length) return;
-    const next = [...current];
+    if (target < 0 || target >= list.length) return;
+    const next = [...list];
     [next[index], next[target]] = [next[target]!, next[index]!];
-    queryClient.setQueryData(
-      keys.notebookFieldCounts(notebookId),
-      next.map((f, position) => ({ ...f, position })),
-    );
-    void run(() =>
-      api.reorderNotebookFields(
-        notebookId,
-        next.map((f) => f.id),
-      ),
-    );
+    const ids = next.map((f) => f.id);
+    setHeldOrder(ids);
+    void run(async () => {
+      try {
+        await api.reorderNotebookFields(notebookId, ids);
+      } catch (err) {
+        setHeldOrder(null);
+        throw err;
+      }
+    });
   }
-
-  const list = fields.data ?? [];
 
   return (
     <div className="panel notebook-edit">
@@ -1129,4 +1144,17 @@ function CurrencyPicker({
       <span className="muted small">Shown as {formatCurrency(1234.5, currency)}.</span>
     </div>
   );
+}
+
+/** `fields` in the order `ids` names; a field `ids` does not name (one just added) goes last. */
+function inOrder(fields: FieldDef[], ids: string[]): FieldDef[] {
+  const rank = new Map(ids.map((id, i) => [id, i]));
+  return [...fields].sort((a, b) => (rank.get(a.id) ?? ids.length) - (rank.get(b.id) ?? ids.length));
+}
+
+/** Whether `fields` already stand in `ids`' order, ignoring ids no longer among them. */
+function sameOrder(fields: FieldDef[], ids: string[]): boolean {
+  const present = new Set(fields.map((f) => f.id));
+  const wanted = ids.filter((id) => present.has(id));
+  return wanted.length === fields.length && wanted.every((id, i) => fields[i]!.id === id);
 }
