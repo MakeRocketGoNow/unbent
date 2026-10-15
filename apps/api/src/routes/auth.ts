@@ -7,7 +7,7 @@ import { refuseGrantsWithoutAgreement } from './legal.js';
 import { previewRelayOrigin } from '../lib/preview-relay.js';
 import { canAutofill } from '../lib/jev.js';
 import { billingOf } from '../lib/paddle.js';
-import { registrationSummary } from '../lib/oauth-registration.js';
+import { registrationSummary, withoutEmptyMetadata } from '../lib/oauth-registration.js';
 import type { AppEnv, Env } from '../types.js';
 
 export const authRoutes = new Hono<AppEnv>()
@@ -92,21 +92,32 @@ export function instanceKindOf(env: Pick<Env, 'INSTANCE_KIND'>): InstanceKind | 
 }
 
 /**
- * Dynamic client registration, with every refusal logged with its reason (MAK-224).
+ * Dynamic client registration, with two things done around Better Auth's own (MAK-224).
  *
- * The endpoint is open to anyone and its refusals went unrecorded, so when Gemini could not
- * connect, all anyone had was its own "automatic registration with this server failed" —
- * not which rule refused it. `registrationSummary` says what goes in the line and what is
- * kept out of it.
+ * Metadata a client wrote out empty is taken out before Better Auth sees it, and a refusal
+ * is logged with its reason; `withoutEmptyMetadata` and `registrationSummary` say why
+ * each. Both are here, around the handler, rather than in the auth config's hooks, because
+ * Better Auth checks a request's body against its schema before any hook runs: an empty
+ * `contacts` was refused before a `before` hook could take it out, and an `after` hook
+ * never heard of the refusal. The hook that registers loopback clients as native
+ * (MAK-218) stays in the config; it reads only fields the schema has already accepted.
  *
- * Here, around the handler, rather than in an `after` hook in the auth config, because
- * Better Auth checks a request's body against its schema before any hook runs: a hook
- * never hears of a refusal by the schema, which is the likeliest kind for a client this
- * server has not met.
+ * A body that is not JSON goes through untouched, so the provider's own message for it
+ * is the one the client gets.
  */
 async function registerClient(env: Env, request: Request): Promise<Response> {
-  const sent = await request.clone().json().catch(() => undefined);
-  const response = await getAuth(env).handler(request);
+  const text = await request.text();
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    body = undefined;
+  }
+  const trimmed = withoutEmptyMetadata(body);
+  const sent = trimmed ?? body;
+  const response = await getAuth(env).handler(
+    new Request(request, { body: trimmed ? JSON.stringify(trimmed) : text }),
+  );
   if (response.status >= 400) {
     const answer = (await response
       .clone()

@@ -78,6 +78,33 @@ export function loopbackRegistration(body: unknown): RegistrationDecision {
 }
 
 /**
+ * Registration metadata with every empty value taken out: `null`, `""` and `[]` (MAK-224).
+ *
+ * RFC 7591 metadata is optional field by field, and a client that has nothing to say for
+ * one is meant to leave it out. Plenty of clients write it out empty instead — a struct
+ * serialized with every field present, a Pydantic model dumped without `exclude_none` —
+ * and the provider's schema reads `"contacts": []` as a list that is too short and
+ * `"client_uri": null` as a string that is not a string, and refuses the whole
+ * registration. The client is then told only that registration failed, and Gemini, which
+ * reported exactly that, asks the person for a client id and secret they have no way of
+ * getting.
+ *
+ * Absent is the meaning every one of these values has, and absent is what the provider
+ * fills its defaults in for, so this changes no decision it makes: an empty
+ * `redirect_uris` taken out is still refused as missing, and an empty `scope` gets the
+ * same default scopes an omitted one does. Only the top level is touched; a non-empty
+ * value is passed through exactly as sent, for the provider's own checks.
+ *
+ * Returns null when there was nothing to take out, so the hook leaves the body alone.
+ */
+export function withoutEmptyMetadata(body: unknown): Record<string, unknown> | null {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const entries = Object.entries(body as Record<string, unknown>);
+  const kept = entries.filter(([, v]) => !(v === null || v === '' || (Array.isArray(v) && v.length === 0)));
+  return kept.length === entries.length ? null : Object.fromEntries(kept);
+}
+
+/**
  * What the log says about a refused registration (MAK-224): enough to tell which rule
  * refused which kind of client, and nothing that names a person.
  *
