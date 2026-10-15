@@ -12,12 +12,16 @@ import type { AppEnv, Env } from '../types.js';
 
 export const authRoutes = new Hono<AppEnv>()
   /**
+   * Client registration, around Better Auth's handler; see `registerClient`. It has to
+   * come before the catch-all below, which would otherwise answer it first.
+   */
+  .post('/auth/oauth2/register', (c) => registerClient(c.env, c.req.raw))
+  /**
    * Better Auth owns everything under /api/auth — the OAuth start and callback URLs,
    * sign-out, and session endpoints. It receives the raw Request and returns a Response.
    * Two of them, the ones that grant a program a credential, first need the account to
    * have agreed to the terms; see `refuseGrantsWithoutAgreement`.
    */
-  .post('/auth/oauth2/register', (c) => registerClient(c.env, c.req.raw))
   .all('/auth/*', refuseGrantsWithoutAgreement, (c) => getAuth(c.env).handler(c.req.raw))
 
   /** Who am I? Null when there is nobody, 503 when we could not tell — see `whoAmI`. */
