@@ -210,6 +210,14 @@ describe('registerClient (MAK-224)', () => {
     expect(warn).toHaveBeenCalledTimes(1);
   });
 
+  it('calls a server error a failure, not a refusal', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { handler } = fakeHandler(500, { message: 'Internal Server Error' });
+    await registerClient(handler, post(JSON.stringify({ redirect_uris: ['https://x.example/cb'] })));
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![0]).toBe('[oauth] registration failed');
+  });
+
   it('passes a body that is not JSON through unchanged, for the provider to answer', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { handler, seen } = fakeHandler(400, { message: 'Invalid JSON in request body' });

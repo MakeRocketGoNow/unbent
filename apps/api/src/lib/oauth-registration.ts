@@ -203,14 +203,17 @@ export async function registerClient(
         )
       : await handler(new Request(request, { body: sent === body ? text : JSON.stringify(sent) }));
   // A 429 is this server's own rate limit, not the provider judging the client; logging
-  // those would be ten lines a minute from anyone who cared to send them.
-  if (response.status >= 400 && response.status !== 429) {
+  // those would be ten lines a minute from anyone who cared to send them. A 5xx is the
+  // server failing, not the client refused, and says so: a database error read as a
+  // refusal sends whoever reads the line after the wrong cause.
+  const failed = response.status >= 500;
+  if (failed || (response.status >= 400 && response.status !== 429)) {
     const answer = (await response
       .clone()
       .json()
       .catch(() => null)) as { error?: unknown; error_description?: unknown; message?: unknown } | null;
     console.warn(
-      '[oauth] registration refused',
+      failed ? '[oauth] registration failed' : '[oauth] registration refused',
       JSON.stringify({
         status: response.status,
         error: answer?.error,
