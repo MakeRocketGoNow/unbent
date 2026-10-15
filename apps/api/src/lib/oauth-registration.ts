@@ -163,16 +163,17 @@ function clip(value: unknown, length = 60): unknown {
 }
 
 /**
- * Dynamic client registration, with two things done around Better Auth's own (MAK-224).
+ * Dynamic client registration, with what this server adds done around Better Auth's own.
  *
- * Metadata a client wrote out empty is taken out before Better Auth sees it, and a refusal
- * is logged with its reason; `withoutEmptyMetadata` and `registrationSummary` say why
- * each. Both are done around the handler, from the route, rather than in the auth config's
+ * Metadata a client wrote out empty is taken out before Better Auth sees it (MAK-224), a
+ * client that redirects to this machine is registered as native or told why not
+ * (MAK-218), and a refusal is logged with its reason (MAK-224); `withoutEmptyMetadata`,
+ * `loopbackRegistration` and `registrationSummary` say why each. Both are done around the handler, from the route, rather than in the auth config's
  * hooks, because Better Auth checks a request's body against its schema before any hook
  * runs: an empty `contacts` was refused before a `before` hook could take it out, and an
- * `after` hook never heard of the refusal. The hook that registers loopback clients as
- * native (MAK-218) stays in the config; it reads only fields the schema has already
- * accepted.
+ * `after` hook never heard of the refusal. The loopback rules (MAK-218) used to be a
+ * `before` hook too, and run here now, after the empty details are taken out, so every
+ * change made to a registration is made in this one function, in the order read below.
  *
  * `handler` is Better Auth's, passed in so this can be tested without one. A body that is
  * not JSON goes through untouched, so the provider's own message for it is the one the
@@ -190,10 +191,17 @@ export async function registerClient(
     body = undefined;
   }
   const trimmed = withoutEmptyMetadata(body);
-  const sent = trimmed ?? body;
   // What was taken out, so a refusal still says whether empty metadata was part of it.
   const emptied = trimmed ? Object.keys(body as Record<string, unknown>).filter((k) => !(k in trimmed)) : [];
-  const response = await handler(new Request(request, { body: trimmed ? JSON.stringify(trimmed) : text }));
+  const decision = loopbackRegistration(trimmed ?? body);
+  const sent = decision?.kind === 'native' ? decision.body : (trimmed ?? body);
+  const response =
+    decision?.kind === 'refuse'
+      ? Response.json(
+          { error: 'invalid_redirect_uri', error_description: decision.message },
+          { status: 400, headers: { 'Cache-Control': 'no-store' } },
+        )
+      : await handler(new Request(request, { body: sent === body ? text : JSON.stringify(sent) }));
   // A 429 is this server's own rate limit, not the provider judging the client; logging
   // those would be ten lines a minute from anyone who cared to send them.
   if (response.status >= 400 && response.status !== 429) {

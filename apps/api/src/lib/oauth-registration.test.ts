@@ -194,6 +194,22 @@ describe('registerClient (MAK-224)', () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
+  it('registers a public loopback client as native, and refuses a web one without asking the provider (MAK-218)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { handler, seen } = fakeHandler(201);
+    await registerClient(handler, post(JSON.stringify(publicClient(['http://127.0.0.1:53682/callback'], { contacts: [] }))));
+    expect(JSON.parse(seen[0]!)).toEqual({ ...publicClient(['http://127.0.0.1:53682/callback']), application_type: 'native' });
+
+    const res = await registerClient(
+      handler,
+      post(JSON.stringify(publicClient(['http://127.0.0.1:53682/callback'], { token_endpoint_auth_method: 'client_secret_basic' }))),
+    );
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toBe('invalid_redirect_uri');
+    expect(seen).toHaveLength(1);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
   it('passes a body that is not JSON through unchanged, for the provider to answer', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const { handler, seen } = fakeHandler(400, { message: 'Invalid JSON in request body' });
