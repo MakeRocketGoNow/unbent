@@ -383,10 +383,13 @@ describe('the D1 adapter runs queries concurrently', () => {
     const find = () => ctx.adapter.findOne({ model: 'session', where: [{ field: 'token', value: 'never' }] });
 
     void find().catch(() => {});
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const second = await Promise.race([
       find().then(() => 'answered'),
-      new Promise<string>((resolve) => setTimeout(() => resolve('still waiting'), 2_000)),
-    ]);
+      new Promise<string>((resolve) => {
+        timer = setTimeout(() => resolve('still waiting'), 2_000);
+      }),
+    ]).finally(() => clearTimeout(timer));
     expect(second).toBe('answered');
     expect(calls).toBe(2);
   });
