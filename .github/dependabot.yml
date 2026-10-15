@@ -80,16 +80,6 @@ updates:
         patterns:
           - '*'
     open-pull-requests-limit: 0
-    # Not `@better-auth/utils` at all, while the root `pnpm.overrides` pins it. Every
-    # `better-auth` package requires exactly 0.4.2 while `better-call` asks for ^0.5.0, and
-    # the override is what keeps one copy in the graph. The apps used to declare 0.4.2
-    # directly as well, and Dependabot bumped those manifests without touching the
-    # override, producing a lockfile that failed `--frozen-lockfile` in every
-    # minor-and-patch group. They no longer declare it; this keeps it from coming back by
-    # any other route. Lift it with the override, once upstream agrees on a range. `ignore`
-    # covers version updates only, so an advisory against utils still opens a security
-    # update.
-    #
     # Not `@journeyapps/wa-sqlite` 2, until `@tanstack/browser-db-sqlite-persistence` peers
     # on it. The local library and the outbox open their SQLite file through that adapter,
     # which peers on ^1.4.1 (as of 0.2.32, 2026-10); pnpm installs a 2.x beside it with
@@ -97,7 +87,6 @@ updates:
     # no unit test reaches. The bump was merged once (#336) and reverted. Lift this when the
     # adapter's peer range takes the new major, and run `pnpm gate:offline` on the bump.
     ignore:
-      - dependency-name: '@better-auth/utils'
       - dependency-name: '@journeyapps/wa-sqlite'
         update-types: ['version-update:semver-major']
 

@@ -65,13 +65,9 @@ runtime modules to that. vite-plugin-pwa 2.0.0 still carries Workbox 7.4.1.
 ## Auth: Better Auth
 
 **The family moves in lockstep:** `better-auth`, `@better-auth/mcp`,
-`@better-auth/oauth-provider` and `@better-auth/passkey`, all at one version (1.7.7). A core
+`@better-auth/oauth-provider` and `@better-auth/passkey`, all at one version (1.7.10). A core
 a version ahead of its plugins breaks the types in `apps/api/src/auth.ts`. `passkey` is
 written exactly, the others with `^`; move them all together either way.
-
-**`@better-auth/utils` 0.4.2, through the root `pnpm.overrides`.** Every Better Auth package
-requires exactly 0.4.2 while `better-call` asks for `^0.5.0`; the override keeps one copy in
-the graph. No app declares it. Lift it once upstream agrees on a range (MAK-143).
 
 ## Tooling
 
