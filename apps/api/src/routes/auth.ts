@@ -7,9 +7,15 @@ import { refuseGrantsWithoutAgreement } from './legal.js';
 import { previewRelayOrigin } from '../lib/preview-relay.js';
 import { canAutofill } from '../lib/jev.js';
 import { billingOf } from '../lib/paddle.js';
+import { registerClient } from '../lib/oauth-registration.js';
 import type { AppEnv, Env } from '../types.js';
 
 export const authRoutes = new Hono<AppEnv>()
+  /**
+   * Client registration, around Better Auth's handler; see `registerClient`. It has to
+   * come before the catch-all below, which would otherwise answer it first.
+   */
+  .post('/auth/oauth2/register', (c) => registerClient(getAuth(c.env).handler, c.req.raw))
   /**
    * Better Auth owns everything under /api/auth — the OAuth start and callback URLs,
    * sign-out, and session endpoints. It receives the raw Request and returns a Response.

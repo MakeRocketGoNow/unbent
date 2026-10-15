@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { loopbackRegistration } from './oauth-registration.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { loopbackRegistration, registerClient, registrationSummary, withoutEmptyMetadata } from './oauth-registration.js';
 
 const publicClient = (redirect_uris: unknown, extra: Record<string, unknown> = {}) => ({
   client_name: 'Acme Assistant',
@@ -51,5 +51,177 @@ describe('loopbackRegistration (MAK-218)', () => {
   it('does not take a lookalike host for this machine', () => {
     expect(loopbackRegistration(publicClient(['http://localhost.example.com/cb']))).toBeNull();
     expect(loopbackRegistration(publicClient(['http://127.0.0.1.example.com/cb']))).toBeNull();
+  });
+});
+
+describe('withoutEmptyMetadata (MAK-224)', () => {
+  it('takes out the empty values a client wrote instead of leaving fields out', () => {
+    const body = {
+      client_name: 'Acme Assistant',
+      redirect_uris: ['https://relay.example.com/r/abc'],
+      token_endpoint_auth_method: 'client_secret_basic',
+      client_uri: null,
+      logo_uri: '',
+      contacts: [],
+      scope: null,
+    };
+    expect(withoutEmptyMetadata(body)).toEqual({
+      client_name: 'Acme Assistant',
+      redirect_uris: ['https://relay.example.com/r/abc'],
+      token_endpoint_auth_method: 'client_secret_basic',
+    });
+  });
+
+  it('leaves a body with nothing empty, and anything that is not a body, alone', () => {
+    expect(withoutEmptyMetadata(publicClient(['https://example.com/cb']))).toBeNull();
+    expect(withoutEmptyMetadata(null)).toBeNull();
+    expect(withoutEmptyMetadata('text')).toBeNull();
+    expect(withoutEmptyMetadata([null])).toBeNull();
+  });
+
+  it('keeps a choice written out empty, so the provider refuses it rather than picking a default', () => {
+    const body = {
+      redirect_uris: ['https://relay.example.com/r/abc'],
+      token_endpoint_auth_method: '',
+      application_type: '',
+      grant_types: [],
+      response_types: [],
+      logo_uri: '',
+    };
+    expect(withoutEmptyMetadata(body)).toEqual({
+      redirect_uris: ['https://relay.example.com/r/abc'],
+      token_endpoint_auth_method: '',
+      application_type: '',
+      grant_types: [],
+      response_types: [],
+    });
+    // Null is how a serializer writes a field nobody set, choice or not.
+    expect(withoutEmptyMetadata({ token_endpoint_auth_method: null, application_type: null })).toEqual({});
+  });
+
+  it('passes non-empty values through as sent, for the provider to judge', () => {
+    // A false, a zero and a list holding an empty string are values, not absences.
+    const body = { require_pkce: false, client_secret_expires_at: 0, contacts: [''], jwks: {}, scope: null };
+    expect(withoutEmptyMetadata(body)).toEqual({ require_pkce: false, client_secret_expires_at: 0, contacts: [''], jwks: {} });
+  });
+});
+
+describe('registrationSummary (MAK-224)', () => {
+  it('names redirect hosts, never the paths a relay keeps per-user ids in', () => {
+    const summary = registrationSummary(
+      publicClient(['https://relay.example.com/r/user-1234', 'https://relay.example.com/r/user-5678', 'not a uri']),
+    );
+    expect(summary).toMatchObject({
+      client_name: 'Acme Assistant',
+      token_endpoint_auth_method: 'none',
+      grant_types: ['authorization_code', 'refresh_token'],
+      response_types: ['code'],
+      redirect_hosts: ['relay.example.com', '(not a URI)'],
+      redirect_count: 3,
+    });
+    expect(JSON.stringify(summary)).not.toContain('user-1234');
+  });
+
+  it('bounds what it copies, since anyone can send the request', () => {
+    const summary = registrationSummary({
+      client_name: 'x'.repeat(500),
+      scope: 'y'.repeat(5000),
+      grant_types: Array.from({ length: 100 }, () => 'z'.repeat(500)),
+      token_endpoint_auth_method: { nested: 'w'.repeat(500) },
+      ...Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`k${i}`, 1])),
+    });
+    expect(JSON.stringify(summary).length).toBeLessThan(5000);
+    expect(summary.token_endpoint_auth_method).toBe('object');
+  });
+
+  it('says what it was given when it was not a body', () => {
+    expect(registrationSummary(undefined)).toEqual({ body: 'undefined' });
+  });
+});
+
+describe('registerClient (MAK-224)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** A stand-in for Better Auth's handler: records what it was sent and answers `status`. */
+  function fakeHandler(status: number, answer: unknown = {}) {
+    const seen: string[] = [];
+    const handler = async (request: Request) => {
+      seen.push(await request.text());
+      return Response.json(answer, { status });
+    };
+    return { handler, seen };
+  }
+
+  const post = (body: string) =>
+    new Request('https://unbent.example/api/auth/oauth2/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+
+  it('sends the provider the body with its empty details taken out, and logs nothing on success', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { handler, seen } = fakeHandler(201, { client_id: 'abc' });
+    const res = await registerClient(handler, post(JSON.stringify({ redirect_uris: ['https://x.example/cb'], contacts: [], logo_uri: null })));
+    expect(res.status).toBe(201);
+    expect(JSON.parse(seen[0]!)).toEqual({ redirect_uris: ['https://x.example/cb'] });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('logs one line for a refusal, naming the reason and what was taken out', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { handler } = fakeHandler(400, { error: 'invalid_redirect_uri', error_description: 'must use https' });
+    const res = await registerClient(handler, post(JSON.stringify({ redirect_uris: ['http://x.example/cb'], contacts: [] })));
+    expect(res.status).toBe(400);
+    expect(warn).toHaveBeenCalledTimes(1);
+    const [label, line] = warn.mock.calls[0]!;
+    expect(label).toBe('[oauth] registration refused');
+    expect(JSON.parse(line as string)).toMatchObject({
+      status: 400,
+      error: 'invalid_redirect_uri',
+      reason: 'must use https',
+      request: { fields: ['redirect_uris'], redirect_hosts: ['x.example'] },
+      emptied: ['contacts'],
+    });
+  });
+
+  it('does not log the rate limit, which is this server refusing and not the provider', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { handler } = fakeHandler(429);
+    await registerClient(handler, post(JSON.stringify({ redirect_uris: ['https://x.example/cb'] })));
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('registers a public loopback client as native, and refuses a web one without asking the provider (MAK-218)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { handler, seen } = fakeHandler(201);
+    await registerClient(handler, post(JSON.stringify(publicClient(['http://127.0.0.1:53682/callback'], { contacts: [] }))));
+    expect(JSON.parse(seen[0]!)).toEqual({ ...publicClient(['http://127.0.0.1:53682/callback']), application_type: 'native' });
+
+    const res = await registerClient(
+      handler,
+      post(JSON.stringify(publicClient(['http://127.0.0.1:53682/callback'], { token_endpoint_auth_method: 'client_secret_basic' }))),
+    );
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toBe('invalid_redirect_uri');
+    expect(seen).toHaveLength(1);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls a server error a failure, not a refusal', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { handler } = fakeHandler(500, { message: 'Internal Server Error' });
+    await registerClient(handler, post(JSON.stringify({ redirect_uris: ['https://x.example/cb'] })));
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![0]).toBe('[oauth] registration failed');
+  });
+
+  it('passes a body that is not JSON through unchanged, for the provider to answer', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { handler, seen } = fakeHandler(400, { message: 'Invalid JSON in request body' });
+    await registerClient(handler, post('not json {'));
+    expect(seen).toEqual(['not json {']);
   });
 });

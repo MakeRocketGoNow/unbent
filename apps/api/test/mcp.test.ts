@@ -260,6 +260,30 @@ describe('mcp endpoint', () => {
     expect(body.error_description).not.toContain('non-loopback');
   });
 
+  it('registers a confidential web client that wrote its unset metadata out empty (MAK-224)', async () => {
+    const res = await fetch(`${BASE}/api/auth/oauth2/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
+      body: JSON.stringify({
+        client_name: 'Relay Assistant',
+        redirect_uris: ['https://relay.example.com/r/connector-1'],
+        grant_types: ['authorization_code', 'refresh_token'],
+        response_types: ['code'],
+        token_endpoint_auth_method: 'client_secret_basic',
+        scope: 'openid profile email offline_access',
+        client_uri: null,
+        logo_uri: '',
+        contacts: [],
+        post_logout_redirect_uris: [],
+      }),
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.client_id).toEqual(expect.any(String));
+    expect(body.client_secret).toEqual(expect.any(String));
+    expect(body.token_endpoint_auth_method).toBe('client_secret_basic');
+  });
+
   it('refuses a token that is not a token', async () => {
     const { status } = await mcp('not-a-real-token', 'tools/list');
     expect(status).toBe(401);

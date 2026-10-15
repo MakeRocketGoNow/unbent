@@ -1,5 +1,5 @@
 import { betterAuth } from 'better-auth';
-import { APIError, createAuthMiddleware } from 'better-auth/api';
+import { APIError } from 'better-auth/api';
 import { bearer, deviceAuthorization, emailOTP, jwt, oneTimeToken } from 'better-auth/plugins';
 import { mcp } from '@better-auth/mcp';
 import { passkey } from '@better-auth/passkey';
@@ -8,7 +8,6 @@ import { SIGNUPS_CLOSED_MESSAGE, type AuthProvider } from '@unbent/shared';
 import type { Env } from './types.js';
 import { canSendEmail, sendEmail } from './lib/email.js';
 import { signInCodeEmail } from './lib/sign-in-code-email.js';
-import { loopbackRegistration } from './lib/oauth-registration.js';
 import { deleteKeys } from './lib/blobs.js';
 import { ensureDirectoryRow } from './lib/directory.js';
 import { ensurePlanRow } from './lib/plan.js';
@@ -690,23 +689,6 @@ function createAuth(env: Env): AuthInstance {
      * the isolation suite signs actors in far faster than three times in ten seconds.
      */
     rateLimit: { storage: 'database' },
-    hooks: {
-      /**
-       * A stock MCP client that signs in through a local redirect registers as the native
-       * client it is, and a client refused for a loopback redirect is told why and what to
-       * send (MAK-218). The rules, and why they stop where they do, are in
-       * `loopbackRegistration`.
-       */
-      before: createAuthMiddleware(async (ctx) => {
-        if (ctx.path !== '/oauth2/register') return;
-        const decision = loopbackRegistration(ctx.body);
-        if (!decision) return;
-        if (decision.kind === 'refuse') {
-          throw new APIError('BAD_REQUEST', { error: 'invalid_redirect_uri', error_description: decision.message });
-        }
-        return { context: { body: decision.body } };
-      }),
-    },
     advanced: {
       // The SPA and API are same-origin in both dev and production, so a host-only
       // cookie is sufficient and avoids SameSite=None.
