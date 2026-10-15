@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loopbackRegistration } from './oauth-registration.js';
+import { loopbackRegistration, registrationSummary } from './oauth-registration.js';
 
 const publicClient = (redirect_uris: unknown, extra: Record<string, unknown> = {}) => ({
   client_name: 'Acme Assistant',
@@ -51,5 +51,25 @@ describe('loopbackRegistration (MAK-218)', () => {
   it('does not take a lookalike host for this machine', () => {
     expect(loopbackRegistration(publicClient(['http://localhost.example.com/cb']))).toBeNull();
     expect(loopbackRegistration(publicClient(['http://127.0.0.1.example.com/cb']))).toBeNull();
+  });
+});
+
+describe('registrationSummary (MAK-224)', () => {
+  it('names redirect hosts, never the paths a relay keeps per-user ids in', () => {
+    const summary = registrationSummary(
+      publicClient(['https://relay.example.com/r/user-1234', 'https://relay.example.com/r/user-5678', 'not a uri']),
+    );
+    expect(summary).toMatchObject({
+      client_name: 'Acme Assistant',
+      token_endpoint_auth_method: 'none',
+      grant_types: ['authorization_code', 'refresh_token'],
+      redirect_hosts: ['relay.example.com', '(not a URI)'],
+      redirect_count: 3,
+    });
+    expect(JSON.stringify(summary)).not.toContain('user-1234');
+  });
+
+  it('says what it was given when it was not a body', () => {
+    expect(registrationSummary(undefined)).toEqual({ body: 'undefined' });
   });
 });

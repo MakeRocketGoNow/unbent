@@ -7,6 +7,7 @@ import { refuseGrantsWithoutAgreement } from './legal.js';
 import { previewRelayOrigin } from '../lib/preview-relay.js';
 import { canAutofill } from '../lib/jev.js';
 import { billingOf } from '../lib/paddle.js';
+import { registrationSummary } from '../lib/oauth-registration.js';
 import type { AppEnv, Env } from '../types.js';
 
 export const authRoutes = new Hono<AppEnv>()
@@ -16,6 +17,7 @@ export const authRoutes = new Hono<AppEnv>()
    * Two of them, the ones that grant a program a credential, first need the account to
    * have agreed to the terms; see `refuseGrantsWithoutAgreement`.
    */
+  .post('/auth/oauth2/register', (c) => registerClient(c.env, c.req.raw))
   .all('/auth/*', refuseGrantsWithoutAgreement, (c) => getAuth(c.env).handler(c.req.raw))
 
   /** Who am I? Null when there is nobody, 503 when we could not tell — see `whoAmI`. */
@@ -87,4 +89,38 @@ export function instanceLabelOf(env: Pick<Env, 'INSTANCE_LABEL'>): string | unde
 export function instanceKindOf(env: Pick<Env, 'INSTANCE_KIND'>): InstanceKind | undefined {
   const kind = env.INSTANCE_KIND?.trim().toLowerCase();
   return (INSTANCE_KINDS as readonly string[]).includes(kind ?? '') ? (kind as InstanceKind) : undefined;
+}
+
+/**
+ * Dynamic client registration, with every refusal logged with its reason (MAK-224).
+ *
+ * The endpoint is open to anyone and its refusals went unrecorded, so when Gemini could not
+ * connect, all anyone had was its own "automatic registration with this server failed" —
+ * not which rule refused it. `registrationSummary` says what goes in the line and what is
+ * kept out of it.
+ *
+ * Here, around the handler, rather than in an `after` hook in the auth config, because
+ * Better Auth checks a request's body against its schema before any hook runs: a hook
+ * never hears of a refusal by the schema, which is the likeliest kind for a client this
+ * server has not met.
+ */
+async function registerClient(env: Env, request: Request): Promise<Response> {
+  const sent = await request.clone().json().catch(() => undefined);
+  const response = await getAuth(env).handler(request);
+  if (response.status >= 400) {
+    const answer = (await response
+      .clone()
+      .json()
+      .catch(() => null)) as { error?: unknown; error_description?: unknown; message?: unknown } | null;
+    console.warn(
+      '[oauth] registration refused',
+      JSON.stringify({
+        status: response.status,
+        error: answer?.error,
+        reason: answer?.error_description ?? answer?.message,
+        request: registrationSummary(sent),
+      }),
+    );
+  }
+  return response;
 }
