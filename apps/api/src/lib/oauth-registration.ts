@@ -95,7 +95,7 @@ export function loopbackRegistration(body: unknown): RegistrationDecision {
  * same default scopes an omitted one does. Only the top level is touched; a non-empty
  * value is passed through exactly as sent, for the provider's own checks.
  *
- * Returns null when there was nothing to take out, so the hook leaves the body alone.
+ * Returns null when there was nothing to take out, so `registerClient` passes the body on as sent.
  */
 export function withoutEmptyMetadata(body: unknown): Record<string, unknown> | null {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
