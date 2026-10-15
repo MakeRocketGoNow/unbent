@@ -312,8 +312,10 @@ pnpm exec wrangler secret put OPERATOR_NAME
 pnpm exec wrangler secret put OPERATOR_EMAIL
 ```
 
-Neither value is confidential — both are printed on a public page — so a plain environment
-variable in the Cloudflare dashboard does just as well. What matters is only that they stay
+Neither value is confidential — both are printed on a public page — but set them as
+secrets all the same, from here or as the Secret type in the dashboard. A plain text
+variable added in the dashboard is gone after the next deploy, which replaces plain
+variables with the file's; a secret is kept. What matters otherwise is only that they stay
 out of the file a fork inherits.
 
 ### Page statistics
