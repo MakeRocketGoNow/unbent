@@ -19,6 +19,7 @@ import { useHostApp } from '../useHostApp.js';
 import { postToApp } from '../app-bridge.js';
 import { ExportSnackbar } from '../components/ExportSnackbar.js';
 import { ImportSnackbar } from '../components/ImportSnackbar.js';
+import { FileNotesSnackbar } from '../components/FileNotesSnackbar.js';
 import { SignOutSnackbar } from '../components/SignOutSnackbar.js';
 import { SignOutConfirm } from '../components/SignOutConfirm.js';
 import { SyncingLine } from '../components/SyncingLine.js';
@@ -297,6 +298,7 @@ function AppShell() {
       </main>
       <ExportSnackbar />
       <ImportSnackbar />
+      <FileNotesSnackbar />
       <SignOutSnackbar />
       <SignOutConfirm />
       <UpdateSnackbar />

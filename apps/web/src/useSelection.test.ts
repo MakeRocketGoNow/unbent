@@ -74,6 +74,17 @@ describe('useSelection', () => {
     expect(result.current.ids).toEqual(['c']);
   });
 
+  /** What a drop on the list does with the notes it made: the bar then offers Move, Tags and Delete on them. */
+  it('replaces the selection with the rows it is handed, counting the ones the list holds', () => {
+    const { result, rerender } = mount({ rows: ['a', 'b'], key: 'k' });
+    act(() => result.current.pick('a'));
+    act(() => result.current.select(['b', 'c']));
+    expect(result.current.ids).toEqual(['b']);
+    // The rows arrive a render later, as they do after a batch of notes is made.
+    rerender({ rows: ['c', 'a', 'b'], key: 'k' });
+    expect(result.current.ids).toEqual(['c', 'b']);
+  });
+
   it('drops the selection when the scope changes', () => {
     const { result, rerender } = mount({ rows, key: 'k' });
     act(() => result.current.pick('a'));

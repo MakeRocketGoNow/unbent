@@ -70,6 +70,8 @@ import { ScopeMatches, scopeMatches } from './ScopeMatches.js';
 import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 import { useSelection } from '../useSelection.js';
 import { SelectionBar } from './SelectionBar.js';
+import { listDropZone, dropSentence } from '../list-drop-zone.js';
+import { notesFromFiles, useFileNotes } from '../file-notes.js';
 import { Confirm } from './Confirm.js';
 import { MoveSheet } from './MoveSheet.js';
 import { TagsSheet } from './TagsSheet.js';
@@ -833,26 +835,71 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
 
   const createNote = useCreateNote();
   /**
-   * The New button and the phone's +. Carries the active filter onto the new note,
-   * otherwise it is created and then immediately filtered out of the list the user is
-   * looking at.
+   * Where a note made from this list goes. Every active tag, not just one: with two tags
+   * filtered, a note carrying only the first is still filtered out of the list it was
+   * created in. UNFILED is a filter sentinel, not a notebook name — a note created while
+   * viewing it belongs in no notebook. Nor does one made beside "Notebook not found":
+   * filing it under the name would have the server create the notebook the screen has
+   * just said does not exist, on the strength of a stale link. It goes where it would
+   * from All notes, which is where "Show all notes" leads.
    */
-  const newNote = () =>
-    createNote({
-      // Every active tag, not just one: with two tags filtered, a note carrying only
-      // the first is still filtered out of the list it was created in.
-      tags: tag ?? [],
-      // UNFILED is a filter sentinel, not a notebook name — a note created while
-      // viewing it belongs in no notebook. Nor does one made beside "Notebook not found":
-      // filing it under the name would have the server create the notebook the screen has
-      // just said does not exist, on the strength of a stale link. It goes where it would
-      // from All notes, which is where "Show all notes" leads.
-      notebook: notebook === UNFILED || notebookMissing ? null : (notebook ?? null),
+  const filing = {
+    tags: tag ?? [],
+    notebook: notebook === UNFILED || notebookMissing ? null : (notebook ?? null),
+  };
+  /** The New button and the phone's +. Carries the active filter onto the new note. */
+  const newNote = () => createNote(filing);
+
+  /*
+   * Files let go on the list become one note each, filed as New would file them — see
+   * `listDropZone` for the rule that the target decides, and `file-notes.ts` for the
+   * writes. The zone goes on the whole column, not the list alone: the head and the
+   * search field are part of the pane a person aims at, and a file let go on the count
+   * going to the browser instead would be the stray drop the window's guard exists for.
+   * The sentence is drawn over the column while a drag is on it (`.list-drop-hint`), and
+   * names the place as the heading does; nothing is named when the notes go nowhere.
+   * Refused, with the pointer, while the plan has ended — the server refuses every write
+   * — and while a batch is still landing, since the report is one card for one batch.
+   *
+   * The notes made are selected once they are in the list, so the bar offers Move, Tags
+   * and Delete on exactly these: filing them somewhere else, or taking a wrong drop back,
+   * is then one press, with no sheet asked for before the drop.
+   */
+  const asideRef = useRef<HTMLElement>(null);
+  const [dropHint, setDropHint] = useState<string | null>(null);
+  const batch = useFileNotes();
+  const dropPlace = filing.notebook ?? (filing.tags.length > 0 ? filing.tags.join(', ') : null);
+  // The listeners go on once; what they decide with is read fresh from here each time.
+  const dropTarget = useRef({ accept: (n: number): string | null => null, onFiles: (_files: File[]) => {} });
+  dropTarget.current = {
+    accept: (count) => (planInactive || batch.status === 'running' ? null : dropSentence(count, dropPlace)),
+    onFiles: (files) => {
+      void notesFromFiles(files, filing, dropPlace, queryClient).then((ids) => {
+        if (ids.length > 0) selection.select(ids);
+      });
+    },
+  };
+  useEffect(() => {
+    const zone = asideRef.current;
+    if (!zone) return;
+    return listDropZone(zone, {
+      accept: (count) => dropTarget.current.accept(count),
+      onHover: setDropHint,
+      onFiles: (files) => dropTarget.current.onFiles(files),
     });
+  }, []);
 
   return (
     <div className={layout.className} style={layout.style} ref={layout.containerRef}>
-      <aside className="sidebar">
+      <aside className={dropHint ? 'sidebar dropping' : 'sidebar'} ref={asideRef}>
+        {/* What letting go will do, over the column while a file is dragged across it. Not
+            a live region: it changes with every pointer move, and a drag is sighted work.
+            `pointer-events: none`, or crossing onto it would read as leaving the column. */}
+        {dropHint && (
+          <div className="list-drop-hint" aria-hidden="true">
+            <span>{dropHint}</span>
+          </div>
+        )}
         <NoteListHead
           count={countLabel}
           countMenu={countMenu}
