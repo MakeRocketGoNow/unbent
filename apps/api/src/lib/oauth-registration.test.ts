@@ -79,6 +79,26 @@ describe('withoutEmptyMetadata (MAK-224)', () => {
     expect(withoutEmptyMetadata([null])).toBeNull();
   });
 
+  it('keeps a choice written out empty, so the provider refuses it rather than picking a default', () => {
+    const body = {
+      redirect_uris: ['https://relay.example.com/r/abc'],
+      token_endpoint_auth_method: '',
+      application_type: '',
+      grant_types: [],
+      response_types: [],
+      logo_uri: '',
+    };
+    expect(withoutEmptyMetadata(body)).toEqual({
+      redirect_uris: ['https://relay.example.com/r/abc'],
+      token_endpoint_auth_method: '',
+      application_type: '',
+      grant_types: [],
+      response_types: [],
+    });
+    // Null is how a serializer writes a field nobody set, choice or not.
+    expect(withoutEmptyMetadata({ token_endpoint_auth_method: null, application_type: null })).toEqual({});
+  });
+
   it('passes non-empty values through as sent, for the provider to judge', () => {
     // A false, a zero and a list holding an empty string are values, not absences.
     const body = { require_pkce: false, client_secret_expires_at: 0, contacts: [''], jwks: {}, scope: null };

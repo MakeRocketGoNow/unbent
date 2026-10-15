@@ -89,18 +89,28 @@ export function loopbackRegistration(body: unknown): RegistrationDecision {
  * reported exactly that, asks the person for a client id and secret they have no way of
  * getting.
  *
- * Absent is the meaning every one of these values has, and absent is what the provider
- * fills its defaults in for, so this changes no decision it makes: an empty
- * `redirect_uris` taken out is still refused as missing, and an empty `scope` gets the
- * same default scopes an omitted one does. Only the top level is touched; a non-empty
- * value is passed through exactly as sent, for the provider's own checks.
+ * For a detail, absent is the meaning every one of these values has, and absent is what
+ * the provider fills its defaults in for: an empty `redirect_uris` taken out is still
+ * refused as missing, and an empty `scope` gets the same default scopes an omitted one
+ * does. Only the top level is touched; a non-empty value is passed through exactly as
+ * sent, for the provider's own checks.
+ *
+ * A *choice* written out empty is different, and kept: `""` or `[]` for how the client
+ * authenticates, what kind of app it is, or which grants and responses it wants. Taking
+ * one of those out would have the provider pick its default instead of refusing — an
+ * empty auth method would be issued a secret it never asked for, then fail at the token
+ * endpoint with a worse error than a clear refusal here, and an empty application type
+ * could be registered as native by `loopbackRegistration`. `null` is still taken out of
+ * them, because that is how a serializer writes a field nobody set.
  *
  * Returns null when there was nothing to take out, so `registerClient` passes the body on as sent.
  */
+const CHOICES = new Set(['token_endpoint_auth_method', 'application_type', 'grant_types', 'response_types']);
+
 export function withoutEmptyMetadata(body: unknown): Record<string, unknown> | null {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
   const entries = Object.entries(body as Record<string, unknown>);
-  const kept = entries.filter(([, v]) => !(v === null || v === '' || (Array.isArray(v) && v.length === 0)));
+  const kept = entries.filter(([k, v]) => !(v === null || (!CHOICES.has(k) && (v === '' || (Array.isArray(v) && v.length === 0)))));
   return kept.length === entries.length ? null : Object.fromEntries(kept);
 }
 
