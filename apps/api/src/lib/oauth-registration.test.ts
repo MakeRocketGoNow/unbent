@@ -115,6 +115,7 @@ describe('registrationSummary (MAK-224)', () => {
       client_name: 'Acme Assistant',
       token_endpoint_auth_method: 'none',
       grant_types: ['authorization_code', 'refresh_token'],
+      response_types: ['code'],
       redirect_hosts: ['relay.example.com', '(not a URI)'],
       redirect_count: 3,
     });

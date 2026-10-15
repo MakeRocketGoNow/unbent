@@ -120,8 +120,8 @@ export function withoutEmptyMetadata(body: unknown): Record<string, unknown> | n
  *
  * The registration endpoint is unauthenticated and refusals were silent, so when an
  * assistant could not connect the only evidence was its own one-line message. This is the
- * request's shape — the fields it sent, how it wants to authenticate, which grants, which
- * redirect *hosts* — beside the provider's reason. Hosts and not whole redirects, because
+ * request's shape — the fields it sent, how it wants to authenticate, which grants and
+ * responses, which redirect *hosts* — beside the provider's reason. Hosts and not whole redirects, because
  * a relay's path can carry a per-user id (Google's does); the client's name, because it
  * is the program's and is how the line is found.
  *
@@ -147,6 +147,7 @@ export function registrationSummary(body: unknown): Record<string, unknown> {
     token_endpoint_auth_method: clip(metadata['token_endpoint_auth_method']),
     application_type: clip(metadata['application_type']),
     grant_types: clip(metadata['grant_types']),
+    response_types: clip(metadata['response_types']),
     scope: clip(metadata['scope'], 200),
     redirect_hosts: [...new Set(hosts)].slice(0, 10).map((h) => h.slice(0, 100)),
     redirect_count: uris.length,
