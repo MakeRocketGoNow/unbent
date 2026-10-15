@@ -368,7 +368,7 @@ describe('the D1 adapter runs queries concurrently', () => {
     const statement = (sql: string) => {
       const self = {
         bind: () => self,
-        all: () => (sql.includes('"session"') && ++calls === 1 ? new Promise<never>(() => {}) : Promise.resolve({ results: [], meta: {} })),
+        all: () => (/\bsession\b/i.test(sql) && ++calls === 1 ? new Promise<never>(() => {}) : Promise.resolve({ results: [], meta: {} })),
         first: async () => null,
         run: async () => ({ results: [], meta: {} }),
         raw: async () => [],
