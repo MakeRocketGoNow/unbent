@@ -101,6 +101,18 @@ describe('registrationSummary (MAK-224)', () => {
     expect(JSON.stringify(summary)).not.toContain('user-1234');
   });
 
+  it('bounds what it copies, since anyone can send the request', () => {
+    const summary = registrationSummary({
+      client_name: 'x'.repeat(500),
+      scope: 'y'.repeat(5000),
+      grant_types: Array.from({ length: 100 }, () => 'z'.repeat(500)),
+      token_endpoint_auth_method: { nested: 'w'.repeat(500) },
+      ...Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`k${i}`, 1])),
+    });
+    expect(JSON.stringify(summary).length).toBeLessThan(5000);
+    expect(summary.token_endpoint_auth_method).toBe('object');
+  });
+
   it('says what it was given when it was not a body', () => {
     expect(registrationSummary(undefined)).toEqual({ body: 'undefined' });
   });

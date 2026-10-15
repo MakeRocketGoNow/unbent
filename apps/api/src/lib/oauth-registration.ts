@@ -114,6 +114,11 @@ export function withoutEmptyMetadata(body: unknown): Record<string, unknown> | n
  * redirect *hosts* — beside the provider's reason. Hosts and not whole redirects, because
  * a relay's path can carry a per-user id (Google's does); the client's name, because it
  * is the program's and is how the line is found.
+ *
+ * Every value is cut short, the keys and redirects counted off after a few dozen, and
+ * anything that is not a string or a list of them reduced to its type: the endpoint
+ * answers anyone, and a summary that copied what it was sent would let anyone write lines
+ * of any size into the Worker's log.
  */
 export function registrationSummary(body: unknown): Record<string, unknown> {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return { body: typeof body };
@@ -127,13 +132,21 @@ export function registrationSummary(body: unknown): Record<string, unknown> {
     }
   });
   return {
-    client_name: typeof metadata['client_name'] === 'string' ? metadata['client_name'].slice(0, 80) : undefined,
-    fields: Object.keys(metadata).sort(),
-    token_endpoint_auth_method: metadata['token_endpoint_auth_method'],
-    application_type: metadata['application_type'],
-    grant_types: metadata['grant_types'],
-    scope: metadata['scope'],
-    redirect_hosts: [...new Set(hosts)],
+    client_name: clip(metadata['client_name'], 80),
+    fields: Object.keys(metadata).sort().slice(0, 40).map((k) => k.slice(0, 40)),
+    token_endpoint_auth_method: clip(metadata['token_endpoint_auth_method']),
+    application_type: clip(metadata['application_type']),
+    grant_types: clip(metadata['grant_types']),
+    scope: clip(metadata['scope'], 200),
+    redirect_hosts: [...new Set(hosts)].slice(0, 10).map((h) => h.slice(0, 100)),
     redirect_count: uris.length,
   };
+}
+
+/** A value for the log, bounded: a string cut short, a list of the first few, else its type. */
+function clip(value: unknown, length = 60): unknown {
+  if (value === undefined) return undefined;
+  if (typeof value === 'string') return value.slice(0, length);
+  if (Array.isArray(value)) return value.slice(0, 10).map((v) => (typeof v === 'string' ? v.slice(0, length) : typeof v));
+  return typeof value;
 }

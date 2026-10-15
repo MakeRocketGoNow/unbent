@@ -120,7 +120,9 @@ async function registerClient(env: Env, request: Request): Promise<Response> {
   const response = await getAuth(env).handler(
     new Request(request, { body: trimmed ? JSON.stringify(trimmed) : text }),
   );
-  if (response.status >= 400) {
+  // A 429 is this server's own rate limit, not the provider judging the client; logging
+  // those would be ten lines a minute from anyone who cared to send them.
+  if (response.status >= 400 && response.status !== 429) {
     const answer = (await response
       .clone()
       .json()
