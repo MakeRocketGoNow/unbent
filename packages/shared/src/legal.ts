@@ -29,8 +29,8 @@ export const LEGAL_VERSION = '2026-10-14';
  * were edited.
  *
  * `billingOnly` when what changed is only in the sections an instance publishes because it
- * sells a plan — the price, renewal and refunds. An instance with no billing does not
- * publish them, so it asks again with the plain "We’ve updated our terms" rather than a
+ * sells a plan — billing on, or a front page stating the price — about payment, renewal and
+ * refunds. An instance that sells nothing does not publish them, so it asks again with the plain "We’ve updated our terms" rather than a
  * sentence about terms its readers will not find (`legalVersionOf` in the API).
  */
 export const LEGAL_CHANGE: { text: string; billingOnly: boolean } | undefined = {

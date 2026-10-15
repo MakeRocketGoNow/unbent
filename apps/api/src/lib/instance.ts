@@ -98,15 +98,16 @@ const OWN_DOCUMENTS_VERSION = '1';
  * documents, and an operator who wants one can say it in their own.
  *
  * A sentence about the sections only an instance that sells a plan publishes
- * (`billingOnly`) is left out where billing is off; the version still moves there, as it
- * does for any change here, and the prompt is the plain "We’ve updated our terms".
+ * (`billingOnly`) is left out where it sells none — billing off and no front page, the
+ * same test the web app's `LegalOptions.sellsPlan` makes. The version still moves there, as
+ * it does for any change here, and the prompt is the plain "We’ve updated our terms".
  */
 export function legalVersionOf(
-  env: Pick<Env, 'LEGAL_VERSION'> & PaddleEnv,
+  env: Pick<Env, 'LEGAL_VERSION' | 'FRONT_PAGE'> & PaddleEnv,
   documents: 'built-in' | 'own',
 ): { version: string; change?: string } {
   if (documents === 'own') return { version: env.LEGAL_VERSION?.trim() || OWN_DOCUMENTS_VERSION };
-  const change = LEGAL_CHANGE && (!LEGAL_CHANGE.billingOnly || billingOn(env)) ? LEGAL_CHANGE.text : undefined;
+  const change = LEGAL_CHANGE && (!LEGAL_CHANGE.billingOnly || billingOn(env) || frontPageOf(env)) ? LEGAL_CHANGE.text : undefined;
   return { version: LEGAL_VERSION, ...(change ? { change } : {}) };
 }
 

@@ -94,15 +94,21 @@ export interface LegalOptions {
    */
   backups: boolean;
   /**
-   * Whether this instance sells a plan — `AppConfig.billing`, present where the Paddle
-   * secrets are set (MAK-108).
+   * Whether this instance sells a plan: it has billing on (`AppConfig.billing`, where the
+   * Paddle secrets are set, MAK-108), or it shows the front page (`AppConfig.frontPage`),
+   * which states the price.
+   *
+   * The front page counts on its own because a price on offer is a sale the terms have to
+   * cover, whether or not checkout works yet — and because Paddle's website review reads
+   * the terms for a refund policy before it will issue the live keys that turn billing on.
+   * Billing alone left unbent.app unable to pass the review that billing waits on.
    *
    * The terms say what is charged, how it renews, how to cancel and the refund policy, and
    * the policy names Paddle, only where there is a sale. A self-hosted instance charges
    * nothing, and terms describing a price and a payment processor it never uses would be a
    * promise about a sale that cannot happen.
    */
-  billing: boolean;
+  sellsPlan: boolean;
 }
 
 /** The refund policy's anchor in the terms: `/terms#refunds`. See `LegalSection.id`. */
@@ -206,7 +212,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
             'Sessions expire after thirty days of disuse.',
           'Your content — the notes you write, their titles, tags and notebooks, and any files you ' +
             'attach. Text extracted from PDFs you upload, so that searching finds words inside them.',
-          ...(opts.billing
+          ...(opts.sellsPlan
             ? [
                 'Your plan — whether the account is on a trial or a plan, when that ends, how much ' +
                   'storage it includes, and the identifiers Paddle gives your customer record and ' +
@@ -224,7 +230,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
           'To run the service and nothing else: to show you your notes, to search them, to sync ' +
             'between your devices, and to sign you in. Email is used to reach you about your own ' +
             'account — a sign-in code, a password reset, a verification link' +
-            (opts.billing ? ', and word that a trial or a plan has ended' : '') +
+            (opts.sellsPlan ? ', and word that a trial or a plan has ended' : '') +
             '. There is no marketing mail, and no newsletter to unsubscribe from.',
           'We do not sell personal information, and we do not share it for advertising or for ' +
             'anyone else to build a profile from.',
@@ -237,7 +243,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
             'stored with our hosting provider there, which also keeps ordinary request logs, as ' +
             'any web host does. Text inside PDFs you upload is extracted on those same systems ' +
             'so that search can find it; the file is used for that and nothing else.',
-          `${COUNT[2 + Number(opts.errorTracking) + Number(opts.backups) + Number(opts.billing)]} other kinds of service ` +
+          `${COUNT[2 + Number(opts.errorTracking) + Number(opts.backups) + Number(opts.sellsPlan)]} other kinds of service ` +
             `are involved, each for one narrow job:`,
         ],
         list: [
@@ -261,7 +267,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
                   'those servers on the way and none of your content is kept on them.',
               ]
             : []),
-          ...(opts.billing
+          ...(opts.sellsPlan
             ? [
                 'Paddle, which sells the plan as merchant of record. When you subscribe it collects ' +
                   'your name, email address, billing address and payment details, under its own ' +
@@ -336,7 +342,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
                   'an export for that.',
               ]
             : []),
-          ...(opts.billing
+          ...(opts.sellsPlan
             ? [
                 `An account whose trial or plan has ended is kept, read-only, for ${KEPT}, ` +
                   `and may then be deleted, after we have emailed you to export it first. Paddle ` +
@@ -441,7 +447,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
             'else’s behalf without their knowledge.',
         ],
       },
-      ...(opts.billing ? payment(operator) : []),
+      ...(opts.sellsPlan ? payment(operator) : []),
       {
         heading: 'Your content is yours',
         body: [
@@ -485,7 +491,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
           'You may delete your account at any time, from Settings, then Maintenance. We email a ' +
             'confirmation link and delete the account once you open it and confirm. Deletion ' +
             'removes your notes, files and account record, and cannot be undone.' +
-            (opts.billing
+            (opts.sellsPlan
               ? ' It also cancels your plan at once, so nothing renews; what is left of the ' +
                 'year is not refunded, except as “Refunds” describes.'
               : ''),

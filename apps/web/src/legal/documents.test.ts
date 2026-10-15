@@ -22,7 +22,7 @@ function text(doc: LegalDocument): string {
  * what appears, and the previous operator's must not survive anywhere in any of the three.
  */
 describe('legalDocuments', () => {
-  const docs = legalDocuments(OPERATOR, { errorTracking: false, backups: false, billing: false });
+  const docs = legalDocuments(OPERATOR, { errorTracking: false, backups: false, sellsPlan: false });
   const all: [string, LegalDocument][] = [
     ['privacy', docs.privacy],
     ['terms', docs.terms],
@@ -62,8 +62,8 @@ describe('legalDocuments', () => {
  * never contacts is as wrong as one that hides a third party it does.
  */
 describe('legalDocuments and error tracking', () => {
-  const without = legalDocuments(OPERATOR, { errorTracking: false, backups: false, billing: false });
-  const with_ = legalDocuments(OPERATOR, { errorTracking: true, backups: false, billing: false });
+  const without = legalDocuments(OPERATOR, { errorTracking: false, backups: false, sellsPlan: false });
+  const with_ = legalDocuments(OPERATOR, { errorTracking: true, backups: false, sellsPlan: false });
 
   it('says nothing about it on an instance that does not do it', () => {
     expect(text(without.privacy)).not.toContain('error-tracking');
@@ -95,8 +95,8 @@ describe('legalDocuments and error tracking', () => {
  * with no backups bucket says none of it, and its deletion page keeps the shorter promise.
  */
 describe('legalDocuments and backups', () => {
-  const without = legalDocuments(OPERATOR, { errorTracking: false, backups: false, billing: false });
-  const with_ = legalDocuments(OPERATOR, { errorTracking: false, backups: true, billing: false });
+  const without = legalDocuments(OPERATOR, { errorTracking: false, backups: false, sellsPlan: false });
+  const with_ = legalDocuments(OPERATOR, { errorTracking: false, backups: true, sellsPlan: false });
 
   it('says nothing about them on an instance that keeps none', () => {
     for (const doc of [without.privacy, without.deletion]) {
@@ -119,7 +119,7 @@ describe('legalDocuments and backups', () => {
     const body = text(with_.privacy);
     expect(body).toContain('GitHub');
     expect(body).toContain('Three other kinds of service');
-    expect(text(legalDocuments(OPERATOR, { errorTracking: true, backups: true, billing: false }).privacy)).toContain(
+    expect(text(legalDocuments(OPERATOR, { errorTracking: true, backups: true, sellsPlan: false }).privacy)).toContain(
       'Four other kinds of service',
     );
   });
@@ -143,8 +143,8 @@ describe('legalDocuments and backups', () => {
  * the refund window — and the refund section keeps the anchor the front page links to.
  */
 describe('legalDocuments and billing', () => {
-  const without = legalDocuments(OPERATOR, { errorTracking: false, backups: false, billing: false });
-  const with_ = legalDocuments(OPERATOR, { errorTracking: false, backups: false, billing: true });
+  const without = legalDocuments(OPERATOR, { errorTracking: false, backups: false, sellsPlan: false });
+  const with_ = legalDocuments(OPERATOR, { errorTracking: false, backups: false, sellsPlan: true });
 
   it('says nothing about a price, a refund or Paddle on an instance that sells nothing', () => {
     for (const doc of [without.terms, without.privacy, without.deletion]) {
@@ -189,7 +189,7 @@ describe('legalDocuments and billing', () => {
     expect(body).toContain('Paddle, which sells the plan as merchant of record');
     expect(body).toContain('Three other kinds of service');
     expect(
-      text(legalDocuments(OPERATOR, { errorTracking: true, backups: true, billing: true }).privacy),
+      text(legalDocuments(OPERATOR, { errorTracking: true, backups: true, sellsPlan: true }).privacy),
     ).toContain('Five other kinds of service');
   });
 
@@ -205,7 +205,7 @@ describe('legalDocuments and billing', () => {
  * to agree again to text dated before the change they were told about.
  */
 describe('the agreement version', () => {
-  const docs = legalDocuments(OPERATOR, { errorTracking: false, backups: false, billing: false });
+  const docs = legalDocuments(OPERATOR, { errorTracking: false, backups: false, sellsPlan: false });
 
   it('is not newer than either document', () => {
     expect(docs.terms.effective >= LEGAL_VERSION).toBe(true);
