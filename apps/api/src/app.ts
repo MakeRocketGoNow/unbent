@@ -40,7 +40,9 @@ app.use('*', logger());
  * reads nothing of the user. Behind the session middleware it inherited every stall of the
  * auth store — on 2026-10-13 a wedged session check made health time out too, and the
  * app told a person with a working connection that they were offline. Hono applies
- * middleware only to routes registered after it, so this placement is the exemption.
+ * middleware only to routes registered after it, so this placement is the exemption. It
+ * is outside the `routes` chain below, so `AppType` does not carry it; the web app calls
+ * it with a plain `fetch` (connectivity.ts).
  */
 app.route('/api', health);
 
