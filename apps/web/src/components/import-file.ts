@@ -40,6 +40,6 @@ export function describeImportFile(name: string, kind: ZipKind = 'reading'): Imp
     case 'markdown':
       return { format, text: 'One Unbent note.' };
     default:
-      return { format, text: 'Not a file this can import. Choose an .enex, .zip or .md file.' };
+      return { format, text: 'Not a file this can import. Choose an .enex, .zip or .md file, or PDFs and images.' };
   }
 }

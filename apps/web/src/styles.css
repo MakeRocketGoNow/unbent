@@ -4310,6 +4310,28 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   max-width: 24rem;
 }
 
+/* PDFs and images picked for notes: what was picked, where they go, and the one button —
+   one block with the form's rhythm, drawn in place of Start import while it is there. */
+.import-batch {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.import-batch-run {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.import-batch-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
 /* Collapsed by default: the answer is only needed once, and open by default would push
    the file picker — the thing a returning user wants — below the fold. */
 .enex-help { width: 100%; max-width: 46rem; }

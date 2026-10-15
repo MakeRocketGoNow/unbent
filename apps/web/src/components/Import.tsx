@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Link } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { DEFAULT_PAGES_NOTEBOOK, type NotionUnit } from '@unbent/enex';
 import {
   getImportRun,
@@ -16,6 +17,7 @@ import { importPercent } from './import-progress.js';
 import { formatBytes } from '../format-bytes.js';
 import { ImportSkips } from './ImportSkips.js';
 import { usePlan } from '../use-plan.js';
+import { isNoteFile, notesFromFiles, resetFileNotes, useFileNotes } from '../file-notes.js';
 
 /** `1 note`, `3,325 notes`. */
 function count(n: number, noun: string): string {
@@ -33,6 +35,20 @@ export function Import() {
   const { inactive: planInactive } = usePlan();
   const { status, file, zip, progress, failures, skips, error, startedAt, endedAt, run } = useImportRun();
   const [extractText, setExtractText] = useState(true);
+  /*
+   * PDFs and images picked here, one note each (`file-notes.ts`). The picker is the way
+   * in for a phone, where nothing can be dragged onto the list, and for anyone who looks
+   * for "import" before trying a drop. A pick is either one export or any number of
+   * files for notes, never both; `batchProblem` is the line for a pick that is neither.
+   */
+  const [batch, setBatch] = useState<File[]>([]);
+  const [batchProblem, setBatchProblem] = useState<string | null>(null);
+  const [batchNotebook, setBatchNotebook] = useState('');
+  /** Remounts the picker once a batch starts: a file input keeps naming the files it was handed. */
+  const [pickerKey, setPickerKey] = useState(0);
+  const fileNotes = useFileNotes();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
   /** The Notion units to import, by key; every non-empty one until the person unticks it. */
   const [include, setInclude] = useState<ReadonlySet<string>>(new Set());
   const [pagesNotebook, setPagesNotebook] = useState(DEFAULT_PAGES_NOTEBOOK);
@@ -77,6 +93,32 @@ export function Import() {
     (picked.format !== 'zip' ||
       (zip !== null && zip.kind !== 'unreadable' && (zip.kind === 'unbent' || include.size > 0)));
 
+  function pick(files: File[]) {
+    setBatchProblem(null);
+    if (files.length > 0 && files.every(isNoteFile)) {
+      pickImportFile(null);
+      setBatch(files);
+      return;
+    }
+    setBatch([]);
+    if (files.length > 1) {
+      // Two exports at once is not a thing either importer does, and a mix of an export
+      // and a scan is two different jobs: said here rather than guessed at.
+      pickImportFile(null);
+      setBatchProblem('Choose one export at a time, or any number of PDFs and images.');
+      return;
+    }
+    pickImportFile(files[0] ?? null);
+  }
+
+  function startBatch() {
+    if (batch.length === 0 || planInactive) return;
+    const notebook = batchNotebook.trim() || null;
+    void notesFromFiles(batch, { notebook, tags: [] }, notebook, queryClient);
+    setBatch([]);
+    setPickerKey((k) => k + 1);
+  }
+
   function start() {
     if (!canStart) return;
     startImport({
@@ -104,6 +146,54 @@ export function Import() {
         <h2>Import</h2>
       </div>
 
+      {/* The batch of notes from files, where it was started: the snackbar that reports it
+          everywhere else stands down on this page (`FileNotesSnackbar`). Running, a bar;
+          finished, the count and the way to the notes, with Undo left to the list, where
+          the notes are selected and the bar's Delete is the same press. */}
+      {fileNotes.status === 'running' && (
+        <div className="import-batch-run">
+          <div className="progress-bar" aria-label="notes added">
+            <div className="progress-fill" style={{ width: `${Math.round((fileNotes.done / Math.max(1, fileNotes.total)) * 100)}%` }} />
+          </div>
+          <p className="muted small">
+            Adding {count(fileNotes.total, 'note')} · {fileNotes.done} of {fileNotes.total}
+          </p>
+        </div>
+      )}
+      {(fileNotes.status === 'done' || fileNotes.status === 'error') && (
+        <div className="import-finished">
+          {fileNotes.status === 'done' ? (
+            <p className="good small">
+              {count(fileNotes.ids.length, 'note')} added{fileNotes.place ? ` to ${fileNotes.place}` : ''}.
+            </p>
+          ) : (
+            <p className="bad small">
+              {fileNotes.done === 0 ? 'No notes added' : `${count(fileNotes.done, 'note')} of ${fileNotes.total} added`}; the rest failed:{' '}
+              {fileNotes.error}
+            </p>
+          )}
+          <span className="import-batch-actions">
+            {fileNotes.ids.length > 0 && (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  resetFileNotes();
+                  void navigate({
+                    to: '/notes',
+                    search: fileNotes.place ? { notebook: fileNotes.place } : {},
+                  });
+                }}
+              >
+                Show them
+              </Button>
+            )}
+            <Button variant="secondary" onClick={resetFileNotes}>
+              Add more files
+            </Button>
+          </span>
+        </div>
+      )}
+
       {status === 'idle' && (
         <>
           <p className="muted small">
@@ -129,6 +219,10 @@ export function Import() {
               pages to bring in; each becomes a notebook, with a database&apos;s columns as its
               fields.
             </li>
+            <li>
+              <code>.pdf</code> or an image, any number of them — one note per file, named after
+              it, with the file attached. The same as dropping files on the note list.
+            </li>
           </ul>
 
           {/* Reading happens here in the browser, not on the server: a multi-GB file is
@@ -148,11 +242,45 @@ export function Import() {
               rather than left to fail a note at a time. */}
           {planInactive && <p className="muted small">Importing needs an active plan. Everything already here still opens and exports.</p>}
           <input
+            key={pickerKey}
             type="file"
-            accept=".enex,.zip,.md,application/xml,text/xml,application/zip,text/markdown"
+            multiple
+            accept=".enex,.zip,.md,.pdf,application/xml,text/xml,application/zip,text/markdown,application/pdf,image/*"
             disabled={planInactive}
-            onChange={(e) => pickImportFile(e.target.files?.[0] ?? null)}
+            onChange={(e) => pick([...(e.target.files ?? [])])}
           />
+
+          {batchProblem && <p className="import-file small bad">{batchProblem}</p>}
+
+          {batch.length > 0 && (
+            <div className="import-batch">
+              <p className="import-file small">
+                <span>{batch.length === 1 ? batch[0]!.name : `${count(batch.length, 'file')}`} · {formatBytes(batch.reduce((n, f) => n + f.size, 0))}</span>
+                <span className="muted">
+                  {batch.length === 1 ? 'One note, named after the file, with it attached.' : 'One note per file, named after it, with the file attached.'}
+                </span>
+              </p>
+              {/* The one thing the drop decides from where it lands and the picker cannot:
+                  where the notes go. By name, as the list files a new note; a name nobody
+                  has used makes the notebook. Empty is the Inbox, which is where a scan
+                  from the launch handler lands too. */}
+              <label className="notion-pages-notebook small">
+                {/* The rule in the label, not the placeholder: a phone's field is too narrow
+                    for a sentence there, and it was cut mid-word. */}
+                <span className="muted">Notebook — empty means the Inbox</span>
+                <input
+                  className="search-field"
+                  value={batchNotebook}
+                  placeholder="Inbox"
+                  aria-label="Notebook for the new notes"
+                  onChange={(e) => setBatchNotebook(e.target.value)}
+                />
+              </label>
+              <Button variant="primary" disabled={planInactive} tip={planInactive ? 'Not while the plan has ended' : undefined} onClick={startBatch}>
+                {batch.length === 1 ? 'Add note' : `Add ${batch.length} notes`}
+              </Button>
+            </div>
+          )}
 
           {file && picked && (
             <p className="import-file small">
@@ -178,23 +306,29 @@ export function Import() {
             />
           )}
 
-          <label className="checkbox-row">
-            <input
-              type="checkbox"
-              checked={extractText}
-              onChange={(e) => setExtractText(e.target.checked)}
-            />
-            <span className="small">
-              Search inside PDFs — reads the text already embedded in scanned attachments,
-              by Evernote&apos;s OCR or a scanner&apos;s. Most scanned notes have no body
-              text, so without this they are only findable by title. Adds roughly a second
-              per PDF.
-            </span>
-          </label>
+          {/* The export's controls, not the batch's: files for notes are read for search
+              the way a file dropped on a note is, with nothing to choose. */}
+          {batch.length === 0 && (
+            <>
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={extractText}
+                  onChange={(e) => setExtractText(e.target.checked)}
+                />
+                <span className="small">
+                  Search inside PDFs — reads the text already embedded in scanned attachments,
+                  by Evernote&apos;s OCR or a scanner&apos;s. Most scanned notes have no body
+                  text, so without this they are only findable by title. Adds roughly a second
+                  per PDF.
+                </span>
+              </label>
 
-          <Button variant="primary" disabled={!canStart || planInactive} tip={planInactive ? 'Not while the plan has ended' : undefined} onClick={start}>
-            Start import
-          </Button>
+              <Button variant="primary" disabled={!canStart || planInactive} tip={planInactive ? 'Not while the plan has ended' : undefined} onClick={start}>
+                Start import
+              </Button>
+            </>
+          )}
 
           {/* The other half of the checkbox above: extract now, or catch up later. The
               catching up lives with the account's other housekeeping, not here. */}
