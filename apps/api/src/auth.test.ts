@@ -353,10 +353,11 @@ describe('accountDeletionOffered', () => {
  * The D1 adapter's connection lock; see `database` in auth.ts. Kysely serialises every
  * query of an adapter that reports one connection, and the lock lives on the Better Auth
  * instance every request of an isolate shares. A query that never settles — a request
- * cancelled mid-flight — then holds every later one. `patches/` makes the D1 adapter
- * report several connections, and this is what fails if an upgrade brings the lock back.
+ * cancelled mid-flight — then holds every later one. The D1 adapter reports several
+ * connections since Better Auth 1.7.8, and this is what fails if an upgrade brings the
+ * lock back.
  *
- * The fake D1 answers nothing to its first query and everything to the rest. Unpatched,
+ * The fake D1 answers nothing to its first query and everything to the rest. With the lock,
  * the second query never reaches it, so the answer is the proof, not
  * the timeout, which only keeps a regression from hanging the suite.
  */

@@ -503,12 +503,10 @@ function createAuth(env: Env): AuthInstance {
      * the isolate then waits on it until the isolate is evicted. That was the stall of
      * 2026-10-13, minutes long and only for requests carrying a real session (a bad or
      * missing cookie never queries), and it reproduces on a preview with a handful of
-     * aborted requests. `patches/@better-auth__kysely-adapter@1.7.7.patch` makes the D1
-     * adapter answer `true`, which is the truth: D1 runs prepared statements concurrently
-     * and keeps no state on the connection, so the lock protected nothing. `pnpm patch`
-     * rather than our own dialect because the dialect is a private chunk of the adapter
-     * and Kysely is not a dependency of this package; the patch fails loudly on the next
-     * upgrade, and DEPENDENCIES.md says what to check then. `auth.test.ts` pins it.
+     * aborted requests. The D1 adapter answers `true` since Better Auth 1.7.8, which is
+     * the truth: D1 runs prepared statements concurrently and keeps no state on the
+     * connection, so the lock protected nothing. 1.7.7 was patched to say the same until
+     * then. `auth.test.ts` fails if an upgrade brings the lock back.
      */
     database: env.DB,
     baseURL: baseURLFor(env),

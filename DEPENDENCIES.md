@@ -65,24 +65,9 @@ runtime modules to that. vite-plugin-pwa 2.0.0 still carries Workbox 7.4.1.
 ## Auth: Better Auth
 
 **The family moves in lockstep:** `better-auth`, `@better-auth/mcp`,
-`@better-auth/oauth-provider` and `@better-auth/passkey`, all at one version (1.7.7). A core
+`@better-auth/oauth-provider` and `@better-auth/passkey`, all at one version (1.7.10). A core
 a version ahead of its plugins breaks the types in `apps/api/src/auth.ts`. `passkey` is
 written exactly, the others with `^`; move them all together either way.
-
-**`@better-auth/utils` 0.4.2, through the root `pnpm.overrides`.** Every Better Auth package
-requires exactly 0.4.2 while `better-call` asks for `^0.5.0`; the override keeps one copy in
-the graph. No app declares it. Lift it once upstream agrees on a range (MAK-143).
-
-**`@better-auth/kysely-adapter` is patched** (`patches/`, wired through the root
-`pnpm.patchedDependencies`). Its D1 adapter inherits `supportsMultipleConnections: false`
-from Kysely's SQLite adapter, which makes Kysely serialise every query through one lock
-shared by every request of a Worker isolate; a request cancelled mid-query never releases
-it and every session check after that hangs. The patch makes the adapter answer `true`.
-The reasoning is on `database` in `apps/api/src/auth.ts`, and `auth.test.ts` fails if the
-lock comes back. The patch is keyed to 1.7.7 and names the adapter's chunk file, so moving
-the Better Auth family breaks it on purpose: re-apply with `pnpm patch` against the new
-version unless the release notes say the D1 adapter no longer takes the lock, and run the
-test either way.
 
 ## Tooling
 
