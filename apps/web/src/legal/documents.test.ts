@@ -140,7 +140,7 @@ describe('legalDocuments and backups', () => {
  * The plan, its renewal and the refund policy (MAK-108) are in the terms exactly where the
  * instance sells one, and Paddle is in the policy exactly then. What Paddle's website review
  * reads for is pinned by phrase — the price, Paddle as merchant of record, how to cancel,
- * the refund window — and the refund section keeps the anchor the front page links to.
+ * the refund window — and the refund section keeps the anchor that is handed to the review.
  */
 describe('legalDocuments and billing', () => {
   const without = legalDocuments(OPERATOR, { errorTracking: false, backups: false, sellsPlan: false });
