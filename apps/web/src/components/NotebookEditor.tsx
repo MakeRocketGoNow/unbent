@@ -10,6 +10,7 @@ import {
   MAX_RATING_MAX,
   MIN_RATING_MAX,
   notebookNameSchema,
+  compareOptions,
   fieldHasOptions,
   fieldNameSchema,
   isCurrencyField,
@@ -778,6 +779,23 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
                     reorderable
                     onChange={(options) => editOptions(field, options)}
                     onRename={(from, to) => renameOption(field, from, to)}
+                    trailing={
+                      // Faded rather than gone once the list is in order, so the row does
+                      // not change shape after a press.
+                      field.options.length > 1 && (
+                        <Button
+                          variant="quiet"
+                          size="small"
+                          disabled={busy || isSorted(field.options)}
+                          tip={isSorted(field.options) ? 'Already in A–Z order' : undefined}
+                          onClick={() =>
+                            void run(() => api.editNotebookFieldOptions(notebookId, field.id, { sort: 'alpha' }))
+                          }
+                        >
+                          Sort A–Z
+                        </Button>
+                      )
+                    }
                   />
                   {/* The removal confirm floats over the rows below rather than pushing them,
                       and sits under the option it is about so the two read as one action. */}
@@ -1094,6 +1112,11 @@ function conversionDetail(pending: PendingType): string {
  * a 10-point scale to 5, and "out of 5" is the wrong question for turning a number into
  * stars.
  */
+/** Whether a list of options is already in the order "Sort A–Z" would put it in. */
+function isSorted(options: string[]): boolean {
+  return options.every((o, i) => i === 0 || compareOptions(options[i - 1]!, o) <= 0);
+}
+
 function scaleOnlyConfirm(
   pending: PendingType,
 ): pending is PendingType & { scale: FieldScale; field: FieldDef & { scale: FieldScale } } {

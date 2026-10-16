@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useCombobox } from 'downshift';
 import { MAX_FIELD_NAME_LENGTH, sameName } from '@unbent/shared';
 import { tintIndex } from '../tint.js';
@@ -54,6 +54,12 @@ interface TagInputProps {
    * old name at once, since nothing has changed yet.
    */
   onRename?: ((from: string, to: string) => Promise<boolean>) | undefined;
+  /**
+   * An action for the whole list, drawn at the far end of the row's last line, after the
+   * "+ Add" entry: a select's "Sort A–Z". In the row rather than beside it, so it takes no
+   * width from the chips — beside it, a phone's chips went one to a line.
+   */
+  trailing?: ReactNode;
   /**
    * Whether only a suggestion may be added.
    *
@@ -111,6 +117,7 @@ export function TagInput({
   readOnly = false,
   fresh,
   onRename,
+  trailing,
 }: TagInputProps) {
   const [draft, setDraft] = useState('');
   /**
@@ -479,6 +486,13 @@ export function TagInput({
             ))}
         </ul>
       </span>
+
+      {trailing && (
+        // Its own target: a press here is not a press on the row, which focuses the field.
+        <span className="tag-input-trailing" onClick={(e) => e.stopPropagation()}>
+          {trailing}
+        </span>
+      )}
     </div>
   );
 }

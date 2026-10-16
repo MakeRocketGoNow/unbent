@@ -429,6 +429,26 @@ describe('NotebookEditor', () => {
     );
   });
 
+  it('sorts the options A–Z, and fades the action once they are', async () => {
+    vi.mocked(api.editNotebookFieldOptions).mockResolvedValue({
+      field: fields[1]!,
+      renamed: [],
+      removed: [],
+      added: [],
+    });
+    mount([{ ...fields[1]!, options: ['Travel', 'Food'] }]);
+    await screen.findByText('Category');
+    fireEvent.click(screen.getByRole('button', { name: 'Sort A–Z' }));
+    await waitFor(() =>
+      expect(api.editNotebookFieldOptions).toHaveBeenCalledWith('nb1', 'f2', { sort: 'alpha' }),
+    );
+    cleanup();
+
+    mount();
+    await screen.findByText('Category');
+    expect((screen.getByRole('button', { name: 'Sort A–Z' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('asks before deleting, naming how many notes lose a value', async () => {
     mount();
     await screen.findByText('Merchant');

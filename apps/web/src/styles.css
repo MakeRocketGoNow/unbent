@@ -3877,6 +3877,12 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   .tag-move:disabled { opacity: 0.25; }
 }
 
+/* `TagInput`'s `trailing`: pushed to the far end of whichever line it lands on. */
+.tag-input-trailing {
+  margin-left: auto;
+  cursor: auto;
+}
+
 /*
    A select option's word, which renames it (`TagInput`'s `onRename`).
 
