@@ -138,8 +138,14 @@ const COUNT = ['', '', 'Two', 'Three', 'Four', 'Five'] as const;
  * the version people agree to; it moves only for a change worth asking everyone about,
  * and these dates move for every change. `documents.test.ts` checks neither is older.
  *
- * Both moved again on 14 October 2026, with `LEGAL_VERSION`, when the terms gained the
- * plan, its renewal and the refund policy, and the policy Paddle (MAK-108).
+ * Both moved again on 14 October 2026, when the terms gained the plan, its renewal and
+ * the refund policy, and the policy Paddle (MAK-108). `LEGAL_VERSION` moved with them
+ * only where the instance sells a plan: those sections are drawn only there
+ * (`LegalOptions.sellsPlan`), and an instance that sells none stays on the version before
+ * (`LEGAL_CHANGE.since`). The dates are one pair for every instance all the same, so on
+ * such an instance the date above the unchanged text moves and the version does not —
+ * the documents' rule that the dates move for every change and the version only for one
+ * worth asking about, seen from the other side.
  */
 const PRIVACY_EFFECTIVE = '2026-10-14';
 
