@@ -39,6 +39,13 @@ export interface Selection {
   pick(id: string, opts?: { range?: boolean }): void;
   /** Selects every loaded row. What has not been loaded is not on screen, so not selected. */
   selectAll(): void;
+  /**
+   * Replaces the selection with these rows: what a drop on the list does with the notes
+   * it just made, so the bar offers Move, Tag and Delete on them. Rows the list has not
+   * loaded are kept and counted once it has — the rows arrive a render after the notes
+   * are made — but, as ever, only the ones on screen are acted on.
+   */
+  select(ids: readonly string[]): void;
   clear(): void;
 }
 
@@ -101,6 +108,10 @@ export function useSelection(
   );
 
   const selectAll = useCallback(() => setPicked(new Set(orderRef.current)), []);
+  const select = useCallback((ids: readonly string[]) => {
+    setPicked(new Set(ids));
+    anchorRef.current = null;
+  }, []);
   const clear = useCallback(() => {
     setPicked(new Set());
     anchorRef.current = null;
@@ -112,6 +123,7 @@ export function useSelection(
     has: (id) => picked.has(id),
     pick,
     selectAll,
+    select,
     clear,
   };
 }

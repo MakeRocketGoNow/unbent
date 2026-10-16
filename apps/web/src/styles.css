@@ -755,6 +755,45 @@ button.link {
   /* Bounded so `.note-list` has a definite height to scroll within; without it the list
      grows and takes the page with it. */
   min-height: 0;
+  /* For `.list-drop-hint`, which covers the column while a file is dragged over it. */
+  position: relative;
+}
+
+/*
+   A file dragged over the list: the column tints and says what letting go will do
+   (`listDropZone`). The whole column rather than the list alone, since the head and the
+   search field are part of what a person aims at. The sentence is centred in a card of
+   its own so it reads over any row; the tint is the accent, the colour of the selection
+   the drop ends in, and never `--bad` — a drop is a safe action. `pointer-events: none`,
+   or the pointer crossing onto the hint would fire the column's dragleave.
+*/
+.sidebar.dropping > :not(.list-drop-hint) {
+  opacity: 0.4;
+}
+
+.list-drop-hint {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  box-shadow: inset 0 0 0 2px var(--accent);
+  pointer-events: none;
+}
+
+.list-drop-hint span {
+  padding: 0.5rem 0.9rem;
+  border-radius: 0.4rem;
+  color: var(--bg);
+  background: var(--accent);
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-align: center;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--fg) 25%, transparent);
 }
 
 .sidebar-head {
@@ -4269,6 +4308,28 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   flex-direction: column;
   gap: 0.3rem;
   max-width: 24rem;
+}
+
+/* PDFs and images picked for notes: what was picked, where they go, and the one button —
+   one block with the form's rhythm, drawn in place of Start import while it is there. */
+.import-batch {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.import-batch-run {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.import-batch-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 /* Collapsed by default: the answer is only needed once, and open by default would push

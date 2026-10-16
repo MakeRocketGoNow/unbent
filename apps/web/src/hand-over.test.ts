@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
 import { handOver } from './hand-over.js';
 import { claimImportFor } from './import-run.js';
+import { claimFileNotesFor } from './file-notes.js';
 
 vi.mock('./import-run.js', () => ({ claimImportFor: vi.fn() }));
+vi.mock('./file-notes.js', () => ({ claimFileNotesFor: vi.fn() }));
 
 /**
  * What the root route's guard hands over on every navigation. The rules are the ones the
@@ -18,6 +20,7 @@ describe('handOver', () => {
   it('claims the import run for the person signed in', () => {
     handOver(new QueryClient(), 'user-a');
     expect(claimImportFor).toHaveBeenCalledWith('user-a');
+    expect(claimFileNotesFor).toHaveBeenCalledWith('user-a');
   });
 
   /*
@@ -28,6 +31,7 @@ describe('handOver', () => {
   it('leaves the import run alone on a page that has no session', () => {
     handOver(new QueryClient(), undefined);
     expect(claimImportFor).not.toHaveBeenCalled();
+    expect(claimFileNotesFor).not.toHaveBeenCalled();
   });
 
   it('empties the cache for a different person, and keeps it for the same one', () => {

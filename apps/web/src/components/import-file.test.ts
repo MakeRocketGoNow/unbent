@@ -28,5 +28,6 @@ describe('describeImportFile', () => {
     const d = describeImportFile('notes.txt');
     expect(d.format).toBeNull();
     expect(d.text).toContain('.enex, .zip or .md');
+    expect(d.text).toContain('PDFs and images');
   });
 });

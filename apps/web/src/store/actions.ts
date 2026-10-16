@@ -1776,16 +1776,17 @@ export async function uploadFile(noteId: string, file: File, attachmentId: strin
     }
   }
 
-  if (file.size > MAX_ATTACHMENT_BYTES) throw new Error(`Attachment exceeds ${Math.floor(MAX_ATTACHMENT_BYTES / 1024 / 1024)}MB limit`);
-  const named = filenameSchema.safeParse(file.name);
-  if (!named.success) throw new Error(named.error.issues[0]?.message ?? 'Invalid filename');
+  const refused = uploadRefusal(file);
+  if (refused) throw new Error(refused);
+  // Already refused above for a name the schema does not take; parsed again for its value.
+  const named = filenameSchema.parse(file.name);
   const room = await navigator.storage.estimate?.().catch(() => null);
   if (room?.quota !== undefined && room.usage !== undefined && file.size > room.quota - room.usage) {
     throw new Error('Not enough room on this device to keep the file until it can upload');
   }
 
   const taken = [...lib.attachments.values()].filter((a) => a.noteId === noteId).map((a) => a.filename);
-  const filename = availableFilename(taken, named.data);
+  const filename = availableFilename(taken, named);
   const contentType = file.type || 'application/octet-stream';
   // Again for the ways here that were not known at the start; a second ask is free.
   askToPersist();
@@ -1798,6 +1799,17 @@ export async function uploadFile(noteId: string, file: File, attachmentId: strin
   // `server`: whoever reads this file's text does so when the upload goes through
   // (`onUploaded`), not now, when there is no server to give the text to.
   return { filename, contentType, size: file.size, path: `files/${filename}`, indexing: 'server' };
+}
+
+/**
+ * Why the server would refuse this file, known without sending it: over the cap, or a
+ * name the route does not take. One rule, read here before a queued upload and by
+ * `file-notes.ts` before a note is made for the file, so the two cannot drift.
+ */
+export function uploadRefusal(file: File): string | null {
+  if (file.size > MAX_ATTACHMENT_BYTES) return `Attachment exceeds ${Math.floor(MAX_ATTACHMENT_BYTES / 1024 / 1024)}MB limit`;
+  const named = filenameSchema.safeParse(file.name);
+  return named.success ? null : (named.error.issues[0]?.message ?? 'Invalid filename');
 }
 
 /**

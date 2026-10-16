@@ -1,4 +1,5 @@
 import { getImportRun } from './import-run.js';
+import { getFileNotes } from './file-notes.js';
 import { isExportRunning } from './export-archive.js';
 import { indexing } from './index-files.js';
 
@@ -8,10 +9,10 @@ import { indexing } from './index-files.js';
  * Asked by the update notice's Reload before it reloads into a newer build — see
  * `sw-register.ts`, which waits for this to clear rather than refusing. A reload must not
  * land while a note has typing the autosave has not sent, a file is uploading, or an
- * import, export or indexing pass is running, since each of those lives in this page and
- * nowhere else.
+ * import, export, indexing pass or batch of notes made from files is running, since
+ * each of those lives in this page and nowhere else.
  *
- * The three background runs are read from their own stores, which already know. The
+ * The background runs are read from their own stores, which already know. The
  * open note says so itself through `holdPage`, because only it knows its save state and
  * its uploads, and a note is mounted and unmounted far more often than a store changes.
  */
@@ -30,6 +31,9 @@ export function pageBusy(): boolean {
   return (
     holds.size > 0 ||
     getImportRun().status === 'running' ||
+    // Files becoming notes: a reload mid-batch loses every file not yet handed to the
+    // outbox, and a note already made and linking to it stays.
+    getFileNotes().status === 'running' ||
     isExportRunning() ||
     indexing.get().status === 'running'
   );
