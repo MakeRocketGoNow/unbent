@@ -29,5 +29,3 @@ export function launchFiles(queryClient: QueryClient, openNote: OpenNote) {
     if (first) openNote(first);
   };
 }
-
-export { titleFor } from './file-notes.js';
