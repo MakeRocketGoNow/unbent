@@ -58,12 +58,16 @@ describe('applyOptionEdit', () => {
     ]);
   });
 
-  it('renames in place, and merges onto an option that already stands', () => {
+  it('renames in place, and merges onto an option that already stands only when asked', () => {
     expect(applyOptionEdit(['A', 'B', 'C'], { rename: [{ from: 'B', to: 'Bee' }] })).toMatchObject({
       options: ['A', 'Bee', 'C'],
       renamed: [{ from: 'B', to: 'Bee' }],
     });
-    expect(applyOptionEdit(['Grocery', 'Fuel', 'Groceries'], { rename: [{ from: 'Grocery', to: 'Groceries' }] })).toMatchObject({
+    expect(applyOptionEdit(['Grocery', 'Groceries'], { rename: [{ from: 'Grocery', to: 'Groceries' }] })).toMatchObject({
+      error: expect.stringContaining('merge'),
+      merge: true,
+    });
+    expect(applyOptionEdit(['Grocery', 'Fuel', 'Groceries'], { rename: [{ from: 'Grocery', to: 'Groceries' }], merge: true })).toMatchObject({
       options: ['Fuel', 'Groceries'],
       renamed: [{ from: 'Grocery', to: 'Groceries' }],
     });
@@ -103,7 +107,7 @@ describe('applyOptionEdit', () => {
   });
 
   it('refuses chains, swaps and an option both renamed and removed', () => {
-    expect(applyOptionEdit(['A', 'B'], { rename: [{ from: 'A', to: 'B' }, { from: 'B', to: 'A' }] })).toHaveProperty('error');
+    expect(applyOptionEdit(['A', 'B'], { rename: [{ from: 'A', to: 'B' }, { from: 'B', to: 'A' }], merge: true })).toHaveProperty('error');
     expect(applyOptionEdit(['A', 'B'], { rename: [{ from: 'A', to: 'X' }, { from: 'X', to: 'Y' }] })).toHaveProperty('error');
     expect(applyOptionEdit(['A', 'B'], { rename: [{ from: 'A', to: 'X' }], remove: ['A'] })).toHaveProperty('error');
     expect(applyOptionEdit(['A', 'B'], { pinFirst: ['A'], pinLast: ['A'] })).toHaveProperty('error');

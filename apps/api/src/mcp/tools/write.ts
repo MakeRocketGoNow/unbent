@@ -1001,8 +1001,10 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
         'Change a field\'s name, type, or the options of a select or multiselect. Omit any ' +
         'of them to leave it unchanged. To change options, prefer the edits, which apply to ' +
         'the current list so it need not be read or sent: renameOptions renames an option ' +
-        'and moves every note holding it to the new name (renaming onto an option that ' +
-        'already exists merges the two); removeOptions takes options off the list, and ' +
+        'and moves every note holding it to the new name. Renaming onto an option that ' +
+        'already exists is refused, since the two would become one: pass mergeOptions:true ' +
+        'to fold it in. A merge cannot be undone, so confirm it with the person first. ' +
+        'removeOptions takes options off the list, and ' +
         'notes that hold one keep their value; addOptions adds, at the end unless position ' +
         'says otherwise; sort "alpha" orders the list alphabetically, ignoring case; ' +
         'pinFirst and pinLast keep named options at either end. They combine in one call, ' +
@@ -1034,6 +1036,9 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
           'Where added options go: "end" (the default), "start", "alpha" (each in its ' +
             'alphabetical place), or { after: "<option>" }.',
         ),
+        mergeOptions: optionEditSchema.shape.merge.describe(
+          'Allow a rename onto an option that already exists, merging the two. Ask the person first.',
+        ),
         sort: optionEditSchema.shape.sort.describe('"alpha" orders the whole list alphabetically, ignoring case.'),
         pinFirst: optionEditSchema.shape.pinFirst.describe('Options to put first, in this order, after any sort.'),
         pinLast: optionEditSchema.shape.pinLast.describe(
@@ -1055,6 +1060,7 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
         sort: edits.sort,
         pinFirst: edits.pinFirst,
         pinLast: edits.pinLast,
+        merge: edits.mergeOptions,
       };
       if (isEmptyOptionEdit(edit)) {
         const result = await notes.updateField(notebookId, fieldId, { name, type, options, currency });
@@ -1074,7 +1080,14 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
       if (result === 'conflict') {
         return toolError(`This notebook already has a field called "${name}".`);
       }
-      if ('refused' in result) return toolError(result.refused);
+      if ('refused' in result) {
+        return toolError(
+          result.merge
+            ? `${result.refused} Pass mergeOptions:true to fold it in: every note holding it will ` +
+                'hold the other instead. That cannot be undone, so confirm it with the person first.'
+            : result.refused,
+        );
+      }
       return jsonResult(result);
     },
   );

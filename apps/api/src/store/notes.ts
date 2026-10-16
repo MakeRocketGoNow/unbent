@@ -3129,7 +3129,8 @@ export class NotesStore {
    * removed and another added, and every note holding the old one is left on a value the
    * field no longer offers. Here the list and the values change in one transaction, so a
    * note is never seen holding an option that is gone. A rename onto an option that
-   * already stands merges the two, and a multi-select holding both keeps one.
+   * already stands merges the two when the edit says `merge`, and a multi-select holding
+   * both keeps one; without it the refusal carries `merge`, so the tool can say how.
    *
    * A removal changes no note, as `removeFieldOption` without `clear` does not: the value
    * stays and reads as no longer an option. What it reports is how many notes still hold
@@ -3157,14 +3158,14 @@ export class NotesStore {
       }
     | 'missing'
     | 'conflict'
-    | { refused: string } {
+    | { refused: string; merge?: true } {
     return this.sql.tx(() => {
       const field = this.getField(notebookId, fieldId);
       if (!field) return 'missing';
       if (!fieldHasOptions(field.type)) return { refused: 'Only a select or multiselect field has options.' };
 
       const applied = applyOptionEdit(field.options, edit);
-      if ('error' in applied) return { refused: applied.error };
+      if ('error' in applied) return { refused: applied.error, ...(applied.merge ? { merge: true as const } : {}) };
 
       // First, because it is the one that can refuse (a name another field has), and it
       // refuses before writing anything: returning from `tx` commits, so a refusal after

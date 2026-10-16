@@ -476,6 +476,7 @@ describe('update_notebook_field option edits', () => {
           sort: 'alpha',
           pinFirst: undefined,
           pinLast: ['Other'],
+          merge: undefined,
         },
         patch: { name: undefined, currency: undefined },
       },
@@ -492,6 +493,18 @@ describe('update_notebook_field option edits', () => {
     const result = await update({ notebookId: 'nb', fieldId, renameOptions: [{ from: 'Food', to: 'Dining' }], name: 'Kind' });
     expect(edits).toMatchObject([{ edit: { rename: [{ from: 'Food', to: 'Dining' }] }, patch: { name: 'Kind' } }]);
     expect(JSON.parse(result.content[0]!.text)).toMatchObject({ renamed: [{ from: 'Food', to: 'Dining', notes: 3 }] });
+  });
+
+  it('says what mergeOptions would do when a rename lands on an existing option', async () => {
+    const { update } = optionsRepo({ refused: '"B" is already an option, so renaming "A" to it would merge the two.', merge: true });
+    const result = await update({ notebookId: 'nb', fieldId, renameOptions: [{ from: 'A', to: 'B' }] });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toContain('mergeOptions:true');
+    expect(result.content[0]!.text).toContain('confirm it with the person');
+
+    const passed = optionsRepo();
+    await passed.update({ notebookId: 'nb', fieldId, renameOptions: [{ from: 'A', to: 'B' }], mergeOptions: true });
+    expect(passed.edits).toMatchObject([{ edit: { merge: true } }]);
   });
 
   it('refuses the edits beside a whole list or a type change', async () => {

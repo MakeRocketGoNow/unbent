@@ -28,6 +28,8 @@ export const optionEditSchema = z.object({
   sort: z.literal('alpha').optional(),
   pinFirst: z.array(optionSchema).max(MAX_SELECT_OPTIONS).optional(),
   pinLast: z.array(optionSchema).max(MAX_SELECT_OPTIONS).optional(),
+  /** Lets a rename land on an option that already stands, folding the two into one. */
+  merge: z.boolean().optional(),
 });
 
 export type OptionPosition = z.infer<typeof optionPositionSchema>;
@@ -66,7 +68,8 @@ export type OptionEditResult =
       /** Options that were not on the list before. One already there is not repeated. */
       added: string[];
     }
-  | { error: string };
+  /** `merge` marks the one refusal that the edit's own flag would have allowed. */
+  | { error: string; merge?: true };
 
 /**
  * Applies `edit` to `current`, in a fixed order: renames, then removals, then additions,
@@ -80,7 +83,9 @@ export type OptionEditResult =
  *
  * A rename onto an option that already stands merges the two: the old one leaves the list
  * and its notes take the other's value. That is how "Grocery" and "Groceries" become one,
- * and the store moves the values with it.
+ * and the store moves the values with it. It is refused unless `merge` says it is meant,
+ * as `rename_tag` refuses one: afterwards nothing tells which notes held which, and a
+ * model that misread the list should hear so before that happens, not after.
  */
 export function applyOptionEdit(current: string[], edit: OptionEdit): OptionEditResult {
   let list = [...current];
@@ -101,8 +106,15 @@ export function applyOptionEdit(current: string[], edit: OptionEdit): OptionEdit
     if (at < 0) return { error: `"${from}" is not one of this field's options.` };
     if (from === to) continue;
     // A merge keeps the option it lands on where it stands; a plain rename keeps its place.
-    if (list.includes(to)) list.splice(at, 1);
-    else list[at] = to;
+    if (list.includes(to)) {
+      if (!edit.merge) {
+        return {
+          error: `"${to}" is already an option, so renaming "${from}" to it would merge the two.`,
+          merge: true,
+        };
+      }
+      list.splice(at, 1);
+    } else list[at] = to;
     renamed.push({ from, to });
   }
 

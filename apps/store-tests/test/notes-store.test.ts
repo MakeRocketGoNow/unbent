@@ -967,8 +967,11 @@ describe('custom fields', () => {
     expect((await stub.get(c.id))!.fields!.find((v) => v.name === 'Kind')!.value).toBe('fuel');
     expect(await feedRows(stub, seq)).toEqual([{ entity: 'notebook', id: nb.id }, { entity: 'note', id: a.id }]);
 
-    // A rename onto an option that stands merges them; a note holding both keeps one.
-    const merged = await stub.editFieldOptions(nb.id, tags.id, { rename: [{ from: 'Grocery', to: 'Groceries' }], add: ['Fuel'], position: 'alpha' });
+    // A rename onto an option that stands is refused unless asked, and moves nothing.
+    expect(await stub.editFieldOptions(nb.id, tags.id, { rename: [{ from: 'Grocery', to: 'Groceries' }] })).toMatchObject({ refused: expect.stringContaining('merge') });
+    expect((await stub.get(b.id))!.fields!.find((v) => v.name === 'Labels')!.value).toEqual(['Grocery', 'Gift']);
+    // Asked, it merges them; a note holding both keeps one.
+    const merged = await stub.editFieldOptions(nb.id, tags.id, { rename: [{ from: 'Grocery', to: 'Groceries' }], merge: true, add: ['Fuel'], position: 'alpha' });
     expect(merged).toMatchObject({ field: { options: ['Fuel', 'Groceries', 'Gift'] }, renamed: [{ notes: 2 }], added: ['Fuel'] });
     expect((await stub.get(a.id))!.fields!.find((v) => v.name === 'Labels')!.value).toEqual(['Groceries']);
     expect((await stub.get(b.id))!.fields!.find((v) => v.name === 'Labels')!.value).toEqual(['Groceries', 'Gift']);

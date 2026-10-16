@@ -388,7 +388,7 @@ export class NotesRepo extends StoreRepo {
       }
     | 'missing'
     | 'conflict'
-    | { refused: string }
+    | { refused: string; merge?: true }
   > {
     return this.call(async (s) => s.editFieldOptions(notebookId, fieldId, edit, patch));
   }
