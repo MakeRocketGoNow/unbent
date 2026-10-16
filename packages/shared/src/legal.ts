@@ -32,6 +32,9 @@ export const LEGAL_VERSION = '2026-10-14';
  */
 export const REFUND_DAYS = 14;
 
+/** A billing-only change names the version it moved from; any other moves every instance. */
+type LegalChange = { text: string; billingOnly: true; since: string } | { text: string; billingOnly?: false };
+
 /**
  * One sentence on what changed in `LEGAL_VERSION`, for the people who agreed to an earlier
  * one. Shown under "We’ve updated our terms", so they can tell a new
@@ -50,7 +53,7 @@ export const REFUND_DAYS = 14;
  * next change that is not billing-only drops both fields, and every instance moves to it
  * together.
  */
-export const LEGAL_CHANGE: { text: string; billingOnly: true; since: string } | { text: string; billingOnly?: false } | undefined = {
+export const LEGAL_CHANGE: LegalChange | undefined = {
   text:
     'The terms now say how a plan is billed, how it renews and how to cancel it, and that ' +
     `any charge is refunded in full if you ask within ${REFUND_DAYS} days.`,
