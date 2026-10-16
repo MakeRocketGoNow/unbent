@@ -178,9 +178,12 @@ describe('claimFileNotesFor', () => {
 
   /* A cold launch reaches the batch before the guard has claimed anyone. */
   it('lets the first person claimed adopt a batch begun before anyone was, and a sign-out then stops it', async () => {
+    // The first two uploads are held until released; `held` fills as they are made.
     const held: (() => void)[] = [];
-    const hold = () => new Promise<Awaited<ReturnType<typeof actions.uploadFile>>>((r) => held.push(() => r({ filename: 'x', contentType: 'application/pdf', size: 1, path: 'files/x', indexing: 'server' as const })));
-    vi.mocked(actions.uploadFile).mockReturnValueOnce(hold()).mockReturnValueOnce(hold());
+    const answer = { filename: 'x', contentType: 'application/pdf', size: 1, path: 'files/x', indexing: 'server' as const };
+    vi.mocked(actions.uploadFile).mockImplementation(() =>
+      held.length < 2 ? new Promise((r) => held.push(() => r(answer))) : Promise.resolve(answer),
+    );
     const batch = notesFromFiles([pdf('a.pdf'), pdf('b.pdf'), pdf('c.pdf')], { notebook: null, tags: [] }, null, 'launch');
     await vi.waitFor(() => expect(held).toHaveLength(1));
     claimFileNotesFor('u1');
