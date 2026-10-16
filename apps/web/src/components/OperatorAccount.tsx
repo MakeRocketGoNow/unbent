@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BASE_STORAGE_GB, DELETED_FILES_KEPT_DAYS, DUMPS_KEPT_DAYS, MIRROR_KEPT_DAYS, RESTORES_LISTED, RESTORE_WINDOW_DAYS, type AccountDump, type OperatorAccount as Account, type StoreRestore } from '@unbent/shared';
+import { BASE_STORAGE_GB, DELETED_FILES_KEPT_DAYS, DUMPS_KEPT_DAYS, INACTIVE_KEPT_DAYS, MIRROR_KEPT_DAYS, RESTORES_LISTED, RESTORE_WINDOW_DAYS, type AccountDump, type OperatorAccount as Account, type StoreRestore } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { ApiError, LoadFailedError, errorText } from '../notes-api.js';
 import { formatBytes } from '../format-bytes.js';
@@ -1171,6 +1171,12 @@ function PlanSection({ userId, email, plan }: { userId: string; email: string; p
  *
  * Not offered on the operator's own account, which the server refuses too: that deletion
  * is Maintenance's, with its link, and this one would end the session making it.
+ *
+ * On an account whose plan has lapsed, the confirm also restates the terms' promise: a
+ * read-only account is kept for a year and its owner is emailed to export it before it
+ * is deleted. Nothing sends that mail and nothing deletes on a timer (`INACTIVE_KEPT_DAYS`),
+ * so the promise is kept by whoever presses this, and the confirm is the one place they
+ * are certain to be reading when it matters. A note in a tracker or a README is read once.
  */
 function DeleteAccount({
   userId,
@@ -1219,6 +1225,9 @@ function DeleteAccount({
   const files = counted ? counted.counts['attachments'] : undefined;
   // Only what there is: "and its 0 files" names nothing, and a bot's account often has neither.
   const what = [notes ? plural(notes, 'note') : null, files ? plural(files, 'file') : null].filter(Boolean).join(' and ');
+  // `until` on an inactive plan is when it became so (`AccountPlan.until`).
+  const lapsed = account?.plan?.state === 'inactive' ? account.plan.until : null;
+  const keptFor = INACTIVE_KEPT_DAYS === 365 ? 'a year' : `${INACTIVE_KEPT_DAYS} days`;
 
   async function remove() {
     const release = holdPage();
@@ -1257,6 +1266,13 @@ function DeleteAccount({
           question={`Delete ${email}${what ? ` and its ${what}` : ''}?`}
           detail={
             <>
+              {lapsed !== null && (
+                <>
+                  The plan lapsed {lapsed ? `${timeAgo(lapsed)}, ${formatMoment(lapsed)}` : 'at an unknown time'}. The terms keep a read-only account for{' '}
+                  {keptFor} and promise its owner an email asking them to export it before it is deleted. Nothing sends that mail: send it, and
+                  wait for them, before pressing.{' '}
+                </>
+              )}
               Everything goes now, and anyone signed in to it is signed out within five minutes. There is no undo. Type <code>DELETE</code> to confirm.
             </>
           }

@@ -117,7 +117,7 @@ export const REFUNDS_ID = 'refunds';
 /** How long a lapsed account is kept, as the sentence says it. */
 const KEPT = INACTIVE_KEPT_DAYS === 365 ? 'a year' : `${INACTIVE_KEPT_DAYS} days`;
 
-const EFFECTIVE = '2026-10-14';
+const EFFECTIVE = '2026-10-16';
 
 /**
  * How many "other kinds of service" the policy lists, as the word the sentence needs. Two
@@ -146,8 +146,14 @@ const COUNT = ['', '', 'Two', 'Three', 'Four', 'Five'] as const;
  * such an instance the date above the unchanged text moves and the version does not —
  * the documents' rule that the dates move for every change and the version only for one
  * worth asking about, seen from the other side.
+ *
+ * The policy's moved again on 16 October 2026, for two disclosures of what was already so:
+ * that Paddle's checkout sets cookies of its own once Subscribe is pressed, and that an
+ * app connected to the account reads and writes notes as its owner does. Neither changed
+ * how information is handled, so `LEGAL_VERSION` stayed; the terms' date moved the same
+ * day for the venue clause, which is not a reason to ask anyone again either.
  */
-const PRIVACY_EFFECTIVE = '2026-10-14';
+const PRIVACY_EFFECTIVE = '2026-10-16';
 
 export interface LegalDocuments {
   privacy: LegalDocument;
@@ -231,6 +237,10 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
             '. There is no marketing mail, and no newsletter to unsubscribe from.',
           'We do not sell personal information, and we do not share it for advertising or for ' +
             'anyone else to build a profile from.',
+          'If you connect another app to your account, such as an assistant, it can read and ' +
+            'change your notes as you can, for as long as it stays connected. That is your ' +
+            'choice, made when the app asks and undone from Settings, then Connected apps. ' +
+            'What that app does with what it reads is governed by its own policy, not this one.',
         ],
       },
       {
@@ -281,7 +291,12 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
         body: [
           'Unbent sets one kind of cookie: the one that keeps you signed in. There are no ' +
             'advertising, analytics or tracking cookies, and no other company sets a cookie ' +
-            'or stores anything on your device through Unbent.',
+            'or stores anything on your device through Unbent' +
+            (opts.sellsPlan
+              ? ', with one exception: when you press Subscribe, the checkout that opens is ' +
+                'Paddle’s own page inside ours, and it sets cookies of its own, under its own ' +
+                'policy, for the purchase. Nothing of Paddle’s loads until that press.'
+              : '.'),
           'Because all of it is needed to give you the service you asked for, none of it needs ' +
             'your consent, and there is no cookie banner to dismiss. Clearing this site’s data ' +
             'in your browser removes all of it, and signs you out.',
@@ -538,7 +553,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
         body: [
           'These terms are governed by the laws of the State of Minnesota, without regard to its ' +
             'conflict of law rules. Any dispute will be brought in the state or federal courts ' +
-            'located in Hennepin County, Minnesota, and both of us consent to the jurisdiction of ' +
+            'located in Dakota County, Minnesota, and both of us consent to the jurisdiction of ' +
             'those courts. If you are a consumer elsewhere, this does not deprive you of the ' +
             'protection of your own country’s mandatory laws.',
         ],

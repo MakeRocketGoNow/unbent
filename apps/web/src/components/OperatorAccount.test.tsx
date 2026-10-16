@@ -599,6 +599,19 @@ describe('OperatorAccount: delete account', () => {
     expect(screen.queryByRole('button', { name: 'Resync devices' })).toBeNull();
   });
 
+  it('restates the export promise on an account whose plan has lapsed, and on no other', () => {
+    harness(undefined, undefined, { ...account, plan: { state: 'inactive', until: now - 40 * 86_400_000, readOnlyAt: now - 40 * 86_400_000, source: 'paddle', storageGb: 10, subscription: null } });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete account' }));
+    const text = screen.getByRole('group', { name: 'Confirm delete account' }).textContent ?? '';
+    expect(text).toContain('The plan lapsed');
+    expect(text).toContain('promise its owner an email asking them to export it before it is deleted');
+    cleanup();
+
+    harness(undefined, undefined, { ...account, plan: { state: 'trial', until: now + 5 * 86_400_000, readOnlyAt: now + 5 * 86_400_000, source: null, storageGb: 10, subscription: null } });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete account' }));
+    expect(screen.getByRole('group', { name: 'Confirm delete account' }).textContent).not.toContain('The plan lapsed');
+  });
+
   it("names the sweep's note count while the store's are not in, or are a loading store's zeros", () => {
     vi.mocked(api.storeStats).mockReturnValue(new Promise(() => {}));
     const loading = { ...stats({ notes: 0, attachments: 0 }), loading: { id: 'l1', key: 'stores/u1/2026-10-05.sql', startedAt: now, pages: 2, undo: null, before: null } };

@@ -155,6 +155,17 @@ person doesn't re-litigate it or silently undo it. `Rail.tsx`, `OverflowMenu.tsx
 Write them for the reader who is about to change the code. If a line looks arbitrary and
 isn't, say why. If something was tried and didn't work, that belongs in the comment.
 
+## No em-dashes
+
+Do not write an em-dash (—) in anything new: comments, docs, commit messages, PR text,
+UI copy, Linear issues. Use a comma, a colon, a full stop or parentheses instead. A run of
+them is the tell that a model wrote the text, and this repository is read by people who
+notice.
+
+The existing text is full of them and is not being swept; take them out of a paragraph
+you are already rewriting, not in a pass of their own. The legal documents are the one
+place to leave them where a lawyer would have used one, since that register is the point.
+
 ## Real notes stay out of the repo
 
 **This repository is open source; the notes it is built against are private.** The real
