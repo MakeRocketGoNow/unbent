@@ -137,6 +137,27 @@ describe('applyOptionEdit', () => {
   });
 });
 
+describe('applyOptionEdit with a whole list', () => {
+  it('replaces the list and names what left and what is new', () => {
+    expect(applyOptionEdit(['Misc', 'Fuel', 'Bank'], { replace: ['Bank', 'Other', 'Fuel'] })).toEqual({
+      options: ['Bank', 'Other', 'Fuel'],
+      renamed: [],
+      removed: ['Misc'],
+      added: ['Other'],
+    });
+  });
+
+  it('refuses a whole list beside any other edit', () => {
+    expect(applyOptionEdit(['A'], { replace: ['A', 'B'], sort: 'alpha' })).toHaveProperty('error');
+    expect(applyOptionEdit(['A'], { replace: ['B'], rename: [{ from: 'A', to: 'B' }] })).toHaveProperty('error');
+  });
+
+  it('is an edit even when it empties the list', () => {
+    expect(isEmptyOptionEdit({ replace: [] })).toBe(false);
+    expect(applyOptionEdit(['A'], { replace: [] })).toMatchObject({ options: [], removed: ['A'] });
+  });
+});
+
 describe('optionEditSchema', () => {
   it('trims names, and an empty edit says so', () => {
     const edit = optionEditSchema.parse({ add: ['  Fuel '] });

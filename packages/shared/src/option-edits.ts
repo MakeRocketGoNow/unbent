@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MAX_FIELD_NAME_LENGTH, MAX_SELECT_OPTIONS } from './fields.js';
+import { MAX_FIELD_NAME_LENGTH, MAX_SELECT_OPTIONS, fieldOptionsSchema } from './fields.js';
 
 /**
  * Edits to a select's or multi-select's option list, described rather than spelled out.
@@ -30,6 +30,13 @@ export const optionEditSchema = z.object({
   pinLast: z.array(optionSchema).max(MAX_SELECT_OPTIONS).optional(),
   /** Lets a rename land on an option that already stands, folding the two into one. */
   merge: z.boolean().optional(),
+  /**
+   * The whole list, which replaces the current one: the editor's shape, and a model's when
+   * it means to set the list outright. It is an edit rather than a plain write so that what
+   * it drops is counted against the list the store holds, in the same call, and the caller
+   * hears which options left and how many notes still hold each. Nothing else rides with it.
+   */
+  replace: fieldOptionsSchema.optional(),
 });
 
 export type OptionPosition = z.infer<typeof optionPositionSchema>;
@@ -42,6 +49,7 @@ export type OptionEdit = z.infer<typeof optionEditSchema>;
  */
 export function isEmptyOptionEdit(edit: OptionEdit): boolean {
   return (
+    edit.replace === undefined &&
     !edit.rename?.length &&
     !edit.remove?.length &&
     !edit.add?.length &&
@@ -94,6 +102,23 @@ export type OptionEditResult =
  * model that misread the list should hear so before that happens, not after.
  */
 export function applyOptionEdit(current: string[], edit: OptionEdit): OptionEditResult {
+  if (edit.replace !== undefined) {
+    const { replace, ...rest } = edit;
+    // Two lists claiming to be the field's options: picking one would quietly drop what
+    // the other asked for, so neither is picked.
+    if (!isEmptyOptionEdit(rest)) return { error: 'Send a whole list or the option edits, not both.' };
+    // A rename hidden in a list is a drop and an addition: "Misc" gone and "Other" new may
+    // be one option renamed or two unrelated changes, and only the caller knows which. It
+    // reads as a drop, with the notes still holding it counted, and `rename` is the way to
+    // say it was a rename.
+    return {
+      options: replace,
+      renamed: [],
+      removed: current.filter((o) => !replace.includes(o)),
+      added: replace.filter((o) => !current.includes(o)),
+    };
+  }
+
   let list = [...current];
   const renamed: Array<{ from: string; to: string }> = [];
   const touched = new Set<string>();

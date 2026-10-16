@@ -991,7 +991,9 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
    * wants, and they apply to the list the store holds, so an option the model did not
    * name cannot go missing on the way (MAK-227). A rename goes through the store's
    * `editFieldOptions`, which moves the notes holding the old option with it — through the
-   * whole list, a rename left them on a value the field no longer offered.
+   * whole list, a rename left them on a value the field no longer offered. The whole list
+   * goes through it too, as a `replace`, so the answer names every option the list left
+   * out and how many notes still hold it: a dropped option is said, not silent.
    */
   server.registerTool(
     'update_notebook_field',
@@ -1011,7 +1013,9 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
         'applied in that order, and the result says how many notes each rename moved and ' +
         'how many still hold each removed option. Options are named exactly, case included, ' +
         'and one the field lacks is refused. options instead replaces the whole list, and ' +
-        'cannot be combined with the edits; an option left out of it leaves the list. ' +
+        'cannot be combined with the edits; an option left out of it leaves the list, and ' +
+        'the result lists each one in removed with how many notes still hold it. When that ' +
+        'is more than none, tell the person, and use renameOptions if it was a rename. ' +
         'Changing the type converts the values notes already hold; any value that cannot ' +
         'be read as the new type is cleared, and the result says how many were. Changing ' +
         'to select or multiselect makes the existing values the options, so it cannot be ' +
@@ -1062,7 +1066,15 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
         pinLast: edits.pinLast,
         merge: edits.mergeOptions,
       };
-      if (isEmptyOptionEdit(edit)) {
+      // A type change, and anything else that leaves the options alone, is `updateField`'s:
+      // converting to a select makes its own options from the values, and the list sent
+      // beside it is what that conversion's own rule decides about.
+      if (type || (isEmptyOptionEdit(edit) && !options)) {
+        if (!isEmptyOptionEdit(edit)) {
+          return toolError(
+            'Leave type out when editing options, even to repeat the current one; a type change goes in a call of its own.',
+          );
+        }
         const result = await notes.updateField(notebookId, fieldId, { name, type, options, currency });
         if (result === 'missing') return notFound('field', fieldId);
         if (result === 'conflict') {
@@ -1071,15 +1083,13 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
         return jsonResult(result);
       }
 
-      // Refused rather than ordered: either combination has two lists claiming to be the
+      // Refused rather than ordered: the combination has two lists claiming to be the
       // field's options, and picking one would quietly drop what the other asked for.
-      if (options) return toolError('Send options or the option edits, not both.');
-      if (type) {
-        return toolError(
-          'Leave type out when editing options, even to repeat the current one; a type change goes in a call of its own.',
-        );
-      }
-      const result = await notes.editFieldOptions(notebookId, fieldId, edit, { name, currency });
+      if (options && !isEmptyOptionEdit(edit)) return toolError('Send options or the option edits, not both.');
+      const result = await notes.editFieldOptions(notebookId, fieldId, options ? { replace: options } : edit, {
+        name,
+        currency,
+      });
       if (result === 'missing') return notFound('field', fieldId);
       if (result === 'conflict') {
         return toolError(`This notebook already has a field called "${name}".`);

@@ -3145,6 +3145,7 @@ export class NotesStore {
    * A removal changes no note, as `removeFieldOption` without `clear` does not: the value
    * stays and reads as no longer an option. What it reports is how many notes still hold
    * each, so a caller that removed one by mistake hears it at once rather than never.
+   * An option a whole list (`replace`) leaves out is a removal, and is counted the same way.
    *
    * Like the rest of a field's management, this keeps no revision of the notes it
    * rewrites (see `update`); each one is in the feed, after the notebook.

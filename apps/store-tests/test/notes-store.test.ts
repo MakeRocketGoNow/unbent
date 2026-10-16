@@ -982,6 +982,18 @@ describe('custom fields', () => {
     expect((await stub.get(c.id))!.fields!.find((v) => v.name === 'Kind')!.value).toBe('fuel');
     expect(await stub.editFieldOptions(nb.id, kind.id, { add: ['Cash'] }, { name: 'Category' })).toMatchObject({ field: { name: 'Category', options: ['Bank', 'fuel', 'Other', 'Cash'] } });
 
+    // A whole list replaces it, and names each option it left out with the notes holding it.
+    const replaced = await stub.editFieldOptions(nb.id, kind.id, { replace: ['Bank', 'Other', 'Petrol'] });
+    expect(replaced).toMatchObject({
+      field: { options: ['Bank', 'Other', 'Petrol'] },
+      removed: [
+        { option: 'fuel', notes: 1 },
+        { option: 'Cash', notes: 0 },
+      ],
+      added: ['Petrol'],
+    });
+    expect((await stub.get(c.id))!.fields!.find((v) => v.name === 'Category')!.value).toBe('fuel');
+
     seq = await feedSeq(stub);
     expect(await stub.editFieldOptions(nb.id, kind.id, { remove: ['Nope'] })).toEqual({ refused: expect.stringContaining('not one of') });
     expect(await stub.editFieldOptions(nb.id, text.id, { add: ['x'] })).toEqual({ refused: expect.stringContaining('select') });

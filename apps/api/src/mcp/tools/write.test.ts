@@ -516,15 +516,35 @@ describe('update_notebook_field option edits', () => {
     expect(edits).toHaveLength(0);
   });
 
-  it('says what the store refused, and a whole list still goes the old way', async () => {
+  it('says what the store refused', async () => {
     const refused = optionsRepo({ refused: '"Nope" is not one of this field\'s options.' });
     const result = await refused.update({ notebookId: 'nb', fieldId, removeOptions: ['Nope'] });
     expect(result.isError).toBe(true);
     expect(result.content[0]!.text).toContain('"Nope"');
 
+  });
+
+  it('sends a whole list as a replacement, so the answer names what it dropped', async () => {
+    const { updates, edits, update } = optionsRepo({
+      field: { id: fieldId, options: ['A', 'B'] },
+      renamed: [],
+      removed: [{ option: 'Misc', notes: 4 }],
+      added: ['B'],
+    });
+    const result = await update({ notebookId: 'nb', fieldId, options: ['A', 'B'], name: 'Kind' });
+    expect(updates).toHaveLength(0);
+    expect(edits).toEqual([{ edit: { replace: ['A', 'B'] }, patch: { name: 'Kind', currency: undefined } }]);
+    expect(JSON.parse(result.content[0]!.text)).toMatchObject({ removed: [{ option: 'Misc', notes: 4 }] });
+  });
+
+  it('leaves a type change, with or without a list, and a plain rename to updateField', async () => {
     const { updates, edits, update } = optionsRepo();
-    await update({ notebookId: 'nb', fieldId, options: ['A', 'B'] });
-    expect(updates).toEqual([{ name: undefined, type: undefined, options: ['A', 'B'], currency: undefined }]);
+    await update({ notebookId: 'nb', fieldId, type: 'select', options: ['A'] });
+    await update({ notebookId: 'nb', fieldId, name: 'Kind' });
+    expect(updates).toEqual([
+      { name: undefined, type: 'select', options: ['A'], currency: undefined },
+      { name: 'Kind', type: undefined, options: undefined, currency: undefined },
+    ]);
     expect(edits).toHaveLength(0);
   });
 });
