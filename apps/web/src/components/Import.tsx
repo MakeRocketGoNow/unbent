@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from '@tanstack/react-router';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { DEFAULT_PAGES_NOTEBOOK, type NotionUnit } from '@unbent/enex';
 import {
   getImportRun,
@@ -18,6 +18,8 @@ import { formatBytes } from '../format-bytes.js';
 import { ImportSkips } from './ImportSkips.js';
 import { usePlan } from '../use-plan.js';
 import { isNoteFile, notesFromFiles, resetFileNotes, undoFileNotes, useFileNotes } from '../file-notes.js';
+import { NotebookPicker } from './FilingRows.js';
+import { notebooksQuery } from '../queries.js';
 
 /** `1 note`, `3,325 notes`. */
 function count(n: number, noun: string): string {
@@ -43,7 +45,8 @@ export function Import() {
    */
   const [batch, setBatch] = useState<File[]>([]);
   const [batchProblem, setBatchProblem] = useState<string | null>(null);
-  const [batchNotebook, setBatchNotebook] = useState('');
+  const [batchNotebook, setBatchNotebook] = useState<string | null>(null);
+  const notebooks = useQuery(notebooksQuery());
   /** Remounts the picker once a batch starts: a file input keeps naming the files it was handed. */
   const [pickerKey, setPickerKey] = useState(0);
   const fileNotes = useFileNotes();
@@ -112,7 +115,7 @@ export function Import() {
 
   function startBatch() {
     if (batch.length === 0 || planInactive) return;
-    const notebook = batchNotebook.trim() || null;
+    const notebook = batchNotebook;
     void notesFromFiles(batch, { notebook, tags: [] }, notebook, 'import', queryClient);
     setBatch([]);
     setPickerKey((k) => k + 1);
@@ -259,20 +262,13 @@ export function Import() {
                 </span>
               </p>
               {/* The one thing the drop decides from where it lands and the picker cannot:
-                  where the notes go. By name, as the list files a new note; a name nobody
-                  has used makes the notebook. Empty is the Inbox, which is where a scan
-                  from the launch handler lands too. */}
+                  where the notes go. The note's own picker, over the notebooks that exist,
+                  rather than a name typed in: these notes are filed, not imported, and a
+                  typo in a free field made a notebook. Inbox, the picker's first row, is
+                  where a scan from the launch handler lands too. */}
               <label className="notion-pages-notebook small">
-                {/* The rule in the label, not the placeholder: a phone's field is too narrow
-                    for a sentence there, and it was cut mid-word. */}
-                <span className="muted">Notebook — empty means the Inbox</span>
-                <input
-                  className="search-field"
-                  value={batchNotebook}
-                  placeholder="Inbox"
-                  aria-label="Notebook for the new notes"
-                  onChange={(e) => setBatchNotebook(e.target.value)}
-                />
+                <span className="muted">Notebook</span>
+                <NotebookPicker className="search-field" notebook={batchNotebook} notebooks={notebooks.data?.notebooks} onChange={setBatchNotebook} />
               </label>
               <Button variant="primary" disabled={planInactive} tip={planInactive ? 'Not while the plan has ended' : undefined} onClick={startBatch}>
                 {batch.length === 1 ? 'Add note' : `Add ${batch.length} notes`}

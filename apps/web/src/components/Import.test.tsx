@@ -22,6 +22,10 @@ vi.mock('../store/actions.js', async (importOriginal) => ({
   trashNotes: vi.fn(),
 }));
 vi.mock('../index-files.js', () => ({ indexUploadedFile: vi.fn() }));
+vi.mock('../notes-api.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../notes-api.js')>()),
+  listNotebooks: vi.fn(async () => ({ notebooks: [{ id: 'nb1', name: 'Receipts', purpose: null, emoji: null, count: 0 }], unfiled: 0 })),
+}));
 vi.mock('../use-plan.js', () => ({ usePlan: () => ({ inactive: false }) }));
 
 async function mount() {
@@ -81,7 +85,9 @@ describe('the Import page with PDFs and images', () => {
     expect(screen.getByText('One note per file, named after it, with the file attached.')).toBeTruthy();
     // Start import is for an export; here the one button says what it adds.
     expect(screen.queryByRole('button', { name: 'Start import' })).toBeNull();
-    fireEvent.change(screen.getByLabelText('Notebook for the new notes'), { target: { value: 'Receipts' } });
+    // The note's own picker, over the notebooks that exist.
+    await screen.findByRole('option', { name: 'Receipts' });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Notebook' }), { target: { value: 'Receipts' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add 2 notes' }));
     await waitFor(() => expect(actions.uploadFile).toHaveBeenCalledTimes(2));
     expect(vi.mocked(actions.createNote).mock.calls.map((c) => c[0])).toEqual([
