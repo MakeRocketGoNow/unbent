@@ -70,7 +70,7 @@ export function buildSizePicker({ current = null, onPick }: PickerOptions): HTML
     }
 
     const shrinking = current !== null && (rows < current.rows || columns < current.columns);
-    label.textContent = `${rows} × ${columns}${shrinking ? ' — trims' : ''}`;
+    label.textContent = `${rows} × ${columns}${shrinking ? ' (trims)' : ''}`;
   }
 
   grid.addEventListener('mouseover', (event) => {

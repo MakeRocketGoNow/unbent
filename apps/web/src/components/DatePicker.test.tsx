@@ -36,7 +36,7 @@ const current = (c: HTMLElement) =>
 describe('DatePicker', () => {
   afterEach(cleanup);
 
-  it('offers the presets, then Any time, then Custom — the order of how often each is wanted', async () => {
+  it('offers the presets, then Any time, then Custom: the order of how often each is wanted', async () => {
     const { container, findByText } = harness();
     await findByText('Any time');
     expect(options(container)).toEqual([

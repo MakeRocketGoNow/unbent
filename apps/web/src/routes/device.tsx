@@ -58,7 +58,7 @@ function DevicePage() {
       // Deliberately not echoing the server's message: for a bad code it is a 400 with
       // wording aimed at the CLI, and "check the code" is the only useful action here.
       setInfo(null);
-      setError('That code was not recognized. It may have expired — codes last 30 minutes.');
+      setError('That code was not recognized. It may have expired: codes last 30 minutes.');
     } finally {
       setBusy(false);
     }
@@ -90,7 +90,7 @@ function DevicePage() {
         </div>
         <p className="small muted">
           {outcome === 'approved'
-            ? 'You can return to the terminal — it picks this up within a few seconds. Signing out everywhere also signs out this device.'
+            ? 'You can return to the terminal: it picks this up within a few seconds. Signing out everywhere also signs out this device.'
             : 'Nothing was granted. If you did not start this, no further action is needed.'}
         </p>
         {/* A way off this page. Without it the browser sits on /device?user_code=… after

@@ -412,7 +412,7 @@ function Reverify({ onVerified, onCancel }: ReverifyProps) {
     <div className="login-form reverify-form">
       {intro}
       <p className="bad small">
-        Sign out and back in, then add a passkey — this instance has no way to re-verify in
+        Sign out and back in, then add a passkey: this instance has no way to re-verify in
         place.
       </p>
       <Button variant="quiet" size="small" onClick={onCancel}>

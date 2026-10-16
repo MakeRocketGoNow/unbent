@@ -247,7 +247,7 @@ export function Maintenance() {
       <section className="settings-section">
         <h3>Orphaned files</h3>
         <p className="muted small">
-          Storage objects with no attachment record — leftovers from an interrupted upload
+          Storage objects with no attachment record: leftovers from an interrupted upload
           or import. Files you unlinked from a note still have a record and are not
           orphans; delete those from the note&apos;s Attachments list.
         </p>
@@ -279,7 +279,7 @@ export function Maintenance() {
                 // quite "referenced"; said separately, or the count would not add up.
                 const held = r.awaitingDeletion > 0 ? `, ${r.awaitingDeletion} deleted and waiting to leave storage` : '';
                 return r.orphaned === 0
-                  ? `Nothing to sweep — ${plural(r.stored, 'file')}, all accounted for${held}.`
+                  ? `Nothing to sweep: ${plural(r.stored, 'file')}, all accounted for${held}.`
                   : `${r.orphaned} of ${plural(r.stored, 'file')} stored have no attachment record${held}.`;
               });
             }}
@@ -411,7 +411,7 @@ export function Maintenance() {
                   A link goes to{' '}
                   <span className="wrap-anywhere">{address ?? 'your address'}</span> and
                   nothing is deleted until you open it.{' '}
-                  <Link to="/settings/export">Export first</Link> if you want a copy — there
+                  <Link to="/settings/export">Export first</Link> if you want a copy: there
                   is no way back once it is done.
                 </>
               }

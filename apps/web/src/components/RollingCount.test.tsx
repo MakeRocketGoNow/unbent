@@ -54,7 +54,7 @@ describe('RollingCount', () => {
     expect(document.querySelector('.count-out')?.className).toBe('count-out down');
   });
 
-  it('changes without a roll when the change came from elsewhere — the feed, the first copy', () => {
+  it('changes without a roll when the change came from elsewhere (the feed, the first copy)', () => {
     reducedMotion(false);
     const { rerender } = render(<RollingCount value={26} />);
     rerender(<RollingCount value={27} />);

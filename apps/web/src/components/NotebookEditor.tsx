@@ -644,7 +644,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
             so the placeholder coaches toward what belongs and, as usefully, what does not. */}
         <div className="notebook-purpose">
           <label className="notebook-purpose-label" htmlFor="notebook-purpose">
-            Purpose <span className="muted small">— optional</span>
+            Purpose <span className="muted small">(optional)</span>
           </label>
           <textarea
             id="notebook-purpose"
@@ -653,7 +653,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
             rows={2}
             maxLength={MAX_NOTEBOOK_PURPOSE_LENGTH}
             disabled={busy || !notebook}
-            placeholder="What belongs here — and what doesn't. e.g. Things I want to buy someday; not receipts or purchases."
+            placeholder="What belongs here, and what doesn't. e.g. Things I want to buy someday; not receipts or purchases."
             onChange={(e) => setPurposeDraft(e.target.value)}
           />
           <p className="muted small notebook-purpose-hint">

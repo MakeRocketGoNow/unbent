@@ -190,7 +190,7 @@ export async function httpErrorDetail(res: Response): Promise<{ message: string;
   }
 
   if (body.startsWith('<')) {
-    return { message: `${status} — the request did not reach the API; an error page came back instead` };
+    return { message: `${status}: the request did not reach the API; an error page came back instead` };
   }
 
   return { message: `${status}: ${body.slice(0, MAX_DETAIL)}` };

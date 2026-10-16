@@ -110,7 +110,7 @@ function ConsentPage() {
       <p>
         {who} is asking to use your Unbent account. If you allow it, it will be able to read
         every note you have, create new ones, change existing ones, and move notes to the
-        trash — the same things you can do.
+        trash (the same things you can do).
       </p>
 
       <p className="muted">

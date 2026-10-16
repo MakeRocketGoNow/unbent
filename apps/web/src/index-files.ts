@@ -112,7 +112,7 @@ export function createIndexing(spawn: () => Worker): Indexing {
       // Module workers often die with an empty message: the nested pdf.js worker's
       // teardown is one way. Say something actionable, and drop the worker so the next
       // start gets a fresh one instead of posting into a corpse.
-      set({ status: 'error', stopping: false, error: event.message || 'Indexing stopped unexpectedly — try again.' });
+      set({ status: 'error', stopping: false, error: event.message || 'Indexing stopped unexpectedly. Try again.' });
       w.terminate();
       if (worker === w) worker = null;
     };

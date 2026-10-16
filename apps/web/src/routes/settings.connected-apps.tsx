@@ -142,8 +142,8 @@ function ConnectedAppsPage() {
         <h2>Connected apps</h2>
       </div>
       <p className="muted small">
-        Apps you have allowed to use your notes on your behalf — an AI assistant, for
-        example. Each can read, create and change notes, and move them to the trash, until
+        Apps you have allowed to use your notes on your behalf (an AI assistant, for
+        example). Each can read, create and change notes, and move them to the trash, until
         you disconnect it here.
       </p>
 

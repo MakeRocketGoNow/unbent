@@ -30,7 +30,7 @@ if [ -z "${POSTHOG_CLI_PROJECT_ID:-}" ]; then
 fi
 
 if [ ! -d dist/assets ]; then
-  echo "sourcemaps: dist/assets is missing — run the build first" >&2
+  echo "sourcemaps: dist/assets is missing. Run the build first" >&2
   exit 1
 fi
 

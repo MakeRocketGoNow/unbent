@@ -104,7 +104,7 @@ export function FrontPage() {
             </Point>
             <Point title="A plain folder tree">
               Export is one folder per note: its Markdown, and its files beside it. Read it, grep
-              it, back it up — nothing from this app is needed to open it.
+              it, back it up: nothing from this app is needed to open it.
             </Point>
             <Point title="Still feels like a notes app">
               A formatting toolbar, headings, checklists, tables and code, styled as you type.
@@ -115,7 +115,7 @@ export function FrontPage() {
 
         <Section
           title="Three ways in"
-          intro="Leaving should be easy, and staying should never depend on it being hard — that goes for the app you are leaving, too."
+          intro="Leaving should be easy, and staying should never depend on it being hard: that goes for the app you are leaving, too."
         >
           <div className="front-grid">
             <Point title="From Evernote" help={<EnexHelp />}>
@@ -144,7 +144,7 @@ export function FrontPage() {
               filter by any of them.
             </Point>
             <Point icon={<AssistantFeatureIcon />} title="Your AI assistant, if you want one">
-              An MCP server lets Claude and other assistants search, read and file your notes —
+              An MCP server lets Claude and other assistants search, read and file your notes,
               once you connect them, and only until you disconnect them.
             </Point>
             <Point icon={<AndroidFeatureIcon />} title="An Android app">

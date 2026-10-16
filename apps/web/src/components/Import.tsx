@@ -217,20 +217,20 @@ export function Import() {
               archive's is ignored because every note inside names its own. */}
           <ul className="import-formats small">
             <li>
-              <code>.enex</code> — an Evernote export. The file name becomes each note&apos;s
+              <code>.enex</code>: an Evernote export. The file name becomes each note&apos;s
               notebook, so notebooks survive the move.
             </li>
             <li>
-              <code>.zip</code> or <code>.md</code> — an Unbent export, from this app or any
+              <code>.zip</code> or <code>.md</code>: an Unbent export, from this app or any
               other. Each note keeps its notebook, tags, dates, fields and files.
             </li>
             <li>
-              <code>.zip</code> from Notion — a Markdown &amp; CSV export. Pick the databases and
+              <code>.zip</code> from Notion: a Markdown &amp; CSV export. Pick the databases and
               pages to bring in; each becomes a notebook, with a database&apos;s columns as its
               fields.
             </li>
             <li>
-              <code>.pdf</code> or an image, any number of them — one note per file, named after
+              <code>.pdf</code> or an image, any number of them: one note per file, named after
               it, with the file attached. The same as dropping files on the note list.
             </li>
           </ul>
@@ -241,7 +241,7 @@ export function Import() {
           <p className="muted small">
             Large files are read on this machine, so a multi-gigabyte export can take
             several minutes and the tab needs to stay open. If it does get interrupted, start
-            the same file again — nothing duplicates.
+            the same file again: nothing duplicates.
           </p>
 
           <EnexHelp />
@@ -320,7 +320,7 @@ export function Import() {
                   onChange={(e) => setExtractText(e.target.checked)}
                 />
                 <span className="small">
-                  Search inside PDFs — reads the text already embedded in scanned attachments,
+                  Search inside PDFs: reads the text already embedded in scanned attachments,
                   by Evernote&apos;s OCR or a scanner&apos;s. Most scanned notes have no body
                   text, so without this they are only findable by title. Adds roughly a second
                   per PDF.
@@ -443,7 +443,7 @@ export function Import() {
           <ul className="small">
             {failures.map((f, i) => (
               <li key={i}>
-                <strong>{f.title}</strong> — {f.reason}
+                <strong>{f.title}</strong>: {f.reason}
               </li>
             ))}
           </ul>

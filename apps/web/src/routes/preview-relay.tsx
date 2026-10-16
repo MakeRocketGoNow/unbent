@@ -54,7 +54,7 @@ function PreviewRelayPage() {
       <p className="small muted">
         {origin
           ? 'Taking you back to the preview…'
-          : "This page hands a preview a sign-in from here. Start from the preview's own sign-in screen — there is nothing to do here directly."}
+          : "This page hands a preview a sign-in from here. Start from the preview's own sign-in screen: there is nothing to do here directly."}
       </p>
     </div>
   );

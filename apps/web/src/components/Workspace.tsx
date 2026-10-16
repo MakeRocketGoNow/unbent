@@ -864,7 +864,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
      (`SyncingLine`).
   */
   const saveLabel = unsavedOffline
-    ? 'Not saved — offline'
+    ? 'Not saved (offline)'
     : holdingField && saveState === 'saved'
       ? SAVE_LABEL.dirty
       : SAVE_LABEL[saveState];
@@ -1342,7 +1342,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
          See `NothingToRead` for the cases where "couldn't read" means something milder.
       */
       const { pending } = suggestion.read;
-      const unread = pending.length === 0 ? '' : ` — couldn't read ${unreadFiles(pending)}`;
+      const unread = pending.length === 0 ? '' : `; couldn't read ${unreadFiles(pending)}`;
       if (isEmptyChanges(plan.fill)) {
         showFillResult(`Nothing empty to fill in${unread}`);
       } else {
@@ -1745,7 +1745,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       {titleModelFault && (
         <div className="operator-notice" role="status">
           <span>
-            Auto-fill couldn’t reach the title model — it rejected the API key. Check{' '}
+            Auto-fill couldn’t reach the title model: it rejected the API key. Check{' '}
             <code>ANTHROPIC_API_KEY</code> on this instance. Filing still works; titles fall
             back to a line from the note.
           </span>

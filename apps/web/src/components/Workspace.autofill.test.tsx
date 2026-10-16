@@ -251,7 +251,7 @@ describe('the Auto-fill control', () => {
     mount(fresh);
     fireEvent.click(await screen.findByRole('button', { name: 'Auto-fill' }));
     expect(
-      await screen.findByText("Filled in the title, the notebook, a tag and Amount — couldn't read back.pdf"),
+      await screen.findByText("Filled in the title, the notebook, a tag and Amount; couldn't read back.pdf"),
     ).toBeTruthy();
   });
 
@@ -262,7 +262,7 @@ describe('the Auto-fill control', () => {
     });
     mount(fresh);
     fireEvent.click(await screen.findByRole('button', { name: 'Auto-fill' }));
-    expect(await screen.findByText(/— couldn't read 2 files$/)).toBeTruthy();
+    expect(await screen.findByText(/; couldn't read 2 files$/)).toBeTruthy();
   });
 
   it('shows the server’s sentence when there is nothing to read', async () => {

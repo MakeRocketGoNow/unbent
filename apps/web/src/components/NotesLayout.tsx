@@ -832,7 +832,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       : undefined;
 
   const selectionExportLabel = exportRunning
-    ? 'Export — another export is running'
+    ? 'Export: another export is running'
     : selection.ids.length === 1
       ? 'Export this note'
       : `Export ${selection.ids.length} notes`;

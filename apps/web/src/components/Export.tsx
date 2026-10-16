@@ -36,7 +36,7 @@ export function Export() {
       </div>
 
       <p className="muted small">
-        Saves every note as a zip of folders — one per note, with its attachments beside
+        Saves every note as a zip of folders: one per note, with its attachments beside
         it. Plain files, readable without this app or any other.
       </p>
 
@@ -60,12 +60,12 @@ export function Export() {
 
       <p className="muted small">
         Attachments sit in their own <code>files/</code> folder, which is what the links
-        inside the note point at — and what keeps a file you attached from colliding with
+        inside the note point at, and what keeps a file you attached from colliding with
         the note&apos;s own markdown.
       </p>
 
       <p className="muted small">
-        A note carries its field values, but not what its fields are — whether one is a
+        A note carries its field values, but not what its fields are: whether one is a
         URL or a select, which options a select offers, how many stars a rating has. That
         lives in <code>notebooks/</code>, one small file per notebook, so a restore brings
         each notebook back as it was rather than as its values suggest.
@@ -79,7 +79,7 @@ export function Export() {
       <p className="muted small">
         This page exports everything. To export one notebook, use the download beside it
         under <Link to="/settings/notebooks" className="link">Notebooks</Link>. For any
-        other slice — a tag, a range of dates — filter the note list, then open the count
+        other slice (a tag, a range of dates), filter the note list, then open the count
         under its heading (<em>37 notes ⌄</em>) and choose <em>Export these notes</em>, or
         select the notes you want and export them from the bar that appears. The archive has
         the same shape either way.
@@ -91,7 +91,7 @@ export function Export() {
       <p className="muted small">
         The zip goes back in through <Link to="/settings/import" className="link">Import</Link>,
         into this Unbent or any other. Notes keep their ids, notebooks, tags, dates and
-        fields, and notes that are already there are skipped — so restoring a backup over
+        fields, and notes that are already there are skipped, so restoring a backup over
         what you have never duplicates anything.
       </p>
 

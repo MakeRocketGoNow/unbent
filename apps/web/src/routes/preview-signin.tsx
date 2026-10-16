@@ -87,7 +87,7 @@ function PreviewSignInPage() {
         </div>
         <p className="small muted">
           This page finishes signing in to a preview. Start from the preview's own sign-in
-          screen — there is nothing to do here directly.
+          screen: there is nothing to do here directly.
         </p>
         <p className="small">
           <Link to={LOGIN}>Go to sign-in</Link>

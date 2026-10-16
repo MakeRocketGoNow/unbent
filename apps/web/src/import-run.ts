@@ -172,7 +172,7 @@ export function createImportRun(
       describing = 0;
       // Module workers often report an empty message on abrupt death (e.g. nested pdf.js
       // worker teardown). Surface something actionable rather than a blank error line.
-      const message = event.message || 'Import worker crashed — try again; already-imported notes are skipped.';
+      const message = event.message || 'Import worker crashed. Try again; already-imported notes are skipped.';
       if (state.status === 'running') end({ status: 'error', error: message });
       // A crash while reading a picked zip would otherwise leave it "reading" forever.
       else if (state.file && importFormat(state.file.name) === 'zip' && !state.zip) {
