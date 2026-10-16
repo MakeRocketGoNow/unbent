@@ -40,7 +40,7 @@ describe('token store', () => {
 
   it('tightens permissions on a file that already exists', async () => {
     // writeFile's mode only applies on create, so a file left world-readable by an older
-    // version — or by a user's own editor — would otherwise keep those permissions.
+    // version (or by a user's own editor) would otherwise keep those permissions.
     const path = join(dir, 'unbent', 'credentials.json');
     await mkdir(join(dir, 'unbent'), { recursive: true });
     await writeFile(path, '{"tokens":{}}', { mode: 0o644 });
@@ -94,7 +94,7 @@ describe('token store', () => {
   });
 
   it('does not write the token into the file as plain text under a guessable key', async () => {
-    // Not encryption — the file is 0600 and that is the protection. This only asserts the
+    // Not encryption: the file is 0600 and that is the protection. This only asserts the
     // shape stays keyed by origin, since a flat "token" field would be trivially harvested
     // by anything scanning dotfiles for secrets.
     await writeToken('https://notes.example', 'tok_abc');

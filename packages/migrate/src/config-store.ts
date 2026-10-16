@@ -11,7 +11,7 @@ import { dirname, join } from 'node:path';
  * URL is how secrets end up pasted into issues and screenshots.
  *
  * There is no default instance. A tool that guesses is a tool that can silently send a
- * migration to the wrong server — either a developer's localhost, or, worse, whatever
+ * migration to the wrong server: either a developer's localhost, or, worse, whatever
  * instance the project author happens to run. Asking once and remembering costs the user
  * one prompt and removes that failure entirely.
  */
@@ -33,7 +33,7 @@ export function configPath(): string {
  * A bare host is accepted and assumed https: someone typing `unbent.app` means the
  * site, and failing them over a missing scheme would be pedantry. Anything else throws,
  * because a URL that parses into something unexpected is worse than one that does not
- * parse at all — it fails later, against the wrong server.
+ * parse at all: it fails later, against the wrong server.
  */
 export function normalizeUrl(input: string): string {
   const trimmed = input.trim();
@@ -43,7 +43,7 @@ export function normalizeUrl(input: string): string {
    * A scheme that is present but not http(s) is rejected here, before anything is
    * prepended. Testing only for `http(s)://` and prefixing everything else turns
    * `file:///etc/passwd` into `https://file:///etc/passwd`, which parses cleanly as the
-   * host `file` — a real, fetchable origin nobody typed. Failing to parse would have been
+   * host `file`: a real, fetchable origin nobody typed. Failing to parse would have been
    * safe; parsing into something else is not.
    */
   const scheme = /^([a-z][a-z0-9+.-]*):(?!\d)/i.exec(trimmed)?.[1]?.toLowerCase();
@@ -52,7 +52,7 @@ export function normalizeUrl(input: string): string {
   }
 
   // `(?!\d)` above keeps `localhost:5173` a host and port rather than a scheme called
-  // "localhost" — a bare host:port is the most likely thing anyone types for a local
+  // "localhost": a bare host:port is the most likely thing anyone types for a local
   // instance, and rejecting it would be worse than the problem being guarded against.
   const withScheme = scheme ? trimmed : `https://${trimmed}`;
 
