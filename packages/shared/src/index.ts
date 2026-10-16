@@ -1,6 +1,7 @@
 export * from './frontmatter.js';
 export * from './schemas.js';
 export * from './fields.js';
+export * from './option-edits.js';
 export * from './markdown.js';
 export * from './content-type.js';
 export * from './filenames.js';

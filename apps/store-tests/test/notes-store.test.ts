@@ -3,7 +3,7 @@ import { runInDurableObject } from 'cloudflare:test';
 import { REVISIONS_KEPT, UNFILED, encodeCursor } from '@unbent/shared';
 import { beginDump } from '@unbent/api/lib/dump';
 import { DUMP_TABLES } from '@unbent/api/store/tables';
-import { freshStore } from './helpers.js';
+import { feedRows, feedSeq, freshStore } from './helpers.js';
 
 /**
  * `NotesStore` through the object's RPC surface, against the real schema.
@@ -937,6 +937,70 @@ describe('custom fields', () => {
     expect(await stub.recountNotes()).toBe(0);
   });
 
+  it('edits options by what changes, moving a renamed option\'s values with it', async () => {
+    const { stub } = freshStore('option-edits');
+    const nb = (await stub.createNotebook('Coupons'))!;
+    const kind = (await stub.createField(nb.id, { name: 'Kind', type: 'select', options: ['Misc', 'fuel', 'Bank', 'Old'] })) as { id: string };
+    const tags = (await stub.createField(nb.id, { name: 'Labels', type: 'multiselect', options: ['Grocery', 'Groceries', 'Gift'] })) as { id: string };
+    const text = (await stub.createField(nb.id, { name: 'Store', type: 'text', options: [] })) as { id: string };
+    const a = await stub.create(note({ notebook: 'Coupons', fields: { [kind.id]: 'Misc', [tags.id]: ['Grocery', 'Groceries'] } }));
+    const b = await stub.create(note({ notebook: 'Coupons', fields: { [kind.id]: 'Old', [tags.id]: ['Grocery', 'Gift'] } }));
+    const c = await stub.create(note({ notebook: 'Coupons', fields: { [kind.id]: 'fuel' } }));
+
+    // Rename, remove, sort with a pin last: one call, and no list sent.
+    let seq = await feedSeq(stub);
+    const sorted = await stub.editFieldOptions(nb.id, kind.id, {
+      rename: [{ from: 'Misc', to: 'Other' }],
+      remove: ['Old'],
+      sort: 'alpha',
+      pinLast: ['Other'],
+    });
+    expect(sorted).toMatchObject({
+      field: { options: ['Bank', 'fuel', 'Other'] },
+      renamed: [{ from: 'Misc', to: 'Other', notes: 1 }],
+      removed: [{ option: 'Old', notes: 1 }],
+      added: [],
+    });
+    expect((await stub.get(a.id))!.fields!.find((v) => v.name === 'Kind')!.value).toBe('Other');
+    // A removed option stays on the note that held it, as removeFieldOption leaves it.
+    expect((await stub.get(b.id))!.fields!.find((v) => v.name === 'Kind')!.value).toBe('Old');
+    expect((await stub.get(c.id))!.fields!.find((v) => v.name === 'Kind')!.value).toBe('fuel');
+    expect(await feedRows(stub, seq)).toEqual([{ entity: 'notebook', id: nb.id }, { entity: 'note', id: a.id }]);
+
+    // A rename onto an option that stands is refused unless asked, and moves nothing.
+    expect(await stub.editFieldOptions(nb.id, tags.id, { rename: [{ from: 'Grocery', to: 'Groceries' }] })).toMatchObject({ refused: expect.stringContaining('merge') });
+    expect((await stub.get(b.id))!.fields!.find((v) => v.name === 'Labels')!.value).toEqual(['Grocery', 'Gift']);
+    // Asked, it merges them; a note holding both keeps one.
+    const merged = await stub.editFieldOptions(nb.id, tags.id, { rename: [{ from: 'Grocery', to: 'Groceries' }], merge: true, add: ['Fuel'], position: 'alpha' });
+    expect(merged).toMatchObject({ field: { options: ['Fuel', 'Groceries', 'Gift'] }, renamed: [{ notes: 2 }], added: ['Fuel'] });
+    expect((await stub.get(a.id))!.fields!.find((v) => v.name === 'Labels')!.value).toEqual(['Groceries']);
+    expect((await stub.get(b.id))!.fields!.find((v) => v.name === 'Labels')!.value).toEqual(['Groceries', 'Gift']);
+    expect(await stub.countOptionUsage(nb.id, tags.id, 'Grocery')).toBe(0);
+
+    // The field's own name rides along, and a clash refuses before any note moves.
+    expect(await stub.editFieldOptions(nb.id, kind.id, { rename: [{ from: 'fuel', to: 'Fuel' }] }, { name: 'store' })).toBe('conflict');
+    expect((await stub.get(c.id))!.fields!.find((v) => v.name === 'Kind')!.value).toBe('fuel');
+    expect(await stub.editFieldOptions(nb.id, kind.id, { add: ['Cash'] }, { name: 'Category' })).toMatchObject({ field: { name: 'Category', options: ['Bank', 'fuel', 'Other', 'Cash'] } });
+
+    // A whole list replaces it, and names each option it left out with the notes holding it.
+    const replaced = await stub.editFieldOptions(nb.id, kind.id, { replace: ['Bank', 'Other', 'Petrol'] });
+    expect(replaced).toMatchObject({
+      field: { options: ['Bank', 'Other', 'Petrol'] },
+      removed: [
+        { option: 'fuel', notes: 1 },
+        { option: 'Cash', notes: 0 },
+      ],
+      added: ['Petrol'],
+    });
+    expect((await stub.get(c.id))!.fields!.find((v) => v.name === 'Category')!.value).toBe('fuel');
+
+    seq = await feedSeq(stub);
+    expect(await stub.editFieldOptions(nb.id, kind.id, { remove: ['Nope'] })).toEqual({ refused: expect.stringContaining('not one of') });
+    expect(await stub.editFieldOptions(nb.id, text.id, { add: ['x'] })).toEqual({ refused: expect.stringContaining('select') });
+    expect(await stub.editFieldOptions(nb.id, crypto.randomUUID(), { add: ['x'] })).toBe('missing');
+    expect(await feedSeq(stub)).toBe(seq);
+  });
+
   it('holds a hundred field ids in one patch without running out of binds', async () => {
     const { stub } = freshStore('binds');
     const nb = (await stub.createNotebook('Wide'))!;
@@ -1060,6 +1124,7 @@ describe('rows read on an archive-sized store', () => {
         for (let n = 0; n < 6; n++) sql.exec(`INSERT INTO notebooks (id, name, created_at) VALUES (?1, ?2, 1)`, `nb${n}`, `Notebook ${n}`);
         sql.exec(`INSERT INTO tags (id, name) VALUES ('rare', 'rare'), ('common', 'common')`);
         sql.exec(`INSERT INTO notebook_fields (id, notebook_id, name, type, position, created_at) VALUES ('amount', 'nb0', 'Amount', 'number', 0, 1)`);
+        sql.exec(`INSERT INTO notebook_fields (id, notebook_id, name, type, options, position, created_at) VALUES ('kind', 'nb0', 'Kind', 'select', '["Other","Fuel","Bank"]', 1, 1)`);
         for (let i = 0; i < 3000; i++) {
           // The last thirty are a notebook of their own: a measure that is fine on a big
           // notebook can still read the whole account for a small one.
@@ -1080,6 +1145,8 @@ describe('rows read on an archive-sized store', () => {
           if (i % 2 === 0 || tidied) sql.exec(`INSERT INTO note_tags VALUES (?1, 'common')`, `n${String(i).padStart(5, '0')}`);
           if (i % 1000 === 0) sql.exec(`INSERT INTO note_tags VALUES (?1, 'rare')`, `n${String(i).padStart(5, '0')}`);
           if (i % 5 === 0) sql.exec(`INSERT INTO note_fields (note_id, field_id, value_text, value_num) VALUES (?1, 'amount', ?2, ?2)`, `n${String(i).padStart(5, '0')}`, i);
+          // Off the notes measured one by one, whose bounds count a note's values.
+          if (i % 10 === 5) sql.exec(`INSERT INTO note_fields (note_id, field_id, value_text) VALUES (?1, 'kind', 'Fuel')`, `n${String(i).padStart(5, '0')}`);
           if (i % 3 === 0) sql.exec(`INSERT INTO attachments (id, note_id, filename, content_type, size, r2_key, created_at) VALUES (?1, ?2, 'scan.pdf', 'application/pdf', 10, ?1, 1)`, `att-n${String(i).padStart(5, '0')}`, `n${String(i).padStart(5, '0')}`);
           // Text for every file, so a read of files' text by id that walked the table would show.
           if (i % 3 === 0) sql.exec(`INSERT INTO attachment_text (attachment_id, note_id, filename, text, created_at) VALUES (?1, ?2, 'scan.pdf', 'scanned page', 1)`, `att-n${String(i).padStart(5, '0')}`, `n${String(i).padStart(5, '0')}`);
@@ -1273,6 +1340,8 @@ describe('rows read on an archive-sized store', () => {
       await measure('history restore', async () => stub.restoreRevision('n00021', (await stub.listRevisions('n00021'))![5]!.id)),
       // A note with a full history, untouched above.
       await measure('history clear', () => stub.clearRevisions('n00022')),
+      await measure('option sort', () => stub.editFieldOptions('nb0', 'kind', { sort: 'alpha', pinLast: ['Other'] })),
+      await measure('option rename', () => stub.editFieldOptions('nb0', 'kind', { rename: [{ from: 'Fuel', to: 'Petrol' }] })),
     ];
     console.log(results.map((r) => `${r.label}: ${r.rowsRead} read, ${r.rowsWritten} written`).join('\n'));
     const bounds: Record<string, number> = {
@@ -1363,6 +1432,12 @@ describe('rows read on an archive-sized store', () => {
       // One column of the counts row; the triggers (schema 0008) keep it, so it never
       // reads the files table however many files the account holds.
       'attachment bytes': 2,
+      // Sorting, pinning or adding moves no value, so it reads the field's row and nothing
+      // that grows with the notes (8, measured 2026-10-15). A rename reads the field's
+      // values once and touches each holder, three rows a value with its search entry
+      // (908 for three hundred values, measured 2026-10-15): the price of moving them.
+      'option sort': 20,
+      'option rename': 1100,
       // The counts row and the five due keys off the retention index; the five hundred
       // tombstones not yet due are never read (7, measured 2026-10-05), and with nothing
       // due the visit is the counts row and one index entry (2). The hourly sweep makes

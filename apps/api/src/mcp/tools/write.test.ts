@@ -443,6 +443,112 @@ describe('create_notebook_field with a scale', () => {
   });
 });
 
+describe('update_notebook_field option edits', () => {
+  const fieldId = '22222222-2222-4222-8222-222222222222';
+  function optionsRepo(answer: unknown = { field: { id: fieldId }, renamed: [], removed: [], added: [] }) {
+    const edits: unknown[] = [];
+    const updates: unknown[] = [];
+    const repo = {
+      editFieldOptions: async (_nb: string, _f: string, edit: unknown, patch: unknown) => {
+        edits.push({ edit, patch });
+        return answer;
+      },
+      updateField: async (_nb: string, _f: string, patch: unknown) => {
+        updates.push(patch);
+        return { field: { id: fieldId }, cleared: 0 };
+      },
+    } as unknown as NotesRepo;
+    return { edits, updates, update: collect(repo).get('update_notebook_field')! };
+  }
+
+  it('sorts with a pin last in one call, sending no list', async () => {
+    const { edits, updates, update } = optionsRepo();
+    const result = await update({ notebookId: 'nb', fieldId, sort: 'alpha', pinLast: ['Other'] });
+    expect(result.isError).toBeFalsy();
+    expect(updates).toHaveLength(0);
+    expect(edits).toEqual([
+      {
+        edit: {
+          rename: undefined,
+          remove: undefined,
+          add: undefined,
+          position: undefined,
+          sort: 'alpha',
+          pinFirst: undefined,
+          pinLast: ['Other'],
+          merge: undefined,
+        },
+        patch: { name: undefined, currency: undefined },
+      },
+    ]);
+  });
+
+  it('passes renames through and reports what moved', async () => {
+    const { edits, update } = optionsRepo({
+      field: { id: fieldId, options: ['Dining'] },
+      renamed: [{ from: 'Food', to: 'Dining', notes: 3 }],
+      removed: [],
+      added: [],
+    });
+    const result = await update({ notebookId: 'nb', fieldId, renameOptions: [{ from: 'Food', to: 'Dining' }], name: 'Kind' });
+    expect(edits).toMatchObject([{ edit: { rename: [{ from: 'Food', to: 'Dining' }] }, patch: { name: 'Kind' } }]);
+    expect(JSON.parse(result.content[0]!.text)).toMatchObject({ renamed: [{ from: 'Food', to: 'Dining', notes: 3 }] });
+  });
+
+  it('says what mergeOptions would do when a rename lands on an existing option', async () => {
+    const { update } = optionsRepo({ refused: '"B" is already an option, so renaming "A" to it would merge the two.', merge: true });
+    const result = await update({ notebookId: 'nb', fieldId, renameOptions: [{ from: 'A', to: 'B' }] });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toContain('mergeOptions:true');
+    expect(result.content[0]!.text).toContain('confirm it with the person');
+
+    const passed = optionsRepo();
+    await passed.update({ notebookId: 'nb', fieldId, renameOptions: [{ from: 'A', to: 'B' }], mergeOptions: true });
+    expect(passed.edits).toMatchObject([{ edit: { merge: true } }]);
+  });
+
+  it('refuses the edits beside a whole list or a type change', async () => {
+    const { edits, update } = optionsRepo();
+    const both = await update({ notebookId: 'nb', fieldId, options: ['A'], addOptions: ['B'] });
+    expect(both.isError).toBe(true);
+    const retype = await update({ notebookId: 'nb', fieldId, type: 'select', addOptions: ['B'] });
+    expect(retype.isError).toBe(true);
+    expect(edits).toHaveLength(0);
+  });
+
+  it('says what the store refused', async () => {
+    const refused = optionsRepo({ refused: '"Nope" is not one of this field\'s options.' });
+    const result = await refused.update({ notebookId: 'nb', fieldId, removeOptions: ['Nope'] });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]!.text).toContain('"Nope"');
+
+  });
+
+  it('sends a whole list as a replacement, so the answer names what it dropped', async () => {
+    const { updates, edits, update } = optionsRepo({
+      field: { id: fieldId, options: ['A', 'B'] },
+      renamed: [],
+      removed: [{ option: 'Misc', notes: 4 }],
+      added: ['B'],
+    });
+    const result = await update({ notebookId: 'nb', fieldId, options: ['A', 'B'], name: 'Kind' });
+    expect(updates).toHaveLength(0);
+    expect(edits).toEqual([{ edit: { replace: ['A', 'B'] }, patch: { name: 'Kind', currency: undefined } }]);
+    expect(JSON.parse(result.content[0]!.text)).toMatchObject({ removed: [{ option: 'Misc', notes: 4 }] });
+  });
+
+  it('leaves a type change, with or without a list, and a plain rename to updateField', async () => {
+    const { updates, edits, update } = optionsRepo();
+    await update({ notebookId: 'nb', fieldId, type: 'select', options: ['A'] });
+    await update({ notebookId: 'nb', fieldId, name: 'Kind' });
+    expect(updates).toEqual([
+      { name: undefined, type: 'select', options: ['A'], currency: undefined },
+      { name: 'Kind', type: undefined, options: undefined, currency: undefined },
+    ]);
+    expect(edits).toHaveLength(0);
+  });
+});
+
 /*
  * Tags are named by the model and addressed by id in the repo, so the lookup between the
  * two is the logic here: without case, as the store finds a tag (MAK-127), answering with

@@ -5,9 +5,9 @@ name: Web and API
 # `deploy` job. unbent.app's dev instance and pull-request previews live in previews.yml,
 # which skips itself on a repository that has not been given their secrets.
 #
-# Path-filtered so an Android-only change does not redeploy the Worker, and vice versa.
-# Inside the workflow, a pull request runs only the test suites its files can reach; see
-# the `changes` job.
+# Pushes are path-filtered so an Android-only change does not redeploy the Worker. Pull
+# requests always start the workflow and run only the jobs their files can reach; see the
+# `changes` job and `ci`.
 on:
   push:
     branches: [main]
@@ -21,17 +21,11 @@ on:
       - 'pnpm-workspace.yaml'
       - 'tsconfig.base.json'
       - '.github/workflows/web.yml'
+  # Every pull request, with no `paths`: the `ci` job at the end is the one check the
+  # ruleset on `main` requires, and a required check whose workflow never started is
+  # waited for indefinitely — a docs-only or Android-only pull request could not merge.
+  # What a pull request does not reach is skipped inside the workflow instead (`changes`).
   pull_request:
-    paths:
-      - 'apps/web/**'
-      - 'apps/api/**'
-      - 'apps/store-tests/**'
-      - 'packages/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - 'tsconfig.base.json'
-      - '.github/workflows/web.yml'
 
 # A second push to a pull request makes the first one's checks pointless, so don't pay to
 # finish them. Cancelling is scoped to pull requests deliberately: a push to `main` reaches
@@ -60,6 +54,7 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
+      any: ${{ steps.suites.outputs.any }}
       web: ${{ steps.suites.outputs.web }}
       store: ${{ steps.suites.outputs.store }}
     steps:
@@ -75,6 +70,7 @@ jobs:
         id: suites
         run: |
           if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+            echo "any=true" >> "$GITHUB_OUTPUT"
             echo "web=true" >> "$GITHUB_OUTPUT"
             echo "store=true" >> "$GITHUB_OUTPUT"
             exit 0
@@ -89,12 +85,19 @@ jobs:
           store=false
           if printf '%s\n' "$changed" | grep -qE "^(apps/web/|$shared)"; then web=true; fi
           if printf '%s\n' "$changed" | grep -qE "^(apps/api/|apps/store-tests/|$shared)"; then store=true; fi
+          # What `check` covers: anything the workspace builds from. A pull request that
+          # touches none of it — docs, Android, iOS, other workflows — runs nothing here.
+          any=false
+          if printf '%s\n' "$changed" | grep -qE "^(apps/web/|apps/api/|apps/store-tests/|$shared)"; then any=true; fi
+          echo "any=$any" >> "$GITHUB_OUTPUT"
           echo "web=$web" >> "$GITHUB_OUTPUT"
           echo "store=$store" >> "$GITHUB_OUTPUT"
           [ "$web" = true ] || echo "No web, shared or root file changed — web tests skipped." >> "$GITHUB_STEP_SUMMARY"
           [ "$store" = true ] || echo "No API, store-test, shared or root file changed — store tests skipped." >> "$GITHUB_STEP_SUMMARY"
 
   check:
+    needs: changes
+    if: needs.changes.outputs.any == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -149,6 +152,27 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @unbent/store-tests test
+
+  # The one check the ruleset on `main` requires, so the ruleset never has to name the
+  # jobs above and never goes stale when one is renamed or split. It always runs and
+  # always reports — a required check that is skipped or never started blocks the merge
+  # forever, which is how requiring the mirror's `test` job left every other pull request
+  # unmergeable. A suite skipped because the change cannot reach it is a pass; a failed
+  # or cancelled one, including `changes` itself, is not.
+  ci:
+    name: CI passed
+    needs: [changes, check, web-tests, store-tests]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every suite that ran passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Results: $RESULTS"
+          case " $RESULTS " in
+            *" failure "*|*" cancelled "*) exit 1 ;;
+          esac
 
   # Ships main to production: the top level of apps/api/wrangler.toml, on whichever
   # Cloudflare account the two secrets below belong to.
