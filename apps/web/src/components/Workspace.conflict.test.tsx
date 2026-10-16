@@ -21,6 +21,21 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
   updateNote: vi.fn(),
   getNote: vi.fn(),
 }));
+const { AUTOSAVE_MS, PAST_AUTOSAVE_MS } = vi.hoisted(() => ({ AUTOSAVE_MS: 150, PAST_AUTOSAVE_MS: 400 }));
+
+// The autosave's real delay is 800 ms, and every save below pays it in full — the hook
+// is what Workspace renders, so there is no other way through. The behaviour under test
+// is the ordering of saves and answers, not the length of the pause, so the delay is
+// shortened here: long enough that an answer arranged to land "inside the delay" still
+// does on a loaded CI runner, and short enough that the file no longer takes most of
+// its time waiting. The sleeps that wait "past the delay" below are sized against it.
+vi.mock('../useAutosave.js', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../useAutosave.js')>();
+  return {
+    ...mod,
+    useAutosave: ((value, save, opts) => mod.useAutosave(value, save, { delay: AUTOSAVE_MS, ...opts })) as typeof mod.useAutosave,
+  };
+});
 
 /**
  * A note open here and saved on another device meanwhile (MAK-113).
@@ -145,7 +160,7 @@ describe('a save after another device saved the note', () => {
     await waitFor(async () => expect((await title()).value).toBe('Trip notes'));
     expect(screen.queryByRole('alert')).toBeNull();
     expect((await title()).readOnly).toBe(false);
-    await new Promise((r) => setTimeout(r, 1000));
+    await new Promise((r) => setTimeout(r, PAST_AUTOSAVE_MS));
     expect(api.updateNote).toHaveBeenCalledTimes(1);
     expect(server.get().body).toBe('as edited on the phone');
 
@@ -190,7 +205,7 @@ describe('a save after another device saved the note', () => {
     await typeTitle('Grocer');
     await waitFor(() => expect(api.updateNote).toHaveBeenCalledTimes(1), { timeout: 3000 });
     await typeTitle('Grocery');
-    await new Promise((r) => setTimeout(r, 1200));
+    await new Promise((r) => setTimeout(r, PAST_AUTOSAVE_MS));
     expect(api.updateNote).toHaveBeenCalledTimes(1);
 
     release();
@@ -224,7 +239,7 @@ describe('a save after another device saved the note', () => {
       Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
       document.dispatchEvent(new Event('visibilitychange'));
     });
-    await new Promise((r) => setTimeout(r, 1000));
+    await new Promise((r) => setTimeout(r, PAST_AUTOSAVE_MS));
     expect(api.updateNote).toHaveBeenCalledTimes(1);
   });
 
@@ -325,7 +340,7 @@ describe('coming back to the tab', () => {
 
     await waitFor(async () => expect((await title()).value).toBe('Trip notes, from the phone'));
     // Taken as the new baseline, not as an edit to save back.
-    await new Promise((r) => setTimeout(r, 1000));
+    await new Promise((r) => setTimeout(r, PAST_AUTOSAVE_MS));
     expect(api.updateNote).not.toHaveBeenCalled();
 
     // The first keystroke after is made against that copy, and goes through.

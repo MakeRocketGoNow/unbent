@@ -22,6 +22,17 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
   getRevision: vi.fn(),
   restoreRevision: vi.fn(),
 }));
+const { AUTOSAVE_MS, PAST_AUTOSAVE_MS } = vi.hoisted(() => ({ AUTOSAVE_MS: 150, PAST_AUTOSAVE_MS: 400 }));
+
+// The autosave's delay, shortened for the same reason and to the same numbers as in
+// Workspace.conflict.test.tsx: every save here otherwise waits out the real 800 ms.
+vi.mock('../useAutosave.js', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../useAutosave.js')>();
+  return {
+    ...mod,
+    useAutosave: ((value, save, opts) => mod.useAutosave(value, save, { delay: AUTOSAVE_MS, ...opts })) as typeof mod.useAutosave,
+  };
+});
 
 /**
  * An earlier version put back from the note's ⋯ menu (MAK-119).
@@ -116,7 +127,7 @@ describe('restoring a version from History', () => {
     await waitFor(() => expect(document.querySelector<HTMLDialogElement>('dialog.history-sheet')!.open).toBe(false));
 
     // The restored note is the autosave's new baseline, not an edit to send.
-    await new Promise((r) => setTimeout(r, 1000));
+    await new Promise((r) => setTimeout(r, PAST_AUTOSAVE_MS));
     expect(api.updateNote).not.toHaveBeenCalled();
   });
 

@@ -15,6 +15,21 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../notes-api.js')>()),
   updateNote: vi.fn(),
 }));
+const { AUTOSAVE_MS, PAST_AUTOSAVE_MS } = vi.hoisted(() => ({ AUTOSAVE_MS: 150, PAST_AUTOSAVE_MS: 400 }));
+
+// The autosave's real delay is 800 ms, and every save below pays it in full — the hook
+// is what Workspace renders, so there is no other way through. The behaviour under test
+// is the ordering of saves and answers, not the length of the pause, so the delay is
+// shortened here: long enough that an answer arranged to land "inside the delay" still
+// does on a loaded CI runner, and short enough that the file no longer takes most of
+// its time waiting. The sleeps that wait "past the delay" below are sized against it.
+vi.mock('../useAutosave.js', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../useAutosave.js')>();
+  return {
+    ...mod,
+    useAutosave: ((value, save, opts) => mod.useAutosave(value, save, { delay: AUTOSAVE_MS, ...opts })) as typeof mod.useAutosave,
+  };
+});
 
 vi.mock('../store/use-outbox.js', () => ({
   useOutbox: vi.fn(),
@@ -128,7 +143,7 @@ describe('a save answered while typing', () => {
     await type('Trip notes, one');
     await waitFor(() => expect(screen.getByText('Saved')).toBeTruthy(), { timeout: 3000 });
     // Past the autosave's delay: a rebase read as an edit would have cleared the label.
-    await act(() => new Promise((r) => setTimeout(r, 1200)));
+    await act(() => new Promise((r) => setTimeout(r, PAST_AUTOSAVE_MS)));
     expect(screen.getByText('Saved')).toBeTruthy();
     expect(api.updateNote).toHaveBeenCalledTimes(1);
   });
@@ -147,7 +162,7 @@ describe('a save answered while typing', () => {
     await type('Trip notes, one!');
     await type('Trip notes, one');
     await act(async () => answer({ ...server, ...elsewhere, title: 'Trip notes, one', updatedAt: 101 }));
-    await act(() => new Promise((r) => setTimeout(r, 1500)));
+    await act(() => new Promise((r) => setTimeout(r, PAST_AUTOSAVE_MS)));
     for (const [, patch] of vi.mocked(api.updateNote).mock.calls.slice(1)) {
       expect(patch).not.toHaveProperty('tags');
       expect(patch).not.toHaveProperty('notebook');
