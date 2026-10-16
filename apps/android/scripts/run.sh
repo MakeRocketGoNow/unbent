@@ -7,8 +7,8 @@ ANDROID_SDK="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 ADB="$ANDROID_SDK/platform-tools/adb"
 EMULATOR="$ANDROID_SDK/emulator/emulator"
 GRADLE_APP="$DIR/app"
-# The debug build's id, resolved the way Gradle resolves it — local.properties, then the
-# environment, then the default in build.gradle.kts — so a fork's own id and a rename of
+# The debug build's id, resolved the way Gradle resolves it (local.properties, then the
+# environment, then the default in build.gradle.kts) so a fork's own id and a rename of
 # the default both reach here without an edit. Sets APP_ID.
 # shellcheck source=app-id.sh
 . "$DIR/scripts/app-id.sh"
@@ -27,7 +27,7 @@ if ! "$ADB" shell pm list packages | grep -q "$APP_ID"; then
 fi
 
 # `am start` on the resolved launcher activity, not `monkey`. Monkey refuses to run on a
-# device with no hardware keys — "SYS_KEYS has no physical keys", exit 251 — which every
+# device with no hardware keys ("SYS_KEYS has no physical keys", exit 251) which every
 # recent gesture-navigation AVD is, and it bails before launching anything, so `set -e`
 # turned a working install into a failed command. Resolving the activity rather than
 # naming it keeps this working if the launcher entry point is ever renamed.

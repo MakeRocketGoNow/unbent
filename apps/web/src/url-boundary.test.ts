@@ -9,14 +9,14 @@ import { fileURLToPath } from 'node:url';
  * This test outlived the module it was written for. It used to confine URL and history
  * APIs to `use-url-state.ts`; that module is gone, replaced by TanStack Router, and the
  * same rule now guards against reaching around the router with raw history calls. An
- * abstraction like this erodes silently once it is bypassed once — and it was the reason
+ * abstraction like this erodes silently once it is bypassed once, and it was the reason
  * the router migration touched so few files.
  *
  * `notes-api.ts` is allowed because its `URLSearchParams` builds an outbound API query
  * string, which has nothing to do with browser navigation; the pattern cannot tell the
  * two apart. The embed note route is allowed because it decodes the router's own
- * `location.searchStr` — read through `useLocation`, so the router still owns the
- * location — to keep the Android app's colour values as the strings they were written
+ * `location.searchStr` (read through `useLocation`, so the router still owns the
+ * location) to keep the Android app's colour values as the strings they were written
  * as; the router's parsed search had turned an all-digit colour into a number. Reading a
  * string is not navigating either. The operator route's loader is allowed for the same
  * kind of read: it takes the accounts search from the `location` the router hands its
@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url';
  * to it (`settings.operator.tsx` says why it is kept out).
  *
  * `attachment-viewer.ts` is allowed because its one `pushState` pushes a throwaway entry
- * that never changes the URL — it exists so the back gesture dismisses the full-screen
+ * that never changes the URL: it exists so the back gesture dismisses the full-screen
  * viewer instead of the note behind it, which is the browser-native pattern for a
  * dismissible overlay. It is not navigation: no route matches, the location is untouched,
  * and the entry is popped again the moment the viewer closes. The router owns no primitive

@@ -96,7 +96,7 @@ class StagingTest {
     @Test
     fun `credits the app a link came from`() {
         assertEquals(
-            "nytimes.com — via Chrome",
+            "nytimes.com, via Chrome",
             Staging.deriveTitle(null, emptyList(), "https://nytimes.com/x", "Chrome"),
         )
     }
@@ -113,7 +113,7 @@ class StagingTest {
     fun `names the source app rather than only a timestamp`() {
         val when2 = Calendar.getInstance().apply { set(2026, 8, 2, 14, 30, 0) }.time
         assertEquals(
-            "Photos — 2026-09-02 14:30",
+            "Photos: 2026-09-02 14:30",
             Staging.deriveTitle(null, listOf(staged("a.jpg"), staged("b.jpg")), null, "Photos", when2),
         )
     }

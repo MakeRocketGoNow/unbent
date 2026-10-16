@@ -22,12 +22,12 @@ export const Route = createFileRoute('/preview-signin')({
 /**
  * The preview's landing point for the sign-in relay.
  *
- * A preview cannot sign in with Google — its hostname changes every PR, so no OAuth callback
+ * A preview cannot sign in with Google: its hostname changes every PR, so no OAuth callback
  * can be registered for it. Instead its login screen sends the browser to the dev instance,
  * which signs in with Google and redirects back here with a one-time token. This redeems
  * that token for a session of the preview's own and then goes where any sign-in goes.
  *
- * Public — in `auth-gate.ts`'s `PUBLIC` set — because arriving here is precisely the moment
+ * Public (in `auth-gate.ts`'s `PUBLIC` set) because arriving here is precisely the moment
  * before there is a session: gating it would bounce the token to `/login` and strand it. It
  * redeems on mount rather than behind a button because there is nothing for the user to
  * decide; the decision was signing in on the dev instance, and this is the continuation of
@@ -41,7 +41,7 @@ function PreviewSignInPage() {
   const [error, setError] = useState<string | null>(null);
   // A one-time token is burned on first use, so redeeming twice fails the second time. In
   // development React's StrictMode mounts effects twice, and even in production a fast
-  // remount could fire this again — so it runs exactly once.
+  // remount could fire this again, so it runs exactly once.
   const started = useRef(false);
 
   useEffect(() => {
@@ -59,8 +59,8 @@ function PreviewSignInPage() {
       try {
         await redeemPreviewToken(token);
         // Confirm the redeem actually established a session before sending the browser at a
-        // gated route. A 200 from verify that somehow left no cookie — a cookie the browser
-        // refused, a store hiccup — would otherwise bounce off the guard on `/notes` back to
+        // gated route. A 200 from verify that somehow left no cookie (a cookie the browser
+        // refused, a store hiccup) would otherwise bounce off the guard on `/notes` back to
         // `/login`, a loop with nothing on screen explaining it. Better to say so here.
         const session = await refreshSession();
         if (!session) {
@@ -87,7 +87,7 @@ function PreviewSignInPage() {
         </div>
         <p className="small muted">
           This page finishes signing in to a preview. Start from the preview's own sign-in
-          screen — there is nothing to do here directly.
+          screen: there is nothing to do here directly.
         </p>
         <p className="small">
           <Link to={LOGIN}>Go to sign-in</Link>

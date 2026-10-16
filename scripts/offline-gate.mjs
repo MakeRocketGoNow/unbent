@@ -62,7 +62,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /**
  * This checkout's usual API port, from `portsFor` rather than assumed: a worktree's ports
  * are derived from its name (AGENTS.md). The usual pair, not the next free one the
- * `ports.mjs` command line prints — with the dev server up, that pair is the one it is
+ * `ports.mjs` command line prints: with the dev server up, that pair is the one it is
  * on, and "next free" is by definition where nothing is listening. When `pnpm dev` said
  * its usual pair was taken and moved, pass what it printed as `BASE`.
  */
@@ -279,8 +279,8 @@ async function run(BASE, chrome, keepSocket) {
 
     // 2
     {
-      // The worker's caches emptied under a live worker — what Chrome's "Clear cached
-      // images and files" does, and a device short of storage — and the page opened
+      // The worker's caches emptied under a live worker (what Chrome's "Clear cached
+      // images and files" does, and a device short of storage) and the page opened
       // again. The worker must answer the load from the network and fill its cache back;
       // it answered it with the Worker's redirect of `/index.html` instead, which is a
       // network error for a page load, and every load failed until the next deploy.
@@ -308,8 +308,8 @@ async function run(BASE, chrome, keepSocket) {
 
     // 2b
     {
-      // The browser wrong about its network — a laptop on a VPN, where Chrome reported no
-      // network while every request succeeded — must not keep the app offline: the next
+      // The browser wrong about its network (a laptop on a VPN, where Chrome reported no
+      // network while every request succeeded) must not keep the app offline: the next
       // answer from the server puts it back, whatever the flag says.
       await ev(`(()=>{Object.defineProperty(navigator,'onLine',{configurable:true,get:()=>false});window.dispatchEvent(new Event('offline'))})()`);
       const banner = () => ev(`!!document.querySelector('.offline-banner:not(.library-status)')`);
@@ -422,7 +422,7 @@ async function run(BASE, chrome, keepSocket) {
       await network(false);
       const onServer = seenInFirst && (await until(async () => ((await ev(`fetch('/api/notes/${note.id}').then(r=>r.json()).then(n=>n.body.includes(${JSON.stringify(MARK)}))`)) === true ? true : null), 20000));
       report('a second tab reads and saves offline as the holder’s client, and its edit reaches the server on reconnect', !!onServer, !other ? 'could not open a second tab' : !isClient ? 'Settings → Offline in the second tab never said another tab holds the library' : !listsOffline ? 'the second tab listed nothing offline' : !saidSaved ? `the second tab's head said ${JSON.stringify(await evIn(other, `document.querySelector('.workspace-status')?.textContent?.trim()`))}` : !seenInFirst ? 'the first tab never drew the edit' : 'the edit never reached the server');
-      // The first tab holds the library throughout — its own client id on the lock, since
+      // The first tab holds the library throughout: its own client id on the lock, since
       // `locks.query()` lists every tab's holds. The edit is undone by the restore at the end.
       const firstHolds = await until(async () => ((await ev(`navigator.locks.request('gate-probe-'+Math.random(),async(l)=>{const q=await navigator.locks.query();const mine=q.held.find(h=>h.name===l.name)?.clientId;return q.held.some(h=>h.name.startsWith('unbent-library-')&&h.clientId===mine)})`)) === true ? true : null), 10000);
       if (!firstHolds) report('the first tab still holds the library after the second tab worked through it', false, 'the lock is not the first tab’s');

@@ -1,6 +1,6 @@
 ---
 name: worktree-down
-description: Stop a worktree's dev servers and clean up after branch work — kill the process tree including orphaned children, verify ports are released, and optionally remove the worktree's local database and the worktree itself. Use when finishing branch work in this repo, or when the user says "stop the dev server", "clean up", "shut it down", or "remove that worktree". Do not use to start or seed one — that is worktree-up.
+description: Stop a worktree's dev servers and clean up after branch work: kill the process tree including orphaned children, verify ports are released, and optionally remove the worktree's local database and the worktree itself. Use when finishing branch work in this repo, or when the user says "stop the dev server", "clean up", "shut it down", or "remove that worktree". Do not use to start or seed one: that is worktree-up.
 compatibility: Needs a local git checkout of unbent. Stops processes and, with the user's explicit go-ahead, deletes local state.
 allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(kill:*), Bash(ps:*), Bash(lsof:*), Bash(curl:*), Bash(du:*), Bash(rm:*)
 ---
@@ -12,7 +12,7 @@ asking, and **deleting things**, which you never do without asking.
 
 ## 1. Find what is actually running
 
-Don't kill by remembered PID — a backgrounded task may have already exited, and a stale PID
+Don't kill by remembered PID: a backgrounded task may have already exited, and a stale PID
 is a different process by now.
 
 ```bash
@@ -21,10 +21,10 @@ lsof -nP -iTCP -sTCP:LISTEN | grep -Ei "node|workerd"
 ```
 
 Confirm each one belongs to *this* worktree before touching it. The command paths include
-the worktree directory — read them. **The user's own dev server on 5173/8787 (the main
+the worktree directory. Read them. **The user's own dev server on 5173/8787 (the main
 checkout) is not yours to stop.** If a process is theirs, leave it and say so.
 
-## 2. Stop the tree — and then its orphans
+## 2. Stop the tree, and then its orphans
 
 Kill the parent `scripts/dev.mjs` first:
 
@@ -41,7 +41,7 @@ whatever is left directly:
 kill <remaining pids>
 ```
 
-Verify with all three — processes gone, nothing listening, ports refusing connections:
+Verify with all three (processes gone, nothing listening, ports refusing connections):
 
 ```bash
 ps -eo pid,command | grep -Ei "vite|wrangler|workerd|dev\.mjs" | grep -v grep || echo "(none)"
@@ -62,7 +62,7 @@ du -sh apps/api/.wrangler node_modules
 du -sh apps/api/.wrangler/state/v3/*
 ```
 
-A used worktree typically holds ~800M of `node_modules` and a few MB of `.wrangler` state —
+A used worktree typically holds ~800M of `node_modules` and a few MB of `.wrangler` state:
 D1, R2, and an `observability` directory that is usually the bulk of it and means nothing
 outside the run that wrote it.
 
@@ -77,7 +77,7 @@ git log --oneline origin/main..HEAD
 ```
 
 Uncommitted tracked changes, or commits not on `origin`, are a stop condition. Report them
-and ask — don't offer deletion as though the work were disposable.
+and ask: don't offer deletion as though the work were disposable.
 
 Then, in increasing order of destructiveness, offer only what applies:
 
@@ -107,10 +107,10 @@ the worktree you are deleting.
 ## Notes
 
 - **Attribute honestly.** If a process died and you didn't kill it, say so. Exit code 143 is
-  SIGTERM — something terminated it, which may have been the user.
+  SIGTERM: something terminated it, which may have been the user.
 - Never delete a worktree that still holds unpushed commits or uncommitted tracked changes
   without the user saying yes to that specific loss.
-- Leaving `node_modules` in place is fine and often wanted — it makes the next
+- Leaving `node_modules` in place is fine and often wanted: it makes the next
   `pnpm worktree:setup` in that directory fast. Don't delete it just to tidy up.
 - If nothing was running and nothing needs deleting, say that plainly and stop. An empty
   cleanup is a valid outcome.

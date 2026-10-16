@@ -55,7 +55,7 @@ public final class CaptureStager: @unchecked Sendable {
     // MARK: - Files
 
     /// Stages the file at `source` under a name the API accepts, or returns nil when it
-    /// could not be read — one unreadable file does not lose the rest of the share.
+    /// could not be read. One unreadable file does not lose the rest of the share.
     ///
     /// - Parameters:
     ///   - type: what the file is, when the sender said; otherwise read from its name.
@@ -101,7 +101,7 @@ public final class CaptureStager: @unchecked Sendable {
     ///
     /// A share's own name for the file is the one the person would recognise, and it
     /// usually comes without its extension. The temporary copy has the extension and a
-    /// name the system made up from the type — "PDF document.pdf" — so each supplies the
+    /// name the system made up from the type ("PDF document.pdf") so each supplies the
     /// half the other lacks. With no suggestion the file's own name is all there is,
     /// which is right for a file opened from Files.
     static func name(suggested: String?, source: URL, type: UTType) -> String {

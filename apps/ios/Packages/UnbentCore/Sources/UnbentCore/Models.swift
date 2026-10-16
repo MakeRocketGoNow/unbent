@@ -40,7 +40,7 @@ public struct AppConfig: Decodable, Equatable, Sendable {
     /// Any OAuth provider with no native sheet.
     ///
     /// Deliberately a count and not one button each: every one of them ends at the same
-    /// place — /connect in a browser, which offers whatever the instance configured — and
+    /// place (/connect in a browser, which offers whatever the instance configured) and
     /// N buttons that all open the same page would be a menu pretending to be a choice.
     /// Nothing here needs their names, so an instance can enable a provider this app has
     /// never heard of and the browser handles it.

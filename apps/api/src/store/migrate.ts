@@ -8,7 +8,7 @@ import type { SchemaFile } from './schema/index.js';
  * transaction with the row that records it, which is what makes "fully migrated or
  * untouched" true per file: a file that fails part way rolls back, its name is not
  * recorded, the constructor throws, the object resets, and the next wake tries again.
- * Nothing about a failure is hidden — it surfaces as the request's error and in the
+ * Nothing about a failure is hidden: it surfaces as the request's error and in the
  * daily sweep, which wakes every object for this reason.
  *
  * `_migrations` itself is created here rather than in a schema file, so the runner can

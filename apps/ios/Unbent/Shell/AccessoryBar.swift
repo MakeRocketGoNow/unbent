@@ -7,7 +7,7 @@ extension WKWebView {
     ///
     /// It is a form assistant, for stepping through the inputs of a web form. In the
     /// editor there is one field, so its arrows go nowhere, and it costs a row of screen
-    /// directly above the keys — the row the editor's own toolbar is docked to. Safari
+    /// directly above the keys: the row the editor's own toolbar is docked to. Safari
     /// has it because Safari does not know what page it is showing; this app does.
     ///
     /// WebKit offers no switch for it. The bar is the `inputAccessoryView` of the private
@@ -19,12 +19,12 @@ extension WKWebView {
     /// the same one Capacitor's Keyboard plugin and Cordova's before it take to hide this
     /// bar, in apps that pass review, but it is not a promise Apple has made. If a future
     /// WebKit renames or rearranges its views this finds nothing and the bar comes back,
-    /// which is the failure worth having — and it says so, by returning false, so the
+    /// which is the failure worth having. And it says so, by returning false, so the
     /// caller can put it in the log rather than wait for a screenshot.
     ///
     /// The bar's tick put the keyboard away. The editor's docked toolbar has a button for
-    /// that instead (`EditorToolbar.tsx`), and a tap outside the text — the note's
-    /// fields, its head — still does it, as it always did. Dragging the keyboard down, as
+    /// that instead (`EditorToolbar.tsx`), and a tap outside the text (the note's
+    /// fields, its head) still does it, as it always did. Dragging the keyboard down, as
     /// in Notes, was tried through the scroll view's `keyboardDismissMode` and does
     /// nothing here: the note scrolls in a column of the page's own, so the web view's
     /// scroll view never moves.

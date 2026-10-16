@@ -6,7 +6,7 @@ import Foundation
  * Shared content is copied into the App Group's container before the share sheet closes:
  * the files a share hands over are temporary copies that go when the extension does, and
  * the upload happens later, in another process. Everything here is the part of that with
- * no system sheet in it — names, the title, the directory — so it runs under `swift test`.
+ * no system sheet in it (names, the title, the directory) so it runs under `swift test`.
  *
  * The Android app's half is `Staging.kt`, and the rules are the same because they come
  * from the server: the API refuses path separators, `.`, `..` and leading dots, and a
@@ -16,7 +16,7 @@ import Foundation
 public enum CaptureNaming {
     /// Forces a name the API will accept.
     ///
-    /// Names arriving from other apps are arbitrary — sometimes absent, sometimes a whole
+    /// Names arriving from other apps are arbitrary: sometimes absent, sometimes a whole
     /// path.
     public static func sanitize(_ raw: String?, index: Int, fallbackExtension: String) -> String {
         var candidate = raw ?? ""
@@ -43,7 +43,7 @@ public enum CaptureNaming {
         return String(stem.prefix(max - ext.count - 1)) + "." + ext
     }
 
-    /// Distinct names within one share, so two "image.jpg" do not land on one file — in
+    /// Distinct names within one share, so two "image.jpg" do not land on one file, in
     /// the staging directory or on the note.
     ///
     /// Compared without case: the phone's file system is case-insensitive, so `Scan.pdf`
@@ -76,12 +76,12 @@ public enum CaptureNaming {
 
     /// A title for the note.
     ///
-    /// The subject when the sending app supplies one — a page's title, a mail's subject —
+    /// The subject when the sending app supplies one (a page's title, a mail's subject),
     /// otherwise the single file's own name, a link's host, the text's first line, and
     /// last the date: an untitled note is much harder to find later than one named for
     /// the afternoon it arrived.
     ///
-    /// Android also credits the app a share came from ("— via Chrome"). iOS does not tell
+    /// Android also credits the app a share came from (", via Chrome"). iOS does not tell
     /// an extension who invoked it, so there is nothing to credit.
     public static func deriveTitle(
         subject: String?,
@@ -102,7 +102,7 @@ public enum CaptureNaming {
 
         let body = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !body.isEmpty {
-            // A shared link. The host is what someone would recognise a month later — the
+            // A shared link. The host is what someone would recognise a month later: the
             // full address is unreadable in a list, and its path is usually a slug or an id.
             if let host = hostOf(body) { return host }
             // Plain text: its first line, which is how a note would title itself anyway.
@@ -200,8 +200,8 @@ public struct CaptureStore: Sendable {
     ///
     /// - No record: a sheet whose extension was killed before Save or Cancel. Nobody is
     ///   waiting for it. Gone after three days, silently.
-    /// - A record: a capture someone saved, which is waiting for a sign-in — made signed
-    ///   out, or refused for a lapsed session — and was told it would be saved. Kept for
+    /// - A record: a capture someone saved, which is waiting for a sign-in (made signed
+    ///   out, or refused for a lapsed session) and was told it would be saved. Kept for
     ///   thirty days, and returned when it goes so the caller can say it was not. It was
     ///   three days and silent for these too, which broke the sheet's own promise.
     ///

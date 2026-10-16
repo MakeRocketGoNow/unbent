@@ -3,7 +3,7 @@ package com.makerocketgonow.unbent.api
 /**
  * The one credential this app holds: the session cookie Better Auth set when it signed in.
  *
- * Stored as the cookie itself — name and signed value — rather than the bare session token
+ * Stored as the cookie itself (name and signed value) rather than the bare session token
  * the JSON body also carries, because the same string serves two clients. OkHttp sends the
  * value as `Authorization: Bearer`, which the API's bearer plugin accepts unchanged since a
  * signed value already carries its signature. The WebView gets the cookie stamped into its

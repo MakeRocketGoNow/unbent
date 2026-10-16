@@ -10,7 +10,7 @@ import androidx.compose.ui.graphics.Color
 /*
  * Material 3 with Unbent's green substituted for the stock purple, matching the web app so
  * the two do not look like different products. Only the roles the app actually paints are
- * overridden — buttons, their text, and the surfaces behind them — because a partial
+ * overridden (buttons, their text, and the surfaces behind them) because a partial
  * palette that leaves related roles at their defaults reads worse than either scheme alone.
  *
  * The same values as res/values/colors.xml and values-night/colors.xml, which the XML
@@ -22,8 +22,8 @@ private val GreenContainer = Color(0xFFB9E6CB)
 
 /*
  * Dark mode inverts which end of the green carries text. The light theme's green is too
- * dark to sit on a near-black surface — as a button fill it reads as a hole, and as text
- * it fails contrast — so the hue is lifted until it carries, and the label on top of that
+ * dark to sit on a near-black surface: as a button fill it reads as a hole, and as text
+ * it fails contrast, so the hue is lifted until it carries, and the label on top of that
  * lighter fill has to be dark rather than the white the light theme uses.
  */
 private val NightGreen = Color(0xFF7FD1A4)

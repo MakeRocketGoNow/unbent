@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// What shows when the site cannot be reached, in place of a blank web view — WebKit has no
+/// What shows when the site cannot be reached, in place of a blank web view: WebKit has no
 /// error page of its own, and an empty screen offers nothing to do.
 ///
 /// Covers the whole shell, strips and all, on the ground the page would have had.

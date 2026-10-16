@@ -21,7 +21,7 @@ interface FilterRowProps {
  * where you already are, which on a surface whose whole job is reporting what is applied is
  * the thing worth saying. Android's `FilterRow` shows the same "3 tags".
  *
- * The chevron is drawn the way `.disclosure > summary::after` is — a rotated box with two
+ * The chevron is drawn the way `.disclosure > summary::after` is: a rotated box with two
  * borders, no glyph, no asset, correct in dark mode for free.
  *
  * The leading icon is decorative and is not in the accessible name: the label already says

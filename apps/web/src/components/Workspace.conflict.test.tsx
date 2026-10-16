@@ -23,7 +23,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
 }));
 const { AUTOSAVE_MS, PAST_AUTOSAVE_MS } = vi.hoisted(() => ({ AUTOSAVE_MS: 150, PAST_AUTOSAVE_MS: 400 }));
 
-// The autosave's real delay is 800 ms, and every save below pays it in full — the hook
+// The autosave's real delay is 800 ms, and every save below pays it in full: the hook
 // is what Workspace renders, so there is no other way through. The behaviour under test
 // is the ordering of saves and answers, not the length of the pause, so the delay is
 // shortened here: long enough that an answer arranged to land "inside the delay" still
@@ -42,7 +42,7 @@ vi.mock('../useAutosave.js', async (importOriginal) => {
  *
  * Every save names the copy it was made from, and a refusal must leave both versions
  * within reach: the typing on screen, locked, and the other device's one click away. The
- * benign refusal — the note moved on only in ways the draft already agrees with — saves
+ * benign refusal (the note moved on only in ways the draft already agrees with) saves
  * again without asking. And coming back to the tab with nothing typed takes the server's
  * copy before the first keystroke, so the refusal is rare in the first place.
  */
@@ -286,7 +286,7 @@ describe('a save after another device saved the note', () => {
   });
 
   it('asks when its quiet second try is refused as well', async () => {
-    // The first refusal is benign — the phone made the same rename — but a third save
+    // The first refusal is benign (the phone made the same rename) but a third save
     // lands before the retry does.
     const renamed: Note = { ...note, title: 'Trip notes, renamed', updatedAt: 200 };
     const third: Note = { ...renamed, body: 'and a third device', updatedAt: 300 };
@@ -330,7 +330,7 @@ describe('coming back to the tab', () => {
 
   it('takes the server’s copy when nothing has been typed', async () => {
     serverHolding(phone);
-    // The phone's copy is in the library — the feed put it there — and a refetch reads it.
+    // The phone's copy is in the library (the feed put it there) and a refetch reads it.
     const { tags: _t, notebook: _n, ...row } = { ...phone, title: 'Trip notes, from the phone' };
     const lib = installTestLibrary({ notes: [{ ...row, tagIds: [], files: [] }] });
     mount();

@@ -11,8 +11,8 @@ import type { AppEnv } from '../types.js';
  * can take everything away; the one state and the one code path for both.
  *
  * Global, in front of every `/api` route, and deny by default: a request that is not a
- * read is refused unless `exemptFromPlan` says otherwise. The alternative — a middleware
- * mounted on each mutating route — is the one a new route forgets, and the forgetting is
+ * read is refused unless `exemptFromPlan` says otherwise. The alternative (a middleware
+ * mounted on each mutating route) is the one a new route forgets, and the forgetting is
  * silent. This way a new route is read-only for a lapsed account until someone adds it
  * here with a reason, and `plan-middleware.test.ts` reads the app's route table and
  * fails on a mutating route it has not been told about.
@@ -30,8 +30,8 @@ const READS: ReadonlySet<string> = new Set(['GET', 'HEAD', 'OPTIONS']);
 /**
  * The writes a lapsed account may still make, by method and path. Each is one of:
  *
- *   - a delete, in whatever verb it comes — the trash, emptying it, deleting for good, a
- *     notebook, a tag, a file, a note's history — and the way back out of the trash,
+ *   - a delete, in whatever verb it comes (the trash, emptying it, deleting for good, a
+ *     notebook, a tag, a file, a note's history) and the way back out of the trash,
  *     which creates nothing and is the undo of the one write that is allowed;
  *   - the account itself: signing in and out, passkeys, its name, deleting it
  *     (Better Auth's routes), agreeing to the terms, disconnecting an app;
@@ -50,7 +50,7 @@ const READS: ReadonlySet<string> = new Set(['GET', 'HEAD', 'OPTIONS']);
  *     the plan of the account the link names, once it has claimed it.
  *
  * Patterns are matched against the whole path; `:x` stands for one segment. Order does
- * not matter — nothing here is a deny rule.
+ * not matter: nothing here is a deny rule.
  */
 const EXEMPT: ReadonlyArray<[method: string, pattern: string]> = [
   ['*', '/api/auth/*'],

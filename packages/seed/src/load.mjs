@@ -10,7 +10,7 @@
  * reason an export's do: the notes that hold field values need the fields to exist.
  *
  * Over HTTP rather than straight into a store, so what it exercises is the code that is
- * running — the branch's routes and the branch's store — and so the same loader can be
+ * running (the branch's routes and the branch's store) and so the same loader can be
  * driven from anywhere that can make an authenticated request. It takes a `request`
  * function and adds nothing of its own (no origin, no cookie), and imports nothing from
  * Node, so the web app runs it as well as `scripts/seed-demo.mjs` does: a pull-request
@@ -24,7 +24,7 @@ import { SHOWCASE } from './showcase.mjs';
 
 const DAY = 24 * 60 * 60 * 1000;
 
-/** The notebooks the showcase uses — all `--small` makes. */
+/** The notebooks the showcase uses: all `--small` makes. */
 const SHOWCASE_NOTEBOOKS = new Set(SHOWCASE.map((n) => n.notebook));
 
 /**
@@ -42,7 +42,7 @@ async function sha256(text) {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** `YYYY-MM-DD` for a day `n` days from `now`, in UTC — what a date field stores. */
+/** `YYYY-MM-DD` for a day `n` days from `now`, in UTC: what a date field stores. */
 function dateOnly(now, n) {
   return new Date(now + n * DAY).toISOString().slice(0, 10);
 }
@@ -95,7 +95,7 @@ async function listAll(request, { trashed = false } = {}) {
 
 async function uploadFile(request, noteId, file) {
   const bytes = file.image ? await makeReceiptPng(fileText(file).split('\n').length) : makePdf(file.pages ?? [file.lines]);
-  // `text=supplied`: the text arrives next, so the server starts no read of its own —
+  // `text=supplied`: the text arrives next, so the server starts no read of its own,
   // which on an instance with a vision key would otherwise send the seed's image to it.
   const put = await request(`/api/notes/${noteId}/files?text=supplied`, {
     method: 'PUT',
@@ -111,7 +111,7 @@ async function uploadFile(request, noteId, file) {
   });
 }
 
-/** Runs `task` over `items`, a few at a time — a local Worker answers faster in parallel. */
+/** Runs `task` over `items`, a few at a time: a local Worker answers faster in parallel. */
 async function pool(items, size, task) {
   let next = 0;
   await Promise.all(
@@ -139,8 +139,8 @@ export async function loadSeed({
     for (const s of skipped ?? []) log(`warning: ${notebook.name}: ${s.name} skipped, ${s.reason}`);
   }
 
-  // An import never looks in the trash — a note deleted on purpose stays deleted, and
-  // importing it again makes a fresh one — so the seed's trashed notes are recognised here
+  // An import never looks in the trash (a note deleted on purpose stays deleted, and
+  // importing it again makes a fresh one), so the seed's trashed notes are recognised here
   // by title instead, or each run would add another copy to the trash.
   const inTrash = new Set((await listAll(request, { trashed: true })).map((n) => n.title));
 

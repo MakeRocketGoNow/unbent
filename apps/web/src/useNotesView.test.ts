@@ -5,7 +5,7 @@ import { useNotesView } from './useNotesView.js';
 /**
  * The view is the URL's when the URL names one, and the last one seen when it does not.
  * What these pin is that order, that the last view seen is what a silent URL is seeded
- * with — however it was seen — and that a browser still holding the short-lived
+ * with (however it was seen) and that a browser still holding the short-lived
  * per-notebook shape keeps the table it had chosen.
  */
 describe('useNotesView', () => {
@@ -20,7 +20,7 @@ describe('useNotesView', () => {
     expect(renderHook(() => useNotesView('list')).result.current).toBe('list');
   });
 
-  /* Whatever view was last on screen is the one a silent URL opens in — so following a
+  /* Whatever view was last on screen is the one a silent URL opens in, so following a
      bookmark, or pressing Back, and then a plain link does not change the view again. */
   it('remembers the view the URL showed, for the next URL that does not say', () => {
     renderHook(() => useNotesView('table'));

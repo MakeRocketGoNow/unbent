@@ -49,7 +49,7 @@ export function formatRevisionWhen(ms: number, now = Date.now(), { inSentence = 
  *
  * The dates are `YYYY-MM-DD` and are formatted as local days rather than parsed as
  * instants. `new Date('2026-01-01')` is midnight UTC, which is the previous day in every
- * timezone west of London — a range the user set to January would have read as December.
+ * timezone west of London: a range the user set to January would have read as December.
  */
 export function rangeLabel(from?: string, to?: string): string | null {
   const day = (iso: string) => {
@@ -63,7 +63,7 @@ export function rangeLabel(from?: string, to?: string): string | null {
   };
   if (from && to) return `${day(from)} – ${day(to)}`;
   // "From", not "Since": it is the word the Android app uses for the same filter, and the
-  // word the input under it is labelled with. It also pairs with "Until" — "Since"/"Until"
+  // word the input under it is labelled with. It also pairs with "Until": "Since"/"Until"
   // reads as two different kinds of boundary when they are the two ends of one range.
   if (from) return `From ${day(from)}`;
   if (to) return `Until ${day(to)}`;

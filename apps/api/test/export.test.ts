@@ -5,7 +5,7 @@
  * only backup. The browser builds it from pages of `GET /api/export/notes` (see the web
  * app's `export-archive.ts`, whose own tests cover the archive's layout), so what is
  * asserted here is the half the server owns: that a page carries everything a note needs
- * to come back — and only this user's notes, only the ones the filter names.
+ * to come back, and only this user's notes, only the ones the filter names.
  */
 import { BlobReader, ZipReader } from '@zip.js/zip.js';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -155,8 +155,8 @@ async function upload(
 
 /**
  * A file with text already recorded, as the text route records it. Uploaded with
- * `text=supplied` so the Worker does not start reading it itself — a local instance may
- * hold a real vision key — and cannot land a read of its own over this one.
+ * `text=supplied` so the Worker does not start reading it itself (a local instance may
+ * hold a real vision key) and cannot land a read of its own over this one.
  */
 async function uploadWithText(
   actor: Actor,
@@ -361,7 +361,7 @@ describe('export pages', () => {
  * Filtered export.
  *
  * The archive is the note list the user was looking at, so these assert the same filters
- * mean the same thing here as they do in the list — an export that quietly included more
+ * mean the same thing here as they do in the list: an export that quietly included more
  * than the view showed would be worse than one that refused.
  */
 describe('filtered export', () => {
@@ -589,13 +589,13 @@ describe('single-note export', () => {
    * Archive Utility is the extractor a download actually meets.
    *
    * Entries are streamed, so their length is unknown when the local header is written, and
-   * zip.js answers that by reserving Zip64 space — `0xffffffff` size placeholders and
-   * extract version 45 — even for a one-kilobyte note. Command-line unzip reads it; macOS
+   * zip.js answers that by reserving Zip64 space (`0xffffffff` size placeholders and
+   * extract version 45), even for a one-kilobyte note. Command-line unzip reads it; macOS
    * Archive Utility refuses the whole archive with "Error 79 - Inappropriate file type or
    * format", so a double-click in Finder produced nothing at all.
    *
    * The bytes are asserted rather than the round-trip because `unzip()` above uses zip.js
-   * to read, which accepts its own Zip64 output happily — the regression is invisible to
+   * to read, which accepts its own Zip64 output happily: the regression is invisible to
    * every other test in this file.
    */
   it('writes headers a plain zip reader accepts, without Zip64', async () => {
@@ -609,7 +609,7 @@ describe('single-note export', () => {
     // Local file header: "PK\x03\x04", then the version needed to extract.
     expect(bytes[0]).toBe(0x50);
     expect(bytes[1]).toBe(0x4b);
-    // 20 is "2.0 — deflate"; 45 is "4.5 — Zip64", which is what Archive Utility rejects.
+    // 20 is "2.0, deflate"; 45 is "4.5, Zip64", which is what Archive Utility rejects.
     expect(view.getUint16(4, true)).toBeLessThanOrEqual(20);
 
     // No Zip64 end-of-central-directory locator ("PK\x06\x07") before the EOCD record.
@@ -661,7 +661,7 @@ describe('single-note export', () => {
 
   it('includes files whose link was removed from the body', async () => {
     const actor = await signUp(`one-unl-${Date.now()}@example.test`, 'unl-password-123', 'U');
-    // Body never references the upload — the leftover an Attachments panel calls
+    // Body never references the upload: the leftover an Attachments panel calls
     // "not linked". It is still part of the note, so the download must carry it.
     const created = await createNote(actor, { title: 'Orphan file', body: 'no links' });
     await upload(actor, created.id, 'stray.txt', 'STRAY');
@@ -700,7 +700,7 @@ describe('single-note export', () => {
 describe('custom fields in the export', () => {
   /**
    * Values ride out as top-level frontmatter keys named by their field, typed as YAML
-   * scalars, and parse back as the same values — the same identity property the note's
+   * scalars, and parse back as the same values, the same identity property the note's
    * own metadata is held to, extended to what a person has defined.
    */
   it('writes every value as a frontmatter key that parses back typed', async () => {

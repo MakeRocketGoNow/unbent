@@ -22,7 +22,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
 
 /**
  * The Auto-fill control: drawn only where the instance can answer, and applying what
- * comes back the way `autofill.ts` plans it — empties filled at once, anything already
+ * comes back the way `autofill.ts` plans it: empties filled at once, anything already
  * set offered for replacement first.
  */
 const amount: FieldDef = {
@@ -77,7 +77,7 @@ function mount(
   });
 
   /*
-     Workspace is reused across notes in the app — a new `noteId` prop, not a remount —
+     Workspace is reused across notes in the app (a new `noteId` prop, not a remount)
      and Auto-fill's round trip is long enough that arrowing to the next note meanwhile
      is the ordinary thing. The harness switches the same way so the tests can watch
      a suggestion for one note try to land on another.
@@ -251,7 +251,7 @@ describe('the Auto-fill control', () => {
     mount(fresh);
     fireEvent.click(await screen.findByRole('button', { name: 'Auto-fill' }));
     expect(
-      await screen.findByText("Filled in the title, the notebook, a tag and Amount — couldn't read back.pdf"),
+      await screen.findByText("Filled in the title, the notebook, a tag and Amount; couldn't read back.pdf"),
     ).toBeTruthy();
   });
 
@@ -262,7 +262,7 @@ describe('the Auto-fill control', () => {
     });
     mount(fresh);
     fireEvent.click(await screen.findByRole('button', { name: 'Auto-fill' }));
-    expect(await screen.findByText(/— couldn't read 2 files$/)).toBeTruthy();
+    expect(await screen.findByText(/; couldn't read 2 files$/)).toBeTruthy();
   });
 
   it('shows the server’s sentence when there is nothing to read', async () => {
@@ -274,7 +274,7 @@ describe('the Auto-fill control', () => {
     const message = await screen.findByText(/couldn't read scan\.pdf/i);
     expect(message.textContent).not.toMatch(/^422/);
     // An error rides in the snackbar's error tone, and stays until dismissed rather than
-    // fading — so there is a close button and no auto-clear.
+    // fading, so there is a close button and no auto-clear.
     const snackbar = message.closest('.snackbar');
     expect(snackbar?.className).toContain('error');
     expect(snackbar?.querySelector('.snackbar-action')).toBeNull();
@@ -317,7 +317,7 @@ describe('the Auto-fill control', () => {
     await waitFor(() =>
       expect((screen.getByPlaceholderText('Untitled') as HTMLInputElement).value).toBe('Acme Hardware'),
     );
-    // No "Also replace the title?" for a placeholder title — it just fills.
+    // No "Also replace the title?" for a placeholder title: it just fills.
     expect(screen.queryByRole('group', { name: "Confirm replacing the note's filing" })).toBeNull();
     expect(screen.getByText(/Filled in the title/)).toBeTruthy();
   });
@@ -344,7 +344,7 @@ describe('the Auto-fill control', () => {
 
     const notice = await screen.findByText(/rejected the API key/);
     expect(notice.textContent).toContain('ANTHROPIC_API_KEY');
-    // The fill still succeeded — the notice rides alongside a filled title, not instead of it.
+    // The fill still succeeded: the notice rides alongside a filled title, not instead of it.
     expect((screen.getByPlaceholderText('Untitled') as HTMLInputElement).value).toBe('Acme Hardware');
 
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));

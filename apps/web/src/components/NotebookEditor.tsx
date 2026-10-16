@@ -95,7 +95,7 @@ const DEFAULT_CURRENCY = 'USD';
  *
  * Three changes here can lose data and so go through `Confirm` naming what they will lose.
  * Deleting a field deletes its values. Changing a type keeps every value the new type can
- * read and clears the rest. Tightening a rating's scale does the same — a 7 cannot stay
+ * read and clears the rest. Tightening a rating's scale does the same: a 7 cannot stay
  * on a 5-point scale, and a 3.5 cannot stay once half steps are dropped. In both of those
  * the server is asked what would be cleared before anything is written, so the confirmation
  * carries the real number rather than a warning in the abstract. Becoming a select never
@@ -104,7 +104,7 @@ const DEFAULT_CURRENCY = 'USD';
  *
  * Order is set with two buttons rather than drag, for the fields here and for a select's
  * options alike. A dozen fields is the realistic maximum, two buttons work with a keyboard
- * and on a phone, and drag-to-reorder is a component this codebase does not have yet — the
+ * and on a phone, and drag-to-reorder is a component this codebase does not have yet. The
  * list items say the same (see README). The fields are a column and move up/down; a
  * select's options wrap as chips and move earlier/later, but it is the same one-step nudge.
  */
@@ -126,7 +126,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
   const [editing, setEditing] = useState<{ id: string; value: string } | null>(null);
   /**
    * The purpose textarea's own draft. Seeded from the notebook once it loads and whenever
-   * the saved value changes under it, but otherwise left to the person's keystrokes — a
+   * the saved value changes under it, but otherwise left to the person's keystrokes: a
    * controlled textarea bound straight to the query would fight the caret on every refetch.
    */
   const [purposeDraft, setPurposeDraft] = useState<string | null>(null);
@@ -139,8 +139,8 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
   const [newOptions, setNewOptions] = useState<string[]>([]);
   /*
      "Rating" is a choice in the type picker, but not a field type: it is a `number` that
-     carries a scale. The picker is where a person looks for it — nobody adding a star
-     rating goes looking for "Number" and then a scale — so the kind is held here and
+     carries a scale. The picker is where a person looks for it (nobody adding a star
+     rating goes looking for "Number" and then a scale) so the kind is held here and
      turned back into a type and a scale at the moment the field is created.
   */
   const [newIsRating, setNewIsRating] = useState(false);
@@ -158,7 +158,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
      reach for. Guarded by `busy` so a click landing while the removal is in flight cannot
      tear the popover down mid-write, and skipped entirely while nothing is open. The chip's
      own remove button lives outside the popover, so a listener that fired on it would close
-     and reopen in one gesture — but that button is disabled by `busy` during the run and is
+     and reopen in one gesture, but that button is disabled by `busy` during the run and is
      never what dismisses, so a plain contains-check is enough.
 
      A layout effect, not a passive one, so the listener exists the instant the popover is
@@ -167,7 +167,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
      flushes passive effects in a later task. That leaves a moment where the popover is
      visible but a pointer down outside it does nothing. No person can click inside it, but
      the test that pins this behaviour can: `waitFor` sees the popover as soon as it is
-     committed and fires the pointer down before that later task has run — reliably on a
+     committed and fires the pointer down before that later task has run, reliably on a
      slow CI runner, where the timer Testing Library drains with fires before React's task.
   */
   const optionConfirmRef = useRef<HTMLDivElement>(null);
@@ -185,7 +185,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
   }, [optionPopoverOpen, busy]);
 
   // Seed the name and purpose drafts into the controlled inputs from the notebook, and
-  // follow the saved values when they change under us (another tab, a fresh load) — but only
+  // follow the saved values when they change under us (another tab, a fresh load), but only
   // while a draft is still unseeded, so a save landing does not wipe what the person is
   // mid-typing. The autosave hooks below track these drafts once seeded.
   const savedName = notebook?.name ?? '';
@@ -198,8 +198,8 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
   }, [savedPurpose]);
 
   /**
-   * Name and purpose autosave the way a note's body does: debounced as you type, and — the
-   * reason it is the hook and not a blur handler — flushed on unmount and on tab hide, so
+   * Name and purpose autosave the way a note's body does: debounced as you type, and (the
+   * reason it is the hook and not a blur handler) flushed on unmount and on tab hide, so
    * clicking a nav link or closing the tab mid-edit still saves the last change rather than
    * dropping it. Only enabled once the draft is seeded from the notebook, so the seed itself
    * is never mistaken for an edit (the same guard the note editor relies on).
@@ -208,7 +208,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
 
   /**
    * Saves the name when it is a real, valid change. An empty or unseeded draft, or one equal
-   * to the saved name, is `'unchanged'` — the hook's honest no-op, so a name typed back to
+   * to the saved name, is `'unchanged'`: the hook's honest no-op, so a name typed back to
    * itself never 409s against its own row and the indicator does not flash a false Saved. A
    * clash throws, which the hook surfaces as the error the header shows.
    */
@@ -325,19 +325,19 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
    * Changes a field's type, or turns a number into a rating and back.
    *
    * Asks first. The select snaps back to the current type while the confirmation is open,
-   * because the type has not changed yet — the confirmation is what changes it.
+   * because the type has not changed yet: the confirmation is what changes it.
    *
    * `scale` is what the picker's "Rating" and "Number" entries differ by: both are the
    * `number` type, so a switch between them is a scale arriving or going away rather than
    * a type change. It still goes through the preview, because gaining a scale can clear
-   * values — a stored 0 or 250 is no longer a legal rating — and that is exactly the
+   * values (a stored 0 or 250 is no longer a legal rating) and that is exactly the
    * confirmation a type change gets.
    *
    * `'fit'` is how "Rating" asks for that scale: the server reads it from the values the
    * field holds (`fitRatingScale`), so scores out of 10 become a rating out of 10 rather
    * than five stars that clear every 6 and up (MAK-80). Because the scale was chosen for
    * the person, a field with values always stops to say which one it is and what it
-   * keeps — even when nothing is cleared, where the confirmation is the green kind.
+   * keeps, even when nothing is cleared, where the confirmation is the green kind.
    *
    * `currency` is the same for the "Currency" entry, with one difference: a currency is
    * display only, so a number gaining or losing one clears nothing, and when that is all
@@ -382,10 +382,10 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
   /**
    * Tightening a rating's scale can throw values away, so it uses the same preview the
    * type picker does. The scale controls themselves write immediately when nothing would
-   * be cleared — widening 5 to 10, or narrowing past values nobody used — and only stop
+   * be cleared (widening 5 to 10, or narrowing past values nobody used) and only stop
    * for confirmation when the server names a count.
    *
-   * Both controls stay on the current scale while that confirmation is open — the select
+   * Both controls stay on the current scale while that confirmation is open, the select
    * and the half-steps checkbox alike, since each draws from `field.scale`. That is the
    * same snap-back the type select does: the scale has not changed yet, and the
    * confirmation is what changes it.
@@ -437,7 +437,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
 
   /**
    * Applies an edit to a select's or multi-select's options: an addition, a removal or a
-   * new order, as the chip list reports them — the whole list, which is all it knows.
+   * new order, as the chip list reports them: the whole list, which is all it knows.
    *
    * A rename is not one of these. Through the whole list it was a removal and an addition,
    * which left the notes holding the old name on a value the field no longer offered;
@@ -448,7 +448,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
    * that notes still hold. That is the one option edit here that can orphan data, so it is
    * the one that asks first: the field's own value keeps working (it shows as "no longer
    * an option"), but whether those notes should lose it is the person's call, not a silent
-   * effect of tidying the list. When more than one option leaves at once — a rare multi-remove — it is not
+   * effect of tidying the list. When more than one option leaves at once (a rare multi-remove) it is not
    * worth a prompt per option; the whole edit writes through, matching how the list behaved
    * before this guard existed and never destroying a value without a single removal's intent.
    */
@@ -477,7 +477,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
    * A rename onto an option that already stands is a merge, which cannot be taken apart
    * again, so it is not sent: the person is asked first, with both names and the number
    * of notes that would move, and only their yes sends `merge`. Names compare exactly, as
-   * options do everywhere — "grocery" beside "Grocery" is a rename, not a merge.
+   * options do everywhere: "grocery" beside "Grocery" is a rename, not a merge.
    */
   async function renameOption(field: FieldDef, from: string, to: string): Promise<boolean> {
     let applied = false;
@@ -543,7 +543,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
    * the device's library, which learns the new order only when the change feed brings it,
    * a beat after the request. `run`'s refetch in between read the old order back, so the
    * rows jumped back and then forward again. The order is held here instead, over
-   * whatever the query answers, and let go once an answer has it — or once the write
+   * whatever the query answers, and let go once an answer has it, or once the write
    * fails, when the next answer is what the server still has.
    */
   const [heldOrder, setHeldOrder] = useState<string[] | null>(null);
@@ -592,7 +592,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
         </div>
       </div>
 
-      {/* The page is three sections — the notebook itself, its fields, its deletion — and the
+      {/* The page is three sections (the notebook itself, its fields, its deletion) and the
           spacing lives on them rather than on what is inside: see `.notebook-edit`. */}
       <section className="notebook-section">
         {/* A failed field operation, or a failed name/purpose autosave (a clash, most often),
@@ -601,7 +601,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
           <p className="bad small">{error ?? nameError ?? purposeError}</p>
         )}
 
-        {/* The name comes first — it is what the notebook is called, and what the list showed.
+        {/* The name comes first: it is what the notebook is called, and what the list showed.
             Renaming here updates every note in it, because the notes reference the id. It
             autosaves as you type, and is flushed if you leave the page mid-edit.
 
@@ -640,11 +640,11 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
 
         {/* The notebook's purpose sits above its fields because it is about the notebook as a
             whole, not about any one field. It is optional and empty by default; what it earns
-            its place for is auto-fill, which reads it to decide whether a note belongs here —
+            its place for is auto-fill, which reads it to decide whether a note belongs here,
             so the placeholder coaches toward what belongs and, as usefully, what does not. */}
         <div className="notebook-purpose">
           <label className="notebook-purpose-label" htmlFor="notebook-purpose">
-            Purpose <span className="muted small">— optional</span>
+            Purpose <span className="muted small">(optional)</span>
           </label>
           <textarea
             id="notebook-purpose"
@@ -653,12 +653,12 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
             rows={2}
             maxLength={MAX_NOTEBOOK_PURPOSE_LENGTH}
             disabled={busy || !notebook}
-            placeholder="What belongs here — and what doesn't. e.g. Things I want to buy someday; not receipts or purchases."
+            placeholder="What belongs here, and what doesn't. e.g. Things I want to buy someday; not receipts or purchases."
             onChange={(e) => setPurposeDraft(e.target.value)}
           />
           <p className="muted small notebook-purpose-hint">
             Auto-fill reads this when it decides where a note belongs, so a notebook whose name
-            could mislead — a “Shopping” list that is really a wish list — keeps notes that
+            could mislead (a “Shopping” list that is really a wish list) keeps notes that
             don't fit out.
           </p>
         </div>
@@ -710,7 +710,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
                   onChange={(e) => {
                     const picked = e.target.value;
                     // Away from a rating, the scale goes with it; away from an amount, the
-                    // currency does — `null` rather than undefined, which would leave the old
+                    // currency does: `null` rather than undefined, which would leave the old
                     // one on the field.
                     const dropScale = field.scale ? null : undefined;
                     const dropCurrency = field.currency ? null : undefined;
@@ -1022,7 +1022,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
       </section>
 
       {/* Between the fields and the deletion: it is about this notebook on this device, not
-          about what the notebook is, so it comes after everything that is — and before the
+          about what the notebook is, so it comes after everything that is, and before the
           one section nobody should pass on the way to another. Draws nothing where files
           cannot be kept. */}
       {notebook && <KeepOffline notebookId={notebookId} name={notebook.name} />}
@@ -1034,7 +1034,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
           The heading is in the page's ink like "Fields", and the red is the button's alone.
           Both were red once, with the button `quiet` and so borderless: two lines of the
           same red words, one of which you could click, and nothing to say which. The button
-          is outlined because it appears once on the page — `quiet` is for actions repeated
+          is outlined because it appears once on the page: `quiet` is for actions repeated
           down a dense list, and here it only made the one action look like a caption. */}
       <section className="notebook-section">
         <h3 className="notebook-section-head">Delete notebook</h3>
@@ -1157,7 +1157,7 @@ function scaleConfirmQuestion(pending: PendingType & { scale: FieldScale; field:
  *
  * Two controls rather than one list of combinations, because they are two independent
  * questions and a person arrives with an answer to each. Narrowing can throw a value
- * away, so the caller previews first and confirms when the server names a count — the
+ * away, so the caller previews first and confirms when the server names a count, the
  * same path a type change takes, rather than writing and then saying how many were lost.
  * The note under the controls is only how the scale will draw, not a substitute for that.
  */
@@ -1215,7 +1215,7 @@ function ScalePicker({
 
 /**
  * An amount's currency: one select over the common codes, with the field's own code first
- * when it is not among them — a code set over the API or read from a definitions file is
+ * when it is not among them: a code set over the API or read from a definitions file is
  * still a choice here, not a blank. A currency is display only, so every change writes at
  * once; the line under the select is how a value will draw, in the viewer's locale.
  */

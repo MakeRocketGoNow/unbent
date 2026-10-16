@@ -15,7 +15,7 @@ import { ActiveFilters } from './ActiveFilters.js';
  * On a phone the controls are behind an icon, so these chips are the only thing on screen
  * that says the list is narrowed and the only way to widen it without opening anything.
  * Both halves are pinned: that every active filter produces a chip, and that pressing one
- * writes the removal to the URL — which is where the filters live, so it is the only place
+ * writes the removal to the URL, which is where the filters live, so it is the only place
  * a removal can be observed.
  */
 function harness(props: Parameters<typeof ActiveFilters>[0]) {
@@ -36,7 +36,7 @@ function harness(props: Parameters<typeof ActiveFilters>[0]) {
  * same thing and keeps that guard meaningful.
  *
  * It is the more honest boundary anyway: this harness has no `validateSearch`, so the URL
- * rather than the parsed object is what this component actually produces — and the route's
+ * rather than the parsed object is what this component actually produces, and the route's
  * schema is what turns it back into a tag array in the app.
  */
 const url = (history: { location: { href: string } }) => history.location.href;
@@ -46,7 +46,7 @@ describe('ActiveFilters', () => {
 
   /*
    * The header strip omits the notebook, because the heading above it already names the
-   * notebook — a chip there repeated the title word for word on the very next line. The
+   * notebook: a chip there repeated the title word for word on the very next line. The
    * sheet passes it, since a surface claiming to list everything applied has to show it.
    */
   it('reports only what it was given, so the header can leave the notebook to the heading', async () => {
@@ -107,8 +107,8 @@ describe('ActiveFilters', () => {
 
   /*
    * Asserted on the URL rather than the parsed search object. This harness has no
-   * `validateSearch` — the real route's schema is what turns `?tag=a&tag=b` back into an
-   * array — so the parsed value here is whatever the router's default parser makes of it.
+   * `validateSearch`: the real route's schema is what turns `?tag=a&tag=b` back into an
+   * array, so the parsed value here is whatever the router's default parser makes of it.
    * The URL is the thing this component actually writes, and it is what the route then
    * reads, so it is the honest boundary to test at.
    */

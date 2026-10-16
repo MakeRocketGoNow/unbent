@@ -5,14 +5,14 @@ import { billingOn, type PaddleEnv } from './paddle.js';
 /**
  * What this instance says about itself, beyond how to sign in to it.
  *
- * Separate from `auth.ts`, which answers the same shape of question — "what does this
- * deployment offer?" — but only ever about sign-in. These are about the operator: who they
+ * Separate from `auth.ts`, which answers the same shape of question ("what does this
+ * deployment offer?") but only ever about sign-in. These are about the operator: who they
  * are, and where their legal documents live.
  *
  * Every function here returns `undefined` rather than a default. That is the whole point:
  * the repository is open source, so a value nobody configured has no honest fallback, and
  * inventing one publishes a claim the operator never made. `/api/config` drops undefined
- * fields on the way out, which the client reads as "not offered" — the same convention
+ * fields on the way out, which the client reads as "not offered", the same convention
  * `accountDeletion` already uses.
  */
 
@@ -36,8 +36,8 @@ export function operatorOf(env: Env): AppConfig['operator'] | undefined {
  *
  * Separate from `OPERATOR_NAME`/`OPERATOR_EMAIL`, which name the legal entity for the
  * documents and are a single contact, not a sign-in identity. This is a set of the people
- * whose session may be shown an operator-only fault to fix — right now, a title model that
- * rejected its key. Unset — every fresh checkout, and every fork — means nobody is an
+ * whose session may be shown an operator-only fault to fix: right now, a title model that
+ * rejected its key. Unset (every fresh checkout, and every fork) means nobody is an
  * operator here and no such fault is ever surfaced, which is the safe default for a
  * repository people deploy unchanged.
  */
@@ -60,7 +60,7 @@ export function isOperator(env: Env, email: string | undefined): boolean {
  * Where this instance's privacy policy and terms are, if it has any.
  *
  * Three answers, in order of who should be believed. An operator who has published their
- * own documents elsewhere wins, even over a configured operator name — they went to the
+ * own documents elsewhere wins, even over a configured operator name: they went to the
  * trouble, so the links point there. Failing that, an instance that knows who runs it can
  * render the built-in documents, which are written to be filled in. Failing both, there is
  * nothing to link to, and saying so is better than linking to a page that has nothing on
@@ -110,7 +110,7 @@ export function sellsPlanOf(env: Pick<Env, 'FRONT_PAGE'> & PaddleEnv): true | un
  *
  * Fixed, and never the built-in `LEGAL_VERSION`: that one moves with this repository, and
  * borrowing it would ask every account on a fork to agree again each time the documents
- * here changed — documents that fork does not publish — under a sentence describing them.
+ * here changed (documents that fork does not publish) under a sentence describing them.
  */
 const OWN_DOCUMENTS_VERSION = '1';
 
@@ -121,7 +121,7 @@ const OWN_DOCUMENTS_VERSION = '1';
  * For the built-in documents, the repository's version and its sentence on what changed.
  * For an operator's own, `LEGAL_VERSION` from the environment: this repository cannot
  * know when those change, so the operator moves it, and everyone is asked again. Unset,
- * everyone is asked once. No sentence on what changed — the built-in one describes other
+ * everyone is asked once. No sentence on what changed: the built-in one describes other
  * documents, and an operator who wants one can say it in their own.
  *
  * A change only to the sections an instance publishes because it sells a plan
@@ -163,8 +163,8 @@ export function posthogHost(env: Env): string {
 /**
  * Where the SDK's own static files come from.
  *
- * PostHog serves its bundle from a separate host to the one that takes events —
- * `us-assets.i.` beside `us.i.` — and the proxy has to send `/static/*` to the right one or
+ * PostHog serves its bundle from a separate host to the one that takes events
+ * (`us-assets.i.` beside `us.i.`), and the proxy has to send `/static/*` to the right one or
  * the browser gets an event endpoint's answer where it expected JavaScript. A self-hosted
  * PostHog serves both from one origin, which is what the unchanged fallback means.
  */

@@ -13,12 +13,12 @@ import {
  * The inline renderings are sized for reading *around*: a page rasterized at 420–520px
  * so a note carrying nine scans is still a note. This is for reading *the thing itself*.
  * Most of a real Evernote export is scanned paper, and at inline width the line items on
- * a receipt are seven pixels tall — the point of opening it is to read them.
+ * a receipt are seven pixels tall: the point of opening it is to read them.
  *
  * Built without React, on purpose. It is called from the preview pane, which is React,
  * and from the rich editor's widgets, which are plain DOM inside CodeMirror and cannot
  * mount a component. One implementation reachable from both is what keeps the two modes
- * agreeing on what opening an attachment does — the same reason `usePdfAttachments` is
+ * agreeing on what opening an attachment does: the same reason `usePdfAttachments` is
  * one hook rather than two filters. `pdf/render.ts` makes the same choice for the same
  * callers.
  *
@@ -29,7 +29,7 @@ import {
  *
  * Not the browser's own viewer. Attachment responses carry `Content-Security-Policy:
  * sandbox`, under which the built-in PDF viewer refuses to render and the browser saves
- * the file instead — so a link to the PDF is a download, not a way to read it. The
+ * the file instead, so a link to the PDF is a download, not a way to read it. The
  * Android app's WebView has no second window to open one in at all. Rasterizing here,
  * with the document already parsed for the inline preview, works in both places.
  */
@@ -41,8 +41,8 @@ export type ViewerTarget =
  * Widest a page is rasterized at, in CSS pixels.
  *
  * A letter page at this width, drawn at 2× on a retina screen, resolves body text and the
- * small print under it. Wider costs memory faster than it gains legibility — the same
- * reasoning as the 2× cap in `renderPage` — and a page that is wider than the screen is
+ * small print under it. Wider costs memory faster than it gains legibility (the same
+ * reasoning as the 2× cap in `renderPage`), and a page that is wider than the screen is
  * scaled down by CSS anyway.
  */
 const MAX_PAGE_WIDTH = 1200;
@@ -57,7 +57,7 @@ let current: HTMLDialogElement | null = null;
  * How long after opening a click inside the viewer is ignored, in milliseconds.
  *
  * The viewer opens synchronously on the click that asked for it, so the second click of
- * a double-click lands inside the dialog at the same spot on the screen — on the image,
+ * a double-click lands inside the dialog at the same spot on the screen: on the image,
  * where it would jump to actual size, or beside it, where it would close what had only
  * just opened. People who double-click out of habit saw it flash and vanish. Longer than
  * the platform's double-click interval, which is 500ms on most systems, and short enough
@@ -72,7 +72,7 @@ const OPENING_GRACE_MS = 600;
  */
 const HISTORY_MARKER = 'unbent:attachment-viewer';
 
-/** The last segment of a URL's path, decoded — the stored filename, for an attachment. */
+/** The last segment of a URL's path, decoded: the stored filename, for an attachment. */
 function filenameOf(src: string): string {
   const path = src.split('?')[0] ?? '';
   const name = path.slice(path.lastIndexOf('/') + 1);
@@ -93,7 +93,7 @@ export function labelFor(target: ViewerTarget): string {
 /**
  * Whether the URL is one of this note's stored files, served by the API.
  *
- * A rich-mode image can also be a remote one — a web clip's picture at its own address.
+ * A rich-mode image can also be a remote one: a web clip's picture at its own address.
  * The API's `?download=1` means nothing to another host, and a browser ignores the
  * `download` attribute across origins, so a Download link for one would open the picture
  * in a tab and call it a download. Better no link than a lying one.
@@ -106,7 +106,7 @@ function isAttachment(src: string): boolean {
  * The attachment's URL in the form that saves the file.
  *
  * The API serves an attachment inline unless asked otherwise, and `?download=1` is the
- * ask — the same form the Attachments panel links to. A plain link rather than a fetch:
+ * ask: the same form the Attachments panel links to. A plain link rather than a fetch:
  * it middle-clicks, it copies, and the Android app's WebView hands it to the platform's
  * download manager with the session attached, which is how that app downloads anything.
  */
@@ -133,8 +133,8 @@ const SWIPE_MIN_PX = 60;
  *
  * `siblings` is every attachment the note shows, in reading order, and `target` is one of
  * them; a caller with only the one passes nothing and gets no paging. A paperless-office
- * note is often several scans of one thing — the receipts from a trip, a form scanned as
- * three pictures — and closing, scrolling and reopening between them is the friction a
+ * note is often several scans of one thing (the receipts from a trip, a form scanned as
+ * three pictures) and closing, scrolling and reopening between them is the friction a
  * viewer exists to remove. Keep and legacy Evernote both page across a note's images.
  *
  * The set is what the *body* renders, not the Attachments panel's list: that list carries
@@ -173,7 +173,7 @@ export function openAttachmentViewer(
   // into a note of buttons. Here it is the natural next step after looking.
   const download = el('a', 'link viewer-download');
   // A glyph and a hover surface like the controls it sits among, so it reads as one of
-  // them rather than as a stray word — but still a link, because it navigates: it can
+  // them rather than as a stray word, but still a link, because it navigates: it can
   // be middle-clicked and its address copied, which a button could not offer.
   download.innerHTML = `${downloadIconMarkup()}<span>Download</span>`;
 
@@ -182,12 +182,12 @@ export function openAttachmentViewer(
    *
    * Most notes in a real export are a single scan, and arrows beside a count of one read
    * as clutter. Real buttons rather than overlays on the picture's edges: a control that
-   * says where it goes, and one a Tab can reach. No wrap-around — a disabled arrow at the
+   * says where it goes, and one a Tab can reach. No wrap-around: a disabled arrow at the
    * end says "this is the last one", where wrapping would silently start over.
    *
    * Last before the close button, to the right of the page count and the download link.
-   * Those two come and go as the attachments change — a PDF has a page count, a remote
-   * image has no download — and anything to their left would shift with them. A control
+   * Those two come and go as the attachments change (a PDF has a page count, a remote
+   * image has no download) and anything to their left would shift with them. A control
    * that is about to be clicked again should stay where it was.
    */
   const prev = el('button', 'icon-btn viewer-prev');
@@ -223,8 +223,8 @@ export function openAttachmentViewer(
    * The scrollable area, and the thing that takes focus when the viewer opens.
    *
    * `showModal()` would focus the close button, which is the first focusable thing. Focus
-   * here instead so the arrow keys, Space and Page Down scroll the pages straight away —
-   * the reason the viewer was opened — and the close button is one Tab away rather than
+   * here instead so the arrow keys, Space and Page Down scroll the pages straight away
+   * (the reason the viewer was opened), and the close button is one Tab away rather than
    * in the way. Programmatic focus draws no ring; a keyboard user who tabs to it will.
    */
   const body = el('div', 'viewer-body');
@@ -234,23 +234,23 @@ export function openAttachmentViewer(
   dialog.appendChild(body);
 
   const openedAt = Date.now();
-  /** True while the click that opened the viewer may still be echoing — see the grace. */
+  /** True while the click that opened the viewer may still be echoing (see the grace). */
   const stillOpening = () => Date.now() - openedAt < OPENING_GRACE_MS;
 
   /**
    * The viewer is a place you navigated to, so the back gesture leaves it rather than the
    * note behind it.
    *
-   * Opening pushes one history entry; every way out — the ✕, the backdrop, Escape — calls
+   * Opening pushes one history entry; every way out (the ✕, the backdrop, Escape) calls
    * `dialog.close()`, and the close handler pops that entry with `history.back()`. Pressing
    * back instead fires `popstate`, which closes the dialog directly. `owned` is what keeps
    * the two from chasing each other: it is true while our entry is on the stack, so the
    * close handler pops only when a control closed the dialog, not when `popstate` already
-   * did. On a phone this is the whole point — back is the universal way out, and it should
+   * did. On a phone this is the whole point: back is the universal way out, and it should
    * dismiss the thing on top, not the note under it.
    *
    * One entry for the whole viewing session, not one per attachment. Paging does not touch
-   * history — nothing here changes the URL yet — so ten pages deep is still a single press
+   * history (nothing here changes the URL yet), so ten pages deep is still a single press
    * to leave rather than ten. (A later stage that puts the attachment in the URL would use
    * `replaceState` on each page to keep that true.)
    */
@@ -274,7 +274,7 @@ export function openAttachmentViewer(
 
   // The empty space around the content is the backdrop here, since the dialog itself
   // fills the screen: a click on it closes, the way a lightbox's scrim does. A click on
-  // the content does not — for an image, that is the zoom toggle.
+  // the content does not: for an image, that is the zoom toggle.
   body.addEventListener('click', (event) => {
     if (event.target === body && !stillOpening()) dialog.close();
   });
@@ -304,7 +304,7 @@ export function openAttachmentViewer(
 
     // Saved under the stored filename, not the caption: an image's alt text is a
     // description, and a file called "Scan of a sample invoice" with no extension is
-    // not what anyone asked for. Only for this note's stored files — see `isAttachment`.
+    // not what anyone asked for. Only for this note's stored files (see `isAttachment`).
     if (isAttachment(item.src)) {
       download.href = downloadUrl(item.src);
       download.setAttribute('download', filenameOf(item.src));
@@ -336,7 +336,7 @@ export function openAttachmentViewer(
 
     /**
      * Left and right page; up and down still scroll. Not while the body scrolls
-     * sideways — an image at actual size is panned with the arrow keys, and stealing
+     * sideways: an image at actual size is panned with the arrow keys, and stealing
      * them there would trade a pan for a page turn nobody asked for.
      */
     dialog.addEventListener('keydown', (event) => {
@@ -381,7 +381,7 @@ export function openAttachmentViewer(
     window.removeEventListener('popstate', onPopState);
     // A control closed the dialog, so our history entry is still on the stack: pop it, so
     // the address bar and the back stack match what is on screen. When `popstate` closed
-    // us the entry is already gone and `owned` is false, so we must not `back()` again —
+    // us the entry is already gone and `owned` is false, so we must not `back()` again:
     // that would leave the note itself.
     if (owned) {
       owned = false;
@@ -405,7 +405,7 @@ export function openAttachmentViewer(
  *
  * Fit is the right first view: it answers "what is this" at a glance. The toggle exists
  * for the photo of a form or a whiteboard where the words only resolve at full size, and
- * it is offered only when there is more to see — a small image toggled to "actual size"
+ * it is offered only when there is more to see: a small image toggled to "actual size"
  * would not change, and a cursor promising zoom on it would be a lie.
  */
 function mountImage(
@@ -439,7 +439,7 @@ function mountImage(
     if (!actual && !zoomable()) return;
 
     // Where under the pointer the click landed, as a fraction of the image, so the same
-    // spot is under the pointer after the image grows — zooming into the top-left corner
+    // spot is under the pointer after the image grows: zooming into the top-left corner
     // of a page when the click was on its bottom line is the wrong kind of surprise.
     const rect = img.getBoundingClientRect();
     const fx = (event.clientX - rect.left) / rect.width;
@@ -468,7 +468,7 @@ function mountImage(
  * Every page of a PDF, one under the other, drawn as they come into view.
  *
  * The inline widgets draw one page and stop; here the reader has asked for the document,
- * so every page is laid out at once — but only rasterized as it approaches the viewport,
+ * so every page is laid out at once, but only rasterized as it approaches the viewport,
  * since a forty-page scan opened to check its first line should not cost forty renders.
  * Each undrawn page holds a letter-sized placeholder so the column has its full height
  * from the start and the scrollbar tells the truth about how long the document is.

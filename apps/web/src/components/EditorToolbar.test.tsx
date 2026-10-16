@@ -10,7 +10,7 @@ import { attachments, type AttachConfig } from '../editor/attach.js';
  *
  * The formatting buttons are thin wrappers over commands that `markdown-commands.test.ts`
  * already covers command-by-command; what is worth pinning here is the behaviour that
- * replaced two booleans with one value — that exactly one view reads as selected, that
+ * replaced two booleans with one value: that exactly one view reads as selected, that
  * the split modifier appears only where it applies, and that formatting goes inert in a
  * view with no selection to format.
  *

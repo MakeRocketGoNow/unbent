@@ -5,8 +5,8 @@ import Foundation
  * The three ways in that put something of the phone's in front of the request: a browser,
  * Apple's sheet, and the passkey sheet. The sheets themselves are the app's
  * (`SignInSheets.swift`), since they need a window; what is here is everything either
- * side of them — the address to open, the values to hand a sheet, and the request that
- * turns what it gave back into a session — so that all of it runs under `swift test`.
+ * side of them (the address to open, the values to hand a sheet, and the request that
+ * turns what it gave back into a session) so that all of it runs under `swift test`.
  *
  * Each ends where the password and the code end: the session cookie the response set.
  *
@@ -16,9 +16,9 @@ import Foundation
 /// Trading a one-time token for a session: the other half of `/connect`.
 ///
 /// The app opens that page in the system's sign-in browser, which shares Safari's cookies,
-/// so someone already signed in to the site there — by whichever provider, which is the
+/// so someone already signed in to the site there (by whichever provider, which is the
 /// point: Google, GitHub and anything an instance adds later work without this file
-/// knowing they exist — is one tap from done. The page mints a token and redirects to the
+/// knowing they exist) is one tap from done. The page mints a token and redirects to the
 /// app's scheme, and this exchanges it for an ordinary session.
 public struct ConnectAuth: Sendable {
     private let origin: String
@@ -38,7 +38,7 @@ public struct ConnectAuth: Sendable {
         return URL(string: "\(origin)/connect?redirect=\(redirect)")
     }
 
-    /// The token in the address the browser came back on, or nil when it carries none —
+    /// The token in the address the browser came back on, or nil when it carries none,
     /// which is the page declining, not a failure to report.
     public static func token(from callback: URL, scheme: String) -> String? {
         guard
@@ -53,7 +53,7 @@ public struct ConnectAuth: Sendable {
 
     /// Exchanges the token for the session the response sets.
     ///
-    /// The token is spent by this call — replaying it fails — so a session that does not
+    /// The token is spent by this call (replaying it fails) so a session that does not
     /// get stored is simply lost, and the person connects again.
     public func redeem(token: String) async throws -> SessionCookie {
         try await signInCall(origin, "/api/auth/one-time-token/verify", ["token": token], "Connecting", session)
@@ -117,7 +117,7 @@ public struct AppleAuth: Sendable {
     /// Gives the account the name Apple's sheet returned.
     ///
     /// Apple sends a name once, on a person's first authorization, to the app and never in
-    /// the token — so the server made the account without one, and this is the only
+    /// the token, so the server made the account without one, and this is the only
     /// chance to fill it in. A failure is not a failed sign-in, and the caller treats it
     /// that way: the name can be set on the site.
     public func setName(_ name: String, session cookie: SessionCookie) async throws {
@@ -141,7 +141,7 @@ public struct AppleAuth: Sendable {
 ///
 /// Android hands the server's JSON to Credential Manager untouched. iOS has no call that
 /// takes it: the request is built from parts, so the parts are read here, and everything
-/// the server sent that has a place in that request is carried — dropping
+/// the server sent that has a place in that request is carried: dropping
 /// `allowCredentials` would offer passkeys the server will refuse, and dropping
 /// `userVerification` would skip Face ID for a server that requires it.
 public struct PasskeyChallenge: Equatable, Sendable {
@@ -222,7 +222,7 @@ public struct PasskeyAssertion: Equatable, Sendable {
 ///
 /// Two round trips, both to Better Auth's own endpoints: ask for a challenge, then post
 /// what the authenticator signed. The private key never leaves the Secure Enclave, and
-/// this app never sees it either — it forwards an assertion.
+/// this app never sees it either: it forwards an assertion.
 public struct PasskeyAuth: Sendable {
     private let origin: String
     private let session: URLSession
@@ -232,7 +232,7 @@ public struct PasskeyAuth: Sendable {
         self.session = session
     }
 
-    /// The challenge. Public — it has to be, since asking for one precedes signing in.
+    /// The challenge. Public: it has to be, since asking for one precedes signing in.
     public func challenge() async throws -> PasskeyChallenge {
         guard let url = URL(string: origin + "/api/auth/passkey/generate-authenticate-options") else {
             throw URLError(.badURL)
@@ -250,8 +250,8 @@ public struct PasskeyAuth: Sendable {
 
     /// Hands the signed assertion back for verification, and collects the session.
     ///
-    /// A failure here is a real one — a credential the server does not know, or a
-    /// challenge that has expired — so the server's own words are worth keeping.
+    /// A failure here is a real one (a credential the server does not know, or a
+    /// challenge that has expired) so the server's own words are worth keeping.
     public func verify(_ assertion: PasskeyAssertion, for challenge: PasskeyChallenge) async throws -> SessionCookie {
         try await signInCall(
             origin,

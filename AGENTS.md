@@ -1,7 +1,7 @@
 # Working on Unbent
 
 Guidance for agents working in this repo. The [README](README.md) explains what the app is
-and why the editor is built the way it is — read it before touching the editor. This file
+and why the editor is built the way it is. Read it before touching the editor. This file
 is about *how to work here*: the standards this project holds, and the corrections that
 have come up often enough to be worth writing down.
 
@@ -9,7 +9,7 @@ have come up often enough to be worth writing down.
 
 **This project is held to a high UX standard. Assume the UI matters more than the
 implementation.** The most common feedback in this repo's history is that something works
-but doesn't feel right — spacing that is "really inconsistent", a control that is "not
+but doesn't feel right: spacing that is "really inconsistent", a control that is "not
 obvious", an interaction that is "janky", an action that "should be aligned right". Budget
 real time for this. A change that functions but looks unconsidered is not done.
 
@@ -20,12 +20,12 @@ Some things that have been asked for repeatedly, so start from them:
   area" were both bugs worth fixing properly, not with a tooltip.
 - **Actions are buttons; navigation is links.** See [Buttons](#buttons) below.
 - **Nothing should jump.** When a control opens an editor, the editor appears where the
-  control was — not somewhere else on the row. Motion the user didn't ask for reads as jank.
+  control was, not somewhere else on the row. Motion the user didn't ask for reads as jank.
 - **Rhythm over local fixes.** Vertical spacing gets judged as a whole. When several elements
   stack, give them one rhythm instead of tuning each gap until it looks acceptable alone.
 - **Mobile is a real target, not a fallback.** A large share of this project's UI work has
-  been phone layout. Check every change at both breakpoints. Long content — an email
-  address, a filename, a tag list — must be assumed unbounded; it has broken the layout more
+  been phone layout. Check every change at both breakpoints. Long content (an email
+  address, a filename, a tag list) must be assumed unbounded; it has broken the layout more
   than once.
 - **Dark mode is a real target too.** Both themes are defined in `styles.css`. `--bad` is a
   light salmon in dark mode, so anything filled with it needs dark text, not white.
@@ -37,7 +37,7 @@ Some things that have been asked for repeatedly, so start from them:
 
 When a UI decision has a real trade-off, say so and give a recommendation. Asking for "an
 unbiased opinion" as "a principal frontend engineer and expert UX designer" is a recurring
-request here — the useful answer names the trade-off and then picks, rather than listing
+request here: the useful answer names the trade-off and then picks, rather than listing
 options. Push back when the proposed fix treats a symptom; that has been welcomed.
 
 ## Buttons
@@ -46,8 +46,8 @@ Use the `Button` component (`apps/web/src/components/Button.tsx`) for anything t
 something. Do not style a `<button>` as a link.
 
 A link navigates and can be middle-clicked, opened in a new tab, and copied. A button
-changes something and can do none of those. Drawing one as the other — which this codebase
-did with `<button className="link">` — gives a control no padding, no hit area beyond its
+changes something and can do none of those. Drawing one as the other, which this codebase
+did with `<button className="link">`, gives a control no padding, no hit area beyond its
 text, and a hover underline promising a navigation that never happens. It teaches people to
 distrust both.
 
@@ -60,7 +60,7 @@ size="small"          Denser, for rows and toolbars.
 size="large"          44px tall, for the few actions of a state that stands alone.
 ```
 
-`variant` is how loud, `tone` is what it does — they are independent. "Delete forever" in a
+`variant` is how loud, `tone` is what it does. They are independent. "Delete forever" in a
 list row is `quiet` + `danger`; "Empty trash" in a confirm is `primary` + `danger`. This is
 the same `tone` vocabulary `Confirm` uses for its actions.
 
@@ -68,9 +68,9 @@ Genuine navigation stays a `<Link>` or `<a>` and should look like one. `Button` 
 does not render anchors.
 
 The one exception is a view's or a state's single call to action that navigates: it may
-be a `<Link>` wearing the button classes — `btn btn-primary` when it is the thing the view
-is for, `btn btn-secondary` when it is only the way out. It is still a real link — it
-middle-clicks, opens in a new tab and copies — and only borrows the button's shape.
+be a `<Link>` wearing the button classes (`btn btn-primary` when it is the thing the view
+is for, `btn btn-secondary` when it is only the way out). It is still a real link (it
+middle-clicks, opens in a new tab and copies) and only borrows the button's shape.
 `FrontPage`'s sign-up and `EmptyLibrary`'s import are filled; `NotebookMissing`'s "Show all
 notes" is outlined. That is the stylesheet lending a link a shape, not a reason for
 `Button` to render anchors.
@@ -79,15 +79,15 @@ Older filled buttons still use the bare `.primary` class. It is the same shape a
 `.btn-primary` on purpose; convert callers to `Button` opportunistically when you are already
 editing them, not in a sweep.
 
-`<button className="link">` still appears in several places — `Confirm`'s own secondary
+`<button className="link">` still appears in several places: `Confirm`'s own secondary
 action and cancel, `Import`, `Attachments`, `Workspace`, `Settings`. Those predate this
 component and are the backlog it exists to work through, not counterexamples to it.
 
 ## Icons
 
 Icons come from [lucide](https://lucide.dev), and every one of them passes through
-`apps/web/src/components/icons.tsx`. Import the named components from there — `TagIcon`,
-`CalendarIcon` and so on — and never `lucide-react` directly from a component. The file is
+`apps/web/src/components/icons.tsx`. Import the named components from there (`TagIcon`,
+`CalendarIcon` and so on) and never `lucide-react` directly from a component. The file is
 the single seam: it fixes each icon's size against what it sits beside (a lone control in a
 44px target, a label beside a row of text, a cross inside a chip), and it is the one place
 to change if the library ever changes again.
@@ -96,7 +96,7 @@ They were hand-drawn until the fifteenth. The first dozen were a few straight li
 which no library would have drawn better; the tag and the calendar were traced from
 Android's drawables by eye, which is exactly the work an icon set exists to save, and the
 next feature wanted eight more. lucide's defaults are the geometry the hand-drawn set
-already had — a 24×24 box, `currentColor` at stroke width 2, round caps and joins — so the
+already had: a 24×24 box, `currentColor` at stroke width 2, round caps and joins, so the
 switch changed no pixels that mattered.
 
 The editor toolbar's own glyphs still go through `ToolbarIcon` with paths, deliberately:
@@ -115,10 +115,10 @@ the document and draws every `data-tip` in the app's own bubble after a short re
 for the next control in the same sweep, on keyboard focus, and never on touch. A native
 `title` waits over a second, every time, which made a row of icons a guessing game.
 
-Every icon-only control gets one, alongside its `aria-label` — the tip is drawn, the label
+Every icon-only control gets one, alongside its `aria-label`: the tip is drawn, the label
 is the name. The one exception is the × inside a chip: the chip already names what it
 removes, and a bubble on every chip's cross in a row of them would be noise. A tip that
-says more than the name — why a control is faded, above all — must be read out too:
+says more than the name (why a control is faded, above all) must be read out too:
 `Button`'s `tip` prop writes `data-tip` and `aria-description` together, and a raw
 `<button>` sets both itself. A disabled button cannot be focused, so a reason that is only
 drawn never reaches a screen reader. `data-tip-side="right"` puts it beside a control in a
@@ -128,17 +128,17 @@ short, where a fast bubble would flash over every row a pointer crosses.
 ## Destructive actions
 
 Every destructive action goes through the `Confirm` component. It is inline, not modal, and
-that is deliberate: every confirmation here is about something specific on screen — a named
-notebook and its note count, a trash with a number in it — and a modal covers the very thing
+that is deliberate: every confirmation here is about something specific on screen (a named
+notebook and its note count, a trash with a number in it) and a modal covers the very thing
 being decided about.
 
 Name the blast radius before the user commits: how many notes, which notebook, what happens
 to attachments. `Confirm` weights its actions by position, so a destructive action passed
-after a safe one demotes itself automatically — pass them in the right order and don't
+after a safe one demotes itself automatically: pass them in the right order and don't
 override the classes.
 
 Red and green never share a box. A confirm's border takes the tone of the action it
-offers — the first one: red when that action destroys something, green when it is the
+offers (the first one): red when that action destroys something, green when it is the
 primary, plain when it is neutral. So "Keep 9 KB on this device?" is bordered green, and
 "Delete this notebook?" red. `Confirm` works this out itself (`borderTone`), which is why
 nothing is passed for it: don't override its classes, and don't hand-roll a confirm-shaped
@@ -147,7 +147,7 @@ colour around a safe action was the bug.
 
 ## Comments
 
-Comments here explain **why**, and they are unusually thorough — read a few before writing
+Comments here explain **why**, and they are unusually thorough: read a few before writing
 any. The house style records the decision and the alternative that was rejected, so the next
 person doesn't re-litigate it or silently undo it. `Rail.tsx`, `OverflowMenu.tsx` and
 `Confirm.tsx` are good examples.
@@ -162,30 +162,31 @@ UI copy, Linear issues. Use a comma, a colon, a full stop or parentheses instead
 them is the tell that a model wrote the text, and this repository is read by people who
 notice.
 
-The existing text is full of them and is not being swept; take them out of a paragraph
-you are already rewriting, not in a pass of their own. The legal documents are the one
-place to leave them where a lawyer would have used one, since that register is the point.
+The existing text was swept once, on 2026-10-16, so one found now is new: take it out
+where you find it. The few left are the character itself (a test input, a regex, an OCR
+sample, a stored summary's separator), and the legal documents are the one place to leave
+them where a lawyer would have used one, since that register is the point.
 
 ## Real notes stay out of the repo
 
 **This repository is open source; the notes it is built against are private.** The real
-corpus — the Evernote export, the notes on unbent.app, anything read through the MCP tools,
-a screenshot or a pasted bug report — is someone's personal archive. Nothing from it goes
+corpus (the Evernote export, the notes on unbent.app, anything read through the MCP tools,
+a screenshot or a pasted bug report) is someone's personal archive. Nothing from it goes
 into anything that gets pushed: code, tests, fixtures, comments, docs, commit messages, PR
 titles and descriptions, or review comments.
 
 That is broader than it sounds. A filename, a note title, a notebook or tag name, a person's
 or business's name, an address, an amount: any of them can say something about someone's
 life they never chose to publish. A commit message is as public and as permanent as the
-code, and harder to take back — rewriting history on `main` is a much bigger job than
+code, and harder to take back: rewriting history on `main` is a much bigger job than
 editing a file.
 
 When a real note is what exposed a bug, keep its *shape* and invent the content. What
 matters to a parser is "capitals with a parenthesized word in the middle, inside an
 angle-bracket destination", and `SAMPLE INVOICE (ACME) Final Copy.pdf` proves that as well
 as the original did. In prose, say "an imported PDF" or "a note in the real corpus" rather
-than quoting it. Prefer placeholders that are obviously made up — `Acme`, `example.com`,
-`Report (final) v2.pdf` — over ones that merely sound plausible.
+than quoting it. Prefer placeholders that are obviously made up (`Acme`, `example.com`,
+`Report (final) v2.pdf`) over ones that merely sound plausible.
 
 If you find real content already in the repo, say so rather than quietly working around it.
 
@@ -201,24 +202,24 @@ The subject line says what changed **for the user**, in plain language, as a sen
 > Show where a dragged file will land.
 
 Not `feat(editor): add PDF expansion`. The body explains what was wrong before, what the
-change does, and any non-obvious reasoning — the same "why" standard as the comments.
+change does, and any non-obvious reasoning: the same "why" standard as the comments.
 Describe the case that broke without quoting a real note; see
 [Real notes stay out of the repo](#real-notes-stay-out-of-the-repo), which applies to PR
 descriptions as much as to commits.
 
 **Commit atomically as you go.** Don't accumulate a session's work into one commit at the
-end, and don't wait to be asked for each one — when a logical change is complete and
+end, and don't wait to be asked for each one: when a logical change is complete and
 verified, commit it. Each commit should stand on its own: the tree builds and typechecks at
 every one, not only at the tip.
 
 Stage only what this session touched. A working directory often carries edits from another
-terminal or an unfinished task, and `git diff` cannot tell those apart — only the session
+terminal or an unfinished task, and `git diff` cannot tell those apart: only the session
 can. Prefer explicit paths over `git add -A`, and if `git status` shows files you didn't
 touch, leave them and say what you skipped.
 
 The user also has a `msg-and-commit` skill for the same job on demand, which scopes a
 message to the session's changes. It lives in their environment, not in this repo, so it
-may not be available to you — the rule above is the same either way.
+may not be available to you: the rule above is the same either way.
 
 **Pushing is still on request.** Committing as you go is the default; pushing and opening a
 PR are not. Don't push unprompted.
@@ -226,7 +227,7 @@ PR are not. Don't push unprompted.
 The exception is work started from a Linear issue: asking for an issue to be fixed is asking
 for the PR, so push and open one once the change is verified, then move the issue to In
 Review. Stop at the commit only when the change is one the user will want to try locally
-before review — in practice, Android and iOS changes, which only prove themselves on a
+before review: in practice, Android and iOS changes, which only prove themselves on a
 device. Web, API and docs changes are verified in the browser and the test suites, and go
 straight to a PR. The `fix-linear-issue-cloud` skill carries the full loop.
 
@@ -242,7 +243,7 @@ was that nobody knew.
   the user can open the change without asking for it back.
 - **Say so at the end of every response while it is up**, in one line: that it is running,
   its address (the port `pnpm dev` printed, not an assumed one), and which checkout it
-  serves. Every response, not only the one that started it — the line is how it gets
+  serves. Every response, not only the one that started it: the line is how it gets
   cleaned up, and a server mentioned once is a server forgotten.
 - **Stop it when the user says they are done**, when the branch is merged or abandoned, or
   when asked. `worktree-down` is how. Say that it is stopped.
@@ -250,7 +251,7 @@ was that nobody knew.
   `nohup`, never a detached `&` from `bash`, and no watchers, one-off HTTP servers or
   anything else left behind: those are stopped in the turn that started them.
 
-The dev server is usually the user's, on :5173 (web) and :8787 (API) — those are the *main
+The dev server is usually the user's, on :5173 (web) and :8787 (API): those are the *main
 checkout's* ports. **Check before starting your own:**
 
 ```bash
@@ -260,7 +261,7 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:5173/
 If it's already up, use it, and leave it as you found it: it is not yours to stop. Use the
 browser preview tools rather than `bash` for anything server-shaped.
 
-From a worktree the ports are different and derived — `pnpm dev` prints them on its first
+From a worktree the ports are different and derived: `pnpm dev` prints them on its first
 line, and `node scripts/ports.mjs` answers without starting anything. Never assume 5173,
 and don't cache the answer either: a worktree's pair is derived from its name but these
 bands belong to the whole machine, so when something else is already on one, `pnpm dev`
@@ -269,7 +270,7 @@ the truth; the derived pair is only where it started looking.
 
 ### Working from a git worktree
 
-Branch work often happens in a worktree beside the main checkout — prefer one over
+Branch work often happens in a worktree beside the main checkout: prefer one over
 switching branches in place, so the user's checkout and dev server stay where they are.
 
 **Branch off a freshly synced `main`.** A local `main` is stale as often as not, and a
@@ -292,13 +293,13 @@ checkout, then prints the ports.
 A Claude session that starts in a worktree does this for itself: the `SessionStart` hook in
 `.claude/settings.json` runs `scripts/worktree-autosetup.sh`, which calls
 `pnpm worktree:setup --fresh` when the worktree has no dependencies or no local D1 yet, and
-does nothing in the main checkout or in a worktree already set up. `--fresh` always — an
+does nothing in the main checkout or in a worktree already set up. `--fresh` always: an
 empty database, not a copy of the user's notes; copying the real corpus stays a command a
 person runs on purpose. Its output is in the session's context, so check it for the ports
 rather than assuming the setup still needs doing.
 
 `pnpm dev` in a worktree runs *both* halves on that worktree's own pair, so the branch's
-API code is what answers and its notes and auth config are the worktree's own — not the
+API code is what answers and its notes and auth config are the worktree's own, not the
 main checkout's Worker on :8787. That is a change from how this used to work; there is no
 longer a reason to point a worktree's Vite at someone else's API.
 
@@ -312,13 +313,13 @@ preview tool's `unbent` entry starts and opens whichever checkout you are in.
 
 That last part depends on the session having *started* in this directory. The preview tool
 resolves its project root once, when the session begins, and switching into a worktree
-partway through moves the shell without moving it — so `preview_start` reads the main
+partway through moves the shell without moving it, so `preview_start` reads the main
 checkout's `launch.json` and reports a conflict on :5173 that has nothing to do with the
 branch. There is nothing to fix in the repo when that happens, and deleting the main
 checkout's file only breaks the preview there too. Start the session in the worktree if
 you want the preview tool, and otherwise run `pnpm dev` and drive the printed URL directly.
 
-To point the API suites at a worktree, pass both origins — `API_URL` is the Worker,
+To point the API suites at a worktree, pass both origins: `API_URL` is the Worker,
 `APP_URL` is the SPA origin the tests send as `Origin`:
 
 ```bash
@@ -326,7 +327,7 @@ API_URL=http://localhost:8817 APP_URL=http://localhost:5217 \
   pnpm --filter @unbent/api exec vitest run test/isolation.test.ts
 ```
 
-### The Android emulator is the user's — never launch it yourself
+### The Android emulator is the user's: never launch it yourself
 
 **Do not start an emulator.** `pnpm android:build` builds, installs and launches the debug
 app; `pnpm android` launches what is already installed. Both boot an AVD only if none is
@@ -334,16 +335,16 @@ running, and that fallback is for a human at a keyboard, not for you. If `adb de
 empty, **stop and ask the user to start it** from Android Studio's Device Manager or by
 running those scripts in their own terminal.
 
-An emulator launched from an agent's shell has no macOS GUI session. It looks fine — it
-renders, it boots, `adb` input works, screenshots come back — so it is easy to believe it
+An emulator launched from an agent's shell has no macOS GUI session. It looks fine (it
+renders, it boots, `adb` input works, screenshots come back), so it is easy to believe it
 is healthy. But its window silently discards every real mouse click, logging
 `skipping QEventPoint ... : no target window`. The user is left with an emulator that
 ignores them while you report success from `adb`. If you find that line in the log, the
 emulator was started wrong; it cannot be fixed from here, only relaunched by the user.
 
 The scripts pass `-no-snapshot-save` deliberately, and the flag is load-bearing in both
-directions: it *loads* the saved `default_boot` snapshot — which is where the emulator's
-signed-in session lives — and does not write over it on exit. Hand-rolling the launch
+directions: it *loads* the saved `default_boot` snapshot, which is where the emulator's
+signed-in session lives, and does not write over it on exit. Hand-rolling the launch
 inverts both halves. `-no-snapshot-load` cold-boots to a signed-out app, and without
 `-no-snapshot-save` the emulator then overwrites `default_boot` on quit with that
 signed-out state. That trades a working, signed-in emulator for one that has to be set up
@@ -354,8 +355,8 @@ inferring it from what is installed or when files were last touched.
 
 Two builds sit side by side on the device. The **orange** icon is
 `com.makerocketgonow.unbent.debug`; the **green** one is `com.makerocketgonow.unbent`, the release build,
-which is signed into **production**. Drive the debug one. Never tap through the release app
-— a stray tap there writes to the user's real notes.
+which is signed into **production**. Drive the debug one. Never tap through the release app.
+A stray tap there writes to the user's real notes.
 
 And do not navigate by guessing coordinates. Blind `adb shell input tap` calls land on
 FABs and list rows and create notes nobody asked for. Read the bounds first:
@@ -371,9 +372,9 @@ lists the app's page, where its DOM, console and network can be read like any ta
 ### Sample notes, and shooting the app
 
 **Check which instance the app is pointed at before creating anything.** The debug build
-stores an instance per install and it is often `https://unbent.app` — the user's real
-notes. App settings shows the address — the site's Settings → App settings inside the app,
-or a long-press on the launcher icon — and so does the sign-in screen's footer. Prefer a
+stores an instance per install and it is often `https://unbent.app`, the user's real
+notes. App settings shows the address (the site's Settings → App settings inside the app,
+or a long-press on the launcher icon) and so does the sign-in screen's footer. Prefer a
 local instance for anything that writes.
 
 `pnpm seed:demo` creates `demo@example.com` on this checkout's dev server and fills it with
@@ -385,7 +386,7 @@ the list, rather than making notes by hand. It is idempotent, so re-running upda
 than duplicates; `--reset` clears the account's notes first, `--small` loads only the ten
 the store screenshots are of, and `--url` aims it somewhere else on localhost. It refuses any host that is not loopback, because it signs up a password
 written down in the script. Sign-up works because `pnpm dev` passes
-`ALLOW_TEST_CREDENTIALS=1` to the Worker — local only, see `passwordEnabled` in
+`ALLOW_TEST_CREDENTIALS=1` to the Worker: local only, see `passwordEnabled` in
 `apps/api/src/auth.ts`.
 
 Point the app at that instance from App settings → Unbent address, or the sign-in screen's
@@ -404,7 +405,7 @@ Store screenshots must not show the debug name. `resValue("string", "app_name", 
 empty**. Existing assets and the full recipe are in `apps/android/store/`.
 
 `adb exec-out screencap -p > shot.png` captures without a temporary file on the device.
-`uiautomator dump` returns empty while the app is mid-animation or busy — let it settle
+`uiautomator dump` returns empty while the app is mid-animation or busy: let it settle
 rather than treating the empty file as a missing element.
 
 ### The iOS simulator: ask before booting, and know which instance it is on
@@ -414,7 +415,7 @@ says how it is built. `pnpm ios:build` builds, installs and launches the debug b
 `pnpm ios` launches what is installed. Both boot a simulator only when none is running, and
 that fallback is for a person. If `xcrun simctl list devices booted` is empty, **ask
 before booting one**, and say which you would boot. A simulator is less fragile than the
-Android emulator — one booted from a shell works — but it is still the user's machine and
+Android emulator (one booted from a shell works) but it is still the user's machine and
 their screen.
 
 The two builds sit side by side here too. The **amber** icon is the debug build,
@@ -427,7 +428,7 @@ loopback, so a local instance is plain `http://localhost:<port>` with nothing to
 **Read the port again every time a server is started.** A worktree's pair moves when
 something else is on it, and while this checkout's server is stopped another session's can
 take the pair it had. An app left pointed at the old port is then talking to someone else's
-instance — it happened while the first version of this app was being tested, with the app
+instance: it happened while the first version of this app was being tested, with the app
 signing itself out because that server did not know its session. `node scripts/ports.mjs`,
 then App settings.
 
@@ -445,7 +446,7 @@ Things that cost time once:
   in to it at all.
 - **Typing through a simulator tool counts as a hardware keyboard**, so iOS keeps the
   on-screen one down and shows only the bar above it. What the keyboard does to the layout
-  — whether the editor's toolbar sits on the keys — has to be looked at in the Simulator
+  (whether the editor's toolbar sits on the keys) has to be looked at in the Simulator
   window with I/O ▸ Keyboard ▸ Connect Hardware Keyboard off, or on a phone. Say so rather
   than reporting it checked.
 - **A screenshot taken straight after a tap can be the frame before it.** Wait a moment,
@@ -456,8 +457,8 @@ Things that cost time once:
 - **A share is three processes, and only one of them is yours to watch.** The extension
   stages and sends one request; the system's uploader sends it; the app is launched in
   the background with the answer and sends the files. The Worker's log shows the `POST`
-  then each `PUT`, and the capture's directory —
-  `xcrun simctl get_app_container booted <bundle id> groups`, then `shares/` — is empty
+  then each `PUT`, and the capture's directory
+  (`xcrun simctl get_app_container booted <bundle id> groups`, then `shares/`) is empty
   once it has finished. `xcrun simctl addmedia booted <file>` puts a photo in Photos to
   share. A tap injected by a tool does not open a notification in Notification Center;
   say so rather than reporting the tap checked.
@@ -474,25 +475,25 @@ Things that cost time once:
 ### Three keys sign this app, and Google has to know all of them
 
 Debug builds use the local debug keystore, uploads are signed with the release key in
-`~/.config/unbent`, and **Play re-signs every bundle with its own App Signing key** — so
+`~/.config/unbent`, and **Play re-signs every bundle with its own App Signing key**, so
 what users install is signed by a certificate that never existed on this machine.
 
 Anything keyed on a signing certificate therefore needs the Play key registered too, not
 just the upload key:
 
 - **The `ANDROID_ASSET_LINKS` secret on the Worker**, which is what the instance serves at
-  `/.well-known/assetlinks.json` — SHA-256, or App Links open in a browser instead of the
+  `/.well-known/assetlinks.json`: SHA-256, or App Links open in a browser instead of the
   app, and passkeys stop being offered. It is a per-deployment secret rather than a file,
   because a fork's instance must not vouch for this repository's app; put it on production
   with `wrangler secret put`, and the `ANDROID_ASSET_LINKS` repository secret carries it to
   the dev instance and previews.
-- **The Android OAuth client**, in the Google Cloud console — SHA-1. When it is missing,
+- **The Android OAuth client**, in the Google Cloud console: SHA-1. When it is missing,
   Google refuses to issue an ID token and Credential Manager reports `NO_CREDENTIAL`,
   which is indistinguishable from a phone with no Google account. Sign-in appears broken
   only in the store build; every local release build works, because the upload key *is*
   registered.
 
-Both fingerprints come from the app's App signing page in Play Console — search the console
+Both fingerprints come from the app's App signing page in Play Console: search the console
 for "app signing" rather than following a menu path, which has moved more than once. Take
 them from the **Classical key** column; the post-quantum one beside it is a beta that
 neither the OAuth client nor Digital Asset Links accepts. Registering the upload key alone
@@ -501,7 +502,7 @@ is the trap: it makes every build you can test locally work.
 ### Shipping to Play
 
 Pushes to `main` build a signed bundle and upload it to the closed testing track as a
-**draft** — it appears in Play Console and passes Play's checks, but nobody receives it
+**draft**: it appears in Play Console and passes Play's checks, but nobody receives it
 until a person promotes it. Making testers get it automatically is a one-word change
 (`status: completed` in `.github/workflows/android.yml`).
 
@@ -510,25 +511,25 @@ rejects as a duplicate; CI takes the run number, which is unique and always risi
 
 The publish needs `PLAY_SERVICE_ACCOUNT_JSON` alongside the keystore secrets, and skips
 cleanly without it. Play also requires **one bundle uploaded by hand** before the API will
-accept any — a brand new app or a renamed `applicationId` has to be primed that way once.
+accept any: a brand new app or a renamed `applicationId` has to be primed that way once.
 
 ## Verifying
 
-Verify UI changes in the browser and show the result — don't ask the user to check
+Verify UI changes in the browser and show the result: don't ask the user to check
 manually. Screenshot the change, and confirm computed styles when the point of the change is
 visual. Test both breakpoints when layout is involved.
 
 `pnpm --filter @unbent/web test` and `npx tsc --noEmit` both need to pass. Don't mutate the
 user's real data to test a control; if you do it by accident, put it back and say so.
 
-`apps/android` is outside the pnpm workspace — `pnpm -r` silently skips it, so nothing above
+`apps/android` is outside the pnpm workspace: `pnpm -r` silently skips it, so nothing above
 verifies it. It is checked with `cd apps/android && ./gradlew test`, which needs no device.
 `apps/ios` is outside it too: `swift test --package-path apps/ios/Packages/UnbentCore` runs
 its unit tests on the Mac with no simulator, and `xcodebuild -project
 apps/ios/Unbent.xcodeproj -scheme Unbent -destination 'generic/platform=iOS Simulator'
 build` proves the app and its Share Extension compile without booting one.
 The app is the site in a WebView, so almost every UI change belongs in `apps/web` and
-reaches the phone on deploy. Check it at phone width and inside the app — Back, the system
+reaches the phone on deploy. Check it at phone width and inside the app: Back, the system
 bars and the keyboard are the app's, not the browser's. What stays native is the sign-in
 screen, the share sheet and App settings, and the UI rules in this file apply to those
 Compose screens, and to the iOS app's SwiftUI ones in `apps/ios/Packages/UnbentUI`, as much
@@ -537,8 +538,8 @@ as to the site.
 ## The offline shell, and the local copy of the library
 
 The app opens with no connection and works: a service worker (`apps/web/src/sw/sw.ts`) keeps
-the built app on the device, and the account's library — notes, notebooks, tags, the rows for
-its files — lives in a SQLite file in the browser's origin-private file system
+the built app on the device, and the account's library (notes, notebooks, tags, the rows for
+its files) lives in a SQLite file in the browser's origin-private file system
 (`apps/web/src/store/`), kept current by the change feed and written to first. A few rules
 hold it together, and most are easy to break from code that never mentions it.
 
@@ -556,8 +557,8 @@ the requests, which is the app as it was: nothing offline, nothing kept.
 change lands on the local copy at once and goes to the server from a durable outbox
 (`@tanstack/offline-transactions`), which replays in order, one entry at a time, with a
 growing wait. Two rules keep the queue from sticking, each with a test: every answer the
-server would give again — a 4xx other than a lapsed session, a timeout or a rate limit, a
-refused precondition — is a `NonRetriableError` that ends its entry, and a `saveNote` whose
+server would give again (a 4xx other than a lapsed session, a timeout or a rate limit, a
+refused precondition) is a `NonRetriableError` that ends its entry, and a `saveNote` whose
 note has a later entry in the queue does nothing, since each save carries the whole draft.
 Only the tab holding the account's leader lock replays (`store/leader.ts`); another tab
 waits in the lock's queue and leads the moment the holder goes, rather than staying a
@@ -583,8 +584,8 @@ actions with rules the server decides, and the feed delivers what they did to ev
 and the workspace puts it to the person as before. A draft that already holds every change
 the other device made goes again against the newer copy (`holdsTheirChanges`); "Keep mine"
 diffs against the copy the draft came from and preconditions on theirs (`against`). A save's
-base must be the row as the server last had it, not the optimistic one — `syncedRow` in
-`actions.ts` — or a pending write of our own reads as a change of theirs.
+base must be the row as the server last had it, not the optimistic one (`syncedRow` in
+`actions.ts`) or a pending write of our own reads as a change of theirs.
 
 **The feed engine is pure and the cursor lives beside the rows.** `store/feed.ts` is given a
 way to fetch, a cursor store and the collections' sync controls; it walks the snapshot when
@@ -595,15 +596,15 @@ page to resume from, so a copy cut short by a closed tab continues where it stop
 archive on a phone is minutes of pages) and a page cut short is applied again (every apply
 is an upsert); once the walk is whole it is that `seq` alone, and the feed is followed from
 it, so anything written during the walk is replayed. Collections are ready as soon as
-persistence has restored them, not after the first pull. Pulls are event-driven — open, tab
-shown, connection back, socket nudge, after a replayed write — never a timer, with one
+persistence has restored them, not after the first pull. Pulls are event-driven (open, tab
+shown, connection back, socket nudge, after a replayed write), never a timer, with one
 exception: a copy that is not whole and whose pull failed is tried again on a doubling
 wait (`retry` in `feed.ts`), since no event comes to a tab left open on an empty list. Each
 page of the feed and the snapshot has a timeout (`fetchJson` in `library.ts`): a pull that
 never settles holds every later one behind it.
 
 **A note the copy does not hold while no snapshot has been taken is asked of the server, or
-reads as not available — never as missing.** `noteQuery` asks the server while there is a
+reads as not available, never as missing.** `noteQuery` asks the server while there is a
 connection, since the copy can take minutes on a phone and a followed link should open, and
 throws `OfflineError` without one; a 404 means the id is not a note.
 
@@ -624,12 +625,12 @@ one more entry in the cache, so emptying the cache takes it too.
 cache.** `store/files.ts` is an OPFS directory named for the account with two shelves:
 `kept`, the files of the notebooks this device keeps offline (`store/keep.ts`), and
 `pending`, files added here that have not uploaded. A directory per note and the file under
-its own name, so the worker answers a file's address from the shelf with no index — and it
+its own name, so the worker answers a file's address from the shelf with no index, and it
 does, before the cache or the network, for every read but a page load (`shelved` in
 `sw/routes.ts`): the worker cannot know the stored type the server picks a safe one from,
 so a navigation is never answered from a shelf. What the `kept` shelf should hold is a pure
 function of the library and the kept list (`plan`); the keeper stands down while the library
-is not whole — a walk has not finished, which is not the same as the last pull failing —
+is not whole (a walk has not finished, which is not the same as the last pull failing),
 since a pass during the first copy would drop what it would fetch again, and
 runs only in the tab that holds the outbox. It fetches through `request()` and unmarked, so
 a kept notebook never fills the cache of opened files. A list of kept notebooks that cannot
@@ -642,7 +643,7 @@ one phrase, in the note's body, never a spinner and never in the head.
 **Evidence decides whether the app is offline, never a hint** (`connectivity.ts`). The app
 is offline while the server is out of reach: a check of `/api/health` with a timeout got no
 answer, or the browser fired `offline` and nothing has answered since. It is online the
-moment the server answers anything — a check, or any answer to a request the API client
+moment the server answers anything: a check, or any answer to a request the API client
 made that the worker did not serve from a cache or a shelf (`confirmReachable`, called by
 `request()`; the worker marks what it served, `X-Unbent-Served`). `navigator.onLine` only
 starts a check, and is never allowed to veto one: while it was a veto, a laptop whose
@@ -650,7 +651,7 @@ browser was wrong about its network sat on the banner for a day with every reque
 succeeding, refusing saves (2026-10-13). A failed request, a socket that dropped and a save
 that timed out still only ask for a check (`recheck`): letting failures flip the state was
 tried first, and every new kind of failure became a new way to flicker. Settings → Offline
-says what decided the current answer and when. Nothing else decides — not the outbox,
+says what decided the current answer and when. Nothing else decides, not the outbox,
 whose online detector is backed by the same store.
 
 **API calls from the page go through `request()` in `notes-api.ts`,** which is where those
@@ -659,21 +660,21 @@ treats as retriable. Code that retries on a network error must recognise `Offlin
 one (`transient` in `export-archive.ts`): it is an `ApiError` with status 0, not the
 `TypeError` fetch throws. Two deliberate exceptions, and nothing else should join them:
 
-- `apiFetch` in `attachment-text.ts` — the indexer. It runs inside the import Web Worker,
+- `apiFetch` in `attachment-text.ts`: the indexer. It runs inside the import Web Worker,
   where the page's connectivity store does not exist, and it reports its own failures to
   the page. (It must also never send `X-Unbent-View`; neither must export.)
-- `device-api.ts` — Better Auth's device and one-time-token endpoints under `/api/auth/`,
+- `device-api.ts`: Better Auth's device and one-time-token endpoints under `/api/auth/`,
   which the service worker never touches and whose screens report their own failures.
 
-**What this device keeps of an account goes when the account changes hands — and the
+**What this device keeps of an account goes when the account changes hands, and the
 outbox goes only then.** `clearOfflineCaches()` runs on sign-out, on a refused session, on
 account deletion and when a different person signs in. The worker's caches go every time;
 they are keyed by address and cheap to refill. The local store, its search index, the outbox and the
 account's files directory (`store/wipe.ts`) are keyed by account, and the outbox holds
-writes the server has not heard of — the files directory holds the bytes of its uploads — so they go only when the account has changed hands for good: sign-out and account
+writes the server has not heard of (the files directory holds the bytes of its uploads) so they go only when the account has changed hands for good: sign-out and account
 deletion remove every account's, a different person signing in removes every account's
-but their own, and a refused session — someone who edited offline for longer than their
-sign-in lasted — closes them and keeps them, so their sign-in reopens the store and replays
+but their own, and a refused session (someone who edited offline for longer than their
+sign-in lasted) closes them and keeps them, so their sign-in reopens the store and replays
 what waited. Sign-out first waits a few seconds for the outbox to drain. The names are in
 `store/names.ts` and nowhere else. A new way for the account on a device to change hands
 has to call it too, and say which of the three it is.
@@ -686,8 +687,8 @@ change to them after, and derives what it draws from those rows itself, as the h
 does from its collections (`store/client-library.ts`); the feed's state, the outbox's
 status and the keeper's are mirrored the same way, so every hook and query reads a client
 as it reads the holder and nothing in the chrome tells the tabs apart. What crosses as a
-call is what only the holder can do — a write, a search of its index, keeping a notebook,
-a conflict resolved — and a call's failure comes back as the class it was (`carry`,
+call is what only the holder can do (a write, a search of its index, keeping a notebook,
+a conflict resolved) and a call's failure comes back as the class it was (`carry`,
 `revive`). Settings → Offline still says which tab holds the file, with Open here beside
 it: that takes the lock with `steal`, the tab that held it closes its library and attaches
 as a client. A client waits in the lock's queue and opens the library on its own the
@@ -696,12 +697,12 @@ calls meanwhile, so closing the holding tab needs no press; a call in hand when 
 library moves to this tab is made again here (`LibraryMovedError`). A new thing a client
 needs of the holder is a message in the channel's one list, or a name the holder's
 dispatcher runs. There are two channels, and no third: the account's, which every tab
-of the account hears, and one per client for what is that client's alone — the rows
+of the account hears, and one per client for what is that client's alone: the rows
 above all, since a browser decodes a message in every listening tab before any can drop
 it, and the library is tens of megabytes. A browser without `BroadcastChannel` reads the
 server as every second tab did before 2026-10-13, under `LibraryElsewhereError`.
 
-This replaced every tab holding the library at once — each its own connection to the
+This replaced every tab holding the library at once: each its own connection to the
 store's file, taking turns on its one access handle; each a connection to the outbox's
 database; one the leader of each collection, with the others' writes going through it by
 message; one the outbox's leader. Four coordinators that knew nothing of each other made
@@ -715,14 +716,14 @@ answers, and Android Chrome has no SharedWorker, so the holding tab is the owner
 
 Three things keep a wipe from wedging the next sign-in, and a new way to hold or wipe the
 library has to keep them. The wipe tells the other tabs, over the channel in
-`store/wipe.ts` (`installLibraryCloser`) — all but a tab holding the account a sign-in's
-wipe keeps, which keeps its library — and `recordSession` closes the library in any tab
+`store/wipe.ts` (`installLibraryCloser`), all but a tab holding the account a sign-in's
+wipe keeps (which keeps its library), and `recordSession` closes the library in any tab
 whose session the server has refused, so a tab left on the sign-in screen holds nothing;
 a tab told to close then asks the server who is signed in, so it does not open the old
 account again from the session it remembers. The outbox closes its connection on
 `versionchange`, which is how IndexedDB asks, and the library closes with it. And
 `acquireLibrary` answers its caller within `LIBRARY_OPEN_TIMEOUT_MS` whatever the open is
-doing — a refusal past the bound, reported, and the page reads the server — so a wedge is
+doing (a refusal past the bound, reported, and the page reads the server) so a wedge is
 a page with no local copy rather than a dead app. A tab that holds the library and is
 wedged on something it waits for, or a window someone forgot, is what Open here in another
 tab is for: the lock is taken from it and its library closes. A tab the browser has frozen
@@ -731,8 +732,8 @@ is not: its worker cannot hand the store's file over, so the taking tab's open w
 when the open finishes on its own. A client that was served once and whose holder then
 froze is in the same place: its hello goes unanswered until the holder resumes or goes,
 and meanwhile it reads the rows it has and holds its writes. A tab that has never been
-served does not wait: three hellos in six seconds with nothing heard from any holder —
-no `serving`, no rows, no `opening` — is a tab that holds the lock and runs nothing for
+served does not wait: three hellos in six seconds with nothing heard from any holder
+(no `serving`, no rows, no `opening`) is a tab that holds the lock and runs nothing for
 this account, frozen or on a build from before the channel, and the client takes the
 library over (`UNANSWERED_HELLOS` in `client-library.ts`), under the deadline its attach
 was given, so beside a frozen tab whose worker still holds the file it is refused at the
@@ -753,13 +754,13 @@ into a file the account no longer owns; the store and the outbox stay the step's
 
 **Offline is not `readOnly`, and it no longer locks.** The trash's `readOnly` turns the
 autosave off and drops the draft. Offline, the note is as editable as ever and the head
-still says "Saved" — one word, because beside a title on a phone the head has room for
+still says "Saved": one word, because beside a title on a phone the head has room for
 about that, and a sentence there shrank the title twice. What the server has not heard of
 is said elsewhere: a cloud glyph beside the word while *this* note has an entry waiting in
 the outbox (`NotSyncedMark`, "Not synced yet" on hover or tap), the banner for the device
 being offline, and a line in the strip when writes have waited online for a few seconds
-(`SyncingLine`). What fades is what needs the server now — Auto-fill, the ⋯ menu,
-and copying, moving or deleting a file — and a new control that needs the server should
+(`SyncingLine`). What fades is what needs the server now (Auto-fill, the ⋯ menu,
+and copying, moving or deleting a file) and a new control that needs the server should
 follow `offline`, not lock the note. Adding a file does not fade: it is queued, and its row
 in the attachments panel says "Waiting to upload" until it has gone, and Delete on that row
 takes the file back without the server ever hearing of it (`cancelUpload`).
@@ -777,13 +778,13 @@ a search on it would sit in front of every save. Everything in it is derived, so
 no migrations: bump `SEARCH_INDEX_VERSION` and it is built again.
 
 `SearchSync` keeps it in step, in passes, in the tab that holds the outbox and only once
-the library is whole — the keeper's rules, for the keeper's reasons. The first pass
+the library is whole: the keeper's rules, for the keeper's reasons. The first pass
 compares every note by stamp; after that the library names the notes that changed, and a
 new way for a note to change that does not go through the collections will not be indexed.
 Files' text is never synced wholesale: `textPlan` wants it for notebooks kept offline and
-the last `RECENT_NOTES` notes opened here — newest first, up to `RECENT_TEXT_LIMIT`
+the last `RECENT_NOTES` notes opened here (newest first, up to `RECENT_TEXT_LIMIT`
 characters between them, a file let go for room keeping an entry that remembers its length
-so the plan does not fetch it again — and fetches it by file id from
+so the plan does not fetch it again) and fetches it by file id from
 `POST /api/attachments/texts`, which cuts its answer on bytes. An answer from the device
 carries what it covered (`LocalCoverage`), and the line under the results
 (`SearchCoverage`) says so; a new place that shows search results offline must show it
@@ -799,9 +800,9 @@ worker, so a tab still running the previous build keeps finding its chunks after
 worker has taken charge; only a tab that outlives two deploys without a reload loses them,
 and `recoverFromMissingChunks` reloads it once when a chunk is gone. The one thing the
 page says is that a reload would bring a newer build (`UpdateSnackbar`), and only when the
-worker's commit differs from the page's (`BUILD` in `sw.ts`). The rules this replaced — a
+worker's commit differs from the page's (`BUILD` in `sw.ts`). The rules this replaced (a
 change of section, five minutes away, nothing touched since the load, at once on dev and
-previews — each answered a reload that drew the old build or lost someone's place, and
+previews) each answered a reload that drew the old build or lost someone's place, and
 between them still moved every other tab onto a worker that had deleted their chunks.
 `pnpm gate:offline` checks that a removed chunk is a 404 and that the shell is kept under
 the build's name; a deploy while a tab is open is checked by hand (a second build, then
@@ -815,7 +816,7 @@ empties its caches.
 **Testing it.** Component tests feed an in-memory library (`store/test-library.ts`), under
 which the actions fall back to the mocked API; the outbox and the file system are checked in
 a real browser. Vite's dev server does not run the worker: build the web app and load the
-Worker's own port, which serves `apps/web/dist` beside the API — this checkout's `API_PORT`,
+Worker's own port, which serves `apps/web/dist` beside the API: this checkout's `API_PORT`,
 not Vite's. The Browser pane cannot register a service worker at all, so drive a headless
 Chrome over the DevTools protocol instead (the gate scripts from MAK-140's spike are the
 shape). Take a connection away with `Network.emulateNetworkConditions` on the page *and* on
@@ -831,25 +832,25 @@ once its notebook is kept, and the server's answer in place on reconnect. Run it
 **never clear site data between attempts**: that removes the worker, and the app cannot
 open offline again until Settings → Offline says it is on the device. The real check
 is still airplane mode on the phone, with `adb reverse --remove-all` as well when the app
-points at a local instance — airplane mode alone does not cut the adb tunnel. The persistence
+points at a local instance: airplane mode alone does not cut the adb tunnel. The persistence
 worker applied rows at about 25 a second on the emulator (1,500 notes in 70 s) against well
 under a second on a desktop, so an archive takes minutes to settle on a phone; measure on a
 real device before tuning it.
 
-## The local database is disposable — but ask
+## The local database is disposable, but ask
 
 Wiping local notes during development is fine and has been offered explicitly. **Ask first
 every time**, because the plan is one final import from the real Evernote corpus and the
 state may have changed since the last conversation. "The database" is D1 and the note
 stores under `.wrangler/state/v3/do/` together; `db:reset` and `reset:local` clear both.
 
-That corpus is ~3 GB and ~13K notes, mostly PDFs — this is a paperless-office use case.
+That corpus is ~3 GB and ~13K notes, mostly PDFs: this is a paperless-office use case.
 Performance assumptions should hold at that scale, not at the scale of a dev database with
 90 notes.
 
 ## The per-account note store
 
-Every account's notes live in one SQLite-backed Durable Object per user — `UserStore` in
+Every account's notes live in one SQLite-backed Durable Object per user: `UserStore` in
 `apps/api/src/store/`, reached through `reposFor` in `lib/repos.ts`. D1 keeps the control
 plane: Better Auth's tables, OAuth and MCP clients, upload grants, and the account
 directory. The object is the repository: `NotesStore` and `AttachmentsStore` hold the SQL,
@@ -906,15 +907,15 @@ Things about working on the store that are easy to get wrong:
   each; a dump is one store call per eight-megabyte slice (`dumpSlice`), so one for a
   small account and about five for an archive; the daily dumps at :47 count every call
   and stop an account's dump rather than pass fifty (`lib/backups.ts`); anything new that
-  loops over accounts or pages D1 needs the same shape. CPU is a budget too — ten
-  milliseconds an invocation on Free, thirty seconds inside an object — so work over a big
+  loops over accounts or pages D1 needs the same shape. CPU is a budget too (ten
+  milliseconds an invocation on Free, thirty seconds inside an object) so work over a big
   result, like turning a dump page into SQL text, is done in the object and forwarded.
   unbent.app itself is on Workers Paid (ten thousand subrequests, thirty seconds of CPU a
   cron run), but a fork deploys this same Worker on Free, so anything every instance runs
   keeps to Free's numbers. Only a feature an operator has to switch on may be sized for
   Paid, and it says so where it is switched on.
-- **Nothing periodic may scan a table.** The sweep reads `usage()` — the one `note_counts`
-  row and the database size — never `stats()`, which counts every table and is the
+- **Nothing periodic may scan a table.** The sweep reads `usage()` (the one `note_counts`
+  row and the database size), never `stats()`, which counts every table and is the
   operator's. An hourly `stats()` on an archive-sized account would read every row of it
   twenty-four times a day. The rows-read test bounds `usage` at a handful. The daily
   dumps are the one periodic read of whole stores, by design, and only of accounts whose
@@ -933,8 +934,8 @@ Things about working on the store that are easy to get wrong:
 - **Nothing but the sweep deletes a file's object, and nothing deletes one the store has
   not tombstoned.** Every store method that deletes an attachment row writes the file's
   key to `deleted_blobs` (0005, `store/deleted-blobs.ts`) in the same transaction, and
-  the hourly sweep (`lib/sweep.ts`) deletes from R2 what has sat there thirty-five days
-  — five more than a restore can reach, so a store wound back finds its files. The keys
+  the hourly sweep (`lib/sweep.ts`) deletes from R2 what has sat there thirty-five days,
+  five more than a restore can reach, so a store wound back finds its files. The keys
   the purge methods return are for the count, not for the caller to delete; a route that
   called `BLOBS.delete` on them would take the thirty-five days back. Account deletion
   is the one path that deletes objects by prefix: at once, and again from the sweep
@@ -1004,7 +1005,7 @@ and `GET /api/changes?since=` answers "what changed since N?" from it; the contr
 Rules that hold it together, each with a test:
 
 - **Record inside the transaction that made the change, after the change.** `Feed.record`
-  opens no transaction of its own, so every write method calls it from its `tx()` — the
+  opens no transaction of its own, so every write method calls it from its `tx()`: the
   single-statement methods gained one for this. The rows are held until the outermost
   `tx()` is about to commit (`Sql.onCommit`) and written then, with the counter once, so
   a write that records from several helpers still costs one counter write, and a write
@@ -1063,20 +1064,20 @@ reads, search, export and an assistant's reads keep working. Three things hold t
   not a read is refused unless `EXEMPT` there says otherwise, with its reason. A new
   mutating route is read-only for a lapsed account until someone adds it to that list,
   and `plan-middleware.test.ts` reads the app's route table and fails by name on any
-  mutating route that is neither exempt nor listed as gated — so a new route has to be
+  mutating route that is neither exempt nor listed as gated, so a new route has to be
   classified, out loud, in the commit that adds it. The MCP endpoint is one POST for
   every tool, so its write tools check for themselves through `gatedRegistrar`
   (`mcp/plan-gate.ts`), keyed on each tool's `readOnlyHint`.
 - **What the account is, is derived.** `planStateOf` works the row out against the
   clock; nothing flips rows on a timer. A comp is set from the operator's page, never
-  with a Paddle discount — a 100% discount there still asks for a card — and while it
+  with a Paddle discount (a 100% discount there still asks for a card) and while it
   runs the webhook changes nothing on its row (`planPatchFor`), since a former
   subscriber who is comped still has the customer id the webhook finds rows by.
 - **Bytes are checked where they come in.** Every path that stores or copies a file
   passes a `quota` to `storeAttachment` or `copyAttachments` (lib/quota.ts); the sum it
   is checked against is the store's own (schema 0008), never a read of the files table.
 
-Where billing is off — every fresh checkout, every fork — none of this exists: every
+Where billing is off (every fresh checkout, every fork) none of this exists: every
 account is active for good, the Plan tab is not drawn, and nothing reads a plan row.
 
 ## Rows read are still the budget
@@ -1095,18 +1096,18 @@ store. A new query belongs in that test.
 
 The planner has no statistics (there is no `sqlite_stat1`) and takes the first column of an
 index to be selective. Every notes index leads with `deleted_at`, which matches every live
-note, so `+deleted_at` — the unary plus keeps that column's index out of the plan while the
-condition still applies — is written wherever an `id IN (…)` run or a tag filter is the
+note, so `+deleted_at` (the unary plus keeps that column's index out of the plan while the
+condition still applies) is written wherever an `id IN (…)` run or a tag filter is the
 way in, and `+n.notebook_id` beside a tag filter for the same reason. `liveCondition` in
 `store/notes-shared.ts` is where it is applied. Measure a new index or a `+` against a tiny
 notebook as well as the big case; on the shared database a global index once made a
 30-note notebook read 13k rows.
 
-D1 serves the control plane only — the note tables were dropped by migration 0036 after
-the cutover — and its reads still count against the same daily total.
+D1 serves the control plane only (the note tables were dropped by migration 0036 after
+the cutover) and its reads still count against the same daily total.
 
 Do not run `PRAGMA optimize` or `ANALYZE` on production, whatever the documentation
-suggests — not on D1, and not inside an object. Measured on a copy of the archive, the
+suggests: not on D1, and not inside an object. Measured on a copy of the archive, the
 statistics they write made the image-queue queries two to three times worse, and a full
 `ANALYZE` reads about 572k rows on its own. The plans this codebase depends on are pinned
 in SQL instead; the read-only SQL route refuses a `PRAGMA` for this reason among others.

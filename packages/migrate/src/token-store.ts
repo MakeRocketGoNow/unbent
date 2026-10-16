@@ -11,7 +11,7 @@ import { dirname, join } from 'node:path';
  * sent to another.
  *
  * Not the system keychain, which would mean a native dependency and a different story per
- * platform for what is already a scoped, revocable, thirty-day token — revoked from the
+ * platform for what is already a scoped, revocable, thirty-day token, revoked from the
  * app by signing out everywhere.
  */
 

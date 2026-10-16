@@ -321,8 +321,8 @@ describe('a link to a notebook that is not there', () => {
   }
 
   /**
-   * New beside "Notebook not found" files the note nowhere — filing it under the name
-   * would make the server create the notebook the screen says is not there — and the
+   * New beside "Notebook not found" files the note nowhere (filing it under the name
+   * would make the server create the notebook the screen says is not there), and the
    * desktop's New is outlined there, as it is for an empty account.
    */
   it("makes New's note in no notebook, from the desktop's outlined New and the phone's +", async () => {
@@ -371,7 +371,7 @@ describe('a link to a notebook that is not there', () => {
 });
 
 /**
- * A sort by a field is dropped — and forgotten — when its notebook is not there. Only once
+ * A sort by a field is dropped (and forgotten) when its notebook is not there. Only once
  * that is known: the name matches without case, as the list's filter does, and a library
  * still arriving has not said which notebooks exist.
  */

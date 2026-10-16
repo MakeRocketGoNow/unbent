@@ -3,8 +3,8 @@
  * its notebook, and what the writes the copy stands for changed.
  *
  * 0003 kept the title and body only, on the reasoning that the rest was "cheap to redo
- * by hand". That was wrong for the notebooks that are mostly fields — a watch list, a
- * log, a set of business cards — where the fields are the note: changing three of them
+ * by hand". That was wrong for the notebooks that are mostly fields (a watch list, a
+ * log, a set of business cards), where the fields are the note: changing three of them
  * and opening History showed nothing, and Restore could not put them back.
  *
  * `props` is one JSON value, a `NoteRevisionProps`: the notebook and each tag by id and
@@ -16,8 +16,8 @@
  * version shows no fields and Restore leaves the note's own alone. It must never be
  * read as "the note had none", which is a `props` with empty lists.
  *
- * `changed` is which parts of the note the writes this copy stands for replaced —
- * 'text', 'fields', 'tags', 'notebook', comma-separated — so the list can say "Fields
+ * `changed` is which parts of the note the writes this copy stands for replaced
+ * ('text', 'fields', 'tags', 'notebook', comma-separated), so the list can say "Fields
  * changed" on a row that would otherwise read exactly like the one before it. The list
  * reads it without the body or `props`. It grows when a later write inside the same
  * window changes another part, since the copy stands for that write too. NULL on the

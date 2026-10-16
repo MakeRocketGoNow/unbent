@@ -1,7 +1,7 @@
 /**
  * The change feed over HTTP: what a device asks to bring its copy of the library up to
- * date, against the live Worker, so the whole path — session, route, object, feed row,
- * socket — is the one production runs. The reader's rules are pinned in
+ * date, against the live Worker, so the whole path (session, route, object, feed row,
+ * socket) is the one production runs. The reader's rules are pinned in
  * `apps/store-tests`; this checks they arrive at the API's shape, and that the push
  * reaches a second connection within a second. See test/README.md.
  */
@@ -167,8 +167,8 @@ describe('GET /api/changes/socket', () => {
     expect(await handshake('https://elsewhere.example')).toBe('refused');
     expect(await handshake()).toBe('open');
     expect(await handshake(ORIGIN)).toBe('open');
-    // Locally the app is reached on more than APP_URL names — the emulator's alias for
-    // the host, another worktree's port — and sign-in trusts those, so the socket does too.
+    // Locally the app is reached on more than APP_URL names (the emulator's alias for
+    // the host, another worktree's port), and sign-in trusts those, so the socket does too.
     expect(await handshake(`http://127.0.0.1:${new URL(ORIGIN).port}`)).toBe('open');
     expect(await handshake('http://10.0.2.2:5173')).toBe('open');
   });

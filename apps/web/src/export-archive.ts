@@ -10,7 +10,7 @@ import { hostApp, savesTo, type HostApp } from './app-bridge.js';
  *
  * It was one request that streamed the zip from the Worker, reading each note and each
  * of its files as the browser pulled the bytes. A Worker request may make only so many
- * calls to D1 and R2 — a thousand on Workers Free by the platform's limits page — and a
+ * calls to D1 and R2 (a thousand on Workers Free by the platform's limits page), and a
  * library is tens of thousands of them, so the backup could never have finished on the
  * archive it existed for. Now the browser asks for a page of notes at a time, fetches
  * each file through the note's own file route (each its own request), and writes the zip
@@ -23,9 +23,9 @@ import { hostApp, savesTo, type HostApp } from './app-bridge.js';
  * zip is assembled in memory and handed over as a download when it is done, which caps
  * the export at what the tab can hold; the page says so. Inside the app, on Android or
  * iOS, the app is the file system: the zip streams to it a piece at a time and it writes
- * the pieces where the phone keeps saved files as they come — Downloads on Android, Files
- * on iOS — so there too size does not matter. The picker has to be asked inside the click
- * that started the export — it is a user gesture — so `start` opens it before it awaits
+ * the pieces where the phone keeps saved files as they come (Downloads on Android, Files
+ * on iOS), so there too size does not matter. The picker has to be asked inside the click
+ * that started the export (it is a user gesture), so `start` opens it before it awaits
  * anything.
  *
  * A module-level store rather than component state, the way indexing is (`index-files.ts`):
@@ -110,8 +110,8 @@ const PAGE = 100;
 const RETRY_DELAYS = [1_000, 4_000, 15_000];
 
 /**
- * A failure worth retrying: the server's 5xx, or a network error — fetch's own TypeError,
- * or the `OfflineError` the API client turns one into. The second is an `ApiError` with
+ * A failure worth retrying: the server's 5xx, or a network error (fetch's own TypeError,
+ * or the `OfflineError` the API client turns one into). The second is an `ApiError` with
  * status 0, so it has to be named before the status test, or a page request that met a
  * dropped connection would be taken for a refusal and end the whole export.
  */
@@ -149,7 +149,7 @@ async function retrying<T>(signal: AbortSignal | undefined, attempt: () => Promi
  *
  * The server takes at most `EXPORT_IDS_PER_PAGE` ids a request, since it binds them in
  * one statement, and a selection can be every row the list has loaded. So the walk is
- * two cursors in one string: which run, and the server's cursor within it — a run whose
+ * two cursors in one string: which run, and the server's cursor within it. A run whose
  * page was cut short on bytes carries on from where the server said. The total is the
  * selection's, on the first page: the server only ever sees one run. A selected note the
  * server no longer has, trashed from another device, is simply not in its page, so an
@@ -185,7 +185,7 @@ const liveSource: ExportSource = {
       // Unmarked: an export reads every file, and must not fill the offline cache with
       // them (`classify` in `sw/routes.ts`).
       const res = await api.request(`/api/notes/${noteId}/files/${encodeURIComponent(filename)}`, { signal });
-      // Gone since the page listed it — its note deleted mid-export, or the object missing
+      // Gone since the page listed it: its note deleted mid-export, or the object missing
       // from storage. Skipped and counted; see `ExportSource.file`.
       if (res.status === 404) return null;
       if (!res.ok || !res.body) {
@@ -272,8 +272,8 @@ async function answered<T>(call: () => T | Promise<T>, failed: T): Promise<T> {
  * which the WebView hands to the app as a download of an address only this page can read:
  * the phone's download manager cannot fetch it, and the export would end with nothing
  * saved and nothing said. So the app takes the bytes directly. Each call is waited for,
- * which is the point — a page writing faster than the phone's storage waits on each piece
- * rather than queueing the library in memory — and a call that answers false is a write
+ * which is the point (a page writing faster than the phone's storage waits on each piece
+ * rather than queueing the library in memory), and a call that answers false is a write
  * that failed, which fails the export like any other error. So is a call that throws or
  * whose promise rejects, which is how a WKWebView reply reports a native error
  * (`answered`): the export says the same thing however the host failed, in the page's
@@ -303,8 +303,8 @@ export async function appDestination(app: HostApp, filename: string): Promise<De
   let abandoned = false;
   let inFlight: Promise<unknown> = Promise.resolve();
   /*
-     The zip writer hands over many small chunks — a header here, a few bytes of a name
-     there — and each call to the app has a fixed cost, so they are gathered into full
+     The zip writer hands over many small chunks (a header here, a few bytes of a name
+     there) and each call to the app has a fixed cost, so they are gathered into full
      pieces first. Copied as they are gathered, since the writer owns the buffers it passes.
      One buffer serves every piece even though `send` waits: the piece is base64 before
      the call is made, and the stream does not hand `write` another chunk until this one
@@ -478,13 +478,13 @@ export function useExporting(): ExportState {
   return useSyncExternalStore(exporting.subscribe, exporting.get);
 }
 
-/** Whether an export is running, outside React — for the reload a deploy asks for. */
+/** Whether an export is running, outside React: for the reload a deploy asks for. */
 export const isExportRunning = () => exporting.get().status === 'running';
 
 /**
  * Only whether an export is running, for a control that has to wait for one. The state
  * changes once per note, so a component reading all of it re-renders thousands of times
- * over an archive export; this one re-renders when the answer changes — twice.
+ * over an archive export; this one re-renders when the answer changes: twice.
  */
 export function useExportRunning(): boolean {
   return useSyncExternalStore(exporting.subscribe, () => exporting.get().status === 'running');

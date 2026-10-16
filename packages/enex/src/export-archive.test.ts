@@ -8,7 +8,7 @@ import { writeArchive, type ExportSource } from './export-archive.js';
  *
  * The disaster-recovery guarantee has two halves: the server hands back every note with
  * what it needs (apps/api/test/export.test.ts), and this writes those into the zip the
- * importer beside it reads. What is pinned here is the second half — the directory per note, the
+ * importer beside it reads. What is pinned here is the second half: the directory per note, the
  * markdown that parses back, the files beside it, the notebook definitions and which
  * notebooks get one, and a valid archive when there is nothing to put in it.
  */
@@ -244,8 +244,8 @@ describe('writeArchive', () => {
   });
 
   /**
-   * What a note's frontmatter cannot say — that a field is a URL, which options a select
-   * offers, that a field with no values exists — rides in `notebooks/<slug>.yaml`, one per
+   * What a note's frontmatter cannot say (that a field is a URL, which options a select
+   * offers, that a field with no values exists) rides in `notebooks/<slug>.yaml`, one per
    * notebook the archive is about.
    */
   it('writes every notebook for an unfiltered export, empty ones included', async () => {

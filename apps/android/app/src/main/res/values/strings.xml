@@ -29,8 +29,8 @@
       Separate from the generic failure because adding an account is a fix the person
       holding the phone can carry out. It suggests rather than asserts, because the
       framework reports NO_CREDENTIAL for causes that have nothing to do with the accounts
-      on the device: a build whose signing certificate is not on the OAuth client — which
-      is every Play-signed install until the App Signing key is registered — fails exactly
+      on the device: a build whose signing certificate is not on the OAuth client (which
+      is every Play-signed install until the App Signing key is registered) fails exactly
       this way on a phone with an account signed in. Telling that user a fact about their
       phone that they can see is false sends them into Settings to fix nothing.
     -->

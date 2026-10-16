@@ -9,7 +9,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "$DIR/scripts/app-id.sh"
 
 # Into apps/ios/build rather than Xcode's shared DerivedData, so the app this installs is
-# the one this checkout built — a worktree beside it has its own.
+# the one this checkout built: a worktree beside it has its own.
 echo "Building the debug build..."
 xcodebuild \
   -project "$DIR/Unbent.xcodeproj" \

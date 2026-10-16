@@ -15,8 +15,8 @@ import {
 /**
  * A toolbar over the table the cursor is in.
  *
- * Markdown tables are unfriendly to restructure by hand — adding a column means editing
- * every row including the delimiter — so the operations that are tedious in text get
+ * Markdown tables are unfriendly to restructure by hand (adding a column means editing
+ * every row including the delimiter), so the operations that are tedious in text get
  * buttons. Everything it does is an ordinary edit through the commands module, so the
  * document stays the only source of truth and every action undoes in one step.
  *
@@ -100,7 +100,7 @@ const ACTIONS: Action[] = [
 ];
 
 /**
- * The picker, wired to resize the table the cursor is in — or insert one when it is not in
+ * The picker, wired to resize the table the cursor is in, or insert one when it is not in
  * a table at all.
  *
  * The control itself is shared with the formatting bar's table button, so the same icon
@@ -126,7 +126,7 @@ function buildPicker(view: EditorView, close: () => void): HTMLElement {
  * Builds the toolbar element, and the teardown that releases its document listeners.
  *
  * The tooltip is destroyed whenever the cursor leaves the table, which can happen with the
- * picker still open — without the teardown those listeners would outlive the DOM they
+ * picker still open: without the teardown those listeners would outlive the DOM they
  * belong to and keep firing for the rest of the session.
  */
 function buildToolbar(view: EditorView): { dom: HTMLElement; destroy: () => void } {
@@ -154,8 +154,8 @@ function buildToolbar(view: EditorView): { dom: HTMLElement; destroy: () => void
   /**
    * Dismissal, while the picker is open.
    *
-   * Registered on the document rather than the editor: a click anywhere — including
-   * outside the editor entirely — should put the picker away, and without this it stayed
+   * Registered on the document rather than the editor: a click anywhere, including
+   * outside the editor entirely, should put the picker away, and without this it stayed
    * open over the text. Both listeners are removed as soon as it closes, so an open picker
    * is the only time anything is bound.
    */
@@ -212,8 +212,8 @@ function buildToolbar(view: EditorView): { dom: HTMLElement; destroy: () => void
  * the way Typora's does rather than covering the row being edited.
  */
 function tableToolbar(state: EditorState): Tooltip | null {
-  // Every control on it rewrites the table, which a read-only note — offline, or in the
-  // trash — must not do. Its commands dispatch directly, so `readOnly` would not stop them.
+  // Every control on it rewrites the table, which a read-only note (offline, or in the
+  // trash) must not do. Its commands dispatch directly, so `readOnly` would not stop them.
   if (state.readOnly) return null;
   const range = state.selection.main;
   // A selection spanning the table is a text operation, not a structural one.
@@ -226,7 +226,7 @@ function tableToolbar(state: EditorState): Tooltip | null {
     /**
      * Anchored to the end of the header row rather than the start of the table.
      *
-     * Drawn above the first character, the bar covered whatever preceded the table — a
+     * Drawn above the first character, the bar covered whatever preceded the table: a
      * heading, most often, since that is what usually introduces one. There is frequently
      * no free space above a table at all, so it hangs off the header's right edge
      * instead, where the padding leaves room and nothing is hidden.
@@ -245,7 +245,7 @@ function tableToolbar(state: EditorState): Tooltip | null {
 const tableToolbarField = StateField.define<Tooltip | null>({
   create: tableToolbar,
   update(value, tr) {
-    // Rebuilding only when something moved keeps the DOM — and an open picker — alive. A
+    // Rebuilding only when something moved keeps the DOM, and an open picker, alive. A
     // change of read-only state is a reconfiguration, and moves the answer too.
     if (!tr.docChanged && !tr.selection && tr.startState.readOnly === tr.state.readOnly) return value;
     return tableToolbar(tr.state);
@@ -303,8 +303,8 @@ const tableToolbarTheme = EditorView.theme({
 /**
  * Re-pads a table's columns when the cursor leaves it.
  *
- * The padding is what aligns the columns — tables are rendered in monospace, so equal-width
- * cells are aligned ones — but it goes stale the moment a cell is typed into. Type a long header
+ * The padding is what aligns the columns (tables are rendered in monospace, so equal-width
+ * cells are aligned ones), but it goes stale the moment a cell is typed into. Type a long header
  * and the rows below still carry the width the old text needed, which is what makes a
  * table look broken without anything actually being wrong with it.
  *
@@ -325,8 +325,8 @@ const reformatOnExit = EditorState.transactionFilter.of((tr) => {
   /**
    * Read the table again from the new state, at the position the old one moved to.
    *
-   * The table has to be located in the document as it is *after* this transaction — its
-   * own edit may have changed it — and `mapPos` is what carries the old offset across.
+   * The table has to be located in the document as it is *after* this transaction (its
+   * own edit may have changed it), and `mapPos` is what carries the old offset across.
    */
   const moved = tr.changes.mapPos(before.from);
   if (moved > tr.state.doc.length) return tr;

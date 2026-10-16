@@ -5,7 +5,7 @@
  * The Web Locks API hands a lock to a callback and keeps it for as long as the callback's
  * promise is pending, so "hold this until I say" is a promise whose resolver is kept
  * aside, and "was it taken from me" is the request's own promise rejecting after the
- * grant — which is also how it rejects when it was never granted and aborted. Both
+ * grant, which is also how it rejects when it was never granted and aborted. Both
  * callers had the same twenty lines telling those apart; this is them once.
  */
 
@@ -27,8 +27,8 @@ export interface Hold {
 /**
  * One request that probes and holds. Granted, the answer comes the moment it is, not when
  * the lock is let go, and the lock is kept until `release`. Null when it is held elsewhere
- * (`ifAvailable`), when `signal` aborted before its turn, or when Web Locks refused —
- * the last said in the console, since it is the one that is a fault.
+ * (`ifAvailable`), when `signal` aborted before its turn, or when Web Locks refused
+ * (the last said in the console, since it is the one that is a fault).
  */
 export function holdLock(locks: Locks, name: string, options: { ifAvailable?: boolean; steal?: boolean; signal?: AbortSignal } = {}): Promise<Hold | null> {
   const asked: LockOptions = { mode: 'exclusive' };

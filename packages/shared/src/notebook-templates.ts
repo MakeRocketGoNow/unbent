@@ -8,7 +8,7 @@
  * already built. It is notebook-based, not data-based: applying one makes the notebook and
  * its fields, and no notes.
  *
- * Each entry is a `NotebookDefinition` — the export's `notebooks/<slug>.yaml` shape — so
+ * Each entry is a `NotebookDefinition` (the export's `notebooks/<slug>.yaml` shape) so
  * applying one is the definitions import that already exists (`POST /api/import/notebook`,
  * with `?create=1` so that it never merges into a notebook the person already has). What a
  * template adds is what the chooser shows before anything is made: a one-line description.
@@ -20,7 +20,7 @@
  *
  * This file ships in the open-source repo and every self-hosted instance offers it, so
  * everything in it is invented and generic. Option lists name no people, no places and no
- * services anyone might be subscribed to — the streaming service a watch list would name is
+ * services anyone might be subscribed to: the streaming service a watch list would name is
  * exactly the kind of detail that says something about whoever wrote it. "Where to watch"
  * is a text field for that reason, not a select of brands.
  *

@@ -16,8 +16,8 @@
  * writes when `WRANGLER_OUTPUT_FILE_PATH` is set: the deploy's own record of where it
  * went, so a fork whose only address is its workers.dev name needs nothing configured.
  *
- * Each call is one batch — twenty accounts, since an invocation has fifty subrequests on
- * Workers Free — and the answer says whether the pass is `done`, so this calls until it
+ * Each call is one batch (twenty accounts, since an invocation has fifty subrequests on
+ * Workers Free), and the answer says whether the pass is `done`, so this calls until it
  * is. The first call says `?restart=1`: the cursor is shared with the hourly cron and is
  * usually partway down the directory, and a pass resumed from there would report done
  * without having visited the accounts above it. A cron batch landing mid-pass still moves
@@ -28,7 +28,7 @@
  * of the accounts that failed are already in the Worker's log beside the error, which is
  * where anyone fixing them has to look anyway.
  *
- * `deferred` — a store the runtime asked to be called again — is a warning, not a
+ * `deferred` (a store the runtime asked to be called again) is a warning, not a
  * failure: it is the runtime's transient, and the next cron visits it.
  */
 import { readFileSync, appendFileSync } from 'node:fs';
@@ -40,7 +40,7 @@ const MAX_BATCHES = 500;
 
 /**
  * How long one batch is retried for. Right after `wrangler deploy` the previous version
- * can still answer for a few seconds, and it may not know this token — or, before this
+ * can still answer for a few seconds, and it may not know this token, or, before this
  * step first shipped, the header at all (a 401 then). Those, a 5xx and a dropped
  * connection are retried; anything else fails at once.
  */
@@ -90,7 +90,7 @@ async function batch(url, token) {
     if (attempt < ATTEMPTS) await new Promise((r) => setTimeout(r, RETRY_MS));
   }
   fail(
-    `The sweep ${last}. A 404 that never clears means the Worker has a different SWEEP_TOKEN, or none — the deploy carries it from the repository secret.`,
+    `The sweep ${last}. A 404 that never clears means the Worker has a different SWEEP_TOKEN, or none: the deploy carries it from the repository secret.`,
   );
 }
 

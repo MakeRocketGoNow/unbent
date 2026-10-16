@@ -7,8 +7,8 @@
  * as an update, before anything else.
  *
  * Deliberately not the documents' effective dates (`EFFECTIVE` and `PRIVACY_EFFECTIVE` in
- * the web app's `legal/documents.ts`). Those move for every correction — the privacy
- * policy's moved twice in one week for a sentence about backups — and asking everyone to
+ * the web app's `legal/documents.ts`). Those move for every correction (the privacy
+ * policy's moved twice in one week for a sentence about backups) and asking everyone to
  * agree again for each would teach them to press through it without reading. Move this
  * only for a change worth interrupting someone for, and move the effective dates with it.
  *
@@ -45,7 +45,7 @@ type LegalChange = { text: string; billingOnly: true; since: string } | { text: 
  * were edited.
  *
  * `billingOnly` when what changed is only in the sections an instance publishes because it
- * sells a plan — billing on, or a front page stating the price — about payment, renewal
+ * sells a plan (billing on, or a front page stating the price) about payment, renewal
  * and refunds. An instance that sells nothing does not publish them, so for it nothing
  * changed: it stays on `since`, the version this one moved from, and asks nobody again
  * (`legalVersionOf` in the API). Asking a self-hosted instance's accounts to agree to text
@@ -65,8 +65,8 @@ export const LEGAL_CHANGE: LegalChange | undefined = {
  * Whether an account that agreed to `agreed` has agreed to `required`, the version its
  * instance asks for now (`legalVersionOf` in the API).
  *
- * Equality, with one case more: an instance that sold a plan and stopped — the Paddle
- * settings removed, or its front page turned off — asks for `since` again, the version
+ * Equality, with one case more: an instance that sold a plan and stopped (the Paddle
+ * settings removed, or its front page turned off) asks for `since` again, the version
  * before a billing-only change, and an account that agreed to `LEGAL_VERSION` agreed to
  * everything in it and more. Without this, every account on it would be asked again,
  * under "We’ve updated our terms", for text it had already agreed to. The one place the

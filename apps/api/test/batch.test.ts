@@ -2,7 +2,7 @@
  * Several notes at once: `PATCH /notes` and the three batch verbs under it.
  *
  * Checked over HTTP against the live Worker, because what matters is what the stored rows
- * end up holding after a batch — which notes moved, which kept their date, which were left
+ * end up holding after a batch: which notes moved, which kept their date, which were left
  * alone for belonging to someone else. Each case pairs a change with the no-op it must not
  * be confused with, since a batch that wrote nothing would pass every "unchanged" assertion
  * on its own.

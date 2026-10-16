@@ -15,7 +15,7 @@ BETTER_AUTH_SECRET=
 # OAuth providers, by convention rather than by a list.
 #
 # Any of the thirty-five providers Better Auth ships is enabled by setting both halves of
-# its credential pair — <PROVIDER>_CLIENT_ID and <PROVIDER>_CLIENT_SECRET — and disabled by
+# its credential pair, <PROVIDER>_CLIENT_ID and <PROVIDER>_CLIENT_SECRET, and disabled by
 # removing either. Nothing in the repository names them, so adding Discord or Microsoft or
 # Slack needs no code change and no fork; the sign-in screen draws whatever /api/config
 # reports.
@@ -31,11 +31,11 @@ BETTER_AUTH_SECRET=
 #
 # Callback URLs use the SPA origin, not the Worker port: APP_URL is the SPA and the Vite
 # proxy forwards /api to the Worker. In local dev Better Auth derives redirect_uri from the
-# request Host, so Tailscale MagicDNS / 100.x work too — register each origin you use. The
+# request Host, so Tailscale MagicDNS / 100.x work too: register each origin you use. The
 # path is always /api/auth/callback/<provider>.
 #
 # The SPA port is 5173 in the main checkout. A git worktree runs on a port derived from its
-# directory name, which `pnpm dev` prints — a provider matches the redirect URI exactly, so
+# directory name, which `pnpm dev` prints: a provider matches the redirect URI exactly, so
 # social sign-in from a worktree means registering that port too. Password sign-in and the
 # code printed to the Worker console work on any port without registering anything.
 #
@@ -64,37 +64,37 @@ BETTER_AUTH_SECRET=
 #
 # The iOS app signs in natively, and its identity token names the app's bundle id as its
 # audience rather than the Services ID. List every bundle id that may sign in here,
-# comma-separated — the debug build is its own id; auth.ts then accepts them beside the
+# comma-separated: the debug build is its own id; auth.ts then accepts them beside the
 # Services ID.
 # APPLE_BUNDLE_ID=com.example.notes,com.example.notes.debug
 
-# Passkeys are offered unless this is '0'. They need nothing registered anywhere — the other
-# half of WebAuthn is the browser and the user's own device — so this exists for an operator
+# Passkeys are offered unless this is '0'. They need nothing registered anywhere (the other
+# half of WebAuthn is the browser and the user's own device), so this exists for an operator
 # who would rather not offer them, not because they can be misconfigured.
 # AUTH_PASSKEY=0
 
 # Password sign-up for the test suite and `pnpm seed:demo` is not a line here. `pnpm dev`
 # passes ALLOW_TEST_CREDENTIALS=1 to the Worker itself, so it is on for every local server
-# and cannot be copied into a deployed one — this file used to carry it, and a file that a
+# and cannot be copied into a deployed one: this file used to carry it, and a file that a
 # deploy flow reads must not.
 
 # Email-and-password sign-in, which usually needs no setting at all.
 #
-# It is offered by default when nothing else on the instance can create an account — no
-# OAuth credentials and no mail — because the two methods left in that case cannot start
+# It is offered by default when nothing else on the instance can create an account (no
+# OAuth credentials and no mail) because the two methods left in that case cannot start
 # one: a passkey is added from an account you already have, and a code needs somewhere to
 # send it. So a self-hoster who configures nothing still gets in, and the default withdraws
 # the moment a provider or a mail key appears. unbent.app has providers and never sees it.
 #
 # '1' asks for a password alongside a configured provider. '0' refuses the default, for an
-# instance that wants passkeys and nothing else for people who already have accounts — it
+# instance that wants passkeys and nothing else for people who already have accounts: it
 # is the one setting here that can leave nobody a way in, so it has to be asked for.
 #
 # ALLOWED_EMAILS gates password sign-ups the same as OAuth ones.
 # AUTH_PASSWORD=1
 
 # Comma-separated emails allowed to create an account. Empty or unset means anyone can
-# sign up, which is what local development and the test suite want — the suite signs up
+# sign up, which is what local development and the test suite want: the suite signs up
 # throwaway actors and would fail against an allowlist. Deployed instances set this so a
 # public URL does not become a free notes host for anyone who finds it.
 #
@@ -106,16 +106,16 @@ BETTER_AUTH_SECRET=
 ALLOWED_EMAILS=
 
 # '1' says an empty ALLOWED_EMAILS above is deliberate, which silences that warning and does
-# nothing else — an instance is already open to anyone the moment the allowlist is empty.
+# nothing else: an instance is already open to anyone the moment the allowlist is empty.
 #
 # It exists because an absent allowlist cannot say which of two things it means. Without
 # this, an instance that chose to be public logs the same warning forever as one that forgot
-# to set the list, and a warning nobody can act on is one nobody reads — including on the
+# to set the list, and a warning nobody can act on is one nobody reads, including on the
 # instance that really did forget. No effect locally, where the warning never fires anyway.
 # PUBLIC_SIGNUPS=1
 
 # '1' says this is the instance the public signs up to, and shows signed-out visitors a
-# front page at / — what Unbent is, unbent.app's price and trial, and the way in. Unset,
+# front page at /: what Unbent is, unbent.app's price and trial, and the way in. Unset,
 # / is the sign-in screen. Leave it off for any instance that is not unbent.app: the page
 # states that service's prices, and an instance publishing them would be offering
 # something it does not sell. Locally, set it to see the page.
@@ -123,7 +123,7 @@ ALLOWED_EMAILS=
 
 # Resend, for password reset mail. Both must be set before any mail is sent; with either
 # missing the reset link is printed to the Worker console instead, which is what local
-# development wants — the whole flow can be exercised without signing up for anything.
+# development wants: the whole flow can be exercised without signing up for anything.
 # A deployed instance must set these, or nobody who forgets a password can get back in.
 #
 #   https://resend.com/api-keys
@@ -132,7 +132,7 @@ ALLOWED_EMAILS=
 # EMAIL_FROM=Unbent <noreply@mail.example.com>
 #
 # Optional. Mail is usually sent from a subdomain kept separate from the apex, so that a
-# problem with it cannot harm the reputation of the address people actually write to — but
+# problem with it cannot harm the reputation of the address people actually write to, but
 # that subdomain is not a mailbox, so Reply on a noreply@ From goes nowhere. Set this to
 # the address that does read mail. Unset means Reply goes to EMAIL_FROM.
 # EMAIL_REPLY_TO=hello@example.com
@@ -146,7 +146,7 @@ ALLOWED_EMAILS=
 #
 # That is deliberate rather than unfinished. These documents used to name one company from
 # a constant in the source, which meant every copy of this repository published somebody
-# else's legal entity on its own domain — a claim that operator never made. Half a pair is
+# else's legal entity on its own domain, a claim that operator never made. Half a pair is
 # ignored the same way an OAuth credential pair is: a policy naming a company with no way to
 # reach it is worse than one that admits there is none here.
 #
@@ -155,11 +155,11 @@ ALLOWED_EMAILS=
 # OPERATOR_NAME=Example Co
 # OPERATOR_EMAIL=help@example.com
 
-# The accounts that run this instance, by email, comma-separated — the shape of
+# The accounts that run this instance, by email, comma-separated, the shape of
 # ALLOWED_EMAILS above. Distinct from the pair just above, which name one legal contact for
 # the documents: this is who, when signed in, is shown a fault only an operator can fix
 # (auto-fill's title model rejecting its ANTHROPIC_API_KEY, which otherwise fails silently)
-# and who may use the note-store routes under /api/admin/store — read another account's
+# and who may use the note-store routes under /api/admin/store: read another account's
 # stats or dump with ?user=, run a read-only query against a store, or start the sweep
 # after a deploy. Every such read is logged with both ids. Unset, nobody is flagged and
 # nothing operator-only is reachable, which is right for a fork.
@@ -172,7 +172,7 @@ ALLOWED_EMAILS=
 # operator's session can start the sweep.
 # SWEEP_TOKEN=
 
-# Where each account's note store lives. Unset — the default — lets the platform place an
+# Where each account's note store lives. Unset, the default, lets the platform place an
 # object near the first request for it, which for a personal note app is where its user
 # is. `eu` keeps every store in the EU jurisdiction, for an operator whose users need their
 # notes kept there.
@@ -205,18 +205,18 @@ ALLOWED_EMAILS=
 # package name and signing certificate, this origin vouches for. Android reads it to open
 # links in the app and to offer passkeys to it. Set it only if you build the Android app
 # for this instance; unset, the origin vouches for none. The value is the document itself,
-# a JSON array of statements — see the README's Android section for the fingerprints.
+# a JSON array of statements. See the README's Android section for the fingerprints.
 # ANDROID_ASSET_LINKS=[{"relation":["delegate_permission/common.handle_all_urls"],"target":{"namespace":"android_app","package_name":"com.example.notes","sha256_cert_fingerprints":["AA:BB:..."]}}]
 
 # The iOS counterpart, served at /.well-known/apple-app-site-association: which apps, by
 # team id and bundle id, this origin vouches for, for universal links and passkeys. Set it
 # only if you build the iOS app for this instance. The value is the document itself, a JSON
-# object — see the README's iOS section for the full shape.
+# object. See the README's iOS section for the full shape.
 # APPLE_APP_SITE_ASSOCIATION={"applinks":{"details":[{"appIDs":["TEAMID.com.example.notes"],"components":[{"/":"/notes/*"}]}]},"webcredentials":{"apps":["TEAMID.com.example.notes"]}}
 
 # Auto-fill: a TypeSafe API key for Jev, which turns on the control on a note that fills
-# in its title, notebook, tags and fields from what it and its scans say. Unset — the
-# default — means the control is not drawn and nothing is sent anywhere.
+# in its title, notebook, tags and fields from what it and its scans say. Unset, the
+# default, means the control is not drawn and nothing is sent anywhere.
 #
 # Each press sends the note's own text (title, body, and the text extracted from its
 # PDFs) plus the names of the notebooks, tags and fields, with a few titles from each
@@ -229,11 +229,11 @@ ALLOWED_EMAILS=
 # Where those requests go instead, for a stand-in server during development. Leave unset.
 # TYPESAFE_API_URL=
 
-# A language model: an Anthropic API key, which turns on reading pictures — and scans with
-# no text layer — with a vision model, and writing Auto-fill's titles and text field
+# A language model: an Anthropic API key, which turns on reading pictures (and scans with
+# no text layer) with a vision model, and writing Auto-fill's titles and text field
 # values. What a file is and shows, then any text on it, becomes the file's text for
 # search and Auto-fill; a title is written from the note whole rather than picked off a
-# line of it. Unset — the default —
+# line of it. Unset, the default,
 # means a picture has no text, as before, titles come from Jev's pick of a line, and
 # nothing is sent anywhere.
 #
@@ -275,8 +275,8 @@ ALLOWED_EMAILS=
 # ATTACHMENT_FETCH_USER_AGENT=
 
 # Paddle, which sells the plan (MAK-108). All five or none: with all set, this instance has
-# a plan to sell — every account starts a fortnight's trial, a lapsed one is refused writes
-# with a 402 and the Settings page gets a Plan tab — and with any missing, nothing about
+# a plan to sell (every account starts a fortnight's trial, a lapsed one is refused writes
+# with a 402 and the Settings page gets a Plan tab) and with any missing, nothing about
 # billing exists and every account is active for good. A fork leaves them unset.
 #
 # Which environment they belong to is read off the API key: pdl_sdbx_ is the sandbox,
@@ -304,7 +304,7 @@ ALLOWED_EMAILS=
 #
 # Optional, and off here on purpose: a self-hosted instance downloads no SDK, sends nothing
 # to anyone, and its privacy policy does not mention an error-tracking service. Setting the
-# key is what turns all three on. Errors only — page views are counted by the hosting
+# key is what turns all three on. Errors only: page views are counted by the hosting
 # provider, and this captures no page views, no session recordings and no profiles.
 #
 # The token is public and write-only; it ships in the page either way.
@@ -313,6 +313,6 @@ ALLOWED_EMAILS=
 # POSTHOG_KEY=phc_...
 #
 # Where the Worker forwards it. Defaults to PostHog's US cloud; set it for the EU cloud
-# (https://eu.i.posthog.com) or your own PostHog. The browser never sees this — it talks to
+# (https://eu.i.posthog.com) or your own PostHog. The browser never sees this: it talks to
 # /ingest on this origin, which is what keeps content blockers from dropping the reports.
 # POSTHOG_HOST=https://us.i.posthog.com

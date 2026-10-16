@@ -9,7 +9,7 @@ import { LegalPage } from '../components/LegalPage.js';
  * URL came back 403 and a submission would have been rejected on it.
  *
  * Deliberately not `/delete-account`, which is a page about *one* deletion already in
- * progress — it spends the token from the confirmation mail. This one is about the process
+ * progress: it spends the token from the confirmation mail. This one is about the process
  * in general and acts on nothing, which is why the two are separate routes rather than one
  * page branching on whether a token is present. A reader arriving here from a store listing
  * has no token and is not necessarily a user at all.

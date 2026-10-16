@@ -48,7 +48,7 @@ describe('vision', () => {
   it('reads a standing misconfiguration off an LlmError: a 401 or 403, nothing else', () => {
     expect(isLlmAuthError(new LlmError(401, 'invalid x-api-key'))).toBe(true);
     expect(isLlmAuthError(new LlmError(403, 'this key cannot use that model'))).toBe(true);
-    // Passing failures, which retrying would clear — not a fault to fix.
+    // Passing failures, which retrying would clear: not a fault to fix.
     for (const status of [0, 400, 404, 429, 500, 529]) {
       expect(isLlmAuthError(new LlmError(status, 'x'))).toBe(false);
     }
@@ -156,8 +156,8 @@ describe('vision', () => {
       title: { model: LLM_MODEL_DEFAULT, effort: 'low' },
       fields: { model: LLM_MODEL_DEFAULT, effort: 'low' },
     });
-    // The read's effort is a variable of its own, sent to whatever model reads — which is
-    // what keeps Sonnet's thinking out of a long scan's output budget — and passed through
+    // The read's effort is a variable of its own, sent to whatever model reads (which is
+    // what keeps Sonnet's thinking out of a long scan's output budget) and passed through
     // as named, like a model id.
     expect(jobSettings({ ...env, ANTHROPIC_READ_EFFORT: 'medium' }).read).toEqual({ model: LLM_MODEL_DEFAULT, effort: 'medium' });
     expect(jobSettings({ ...env, ANTHROPIC_READ_MODEL: 'claude-sonnet-5-5', ANTHROPIC_READ_EFFORT: ' low ' }).read).toEqual({ model: 'claude-sonnet-5-5', effort: 'low' });

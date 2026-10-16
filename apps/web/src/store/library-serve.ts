@@ -16,8 +16,8 @@ import { LIBRARY_ROOTS, rootsOfNoteChanges } from './library-roots.js';
  * On a client's hello it sends the four collections as rows, chunked, then `attached`
  * with the feed's state and the outbox's and keeper's status; from then on it forwards
  * every change the collections report, with the query roots the batch reaches, and
- * every move of those three statuses. The rows are read in one go — a snapshot of the
- * collections as they stand — and posted a chunk at a time with a task between, so the
+ * every move of those three statuses. The rows are read in one go (a snapshot of the
+ * collections as they stand) and posted a chunk at a time with a task between, so the
  * holder's own tab is not held for the whole clone of an archive. A change that fires
  * between two chunks is posted between them, before the snapshot that already holds it
  * has all arrived; the client keeps every change a holder posts from its first rows on
@@ -100,8 +100,8 @@ export function serveLibrary(port: Port, lib: Serving, holder: string): Server {
   const answered = new Map<string, number>();
   /**
    * Each client's latest send, numbered. A send is a chunk a task, so a hello that
-   * arrives while one is on its way — a client that asked again before the first chunk
-   * reached it — starts a second, and the two would otherwise interleave; the earlier
+   * arrives while one is on its way (a client that asked again before the first chunk
+   * reached it) starts a second, and the two would otherwise interleave; the earlier
    * one stops, and its number tells the client which chunks to keep.
    */
   const sends = new Map<string, number>();
@@ -137,7 +137,7 @@ export function serveLibrary(port: Port, lib: Serving, holder: string): Server {
       clients.delete(m.client);
       answered.delete(m.client);
       // Not forgotten but moved on: a send running at the bye stops at its next chunk,
-      // and a later hello from the same id — a page back from the back/forward cache —
+      // and a later hello from the same id (a page back from the back/forward cache)
       // numbers past it rather than from one again, which could meet the old send.
       sends.set(m.client, (sends.get(m.client) ?? 0) + 1);
       port.forget(m.client);
@@ -166,7 +166,7 @@ export function serveLibrary(port: Port, lib: Serving, holder: string): Server {
 
   /**
    * The changes of the task in hand, by collection, posted as one message once the task
-   * ends — as the holder's own queries are told once per task (`changed` in
+   * ends, as the holder's own queries are told once per task (`changed` in
    * `library.ts`). A message per collection had a client re-deriving its views once per
    * collection a feed page touched.
    */
@@ -187,8 +187,8 @@ export function serveLibrary(port: Port, lib: Serving, holder: string): Server {
    * not read. Subscribed with the collection's state included, which it emits once as
    * inserts, to nobody, since no client is attached before the library is built: a
    * subscription without it reports only the rows it has emitted before, and the
-   * removal of a row that never changed since the holder began serving — a note purged
-   * on another device, say — was never reported, and stayed in every client's mirror.
+   * removal of a row that never changed since the holder began serving (a note purged
+   * on another device, say) was never reported, and stayed in every client's mirror.
    */
   const forwarding = <T extends object>(entity: keyof typeof entities, collection: Collection<T, string>) => {
     const subscription = collection.subscribeChanges((changes) => {

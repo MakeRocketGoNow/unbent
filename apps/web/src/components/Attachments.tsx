@@ -22,7 +22,7 @@ import { OverflowMenu } from './OverflowMenu.js';
 
 interface AttachmentsProps {
   noteId: string;
-  /** Current draft body — used to mark files that are no longer linked. */
+  /** Current draft body, used to mark files that are no longer linked. */
   body: string;
   /** Live editor view; used to insert a link at the cursor. */
   editorView: EditorView | null;
@@ -44,7 +44,7 @@ interface AttachmentsProps {
   /**
    * The account's plan has ended (MAK-108): the server refuses every write but a delete.
    * Narrower than `readOnly`, which is for a note that cannot be reached at all. Here
-   * the files still open, download and delete — that is what the banner promises — and
+   * the files still open, download and delete (that is what the banner promises) and
    * only what would write goes: copying or moving a file to another note, and inserting
    * a link, which edits the body.
    */
@@ -58,7 +58,7 @@ function fileUrl(noteId: string, filename: string): string {
 /**
  * Lists every file stored on the note, including ones whose markdown link was removed.
  *
- * Upload keeps the blob even when the link is cut — this panel is how you see and
+ * Upload keeps the blob even when the link is cut: this panel is how you see and
  * permanently delete those leftovers. Unlinked files are called out in the summary so
  * an accidental sensitive upload is hard to miss.
  */
@@ -78,7 +78,7 @@ export function Attachments({
   /*
      What became of files added here with no connection that did not simply upload: one
      the server refused, one it stored under another name. Said in this panel because it
-     is where the file was listed while it waited — and it is the row vanishing from here
+     is where the file was listed while it waited, and it is the row vanishing from here
      that would otherwise be the only sign.
   */
   const outbox = useOutbox();
@@ -134,7 +134,7 @@ export function Attachments({
      outlives a switch the same way Auto-fill's does: `onBodyRewrite` writes the *current*
      draft, so finishing after the user has moved on would replace the incoming note's body
      with the previous one's. Drop the in-flight UI here so a Delete, Move, or "delete not
-     linked" confirm started on the last note cannot sit on this one — especially when both
+     linked" confirm started on the last note cannot sit on this one, especially when both
      happen to have a `scan.pdf`. The request itself is left to finish against the note it
      started on; wasting it is cheaper than landing the rewrite on the wrong one.
   */
@@ -186,13 +186,13 @@ export function Attachments({
       return;
     }
 
-    // Editor not mounted yet — append rather than drop the action.
+    // Editor not mounted yet: append rather than drop the action.
     const next = body.trimEnd() === '' ? markdown : `${body.trimEnd()}\n\n${markdown}`;
     onBodyRewrite(next);
   }
 
   /**
-   * Puts a link to the file on the clipboard — and the picture too, for an image.
+   * Puts a link to the file on the clipboard, and the picture too, for an image.
    *
    * This is how a file gets to another note: paste the link there and the editor copies
    * the file across (see editor/clipboard.ts). A PDF cannot be put on a clipboard by a
@@ -215,8 +215,8 @@ export function Attachments({
    * Sends a file to another note, as a copy or a move.
    *
    * Both start with the same server-side copy, linked into the destination's body since
-   * no editor is open there to do it. A move then deletes the file here — the same
-   * delete the row's Delete button does, link removal included — rather than asking the
+   * no editor is open there to do it. A move then deletes the file here (the same
+   * delete the row's Delete button does, link removal included) rather than asking the
    * server to move it: the server's own move declines to take a file this body still
    * links, which is right for a paste after a cut but not for an explicit "move this".
    * Copy first, then delete, so a failure between the two leaves the file in both notes
@@ -395,8 +395,8 @@ export function Attachments({
         {files.map((file) => {
           const isLinked = linked.has(file.filename);
           /*
-             Added here and not uploaded yet. The row is real — the file draws in the note
-             from this device's copy — but the server has no file to copy or move, so what
+             Added here and not uploaded yet. The row is real (the file draws in the note
+             from this device's copy), but the server has no file to copy or move, so what
              would ask it to waits with the upload. Insert link still works: it only
              writes into the note. And so does Delete, which for this file is taking it
              back: the wrong photo attached with no connection should not have to upload
@@ -444,7 +444,7 @@ export function Attachments({
                     Copy-to and move-to behind a ⋯ rather than beside Copy and Delete: on a
                     phone the row is 320px wide, and four labelled buttons on every file
                     would leave the filename nothing. These are the two that need a second
-                    step anyway — a note to pick — so a menu costs them no extra tap.
+                    step anyway (a note to pick), so a menu costs them no extra tap.
                 */}
                 <OverflowMenu
                   label={`More actions for ${file.filename}`}

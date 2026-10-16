@@ -92,7 +92,7 @@ describe('Login', () => {
 
   /**
    * A provider sign-in leaves the page, so its failure cannot come back in a response: it
-   * comes back as a fresh load with a code in the URL. A refused sign-up — the allowlist —
+   * comes back as a fresh load with a code in the URL. A refused sign-up (the allowlist)
    * used to end on a bare JSON page at the callback address with nothing on this screen.
    */
   it('says why a provider sent the browser back', async () => {
@@ -163,7 +163,7 @@ describe('Login', () => {
   /**
    * Passkeys are their own button and their own kind of thing: not a redirect to somebody
    * else's site, and not a form. The mistake worth guarding against is the one this screen
-   * already made once with Google — offering a method the instance never said it had.
+   * already made once with Google: offering a method the instance never said it had.
    */
   it('offers a passkey button when the instance reports passkeys', async () => {
     harness(['passkey', 'password']);
@@ -206,7 +206,7 @@ describe('Login', () => {
   /**
    * The code path is what lets unbent.app drop GitHub without becoming Google-only, so
    * the thing worth pinning down is that it appears exactly when the instance says it can
-   * send mail — an instance that cannot would show a form that silently goes nowhere.
+   * send mail: an instance that cannot would show a form that silently goes nowhere.
    */
   it('offers the code form when the instance can send mail', async () => {
     harness(['email-otp']);
@@ -283,7 +283,7 @@ describe('Login', () => {
   /**
    * Order is a deliberate choice, not an accident of which block was written first: a
    * social button is one tap and needs nothing typed, while a passkey only helps someone
-   * who already has one — nobody, on a first visit.
+   * who already has one: nobody, on a first visit.
    */
   it('puts social providers above everything else', async () => {
     harness(['google', 'passkey', 'email-otp']);
@@ -429,7 +429,7 @@ describe('Login', () => {
 
   /**
    * The preview sign-in relay button. It appears only when the server reports a relay
-   * origin, which it does only on a preview — the same "the server decides which buttons to
+   * origin, which it does only on a preview: the same "the server decides which buttons to
    * draw" contract as every other method here. A preview offers the local methods too, so
    * this is an addition rather than a replacement, and it comes first because it is the only
    * one that gives a preview a Google session at all.
@@ -465,7 +465,7 @@ describe('Login', () => {
    * Clicking it hands off to the dev instance's session-gated `/preview-relay` route, naming
    * this origin as where to return. The route rather than the API endpoint behind it, so a
    * visitor with no dev session is sent through that instance's `/login` instead of meeting a
-   * JSON 401. The whole-page navigation is the point — it leaves this origin — so the test
+   * JSON 401. The whole-page navigation is the point: it leaves this origin, so the test
    * pins the URL it sends the browser to rather than any in-app state.
    */
   it('hands off to the dev instance with this origin as the return', async () => {
@@ -493,8 +493,8 @@ describe('Login', () => {
   });
 
   /**
-   * The destination survives the relay. It cannot travel in the URL — the dev instance
-   * validates `return` as a bare origin — so it waits in `sessionStorage` for
+   * The destination survives the relay. It cannot travel in the URL: the dev instance
+   * validates `return` as a bare origin, so it waits in `sessionStorage` for
    * `/preview-signin` to pick it up. Without this, opening a note signed out on a preview
    * came back to the note list instead of the note.
    */
@@ -519,7 +519,7 @@ describe('Login', () => {
     }
   });
 
-  /** Nothing parked — a direct visit to the landing page — lands on the notes list. */
+  /** Nothing parked (a direct visit to the landing page) lands on the notes list. */
   it('falls back to the notes list when nothing was parked', () => {
     sessionStorage.clear();
     expect(takeRelayRedirect()).toBe('/notes');

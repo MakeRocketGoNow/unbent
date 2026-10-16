@@ -13,7 +13,7 @@ import { ATTACHMENT_PREFIX } from '@unbent/shared';
  * The editor takes prose, so the browser and the phone keyboard should treat it as prose.
  *
  * CodeMirror ships as a code editor and sets `spellcheck="false"`, `autocorrect="off"` and
- * `autocapitalize="off"` on its content element — right for source code, and the first
+ * `autocapitalize="off"` on its content element: right for source code, and the first
  * thing anyone notices typing a note on a phone: no capital at the start of a sentence,
  * no corrections, and on a desktop no underline under a misspelling. The Android app is
  * this page in a WebView, so it inherited all three.
@@ -59,8 +59,8 @@ const NOT_PROSE = new Set([
 /**
  * Whether a link or image points at one of the note's own files.
  *
- * Their label is the file's name — an upload writes `file.name` there and the import
- * writes the name the attachment came with — so `IMG_2041.jpg` and `Report_v2_final.pdf`
+ * Their label is the file's name (an upload writes `file.name` there and the import
+ * writes the name the attachment came with), so `IMG_2041.jpg` and `Report_v2_final.pdf`
  * would carry a red line in nearly every imported note. Matching by destination rather
  * than by whether the label looks like a filename means a caption someone wrote over a
  * stored image is not checked either. That is the trade: the archive is thousands of

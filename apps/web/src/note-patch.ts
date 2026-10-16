@@ -40,15 +40,15 @@ export function seedFrom(note: Pick<Note, 'title' | 'body' | 'tags' | 'notebook'
 
 /**
  * Whether a save refused as stale would take nothing from the note as it now stands:
- * every change made to it since `base` — the copy the editor last had from the server —
+ * every change made to it since `base` (the copy the editor last had from the server)
  * is one the draft already holds.
  *
  * Then the refusal was not a conflict, only a date that moved, and the editor saves again
  * against the new copy instead of asking. The ordinary way here is a bulk action on the
  * list that included the open note: it refiles the note on the server, moving its date,
  * and hands the same notebook and tags to the draft (`registerOpenNoteFilingEdit`). Two
- * devices making the same edit is the other. Anything else — a title changed elsewhere
- * that the draft still has the old version of — is a real choice, and the person makes it.
+ * devices making the same edit is the other. Anything else (a title changed elsewhere
+ * that the draft still has the old version of) is a real choice, and the person makes it.
  *
  * Tags compare as sets, as the server compares them: it returns them sorted, and the
  * draft holds them in the order they were added.
@@ -80,7 +80,7 @@ function sameTagSet(a: string[], b: string[]): boolean {
 
 /**
  * The open draft after a save of it comes back while typing is still in flight: every
- * property the person has not changed since `sent` — the draft that save carried — takes
+ * property the person has not changed since `sent` (the draft that save carried) takes
  * the server's value, and every one they have keeps theirs. The body is the editor's and
  * always stays.
  *
@@ -93,7 +93,7 @@ function sameTagSet(a: string[], b: string[]): boolean {
  * catches them: a notebook or tag renamed on another device, a field converted, or a
  * merge adding the surviving tag while this device's copy had already dropped the one
  * that went. Leaving the draft as it was against that base made the next keystroke send
- * the stale value back — the short tag set, which took the tag off; the old notebook
+ * the stale value back: the short tag set, which took the tag off; the old notebook
  * name, which the server's get-or-create made again and refiled the note into.
  *
  * The mirror of `holdsTheirChanges`, and compared the same way: tags as sets, fields
@@ -132,13 +132,13 @@ export function rebaseAfterAck(
 }
 
 /**
- * The draft after an automatic reseed — a save's answer, or the feed — when a field
+ * The draft after an automatic reseed (a save's answer, or the feed) when a field
  * value is still only local. `seedFrom` alone would drop "12." or "http://": those are
  * left out of the patch so the title beside them can save, and the server's copy does
  * not have them. The head keeps saying Unsaved for exactly this remaining work; taking
  * the server's copy while the person is still on the note would wipe the digits they
- * were in the middle of typing. Walking away still loses them — they exist nowhere else
- * — which is the trade the hold already documents.
+ * were in the middle of typing. Walking away still loses them (they exist nowhere else),
+ * which is the trade the hold already documents.
  */
 export function seedFromKeepingHeld(
   note: Pick<Note, 'title' | 'body' | 'tags' | 'notebook' | 'fields'>,
@@ -166,8 +166,8 @@ function sameOrBothEmpty(a: FieldValue | null, b: FieldValue | null): boolean {
  * the types a draft value was typed against.
  *
  * `buildNotePatch` encodes a value the note has never stored from the definition list
- * it is handed. After the note is moved, that list is the *new* notebook's — or
- * undefined while those definitions load — so an Amount typed on Receipts and a move
+ * it is handed. After the note is moved, that list is the *new* notebook's (or
+ * undefined while those definitions load), so an Amount typed on Receipts and a move
  * to Taxes in the same breath used to drop the number: no definition in the new list,
  * no stored row, skip. The server would have accepted it; the field still exists on
  * Receipts, and a value already saved would have survived as a foreign field.
@@ -193,8 +193,8 @@ export function rememberFieldDefs(
 /**
  * The PATCH a note save should send, given the draft and what the server last told us.
  *
- * The editor used to send the whole draft on every autosave. The API is merge-shaped —
- * only named keys change — and the Android note screen depends on that: it writes the
+ * The editor used to send the whole draft on every autosave. The API is merge-shaped
+ * (only named keys change), and the Android note screen depends on that: it writes the
  * title natively and the body through the embed, and the two must not overwrite each
  * other. Sending the stale title along with a body edit put the phone's rename back.
  *
@@ -226,7 +226,7 @@ export function buildNotePatch(
 
 /**
  * The field ids whose draft value this save is leaving behind, because the type cannot
- * read it yet — a number still at "12.", a URL at "http://".
+ * read it yet: a number still at "12.", a URL at "http://".
  *
  * Skipping them is what keeps the title and body typed in the same breath saveable, but
  * it means a save can report success while one of these values exists nowhere but the
@@ -238,8 +238,8 @@ export function buildNotePatch(
  *
  * `editable` is how the editor says which those are, once it knows: the ids of the fields
  * it draws an input for. A stored row is enough to say a value's type, so without it a
- * field carried from a notebook the note has left — drawn as a read-only row, with only
- * Clear beside it — would still hold "12.", and the head would say Unsaved over nothing
+ * field carried from a notebook the note has left (drawn as a read-only row, with only
+ * Clear beside it) would still hold "12.", and the head would say Unsaved over nothing
  * the person can finish. Absent, every id with a type counts, as the save's own callers
  * (`actions.ts`) need.
  */
@@ -299,7 +299,7 @@ function diffFields(
     }
     /*
        An emptied input is "no value", never the empty string, so it sends the same null
-       the branch above does — and is skipped the same way when the note has nothing to
+       the branch above does, and is skipped the same way when the note has nothing to
        clear. The server reads a bare '' as a clear too, but this function is written
        against its own contract rather than against what the far end happens to forgive.
     */

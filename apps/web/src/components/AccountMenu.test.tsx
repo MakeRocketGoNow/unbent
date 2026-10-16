@@ -18,7 +18,7 @@ const BUILT_IN = { privacy: '/privacy', terms: '/terms' };
  * The account menu, now that two surfaces draw it.
  *
  * It was inline in `Topbar`, which was fine while the topbar was the only place it could
- * be. The phone's note list has no topbar any more, so the drawer offers the same menu —
+ * be. The phone's note list has no topbar any more, so the drawer offers the same menu,
  * and these pin the parts that would be easy to let drift apart: the address identifies the
  * account rather than acting on it, and signing out is marked as the destructive one.
  */
@@ -122,7 +122,7 @@ describe('AccountMenu', () => {
   /*
    * A browser cannot sign anyone out with no connection: the cookie is HttpOnly, and only
    * the server can end the session. Sign out stays in its place, faded, saying why. In the
-   * Android app it stays available — the app clears its own cookies when told.
+   * Android app it stays available: the app clears its own cookies when told.
    */
   describe('with no connection', () => {
     afterEach(() => {

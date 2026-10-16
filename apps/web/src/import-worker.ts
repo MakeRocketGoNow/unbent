@@ -27,13 +27,13 @@ import {
  * UI with no progress and no way to cancel. The worker also owns the fetch calls, so
  * uploads do not compete with rendering.
  *
- * Three formats arrive here — Evernote's ENEX, this app's own export, and Notion's — and
+ * Three formats arrive here (Evernote's ENEX, this app's own export, and Notion's), and
  * they share everything past the reader: the same client below, the same progress, the
  * same events. A zip is one of the last two, and only its entries say which, so a picked
  * zip is described first: the panel learns whether it is Notion's and, if so, what it
  * holds, before Start is pressed.
  *
- * Cookies travel with `credentials: 'include'` — a worker shares the document's cookie
+ * Cookies travel with `credentials: 'include'`: a worker shares the document's cookie
  * jar but does not send them by default.
  */
 
@@ -79,7 +79,7 @@ let controller: AbortController | null = null;
  * The worker is kept for the page's lifetime and takes more than one kind of job, so two
  * can be posted while one is running. Each waits its turn rather than starting at once:
  * pdf.js in this worker is one instance, and two extractions interleaved through it have
- * been seen to hang. `abort` is the exception — it must reach the run in progress.
+ * been seen to hang. `abort` is the exception: it must reach the run in progress.
  */
 let queue: Promise<void> = Promise.resolve();
 

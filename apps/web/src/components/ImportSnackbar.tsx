@@ -9,15 +9,15 @@ const IMPORT_PAGE = '/settings/import';
 /**
  * The running import, wherever the person is.
  *
- * An import used to hold the whole app still while it ran — the rail and the settings
+ * An import used to hold the whole app still while it ran: the rail and the settings
  * pages went inert, because leaving the import page ended the run. Now that the run
  * outlives the page (`import-run.ts`), people can go back to their notes during a long
  * one, and something has to say it is still going and how it ended. The export already
  * has this in `ExportSnackbar`, and the import takes the same shape so the two read as
  * one pattern: a card at the bottom, not on the page it describes, dismissable per run.
  *
- * The one thing to do is go and look — the counts, the failures and the skipped notes
- * are on the import page and nowhere else — so its action is a link there rather than a
+ * The one thing to do is go and look (the counts, the failures and the skipped notes
+ * are on the import page and nowhere else), so its action is a link there rather than a
  * Stop. Stopping stays on that page, beside what it would stop.
  *
  * A finished run with failures stays until dismissed, like any failure; a clean one
@@ -69,7 +69,7 @@ function notes(n: number): string {
 /**
  * A percentage only when the run knows how many notes there are, which an archive does.
  * An ENEX is measured in bytes read (`importPercent`), and the parser reads well ahead of
- * the uploads — a small file said 100% here while most of its notes were still to come.
+ * the uploads: a small file said 100% here while most of its notes were still to come.
  * On the page that sits beside live counts; alone in this card it read as finished.
  */
 function runningMessage(state: ImportRunState): string {

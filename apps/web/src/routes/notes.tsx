@@ -11,7 +11,7 @@ import { notesQuery, tagsQuery, notebooksQuery, trashCountQuery } from '../queri
  * identity: a note keeps its id whichever notebook you were browsing. The names match the
  * API's own query parameters so they pass through to `notes-api.ts` untranslated.
  *
- * `catch` rather than a hard failure — a stale or hand-edited link should open the app
+ * `catch` rather than a hard failure: a stale or hand-edited link should open the app
  * with the bad filter dropped, not show an error page. `UNFILED` is a sentinel meaning
  * "notes in no notebook" rather than a notebook name, so it is allowed through explicitly.
  */
@@ -21,7 +21,7 @@ const name = z.string().trim().min(1).max(100);
  * The tag filter, which may name more than one.
  *
  * Read as either shape: a bare `?tag=Receipt` or a list. Both reach the app as an array, so
- * nothing downstream has to care which was written — several tags narrow conjunctively, and
+ * nothing downstream has to care which was written: several tags narrow conjunctively, and
  * a note must carry all of them. Accepting the bare form is what keeps older links, and
  * hand-typed ones, working unchanged.
  *
@@ -32,20 +32,20 @@ const name = z.string().trim().min(1).max(100);
  *     /notes?tag=%5B%22Receipt%22%5D
  *
  * That is ugly to paste, and writing a bare string for the single-tag case looks like an
- * easy fix — the router does serialize a lone string plainly, and the union above already
+ * easy fix: the router does serialize a lone string plainly, and the union above already
  * reads it back. It does not work, and it is worth knowing why before trying it again.
  * `validateSearch` runs on every navigation and this schema's `transform` coerces a string
  * into a one-element array; the router then serializes *that* result into the URL. So the
  * bare string is normalized away before it is ever written, and the JSON array comes back.
  * Verified against the router, not reasoned about.
  *
- * Making it stick would mean either dropping the coercion — which breaks the old links this
- * union exists to keep — or a custom `stringifySearch`/`parseSearch` pair on the router,
+ * Making it stick would mean either dropping the coercion (which breaks the old links this
+ * union exists to keep) or a custom `stringifySearch`/`parseSearch` pair on the router,
  * which would take ownership of encoding *every* search param in the app to improve how one
  * of them looks. Neither is worth it for an ugly but working link, so the JSON array stays.
  *
  * Not to be confused with the outbound API query, which is a separate serialization in
- * `notes-api.ts` and *does* repeat the param — `?tag=a&tag=b` — because that is what the
+ * `notes-api.ts` and *does* repeat the param (`?tag=a&tag=b`) because that is what the
  * Worker reads. The two are different wires and are allowed to disagree.
  */
 const tagFilter = z
@@ -58,7 +58,7 @@ const tagFilter = z
 /**
  * The tag selection as the URL should carry it: the list, or nothing at all.
  *
- * Dropping to `undefined` at zero is the whole job — it keeps a bare `?tag=` out of the URL
+ * Dropping to `undefined` at zero is the whole job: it keeps a bare `?tag=` out of the URL
  * when the last tag is removed. It is a function rather than a line repeated at each call
  * site because two components write this filter, and a writer that forgot the empty case
  * would leave a dead parameter behind on a link.
@@ -90,7 +90,7 @@ const fieldFilter = z
       .catch(undefined),
   );
 
-/** The field selection as the URL should carry it — `writeTagFilter`'s rule, for fields. */
+/** The field selection as the URL should carry it: `writeTagFilter`'s rule, for fields. */
 export function writeFieldFilter(fields: string[]): string[] | undefined {
   return fields.length > 0 ? fields : undefined;
 }
@@ -107,7 +107,7 @@ export const filters = z.object({
   sort: z.enum(NOTE_SORTS).optional().catch(undefined),
   order: z.enum(['asc', 'desc']).optional().catch(undefined),
   /**
-   * A custom field to order by instead of `sort`, by id — what the table view's field
+   * A custom field to order by instead of `sort`, by id: what the table view's field
    * columns write. Only its shape is checked here; whether it is one of this user's
    * fields is only known once the notebook's definitions load, and `NotesLayout` drops a
    * stale one then, the way `NotebookMissing` reports a notebook that no longer exists.
@@ -117,13 +117,13 @@ export const filters = z.object({
    * How the list is drawn: the sidebar of entries, or the table of a notebook's fields.
    *
    * In the URL for the reason the sort is: it is how you are looking, and "Coupons as a
-   * table, by expiry" is a thing worth bookmarking — a sidebar width is not, which is why
+   * table, by expiry" is a thing worth bookmarking: a sidebar width is not, which is why
    * that one lives in storage alone. Absent means "not said yet": inside a notebook on a
    * desktop `NotesLayout` writes in the view last seen, in place, so that every history
    * entry names the view it showed and Back returns to it. Outside a notebook and on a
    * phone it stays absent, and `/notes` stays a clean link.
    * Not among the loader's dependencies: it changes what is drawn, never what is fetched.
-   * Where a table cannot be drawn — a phone, outside a notebook, over search results —
+   * Where a table cannot be drawn (a phone, outside a notebook, over search results)
    * it is ignored rather than stripped, so the link still means it on a screen that can.
    */
   view: z.enum(['list', 'table']).optional().catch(undefined),
@@ -138,7 +138,7 @@ export const filters = z.object({
    * once and replaces the entry with the note it made, and Back or a reload cannot make
    * a second. The note is filed nowhere, whatever filter is beside the request: anyone
    * can write this address into a link, and filing would make the notebook and tags it
-   * names. The only accepted value is `1` — the router reads `?new=1` as the number — so
+   * names. The only accepted value is `1` (the router reads `?new=1` as the number), so
    * `?new=0` or a stray `?new` is dropped rather than read as yes.
    */
   new: z.literal(1).optional().catch(undefined),
@@ -172,7 +172,7 @@ export const Route = createFileRoute('/notes')({
       ...(deps.sortField ? { sortField: deps.sortField } : {}),
     };
     /*
-     * Warmed, none of it awaited — the list included.
+     * Warmed, none of it awaited, the list included.
      *
      * The list used to be returned, which held the navigation until the rows arrived.
      * That is the router's contract: nothing about the URL changes until the loader
@@ -182,14 +182,14 @@ export const Route = createFileRoute('/notes')({
      * second of the app appearing to ignore its own drawer.
      *
      * Started here and left to run, the request is the same one the component's
-     * `useInfiniteQuery` would make — React Query dedupes on the key — but the URL
+     * `useInfiniteQuery` would make (React Query dedupes on the key), but the URL
      * commits immediately, the heading names the new place on the next frame, and the
      * list says it is loading (see `placeholderData` on `notesQuery`, and `aria-busy` in
      * `NotesLayout`) rather than the app saying nothing.
      *
      * Not the list on a hover preload. The router preloads every link the pointer rests
      * on, and the rail and drawer are a column of notebook and tag links: moving across
-     * them fetched a page of notes, and its count, for each one passed over — 9k rows for
+     * them fetched a page of notes, and its count, for each one passed over: 9k rows for
      * a sweep of the notebooks at 13k notes and 39k for the tags, since D1 bills every row
      * a page reads. The click fetches it anyway, and the list says it is loading.
      */

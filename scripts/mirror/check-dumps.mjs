@@ -8,7 +8,7 @@
 //
 //   node scripts/mirror/check-dumps.mjs dumps.json out.json
 //
-// Writes the result to `out.json` — ok, what was read, and the reasons when not ok — for
+// Writes the result to `out.json` (ok, what was read, and the reasons when not ok) for
 // `status/mirror.json`, logs the counts, and exits 1 when the run should fail. The reasons
 // name accounts and quote the Worker's error text, so they go to the file and not to the
 // log: the run log of an open-source repository is public, and a dump's error can carry

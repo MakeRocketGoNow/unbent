@@ -13,8 +13,8 @@ import { NotebookDrawer } from './NotebookDrawer.js';
 /**
  * Where the notes are, on a phone: `NotebookNav` in a sheet from the side.
  *
- * The rows themselves — their order, which one is marked as where you are, the tags
- * clearing on a scope change — are pinned in `NotebookNav.test.tsx`. What is the drawer's
+ * The rows themselves (their order, which one is marked as where you are, the tags
+ * clearing on a scope change) are pinned in `NotebookNav.test.tsx`. What is the drawer's
  * own, and pinned here: it closes once a scope is picked, its head carries the account,
  * and its rows never inherit the router's own idea of "active".
  *
@@ -101,7 +101,7 @@ describe('NotebookDrawer', () => {
   /*
    * `current`, not `active`: TanStack Router puts its own `active` class on a `<Link>` whose
    * target matches the route, so a destination on the floor would light up as the current
-   * *scope* — Trash permanently, while the trash is open. This is the regression that
+   * *scope*: Trash permanently, while the trash is open. This is the regression that
    * caught, and the reason the class is spelled the way it is.
    */
   it('does not mark a destination as the current scope', async () => {

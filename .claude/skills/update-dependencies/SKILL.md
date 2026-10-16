@@ -1,6 +1,6 @@
 ---
 name: update-dependencies
-description: Run a round of npm dependency updates for this workspace the way Dependabot cannot — read DEPENDENCIES.md for what is held and why, check peer ranges and changelogs rather than trusting version numbers, take what is safe in atomic commits, verify with the CI suites (and the offline gate or the browser where a package warrants it), record any new hold, and open the PR. Use when the user asks to "update dependencies", "do a dependency round", "bump packages", "what's outdated", or to take or review a Dependabot-style batch. Do not use for adding a new dependency (ask first, per AGENTS.md), for Android or iOS dependencies (they prove themselves only on a device), or for a single security fix the user has already scoped.
+description: Run a round of npm dependency updates for this workspace the way Dependabot cannot: read DEPENDENCIES.md for what is held and why, check peer ranges and changelogs rather than trusting version numbers, take what is safe in atomic commits, verify with the CI suites (and the offline gate or the browser where a package warrants it), record any new hold, and open the PR. Use when the user asks to "update dependencies", "do a dependency round", "bump packages", "what's outdated", or to take or review a Dependabot-style batch. Do not use for adding a new dependency (ask first, per AGENTS.md), for Android or iOS dependencies (they prove themselves only on a device), or for a single security fix the user has already scoped.
 allowed-tools: Read, Edit, Write, Glob, Grep, Bash(git:*), Bash(gh:*), Bash(pnpm:*), Bash(node:*), Bash(npm view:*), Bash(npx:*)
 ---
 
@@ -28,12 +28,12 @@ Read DEPENDENCIES.md in full before deciding anything.
 
 Every line of `pnpm outdated` goes in exactly one of four piles:
 
-- **Held.** Named in DEPENDENCIES.md. Check whether what releases it has happened — a peer
-  range widened, an upstream fix shipped — with `npm view <pkg>@latest peerDependencies`
+- **Held.** Named in DEPENDENCIES.md. Check whether what releases it has happened (a peer
+  range widened, an upstream fix shipped) with `npm view <pkg>@latest peerDependencies`
   or `dependencies`. If it has, it becomes a family or major below and the hold comes out
   of the doc in the same commit. If not, leave it and say so in the PR.
 - **A family.** Packages that must move together: anything depending on an *exact* version
-  of a sibling (`npm view <pkg>@<v> dependencies` — the TanStack DB set is four packages
+  of a sibling (`npm view <pkg>@<v> dependencies`: the TanStack DB set is four packages
   on one exact `@tanstack/db`), the Better Auth set, vite-plugin-pwa with the `workbox-*`
   runtime modules. Find the versions that agree before installing any of them.
 - **A major.** Read the changelog. A major is a commit of its own.

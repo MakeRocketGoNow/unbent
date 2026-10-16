@@ -94,7 +94,7 @@ class UnbentApiTest {
     }
 
     /**
-     * The server answers 503 when it could not check the session at all — a lookup that
+     * The server answers 503 when it could not check the session at all: a lookup that
      * stalled, or a session store that failed. `MainActivity.checkSession` keeps the stored
      * session on anything but a 401, so this must throw with its status, never read as the
      * null user above, which signs the phone out.

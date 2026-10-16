@@ -5,12 +5,12 @@ import { z } from 'zod';
  * The language model: what reads and writes, where Jev only judges.
  *
  * Two jobs, both things a model that chooses among options cannot do. Reading a file a
- * text layer cannot — a photograph, or a scan that was never OCR'd. Search and auto-fill
+ * text layer cannot: a photograph, or a scan that was never OCR'd. Search and auto-fill
  * both read text, and until now the only text an attachment could have was its PDF text
  * layer; a photo of a receipt, a business card, a plate of food or a whiteboard had none.
  * For most photos, what the picture *is* matters more than the words on it: "a business
  * card" is what files it under Contacts, and no line on the card says so. So the model is
- * asked for one fixed shape — a name, a kind, a description, a verbatim transcription —
+ * asked for one fixed shape (a name, a kind, a description, a verbatim transcription),
  * and the whole of it becomes the file's text (see `formatReading`), the same row search
  * indexes and auto-fill reads. Nothing downstream learns a new kind of text.
  *
@@ -22,7 +22,7 @@ import { z } from 'zod';
  *
  * Behind a seam (`LanguageModel`) so the model can be swapped: the one implementation is
  * Claude over the Messages API, with the model id an environment variable, and another
- * provider — Workers AI, for a self-hoster who would rather keep images in place — is one
+ * provider (Workers AI, for a self-hoster who would rather keep images in place) is one
  * more implementation of the same interface. One `fetch` against one endpoint rather than
  * the SDK, as lib/jev.ts and lib/email.ts do, for the Worker's cold start. Reading runs
  * on the server because the bytes are already in R2; see lib/read-attachment.ts.
@@ -33,8 +33,8 @@ const ANTHROPIC_VERSION = '2023-06-01';
 
 /**
  * The model's three jobs inside a press, each with a model of its own (MAK-182). They cost
- * very different amounts — a read is a whole photo or every page of a scan, a title a few
- * hundred tokens — and an operator may well want a careful reader and a cheap titler, so
+ * very different amounts (a read is a whole photo or every page of a scan, a title a few
+ * hundred tokens), and an operator may well want a careful reader and a cheap titler, so
  * each job has a variable (`ANTHROPIC_READ_MODEL`, `ANTHROPIC_TITLE_MODEL`,
  * `ANTHROPIC_FIELDS_MODEL`), falling back to `ANTHROPIC_MODEL` and then to the default,
  * so an instance that set the one variable keeps the behaviour it had. The usage counter
@@ -49,8 +49,8 @@ export type LlmJob = 'read' | 'title' | 'fields';
  * a file is the one call whose cost grows with what people keep, so it was measured, twice
  * (2026-10-09, counts in MAK-182). First on clean generated receipts, which Opus 5, Sonnet
  * 5.5 and Haiku 5.5 all transcribed line for line. Then on 45 files chosen from a real
- * archive for being hard — faded receipts, business cards, handwritten forms, text-less
- * scans, a 22-page lease — against a blind answer key of 261 facts: Haiku 5.5 at low
+ * archive for being hard (faded receipts, business cards, handwritten forms, text-less
+ * scans, a 22-page lease) against a blind answer key of 261 facts: Haiku 5.5 at low
  * effort read 240 of 243 right, Sonnet 5.5 236 of 236, Opus 5.5 235 of 236, and every
  * setting read every phone, email, merchant and total. The three Haiku misses were on one
  * handwritten form: a word and a date. The notebook Jev then chose from the reading moved
@@ -85,8 +85,8 @@ export const LLM_READ_EFFORT_DEFAULT = 'low';
 
 /**
  * The title and the fields always send a low effort on the default model, and no effort
- * on a named one, as the read does. Those two are small judgements — one line, a few
- * words copied off a line — and the thinking a capable model would spend on them is paid
+ * on a named one, as the read does. Those two are small judgements (one line, a few
+ * words copied off a line) and the thinking a capable model would spend on them is paid
  * for and waited on by the press. Not a variable: nothing was measured that would make
  * an operator want it, and the read's variable is enough to steer the one job that costs.
  */
@@ -140,22 +140,22 @@ const MAX_OUTPUT_TOKENS = 16384;
 
 /**
  * Where a transcription stops, in words, for a document longer than that: the model ends
- * with a line saying the rest was left out. The part a person files by — who it is from,
- * what it is, the dates and amounts — is nearly always on the first pages.
+ * with a line saying the rest was left out. The part a person files by (who it is from,
+ * what it is, the dates and amounts) is nearly always on the first pages.
  *
  * It was ten thousand, which is about thirteen thousand tokens before the JSON around it,
  * and the thinking shares the same `MAX_OUTPUT_TOKENS`. So a long scan never finished: a
  * 22-page lease ran out of room on Haiku 5.5 at medium and high effort, on Sonnet 5.5 and
  * on Opus 5.5 (2026-10-09), after one to two minutes each. A read that runs out of room
  * throws and leaves the file pending, so every later press read the whole scan again and
- * paid for it again — about 46¢ a press on Opus. Four thousand words is about five and a
+ * paid for it again: about 46¢ a press on Opus. Four thousand words is about five and a
  * half thousand tokens, which leaves the thinking ten thousand: on the same lease, Haiku
  * 5.5 at medium (the model's own default, which the read sent before MAK-182) now
  * finishes in about half a minute, and Haiku at high and Opus 5.5 finish too.
  *
  * Sonnet 5.5 at its default effort still does not, at four thousand words or at three:
  * its thinking alone fills the budget, so no cap on the answer can fix it. Effort is what
- * does — `ANTHROPIC_READ_EFFORT=low` beside a Sonnet read; see `LLM_READ_EFFORT_DEFAULT`.
+ * does: `ANTHROPIC_READ_EFFORT=low` beside a Sonnet read; see `LLM_READ_EFFORT_DEFAULT`.
  * Lower than four thousand was tried and bought nothing but a shorter transcription.
  */
 export const MAX_TRANSCRIBED_WORDS = 4000;
@@ -183,7 +183,7 @@ export function sniffMediaType(bytes: ArrayBuffer): string | null {
  * A title is a few dozen tokens, and this is far more than that on purpose: the default
  * model thinks before it answers, that thinking is counted against the same budget, and
  * a title that spent the whole of a small budget thinking would come back with no answer
- * at all — which reads as a decline, and falls back to Jev's pick without a word.
+ * at all, which reads as a decline, and falls back to Jev's pick without a word.
  */
 const MAX_TITLE_TOKENS = 1024;
 
@@ -265,7 +265,7 @@ export interface NoteForTitle {
  * a price converts at display.
  *
  * The four counts are the API's own split. All three kinds of input are billed, at
- * different rates — a cache read at a tenth, a cache write at a premium — which is why
+ * different rates (a cache read at a tenth, a cache write at a premium), which is why
  * they are kept apart rather than summed here.
  */
 export type LlmUsage = LlmTokens;
@@ -281,8 +281,8 @@ export interface Metered<T> {
  * take its place.
  *
  * Every job answers with its usage beside its value, so the caller that records the value
- * records the cost in the same breath — a reading's tokens go into the transaction that
- * writes its text — and a stand-in reports usage the way the real model does, which is
+ * records the cost in the same breath (a reading's tokens go into the transaction that
+ * writes its text), and a stand-in reports usage the way the real model does, which is
  * what lets a test count a press. A callback handed to `llmFrom` was the alternative and
  * was not taken: it would count only what the one real implementation counted.
  */
@@ -303,7 +303,7 @@ export interface LanguageModel {
  * The API refused or failed. `status` is HTTP's, or 0 when no answer arrived at all.
  *
  * `usage` is set when the API answered and billed for it but the answer could not be
- * used — a reply cut off at the token budget, the dearest kind there is, since it spent
+ * used: a reply cut off at the token budget, the dearest kind there is, since it spent
  * the whole budget. A caller that counts what a press cost counts this too (`PressUsage.failed`
  * in lib/llm-usage.ts); an error with no usage cost nothing.
  */
@@ -323,8 +323,8 @@ export class LlmError extends Error {
  * the model rejected (401), or one not permitted to use the model or endpoint (403).
  *
  * The line matters because the two want opposite handling. A 401/403 fails every call
- * until an operator changes a secret, and the caller that swallows it — auto-fill, whose
- * title has a fallback — should say so where the operator can see it. A 429, a 5xx, a
+ * until an operator changes a secret, and the caller that swallows it (auto-fill, whose
+ * title has a fallback) should say so where the operator can see it. A 429, a 5xx, a
  * timeout (`status` 0) or a refusal is a reason to fall back quietly and let the next
  * press succeed; surfacing those would cry wolf. Only the callers that swallow the error
  * consult this; a caller that already surfaces its `LlmError` needs no help telling them
@@ -352,7 +352,7 @@ export function formatReading(reading: FileReading): string {
 
 /**
  * The shape the model fills in. Constrained decoding on the API's side guarantees it, so
- * the answer is parsed rather than validated — except that a refusal comes back as prose
+ * the answer is parsed rather than validated, except that a refusal comes back as prose
  * in place of JSON, which is what the parse failure below means.
  */
 const READING_SCHEMA = {
@@ -383,9 +383,9 @@ const SYSTEM = [
   '- kind: what the file is, in a few plain words, such as "receipt", "business card",',
   '  "photo of a meal", "whiteboard", "product box", "letter", "screenshot".',
   '- name: one short line a person would title the note with, the way a folder label',
-  '  reads — what it is and who or what it is from or about, ending with the kind word',
+  '  reads: what it is and who or what it is from or about, ending with the kind word',
   '  when that helps it read as one. Name the party the file is from or about, the one',
-  '  whose document it is — not a middleman who only handled or printed it: not a payment',
+  '  whose document it is, not a middleman who only handled or printed it: not a payment',
   '  network or card brand on a receipt, not the concession operator behind a counter, not',
   '  the software that generated a form. When a file shows both a parent brand and the',
   '  specific place, shop or provider that served this one, name the specific one. The',
@@ -404,7 +404,7 @@ const SYSTEM = [
 
 const TITLE_SYSTEM = [
   'You title notes in a personal archive: scans, photographs and notes someone kept. You',
-  'are shown the note — the title it has now, its body, and the text of its files — and',
+  'are shown the note (the title it has now, its body, and the text of its files) and',
   'you answer with the title a careful person would give it: what it is and who or what it',
   'is from or about, the way a label on a folder reads. For example "Acme Hardware Invoice,',
   'March 2026", "Jane Doe, Acme Plumbing (Business Card)", "Sushi A Go Go Receipt", "Lasagna',
@@ -413,7 +413,7 @@ const TITLE_SYSTEM = [
   'Short, under about sixty characters, in title case, with no quotation marks and no full',
   'stop. Keep an acronym or a brand in its own capitals: "IRS", "LLC", "iPhone". Use only',
   'what the note says: never invent a name, a date or an amount. Name the party a file is',
-  'from or about, not a middleman that only handled or printed it — a payment network, a',
+  'from or about, not a middleman that only handled or printed it: a payment network, a',
   'concession operator, the parent brand over the specific place that served this one. If',
   'the title the note has now already names it well, answer with that title exactly as it',
   'is.',
@@ -430,7 +430,7 @@ const titled = z.object({ title: z.string() });
 
 const FIELDS_SYSTEM = [
   'You fill in fields on notes in a personal archive: scans, photographs and notes someone',
-  'kept. You are shown the note — its title, its body and the text of its files — and the',
+  'kept. You are shown the note (its title, its body and the text of its files) and the',
   'names of some fields. For each field, answer with its value exactly as the note writes',
   'it: the value alone, without the label before it or the words around it. For a field',
   'named "Vendor" on a receipt that says "Thank you for shopping at Acme Hardware Store',
@@ -438,7 +438,7 @@ const FIELDS_SYSTEM = [
   '"112-0042".',
   '',
   'Copy the value from the note; never write one it does not contain. Name the party a',
-  'document is from, not a middleman that only handled it — a payment network, a card',
+  'document is from, not a middleman that only handled it: a payment network, a card',
   'brand, the software that printed it. When the note does not say, or you are not sure',
   'which of several it means, answer with an empty string. An empty field is better than',
   'a wrong one.',
@@ -460,8 +460,8 @@ export function fieldTokens(count: number): number {
 const MAX_TITLE_CHARS = 200;
 
 /**
- * A count the API may leave out or send as null — the cache counts on a request that
- * touched no cache, or a stand-in that says nothing of usage — read as zero rather than
+ * A count the API may leave out or send as null (the cache counts on a request that
+ * touched no cache, or a stand-in that says nothing of usage) read as zero rather than
  * failing an answer whose text is fine. So is a count of any other shape (`catch`):
  * usage was never parsed before it was counted, and a reading must not be lost to it.
  */
@@ -534,7 +534,7 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
       res = await post(body, timeout);
     }
     if (!res.ok) {
-      // The body says why — a bad key, a model this key cannot use, a file too large —
+      // The body says why (a bad key, a model this key cannot use, a file too large)
       // and the status alone does not. Truncated because this ends up in a log.
       const detail = (await res.text().catch(() => '')).trim().slice(0, 200);
       throw new LlmError(res.status, `The language model answered ${res.status}${detail ? `: ${detail}` : ''}`);
@@ -612,7 +612,7 @@ export function llmFrom(env: LlmEnv, fetchImpl: typeof fetch = fetch): LanguageM
         messages: [{ role: 'user', content: JSON.stringify(note) }],
         output_config: {
           // A title is a small judgement, and the thinking a capable model would spend on
-          // it is paid for and waited on. Low effort trims both — but only on the model
+          // it is paid for and waited on. Low effort trims both, but only on the model
           // this file chose, whose parameters it knows; a model the operator named gets
           // the plain request, since not every model accepts the field. `jobSettings`
           // decides.

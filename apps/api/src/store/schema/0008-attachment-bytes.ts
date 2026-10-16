@@ -1,13 +1,13 @@
 /**
  * How many bytes of files the account holds, kept on the one `note_counts` row (MAK-108).
  *
- * The plan sells storage by the block — 10 GB, and 25 GB more for each add-on — and a
+ * The plan sells storage by the block (10 GB, and 25 GB more for each add-on), and a
  * quota that nothing can measure against is no quota. `attachments.size` is on every row
  * already; what was missing was the sum without reading every row, which an upload
  * cannot afford on an archive of four thousand files and the hourly sweep may not do at
  * all (AGENTS.md, "Nothing periodic may scan a table"). So the sum is a column on the
  * totals row, kept by triggers the way `live` and `trashed` are: a row arriving adds its
- * size, a row going — deleted by name, or by the cascade when a note is purged — takes
+ * size, a row going (deleted by name, or by the cascade when a note is purged) takes
  * it back. Backfilled once here, which reads the table once per object on its next wake.
  *
  * `size` is written once, by `AttachmentsStore.record`, from what R2 reported, and never
@@ -16,7 +16,7 @@
  * other counts if it ever does.
  *
  * Trashed notes' files count: they are in the bucket until the trash is emptied, and the
- * quota is about the bucket. Not in the feed — a client holds no total — and dumped with
+ * quota is about the bucket. Not in the feed (a client holds no total) and dumped with
  * the row (`DUMP_TABLES`), before the triggers, so a load keeps it as it was.
  */
 export default `

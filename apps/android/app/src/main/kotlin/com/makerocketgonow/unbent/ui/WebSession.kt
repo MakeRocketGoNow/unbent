@@ -10,7 +10,7 @@ import com.makerocketgonow.unbent.api.SessionCookie
  * note body can render in one: the session the app signed in with is stamped into the jar
  * under the cookie's own name, and every request the page makes carries it. No handoff,
  * no token exchange, nothing the user sees. This is what the Trusted Web Activity could
- * never do — Chrome's jar is Chrome's.
+ * never do: Chrome's jar is Chrome's.
  */
 object WebSession {
 

@@ -21,7 +21,7 @@ function plural(n: number, word: string): string {
  * Operations over the whole account, gathered into one page and ordered by blast radius.
  *
  * The destructive ones lived at the bottom of the import panel, which meant the only route
- * to "delete all notes" was through Import — and they vanished mid-run, when a failed
+ * to "delete all notes" was through Import, and they vanished mid-run, when a failed
  * import is exactly when you want them. The indexing passes followed for the same reason:
  * they run over files that arrived by any route, not only an import, and under Import they
  * read as a footnote to a form. A maintenance page has to list every operation of this
@@ -41,7 +41,7 @@ export function Maintenance() {
      The stored counts, until a confirmation opens; then the count read from the notes
      themselves, which is the number a permanent delete should name (see `useExactCount`).
      The page used to count exactly on every visit, and counting every note reads every
-     note — 13k rows at 13k notes to label two buttons most visits never press.
+     note: 13k rows at 13k notes to label two buttons most visits never press.
   */
   const trashStored = useQuery(trashCountQuery()).data ?? 0;
   const notesStored = useQuery(noteCountQuery()).data ?? 0;
@@ -94,7 +94,7 @@ export function Maintenance() {
 
   /**
    * Deliberately not `run` from useMaintenance: nothing was deleted, so there is nothing
-   * to invalidate, and the outcome is not "deleted 47 notes" but "go and read your mail" —
+   * to invalidate, and the outcome is not "deleted 47 notes" but "go and read your mail",
    * which belongs beside the control that caused it rather than in the page's result line.
    *
    * No `callbackURL` either. The API pins where the link lands, so that every caller gets
@@ -156,8 +156,8 @@ export function Maintenance() {
       {/*
           Second because it is the other pass that changes nothing a person wrote: the
           counts are derived from the notes, so the worst a recount can do is put a right
-          number where a wrong one was. Laid out as one of the indexing passes' rows — a
-          small button with its outcome beside it, the same width of button — so the two
+          number where a wrong one was. Laid out as one of the indexing passes' rows
+          (a small button with its outcome beside it, the same width of button), so the two
           sections read as one kind of control and their status lines start at one edge.
       */}
       <section className="settings-section">
@@ -247,7 +247,7 @@ export function Maintenance() {
       <section className="settings-section">
         <h3>Orphaned files</h3>
         <p className="muted small">
-          Storage objects with no attachment record — leftovers from an interrupted upload
+          Storage objects with no attachment record: leftovers from an interrupted upload
           or import. Files you unlinked from a note still have a record and are not
           orphans; delete those from the note&apos;s Attachments list.
         </p>
@@ -275,11 +275,11 @@ export function Maintenance() {
                 const r = await api.gcBlobs(false);
                 setSweep(r);
                 // A file deleted in the last 35 days is still stored and still accounted
-                // for — the server keeps it for a restore — so it is neither an orphan nor
+                // for (the server keeps it for a restore), so it is neither an orphan nor
                 // quite "referenced"; said separately, or the count would not add up.
                 const held = r.awaitingDeletion > 0 ? `, ${r.awaitingDeletion} deleted and waiting to leave storage` : '';
                 return r.orphaned === 0
-                  ? `Nothing to sweep — ${plural(r.stored, 'file')}, all accounted for${held}.`
+                  ? `Nothing to sweep: ${plural(r.stored, 'file')}, all accounted for${held}.`
                   : `${r.orphaned} of ${plural(r.stored, 'file')} stored have no attachment record${held}.`;
               });
             }}
@@ -385,8 +385,8 @@ export function Maintenance() {
           {/*
               No `requireTyped`, unlike "Delete all notes" above, and the difference is the
               point rather than an oversight. Typing DELETE exists there because that button
-              *is* the irreversible step. Here the button only sends mail — the irreversible
-              step is the link, in an inbox, behind a session — so demanding the word would
+              *is* the irreversible step. Here the button only sends mail (the irreversible
+              step is the link, in an inbox, behind a session), so demanding the word would
               be friction guarding nothing, and would teach the habit of typing it without
               reading on the one page where the other control means it.
           */}
@@ -411,7 +411,7 @@ export function Maintenance() {
                   A link goes to{' '}
                   <span className="wrap-anywhere">{address ?? 'your address'}</span> and
                   nothing is deleted until you open it.{' '}
-                  <Link to="/settings/export">Export first</Link> if you want a copy — there
+                  <Link to="/settings/export">Export first</Link> if you want a copy: there
                   is no way back once it is done.
                 </>
               }
@@ -466,7 +466,7 @@ const tokenCount = (n: number) => (n < 10_000 ? exact.format(n) : compact.format
  * anything that deletes. A sentence rather than a table of figures: the page's other
  * sections report in a line, and three numbers do not need a grid to be read. Tokens
  * rather than money, because the price is the model's and changes, and the counter keeps
- * what was used. "Read" counts every kind of input — fresh, from the cache, into it —
+ * what was used. "Read" counts every kind of input (fresh, from the cache, into it)
  * since a person cannot act on that split; the server keeps it apart for the bill.
  *
  * The day's cap is said only where the instance sets one, with today's count beside it, so

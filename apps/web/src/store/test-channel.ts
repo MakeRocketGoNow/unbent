@@ -4,8 +4,8 @@ import { addressee, type Message, type Port } from './library-channel.js';
  * The channels between tabs, for tests: every port hears what the others post on the
  * account's channel and nothing it posted itself, a port opened with a client id alone
  * hears what is posted for that client, and each message is cloned as the browser
- * clones it — so a row shared by reference, or a payload the browser could not clone,
- * fails here first — and delivered on a later turn, as a `BroadcastChannel` delivers.
+ * clones it (so a row shared by reference, or a payload the browser could not clone,
+ * fails here first) and delivered on a later turn, as a `BroadcastChannel` delivers.
  * The delivery is a microtask, which a test on fake timers still gets without advancing
  * them.
  */

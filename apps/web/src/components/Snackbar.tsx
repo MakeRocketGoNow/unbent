@@ -15,12 +15,12 @@ export interface SnackbarLink {
 }
 
 export interface SnackbarProps {
-  /** The line shown. Kept short — a snackbar is glanced at, not read. */
+  /** The line shown. Kept short: a snackbar is glanced at, not read. */
   message: string;
   /**
    * `info` is a result to acknowledge (green tint); `error` is a failure to notice (red
-   * tint). An error stays until dismissed — see `Workspace`, which passes no duration
-   * for one — and so does the outcome of a run too long to watch (`ExportSnackbar`).
+   * tint). An error stays until dismissed (see `Workspace`, which passes no duration
+   * for one) and so does the outcome of a run too long to watch (`ExportSnackbar`).
    */
   tone: 'info' | 'error';
   /** One optional action, e.g. Undo. Its click dismisses the snackbar too. */
@@ -28,7 +28,7 @@ export interface SnackbarProps {
   /**
    * Or a link, when what there is to do about it is go and look. A link and not an
    * action, because it navigates: it can be opened in a new tab and should be. It does
-   * not dismiss — a snackbar that is about a page hides itself on that page.
+   * not dismiss: a snackbar that is about a page hides itself on that page.
    */
   link?: SnackbarLink;
   /**
@@ -41,11 +41,11 @@ export interface SnackbarProps {
 }
 
 /**
- * A result that speaks for a moment and leaves — the Android snackbar, for the one-shot
+ * A result that speaks for a moment and leaves: the Android snackbar, for the one-shot
  * outcome of a press (today, Auto-fill's).
  *
  * Fixed to the bottom of the screen rather than beside the title, because the header is
- * for what the note *is* — its name, the way back — not for what just happened to it; a
+ * for what the note *is* (its name, the way back), not for what just happened to it; a
  * status that lands and fades there competes with the autosave state for one small slot
  * and, on a phone, for the room the title needs. The bottom is where a phone user's
  * attention already rests and where this platform puts transient results.
@@ -55,7 +55,7 @@ export interface SnackbarProps {
  * no timer: a failure the user must read is the one thing that must not vanish on its own.
  *
  * `role="status"` with `aria-live="polite"` so a screen reader hears the outcome without
- * being yanked from what it was on — the same register the reader gets the "Saved" in.
+ * being yanked from what it was on, the same register the reader gets the "Saved" in.
  */
 export function Snackbar({ message, tone, action, link, duration, onDismiss }: SnackbarProps) {
   // The latest onDismiss without resetting the timer when the parent re-renders: the timer

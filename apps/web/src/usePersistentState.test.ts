@@ -42,7 +42,7 @@ describe('usePersistentState', () => {
 
   /**
    * A bare `false` is what the hand-rolled `richEditor` toggle wrote before this hook
-   * existed. That key is gone — the three-view switcher replaced it — but the encoding is
+   * existed. That key is gone (the three-view switcher replaced it), but the encoding is
    * still what the hook writes for a boolean, so this pins that a stored bare literal
    * reads back rather than falling through to the default.
    */
@@ -56,7 +56,7 @@ describe('usePersistentState', () => {
    * The note view persists only the two views you write in.
    *
    * `preview` is somewhere you go to read what you just wrote, never the state a note
-   * should open in — a stored one meant every note opened onto a pane you cannot type
+   * should open in: a stored one meant every note opened onto a pane you cannot type
    * into. The parser is what enforces that, so it is pinned here: a stored `preview`
    * falls back to the editing default rather than being restored.
    */

@@ -14,13 +14,13 @@
  * the Roof", and a filing label reads better with the long words standing up.
  *
  * What it must not do is flatten a word someone cased on purpose. A word with a capital
- * past its first letter — "IRS", "iPhone", "McDonald's", "eBay" — is left as it is, and so
+ * past its first letter ("IRS", "iPhone", "McDonald's", "eBay") is left as it is, and so
  * is anything with a digit ("W-2", "Q3", "2026") or that reads as an address or a URL.
  *
  * The one place it has to guess is a title in capitals throughout, which is how a letterhead
  * or a receipt's header is printed and so how Jev's pick often arrives. There every word
  * is taken to be a shouted word rather than an acronym, because the alternative leaves
- * "ACME HARDWARE" as the title — except a word with no vowel ("LLC", "PDF", "TV"), which
+ * "ACME HARDWARE" as the title, except a word with no vowel ("LLC", "PDF", "TV"), which
  * cannot be a spoken word. "IRS" in a title that is otherwise capitals comes out "Irs";
  * that is the trade, and a single capital word alone is left alone for the same reason.
  */

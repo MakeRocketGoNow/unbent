@@ -2,8 +2,8 @@ import { findDates, findNumbers, type FoundNumber } from '@unbent/shared';
 
 /**
  * A text layer's one-line summary, for MCP's `get_note` and `list_notes` (MAK-177): what
- * the document opens with, then the facts someone filing it wants — the total, the dates,
- * an order or invoice number, the other amounts — found anywhere in the text.
+ * the document opens with, then the facts someone filing it wants (the total, the dates,
+ * an order or invoice number, the other amounts) found anywhere in the text.
  *
  * It used to be the first 280 characters of the text alone. On a receipt that is the
  * shop's address and the member number; the total is at the bottom, and about a third of
@@ -42,7 +42,7 @@ export const TEXT_SUMMARY_SOURCE_CHARS = 8_000;
 
 /**
  * The opening's share of the line beside the facts: enough for a letterhead and a
- * heading. Alone — a letter, a policy, anything with no total, date or amount — it has the
+ * heading. Alone (a letter, a policy, anything with no total, date or amount) it has the
  * room every text layer's summary had before the facts were added, so such a document's
  * line is no shorter than it was.
  */
@@ -60,7 +60,7 @@ const AMOUNTS_NAMED = 3;
 /**
  * A line that labels a total. "Subtotal" never matches `\btotal`, and `NOT_TOTAL` turns
  * away the totals that are not the amount paid: "Sub total", "Total tax", "Total savings",
- * "Total items 5", and a statement's period summary — "Total fees charged this period",
+ * "Total items 5", and a statement's period summary: "Total fees charged this period",
  * "Total interest charged", "Minimum amount due", "Past due".
  *
  * `PAID` is the labels that say outright the figure is what was owed or paid, and one of
@@ -69,8 +69,8 @@ const AMOUNTS_NAMED = 3;
  * a fee line's $0.00.
  *
  * "Amount paid" is neither: on a ticket confirmation it is the only total there is, but on
- * a cash receipt it is the note handed over — "Total $40.00, Amount paid $50.00, Change
- * $10.00" — so it is taken only when no other total is labelled. "Balance due" is what
+ * a cash receipt it is the note handed over ("Total $40.00, Amount paid $50.00, Change
+ * $10.00"), so it is taken only when no other total is labelled. "Balance due" is what
  * is left of the total, so a bare total beats it: a part-paid invoice reads "Total
  * $500.00, Amount paid $200.00, Balance due $300.00", and the invoice is for $500.00. A
  * statement's "New balance" is its figure and stays in `PAID`. And a zero loses to every
@@ -83,7 +83,7 @@ const BALANCE = /\bbalance\s+due\b/i;
 const TENDERED = /\bamount\s+paid\b/i;
 /**
  * What a total line can be a total *of* without being the amount paid. Turned away only
- * when the word qualifies "total" — "Total tax", "Tax total", "Total number of items" —
+ * when the word qualifies "total" ("Total tax", "Tax total", "Total number of items")
  * and not anywhere on the line, which refused "Total (incl. tax) $4.95" and "Total with
  * tip $48.00", the very lines a restaurant receipt ends on. "Total tax included" is the
  * one reading of "total tax" that is the amount paid.
@@ -102,8 +102,8 @@ const NOT_TOTAL = new RegExp(
 );
 
 /**
- * An order or invoice number: after a marker that says it is one — `#`, "no.", "number",
- * "id", or a colon — or, with none, a figure straight after the word ("Invoice 2026-0117",
+ * An order or invoice number: after a marker that says it is one (`#`, "no.", "number",
+ * "id", or a colon) or, with none, a figure straight after the word ("Invoice 2026-0117",
  * "Order 55821"). Without a marker the value must start with a digit and run to four
  * characters, so "Order total" and "Invoice date" are not numbers and "Order 12 items" is
  * not an order; with one it must still hold a digit. Order and invoice only: a member,
@@ -121,8 +121,8 @@ function clipWords(s: string, max: number): string {
 
 /**
  * What the document opens with, as one line: Markdown's marks and links undone (the text
- * layer is Workers AI's Markdown, or pdf.js's plain text), addresses dropped — a URL
- * header is what a printed web page opens with, and it names nothing — and lines with no
+ * layer is Workers AI's Markdown, or pdf.js's plain text), addresses dropped (a URL
+ * header is what a printed web page opens with, and it names nothing), and lines with no
  * word in them skipped, which is a scan's run of rules and stray digits.
  */
 function openingOf(text: string, max: number): string {
@@ -156,8 +156,8 @@ const lastAmount = (line: string): FoundNumber | undefined =>
  * The amount a total line labels. The last such line in the text wins, because a receipt
  * prints its subtotal, its tax and then what was paid: the last `PAID` line when there is
  * one, then the last bare total, then "Balance due", then "Amount paid", then a zero (see
- * `PAID` for why). A label with its figure on the line below — how some conversions lay
- * out a two-column table — takes that figure when the line holds nothing else.
+ * `PAID` for why). A label with its figure on the line below (how some conversions lay
+ * out a two-column table) takes that figure when the line holds nothing else.
  */
 function totalIn(text: string): FoundNumber | undefined {
   const lines = text.split('\n');

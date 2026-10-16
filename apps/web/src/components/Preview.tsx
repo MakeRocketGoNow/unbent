@@ -33,7 +33,7 @@ interface Segment {
  * they survive as ordinary children.
  *
  * The anchors this matches are produced by the shared pipeline after sanitization, so their
- * attributes are already trusted — note content cannot forge one.
+ * attributes are already trusted: note content cannot forge one.
  */
 function splitOnPdfLinks(html: string): Segment[] {
   const anchor = new RegExp(`<a[^>]*class="[^"]*${PDF_EMBED_CLASS}[^"]*"[^>]*>(.*?)</a>`, 'gis');
@@ -65,7 +65,7 @@ function splitOnPdfLinks(html: string): Segment[] {
  * Delegated from the pane rather than bound per image: the images are in HTML the pane
  * renders as a string, so there is no element to hand a listener to. The pipeline wrapped
  * each in a link to itself (`rehypeLinkImages`); an ordinary click on that link becomes
- * the viewer, and a modified one — middle, ⌘, ctrl, shift — is left to the browser, which
+ * the viewer, and a modified one (middle, ⌘, ctrl, shift) is left to the browser, which
  * is what those modifiers mean on any link.
  */
 function onPreviewClick(event: MouseEvent<HTMLDivElement>, openPath: PreviewProps['onOpenPath']) {
@@ -77,8 +77,8 @@ function onPreviewClick(event: MouseEvent<HTMLDivElement>, openPath: PreviewProp
    * than loading the site again: the same rule as the rich editor's `SITE_PATH`, read off
    * the attribute as written rather than `href`, which the browser has already made
    * absolute. A modified click is left to the browser above, so a new tab still works.
-   * A path the router refuses — a stored file's `/api/…` address, which is also what a
-   * picture's zoom link points at — falls through to the handling below.
+   * A path the router refuses (a stored file's `/api/…` address, which is also what a
+   * picture's zoom link points at) falls through to the handling below.
    */
   const sitePath = (event.target as Element).closest<HTMLAnchorElement>('a[href^="/"]:not([href^="//"])');
   if (sitePath && openPath && event.currentTarget.contains(sitePath) && openPath(sitePath.getAttribute('href')!)) {
@@ -100,7 +100,7 @@ function onPreviewClick(event: MouseEvent<HTMLDivElement>, openPath: PreviewProp
 
 /**
  * Rendered markdown. The HTML is produced by the shared pipeline, which runs
- * rehype-sanitize — dangerouslySetInnerHTML is safe here only because of that, so the two
+ * rehype-sanitize: dangerouslySetInnerHTML is safe here only because of that, so the two
  * must never be separated.
  *
  * PDF attachment links become inline viewers. They are React children rather than markup in
@@ -120,14 +120,14 @@ export function Preview({ markdown, noteId, onOpenPath }: PreviewProps) {
    * A picture in the pane that failed to load with no connection says so in a line, where
    * a broken-image icon would be, and is asked for again when the connection returns
    * (`offline-file.ts`). On the capture phase, because `error` does not bubble and the
-   * images are in HTML the pane renders as a string — the same reason the click is
+   * images are in HTML the pane renders as a string, the same reason the click is
    * delegated. A picture that failed for any other reason is left as the browser draws it.
    *
    * Each stand-in is waiting on the connection, holding its picture, and the wait has to
    * end when the picture goes or it outlives the pane (review of #236). When the picture
    * goes, not whenever the markdown changes: React leaves a segment's HTML alone when its
    * string is the same, so typing in another paragraph offline keeps the picture and its
-   * stand-in on screen — and stopping its wait then left it saying "Not available
+   * stand-in on screen, and stopping its wait then left it saying "Not available
    * offline" after the connection was back. So each wait is kept with its picture, and
    * stopped once that picture has left the document, or the pane has.
    */

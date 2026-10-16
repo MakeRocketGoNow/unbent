@@ -20,7 +20,7 @@ import { isWhole } from './store/feed.js';
  * Query definitions, colocated with their keys.
  *
  * Keys are defined once here rather than written at each call site, because an
- * invalidation only works if it names exactly the same key the query was stored under —
+ * invalidation only works if it names exactly the same key the query was stored under:
  * a mismatch fails silently, leaving stale data on screen with nothing to debug.
  *
  * Every key that varies by filter takes the filter as a structured object. React Query
@@ -34,12 +34,12 @@ import { isWhole } from './store/feed.js';
  * read and a warm open draws the list with no request. The change feed keeps the copy
  * current, and `installLibraryQueries` below re-runs these queries when it moves. What
  * still goes to the server is what the copy cannot answer: the instance's config, every
- * write (`store/actions.ts`) — and search while there is a
+ * write (`store/actions.ts`), and search while there is a
  * connection, since the server holds every file's text and a device only some.
  */
 
 /**
- * The open library, once its collections have restored what they persisted — or null
+ * The open library, once its collections have restored what they persisted, or null
  * when this device has none: a browser without the origin-private file system, or one
  * refusing it in a private window, or a test. Every query below then asks the server
  * for what it would have derived, as the app did before the copy existed; nothing is
@@ -112,8 +112,8 @@ const PAGE = 50;
  * coalesced by the library, and the query functions read in-memory rows, so a change
  * is on screen on the next frame. Installed once, beside the client.
  *
- * And whenever a write was made as a request instead — on a device with no library, or
- * in a tab that does not hold the outbox — since there the same queries ask the server,
+ * And whenever a write was made as a request instead (on a device with no library, or
+ * in a tab that does not hold the outbox), since there the same queries ask the server,
  * and nothing else would tell them a note was trashed or a title changed.
  */
 export function installLibraryQueries(queryClient: QueryClient): () => void {
@@ -125,8 +125,8 @@ export function installLibraryQueries(queryClient: QueryClient): () => void {
   /*
    * A reset is more than a change. The rows it brings can be older than a cached
    * answer, and an answer nobody is looking at is not refetched: it is handed, as it
-   * stands, to the next view that mounts — a route loader's `ensureQueryData` serves
-   * whatever is cached — and the note workspace seeds from it, then refuses the true,
+   * stands, to the next view that mounts (a route loader's `ensureQueryData` serves
+   * whatever is cached), and the note workspace seeds from it, then refuses the true,
    * older copy the refetch brings as a stale row (MAK-196). Answers with a view on them
    * are refetched by the change notifications the walk makes; the rest are dropped, so
    * the next mount reads the library afresh. Cheap: every one is derived from rows on
@@ -138,8 +138,8 @@ export function installLibraryQueries(queryClient: QueryClient): () => void {
   /*
    * A search answered on the device was answered from the index as it stood, and says
    * so: "still indexing", or without the text of some files. When the index gains
-   * something, those answers — and only those; the server's are not the index's to
-   * correct — are asked for again, so the line under the results stops being true of
+   * something, those answers (and only those; the server's are not the index's to
+   * correct) are asked for again, so the line under the results stops being true of
    * a moment ago. Search is not a library root: a change to a note does not re-rank a
    * search, and the index is what a local answer reads, not the collections.
    */
@@ -161,14 +161,14 @@ export interface NoteFilter {
   notebook?: string;
   /**
    * Tags, ANDed. Order is not meaningful to the server but it is to the key hash, so
-   * whatever builds this must produce a stable order for the same selection — otherwise
+   * whatever builds this must produce a stable order for the same selection: otherwise
    * two spellings of one filter become two cache entries and the list refetches for a
    * change the user did not make. The URL is that order: it is where the filter lives.
    */
   tag?: string[];
   /**
    * Custom-field filters, ANDed, as the `<fieldId>:<op>[:<value>]` strings the URL and
-   * the API both carry — kept as strings rather than parsed here for the same reason the
+   * the API both carry: kept as strings rather than parsed here for the same reason the
    * tags keep the URL's order: the key hash wants one spelling per filter, and the URL is
    * that spelling. `parseFieldFilter` reads one when a label is needed.
    */
@@ -187,7 +187,7 @@ export interface NoteFilter {
 export interface NoteOrdering {
   sort?: NoteSort;
   order?: 'asc' | 'desc';
-  /** A custom field's id, which outranks `sort` — see the API's `listNotesQuerySchema`. */
+  /** A custom field's id, which outranks `sort` (see the API's `listNotesQuerySchema`). */
   sortField?: string;
 }
 
@@ -211,7 +211,7 @@ export const keys = {
   /**
    * The same definitions with each field's value count. Its own key under the one above,
    * so invalidating a notebook's fields reaches both, but a cached count-free entry can
-   * never be served to the page that shows counts — its delete confirmation would then
+   * never be served to the page that shows counts: its delete confirmation would then
    * name no notes.
    */
   notebookFieldCounts: (notebookId: string) => ['notebook-fields', notebookId, 'counts'] as const,
@@ -307,7 +307,7 @@ export const trashQuery = () =>
 /**
  * How many notes are in the trash.
  *
- * Fetched even when not viewing the trash so the toggle can show a count — the trash is
+ * Fetched even when not viewing the trash so the toggle can show a count: the trash is
  * then discoverable rather than something the user has to guess at. Only the total is
  * used, so this asks for a single row.
  */
@@ -335,8 +335,8 @@ export const noteCountQuery = () =>
 
 /**
  * How many live notes the account holds, but only once that is known: null while the
- * library on this device is still arriving — opening, taking its first copy, or walking
- * again after a reset — when the rows it holds are not yet the account's.
+ * library on this device is still arriving (opening, taking its first copy, or walking
+ * again after a reset) when the rows it holds are not yet the account's.
  *
  * What the empty state reads (`useLibraryTotal`). `noteCountQuery` answers a count for a
  * page that only wants a number; this one answers whether the number is true, since "No
@@ -348,12 +348,12 @@ export const noteCountQuery = () =>
  * is the feed's state as the component last heard it: when it turns true the key changes
  * and the count is taken afresh, rather than a count from before the last page was
  * applied being read for one render as the answer. `gcTime: 0` so an entry nobody is
- * watching — the one from before a reset — is not there to be read when the key comes
+ * watching (the one from before a reset) is not there to be read when the key comes
  * back to it.
  *
  * A device with no library asks the server, whose count is always whole.
  *
- * `enabled` is the caller saying the answer matters right now — see `useLibraryTotal`.
+ * `enabled` is the caller saying the answer matters right now (see `useLibraryTotal`).
  * It is in the key as well as the options, so a count left over from the last time the
  * answer mattered is never read when it starts to matter again: switched off, the query
  * watches an entry of its own that never runs, the enabled entry has no watcher and
@@ -383,7 +383,7 @@ export const libraryTotalQuery = (whole: boolean | null, enabled = true) =>
  */
 /**
  * A read of a note the local copy does not hold. A library that has never taken its
- * snapshot holds nothing yet, and a note not in it is not missing — the copy is. With a
+ * snapshot holds nothing yet, and a note not in it is not missing: the copy is. With a
  * connection the server answers for it, as it did before the copy existed: a link
  * followed during the first copy opens, and on a phone that copy can take minutes.
  * Without one, say so (the workspace's offline line) rather than that the note does not
@@ -413,7 +413,7 @@ export const noteQuery = (id: string) =>
   });
 
 /**
- * Files stored on a note. Independent of whether the markdown still links them —
+ * Files stored on a note. Independent of whether the markdown still links them:
  * that is what the attachments panel exists to surface.
  */
 export const attachmentsQuery = (noteId: string) =>
@@ -423,7 +423,7 @@ export const attachmentsQuery = (noteId: string) =>
       const lib = await library();
       if (!lib) return api.listAttachments(noteId);
       // A note opened from the server during the first copy has files too; a 404 here
-      // hid every one of them — the PDF the note is — until the walk reached it.
+      // hid every one of them (the PDF the note is) until the walk reached it.
       if (!lib.notes.has(noteId)) return notHeld(lib, () => api.listAttachments(noteId));
       return (view(lib).lookups.filesByNote.get(noteId) ?? []).map(toAttachmentInfo);
     },
@@ -447,8 +447,8 @@ export const configQuery = () =>
 
 /**
  * The account's plan: trial, paid or lapsed, and what it holds against its quota
- * (MAK-108). A minute's staleness is right for it — a plan changes a few times a year,
- * and the moments it does (a checkout, a portal visit) invalidate it by hand — and it is
+ * (MAK-108). A minute's staleness is right for it: a plan changes a few times a year,
+ * and the moments it does (a checkout, a portal visit) invalidate it by hand. And it is
  * read again on focus, which the app turns off by default: a tab left open while the
  * plan changed on another device, or in Paddle's portal, should notice on the way back.
  * Only where the instance sells one: the caller passes `config.billing` as `enabled`,
@@ -475,7 +475,7 @@ export const autofillUsageQuery = () =>
 
 /**
  * A note's history, for the History sheet. One of the reads that goes to the server
- * rather than the local copy: the copies are kept there and nowhere else. Never fresh —
+ * rather than the local copy: the copies are kept there and nowhere else. Never fresh:
  * the sheet is opened to find what a write just replaced, and that write may have been
  * seconds ago, on another device or by an assistant.
  */
@@ -499,7 +499,7 @@ export const revisionQuery = (noteId: string, revisionId: number) =>
  * Which user each cache currently holds rows for.
  *
  * Kept beside the client rather than in a variable of this module's own, so that a second
- * client — every test builds one — starts out owned by nobody instead of inheriting
+ * client (every test builds one) starts out owned by nobody instead of inheriting
  * whichever answer this module last happened to record.
  */
 const cacheOwner = new WeakMap<QueryClient, string>();
@@ -507,7 +507,7 @@ const cacheOwner = new WeakMap<QueryClient, string>();
 /**
  * Hand the cache to whoever is signed in now, emptying it first if that is somebody new.
  *
- * Signing out leaves every row this cache holds — notes, tags, notebooks, counts — sitting
+ * Signing out leaves every row this cache holds (notes, tags, notebooks, counts) sitting
  * in memory. Nothing renders them, because the sign-in screen renders none of it. The next
  * person to sign in is where it becomes a bug: loaders resolve through `ensureQueryData`,
  * an entry younger than `staleTime` is served without asking the server, and so the first
@@ -519,7 +519,7 @@ const cacheOwner = new WeakMap<QueryClient, string>();
  * refetch with no cookie, 401ing into the screen the `/login` route was added to keep
  * quiet; after the navigation, the router has committed but React may not have unmounted
  * those observers yet, which is the same race with better odds. And sign-out is not the
- * only way one user follows another in a tab nobody reloaded — a session can expire, or be
+ * only way one user follows another in a tab nobody reloaded: a session can expire, or be
  * ended from another tab, with nothing pressed here at all.
  *
  * An unchanged user id keeps its cache. Being served your own rows is not the leak, and
@@ -527,7 +527,7 @@ const cacheOwner = new WeakMap<QueryClient, string>();
  *
  * `keys.config()` is spared. It describes the instance rather than the user, and it is
  * `staleTime: Infinity` precisely so that the sign-in screen does not flash its provider
- * buttons in — which is the screen mounted and observing it at the moment this runs.
+ * buttons in, which is the screen mounted and observing it at the moment this runs.
  */
 export function claimCacheFor(queryClient: QueryClient, userId: string | undefined): void {
   // The two ungated shells reach here without a session: `/login` before anyone has signed
@@ -551,7 +551,7 @@ export const notebooksQuery = () =>
 
 /**
  * How many files a notebook holds and their size: what keeping it on this device costs.
- * Only from the library — a device without one cannot keep files, and never asks.
+ * Only from the library: a device without one cannot keep files, and never asks.
  */
 export const notebookFilesQuery = (notebookId: string) =>
   queryOptions({
@@ -605,8 +605,8 @@ export const notebookFieldCountsQuery = (notebookId: string) =>
 /**
  * Refetches everything a note's arrival or departure changes.
  *
- * A note moving between the live list and the trash — created, trashed, restored, or
- * destroyed — silently changes the sidebar: the notebook it was filed in loses a note
+ * A note moving between the live list and the trash (created, trashed, restored, or
+ * destroyed) silently changes the sidebar: the notebook it was filed in loses a note
  * from its count, its tags lose one from theirs, and the "Inbox" option appears or
  * disappears with the last unfiled note. None of that is derivable from the note list
  * alone, so each of these was previously left stale until something else happened to
@@ -621,11 +621,11 @@ export function invalidateNoteMembership(queryClient: QueryClient) {
 }
 
 /**
- * Notes matching a search — any search, one letter included.
+ * Notes matching a search: any search, one letter included.
  *
  * One letter used to send nothing, with "Keep typing to search notes." in place of
  * results: a one-letter prefix was the costliest request on D1, which billed every row it
- * read. In the per-account store it costs what any page of results does — the rows-read
+ * read. In the per-account store it costs what any page of results does: the rows-read
  * meter sees the fifty matches and their joins, not the index walk behind them (measured:
  * 502 rows for "t" and for a whole word on a three-thousand-note store). Without the cost
  * there was only the confusion left: a field that took a letter and showed nothing.
@@ -635,7 +635,7 @@ export function invalidateNoteMembership(queryClient: QueryClient) {
  * when the request landed. The previous term's results stay instead, marked through
  * `isPlaceholderData` so the list can dim them.
  *
- * `rows` asks for each match's list row as well, for the table — see `searchNotes`.
+ * `rows` asks for each match's list row as well, for the table (see `searchNotes`).
  *
  * One key with and without a connection, so the answer from the device and the server's
  * are the same entry: when the connection returns, `installConnectivity` refetches what
@@ -670,14 +670,14 @@ export interface SearchAnswer {
 
 /**
  * One search box, two engines. With a connection the server answers, as it always has:
- * it holds every file's text and its index is never behind. Without one — the app knows
- * it is offline, or the request got no answer — the device's own index answers
+ * it holds every file's text and its index is never behind. Without one (the app knows
+ * it is offline, or the request got no answer), the device's own index answers
  * (`store/search-local.ts`): the same queries on the same FTS5, over the library's rows,
  * and over the text of the files this device holds text for. The answer says which it
  * was (`local`), since a search that could not see every file must not read as "no
  * matches".
  *
- * A device with no index — no library, or its file would not open — has nothing to
+ * A device with no index (no library, or its file would not open) has nothing to
  * answer with, and the search fails as offline, which the list says in its own words.
  */
 export async function search(q: string, filter: NoteFilter = {}, rows = false, signal?: AbortSignal): Promise<SearchAnswer> {
@@ -692,7 +692,7 @@ export async function search(q: string, filter: NoteFilter = {}, rows = false, s
   /*
    * The index opens behind the library (`searchReady`), so a search made in the first
    * moments of a cold start waits for it rather than being told search needs a
-   * connection — an answer nothing would ever come back to correct.
+   * connection: an answer nothing would ever come back to correct.
    */
   await lib?.searchReady;
   if (!lib?.search) throw new OfflineError();
@@ -713,8 +713,8 @@ export interface ExactCountFilter {
  *
  * Every other count in the app is the one the server keeps as notes change (0023), which
  * is one row to read instead of one per note. This is for the number a destructive action
- * names before it runs — "Permanently delete 47 notes", "Its 12 notes will become
- * unfiled" — where a stored count that had somehow drifted would be telling the user
+ * names before it runs ("Permanently delete 47 notes", "Its 12 notes will become
+ * unfiled") where a stored count that had somehow drifted would be telling the user
  * something false at the moment they decide. Only the total is used, so it asks for one
  * row of the list.
  */
@@ -734,7 +734,7 @@ export const exactCountQuery = (filter: ExactCountFilter = {}) =>
 
 /**
  * The backup's health, and whether this session is an operator's at all: the route
- * answers anyone else 404, and that answer is data here — `null` — rather than an
+ * answers anyone else 404, and that answer is data here (`null`) rather than an
  * error. Told apart on purpose: an error is "could not ask" (offline, a 5xx), and a
  * query that cannot tell the two apart either asks every non-operator again on every
  * Settings mount or, with retries off, hides the tab from an operator for the rest of
@@ -796,8 +796,8 @@ export const operatorAccountQuery = (userId: string) =>
   });
 
 /**
- * Fresh for a minute. `stats` counts every row of every table — hundreds of thousands
- * on an archive — so going list → account → list → account must not count them each
+ * Fresh for a minute. `stats` counts every row of every table (hundreds of thousands
+ * on an archive), so going list → account → list → account must not count them each
  * time. A minute costs nothing: every action invalidates this, and a confirm quotes its
  * own dry run's counts, not these.
  */

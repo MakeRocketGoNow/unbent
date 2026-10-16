@@ -13,7 +13,7 @@ import {
 /**
  * The decisions made before a byte is fetched: which URLs are even attempted, and what a
  * file will be called and typed once it arrives. Each is a pure function over headers and
- * strings, and each has a wrong answer that would be silent — a PDF stored as a generic
+ * strings, and each has a wrong answer that would be silent: a PDF stored as a generic
  * binary never gets its text indexed, and a name taken from the wrong place is a note
  * full of files called `upload.pdf`.
  */

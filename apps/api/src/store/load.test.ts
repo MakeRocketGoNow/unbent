@@ -4,8 +4,8 @@ import { classify, dumpOwner, liftLiterals, scanStatements, statementKind, state
 /**
  * The statement scanner a load runs a dump through, on the shapes a dump holds: literals
  * with semicolons and doubled quotes in them, comment lines, a `CREATE TRIGGER` whose
- * body has semicolons of its own, and a page boundary anywhere. The object's side — the
- * pages, the marker, the migration on finish — is in apps/store-tests/test/load.test.ts.
+ * body has semicolons of its own, and a page boundary anywhere. The object's side (the
+ * pages, the marker, the migration on finish) is in apps/store-tests/test/load.test.ts.
  */
 describe('scanStatements', () => {
   it('ends a statement at a semicolon outside a literal and a comment', () => {

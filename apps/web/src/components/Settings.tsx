@@ -15,8 +15,8 @@ interface SettingsProps {
   /** Called after any change, so the note list and sidebar refetch. */
   onChanged: () => void;
   /**
-   * Set when the page was opened to make a notebook — the rail's New notebook, which
-   * links here with `?new=1` — so the chooser is open on arrival. Each request is acted
+   * Set when the page was opened to make a notebook (the rail's New notebook, which
+   * links here with `?new=1`), so the chooser is open on arrival. Each request is acted
    * on once and handed back through `onCreateRequested`, which drops it from the URL, so
    * the rail's row opens the chooser again when the page is already here.
    */
@@ -29,7 +29,7 @@ interface SettingsProps {
  *
  * A panel rather than a sidebar menu: creating a notebook has no natural home in a
  * dropdown, and keeping management out of the sidebar leaves the reading surface
- * uncluttered. Leaving is the settings section's job now, so there is no Close button —
+ * uncluttered. Leaving is the settings section's job now, so there is no Close button:
  * the section header carries one way out for all its pages.
  *
  * The list is the shared `LabelEditor`, Keep's editing screen, which the Android app
@@ -40,9 +40,9 @@ interface SettingsProps {
  * That download left once and came back. It went because a row carrying Fields, Export
  * and Delete was three verbs beside a name that mostly wanted to be read, and the note
  * list's export filtered to the notebook is the same archive. It returned because that
- * route is buried — filter the list, then find the export beneath the filters — and this
+ * route is buried (filter the list, then find the export beneath the filters) and this
  * page is where a person thinking "I want a copy of this notebook" already is. It comes
- * back as a glyph rather than a word, so the row still reads as a name — and drawn as
+ * back as a glyph rather than a word, so the row still reads as a name, and drawn as
  * the pencil is, a muted icon button, not as a link. In the link's green at text size it
  * read as part of "Fields"; grey beside the pencil it reads as what it is, one of the
  * row's two actions, with Fields left alone as the row's one navigation.
@@ -134,7 +134,7 @@ export function Settings({ onChanged, createRequested = false, onCreateRequested
           const nb = byId(item);
           if (nb) setPendingDelete(nb);
         }}
-        /* The row leads to the notebook's own page — its name, purpose, fields and delete.
+        /* The row leads to the notebook's own page: its name, purpose, fields and delete.
            The list is a way in, not a place to correct a name in passing. */
         rowHref={(item) => `/settings/notebooks/${item.id}`}
         /* The note count sits right after the name, the way a field's value count sits
@@ -155,8 +155,8 @@ export function Settings({ onChanged, createRequested = false, onCreateRequested
             {keep.kept.has(item.id) && <KeptMark status={keep} offline={offline} />}
           </>
         )}
-        /* The row leads to the notebook's page now, so the old "Fields" link here — a second
-           way to the same place — is gone. What it also carried, the field count, comes back
+        /* The row leads to the notebook's page now, so the old "Fields" link here (a second
+           way to the same place) is gone. What it also carried, the field count, comes back
            as a plain glyph-and-number: how many custom fields the notebook has, which is what
            says at a glance which notebooks are collections of records. Silent at zero, the
            way the note count is, so a notebook with no fields shows nothing rather than a grey
@@ -250,14 +250,14 @@ export function Settings({ onChanged, createRequested = false, onCreateRequested
  *
  * Status, not a control. A switch on every row was the obvious alternative and was
  * turned down: keeping is asked on the notebook's own page because the question names a
- * size — "Keep 1.2 GB on this device?" — against the room the device has, and a switch
+ * size ("Keep 1.2 GB on this device?") against the room the device has, and a switch
  * that skipped that would fill a phone on a tap, while one that kept it would be a button
  * drawn as a switch. A switch also says "on now", and a notebook is kept only once its
  * files are here; in a settings list it reads as an account setting too, when keeping is
  * this device's alone. And the row already repeats three things, so a fourth control on
  * every row would outweigh the names it sits beside.
  *
- * Drawn only on the rows that are kept — a few among many — so it stands out where it is
+ * Drawn only on the rows that are kept (a few among many), so it stands out where it is
  * and costs the others nothing. Beside the name, after the note count, where Google Drive
  * puts its own "available offline" mark beside a file's name. It was first drawn among
  * the facts at the right, ahead of the field count, and there it landed in a different

@@ -24,7 +24,7 @@ export const Route = createFileRoute('/reset-password')({
  *
  * Deliberately outside the signed-in layout: someone resetting a password is by definition
  * unable to sign in, so this page has to render without a session. That was the intent
- * before the sign-in screen had a route of its own, but not the behaviour — the root
+ * before the sign-in screen had a route of its own, but not the behaviour: the root
  * layout drew a login screen over every path without a session, this one included, so the
  * link in the mail was dead for exactly the people it was sent to. `shellFor` in
  * `auth-gate.ts` is now what exempts it, alongside `/login` itself.

@@ -4,8 +4,8 @@
  *
  * Both are unique without case in the store (`notebooks` from the start, `tags` since
  * MAK-127), so "Receipts" and "receipts" name one tag, and any code that decides by name
- * whether two are the same — the web app's local filters, a picker that adopts an
- * existing spelling, the store's own de-duplication of a tag list — has to fold exactly
+ * whether two are the same (the web app's local filters, a picker that adopts an
+ * existing spelling, the store's own de-duplication of a tag list) has to fold exactly
  * as the index does. A fold that also lowered "É" or compared with `localeCompare` would
  * call two names one that the store keeps as two: "Café" and "CAFÉ" are two tags, as they
  * are two notebooks. Folding Unicode case as well was considered for MAK-127 and not

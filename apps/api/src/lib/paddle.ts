@@ -10,7 +10,7 @@ import type { BillingConfig } from '@unbent/shared';
  * calls, and the Worker needs six of them.
  *
  * Billing is one thing, on or off: every setting below, or none of them. An instance that
- * sets none — every fresh checkout, every fork — has no plan to sell, so nothing here
+ * sets none (every fresh checkout, every fork) has no plan to sell, so nothing here
  * runs, every account reads as `active` with no end, and no Plan page is drawn. A
  * half-set configuration is treated as none, the way a half-set OAuth pair is, rather
  * than as a checkout that fails when pressed.
@@ -33,7 +33,7 @@ export interface PaddleEnv {
   PADDLE_WEBHOOK_SECRET?: string;
   /**
    * The client-side token Paddle.js initialises with on the Plan page, `test_…` for the
-   * sandbox and `live_…` for live. Public by design — it ships in the page — and in
+   * sandbox and `live_…` for live. Public by design (it ships in the page) and in
    * `/api/config` for that reason; it can open a checkout and nothing else.
    */
   PADDLE_CLIENT_TOKEN?: string;
@@ -147,8 +147,8 @@ export interface PaddleCustomer {
 /**
  * The Paddle customer for an account, found or made. Paddle keeps customers unique by
  * email and refuses a second with the same one (`customer_already_exists`), so a
- * customer made for this address some other way — by hand in the dashboard, by a
- * checkout before this code stored the id — is found by listing the email rather than
+ * customer made for this address some other way (by hand in the dashboard, by a
+ * checkout before this code stored the id) is found by listing the email rather than
  * failing the checkout. `custom_data.user_id` is this account's id, so Paddle's side
  * names ours; the join the webhook uses is the customer id on the plan row.
  */
@@ -192,8 +192,8 @@ export async function getTransaction(paddle: PaddleConfig, transactionId: string
 }
 
 /**
- * An adjustment: money given back on a transaction after it was paid — a refund, a
- * credit, a chargeback. The webhook reads a refund of the plan as the end of the
+ * An adjustment: money given back on a transaction after it was paid (a refund, a
+ * credit, a chargeback). The webhook reads a refund of the plan as the end of the
  * subscription (`refundEffectOf` in billing-events.ts), since Paddle itself leaves the
  * subscription active and renewing. `items` name the transaction's lines by `txnitm_`
  * id, not by price, so telling the plan's refund from the add-on's takes a read of the
@@ -215,7 +215,7 @@ export interface PaddleAdjustment {
 /**
  * A transaction for the checkout to open: the plan, and `storage` add-ons with it. Made
  * here rather than by Paddle.js from a price list so that the customer is ours before
- * the checkout opens — the plan row holds the id by then — and so that the page never
+ * the checkout opens (the plan row holds the id by then) and so that the page never
  * learns a price id. Paddle copies `custom_data` from the transaction to the
  * subscription it makes, which is how a subscription event names the account too.
  */
@@ -256,7 +256,7 @@ export async function getSubscription(paddle: PaddleConfig, subscriptionId: stri
  * The customer's newest subscription, or null for a customer who has none. For a row
  * that has a customer but no subscription yet: the first checkout's subscription reaches
  * the row by webhook, and a page re-reading its plan the moment the overlay closes
- * would otherwise find nothing to read until it lands — or never, for a webhook lost for
+ * would otherwise find nothing to read until it lands, or never, for a webhook lost for
  * longer than Paddle retries. Newest by creation, whatever its status, so a lapsed one
  * is reported as lapsed rather than hidden.
  */
@@ -272,7 +272,7 @@ export async function newestSubscription(paddle: PaddleConfig, customerId: strin
 
 /**
  * The subscription's storage set to `storage` add-ons, charged for the rest of the
- * period now. The items are the whole list — Paddle reads an item left out as removed —
+ * period now. The items are the whole list (Paddle reads an item left out as removed),
  * so the plan goes with them, and the quantity is the new total rather than a delta: two
  * presses of "25 GB more" land as two quantities, not as one applied twice. Prorated and
  * collected at once, so the quota is the webhook's to raise the moment the payment is
@@ -366,13 +366,13 @@ export const WEBHOOK_TOLERANCE_SECONDS = 5 * 60;
 /**
  * Whether a webhook came from Paddle: `Paddle-Signature` is `ts=<unix seconds>;h1=<hex>`,
  * and `h1` is HMAC-SHA256 over `<ts>:<raw body>` with the destination's secret. The body
- * must be the bytes as received — a parsed and re-serialised one differs in whitespace
+ * must be the bytes as received: a parsed and re-serialised one differs in whitespace
  * and fails. More than one `h1` appears while a secret is being rotated, and any that
  * matches will do.
  *
  * The timestamp bounds a replay: Paddle's own SDKs allow five seconds, which is tight
  * for a Worker that might be cold and a clock that might be loose, so this allows five
- * minutes — a captured delivery can only be replayed inside that, and replaying it does
+ * minutes: a captured delivery can only be replayed inside that, and replaying it does
  * nothing anyway, since every event's id is recorded once (`billing_event`).
  *
  * Compared byte for byte in constant time, as every HMAC check should be, with

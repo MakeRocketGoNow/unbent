@@ -1,8 +1,8 @@
 /**
  * What the seed promises, held without a server: every note can be found again, every
  * value fits the field it is written to, every field type is there, and every file is one
- * a reader can open. A real load is still the proof that the API accepts it — `pnpm
- * seed:demo` against a dev server — but these catch the edits that would make it skip
+ * a reader can open. A real load is still the proof that the API accepts it (`pnpm
+ * seed:demo` against a dev server) but these catch the edits that would make it skip
  * values quietly, which the server reports and nobody reads.
  */
 import { describe, expect, it } from 'vitest';

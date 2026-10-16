@@ -2,8 +2,8 @@
 /**
  * Generates the scanned-attachment fixtures under test/fixtures.
  *
- * The originals were real scans from an Evernote export — a pharmacy receipt and two
- * clinic statements — and their OCR layers carried a full name, a home address, a
+ * The originals were real scans from an Evernote export (a pharmacy receipt and two
+ * clinic statements) and their OCR layers carried a full name, a home address, a
  * prescription and a pharmacist's name. They have been withdrawn from the repository and
  * its history. These stand in for them.
  *
@@ -36,7 +36,7 @@ function lcg(seed) {
 /**
  * A page-sized grayscale image that looks like scanned paper: an off-white ground with
  * grain, and dark bands where lines of text would be. Nothing in it is legible, which is
- * the point — the text a reader gets is the invisible layer, exactly as with a real scan.
+ * the point: the text a reader gets is the invisible layer, exactly as with a real scan.
  */
 function paperImage(width, height, seed, { lines, bandHeight, noise }) {
   const rnd = lcg(seed);

@@ -2,8 +2,8 @@
 # Give PostHog the source maps for this build, so a stack trace names real code.
 #
 # Without this an error report reads `index-CDkkheec.js:1:48213`, which locates nothing:
-# the bundle is minified and its names are gone. The maps are already built —
-# `build.sourcemap` is on in vite.config.ts — so this only hands them over.
+# the bundle is minified and its names are gone. The maps are already built
+# (`build.sourcemap` is on in vite.config.ts), so this only hands them over.
 #
 # `sourcemap process` is inject-then-upload in one pass. Inject is the half that must happen
 # before the deploy: it rewrites the built JS with a chunk id comment, and PostHog matches a
@@ -13,7 +13,7 @@
 #
 # A no-op without a key, which is the ordinary case: a self-hoster running `pnpm release` has
 # no PostHog project, and CI on a fork has no secrets. Neither should fail a deploy over an
-# optional extra. The maps stay in `dist` either way — they are already served publicly, and
+# optional extra. The maps stay in `dist` either way: they are already served publicly, and
 # withdrawing them is a separate decision from this one.
 set -euo pipefail
 
@@ -30,7 +30,7 @@ if [ -z "${POSTHOG_CLI_PROJECT_ID:-}" ]; then
 fi
 
 if [ ! -d dist/assets ]; then
-  echo "sourcemaps: dist/assets is missing — run the build first" >&2
+  echo "sourcemaps: dist/assets is missing. Run the build first" >&2
   exit 1
 fi
 

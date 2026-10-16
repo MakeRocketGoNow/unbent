@@ -63,7 +63,7 @@ export interface LoadedPdf {
 export async function loadPdf(url: string, signal?: AbortSignal): Promise<LoadedPdf> {
   const lib = await loadPdfjs();
 
-  // Marked as a view, so the service worker keeps these bytes for reading offline — the
+  // Marked as a view, so the service worker keeps these bytes for reading offline: the
   // indexer and export fetch the same address unmarked, and are not kept. See `classify`.
   // Through `request`, so a PDF that was never kept says the app is offline when it fails.
   const res = await request(url, { headers: { [VIEW_HEADER]: '1' }, ...(signal ? { signal } : {}) });
@@ -82,7 +82,7 @@ export async function loadPdf(url: string, signal?: AbortSignal): Promise<Loaded
     /**
      * The one setting that keeps a hostile PDF's code out of this origin.
      *
-     * pdf.js never runs a document's own JavaScript — `/OpenAction` scripts, form
+     * pdf.js never runs a document's own JavaScript: `/OpenAction` scripts, form
      * calculations and the rest are handled only by the viewer's scripting sandbox
      * (`pdf.scripting.mjs`), which this module does not load. Keep it that way: don't
      * pull in the viewer or pass `enableScripting` to show a form's computed fields.
@@ -97,8 +97,8 @@ export async function loadPdf(url: string, signal?: AbortSignal): Promise<Loaded
     /**
      * Where the image decoders live; `vite.config.ts` serves them there.
      *
-     * Without this every JBIG2 or CCITT fax image fails to decode — pdf.js 6 handles
-     * both in WebAssembly — and a black-and-white scan renders as a blank white page,
+     * Without this every JBIG2 or CCITT fax image fails to decode (pdf.js 6 handles
+     * both in WebAssembly), and a black-and-white scan renders as a blank white page,
      * with only its invisible OCR text layer drawn.
      */
     wasmUrl: '/pdfjs/wasm/',
@@ -121,7 +121,7 @@ export async function loadPdf(url: string, signal?: AbortSignal): Promise<Loaded
        * Draw at device resolution, display at CSS resolution.
        *
        * Without this a page is rasterized at 1x and upscaled by the display, which looks
-       * soft on any retina screen — and scanned medical documents are exactly the case
+       * soft on any retina screen, and scanned medical documents are exactly the case
        * where small text has to stay legible. Capped at 2x: beyond that the memory cost
        * grows faster than the visible gain.
        */
@@ -165,7 +165,7 @@ export async function loadPdf(url: string, signal?: AbortSignal): Promise<Loaded
  * `loadPdf` gives each caller its own copy, which is right for the preview pane: one
  * component owns one document for as long as it is on screen. The editor is the opposite
  * case. Its decorations are rebuilt on every keystroke, selection move, and scroll, and a
- * widget scrolled out of the viewport is destroyed outright — so an unshared document
+ * widget scrolled out of the viewport is destroyed outright, so an unshared document
  * would re-download and re-parse the same file on every pass over a note holding nine of
  * them.
  *

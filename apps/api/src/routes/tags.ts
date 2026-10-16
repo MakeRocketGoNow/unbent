@@ -9,7 +9,7 @@ import type { AppEnv } from '../types.js';
 /**
  * Tag management: rename and delete.
  *
- * Tags had no management surface at all — they existed only as a side effect of the
+ * Tags had no management surface at all: they existed only as a side effect of the
  * notes that carried them, and the only way to fix a misspelt tag across three hundred
  * notes was to open three hundred notes. Listing stays on the notes routes, where it has
  * always been; these two are the mutations, addressed by id like a notebook's, since an
@@ -25,7 +25,7 @@ export const tags = new Hono<AppEnv>()
 
   /**
    * Renames a tag. 409 when another tag already has the name, unless `?merge=1`, which
-   * folds this tag into that one — the client confirms first, because it cannot be undone.
+   * folds this tag into that one: the client confirms first, because it cannot be undone.
    */
   .patch(
     '/tags/:id',

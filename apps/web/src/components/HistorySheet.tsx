@@ -29,7 +29,7 @@ interface HistorySheetProps {
   /** The ⋯ menu it was opened from, which the desktop panel lines up under. */
   anchor?: RefObject<HTMLElement | null>;
   /**
-   * Resolves when what was on screen as the sheet opened has been handed to the save —
+   * Resolves when what was on screen as the sheet opened has been handed to the save:
    * the workspace's flush. The list waits for it, and then for the outbox; see `list`.
    */
   saved?: () => Promise<unknown>;
@@ -39,8 +39,8 @@ interface HistorySheetProps {
    */
   onRestore: (revision: NoteRevisionSummary) => Promise<void>;
   /**
-   * The note as it is on screen — the workspace's draft, which `saved` has handed to the
-   * save — for Changes to compare a version against. Not the stored row: what Restore
+   * The note as it is on screen (the workspace's draft, which `saved` has handed to the
+   * save) for Changes to compare a version against. Not the stored row: what Restore
    * replaces is what the person is looking at, and a row a save behind would show typing
    * they can see as something Restore takes out, or miss it. Its notebook, tags and
    * field values with it, since a version holds those too (MAK-170).
@@ -95,7 +95,7 @@ export function describeRevision(revision: Pick<NoteRevisionSummary, 'cause' | '
 }
 
 /**
- * How history is kept, as a sentence, from the numbers the store enforces — so the
+ * How history is kept, as a sentence, from the numbers the store enforces, so the
  * sheet cannot explain a version's absence with a rule the server no longer follows.
  * "Half hour" and "a year" are said the way a person would; any other value is counted.
  *
@@ -131,7 +131,7 @@ export function skippedPhrase(skipped: readonly RevisionSkip[]): string {
 
 /**
  * What a version holds besides its text, in Preview: where the note was filed, its tags
- * and its field values, as a plain list between the title and the body — the note's own
+ * and its field values, as a plain list between the title and the body: the note's own
  * head, as it stood. Nothing at all for a note that was unfiled, untagged and without
  * values, where three lines saying "none" would be noise above the text someone came
  * to read; and nothing for a version from before these were kept, which Changes
@@ -159,7 +159,7 @@ function VersionProps({ props }: { props: NoteRevisionProps }) {
  *
  * A sheet, from the note's ⋯ menu. It is about the whole note rather than a place in it,
  * it holds a list that can run to fifty rows and then a page of text, and it is looked
- * at rarely — when something has gone wrong — so it earns no room in the note's own
+ * at rarely (when something has gone wrong), so it earns no room in the note's own
  * chrome. Two pages in the one dialog, the list and then a copy, for the reason `Sheet`
  * gives for `onBack`: a second sheet over the first is two scrims.
  *
@@ -186,7 +186,7 @@ function VersionProps({ props }: { props: NoteRevisionProps }) {
  * is now, since history keeps text and fields and not files; one deleted since draws as
  * a missing file would.
  *
- * Changes, beside Preview, is the next question — what will Restore do to my note — and
+ * Changes, beside Preview, is the next question (what will Restore do to my note), and
  * is drawn by `HistoryChanges` against `current`, the note on screen (MAK-167). Restore
  * is the same button under either.
  */
@@ -255,8 +255,8 @@ export function HistorySheet({ open, onClose, noteId, anchor, saved, onRestore, 
     setClearing(null);
     /*
        And on "Loading…", not on the last opening's list. The sheet stays mounted, so its
-       query keeps what it last read whatever `gcTime` says, and a reopen drew that — the
-       list from before the restore that closed it — until the new answer landed.
+       query keeps what it last read whatever `gcTime` says, and a reopen drew that (the
+       list from before the restore that closed it) until the new answer landed.
 
        The versions read from it go too. A version's text never changes, but what it
        says Restore would skip does, with every notebook, tag or field deleted since:

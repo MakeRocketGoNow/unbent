@@ -33,8 +33,8 @@ export function needsAgreement(
 
 /**
  * What the signed-in shell draws, as far as the agreement decides it. See `agreementGate`.
- * `pending` is an open page the account may use without agreeing — export, or account
- * deletion — while the agreement is still owed.
+ * `pending` is an open page the account may use without agreeing (export, or account
+ * deletion) while the agreement is still owed.
  */
 export type AgreementGate =
   | { kind: 'open'; pending?: boolean }
@@ -74,7 +74,7 @@ export function agreementGate(opts: {
  * The line above export and account deletion while the agreement is still owed.
  *
  * Those two pages stay open without agreeing (`OPEN_WITHOUT_AGREEMENT`), so they are drawn
- * in the whole app, and every other way out of them — the rail, the other settings tabs —
+ * in the whole app, and every other way out of them (the rail, the other settings tabs)
  * leads back to the agreement. Without a word that reads as a broken app; this says the
  * dead ends are deliberate and offers the way back. In the offline banner's quiet shape,
  * because it is a state to know about, not something gone wrong.
@@ -106,8 +106,8 @@ export function AgreementPending() {
  * were shown.
  *
  * The same screen says when the documents have changed since someone agreed, with what
- * changed if the instance says (`LEGAL_CHANGE`). It always offers a way out — signing out,
- * or taking an export and deleting the account — because asking someone to agree with no
+ * changed if the instance says (`LEGAL_CHANGE`). It always offers a way out (signing out,
+ * or taking an export and deleting the account), because asking someone to agree with no
  * alternative is not asking.
  */
 export function LegalAgreement({

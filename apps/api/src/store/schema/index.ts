@@ -20,7 +20,7 @@ export interface SchemaFile {
  * is history: its name is in that object's `_migrations`, and the runner skips it by name,
  * so a change to its text would reach only objects created after the change and leave the
  * fleet with two schemas under one name. A new file goes at the end and is applied to each
- * object on its next wake, whenever that is — which is why every file must be additive
+ * object on its next wake, whenever that is, which is why every file must be additive
  * and must tolerate running against an object that has been in use under the files before
  * it.
  *

@@ -11,7 +11,7 @@ export interface EnexResource {
 /** One `<note>` from an ENEX file, after parsing but before conversion. */
 export interface EnexNote {
   title: string;
-  /** Raw ENML — the HTML dialect inside `<content>`. */
+  /** Raw ENML: the HTML dialect inside `<content>`. */
   enml: string;
   created?: Date;
   updated?: Date;

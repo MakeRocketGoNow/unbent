@@ -3,7 +3,7 @@
 #
 # Everything here is idempotent and durable, so it is safe to re-run and safe to bake into
 # an environment-build snapshot. Per-boot processes (the dev servers) live in `terminals`
-# in environment.json, not here — a server started in install would either block the build
+# in environment.json, not here: a server started in install would either block the build
 # or be lost when a new pod boots from the snapshot.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -12,7 +12,7 @@ cd "$(dirname "$0")/.."
 # wrangler version is load-bearing, and a global/looser copy silently overrides the config).
 corepack pnpm install --frozen-lockfile
 
-# Local dev needs exactly one secret — BETTER_AUTH_SECRET — and none of the OAuth pairs; a
+# Local dev needs exactly one secret, BETTER_AUTH_SECRET, and none of the OAuth pairs; a
 # social provider without credentials is simply not offered (README: Auth). Generate it once
 # and leave any existing .dev.vars untouched, so re-running install never rotates the secret
 # out from under a running Worker (which does not hot-reload .dev.vars).

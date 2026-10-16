@@ -95,7 +95,7 @@ describe('types that must keep rendering inline', () => {
 
 /**
  * Real MIME values counted across the user's own Evernote export. These must not error or
- * be lost — they are downloaded rather than rendered, which is the correct handling for a
+ * be lost: they are downloaded rather than rendered, which is the correct handling for a
  * type a browser cannot safely display.
  */
 describe('other types present in the real corpus', () => {

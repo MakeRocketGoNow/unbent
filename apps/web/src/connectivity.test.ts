@@ -11,8 +11,8 @@ import {
 import { OFFLINE_WRITE_TIMEOUT, OfflineError, request } from './notes-api.js';
 
 /**
- * Evidence decides whether the app is offline. The server out of reach — a check with no
- * answer, or the browser's `offline` with nothing answered since — is offline; the server
+ * Evidence decides whether the app is offline. The server out of reach (a check with no
+ * answer, or the browser's `offline` with nothing answered since) is offline; the server
  * answering anything, a check or a request of the page's, is online, whatever the browser's
  * flag says. A failed request, a read the worker answered from its cache, a slow save and a
  * kept file answering while offline only ask for a check: those used to decide on their
@@ -96,7 +96,7 @@ describe('connectivity', () => {
 
   /*
      Airplane mode off: the browser says online a moment before the radio carries anything.
-     The app stays offline until the server answers — no unlock-and-relock — and asks again
+     The app stays offline until the server answers (no unlock-and-relock) and asks again
      within seconds if that first check fails.
    */
   it('lets the server, not the browser’s event, say the connection is back', async () => {
@@ -168,7 +168,7 @@ describe('connectivity', () => {
   });
 
   /*
-     Back online, what was read during the outage — maybe from the worker's cache — and what
+     Back online, what was read during the outage (maybe from the worker's cache) and what
      failed then are fetched again. What was read before it came from the server and is left
      to React Query's staleness.
    */
@@ -210,7 +210,7 @@ describe('request', () => {
   /*
      A file the worker kept answers with no network, marked as the worker's. While the app
      is offline that answer says nothing about the server, and must not bring the app back
-     online on its own — it used to unlock the editor on a connection that carried nothing.
+     online on its own: it used to unlock the editor on a connection that carried nothing.
      The same for a file from the device's shelves.
    */
   it('does not come back online because a kept file answered', async () => {

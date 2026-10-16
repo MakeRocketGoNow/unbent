@@ -74,7 +74,7 @@ describe('the store sweep', () => {
     await directory(tombstoned, Date.now() - LATE_WRITES_MS - 60_000);
     await stub(tombstoned).create({ id: crypto.randomUUID(), title: 'Gone', body: 'x', tags: [] });
 
-    // Tombstoned but the user row survived — a deletion that wiped the store and then
+    // Tombstoned but the user row survived: a deletion that wiped the store and then
     // failed to remove the user. Wiped, and kept as a tombstone rather than dropped, or
     // the heal would give an empty account a live row.
     const halfDeleted = uid('half');
@@ -312,7 +312,7 @@ describe('the store sweep', () => {
   /**
    * A session open when its account was deleted keeps passing `requireAuth` on its cached
    * cookie for a while, and can make a note and upload a file to it after the deletion
-   * swept the prefix — measured against `wrangler dev`, see `deleteAccount`. The note
+   * swept the prefix (measured against `wrangler dev`, see `deleteAccount`). The note
    * comes back in the store and the file under the prefix. While the late writes can
    * still happen the row stays and only the store is wiped; once they are over the sweep
    * deletes what the prefix holds, and the row goes only when that is nothing, so a file

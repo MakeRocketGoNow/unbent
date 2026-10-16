@@ -20,7 +20,7 @@ import { describePlan } from './Plan.js';
  * with the account and the blast radius named, in the order of how much each loses.
  *
  * Each action is the route it drives and nothing more. The dry run is a press of its own
- * — Preview — and what it shows is what the confirm then names: the moment resolved to a
+ * (Preview), and what it shows is what the confirm then names: the moment resolved to a
  * bookmark and the counts the store holds now, or the dump's own first line and whether
  * its rows are one moment. The confirm repeats the request with the word the route
  * wants. Every restore and load is recorded with who asked (migration 0041), and
@@ -37,12 +37,12 @@ export function OperatorAccount({ userId }: { userId: string }) {
   const account = row.data ?? null;
   const stats = useQuery(storeStatsQuery(userId));
   const config = useQuery(configQuery());
-  // Moved each time a section below asks to change the store — in `finally`, since a
-  // request that failed may still have been applied — and each section is keyed on the
+  // Moved each time a section below asks to change the store (in `finally`, since a
+  // request that failed may still have been applied) and each section is keyed on the
   // others'. An answer a section keeps can carry an undo (when the history failed to
   // record it), a bookmark from before that section's change, so once another section
   // has changed the store since, pressing it would throw that change away too, under a
-  // confirm that names only its own — the reason the history offers its newest row's
+  // confirm that names only its own: the reason the history offers its newest row's
   // undo and no other (MAK-189, MAK-198). Remounting drops the stale answer.
   const [windBacks, setWindBacks] = useState(0);
   const [loads, setLoads] = useState(0);
@@ -199,7 +199,7 @@ const TABLE_LABELS: Record<string, string> = {
 
 /**
  * What the store itself says: its counts, the schema it is on, and whether it is in a
- * state where those are not the point — wiped, or refusing everything while a dump is
+ * state where those are not the point: wiped, or refusing everything while a dump is
  * loaded into it. Live, unlike the directory's numbers above.
  */
 function StoreFacts({
@@ -245,8 +245,8 @@ function StoreFacts({
 /**
  * A store that is being loaded, or was left so by a load that failed: refusing every
  * request until it is whole. The store's own marker carries the two ways back, so they
- * are offered here — from any page that reads the store, after a reload, by a second
- * operator — and not only in the state of the page that pressed Load. Undo is the same
+ * are offered here (from any page that reads the store, after a reload, by a second
+ * operator) and not only in the state of the page that pressed Load. Undo is the same
  * confirm the load's own outcome offers.
  */
 function LoadingStore({
@@ -405,14 +405,14 @@ function UndoLoadConfirm({
  * Wind the store back to a moment in the last thirty days.
  *
  * Preview is the first step and a press of its own, because the confirm has to name what
- * the store holds now and the route's dry run is where that comes from — and because a
+ * the store holds now and the route's dry run is where that comes from, and because a
  * moment outside the window is refused there, before anything is at stake. The confirm
  * names the account, the moment, and what is lost: everything written after it. The
  * undo is offered on the wind-back's row in the history just below, which is where it
  * is after a reload too; the answer keeps its own only when the history could not
  * record it, so the one way back is never on screen twice.
  *
- * Where the runtime keeps no history — `wrangler dev` — the route answers 501, and the
+ * Where the runtime keeps no history (`wrangler dev`) the route answers 501, and the
  * section says so in place of the control rather than offering a preview that fails.
  */
 function WindBack({ userId, email, onChanged }: { userId: string; email: string; onChanged: () => void }) {
@@ -630,7 +630,7 @@ function undoable(row: StoreRestore, now: number): boolean {
  * Only the newest row offers its undo. An undo is a restore to the bookmark taken just
  * before the row's change, so on the newest row it takes back that change and loses only
  * what was written since. On an older row the same bookmark is from before every row
- * above it, and pressing it would throw all of those away too — a wind-back to a moment,
+ * above it, and pressing it would throw all of those away too: a wind-back to a moment,
  * under a gentler name. Offering it per row was considered and rejected for that reason:
  * the form above reaches the same place, within a second, under a confirm that says what
  * is lost, so a second way there would only be the easier one to press by mistake. A
@@ -766,8 +766,8 @@ type LoadOutcome =
   | { kind: 'undone'; result: api.RestoreResult };
 
 /**
- * When a dump's first line says it was taken — `-- Unbent note store of account <id>,
- * dumped <time>` — as the viewer reads a time, or null when the line is not a dump's.
+ * When a dump's first line says it was taken (`-- Unbent note store of account <id>,
+ * dumped <time>`) as the viewer reads a time, or null when the line is not a dump's.
  */
 export function dumpedAt(header: string): string | null {
   const raw = /, dumped (\S+)/.exec(header)?.[1];
@@ -1009,7 +1009,7 @@ function LoadDump({ userId, email, onChanged }: { userId: string; email: string;
 
 /**
  * A new feed epoch: every device of the account starts over from a snapshot. Not
- * destructive — nothing is written to the store and nothing deleted — but it is minutes
+ * destructive (nothing is written to the store and nothing deleted) but it is minutes
  * of copying on every phone the account has, so it is asked, with a neutral confirm
  * rather than a red one.
  */
@@ -1063,12 +1063,12 @@ function Resync({ userId, email }: { userId: string; email: string }) {
 
 /**
  * The account's plan, and the comp (MAK-108): the one way an account is paid for without
- * Paddle — the owner, a gifted friend, someone whose trial ran out mid-import. An end
+ * Paddle: the owner, a gifted friend, someone whose trial ran out mid-import. An end
  * date or none, and the storage to give it; a comp of an account that has a Paddle
  * subscription is refused by the route, and the sentence says so. Ending a comp makes
  * the account read-only at once, which is a confirm: it is someone else's account.
  *
- * Only where the instance sells a plan — the row carries `plan` only then — and drawn
+ * Only where the instance sells a plan (the row carries `plan` only then) and drawn
  * above the store's facts, since it is the first thing an operator looking at an
  * account that has written to say it cannot write wants to see.
  */
@@ -1157,8 +1157,8 @@ function PlanSection({ userId, email, plan }: { userId: string; email: string; p
 }
 
 /**
- * Deleting the account: for a sign-up that should not exist — a bot, a test account,
- * someone who asked by other means. The same deletion a person makes of their own from
+ * Deleting the account: for a sign-up that should not exist (a bot, a test account,
+ * someone who asked by other means). The same deletion a person makes of their own from
  * Maintenance, by the same server code, without the emailed link that proves an account
  * is theirs.
  *
@@ -1166,7 +1166,7 @@ function PlanSection({ userId, email, plan }: { userId: string; email: string; p
  * "Delete all notes" is, since it is the one action here with no undo at all: a wind-back
  * and a load each record a bookmark to go back to, and this leaves no account to load a
  * dump into. The confirm names what goes from the store's own counts, falling back to
- * the sweep's while those are not in, and says that the dumps stay — they are not
+ * the sweep's while those are not in, and says that the dumps stay: they are not
  * deleted, and age out under the bucket's rules.
  *
  * Not offered on the operator's own account, which the server refuses too: that deletion

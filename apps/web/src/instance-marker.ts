@@ -4,8 +4,8 @@ import type { AppConfig } from '@unbent/shared';
  * Marks a tab of an instance that is not production: its label in front of the title,
  * and a badge on the favicon.
  *
- * Every instance's tab used to read "Unbent" — production, dev.unbent.app, each PR's
- * preview, a local `pnpm dev` — and the costly mistake is editing the real notes while
+ * Every instance's tab used to read "Unbent" (production, dev.unbent.app, each PR's
+ * preview, a local `pnpm dev`), and the costly mistake is editing the real notes while
  * believing it is a scratch copy, or the other way round. The tab strip and the window
  * switcher show the title; a pinned tab shows only the favicon, so both carry it.
  *
@@ -48,12 +48,12 @@ export function instanceToken(kind: AppConfig['instanceKind']): string {
 }
 
 /**
- * What the corner ribbon says, or nothing. Dev and previews wear one — the two a person
+ * What the corner ribbon says, or nothing. Dev and previews wear one: the two a person
  * moves between and can mistake for each other or for production. Local does not: the
  * store screenshots are shot against `pnpm dev`, and a ribbon would be in them. A
  * preview's says its PR, from the label, since "Preview" alone does not say which.
  *
- * `short` is for the compact ribbon — the rail's, and the phone's screen corner — whose
+ * `short` is for the compact ribbon (the rail's, and the phone's screen corner) whose
  * band has about 39px of length. "PR 224" fits it and "PR 1234" does not, and four-digit
  * PRs are coming, so a preview there reads "#1234": the number is the part that tells two
  * previews apart, and the colour already says it is one. The drawer's larger band keeps
@@ -84,8 +84,8 @@ export function instanceTitle(label: string, title: string): string {
  * reaches the dev instance: one of a store-changing PR keeps its own, every other preview
  * reads and writes the dev instance's.
  *
- * `commit`, the build's short SHA, goes straight after the label — "PR 242 · 00619da ·
- * notes are its own" — because on a scratch instance it is checked right after every push,
+ * `commit`, the build's short SHA, goes straight after the label ("PR 242 · 00619da ·
+ * notes are its own") because on a scratch instance it is checked right after every push,
  * and this line is one tap from every screen. Before the notes clause, so a narrow menu's
  * ellipsis eats the clause, which the tooltip and Settings › About both carry, and keeps
  * the commit. Production has no line, so its commit lives in About alone.
@@ -113,11 +113,11 @@ export function instanceNotes(config: Pick<AppConfig, 'ownStores' | 'previewRela
 
 /**
  * The app icon with a dot in its corner, drawn once on load, in the kind's colour from
- * styles.css (`instanceToken`) — the same as the account menu's dot and the drawer's
+ * styles.css (`instanceToken`): the same as the account menu's dot and the drawer's
  * ribbon, so they read as one mark.
  *
  * Drawn rather than shipped as a second file, so it cannot drift from the real icon when
- * that changes. If anything fails — no canvas, the icon did not load — the tab keeps the
+ * that changes. If anything fails (no canvas, the icon did not load), the tab keeps the
  * plain icon, and the title still says which instance it is.
  */
 async function badgeFavicon(kind: AppConfig['instanceKind']): Promise<void> {

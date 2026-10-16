@@ -46,8 +46,8 @@ public enum CaptureAction: Equatable, Sendable {
 /// A capture, from Save to the note it became: what was shared, where it goes, and how
 /// far the upload has got. Kept as `.job.json` in the capture's directory.
 ///
-/// Android keeps this in three places — WorkManager's input data, a `.note-id` sidecar and
-/// a `.unavailable` count — because WorkManager runs the upload from the top on every
+/// Android keeps this in three places (WorkManager's input data, a `.note-id` sidecar and
+/// a `.unavailable` count) because WorkManager runs the upload from the top on every
 /// retry and the worker has to work out where it was. Here nothing runs from the top: the
 /// system uploads one request at a time and wakes the app with each result, so the record
 /// is a state the results are applied to, and that is a pure function with tests
@@ -145,7 +145,7 @@ public struct CaptureJob: Codable, Equatable, Sendable {
     /// number, though it buys more here. WorkManager's backoff tops out at five hours,
     /// so fourteen there is about a day; here each wait is as long as the server asked
     /// for, up to `longestWait`. Either way it is past a full day, which is the longest
-    /// the case this exists for can last — the database's daily read allowance, spent
+    /// the case this exists for can last: the database's daily read allowance, spent
     /// until midnight UTC.
     static let maxUnavailable = 14
 
@@ -183,8 +183,8 @@ public struct CaptureJob: Codable, Equatable, Sendable {
     }
 
     /// Whether an answer will be the same however often it is asked for: a 4xx, which is
-    /// the server refusing the request as it stands — a name it will not take, a file
-    /// too large, a note that is gone. Three are not that: 401 is about the session and
+    /// the server refusing the request as it stands (a name it will not take, a file
+    /// too large, a note that is gone). Three are not that: 401 is about the session and
     /// is handled before this, 408 is a timeout, and 429 is "later".
     ///
     /// The web app's outbox has the same rule (`NonRetriableError`), for the same reason:
@@ -204,8 +204,8 @@ public struct CaptureJob: Codable, Equatable, Sendable {
         if let status = outcome.status, (200..<300).contains(status) {
             switch step {
             case .create:
-                // Twice is possible — the extension's request and the app's own resend
-                // both answered — and the second finds nothing left to start.
+                // Twice is possible (the extension's request and the app's own resend
+                // both answered) and the second finds nothing left to start.
                 if created { return remaining.isEmpty ? .saved : .wait }
                 created = true
                 return remaining.isEmpty ? .saved : .send(remaining.map { .file($0.id) })
@@ -221,7 +221,7 @@ public struct CaptureJob: Codable, Equatable, Sendable {
             //
             // Android deletes the capture here and says "share again", and this did too.
             // But a session carries no expiry this app can read, so someone who shares
-            // often and opens the app rarely finds out it lapsed only by sharing — and
+            // often and opens the app rarely finds out it lapsed only by sharing, and
             // for a scan opened from a scanner's app, the staged copy may be the only one.
             return .signInNeeded
         }
@@ -322,7 +322,7 @@ public struct CaptureJob: Codable, Equatable, Sendable {
 
 public extension CaptureStep {
     /// A step of one capture as text: what a request is labelled with, so the result
-    /// that comes back — possibly to another process, days later — says what it was for.
+    /// that comes back (possibly to another process, days later) says what it was for.
     typealias Key = String
 
     func key(job: String) -> Key {

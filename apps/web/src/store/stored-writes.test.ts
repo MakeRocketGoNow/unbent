@@ -4,7 +4,7 @@ import { outboxName } from './names.js';
 
 /**
  * What `countStoredWrites` reads: a stand-in IndexedDB that can already hold an
- * outbox, or not exist yet, or refuse the open. The real adapter is not used — the
+ * outbox, or not exist yet, or refuse the open. The real adapter is not used: the
  * peek must not create a database or leave a connection, and this is those two
  * properties, against the same request callbacks the production path uses.
  */

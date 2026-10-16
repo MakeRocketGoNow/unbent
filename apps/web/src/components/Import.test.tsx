@@ -9,8 +9,8 @@ import { claimFileNotesFor, resetFileNotesForTests } from '../file-notes.js';
 import { Import } from './Import.js';
 
 /**
- * The Import page's picker takes PDFs and images too, any number of them, one note each
- * — the way in on a phone, where nothing can be dragged onto the list. An export is still
+ * The Import page's picker takes PDFs and images too, any number of them, one note each:
+ * the way in on a phone, where nothing can be dragged onto the list. An export is still
  * one file at a time, and a mix is refused in a sentence.
  */
 

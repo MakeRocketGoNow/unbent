@@ -9,7 +9,7 @@ import UserNotifications
 /// status bar whose style follows the page's colour, a layout guide for the keyboard, a
 /// place to present Safari and the alerts the page raises. Under a SwiftUI `App` each of
 /// those is reached by working around the hosting controller. The native screens are
-/// SwiftUI all the same — `UnbentUI` — and are hosted where they are shown.
+/// SwiftUI all the same (`UnbentUI`) and are hosted where they are shown.
 @main
 final class AppDelegate: UIResponder, UIApplicationDelegate {
     /// The screen a tapped notification or an opened file is handed to. Weak, and set by
@@ -34,7 +34,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
 
     /// Requests of a capture finished while the app was not running. Joining the session
     /// delivers their results, and the queue calls `completionHandler` once it has
-    /// applied them — which is the system's cue to suspend the app again.
+    /// applied them, which is the system's cue to suspend the app again.
     func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
         if AppCaptures.queue?.handleEvents(identifier: identifier, completion: completionHandler) != true {
             completionHandler()

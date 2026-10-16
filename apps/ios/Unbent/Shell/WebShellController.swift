@@ -41,7 +41,7 @@ final class WebShellController: UIViewController {
     private var webView: WKWebView!
     private let folder = SavedFiles.downloads()
     /// Made in `init`, not lazily: `deinit` aborts whatever is still open, and a lazy one
-    /// first touched there would be built — weak reference to the shell and all — by an
+    /// first touched there would be built (weak reference to the shell and all) by an
     /// object already being freed, which the runtime answers by ending the app. Signing
     /// out without ever having exported did exactly that.
     private let saves: SaveStreams
@@ -105,7 +105,7 @@ final class WebShellController: UIViewController {
         // An export still streaming has lost the page that was writing it. On the save
         // queue, like every other call: closing a file here while that queue is part-way
         // through a write to it is a race, and the descriptor, once closed, can be handed
-        // to the next file the app opens — the rest of the chunk would land in that.
+        // to the next file the app opens. The rest of the chunk would land in that.
         saveQueue.async { [saves] in saves.abortAll() }
         bannerTimer?.cancel()
     }
@@ -189,7 +189,7 @@ final class WebShellController: UIViewController {
         config.websiteDataStore = .default()
         /*
          * App-Bound Domains. With the hosts listed in Info.plist and this set, WebKit lets
-         * the site register its service worker — the offline shell — and lets the app
+         * the site register its service worker (the offline shell) and lets the app
          * inject its bridge. The price is that this web view cannot open any other host,
          * which is the rule here anyway. A build with no list (see `BuildInfo`) leaves it
          * off: the bridge and cookies still work, and there is no service worker.
@@ -199,8 +199,8 @@ final class WebShellController: UIViewController {
         // is what tells the app from Safari there.
         config.applicationNameForUserAgent = "UnbentiOS/\(BuildInfo.version)"
         config.allowsInlineMediaPlayback = true
-        // A pinch is always the person's, whatever the page's viewport says — Safari's own
-        // rule since iOS 10. The page's `maximum-scale=1` still stops WebKit zooming toward
+        // A pinch is always the person's, whatever the page's viewport says (Safari's own
+        // rule since iOS 10). The page's `maximum-scale=1` still stops WebKit zooming toward
         // what it focuses, because that zoom reads the page's limit and this does not lift
         // it; only the hand is let through. Low-vision readers need it for a scan's small
         // print, and the app does not answer Dynamic Type to make up for its loss.
@@ -256,7 +256,7 @@ final class WebShellController: UIViewController {
     /// and a fresh sign-in replaces the session.
     ///
     /// The store is read first, because the page can come to hold a newer session than the
-    /// Keychain does — someone signs in on the site's own `/login` inside the web view, or
+    /// Keychain does: someone signs in on the site's own `/login` inside the web view, or
     /// changes their password, which Better Auth answers by issuing a new session and
     /// revoking the rest. Writing the Keychain's copy over that would put a dead cookie
     /// back; the page would get a 401, `checkSession` would test the same dead bearer, and
@@ -301,7 +301,7 @@ final class WebShellController: UIViewController {
 
     /// Goes to `path` on the site. In place when a page is up to ask, so a link opened
     /// while the app is showing a note does not reload the site under an upload in flight;
-    /// by loading it when the page cannot answer — still loading, or a deploy from before
+    /// by loading it when the page cannot answer: still loading, or a deploy from before
     /// `open`.
     func open(path: String) {
         guard isViewLoaded else {
@@ -322,7 +322,7 @@ final class WebShellController: UIViewController {
     /// The app left the screen, and iOS will suspend it within seconds. The page saves on
     /// `visibilitychange`, which fires now; asking for a little background time is what
     /// lets that request reach the server instead of being frozen half-sent. (The edit is
-    /// not lost either way — it is in the local copy and the outbox — but a note that
+    /// not lost either way: it is in the local copy and the outbox. But a note that
     /// reaches the server now is a note the other devices have.)
     func enteredBackground() {
         let app = UIApplication.shared
@@ -427,7 +427,7 @@ final class WebShellController: UIViewController {
     ///
     /// Off the site that is Safari's sheet (or the mail app, the phone): a second web view
     /// would run that page with this app's session in it. On the site it is `open`, in
-    /// place — the web view has no tabs, and loading the address would tear the page down
+    /// place: the web view has no tabs, and loading the address would tear the page down
     /// along with unsaved edits and an upload in flight.
     private func route(_ url: String) {
         switch classify(origin: origin, url: url) {
@@ -469,7 +469,7 @@ final class WebShellController: UIViewController {
         addChild(host)
         // Under the unreachable panel if that is up: the panel is the whole screen.
         if let panel = unreachable { view.insertSubview(host.view, belowSubview: panel.view) } else { view.addSubview(host.view) }
-        // On the web view's bottom edge, which is the keyboard's top when one is up — but
+        // On the web view's bottom edge, which is the keyboard's top when one is up, but
         // never lower than the safe area, since a page with the whole screen takes the
         // web view down under the home indicator.
         let onTheEdge = host.view.bottomAnchor.constraint(equalTo: webView.bottomAnchor)
@@ -567,7 +567,7 @@ extension WebShellController: WKScriptMessageHandler, WKScriptMessageHandlerWith
         let id = call["id"] as? String ?? ""
         let saves = saves
         saveQueue.async {
-            // Answered only once the work is done — for `chunk`, once the bytes are
+            // Answered only once the work is done: for `chunk`, once the bytes are
             // written. That answer is the page's signal to send the next piece.
             let answer: Any
             switch op {
@@ -674,7 +674,7 @@ extension WebShellController: WKNavigationDelegate {
         let unanswered = error.domain == NSURLErrorDomain && Self.unreachableCodes.contains(error.code)
         // The one WebKit error that belongs here: an address this build is not bound to,
         // which only a debug build's stored instance can be. Nothing loads, and App
-        // settings — where the panel points — is where it is put right.
+        // settings (where the panel points) is where it is put right.
         let unbound = error.domain == WKErrorDomain && error.code == WKError.navigationAppBoundDomain.rawValue
         guard unanswered || unbound else { return }
         log.warning("Could not load the site: \(error.localizedDescription, privacy: .public)")
@@ -683,8 +683,8 @@ extension WebShellController: WKNavigationDelegate {
     }
 
     /// Every way the phone has of saying it could not get to the server. The last two are
-    /// the phone's own settings rather than its signal — cellular data turned off for this
-    /// app, and roaming — and without them a cold load there was the blank web view the
+    /// the phone's own settings rather than its signal (cellular data turned off for this
+    /// app, and roaming) and without them a cold load there was the blank web view the
     /// panel exists to replace.
     private static let unreachableCodes: Set<Int> = [
         NSURLErrorNotConnectedToInternet,
@@ -698,7 +698,7 @@ extension WebShellController: WKNavigationDelegate {
         NSURLErrorInternationalRoamingOff,
     ]
 
-    /// The page's process died — out of memory on a huge PDF, or iOS reclaiming it while
+    /// The page's process died: out of memory on a huge PDF, or iOS reclaiming it while
     /// the app was in the background. The web view is left blank and says nothing; it has
     /// to be loaded again, on the address it was showing.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
@@ -724,7 +724,7 @@ extension WebShellController: WKDownloadDelegate {
         completionHandler: @escaping (URL?) -> Void
     ) {
         // Written hidden and named once whole, like an export; see `SavedFiles`. The
-        // download carries the session itself — it runs in the web view's own store.
+        // download carries the session itself: it runs in the web view's own store.
         let partial = folder.reserve()
         downloads[ObjectIdentifier(download)] = (partial, suggestedFilename)
         completionHandler(partial)
@@ -809,7 +809,7 @@ extension WebShellController: WKUIDelegate {
     }
 
     private func ask(_ alert: UIAlertController, otherwise: () -> Void) {
-        // Something is already over the page — a sheet, another question — or the page
+        // Something is already over the page (a sheet, another question) or the page
         // is not on screen. The page gets the answer that changes nothing.
         guard viewIfLoaded?.window != nil, presentedViewController == nil else { return otherwise() }
         present(alert, animated: true)

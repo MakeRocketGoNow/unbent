@@ -22,8 +22,8 @@ name: Nightly mirror
 #   DUMPS_R2_*    read and write the dumps bucket: read `stores/` and `status/dumps.json`,
 #                 write `status/mirror.json`.
 #   MIRROR_R2_*   read and write the mirror bucket. `blobs/`, `stores/` and `d1/` are under
-#                 a 30-day retention lock there, so nothing — not this workflow, not a leaked
-#                 key — can overwrite or delete a copy younger than that; `state/` is not
+#                 a 30-day retention lock there, so nothing (not this workflow, not a leaked
+#                 key) can overwrite or delete a copy younger than that; `state/` is not
 #                 locked, since the prune's state file is rewritten every night.
 #   D1_EXPORT_API_TOKEN  for the export: D1 Read and Edit on the account, no bucket. The
 #                 export endpoint refuses a token with Read alone (the first seed, run
@@ -41,8 +41,8 @@ on:
   schedule:
     # 05:23 UTC. The Worker's dump run at 00:47 UTC has started the day's pass by then and
     # finished it for a store this size, so the night's copy of `stores/` carries the day's
-    # dumps. Any hour works for correctness — a dump missed tonight is copied tomorrow, and
-    # the stale check is 48 hours — this one just keeps the two halves a day apart at most.
+    # dumps. Any hour works for correctness (a dump missed tonight is copied tomorrow, and
+    # the stale check is 48 hours); this one just keeps the two halves a day apart at most.
     - cron: '23 5 * * *'
   # The first seed of the mirror, and any rerun, are started by hand from the Actions tab.
   workflow_dispatch:
@@ -138,8 +138,8 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.D1_EXPORT_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.LIVE_R2_ACCOUNT_ID }}
       # Flags every rclone copy here gets.
-      #   --immutable: a key is never written twice — file keys carry the attachment id, a
-      #     dump's key is one per account per day — so a source object that differs from the
+      #   --immutable: a key is never written twice (file keys carry the attachment id, a
+      #     dump's key is one per account per day), so a source object that differs from the
       #     mirror's copy is a fault, and rclone refuses it as "immutable file modified"
       #     rather than attempting an overwrite the retention lock would refuse anyway. The
       #     run goes red either way; this way the error in `status/mirror.json` says why.
@@ -147,8 +147,8 @@ jobs:
       #     from its metadata, a HEAD per object per side per night, and when two copies
       #     match but their modtimes differ it rewrites the copy's modtime, a server-side
       #     copy onto itself that the lock refuses with an error that does not say why. A
-      #     key put again with the same bytes — an upload replayed after its first `put`
-      #     landed — would do exactly that. The hash is the ETag from the listing, and
+      #     key put again with the same bytes (an upload replayed after its first `put`
+      #     landed) would do exactly that. The hash is the ETag from the listing, and
       #     where a multipart upload has none the size decides, which for immutable keys
       #     is the comparison meant anyway.
       #   --fast-list: one listing call per thousand keys instead of one per prefix.
@@ -189,7 +189,7 @@ jobs:
             echo "ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "No ${missing[*]} repository secret(s) or variable — this repository has no mirror account. Skipping." >> "$GITHUB_STEP_SUMMARY"
+            echo "No ${missing[*]} repository secret(s) or variable. This repository has no mirror account. Skipping." >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - if: steps.configured.outputs.ready == 'true'
@@ -223,10 +223,10 @@ jobs:
       # From here on each step runs unless the run was cancelled, whatever the steps before
       # it did: none depends on another's success (the prune only ever deletes what is in
       # the mirror and not in live, so a half-copied night is safe to prune against), and a
-      # `stores/` copy that fails every night for a fortnight — a dump written twice over
-      # its key, which lib/backups.ts says can happen — must not cost a fortnight of D1
+      # `stores/` copy that fails every night for a fortnight (a dump written twice over
+      # its key, which lib/backups.ts says can happen) must not cost a fortnight of D1
       # exports and dumps checks as well. The run is red from whichever step failed; each
-      # one records its name for the status file on the way out — on EXIT, not ERR, since a
+      # one records its name for the status file on the way out: on EXIT, not ERR, since a
       # deliberate `exit 1` is not an error to the ERR trap.
       - name: Copy the live bucket to blobs/
         if: ${{ !cancelled() && steps.configured.outputs.ready == 'true' }}
@@ -340,7 +340,7 @@ jobs:
 
       # Whatever happened from the first copy on, say so where the operator page reads: a
       # failed run is the one the file most needs to report. Only once the run was
-      # configured, though — a fork with no secrets has no bucket to write to — and only
+      # configured, though (a fork with no secrets has no bucket to write to), and only
       # once there is an rclone to write with: a run that failed before that leaves the
       # file a day older, which the operator page shows as its own bad state.
       - name: Write status/mirror.json

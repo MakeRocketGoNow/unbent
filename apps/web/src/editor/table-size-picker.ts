@@ -4,7 +4,7 @@
  * Lives on its own, knowing nothing about CodeMirror or React, because two callers need
  * exactly the same control: the toolbar over a table the cursor is in, and the formatting
  * bar's table button. They differ only in what a click does and whether there is a current
- * size to seed from — everything else, including the markup and the class names it is
+ * size to seed from: everything else, including the markup and the class names it is
  * styled by, has to stay identical or the same icon starts meaning two different things.
  */
 
@@ -70,7 +70,7 @@ export function buildSizePicker({ current = null, onPick }: PickerOptions): HTML
     }
 
     const shrinking = current !== null && (rows < current.rows || columns < current.columns);
-    label.textContent = `${rows} × ${columns}${shrinking ? ' — trims' : ''}`;
+    label.textContent = `${rows} × ${columns}${shrinking ? ' (trims)' : ''}`;
   }
 
   grid.addEventListener('mouseover', (event) => {

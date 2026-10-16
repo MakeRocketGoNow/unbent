@@ -24,16 +24,16 @@ import { OutboxLeader } from './leader.js';
  * to the account's `pending` shelf, a row for it at once, and its upload an entry here,
  * behind whatever its note already has waiting.
  *
- * Otherwise only note writes go this way. Notebook, tag and field management — renames, merges,
- * deletes, field definitions, option removal, conversions — are settings-page actions
+ * Otherwise only note writes go this way. Notebook, tag and field management (renames, merges,
+ * deletes, field definitions, option removal, conversions) are settings-page actions
  * with uniqueness and conversion rules the server decides, and stay direct calls that
  * need a connection; the feed delivers what they did to every device.
  *
  * The outbox (`@tanstack/offline-transactions`) is one queue, replayed in order, one
  * entry at a time, with a growing wait between attempts. Two rules keep the queue from
- * sticking: every answer the server will give again gets `NonRetriableError` — a 4xx
+ * sticking: every answer the server will give again gets `NonRetriableError`: a 4xx
  * that will not change on retry (a name it will not take, a file too large, a note that
- * is gone), a refused precondition — so the entries behind it move, and the outbox holds
+ * is gone), a refused precondition. So the entries behind it move, and the outbox holds
  * at most one save per note. A lapsed session, a timeout and a rate limit are not that:
  * they become a different answer after sign-in or a wait, and ending the entry on them
  * deletes the only copy of an offline upload, or a save typed while the session was
@@ -46,18 +46,18 @@ import { OutboxLeader } from './leader.js';
  *
  * Only the tab holding the outbox's lock queues. A tab whose library another tab holds
  * is that tab's client and sends each write there by name (`away`), where it is queued
- * as the holder's own. In a tab that holds the library but not yet the outbox's lock —
- * a moment during a hand-over, or for good in a browser without Web Locks — the
+ * as the holder's own. In a tab that holds the library but not yet the outbox's lock
+ * (a moment during a hand-over, or for good in a browser without Web Locks) the
  * library hands back a plain transaction that runs the write at once and rolls the
- * change back if it fails, and offline it fails — so such a tab's writes are not
+ * change back if it fails, and offline it fails, so such a tab's writes are not
  * "queued", they are never made, and saying otherwise would show "Saved" over text that
  * was gone (review of #232). Every function here therefore asks `durable` first, and in
  * a tab that is not it does what it does with no library at all: one request, the
  * answer the server's, the refusal the caller's to show, and the local copy brought up
  * to date by a pull.
  *
- * Every function here looks the open library up and works on it; with none — a browser
- * without the file system the local copy lives in — it does what the app did before,
+ * Every function here looks the open library up and works on it; with none (a browser
+ * without the file system the local copy lives in) it does what the app did before,
  * one request, and the answer is the server's.
  */
 
@@ -65,7 +65,7 @@ import { OutboxLeader } from './leader.js';
  * A save the server refused because the note changed on another device, waiting on a
  * choice: the note as the server now holds it, and the draft and base the refused save
  * carried. The draft lived in the entry, and ending the entry rolled the row back to the
- * server's copy, so a conflict on a note that was not open lost the typing — reopening
+ * server's copy, so a conflict on a note that was not open lost the typing: reopening
  * seeded from the row, and "Keep mine" had nothing to keep (review of #232). With offline
  * editing that is the ordinary conflict: ten notes edited on a plane, one of them touched
  * on the phone meanwhile. The workspace seeds from this when it opens the note. Kept in
@@ -122,7 +122,7 @@ export interface Outbox {
   subscribe: (listener: (status: SyncStatus) => void) => () => void;
   /**
    * Hears the server's copy after a replayed save of that note went through, with the
-   * draft that save sent — what the person had then, so typing since can be told apart.
+   * draft that save sent: what the person had then, so typing since can be told apart.
    */
   onAcknowledged: (listener: (noteId: string, note: Note, sent: NoteDraft) => void) => () => void;
   /** Forgets a conflict once a choice has been made. */
@@ -132,7 +132,7 @@ export interface Outbox {
   /**
    * Retires the save of this note still waiting in the queue, if there is one, ahead of a
    * new one: it is removed from storage, its change is taken off the row, and it will do
-   * nothing when its turn comes. Answers with what the new save carries forward — the copy
+   * nothing when its turn comes. Answers with what the new save carries forward: the copy
    * the retired draft was made from, which is the older base, and the date it was to be
    * preconditioned on.
    */
@@ -178,7 +178,7 @@ export const TAB_ORIGIN: string = crypto.randomUUID();
 
 /**
  * A save: the whole draft, the copy it is diffed against for the patch, and, for "Keep
- * mine", the date to precondition on instead of the base's — the other device's copy,
+ * mine", the date to precondition on instead of the base's: the other device's copy,
  * so the patch is still only what was typed here and lands on top of theirs. `origin`
  * is the tab the save came from (`TAB_ORIGIN` there); a client sends its own with the
  * call.
@@ -211,8 +211,8 @@ type MutationFn = Parameters<typeof startOfflineExecutor>[0]['mutationFns'][stri
 
 /**
  * What the outbox tells the library about: IndexedDB asking this tab's connection to
- * close, because another tab is deleting the database — a sign-out removes every
- * account's outbox (`store/wipe.ts`) — or opening it at a newer version, which a later
+ * close, because another tab is deleting the database (a sign-out removes every
+ * account's outbox, `store/wipe.ts`) or opening it at a newer version, which a later
  * deploy's schema would. The connection is closed at once so the other tab's request
  * can go through, and the library it belongs to is told, since an outbox with no
  * connection is not one anything can queue on.
@@ -269,15 +269,15 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
   /**
    * The server refused the request for good, or for now: which, is the queue's whole question.
    *
-   * A 4xx is usually the same answer however often it is asked — a name the route will
-   * not take, a file over the cap, a note that is gone — and ending the entry lets the
+   * A 4xx is usually the same answer however often it is asked (a name the route will
+   * not take, a file over the cap, a note that is gone) and ending the entry lets the
    * ones behind it move. Three are not that, and `refusedForGood` in `feed.ts` names
    * them for the walk and the queue alike: 401 replays after the sign-in that follows.
    *
    * A fourth is the plan's 402 (MAK-108), told by its code rather than its status: the
    * account's plan ended, and the answer changes the moment the person subscribes, as a
    * lapsed session's changes at the sign-in. Ending the entry would roll the row back
-   * to the server's copy — the text typed in a flight whose trial ran out mid-air — and
+   * to the server's copy (the text typed in a flight whose trial ran out mid-air) and
    * for a queued upload delete the one copy of the bytes. So it is kept, like a 401, and
    * replays after the checkout; and the plan is read again now (`planRefused`), so the
    * banner and the read-only editor say why nothing goes. The deletes made meanwhile go
@@ -301,7 +301,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
    * Every entry's attempt, with the keep-or-end decision left to this file alone.
    *
    * The library's own retry policy gives up on an error whose *message* contains "400",
-   * "401", "403" or "422" — wherever in the text, and whatever the status. Our messages
+   * "401", "403" or "422", wherever in the text, and whatever the status. Our messages
    * start with the status (`httpErrorMessage`), so a queued save refused for a lapsed
    * session read "401 …" and was ended there, before `refusal` had any say, and a 503
    * whose page said "400 ms" was ended with it. The policy is fixed inside the executor
@@ -374,8 +374,8 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
           } catch (err) {
             if (!isNoteChanged(err)) return refusal(err);
             // The note moved on the server since this draft's base. Nothing of theirs
-            // would be lost if the draft already holds every change they made — the
-            // usual case after this device's own earlier save went through — so that
+            // would be lost if the draft already holds every change they made (the
+            // usual case after this device's own earlier save went through) so that
             // goes again against the copy the refusal brought; anything else is a
             // choice to put to the person (MAK-113), and this entry is done. A "Keep
             // mine" refused in turn is that choice again, with the newer copy.
@@ -425,7 +425,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
           // The copy's row goes in now; its files are the server's to make, and the
           // pull brings their rows. A copy whose files had no room (`filesSkipped`,
           // MAK-108) is still the copy, said so under its files rather than kept on the
-          // row — about the files as a whole, so it names none.
+          // row, about the files as a whole, so it names none.
           const { filesSkipped, ...copy } = answer as typeof answer & { filesSkipped?: { error: string } };
           took(copy);
           if (filesSkipped) notice({ noteId: copy.id, attachmentId: `files-skipped-${copy.id}` }, filesSkipped.error);
@@ -447,7 +447,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
        * again, and the server answers the second with the file the first one made.
        *
        * The bytes leave the shelf when the entry ends, either way. Gone through, they go
-       * into the cache of opened files first — the photo just taken should still draw on
+       * into the cache of opened files first: the photo just taken should still draw on
        * the next flight, and it is as good as opened. Refused for good, there is nothing
        * to keep them for, and the notice says what happened.
        *
@@ -534,11 +534,11 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
   /**
    * The server's copy, written into the row before the entry ends. Ending an entry drops
    * the optimistic change, and what the row showed then was the last copy the feed had
-   * delivered — the one from before the write — until a pull landed: a flash of the old
+   * delivered (the one from before the write) until a pull landed: a flash of the old
    * title in the list, and once the workspace taking the old copy for a change of
    * theirs (review of #232). The answer to a write is that copy, so it goes straight in,
-   * as a feed row — tags and notebook by id, looked up by the names the answer carries,
-   * and the files the note holds — and no request follows. False when a name has no id
+   * as a feed row (tags and notebook by id, looked up by the names the answer carries,
+   * and the files the note holds) and no request follows. False when a name has no id
    * here yet (a tag made by this very write), and the pull brings the ids instead.
    */
   const took = (note: Note): boolean => {
@@ -563,7 +563,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
    * entry ends. `pull` never rejects and waits out a queued second run.
    *
    * Not while the library is not whole (`isWhole`). A pull then is the whole snapshot
-   * walk — minutes on a phone — and an entry that waited for it held the queue behind
+   * walk (minutes on a phone) and an entry that waited for it held the queue behind
    * it, kept "syncing" up and timed a sign-out's drain out (review of #232). That is a
    * walk cut short as much as one under way: a failed page leaves `failed` with no
    * cursor, and the next pull resumes the walk, so testing for `hydrating` alone let
@@ -593,7 +593,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
        *
        * After `keys()`, not after `waitForInit`: the adapter opens its database on first
        * use, and on init only the tab that leads the outbox uses it (it restores the
-       * entries); in every other tab — the ones a sign-out elsewhere is about — the
+       * entries); in every other tab (the ones a sign-out elsewhere is about) the
        * connection does not exist until the read above.
        */
       const db = connection();
@@ -618,7 +618,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
          * A restored entry's change on the row is the executor's own restoration
          * transaction, which it rolls back itself only when the entry ends. Retired
          * offline, that is whenever the connection returns, and the row would show the
-         * retired text the whole while (review of #232) — so the restoration is rolled
+         * retired text the whole while (review of #232), so the restoration is rolled
          * back here, through the executor's private cleanup. The version is pinned
          * (`pins.test.ts`); without the method the change stays until the entry's turn.
          */
@@ -765,7 +765,7 @@ const OUTBOX_ENTRY_PREFIX = 'tx:';
  * How many writes the durable outbox still holds for this account, without opening the
  * library. What a sign-out asks when the library itself has not opened in time: the
  * outbox is IndexedDB, restored only after `outbox.ready`, and a cold open on a phone
- * can sit past the sign-out's own bound — after which the wipe removes the database.
+ * can sit past the sign-out's own bound, after which the wipe removes the database.
  * Treating "not open" as "nothing waiting" deleted those writes without a question.
  *
  * Opens a short-lived connection and closes it before answering, so the wipe's
@@ -774,7 +774,7 @@ const OUTBOX_ENTRY_PREFIX = 'tx:';
  * upgrade that makes the store), and would leave its connection open (`db` is private
  * and only `dispose` on the outbox closes it).
  *
- * `null` when the database could not be read — blocked, aborted, no answer — which is
+ * `null` when the database could not be read (blocked, aborted, no answer), which is
  * "do not know", not "nothing there".
  */
 export function countStoredWrites(userId: string, signal?: AbortSignal): Promise<number | null> {
@@ -797,8 +797,8 @@ export function countStoredWrites(userId: string, signal?: AbortSignal): Promise
       resolve(n);
     };
     // The caller stopped waiting (`peekStoredWrites`' bound). An open request cannot be
-    // taken back, so a connection already held closes now — a close lets a read in
-    // progress finish and starts no other — and one that opens later closes on arrival
+    // taken back, so a connection already held closes now (a close lets a read in
+    // progress finish and starts no other) and one that opens later closes on arrival
     // (`onsuccess`), so neither the real outbox nor a wipe waits behind a peek nobody
     // is reading.
     const stop = () => {
@@ -826,11 +826,11 @@ export function countStoredWrites(userId: string, signal?: AbortSignal): Promise
     };
     req.onsuccess = () => {
       db = req.result;
-      // Answered already — blocked, or no longer waited for: nothing to read.
+      // Answered already (blocked, or no longer waited for): nothing to read.
       if (settled) return close();
       // A wipe asks with `versionchange`. If the sign-out's bound ran out while the read
       // was still going, the wipe comes next, and its `deleteDatabase` would wait behind
-      // this connection — the outbox's own does the same (`createOutbox`).
+      // this connection. The outbox's own does the same (`createOutbox`).
       db.onversionchange = () => {
         close();
         done(null);
@@ -861,8 +861,8 @@ export function countStoredWrites(userId: string, signal?: AbortSignal): Promise
 }
 
 /**
- * The outbox's storage, watched. Every entry passes through the adapter — stored when
- * queued, restored after a reload, removed when a replay settles — so counting the keys it
+ * The outbox's storage, watched. Every entry passes through the adapter (stored when
+ * queued, restored after a reload, removed when a replay settles) so counting the keys it
  * holds is what waits for the server, at every moment. The executor's own count is its
  * scheduler's, which learns of an entry only after it is stored and settles it only by
  * replaying it: a write made offline was stored and then waited, counted as nothing, and
@@ -961,7 +961,7 @@ export function provideLibrary(fn: () => Promise<WritableLibrary | null>): void 
  * A tab that does not hold the account's library is a client of the tab that does
  * (`client-library.ts`), and its writes are the holder's to queue: each action below
  * asks here first and, given a way across, sends its name and arguments rather than
- * running. The holder runs the same function — the one registered in `forwardable` —
+ * running. The holder runs the same function (the one registered in `forwardable`)
  * where the client's `forward` is null and the write lands in its outbox, durable and in
  * order with the holder's own. Before 2026-10-13 such a tab made every write a request,
  * which offline was a save refused.
@@ -988,8 +988,8 @@ type Away = <K extends keyof Forwardable>(name: K, args: Parameters<Forwardable[
  * The way across to the holder, or null when this tab runs its writes itself. Told to
  * `onLocalWrite` before the call goes, as a queued write is told before its change
  * lands: the change comes back as the holder's rows, and the list has to have measured
- * itself before then. A call refused because the library moved — this tab became the
- * holder, or attached to a new one, with the call in hand — is simply made again, where
+ * itself before then. A call refused because the library moved (this tab became the
+ * holder, or attached to a new one, with the call in hand) is simply made again, where
  * the library now is; unless it had reached a holder and is one that must not run twice
  * (`SEND_ONCE`), when the caller is told it may not have finished.
  */
@@ -1091,8 +1091,8 @@ let lastRefile = -Infinity;
  * Hears each write this device is about to make, queued or as a request, before it
  * reaches the rows: what the person did here, as opposed to what the feed brought from
  * another device or the first copy of the library. The interface answers its own changes
- * differently — a count that ticks over, a row that leaves the list rather than vanishing
- * — and this is how it tells them apart. Heard before the change lands, so a list can
+ * differently (a count that ticks over, a row that leaves the list rather than vanishing)
+ * and this is how it tells them apart. Heard before the change lands, so a list can
  * still measure where its rows were: a queued write before its change reaches the rows, a
  * write made as a request once its answer is in (`pulled`). Told which notes the write
  * touches, so a list redrawn for some other reason in the moments after is not taken for
@@ -1156,8 +1156,8 @@ async function pulled<T>(write: Promise<T>, local: LocalWrite): Promise<T> {
 
 /**
  * Queues one write: the optimistic change on the row, then the entry in the outbox. The
- * commit is not awaited — it settles when the server has answered, which offline is
- * whenever the connection returns — but its failure is heard, since an entry the outbox
+ * commit is not awaited (it settles when the server has answered, which offline is
+ * whenever the connection returns) but its failure is heard, since an entry the outbox
  * could not store is a change that will be lost on reload.
  */
 function queue(
@@ -1180,7 +1180,7 @@ function queue(
     id: tx.id,
     /*
      * Takes the change off the row while the entry still waits. A secondary rollback, so
-     * TanStack DB does not also roll back every later transaction on the same row — a
+     * TanStack DB does not also roll back every later transaction on the same row: a
      * trash or a move queued after this save are their own entries and stand. A
      * transaction that has already ended has nothing to take off.
      */
@@ -1209,8 +1209,8 @@ function valuesOf(value: NoteDraft, lib: WritableLibrary): NoteFieldValue[] {
 
 /*
  * A write to a note the local copy does not hold yet. `noteQuery` asks the server for
- * such a note while no snapshot has been taken — a link followed during the first walk,
- * which on a phone is minutes of pages — and the editor then saves it. TanStack DB's
+ * such a note while no snapshot has been taken (a link followed during the first walk,
+ * which on a phone is minutes of pages) and the editor then saves it. TanStack DB's
  * `update` throws rather than inserting, so the save used to fail
  * (`UpdateKeyNotFoundError`) and the typing was gone on the next open. Search still hits
  * the server too, so a bulk action can name ids the walk has not reached; acting only on
@@ -1219,7 +1219,7 @@ function valuesOf(value: NoteDraft, lib: WritableLibrary): NoteFieldValue[] {
  * Those writes go as a request, the same way a device with no library sends them; the
  * walk's later apply of the same note, and the feed from the walk's starting seq, bring
  * the row. A bulk action is split: the notes held here are queued and only the rest are
- * the request. Sending the whole selection as a request was tried and undone — a note
+ * the request. Sending the whole selection as a request was tried and undone: a note
  * held here may have an earlier write still waiting in the outbox, which then replayed
  * over the later choice, and the selection failed whole offline. The request goes before
  * the queue: its notes have no rows here, so nothing of theirs waits in the outbox to be
@@ -1265,8 +1265,8 @@ function split(lib: WritableLibrary, ids: string[]): { here: string[]; there: st
  *
  * `buildNotePatch` skips a value that has no stored row and no definition, treating it
  * as a leftover id so a stale draft key cannot 400 the rest of the save. This path
- * used to pass `undefined` even when the tab held a library — one whose outbox is not
- * durable, or a note opened during the first copy — and always on a device with no
+ * used to pass `undefined` even when the tab held a library (one whose outbox is not
+ * durable, or a note opened during the first copy) and always on a device with no
  * library, so filling Amount for the first time there reported "Saved" and left the
  * number nowhere. (A client tab forwards its save to the holder, which takes whichever
  * path applies there.) The queued path already reads the library's definitions; this
@@ -1276,7 +1276,7 @@ function split(lib: WritableLibrary, ids: string[]): { here: string[]; there: st
  * The library's copy wins by id: the feed keeps it current, while the editor's list
  * (`rememberFieldDefs`) keeps every definition it has seen, so a field converted in
  * another tab would otherwise be encoded with its old type and 400 the whole save. The
- * editor's list still fills in what the library lacks — everything, on a device with no
+ * editor's list still fills in what the library lacks: everything, on a device with no
  * library, and a notebook the first copy has not reached yet.
  */
 function definitionsFor(lib: WritableLibrary | null, handed?: FieldDef[]): FieldDef[] | undefined {
@@ -1309,7 +1309,7 @@ async function saveViaRequest(input: Save, open: WritableLibrary | null): Promis
 
 /**
  * Saves a draft of a note against the copy the draft was made from. Resolves once the
- * change is on the local copy and in the outbox — "saved" on this device — with
+ * change is on the local copy and in the outbox ("saved" on this device), with
  * `'unchanged'` when the draft differs from its base in nothing the server can hold.
  * The server's answer arrives later: through `onAcknowledged` when it took the save, in
  * `conflicts` when it refused one and the person has to choose.
@@ -1324,14 +1324,14 @@ export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | No
   if (!lib || notCopiedYet(lib, input.noteId)) {
     // No local copy on this device, a tab that does not queue, or a note the copy
     // does not hold yet: the save is the request, and its answer is the server's
-    // copy — or the refusal, which the caller puts to the person.
+    // copy, or the refusal, which the caller puts to the person.
     return saveViaRequest(input, open);
   }
   /*
    * One save per note in the queue. The one still waiting is retired first, and this one
-   * takes over what it carried: its base when older — the copy the typing started from,
+   * takes over what it carried: its base when older (the copy the typing started from,
    * so the patch and the precondition are made against the server's copy, not a later
-   * local one — and its "Keep mine" date, so a keystroke after the choice does not undo
+   * local one) and its "Keep mine" date, so a keystroke after the choice does not undo
    * it. The patch is made against that base, and only then: a draft typed back to what
    * the server holds has nothing to send, and retiring the waiting save is the revert.
    * Deciding "nothing to send" first, against the newer base, left the retired save in
@@ -1339,8 +1339,8 @@ export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | No
    *
    * That holds for one editor, whose every draft contains the one before. Two tabs of
    * one device now share this outbox (`client-library.ts`), and a tab's open editor
-   * does not take up another tab's write while it waits here — the optimistic row keeps
-   * its date, so the workspace reads it as nothing new — so its next autosave would
+   * does not take up another tab's write while it waits here (the optimistic row keeps
+   * its date, so the workspace reads it as nothing new) so its next autosave would
    * retire the other tab's save and patch against the oldest base, where the other
    * tab's change reads as unchanged: a rename made offline in one tab, gone on the
    * next keystroke in the other, with both saying "Saved" (review of #354). So a save
@@ -1348,8 +1348,8 @@ export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | No
    * changes, and is otherwise refused as the server would refuse it, with the row as it
    * stands, which the workspace puts to the person as a conflict. Keep mine, pressed on
    * that conflict, comes back with `against`: a choice made with theirs in view, so it
-   * is not refused again, and the draft is put over theirs — what the person changed
-   * stays theirs, what they never touched takes the other tab's — rather than retiring
+   * is not refused again, and the draft is put over theirs (what the person changed
+   * stays theirs, what they never touched takes the other tab's) rather than retiring
    * the waiting save with whatever it changed that the draft never had.
    */
   const origin = input.origin ?? TAB_ORIGIN;
@@ -1391,9 +1391,9 @@ export async function saveNote(input: Save): Promise<'queued' | 'unchanged' | No
 
 /**
  * Makes a note, with an id minted here, and answers with it at once. The id is minted
- * before the write is sent anywhere and travels with it, so a write that runs twice —
- * sent to the holder and run here after the library moved, or as a request after a
- * holder answered nothing — makes one note (`createOrFind` on the server).
+ * before the write is sent anywhere and travels with it, so a write that runs twice
+ * (sent to the holder and run here after the library moved, or as a request after a
+ * holder answered nothing) makes one note (`createOrFind` on the server).
  */
 export async function createNote(input: { title: string; body: string; tags: string[]; notebook: string | null }, id: string = crypto.randomUUID()): Promise<Note> {
   const far = await away();
@@ -1454,8 +1454,8 @@ function drained(lib: WritableLibrary, noteId: string, timeout: number): Promise
 }
 
 /**
- * Resolves once this note's queued writes have reached the server — true — or have
- * taken too long to — false. For a read of the server's history, which is only worth
+ * Resolves once this note's queued writes have reached the server (true) or have
+ * taken too long to (false). For a read of the server's history, which is only worth
  * making once the save that may have just added to it has landed.
  */
 export async function synced(noteId: string, timeout = RESTORE_DRAIN_MS): Promise<boolean> {
@@ -1469,8 +1469,8 @@ export async function synced(noteId: string, timeout = RESTORE_DRAIN_MS): Promis
  * Deletes a note's whole history on the server; how many versions went.
  *
  * It waits for the note's own queued writes, as a restore does, and for a sharper
- * reason. This is pressed to be rid of text — a password pasted in and taken out again
- * — and the save that took it out may still be in the outbox. Cleared first, the
+ * reason. This is pressed to be rid of text (a password pasted in and taken out again)
+ * and the save that took it out may still be in the outbox. Cleared first, the
  * history would be empty when that save landed, and the server would keep a copy of
  * what the save replaced: the very text, back in a history the person had just been
  * told was clear. So a queue that will not drain refuses the clear.
@@ -1480,8 +1480,8 @@ export async function clearHistory(noteId: string): Promise<number> {
   if (far) return far('clearHistory', [noteId]);
   const lib = await resolve();
   if (lib && !(await drained(lib, noteId, RESTORE_DRAIN_MS))) {
-    // Waiting is still right while the plan has ended — a save landing after the clear
-    // would keep a copy of the very text being cleared — but "try again in a moment" is
+    // Waiting is still right while the plan has ended (a save landing after the clear
+    // would keep a copy of the very text being cleared) but "try again in a moment" is
     // not true then: the edit waits for the subscription.
     throw new Error(
       planLapsed()
@@ -1507,7 +1507,7 @@ export async function clearHistory(noteId: string): Promise<number> {
  * otherwise reach the server after the restore, find the note moved on, and come back
  * as a conflict between the person and themselves; and the text it carries would never
  * have been the server's, so the restore could not keep it. A queue that will not drain
- * — the server unreachable although the sheet opened — refuses the restore rather than
+ * (the server unreachable although the sheet opened) refuses the restore rather than
  * racing it.
  *
  * The answer is written into the local copy before this returns, the way a replayed
@@ -1540,7 +1540,7 @@ export async function restoreRevision(noteId: string, revisionId: number, opts: 
  * needs anyway, and the refusal of the one that could not wait is the ordinary one.
  *
  * Only for a note the server holds, though. A note made here whose creation is the
- * write that was refused — the one written in the flight whose trial ran out — is not
+ * write that was refused (the one written in the flight whose trial ran out) is not
  * on the server to delete; its delete queues behind the creation as before, and the two
  * replay in order once the person subscribes, or the trash is emptied here. The queue's
  * own list of what is waiting is how the two are told apart.
@@ -1592,7 +1592,7 @@ export async function purgeNote(noteId: string): Promise<void> {
 
 /**
  * Empties the trash: the server's own purge of every trashed note, sent as the request it
- * always was, since the server decides its extent — notes this device has not copied
+ * always was, since the server decides its extent: notes this device has not copied
  * included. Through here rather than straight to the API so it is a write like any other:
  * `ids` are the trashed notes on screen, which the list follows out, and the count rolls.
  */
@@ -1600,7 +1600,7 @@ export async function emptyTrash(ids: readonly string[]): Promise<api.PurgeResul
   const far = await away();
   if (far) {
     // A request on the holder too, so told to `onLocalWrite` once the answer is in, as
-    // `pulled` tells it, and not at all for a refusal — not before the call goes, as a
+    // `pulled` tells it, and not at all for a refusal: not before the call goes, as a
     // queued write is told.
     const out = await far('emptyTrash', [ids]);
     aboutToWrite({ ids, refiles: true });
@@ -1724,7 +1724,7 @@ export async function tagNotes(ids: string[], change: { add?: string[]; remove?:
  * Adds a file to a note, and answers with where the note should link it.
  *
  * With a connection and nothing of the note's waiting, this is the request it always
- * was: the answer is the server's, a refusal — too big, over quota — is the caller's to
+ * was: the answer is the server's, a refusal (too big, over quota) is the caller's to
  * show where the file was dropped.
  *
  * Without one, or behind a write of the note's that has not gone through (a note made a
@@ -1741,14 +1741,14 @@ export async function uploadFile(noteId: string, file: File, attachmentId: strin
   /*
    * Before the first `await`, while the drop or the click that brought the file is still
    * what the browser sees this as part of: a browser that asks the person asks only then,
-   * and by the time a file is known to be queued — the library looked up, the room
-   * measured — that moment has passed (review of #236).
+   * and by the time a file is known to be queued (the library looked up, the room
+   * measured) that moment has passed (review of #236).
    *
    * Only when the app already knows it is offline, which is known without waiting and is
    * when a file is queued. Asked for every upload, a browser that prompts put "store data
    * on this device?" in front of someone attaching a file with a perfectly good
-   * connection, about nothing they had done. The rarer ways into the queue — a note with
-   * a write still waiting, a connection lost mid-upload — ask below, where the prompt may
+   * connection, about nothing they had done. The rarer ways into the queue (a note with
+   * a write still waiting, a connection lost mid-upload) ask below, where the prompt may
    * not come; the next file added offline asks properly.
    */
   if (offlineNow()) askToPersist();
@@ -1759,7 +1759,7 @@ export async function uploadFile(noteId: string, file: File, attachmentId: strin
   const lib = await queueable();
   /*
    * One id for the file, whichever way it goes. A request made directly can lose its
-   * answer after the server has stored the file — a phone on one bar does this — and the
+   * answer after the server has stored the file (a phone on one bar does this) and the
    * file is then queued: under the same id, the replay finds what the first request made;
    * under a new one it stored `scan-2.pdf` beside it and said so (review of #236). The
    * id is a parameter for the same reason one step out: a client's call that ran on the
@@ -1813,7 +1813,7 @@ export function uploadRefusal(file: File): string | null {
 }
 
 /**
- * Takes back a file added here that has not uploaded yet — the wrong photo, attached with
+ * Takes back a file added here that has not uploaded yet: the wrong photo, attached with
  * no connection. Purely local: its entry leaves the queue, its row comes off, its bytes
  * leave the device, and the server never hears of it. Without this the only way to be rid
  * of it was to wait for a connection, let it upload, and delete it then.
@@ -1840,7 +1840,7 @@ export async function cancelUpload(noteId: string, filename: string): Promise<bo
  * would fail with no connection), and anything else is the server's to delete.
  *
  * One function for the Attachments panel and the editor's inline bin, because they were
- * two copies of this rule once and the editor's had only the server half — so a picture
+ * two copies of this rule once and the editor's had only the server half, so a picture
  * added offline could be deleted from the panel and not from the picture.
  */
 export async function deleteOrCancelAttachment(noteId: string, filename: string): Promise<void> {
@@ -1885,7 +1885,7 @@ export async function setNoteField(noteId: string, def: FieldDef, value: FieldVa
  * the server's, and it needs a connection. What it adds over `pulled` is the wait. The
  * chooser opens the notebook's table straight after, and a library that had not heard of
  * the notebook yet would draw that as "Notebook not found" until the socket's nudge
- * arrived. So the pull is awaited here — but only while the library is whole. Without a
+ * arrived. So the pull is awaited here, but only while the library is whole. Without a
  * whole copy (a first copy walking, or one cut short and about to resume), the pull is
  * the rest of the walk, minutes on a phone, and the notebook is already made; the walk
  * ends by following the feed past this write, and nothing reports a notebook missing
@@ -1912,7 +1912,7 @@ export async function applyNotebookTemplate(
  * `restoreRevision`), since the queue they wait on is the holder's. Not
  * `deleteOrCancelAttachment`, which composes `cancelUpload` and a request and runs
  * where it is called; nor `onUploaded`'s listeners, which fire in the holder for an
- * upload its queue got through — a client's own upload answers the client that made it.
+ * upload its queue got through. A client's own upload answers the client that made it.
  *
  * A failure crosses back as its class only for the classes `carry` and `revive` in
  * `library-channel.ts` know; an action added here that throws a class its caller

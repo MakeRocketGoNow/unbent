@@ -147,7 +147,7 @@ describe('LabelEditor', () => {
   });
 
   /* A caller that gives renderNameCount puts the count against the name and takes the
-     trailing number off — a notebook's note count, hard against the notebook name. */
+     trailing number off: a notebook's note count, hard against the notebook name. */
   it('moves the count against the name and drops the trailing one', () => {
     const items: LabelItem[] = [
       { id: '1', name: 'Coupons', count: 5 },

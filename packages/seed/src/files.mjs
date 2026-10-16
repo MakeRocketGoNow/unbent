@@ -11,10 +11,10 @@
  * `packages/enex/scripts/make-scan-fixtures.mjs` draws PDFs too, of a different kind: a
  * page-sized image under an invisible OCR layer, which is what the OCR heuristics are
  * tested against and runs to tens of kilobytes a file. A seeded receipt needs none of that
- * — plain text a reader can select is what search and the viewer exercise — so these are
+ * (plain text a reader can select is what search and the viewer exercise), so these are
  * a few hundred bytes each, and the two generators stay separate.
  *
- * Portable on purpose — no `node:` imports. `CompressionStream` and `TextEncoder` are
+ * Portable on purpose: no `node:` imports. `CompressionStream` and `TextEncoder` are
  * globals in Node 22 and in every browser this app supports, so the loader can run in a
  * page later as well as from `pnpm seed:demo`.
  */
@@ -27,7 +27,7 @@ const encoder = new TextEncoder();
  * Helvetica is one of the fourteen fonts every PDF reader carries, so nothing is embedded
  * and the file stays a few hundred bytes. That font's encoding covers ASCII and not much
  * else predictably, so anything outside printable ASCII is refused rather than drawn as
- * the wrong glyph — the seed's text is ours to keep plain.
+ * the wrong glyph: the seed's text is ours to keep plain.
  *
  * Offsets in the cross-reference table are byte offsets, which is why the text is held to
  * ASCII here too: one character is then one byte, and `length` is the offset.
@@ -120,8 +120,8 @@ async function deflate(bytes) {
  * A PNG that reads as a photographed slip of paper: an off-white page on a darker ground,
  * with grey bars where lines of print would be, one bar per line of the stored text.
  *
- * It carries no legible text, and does not need to — the note stores the text beside it,
- * the way a photo's text arrives from the vision reader — but its shape is what a phone
+ * It carries no legible text, and does not need to (the note stores the text beside it,
+ * the way a photo's text arrives from the vision reader), but its shape is what a phone
  * capture of a receipt looks like in a thumbnail, which is what the list and the panel
  * need to show something real.
  */

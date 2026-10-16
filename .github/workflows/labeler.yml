@@ -8,8 +8,8 @@ on:
   # were paying a per-push minute to re-apply labels that were already right.
   #
   # The trade is a pull request that grows into a new area after it is opened: it keeps the
-  # labels it had. Nothing is gated on them — they are informational, and no workflow reads
-  # `labels` — so the cost is a stale label until someone adds one by hand or reopens.
+  # labels it had. Nothing is gated on them (they are informational, and no workflow reads
+  # `labels`), so the cost is a stale label until someone adds one by hand or reopens.
   pull_request_target:
     types: [opened, reopened]
 

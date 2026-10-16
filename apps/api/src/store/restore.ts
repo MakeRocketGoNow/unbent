@@ -23,7 +23,7 @@ const REFUSED = 'store restore refused: ';
 
 /**
  * The reason `restoreTo` aborts the object with. The runtime hands it, as the error's
- * message, to the request that was in flight — which is the operator's — so it carries
+ * message, to the request that was in flight (which is the operator's), so it carries
  * the undo bookmark out of a call that cannot otherwise return anything.
  */
 export function restoreAbortReason(bookmark: string, undo: string): string {
@@ -43,8 +43,8 @@ export function readRestoreAbort(err: unknown): { scheduled: boolean; undo: stri
 }
 
 /**
- * The message `restoreTo` and `restorePreview` rethrow a runtime refusal with — an unknown
- * bookmark, a time out of reach, no history at all — so the route can tell "refused,
+ * The message `restoreTo` and `restorePreview` rethrow a runtime refusal with (an unknown
+ * bookmark, a time out of reach, no history at all), so the route can tell "refused,
  * nothing happened" from every other failure. Anything without this mark or the abort's
  * is an outcome nobody knows: a dropped connection, an internal error, an abort whose
  * reason the runtime replaced. For a restore that may already have been scheduled, the

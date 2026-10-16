@@ -34,7 +34,7 @@ export function EmptyState({
   lead: ReactNode;
   actions: ReactNode;
   /**
-   * A quieter action on a line of its own under the main ones — one that is on offer but
+   * A quieter action on a line of its own under the main ones: one that is on offer but
    * is not one of the choices the state is about. At its own width, centred, never
    * stretched with the actions on a phone.
    */

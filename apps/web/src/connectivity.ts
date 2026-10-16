@@ -2,25 +2,25 @@ import { useSyncExternalStore } from 'react';
 import { onlineManager, type QueryClient } from '@tanstack/react-query';
 
 /**
- * Whether the app can reach its server right now — the one answer the offline banner, the
+ * Whether the app can reach its server right now: the one answer the offline banner, the
  * faded controls, the outbox's replay and React Query's pausing all read, so they cannot
  * disagree.
  *
  * The rule is evidence over hints. The app is offline while the server is out of reach:
  * the last check of it (`GET /api/health`, with a timeout, any HTTP answer counting) got
  * no answer, or the browser fired `offline` and nothing has answered since. It is back
- * the moment the server answers anything — a check, or any request the API client made
+ * the moment the server answers anything: a check, or any request the API client made
  * that the server itself answered (`confirmReachable`, called from `request` for an
  * answer the service worker did not serve from a cache or the device's shelves). A real
  * answer is the strongest evidence of a connection there is, and nothing is allowed to
  * outrank it.
  *
  * The browser's `navigator.onLine` is a hint, never a veto. It is read at start and its
- * events are heard, and each starts a check — the `offline` event puts the banner up at
+ * events are heard, and each starts a check: the `offline` event puts the banner up at
  * once, since airplane mode should not wait twenty seconds for a check to time out. But
  * it decides nothing on its own. Until 2026-10-13 it did: while it said offline, no check
- * was ever made, so a browser that was wrong — a laptop on a VPN, where Chrome reported no
- * network while every request succeeded — left the banner up for good, with every
+ * was ever made, so a browser that was wrong (a laptop on a VPN, where Chrome reported no
+ * network while every request succeeded) left the banner up for good, with every
  * successful request on screen in the Network tab, refusing saves on a machine with a
  * perfect connection, until the next `online` event. MDN documents the property as
  * unreliable, and the outbox library's own detector refuses to trust it in a visible tab;
@@ -57,7 +57,7 @@ let since: ConnectivityReport['since'] = offline ? { by: 'browser', at: decided.
 /** When the server last answered a request of the page's, for a check that fails after it. */
 let answeredAt = -Infinity;
 /**
- * When the current doubt began — the first failed request, the browser going offline —
+ * When the current doubt began (the first failed request, the browser going offline)
  * or `Infinity` when there is none. What was read or failed since then is fetched again
  * once the server is confirmed (`recover`).
  */
@@ -134,7 +134,7 @@ export function useConnectivityReport(): ConnectivityReport {
 }
 
 /**
- * The server answered a request the page made — not a cache, not the device. Online at
+ * The server answered a request the page made, not a cache, not the device. Online at
  * once, whatever the browser says. A check still in flight that fails afterwards is
  * ignored (`check`): the answer is newer than the question.
  */
@@ -142,7 +142,7 @@ export function confirmReachable(): void {
   answeredAt = Date.now();
   if (!unreachable && doubtSince === Infinity) {
     // Already online: only the record of what last confirmed it moves, and not on every
-    // request — Settings reads it, and a line redrawn on each pull of the feed is churn.
+    // request: Settings reads it, and a line redrawn on each pull of the feed is churn.
     if (decided.by !== 'answer' || answeredAt - decided.at >= ANSWER_NOTE_GAP) {
       decided = { by: 'answer', at: answeredAt };
       report = null;
@@ -151,8 +151,8 @@ export function confirmReachable(): void {
     return;
   }
   decide('answer', true);
-  // A doubt the server has answered without the app ever going offline — one request
-  // failed and the next did not — still leaves that request's query failed, so it ends
+  // A doubt the server has answered without the app ever going offline (one request
+  // failed and the next did not) still leaves that request's query failed, so it ends
   // here too.
   endDoubt();
 }
@@ -261,7 +261,7 @@ function networkChanged(): void {
  * connection that is up and carries nothing looked online to it forever. Here it pauses
  * retries exactly when the banner shows, and resumes them when the banner goes.
  *
- * On the way back — or when a doubt is answered without the app ever going offline — what
+ * On the way back, or when a doubt is answered without the app ever going offline, what
  * was read or failed since the doubt began is fetched again even if React Query thinks it
  * fresh: it may have come from the worker's cache, which is also what lets a note opened
  * from the cache be edited again (see `Workspace`). Everything read before came from the
@@ -282,7 +282,7 @@ export function installConnectivity(queryClient: QueryClient): void {
     recheck();
   });
   // The browser says the network went. Believed at once, so airplane mode shows the banner
-  // the moment it is switched on — and checked at once, so a browser that is wrong about
+  // the moment it is switched on, and checked at once, so a browser that is wrong about
   // it is found out in seconds.
   window.addEventListener('offline', () => {
     networkChanged();

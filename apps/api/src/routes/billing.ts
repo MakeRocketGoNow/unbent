@@ -34,7 +34,7 @@ import type { AppEnv } from '../types.js';
  *
  * A refusal from Paddle is answered 502 with Paddle's own words, not 500: the request
  * was sound and the fault is on the other side of a network, which is the one thing the
- * person can do something about — try again. Logged with the account, since a 502 the
+ * person can do something about: try again. Logged with the account, since a 502 the
  * page shows says nothing about which call it was.
  */
 
@@ -68,13 +68,13 @@ export const billing = new Hono<AppEnv>()
   /**
    * The account's plan, for the Plan page, the trial banner and the editor's read-only
    * state. One D1 read, usually; the first read after a sign-up whose hook failed makes
-   * the row (`planFor`). Read on open and after anything that changes it — a checkout, a
-   * portal visit — rather than on every write: the 402 a lapsed write gets is the guard,
+   * the row (`planFor`). Read on open and after anything that changes it (a checkout, a
+   * portal visit) rather than on every write: the 402 a lapsed write gets is the guard,
    * and this is what lets the page say so before anyone types.
    *
    * What the account holds comes from its store, which is a call to the account's
    * object: asked for with `?usage=1`, which only the Plan page passes, so the banner
-   * and the editor — which read this on every open and every focus in every tab —
+   * and the editor, which read this on every open and every focus in every tab,
    * cost a D1 row and nothing more. Left out rather than failed when the store cannot
    * say (reset by a deploy, or being loaded), since the plan is still the plan.
    */
@@ -202,9 +202,9 @@ export const billing = new Hono<AppEnv>()
    * Stamped with Paddle's own `updated_at`, never this Worker's clock. After a lapse and
    * a second checkout the row still names the old, canceled subscription, and a read of
    * that stamped "now" would be newer than the new subscription's own events, which
-   * `notBefore` would then refuse for good — a paying customer kept read-only. So the
+   * `notBefore` would then refuse for good: a paying customer kept read-only. So the
    * subscription read is the customer's newest, not the one the row names: a row with
-   * none yet (the first checkout, before its webhook has landed — or where none will,
+   * none yet (the first checkout, before its webhook has landed, or where none will,
    * which is every local instance) and a row naming a canceled one both find the new
    * subscription this way, and only a subscription that is canceled and newest is left
    * alone, since nothing about it will change.
@@ -235,11 +235,11 @@ export const billing = new Hono<AppEnv>()
 
   /**
    * Paddle's webhook: what happened to a subscription, signed with the destination's
-   * secret. No session — Paddle sends none — so the signature is the whole of the
+   * secret. No session (Paddle sends none), so the signature is the whole of the
    * authority, and the raw body is what it signs, read before anything parses it.
    *
    * Two answers for a sound event: 200 having applied it, or 200 having found nothing to
-   * apply — an event already applied by id (Paddle retries anything not answered inside
+   * apply: an event already applied by id (Paddle retries anything not answered inside
    * five seconds), a customer no row holds (a checkout from the dashboard, a test from
    * the simulator), or a type the rules do not follow. All 200, since a 4xx would be
    * retried until Paddle gave up and then listed as failed for the operator to clear;
@@ -255,7 +255,7 @@ export const billing = new Hono<AppEnv>()
    * A refund is the one event that acts on Paddle rather than only on the row
    * (`refundEffectOf`): the subscription is cancelled, or its add-on removed, before
    * anything is recorded, so a call Paddle refuses or does not answer is a 502 and the
-   * event is delivered again — the row still names the subscription as live, and the
+   * event is delivered again: the row still names the subscription as live, and the
    * retry asks again. Once the call is through, the row is written as the cancel will
    * leave it, in the same batch as the event's row.
    */

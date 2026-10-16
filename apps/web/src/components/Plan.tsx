@@ -41,7 +41,7 @@ const CHECKOUT_SETTLE_TRIES = 6;
 
 /**
  * The account's plan (MAK-108): where it stands, what it holds, and the three things
- * that change it — subscribing, managing the subscription in Paddle's portal, and buying
+ * that change it: subscribing, managing the subscription in Paddle's portal, and buying
  * more storage. Drawn only where the instance sells a plan (`config.billing`).
  *
  * One state at a time, in a sentence: a trial and when it ends, a subscription and when
@@ -96,7 +96,7 @@ export function Plan() {
         <div className="panel-head">
           <h2>Plan</h2>
         </div>
-        {/* A read that failed — offline, or the server's day — says so and offers the one
+        {/* A read that failed (offline, or the server's day) says so and offers the one
             thing to do, rather than "Reading…" for as long as the page is open. */}
         {unavailable ? (
           <div className="backfill-row">
@@ -115,11 +115,11 @@ export function Plan() {
   // The checkout route's line, word for word: only a canceled subscription whose period
   // is over makes way for a new checkout. One still in its paid period, cancelling or
   // not, is managed in the portal; and a past-due one past its paid period is read-only
-  // until the card is updated, which is the portal's form too — a new checkout would be
+  // until the card is updated, which is the portal's form too: a new checkout would be
   // a second subscription beside the one Paddle is still trying to collect.
   const subscribed = plan.subscription !== null && !(plan.subscription.status === 'canceled' && plan.state === 'inactive');
   // A comp still running is asked for nothing; one that has ended is a lapsed account
-  // like any other, and the checkout is its way back — the operator's "end" and a dated
+  // like any other, and the checkout is its way back: the operator's "end" and a dated
   // comp running out both leave `source` as it was, so the source alone cannot say.
   const canSubscribe = !hosted && !subscribed && !(plan.source === 'comp' && plan.state !== 'inactive');
   // Storage is changed on a subscription Paddle will bill; a canceled one is refused.

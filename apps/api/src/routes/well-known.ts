@@ -6,7 +6,7 @@ import type { AppEnv } from '../types.js';
 /**
  * The OAuth discovery documents, served from the origin root.
  *
- * An MCP client starts by asking the *root* of the origin who issues tokens here — that is
+ * An MCP client starts by asking the *root* of the origin who issues tokens here: that is
  * how the specs are written, and it is not negotiable from our side. Better Auth serves
  * these too, but only under its own base path, because its router answers 404 for anything
  * outside /api/auth before a plugin's hook ever runs. So the documents are re-served here,
@@ -22,7 +22,7 @@ import type { AppEnv } from '../types.js';
  * These are all public by necessity: a client reads them before it has any credential.
  *
  * wrangler.toml must route these paths to the Worker. Without that they are served by the
- * SPA fallback, which answers index.html with a 200 — a failure that looks like a client
+ * SPA fallback, which answers index.html with a 200, a failure that looks like a client
  * bug rather than a routing one, because nothing errors.
  */
 export const wellKnown = new Hono<AppEnv>()
@@ -45,7 +45,7 @@ export const wellKnown = new Hono<AppEnv>()
    * runs for a path outside the auth base path.
    *
    * Deliberately minimal. `scopes_supported` is omitted because this server has none to
-   * advertise — consent grants access to the notes, and a client that asks for a scope is
+   * advertise: consent grants access to the notes, and a client that asks for a scope is
    * told at the token endpoint rather than being invited to guess from here.
    */
   .get('/.well-known/oauth-protected-resource', (c) => resourceMetadata(c.env))
@@ -57,7 +57,7 @@ export const wellKnown = new Hono<AppEnv>()
    * app; and passkeys, because Credential Manager will only offer a credential for a
    * domain to an app that domain has declared. It used to be a static file in the web
    * app, which meant every fork served unbent.app's package and signing keys from its own
-   * domain — a claim about somebody else's app — while its own app got nothing.
+   * domain (a claim about somebody else's app) while its own app got nothing.
    *
    * So it is per deployment now, from `ANDROID_ASSET_LINKS`, the same way the operator's
    * name is: unset means this instance vouches for no app, and the response is a 404 that
@@ -87,8 +87,8 @@ export const wellKnown = new Hono<AppEnv>()
   })
   /**
    * The Apple App Site Association document: the iOS counterpart of the one above, for the
-   * same two things — universal links, and passkeys offered to the app through
-   * `webcredentials` — and per deployment from `APPLE_APP_SITE_ASSOCIATION` for the same
+   * same two things (universal links, and passkeys offered to the app through
+   * `webcredentials`) and per deployment from `APPLE_APP_SITE_ASSOCIATION` for the same
    * reason, since its app ids carry a team id that is one developer's.
    *
    * Apple's document is a JSON *object* where Android's is an array, so that is what is

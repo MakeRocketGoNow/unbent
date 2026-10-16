@@ -6,7 +6,7 @@ import { notebooksQuery } from '../queries.js';
  * Everything that configures the app, behind one entry on the navigation's floor.
  *
  * The loader sits on the layout rather than the notebooks child so entering the section
- * from any page has the notebook list warm — it is the landing child, and the one page
+ * from any page has the notebook list warm: it is the landing child, and the one page
  * here anyone visits repeatedly.
  */
 export const Route = createFileRoute('/settings')({

@@ -19,11 +19,11 @@ interface TagsSheetProps {
 /**
  * The selection's tags: what they carry between them, and a field to give them another.
  *
- * Tags are added and taken away rather than set, because the notes need not agree — three
+ * Tags are added and taken away rather than set, because the notes need not agree: three
  * notes with three tag lists gain a fourth tag each and keep their own. So the sheet
  * reports each tag the selection carries with how many notes carry it, as Gmail's label
  * menu does: a checked box for a tag on every note, a half-filled one for a tag on some,
- * and pressing either makes the whole selection agree — on for a tag some have, off for
+ * and pressing either makes the whole selection agree: on for a tag some have, off for
  * a tag all have. Each press writes at once and the sheet stays open, the way the filter
  * sheet applies as it goes, so tidying a selection's tags is one visit rather than a
  * round trip per tag.

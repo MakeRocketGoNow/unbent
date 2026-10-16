@@ -20,7 +20,7 @@ vi.mock('./index-files.js', () => ({ indexUploadedFile: vi.fn(), indexing: { get
 
 /**
  * One note per file, through the store's actions and in order: the create, with the link
- * already in the body, then the upload to it — so a batch that goes offline halfway
+ * already in the body, then the upload to it, so a batch that goes offline halfway
  * replays each note's writes in the order they were made.
  */
 
@@ -205,7 +205,7 @@ describe('claimFileNotesFor', () => {
   /*
    * The installed app does not reload on sign-out (`focus-existing`), so a scanner sending
    * files to a window sitting on the login screen reaches `notesFromFiles` with nobody
-   * claimed — the shape of a cold launch, and with no session to write with. The previous
+   * claimed: the shape of a cold launch, and with no session to write with. The previous
    * occupancy's `firstOwner` used to fail that batch's `theirs` check, and the files
    * vanished with no report.
    */

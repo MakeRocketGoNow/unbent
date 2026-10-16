@@ -30,9 +30,9 @@ import { filesOf } from './keep.js';
  *
  * The feed carries a note by its `tagIds` and `notebookId`, a notebook with its
  * definitions and a tag by its name, with no counts anywhere (see `packages/shared/src/
- * feed.ts` for why). Everything the server used to compute per request — the list row
+ * feed.ts` for why). Everything the server used to compute per request (the list row
  * with its excerpt and names, the sidebar's counts, a notebook's field definitions with
- * how many notes hold a value — is computed here from the collections, in the same
+ * how many notes hold a value) is computed here from the collections, in the same
  * order and with the same comparisons the server's queries made, so a list looks the
  * same whether it came from the store or the Worker. Pure functions over plain arrays,
  * so a test can hold each rule without a database.
@@ -120,8 +120,8 @@ export function notebookName(note: LocalNote, l: Lookups): string | null {
 /**
  * A note's values, rendered from the definitions held: a field renamed records its
  * notebook, not every note that holds a value, so the carried name can be stale. The
- * carried shape stands for a definition the client does not hold — a deleted
- * notebook's tombstone — which is the one case it is current (see `FeedNote`).
+ * carried shape stands for a definition the client does not hold (a deleted
+ * notebook's tombstone), which is the one case it is current (see `FeedNote`).
  */
 export function fieldValues(note: FeedNote, l: Lookups): NoteFieldValue[] {
   return (note.fields ?? []).map((v) => {
@@ -155,8 +155,8 @@ const excerpts = new WeakMap<object, string>();
 
 /**
  * A row's excerpt, computed once per row object. Parsing the markdown is the one costly
- * step of a list row — about a millisecond a note, so a 13K-note library summarised whole
- * was twelve seconds (measured, review of #232) — and a row the feed has not replaced is
+ * step of a list row, about a millisecond a note, so a 13K-note library summarised whole
+ * was twelve seconds (measured, review of #232), and a row the feed has not replaced is
  * the same object, so the excerpt of an unchanged note is never computed twice.
  */
 export function excerptOf(note: LocalNote): string {
@@ -198,7 +198,7 @@ export function toAttachmentInfo(f: FeedAttachment & { pending?: true }): LocalA
 
 /**
  * The name a file added here will have: its own, or suffixed `-2`, `-3`, … when the note
- * already holds one by that name — the server's rule (`availableFilename` in the store),
+ * already holds one by that name: the server's rule (`availableFilename` in the store),
  * applied to the files this device knows of, so the link written into the note now is the
  * one the upload will make true. The server still decides; see `uploadFile` in
  * `actions.ts` for the case where it decides otherwise.
@@ -314,7 +314,7 @@ export function comparator(ordering: ListOrdering, trashed: boolean, sortField: 
       c = (a.deletedAt ?? 0) - (b.deletedAt ?? 0);
     } else if (sortField) {
       // Notes holding a value first, in value order; then the valueless, by id, whichever
-      // direction — the two runs the server's page is made of.
+      // direction: the two runs the server's page is made of.
       const ka = fieldSortKey(sortField, fieldValues(a, l));
       const kb = fieldSortKey(sortField, fieldValues(b, l));
       const va = ka !== '';

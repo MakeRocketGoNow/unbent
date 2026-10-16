@@ -1,7 +1,7 @@
 /**
  * Note history: the title and body a note had before a write replaced them, so a bad
  * edit can be undone (MAK-119). The trash covers a deleted note; this covers one whose
- * text was overwritten — by a stray paste, or by an assistant's `edit_note`.
+ * text was overwritten, by a stray paste, or by an assistant's `edit_note`.
  *
  * Title and body only. Tags, the notebook and field values are cheap to redo by hand,
  * and carrying them would triple the row shapes for something nobody restores.

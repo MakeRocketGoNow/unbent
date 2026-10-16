@@ -7,7 +7,7 @@ import type { AppEnv } from '../types.js';
 /**
  * The dev instance's half of the preview sign-in relay.
  *
- * A per-PR preview cannot sign in with Google — its hostname changes every PR, so no OAuth
+ * A per-PR preview cannot sign in with Google: its hostname changes every PR, so no OAuth
  * callback can be registered against it. Instead the preview sends a signed-in-here browser
  * to this endpoint, which mints a one-time token against the dev session and redirects it
  * back to the preview, where `/preview-signin` redeems it for a session of the preview's
@@ -16,8 +16,8 @@ import type { AppEnv } from '../types.js';
  *
  * Why this is a server endpoint that validates *and* mints *and* redirects, rather than the
  * browser fetching a token from `/one-time-token/generate` and redirecting itself: the token
- * is bearer-grade. `/one-time-token/verify` returns the full session — including the session
- * token the `bearer()` plugin accepts as `Authorization: Bearer` — so a token handed to the
+ * is bearer-grade. `/one-time-token/verify` returns the full session (including the session
+ * token the `bearer()` plugin accepts as `Authorization: Bearer`), so a token handed to the
  * wrong origin is a whole-account compromise, not merely a cookie set on a site that cannot
  * use it. The redirect target therefore must be checked somewhere the caller cannot bypass,
  * which is here. The browser never gets to choose an unvalidated destination for a token.
@@ -27,8 +27,8 @@ export const previewRelay = new Hono<AppEnv>().get(
   /**
    * Off unless this instance is a relay source. The route is mounted unconditionally and
    * refuses at request time rather than being conditionally mounted, which keeps the wiring
-   * in index.ts uniform with every other route; where the relay is not configured —
-   * production, and every instance that is not the dev one — it answers 404, the same as an
+   * in index.ts uniform with every other route; where the relay is not configured
+   * (production, and every instance that is not the dev one), it answers 404, the same as an
    * unmounted path. The check is before `requireAuth` on purpose: an instance that does not
    * have this feature should not even disclose that the path wants a session. See
    * `previewRelayEnabled`.
@@ -49,8 +49,8 @@ export const previewRelay = new Hono<AppEnv>().get(
       return c.json({ error: 'Missing return origin' }, 400);
     }
 
-    // The load-bearing check. `return` is attacker-controllable — anything can open this URL
-    // with a session-carrying browser — so the token only leaves for a host proven to be one
+    // The load-bearing check. `return` is attacker-controllable (anything can open this URL
+    // with a session-carrying browser), so the token only leaves for a host proven to be one
     // of our previews. See isTrustedPreviewOrigin.
     if (!isTrustedPreviewOrigin(c.env, returnOrigin)) {
       return c.json({ error: 'Untrusted return origin' }, 400);

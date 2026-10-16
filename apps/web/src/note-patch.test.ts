@@ -122,7 +122,7 @@ describe('buildNotePatch', () => {
 
   /*
      A number input emits strings as they are typed. "12." is not a number yet, and
-     sending it used to 400 the whole PATCH — the body typed in the same breath included.
+     sending it used to 400 the whole PATCH: the body typed in the same breath included.
   */
   it('keeps a body edit when a number field is only halfway typed', () => {
     expect(
@@ -224,8 +224,8 @@ describe('buildNotePatch', () => {
 
   /*
      `encodeFieldValue` answers 'clear' for an emptied input rather than an encoded value.
-     Nothing in the UI sends one — `NoteFields` turns '' into null before it reaches the
-     draft — but this function is called directly, and a raw '' is a clear, not a value.
+     Nothing in the UI sends one (`NoteFields` turns '' into null before it reaches the
+     draft), but this function is called directly, and a raw '' is a clear, not a value.
   */
   it('reads an emptied field value as a clear rather than sending the empty string', () => {
     const withBoth = note({
@@ -252,7 +252,7 @@ describe('buildNotePatch', () => {
 
   /*
      Filing a note is a notebook change. The current notebook's definitions then no longer
-     include Amount — or are undefined while they load — and Amount was empty, so there is
+     include Amount (or are undefined while they load), and Amount was empty, so there is
      no stored row to take the type from. Handing the definition we already loaded is what
      keeps the just-typed number in the patch; without it only the notebook would go.
   */
@@ -322,7 +322,7 @@ describe('unstoreableFieldIds', () => {
   });
 
   it('names only a field the editor can type into, when it says which those are', () => {
-    // Stored, so the row's type alone says "12." is not a number yet — but carried from a
+    // Stored, so the row's type alone says "12." is not a number yet, but carried from a
     // notebook the note has left, there is no input to finish it in.
     const carried = note({ fields: [value(amount, 10)] });
     const typing = draft({ fields: { [amount.id]: '12.' } });
@@ -408,7 +408,7 @@ describe('holdsTheirChanges', () => {
   });
 
   it('says yes when nothing the draft can see has changed at all', () => {
-    // The date moved for something the draft does not hold — an attachment, say.
+    // The date moved for something the draft does not hold: an attachment, say.
     expect(holdsTheirChanges(draftOf({ body: 'Body, edited' }), base, { ...base })).toBe(true);
   });
 });

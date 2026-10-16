@@ -121,7 +121,7 @@ async function notebookIdByName(notes: NotesRepo, name: string): Promise<string 
  * The field definitions of the notebook a new note is filed into, by name, out of one
  * `notebooksOverview`: what `create_notes` resolves values against, since a batch may name
  * many notebooks and one call for all of them beats a call each. Matched as the store
- * matches a name (`sameName`). Empty for no notebook, or one that does not exist yet — it
+ * matches a name (`sameName`). Empty for no notebook, or one that does not exist yet: it
  * is made by the create, with no fields.
  */
 function defsOfNotebook(
@@ -184,7 +184,7 @@ const MAX_CREATE_NOTES = 100;
  * (`maxRequestBodySize`, left at its default in `mcp/server.ts`) with a bare 413 before
  * any tool runs, and a body's JSON escaping makes the request larger than its text, so
  * this sits well under that, where a refusal can still be a tool error that says what to
- * do — and the description states it, so a model can size its batches before sending.
+ * do, and the description states it, so a model can size its batches before sending.
  * The two are decided together: raise this only by raising that.
  */
 const MAX_CREATE_NOTES_BYTES = 3_000_000;
@@ -214,7 +214,7 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
     {
       title: 'Create a note',
       description:
-        'Create a note with its body in one call. The body is Markdown — write the whole ' +
+        'Create a note with its body in one call. The body is Markdown: write the whole ' +
         'note here rather than creating something empty and editing it afterwards.' +
         SHARE_NOTE_LINK,
       inputSchema: z.object({
@@ -232,7 +232,7 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
       if (fields && Object.keys(fields).length > 0) {
         // Fields belong to a notebook, so values need one to be resolved against. A
         // notebook that does not exist yet has no fields, which the error says. One
-        // notebook, so `notebookByName` — a dozen rows — and not the whole account's
+        // notebook, so `notebookByName` (a dozen rows) and not the whole account's
         // definitions that `create_notes` reads for a batch naming many.
         const defs = target ? ((await notes.notebookByName(target))?.fields ?? []) : [];
         const resolved = resolveFieldNames(fields, defs, [], target ?? null);
@@ -261,10 +261,10 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
     {
       title: 'Create several notes',
       description:
-        `Create up to ${MAX_CREATE_NOTES} notes in one call, each as create_note takes it — ` +
-        'title, body, tags, notebook and fields — for an import or any list of notes to make. ' +
-        'Every field value in the batch is checked before anything is written — those of ' +
-        'notes skipExisting would skip too — and if one is refused nothing is created: the ' +
+        `Create up to ${MAX_CREATE_NOTES} notes in one call, each as create_note takes it ` +
+        '(title, body, tags, notebook and fields) for an import or any list of notes to make. ' +
+        'Every field value in the batch is checked before anything is written (those of ' +
+        'notes skipExisting would skip too) and if one is refused nothing is created: the ' +
         'error names each note that needs fixing, by its position, so the whole batch can be ' +
         'sent again. With skipExisting, a note whose title its notebook already has (whatever ' +
         'the case) is not made again, and answers with the note that is there; a title given ' +
@@ -381,7 +381,7 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
       title: 'Replace parts of a note',
       description:
         'Overwrite whole fields of a note. Every argument is optional and only what is ' +
-        'supplied changes, but what is supplied replaces rather than merges — passing tags ' +
+        'supplied changes, but what is supplied replaces rather than merges: passing tags ' +
         'sets the tag list to exactly that. Custom field values are the exception: only the ' +
         'names given change, and null clears one. To change part of a body without ' +
         'resending it, use edit_note. Pass the updatedAt get_note gave you as ' +
@@ -468,7 +468,7 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
           .min(1)
           .optional()
           .describe(
-            'Required for replace: the exact text to substitute. Must appear exactly once — ' +
+            'Required for replace: the exact text to substitute. Must appear exactly once: ' +
               'include enough surrounding text to be unique.',
           ),
       }),
@@ -486,7 +486,7 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
        * Append has a repo method that does it in SQL, so it neither reads the body back nor
        * races another writer over it. The other two modes have to read, and are read-modify-
        * write, so the write is made conditional on the read: it carries the `updatedAt` it
-       * read, and a save that landed in between — the editor's autosave, another agent —
+       * read, and a save that landed in between (the editor's autosave, another agent)
        * refuses it rather than being overwritten with a body built from the older text.
        */
       if (mode === 'append') {
@@ -530,7 +530,7 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
   );
 
   /*
-     The tools that take several notes go through the repo's batch methods — one read and
+     The tools that take several notes go through the repo's batch methods: one read and
      one transaction for the set, where each used to read and write every note in turn,
      which is what capped them at fifty. They answer with which ids were done, how many of
      those actually changed (a note already there, or already carrying the tag, keeps its
@@ -630,7 +630,7 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
       if ('error' in resolved) return toolError(resolved.error);
       try {
         // The store checks again that every note is in the notebook those fields belong
-        // to — a note can move between the two calls — and names one that is not; its
+        // to (a note can move between the two calls) and names one that is not; its
         // answer is passed on as it is.
         const done = await notes.updateMany(noteIds, { fields: resolved.patch, by: 'assistant' });
         return jsonResult({
@@ -649,7 +649,7 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
   /*
      Tags are addressed by name here, as every other tool does, and resolved to the id the
      repo wants from `listTags`. That list is live notes only, so a tag whose every note is
-     in the trash is "no such tag" to these two — the same answer list_tags gives, which is
+     in the trash is "no such tag" to these two, the same answer list_tags gives, which is
      what the assistant has just read. Found without case, as the store finds a tag
      (MAK-127), and answered with the stored spelling, so the assistant reports the tag
      the person sees rather than the case it happened to type.
@@ -660,7 +660,7 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
       title: 'Rename or merge a tag',
       description:
         'Rename a tag everywhere it is used. The current name matches whatever its case. ' +
-        'Changing only the case — Receipts to receipts — is a plain rename, and the way to ' +
+        'Changing only the case (Receipts to receipts) is a plain rename, and the way to ' +
         'respell a tag. If another tag already has the new name, in any case, the call is ' +
         'refused, since the two would become one: pass merge:true to fold this tag into ' +
         'that one, so every note that carried it carries the other instead, under the ' +
@@ -757,7 +757,7 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
     {
       title: 'Move a note to the trash',
       description:
-        'Trash a note. This is reversible — the note stays in the trash until someone empties ' +
+        'Trash a note. This is reversible: the note stays in the trash until someone empties ' +
         'it, and restore_note brings it back. There is no tool that deletes permanently. The ' +
         'answer carries url, where the note now opens in the trash, to give the person.',
       inputSchema: z.object({ noteId: z.string().uuid() }),
@@ -787,7 +787,7 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
   );
 
   /*
-     The same two verbs over a set. Still nothing that deletes permanently — the trash is
+     The same two verbs over a set. Still nothing that deletes permanently: the trash is
      as far as an assistant can go, and a set of ids does not change that.
   */
   server.registerTool(
@@ -931,8 +931,8 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
   /**
    * Field definitions can be made and changed here but not deleted or reordered. Deleting
    * one takes every value with it, and that is the line these tools hold: no note, and
-   * nothing a note holds, is destroyed here. A label or a container can be — delete_tag,
-   * a tag merge and delete_notebook cannot be undone — but the notes and their values
+   * nothing a note holds, is destroyed here. A label or a container can be (delete_tag,
+   * a tag merge and delete_notebook cannot be undone), but the notes and their values
    * come through each of those, where a deleted field's values would not. That is worth
    * more than the symmetry. Order is a display concern for the person, not the model.
    */
@@ -990,7 +990,7 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
    * shape and stays for a model that means to set one; the edits are what a model usually
    * wants, and they apply to the list the store holds, so an option the model did not
    * name cannot go missing on the way (MAK-227). A rename goes through the store's
-   * `editFieldOptions`, which moves the notes holding the old option with it — through the
+   * `editFieldOptions`, which moves the notes holding the old option with it: through the
    * whole list, a rename left them on a value the field no longer offered. The whole list
    * goes through it too, as a `replace`, so the answer names every option the list left
    * out and how many notes still hold it: a dropped option is said, not silent.

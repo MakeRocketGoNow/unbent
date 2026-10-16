@@ -16,7 +16,7 @@ import com.makerocketgonow.unbent.api.SessionCookie
  * attacker who, having root, could read the key material too.
  *
  * The session is stored per-origin. Pointing the app at a different instance must not send
- * the old instance's credential to it — the same trap the CLI's per-origin credentials file
+ * the old instance's credential to it, the same trap the CLI's per-origin credentials file
  * avoids.
  */
 class Prefs(context: Context) {
@@ -55,7 +55,7 @@ class Prefs(context: Context) {
     /**
      * Where the last capture was filed, offered first by the next one.
      *
-     * A share sheet is used in runs — five receipts in a row go to the same place — and
+     * A share sheet is used in runs (five receipts in a row go to the same place) and
      * the notebook picked last time is the likeliest answer. Per origin like the session,
      * since a notebook name belongs to one instance's account.
      */

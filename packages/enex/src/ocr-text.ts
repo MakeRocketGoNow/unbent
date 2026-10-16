@@ -2,7 +2,7 @@
  * Cleaning and quality-filtering for text extracted from scanned attachments.
  *
  * Evernote OCR'd the PDFs in a real export and embedded the text layer, so the content is
- * already there — but roughly a fifth of it is unusable character noise, and much of the
+ * already there, but roughly a fifth of it is unusable character noise, and much of the
  * rest is letter-spaced ("H a r b o r v i e w"), which no tokenizer will match against a normal
  * query. Both are handled here rather than at the index, so the stored text is the text a
  * search will actually see.
@@ -12,7 +12,7 @@
  * Rejoins characters that OCR split with spaces.
  *
  * A run of three or more single characters separated by spaces is a spacing artifact, not
- * language — the pattern appears throughout real scans as `H a r b o r v i e w` or
+ * language: the pattern appears throughout real scans as `H a r b o r v i e w` or
  * `S t a t e m e n t  D a t e`. Left alone, "Harborview" is unfindable.
  *
  * Requires three or more so genuine short sequences ("a b c" in a list, "I a m") survive.
@@ -52,7 +52,7 @@ const WORDISH = /[\p{L}]{2,}/gu;
  * Judges whether extracted text is language or noise.
  *
  * Tuned against real samples: failed scans yield things like
- * `> CO 5 I > — O — - f O 1" 2 o in in I s I` — 53 characters of isolated symbols with
+ * `> CO 5 I > — O — - f O 1" 2 o in in I s I`: 53 characters of isolated symbols with
  * almost no multi-letter words. Successful ones run to thousands of characters of
  * recognizable prose. The gap between those is wide, so the thresholds are deliberately
  * loose; the goal is to drop obvious junk, not to grade legibility.

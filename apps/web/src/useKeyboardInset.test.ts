@@ -6,7 +6,7 @@ import { useKeyboardInset } from './useKeyboardInset.js';
  * A controllable stand-in for `window.visualViewport`, which jsdom does not implement.
  *
  * jsdom has no layout either, so the hook's fixed-position probe reports where the fixed
- * containing block ends through a stubbed `getBoundingClientRect` — at `innerHeight`, as
+ * containing block ends through a stubbed `getBoundingClientRect` (at `innerHeight`), as
  * in Chrome, unless `fixedBottom` says otherwise.
  */
 function stubViewport(innerHeight: number, fixedBottom = innerHeight) {

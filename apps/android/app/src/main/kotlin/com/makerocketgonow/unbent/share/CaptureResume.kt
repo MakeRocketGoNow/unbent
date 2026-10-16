@@ -6,7 +6,7 @@ import java.io.File
  * Makes a capture's WorkManager retries safe to run again.
  *
  * [UploadWorker] creates the note, then uploads files, then reports success. A dropped
- * radio in the middle is ordinary on a phone, and WorkManager retries the whole job —
+ * radio in the middle is ordinary on a phone, and WorkManager retries the whole job,
  * which, without this, called `createNote` again and left a second, often empty, note
  * beside the first. Indexing is already a separate job for the same reason (see
  * [IndexWorker]); this is that property for the upload job's own retries.

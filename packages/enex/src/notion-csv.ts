@@ -1,10 +1,10 @@
 /**
  * A reader for the CSV Notion writes beside each database: RFC 4180, with a UTF-8 byte
  * order mark, CRLF or LF line ends, and quoted fields that double their quotes and may
- * run across lines — a long-text property is one cell however many paragraphs it holds.
+ * run across lines: a long-text property is one cell however many paragraphs it holds.
  *
  * Hand-written rather than a dependency because this is the whole of what the format
- * needs, and the one behaviour that matters — a newline inside quotes is not a row break —
+ * needs, and the one behaviour that matters (a newline inside quotes is not a row break)
  * is exactly what a split-on-newline reader gets wrong.
  */
 export function parseCsv(text: string): string[][] {

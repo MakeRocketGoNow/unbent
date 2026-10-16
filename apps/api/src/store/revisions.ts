@@ -39,7 +39,7 @@ interface NewestRow {
 /**
  * A note's history (schemas 0003 and 0004): the copies kept of what a write replaced.
  *
- * Private helpers in the sense `Sql.tx` means — nothing here opens a transaction, and
+ * Private helpers in the sense `Sql.tx` means: nothing here opens a transaction, and
  * `keep` is only ever called from inside the one that replaces the text, so a copy is
  * kept if and only if the write it guards lands. Nothing here records in the change
  * feed either: history is the server's, asked for when the History sheet opens, and a
@@ -49,11 +49,11 @@ export class Revisions {
   constructor(private readonly sql: Sql) {}
 
   /**
-   * Keeps `was` — the note as it stood — if this write is one that should leave a copy,
+   * Keeps `was` (the note as it stood) if this write is one that should leave a copy,
    * then prunes the note's history. `stamp` is the `updated_at` the write is giving the
    * note; `was.updatedAt` is the one it had. `changed` is which parts of the note the
-   * write replaces, and `props` reads the rest of what a copy holds — the notebook, the
-   * tags by id, the field values — asked for only when a copy is actually taken, which
+   * write replaces, and `props` reads the rest of what a copy holds (the notebook, the
+   * tags by id, the field values) asked for only when a copy is actually taken, which
    * is once a sitting; every other save would be reading tags to throw them away.
    *
    * A sitting leaves a copy only when the newest one is older than the window, so it is
@@ -64,7 +64,7 @@ export class Revisions {
    *
    * It is not enough for an assistant. "I wrote this just now; tidy it up" is the usual
    * way an `edit_note` arrives, and under the window alone the copy from the start of
-   * the sitting would suppress the one that matters — the text as the person left it,
+   * the sitting would suppress the one that matters: the text as the person left it,
    * minutes old, about to be replaced by something they did not type. So a write made
    * over MCP always keeps what it replaces, with one exception: when what it replaces
    * is the output of an assistant's write that already left a copy, inside the window.
@@ -128,7 +128,7 @@ export class Revisions {
    * Whether the note's newest copy already stands for this write, so none need be kept:
    * the half of `keep`'s decision that needs nothing of the note but its date. When it
    * does, the copy is told what this write changed and, for an assistant's run, how far
-   * the run has got — so a caller that hears yes has nothing more to do.
+   * the run has got, so a caller that hears yes has nothing more to do.
    *
    * Apart from `keep` for the bulk verb, which would otherwise read every note it
    * changes whole, body and all, to learn that most of them are inside their window and
@@ -175,7 +175,7 @@ export class Revisions {
   /**
    * Retention, for this note only and only when a copy was just added: no cron, and no
    * pass over every note of an account. Both halves walk the note's own run of the index
-   * — at most a row past the limit, since this runs after every insert — so a note with
+   * (at most a row past the limit, since this runs after every insert), so a note with
    * a full history reads about twice `REVISIONS_KEPT` index entries here and nothing else.
    *
    * A note nobody writes to again keeps copies past the age limit on disk; `list` and `get`
@@ -197,8 +197,8 @@ export class Revisions {
   /**
    * A note's copies, newest first, without their bodies or what else they hold: fifty
    * bodies is megabytes on a long note, and the sheet shows one at a time. `size` is the body's length in
-   * characters, which is what lets a row say a copy was much longer than the note is now
-   * — the gutted note is the case this whole table is for. A column, so the bodies are
+   * characters, which is what lets a row say a copy was much longer than the note is now:
+   * the gutted note is the case this whole table is for. A column, so the bodies are
    * not read to count them; see 0003.
    */
   list(noteId: string, now: number): NoteRevisionSummary[] {

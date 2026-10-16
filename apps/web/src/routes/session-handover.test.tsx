@@ -29,7 +29,7 @@ const listTags = vi.fn(async () => {
   return rowsOf(account);
 });
 
-/** Sign somebody in, or `null` for nobody — both ends of the session at once. */
+/** Sign somebody in, or `null` for nobody: both ends of the session at once. */
 function signedInAs(id: string | null) {
   account = id;
   vi.mocked(ensureSession).mockResolvedValue(
@@ -41,13 +41,13 @@ function signedInAs(id: string | null) {
 const served: string[][] = [];
 
 /**
- * One tab, two people, no reload — the gate and the cache together.
+ * One tab, two people, no reload: the gate and the cache together.
  *
  * The rows a signed-in user loads outlive their session: signing out empties the session
  * store and moves the tab to `/login`, but every note, tag and count stays in the query
  * cache. That is invisible until somebody else signs in, because route loaders resolve
  * through `ensureQueryData` and an entry younger than `staleTime` is returned without the
- * server being asked — so the second person's `/notes` was served the first person's list.
+ * server being asked, so the second person's `/notes` was served the first person's list.
  *
  * `claimCacheFor` runs in the root `beforeLoad`, which is the last moment before those
  * loaders start. The cases below are about what a loader receives, not what is rendered:
@@ -169,7 +169,7 @@ describe('a second person signing in to the same tab', () => {
   /**
    * Why this is a targeted removal and not `queryClient.clear()`. The config query is the
    * instance's sign-in methods, held at `staleTime: Infinity` so that the login screen does
-   * not flash its provider buttons in — and that screen is mounted, observing it, at the
+   * not flash its provider buttons in, and that screen is mounted, observing it, at the
    * moment Bob's navigation runs this. Clearing it puts the flash back.
    */
   it('keeps the sign-in screen’s own query', async () => {
@@ -187,7 +187,7 @@ describe('a second person signing in to the same tab', () => {
   /**
    * The rule is a change of user, not a sign-out, so somebody signing back into their own
    * account keeps their own cache. Being handed your own rows is not the leak, and
-   * staleness already covers them — see `claimCacheFor` for why the seam is here at all.
+   * staleness already covers them (see `claimCacheFor` for why the seam is here at all).
    */
   it('keeps the cache when the same person signs back in', async () => {
     signedInAs('alice');

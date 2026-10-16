@@ -20,7 +20,7 @@ import { libraryLockName } from './names.js';
  * finds it held does not open the library but attaches to the holder as its client
  * (`library.ts`, `openFor`), and Settings → Offline says so, with the way to take it
  * over one press away. The lock is taken with `steal`, and the tab that held it closes
- * its library and attaches as a client in turn — waiting in the lock's queue, so when
+ * its library and attaches as a client in turn, waiting in the lock's queue, so when
  * the taking tab goes, this one has it back without a press. A tab that has not been
  * asked anything also waits: close the holding tab and the next one opens the library
  * on its own.

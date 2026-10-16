@@ -6,7 +6,7 @@ import type { ReactNode } from 'react';
  *
  * The destination comes from `/api/config` and can be either kind: `/privacy` for the
  * built-in documents, or an absolute URL for an operator hosting their own. Those need
- * different elements — a router `<Link>` for a route, a plain `<a>` for another site — and
+ * different elements (a router `<Link>` for a route, a plain `<a>` for another site) and
  * the call sites should not each have to remember which they are holding.
  *
  * The distinction matters more than it looks. `<Link to>` pushes onto the router's history,

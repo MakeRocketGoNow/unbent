@@ -13,7 +13,7 @@ import { filesDirName, isFilesDir } from './names.js';
  *             each upload names its file; the bytes cannot live in the entry, which is a
  *             row in IndexedDB. Present until the upload goes through or is refused.
  *
- * Under each, a directory per note and the file under its own name — the two things a
+ * Under each, a directory per note and the file under its own name: the two things a
  * file's address carries (`/api/notes/<id>/files/<name>`), so the service worker can
  * answer a request for one from the address alone (`findFile`), with no index to keep in
  * step and no way to ask the database, which lives in another worker.
@@ -22,7 +22,7 @@ import { filesDirName, isFilesDir } from './names.js';
  * with a budget and an eviction rule (`sw/budget.ts`). The split is by who decided. A
  * copy made by looking is cheap to lose and goes whenever the account on the device
  * changes; these are the account's own, named by its id (`names.ts`), and go only when
- * the local store does (`wipe.ts`) — so a session refused after a week offline still has
+ * the local store does (`wipe.ts`), so a session refused after a week offline still has
  * its kept notebooks and its waiting uploads when the person signs back in.
  *
  * Imported by the page and by the service worker, so nothing here may touch `window`,
@@ -75,7 +75,7 @@ export async function storagePersisted(): Promise<boolean | null> {
 
 /**
  * A file's name on the shelf. Its own, which the upload route has already held to what a
- * file system takes — no separators, not `.` or `..` — except when it is long: the route
+ * file system takes (no separators, not `.` or `..`) except when it is long: the route
  * allows 768 characters and a file system's limit is usually 255 bytes, so a long name is
  * cut and given a hash of the whole of it, keeping its extension. Synchronous on purpose; the worker computes
  * this on every request for a file.
@@ -224,8 +224,8 @@ export async function clearShelf(userId: string, shelf: Shelf): Promise<void> {
  * The bytes for a file's address, from whichever account's directory holds them: what
  * the service worker asks before it asks its cache or the network.
  *
- * The worker does not know who is signed in — a request for a picture carries no account
- * — so it looks in every directory. That is one, in practice: sign-out removes them all,
+ * The worker does not know who is signed in (a request for a picture carries no account)
+ * so it looks in every directory. That is one, in practice: sign-out removes them all,
  * and someone else signing in removes all but their own (`wipe.ts`). A refused session's
  * directory does outlive the session, until the next sign-in, and a note id is a random
  * UUID nobody else holds; the worst a stale directory can do is draw a picture for

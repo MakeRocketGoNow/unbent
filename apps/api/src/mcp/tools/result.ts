@@ -19,8 +19,8 @@ export function jsonResult(value: unknown) {
  * model reading `1788743954000` has to be told what it is; a model reading
  * `2026-09-06T20:39:14Z` does not, and can compare two of them without arithmetic.
  *
- * Custom field values go out keyed by field name as typed JSON — `{"Merchant": "Acme",
- * "Amount": 12.5}` — for the same reason: that needs no explanation, where a list of
+ * Custom field values go out keyed by field name as typed JSON (`{"Merchant": "Acme",
+ * "Amount": 12.5}`) for the same reason: that needs no explanation, where a list of
  * `{fieldId, type, value}` records would. The names are also what the write tools take.
  *
  * `url` is the address the note opens at in the web app, absolute, so an assistant can
@@ -66,7 +66,7 @@ export function toolError(message: string) {
 }
 
 /**
- * A write refused because the note was saved after the copy it was built from — by the
+ * A write refused because the note was saved after the copy it was built from: by the
  * person in the editor, or another agent. The note as it now stands goes back with the
  * error, so the model can redo its change against the current text in one more call
  * rather than reading the note again first.

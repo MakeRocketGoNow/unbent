@@ -122,7 +122,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   useFocusSearch(searchRef);
   /*
    * The account, for the phone drawer's head. The desktop's rail carries it at that width
-   * and the topbar is hidden over the phone's list, so this is where it is reached there —
+   * and the topbar is hidden over the phone's list, so this is where it is reached there:
    * the root layout has already established the session by the time this renders.
    */
   const { session } = useAppSession();
@@ -143,8 +143,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
 
   /**
    * Whether anything narrows the list, notebook included. The count's export reads this:
-   * narrowed, it exports the current filter serialized — because the filters already live
-   * in the URL there is no separate state to keep in step, the export is of the view —
+   * narrowed, it exports the current filter serialized (because the filters already live
+   * in the URL there is no separate state to keep in step, the export is of the view)
    * and otherwise it leads to the whole library's export page.
    */
   const isFiltered = Boolean(notebook || selectedTags.length || fieldFilters.length || from || to);
@@ -153,7 +153,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * What the filter icon speaks for: the tags and the dates, not the notebook.
    *
    * The two were one predicate until the notebook moved into the drawer, and keeping them
-   * one lit the filter badge for a notebook the filter sheet no longer chooses — a dot
+   * one lit the filter badge for a notebook the filter sheet no longer chooses: a dot
    * saying "something is narrowing this" beside a heading that had already said what, and
    * pointing at a surface where nothing was set. A badge has to be about the control it
    * sits on.
@@ -170,7 +170,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * The selected notebook's field definitions, which name the field chips and are what
    * the sheet's Fields page offers. Field definitions belong to a notebook, so with no
    * notebook selected there is nothing to ask for and the query stays disabled; the id
-   * is looked up from the name, because the URL carries the name — without case, as the
+   * is looked up from the name, because the URL carries the name, without case, as the
    * list's filter and the server match it (`sameNotebookName`).
    */
   const notebookId =
@@ -184,11 +184,11 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   /** The definition behind a sort by a field, once the notebook's fields have loaded. */
   const sortFieldDef = sortField ? fieldDefs.data?.find((d) => d.id === sortField) : undefined;
   /*
-   * A sort by a field the notebook does not have — or by any field outside a notebook —
+   * A sort by a field the notebook does not have (or by any field outside a notebook)
    * is a stale or hand-edited link. Dropped once that is known rather than sent, since the
    * API refuses the whole list for it and a link should still open. Replaced, not pushed:
    * Back should not return to the broken order. A notebook missing from a library still
-   * arriving is not known to be missing — and dropping the sort then forgets it for good.
+   * arriving is not known to be missing, and dropping the sort then forgets it for good.
    */
   const sortFieldStale =
     sortField !== undefined &&
@@ -196,7 +196,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       (fieldDefs.isSuccess && sortFieldDef === undefined));
   useEffect(() => {
     if (!sortFieldStale) return;
-    // Remembered too, most likely — that is how a deleted field's sort comes back.
+    // Remembered too, most likely: that is how a deleted field's sort comes back.
     forgetSortField(notebook);
     void navigate({
       to: '/notes',
@@ -209,7 +209,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    *
    * The drawer's links already carry it (see `scopeOf` in `NotebookNav`), so this is for
    * everything else that arrives bare: a cold start at `/notes`, a bookmark, the back
-   * arrows out of Settings and the trash. Replaced, not pushed — it fills in the entry
+   * arrows out of Settings and the trash. Replaced, not pushed: it fills in the entry
    * rather than moving from it.
    *
    * Only on arriving in a place, never while in one. Absent is also how the URL spells
@@ -259,8 +259,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * than which tree to render.
    *
    * It was two trees: the phone's header, chips and sheet, and a desktop stack of
-   * permanently open controls — a search field, two selects, five date pills, a pair of
-   * date inputs, an export link and a tag disclosure — that on a 19rem column left the
+   * permanently open controls (a search field, two selects, five date pills, a pair of
+   * date inputs, an export link and a tag disclosure) that on a 19rem column left the
    * note list a few rows tall, on the screen whose entire job is listing notes. The
    * phone's shape is the one every notes app has settled on, so the desktop takes it
    * too, and what is left of the difference is: the search field is a permanent row
@@ -270,23 +270,23 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * that last one).
    *
    * This is one of the few places the app reads the breakpoint in JS rather than in
-   * CSS. The policy in `useMediaQuery` allows exactly this — a control whose *meaning*
-   * changes with width — and what it protects against is elsewhere: the editor is an
+   * CSS. The policy in `useMediaQuery` allows exactly this (a control whose *meaning*
+   * changes with width) and what it protects against is elsewhere: the editor is an
    * uncontrolled CodeMirror view that must not be rebuilt, and nothing here is in its
    * tree.
    */
   const isMobile = useMediaQuery(MOBILE_QUERY);
 
   /*
-   * The list as a table of the notebook's fields — the URL's `view`, seeded from the
+   * The list as a table of the notebook's fields, the URL's `view`, seeded from the
    * last one seen when the URL has not said yet (`useNotesView`), honoured only where a
    * table makes sense: inside one notebook (columns are its fields) and at desktop width
    * (a phone has no room for columns). Everywhere else the list is drawn, the toggle
-   * shows that, and the choice is kept — the table is back the moment there is a
+   * shows that, and the choice is kept: the table is back the moment there is a
    * notebook to draw it for.
    *
    * A search does not leave it. Searching a table is looking for rows, and the columns
-   * are why the table is open; the matches are drawn in it — see `tableRows`. The list
+   * are why the table is open; the matches are drawn in it (see `tableRows`). The list
    * used to take over while searching, and in this notebook that was a different layout
    * under the field at every keystroke.
    */
@@ -301,7 +301,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   /*
    * Which page the sheet is showing. One dialog that swaps its contents rather than a
    * second sheet over the first, which would dim the first behind the second and leave two
-   * scrims on screen — Android's `FilterSheet` records the same choice.
+   * scrims on screen: Android's `FilterSheet` records the same choice.
    */
   const [sheetPage, setSheetPage] = useState<'root' | 'tags' | 'dates' | 'fields'>('root');
 
@@ -323,7 +323,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   /*
    * The drawer cannot outlive the width that justifies it. Rotating a phone to landscape
    * crosses the breakpoint, and above it there is no ☰ to have opened the drawer from
-   * and a notebook select in the sidebar doing its job — a phone's drawer left open over
+   * and a notebook select in the sidebar doing its job: a phone's drawer left open over
    * the desktop grid is a panel nothing on screen explains. The filter sheet is not
    * closed with it any more: it has a desktop shape of its own, and the controls it holds
    * are no longer duplicated in the sidebar behind it.
@@ -353,8 +353,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const needle = debounced.trim();
   /*
    * Offline, the device's own index answers (`searchQuery`), so a search is a search
-   * either way. What is left of "offline" here is a device with no index to ask — no
-   * local library, or its file would not open — where the query fails for want of a
+   * either way. What is left of "offline" here is a device with no index to ask (no
+   * local library, or its file would not open) where the query fails for want of a
    * connection. The list then says so instead of "No matches", which would be a claim
    * about the notes rather than about the connection. The tag and notebook picks still
    * show: they are matched against lists already on the device.
@@ -370,7 +370,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    */
   const covered = results !== null && answered && !searchOffline && !search.isPlaceholderData ? search.data.local : undefined;
   /*
-   * The matches as the table's rows, in the search's order — which is relevance, so the
+   * The matches as the table's rows, in the search's order, which is relevance, so the
    * headers show no sort while a search is on and the table's own order comes back with
    * the list. Holding a column order over the matches would be a claim the search
    * cannot back: it returns the best fifty, so "newest first" could leave out the
@@ -379,8 +379,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    */
   const tableRows = results?.flatMap((r) => ('note' in r ? [r.note] : [])) ?? null;
   /*
-   * The matches on screen are the previous term's while the next one's request is out —
-   * see `searchQuery` — and are dimmed for it. Only then: a search that has ended is a
+   * The matches on screen are the previous term's while the next one's request is out
+   * (see `searchQuery`) and are dimmed for it. Only then: a search that has ended is a
    * query that never runs, and one that failed for want of a connection runs no further,
    * and `keepPreviousData` holds the last results as the placeholder of either for as
    * long as it stays that way. Read bare, that left the
@@ -407,7 +407,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * The row changes at once and the save follows, the way the note's own property list
    * behaves; a failure puts the row back and says so on the error line. The rest of the
    * list is refetched afterwards rather than patched, because the edit bumps the note's
-   * updated date — under "Recently updated" the row then moves to the top, which is what
+   * updated date: under "Recently updated" the row then moves to the top, which is what
    * any edit does to that list and not something a table should quietly hide.
    *
    * The open note is the exception: its editor holds a draft that would write the old
@@ -450,7 +450,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       if (queryClient.getQueryData(keys.note(updated.id))) {
         queryClient.setQueryData(keys.note(updated.id), updated);
       }
-      // The saved row, placed, in every list — a refetch only where the field decides
+      // The saved row, placed, in every list, a refetch only where the field decides
       // membership or order. See `applySaveToLists`.
       applySaveToLists(queryClient, updated, { fields: true });
     },
@@ -464,7 +464,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   };
 
   /*
-     The offline sentences below are about the list — a page of it never loaded on this
+     The offline sentences below are about the list: a page of it never loaded on this
      device. A cell edit that failed for want of a connection is not that, and saying the
      list is incomplete to someone who just edited a cell would be wrong; the cells and the
      selection bar are locked offline anyway, so it can only be the edit that was in flight.
@@ -475,7 +475,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   /*
    * Whether the rows on screen are the rows for the heading above them.
    *
-   * The route commits before the list arrives — see the loader in `routes/notes.tsx` —
+   * The route commits before the list arrives (see the loader in `routes/notes.tsx`)
    * so for a moment the heading names the new notebook while the rows are still the
    * previous one's, kept by `keepPreviousData`. Nothing on screen may claim otherwise
    * during that moment: the count says loading rather than the old total, and the list
@@ -492,13 +492,13 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   /*
    * The table with no note open is the whole window wide, and a header laid out for a
    * sidebar stretched with it: a search field a window wide. There the header is one
-   * toolbar row — see `NoteListHead`. Beside an open note the table is a column again
+   * toolbar row (see `NoteListHead`). Beside an open note the table is a column again
    * and keeps the stacked header, which is what fits.
    */
   const toolbarHead = tableMode && !layout.open;
 
   /*
-   * Which rows are picked for a bulk action — see `useSelection` for the rules. The rows
+   * Which rows are picked for a bulk action (see `useSelection` for the rules). The rows
    * are the loaded notes in their drawn order, whichever way they are drawn; the open
    * note is the anchor a Shift-click ranges from until something else is picked; and any
    * change of scope drops the selection, since it names rows that are no longer on screen.
@@ -540,10 +540,10 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
 
   /*
    * The bulk actions. Each writes, tells the open note's draft if it was among the rows
-   * (`editOpenNoteFiling` — the next autosave would otherwise put the old filing back),
+   * (`editOpenNoteFiling`: the next autosave would otherwise put the old filing back),
    * then refetches everything the change reaches: the lists, any search, the cached
-   * notes, the counts on the rail. Moving and trashing drop the selection — the rows
-   * leave the list, or the job is done — while a tag change keeps it, since the sheet
+   * notes, the counts on the rail. Moving and trashing drop the selection (the rows
+   * leave the list, or the job is done) while a tag change keeps it, since the sheet
    * stays open for the next one. Trashing is confirmed inline, unlike the single
    * note's Delete, which has the ⋯ menu as its deliberate second step; a bar's button is
    * one click, and forty notes is a blast radius worth naming first.
@@ -625,12 +625,12 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * A URL that does not name a view is given the one on screen, in place.
    *
    * This is what makes Back work. A silent URL means "the view last seen", and that
-   * changes every time the toggle is pressed — so a silent history entry would come back
+   * changes every time the toggle is pressed, so a silent history entry would come back
    * drawn the new way, not the way it was left. Once each entry names its own view,
    * Back, Forward, a reload and a jump through the history menu all land on what was
    * there. Replaced, not pushed: it records the entry, it is not a move.
    *
-   * Only where a view means anything — a desktop, inside a notebook. Outside one the
+   * Only where a view means anything: a desktop, inside a notebook. Outside one the
    * list is the only drawing there is, so `/notes` stays the clean link it was and a
    * phone's URLs are never touched.
    */
@@ -640,7 +640,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewUnsaid, view, layout.open]);
   /*
-   * The toggle is a move of its own, pushed, so Back undoes it — which it can, now that
+   * The toggle is a move of its own, pushed, so Back undoes it, which it can, now that
    * the entry it goes back to says which view it had. The remembered view follows the
    * URL (`useNotesView`), so there is nothing else to write.
    */
@@ -671,10 +671,10 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * Asked only while the answer can change what is drawn: everything below acts on an
    * account with no notes, and on All notes the loaded rows are the account's, so a list
    * with a row in it has nothing to ask. Nor while the list's first load is pending, or
-   * while it still shows the rows of the place it came from (`stale`) — an empty notebook
+   * while it still shows the rows of the place it came from (`stale`): an empty notebook
    * or a search that matched nothing, on the way back to All notes: its rows say nothing
-   * about the account then, and asking would count a whole archive — or, on a device
-   * with no library, send a second request beside the list's own — on every open, for an
+   * about the account then, and asking would count a whole archive (or, on a device
+   * with no library, send a second request beside the list's own) on every open, for an
    * answer only an empty account can use. The empty state comes one count later for it,
    * and nothing flashes in between: on All notes the list's empty line says nothing
    * (`emptyMessage`).
@@ -709,7 +709,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               : // Never on All notes. Until the account is known to be empty the list's
                 // rows can be empty for a moment while the account's are not, and the
                 // line then is the flash the empty state takes care not to make; once it
-                // is known, `EmptyLibrary` says it — in place of the list on a phone, in
+                // is known, `EmptyLibrary` says it, in place of the list on a phone, in
                 // the pane beside this column on a desktop. A date range keeps the line
                 // it always had.
                 !wholeAccount
@@ -742,7 +742,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   );
 
   /**
-   * Where the list is, for the heading — see `scopeLabel` for the rule, which is the
+   * Where the list is, for the heading: see `scopeLabel` for the rule, which is the
    * rail's rule, so the heading and the row you picked agree. At every width: on a desktop
    * the rail marks the place, but the rail can be a strip of icons, and the column has to
    * say what it holds on its own.
@@ -762,7 +762,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * What the list is showing, in three forms. Both breakpoints' headers read it.
    *
    * The total, not "50 of 900 notes": how many are loaded so far is a paging detail and
-   * the Load more button says it — see `loadMoreLabel`. The header shares its row with
+   * the Load more button says it (see `loadMoreLabel`). The header shares its row with
    * four controls, and the longer string was the one thing in it that truncated.
    */
   /** The URL names a notebook that does not exist; see `NotebookMissing`. */
@@ -791,8 +791,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           ? '1 note'
           : `${noteCount.toLocaleString()} notes`;
 
-  /* The count as a menu: export the slice, or select it — see `offersCountMenu` for when,
-     and `countMenuItems` for what. */
+  /* The count as a menu: export the slice, or select it (see `offersCountMenu` for when,
+     and `countMenuItems` for what). */
   const exportRunning = useExportRunning();
   const offline = useOffline();
   /*
@@ -832,7 +832,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       : undefined;
 
   const selectionExportLabel = exportRunning
-    ? 'Export — another export is running'
+    ? 'Export: another export is running'
     : selection.ids.length === 1
       ? 'Export this note'
       : `Export ${selection.ids.length} notes`;
@@ -841,7 +841,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   /**
    * Where a note made from this list goes. Every active tag, not just one: with two tags
    * filtered, a note carrying only the first is still filtered out of the list it was
-   * created in. UNFILED is a filter sentinel, not a notebook name — a note created while
+   * created in. UNFILED is a filter sentinel, not a notebook name: a note created while
    * viewing it belongs in no notebook. Nor does one made beside "Notebook not found":
    * filing it under the name would have the server create the notebook the screen has
    * just said does not exist, on the strength of a stale link. It goes where it would
@@ -855,14 +855,14 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const newNote = () => createNote(filing);
 
   /*
-   * Files let go on the list become one note each, filed as New would file them — see
+   * Files let go on the list become one note each, filed as New would file them (see
    * `listDropZone` for the rule that the target decides, and `file-notes.ts` for the
-   * writes. The zone goes on the whole column, not the list alone: the head and the
+   * writes). The zone goes on the whole column, not the list alone: the head and the
    * search field are part of the pane a person aims at, and a file let go on the count
    * going to the browser instead would be the stray drop the window's guard exists for.
    * The sentence is drawn over the column while a drag is on it (`.list-drop-hint`), and
    * names the place as the heading does; nothing is named when the notes go nowhere.
-   * Refused, with the pointer, while the plan has ended — the server refuses every write.
+   * Refused, with the pointer, while the plan has ended: the server refuses every write.
    * A drop while an earlier batch is still landing is taken and waits its turn.
    *
    * The notes made are selected once they are in the list, so the bar offers Move, Tags
@@ -917,11 +917,11 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           fieldRef={searchRef}
           searchOpen={searchOpen}
           /* Behind an icon on a phone; a permanent row on a desktop. Passing the opener or
-             not is how the header is told which — see `NoteListHead`. */
+             not is how the header is told which (see `NoteListHead`). */
           onOpenSearch={isMobile ? () => setSearchOpen(true) : undefined}
           /*
            * Closing clears the query. A closed field over a live `q` is a list narrowed
-           * by something with nothing on screen to say so — the same invisible-filter
+           * by something with nothing on screen to say so: the same invisible-filter
            * failure the chips below exist to prevent. On a desktop the field never closes,
            * and this is what Escape in it does.
            */
@@ -934,7 +934,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           filterRef={filterRef}
           onOpenMenu={isMobile ? () => setDrawerOpen(true) : undefined}
           filtered={sheetFiltered}
-          /* Not offered while searching — results come back ranked by relevance, and
+          /* Not offered while searching: results come back ranked by relevance, and
              reordering them by date would throw away that ranking. The list hides it;
              the table fades it, since there it shares a row with the search field and
              leaving would slide the field under the typing. Nothing else is lost with
@@ -951,7 +951,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               />
             ) : null
           }
-          /* Hidden where the table is never drawn — a phone — and disabled with the reason
+          /* Hidden where the table is never drawn (a phone) and disabled with the reason
              outside a notebook, where there are no fields to column. */
           view={
             !isMobile ? (
@@ -970,8 +970,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
              desktop, where a column has nothing for a button to float clear of.
 
              Outlined rather than filled while the account is empty. The pane beside it
-             then draws `EmptyLibrary`, whose import is the view's one filled control —
-             it is the thing that screen is for — and two fills a column apart compete
+             then draws `EmptyLibrary`, whose import is the view's one filled control
+             (it is the thing that screen is for) and two fills a column apart compete
              for the same glance. New stays where it always is, only quieter. Outlined too
              beside "Notebook not found": a filled New there reads as the answer to a
              missing notebook, and the note it makes goes to no notebook (see `newNote`). */
@@ -992,7 +992,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         {error &&
           (isOfflineError(error) ? (
             /* No copy on the device: the list was never loaded here, or its next page
-               was never reached. Muted, like the note's own version of this — it loads by
+               was never reached. Muted, like the note's own version of this: it loads by
                itself when the connection returns. */
             <p className="muted small">
               {notes.length > 0
@@ -1013,7 +1013,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
 
         {/*
             Under the header rather than only inside the sheet, so what is narrowing the
-            list is readable without opening anything — and removable without it too.
+            list is readable without opening anything, and removable without it too.
 
             No notebook chip here: the heading above already names it, and the chip
             repeated that word for word on the next line, spending a row of a phone screen
@@ -1093,7 +1093,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             // Offered only when it would do something: a permanently visible Clear all
             // on an unfiltered list promises an effect it cannot have. Not on the tags
             // page, where the chips are the way back out and "all" would mean the
-            // dates too — a button whose blast radius is off screen.
+            // dates too: a button whose blast radius is off screen.
             sheetPage === 'root' && sheetFiltered ? (
               <Button
                 variant="quiet"
@@ -1155,7 +1155,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               <hr className="sheet-rule" />
 
               {/*
-                  A row per filter, each opening a page of its own — the shape Android's
+                  A row per filter, each opening a page of its own, the shape Android's
                   sheet settled on, and for the reason its root page stays readable: the
                   tag picker is a find field and an unbounded list, the dates are five
                   rows plus two labelled fields, and the fields page is a control per
@@ -1212,7 +1212,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               Done only on the root.
 
               A sub-page had one too, which offered two ways out that did different
-              things — back to the filters, or out of the sheet entirely — from two
+              things (back to the filters, or out of the sheet entirely) from two
               controls a thumb's width apart. The phone app has the same pages and puts
               the way out only where the sheet itself ends; the arrow is how a page ends.
               (Hidden at desktop width, where the panel's ✕ and Escape are the ways out.)
@@ -1232,12 +1232,12 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           * Where every notes app people arrive from puts it, and what frees the header row
           * for the four controls that are about what is on screen. Inside `.sidebar` rather
           * than the shell so the rule that hides the list when a note is open takes this
-          * with it — a "new note" button floating over the note you are reading would make
+          * with it: a "new note" button floating over the note you are reading would make
           * one every time a thumb reached for the scroll bar.
           *
           * Not over an empty account's state, which has its own New note a thumb's reach
-          * away: the + beside it was a second filled control next to the import — the one
-          * the desktop steps its New down to avoid — and a second button named "New note"
+          * away: the + beside it was a second filled control next to the import (the one
+          * the desktop steps its New down to avoid) and a second button named "New note"
           * to a screen reader. It is back as soon as there is a note, which is when the
           * list is. It stays over "Notebook not found", where it is the only way to start a
           * note without leaving, and the note it makes goes to no notebook (`newNote`).
@@ -1265,7 +1265,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             {offerSampleNotes && <SampleNotes layout="empty" />}
           </div>
         ) : showNotebookMissing ? (
-          /* In the list's place, at every width, and instead of "No notes in …" — the
+          /* In the list's place, at every width, and instead of "No notes in …": the
              same fact the state already says. Not the workspace pane, which may be
              holding an open note. */
           <div className="empty-state-slot">
@@ -1310,7 +1310,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
               Tags and notebooks whose names match, before the notes that do. The needle is
               the debounced query so they arrive together with the results rather than a
               beat ahead of them. Picking one clears the query, and on a phone closes the
-              field — the same close the back arrow does, minus the clearing it has already
+              field, the same close the back arrow does, minus the clearing it has already
               done.
           */}
           {results !== null && (
@@ -1384,7 +1384,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         <IndexingStatus />
 
         {/* Inside the sidebar, so the rule that hides the list under an open note on a
-            phone takes the bar with it — see the New button above for the same reason. */}
+            phone takes the bar with it (see the New button above for the same reason). */}
         {selection.active && (
           <SelectionBar
             count={selection.ids.length}
@@ -1414,7 +1414,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             </button>
             {/*
                 Export, before Delete so the destructive action stays at the end. The way
-                Evernote exports — select, then export — and the one export no filter can
+                Evernote exports (select, then export) and the one export no filter can
                 describe: three notes of five, or notes from different notebooks. The
                 selection stays, as it does after Move and Tags, so a second look at what
                 was exported is a glance. Waits while another export runs, since one runs
@@ -1450,7 +1450,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
         /**
          * Measured from the grid's left edge, less the channel between the two columns.
          *
-         * The handle does not sit at the sidebar's right edge — the grid puts a gap either
+         * The handle does not sit at the sidebar's right edge: the grid puts a gap either
          * side of the handle track, so the divider renders at `width + gap`. Treating the
          * pointer position as the width directly therefore set a width that pushed the
          * handle further right than the cursor, and it trailed the pointer by the gap for

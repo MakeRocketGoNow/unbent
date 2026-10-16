@@ -3,20 +3,20 @@ import type { FeedAttachment, FeedEntity, FeedNote, FeedNotebook, FeedPage, Feed
 /**
  * The reader of the change feed: what keeps the local copy of the library current.
  *
- * Four collections — notes, notebooks, tags, files — each hand the engine their sync
+ * Four collections (notes, notebooks, tags, files) each hand the engine their sync
  * controls when they start, and the engine applies every page of the feed across all
  * four in one go, then moves the cursor. The engine knows nothing about SQLite or React:
  * it is given a way to fetch JSON, a place to keep the cursor, and the controls, which
  * is what lets a test drive it with a fake server and fake collections.
  *
  * Two ways in. With no cursor the library is walked whole through the snapshot, page by
- * page. After each page the walk's position is stored — the `seq` the first page
- * reported, and the page to continue from — so a walk cut short by a closed tab resumes
+ * page. After each page the walk's position is stored (the `seq` the first page
+ * reported, and the page to continue from) so a walk cut short by a closed tab resumes
  * where it stopped rather than from nothing (an archive on a phone is minutes of pages),
  * and the feed is then followed from that `seq`, so anything written during the walk is
  * replayed by it afterwards (every apply is an upsert). With a cursor and no page to
- * resume, pages of the feed are pulled until one is not full. A `reset` — the cursor from
- * another epoch, past the counter, or pruned — empties all four collections and walks
+ * resume, pages of the feed are pulled until one is not full. A `reset` (the cursor from
+ * another epoch, past the counter, or pruned) empties all four collections and walks
  * again; the feed is never applied over a stale cursor.
  *
  * When to pull is the caller's: on open, when the tab is shown again, when the
@@ -73,7 +73,7 @@ export interface FeedState {
   /**
    * How many times the collections have been emptied and walked again: on a `reset` from
    * the server, and on a stored walk position it refuses for good. What a view that holds
-   * a copy of a row outside the collections — the workspace's base for the open note —
+   * a copy of a row outside the collections (the workspace's base for the open note)
    * watches, since after one the row it holds may be newer than the truth, not older
    * (an operator's wind-back; MAK-196), and a timestamp alone cannot tell it so.
    */
@@ -82,7 +82,7 @@ export interface FeedState {
 
 /**
  * Whether the library holds the whole account: a walk of it has finished, whether or not
- * the latest pull did. A cursor in the state means exactly that — it is set from a stored
+ * the latest pull did. A cursor in the state means exactly that: it is set from a stored
  * position with no page left to resume, or at the end of a walk. Not "the last pull
  * succeeded": a device opened on a plane never has one, and its copy is still whole. Not
  * during a walk either, and not while a `reset` has emptied the collections to start one.
@@ -159,8 +159,8 @@ export class FeedEngine {
   /** A collection's sync function calls this when it starts; the first pull runs once all four have. */
   register<K extends FeedEntity>(entity: K, controls: FeedControls[K]): () => void {
     (this.controls as Record<string, unknown>)[entity] = controls;
-    // Ready as soon as persistence has restored the rows — the wrapper holds this call
-    // until then — not after the first pull: offline, what was restored is what there is,
+    // Ready as soon as persistence has restored the rows (the wrapper holds this call
+    // until then) not after the first pull: offline, what was restored is what there is,
     // and a cold open shows the pages as they arrive rather than a blank until the walk
     // ends. `state.phase` says whether the copy is current.
     controls.markReady();
@@ -173,7 +173,7 @@ export class FeedEngine {
   /**
    * Ends the engine, and the pull in flight with it. `close` awaits `settled` before it
    * lets go of the collections, and sign-out and an account switch wait on `close`, so a
-   * page that was not answering held both — for good before the fetch had a timeout, and
+   * page that was not answering held both, for good before the fetch had a timeout, and
    * a minute after. Aborted, the page fails at once and nothing is reported for it.
    * A commit to the persistence worker cannot be taken back, and is still waited for.
    */
@@ -207,7 +207,7 @@ export class FeedEngine {
     return c.note && c.notebook && c.tag && c.attachment ? (c as FeedControls) : null;
   }
 
-  /** Brings the copy current. Coalesced; never rejects — the outcome is in `state`. */
+  /** Brings the copy current. Coalesced; never rejects: the outcome is in `state`. */
   pull(): Promise<void> {
     if (this.running) {
       this.again = true;
@@ -244,7 +244,7 @@ export class FeedEngine {
    * copy is not whole: a first walk, or the walk after a `reset`, that stopped partway.
    *
    * Everywhere else pulls are event-driven, and a failed pull over a whole library waits
-   * for the next event — the device is offline, or the server is having a moment, and the
+   * for the next event: the device is offline, or the server is having a moment, and the
    * copy it has is complete. A copy that is not whole has no such floor. Before this, a
    * first walk that failed waited for focus, the socket or the connection to come back,
    * and none of those happens to a tab someone is sitting in front of with a working
@@ -272,7 +272,7 @@ export class FeedEngine {
    *
    * A pull that never settles throws nothing, so nothing reported it: a first copy stuck
    * on "Copying your notes to this device…" until a reload left no trace on the device or
-   * the server (2026-10-08). The steps watched are the ones inside the browser — the
+   * the server (2026-10-08). The steps watched are the ones inside the browser: the
    * cursor's reads and writes, and the commits of a page into the collections, which wait
    * on the persistence worker and its file. The fetches are not: `fetchJson` gives each a
    * timeout, which ends the hang as well as reporting it, and watching them too would say
@@ -350,8 +350,8 @@ export class FeedEngine {
         );
       } catch (err) {
         /*
-         * A stored position the server refuses — a page cursor from before its shape
-         * changed, say — would fail the same way on every pull, and a walk with a
+         * A stored position the server refuses (a page cursor from before its shape
+         * changed, say) would fail the same way on every pull, and a walk with a
          * position never reaches the feed's `reset`. Refused for good, the walk starts
          * over from nothing, as a reset does: the rows the first attempt applied go too,
          * since a note purged in between is in neither the new snapshot nor the feed from
@@ -479,14 +479,14 @@ export class FeedEngine {
 
 /**
  * A status the server would answer the same way however often it is asked: a 4xx, but
- * not 401 (the session — the sign-in that follows should carry on), 408 (a timeout) or
+ * not 401 (the session: the sign-in that follows should carry on), 408 (a timeout) or
  * 429 ("later"). The outbox ends an entry on one (`refusal` in `actions.ts`) and the walk
  * drops a stored resume on one; both read this, so a status added for one is added for
  * the other. The iOS capture queue carves out the same three (`CaptureJob.isPermanent`).
  *
  * Counting those three as for good is what this exists to prevent: in the outbox it
  * deleted the only copy of a file added offline, and in the walk it emptied the copy a
- * first walk had already applied — minutes of pages on a phone — so a refused session's
+ * first walk had already applied (minutes of pages on a phone) so a refused session's
  * store came back empty instead of picking up where it stopped.
  */
 export function refusedForGood(status: number): boolean {

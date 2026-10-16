@@ -97,7 +97,7 @@ fun TagEditor(
  * The keyboard's Done key adds a typed tag, but nobody owes the field that key. On an
  * account with no tags yet there are no chips to tap, so typing is the only way in, and
  * the natural gesture is to type the word and tap Save. A sheet that drops it on the way
- * out has lost the one piece of filing the person did by hand — and says nothing, since
+ * out has lost the one piece of filing the person did by hand, and says nothing, since
  * the note still saves. Every button that leaves a sheet runs its tags through here.
  */
 fun tagsWithDraft(tags: List<String>, draft: String): List<String> {

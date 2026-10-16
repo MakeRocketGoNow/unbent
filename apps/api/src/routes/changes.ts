@@ -17,7 +17,7 @@ import type { AppEnv } from '../types.js';
  * the reader is `UserStore.changesSince` and `snapshotPage`.
  *
  * Nothing here is cached by the service worker: these paths are not in its allowlist,
- * and a handshake never reaches it. MCP needs nothing here — its writes go through the
+ * and a handshake never reaches it. MCP needs nothing here: its writes go through the
  * same store and record themselves.
  */
 export const changes = new Hono<AppEnv>()
@@ -50,8 +50,8 @@ export const changes = new Hono<AppEnv>()
     // cookie's SameSite default. The socket carries only "something changed", but the
     // check costs a line and does not depend on a cookie setting staying as it is. The
     // set is sign-in's own (`isTrustedOrigin`): locally that is every host the app is
-    // reached on — the emulator's alias, Tailscale, another worktree's port — not the
-    // one `APP_URL` names. A client with no `Origin` — a native app, the test suite — is
+    // reached on (the emulator's alias, Tailscale, another worktree's port), not the
+    // one `APP_URL` names. A client with no `Origin` (a native app, the test suite) is
     // not a browser and is let through.
     const origin = c.req.header('Origin');
     if (origin !== undefined && !isTrustedOrigin(c.env, origin)) return c.json({ error: 'Forbidden' }, 403);

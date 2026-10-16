@@ -65,7 +65,7 @@ export const denyDeviceCode = (userCode: string) => decide('deny', userCode);
  *
  * The counterpart to the device-code flow, for a client that *can* be redirected back to.
  * The phone opens /connect in a Custom Tab carrying the browser's cookies, so this call is
- * authenticated by whatever provider the user signed in with — the app never sees a
+ * authenticated by whatever provider the user signed in with: the app never sees a
  * credential, and nothing is typed or read out.
  */
 export function mintConnectToken(): Promise<string> {
@@ -83,13 +83,13 @@ export function mintConnectToken(): Promise<string> {
  * a token minted by the dev instance's `/api/preview-relay/start`, and this hands it to
  * Better Auth's verify endpoint. Because the relay's `oneTimeToken()` sets the session
  * cookie on the verifying origin, the `Set-Cookie` that comes back establishes the session
- * here — the preview's own host-only cookie — which is the whole point: previews share the
+ * here (the preview's own host-only cookie), which is the whole point: previews share the
  * dev instance's database, so a token minted there names a session valid here.
  *
  * The session is *shared*, not copied, and that is worth knowing before it surprises
  * someone. Verify does not mint anything: it looks the dev session up by the token the
  * one-time token names and sets that same session token as this origin's cookie. So the
- * preview and the dev instance hold one session row between them — signing out on either
+ * preview and the dev instance hold one session row between them: signing out on either
  * deletes it and silently signs the other out, and the preview's session expires when
  * dev's does rather than starting a fresh window. That is acceptable for a scratch
  * environment and is not worth a second session row to fix, but it reads as a bug the

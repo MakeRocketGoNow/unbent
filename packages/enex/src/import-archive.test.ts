@@ -55,7 +55,7 @@ const bytes = (s: string) => new TextEncoder().encode(s);
 
 /**
  * A server that dedupes the way the real one does: by the id the note came with, then by
- * content hash — but a hash hit does not swallow a different note whose id is still free.
+ * content hash, but a hash hit does not swallow a different note whose id is still free.
  */
 function fakeClient(over: Partial<ImportClient> = {}) {
   const notes: Array<{
@@ -144,7 +144,7 @@ describe('the library archive', () => {
         sourceEnex: 'unbent-export-2026-09-15.zip',
       }),
     );
-    // A note the export left unfiled arrives unfiled — not in some default notebook.
+    // A note the export left unfiled arrives unfiled, not in some default notebook.
     expect(notes[1]).not.toHaveProperty('notebook');
   });
 
@@ -242,7 +242,7 @@ describe('the library archive', () => {
       'unbent-export-2026-09-15/n-1/files/a.txt': bytes('hello'),
       'unbent-export-2026-09-15/n-1/files/.hidden': bytes('junk'),
       '__MACOSX/unbent-export-2026-09-15/n-1/files/._a.txt': bytes('junk'),
-      // A file the export never wrote — a README someone dropped in.
+      // A file the export never wrote: a README someone dropped in.
       'unbent-export-2026-09-15/README.txt': bytes('what is this'),
     });
 

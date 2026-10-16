@@ -27,7 +27,7 @@ import type { AppEnv } from '../types.js';
 
 /**
  * A custom-field value the field cannot hold is the client's mistake, so it is a 400 that
- * names the field — "Amount must be a number" — rather than a 500 that names nothing.
+ * names the field ("Amount must be a number") rather than a 500 that names nothing.
  * Validation of the *shape* is zod's job at the route; whether a value fits its field's
  * type is only known once the definition is read, which is why it surfaces from the repo.
  */
@@ -50,7 +50,7 @@ function revisionIdOf(raw: string): number | null {
  * Note CRUD. Every handler reads its repo from context rather than touching env.DB, so
  * scoping is structural (see lib/repos-middleware.ts).
  *
- * A note that does not exist and a note belonging to someone else both return 404 — never
+ * A note that does not exist and a note belonging to someone else both return 404, never
  * 403, which would confirm the id exists.
  */
 export const notes = new Hono<AppEnv>()
@@ -76,7 +76,7 @@ export const notes = new Hono<AppEnv>()
     /*
      * A field sort is built from the definition, so it is looked up here, once, and
      * shared by the list, the count and the cursor. An id that is not this user's reads
-     * as missing, the way a value write to one does — never a 403 that confirms it exists.
+     * as missing, the way a value write to one does, never a 403 that confirms it exists.
      */
     const sortField = sortFieldId ? await repo.fieldById(sortFieldId) : null;
     if (sortFieldId && !sortField) return c.json({ error: 'No such field' }, 400);
@@ -101,8 +101,8 @@ export const notes = new Hono<AppEnv>()
   })
 
   /**
-   * 201 with the note, or 200 with the note that already holds the id the client chose
-   * — a replay of a request whose answer was lost, which must not make a second note.
+   * 201 with the note, or 200 with the note that already holds the id the client chose:
+   * a replay of a request whose answer was lost, which must not make a second note.
    */
   .post('/notes', zValidator('json', createNoteSchema), async (c) => {
     const { id, ...input } = c.req.valid('json');
@@ -145,7 +145,7 @@ export const notes = new Hono<AppEnv>()
 
   /**
    * The note's history: the copies kept of what a write replaced, newest first, without
-   * their bodies. Read from the server each time and never part of the change feed — a
+   * their bodies. Read from the server each time and never part of the change feed: a
    * safety net asked for rarely, not data every device should hold. A trashed note has
    * none to show; it is restored first.
    */
@@ -175,8 +175,8 @@ export const notes = new Hono<AppEnv>()
   })
 
   /**
-   * Puts a copy back — its title and body, and its notebook, tags and field values when
-   * it holds them — and answers `{ note, kept }`: the note as it now stands, and the id
+   * Puts a copy back (its title and body, and its notebook, tags and field values when
+   * it holds them) and answers `{ note, kept }`: the note as it now stands, and the id
    * of the copy kept of what was replaced, so this is undone the same way it was done.
    * `kept` is null when the copy was already what the note said and nothing was written.
    * `skipped`, when present, names what the copy holds that no longer fits and was left
@@ -201,7 +201,7 @@ export const notes = new Hono<AppEnv>()
   })
 
   /**
-   * Soft delete — trash, not destroy. Attachments are deliberately left in R2: this note
+   * Soft delete: trash, not destroy. Attachments are deliberately left in R2: this note
    * is restorable, and deleting its blobs here would make a restore produce a note full of
    * dead links. Reclaiming that storage belongs to a purge of the trash, which does not
    * exist yet; see the orphaned-blob note in README.
@@ -215,7 +215,7 @@ export const notes = new Hono<AppEnv>()
   /**
    * A copy of the note, files and all, opened by the client as its own note.
    *
-   * The Evernote habit this serves is a note used as a template — a packing list, a
+   * The Evernote habit this serves is a note used as a template: a packing list, a
    * checklist for a recurring job. The files come across as copies, never shared, for
    * the reasons `copyAttachments` gives; every file is copied, linked or not, the same
    * way the export includes them, so nothing the note held is lost in the duplicate.
@@ -224,8 +224,8 @@ export const notes = new Hono<AppEnv>()
     const id = c.req.param('id');
     const notes = c.get('notes');
     const attachments = c.get('attachments');
-    // The body is optional — the copy's id, chosen by the client for the reason
-    // `createNoteSchema.id` gives — so it is read by hand rather than required.
+    // The body is optional (the copy's id, chosen by the client for the reason
+    // `createNoteSchema.id` gives), so it is read by hand rather than required.
     const body = duplicateNoteSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!body.success) return c.json({ error: 'The copy\'s id must be a UUID' }, 400);
     const copy = await notes.duplicateOrFind(id, body.data.id ?? crypto.randomUUID());
@@ -247,7 +247,7 @@ export const notes = new Hono<AppEnv>()
       } catch (err) {
         // The copy of the note stands, without the files it had no room for: a note with
         // no files is still the note. Answered as the success it is, with `filesSkipped`
-        // saying why the files are missing — a 4xx would have the outbox take the copy
+        // saying why the files are missing: a 4xx would have the outbox take the copy
         // back as if nothing had been written, and the next pull bring it again.
         if (err instanceof StorageFull) return c.json({ ...note, filesSkipped: storageFullBody(err) }, existing ? 200 : 201);
         throw err;
@@ -258,14 +258,14 @@ export const notes = new Hono<AppEnv>()
 
   /**
    * What the model would file this note as: a title, a notebook, tags and field values,
-   * each with its confidence. Suggestions only — nothing in the note is written; see
+   * each with its confidence. Suggestions only: nothing in the note is written; see
    * `AutofillSuggestion` for why the client applies them. What is written is the press
    * itself and what the model cost, to the account's usage counter, and a press past the
    * day's cap (`AUTOFILL_DAILY_CAP`) is a 429 with a sentence the button shows; see
    * `press` in lib/autofill-press.ts.
    *
    * A POST, because it is not free: every call is a round trip to a paid API, and nothing
-   * that treats GET as safe — a prefetch, a cache, a retry — may make one on its own.
+   * that treats GET as safe (a prefetch, a cache, a retry) may make one on its own.
    * Ownership is checked before configuration, so the 404 for another user's note holds
    * on an instance with no key too.
    */
@@ -331,7 +331,7 @@ export const notes = new Hono<AppEnv>()
    * Permanently deletes one trashed note.
    *
    * Only ever acts on a note already in the trash, so a stray call cannot destroy live
-   * work — the two-step delete is the safety property, not the confirmation dialog.
+   * work: the two-step delete is the safety property, not the confirmation dialog.
    *
    * Its files are not deleted here. The store tombstones their keys in the transaction
    * that removes the rows, and the hourly sweep deletes the objects thirty-five days on
@@ -345,17 +345,17 @@ export const notes = new Hono<AppEnv>()
   })
 
   /*
-     Several notes at once — the list's selection.
+     Several notes at once: the list's selection.
 
      Each is the singular route above over a set of ids, answered with a count rather than
      the notes: the client already holds the rows it named and refetches the list anyway,
      and five hundred notes with their fields is a page nobody asked for. An id that is not
      this user's, or is on the wrong side of the trash, is left out of the count rather
-     than failing the request — see the repo's batch methods for why.
+     than failing the request (see the repo's batch methods for why).
 
      `PATCH /notes` rather than a `/notes/batch`: it is the collection being patched, and
      the ids are the body's business. The three verbs are POSTs with a body for the same
-     reason — a DELETE carrying JSON is legal and widely mishandled.
+     reason: a DELETE carrying JSON is legal and widely mishandled.
   */
 
   .patch('/notes', zValidator('json', updateNotesSchema), async (c) => {

@@ -64,7 +64,7 @@ export const admin = new Hono<AppEnv>()
    *
    * R2 has no foreign keys, so objects outlive their metadata when a crash lands between
    * BLOBS.put and the metadata insert, or when a user row cascades away its attachment
-   * rows without its prefix having been swept — account deletion sweeps first, so what is
+   * rows without its prefix having been swept: account deletion sweeps first, so what is
    * left here is a row removed by hand or by a test fixture. Neither is reachable through
    * the app, so only a sweep reclaims the storage.
    *
@@ -134,7 +134,7 @@ export const admin = new Hono<AppEnv>()
   /**
    * Permanently deletes notes and their attachments.
    *
-   * `?scope=trashed` (default) empties the trash — the storage that soft delete leaves
+   * `?scope=trashed` (default) empties the trash, the storage that soft delete leaves
    * behind. `?scope=all` wipes every note in the account, which is what makes a trial
    * import repeatable. Each call takes a page and answers with `remaining`.
    *
@@ -172,7 +172,7 @@ export const admin = new Hono<AppEnv>()
    *
    * Not destructive, unlike its neighbours: the counts are derived, so the worst a recount
    * can do is replace a wrong number with the right one. It lives here because it is the
-   * same kind of operation — over the whole account, run by hand from Maintenance.
+   * same kind of operation: over the whole account, run by hand from Maintenance.
    */
   .post('/admin/recount-notes', requireAuth, withRepos, async (c) => {
     return c.json({ corrected: await c.get('notes').recountNotes() });
@@ -182,14 +182,14 @@ export const admin = new Hono<AppEnv>()
    * Removes the accounts the test suites create, with their note stores.
    *
    * The live suites sign up throwaway `@example.test` actors, and `pnpm test` purges them
-   * afterwards. That used to be one SQL statement against local D1 — delete the user rows
-   * and let the cascade take the notes — but the notes are in objects now, and nothing but
+   * afterwards. That used to be one SQL statement against local D1 (delete the user rows
+   * and let the cascade take the notes), but the notes are in objects now, and nothing but
    * the Worker can reach one. So the purge is a route: clear each actor's files and store
    * as a deletion does (`clearAccount`), then delete the user row, whose cascade takes the
    * sessions, and drop the directory row. The row goes at once, without the wait the sweep
    * gives a deleted account for late writes (`LATE_WRITES_MS`): the purge runs after the
    * suites, when nothing is left to write as these actors. Their files have to go here,
-   * though, since the row is the last thing that names the prefix — the suites upload,
+   * though, since the row is the last thing that names the prefix: the suites upload,
    * and before this swept R2 every run left its files in the local bucket for good.
    *
    * Local only, in the one way this codebase already draws that line: `ALLOW_TEST_CREDENTIALS`
@@ -224,7 +224,7 @@ export const admin = new Hono<AppEnv>()
   /**
    * The live suite's way of ending its own actor's plan (`test/plan.test.ts`), where
    * `purge-fixtures` is its way of removing the actor: local only, by the same switch,
-   * and self-scoped — a session may move only its own row. The body is the row's `plan`
+   * and self-scoped: a session may move only its own row. The body is the row's `plan`
    * and an end `until` in epoch milliseconds, or null for none. The operator's comp is
    * the real control (`POST /admin/accounts/:id/plan`); this exists so the suite can
    * reach `inactive` without waiting a fortnight.
@@ -239,7 +239,7 @@ export const admin = new Hono<AppEnv>()
       plan: parsed.data.plan,
       planUntil: parsed.data.until,
       // A customer id starts a new Paddle story for the row: what an earlier case's events
-      // left on it — the subscription, its status, the stamp the guard orders by — would
+      // left on it (the subscription, its status, the stamp the guard orders by) would
       // otherwise refuse the next case's first event as older.
       ...(parsed.data.paddleCustomerId !== undefined
         ? { paddleCustomerId: parsed.data.paddleCustomerId, paddleSubscriptionId: null, paddleStatus: null, paddleCancelsAt: null, paddleEventAt: null, source: null }
@@ -258,7 +258,7 @@ export const admin = new Hono<AppEnv>()
      OPERATOR_EMAILS may name another account with `?user=`, and every such read is logged
      with both ids, since it is one person reading another's notes and the log is the
      record of it. `sql`, `restore` and `sweep` are the operator's alone: a raw query over
-     someone's notes, winding them back, and the walk over every account — which a deploy
+     someone's notes, winding them back, and the walk over every account, which a deploy
      job may also start, with the deployment's sweep token instead of a session.
   */
 
@@ -304,7 +304,7 @@ export const admin = new Hono<AppEnv>()
       try {
         return c.json(await storeFor(c.env, target).readOnlySql(query, binds));
       } catch (err) {
-        // The query's own error — a misspelt column, a refused statement — is the answer.
+        // The query's own error (a misspelt column, a refused statement) is the answer.
         return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
       }
     },
@@ -313,7 +313,7 @@ export const admin = new Hono<AppEnv>()
   /**
    * Winds one account's store back to a moment in the last thirty days: the rollback for a
    * bad migration or a bad edit. `{ user, at }` with `at` in milliseconds or ISO 8601, or
-   * `{ user, bookmark }` to restore to a bookmark this route handed out — which is how a
+   * `{ user, bookmark }` to restore to a bookmark this route handed out, which is how a
    * restore is undone. `user` defaults to the caller, as on `sql`.
    *
    * A dry run unless the body says `confirm: "RESTORE"`: the dry run resolves the time to
@@ -397,8 +397,8 @@ export const admin = new Hono<AppEnv>()
       console.log(`[store] operator=${email} restore user=${target} to=${'at' in to ? new Date(to.at).toISOString() : to.bookmark}`);
       // The history's row is started before the restore is scheduled, as the load route
       // starts its own before `loadBegin`, and settled once the store answers. Started
-      // after, every way out below that is not a clean answer — an outcome unknown, a
-      // restore that will apply on the next restart, a failed write — would leave an
+      // after, every way out below that is not a clean answer (an outcome unknown, a
+      // restore that will apply on the next restart, a failed write) would leave an
       // older row as the newest and the page offering its undo, a press that throws this
       // restore away under a confirm that says nothing of it (`lib/restores.ts`). A
       // restore to a bookmark that a recorded row handed out is that row's undo, and says
@@ -430,7 +430,7 @@ export const admin = new Hono<AppEnv>()
       try {
         await store.restoreTo(to);
         // `restoreTo` aborts the object and so never returns; getting here means it did not,
-        // which leaves the restore scheduled to fire by itself on the next restart — the
+        // which leaves the restore scheduled to fire by itself on the next restart, the
         // delayed hazard `restoreTo` exists to avoid. Said loudly, in the log and the answer.
         console.error(`[store] restore for user=${target} returned instead of restarting; it will apply on the store's next restart`);
         return c.json(
@@ -515,15 +515,15 @@ export const admin = new Hono<AppEnv>()
    * Replaces one account's store with a dump from the backups bucket (MAK-171, part 4):
    * the way back from a fault noticed after the thirty days of history, and the last
    * step of the runbook for losing the whole Cloudflare account. `{ user, dump }`, where
-   * `dump` is a date — that day's daily dump — or a key under the account's own
+   * `dump` is a date (that day's daily dump) or a key under the account's own
    * `stores/<user>/` prefix (`resolveDumpKey`), so a dump can only be loaded into the
    * account it was taken from. Operator only; a deleted account is refused as the
    * restore route refuses it; an instance with no backups bucket bound has no dumps to
    * load.
    *
    * A dry run unless the body says `confirm: "LOAD"`. The dry run reads the dump's head
-   * and tail — whose it is, when it was taken, whether its rows are one moment of the
-   * store — and shows the store as it is now. The real thing, in order:
+   * and tail (whose it is, when it was taken, whether its rows are one moment of the
+   * store) and shows the store as it is now. The real thing, in order:
    *
    * 1. Dump the store as it stands to `stores/<user>/<time>-before-load.sql`
    *    (`beforeLoadKey`), the same file the daily run writes, which the nightly mirror
@@ -539,10 +539,10 @@ export const admin = new Hono<AppEnv>()
    *    every device starts over from a snapshot, and only then clears the mark.
    *
    * A failure after step 2 leaves the store loading, and the answer says so, with both
-   * ways out: restore to `undo`, or load `before` — or call this again, which starts
+   * ways out: restore to `undo`, or load `before`, or call this again, which starts
    * over. Either of the last two is this route on a store that is already loading, so
-   * step 1 is skipped then — a dump of a half-loaded store is not a way back, and
-   * `dumpBegin` refuses it anyway — and the object keeps the `undo` and `before` of the
+   * step 1 is skipped then (a dump of a half-loaded store is not a way back, and
+   * `dumpBegin` refuses it anyway) and the object keeps the `undo` and `before` of the
    * first attempt (found in review: the first version dumped first every time, and so
    * could never be called again). The dump object is opened after step 1 and before
    * step 2, so an R2 refusal is a load that never started rather than one that emptied
@@ -709,7 +709,7 @@ export const admin = new Hono<AppEnv>()
    * shared with the daily backup.
    *
    * Streamed a slice per pull, so an archive's worth of texts never sits in the Worker's
-   * memory at once — not even for a client that reads slowly, which is what enqueuing
+   * memory at once, not even for a client that reads slowly, which is what enqueuing
    * every slice from `start` would have allowed. Every slice is one store call, and an
    * invocation has fifty on Free: a 13k-note archive with 4k files and 2.4k texts (about
    * 31 MB of SQL) is about five.
@@ -884,7 +884,7 @@ export const admin = new Hono<AppEnv>()
 
   /**
    * Deletes someone else's account: its files, its store, its `user` row and everything
-   * D1 cascades from it, then the directory's tombstone — the deletion a person makes of
+   * D1 cascades from it, then the directory's tombstone: the deletion a person makes of
    * their own from Settings, by the same code (`deleteAccount`), without the emailed link
    * that proves an account is theirs. For a sign-up that should not exist: a bot, a test
    * account, someone who asked by other means.
@@ -955,7 +955,7 @@ export const admin = new Hono<AppEnv>()
       cursor = page.cursor;
     }
     // Newest first, by name: a name carries the day it was taken (and the time, for a
-    // dump written before a load), which is what "newest" means here — a dump copied
+    // dump written before a load), which is what "newest" means here: a dump copied
     // back from the mirror is uploaded today and taken weeks ago.
     dumps.sort((a, b) => (a.name < b.name ? 1 : -1));
     return c.json({ dumps } satisfies AccountDumps);
@@ -987,7 +987,7 @@ export const admin = new Hono<AppEnv>()
 
 /**
  * A status file from the backups bucket as JSON, or null when no run has written it yet.
- * A file that does not parse — a write cut short — is logged and answered as null too:
+ * A file that does not parse (a write cut short) is logged and answered as null too:
  * the alternative is a 500 from the one route that also tells the page whose session
  * this is, which would take the whole tab away over one half's status.
  */
@@ -1020,7 +1020,7 @@ async function operatorAccount(c: Context<AppEnv>, id: string): Promise<string |
 
 /**
  * A restore the runtime refused before scheduling anything: 501 where it keeps no history
- * at all (Miniflare, so `pnpm dev`), otherwise 400 with the runtime's own words — a
+ * at all (Miniflare, so `pnpm dev`), otherwise 400 with the runtime's own words: a
  * bookmark it does not know, a time it cannot reach. Only for a refusal the object marked
  * (`readRestoreRefusal`); any other failure is not known to be harmless.
  */
@@ -1046,7 +1046,7 @@ async function recording<T>(what: string, write: () => Promise<T>): Promise<T | 
 
 /**
  * Whose store a `stats` or `dump` reads: the caller's own, or, for an operator naming
- * `?user=`, someone else's — logged, because that is one person reading another's notes.
+ * `?user=`, someone else's: logged, because that is one person reading another's notes.
  * A non-operator naming anyone is answered as if the route did not exist, the way every
  * other "is this mine" check here answers.
  *

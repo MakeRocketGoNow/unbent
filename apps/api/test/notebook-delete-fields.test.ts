@@ -3,7 +3,7 @@
  *
  * The rule is that no value is ever destroyed by deleting a notebook: the definitions are
  * tombstoned (0017) so every value stays readable on the note holding it, labelled with
- * the deleted notebook's name. Two cases motivated it and both are checked here — a note
+ * the deleted notebook's name. Two cases motivated it and both are checked here: a note
  * that had already moved away and was losing data it was promised it would keep, and a
  * note cascaded to the trash, where a restore used to return the note stripped.
  *
@@ -110,7 +110,7 @@ describe('deleting a notebook keeps the values its fields held', () => {
   it('leaves a note that had already moved away untouched', async () => {
     // The bug this covers was scoped by field rather than by note, so deleting a notebook
     // stripped values from notes that had left it long before and were otherwise
-    // uninvolved — the opposite of 0014's promise that a note keeps what it carries.
+    // uninvolved, the opposite of 0014's promise that a note keeps what it carries.
     const { notebookId, fieldId } = await notebookWithField(actor, `Coupons ${Date.now()}`, 'Merchant');
     await post(actor, '/api/notebooks', { name: `Podcasts ${Date.now()}` });
     const note = await post<Note>(actor, '/api/notes', {

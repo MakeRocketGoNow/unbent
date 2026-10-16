@@ -16,7 +16,7 @@ import { registerWriteTools } from './tools/write.js';
  * The MCP server, built fresh for each request.
  *
  * The factory runs per request, which is what lets the tools close over repos already bound
- * to the caller's own note store — the same arrangement `withRepos` gives the HTTP routes,
+ * to the caller's own note store, the same arrangement `withRepos` gives the HTTP routes,
  * and the reason a tool never takes a user id as an argument. Isolation is then structural rather than
  * something each tool has to remember.
  *

@@ -4,7 +4,7 @@ import type { ImportClient } from '@unbent/enex';
  * An ImportClient that talks to a deployed Unbent over a bearer token.
  *
  * The browser's importer implements this same interface against cookies; everything above
- * it — ENML conversion, attachments, hashing, progress, failure collection — is shared, so
+ * it (ENML conversion, attachments, hashing, progress, failure collection) is shared, so
  * this file is only the transport.
  */
 
@@ -23,7 +23,7 @@ export class ApiError extends Error {
  * True if the token is still good.
  *
  * Worth one request before an import starts. importEnex catches per-note errors and
- * records them as failures, so a dead token does not surface as "sign in again" — it
+ * records them as failures, so a dead token does not surface as "sign in again": it
  * surfaces as every note failing with an identical 401, which on a large export is
  * thousands of lines advising a retry that cannot possibly work.
  */

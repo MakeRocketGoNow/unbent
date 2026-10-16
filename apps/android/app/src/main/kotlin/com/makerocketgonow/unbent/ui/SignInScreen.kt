@@ -51,11 +51,11 @@ import com.makerocketgonow.unbent.ui.theme.Space
  *
  * The same shape as the web app's login: a button per provider, then a password form when
  * the instance has one, with a divider between the two kinds. Which of those appear is the
- * instance's decision (`/api/config`), not this screen's — unbent.app shows the providers,
+ * instance's decision (`/api/config`), not this screen's: unbent.app shows the providers,
  * a self-hosted instance typically shows the form.
  *
  * The instance address sits at the bottom because it has to be reachable before anything
- * else works — a self-hoster's first act is pointing the app at their server — but it is
+ * else works (a self-hoster's first act is pointing the app at their server) but it is
  * a rare act, so it reads as a line of status with a way to change it rather than a field.
  */
 @Composable
@@ -130,7 +130,7 @@ private fun Methods(
     onEmailOtp: (String, String?) -> Unit,
     onPassword: (String, String, String?) -> Unit,
 ) {
-    // 48dp is Material's minimum touch target, not a spacing step — it stays a literal
+    // 48dp is Material's minimum touch target, not a spacing step: it stays a literal
     // rather than coming from Space, which measures gaps between things.
     val button = Modifier.fillMaxWidth().heightIn(min = 48.dp)
     val hasSocial = config.google || config.browserSocials > 0
@@ -138,7 +138,7 @@ private fun Methods(
 
     /*
      * The methods on offer, in the order they are shown, with the dividers left to the loop
-     * below — the same arrangement and the same order as the web sign-in screen, which is
+     * below, the same arrangement and the same order as the web sign-in screen, which is
      * the point: the two are the same product and someone moving between them should not
      * have to look for the button twice.
      *
@@ -230,7 +230,7 @@ private fun OrDivider() {
  * Everything that starts with an email address, in one form.
  *
  * The two email methods were separate forms rendered one after the other, which on an
- * instance offering both produced two address boxes a divider apart — the same question
+ * instance offering both produced two address boxes a divider apart: the same question
  * asked twice, with nothing on screen saying so. The web screen had the same fault and was
  * fixed the same way, which matters because these two are the same product.
  *

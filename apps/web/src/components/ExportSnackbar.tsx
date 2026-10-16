@@ -7,8 +7,8 @@ import { Snackbar } from './Snackbar.js';
 /**
  * The running export, wherever the person is.
  *
- * An export can be started from three places — the export page, the note list's filters
- * and a notebook's download in Settings — and only the export page had room to say how
+ * An export can be started from three places (the export page, the note list's filters
+ * and a notebook's download in Settings), and only the export page had room to say how
  * it was going. From the other two a failure was silent: the label went back to what it
  * was and nothing said the backup had not been made. A notebook download in a browser
  * without a save picker showed nothing at all until the zip arrived, and there was no
@@ -16,14 +16,14 @@ import { Snackbar } from './Snackbar.js';
  *
  * A snackbar rather than a status line beside each button, because a run outlives the
  * page it was started from: a person who starts a notebook's export and goes back to
- * their notes still needs to hear that it failed. It also lands without moving anything
- * — a line appearing above the notebook list would push every row down under the
+ * their notes still needs to hear that it failed. It also lands without moving anything:
+ * a line appearing above the notebook list would push every row down under the
  * pointer. Not on the export page itself, which says all of this beside its button.
  *
  * Progress is shown in steps of five percent rather than per note: the snackbar is a live
  * region, and one that changed thousands of times would talk over everything else.
  *
- * How a run ended stays until it is dismissed — the saved file's name as much as a
+ * How a run ended stays until it is dismissed: the saved file's name as much as a
  * failure. An export of an archive takes long enough that nobody watches it finish: they
  * start it and go back to their notes or another tab, and a "Saved" that cleared itself
  * after six seconds was gone before they looked. The one outcome that still clears itself
@@ -37,7 +37,7 @@ export function ExportSnackbar() {
   const [dismissed, setDismissed] = useState<string | null>(null);
   const key = `${state.run}:${state.status}`;
   // `Snackbar` dismisses itself after any action, which suits an Undo. Stop is not done
-  // when clicked — the request in flight has to land first — so its dismiss is skipped
+  // when clicked (the request in flight has to land first), so its dismiss is skipped
   // and the card stays to say it is stopping, then how it ended.
   const stopping = useRef(false);
 

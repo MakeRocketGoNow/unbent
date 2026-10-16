@@ -30,7 +30,7 @@ export const EXPIRED_BLOBS_PER_VISIT = 1000;
  * methods, which open theirs. Nothing here records in the change feed: a client holds no
  * deleted files.
  *
- * What the object never does is delete the object itself — the store touches its SQLite
+ * What the object never does is delete the object itself: the store touches its SQLite
  * and nothing else (AGENTS.md, rule 1). It says which keys are due; the Worker's sweep
  * deletes them and then calls `forget`. A key the Worker deleted and failed to tell the
  * store about is asked for again on the next visit, and deleting an absent object is a
@@ -41,13 +41,13 @@ export class DeletedBlobs {
 
   /**
    * Marks `keys` as deleted at `at`. Called with the keys of the attachment rows the
-   * calling transaction has just deleted, and only those — the purge methods match keys to
+   * calling transaction has just deleted, and only those: the purge methods match keys to
    * the notes they actually removed (`keysOfDeletedNotes`), and that discipline is what
    * makes a tombstone mean "the row is gone".
    *
    * A key already here has its clock restarted rather than kept: the later deletion is
-   * the one the retention counts from. It cannot happen in practice — `revive` takes a
-   * tombstone away when its key is recorded again — but if it did, keeping the older
+   * the one the retention counts from. It cannot happen in practice (`revive` takes a
+   * tombstone away when its key is recorded again), but if it did, keeping the older
    * date would let the sweep delete a file sooner than thirty-five days after its row
    * went, and that is the one direction this table must never err in.
    */
@@ -94,7 +94,7 @@ export class DeletedBlobs {
 
   /**
    * Drops the tombstones of `keys` the Worker has deleted from R2, and only those still
-   * due as of `now` — the same `now` the Worker asked `expired` with. A key deleted and
+   * due as of `now`, the same `now` the Worker asked `expired` with. A key deleted and
    * uploaded and deleted again between the two calls has a newer tombstone, which must
    * stay: its object is in the bucket again and owes the person the full retention.
    * Returns how many went.
@@ -124,7 +124,7 @@ export class DeletedBlobs {
   /**
    * A page of every tombstoned key, by key, for the account's own blob sweep
    * (`POST /api/admin/gc-blobs`), which must count a file awaiting deletion as referenced
-   * or it would delete it the moment the trash was emptied — exactly what this table
+   * or it would delete it the moment the trash was emptied, exactly what this table
    * exists to stop. Paged like `AttachmentsStore.blobKeys`, by the primary key rather than
    * the rowid so the cursor is a key the caller already has; the sweep walks until `next`
    * is null.

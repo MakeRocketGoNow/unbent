@@ -8,7 +8,7 @@ import { exportQuery } from '../notes-api.js';
  * Worth pinning at this level because the filter lives in the URL: a link someone
  * bookmarked or pasted into a chat carries `?tag=x`, and widening the schema to an array
  * must not turn those into dropped filters. `catch(undefined)` means a schema that no
- * longer matches fails silently rather than loudly — the bad filter is simply gone — so a
+ * longer matches fails silently rather than loudly (the bad filter is simply gone), so a
  * regression here would look like "the link stopped working" with nothing to debug.
  *
  * Two serializations are in play and they are deliberately different, which is worth
@@ -52,7 +52,7 @@ describe('the notes route tag filter', () => {
   /*
    * Why a bare `?tag=Receipt` cannot be what we write, however much nicer it is to paste.
    *
-   * The schema reads it — that is the case above — so writing one looks like a free win.
+   * The schema reads it (that is the case above), so writing one looks like a free win.
    * But `validateSearch` runs on every navigation and this transform coerces the string to
    * a one-element array, and the router serializes *that* into the URL. The bare form is
    * normalized away before it is ever written.

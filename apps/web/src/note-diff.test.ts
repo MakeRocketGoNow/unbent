@@ -119,7 +119,7 @@ describe('diffNote', () => {
 
   it('shows a stretch under four in full rather than folding it', () => {
     const body = (mid: string) => lines(9, (i) => (i === 5 ? mid : `Line ${i}`));
-    // Five before the change: two kept, three left — too few to fold.
+    // Five before the change: two kept, three left: too few to fold.
     expect(rows(body('Acme 1'), body('Acme 2'))[0]).toBe('  Line 0');
   });
 

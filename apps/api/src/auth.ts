@@ -34,12 +34,12 @@ function allowedEmails(env: Env): string[] {
  * Two switches for one feature, on purpose. AUTH_PASSWORD is the self-hoster's choice:
  * social providers need a callback URL registered per deployment with Google and GitHub,
  * which nobody can do on behalf of every instance, so a password is the one method that
- * works everywhere. ALLOW_TEST_CREDENTIALS stays as the test suite's own switch — it is
+ * works everywhere. ALLOW_TEST_CREDENTIALS stays as the test suite's own switch: it is
  * documented as local-only, and folding it into the real flag would invite setting the
  * real flag on a deployed instance "for the tests".
  *
  * And a default underneath both, because opt-in alone left a hole. A passkey cannot create
- * an account — one is added from settings once you are already signed in — and a code by
+ * an account (one is added from settings once you are already signed in) and a code by
  * email needs a mail provider. So an instance deployed with no OAuth, no Resend and no
  * AUTH_PASSWORD offered exactly one button, which could not work for anyone who did not
  * already have an account, and on a fresh instance that is everyone including the operator.
@@ -47,14 +47,14 @@ function allowedEmails(env: Env): string[] {
  * else here can create an account, and standing aside the moment something can.
  *
  * That the default disappears as soon as a real method exists is the point. An instance
- * with Google configured is unchanged, and so is unbent.app — the open sign-up this would
+ * with Google configured is unchanged, and so is unbent.app: the open sign-up this would
  * otherwise hand a public URL is exactly what made it opt-in in the first place, and
  * ALLOWED_EMAILS is still what governs who may take it up.
  *
  * `AUTH_PASSWORD=0` is the way to refuse the default, for an instance that wants passkeys
  * and nothing else for the people who already have accounts. It is checked before the test
  * switch so that an explicit no wins over an implicit yes, and it is the one setting here
- * that can still leave nobody a way in — deliberately, the same as `AUTH_PASSKEY=0`.
+ * that can still leave nobody a way in, deliberately, the same as `AUTH_PASSKEY=0`.
  */
 function passwordEnabled(env: Env): boolean {
   if (env.AUTH_PASSWORD === '1') return true;
@@ -66,8 +66,8 @@ function passwordEnabled(env: Env): boolean {
 /**
  * Passkeys, on unless an instance says otherwise.
  *
- * Nothing has to be registered anywhere for a passkey to work — WebAuthn's other half is
- * the browser and the user's own device — so there is no missing credential to infer an
+ * Nothing has to be registered anywhere for a passkey to work (WebAuthn's other half is
+ * the browser and the user's own device), so there is no missing credential to infer an
  * operator's intent from, and this is the one method that has to be opt-out rather than
  * opt-in. It gates both the advertisement and the endpoints: an operator who turns this
  * off means off, not hidden.
@@ -79,7 +79,7 @@ function passkeysEnabled(env: Env): boolean {
 /**
  * Whether codes by email can reach anyone from here.
  *
- * Configured mail, or local development — where `sendEmail` prints the code to the Worker
+ * Configured mail, or local development, where `sendEmail` prints the code to the Worker
  * console instead of sending it. Without the second half the feature could not be worked
  * on without a Resend account, since the same check decides both whether OTP is offered
  * and whether mail is real. A deployed instance with no mail still does not offer it.
@@ -94,7 +94,7 @@ function codesDeliverable(env: Env): boolean {
  * The same test as codes by email, for the reason spelled out on `deleteUser` below: the
  * confirmation mail *is* the guard, so an instance that cannot send one has no way to ask
  * and does not offer the flow. Named separately from `codesDeliverable` because the two
- * answer different questions and only happen to agree — if deletion ever gains a second
+ * answer different questions and only happen to agree: if deletion ever gains a second
  * way to confirm, this is the line that changes.
  *
  * Exported because `/api/config` reports it: a settings page that drew a Delete account
@@ -126,7 +126,7 @@ function envMap(env: Env): Record<string, string | undefined> {
 /**
  * The OAuth providers this instance has credentials for.
  *
- * Every provider Better Auth ships — thirty-five of them — is available by convention
+ * Every provider Better Auth ships (thirty-five of them) is available by convention
  * rather than by being named here: set `<PROVIDER>_CLIENT_ID` and `<PROVIDER>_CLIENT_SECRET`
  * and it appears; delete either and it goes. That convention is not new, it is what Google
  * and GitHub already used; this only stops the list of which providers may use it from
@@ -134,7 +134,7 @@ function envMap(env: Env): Record<string, string | undefined> {
  *
  * Which matters for a self-hosted instance. Somebody running this for a company on
  * Microsoft, or a community on Discord, should not have to fork the repository and edit
- * this file to sign in — and every provider they might want is already sitting in the
+ * this file to sign in, and every provider they might want is already sitting in the
  * dependency, waiting to be named by an environment variable.
  */
 export function configuredSocials(env: Env): string[] {
@@ -159,8 +159,8 @@ export function configuredSocials(env: Env): string[] {
  * Better Auth checks a POST's origin only when it carries a cookie, which is why a test
  * request without one sails through and the bug shows only in a real browser. A
  * cross-site POST drops this app's own `SameSite=Lax` cookies but still sends any
- * `SameSite=None` one for the host — Cloudflare's bot-management `__cf_bm`, on a zone
- * with Bot Fight Mode, is one — and that is enough to turn the check on.
+ * `SameSite=None` one for the host (Cloudflare's bot-management `__cf_bm`, on a zone
+ * with Bot Fight Mode, is one) and that is enough to turn the check on.
  *
  * Only while Apple is configured, so an instance without it trusts no one extra. This is
  * Better Auth's `trustedOrigins`, which governs auth requests only: `isTrustedOrigin`,
@@ -176,12 +176,12 @@ export function offeredProviders(env: Env): AuthProvider[] {
   /**
    * Offered only where a code can actually reach someone. A deployed instance with no mail
    * provider would otherwise show a form whose code goes to a log nobody is reading, which
-   * is worse than not offering it — the same reasoning the OAuth checks above use.
+   * is worse than not offering it, the same reasoning the OAuth checks above use.
    */
   if (codesDeliverable(env)) providers.push('email-otp');
   /**
-   * On unless an instance says otherwise. A passkey needs nothing registered with anyone —
-   * no client id, no secret, no email provider — because WebAuthn's other half is the
+   * On unless an instance says otherwise. A passkey needs nothing registered with anyone
+   * (no client id, no secret, no email provider) because WebAuthn's other half is the
    * browser and the user's own device, so there is no configuration that could make it
    * fail. `AUTH_PASSKEY=0` exists only so that an operator who does not want to explain
    * them to their users can leave them out; everything else here is opt-in, and this is
@@ -221,7 +221,7 @@ function relyingParty(env: Env): { rpID: string; origin: string } {
  *
  * The port is a wildcard rather than an enumeration because each git worktree runs its
  * own Vite on a port derived from its directory name (see `scripts/ports.mjs`), and the
- * proxy forwards the browser's Host header verbatim — so the port reaching Better Auth
+ * proxy forwards the browser's Host header verbatim, so the port reaching Better Auth
  * is whichever checkout the request came from. `*` spans a port in Better Auth's matcher
  * (its separator is `/`), which is what `*.ts.net:5173` already relied on.
  *
@@ -242,8 +242,8 @@ const LOCAL_ALLOWED_HOSTS = ['localhost:*', '127.0.0.1:*', '10.0.2.2:*', '*.ts.n
 
 /**
  * Whether a browser `Origin` is one this instance serves the app on: the same set
- * Better Auth trusts, so a route that checks an origin itself — the change feed's
- * WebSocket, whose handshake skips CORS — cannot drift from sign-in. Deployed, exactly
+ * Better Auth trusts, so a route that checks an origin itself (the change feed's
+ * WebSocket, whose handshake skips CORS) cannot drift from sign-in. Deployed, exactly
  * `APP_URL`'s origin (compared as origins, so a trailing slash on the setting does not
  * refuse every browser); locally, the hosts above on any port, as `baseURLFor` has them.
  */
@@ -274,7 +274,7 @@ export function isTrustedOrigin(env: Pick<Env, 'APP_URL'>, origin: string): bool
  * carries.
  *
  * RFC 8707 calls this the resource identifier, and binding tokens to it is what stops one
- * minted for somewhere else being replayed here — the check the MCP route makes on every
+ * minted for somewhere else being replayed here, the check the MCP route makes on every
  * call. It has to be the URL a client actually types, which is the SPA origin rather than
  * the Worker's own: in production they are the same host, and locally the Vite proxy is
  * what makes the two halves look like one origin.
@@ -298,7 +298,7 @@ export function mcpIssuer(env: Env): string {
  * Declared explicitly because the plugins below make the inferred return type reference
  * better-call, a transitive dependency this package does not depend on directly, which
  * TypeScript rejects as unportable (TS2742). Naming the surface we rely on is better than
- * pinning someone else's dependency to satisfy a type it only mentions in passing — and it
+ * pinning someone else's dependency to satisfy a type it only mentions in passing, and it
  * fails loudly if a future caller reaches for something not listed here.
  */
 interface AuthInstance {
@@ -309,7 +309,7 @@ interface AuthInstance {
     } | null>;
     /**
      * The two discovery documents, which routes/well-known.ts serves from the root. They
-     * are reachable through the handler as well, but only under /api/auth — and the
+     * are reachable through the handler as well, but only under /api/auth, and the
      * clients that read them look at the origin root, which Better Auth's router 404s
      * before a plugin ever sees it.
      */
@@ -324,9 +324,9 @@ interface AuthInstance {
      * Mints a one-time token against the request's session, the same value the
      * `/one-time-token/generate` endpoint returns. Called in-process by the preview relay
      * so it can validate the return origin and mint in one handler, rather than the browser
-     * fetching a token and then being trusted to redirect it somewhere safe — see
-     * routes/preview-relay.ts. Requires a session on the passed headers and throws
-     * otherwise — though the relay route runs `requireAuth` first, so by the time it calls
+     * fetching a token and then being trusted to redirect it somewhere safe (see
+     * routes/preview-relay.ts). Requires a session on the passed headers and throws
+     * otherwise, though the relay route runs `requireAuth` first, so by the time it calls
      * this a session is already proven and a throw means the token store, which it reports
      * as a 500.
      */
@@ -351,7 +351,7 @@ interface AuthInstance {
 /**
  * The `socialProviders` object, assembled from the environment.
  *
- * Every entry is the same shape — an id and a secret — with one exception. Google may be
+ * Every entry is the same shape (an id and a secret) with one exception. Google may be
  * given a second client id: an array widens *ID token audience* verification only, and the
  * browser's authorization-code flow still uses the first entry with the secret. The Android
  * app signs in through Credential Manager, which returns a token issued for whichever
@@ -368,8 +368,8 @@ interface AuthInstance {
  * accept the app's tokens and stop accepting the Services ID's. `audience` is read only on
  * the ID-token path; the web code flow never consults it.
  *
- * Providers needing more than a pair — Apple wants a team id, a key id and a signing key,
- * from which its "secret" is a JWT the operator generates — are configured by putting that
+ * Providers needing more than a pair (Apple wants a team id, a key id and a signing key,
+ * from which its "secret" is a JWT the operator generates) are configured by putting that
  * generated value in `APPLE_CLIENT_SECRET`. That keeps the shape here uniform at the cost
  * of some setup elsewhere, which is the right trade for something done once per instance.
  */
@@ -416,20 +416,20 @@ function appleBundleIds(env: Env): string[] {
  * Says out loud that a deployed instance will accept a sign-up from anyone.
  *
  * An empty `ALLOWED_EMAILS` means unrestricted. That is what local development and the
- * test suite want, and what a public URL almost never does — but nothing ever said so, and
+ * test suite want, and what a public URL almost never does, but nothing ever said so, and
  * an instance with an open door looks exactly like one without. The silence got worse when
  * password became the floor: an instance that configured nothing now has a sign-up form it
  * did not ask for.
  *
  * A warning and not a refusal, deliberately. Refusing sign-ups without an allowlist would
  * lock an operator out of their own fresh deployment, which is the dead end this change set
- * exists to remove — it would trade a silent open door for a silent locked one. The offered
+ * exists to remove: it would trade a silent open door for a silent locked one. The offered
  * methods are named because that is the part worth acting on: it says what an unknown
  * visitor could actually use.
  *
  * `PUBLIC_SIGNUPS=1` is how an instance says the open door is the point. Without it this
  * cannot tell an instance that decided to be public from one that forgot its allowlist, and
- * on the first of those it becomes a recurring line about a settled decision — which is how
+ * on the first of those it becomes a recurring line about a settled decision, which is how
  * a warning stops being read, taking the forgotten-allowlist case down with it. An absent
  * secret cannot express intent; a flag that is present can.
  *
@@ -440,7 +440,7 @@ function appleBundleIds(env: Env): string[] {
  * who can sign in.
  *
  * Exported for its test. It is a plain function of the environment, and which of the four
- * cases it fires on is exactly the kind of condition that rots quietly — too loud and every
+ * cases it fires on is exactly the kind of condition that rots quietly: too loud and every
  * local run is noise, too quiet and a public instance says nothing.
  */
 export function warnIfOpenToAnyone(env: Env): void {
@@ -459,7 +459,7 @@ export function warnIfOpenToAnyone(env: Env): void {
  * Not Better Auth's own `/delete-user/callback`, deliberately. That endpoint is a GET that
  * deletes, and a GET that deletes is something anything can fire: a link prefetch, a
  * scanner, a restored tab, a thumb landing an inch off. The session requirement rules out
- * the ones that arrive without cookies, but not the case that matters — webmail read in the
+ * the ones that arrive without cookies, but not the case that matters: webmail read in the
  * very browser that holds the session, where a speculative fetch carries them.
  *
  * So the mail points at the SPA instead, which asks once more and then deletes with a POST.
@@ -493,12 +493,12 @@ function createAuth(env: Env): AuthInstance {
      *
      * The D1 adapter's connection lock. Better Auth sends its queries through Kysely, and
      * Kysely puts one lock around every query of an adapter that reports
-     * `supportsMultipleConnections: false` — Better Auth's D1 adapter does, by inheriting
+     * `supportsMultipleConnections: false`. Better Auth's D1 adapter does, by inheriting
      * the answer from Kysely's own SQLite adapter, where it is right: better-sqlite3 is
      * one synchronous handle. A D1 binding is not, and the lock is held by the Better Auth
      * instance, which `getAuth` keeps per `env` and so shares with every request of the
      * isolate. On Workers that wedges. A request the client cancels while its query is in
-     * flight — a timeout, a superseded fetch, a closed tab — has its I/O dropped, so the
+     * flight (a timeout, a superseded fetch, a closed tab) has its I/O dropped, so the
      * query never settles and the lock is never released; every later session check in
      * the isolate then waits on it until the isolate is evicted. That was the stall of
      * 2026-10-13, minutes long and only for requests carrying a real session (a bad or
@@ -522,8 +522,8 @@ function createAuth(env: Env): AuthInstance {
        * way back into their notes short of asking whoever runs the instance. This is the
        * reason the Worker needs to send mail at all.
        *
-       * Better Auth handles the token — one-time, stored in `verification`, an hour by
-       * default — so what is left here is delivery. Failures propagate: if Resend rejects
+       * Better Auth handles the token (one-time, stored in `verification`, an hour by
+       * default), so what is left here is delivery. Failures propagate: if Resend rejects
        * the message, the caller is told the reset could not be sent rather than being
        * left waiting for mail that is never coming.
        *
@@ -535,14 +535,14 @@ function createAuth(env: Env): AuthInstance {
         await sendEmail(env, {
           to: user.email,
           subject: 'Reset your Unbent password',
-          text: `Someone asked to reset the password for your Unbent account.\n\n${url}\n\nThe link works once and expires in an hour. If this was not you, you can ignore this email — nothing has changed.`,
+          text: `Someone asked to reset the password for your Unbent account.\n\n${url}\n\nThe link works once and expires in an hour. If this was not you, you can ignore this email. Nothing has changed.`,
         });
       },
       revokeSessionsOnPasswordReset: true,
       /**
        * Make people prove they own the address before the account works.
        *
-       * Gated on mail being real — `canSendEmail`, not `codesDeliverable` — because this
+       * Gated on mail being real (`canSendEmail`, not `codesDeliverable`) because this
        * one has a lockout failure mode the others do not: switched on without a way to
        * send the link, every new account is created and then permanently unable to sign
        * in. That also keeps it off locally, where the isolation suite signs up throwaway
@@ -555,15 +555,15 @@ function createAuth(env: Env): AuthInstance {
        *
        * It is worth being precise about what this does not do. It was suggested as a fix
        * for the pre-account-hijacking advisories, and GHSA-g38m-r43w-p2q7 says outright
-       * that `requireEmailVerification: true` alone does not mitigate it — the OAuth
+       * that `requireEmailVerification: true` alone does not mitigate it: the OAuth
        * auto-link gate was the bug, and the fix was the version bump. This narrows who
        * can create an account; it is not a patch.
        *
        * One consequence to know about before turning mail on: password accounts created
        * before this point have `emailVerified` 0, so configuring Resend on an existing
        * self-hosted instance starts asking those people to confirm an address they have
-       * been using for months. They are not locked out — a sign-in attempt sends the link
-       * — but it arrives unannounced. OAuth accounts are unaffected, since the provider
+       * been using for months. They are not locked out (a sign-in attempt sends the link)
+       * but it arrives unannounced. OAuth accounts are unaffected, since the provider
        * vouches for the address at creation.
        */
       requireEmailVerification: canSendEmail(env),
@@ -577,7 +577,7 @@ function createAuth(env: Env): AuthInstance {
         await sendEmail(env, {
           to: user.email,
           subject: 'Confirm your email for Unbent',
-          text: `Confirm this address to finish setting up your Unbent account.\n\n${url}\n\nIf you did not sign up, you can ignore this email — the account cannot be used until someone follows this link.`,
+          text: `Confirm this address to finish setting up your Unbent account.\n\n${url}\n\nIf you did not sign up, you can ignore this email. The account cannot be used until someone follows this link.`,
         });
       },
       // Straight into the app from the link, rather than back to a sign-in screen to type
@@ -585,7 +585,7 @@ function createAuth(env: Env): AuthInstance {
       autoSignInAfterVerification: true,
     },
     /**
-     * Built from whatever credentials the environment holds — see `configuredSocials`.
+     * Built from whatever credentials the environment holds (see `configuredSocials`).
      * Adding a provider is `wrangler secret put DISCORD_CLIENT_ID` and its secret, and
      * removing one is deleting either; neither touches this file.
      */
@@ -596,7 +596,7 @@ function createAuth(env: Env): AuthInstance {
      * Hooked on user *creation* rather than sign-in, so it costs nothing on the ordinary
      * path: existing users never touch it, and an account that was never created cannot
      * sign in. Throwing beats returning `false`, which Better Auth turns into a null
-     * create the caller reports as a generic failure — this way the visitor is told they
+     * create the caller reports as a generic failure. This way the visitor is told they
      * are not on the list rather than seeing something that looks like a bug.
      */
     databaseHooks: {
@@ -610,7 +610,7 @@ function createAuth(env: Env): AuthInstance {
             /**
              * The `code` is what gets this refusal back to the sign-in screen. The OAuth
              * callback route redirects to the client's `errorCallbackURL` only for an
-             * `APIError` whose body has a code, and re-throws any other — which the
+             * `APIError` whose body has a code, and re-throws any other, which the
              * browser then showed as a bare JSON 403 at `/api/auth/callback/google`, the
              * message in it and no way back. The code and password routes answer the
              * same body as JSON, where the screen reads `message`; they are unaffected.
@@ -637,7 +637,7 @@ function createAuth(env: Env): AuthInstance {
               // not fail the sign-up the user row already succeeded at.
               console.error(`directory row for ${user.id} not written; the sweep will add it:`, err);
             }
-            // The fortnight starts now (MAK-108) — only while billing is on. A row dated
+            // The fortnight starts now (MAK-108), only while billing is on. A row dated
             // from a sign-up made while it was off would be a trial already run out the
             // day billing came on; without one, `planFor` starts the fortnight at the
             // account's first request after that. Healed on first read either way, so
@@ -654,7 +654,7 @@ function createAuth(env: Env): AuthInstance {
       },
     },
     session: {
-      // Thirty days, slid forward at most once a day — so ordinary use keeps a session
+      // Thirty days, slid forward at most once a day, so ordinary use keeps a session
       // alive indefinitely and only a month of genuine absence signs you out.
       expiresIn: 60 * 60 * 24 * 30,
       updateAge: 60 * 60 * 24,
@@ -662,7 +662,7 @@ function createAuth(env: Env): AuthInstance {
        * Serve the session from a signed cookie for five minutes before re-reading D1.
        *
        * Without this every request that touches auth hits the database, and a failed or
-       * cold read surfaces as a sign-out rather than a slow request — the most likely
+       * cold read surfaces as a sign-out rather than a slow request, the most likely
        * explanation for sessions that lapsed well before their recorded expiry, which in
        * the local database was always a full thirty days.
        *
@@ -679,7 +679,7 @@ function createAuth(env: Env): AuthInstance {
      * isolate's memory, which on Workers means they are effectively not stored at all:
      * every isolate has its own, and they are spun up and discarded constantly, so an
      * attacker's requests mostly land on a fresh counter. The stricter rule Better Auth
-     * puts on /sign-in/email — three attempts in ten seconds — is the thing standing
+     * puts on /sign-in/email (three attempts in ten seconds) is the thing standing
      * between a password and an online guessing attack, and it only actually holds if the
      * count is somewhere shared. `rateLimit` in migration 0011 is that somewhere.
      *
@@ -695,7 +695,7 @@ function createAuth(env: Env): AuthInstance {
         /*
          * Better Auth compares its tables with the database's whenever a Worker instance
          * starts: one read of sqlite_master and a `pragma_table_info` for every table,
-         * the full-text indexes' shadow tables included — about 47 statements and 420
+         * the full-text indexes' shadow tables included, about 47 statements and 420
          * rows before the first request can be answered. Instances start often, on
          * production, the dev instance and every preview, all against one account's
          * Workers Free quota: about 86k rows a day across the two databases, to check a
@@ -725,9 +725,9 @@ function createAuth(env: Env): AuthInstance {
        * Deleting an account, and why it takes an email to do it.
        *
        * Better Auth's `/delete-user` verifies a password only if the caller sends one.
-       * With nothing else configured, the entire guard on a bare POST is `freshAge` — a
+       * With nothing else configured, the entire guard on a bare POST is `freshAge` (a
        * 24-hour window measured from when the session was created, not from when it was
-       * last used — and that is the wrong shape at both ends.
+       * last used) and that is the wrong shape at both ends.
        *
        * Inside the window an empty POST carrying a session token deletes the account and
        * everything under it. The Android app and the CLI both send that token as
@@ -738,19 +738,19 @@ function createAuth(env: Env): AuthInstance {
        *
        * Outside the window nobody without a password can delete at all: the no-password
        * path is refused as stale, and sending a password finds no credential row to check
-       * it against. That is every Google, GitHub and passkey account — on unbent.app, all
+       * it against. That is every Google, GitHub and passkey account: on unbent.app, all
        * of them.
        *
        * `sendDeleteAccountVerification` replaces both with one rule that does not depend
        * on how someone signed in: the request only ever sends mail, and the deletion
        * happens when the link comes back. The link is a GET, which would be a mistake on
        * its own since mail scanners follow links, except that the callback resolves the
-       * session before it consumes the token — a fetch without the signed-in browser's
+       * session before it consumes the token: a fetch without the signed-in browser's
        * cookie fails and leaves the token unspent.
        *
        * Gated on `codesDeliverable` rather than simply on, because here the mail *is* the
        * confirmation: an instance that cannot deliver it has no way to ask, so it does not
-       * offer the flow — the same line `emailOTP` draws, and the same reason locally is
+       * offer the flow, the same line `emailOTP` draws, and the same reason locally is
        * enough, `sendEmail` printing the link to the Worker console.
        */
       deleteUser: {
@@ -770,7 +770,7 @@ function createAuth(env: Env): AuthInstance {
           await sendEmail(env, {
             to: user.email,
             subject: 'Confirm deleting your Unbent account',
-            text: `Someone asked to delete your Unbent account.\n\n${confirmDeletionUrl(env, token)}\n\nThat link opens a page asking you to confirm. Confirming deletes the account, every note in it and every file attached to one — there is no undo and no export afterwards, so take one first if you want one. Open it in the browser you are signed in with; it does nothing anywhere else.\n\nThe link works once and expires in a day. If this was not you, ignore this email. Nothing has happened, and nothing will: opening the link on its own deletes nothing.`,
+            text: `Someone asked to delete your Unbent account.\n\n${confirmDeletionUrl(env, token)}\n\nThat link opens a page asking you to confirm. Confirming deletes the account, every note in it and every file attached to one. There is no undo and no export afterwards, so take one first if you want one. Open it in the browser you are signed in with; it does nothing anywhere else.\n\nThe link works once and expires in a day. If this was not you, ignore this email. Nothing has happened, and nothing will: opening the link on its own deletes nothing.`,
           });
         },
         /**
@@ -789,7 +789,7 @@ function createAuth(env: Env): AuthInstance {
        * ordinary session. Nothing is typed into or stored by the CLI.
        *
        * Approval requires a real session, so the sign-up allowlist above governs this
-       * path too — a device cannot be authorized by someone who could not sign in.
+       * path too: a device cannot be authorized by someone who could not sign in.
        *
        * Defaults are the plugin's: a 30-minute code and 5-second polling. Both suit a
        * migration the user starts and then watches.
@@ -800,7 +800,7 @@ function createAuth(env: Env): AuthInstance {
        *
        * The device flow issues a normal session; without this the CLI would have to
        * store and replay a cookie, which is the browser's mechanism rather than an HTTP
-       * client's. Everything downstream is unchanged either way — sessionMiddleware still
+       * client's. Everything downstream is unchanged either way: sessionMiddleware still
        * resolves a user and `requireAuth` still guards the same routes.
        */
       bearer(),
@@ -814,8 +814,8 @@ function createAuth(env: Env): AuthInstance {
        *
        * The plugin also hooks `/get-session` to answer every session check with a signed
        * JWT in a `set-auth-jwt` header, for clients that would rather carry a token than a
-       * cookie. Nothing here reads it — the web app, Android and iOS all send the cookie,
-       * and the MCP route verifies the OAuth tokens the provider below issues — and it was
+       * cookie. Nothing here reads it (the web app, Android and iOS all send the cookie,
+       * and the MCP route verifies the OAuth tokens the provider below issues) and it was
        * not free: a read of the `jwks` table, a decryption of the private key and a
        * signature, on every request, including the ones the cookie cache would otherwise
        * have answered without touching the database at all. Off, so a request with a
@@ -835,8 +835,8 @@ function createAuth(env: Env): AuthInstance {
        * themselves at connect time and there is no way to pre-provision credentials for
        * clients you have never heard of. That means unauthenticated writes to `oauthClient`
        * from anyone who can reach the URL, so registration is rate limited below. It buys
-       * nothing on its own — a registered client with no approved consent can read nothing
-       * — but a table that grows without a human in the loop should not grow quickly.
+       * nothing on its own (a registered client with no approved consent can read nothing)
+       * but a table that grows without a human in the loop should not grow quickly.
        *
        * The newer CIMD scheme, where a client is identified by a document on its own
        * domain, is the direction this is heading and is not here yet: it needs a
@@ -858,7 +858,7 @@ function createAuth(env: Env): AuthInstance {
        * anything out.
        *
        * The phone opens /connect in a Custom Tab, which is already signed in through the
-       * browser's own cookies whatever provider was used to get there — Google, GitHub, or
+       * browser's own cookies whatever provider was used to get there: Google, GitHub, or
        * anything added later. That page mints one of these, and the app redeems it for an
        * ordinary session. The device-code flow stays for the CLI, which has no browser to
        * hand anything back to.
@@ -870,20 +870,20 @@ function createAuth(env: Env): AuthInstance {
       /**
        * Passkeys: the sign-in that is both the least work for the user and the hardest to
        * steal. One touch of a fingerprint sensor, no password manager to open, no code to
-       * copy from another app — and because the credential is bound to this origin by the
+       * copy from another app, and because the credential is bound to this origin by the
        * browser, there is nothing to phish and nothing on the server worth stealing. Only
        * a public key is stored here.
        *
        * Additive rather than a replacement: a passkey is created from settings once you
        * are already signed in, so every account still has whatever method got it here.
-       * That also keeps the recovery story simple — lose the device, use the password.
+       * That also keeps the recovery story simple: lose the device, use the password.
        */
       ...(passkeysEnabled(env) ? [passkey({ rpName: 'Unbent', ...relyingParty(env) })] : []),
       /**
        * A six-digit code by email: the way in that needs no account anywhere else.
        *
        * This is what lets unbent.app drop GitHub without becoming Google-only. Passkeys
-       * cannot fill that role — one has to be added from an account you already have — so
+       * cannot fill that role (one has to be added from an account you already have) so
        * a code is the only method here that can *create* an account unaided.
        *
        * Chosen over a magic link because of the phone. A link tapped in a mail app opens

@@ -7,8 +7,8 @@
  * says which copy its patch was written against, and the API answers 409 with the note as
  * it stands, so the client has both sides without another round trip.
  *
- * The batch `PATCH /notes` takes no precondition, deliberately: it refiles — a notebook,
- * tags added and taken away — and carries nothing a client read, so it has no stale copy
+ * The batch `PATCH /notes` takes no precondition, deliberately: it refiles (a notebook,
+ * tags added and taken away) and carries nothing a client read, so it has no stale copy
  * to write back. Its "add this tag" lands on whatever tags the note has now.
  *
  * Checked over HTTP against the live Worker, as `no-op-update.test.ts` is, because the

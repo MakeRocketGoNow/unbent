@@ -24,7 +24,7 @@ const { Maintenance } = await import('./Maintenance.js');
  *
  * Every other control here destroys something the moment it is confirmed. This one sends
  * mail and destroys nothing, which is the distinction the page has to carry without
- * making it sound optional — so what is pinned below is that the copy never claims a
+ * making it sound optional, so what is pinned below is that the copy never claims a
  * deletion happened, and that the section is absent where the endpoint does not exist.
  */
 function harness(config: Partial<AppConfig> = { accountDeletion: true }) {
@@ -32,7 +32,7 @@ function harness(config: Partial<AppConfig> = { accountDeletion: true }) {
     defaultOptions: { queries: { retry: false } },
   });
   // Seeded rather than fetched: jsdom has no server, and these three are the only queries
-  // the panel reads — the indexing section asks for a fourth only where `vision` is set,
+  // the panel reads. The indexing section asks for a fourth only where `vision` is set,
   // and a confirmation for the exact count when it opens.
   client.setQueryData(keys.config(), { providers: ['password'], ...config });
   client.setQueryData(keys.trashCount(), { items: [], cursor: null, total: 0 });
@@ -197,7 +197,7 @@ describe('Maintenance: delete account', () => {
     expect(queryByRole('button', { name: 'Delete account' })).toBeNull();
   });
 
-  /** Nothing leaves until the confirm is answered — the first click only asks. */
+  /** Nothing leaves until the confirm is answered: the first click only asks. */
   it('sends nothing on the first click', async () => {
     const { findByRole } = harness();
     fireEvent.click(await findByRole('button', { name: 'Delete account' }));

@@ -7,7 +7,7 @@ import java.net.URLDecoder
  * Where an address opens, decided without Android so it runs under a plain JVM test.
  *
  * The WebView is this site and nothing else. A page that navigated it somewhere else would
- * be a page running with the app's session cookie, its bridge and its file chooser — so
+ * be a page running with the app's session cookie, its bridge and its file chooser, so
  * everything off the site leaves: a web page for a Custom Tab, where the person's own
  * browser session and address bar are, and anything that is not a web page for whichever
  * app handles it.
@@ -27,7 +27,7 @@ sealed interface Destination {
  * [url] against the site at [origin].
  *
  * The same site is the same scheme, host and port, compared as the platform compares
- * origins — `http://localhost:5232` and `http://localhost:8787` are two sites. `about:`,
+ * origins: `http://localhost:5232` and `http://localhost:8787` are two sites. `about:`,
  * `blob:` and `data:` are the page's own and stay; `javascript:` too, since it only ever
  * reaches here from the page itself. An address that does not parse is sent out rather
  * than trusted.
@@ -64,7 +64,7 @@ fun linkPath(instance: String, link: String): String? {
  * one.
  *
  * The WebView has no tabs. Loading the address into the app (`loadUrl`) tears the page
- * down — unsaved edits, an upload in flight — which is why notifications already go
+ * down (unsaved edits, an upload in flight) which is why notifications already go
  * through `__unbent.open` instead. A same-origin `_blank` is the same situation: a link
  * in a note, a URL field. Opening in place still leaves the current page, so it keeps
  * what outlives a route change and nothing more. Off-site addresses, and the `about:` /
@@ -94,7 +94,7 @@ private fun portOf(uri: URI): Int = when {
  *
  * The site's gate sends a signed-out page to `/login?redirect=` with the place it was
  * bounced from (see `returnTo` in `auth-gate.ts`). When the app then finds the session was
- * fine after all — the page only lost the network — that is where it belongs, not the list.
+ * fine after all (the page only lost the network) that is where it belongs, not the list.
  * The value is anything a URL can carry, so it is only followed when it is a path on this
  * site, and never when it is `/login` again, which the site's own `safeRedirect` refuses
  * for the same reason: a loop waiting for a cause.

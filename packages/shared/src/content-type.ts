@@ -8,7 +8,7 @@
  * Replaying such a value from our own origin is what makes it dangerous. A file uploaded as
  * `text/html` and served inline executes as a same-origin document: its scripts can read the
  * DOM and call `/api/*` with the user's session. `X-Content-Type-Options: nosniff` does not
- * help — it stops the browser *guessing* a type, not honouring one we declared.
+ * help: it stops the browser *guessing* a type, not honouring one we declared.
  *
  * So the declared type is kept for metadata (search filters on `application/pdf`, the export
  * needs real types, the UI shows them) and this module governs the response only. Types that
@@ -22,10 +22,10 @@
  * Chosen by what a browser will *execute or script*, not by what is "trusted". Images,
  * audio, video, and PDFs are inert as documents. Excluded, deliberately:
  *
- * - `text/html`, `application/xhtml+xml` — script in a same-origin document.
- * - `image/svg+xml` — an image to a human, a scriptable document to a browser.
- * - `text/xml`, `application/xml` — can carry XSLT that renders as markup.
- * - `text/css`, `application/javascript` — usable to attack pages that include them.
+ * - `text/html`, `application/xhtml+xml`: script in a same-origin document.
+ * - `image/svg+xml`: an image to a human, a scriptable document to a browser.
+ * - `text/xml`, `application/xml`: can carry XSLT that renders as markup.
+ * - `text/css`, `application/javascript`: usable to attack pages that include them.
  * - Everything unlisted, including office documents and archives.
  */
 const INLINE_SAFE = new Set([
@@ -59,7 +59,7 @@ export const FALLBACK_CONTENT_TYPE = 'application/octet-stream';
  * Strips parameters and normalizes case.
  *
  * `Text/HTML; charset=utf-8` and `text/html` are the same type to a browser, so they must
- * be the same type to the allowlist — comparing the raw header would let the first through.
+ * be the same type to the allowlist: comparing the raw header would let the first through.
  */
 export function normalizeContentType(raw: string | null | undefined): string {
   if (!raw) return '';

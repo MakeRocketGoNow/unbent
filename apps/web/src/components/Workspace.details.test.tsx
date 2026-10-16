@@ -16,7 +16,7 @@ import { Workspace } from './Workspace.js';
 /**
  * Where the note's filing is drawn, and how it is reached.
  *
- * One property list — the notebook, the tags, then the fields — above the body at every
+ * One property list (the notebook, the tags, then the fields) above the body at every
  * width, open, edited where it is read. The bugs this replaced were a block that grew
  * unbounded between the title and the editor, a sheet before that, a desktop that drew
  * the same record as a row of pickers plus a column beside the note, and lastly a fold
@@ -95,7 +95,7 @@ afterEach(() => {
 /**
  * The list as every width draws it: on the page inside the note's column, with no sheet
  * and no row that opens one, the notebook and the tags as its first two rows and the
- * fields after them — and nothing beside the note, since the column the fields used to
+ * fields after them, and nothing beside the note, since the column the fields used to
  * have is gone.
  */
 async function expectPropertyList(container: HTMLElement) {

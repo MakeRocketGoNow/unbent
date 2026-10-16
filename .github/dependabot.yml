@@ -3,14 +3,14 @@
 # The reason this exists is the auth stack: Better Auth shipped three account-takeover
 # advisories in short order, all fixed in patch releases, and the gap between a fix landing
 # and someone noticing is the whole exposure. Whether security updates run at all is a
-# repository setting rather than a file, but how they are *grouped* is set here — and
+# repository setting rather than a file, but how they are *grouped* is set here, and
 # grouping is the part that decides whether an advisory bump installs. Keeping ordinary
 # versions current is what makes that bump a one-line diff instead of a migration.
 #
 # Version updates are off: every `open-pull-requests-limit` below is 0, which stops the
 # weekly and monthly pull requests and leaves security updates alone (they are not counted
-# against it). Dependabot proposes a version without knowing why one was chosen — it
-# merged wa-sqlite 2 under an adapter that peers on 1 (#336) — so routine updates are done
+# against it). Dependabot proposes a version without knowing why one was chosen: it
+# merged wa-sqlite 2 under an adapter that peers on 1 (#336), so routine updates are done
 # by hand, against DEPENDENCIES.md, which says which versions are held and why. The groups
 # stay, because security pull requests are grouped by them.
 
@@ -21,7 +21,7 @@ updates:
   # The root is where pnpm-lock.yaml lives, and the lockfile is the point. What the first
   # run demonstrated: a grouped update spanning directories rewrites the member manifests
   # and the lockfile together and passes CI, while an update scoped to one directory
-  # rewrites that package.json alone — leaving `pnpm install --frozen-lockfile` to fail on
+  # rewrites that package.json alone, leaving `pnpm install --frozen-lockfile` to fail on
   # a lockfile that no longer agrees with it. All three single-package pull requests failed
   # exactly that way.
   #
@@ -49,7 +49,7 @@ updates:
       # The service worker's toolchain, which has to move as one. `vite-plugin-pwa` writes
       # the precache list with its own `workbox-build`, and the worker imports Workbox's
       # runtime modules directly, pinned to that same version (apps/web/package.json). A
-      # bump of either side alone would build a worker from two Workbox versions — the
+      # bump of either side alone would build a worker from two Workbox versions: the
       # core-versus-plugin skew the better-auth family taught this file to avoid.
       pwa:
         patterns:
@@ -60,14 +60,14 @@ updates:
           - minor
           - patch
       # Grouped rather than left to arrive singly, which is the only way they carry the
-      # lockfile. It does mean majors land together and want reading together — but a
+      # lockfile. It does mean majors land together and want reading together, but a
       # major that cannot install is not a reviewable pull request in the first place.
       major:
         update-types:
           - major
       # The groups above cover version updates only: `applies-to` defaults to
-      # `version-updates`, so without these two the security pull requests — the ones this
-      # file exists for — fall back to the repository-level default, which groups per
+      # `version-updates`, so without these two the security pull requests (the ones this
+      # file exists for) fall back to the repository-level default, which groups per
       # package manager *and directory*. That is the single-directory shape that broke
       # `--frozen-lockfile` three times above.
       auth-security:
@@ -96,7 +96,7 @@ updates:
     schedule:
       interval: monthly
     groups:
-      # Compose BOM is `androidx.compose:compose-bom`, so it lands here too — which is what
+      # Compose BOM is `androidx.compose:compose-bom`, so it lands here too, which is what
       # we want, since the BOM is the thing that pins every Compose artifact.
       androidx:
         patterns:
@@ -107,7 +107,7 @@ updates:
       kotlin:
         patterns:
           - 'org.jetbrains.kotlin*'
-      # Everything else — okhttp, material, junit, robolectric, googleid, AGP. Matches last,
+      # Everything else: okhttp, material, junit, robolectric, googleid, AGP. Matches last,
       # so the two groups above win. Grouped for the same reason the npm block gives: left
       # singly these are nine pull requests a month against a limit of four, and six of them
       # get dropped without saying which.

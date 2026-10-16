@@ -6,7 +6,7 @@
  * `_meta.seq + 1 … + n` inside the writing transaction and stores the last one back.
  * Dense matters twice: "the last 50,000 rows" is then a range on the primary key, which
  * is what lets pruning read nothing until it has something to delete, and a client's
- * cursor is exactly the seq it last applied. No other index, on purpose — every index
+ * cursor is exactly the seq it last applied. No other index, on purpose: every index
  * is one more row written per change (measured 2026-10-02), and the one read shape the
  * feed has, `WHERE seq > ?`, is the primary key's.
  *

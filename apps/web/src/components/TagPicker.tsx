@@ -10,7 +10,7 @@ export interface TagCount {
 }
 
 interface TagPickerProps {
-  /** Every tag, in the API's order — by count, descending. See the note below on order. */
+  /** Every tag, in the API's order: by count, descending. See the note below on order. */
   tags: TagCount[];
   selected: string[];
 }
@@ -20,7 +20,7 @@ interface TagPickerProps {
  *
  * This replaces a flat wall of pills. That was fine at sixteen tags and impossible at the
  * real number: `listTags` in the API sorts by count precisely because this account has 326,
- * and the sidebar's disclosure opens by default on a desktop — so it drew all 326 before the
+ * and the sidebar's disclosure opens by default on a desktop, so it drew all 326 before the
  * first note. A wrapped pill field has no answer to that; it just gets taller.
  *
  * Three things fix it, and they are the shape the Android app already settled on:
@@ -29,12 +29,12 @@ interface TagPickerProps {
  * filtering the list is the thing most worth seeing, and leaving the selection scattered
  * through a long list means hunting for it to undo it.
  *
- * **A find field**, matching a case-insensitive substring rather than a prefix — people
+ * **A find field**, matching a case-insensitive substring rather than a prefix: people
  * remember a word from the middle of "Payment Confirmation" as readily as its first letter.
  * The query is local state, not URL state: it is a way of looking for a control, not a
  * filter on the notes, and putting it in the URL would make a shared link carry someone's
  * half-typed search. It deliberately survives a pick, so choosing one of the tags matching
- * "rec" leaves the others on screen — selecting several related tags is the common case.
+ * "rec" leaves the others on screen: selecting several related tags is the common case.
  *
  * **Full-width rows with counts, in count order, in a capped scroll box.** Rows rather than
  * pills because a name plus a count is two pieces of information, and a wrapped pill line
@@ -56,7 +56,7 @@ export function TagPicker({ tags, selected }: TagPickerProps) {
    * disagree about what a press does.
    *
    * The API's order is kept rather than re-sorted alphabetically. Alphabetical puts the
-   * deadest tags first — `notes-repo.ts` records that reasoning for the same reason.
+   * deadest tags first; `notes-repo.ts` records that reasoning for the same reason.
    */
   const candidates = tags
     .filter((t) => !selected.some((s) => sameName(s, t.name)))
@@ -112,7 +112,7 @@ export function TagPicker({ tags, selected }: TagPickerProps) {
         <ul className="tag-picker-list">
           {candidates.map((t) => (
             <li key={t.name}>
-              {/* Adding is the only thing a row does — removing happens on the chip above —
+              {/* Adding is the only thing a row does (removing happens on the chip above),
                   so there is no pressed state to announce. */}
               <button
                 type="button"

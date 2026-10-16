@@ -61,7 +61,7 @@ import kotlinx.coroutines.withContext
  *
  * Filing at the moment of capture is the habit that keeps an archive usable. A capture
  * that lands in the Inbox to be named and filed "later" is a triage job that gets skipped,
- * so the title, notebook and tags are here — prefilled, so the lazy case is still one tap.
+ * so the title, notebook and tags are here: prefilled, so the lazy case is still one tap.
  * The notebook offered first is wherever the last capture went, because shares come in
  * runs: five receipts in a row go to the same place.
  *

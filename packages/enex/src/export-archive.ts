@@ -18,8 +18,8 @@ import {
  *
  * Built by the client rather than the Worker. It was one request that streamed the zip
  * from the Worker, reading each note and each of its files as the browser pulled the
- * bytes. A Worker request may make only so many calls to D1 and R2 — a thousand on
- * Workers Free by the platform's limits page — and a library is tens of thousands of
+ * bytes. A Worker request may make only so many calls to D1 and R2 (a thousand on
+ * Workers Free by the platform's limits page) and a library is tens of thousands of
  * them, so the backup could never have finished on the archive it existed for. Now the
  * client asks for a page of notes at a time (`GET /api/export/notes`), fetches each file
  * through the note's own file route, and writes the zip with the names and markdown from
@@ -32,7 +32,7 @@ import {
  * What an export reads and writes, so the archive's layout can be tested against fakes:
  * a page of notes, a file's bytes, the notebooks and each one's fields.
  *
- * `file` answers null for a file that is no longer there — deleted with its note, or
+ * `file` answers null for a file that is no longer there: deleted with its note, or
  * missing from storage, while a long export was on its way to it. That file is skipped
  * and counted rather than failing the archive: the old Worker skipped them too, and
  * throwing away an hour of backup over one file is the worse outcome by far. Anything
@@ -60,7 +60,7 @@ export interface WriteProgress {
  *
  * The order is the one the Worker wrote: each note's markdown, then its files under
  * `files/` with their text beside them, then `notebooks/<slug>.yaml` for the notebooks
- * in scope — those come last because a slice only learns which notebooks it touched by
+ * in scope: those come last because a slice only learns which notebooks it touched by
  * walking its notes. The
  * importer reads the zip's central directory and takes the definitions first whatever
  * order they were written in. An export that finds nothing still writes a valid zip,
@@ -121,7 +121,7 @@ export async function writeArchive(
  * took that name, in which case the whole id rather than its first eight characters.
  *
  * zip.js refuses a second entry under a name it has written ("File already exists"), and
- * that refusal ends the whole export — an hour of backup lost to two notes. It happened:
+ * that refusal ends the whole export: an hour of backup lost to two notes. It happened:
  * notes imported from Notion keep their page ids, which share their leading digits when
  * the pages were made close together, so two same-titled pages from one Notion database
  * mapped to one directory. The short name stays the rule because it is the one a person
@@ -144,7 +144,7 @@ function uniqueDir(used: Set<string>, note: ExportedNote): string {
  *
  * Every stored file, not only the ones the body still links. Uploading and then cutting
  * the link keeps the file (see the Attachments panel), and those leftovers are still part
- * of the note — dropping them would make the backup lossy. Files are stored uncompressed:
+ * of the note: dropping them would make the backup lossy. Files are stored uncompressed:
  * images, PDFs and video are already compressed, so deflating them burns CPU for nothing.
  *
  * `zip64: false` on every entry, as the Worker wrote them: macOS Archive Utility refuses

@@ -232,7 +232,7 @@ describe('attachments', () => {
 
   it('keeps two attachments that share a filename as two files', async () => {
     // Evernote camera photos and screenshots reuse one name. Each en-media has its own
-    // bytes, so they must land as two files with two links — not as one link rewritten
+    // bytes, so they must land as two files with two links, not as one link rewritten
     // onto whichever upload the server suffixed last.
     const { client, notes, files } = fakeClient();
     const file = enexFile('N.enex', [
@@ -285,7 +285,7 @@ describe('applyRenames', () => {
    * The boundary above stops at the characters that end a destination in the markdown
    * this importer writes, and a space is deliberately not one of them, so that
    * `files/Menu` cannot eat `files/Menu Card.pdf`. That is only safe while a space
-   * cannot follow a destination — which holds because `enmlToMarkdown` emits a bare
+   * cannot follow a destination, which holds because `enmlToMarkdown` emits a bare
    * `href`/`src` and never a link title. If it ever emits one, this test fails and the
    * boundary has to grow a case for it, rather than the rename silently not happening.
    */
@@ -514,7 +514,7 @@ describe('failures', () => {
     ]);
 
     const progress = await importEnex(file, client, { signal: controller.signal });
-    // The first note lands, the rest are skipped quietly — cancelling is not failing.
+    // The first note lands, the rest are skipped quietly: cancelling is not failing.
     expect(progress.created).toBe(1);
     expect(progress.failed).toBe(0);
     expect(progress.processed).toBe(1);
@@ -604,13 +604,13 @@ describe('attachment text extraction', () => {
  * The server going away partway through a run.
  *
  * This is the shape a deleted preview Worker produced: every request from one moment on
- * answered with the same status, by something that was not the API. The notes are fine —
- * the run has simply stopped being able to import anything — so it should end and say so
+ * answered with the same status, by something that was not the API. The notes are fine
+ * (the run has simply stopped being able to import anything), so it should end and say so
  * rather than spend the rest of the file proving the point once per note.
  */
 describe('a server that stops responding', () => {
   const statusError = (status: number) =>
-    Object.assign(new Error(`${status} — the request did not reach the API`), { status });
+    Object.assign(new Error(`${status}: the request did not reach the API`), { status });
 
   const manyNotes = (count: number) =>
     Array.from({ length: count }, (_, i) => note({ title: `N${i}`, content: '<div></div>' }));

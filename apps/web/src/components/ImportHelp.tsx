@@ -14,8 +14,8 @@
  * the whole feature undiscoverable for the person it is for.
  *
  * The whole-account path is a command run on the person's own computer, and this is the
- * one place the app offers it. A hosted version — sign in to Evernote here and a machine of
- * ours does the rest — was considered and declined (MAK-204). The Evernote sign-in that
+ * one place the app offers it. A hosted version (sign in to Evernote here and a machine of
+ * ours does the rest) was considered and declined (MAK-204). The Evernote sign-in that
  * works for every account is the desktop client's own, which a tool someone runs against
  * their own account can borrow and a service holding thousands of people's sessions cannot;
  * the sanctioned OAuth route is for paid plans and unproven against the sync API; and it

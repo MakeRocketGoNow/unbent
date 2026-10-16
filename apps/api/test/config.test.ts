@@ -21,7 +21,7 @@ describe('GET /api/config', () => {
     const { providers } = (await res.json()) as { providers: string[] };
 
     // Deliberately not checked against a fixed list. Social providers are enabled by
-    // convention — `<PROVIDER>_CLIENT_ID` and its secret — so an instance may legitimately
+    // convention (`<PROVIDER>_CLIENT_ID` and its secret), so an instance may legitimately
     // report one this repository has never named, and asserting otherwise would fail the
     // moment somebody configured Discord.
     expect(new Set(providers).size).toBe(providers.length);
@@ -38,8 +38,8 @@ describe('GET /api/config', () => {
   });
 
   /**
-   * Passkeys need nothing registered anywhere — the other half of WebAuthn is the browser
-   * and the user's own device — so unlike every other method there is no configuration
+   * Passkeys need nothing registered anywhere (the other half of WebAuthn is the browser
+   * and the user's own device), so unlike every other method there is no configuration
    * that could switch them off, and no instance that should be missing them.
    */
   it('always offers passkeys, which need nothing configured', async () => {
@@ -62,7 +62,7 @@ describe('GET /api/config', () => {
 
   /**
    * The endpoints have to agree with the advertisement. A method listed here but not
-   * mounted is the failure this endpoint exists to prevent — it is what the hardcoded
+   * mounted is the failure this endpoint exists to prevent: it is what the hardcoded
    * Google button used to do, offering a provider with no credentials behind it.
    */
   it('mounts the endpoints for every method it advertises', async () => {
@@ -93,7 +93,7 @@ describe('GET /api/config', () => {
  * The two can drift: advertising is a list this codebase builds, while the endpoints come
  * from whether a plugin was registered, and it is easy to gate one and forget the other.
  * When that happened to passkeys, `AUTH_PASSKEY=0` removed the button and left
- * /api/auth/passkey/* answering — an operator who turned them off still had them on.
+ * /api/auth/passkey/* answering: an operator who turned them off still had them on.
  */
 describe('advertisement and endpoints agree', () => {
   it('does not answer on an endpoint for a method it does not offer', async () => {
@@ -132,7 +132,7 @@ describe('advertisement and endpoints agree', () => {
    * The preview sign-in relay is a preview-only field: it names the dev instance a preview
    * borrows a Google session from, so it is set only where `PREVIEW_RELAY_ORIGIN` is. The
    * suite runs a plain local Worker with none configured, so the honest answer here is that
-   * the field is absent — a login screen that draws no relay button. `previewRelayOrigin`'s
+   * the field is absent: a login screen that draws no relay button. `previewRelayOrigin`'s
    * own behaviour is unit-tested in lib/preview-relay.test.ts; this pins that the config
    * route drops the field rather than sending `previewRelay: null`.
    */

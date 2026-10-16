@@ -46,8 +46,8 @@ data class BridgeMessage(
  *
  * The `save` calls are how an export reaches Downloads; see [SaveStreams]. They answer on
  * the bridge's own thread and return only once the bytes are written, which is what
- * keeps a fast page from outrunning the phone's storage. A WebView given no [saves] — the
- * indexing page's — answers every one as a failure, and the page never asks.
+ * keeps a fast page from outrunning the phone's storage. A WebView given no [saves] (the
+ * indexing page's) answers every one as a failure, and the page never asks.
  */
 class NoteBridge(
     private val saves: SaveStreams? = null,

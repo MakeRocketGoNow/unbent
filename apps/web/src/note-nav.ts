@@ -96,13 +96,13 @@ function keyOf(state: unknown): string | undefined {
  * entry's key.
  *
  * The note's back arrow needs to know whether that is the list. If it is, the arrow goes
- * back, so the history holds list then note and nothing more — and a swipe back or
+ * back, so the history holds list then note and nothing more, and a swipe back or
  * Android's Back after it leaves the app rather than reopening the note, which is what
  * the arrow did when it opened the list as a new page on top. A history entry cannot be
  * asked what precedes it, so each navigation writes it down: a step forward puts the
  * page it left behind the page it arrived at, and a replacement keeps what was behind the
- * page it replaced, which is how a new note — made at `/notes?new=1`, then replaced by
- * the note — still has the list behind it.
+ * page it replaced, which is how a new note (made at `/notes?new=1`, then replaced by
+ * the note) still has the list behind it.
  *
  * Kept in the tab's session storage, so it survives a reload, which a phone does to a
  * page in the background more often than anyone notices. Bounded, since a session can
@@ -181,7 +181,7 @@ export interface RouterHistoryLike {
 /**
  * The note's back arrow, when the list it leads to is the page behind this one: goes back
  * to it through the router's history and says so, so the arrow's link stands down.
- * Otherwise false, and the link replaces the note with the list — a note opened from a
+ * Otherwise false, and the link replaces the note with the list: a note opened from a
  * link, a notification or another note has something else behind it, or nothing.
  */
 export function goBackToList(router: RouterHistoryLike, list: string): boolean {
@@ -220,7 +220,7 @@ export function noteTransitionTypes({
 /**
  * Whether the browser can tell a transition's types apart. Without that the router would
  * run every navigation as one untyped transition, which the stylesheet draws as a
- * crossfade of the whole page — for a filter change as much as for opening a note. Such a
+ * crossfade of the whole page, for a filter change as much as for opening a note. Such a
  * browser gets no transitions instead.
  */
 export function canTypeTransitions(): boolean {

@@ -10,15 +10,15 @@ import { configQuery, keys, planQuery } from './queries.js';
  * `billing` is the instance's half from `/api/config`, which is the first question: on
  * an instance that sells nothing there is no plan, nothing is asked, and `inactive` is
  * false for good. `plan` is the server's answer, undefined until it has one; `inactive`
- * is the one bit most callers want, and is false while the answer is still on its way —
+ * is the one bit most callers want, and is false while the answer is still on its way:
  * an editor that locked itself for the length of a request on every open would read as
  * broken, and a lapsed write is refused by the server anyway.
  *
  * Worked out against the clock here too, not only on the server: the answer is read a
  * minute at a time, and a tab left open over a trial's end would otherwise go on taking
- * edits the server refuses. The lock falls at `readOnlyAt`, which the server works out —
- * for a renewing subscription it is a grace past `until`, since the renewal's webhook
- * lands after the period ends — so the page and the server turn read-only at the same
+ * edits the server refuses. The lock falls at `readOnlyAt`, which the server works out
+ * (for a renewing subscription it is a grace past `until`, since the renewal's webhook
+ * lands after the period ends), so the page and the server turn read-only at the same
  * instant. A timer wakes this at `until`, at `readOnlyAt`, and at each local midnight
  * before them so the banner's "in 2 days" turns over. And when the outbox is told by a
  * refusal that the plan ended, the plan is read again at once (`onPlanRefused`), so the
@@ -51,7 +51,7 @@ function boundariesOf(plan: AccountPlan | undefined): number[] {
 /**
  * The two reasons to read the plan again that are not the query's own, from one place:
  * the outbox's word that a write was refused for the plan, and the clock reaching an
- * instant the plan named — its end, where a renewing subscription's end is its renewal
+ * instant the plan named: its end, where a renewing subscription's end is its renewal
  * and the webhook has moved the date by the time the timer fires, or will shortly; and
  * the grace's end after it, in case it has not. Mounted once, by the banner, which is on
  * every signed-in page; `usePlan` itself is on several components at once, and a

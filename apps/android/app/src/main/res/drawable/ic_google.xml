@@ -2,7 +2,7 @@
   Google's "G" mark in its published colours.
 
   Used for the "Continue with Google" button on the sign-in screen, matching the web app's
-  provider-icons.tsx — same paths, same colours, same reason: Google's brand guidelines
+  provider-icons.tsx: same paths, same colours, same reason: Google's brand guidelines
   ask for the four-colour mark on a sign-in button, not a monochrome variant.
 
   Paths are from Simple Icons (CC0); the mark itself is Google's trademark, which is fine

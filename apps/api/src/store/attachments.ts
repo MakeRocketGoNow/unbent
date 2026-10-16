@@ -119,8 +119,8 @@ const toPending = (r: PendingRow): PendingFile => ({
 export type FileRead = 'vision' | 'text' | 'assistant' | 'pending' | 'none';
 
 /**
- * What `writeAssistantText` answers: written, or why not — the file is not on a live
- * note, or holds its own text layer, or the model's reading.
+ * What `writeAssistantText` answers: written, or why not (the file is not on a live
+ * note, or holds its own text layer, or the model's reading).
  */
 export interface AssistantWrite {
   ok: boolean;
@@ -170,11 +170,11 @@ const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1
  * The vision reading already has one: `formatReading` writes the file's name on the first
  * line and what it is and shows on the second, then a blank line, then the transcription.
  * (`llm.test.ts` runs that layout through this cut, since nothing here imports it.)
- * Everything before that blank line is the summary — "Sushi A Go Go receipt — Receipt:
- * lunch for two, $17.27 by card" — and the transcription is what get_attachment_text is
+ * Everything before that blank line is the summary: "Sushi A Go Go receipt — Receipt:
+ * lunch for two, $17.27 by card", and the transcription is what get_attachment_text is
  * for. A text layer has no such head, so its summary is found in the text by pattern
  * (`textSummary`): what it opens with, then its total, dates, order number and amounts.
- * Where it finds nothing at all — a text with no word, date or amount in it — the text
+ * Where it finds nothing at all (a text with no word, date or amount in it) the text
  * itself, folded and cut, is the summary, as every text layer's was before (MAK-177).
  *
  * The statuses follow the readers' own rules (`visionPendingHalves`): no row at all is a
@@ -207,8 +207,8 @@ export function summarize(
     const lines = lead.split('\n').map((l) => l.trim()).filter(Boolean);
     return { read: 'vision', summary: clip(lines.join(' — '), SUMMARY_CHARS) };
   }
-  // A head that filled the query's cut may end partway through a line — "TOTAL $12" of
-  // "TOTAL $121.39" — so its last line is not read for facts.
+  // A head that filled the query's cut may end partway through a line ("TOTAL $12" of
+  // "TOTAL $121.39"), so its last line is not read for facts.
   const cut = head.length >= TEXT_SUMMARY_SOURCE_CHARS ? head.lastIndexOf('\n') : -1;
   const whole = cut > 0 ? head.slice(0, cut) : head;
   const found = textSummary(whole) || whole.replace(/\s+/g, ' ').trim();
@@ -355,7 +355,7 @@ export class AttachmentsStore {
   }
 
   /**
-   * Records a stored file. A name the note already holds is the unique index's error —
+   * Records a stored file. A name the note already holds is the unique index's error,
    * except with `ifAbsent`, which answers null and writes nothing, for a copy that must
    * not become a second file when another request is copying the same name: two replays
    * of one duplicate, say. Decided here, where the two requests are serialised, rather
@@ -364,8 +364,8 @@ export class AttachmentsStore {
    * `quota` is the plan's storage in bytes (MAK-108), and is decided here for the same
    * reason: the bytes the account holds are the totals row's (0008), read and compared
    * in the transaction that inserts, so two uploads in flight cannot both see room for
-   * the last block. Past it, nothing is written and `StorageExceeded` is thrown — plain
-   * properties, since an error's class does not cross RPC — for the Worker to delete
+   * the last block. Past it, nothing is written and `StorageExceeded` is thrown (plain
+   * properties, since an error's class does not cross RPC) for the Worker to delete
    * the object it stored and answer the 402. A trashed note's files count; they are in
    * the bucket until the trash is emptied.
    */
@@ -416,7 +416,7 @@ export class AttachmentsStore {
   /**
    * Deletes a file's row, and tombstones its R2 key (`DeletedBlobs`) for the sweep to
    * delete the object thirty-five days on. Returns the key, so the caller can tell a file
-   * that went from one that was not there — not for the caller to delete; a store wound
+   * that went from one that was not there, not for the caller to delete; a store wound
    * back to before this call must find the object still in the bucket. Null when there is
    * no such file on a live note.
    */
@@ -475,7 +475,7 @@ export class AttachmentsStore {
    * Carries one attachment's extracted text over to a copy of it.
    *
    * The copy is a new row with a new id, and `attachment_text` is keyed on that id, so
-   * without this a copied PDF would drop out of search until a backfill pass re-read it —
+   * without this a copied PDF would drop out of search until a backfill pass re-read it:
    * on the client, from the bytes, for a result the source row already holds. A source
    * with no text yet leaves the copy without one too, and the backfill finds it there.
    */
@@ -501,13 +501,13 @@ export class AttachmentsStore {
    * Takes the text an assistant read off a file, over MCP, where nothing better is held.
    *
    * Three things may stand in the row and only one of them yields: nothing, or an empty
-   * row — a text layer or the model that looked and found nothing — or the assistant's
+   * row (a text layer or the model that looked and found nothing), or the assistant's
    * own earlier words, which it may revise. A text layer is the file's own words and the
    * model's reading is the instance's; an assistant overwriting either would put a model
    * nobody here chose in front of both, so those are refused, by name, for the tool to
    * explain. Nor does a PDF nothing has looked at yet: a row here would set `has_text`
    * and take it off `needingText`, so its layer would never be read and the next press
-   * would pay the model for a scan that had one — the guarantee lib/read-attachment.ts
+   * would pay the model for a scan that had one, the guarantee lib/read-attachment.ts
    * keeps. It is refused as `unread` until the free reader has had its turn; a layer that
    * came back empty is a row, and yields. What is written is marked `assistant`, and `needingVision` offers it to the
    * next Auto-fill press, which has the model read the file itself and replaces it: the
@@ -633,7 +633,7 @@ export class AttachmentsStore {
    * it costs nothing new.
    *
    * `null` when the attachment does not exist, and an empty string when it exists but has
-   * no text yet — extraction is asynchronous, and "not indexed yet" is a different answer
+   * no text yet: extraction is asynchronous, and "not indexed yet" is a different answer
    * from "no such file".
    */
   textFor(noteId: string, filename: string): string | null {
@@ -678,7 +678,7 @@ export class AttachmentsStore {
    * whole.
    *
    * The same three answers `textFor` gives, per file: `null` while no text has been
-   * recorded — a PDF not read yet, or whose read failed — and `''` for one read and found
+   * recorded (a PDF not read yet, or whose read failed), and `''` for one read and found
    * empty. The type rides along because a caller telling "couldn't read" from "a file
    * nothing here reads" needs to know which it is looking at, and `readBy` because text
    * the language model wrote opens with a name for the file, which auto-fill can use.
@@ -708,8 +708,8 @@ export class AttachmentsStore {
    * A statement of its own rather than a column on the page's attachments subquery, which
    * builds one JSON string per note; a note with a few long scans would build one past
    * the size a single value should be. A row per file stays small, since each text is
-   * capped at half a million characters when it is stored. Only rows with text come back
-   * — an empty row has nothing to carry.
+   * capped at half a million characters when it is stored. Only rows with text come back:
+   * an empty row has nothing to carry.
    *
    * The ids go in as one JSON array because the engine binds at most a hundred values and
    * a page may be a hundred notes. The caller chunks by note so the answer stays under
@@ -780,7 +780,7 @@ export class AttachmentsStore {
    * Cut on bytes, like a feed page: a text can be half a million characters, and fifty of
    * those would be past what one answer should carry. The sizes are read first and the
    * texts only for the ids that fit, always at least one; the rest come back in `left`
-   * for the next call. An id with no text row — a file never read, or gone — is in
+   * for the next call. An id with no text row (a file never read, or gone) is in
    * neither list, which is the answer: there is nothing to index for it.
    *
    * The sizes are `octet_length`, which answers from the row's header: measuring with

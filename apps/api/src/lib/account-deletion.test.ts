@@ -3,7 +3,7 @@ import { deleteAccount } from './account-deletion.js';
 
 /**
  * The operator's delete, against fakes that record the order things happen in. Over
- * HTTP the suites cannot reach it — none of their actors is an operator — and the order
+ * HTTP the suites cannot reach it (none of their actors is an operator) and the order
  * is the point: files and store before the row, so a failure leaves an account that can
  * be deleted again rather than files nothing can name.
  */

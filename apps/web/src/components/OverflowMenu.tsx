@@ -26,8 +26,8 @@ export interface OverflowItem {
    *
    * A third kind because neither above fits: `href` downloads, and `to` is a route, so an
    * absolute URL handed to it becomes a page this app does not have rather than a
-   * navigation off it. Legal documents an operator hosts themselves are why this exists —
-   * see `LegalLink.tsx`, which draws the same distinction outside a menu.
+   * navigation off it. Legal documents an operator hosts themselves are why this exists
+   * (see `LegalLink.tsx`, which draws the same distinction outside a menu).
    */
   external?: string;
   /** Destructive items are tinted and sorted to the bottom by the caller. */
@@ -58,7 +58,7 @@ export interface OverflowItem {
   /**
    * Marks the item as the one currently in effect.
    *
-   * For a menu that is a choice rather than a list of commands — the sort menu, where one
+   * For a menu that is a choice rather than a list of commands: the sort menu, where one
    * of five is always active. `aria-pressed` rather than `aria-checked`: these are plain
    * buttons, not `role="menuitemradio"`, and the note above on `role="menu"` applies to
    * its children too. A half-implemented radio group reads worse to a screen reader than
@@ -68,7 +68,7 @@ export interface OverflowItem {
    */
   selected?: boolean;
   /**
-   * Shown but not available right now — Sign out in a browser with no connection. Faded
+   * Shown but not available right now: Sign out in a browser with no connection. Faded
    * in place rather than dropped, so the menu keeps its shape and `title` says why. Only
    * meaningful on a button item.
    */
@@ -78,14 +78,14 @@ export interface OverflowItem {
 /**
  * The "⋯" menu in the workspace head.
  *
- * Inline and absolutely positioned rather than a portal with a focus trap — the same
+ * Inline and absolutely positioned rather than a portal with a focus trap, the same
  * choice `Confirm` makes, and for the same reason: nothing else in this app portals, and a
  * menu of three items does not need the machinery. Escape and an outside click close it,
  * which is what a native menu does and what people try first.
  *
  * Items are plain buttons in a list rather than `role="menu"`. The full menu pattern
  * demands roving tabindex and arrow-key navigation to be correct, and a half-implemented
- * `role="menu"` reads worse to a screen reader than honest buttons do — Tab moves through
+ * `role="menu"` reads worse to a screen reader than honest buttons do: Tab moves through
  * them and Enter picks one, which is the behaviour the markup already promises.
  */
 interface OverflowMenuProps {
@@ -94,7 +94,7 @@ interface OverflowMenuProps {
   /**
    * The trigger's content. Defaults to the ⋯ glyph.
    *
-   * The account menu hangs the same machinery off an avatar instead — same dismissal
+   * The account menu hangs the same machinery off an avatar instead: same dismissal
    * rules, same item list, different face.
    */
   trigger?: ReactNode;
@@ -103,7 +103,7 @@ interface OverflowMenuProps {
   /** Extra class on the trigger, for one that is not a ⋯-sized square. */
   triggerClassName?: string;
   /**
-   * Every item needs something the page cannot do right now — offline, a note's actions
+   * Every item needs something the page cannot do right now: offline, a note's actions
    * all do. The trigger stays where it is, faded, rather than going: a head that loses its
    * ⋯ when the connection drops moves the title under the reader's eye. `tip` says why.
    */
@@ -161,8 +161,8 @@ export function OverflowMenu({
         aria-expanded={open}
         aria-haspopup="true"
         disabled={disabled}
-        // A ⋯ is a glyph and says nothing alone; a trigger with a face of its own — the
-        // avatar, the count — already says what it opens.
+        // A ⋯ is a glyph and says nothing alone; a trigger with a face of its own (the
+        // avatar, the count) already says what it opens.
         data-tip={tip ?? (trigger === undefined ? label : undefined)}
         aria-description={tip}
         onClick={() => setOpen((o) => !o)}

@@ -21,7 +21,7 @@ const STATEMENTS = [
 /**
  * The Digital Asset Links document used to be a static file, which meant every fork served
  * unbent.app's package and signing keys on its own domain, and its own app got nothing.
- * Now it is whatever the deployment says it is — a secret, like the operator's name — and
+ * Now it is whatever the deployment says it is (a secret, like the operator's name) and
  * an instance that has said nothing serves nothing.
  */
 describe('/.well-known/assetlinks.json', () => {

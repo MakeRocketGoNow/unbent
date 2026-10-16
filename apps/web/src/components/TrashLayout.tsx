@@ -49,7 +49,7 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
   const toEmpty = useExactCount(pending === 'all' ? { trashed: true } : null, total);
 
   /*
-   * Several at once, as the note list has it — see `useSelection`. Restoring a dozen
+   * Several at once, as the note list has it (see `useSelection`). Restoring a dozen
    * notes trashed by mistake, or destroying the dozen that were not, is the trash's
    * whole job, and it was one row at a time. Nothing here changes the scope, so nothing
    * resets it but opening a note, which drops it as the list's does.
@@ -94,7 +94,7 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
   /**
    * Destroys one trashed note for good.
    *
-   * Confirmed because it is the only irreversible action reachable from the note list —
+   * Confirmed because it is the only irreversible action reachable from the note list:
    * the ordinary Delete is a move to trash, which this view exists to undo.
    */
   async function destroy(id: string) {
@@ -135,14 +135,14 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
             The way back, on a phone only.
 
             This was a full-width bordered button sitting below the confirms and above the
-            list — a third shape for a gesture the note and settings views answer with an
+            list, a third shape for a gesture the note and settings views answer with an
             arrow in the top-left corner. It is that arrow now, and it moved to the top of
             the view because a control that leaves belongs before the thing it leaves, not
             buried in the middle of it.
 
             Above the breakpoint it is hidden: the rail marks Trash current while you are
             here, strip or open, so the row that got you in is also the way out. That was
-            already true when this was a button — the button was the old toggle's
+            already true when this was a button: the button was the old toggle's
             leftover, from when there was nothing in the chrome to go back to.
         */}
         <div className="trash-head">

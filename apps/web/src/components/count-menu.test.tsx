@@ -2,8 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { countMenuItems, offersCountMenu } from './count-menu.js';
 
 /**
- * What the count's menu promises. Both labels are claims about numbers — how many an export
- * takes, how many a selection picks — and each was the kind of thing that is easy to get
+ * What the count's menu promises. Both labels are claims about numbers (how many an export
+ * takes, how many a selection picks) and each was the kind of thing that is easy to get
  * subtly wrong: a "Select all" that picks the loaded page, or an export that fades with
  * nothing on a phone to say why.
  */

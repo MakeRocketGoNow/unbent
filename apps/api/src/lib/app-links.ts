@@ -1,10 +1,10 @@
 /**
- * Links into the web app, for answers read by someone other than the web app itself — an
+ * Links into the web app, for answers read by someone other than the web app itself: an
  * assistant over MCP, which has a note's id and no way to know where that note opens.
  *
  * Built on `APP_URL`, the origin the person reaches this instance on, and never on a
- * second setting of its own. `withAppUrl` has already settled it before any route runs —
- * the configured value, or the origin the request arrived on — so a hosted instance, a
+ * second setting of its own. `withAppUrl` has already settled it before any route runs
+ * (the configured value, or the origin the request arrived on), so a hosted instance, a
  * self-hosted fork on its own domain and a worktree's dev server each link to themselves
  * with nothing to configure. A separate base URL for links would be one more value that
  * could disagree with the origin sign-in trusts, and the link would then open a page that
@@ -51,7 +51,7 @@ export function appLinks(appUrl: string): AppLinks {
 /**
  * A string search param as the web app's router writes it, so that it reads it back as the
  * same string. TanStack Router JSON-parses every value it finds, which turns a notebook
- * called `2024` into a number and `true` into a boolean — and the notes route's schema then
+ * called `2024` into a number and `true` into a boolean, and the notes route's schema then
  * drops the filter as invalid, opening the whole list instead. The router's own
  * `stringifySearch` quotes exactly the strings that would parse, and this does the same:
  * `Watch Later` goes out bare, `2024` as `"2024"`.

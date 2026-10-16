@@ -4,7 +4,7 @@ import type { FeedPage } from '@unbent/shared';
 import { feedSeq, freshStore } from './helpers.js';
 
 /**
- * The feed's reader — `changesSince` and `snapshotPage` — against writes made through
+ * The feed's reader (`changesSince` and `snapshotPage`) against writes made through
  * the surface, so what a page carries is what a client would apply. The contract is in
  * `packages/shared/src/feed.ts`.
  */

@@ -15,11 +15,11 @@ export interface NewNote {
 }
 
 /**
- * What the New note controls do: make a note filed where it is asked to be, and open it —
+ * What the New note controls do: make a note filed where it is asked to be, and open it,
  * with the caret in its title when it is blank.
  *
- * One action for every control that makes a note from the notes view — the desktop's New
- * button, the phone's floating +, and the empty state's New note and sample note — so they
+ * One action for every control that makes a note from the notes view (the desktop's New
+ * button, the phone's floating +, and the empty state's New note and sample note), so they
  * cannot drift apart in how a note is made, how the lists hear of it or where it opens. It
  * goes through `actions.createNote`, so with no connection the note is made on the device
  * and sent from the outbox like any other write. `/notes?new=1` stays apart
@@ -34,8 +34,8 @@ export function useCreateNote(): (note: NewNote) => Promise<boolean> {
   const queryClient = useQueryClient();
   return async (note) => {
     // One at a time, decided here rather than by a disabled button: `disabled` arrives
-    // with the next render, and two presses that land before it — a double tap on a slow
-    // phone, a held Enter — would each make a note. The sample note made twice is two
+    // with the next render, and two presses that land before it (a double tap on a slow
+    // phone, a held Enter) would each make a note. The sample note made twice is two
     // copies of the same text in an account that had none. A flag of its own rather than
     // `creating`, and let go as soon as the note exists: `creating` lasts until the note
     // is open, and a navigation that never settled would then refuse every New after it.
@@ -49,7 +49,7 @@ export function useCreateNote(): (note: NewNote) => Promise<boolean> {
           // No name for a blank note, rather than the literal string "Untitled". The title
           // field's placeholder already says that word, and a placeholder is not data: a
           // stored "Untitled" is written into the frontmatter of the exported markdown,
-          // sorted under U by the title sort, and — titles being in the FTS index — returned
+          // sorted under U by the title sort, and (titles being in the FTS index) returned
           // by a search for "untitled", all to say the note has no name yet. Android has
           // always created notes with an empty title; this is the web agreeing with it.
           title: note.title ?? '',
@@ -113,8 +113,8 @@ export function useCreatingNote(): boolean {
  *
  * The note lands in the local copy before the view has moved to it, so for a moment the
  * account is no longer empty and the note is not open yet. Drawn as it is, that moment
- * shows whatever an account with a note and nothing open shows — "Select a note, or create
- * one." in the desktop's pane — for a frame, between the empty state and the note. So a
+ * shows whatever an account with a note and nothing open shows ("Select a note, or create
+ * one." in the desktop's pane) for a frame, between the empty state and the note. So a
  * view that was drawing its empty state goes on drawing it until the note is open, and
  * only then, if the account still has notes, gives way. A note arriving from elsewhere
  * while nothing is being made here is not held for: the state leaves at once, as it should.

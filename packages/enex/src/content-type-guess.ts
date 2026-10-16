@@ -5,7 +5,7 @@ import { FALLBACK_CONTENT_TYPE } from '@unbent/shared';
  *
  * An export archive carries bytes and names, not types: a zip has nowhere to put them,
  * and writing a manifest beside every note would make the "plain files" promise a lie.
- * So the type is recovered on the way back in, and it matters more than it looks — the
+ * So the type is recovered on the way back in, and it matters more than it looks: the
  * stored type is what decides whether a PDF gets its text extracted for search and
  * whether an image renders inline or downloads.
  *
@@ -13,7 +13,7 @@ import { FALLBACK_CONTENT_TYPE } from '@unbent/shared';
  * `Receipt`: ENEX `<file-name>` was a display label, so those files were stored without an
  * extension and are exported without one. The signatures checked are the handful that are
  * unambiguous from the first bytes alone; everything else goes by extension, which is why
- * office documents — zips inside — are not sniffed.
+ * office documents (zips inside) are not sniffed.
  */
 export function guessContentType(filename: string, bytes: Uint8Array): string {
   return sniff(bytes) ?? byExtension(filename) ?? FALLBACK_CONTENT_TYPE;

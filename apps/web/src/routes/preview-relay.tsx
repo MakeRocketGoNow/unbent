@@ -5,7 +5,7 @@ import { useEffect } from 'react';
 /**
  * The preview origin to come back to, carried through the sign-in round trip. Bounded and
  * `catch`-ed so a stray visit renders an explanation rather than an error page; the value
- * itself is not trusted here at all — the API validates it against
+ * itself is not trusted here at all: the API validates it against
  * `isTrustedPreviewOrigin` before a token is ever minted for it.
  */
 const search = z.object({
@@ -23,7 +23,7 @@ export const Route = createFileRoute('/preview-relay')({
  * The relay's whole reason for existing is someone who cannot sign in with Google on a
  * preview, and the common case is that they have no session on the dev instance either.
  * Sending them straight at `/api/preview-relay/start` answered that with `requireAuth`'s
- * JSON 401 — a raw error body on dev.unbent.app, on the one path the feature exists for.
+ * JSON 401: a raw error body on dev.unbent.app, on the one path the feature exists for.
  * It worked only for whoever still had a warm dev cookie.
  *
  * So the browser lands on a *route* first. This one is deliberately absent from
@@ -35,7 +35,7 @@ export const Route = createFileRoute('/preview-relay')({
  *
  * `location.replace` rather than the router: the destination is an API path that mints a
  * token and 302s to another origin, not a route this SPA can render. `replace` so Back
- * leaves rather than re-firing a handoff whose token is already spent — the same reasoning
+ * leaves rather than re-firing a handoff whose token is already spent: the same reasoning
  * `/connect` applies when it assigns an app scheme.
  */
 function PreviewRelayPage() {
@@ -54,7 +54,7 @@ function PreviewRelayPage() {
       <p className="small muted">
         {origin
           ? 'Taking you back to the preview…'
-          : "This page hands a preview a sign-in from here. Start from the preview's own sign-in screen — there is nothing to do here directly."}
+          : "This page hands a preview a sign-in from here. Start from the preview's own sign-in screen: there is nothing to do here directly."}
       </p>
     </div>
   );

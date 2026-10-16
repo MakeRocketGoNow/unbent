@@ -1,11 +1,11 @@
 /**
  * Cross-tenant isolation suite.
  *
- * Each account's notes live in a database of their own — one Durable Object per user —
+ * Each account's notes live in a database of their own (one Durable Object per user)
  * so the question this suite asks is no longer whether every query remembered its
  * `user_id`, but whether every route reaches the caller's own object and nothing else:
  * `reposFor` binds a request to the session's store, and the object refuses a database
- * that is not its user's. What stays in D1 — sessions, upload links, connected apps — has
+ * that is not its user's. What stays in D1 (sessions, upload links, connected apps) has
  * no row-level security, and for those tables isolation is still application code.
  * Either way the check is the same from outside: the other user cannot reach it. This
  * suite exists from Phase 1 and every later phase extends it; when a route that touches
@@ -171,7 +171,7 @@ describe('note CRUD', () => {
     });
     expect(del.status).toBe(204);
 
-    // Still readable by id — the trash opens it — but marked, so no view takes it as live.
+    // Still readable by id (the trash opens it), but marked, so no view takes it as live.
     const read = await fetch(`${BASE}/api/notes/${n.id}`, asUser(alice)).then((r) => r.json());
     expect(read.deletedAt).toBeGreaterThan(0);
 
@@ -259,7 +259,7 @@ describe('note CRUD', () => {
    *
    * Pinned because the ordering is load-bearing rather than cosmetic: the pickers on both
    * clients show the head of this list, and alphabetically the head of a real archive is
-   * whatever begins with a digit — the tags nobody filters by.
+   * whatever begins with a digit: the tags nobody filters by.
    */
   it('lists tags most-used first, breaking ties by name', async () => {
     const actor = await signUp(`taglist-${Date.now()}@example.test`, 'taglist-pass', 'T');
@@ -274,7 +274,7 @@ describe('note CRUD', () => {
   });
 
   /**
-   * The list is paginated, so a count taken from a page would report the page size — an
+   * The list is paginated, so a count taken from a page would report the page size: an
    * account with hundreds of notes showed "50 notes" until the total was reported
    * separately.
    */
@@ -397,7 +397,7 @@ describe('note CRUD', () => {
 
   /**
    * Notes with real historical dates, planted through the import endpoint because it is
-   * the only path that accepts an explicit `createdAt` — a created note is always "now".
+   * the only path that accepts an explicit `createdAt`: a created note is always "now".
    */
   async function importDated(actor: Actor, title: string, day: string): Promise<string> {
     const at = Date.parse(`${day}T12:00:00Z`);
@@ -653,7 +653,7 @@ describe('note CRUD', () => {
  * Trash: listing, restore, and permanent delete.
  *
  * The safety property is that `DELETE /notes/:id` is reversible and only
- * `/notes/:id/permanent` destroys anything — and the latter refuses to touch a live note,
+ * `/notes/:id/permanent` destroys anything, and the latter refuses to touch a live note,
  * so a stray call cannot destroy work that was never deleted.
  */
 describe('trash', () => {
@@ -858,8 +858,8 @@ describe('notebooks', () => {
     const note = await createNote(alice, { title: 'filed', body: 'x', notebook: name });
     expect((await listNotebooks(alice)).find((n) => n.name === name)?.count).toBe(1);
 
-    // The notebook outlives the note, at zero — see 'survives its last note being
-    // trashed'. What matters here is that the count follows the note out.
+    // The notebook outlives the note, at zero (see 'survives its last note being
+    // trashed'). What matters here is that the count follows the note out.
     await fetch(`${BASE}/api/notes/${note.id}`, { method: 'DELETE', ...asUser(alice) });
     expect((await listNotebooks(alice)).find((n) => n.name === name)?.count).toBe(0);
 
@@ -1031,7 +1031,7 @@ describe('notebooks', () => {
     expect(trash.items.some((n: { id: string }) => n.id === b.id)).toBe(true);
     expect((await listNotebooks(alice)).some((n) => n.name === name)).toBe(false);
 
-    // Restoring leaves the note unfiled — the notebook no longer exists.
+    // Restoring leaves the note unfiled: the notebook no longer exists.
     const restore = await fetch(`${BASE}/api/notes/${a.id}/restore`, {
       method: 'POST',
       ...asUser(alice),
@@ -1062,7 +1062,7 @@ describe('notebooks', () => {
    * Re-import after deleting the notebook must bring the notebook back.
    *
    * Import is idempotent on content hash, so a second pass skips the note. Skipping used
-   * to skip notebook resolution too — deleting the notebook (which unfiles notes) then
+   * to skip notebook resolution too: deleting the notebook (which unfiles notes) then
    * re-importing left notes unfiled with no notebook row forever.
    */
   it('re-import recreates a deleted notebook and refiles unfiled notes', async () => {
@@ -1113,7 +1113,7 @@ describe('notebooks', () => {
  * Custom fields: definitions on a notebook, values on a note.
  *
  * Every route here touches user data, so the cross-tenant case at the end is not optional
- * — see the file header. Values are exercised through the notes routes because that is
+ * (see the file header). Values are exercised through the notes routes because that is
  * how they are written: a field is only ever set through the note that holds it.
  */
 describe('notebook fields', () => {
@@ -1354,7 +1354,7 @@ describe('notebook fields', () => {
     const note = await created.json();
     expect(byName(note.fields)[platforms.name]).toEqual(['PC', 'Switch']);
 
-    // One option as a bare string is a list of one — what a select's value looks like.
+    // One option as a bare string is a list of one: what a select's value looks like.
     const one = await json(alice, 'PATCH', `/api/notes/${note.id}`, { fields: { [platforms.id]: 'PS5' } });
     expect(one.status).toBe(200);
     expect(byName((await one.json()).fields)[platforms.name]).toEqual(['PS5']);
@@ -1786,7 +1786,7 @@ describe('cross-tenant access', () => {
   });
 
   it('bob cannot ask for an alice note to be auto-filled', async () => {
-    // 404 before anything else — before the instance so much as checks for a key — so
+    // 404 before anything else (before the instance so much as checks for a key), so
     // the answer cannot say whether the note exists, configured or not.
     const res = await fetch(`${BASE}/api/notes/${aliceNote.id}/autofill`, {
       method: 'POST',
@@ -1837,7 +1837,7 @@ describe('cross-tenant access', () => {
  * The sweep that empties the account's R2 prefix is unit-tested in `src/lib/blobs.test.ts`
  * instead of here, because no request can observe it: `gc-blobs` only ever reports on the
  * caller's own prefix, so once the account is gone nothing distinguishes a swept prefix
- * from a stranded one. What belongs in a live suite is the other half — that a session on
+ * from a stranded one. What belongs in a live suite is the other half: that a session on
  * its own cannot destroy an account, which is a property of the real endpoint and its
  * middleware rather than of any function here.
  */
@@ -1901,8 +1901,8 @@ describe('account deletion', () => {
 
   /**
    * And a password is not a shortcut past it. Better Auth checks one when it is sent, but
-   * a checked password only proves the session's owner is present — the same thing the
-   * session already claimed — so it does not stand in for owning the address.
+   * a checked password only proves the session's owner is present (the same thing the
+   * session already claimed) so it does not stand in for owning the address.
    */
   it('does not accept a password in place of the link', async () => {
     const stamp = Date.now();
@@ -2046,8 +2046,8 @@ describe('tags', () => {
  * Filtering by a custom field.
  *
  * Field definitions belong to a notebook, so these filters are asked alongside a notebook
- * scope, and the predicate is one clause shared by the list, its count, search and export
- * — the same choke point the tag filter goes through, so a case here covers all four.
+ * scope, and the predicate is one clause shared by the list, its count, search and export,
+ * the same choke point the tag filter goes through, so a case here covers all four.
  * What is pinned: each op against the type it is for, that the count agrees with the rows,
  * that search is scoped the same way, that an unreadable filter is refused rather than
  * ignored, and that another user's field id matches nothing.

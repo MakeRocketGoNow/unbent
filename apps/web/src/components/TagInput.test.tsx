@@ -5,7 +5,7 @@ import { TagInput } from './TagInput.js';
 /**
  * The affordance for adding a tag.
  *
- * The entry point was a transparent borderless input whose only hint was a placeholder —
+ * The entry point was a transparent borderless input whose only hint was a placeholder,
  * and that placeholder was suppressed as soon as the note had one tag, so adding a second
  * meant knowing to click an invisible strip of the row. These pin the parts of the fix
  * that are not CSS: that the hint is always rendered, that it yields to the field in use,
@@ -37,7 +37,7 @@ describe('TagInput add affordance', () => {
 
   /**
    * Typing must not leave the dashed chip sitting over the text. The chip is suppressed
-   * by focus *or* a non-empty draft — the second half matters because the field can hold
+   * by focus *or* a non-empty draft: the second half matters because the field can hold
    * text while focus is momentarily elsewhere, as it is during a suggestion click.
    */
   it('hides the hint while a draft is present, not only while focused', () => {
@@ -112,7 +112,7 @@ describe('TagInput add affordance', () => {
   /**
    * The field must open where the chip was, not jump elsewhere.
    *
-   * jsdom does no layout, so this cannot assert pixels — it asserts the structural
+   * jsdom does no layout, so this cannot assert pixels: it asserts the structural
    * property the smooth version depends on: the input is positioned by the wrapper at
    * every state, and only the wrapper's class changes. The first attempt swapped the
    * input between `absolute` and `static` on focus, which re-flowed it to the right of
@@ -147,7 +147,7 @@ describe('TagInput as an option editor', () => {
 });
 
 /**
- * Reordering, which only a select field's options ask for — a note's tags are a set and
+ * Reordering, which only a select field's options ask for: a note's tags are a set and
  * are left alone. These pin that the controls appear only when opted in, that each nudge
  * hands back the whole list in its new order (the shape the field editor PATCHes), and
  * that the ends cannot move off either edge.

@@ -5,8 +5,8 @@ import type { AttachmentInfo, Note, NotebookSummary } from './schemas.js';
 /**
  * The change feed: what `GET /api/changes` and `GET /api/changes/snapshot` answer.
  *
- * Written from the reader's side. A client keeps four collections — notes, notebooks,
- * tags, files — and applies a page by upserting each row it carries and deleting each
+ * Written from the reader's side. A client keeps four collections (notes, notebooks,
+ * tags, files) and applies a page by upserting each row it carries and deleting each
  * tombstone; the shapes here are the rows those collections hold, which is why a note
  * comes whole (body, tags, fields, files) rather than as the list's excerpt. The server
  * side is `UserStore.changesSince` and `snapshotPage`.
@@ -17,7 +17,7 @@ export type FeedEntity = 'note' | 'notebook' | 'tag' | 'attachment';
 
 /**
  * A note as the feed carries it: the note, trashed or not, with its files and its tags by
- * id — and without the names `Note` carries for its tags and notebook. A tag or notebook
+ * id, and without the names `Note` carries for its tags and notebook. A tag or notebook
  * rename is one row for the tag or notebook, so a name copied onto every note would be
  * stale from the next rename on; the client renders `tagIds` and `notebookId` against the
  * tags and notebooks it holds, and the names are not here to be rendered by mistake. A

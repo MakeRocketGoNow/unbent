@@ -20,8 +20,8 @@ export const TRIAL_WARNING_DAYS = 3;
 /**
  * One line across the top of the signed-in column when the plan needs saying (MAK-108):
  * the account is read-only because its plan ended, or its trial is about to. Shaped and
- * placed like the offline banner, since it is the same kind of sentence — a state of the
- * whole account that every page is under — and quiet for the same reason: nothing has
+ * placed like the offline banner, since it is the same kind of sentence (a state of the
+ * whole account that every page is under) and quiet for the same reason: nothing has
  * gone wrong, and the sentence says what still works.
  *
  * Silent for the rest of a trial. A fortnight of "13 days left" would teach people to

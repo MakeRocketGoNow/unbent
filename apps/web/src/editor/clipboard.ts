@@ -12,8 +12,8 @@ import {
 /**
  * Attachment links across the clipboard.
  *
- * The editor is raw markdown, so copying a selection copies literally `![x](files/x.png)`
- * — a path that means something only inside this note. Pasted into another note it
+ * The editor is raw markdown, so copying a selection copies literally `![x](files/x.png)`,
+ * a path that means something only inside this note. Pasted into another note it
  * resolved against that note's files and 404ed, silently, which read as the app losing
  * a picture. The Evernote habit this stands in for is cut in one note, paste in another,
  * and the file goes with the text.
@@ -23,7 +23,7 @@ import {
  * says which note's file it means: pasted back into Unbent it can be resolved, and
  * pasted anywhere else it is a real link. On paste, links that name another of the
  * user's notes are copied across on the server and rewritten to `files/…` under the
- * name the file got here. The bytes never pass through the browser — a scan is tens of
+ * name the file got here. The bytes never pass through the browser: a scan is tens of
  * megabytes, and an R2 copy is one request.
  *
  * Why the clipboard carries text and not the bytes: a page can write only a handful of
@@ -31,7 +31,7 @@ import {
  * any browser. A self-describing link works for every kind of file and is faster besides.
  *
  * Only the text form is touched. CodeMirror's own copy handler is left in charge of the
- * cases with nothing to rewrite — an empty selection copies the whole line, and the
+ * cases with nothing to rewrite: an empty selection copies the whole line, and the
  * handlers here decline those so that behaviour is not reimplemented.
  */
 export interface ClipboardConfig {
@@ -41,7 +41,7 @@ export interface ClipboardConfig {
   origin?: string;
   /**
    * Copies files from another note into this one. Resolves to the name each file got
-   * here, by the name asked for. Absent — a read-only note — foreign links are left
+   * here, by the name asked for. Absent (a read-only note), foreign links are left
    * absolute, which still open for the owner.
    */
   copyFrom?: (from: string, filenames: string[], move: boolean) => Promise<Map<string, string>>;
@@ -52,7 +52,7 @@ export interface ClipboardConfig {
  *
  * The distinction is what makes cut-and-paste a move. It travels as a custom
  * `DataTransfer` type, which browsers keep alongside the text within the same browser
- * and drop everywhere else — so a paste from another app can only ever copy, which is
+ * and drop everywhere else, so a paste from another app can only ever copy, which is
  * the safe reading of text whose provenance is unknown.
  */
 export const CUT_FLAVOUR = 'application/x-unbent-cut';
@@ -75,7 +75,7 @@ export function attachmentClipboard(config: ClipboardConfig): Extension {
       const data = event.clipboardData;
       if (!data) return false;
       // Files alongside the text are the upload handler's, unless the text links a note's
-      // file — the panel's copy of a picture carries both, and the link is the one to use.
+      // file: the panel's copy of a picture carries both, and the link is the one to use.
       const text = data.getData('text/plain');
       if (!text || findAbsoluteAttachmentLinks(text).length === 0) return false;
       event.preventDefault();
@@ -120,7 +120,7 @@ function exportSelection(
  *
  * The text goes in at once, links still absolute, so the paste feels instant and the
  * copies happen behind it; each link is rewritten in place when its file lands. Links
- * that already name this note need no copy — text cut from here and pasted back — and
+ * that already name this note need no copy (text cut from here and pasted back), and
  * go in relative straight away.
  *
  * A copy that fails leaves its links absolute. They still open for the owner, and the

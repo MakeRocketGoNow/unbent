@@ -75,7 +75,7 @@ const EXTENSION_FOR: Record<string, string> = {
 
 /**
  * A filename for the fetched picture: the one the server named, else the address's last
- * path segment, else `image`. Given an extension from the type when it has none — a CDN
+ * path segment, else `image`. Given an extension from the type when it has none: a CDN
  * path like `/v1/abc123` says nothing, and a name without one draws no icon in the panel
  * and opens in nothing. Path separators and leading dots are stripped so the name passes
  * the same rules an upload does.

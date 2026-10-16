@@ -19,18 +19,18 @@ import { configPath, normalizeUrl, readUrl, writeUrl } from './config-store.js';
 import { createInterface } from 'node:readline/promises';
 
 /**
- * `unbent-migrate` — import an Evernote export, or an Unbent one, from the command line.
+ * `unbent-migrate`: import an Evernote export, or an Unbent one, from the command line.
  *
  * The browser importer already does this well for a single file, and this is not trying to
  * replace it. It exists for the case the browser is bad at: a whole account's worth of
  * .enex files, run unattended, resumed after an interruption, on a machine where dragging
  * dozens of multi-gigabyte files through a file picker is the worst part of the job. An
- * Unbent export is taken for the same reason — a backup restored from a shell, or a
+ * Unbent export is taken for the same reason: a backup restored from a shell, or a
  * library moved between instances without a browser in the loop.
  */
 
 function usage(): string {
-  return `unbent-migrate — import Evernote .enex files, or Unbent exports, into Unbent
+  return `unbent-migrate: import Evernote .enex files, or Unbent exports, into Unbent
 
 Usage:
   unbent-migrate import <file...> [options]
@@ -39,7 +39,7 @@ Usage:
   unbent-migrate set-url <url>
   unbent-migrate show-config
 
-Files are .enex (Evernote), or .zip and .md (an Unbent export — the library, a
+Files are .enex (Evernote), or .zip and .md (an Unbent export: the library, a
 notebook, or one note). An .enex file's name becomes its notes' notebook; an
 Unbent export's notes each carry their own.
 
@@ -113,7 +113,7 @@ function formatBytes(n: number): string {
  * Which instance to talk to.
  *
  * Order: an explicit --url or $UNBENT_URL, then whatever this machine was pointed at
- * before, then ask. There is deliberately no fallback — a guessed instance would let a
+ * before, then ask. There is deliberately no fallback: a guessed instance would let a
  * mistyped or forgotten flag send someone's notes to a server they did not choose, and
  * that failure is silent, because uploading to the wrong Unbent still succeeds.
  */
@@ -149,7 +149,7 @@ async function resolveUrl(args: Args): Promise<string> {
  *
  * The check is one request, and it is worth it: importEnex records per-note errors as
  * failures rather than throwing, so an expired token would otherwise appear as every note
- * failing with the same 401 and a closing suggestion to re-run — advice that cannot work
+ * failing with the same 401 and a closing suggestion to re-run: advice that cannot work
  * until the user signs in again. Catching it here turns that into a sign-in prompt before
  * any note is touched.
  */
@@ -268,11 +268,11 @@ async function runImport(args: Args): Promise<number> {
 
   if (duplicates.length > 0) {
     process.stdout.write(
-      `\n${duplicates.length} note(s) were identical to an earlier note in the same file — ` +
-        `title, text, tags, dates and attachments — so only that earlier note was imported:\n`,
+      `\n${duplicates.length} note(s) were identical to an earlier note in the same file (` +
+        `title, text, tags, dates and attachments), so only that earlier note was imported:\n`,
     );
     for (const d of duplicates.slice(0, 20)) {
-      process.stdout.write(`  ${d.title} — ${d.file}, kept as ${d.noteId}\n`);
+      process.stdout.write(`  ${d.title}: ${d.file}, kept as ${d.noteId}\n`);
     }
     if (duplicates.length > 20) {
       process.stdout.write(`  …and ${duplicates.length - 20} more\n`);
@@ -284,7 +284,7 @@ async function runImport(args: Args): Promise<number> {
     // Capped because a bad export can fail thousands of notes, and a screenful is enough
     // to see the pattern. Re-running retries only these.
     for (const f of failures.slice(0, 20)) {
-      process.stdout.write(`  ${f.title} — ${f.reason}\n`);
+      process.stdout.write(`  ${f.title}: ${f.reason}\n`);
     }
     if (failures.length > 20) {
       process.stdout.write(`  …and ${failures.length - 20} more\n`);

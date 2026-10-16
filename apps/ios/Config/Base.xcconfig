@@ -3,7 +3,7 @@
 // itself sooner or later, and an .xcconfig is the one of the two that reads in a diff.
 //
 // Debug.xcconfig and Release.xcconfig include this, add what differs, and end by including
-// Local.xcconfig — untracked, this app's `local.properties` — so anything here can be
+// Local.xcconfig (untracked, this app's `local.properties`) so anything here can be
 // overridden on one machine without touching a tracked file. A fork that publishes sets
 // UNBENT_BUNDLE_ID_BASE, UNBENT_INSTANCE_HOST and DEVELOPMENT_TEAM there, or in CI.
 
@@ -13,7 +13,7 @@ UNBENT_BUNDLE_ID_BASE = com.makerocketgonow.unbent
 UNBENT_BUNDLE_ID_SUFFIX =
 // The app's own id, named apart from PRODUCT_BUNDLE_IDENTIFIER because the Share Extension
 // is a second product: its id is this with `.share` on the end (Share.xcconfig), and
-// everything the two have in common — the App Group, the names of the upload sessions —
+// everything the two have in common (the App Group, the names of the upload sessions)
 // is keyed on this one.
 UNBENT_APP_ID = $(UNBENT_BUNDLE_ID_BASE)$(UNBENT_BUNDLE_ID_SUFFIX)
 PRODUCT_BUNDLE_IDENTIFIER = $(UNBENT_APP_ID)
@@ -45,8 +45,8 @@ IPHONEOS_DEPLOYMENT_TARGET = 17.0
 // supports iPad is released, support for it cannot be withdrawn.
 TARGETED_DEVICE_FAMILY = 1
 // Upright only, for the same reason: nobody has looked at the phone on its side. The page
-// has the whole screen there, and its fixed controls — the New button, the snackbars,
-// the selection bar, the docked toolbar — do not yet allow for a notch at one end, so the
+// has the whole screen there, and its fixed controls (the New button, the snackbars,
+// the selection bar, the docked toolbar) do not yet allow for a notch at one end, so the
 // New button would sit under it. The orientations are in Info.plist; landscape comes back
 // with those controls taught the side insets and a rotated phone to check them on.
 SUPPORTED_PLATFORMS = iphoneos iphonesimulator

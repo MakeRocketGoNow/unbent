@@ -72,7 +72,7 @@ describe.skipIf(!sqlite3)('the D1 migrations', () => {
   /**
    * Three accounts with rows: one with a directory row not marked copied, one with a user
    * row and notes but no directory row at all (the heal never reached it), and one with
-   * no notes — an empty notebook with a field definition, and a tag — which a guard that
+   * no notes (an empty notebook with a field definition, and a tag), which a guard that
    * only looked at `notes` let through (found in review). Each refuses the drop, since a
    * dropped row that was never copied is the one loss here with no way back. Refused by
    * a CHECK, and everything is still there afterwards.

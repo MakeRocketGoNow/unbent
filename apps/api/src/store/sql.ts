@@ -2,7 +2,7 @@
  * The one seam between the store's SQL and the engine that runs it.
  *
  * Everything in `notes.ts` and `attachments.ts` reads and writes through this interface
- * and nothing else — no `ctx.storage`, no `D1Database`. Two reasons, one for each side of
+ * and nothing else: no `ctx.storage`, no `D1Database`. Two reasons, one for each side of
  * the seam. Inside the object it is where every statement is metered: the runtime reports
  * rows read and written per cursor, and this is the single place that can see them all,
  * log the expensive ones, and add them up for a test that wants to bound a query. Outside
@@ -23,7 +23,7 @@ export interface Sql {
    * Runs one statement and returns every row it produced.
    *
    * The cursor is consumed whole rather than returned. Row counts are only final once a
-   * cursor has been read to its end, so metering needs the rows in hand — and every caller
+   * cursor has been read to its end, so metering needs the rows in hand, and every caller
    * wanted the array anyway, or a `RETURNING` count, which is the array's length. A
    * statement with nothing to return gives `[]`.
    */
@@ -35,14 +35,14 @@ export interface Sql {
    *
    * Public store methods open one; private helpers never do. The runtime nests
    * transactions with savepoint semantics (measured 2026-09-29), so a public method that
-   * calls another — `create` → `get`, `duplicate` → `create` — commits once, at the
+   * calls another (`create` → `get`, `duplicate` → `create`) commits once, at the
    * outermost boundary, and a throw anywhere inside unwinds all of it.
    */
   tx<T>(fn: () => T): T;
   /** True inside a `tx`: what a helper asks to know whether to defer work to the commit. */
   readonly inTransaction: boolean;
   /**
-   * Runs `hook` inside the outermost `tx`, after its function and before it commits —
+   * Runs `hook` inside the outermost `tx`, after its function and before it commits,
    * once per transaction however deeply nested the calls that asked. The change feed
    * flushes its rows here, so a write that records from several helpers writes its
    * counter once.
@@ -57,8 +57,8 @@ export interface Sql {
 
 /**
  * A statement that read more rows than this is logged with its counts. Two thousand is a
- * page of fifty notes with their tags, fields and files built, several times over — the
- * biggest honest read the app makes — so anything past it is worth a line.
+ * page of fifty notes with their tags, fields and files built, several times over (the
+ * biggest honest read the app makes), so anything past it is worth a line.
  */
 export const LOG_ROWS_READ_THRESHOLD = 2000;
 

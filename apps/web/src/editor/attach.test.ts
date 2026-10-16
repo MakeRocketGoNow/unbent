@@ -73,7 +73,7 @@ describe('insertUploads', () => {
   /*
      Every placeholder goes in before the first upload starts. The old loop inserted each
      one at `at` only when its turn came, after the previous upload, so three files came
-     out reversed — and drifted if the user had typed above `at` meanwhile.
+     out reversed, and drifted if the user had typed above `at` meanwhile.
   */
   it('inserts all placeholders at once, in file order, as one undo step', async () => {
     const { upload, calls, call } = deferredUpload();
@@ -140,7 +140,7 @@ describe('insertUploads', () => {
 });
 
 /*
-   A file dropped beside the text rather than into it — see `noteDropZone`. Markdown reads
+   A file dropped beside the text rather than into it (see `noteDropZone`). Markdown reads
    a line written straight under a paragraph, a quote or a list item as more of it, so a
    picture that is only on the next line is drawn inside whatever it follows. These pin the
    blank lines that keep it apart, and that none is doubled where one already is.

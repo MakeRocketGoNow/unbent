@@ -49,7 +49,7 @@ function row(id: string): HTMLLIElement {
   return li;
 }
 
-/** A row after the notes — Load more, the empty line — which moves with them. */
+/** A row after the notes (Load more, the empty line), which moves with them. */
 function trailing(key: string): HTMLLIElement {
   const li = row(key);
   delete li.dataset.noteId;
@@ -109,7 +109,7 @@ describe('followLocalChanges', () => {
     stop();
   });
 
-  it('moves nothing when the change did not come from a write here — the feed, a filter', async () => {
+  it('moves nothing when the change did not come from a write here (the feed, a filter)', async () => {
     const ul = list(['a', 'b', 'c']);
     const { stop } = followLocalChanges(ul);
     ul.querySelector('[data-note-id="a"]')!.remove();
@@ -147,7 +147,7 @@ describe('followLocalChanges', () => {
     stop();
   });
 
-  it('lets go of a waiting measurement when told to — a new filter, sort or search', async () => {
+  it('lets go of a waiting measurement when told to (a new filter, sort or search)', async () => {
     const ul = list(['a', 'b', 'c']);
     const { stop, disarm } = followLocalChanges(ul);
     writeHere(['b']);

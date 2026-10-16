@@ -45,14 +45,14 @@ const due = field('f-due', 'Due', 'date', 1);
 
 /**
  * The URL's search as the router parsed it, to compare whole. Read from the router's own
- * state — the router owns the location, which is what `url-boundary.test.ts` guards.
+ * state: the router owns the location, which is what `url-boundary.test.ts` guards.
  */
 const params = (router: { state: { location: { search: unknown } } }) => {
   const { search } = router.state.location;
   return search;
 };
 
-/** The sort sheet, typed — `querySelector` hands back an `Element`, which has no `open`. */
+/** The sort sheet, typed: `querySelector` hands back an `Element`, which has no `open`. */
 const sortSheet = (c: HTMLElement) =>
   c.querySelector<HTMLDialogElement>('dialog[aria-label="Sort notes"]');
 
@@ -73,7 +73,7 @@ describe('NotesSort', () => {
   });
 
   /* An order you cannot see is a list arranged in a way you did not ask for, and the icon
-     has no room for a caption — so the name carries it. */
+     has no room for a caption, so the name carries it. */
   it('names the current sort in the icon', async () => {
     const { findByLabelText } = harness({ sort: 'title', order: 'asc' });
     expect(await findByLabelText('Sort notes, currently Title A–Z')).toBeTruthy();

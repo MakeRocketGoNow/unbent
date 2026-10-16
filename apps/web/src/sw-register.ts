@@ -5,8 +5,8 @@ import { pageBusy } from './busy.js';
 import { buildInfo } from './build-info.js';
 
 /**
- * Installs the service worker that keeps the app openable without a connection — see
- * `sw/sw.ts` for what it holds — and says when a newer build than this page is in charge.
+ * Installs the service worker that keeps the app openable without a connection (see
+ * `sw/sw.ts` for what it holds) and says when a newer build than this page is in charge.
  *
  * Only in a production build. Vite's development server serves source modules under
  * names that change with every edit, and a worker caching those would serve yesterday's
@@ -23,8 +23,8 @@ import { buildInfo } from './build-info.js';
  * There used to be four hundred lines here deciding *when* a page could be moved onto a
  * new deploy: on a change of section, after five minutes away, while nothing had been
  * touched since the load, at once on dev and previews, never in a text field, at most
- * once a minute. Each rule answered an incident — a reload that drew the old build, a
- * reload that reset a list someone was three hundred rows into — and together they
+ * once a minute. Each rule answered an incident (a reload that drew the old build, a
+ * reload that reset a list someone was three hundred rows into), and together they
  * still moved every other tab onto the new worker without reloading it, with its chunks
  * gone. Two changes in the worker made the rules unnecessary: a page load is answered
  * from the network first, so a reload is always the newest build; and the previous
@@ -56,14 +56,14 @@ export function registerServiceWorker(): void {
      one. Only another build is worth a word. The browser's own event, not workbox-window's
      `controlling`: workbox-window counts an update found more than a minute after
      registering, or any second one, as somebody else's, keeps pointing at the worker it
-     started with, and stops listening — so a deploy found on a return to the tab, which
+     started with, and stops listening, so a deploy found on a return to the tab, which
      is the case the notice exists for, was never said.
   */
   navigator.serviceWorker.addEventListener('controllerchange', () => void sayIfOther());
   /*
      A page already under a worker registers at once and asks for a new one straight
      away. Workbox otherwise waits for the window's `load`, so as not to compete with a
-     first visit's downloads — right for a first visit, but a page the worker served from
+     first visit's downloads (right for a first visit), but a page the worker served from
      its cache has no such downloads, and waiting only costs it time. The browser's own
      check after a load comes a second or two later still; asking at once starts the new
      version's download that much sooner.
@@ -80,7 +80,7 @@ export function registerServiceWorker(): void {
 
 /**
  * Whether the worker now in charge is another build than this page, which a reload would
- * bring — newer, almost always; after a rollback, older, and still what a reload brings: the worker's commit, asked of it, against the page's own. A page whose load
+ * bring (newer, almost always; after a rollback, older) and still what a reload brings: the worker's commit, asked of it, against the page's own. A page whose load
  * found and installed this build's own worker hears `controllerchange` too, and has nothing
  * to be told. Unknown on either side is not another: a word that might be wrong is worse than
  * none, and the next load brings the newest build regardless.
@@ -154,7 +154,7 @@ export function useOfflineReady(): OfflineReady {
  *
  * Said once a newer build's worker is in charge of this page, which is the moment this
  * page stopped being the newest; said once, and left to the person: this file never
- * reloads a page in use. Dismissing it changes nothing but the notice — the next load,
+ * reloads a page in use. Dismissing it changes nothing but the notice: the next load,
  * whenever it comes, is the newest build.
  */
 export function useUpdateNotice(): { shown: boolean; reload: () => void; dismiss: () => void } {
@@ -169,8 +169,8 @@ export function useUpdateNotice(): { shown: boolean; reload: () => void; dismiss
 }
 
 /**
- * The notice's Reload. If the page is holding work a reload would lose — a save not yet
- * sent, an upload, an import — it waits for that to finish rather than refusing, since a
+ * The notice's Reload. If the page is holding work a reload would lose (a save not yet
+ * sent, an upload, an import) it waits for that to finish rather than refusing, since a
  * press of Reload is a decision already made; the note's own status says when its save
  * is done.
  */
@@ -187,9 +187,9 @@ function reloadIntoUpdate(): void {
 }
 
 /**
- * Coming back into view, ask for a new worker — at most once a minute.
+ * Coming back into view, ask for a new worker, at most once a minute.
  *
- * The browser checks on its own only when a page of the site is loaded — never, for an
+ * The browser checks on its own only when a page of the site is loaded: never, for an
  * app that is resumed rather than reopened, and an installed app is almost never closed.
  * Coming back to the tab is exactly when someone expects to find a deploy, and a check is
  * one small request for `sw.js`, answered unchanged almost every time; the minute only

@@ -8,7 +8,7 @@ import { Editor } from './Editor.js';
 /**
  * The editor is uncontrolled, and switching Rich ↔ Source rebuilds the CodeMirror view
  * because the two modes are different extensions. The seed it is handed is the last saved
- * body, so a rebuild that used that seed would throw away whatever had been typed since —
+ * body, so a rebuild that used that seed would throw away whatever had been typed since,
  * and the next keystroke would then save the reverted text. These pin that the live
  * document and the caret survive the rebuild, and that a different note still starts from
  * its seed.
@@ -131,8 +131,8 @@ describe('Editor across Rich / Source', () => {
 
 /**
  * Read-only is how a note looks offline, and it comes and goes with the connection. It has
- * to arrive without rebuilding the view — a rebuild would lose the undo history and the
- * caret of someone reading through a tunnel — and it has to hold against the paths that
+ * to arrive without rebuilding the view (a rebuild would lose the undo history and the
+ * caret of someone reading through a tunnel), and it has to hold against the paths that
  * change the document without the keyboard: a dropped file most of all, because the
  * editor's own drop handler runs before CodeMirror's and does not ask.
  */

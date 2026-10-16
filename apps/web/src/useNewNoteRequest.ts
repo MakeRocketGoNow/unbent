@@ -7,13 +7,13 @@ import { markNewNote } from './useNewNote.js';
 
 /**
  * Answers `/notes?new=1` (see `filters` in routes/notes.tsx): makes an empty note and
- * opens it, as the New button does — the address an app's "New note" shortcut opens.
+ * opens it, as the New button does: the address an app's "New note" shortcut opens.
  *
  * Apart from `useCreateNote`, the action behind the New button, the phone's + and the
  * empty state, on purpose. The two differ in what they may trust: the controls file the
  * note under the list on screen, while a request from the address files it nowhere, since
  * any filter beside `new=1` is whoever wrote the link's, and filing would make the notebook
- * and tags it names — a link in an email could fill an account with them. And they differ
+ * and tags it names: a link in an email could fill an account with them. And they differ
  * in what they leave behind: a control's note is a new page pushed onto the history, while
  * this replaces the request, drops `new` from the address, and goes back to the list when
  * the create fails, all so the request cannot be answered twice. Folding those into
@@ -23,7 +23,7 @@ import { markNewNote } from './useNewNote.js';
  * request arrives; the ref covers StrictMode's second run of the same one. The request
  * is replaced in the history rather than added to, by the note when there is one and by
  * the list when the create fails, so Back does not land on it and a reload cannot make a
- * second — and a create that failed once does not fail in a loop.
+ * second, and a create that failed once does not fail in a loop.
  */
 export function useNewNoteRequest(asked: 1 | undefined): void {
   const navigate = useNavigate();

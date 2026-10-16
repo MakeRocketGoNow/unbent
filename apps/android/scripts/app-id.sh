@@ -4,7 +4,7 @@
 # Sourced by run.sh and build-and-run.sh, which need the *installed* id to find the app on
 # a device; run directly, it prints the id and exits. One place rather than two, because
 # the id used to be written in both scripts, and a rename left them launching an app that
-# no longer existed — the build and install both succeeded, and only the launch failed,
+# no longer existed: the build and install both succeeded, and only the launch failed,
 # with "no launcher activity", which reads like a manifest problem rather than a stale
 # constant two directories away.
 #

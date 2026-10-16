@@ -8,7 +8,7 @@ import { carriesFiles } from './editor/drop-cursor.js';
  * the file is let go rather than by a mode or a sheet: on the open note it attaches
  * there (`noteDropZone`), on the list it is a note of its own. The window's guard
  * (`file-drop-guard.ts`) refuses everything else, the trash's list included, which has
- * no zone on purpose — a file dropped on the trash would be a note made and deleted in
+ * no zone on purpose: a file dropped on the trash would be a note made and deleted in
  * one gesture.
  *
  * What the drag will do is said during it, in a sentence over the list rather than a
@@ -16,8 +16,8 @@ import { carriesFiles } from './editor/drop-cursor.js';
  * items, which a browser exposes during dragover when the files themselves are withheld
  * until the drop; a browser that hides the count too gets the sentence without one.
  *
- * `accept` is asked on every dragover and answers the sentence, or null to refuse — the
- * plan has ended — in which case the pointer says no and the drop does nothing. A batch
+ * `accept` is asked on every dragover and answers the sentence, or null to refuse (the
+ * plan has ended), in which case the pointer says no and the drop does nothing. A batch
  * still landing is not a reason: a second drop waits its turn (`file-notes.ts`). Plain
  * DOM listeners rather than React's, so this is tested beside the note's zone the same
  * way. Returns the cleanup.
@@ -32,7 +32,7 @@ export interface ListDropTarget {
 
 export function listDropZone(zone: HTMLElement, target: ListDropTarget): () => void {
   // Not a drag something inside the list already claimed, and not one over a sheet drawn
-  // above it in the top layer — the move and tags sheets are children of the column.
+  // above it in the top layer: the move and tags sheets are children of the column.
   const ours = (event: DragEvent) =>
     !event.defaultPrevented && carriesFiles(event) && !(event.target instanceof Element && event.target.closest('dialog'));
 

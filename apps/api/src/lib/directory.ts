@@ -12,7 +12,7 @@ import { dropRestoresStatement } from './restores.js';
  * the directory and asks each object for its `usage` (never `stats`, which counts every
  * table). The counts it carries are
  * therefore as fresh as the last sweep, which is right for a cross-account view and
- * wrong for anything a user is shown about their own account — that comes from the
+ * wrong for anything a user is shown about their own account: that comes from the
  * object.
  */
 
@@ -66,7 +66,7 @@ export async function ensureDirectoryRow(db: D1Database, userId: string): Promis
  * Marks an account deleted. The row stays: it is what the sweep retries the object wipe
  * from, and it is only removed by the sweep once the object reports empty and the
  * account's files are gone from R2, and not before `LATE_WRITES_MS` has passed. An
- * account with no row is never wiped by anything — see `sweepStores` — so this is also
+ * account with no row is never wiped by anything (see `sweepStores`), so this is also
  * the only thing that can turn a wipe on for an account.
  */
 export async function tombstoneDirectoryRow(db: D1Database, userId: string): Promise<void> {
@@ -81,7 +81,7 @@ export async function tombstoneDirectoryRow(db: D1Database, userId: string): Pro
 
 /**
  * The sweep's tombstone, as a statement it batches, for a row whose `user` row is gone
- * and which never got one — the deletion's last step failed, or never ran. The time is
+ * and which never got one: the deletion's last step failed, or never ran. The time is
  * the sweep's, later than the deletion's, which only makes the wait before the row is
  * dropped (`LATE_WRITES_MS` in `sweep.ts`) longer than it had to be. An existing
  * tombstone is never moved.
@@ -122,7 +122,7 @@ export async function directoryRow(db: D1Database, userId: string): Promise<Dire
 
 /**
  * A page of rows for the sweep, by user id, each saying whether its `user` row still
- * exists — on the same query, so a batch of accounts costs one D1 call to list rather
+ * exists, on the same query, so a batch of accounts costs one D1 call to list rather
  * than one per account to check.
  */
 export async function listDirectory(
@@ -208,7 +208,7 @@ export const DUMP_SQL = {
 
 /**
  * A page of live accounts for the operator page (MAK-171, part 5), with the email from
- * `user` and the daily backup's record of each (migration 0037). Live only — a
+ * `user` and the daily backup's record of each (migration 0037). Live only: a
  * tombstoned row is the sweep's.
  *
  * By email, A to Z, and only those whose email or name holds `search` when there is one.
@@ -220,7 +220,7 @@ export const DUMP_SQL = {
  *
  * Email is unique in `user`, so it is the cursor on its own: a page starts after the
  * last email the previous one ended on. The walk is `user`'s unique email index from that
- * email, with each account's directory row found by its key, and `LIMIT` stops it — a
+ * email, with each account's directory row found by its key, and `LIMIT` stops it: a
  * page reads about fifty rows of each table however many accounts the instance holds.
  * Emails sort as stored, byte for byte; Better Auth lowercases an address when it makes
  * an account, so that is alphabetical.

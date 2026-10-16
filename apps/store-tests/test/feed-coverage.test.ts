@@ -8,7 +8,7 @@ import userStoreSource from '../../api/src/store/user-store.ts?raw';
  * reading the source. The RPC surface is a list of methods a reader can grep, and this
  * test greps it, so a method added to the object lands in one of the three lists below or
  * fails here by name. For every write it then calls the method once on a seeded store and
- * checks that a call which wrote a data row also advanced the feed's counter — the one
+ * checks that a call which wrote a data row also advanced the feed's counter: the one
  * property a forgotten `record` breaks and nothing else notices until a device is stale.
  */
 

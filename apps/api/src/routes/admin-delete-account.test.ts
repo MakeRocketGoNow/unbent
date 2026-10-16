@@ -6,8 +6,8 @@ import { admin } from './admin.js';
 /**
  * The operator's delete, through the route, on a stubbed env. The live suite in
  * `test/store-ops.test.ts` can only show the refusal a non-operator gets, since none of
- * its actors is an operator; the branches that matter once one is — the operator's own
- * account, a confirmation that names a different account, a deletion already made — are
+ * its actors is an operator; the branches that matter once one is (the operator's own
+ * account, a confirmation that names a different account, a deletion already made) are
  * here. `lib/account-deletion.test.ts` has the deletion's own order.
  */
 

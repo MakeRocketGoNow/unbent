@@ -24,7 +24,7 @@ describe('shellFor', () => {
 
   /**
    * The bare root is where a link to the site lands, so it must render for someone with no
-   * session — the front page is for exactly them. Its route sends a signed-in visitor on to
+   * session: the front page is for exactly them. Its route sends a signed-in visitor on to
    * the notes; the gate in front of everything else must not get there first.
    */
   it('gives the bare root a shell of its own, without a session', () => {
@@ -131,7 +131,7 @@ describe('returnTo', () => {
  * What the sign-in screen will follow.
  *
  * `?redirect=` is navigated to the moment someone signs in, and anything can put a value
- * in it — a link in a mail, a page on another site. Sending a freshly authenticated
+ * in it: a link in a mail, a page on another site. Sending a freshly authenticated
  * browser to a host of the attacker's choosing is the classic shape of this bug.
  */
 describe('safeRedirect', () => {
@@ -165,8 +165,8 @@ describe('safeRedirect', () => {
 });
 
 /**
- * A gated page with no session, inside the Android app. The redirect still happens — the
- * page must not render a route it cannot load — but the app is told, because its own
+ * A gated page with no session, inside the Android app. The redirect still happens (the
+ * page must not render a route it cannot load), but the app is told, because its own
  * sign-in screen is the one that offers the phone's account sheet. Outside the app nothing
  * is posted, since there is nothing to hear it.
  */

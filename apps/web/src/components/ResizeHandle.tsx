@@ -3,21 +3,21 @@ import { useRef, useState } from 'react';
 interface ResizeHandleProps {
   /** Accessible name, e.g. "Resize sidebar". */
   label: string;
-  /** The element the pointer is measured against — the grid this handle sits in. */
+  /** The element the pointer is measured against: the grid this handle sits in. */
   containerRef: React.RefObject<HTMLElement | null>;
   /**
    * Maps a pointer position to a value. Only the caller knows whether a pixel is a
    * sidebar width or a fraction of the pane row, so the handle stays unit-agnostic.
    *
    * `gap` is the distance between the container's left edge and the handle's own left
-   * edge, minus the track the caller is sizing — in other words the channel the grid puts
+   * edge, minus the track the caller is sizing: in other words the channel the grid puts
    * before the handle. A caller sizing a column in pixels has to subtract it, or the
    * value it computes places the divider a channel further right than the pointer.
    */
   toValue: (clientX: number, rect: DOMRect, gap: number) => number;
-  /** Fires on every pointermove — cheap, state only. */
+  /** Fires on every pointermove: cheap, state only. */
   onResize: (next: number) => void;
-  /** Fires on pointer release, arrow keys, and reset — this one is persisted. */
+  /** Fires on pointer release, arrow keys, and reset: this one is persisted. */
   onCommit: (next: number) => void;
   /** Current value, and the limits announced to assistive tech. */
   value: number;
@@ -39,12 +39,12 @@ interface ResizeHandleProps {
  * It is a zero-width grid item rather than an absolutely positioned overlay, so it cannot
  * drift out of alignment with the columns it divides; the hit area comes from a `::before`
  * spread across the surrounding gap. The visible line stays the neighbouring border, which
- * the handle only tints when hovered, focused, or dragged — the affordance appears when
+ * the handle only tints when hovered, focused, or dragged: the affordance appears when
  * reached for rather than adding a permanent seam to the layout.
  *
  * `role="separator"` with `aria-valuenow` is what screen readers announce as adjustable;
- * a button would imply activation. `aria-orientation` describes the separator's own axis —
- * a vertical line — not the direction it travels, which is the commonly inverted one.
+ * a button would imply activation. `aria-orientation` describes the separator's own axis
+ * (a vertical line) not the direction it travels, which is the commonly inverted one.
  */
 export function ResizeHandle({
   label,
@@ -65,7 +65,7 @@ export function ResizeHandle({
    *
    * State would be a bug here: the handlers close over the render that attached them, so
    * a pointermove arriving in the same tick as `setDragging(true)` still reads `false`
-   * and returns early — the drag silently does nothing and the selection lock is never
+   * and returns early: the drag silently does nothing and the selection lock is never
    * released. A ref is written synchronously and is correct on the very next event.
    */
   const dragging = useRef(false);
@@ -131,7 +131,7 @@ export function ResizeHandle({
         latest.current = value;
         dragging.current = true;
         setActive(true);
-        // Suppresses text selection across the whole grid, not just this handle — the
+        // Suppresses text selection across the whole grid, not just this handle: the
         // pointer travels over the note list and the editor while dragging.
         containerRef.current?.setAttribute('data-resizing', '');
       }}

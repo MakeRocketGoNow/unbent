@@ -8,7 +8,7 @@ import { NoteListHead } from './NoteListHead.js';
  * The controls this replaced were all on screen at once, so nothing about them could be
  * hidden by accident. Behind icons, two things can: whether the list is already narrowed,
  * and whether a search is still applied. Both are pinned here, and both are pinned on the
- * *accessible name* rather than on a class — the dot is invisible to a screen reader, so a
+ * *accessible name* rather than on a class: the dot is invisible to a screen reader, so a
  * control that read "Filter notes" either way would leave the one fact worth knowing
  * available to sighted users alone.
  */
@@ -43,7 +43,7 @@ describe('NoteListHead', () => {
   });
 
   /* The count is how a list is exported or selected, at every width and in every view. It
-     is a menu only when the caller passes one — filtered or not, see `countMenuItems` —
+     is a menu only when the caller passes one (filtered or not, see `countMenuItems`)
      and plain text otherwise. */
   it('makes the count a menu only when given one', () => {
     const onExport = vi.fn();
@@ -105,7 +105,7 @@ describe('NoteListHead', () => {
     expect(container.querySelectorAll('.list-search')).toHaveLength(1);
   });
 
-  /* Typing in the table's toolbar leaves the table — results are a list — which swaps
+  /* Typing in the table's toolbar leaves the table (results are a list), which swaps
      this header's layout under the caret. The field is a new element; focus must follow. */
   it('keeps focus in the search field when the layout changes under it', () => {
     const base = { ...props, onOpenMenu: undefined, onOpenSearch: undefined };
@@ -182,14 +182,14 @@ describe('NoteListHead', () => {
     expect(onCloseSearch).toHaveBeenCalled();
   });
 
-  /* The whole action row goes while searching, the sort slot included — the caller
+  /* The whole action row goes while searching, the sort slot included: the caller
      already passes nothing there, and the row must not leave an empty corner behind. */
   it('puts the actions away while the field has the row', () => {
     const { queryByText } = render(<NoteListHead {...props} searchOpen />);
     expect(queryByText('more')).toBeNull();
   });
 
-  /* Down from the field goes to the results — the list under it is what typing produced. */
+  /* Down from the field goes to the results: the list under it is what typing produced. */
   it('hands Arrow Down to the caller, which enters the list', () => {
     const onArrowDown = vi.fn();
     const { getByLabelText } = render(

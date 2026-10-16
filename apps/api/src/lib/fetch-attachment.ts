@@ -7,13 +7,13 @@ import { rejectWebImageUrl } from './web-image.js';
  * An MCP tool call is JSON the model writes token by token, so bytes cannot ride in one:
  * a two-megabyte PDF is close to three million characters of base64, and no client fills
  * an argument in on the model's behalf. What a model *can* hand over is a reference the
- * server can follow — the signed download URL another system gave it for the file — and
+ * server can follow (the signed download URL another system gave it for the file) and
  * the transfer then happens server to server, with the model never seeing a byte. This
  * module is the fetching half of that; storing what comes back is `storeAttachment`.
  *
  * The bytes go to R2 as a stream when the source says how long it is, which is what lets
- * a file be larger than the Worker's memory. A source that does not say — chunked
- * transfer, some proxies — is read into memory instead, under a cap that keeps the
+ * a file be larger than the Worker's memory. A source that does not say (chunked
+ * transfer, some proxies) is read into memory instead, under a cap that keeps the
  * isolate well clear of its ceiling. Nearly every real download URL declares a length;
  * the buffered path is for the rest, not the norm.
  *
@@ -25,7 +25,7 @@ import { rejectWebImageUrl } from './web-image.js';
  * because a model usually finds a picture on a page, and many hosts refuse anything that
  * does not look like that page asking for it. That is best effort and stops at headers:
  * no proxy, no imitation of a browser's TLS handshake, no headless browser. A host that
- * still refuses is answered with the way round it — the assistant fetches the bytes
+ * still refuses is answered with the way round it: the assistant fetches the bytes
  * itself and sends them with prepare_attachment_upload, which a page in a browser can do
  * (routes/uploads.ts).
  */
@@ -60,7 +60,7 @@ const MAX_REDIRECTS = 5;
  * Dressing as a browser is a decision, not an oversight. It exists to get past a host
  * that refuses anything but a browser, and the cost is that an instance's fetch claims
  * to be something it is not, which a fork inherits. It was kept because the person is
- * entitled to the picture they were looking at, and because it stops at headers —
+ * entitled to the picture they were looking at, and because it stops at headers:
  * anything a host means seriously (bot management, TLS fingerprints, the `CF-Worker`
  * header every Worker request carries) still refuses, and the refusal points to the
  * browser upload instead. Undo it by changing this decision, not by trimming a header.
@@ -81,7 +81,7 @@ const IMAGE_ACCEPT = 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8';
 
 /**
  * What Chrome's `fetch()` asks for: anything. Not the Accept of a followed link, which puts
- * HTML first — a download endpoint that chooses by Accept would answer that with its page
+ * HTML first: a download endpoint that chooses by Accept would answer that with its page
  * for the file, stored as the attachment without an error. Hotlink checks look at the
  * Referer and the User-Agent, so nothing is lost by asking plainly.
  */
@@ -153,11 +153,11 @@ export function checkReferer(raw: string): { url: URL } | { error: string } {
  * Whether a URL is one this server will fetch.
  *
  * Two refusals with different shapes. A non-http scheme is almost never an attack: it is a
- * reference from inside another application — `file:` from a document store, a scheme of
- * its own — that a model read off a page and passed along, so the message says to read the
+ * reference from inside another application (`file:` from a document store, a scheme of
+ * its own) that a model read off a page and passed along, so the message says to read the
  * containing page for a real download URL. A loopback or private-network host is the SSRF
  * case, and the guard is shared with the web-image fetch (`rejectWebImageUrl`) so the two
- * server-side fetchers cannot disagree on what is off limits — the Worker fetching an
+ * server-side fetchers cannot disagree on what is off limits: the Worker fetching an
  * address a caller supplied is the one place this app reaches a URL it did not build, and
  * `add_attachment` is now a second door onto it. `allowLoopback` is the same escape hatch
  * the image fetch uses, for the test suite's own server and local development, keyed on
@@ -180,7 +180,7 @@ export function checkSourceUrl(
     return {
       error:
         `Only http and https URLs can be fetched; this one is ${url.protocol.slice(0, -1)}. ` +
-        'A reference like that is internal to the system that holds the file — read the ' +
+        'A reference like that is internal to the system that holds the file: read the ' +
         'page or record that contains it for a download URL, and pass that instead.',
     };
   }
@@ -196,7 +196,7 @@ export function checkSourceUrl(
  * The filename a Content-Disposition header offers, or null when it offers none.
  *
  * `filename*` (RFC 5987, percent-encoded with a charset prefix) wins over `filename` when
- * both are present, as RFC 6266 says it should — it is the one that can spell a name the
+ * both are present, as RFC 6266 says it should: it is the one that can spell a name the
  * plain form cannot. A percent-encoding that fails to decode falls back to the plain form
  * rather than to a mangled name.
  */
@@ -227,7 +227,7 @@ export function filenameFromContentDisposition(header: string | null | undefined
  * the caller has better fallbacks than `%2F` or `-`.
  */
 export function filenameFromUrl(url: URL): string | null {
-  // The segment after the last slash, so a trailing slash — a directory, not a file — is
+  // The segment after the last slash, so a trailing slash (a directory, not a file) is
   // an empty segment and not the directory's name.
   const segment = url.pathname.slice(url.pathname.lastIndexOf('/') + 1);
   if (!segment) return null;
@@ -242,7 +242,7 @@ export function filenameFromUrl(url: URL): string | null {
 }
 
 /**
- * Types that can be told from an extension, for a source that declares none — or declares
+ * Types that can be told from an extension, for a source that declares none, or declares
  * the generic binary type, which is a way of declaring none.
  *
  * Deliberately short. It exists so a PDF fetched from a host that says `octet-stream`
@@ -283,8 +283,8 @@ function extensionForType(contentType: string): string {
 /**
  * The type to store, given what the source declared and what the file is called.
  *
- * The declaration wins when it says something. `application/octet-stream` — and S3's
- * `binary/octet-stream` — say nothing, so the extension is consulted, and a name with no
+ * The declaration wins when it says something. `application/octet-stream` (and S3's
+ * `binary/octet-stream`) say nothing, so the extension is consulted, and a name with no
  * telling extension stores the fallback exactly as an upload with no header would.
  */
 export function chooseContentType(declared: string | null | undefined, filename: string): string {
@@ -298,13 +298,13 @@ export function chooseContentType(declared: string | null | undefined, filename:
  * The name to store the file under, from the best of what is known.
  *
  * In order: the name the caller asked for, the one the source's Content-Disposition
- * offers, the last segment of the URL. Each must be a name this server may store —
- * `filenameSchema`, the same rule the upload applies — and the first that is wins. When
+ * offers, the last segment of the URL. Each must be a name this server may store
+ * (`filenameSchema`, the same rule the upload applies), and the first that is wins. When
  * nothing usable is known, a generic name with the type's extension, so a PDF that
  * arrived nameless is at least `attachment.pdf` and not a bare word.
  *
  * The URL is last for a reason a model should be told (the tool description says it):
- * download URLs often end in a generic name — `upload.pdf`, `image` — that says nothing
+ * download URLs often end in a generic name (`upload.pdf`, `image`) that says nothing
  * about the file, and the caller usually knows a better one from wherever it read the
  * link.
  */
@@ -418,7 +418,7 @@ export async function fetchSource(
     /**
      * R2 will only take a stream whose length it knows, and a fetched body is not
      * guaranteed to carry one. FixedLengthStream is the documented way to promise it a
-     * length — and to have the transfer fail, rather than store a short file, if the
+     * length, and to have the transfer fail, rather than store a short file, if the
      * source sends fewer bytes than it declared. The pipe runs alongside the put; its
      * failure surfaces through the readable side as the put's error, so the rejection
      * here has nothing left to say.
@@ -443,7 +443,7 @@ export async function fetchSource(
           ok: false,
           error:
             `${current.host} did not say how large the file is, and it is over ` +
-            `${megabytes(MAX_UNSIZED_FETCH_BYTES)}MB — the most that can be taken from a ` +
+            `${megabytes(MAX_UNSIZED_FETCH_BYTES)}MB, the most that can be taken from a ` +
             'source that does not declare a length.',
         };
       }
@@ -469,8 +469,8 @@ export async function fetchSource(
  * 401 and 403 are a host deciding not to serve this server, most often because it can
  * tell a server from a browser however the request is dressed, and asking again from here
  * will not change its mind. So the message leads with what will: the assistant fetching
- * the bytes where the host does serve them — a browser tab with the file's own URL open,
- * or its own tools — and sending them with prepare_attachment_upload. The file's own URL
+ * the bytes where the host does serve them (a browser tab with the file's own URL open,
+ * or its own tools) and sending them with prepare_attachment_upload. The file's own URL
  * comes before the page it was found on because a shop's page is full of other people's
  * scripts, and session replay records requests: the upload URL is a live credential
  * until it is used, and an image opened on its own runs no script but the assistant's.
@@ -496,8 +496,8 @@ function refusal(host: string, status: number, statusText: string): string {
       ? ''
       : ' If this was a signed link, it may instead have expired: read the source again for a fresh one.';
   return (
-    `${answered} ${why} Fetch the file yourself — in a browser tab with the file's own URL ` +
-    'open, or with your own tools — then call prepare_attachment_upload and PUT the bytes ' +
+    `${answered} ${why} Fetch the file yourself (in a browser tab with the file's own URL ` +
+    'open, or with your own tools), then call prepare_attachment_upload and PUT the bytes ' +
     'to the URL it returns, which accepts a PUT from any origin. Opened on its own the file ' +
     "runs no page's scripts, so nothing else sees that URL; use the page the file came " +
     `from only if the file will not open alone.${expired}`

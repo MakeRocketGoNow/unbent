@@ -8,7 +8,7 @@ import type { SearchDb } from './search-index.js';
  * An in-memory database for the search tests, on the engine the browser runs.
  *
  * `wa-sqlite.wasm` is the build the library's persistence worker bundles, so a query
- * that passes here is passing on the FTS5, the bm25 and the stemmer a phone will use —
+ * that passes here is passing on the FTS5, the bm25 and the stemmer a phone will use:
  * Node's own `node:sqlite` has no FTS5 at all. The browser fetches the WASM; Node cannot
  * fetch a file, so it is read from the package and handed over.
  */

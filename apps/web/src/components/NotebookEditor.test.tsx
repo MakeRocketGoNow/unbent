@@ -109,7 +109,7 @@ describe('NotebookEditor', () => {
     await waitFor(() => expect(api.updateNotebook).toHaveBeenCalledWith('nb1', { name: 'Invoices' }));
     expect(api.updateNotebook).toHaveBeenCalledTimes(1);
 
-    // Pressing Enter commits at once rather than waiting the debounce out again — but the
+    // Pressing Enter commits at once rather than waiting the debounce out again, but the
     // draft has not changed since the save, so it is a no-op, not a second write.
     fireEvent.keyDown(field, { key: 'Enter' });
     await new Promise((r) => setTimeout(r, 0));
@@ -146,7 +146,7 @@ describe('NotebookEditor', () => {
   });
 
   /*
-   * The emoji is a choice, not typing, so it is written the moment it is made — and shown
+   * The emoji is a choice, not typing, so it is written the moment it is made, and shown
    * the same moment, before the write returns, so the square never shows the old picture
    * while the list refetches behind it. Remove stands in for a pick here: choosing a cell
    * needs frimousse's measured grid, which jsdom cannot lay out (see EmojiField.test).
@@ -187,12 +187,12 @@ describe('NotebookEditor', () => {
     const { unmount } = mount();
     const field = (await screen.findByLabelText('Notebook name')) as HTMLInputElement;
 
-    // Type but do not wait for the debounce — then leave, as clicking a nav link would.
+    // Type but do not wait for the debounce, then leave, as clicking a nav link would.
     fireEvent.change(field, { target: { value: 'Ledger' } });
     expect(api.updateNotebook).not.toHaveBeenCalled();
     unmount();
 
-    // The unmount flush writes the edit rather than dropping it — the whole reason the
+    // The unmount flush writes the edit rather than dropping it: the whole reason the
     // name and purpose use the autosave hook rather than a blur handler.
     await waitFor(() => expect(api.updateNotebook).toHaveBeenCalledWith('nb1', { name: 'Ledger' }));
   });
@@ -259,7 +259,7 @@ describe('NotebookEditor', () => {
   });
 
   /*
-     Reordering an option sends the whole list in its new order as a `replace` edit — the
+     Reordering an option sends the whole list in its new order as a `replace` edit: the
      same write an add makes, on the route a rename goes through. Order is the only thing
      the picker shows them in, so it is a real edit, not cosmetic.
   */
@@ -287,7 +287,7 @@ describe('NotebookEditor', () => {
 
   /*
      Removing an option that no note uses is not a data-loss edit, so it writes straight
-     through the removal endpoint without a prompt — the routine tidying case.
+     through the removal endpoint without a prompt, the routine tidying case.
   */
   it('removes an unused option without asking', async () => {
     vi.mocked(api.countOptionUsage).mockResolvedValue(0);
@@ -307,7 +307,7 @@ describe('NotebookEditor', () => {
   });
 
   /*
-     Removing an option notes still hold asks first, names the count, and — the default —
+     Removing an option notes still hold asks first, names the count, and (the default)
      keeps those values, which the server does when `clear` is false.
   */
   it('asks before removing an option in use and keeps values by default', async () => {
@@ -501,7 +501,7 @@ describe('NotebookEditor', () => {
 
   /*
      Tightening a rating used to PATCH immediately. The server cleared every value that
-     no longer fit — a 7 on a scale dropped from 10 to 5, a 3.5 once half steps went —
+     no longer fit (a 7 on a scale dropped from 10 to 5, a 3.5 once half steps went)
      and the confirmation that a type change gets never ran. The tests below are that
      bug: the picker asks first, names the count, and writes only after Confirm.
   */
@@ -556,7 +556,7 @@ describe('NotebookEditor', () => {
     fireEvent.click(screen.getByText('Change and clear 2 values'));
     await waitFor(() =>
       // A tighten writes the scale alone, the same body `changeScale` sends when nothing
-      // needs confirming — one intent, one shape.
+      // needs confirming: one intent, one shape.
       expect(api.updateNotebookField).toHaveBeenCalledWith('nb1', 'f4', { scale: { max: 5, step: 0.5 } }),
     );
   });
@@ -616,7 +616,7 @@ describe('NotebookEditor', () => {
   /*
      MAK-80: scores out of 10 turned into five stars and every 6 and up was cleared. The
      picker now asks the server for the scale the values fit, and says so even when nothing
-     is lost — the scale was chosen for the person, so they are told which one it is.
+     is lost: the scale was chosen for the person, so they are told which one it is.
   */
   it('fits a new rating to the numbers it holds, and explains before writing', async () => {
     const plain: FieldDef = { ...rating, scale: null };
@@ -686,7 +686,7 @@ describe('NotebookEditor', () => {
   });
 
   /*
-     If the preview cannot be fetched, the count is unknown — and writing anyway is the
+     If the preview cannot be fetched, the count is unknown, and writing anyway is the
      original bug, clearing values without ever naming them. The error surfaces instead.
   */
   it('does not write a narrower scale when the preview fails', async () => {

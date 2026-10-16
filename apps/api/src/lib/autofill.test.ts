@@ -25,7 +25,7 @@ const paid = <T,>(value: T): Metered<T> => ({
 
 /**
  * A Jev that records what it was asked and answers from a script keyed by question id.
- * Anything unscripted is answered as unsure — a choice of "none", a no — so a test only
+ * Anything unscripted is answered as unsure (a choice of "none", a no), so a test only
  * has to say what it is about.
  */
 function fake(script: Record<string, JevAnswer> = {}) {
@@ -146,7 +146,7 @@ describe('what the model is asked', () => {
 
     const notebook = questions['notebook'] as JevChoiceQuestion;
     expect(Object.keys(notebook.criteria)).toEqual(['Coupons', 'Receipts', 'none']);
-    // A notebook with no purpose carries no purpose key — the model sees exactly what it
+    // A notebook with no purpose carries no purpose key: the model sees exactly what it
     // saw before this field existed.
     expect(notebook.criteria['Coupons']).toEqual({
       what: 'The notebook "Coupons"',
@@ -158,7 +158,7 @@ describe('what the model is asked', () => {
       fields: expect.arrayContaining(['Vendor', 'Total']),
     });
     // The guidance tells the model to leave a note unfiled rather than force it into a
-    // notebook whose purpose does not cover it — the abstain path that keeps a receipt out
+    // notebook whose purpose does not cover it: the abstain path that keeps a receipt out
     // of a "Shopping" wish list.
     const guidance = JSON.stringify(notebook.instructions);
     expect(guidance).toContain('purpose');
@@ -247,7 +247,7 @@ describe('the title', () => {
 
   it('tells an operator when the title model rejected its key, and no one else', async () => {
     const rejected = { textFields: noFields, title: vi.fn(async () => { throw new LlmError(401, 'invalid x-api-key'); }) };
-    // The operator is told, alongside the fallback title \u2014 the fill still succeeds.
+    // The operator is told, alongside the fallback title: the fill still succeeds.
     const forOperator = await autofill(fake().jev, input(), rejected, true);
     expect(forOperator.titleModel).toBe('auth-failed');
     // Everyone else sees exactly the silent fallback, no signal.
@@ -267,7 +267,7 @@ describe('the title', () => {
   });
 
   it('does not flag when the model wrote a title despite an operator watching', async () => {
-    // No fault to report when the title came back \u2014 auth-failed only rides a fallback.
+    // No fault to report when the title came back: auth-failed only rides a fallback.
     const out = await autofill(fake().jev, input(), written, true);
     expect(out.title).toEqual({ value: 'Acme Hardware Invoice, March 2026' });
     expect(out.titleModel).toBeUndefined();

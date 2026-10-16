@@ -15,8 +15,8 @@ export const Route = createFileRoute('/notes/')({
  *
  * For an account with no notes at all, the pane is where the empty state goes on a
  * desktop (`EmptyLibrary`): it is the big, otherwise idle half of the screen, and the
- * list column beside it says nothing rather than the same thing again. Anywhere else — an
- * account with notes, or a notebook, tag, filter or search that matched nothing — it is
+ * list column beside it says nothing rather than the same thing again. Anywhere else (an
+ * account with notes, or a notebook, tag, filter or search that matched nothing) it is
  * the line it always was. On a phone this pane is hidden while the list shows, and the
  * list draws the empty state itself, so it is never drawn here.
  */
@@ -27,7 +27,7 @@ function NoNoteOpen() {
   const isMobile = useMediaQuery(MOBILE_QUERY);
   const wholeAccount = showsWholeAccount(search);
   // Asked only where the answer can draw something: at the two-pane width, on the whole
-  // account, and while the column beside shows no rows — a column with a row in it is an
+  // account, and while the column beside shows no rows: a column with a row in it is an
   // account with a note, and an archive must not be recounted on every change for that.
   // Not while the column's first load is pending either (null), when every account's
   // rows are empty.

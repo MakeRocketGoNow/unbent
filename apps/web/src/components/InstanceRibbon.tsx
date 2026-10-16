@@ -3,7 +3,7 @@ import { configQuery } from '../queries.js';
 import { ribbonOf } from '../instance-marker.js';
 
 /**
- * A corner ribbon on the drawer and the rail — "Dev", or the PR a preview is of — so a
+ * A corner ribbon on the drawer and the rail ("Dev", or the PR a preview is of) so a
  * scratch instance is plain at a glance and not only from its tab.
  *
  * In the navigation's corner rather than the page's: that corner is empty at both widths,

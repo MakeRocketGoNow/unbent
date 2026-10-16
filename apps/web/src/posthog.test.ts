@@ -14,7 +14,7 @@ const CONFIG = { key: 'phc_x', uiHost: 'https://us.posthog.com' };
 /**
  * PostHog is here to group exceptions and to do nothing else. These pin the two halves of
  * that: an `init` with every capture path switched off, and a `before_send` that drops
- * anything which is not an exception even so — because a default that changes in a future
+ * anything which is not an exception even so, because a default that changes in a future
  * version must not quietly turn a notes app into a tracked one.
  */
 describe('posthog', () => {

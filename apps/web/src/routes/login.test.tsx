@@ -29,7 +29,7 @@ vi.mock('../auth-client.js', () => ({
 
 /**
  * The real `/login` route, search schema and all, under a bare root. `Login.test.tsx`
- * hands the component its `refusal` directly; this is the half it cannot see — the route
+ * hands the component its `refusal` directly; this is the half it cannot see: the route
  * reading `?error=` and taking it back out of the address.
  */
 function harness(initial: string) {

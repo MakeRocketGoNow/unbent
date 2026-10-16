@@ -5,15 +5,15 @@ import { cleanExtractedText, isExtractable, type CleanedText } from '@unbent/ene
  *
  * pdf.js cannot run here: a Worker on the free plan gets 10ms of CPU per request and a
  * scan takes hundreds, so extraction has lived in the browser, with the phone hosting a
- * hidden page to get at it. Workers AI's `toMarkdown` sidesteps the cap — the work
- * happens in Cloudflare's service, not this isolate — and converting a PDF through it is
+ * hidden page to get at it. Workers AI's `toMarkdown` sidesteps the cap (the work
+ * happens in Cloudflare's service, not this isolate) and converting a PDF through it is
  * free. It reads the text layer, as pdf.js does, so a scan with no layer comes back
  * empty from both. Measured on fifty scans from a real export: the two agree on which
  * files have text (41 of 49) and which have none (8), with a median word overlap of 0.89.
  *
  * The browser paths stay as the fallback. A deployment without the binding, a file over
  * the size cap, a conversion that fails or overruns the thirty seconds a Worker may keep
- * working after its response — all of those leave the row pending, and the pass the app
+ * working after its response: all of those leave the row pending, and the pass the app
  * makes on open catches it.
  */
 
@@ -45,8 +45,8 @@ export function canExtractOnServer(
 /**
  * Drops what the converter says about the file rather than from it.
  *
- * The output opens with the filename as a heading and a Metadata list — PDF version,
- * producer, the scanner's name — then "## Contents" and a heading per page. For a scan
+ * The output opens with the filename as a heading and a Metadata list (PDF version,
+ * producer, the scanner's name), then "## Contents" and a heading per page. For a scan
  * with no text layer that preamble is the entire output, and it passes the quality
  * filter on its own: "ScanSnap Manager" and "Quartz PDFContext" are perfectly good words.
  * Indexed, every scan from the same scanner would match a search for it.
@@ -64,8 +64,8 @@ export function stripConversionPreamble(markdown: string): string {
  * service rather than an answer about the file, and is the caller's to handle.
  *
  * Takes the bytes and their type rather than a blob, because the blob must be typed: the
- * conversion refuses one with no type outright — it throws "expected string to have >=1
- * characters" rather than answering an error — and an untyped one is what
+ * conversion refuses one with no type outright (it throws "expected string to have >=1
+ * characters" rather than answering an error), and an untyped one is what
  * `new Blob([bytes])` makes. That went unnoticed long enough for every PDF read on the
  * server to stay pending, and for Auto-fill to title notes from their files' names
  * because it had nothing else to read. Built here, nobody can hand it one untyped again.

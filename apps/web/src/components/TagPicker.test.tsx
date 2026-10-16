@@ -14,7 +14,7 @@ import { TagPicker } from './TagPicker.js';
  * The picker replaced a wrapped field of pills that could not survive 326 tags, so what
  * these pin is the machinery that makes a long list usable: the match, the order, and the
  * fact that the selection leaves the list. Picking is asserted on the URL rather than a
- * parsed search object — the filters live there, and `url-boundary.test.ts` greps for the
+ * parsed search object: the filters live there, and `url-boundary.test.ts` greps for the
  * other spelling.
  */
 const TAGS = [
@@ -135,8 +135,8 @@ describe('TagPicker', () => {
   /*
    * The three boxes the sheet's layout sizes.
    *
-   * Holding the sheet at a constant height when a tag is picked is CSS — the page claims a
-   * height, the chips and the field keep theirs, and the list takes what is left — and
+   * Holding the sheet at a constant height when a tag is picked is CSS (the page claims a
+   * height, the chips and the field keep theirs, and the list takes what is left) and
    * jsdom evaluates none of it. What a test can protect is the structure those rules hang
    * on: three siblings in this order, with the chip row present only when it has something
    * to say. Rename or reorder them and the sheet starts growing under the thumb again.

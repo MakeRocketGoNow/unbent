@@ -1,5 +1,5 @@
 /**
- * Which requests the service worker answers, and how — as plain functions over a URL so
+ * Which requests the service worker answers, and how, as plain functions over a URL so
  * they can be tested without a worker.
  *
  * The worker itself (`sw.ts`) is a handful of Workbox registrations that ask these. Kept
@@ -16,8 +16,8 @@
  * each is a real server response rather than a route of the SPA. A shell for
  * `/api/auth/callback/google` would swallow a sign-in, and one for
  * `/api/notes/…/files/…?download=1` would open the app where a download was asked for.
- * The last is a whole path rather than a prefix — the manifest, which the Worker renames
- * per instance (`apps/api/src/lib/manifest.ts`) — and a path is its own prefix.
+ * The last is a whole path rather than a prefix: the manifest, which the Worker renames
+ * per instance (`apps/api/src/lib/manifest.ts`), and a path is its own prefix.
  *
  * `routes.test.ts` reads `wrangler.toml` and holds the two lists together: a prefix added
  * there and not here would have every device with the worker answer its page loads with
@@ -28,8 +28,8 @@ export const WORKER_PREFIXES = ['/api/', '/.well-known/', '/ingest/', '/manifest
 /**
  * Whether a page load at this address should be answered with the app itself.
  *
- * Every route of the SPA is a path with no extension — `/notes/<uuid>`, `/settings/tags`
- * — and the Worker's SPA fallback answers each with `index.html`, so the worker does the
+ * Every route of the SPA is a path with no extension (`/notes/<uuid>`, `/settings/tags`)
+ * and the Worker's SPA fallback answers each with `index.html`, so the worker does the
  * same from its cache. What it must not do is answer a load of a real file that way:
  * someone opening `/manifest.webmanifest` or an icon in a tab would get the app, which is
  * the fallback's behaviour only because the file is missing, not a route. A dot in the
@@ -42,7 +42,7 @@ export function servesShell(url: URL): boolean {
 }
 
 /**
- * The two runtime caches, named here because the page empties them too — on sign-out, on
+ * The two runtime caches, named here because the page empties them too: on sign-out, on
  * a session the server refuses, and when a different account signs in on this device
  * (`offline-cache.ts`). The version is in the name so a later change of shape can drop a
  * cache outright. `api-v1` once held the note reads the views were drawn from; the local
@@ -67,7 +67,7 @@ export function isAsset(url: URL, origin: string): boolean {
 
 /**
  * Whether an answer for a file of the shell is the page in disguise. The asset layer
- * answers any path it does not have with `index.html` and a 200 — the SPA fallback — so
+ * answers any path it does not have with `index.html` and a 200 (the SPA fallback) so
  * a chunk that a newer deploy dropped, or that a deploy in progress has not written yet,
  * comes back as HTML with a script's name. A fill that stored it served HTML to a
  * `<script>`; a tab that fetched it got a module error. Only the page itself may be HTML.
@@ -101,7 +101,7 @@ export const MAX_KEPT_FILE = 20 * 1024 * 1024;
 export const FILES_CHANGED = 'FILES_CHANGED';
 
 /**
- * The header the page puts on a fetch of a file's bytes that someone is looking at —
+ * The header the page puts on a fetch of a file's bytes that someone is looking at:
  * today only the PDF viewer's (`loadPdf`). An image needs none: the browser marks an
  * `<img>` load itself, as `destination: 'image'`.
  */
@@ -153,7 +153,7 @@ export function fileAddress(url: URL): { noteId: string; filename: string } | nu
  * Whether a request for a file's bytes may be answered from the account's shelves: the
  * files of a kept notebook, and a file added here that is still waiting to upload.
  *
- * Any read of the bytes by the page — a picture, the PDF viewer, the indexer, an export.
+ * Any read of the bytes by the page: a picture, the PDF viewer, the indexer, an export.
  * Unlike the cache, there is nothing to protect here: the bytes are already on the device
  * by choice, and reading them costs no budget.
  *
@@ -183,7 +183,7 @@ export interface RequestFacts {
  * Which runtime cache, if any, answers a request.
  *
  * `api`: the reads above, from the network first and from the cache only when the network
- * fails. `file`: a file's bytes when someone is looking at them, from the cache first —
+ * fails. `file`: a file's bytes when someone is looking at them, from the cache first:
  * they are served `immutable`, so a copy never goes stale.
  *
  * "Looking at" is the rule that matters for files. The indexer reads every PDF in the

@@ -12,13 +12,13 @@
  * previews the account menu's instance line carries the short form as well, since that is
  * where a commit gets checked many times a day, right after a push. `index.html` carries
  * the full SHA in `<meta name="unbent-commit">`, so what a deploy is serving can be read
- * without signing in — `curl -s https://unbent.app | grep unbent-commit`.
+ * without signing in: `curl -s https://unbent.app | grep unbent-commit`.
  */
 export interface BuildInfo {
   /** The full SHA. */
   commit: string;
   /**
-   * When the commit was made, as ISO 8601, or null when the build could not read it — a
+   * When the commit was made, as ISO 8601, or null when the build could not read it: a
    * preview, which is built from the PR's merge commit but names the PR's head, which a
    * shallow checkout does not have.
    */
@@ -35,7 +35,7 @@ declare const __UNBENT_BUILD__: BuildInfo | null | undefined;
 
 /**
  * Null under vitest, whose config does not run the define, and for a build made where git
- * could not be read — a tarball with no `.git`.
+ * could not be read: a tarball with no `.git`.
  */
 export const buildInfo: BuildInfo | null =
   typeof __UNBENT_BUILD__ === 'undefined' ? null : __UNBENT_BUILD__;

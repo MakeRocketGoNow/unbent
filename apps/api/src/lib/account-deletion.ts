@@ -19,8 +19,8 @@ export const SESSION_CACHE_SECONDS = 5 * 60;
 
 /**
  * What deleting an account takes with it beyond the `user` row: its files and its note
- * store. D1 handles its own half — sessions, sign-in accounts, passkeys, OAuth grants and
- * upload links all have `ON DELETE CASCADE` — but R2 has no foreign keys and the notes
+ * store. D1 handles its own half (sessions, sign-in accounts, passkeys, OAuth grants and
+ * upload links all have `ON DELETE CASCADE`), but R2 has no foreign keys and the notes
  * live in an object of the account's own, and neither can be reached by anything once
  * the account is gone.
  *
@@ -36,8 +36,8 @@ export const SESSION_CACHE_SECONDS = 5 * 60;
  * the thing the deletion is about to destroy, so after the row is gone nothing can reach
  * the prefix again. The cost is the mirror image: if this throws, the deletion stops and
  * the account survives carrying attachment rows that point at objects already deleted,
- * or an empty store. That is the recoverable half — the deletion can be asked for again
- * — and it is why the failure is logged rather than swallowed.
+ * or an empty store. That is the recoverable half (the deletion can be asked for again),
+ * and it is why the failure is logged rather than swallowed.
  *
  * The object after the files, not before: its rows are what `gc-blobs` reads to know
  * which objects are referenced, and an account that survived a failed file sweep with
@@ -74,8 +74,8 @@ export async function clearAccount(env: DeletionEnv, userId: string): Promise<vo
  *
  * The row is marked canceled as soon as Paddle agrees, so a deletion that then fails at
  * the files or the store is retried without asking Paddle to cancel again. And a cancel
- * Paddle refuses because the subscription is already canceled — the webhook for the
- * first try's cancel not yet landed — is not a reason to keep the account, which is
+ * Paddle refuses because the subscription is already canceled (the webhook for the
+ * first try's cancel not yet landed) is not a reason to keep the account, which is
  * what `ensureSubscriptionCanceled` reads a refusal for before passing it on.
  */
 async function cancelSubscription(env: DeletionEnv, userId: string): Promise<void> {
@@ -97,7 +97,7 @@ async function cancelSubscription(env: DeletionEnv, userId: string): Promise<voi
  * retries the wipe from if the object was reset between the wipe and this, and it is
  * dropped by the sweep once the object reports itself empty. A directory row whose
  * `user` row is missing is treated as tombstoned by the sweep too, so this failing
- * cannot strand an object either — which is why it never throws: by the time it runs
+ * cannot strand an object either, which is why it never throws: by the time it runs
  * the deletion has happened, and must not be reported as failed.
  */
 export async function tombstoneAccount(env: DeletionEnv, userId: string): Promise<void> {
@@ -112,7 +112,7 @@ export async function tombstoneAccount(env: DeletionEnv, userId: string): Promis
  * The whole deletion, for a caller with no Better Auth endpoint around it. The row is
  * deleted by hand, as `purge-fixtures` does: everything that refers to `user` in D1
  * cascades, so this is the same deletion Better Auth's `internalAdapter.deleteUser`
- * makes, without the endpoint's own checks — the session's freshness, the emailed link —
+ * makes, without the endpoint's own checks (the session's freshness, the emailed link),
  * which are a person's proof that the account is theirs, and are not what lets an
  * operator delete someone else's.
  *
@@ -121,7 +121,7 @@ export async function tombstoneAccount(env: DeletionEnv, userId: string): Promis
  * `requireAuth` until it expires, which is why the page says "within five minutes". The
  * same is true of a person deleting their own account while another of their devices is
  * open. It is not hypothetical: measured against `wrangler dev`, a second session made a
- * note after the deletion and uploaded two files to it, and both reached R2 — the store
+ * note after the deletion and uploaded two files to it, and both reached R2: the store
  * comes back empty on its next call and records them, and only an upload to a note from
  * before the deletion was refused, the wipe having taken the note. (An assistant cannot
  * do the same: every MCP call checks its consent row, which went with the user, and an

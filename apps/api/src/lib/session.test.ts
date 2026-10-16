@@ -6,7 +6,7 @@ import type { AppEnv, Env } from '../types.js';
 /**
  * `sessionMiddleware` reaches for `getAuth` from `../auth.js`, whose real implementation
  * constructs Better Auth against a D1 binding these tests do not have. Mock it so each case
- * can decide what `getSession` does — resolve a user, resolve null, or throw — without a
+ * can decide what `getSession` does (resolve a user, resolve null, or throw) without a
  * database.
  */
 const getSession = vi.fn();
@@ -62,7 +62,7 @@ describe('sessionMiddleware', () => {
   /**
    * The production failure this guards against: `getSession` reads D1, and a transient read
    * blip made it throw. Unhandled, that escaped to the global handler as a 500 on every
-   * route — including the unauthenticated health check, which read as the whole API being
+   * route, including the unauthenticated health check, which read as the whole API being
    * down. A failure to resolve a session must degrade to no session, never a 500.
    */
   it('does not turn a getSession failure into a 500 on a public route', async () => {
@@ -75,7 +75,7 @@ describe('sessionMiddleware', () => {
   /**
    * A protected route still refuses, but says the session could not be checked rather than
    * that there is none: a 401 signs every client out, and the phone deletes its queued
-   * shares on one. The database refusing reads — a quota run out — must not do that.
+   * shares on one. The database refusing reads (a quota run out) must not do that.
    */
   it('answers a protected route 503 with Retry-After, not 401 or 500, when getSession fails', async () => {
     getSession.mockRejectedValue(new Error('D1_ERROR: Network connection lost'));
@@ -86,7 +86,7 @@ describe('sessionMiddleware', () => {
 
   /**
    * Better Auth wraps its own store failing as a 500 `APIError`, so that is the shape a D1
-   * refusal really arrives in — not only the raw error above.
+   * refusal really arrives in, not only the raw error above.
    */
   it('answers 503 when Better Auth reports its store failed', async () => {
     getSession.mockRejectedValue(new APIError('INTERNAL_SERVER_ERROR', { message: 'Failed to get session' }));
@@ -158,8 +158,8 @@ describe('whoAmI', () => {
 
   /**
    * The phones treat 200 with no user as a real sign-out: they clear the stored session
-   * and drop queued shares. A lookup that timed out is not that — it is the same failure
-   * `requireAuth` answers 503 for — and must not look like nobody is signed in.
+   * and drop queued shares. A lookup that timed out is not that (it is the same failure
+   * `requireAuth` answers 503 for) and must not look like nobody is signed in.
    */
   it('answers 503 with Retry-After, not 200 with no user, when the session check never answers', async () => {
     vi.useFakeTimers();

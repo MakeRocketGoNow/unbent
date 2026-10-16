@@ -9,7 +9,7 @@ import { keys, notebookFieldCountsQuery } from '../queries.js';
  * A page under Notebooks rather than a panel inside its row: a notebook can have a dozen
  * fields, each with a type and options, and the list of notebooks is a list, not a place
  * to unfold a form. The trailing underscore in the filename keeps this a sibling of the
- * notebooks page rather than its child — that page has no outlet, and this one wants the
+ * notebooks page rather than its child: that page has no outlet, and this one wants the
  * settings layout around it, not the notebook list.
  */
 export const Route = createFileRoute('/settings/notebooks_/$notebookId')({

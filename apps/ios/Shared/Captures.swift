@@ -23,7 +23,7 @@ enum Captures {
         BuildInfo.isDebug ? prefs.instance : normalizeOrigin(BuildInfo.defaultInstance)
     }
 
-    /// Where captures wait, or nil for a build signed without the App Group — which has
+    /// Where captures wait, or nil for a build signed without the App Group, which has
     /// no directory both processes can read, and so no captures.
     static func store() -> CaptureStore? {
         guard

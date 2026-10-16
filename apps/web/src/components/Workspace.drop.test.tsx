@@ -14,7 +14,7 @@ import { keys } from '../queries.js';
 import { Workspace } from './Workspace.js';
 
 /**
- * The note's whole column takes a dragged file, not only its text — on a new note, one
+ * The note's whole column takes a dragged file, not only its text: on a new note, one
  * line. Where a file lands is `noteDropZone`'s, tested beside it; these pin that the
  * workspace puts the zone on the column, takes it off in the preview, whose Attach button
  * is off too, and puts it back on the new editor a change of view builds.

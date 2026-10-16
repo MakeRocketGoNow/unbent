@@ -56,7 +56,7 @@ export type PressOutcome =
  * a ceiling on what can be asked rather than on what went well.
  *
  * What the model cost is recorded as it goes: each reading with its text, and the rest
- * — the title, the fields, any reading paid for and thrown away — in one call at the end,
+ * (the title, the fields, any reading paid for and thrown away) in one call at the end,
  * whether the press succeeded or not. `NothingToRead` and `JevError` come out of here as
  * thrown, for the route to answer as before.
  */
@@ -71,7 +71,7 @@ export async function press(deps: PressDeps, id: string): Promise<PressOutcome> 
   const usage = new PressUsage();
   /*
      Registered now rather than in `finally`: a client that disconnects cancels whatever
-     has no `waitUntil` pending, and the press — its readings and its record — would go
+     has no `waitUntil` pending, and the press (its readings and its record) would go
      with it. Resolved with the record once there is one.
   */
   let recorded!: (work: Promise<unknown>) => void;
@@ -81,7 +81,7 @@ export async function press(deps: PressDeps, id: string): Promise<PressOutcome> 
     /*
        The note's own files first, before anything is suggested. This is the one place
        the model reads a file (MAK-179): a picture, or a scan whose text layer had
-       nothing, is not read when it arrives but here, when a person presses — so the
+       nothing, is not read when it arrives but here, when a person presses, so the
        press is the person asking for exactly this read, and it happens awaited. A few
        seconds for a card is what the button costs anyway, and the text it records is
        what the suggestion is then built from. Before that rule a file was read once, at
@@ -91,7 +91,7 @@ export async function press(deps: PressDeps, id: string): Promise<PressOutcome> 
        Scoped to this note and capped, never the account's backlog: that is a thousand
        paid requests on a real archive, and nothing runs it. A file this instance has no
        reader for stays as it was and is reported in `read.pending`, as before. A read
-       that fails is logged and left pending rather than failing the press — the
+       that fails is logged and left pending rather than failing the press: the
        suggestion still comes from whatever text there is.
     */
     const readers: Readers = { ...deps.readers, usage };
@@ -138,7 +138,7 @@ export async function press(deps: PressDeps, id: string): Promise<PressOutcome> 
       // The language model writes the title and the text fields' values where the
       // instance has one; see `autofill`. Counted on its way through.
       deps.llm ? usage.metering(deps.llm) : undefined,
-      // Only an operator is told when that model rejects its key — a fault they can fix.
+      // Only an operator is told when that model rejects its key: a fault they can fix.
       deps.operator,
     );
     return { kind: 'filed', suggestion };
@@ -151,7 +151,7 @@ export async function press(deps: PressDeps, id: string): Promise<PressOutcome> 
        should not also wait out the title's timeout. `waitUntil` runs about thirty seconds
        past the response, and a title's two attempts can take longer, so on that one path
        a slow title's cost can still be lost at the edge. A failure to record is logged
-       rather than thrown — the count is what is lost, and the log line is what the
+       rather than thrown: the count is what is lost, and the log line is what the
        operator then has.
     */
     const recording = usage

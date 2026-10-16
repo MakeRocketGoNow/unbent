@@ -19,7 +19,7 @@ import { ProviderIcon } from './provider-icons.js';
  * Names for providers whose own spelling is not what title-casing the id would produce.
  *
  * Only the awkward ones need an entry. Anything absent is title-cased from its id, which
- * is what makes an instance able to enable a provider this file has never heard of —
+ * is what makes an instance able to enable a provider this file has never heard of:
  * `DISCORD_CLIENT_ID` on the server is enough to get a working "Continue with Discord"
  * here, with no change on this side at all.
  */
@@ -47,7 +47,7 @@ function asMessage(err: unknown): string {
 
 export interface LoginProps {
   /**
-   * Where to go once signed in — a path on this origin, already checked by the route that
+   * Where to go once signed in: a path on this origin, already checked by the route that
    * reads it out of the URL. The screen does not work this out for itself: it is rendered
    * at `/login`, which is nobody's destination.
    */
@@ -55,7 +55,7 @@ export interface LoginProps {
   /**
    * Why a provider sign-in came back here instead of signing in: the `error` code the
    * auth callback put in the URL, read by the route. A provider round trip leaves the page,
-   * so its failure cannot arrive in a response the way the code and password forms' do — it
+   * so its failure cannot arrive in a response the way the code and password forms' do: it
    * arrives as a fresh load of this screen with a code in the query string. Absent on a
    * plain visit.
    */
@@ -70,7 +70,7 @@ export interface LoginProps {
  * app's. `SIGNUPS_CLOSED` is this server's own (the allowlist hook in the API);
  * `access_denied` is what a provider sends when the person backs out at its consent
  * screen; `account_not_linked` is Better Auth refusing to join a provider to an existing
- * account whose address was never confirmed (`requireLocalEmailVerified`) — an account
+ * account whose address was never confirmed (`requireLocalEmailVerified`): an account
  * made with a password, say. An email code confirms the address, and the provider links
  * itself on the next try; there is no "add Google" in Settings to point at instead.
  * Anything else is shown by name so a report of it means something.
@@ -116,7 +116,7 @@ export function Login({ redirectTo, refusal }: LoginProps) {
    * What every sign-in that stays in this tab ends with.
    *
    * The session is refetched *before* navigating, not after. The destination has a guard
-   * in front of it and loaders behind it, and both run before anything renders — so
+   * in front of it and loaders behind it, and both run before anything renders, so
    * arriving with the previous answer still cached either bounces straight back here or
    * fires the note list's requests without a cookie. The second is what used to happen:
    * signing in swapped the login screen for "Something went wrong! 401 Unauthorized",
@@ -156,8 +156,8 @@ export function Login({ redirectTo, refusal }: LoginProps) {
    * answered that same visitor with a JSON 401, which is precisely the person the relay
    * exists for.
    *
-   * A full-page navigation like the social buttons, and for the same reason — it leaves this
-   * origin entirely — so it uses `location` rather than the router, the way `/connect` hands
+   * A full-page navigation like the social buttons, and for the same reason: it leaves this
+   * origin entirely, so it uses `location` rather than the router, the way `/connect` hands
    * off to an app scheme. The return origin goes through `encodeURIComponent` rather than the
    * query-string builder that `url-boundary.test.ts` reserves for outbound API queries.
    */
@@ -180,7 +180,7 @@ export function Login({ redirectTo, refusal }: LoginProps) {
        * This used to always return to `/`, on the reasoning that preserving the URL meant
        * widening the server's trusted-redirect allowlist. It does not: Better Auth
        * validates `callbackURL` with `allowRelativePaths`, so a same-origin path needs no
-       * allowlist entry, and `redirectTo` is a path on this origin by construction — the
+       * allowlist entry, and `redirectTo` is a path on this origin by construction: the
        * route checked it before handing it over.
        *
        * The device flow is what made this matter. `/device?user_code=ABCD1234` opened
@@ -188,14 +188,14 @@ export function Login({ redirectTo, refusal }: LoginProps) {
        * CLI waiting on an approval page they had no way back to.
        *
        * This is the one method that leaves the page, so it is the one that cannot use
-       * `landed` — the provider brings the browser back with a fresh load, and the guard
+       * `landed`: the provider brings the browser back with a fresh load, and the guard
        * on the destination reads the cookie that arrived with it.
        *
        * `errorCallbackURL` is this screen again, destination kept, because a failure on
        * the way back has nowhere else to be shown: the callback route redirects a coded
        * error there with `?error=`, which the route reads and `refusal` carries in. Without
        * it Better Auth sends the browser to its own generic `/api/auth/error` page, outside
-       * the app and with no way back, and a refused sign-up — the allowlist — used to end on
+       * the app and with no way back, and a refused sign-up (the allowlist) used to end on
        * a bare JSON 403 at the callback address, message included and no way back.
        * `encodeURIComponent` rather than the query-string builder, as `startRelay` does and
        * for its reason.
@@ -239,11 +239,11 @@ export function Login({ redirectTo, refusal }: LoginProps) {
    * This is WebAuthn conditional UI: the browser quietly checks whether it holds a
    * credential for this origin and, if it does, puts it in the dropdown alongside saved
    * addresses. Nothing is shown if there is none, which is why it can run unconditionally
-   * on mount — for a first-time visitor it is invisible.
+   * on mount: for a first-time visitor it is invisible.
    *
    * Deliberately unawaited and its failures swallowed: the call sits open waiting for a
    * choice that may never come, and a browser without support rejects immediately. Either
-   * way it is not something to report — every other way in is still on screen.
+   * way it is not something to report: every other way in is still on screen.
    */
   useEffect(() => {
     if (!passkeys) return;
@@ -256,7 +256,7 @@ export function Login({ redirectTo, refusal }: LoginProps) {
    *
    * A list rather than four conditional blocks because the blocks had to each work out
    * whether anything preceded them in order to decide about a divider, which meant the
-   * order lived in four `||` chains that all had to agree — and reordering meant editing
+   * order lived in four `||` chains that all had to agree, and reordering meant editing
    * every one of them. Here the order is the order of this array.
    *
    * Social first: it is one tap for most people and needs nothing typed. Passkeys are
@@ -316,7 +316,7 @@ export function Login({ redirectTo, refusal }: LoginProps) {
         </div>
       ),
     },
-    // One section whether an instance offers a code, a password, or both — the address is
+    // One section whether an instance offers a code, a password, or both: the address is
     // asked for once and the ways to proceed hang off it.
     (otp || password) && {
       key: 'email',
@@ -389,7 +389,7 @@ interface EmailFormProps {
  * Everything that starts with an email address, in one form.
  *
  * The two email methods used to be separate components rendered one after the other, which
- * on an instance offering both produced two "Email" boxes a divider apart — the same
+ * on an instance offering both produced two "Email" boxes a divider apart: the same
  * address, asked for twice, with nothing on screen saying they were the same question.
  *
  * So the address is asked once and the ways to proceed hang off it. A password box and
@@ -397,7 +397,7 @@ interface EmailFormProps {
  * when both are. An instance offering one method looks exactly as it did before.
  *
  * Which is primary when both exist: the password. Someone who has one is signing in with
- * it, and a code is the fallback for having forgotten it or never set one — the same
+ * it, and a code is the fallback for having forgotten it or never set one: the same
  * reason "Forgot your password?" sits nearby rather than on a page of its own.
  *
  * No `callbackURL` on any of these: nothing here leaves the page, so the cookie lands in

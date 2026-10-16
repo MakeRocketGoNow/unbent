@@ -74,7 +74,7 @@ export function signInCodeEmail(otp: string): SignInCodeEmail {
 
 /**
  * Better Auth's codes are digits, so this changes nothing today. It is here so that a
- * longer or alphanumeric code — a plugin option away — can never become markup.
+ * longer or alphanumeric code (a plugin option away) can never become markup.
  */
 function escapeHtml(value: string): string {
   return value

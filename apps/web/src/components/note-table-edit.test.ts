@@ -37,7 +37,7 @@ describe('patchNoteFields', () => {
     });
   });
 
-  it('clears a value, leaving the others — foreign ones included — alone', () => {
+  it('clears a value, leaving the others (foreign ones included) alone', () => {
     const next = patchNoteFields(base, cost, 'Travel', null);
     expect(next.fields?.map((f) => f.fieldId)).toEqual(['other']);
   });

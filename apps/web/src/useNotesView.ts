@@ -25,14 +25,14 @@ function parseView(raw: unknown): NotesViewMode | undefined {
  * landed on a page drawn differently from how it had been left. With the view spelled
  * out in each entry, an entry means what it meant.
  *
- * Storage is only the seed for a URL that has not said yet — a plain `/notes` link, a
- * notebook picked from All notebooks — so those open the way the list was last seen
+ * Storage is only the seed for a URL that has not said yet (a plain `/notes` link, a
+ * notebook picked from All notebooks) so those open the way the list was last seen
  * rather than resetting. It follows the URL rather than the toggle alone: the last view
  * *seen* is the one to carry forward, whether it came from the toggle, from Back, or from
  * a bookmark, so the view never changes under someone who has not asked it to.
  *
- * It was per notebook at first, which was wrong in use — changing notebooks is how you
- * keep browsing, and a view that changed under the move read as the app forgetting — and
+ * It was per notebook at first, which was wrong in use (changing notebooks is how you
+ * keep browsing, and a view that changed under the move read as the app forgetting), and
  * then storage alone, which was wrong in kind: the view is how you are looking, like the
  * sort, and a table of a notebook is worth a bookmark.
  */

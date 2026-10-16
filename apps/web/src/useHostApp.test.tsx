@@ -39,7 +39,7 @@ afterEach(() => {
 
 describe('openSitePath', () => {
   /**
-   * A real router over a few of the app's real shapes — a settings page, a note by id —
+   * A real router over a few of the app's real shapes (a settings page, a note by id)
    * so "has a page" is the router's own matching, as it is in the app. `navigate` is
    * watched rather than followed: what matters is whether it was asked.
    */

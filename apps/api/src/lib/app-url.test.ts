@@ -46,7 +46,7 @@ describe('withAppUrl', () => {
 
   /**
    * `getAuth` memoizes on the env object's identity, so two requests on one origin must
-   * see one object — and two origins must not, or the second would inherit the first's
+   * see one object, and two origins must not, or the second would inherit the first's
    * base URL and refuse its own sign-ins.
    */
   it('returns the same view for the same origin and a different one per origin', () => {

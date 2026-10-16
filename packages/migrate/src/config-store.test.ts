@@ -37,7 +37,7 @@ describe('normalizeUrl', () => {
 
   it('refuses a non-http scheme rather than accepting something unusable', () => {
     // file: and javascript: parse fine as URLs, which is exactly why this has to be
-    // checked — a value that parses but cannot be fetched fails later and less clearly.
+    // checked: a value that parses but cannot be fetched fails later and less clearly.
     expect(() => normalizeUrl('file:///etc/passwd')).toThrow(/http/i);
     expect(() => normalizeUrl('ftp://example.com')).toThrow(/http/i);
   });
@@ -77,7 +77,7 @@ describe('config store', () => {
   });
 
   it('writes a file the user can actually open and edit', async () => {
-    // 0644, unlike credentials.json — this is meant to be edited by hand, and telling
+    // 0644, unlike credentials.json: this is meant to be edited by hand, and telling
     // someone to edit a 0600 secrets file to change a URL invites pasting a token
     // somewhere public.
     await writeUrl('https://notes.example.com');

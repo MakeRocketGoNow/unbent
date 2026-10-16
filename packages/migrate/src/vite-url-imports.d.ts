@@ -6,7 +6,7 @@
  * has no declaration and tsc fails on it.
  *
  * Declaring it here rather than depending on Vite: the CLI has no bundler and wants none,
- * and the import is already handled at runtime — pdf-text.ts catches the failed resolve and
+ * and the import is already handled at runtime: pdf-text.ts catches the failed resolve and
  * falls back, because Node has no bundler to satisfy `?url` in the first place.
  */
 declare module '*?url' {

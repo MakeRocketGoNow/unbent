@@ -5,8 +5,8 @@ import { BASE_STORAGE_GB, TRIAL_DAYS, type AccountPlan, type PlanSource, type Pl
  * means right now, and the reads and writes that keep it.
  *
  * The row says what was decided and when it stops holding; this module says what the
- * account *is*, which is the row against the clock. Nothing here knows about Paddle — the
- * webhook (routes/billing.ts) and the operator's comp both end in `updatePlan` — and
+ * account *is*, which is the row against the clock. Nothing here knows about Paddle: the
+ * webhook (routes/billing.ts) and the operator's comp both end in `updatePlan`, and
  * nothing here knows whether billing is even on. That is the caller's question
  * (`billingOn` in lib/paddle.ts): an instance that sells nothing never asks.
  */
@@ -75,7 +75,7 @@ export function trialEnd(now: number): number {
  * How long a renewing subscription stays active past the end of its paid period while
  * the renewal's news is on its way. `plan_until` is the period's end, which is also the
  * instant Paddle bills the renewal; the `transaction.completed` and `subscription.updated`
- * that carry the next period land after the charge clears — usually minutes, but
+ * that carry the next period land after the charge clears, usually minutes, but
  * after the end and never before. Without a grace every subscriber in good standing
  * read as `inactive` at their anniversary: 402s on every write, the editor locked, and
  * the hourly mail able to tell a paying customer their subscription had ended. A day
@@ -102,7 +102,7 @@ export function readOnlyAtOf(row: PlanRow): number | null {
 
 /**
  * What the account is at `now`: the row's word, unless its end has passed. A missing row
- * is a trial that starts now — `planFor` writes it, and a reader that reaches here with
+ * is a trial that starts now: `planFor` writes it, and a reader that reaches here with
  * null (the first request after sign-up, a hook that failed) is told what it would read
  * once it has.
  */
@@ -121,7 +121,7 @@ export function accountPlanOf(row: PlanRow, now: number): AccountPlan {
   return {
     state,
     until: row.planUntil,
-    // By the row's word when it says inactive — the operator's end, dated now — and
+    // By the row's word when it says inactive (the operator's end, dated now) and
     // otherwise where the end falls, which for a renewing subscription whose grace ran
     // out is the grace's end, the instant it did turn read-only.
     readOnlyAt: row.plan === 'inactive' ? row.planUntil : readOnlyAtOf(row),
@@ -227,7 +227,7 @@ const COLUMN_OF: Record<keyof PlanPatch, string> = {
 };
 
 /**
- * The update as a statement, for a caller that batches it with something else — the
+ * The update as a statement, for a caller that batches it with something else: the
  * webhook, with the event's own row. `notBefore` is the webhook's guard against an event
  * delivered late: with it, the update applies only while the row's newest event is not
  * after this one, and an older event arriving after a newer one changes nothing.
@@ -268,7 +268,7 @@ export async function updatePlan(db: D1Database, userId: string, patch: PlanPatc
  * which is the hour a paying customer must not be told their subscription ended. The
  * same rule as `planStateOf`, spelled in SQL, as a filter on the rows the range finds.
  * `IS`, not `=`: a trial's `source` and `paddle_status` are NULL, and `NOT (NULL AND …)`
- * is NULL, which drops the row — every trial's mail waited out the grace until
+ * is NULL, which drops the row: every trial's mail waited out the grace until
  * `migrations.test.ts` ran the statement against real rows. Binds: now, the most to
  * take, and now less the grace.
  */

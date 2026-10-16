@@ -33,15 +33,15 @@ function initialOf(email: string): string {
  *
  * One coherent menu behind one avatar, which is why it collapses at every width rather than
  * only on a phone: what it holds is account chrome, not navigation. Trash used to sit here
- * and was the reason the row needed splitting — it is a view of notes, not of the account.
+ * and was the reason the row needed splitting: it is a view of notes, not of the account.
  * Settings went the same way later: it is about the app, not the account, and it has a
- * place of its own at both widths — a row on the floor of the rail and of the drawer,
+ * place of its own at both widths, a row on the floor of the rail and of the drawer,
  * which is where Keep puts it. Leaving it here as well would have been two routes to one
  * page a thumb's width apart.
  *
  * Lifted out of `Topbar` because the phone no longer shows a topbar over the note list: the
  * list has a heading of its own now, and this menu is reached from the drawer's head
- * instead — and on a desktop from the rail's floor. Three callers, one menu, so they cannot
+ * instead, and on a desktop from the rail's floor. Three callers, one menu, so they cannot
  * come to disagree about what the account can do.
  *
  * The avatar is drawn locally from the address rather than fetched from Gravatar: this app
@@ -80,8 +80,8 @@ export function AccountMenu({ email, onSignOut, withAddress = false }: AccountMe
         // rather than selectable: it names the account, it does not act on it. It
         // truncates to one line, so it carries the full address as a tooltip.
         { label: email, className: 'overflow-label overflow-email', static: true, title: email },
-        // Which instance this is, when it is not production — "PR 222 · 00619da · notes
-        // are its own" — with the build it is running, and on a preview, whose notes an
+        // Which instance this is, when it is not production ("PR 222 · 00619da · notes
+        // are its own"), with the build it is running, and on a preview, whose notes an
         // edit here changes. Under the address because it is the same kind of line: it
         // says where you are, it does nothing. Production's build is in Settings › About.
         ...(instance
@@ -100,7 +100,7 @@ export function AccountMenu({ email, onSignOut, withAddress = false }: AccountMe
         // so the destructive item stays last.
         //
         // Absent entirely on an instance that publishes neither, rather than pointing at a
-        // page that says there is nothing there — a menu offering Privacy and answering
+        // page that says there is nothing there: a menu offering Privacy and answering
         // "not published" reads as a broken app rather than an unconfigured one. They are
         // also whichever kind of link this instance needs: the built-in documents are
         // routes, an operator's own are another site.
@@ -109,7 +109,7 @@ export function AccountMenu({ email, onSignOut, withAddress = false }: AccountMe
          * With no connection a browser cannot sign anyone out: the session cookie is
          * HttpOnly, so only the server can end it, and a sign-out that only cleared this
          * page would be undone by the next load. Said, rather than pretended. The Android
-         * app can — it clears its own cookies when told — so there it stays available.
+         * app can (it clears its own cookies when told), so there it stays available.
          */
         signOutNeedsConnection
           ? { label: 'Sign out', tone: 'danger', disabled: true, title: 'Signing out needs a connection' }

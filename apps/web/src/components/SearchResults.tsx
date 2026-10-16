@@ -9,7 +9,7 @@ interface SearchResultsProps {
  * Renders a snippet with the FTS5 match markers turned into highlights.
  *
  * The server emits `<<` and `>>` rather than HTML so the snippet is never interpolated as
- * markup — the note body is user content, and a snippet carrying real tags would be an
+ * markup: the note body is user content, and a snippet carrying real tags would be an
  * injection route straight into the results list.
  */
 function Snippet({ text }: { text: string }) {

@@ -19,7 +19,7 @@ const TITLE: Record<LegalWhich, string> = {
  *
  * Two forms rather than one because they sit in different grammar: "has not published *a
  * privacy policy*", but "*The privacy policy* is at". One string used in both produced "Its
- * a privacy policy is at", and terms are plural besides — "The terms *are* at".
+ * a privacy policy is at", and terms are plural besides: "The terms *are* at".
  */
 const NOUN: Record<LegalWhich, { indefinite: string; definite: string; verb: string }> = {
   privacy: { indefinite: 'a privacy policy', definite: 'The privacy policy', verb: 'is' },
@@ -35,13 +35,13 @@ const NOUN: Record<LegalWhich, { indefinite: string; definite: string; verb: str
  * One of the three legal documents, in whichever of three states this instance is in.
  *
  * The documents are built from `/api/config` rather than imported as constants, because an
- * instance that has not said who runs it must not publish somebody else's legal entity —
- * see `legal/documents.ts`. That leaves three cases, and each of them is a page somebody
+ * instance that has not said who runs it must not publish somebody else's legal entity
+ * (see `legal/documents.ts`). That leaves three cases, and each of them is a page somebody
  * can arrive at from a store listing, so none may be an error:
  *
  * - The operator is named and the documents are the built-in ones: render them.
  * - The operator publishes their own elsewhere: say so and link onward. Deliberately not a
- *   redirect — an automatic bounce to another domain from a page a reviewer or a reader
+ *   redirect: an automatic bounce to another domain from a page a reviewer or a reader
  *   opened deserves a sentence first.
  * - Nothing is configured: say that too. This is the state a fresh checkout is in, and a
  *   blank page or a 404 would read as a broken app rather than an unconfigured one.
@@ -76,7 +76,7 @@ export function LegalPage({ which }: { which: LegalWhich }) {
     // that a self-hosted policy does not name a third party it never contacts; and the
     // backups, with the ninety days a deletion takes to leave them, only where it keeps any;
     // and a price, its renewal and the refund policy only where the server says it sells a
-    // plan — read from the link, like `builtIn` above, rather than worked out again from
+    // plan: read from the link, like `builtIn` above, rather than worked out again from
     // `billing` and `frontPage`, so the terms drawn here and the server's sentence about a
     // change to them answer the same rule. See `LegalOptions.sellsPlan`.
     const docs = legalDocuments(operator, {
@@ -106,7 +106,7 @@ export function LegalPage({ which }: { which: LegalWhich }) {
 }
 
 /* The same destination `LegalDoc` uses, and for the same reason: `/` sends each reader
-   where they belong — notes, front page or sign-in. */
+   where they belong: notes, front page or sign-in. */
 function BackToApp() {
   return (
     <p className="legal-back">

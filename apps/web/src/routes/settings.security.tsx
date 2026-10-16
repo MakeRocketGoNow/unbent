@@ -18,12 +18,12 @@ export const Route = createFileRoute('/settings/security')({
  *
  * Registration needs a session, so this cannot live on the sign-in screen: you sign in by
  * some other means once, add a passkey here, and every visit after that is a touch of a
- * sensor. That ordering is also what keeps recovery simple — the method that got you here
+ * sensor. That ordering is also what keeps recovery simple: the method that got you here
  * still works if the device holding the passkey is lost.
  *
  * Listing them matters as much as making them. A passkey is tied to one device, so anyone
- * who uses two accumulates entries, and without names and dates they are indistinguishable
- * — which makes the "revoke the one from the laptop I sold" case impossible to do safely.
+ * who uses two accumulates entries, and without names and dates they are indistinguishable,
+ * which makes the "revoke the one from the laptop I sold" case impossible to do safely.
  */
 function SecurityPage() {
   const [keys, setKeys] = useState<Passkey[] | null>(null);
@@ -61,14 +61,14 @@ function SecurityPage() {
       const result = await passkey.addPasskey({ name: defaultPasskeyName() });
       if (result?.error) {
         /**
-         * Registering a passkey needs a *fresh* session — one signed in within the last
+         * Registering a passkey needs a *fresh* session: one signed in within the last
          * day, measured from when it was created rather than last used. Better Auth guards
          * the endpoint with that check and answers 403 when it fails, which is what anyone
          * who signed in yesterday and left the tab open runs into. It is not about how they
          * signed in: Google, a code, an existing passkey all go stale the same way.
          *
          * So a stale session opens the re-verification panel rather than showing the raw
-         * "Session is not fresh" — the only cure is to sign in again, and this offers the
+         * "Session is not fresh": the only cure is to sign in again, and this offers the
          * way to do that without leaving the page and losing the half-finished action.
          */
         if (isSessionNotFresh(result.error)) {
@@ -170,18 +170,18 @@ interface ReverifyProps {
  * Prove who you are again, so the session is fresh enough to enrol a passkey.
  *
  * A fresh session is one that has just been created, and the only thing that creates one is
- * a sign-in — no endpoint re-stamps the session you already hold. So this re-runs a sign-in
+ * a sign-in: no endpoint re-stamps the session you already hold. So this re-runs a sign-in
  * for the account already signed in, choosing the method by what the instance offers and by
  * what can be done without leaving the page:
  *
  * - A code by email is the first choice where it exists. It works for any account with a
- *   verified address — including the Google and passkey accounts that have no password to
- *   type — and it stays in the tab, so registration resumes the moment the code lands.
+ *   verified address (including the Google and passkey accounts that have no password to
+ *   type) and it stays in the tab, so registration resumes the moment the code lands.
  * - A password is offered where the instance uses one, for the same reason: it re-signs in
  *   place.
  * - Failing both, the only way left is the social provider that signed the account in, and
  *   that is a full-page redirect. It cannot resume here, so the panel says to sign in again
- *   and come back — the freshly created session then lets the button through.
+ *   and come back: the freshly created session then lets the button through.
  *
  * The address is the one already signed in, read rather than asked for: re-verification is
  * of *this* account, so offering a different address to type would be a way to sign in as
@@ -249,7 +249,7 @@ function Reverify({ onVerified, onCancel }: ReverifyProps) {
 
   /**
    * Re-sign in through the provider and come back here. `callbackURL` is this page, so the
-   * redirect that a social sign-in cannot avoid at least lands where the action was — the
+   * redirect that a social sign-in cannot avoid at least lands where the action was: the
    * new session it brings back is fresh, and the Add button works on the next press.
    */
   async function reSocial(provider: string) {
@@ -351,7 +351,7 @@ function Reverify({ onVerified, onCancel }: ReverifyProps) {
 
   /*
      Social-only instance, inside the Android app. The redirect below would leave for a
-     browser tab — Google refuses to sign in inside an app's WebView — and the session it
+     browser tab (Google refuses to sign in inside an app's WebView) and the session it
      brought back would be the browser's, not the app's, so the Add button here would still
      say no. What the app does have is its own sign-in, through the phone's account sheet,
      and signing in there creates exactly the fresh session this needs. So the way through
@@ -406,13 +406,13 @@ function Reverify({ onVerified, onCancel }: ReverifyProps) {
     );
   }
 
-  // Nothing to re-verify with — shouldn't happen, since the account signed in somehow, but
+  // Nothing to re-verify with. Shouldn't happen, since the account signed in somehow, but
   // an honest dead end beats a blank panel.
   return (
     <div className="login-form reverify-form">
       {intro}
       <p className="bad small">
-        Sign out and back in, then add a passkey — this instance has no way to re-verify in
+        Sign out and back in, then add a passkey: this instance has no way to re-verify in
         place.
       </p>
       <Button variant="quiet" size="small" onClick={onCancel}>
@@ -447,7 +447,7 @@ function defaultPasskeyName(): string {
  * Whether a failed registration was refused for a stale session rather than anything else.
  *
  * Better Auth answers the freshness check with a 403 carrying "Session is not fresh". The
- * status is the reliable half — it is the only 403 this endpoint returns — and the message
+ * status is the reliable half (it is the only 403 this endpoint returns) and the message
  * is matched too, so a future 403 for some other reason does not get swept into the
  * re-verification flow it would not fix.
  */

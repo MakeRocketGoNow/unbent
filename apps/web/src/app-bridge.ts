@@ -14,7 +14,7 @@
  * an iOS host from a script of its own over WKWebView's message handlers, which can only
  * answer with a promise. This module is written to the weaker of the two, so the page
  * never asks which it is talking to: a call that returns something may return it or a
- * promise of it (see `HostApp`). Absent that object — the site in any browser — every
+ * promise of it (see `HostApp`). Absent that object (the site in any browser), every
  * post is a no-op, so the page works unhosted rather than throwing.
  *
  * - `theme` carries the page's ground colour, so the strips the app draws around the page
@@ -67,9 +67,9 @@ export interface AppHandlers {
  *
  * Each answers with a value or a promise of one, because the two hosts cannot agree:
  * Android's `@JavascriptInterface` methods return when the write is done, and WKWebView
- * has no synchronous call from a page at all. Either way the answer is the backpressure —
- * a page writing faster than the phone's storage waits for it rather than queueing
- * gigabytes — so a caller must wait for each answer before making the next call. A host
+ * has no synchronous call from a page at all. Either way the answer is the backpressure
+ * (a page writing faster than the phone's storage waits for it rather than queueing
+ * gigabytes), so a caller must wait for each answer before making the next call. A host
  * must not answer `saveChunk` before the piece is written, or that wait means nothing.
  * `saveAbort` has nothing to answer, but an iOS host's call still comes back as a promise,
  * which may reject; a caller waits for it and has nothing to do about a failure.
@@ -108,7 +108,7 @@ export function isHosted(): boolean {
 
 /**
  * Where the app puts a file it saves, as the phone names the place: an export lands in
- * Android's Downloads, and on iOS in the Files app. For copy only — the page hands over
+ * Android's Downloads, and on iOS in the Files app. For copy only: the page hands over
  * the same bytes either way.
  */
 export function savesTo(): 'Downloads' | 'Files' {
@@ -141,7 +141,7 @@ export function exposeToApp(handlers: AppHandlers): () => void {
  *
  * The second half is here because of what WebKit does unasked. Tapping Attach with the
  * keyboard up put the picker's menu on screen with the page magnified to about one and
- * three-quarter times behind it — the title cut off, the docked bar halfway up — until
+ * three-quarter times behind it (the title cut off, the docked bar halfway up) until
  * the menu was dismissed. A web view zooms toward whatever it has just focused, and it
  * does so freely unless the page says its scale is fixed. `maximum-scale=1` is what stops
  * that. A pinch still works: the app sets `ignoresViewportScaleLimits`, as Safari does,
@@ -156,7 +156,7 @@ const IOS_VIEWPORT = 'viewport-fit=cover, maximum-scale=1.0';
  *
  * Only the iOS app asks anything of the layout. It first kept the page inside the safe
  * area and painted the strips above and below in the page's colour, as the Android app
- * does — and on a phone with a Dynamic Island those strips are tall enough to show:
+ * does, and on a phone with a Dynamic Island those strips are tall enough to show:
  * the drawer and the scrim behind it stopped short of the top and bottom of the screen,
  * and the drawer read as a card floating between two bands. No native iOS app's side
  * panel does that. So inside that app the page takes the whole screen and keeps its own
@@ -190,8 +190,8 @@ export function adoptHostLayout(): void {
 }
 
 /**
- * A page WebKit brings back from its back/forward cache — an edge swipe back across a
- * full load — is a new document to the app, which puts every new document inside the
+ * A page WebKit brings back from its back/forward cache (an edge swipe back across a
+ * full load) is a new document to the app, which puts every new document inside the
  * safe area until it asks. But a restored page does not run its scripts again: it still
  * has `host-ios` and its own insets, and without this it would sit inside the app's strips
  * as well, with two gaps at the top. So it asks again, as `store/library.ts` reopens its

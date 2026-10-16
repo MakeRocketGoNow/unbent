@@ -2,17 +2,17 @@ import { closeLibraryAndStore, currentLibraryUser } from './library.js';
 import { filesDirName, isFilesDir, isOutbox, isStoreFile, outboxName, searchFileName, storeFileName } from './names.js';
 
 /**
- * Removes every account's local copy, outbox and files from this device — or every
+ * Removes every account's local copy, outbox and files from this device, or every
  * account's but one, who is signing in and keeps their own.
  *
  * Called from `clearOfflineCaches`, which the sign-out, the deleted account and the
  * hand-over to a different person call: the local store is the same kind of thing as the
- * service worker's caches — one account's notes, kept on a device for reading with no
- * connection — and goes at the same moments. Every file with the prefix rather than the one
+ * service worker's caches (one account's notes, kept on a device for reading with no
+ * connection) and goes at the same moments. Every file with the prefix rather than the one
  * account's, because the id of the person leaving is not always known, and a stale copy of
  * someone else's is exactly what this exists to prevent. The exception is named by id: the
  * person arriving keeps the copy and the outbox under their own name, so edits they made
- * offline before a refused session are still there to replay (see `offline-cache.ts`) —
+ * offline before a refused session are still there to replay (see `offline-cache.ts`),
  * and their files directory (`store/files.ts`), which holds the bytes of the uploads in
  * that outbox and of the notebooks they chose to keep. Their search index stays with the
  * copy it indexes.
@@ -20,7 +20,7 @@ import { filesDirName, isFilesDir, isOutbox, isStoreFile, outboxName, searchFile
  * The store is closed first: the engine holds the file through sync access handles, and
  * OPFS refuses to remove a file something holds. Closing the library closes its search
  * index with it. Not when the open one is the kept one.
- * Never throws — a browser without OPFS or IndexedDB has nothing to remove.
+ * Never throws: a browser without OPFS or IndexedDB has nothing to remove.
  */
 export async function wipeLocalStores(except?: string): Promise<void> {
   const keep = except === undefined ? null : { stores: [storeFileName(except), searchFileName(except)], outbox: outboxName(except), files: filesDirName(except) };
@@ -29,8 +29,8 @@ export async function wipeLocalStores(except?: string): Promise<void> {
   /*
    * The other tabs' closes race this: told, each one is still stopping its search sync,
    * its outbox and its engine before it lets go of the file. The outbox's delete waits
-   * for their connections on its own (`wipeOutboxes`); the store's file does not — OPFS
-   * refuses to remove a file a worker still holds, and the refusal is swallowed — so it
+   * for their connections on its own (`wipeOutboxes`); the store's file does not (OPFS
+   * refuses to remove a file a worker still holds, and the refusal is swallowed) so it
    * is tried again a few times after the outbox deletes have settled, which is usually
    * after the other tabs have closed. Bounded: a tab that will not let go leaves the
    * file for the next wipe, as it did before the other tabs were told at all. The tries
@@ -64,7 +64,7 @@ const STORE_FILE_RETRY_MS = 500;
  *
  * A library is held by more than the tab that signed out. Every tab the account was open
  * in holds the store's file through its worker, a connection to the outbox's IndexedDB
- * database, and — for one of them — the leadership of each collection, through which the
+ * database, and, for one of them, the leadership of each collection, through which the
  * others' writes go. None of that went away when the account did: a tab signed out from
  * underneath bounced to the sign-in screen and kept the lot, and the wipe below then ran
  * against it. The outbox's `deleteDatabase` waited on a connection the other tab never
@@ -72,7 +72,7 @@ const STORE_FILE_RETRY_MS = 500;
  * sign-in's open of the same database queued behind that delete, for good: the app sat
  * on "Opening your notes…" in every tab until all of them were closed (seen with three
  * tabs open, 2026-10-10). Told, the other tabs close their libraries, which releases the
- * file, the connection and the leadership — in their own time; `wipeLocalStores` says
+ * file, the connection and the leadership, in their own time; `wipeLocalStores` says
  * what waits for that and what is tried again.
  *
  * The wipe that keeps one account's copy (`except`) is that account signing in, and the
@@ -86,7 +86,7 @@ const CHANNEL = 'unbent-libraries';
 
 /**
  * This tab's one channel object, the listener's, posted on as well as listened to. A
- * message reaches every *other* channel object of the name — the browser never delivers
+ * message reaches every *other* channel object of the name: the browser never delivers
  * one back to the object that posted it, but it does deliver to a second object in the
  * same tab. Posted from a fresh object, the wipe was heard by this tab's own listener,
  * which closed the library a wipe `except` an account had just set out to keep (found in
@@ -108,16 +108,16 @@ function closeLibrariesInOtherTabs(except?: string): void {
 
 /**
  * Hears another tab's wipe, and closes this tab's library and store for it, keeping every
- * file: what `closeLocalStores` does for a refused session, for the same reason — this tab
+ * file: what `closeLocalStores` does for a refused session, for the same reason. This tab
  * decides nothing about the account; the one wiping has. Installed once, at start, and
  * before any wipe can post: the wipe posts on this listener's own object.
  *
  * `onClosed` runs once the close has settled or the wipe's wait for it (`CLOSE_WAIT_MS`)
- * has run out — so not on the library being closed, which a stuck queue can still be
- * holding — and not for a library kept. The caller passes a check of the session with
+ * has run out (so not on the library being closed, which a stuck queue can still be
+ * holding) and not for a library kept. The caller passes a check of the session with
  * the server (`main.tsx`): this tab's session store still names the account the other
  * tab just signed out, and its next navigation would open that account's library again
- * from the cached answer — making the files the wipe just removed anew, and for a
+ * from the cached answer, making the files the wipe just removed anew, and for a
  * different person's sign-in, pulling their feed into a file named for the old account.
  * Passed in rather than imported, since `auth-client` reaches this module through
  * `offline-cache` and the import would be a cycle.
@@ -143,7 +143,7 @@ export function installLibraryCloser(onClosed?: () => void): () => void {
  * hold for good, and the sign-out that awaits this would hang with it. Past the bound
  * the removals go ahead: the outbox's delete waits for its connections on its own, and a
  * store file still held fails and is tried again by the next wipe, so nothing is lost by
- * not waiting — only the store's file is left behind until then. Not
+ * not waiting: only the store's file is left behind until then. Not
  * `LIBRARY_OPEN_TIMEOUT_MS`, which is sized for a cold open on a phone; a close that has
  * not finished in a few seconds is wedged, not slow.
  */
@@ -167,8 +167,8 @@ async function wipeStoreFiles(keep: string[] = [], keepFiles?: string): Promise<
   try {
     const root = await navigator.storage.getDirectory();
     const names: string[] = [];
-    // The kept account's databases — its library and its search index, which holds the text
-    // of the files it keeps offline — and the journal and WAL files SQLite writes beside each.
+    // The kept account's databases (its library and its search index, which holds the text
+    // of the files it keeps offline) and the journal and WAL files SQLite writes beside each.
     for await (const [name] of root.entries()) if (isStoreFile(name) && !keep.some((k) => name.startsWith(k))) names.push(name);
     const dirs: string[] = [];
     for await (const [name] of root.entries()) if (isFilesDir(name) && name !== keepFiles) dirs.push(name);

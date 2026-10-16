@@ -5,15 +5,15 @@ import type { D1Database } from '@cloudflare/workers-types';
  *
  * Better Auth's provider has endpoints for listing and deleting a *consent* record, but a
  * consent is only the note that permission was given. Deleting it does not touch the tokens
- * issued under it, and access tokens here are verified by signature alone — no database read
- * on the hot path, which is what keeps a tool call cheap. So a deleted consent leaves the
+ * issued under it, and access tokens here are verified by signature alone (no database read
+ * on the hot path), which is what keeps a tool call cheap. So a deleted consent leaves the
  * app working exactly as before, and its refresh token can still mint new access tokens.
  * Measured, not assumed: revoking through the plugin's own endpoint and then calling the
  * MCP endpoint still answered 200.
  *
  * A "Disconnect" button that does not disconnect is worse than no button, so revocation
  * happens here instead: delete the client's tokens for this user, then the consent. Access
- * tokens already minted stay valid until they expire, which is an hour by default — the
+ * tokens already minted stay valid until they expire, which is an hour by default: the
  * unavoidable cost of stateless verification, and the reason the confirmation says access
  * ends rather than that every request stops this second.
  *
@@ -33,7 +33,7 @@ export class ConnectedAppsRepo {
    * Withdraw one app's access.
    *
    * Scoped by user id on every statement, so a consent id belonging to someone else matches
-   * nothing rather than revoking their grant — the same rule the note repos follow, and it
+   * nothing rather than revoking their grant: the same rule the note repos follow, and it
    * matters more here because the id arrives from the browser.
    *
    * Refresh tokens go first. They are what lets a client mint new access tokens, so if only

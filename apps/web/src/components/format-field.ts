@@ -4,7 +4,7 @@ import { MAX_STAR_GLYPHS, ratingRendersAsStars, type FieldScale, type FieldType,
  * A rating as glyphs: filled, half and empty stars up to the scale's max.
  *
  * `½` rather than a half-star character, because no half star exists in a font that can
- * be relied on — the ones that look right are icon fonts or SVG. A digit-and-a-half is
+ * be relied on: the ones that look right are icon fonts or SVG. A digit-and-a-half is
  * unambiguous in a row of stars and reads at a list row's size, which the alternative of
  * rounding to the nearest whole star does not: a 3.5 shown as ★★★★ is simply wrong.
  */
@@ -26,7 +26,7 @@ function formatRating(value: number, scale: FieldScale): string {
  * Only the kinds whose stored form is not already readable are touched: a checkbox says
  * Yes or No rather than true or false, a number gets the viewer's separators, a rating is
  * drawn as its stars, an amount as money, and a multi-select's options are joined with
- * commas. Dates stay `YYYY-MM-DD` — it sorts by eye, and it is what the person typed.
+ * commas. Dates stay `YYYY-MM-DD`: it sorts by eye, and it is what the person typed.
  */
 export function formatFieldValue(
   type: FieldType,
@@ -67,12 +67,12 @@ export function formatCurrency(n: number, currency: string): string {
  * An amount as it sits in its input: `141.80` for a stored `141.8`, as a price is
  * written, and the digits the person typed beyond that left alone.
  *
- * Padded to the currency's own minor unit — two places for dollars, none for yen — and
+ * Padded to the currency's own minor unit (two places for dollars, none for yen) and
  * never rounded: a stored `12.345` reads `12.345`, because an input that showed less
  * than the value would save less the next time it was touched. Without the symbol or the
  * separators of `formatCurrency`, since this is the text being edited, and a `1,234.50`
- * typed back would not parse. A string that is not a plain decimal — one still being
- * typed, `12.` — is returned as it is.
+ * typed back would not parse. A string that is not a plain decimal (one still being
+ * typed, `12.`) is returned as it is.
  */
 export function amountText(value: FieldValue, currency: string): string {
   const text = String(value);
@@ -92,7 +92,7 @@ function currencyDigits(currency: string): number {
   }
 }
 
-/** The symbol a currency draws with — `$`, `€`, `£` — or the code where it has none. */
+/** The symbol a currency draws with (`$`, `€`, `£`) or the code where it has none. */
 export function currencySymbol(currency: string): string {
   try {
     return (

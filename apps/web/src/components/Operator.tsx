@@ -12,7 +12,7 @@ import { operatorAccountsQuery, operatorBackupsQuery } from '../queries.js';
 
 /**
  * The operator's page (MAK-171, part 5): the backup's health, then every account on the
- * instance. Operator only — the tab is drawn for a session the backups route answers
+ * instance. Operator only: the tab is drawn for a session the backups route answers
  * (`use-operator.ts`), and every route it reads answers anyone else 404.
  *
  * Health first, because it is the question the page exists to answer at a glance:
@@ -281,7 +281,7 @@ export function AccountSearch({ search, onSearch }: { search: string; onSearch: 
  * Each row opens the account's page, and says so: the email is the link, and a chevron
  * at the row's end is the sign a row that opens shares with a version in a note's
  * history (`RowChevronIcon`). It is a second way to the same page, so it is out of the
- * tab order and the accessibility tree — one link per row for a keyboard or a reader —
+ * tab order and the accessibility tree (one link per row for a keyboard or a reader)
  * and a 44px target on a phone, where the row is a card and the chevron sits alone at its
  * top right. The first version had the email alone, in the page's ink, and nothing told a
  * reader it went anywhere (found in the part 6 rehearsal). The name is drawn only when it

@@ -3,14 +3,14 @@
  * (MAK-108), and the one thing the rest of the store needs to know from it.
  *
  * The outbox lives below the React tree and holds no query client; `onPlanRefused` is
- * how the thing that should happen next — the plan read again, so the banner and the
- * read-only editor appear — reaches `usePlan`, which listens. Told once a minute at
+ * how the thing that should happen next (the plan read again, so the banner and the
+ * read-only editor appear) reaches `usePlan`, which listens. Told once a minute at
  * most: the refused entry is kept and tried again on the executor's own clock, and a
  * read of the plan on every try would be a read a minute for as long as the tab is open.
  *
  * `planLapsed` is the outbox's own memory of it. A refused entry is kept at the head of
  * the queue, which runs one entry at a time, oldest first, so every write queued behind
- * it waits with it — and a lapsed account is promised its deletes. So while a refusal
+ * it waits with it, and a lapsed account is promised its deletes. So while a refusal
  * is waiting, the deletes go to the server directly rather than behind it
  * (`trashNotes` and the rest in actions.ts), and the flag is cleared the moment any
  * queued write is accepted, which is the server saying the plan is active again. A set
@@ -19,9 +19,9 @@
  * The plan's own word closes the loop (`planIs`): once the page has read the plan and it
  * says inactive, the kept entry is not sent again until the plan says otherwise. Without
  * that the executor replayed it on its own clock, about once a minute, and every replay
- * was a request answered 402 and a read of the plan after it — two requests a minute
+ * was a request answered 402 and a read of the plan after it: two requests a minute
  * from a holder tab left open on a lapsed account, for as long as it was open. And the
- * moment the plan reads as active again — the checkout done, the plan re-read — the
+ * moment the plan reads as active again (the checkout done, the plan re-read), the
  * executor is nudged (`onPlanActive`, which the outbox's online detector listens to), so
  * the kept edit lands at once rather than when the next minute's replay came round.
  */

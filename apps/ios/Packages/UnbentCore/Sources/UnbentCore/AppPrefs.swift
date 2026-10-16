@@ -22,7 +22,7 @@ public func normalizeOrigin(_ raw: String) -> String {
 ///
 /// The scheme is left out for every instance, not only https ones. Three screens each
 /// stripped `https://` by hand, so production read `unbent.app` while a dev server beside
-/// it read `http://localhost:5204` — the same line in two shapes, for no reason anyone
+/// it read `http://localhost:5204`, the same line in two shapes, for no reason anyone
 /// chose. An address that will not parse is shown as it was given.
 public func displayHost(_ origin: String) -> String {
     guard let url = URLComponents(string: normalizeOrigin(origin)), let host = url.host, !host.isEmpty else {
@@ -43,7 +43,7 @@ public final class AppPrefs {
     private let defaults: UserDefaults
     private let defaultInstance: String
 
-    /// - Parameter defaultInstance: where the app signs in until told otherwise — the
+    /// - Parameter defaultInstance: where the app signs in until told otherwise: the
     ///   build's `UNBENT_INSTANCE_SCHEME` and `UNBENT_INSTANCE_HOST`.
     public init(defaults: UserDefaults, defaultInstance: String) {
         self.defaults = defaults
@@ -63,7 +63,7 @@ public final class AppPrefs {
 
     /// Where the last capture was filed, offered first by the next one.
     ///
-    /// A share sheet is used in runs — five receipts in a row go to the same place — and
+    /// A share sheet is used in runs (five receipts in a row go to the same place) and
     /// the notebook picked last time is the likeliest answer. Per origin like the session,
     /// since a notebook name belongs to one instance's account.
     public var lastNotebook: String? {

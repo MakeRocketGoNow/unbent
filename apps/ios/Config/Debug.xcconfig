@@ -3,7 +3,7 @@
 // A second app beside the release one, as on Android: its own bundle id, so its own
 // session, web data and App Group; its own name and an amber icon, because a label is
 // truncated under an icon and in the share sheet, which is exactly where telling the two
-// apart matters — picking the wrong one sends what was shared to a different account.
+// apart matters: picking the wrong one sends what was shared to a different account.
 UNBENT_BUNDLE_ID_SUFFIX = .debug
 UNBENT_DISPLAY_NAME = Unbent (debug)
 UNBENT_CONNECT_SCHEME = unbent-debug

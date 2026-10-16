@@ -439,7 +439,7 @@ describe('appDestination', () => {
 /*
  * What the export retries. A dropped connection reaches it two ways: fetch's own TypeError
  * from a file read, and the `OfflineError` the API client makes of one for a page read.
- * The second is an `ApiError` with status 0, and was taken for a refusal — one blip on a
+ * The second is an `ApiError` with status 0, and was taken for a refusal: one blip on a
  * page ended an hour-long export.
  */
 describe('transient', () => {
@@ -459,7 +459,7 @@ describe('selectionPage', () => {
   /*
    * A selection is asked for a run of ninety ids at a time, the most one request may
    * name. The walk has to visit every run, carry on inside a run the server cut short, and
-   * count the whole selection once — the server only ever sees one run.
+   * count the whole selection once: the server only ever sees one run.
    */
   const ids = Array.from({ length: 200 }, (_, i) => `id-${i}`);
   const note = (id: string) => ({ id }) as unknown as ExportedNote;

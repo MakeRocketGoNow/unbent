@@ -3,8 +3,8 @@ import { importFormat, type ImportFormat } from '@unbent/enex';
 /**
  * What the picker says about the file it was handed, before Start is pressed.
  *
- * The importers do different things with a name — an ENEX file's name becomes the
- * notebook, an archive's is ignored because every note names its own — and that is the
+ * The importers do different things with a name (an ENEX file's name becomes the
+ * notebook, an archive's is ignored because every note names its own) and that is the
  * one thing worth saying before the run, since it is the one thing the person can still
  * change by renaming the file. A file no importer takes is named for what it is not,
  * and `format` is null so the button stays off.

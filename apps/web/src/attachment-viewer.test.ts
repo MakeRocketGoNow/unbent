@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { downloadUrl, labelFor, openAttachmentViewer } from './attachment-viewer.js';
 
 /**
- * pdf.js never runs here — jsdom has no canvas — so the document is a stub that reports a
+ * pdf.js never runs here (jsdom has no canvas), so the document is a stub that reports a
  * page count and records what was asked of it. What these tests are about is the dialog:
  * that it opens and closes cleanly, that one replaces another, and that a PDF's document
  * is acquired on open and released on close.
@@ -335,7 +335,7 @@ describe('paging', () => {
  *
  * These spy on the history push and back calls rather than reading `history.length`:
  * jsdom caps that length at 2 and never shrinks it on `back()` (a probe established this),
- * so it cannot witness a pop. The spies witness the contract directly — one push on open,
+ * so it cannot witness a pop. The spies witness the contract directly: one push on open,
  * one back on a control-close, no back when the gesture already popped. `popstate` is fired
  * by hand, which is what a real back press does and what jsdom does from `back()`, only
  * synchronously here so the tests need no waiting.
@@ -388,7 +388,7 @@ describe('history', () => {
   it('stops listening for the gesture once it is closed', () => {
     const dialog = openAttachmentViewer(img);
     dialog.querySelector<HTMLButtonElement>('.viewer-close')?.click();
-    // A stray popstate after closing must do nothing — the listener is gone.
+    // A stray popstate after closing must do nothing: the listener is gone.
     expect(() => pop()).not.toThrow();
     expect(backSpy).toHaveBeenCalledTimes(1);
   });

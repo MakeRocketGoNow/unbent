@@ -4,8 +4,8 @@ import { z } from 'zod';
  * The cursor a list hands back for its next page: the sort key *and* the id of the last
  * row.
  *
- * Comparing the sort key alone is only safe when it is unique. Titles are not — an
- * archive is full of notes called "Receipt" — and a strict `<` on the key would step
+ * Comparing the sort key alone is only safe when it is unique. Titles are not: an
+ * archive is full of notes called "Receipt", and a strict `<` on the key would step
  * over every row sharing the boundary value. Carrying the id makes the comparison a
  * lexicographic one on `(key, id)`, which is exactly the order the rows came back in.
  *
@@ -14,8 +14,8 @@ import { z } from 'zod';
  * inside is what the cursor *was*, verbatim, until MAK-217, and a control character in an
  * answer is one a model has to reproduce exactly. One wrote it back as the six characters
  * `\u001f`, which nothing refused, and the list answered with its first page again, as
- * if that were the next one. So the cursor goes out as base64url of that string — plain,
- * printable, and safe in a query string — and one that does not decode is refused
+ * if that were the next one. So the cursor goes out as base64url of that string (plain,
+ * printable, and safe in a query string) and one that does not decode is refused
  * (`cursorSchema`) rather than read as "start from the top".
  *
  * A cursor in the old form still decodes, for a client that held one across the deploy.

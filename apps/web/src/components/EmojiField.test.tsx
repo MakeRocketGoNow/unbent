@@ -5,7 +5,7 @@ import { EmojiField } from './EmojiField.js';
 /**
  * The square and the panel around frimousse's grid. The grid itself is frimousse's and is
  * virtualised from measured row heights, which jsdom does not have, so choosing a cell is
- * left to the browser; what is pinned here is this component's part — what the square
+ * left to the browser; what is pinned here is this component's part: what the square
  * shows and says, how the panel opens and closes, and "Remove".
  */
 describe('EmojiField', () => {

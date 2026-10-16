@@ -22,7 +22,7 @@ const OPERATOR = { OPERATOR_NAME: 'Example Co', OPERATOR_EMAIL: 'help@example.co
 
 /**
  * The rule these pin is that nothing is inferred. An instance that has not been told who
- * runs it says so, rather than falling back to whoever wrote the code — which is what the
+ * runs it says so, rather than falling back to whoever wrote the code, which is what the
  * constants in the legal documents used to do to every fork.
  */
 describe('operatorOf', () => {
@@ -43,7 +43,7 @@ describe('operatorOf', () => {
     expect(operatorOf(env({}))).toBeUndefined();
   });
 
-  /** The address the operator configured, port and all — not whatever host asked. */
+  /** The address the operator configured, port and all, not whatever host asked. */
   it('takes the host from APP_URL', () => {
     const at = env({ ...OPERATOR, APP_URL: 'https://notes.example.org:8443' });
     expect(operatorOf(at)?.host).toBe('notes.example.org:8443');
@@ -51,7 +51,7 @@ describe('operatorOf', () => {
 });
 
 /**
- * Who runs the instance, for the one thing only they should be shown — a title model that
+ * Who runs the instance, for the one thing only they should be shown: a title model that
  * rejected its key. The same "nobody by default" rule as the rest of this file: an
  * unconfigured fork flags no one, so its notes read the same for everyone.
  */
@@ -112,7 +112,7 @@ describe('legalLinksOf', () => {
 
   /*
    * Half-applied would mean Terms linking to the operator's own page while Privacy quietly
-   * fell back to a document nobody wrote — a mismatch no reader would notice and no
+   * fell back to a document nobody wrote: a mismatch no reader would notice and no
    * operator would intend.
    */
   it('ignores half a pair of external URLs', () => {
@@ -164,7 +164,7 @@ describe('legalVersionOf', () => {
   });
 
   /* The front page states a price, so its instance publishes the payment terms before
-     Paddle has issued the keys that turn billing on — which its review requires. */
+     Paddle has issued the keys that turn billing on, which its review requires. */
   it('says it where the front page is on, with or without billing', () => {
     expect(legalVersionOf(env({ FRONT_PAGE: '1' }), 'built-in').change).toBe(LEGAL_CHANGE?.text);
     expect(legalVersionOf(env({ FRONT_PAGE: '1', ...PADDLE }), 'built-in').change).toBe(LEGAL_CHANGE?.text);
@@ -235,7 +235,7 @@ describe('posthogHost and posthogAssetsHost', () => {
 
 /**
  * The front page states unbent.app's prices, so the case that matters is the fork that
- * set nothing — and the one that set something other than the documented value, which
+ * set nothing, and the one that set something other than the documented value, which
  * must not publish an offer by accident either.
  */
 describe('frontPageOf', () => {

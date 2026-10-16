@@ -8,7 +8,7 @@ import { formatRevisionWhen, rangeLabel, timeAgo } from './format-when.js';
  * usually open at one end and a label that could only describe a closed range would have
  * nothing to say about the commoner case. And the days are read as local days: parsing
  * `YYYY-MM-DD` as an instant gives midnight UTC, which is the previous day everywhere west
- * of London — a range set to January would have read as December.
+ * of London: a range set to January would have read as December.
  */
 describe('rangeLabel', () => {
   it('has nothing to say about an absent range', () => {
@@ -18,7 +18,7 @@ describe('rangeLabel', () => {
   /*
    * "From" and "Until", which are the words the Android app uses for the same filter and
    * the words the two inputs are labelled with. It said "Since" here, which read as a
-   * different kind of boundary from the "Until" it pairs with — and the two apps naming one
+   * different kind of boundary from the "Until" it pairs with, and the two apps naming one
    * filter differently is how people come to think they behave differently. They do not:
    * both send the same `from`/`to` to the same endpoint.
    */
@@ -35,7 +35,7 @@ describe('rangeLabel', () => {
 
   /*
    * The timezone trap. Both ends have to name the day that was typed, in every zone the app
-   * runs in — this is the assertion that fails if anyone "simplifies" the parse to
+   * runs in: this is the assertion that fails if anyone "simplifies" the parse to
    * `new Date(iso)`.
    */
   it('names the day that was picked, not the day before it', () => {

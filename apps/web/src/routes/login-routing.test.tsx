@@ -30,7 +30,7 @@ const load = vi.fn();
  * redirecting an unauthenticated visit stops that route's requests from being made. When
  * the gate was a component instead, `/notes` fired four requests with no cookie, each
  * 401'd into a route nobody could see, and the first successful sign-in swapped the login
- * screen for that route's error boundary — "Something went wrong! 401 Unauthorized" —
+ * screen for that route's error boundary ("Something went wrong! 401 Unauthorized"),
  * which only a reload cleared. `load` not being called is that bug.
  *
  * The routes are rebuilt rather than imported from the generated tree so the test needs no
@@ -181,7 +181,7 @@ describe('the session gate', () => {
 
   /**
    * The reset page is for people who cannot sign in. Gating it made the link in the mail
-   * open a sign-in screen — the one thing its reader has already established they cannot use.
+   * open a sign-in screen, the one thing its reader has already established they cannot use.
    */
   it('lets the password reset page render without a session', async () => {
     signedOut();
@@ -247,7 +247,7 @@ describe('the sign-in screen with a session already', () => {
   });
 
   /**
-   * Anything can write that parameter — a link in a mail, a page on another site — and it
+   * Anything can write that parameter (a link in a mail, a page on another site) and it
    * is followed the moment a session exists. See `safeRedirect` for the rest of the rules.
    */
   it('will not be sent to another origin', async () => {

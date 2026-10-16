@@ -18,14 +18,14 @@ interface AboutProps {
  *
  * Made for the build. It was a line in the account menu first: under the address it read
  * as a third grey line of identity, and under Sign out as an afterthought. Settings is
- * about the app rather than the account, and a page here has room to say the rest — the
+ * about the app rather than the account, and a page here has room to say the rest: the
  * date beside the commit, whose notes a preview reads, where the source is. The menu keeps
  * the short commit on dev and previews, inside their instance line, because there it is
  * checked after every push; production's build is here alone, and `curl` reads it from
  * `index.html` without signing in.
  *
- * A definition list rather than paragraphs: these are facts read one at a time — "which
- * commit is this?" — and a label down the side is what lets an eye land on the one it
+ * A definition list rather than paragraphs: these are facts read one at a time ("which
+ * commit is this?"), and a label down the side is what lets an eye land on the one it
  * came for.
  */
 export function About({ config, host, build = buildInfo }: AboutProps) {
@@ -46,7 +46,7 @@ export function About({ config, host, build = buildInfo }: AboutProps) {
         </Fact>
 
         {/* The address alone on production; on a scratch instance, which one and, on a
-            preview, whose notes an edit here changes — the menu's line, unabridged. */}
+            preview, whose notes an edit here changes: the menu's line, unabridged. */}
         <Fact term="Instance">
           <span className="about-value">{host}</span>
           {label && (

@@ -23,8 +23,8 @@ import { jsonResult, noteRef, notFound, toolError } from './result.js';
  * The tools that only read.
  *
  * Schemas are written natively here rather than reused wholesale from `@unbent/shared`.
- * Those are query-string schemas — they coerce numbers out of strings and read `trashed` as
- * the literal "1" — because that is what a URL carries. MCP arguments arrive as real JSON,
+ * Those are query-string schemas: they coerce numbers out of strings and read `trashed` as
+ * the literal "1", because that is what a URL carries. MCP arguments arrive as real JSON,
  * so a number is a number and a boolean is a boolean, and a coercing schema would advertise
  * the wrong types to the model. The limits themselves are shared, so they cannot drift.
  */
@@ -46,7 +46,7 @@ const notebookFilter = z
 /**
  * Which date `list_notes` filters on. It follows the sort, but "title" has no date of its
  * own and the trash is always ranged by when a note was trashed, so "whichever date the
- * sort names" — which this used to say — was wrong for both.
+ * sort names", which this used to say, was wrong for both.
  */
 const LIST_DATE_RANGE =
   'Inclusive (UTC). Filters the created date when sort is "created", otherwise the updated ' +
@@ -86,7 +86,7 @@ const LIST_FILES_PER_NOTE = 10;
 /**
  * What `read` and `summary` mean on a file, said once for `get_note` and `list_notes`
  * (MAK-172). The statuses are spelled out because "no summary" has two causes that call
- * for different moves — ask for the read (`pending`) or stop asking (`none`) — and a
+ * for different moves: ask for the read (`pending`) or stop asking (`none`), and a
  * model left to guess would call get_attachment_text on every one to find out which.
  */
 const ATTACHMENT_SUMMARY =
@@ -98,9 +98,9 @@ const ATTACHMENT_SUMMARY =
   'total, dates and order or invoice number found in it ("Total: $18.67 · Date: ' +
   '2026-03-02 · Order #112-0042"), or up to three amounts in place of a total when none is ' +
   'labelled ("Amounts: $1,200.00, $14,350.10"), each left out when the text has none; "pending" ' +
-  'when it has not been read yet — for a picture, get_attachment hands you the file and ' +
+  'when it has not been read yet (for a picture, get_attachment hands you the file and ' +
   'set_attachment_text records what you read; otherwise pressing Auto-fill on the note in ' +
-  'the app reads it; "none" when it was read and nothing was found, or nothing on ' +
+  'the app reads it); "none" when it was read and nothing was found, or nothing on ' +
   'this instance reads that kind of file. summary is null unless read is "vision", "text" ' +
   'or "assistant", and is a few hundred characters at most: get_attachment_text has the whole text.';
 
@@ -122,8 +122,8 @@ const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'expected YYYY-MM-DD').
  * Narrowing by a custom field's value, the MCP's spelling of the web's `field=` filter.
  *
  * Fields are named, not numbered, as everywhere else a model meets them, and the op is
- * one of the shared five. The value is a string whatever the field's type — it is what
- * the URL form carries — and what it means is the field's: an option for `eq` on a select
+ * one of the shared five. The value is a string whatever the field's type (it is what
+ * the URL form carries) and what it means is the field's: an option for `eq` on a select
  * or multiselect, `true`/`false` for a checkbox, `YYYY-MM-DD` or a number for a range.
  */
 const fieldFiltersSchema = z
@@ -183,7 +183,7 @@ function resolveFieldFilters(
 
 /**
  * The field definitions of the notebook a list is scoped to, for the arguments that name
- * fields — `fields` and `include` — which is why each of them needs one: a name means
+ * fields (`fields` and `include`), which is why each of them needs one: a name means
  * nothing outside a notebook, and two notebooks may each have a "Date". One call for the
  * notebook and its definitions, made once whichever of the two asked: this runs on each
  * page of a walk, ahead of the page itself.
@@ -290,8 +290,8 @@ export function registerReadTools(
       title: 'List notes',
       description:
         'List notes without searching, newest first by default. Use this to browse, to page ' +
-        'through a notebook or tag, to narrow a notebook by its custom field values, or — with ' +
-        'sort "updated" and a from date — to find what changed recently. Returns an excerpt ' +
+        'through a notebook or tag, to narrow a notebook by its custom field values, or (with ' +
+        'sort "updated" and a from date) to find what changed recently. Returns an excerpt ' +
         'per note rather than the body; call get_note for that. With attachmentSummaries, ' +
         'each note also lists its files with a short summary of each, which is usually enough ' +
         'to fill a notebook\'s fields from its scans without reading every file. When the ' +
@@ -325,7 +325,7 @@ export function registerReadTools(
             'With compact, the custom fields to add to each row, by name, as fields keyed by ' +
               'name with null where a note has no value. Needs notebook, and every name must ' +
               'be one of its fields. For walking a notebook to fill or check a field when a ' +
-              'value or two beside each title is all you need — a full page carries every ' +
+              'value or two beside each title is all you need: a full page carries every ' +
               'field and an excerpt, and holds a fifth as many notes.',
           ),
         attachmentSummaries: attachmentSummariesFlag("each note's", ' Not with compact.'),
@@ -410,8 +410,8 @@ export function registerReadTools(
           to,
           trashed,
         },
-        // Counted once, on the first page. A count that no stored number answers — a field
-        // filter, a date range, `untagged` — reads every note in scope, and repeating it on
+        // Counted once, on the first page. A count that no stored number answers (a field
+        // filter, a date range, `untagged`) reads every note in scope, and repeating it on
         // each page of a long walk cost more than the pages did: ten pages of the untagged
         // notes of a three-thousand-note account read 48,000 rows, 45,000 of them counting.
         // The answer cannot have changed in a way the caller could use mid-walk anyway.
@@ -464,7 +464,7 @@ export function registerReadTools(
         'of its attachments, each with the exact Markdown that shows it in the body and a ' +
         'short summary of what it is. ' +
         ATTACHMENT_SUMMARY +
-        ' Attachment bytes are not included — use get_attachment_text for the whole of what a ' +
+        ' Attachment bytes are not included. Use get_attachment_text for the whole of what a ' +
         'file says, and add_attachment to give the note a new file.',
       inputSchema: z.object({ noteId: z.string().uuid() }),
       annotations: { readOnlyHint: true, openWorldHint: false },
@@ -478,7 +478,7 @@ export function registerReadTools(
         body: note.body,
         /**
          * With the path and the Markdown, so a model can put a file back in the body, or
-         * move a link, without being told the syntax — the angle brackets a name with a
+         * move a link, without being told the syntax: the angle brackets a name with a
          * space needs are the kind of thing a model gets wrong when left to infer them.
          */
         attachments: files.map((f) => {
@@ -506,13 +506,13 @@ export function registerReadTools(
       description:
         "The text held for an attachment: a PDF's text layer; what the instance's vision " +
         'model read off a picture or a text-less scan when someone pressed Auto-fill on its ' +
-        'note — a name, what the file is and shows, then any text on it; or what an ' +
+        'note (a name, what the file is and shows, then any text on it); or what an ' +
         'assistant recorded with set_attachment_text. This is what makes a scanned document ' +
         "or a photo readable. A PDF's layer is read after upload and a picture only on a " +
         'press, so a file may have no text yet, which is reported as such rather than as an ' +
         'empty document. read says which, as it does on get_note: "pending" for a file still ' +
-        'to be read — a picture you can read yourself with get_attachment and record with ' +
-        'set_attachment_text — and "none" for one that was read and had nothing, or that ' +
+        'to be read (a picture you can read yourself with get_attachment and record with ' +
+        'set_attachment_text) and "none" for one that was read and had nothing, or that ' +
         'nothing on this instance reads. A receipt or a statement usually says what it is in its ' +
         'first page and spends the rest on terms: pass maxChars to read only the opening, ' +
         'and offset to read on from where a cut answer stopped.',
@@ -583,8 +583,8 @@ export function registerReadTools(
       description:
         'Every notebook with the number of live notes in it, plus the count of notes filed in ' +
         'none. Notebooks are flat: there is no nesting. Each notebook carries its purpose when ' +
-        'one is set — a sentence saying what belongs in it, which auto-fill reads when filing a ' +
-        'note — and its emoji when one is set, and lists its custom fields (name, type, and the options of a select or ' +
+        'one is set (a sentence saying what belongs in it, which auto-fill reads when filing a ' +
+        'note) and its emoji when one is set, and lists its custom fields (name, type, and the options of a select or ' +
         'multiselect); values are read on a note and set by name through create_note and ' +
         'update_note.',
       inputSchema: z.object({}),
@@ -627,8 +627,8 @@ export function registerReadTools(
         'is one tag in any case: tagging a note "receipts" when Receipts exists gives it ' +
         'Receipts. Reuse a name from here when tagging, rather than making a near-duplicate ' +
         'such as "receipt" beside "Receipts". With notebook, tag or ' +
-        'both, the counts are over the live notes of that set only — what else the notes in ' +
-        'a notebook carry, or the notes that carry these tags — and tags with none in it are ' +
+        'both, the counts are over the live notes of that set only (what else the notes in ' +
+        'a notebook carry, or the notes that carry these tags) and tags with none in it are ' +
         'left out, as are the tags named in tag, which every note in the set carries.',
       inputSchema: z.object({
         notebook: notebookFilter,

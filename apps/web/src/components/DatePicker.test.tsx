@@ -14,7 +14,7 @@ import { DATE_PRESETS } from './date-presets.js';
  *
  * The arithmetic is `date-presets.ts`'s and is tested there. What is left here is the page's
  * own behaviour: which row claims to be current, that picking one clears the other end, and
- * that the custom fields are revealed rather than always shown — but are already open when
+ * that the custom fields are revealed rather than always shown, but are already open when
  * a custom range is what is set, so the page never hides the state it is in.
  */
 function harness(from?: string, to?: string, entry = '/notes') {
@@ -36,7 +36,7 @@ const current = (c: HTMLElement) =>
 describe('DatePicker', () => {
   afterEach(cleanup);
 
-  it('offers the presets, then Any time, then Custom — the order of how often each is wanted', async () => {
+  it('offers the presets, then Any time, then Custom: the order of how often each is wanted', async () => {
     const { container, findByText } = harness();
     await findByText('Any time');
     expect(options(container)).toEqual([
@@ -60,7 +60,7 @@ describe('DatePicker', () => {
   });
 
   /*
-   * Every preset is open-ended, so setting one has to clear any end already there — a stale
+   * Every preset is open-ended, so setting one has to clear any end already there: a stale
    * `to` would silently narrow the range the row names.
    */
   it('clears the far end when a preset is picked', async () => {
@@ -101,7 +101,7 @@ describe('DatePicker', () => {
   });
 
   /* The props mirror the URL in the app, so the harness starts at one that carries the
-     start — otherwise `prev` is empty and this would be testing the harness. */
+     start: otherwise `prev` is empty and this would be testing the harness. */
   it('writes a hand-typed end without disturbing the start', async () => {
     const { container, findByText, history } = harness('2019-03-04', undefined, '/notes?from=2019-03-04');
     await findByText('Custom…');

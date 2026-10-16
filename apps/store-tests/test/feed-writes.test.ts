@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { feedRows, feedSeq, freshStore, listAllTags } from './helpers.js';
 
 /**
- * What each write records in the change feed — the rows a client will act on. The rule
+ * What each write records in the change feed: the rows a client will act on. The rule
  * is in AGENTS.md: a note row for every note whose rendered shape changed, a notebook row
  * for a notebook or its fields, a tag row for a tag, an attachment row for a file; a
  * tombstone only for something gone, never for the trash. These pin the rule method by
@@ -181,7 +181,7 @@ describe('the feed records tag, notebook and field writes', () => {
     await stub.renameTag(receipts.id, 'Receipts');
     expect(await feedRows(stub, seq2)).toEqual([]);
     // A merge: the notes whose ids changed, then the tag that stays, then a tombstone
-    // for the one that went — notes first so a paged pull cannot drop the loser before
+    // for the one that went. Notes first so a paged pull cannot drop the loser before
     // the retag arrives (see `renameTag`).
     const receipt = (await stub.listTags()).find((t) => t.name === 'receipt') ?? (await listAllTags(stub)).find((t) => t.name === 'receipt')!;
     expect(await stub.renameTag(receipts.id, 'receipt', { merge: true })).toEqual({ id: receipt.id, name: 'receipt', merged: true });
@@ -265,7 +265,7 @@ describe('the feed records tag, notebook and field writes', () => {
     const rows = await feedRows(stub);
     // resolveNotebook created it, updateNotebook set the emoji, createField added the field.
     // resolveNotebook created it, updateNotebook set the emoji, createField added the
-    // field — one transaction, so one row.
+    // field: one transaction, so one row.
     expect(rows).toEqual([{ entity: 'notebook', id: first.id }]);
     const seq = await feedSeq(stub);
     await stub.importNotebook({ name: 'Podcast Bookmarks', emoji: '🎙️', fields: [{ name: 'Show', type: 'text' }] });

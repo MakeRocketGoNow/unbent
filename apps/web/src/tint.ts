@@ -7,7 +7,7 @@ export const TINT_COUNT = 6;
  * Notion gives every option a colour and stores it; here nothing is stored, and the
  * colour is a pure function of the word, so "Spicy" is the same tint on every note, in
  * both themes, and on every platform that runs this hash. FNV-1a over the code units,
- * folded to the palette's size — chosen for being short enough to reimplement natively
+ * folded to the palette's size, chosen for being short enough to reimplement natively
  * (the Android app draws tags on its own list rows) and even enough that six words land
  * on six tints more often than not. Case and edge spaces are ignored so "mtb" and "MTB",
  * which the tag editor treats as one tag, cannot come out two colours.

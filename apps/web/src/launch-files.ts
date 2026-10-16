@@ -5,11 +5,11 @@ import { notesFromFiles } from './file-notes.js';
  * Files handed to the installed app by the operating system.
  *
  * The manifest lists this app as a handler for PDFs and images. Where the browser
- * honours that — desktop Chrome and Edge, once the app is installed — opening such a file
+ * honours that (desktop Chrome and Edge, once the app is installed), opening such a file
  * with the app, dropping it on the Dock icon, or a scanner's "send to application" step
  * launches the app with the files queued on `window.launchQueue`, which `launch-queue.ts`
  * reads and hands here. Each file becomes one note, named after it, with the file attached
- * and linked from the body (`file-notes.ts`) — the same thing a drop on the note list
+ * and linked from the body (`file-notes.ts`): the same thing a drop on the note list
  * does, so a launch and a drop agree. A launch used to make one note of every file; now
  * that the list drop makes one per file, a scanner sending three pages would otherwise
  * land as three notes one way and one note the other. The first note opens.

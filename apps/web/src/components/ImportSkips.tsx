@@ -29,8 +29,8 @@ export function ImportSkips({ log, run }: { log: SkipLog; run: number }) {
         <div>
           <p className="small muted">
             {notes(log.duplicateCount)} {log.duplicateCount === 1 ? 'was' : 'were'}{' '}
-            identical to a note earlier in this file — the same title, text, tags, dates
-            and attachments — so only that earlier note was imported and nothing was lost.
+            identical to a note earlier in this file (the same title, text, tags, dates
+            and attachments), so only that earlier note was imported and nothing was lost.
             Each link opens the note that was kept.
             {listedNote(log.duplicates.length, log.duplicateCount)}
           </p>

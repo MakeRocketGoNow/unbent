@@ -17,7 +17,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
 }));
 const { AUTOSAVE_MS, PAST_AUTOSAVE_MS } = vi.hoisted(() => ({ AUTOSAVE_MS: 150, PAST_AUTOSAVE_MS: 400 }));
 
-// The autosave's real delay is 800 ms, and every save below pays it in full — the hook
+// The autosave's real delay is 800 ms, and every save below pays it in full: the hook
 // is what Workspace renders, so there is no other way through. The behaviour under test
 // is the ordering of saves and answers, not the length of the pause, so the delay is
 // shortened here: long enough that an answer arranged to land "inside the delay" still
@@ -38,8 +38,8 @@ vi.mock('../store/use-outbox.js', () => ({
 import { useOutbox, useSyncStatus } from '../store/use-outbox.js';
 
 /**
- * A save's answer can carry a change made elsewhere that did not move the note's date —
- * a notebook renamed, a tag merged in — and it becomes the next save's base. The draft
+ * A save's answer can carry a change made elsewhere that did not move the note's date
+ * (a notebook renamed, a tag merged in), and it becomes the next save's base. The draft
  * being typed must take what the person has not edited from it, or the next save sends
  * the stale value back. Both ways an answer arrives: from the outbox, and from a save
  * the server answered itself.
@@ -275,7 +275,7 @@ describe('a save that left a half-typed field out of the patch', () => {
   /*
      The outbox's subscription holds the render it was made in. A note with no Amount yet
      has no stored row to say the field is a number, so only the notebook's definitions
-     can — and the acknowledgement must read them as they are now, not as they were then.
+     can, and the acknowledgement must read them as they are now, not as they were then.
   */
   it('keeps a first value in a field the note had none for when the outbox acknowledges', async () => {
     lib.uninstall();
@@ -365,7 +365,7 @@ describe('a save that left a half-typed field out of the patch', () => {
 
   /*
      Held is for a value the person can still finish. Once the notebook no longer defines
-     the field — deleted in another tab, or the note filed elsewhere — the editor does not
+     the field (deleted in another tab, or the note filed elsewhere) the editor does not
      draw it, and holding it would leave the head on Unsaved over nothing on screen.
   */
   it('lets go of a half-typed value whose field the notebook no longer has', async () => {

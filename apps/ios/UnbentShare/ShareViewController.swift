@@ -8,7 +8,7 @@ import UnbentUI
 ///
 /// What was shared is copied into the App Group's container the moment this starts,
 /// because what a share hands over lasts only as long as the sheet. Everything after that
-/// — naming, filing, the upload — depends on nothing but that copy.
+/// (naming, filing, the upload) depends on nothing but that copy.
 ///
 /// Save hands one request to the system and closes. This process is killed moments later,
 /// so nothing is uploaded from it: the system sends the request, and the app, launched in

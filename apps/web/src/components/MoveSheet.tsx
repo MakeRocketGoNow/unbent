@@ -18,13 +18,13 @@ interface MoveSheetProps {
  * Where to file the selection: the notebooks, and the Inbox, as rows to pick one of.
  *
  * A sheet rather than a menu hanging off the bar, because a menu has no answer to an
- * archive's notebook count — the real one has dozens — and the bar it would hang from is
+ * archive's notebook count (the real one has dozens), and the bar it would hang from is
  * at the foot of the screen, where a menu opens off the bottom. The sheet is the surface
  * the filters already use: a panel beside the list on a desktop, from the floor on a
  * phone, with the find field and the capped list the tag picker settled on for the same
  * reason at the same scale.
  *
- * The rows are the drawer's rows — the same glyphs, the same pill, the counts at the end —
+ * The rows are the drawer's rows (the same glyphs, the same pill, the counts at the end),
  * since they are the same places, drawn as somewhere to send notes rather than somewhere
  * to go. Picking one files the notes and closes; nothing here needs a Done.
  *

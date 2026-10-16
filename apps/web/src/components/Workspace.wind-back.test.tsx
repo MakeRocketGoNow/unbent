@@ -17,12 +17,12 @@ import { useOutbox, useSyncStatus } from '../store/use-outbox.js';
 /**
  * An operator winds the account back while a note is open (MAK-196). The feed resets
  * and the row comes back older than the copy the workspace last saved; the workspace's
- * rule of taking only a newer copy — right for the stale row a replayed save leaves for
- * a moment — kept the edit on screen that the wind-back had removed, while the list
+ * rule of taking only a newer copy (right for the stale row a replayed save leaves for
+ * a moment) kept the edit on screen that the wind-back had removed, while the list
  * beside it had already dropped it.
  */
-const before: Note = { id: 'n1', title: 'Acme — sample card', body: 'Owner.', tags: [], notebook: null, createdAt: 0, updatedAt: 100, fields: [] };
-const edited: Note = { ...before, title: 'Acme — sample card 👾', body: 'Owner.\n\nA line typed today.', updatedAt: 200 };
+const before: Note = { id: 'n1', title: 'Acme: sample card', body: 'Owner.', tags: [], notebook: null, createdAt: 0, updatedAt: 100, fields: [] };
+const edited: Note = { ...before, title: 'Acme: sample card 👾', body: 'Owner.\n\nA line typed today.', updatedAt: 200 };
 
 function outbox(): Outbox {
   const status = (): SyncStatus => ({ pending: 0, durable: true, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map() });

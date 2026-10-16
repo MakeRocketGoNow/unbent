@@ -138,7 +138,7 @@ export function isJsonArray(text: string): boolean {
 /**
  * A currency belongs only to a plain `number`: a field converted away from number drops
  * it, for the reason `scaleColumns` gives, and a rating drops it because a rating is not
- * an amount of money — the schema refuses both in one patch, and this keeps it true when
+ * an amount of money: the schema refuses both in one patch, and this keeps it true when
  * a scale arrives on a field that had a currency.
  */
 export function currencyColumn(
@@ -151,7 +151,7 @@ export function currencyColumn(
 
 /**
  * A scale belongs only to a `number`. A field converted away from number drops it, the
- * same way `optionsColumn` drops options when a field stops being a select — otherwise a
+ * same way `optionsColumn` drops options when a field stops being a select. Otherwise a
  * scale would lie in wait and re-bound the field if it ever became a number again.
  */
 export function scaleColumns(type: FieldType, scale: FieldScale | null | undefined) {
@@ -164,7 +164,7 @@ export function scaleColumns(type: FieldType, scale: FieldScale | null | undefin
  * Whether moving to `next` can invalidate a value that was legal under `prev`.
  *
  * Only a tightening needs the values re-planned, and re-planning is a read plus a write of
- * every row — worth skipping when nothing can fail. A lower max cuts the top off, and a
+ * every row, worth skipping when nothing can fail. A lower max cuts the top off, and a
  * coarser step (0.5 to 1) outlaws every half. Gaining a scale where there was none tightens
  * by definition, since a plain number is unbounded and may hold 0, 12 or -3. Losing one
  * never does, and neither does widening.
@@ -212,14 +212,14 @@ export function decodeFieldsJson(json: string | null, ownNotebookId: string | nu
 
 /**
  * The correlated subquery that hands `list` and `get` a note's values as one JSON
- * column — the same shape as the tags subquery beside it, so the per-row cost is one
+ * column, the same shape as the tags subquery beside it, so the per-row cost is one
  * primary-key lookup rather than a join that multiplies rows. `json_object` rather than
  * a delimited string because a value can contain any character a delimiter could be.
  *
  * The name falls back to `f.notebook_name`, because a definition outlives the notebook it
  * belonged to (0017). An inner join here would have dropped the value from the note
  * entirely once the notebook row went, which is the data loss the tombstone exists to
- * prevent — a value is a note's own data, and a deleted notebook is not a reason to stop
+ * prevent: a value is a note's own data, and a deleted notebook is not a reason to stop
  * showing it.
  *
  * Nearly every value belongs to the note's own notebook, whose name both callers have
@@ -234,10 +234,10 @@ export function decodeFieldsJson(json: string | null, ownNotebookId: string | nu
 export const FIELDS_SUBQUERY = fieldsSubquery();
 
 /**
- * `FIELDS_SUBQUERY`, or with `only` — the placeholder of a JSON array of field ids — just
+ * `FIELDS_SUBQUERY`, or with `only` (the placeholder of a JSON array of field ids) just
  * those fields' values: what a compact page carries when an assistant names the fields it
  * wants beside each title (MAK-216). Driven from the ids, so each is one probe of the
- * values' primary key, and a note's other values — a receipt notebook's dozen, say — are
+ * values' primary key, and a note's other values (a receipt notebook's dozen, say) are
  * never read, nor the notebook of a leftover nobody asked for.
  */
 export function fieldsSubquery(only?: string): string {
@@ -271,8 +271,8 @@ export const TAG_SEP = '\u001F';
  * were attached, so the first one shown is the first one filed.
  *
  * From the attachment rows rather than from links in the body. The rows are what the
- * note actually holds — a file whose link was deleted from the text is still there, and
- * a link can name a file that was never uploaded — and the row is the same source the
+ * note actually holds (a file whose link was deleted from the text is still there, and
+ * a link can name a file that was never uploaded), and the row is the same source the
  * attachments panel lists from, so the two agree. The excerpt drops attachment links for
  * the same reason: the files are shown once, here.
  *
@@ -295,7 +295,7 @@ export function decodeAttachmentsJson(json: string | null): NonNullable<NoteSumm
  * A tag, field or file tier yields one row per matching tag, value or file, not per note:
  * a note tagged with three matching tags is three rows until the window function keeps its
  * best one. The tier is read in rank order and cut off at this multiple of the page, so
- * the page is exact unless the top of a tier averages more than this many rows per note —
+ * the page is exact unless the top of a tier averages more than this many rows per note,
  * in which case the page comes back short rather than wrong. Four is well past what an
  * archive shows (most notes carry one or two files) and still bounded.
  */
@@ -317,10 +317,10 @@ export const SCOPE_DRIVEN_SEARCH_MAX = 100;
 /**
  * The four sources a search reads, in tier order, and what a row from each says about its
  * match: the FTS table, which of its columns the snippet comes from, and which of the
- * matched columns it fills. `weights` is the bm25 weighting, where a source has one — the
+ * matched columns it fills. `weights` is the bm25 weighting, where a source has one: the
  * note's title counts ten times its body.
  *
- * Both query shapes — `scopeDrivenSearchSql` and the FTS-driven query in `search` — select
+ * Both query shapes (`scopeDrivenSearchSql` and the FTS-driven query in `search`) select
  * exactly these columns for every tier and differ only in how they reach the rows, so the
  * columns are written once, in `tierColumns`. A snippet's width, a tier's place or a fifth
  * source changed in one shape and not the other would rank the same note differently
@@ -394,7 +394,7 @@ export function toSearchResult(r: SearchRow): SearchResult {
  * about those rows only.
  *
  * The FTS-driven query in `search` reads the archive's matches in rank order and throws
- * away the ones outside the filter, which is right for a large scope — a page fills early —
+ * away the ones outside the filter, which is right for a large scope (a page fills early)
  * and wrong for a small one: a common word in a four-note notebook walked every match in
  * the archive to find none. Here every source is a CROSS JOIN from the scope, which pins
  * the join order (the planner would otherwise start from the MATCH, having no statistics
@@ -408,8 +408,8 @@ export function toSearchResult(r: SearchRow): SearchResult {
  * read every file the account has once per note in scope. There is no such column here
  * and no such index; the CROSS JOINs alone fix the order.
  *
- * `live` is the `deleted_at` condition — see `liveCondition` for why it hides the index
- * when a tag filter is present — and `scoped` the filter clauses, bound as in `search`.
+ * `live` is the `deleted_at` condition (see `liveCondition` for why it hides the index
+ * when a tag filter is present) and `scoped` the filter clauses, bound as in `search`.
  * The FTS query is `?1` and the limit `?2`; the filters bind after them.
  */
 export function scopeDrivenSearchSql(live: string, scoped: string): string {
@@ -473,13 +473,13 @@ export function scopeDrivenSearchSql(live: string, scoped: string): string {
  * way to keep a column's index out of the plan while still applying the condition. Every
  * notes index leads with `deleted_at` (or with the notebook and then it), and without
  * statistics the planner takes an equality on an index's first column to be selective
- * and starts there — when `IS NULL` matches every live note. Hiding that index leaves the
+ * and starts there, when `IS NULL` matches every live note. Hiding that index leaves the
  * tag's `n.id IN (…)` as the way in, and the query reads the tagged notes and nothing else.
  * On the shared database the same trick was played on `user_id`, for the same reason.
  *
  * Only with a tag. With none, the `deleted_at` indexes are the ones that return rows in
  * sort order and let a page stop after fifty. With one, starting from the tag can cost
- * more than walking the sort index when the tag is on most notes — but never more than
+ * more than walking the sort index when the tag is on most notes, but never more than
  * the count beside the first page, which has to read every tagged note anyway.
  */
 export function liveCondition(
@@ -489,7 +489,7 @@ export function liveCondition(
 ): string {
   // Named notes are the same case as a tag, more so: each id is a primary-key lookup, and
   // a plan that walked a `deleted_at` index would read every live note to test it against
-  // the list — the hazard `ID_RUN`'s comment measured on the batch writes.
+  // the list: the hazard `ID_RUN`'s comment measured on the batch writes.
   const byKey = (tags && tags.length > 0) || (ids && ids.length > 0);
   const column = byKey ? '+n.deleted_at' : 'n.deleted_at';
   return trashed ? `${column} IS NOT NULL` : `${column} IS NULL`;
@@ -499,13 +499,13 @@ export function liveCondition(
  * SQL conditions for the `notebook`, `tags`, `fields`, `untagged` and date filters, shared
  * by `list`, `count` and `search`.
  *
- * All three call sites need identical semantics — a filter has to mean the same thing
- * whether or not a query is also typed — so the clauses live here rather than being
+ * All three call sites need identical semantics: a filter has to mean the same thing
+ * whether or not a query is also typed, so the clauses live here rather than being
  * written three times.
  *
  * Binds are positional: parameters are appended to the caller's array and the placeholder
  * index is taken from its length, so the same clause is right after however many values
- * the caller bound first — `search` binds the FTS query and the limit before these.
+ * the caller bound first: `search` binds the FTS query and the limit before these.
  */
 export function filterConditions(
   opts: {
@@ -540,7 +540,7 @@ export function filterConditions(
    * "everything before 2020" agree about which date they mean. Search has no sort, so it
    * passes `created_at`: for an archive, "filed in 2023" is the question being asked.
    *
-   * Both ends are inclusive — see `endOfDay`.
+   * Both ends are inclusive: see `endOfDay`.
    */
   const dateColumn = opts.dateColumn ?? 'n.created_at';
   if (opts.from) {
@@ -556,7 +556,7 @@ export function filterConditions(
    * With a tag filter beside it, the notebook condition is written `+n.notebook_id`, for
    * the reason `liveCondition` hides `deleted_at`: the per-notebook indexes lead with
    * this column, and the planner would otherwise start from the notebook and test every
-   * note in it against the tag — 606 rows to count a tag on three notes in a 600-note
+   * note in it against the tag: 606 rows to count a tag on three notes in a 600-note
    * notebook (measured at 3k notes). On the shared database the same index led with
    * `user_id`, so hiding that column hid this one too; here it has to be said. Without a
    * tag the notebook is the way in and its index is exactly what a page wants.
@@ -575,7 +575,7 @@ export function filterConditions(
   /*
    * One IN per tag, AND'd together: the note must carry every one of them.
    *
-   * Conjunction is what makes this a widening rather than a change — a single tag
+   * Conjunction is what makes this a widening rather than a change: a single tag
    * produces exactly the clause a single filter produced before, so the existing
    * behaviour is the one-element case rather than a case handled alongside it. Each
    * clause is an independent semi-join on note_tags, so nothing here fans out the row
@@ -583,7 +583,7 @@ export function filterConditions(
    *
    * IN rather than a correlated EXISTS because only IN can be the side the query starts
    * from: tag by name, its note_tags rows, then those notes by primary key. An EXISTS is
-   * evaluated per note, so the query walked every note the user has and asked each one —
+   * evaluated per note, so the query walked every note the user has and asked each one:
    * a tag on one note cost a read of the whole archive, twice with the count beside it.
    * The IN alone is not enough, though; see `liveCondition`.
    *
@@ -603,10 +603,10 @@ export function filterConditions(
    * Notes with no tag, the question "what is left to file".
    *
    * A NOT EXISTS, unlike the tags' IN above, because there is nothing to start from: the
-   * notes are the way in — the notebook's index, or the `deleted_at` ones — and each is
+   * notes are the way in (the notebook's index, or the `deleted_at` ones), and each is
    * asked once by the primary key of `note_tags`, one read a note. It is why this is never
    * a stored count and why it is not hidden behind `+`: the indexes on the notes' side
-   * are what let a page stop early — when there is a page's worth to find. That is the
+   * are what let a page stop early, when there is a page's worth to find. That is the
    * cheap case and not the usual one: the filter is for finding what is left, and the
    * nearer an account is to tidy, the further a page walks before it fills, until a
    * notebook with three untagged notes is read to its end, two rows a note, to return
@@ -633,7 +633,7 @@ export function filterConditions(
    *
    * The one text that is not one value is a multi-select's, which `encodeFieldValue`
    * writes as a JSON list. `eq` on that means "holds this option", so the stored text is
-   * also opened as a list and each element compared — still without knowing the type,
+   * also opened as a list and each element compared, still without knowing the type,
    * since only a multi-select stores a JSON array. The `CASE` is what keeps `json_each`
    * off text that is not JSON, where it would raise rather than return nothing.
    */
@@ -698,7 +698,7 @@ export const SORTS: Record<
     /**
      * The column a `from`/`to` range applies to under this sort: the date the rows show.
      * For the two date sorts that is the sort column itself. Under the title sort the rows
-     * show when they were updated — see NoteListItem and the Android NoteRow — so the
+     * show when they were updated (see NoteListItem and the Android NoteRow), so the
      * range reads that column; comparing epoch-ms against `n.title`, which is what falling
      * back to the sort column did, matched nothing at all.
      */
@@ -758,7 +758,7 @@ export { decodeCursor, encodeCursor } from '@unbent/shared';
  * The cursor for the next page, or null if this page was not full.
  *
  * Lives beside `SORTS` rather than in the route so the column that ordered the query is
- * the column that pages it — the route no longer needs to know how a sort is implemented.
+ * the column that pages it: the route no longer needs to know how a sort is implemented.
  */
 export function nextCursor(
   items: NoteSummary[],
@@ -777,7 +777,7 @@ export function nextCursor(
 
 /**
  * The cursor that resumes after `last`, whatever the page's length. `nextCursor` treats a
- * short page as the end; a page cut short for another reason — the export's byte budget —
+ * short page as the end; a page cut short for another reason (the export's byte budget)
  * has to say where it stopped explicitly, or the client would take the cut as the end.
  */
 export function cursorAfter(
@@ -824,12 +824,12 @@ export function sameFieldText(a: FieldValue, b: FieldValue): boolean {
 /**
  * Whether a patch's tag list would leave the stored tags exactly as they are.
  *
- * Order is not significant — `note_tags` has none and `get` returns them sorted — so this
+ * Order is not significant (`note_tags` has none and `get` returns them sorted), so this
  * compares sets. Blanks and duplicates are normalized away first, matching what `setTags`
  * would have written, so `['work', 'work', ' ']` against a stored `['work']` is no edit.
  * So is case: `['receipts']` against a stored `['Receipts']` would attach the same tag,
  * since a tag is found by name without case (MAK-127), and writing it would re-date the
- * note for nothing. That is not the normalizing `changedKeysOnly` refuses for text — the
+ * note for nothing. That is not the normalizing `changedKeysOnly` refuses for text: the
  * case of a tag on one note is not something a write can change.
  */
 export function sameTagSet(patch: string[], stored: string[]): boolean {
@@ -839,7 +839,7 @@ export function sameTagSet(patch: string[], stored: string[]): boolean {
 }
 
 /**
- * A tag list as `setTags` would write it: trimmed, blanks dropped, each name once — once
+ * A tag list as `setTags` would write it: trimmed, blanks dropped, each name once, once
  * without case, as the NOCASE index has it (0006-tags-nocase), keeping the spelling that
  * came first. `['Receipts', 'receipts']` is one tag, and which spelling the note ends up
  * showing is the stored tag's in any case: `setTags` attaches an existing tag rather than
@@ -855,8 +855,8 @@ export function uniqueTags(tags: string[]): string[] {
 }
 
 /**
- * The engine binds at most 100 parameters to one statement — the same cap on the object's
- * SQLite as on D1 (measured 2026-09-29) — so a set of ids is written in runs of this many,
+ * The engine binds at most 100 parameters to one statement, the same cap on the object's
+ * SQLite as on D1 (measured 2026-09-29), so a set of ids is written in runs of this many,
  * leaving room for the handful of other values a statement binds. `purge` uses 99 with a
  * single other bind; the batch methods bind a few more, and one number that is safe for
  * all of them is easier to keep right than one per query.
@@ -869,7 +869,7 @@ export const PURGE_PAGE = 990;
 /*
  * Every statement that names notes by an `id IN (…)` run writes its trash condition as
  * `+deleted_at`. The unary plus is SQLite's way to keep a column's index out of the plan
- * while still applying the condition — the idiom `liveCondition` uses for tag filters.
+ * while still applying the condition: the idiom `liveCondition` uses for tag filters.
  * Without it the planner, which has no statistics and so takes the first column of an
  * index to be selective, answered "these three notes" by walking `idx_notes_updated` over
  * every live note and testing each against the list: 3,025 rows read to trash three
@@ -885,7 +885,7 @@ export function runs<T>(items: T[], size = ID_RUN): T[][] {
   return out;
 }
 
-/** `?n, ?n+1, …` — `count` placeholders numbered from `from`, for an `IN (…)` list. */
+/** `?n, ?n+1, …`: `count` placeholders numbered from `from`, for an `IN (…)` list. */
 export function placeholders(from: number, count: number): string {
   return Array.from({ length: count }, (_, i) => `?${from + i}`).join(', ');
 }

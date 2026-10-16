@@ -5,7 +5,7 @@ name: Dev instance and previews
 # is deployed by web.yml, which is the whole of what a fork has to understand.
 #
 # A fork inherits this file without harm. Every job here decides first whether the
-# repository has been given what it needs — the dev secrets, the workers.dev subdomain — and
+# repository has been given what it needs (the dev secrets, the workers.dev subdomain) and
 # skips itself with a note in the run summary when it has not, rather than failing halfway
 # through a deploy nobody asked for. The README's "The dev instance" section says what to
 # set to turn it on.
@@ -46,7 +46,7 @@ jobs:
     # Queued rather than cancelled mid-run, for the reason web.yml gives for production: a
     # deploy must finish. (A third push replaces one still waiting, which is fine; the
     # newest run ships everything.) Queued at all because the job ends in a sweep, and two
-    # sweeps side by side move the same cursor, skip each other's batches and undercount —
+    # sweeps side by side move the same cursor, skip each other's batches and undercount,
     # and the second's restart would send the first back to the top mid-walk.
     concurrency:
       group: dev-deploy
@@ -59,7 +59,7 @@ jobs:
       # Who runs the dev instance and the previews, the shape of DEV_ALLOWED_EMAILS, sent
       # as the OPERATOR_EMAILS the Worker reads. Optional, and deliberately not implied by
       # the allowlist: being let in to sign in is not the same as being shown what only the
-      # people running an instance can fix. Unset — a fork, or before anyone sets it —
+      # people running an instance can fix. Unset (a fork, or before anyone sets it),
       # nobody is an operator here, which is the Worker's own default; set, whatever
       # production shows its operators can be tried somewhere that is not production.
       #
@@ -67,11 +67,11 @@ jobs:
       # Worker keeps the last list until `wrangler secret delete OPERATOR_EMAILS --env dev`.
       DEV_OPERATOR_EMAILS: ${{ secrets.DEV_OPERATOR_EMAILS }}
       # The account's workers.dev subdomain, which the dev instance uses to recognise a
-      # legitimate preview host before handing it a sign-in token — see the preview relay
+      # legitimate preview host before handing it a sign-in token. See the preview relay
       # in apps/api/src/lib/preview-relay.ts. The same variable the preview job reads to
       # build a preview's URL; unset, the relay simply stays off.
       WORKERS_SUBDOMAIN: ${{ vars.CLOUDFLARE_WORKERS_SUBDOMAIN }}
-      # Google on the dev instance, which is what the preview sign-in relay bounces to — a
+      # Google on the dev instance, which is what the preview sign-in relay bounces to: a
       # preview cannot register its own OAuth callback, so the relay is only useful if
       # dev.unbent.app can actually sign in with Google. Both or neither, the same shape as
       # every other OAuth pair here; unset, the dev instance simply offers no Google button
@@ -81,7 +81,7 @@ jobs:
       DEV_GOOGLE_CLIENT_SECRET: ${{ secrets.DEV_GOOGLE_CLIENT_SECRET }}
       # Auto-fill on the dev instance. Optional, and a key of its own rather than
       # production's, so what the dev instance and the previews spend stays apart from what
-      # unbent.app does — the same reason `DEV_BETTER_AUTH_SECRET` is not the production one.
+      # unbent.app does, the same reason `DEV_BETTER_AUTH_SECRET` is not the production one.
       DEV_TYPESAFE_API_KEY: ${{ secrets.DEV_TYPESAFE_API_KEY }}
       # The vision model's key, for reading images; the same reasoning, the same shape.
       DEV_ANTHROPIC_API_KEY: ${{ secrets.DEV_ANTHROPIC_API_KEY }}
@@ -117,7 +117,7 @@ jobs:
             echo "ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "No DEV_BETTER_AUTH_SECRET repository secret — this repository has no dev instance. Skipping." >> "$GITHUB_STEP_SUMMARY"
+            echo "No DEV_BETTER_AUTH_SECRET repository secret. This repository has no dev instance. Skipping." >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - if: steps.configured.outputs.ready == 'true'
@@ -141,7 +141,7 @@ jobs:
         working-directory: apps/api
         run: |
           if ! pnpm exec wrangler d1 info unbent-dev >/dev/null 2>&1; then
-            echo "No D1 database named unbent-dev on this account — creating it."
+            echo "No D1 database named unbent-dev on this account. Creating it."
             pnpm exec wrangler d1 create unbent-dev
           fi
 
@@ -156,7 +156,7 @@ jobs:
 
       # The secrets travel with the deploy rather than being put afterwards. wrangler.toml
       # declares BETTER_AUTH_SECRET required for this environment, and a required secret
-      # has to be present when the Worker is created — which `secret put` cannot manage,
+      # has to be present when the Worker is created, which `secret put` cannot manage,
       # since it needs a Worker to exist first. `--secrets-file` is additive, so sending
       # the same values on every push is harmless and a rotated one flows through.
       #
@@ -179,7 +179,7 @@ jobs:
           if [ -n "$APPLE_APP_SITE_ASSOCIATION" ]; then
             printf 'APPLE_APP_SITE_ASSOCIATION=%s\n' "$(printf '%s' "$APPLE_APP_SITE_ASSOCIATION" | jq -c .)" >> "$RUNNER_TEMP/dev-secrets.env"
           fi
-          # Google, both halves or neither — a lone id with no secret is not a working
+          # Google, both halves or neither: a lone id with no secret is not a working
           # provider, and `configuredSocials` ignores it, so sending only one would advertise
           # a button that fails when pressed. Mapped to the plain GOOGLE_* names the Worker
           # reads.
@@ -234,7 +234,7 @@ jobs:
   # because a workers.dev URL is exactly `<worker name>.<subdomain>.workers.dev`, and both
   # halves are known here.
   #
-  # Not `needs: check` — that job is in web.yml and a job cannot need one in another file.
+  # Not `needs: check`. That job is in web.yml and a job cannot need one in another file.
   # The check still runs on every PR and shows red on its own; a preview of a branch whose
   # tests fail is scratch data on a scratch database, and `pnpm build` below refuses code
   # that does not typecheck.
@@ -273,8 +273,8 @@ jobs:
       # tried on its preview. Optional; unset, the preview draws no control.
       DEV_TYPESAFE_API_KEY: ${{ secrets.DEV_TYPESAFE_API_KEY }}
       DEV_ANTHROPIC_API_KEY: ${{ secrets.DEV_ANTHROPIC_API_KEY }}
-      # The standing dev instance a preview borrows a Google session from — the origin its
-      # login screen sends people to. unbent.app's own is dev.unbent.app, which is the
+      # The standing dev instance a preview borrows a Google session from (the origin its
+      # login screen sends people to). unbent.app's own is dev.unbent.app, which is the
       # default; a fork with a differently-named dev instance overrides it with the
       # `DEV_INSTANCE_ORIGIN` repository variable. It only draws the relay button on the
       # preview; the dev side's own trust check is the subdomain the dev deploy sets.
@@ -295,7 +295,7 @@ jobs:
             echo "ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "CLOUDFLARE_WORKERS_SUBDOMAIN is set but DEV_BETTER_AUTH_SECRET is not — a preview could deploy but never sign anyone in. Skipping." >> "$GITHUB_STEP_SUMMARY"
+            echo "CLOUDFLARE_WORKERS_SUBDOMAIN is set but DEV_BETTER_AUTH_SECRET is not. A preview could deploy but never sign anyone in. Skipping." >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - if: steps.configured.outputs.ready == 'true'
@@ -324,7 +324,7 @@ jobs:
         working-directory: apps/api
         run: |
           if ! pnpm exec wrangler d1 info unbent-dev >/dev/null 2>&1; then
-            echo "No D1 database named unbent-dev on this account — creating it."
+            echo "No D1 database named unbent-dev on this account. Creating it."
             pnpm exec wrangler d1 create unbent-dev
           fi
 
@@ -433,13 +433,13 @@ jobs:
             const relay = process.env.DEV_INSTANCE_ORIGIN;
             const signIn = relay
               ? [
-                  `Sign in with **Continue on the dev instance** — a preview cannot register`,
+                  `Sign in with **Continue on the dev instance**: a preview cannot register`,
                   `its own OAuth callback (its host changes every PR), so it borrows a Google`,
                   `session from ${relay} and comes back signed in. A password with an`,
                   `allowlisted address still works too.`,
                 ]
               : [
-                  'Sign in with a password and an allowlisted address — a preview offers no OAuth,',
+                  'Sign in with a password and an allowlisted address: a preview offers no OAuth,',
                   'because a callback URL cannot be registered for a host that changes every PR.',
                 ];
             const { owner, repo } = context.repo;
@@ -474,8 +474,8 @@ jobs:
                     'is untouched. The Worker is deleted when this PR closes.',
                   ]
                 : [
-                    `Runs against the shared \`unbent-dev\` database, bucket and note stores — the same`,
-                    'notes as the dev instance, so what you change here changes there too. Production',
+                    `Runs against the shared \`unbent-dev\` database, bucket and note stores (the same`,
+                    'notes as the dev instance), so what you change here changes there too. Production',
                     'is untouched. The Worker is deleted when this PR closes.',
                   ]),
               '',
@@ -498,7 +498,7 @@ jobs:
       # recorded as well, for the "View deployment" button in the PR's Deployments box, but
       # a deployment needs an environment, GitHub makes one per name on first use and the
       # workflow token can never delete one (`permissions:` has no `administration` key),
-      # so Settings → Environments grew a `pr-N` row for every PR ever opened — close to two
+      # so Settings → Environments grew a `pr-N` row for every PR ever opened, close to two
       # hundred before anyone noticed, and nobody had noticed the button either. The
       # comment is edited in place on every push, so it does not scroll away.
 
@@ -540,8 +540,8 @@ jobs:
       # a shared scratch instance makes; see the README on recreating it.
       #
       # A PR whose checks failed, or whose preview was skipped, never got as far as
-      # deploying, so there may be nothing here to delete. Only that one case is forgiven —
-      # 10007 is wrangler's Worker-not-found — because a closed PR going red over a Worker
+      # deploying, so there may be nothing here to delete. Only that one case is forgiven
+      # (10007 is wrangler's Worker-not-found), because a closed PR going red over a Worker
       # that never existed is noise, while a delete failing for any other reason is a
       # preview left running.
       - name: Delete the preview Worker
@@ -552,7 +552,7 @@ jobs:
           printf '%s\n' "$output"
           if [ "$status" -ne 0 ]; then
             if printf '%s\n' "$output" | grep -q 'code: 10007'; then
-              echo "::notice::No Worker named $WORKER_NAME — this PR never deployed a preview."
+              echo "::notice::No Worker named $WORKER_NAME. This PR never deployed a preview."
               exit 0
             fi
             exit "$status"

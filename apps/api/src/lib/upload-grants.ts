@@ -3,8 +3,8 @@ import { ScopedRepo } from './repo.js';
 /**
  * How long a link from prepare_attachment_upload stays open.
  *
- * Long enough for the step in between to wait on a person — an agent's shell asks before it
- * runs curl, and the person may be making tea — and short enough that a link nobody used is
+ * Long enough for the step in between to wait on a person (an agent's shell asks before it
+ * runs curl, and the person may be making tea) and short enough that a link nobody used is
  * not an open door for the rest of the day. Single use bounds the other half: a link that
  * leaks after it was used opens nothing.
  */
@@ -80,7 +80,7 @@ export class UploadGrantsRepo extends ScopedRepo {
  * Claims a link: the grant it carries, or null when it is unknown, used or expired.
  *
  * The one lookup in the API that is not scoped by a signed-in user, because it is how the
- * user is found — the token is the credential here, as the session cookie is everywhere
+ * user is found: the token is the credential here, as the session cookie is everywhere
  * else, and what it returns is the user id the caller then builds its scoped repos from.
  * Nothing about the request other than the token can choose whose data is touched.
  *

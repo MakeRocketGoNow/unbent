@@ -13,8 +13,8 @@ plugins {
  *
  * Kept out of the repo entirely: the keystore is the identity the Digital Asset Links file
  * on unbent.app vouches for, and losing control of it means someone else can publish an app
- * that claims to be Unbent. When the properties are absent — a fresh clone, or CI without
- * the secret — the release build simply has no signing config and `assembleDebug` still
+ * that claims to be Unbent. When the properties are absent (a fresh clone, or CI without
+ * the secret) the release build simply has no signing config and `assembleDebug` still
  * works, which is better than failing the whole build for the common case.
  */
 val keystoreProps = Properties().apply {
@@ -23,7 +23,7 @@ val keystoreProps = Properties().apply {
 }
 
 /**
- * A value from `local.properties` or, failing that, the environment — and blank counts as
+ * A value from `local.properties` or, failing that, the environment, and blank counts as
  * absent in both. CI maps repository variables into the environment unconditionally, so an
  * unset variable arrives as an empty string, and an empty application id or instance URL
  * would be worse than none.
@@ -34,7 +34,7 @@ fun secret(key: String, env: String): String? =
 val releaseStorePath = secret("unbent.keystore.path", "UNBENT_KEYSTORE_PATH")
 
 /**
- * The instance the app talks to until someone changes it in App settings — which is what
+ * The instance the app talks to until someone changes it in App settings, which is what
  * makes an emulator build usable against a local dev server, and a store build usable
  * against any instance at all.
  *
@@ -48,8 +48,8 @@ val defaultInstance = secret("unbent.defaultInstance", "UNBENT_DEFAULT_INSTANCE"
 /**
  * The identity a build gets when nothing has said otherwise: unbent.app's own app.
  *
- * A fork that publishes to Play needs an id of its own — Play treats the id as the app,
- * and will not take a second app under an id it already has — and it sets one with
+ * A fork that publishes to Play needs an id of its own (Play treats the id as the app,
+ * and will not take a second app under an id it already has) and it sets one with
  * `unbent.applicationId` in local.properties or UNBENT_APPLICATION_ID in the environment,
  * never by editing this line. A named `val` on its own line rather than a literal below,
  * because scripts/app-id.sh reads it with `sed` to find the installed app on a device.
@@ -63,18 +63,18 @@ android {
      *
      * Fixed, unlike `applicationId` below, because it is the source tree: every file under
      * src/ declares it, and R and BuildConfig are generated into it. The two are independent
-     * as far as Gradle is concerned — only the id reaches Play, App Links and OAuth — so a
+     * as far as Gradle is concerned (only the id reaches Play, App Links and OAuth) so a
      * fork keeps this package and changes the id. They match on unbent.app's own build,
      * which is the reading a stack trace or an `adb shell am` command assumes; on a fork
      * they differ, and the installed id is what `adb` wants.
      */
     namespace = "com.makerocketgonow.unbent"
     /**
-     * What the app is compiled against, which is not what it promises to behave like —
+     * What the app is compiled against, which is not what it promises to behave like:
      * that is `targetSdk` below. Raising this only lets the compiler see newer APIs.
      *
      * It moved because AndroidX and Material now ship AARs whose metadata demands 37, and
-     * Gradle refuses them outright at `CheckAarMetadataWorkAction` rather than degrading —
+     * Gradle refuses them outright at `CheckAarMetadataWorkAction` rather than degrading,
      * so this is the floor for taking any of those updates at all.
      */
     compileSdk = 37
@@ -82,14 +82,14 @@ android {
     defaultConfig {
         /**
          * The identity Play, the Digital Asset Links document the instance serves and the
-         * Google OAuth client all key on — and the one string that can never change again
+         * Google OAuth client all key on, and the one string that can never change again
          * once an app is published, since Play treats a different id as a different app
          * with no upgrade path for anyone who installed the old one.
          *
          * Configured rather than written, so that a fork publishing its own app never edits
          * this file: see `defaultApplicationId`. The default is `com.makerocketgonow.*`
          * because that is the domain unbent.app's developer account is registered under,
-         * and a reverse-domain id has to be one the publisher controls — which is also why
+         * and a reverse-domain id has to be one the publisher controls, which is also why
          * a fork must choose its own.
          */
         applicationId = secret("unbent.applicationId", "UNBENT_APPLICATION_ID") ?: defaultApplicationId
@@ -97,7 +97,7 @@ android {
         /**
          * The behaviours the app opts into, which is the half that actually changes at
          * runtime. It moved to 36 because Play stopped accepting 35 for new installs on
-         * Android 16 devices as of 31 August 2026 — an update still reaches existing
+         * Android 16 devices as of 31 August 2026: an update still reaches existing
          * users, but nobody new on a current phone can install it.
          *
          * What 36 enforces, and why none of it needed code: edge-to-edge can no longer be
@@ -110,7 +110,7 @@ android {
         targetSdk = 36
         /**
          * Play rejects an upload whose code it has seen before, and it is the ordering
-         * Android itself uses to decide what counts as an upgrade — so this has to rise on
+         * Android itself uses to decide what counts as an upgrade, so this has to rise on
          * every build that could reach the store, and a number nobody has to remember to
          * bump is the only version of that which survives contact with a busy week.
          *
@@ -120,7 +120,7 @@ android {
          */
         versionCode = secret("unbent.versionCode", "UNBENT_VERSION_CODE")?.toIntOrNull() ?: 1
         // What a person sees, in Settings and on the store listing. Bumped by hand, because
-        // it means something — unlike the code above, which is bookkeeping.
+        // it means something, unlike the code above, which is bookkeeping.
         versionName = "0.2.0"
 
         buildConfigField("String", "DEFAULT_INSTANCE", "\"$defaultInstance\"")
@@ -156,7 +156,7 @@ android {
             /*
              * And a separate name, because the two are otherwise indistinguishable. Two
              * identical icons in the launcher, and two identical entries in every share
-             * sheet, is a coin flip over which install — and which stored session — the
+             * sheet, is a coin flip over which install, and which stored session, the
              * thing you just shared went to.
              */
             resValue("string", "app_name", "Unbent (debug)")
@@ -203,7 +203,7 @@ android {
 }
 
 // AGP 9 compiles Kotlin itself, so `kotlinOptions` inside `android { }` is gone. The JVM
-// target still has to be stated, and still has to match `compileOptions` above — a mismatch
+// target still has to be stated, and still has to match `compileOptions` above: a mismatch
 // is a hard error, not a warning.
 kotlin {
     compilerOptions {

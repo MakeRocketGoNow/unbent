@@ -8,7 +8,7 @@ import { findAbsoluteAttachmentLinks, formatAttachmentMarkdown } from '@unbent/s
  * The three used to be two closures inside `Editor.tsx`, which was fine while the only
  * callers were DOM events the editor itself received. The toolbar changed that: it has the
  * `EditorView` and nothing else, so the routine has to be reachable from the view alone.
- * A facet is the CodeMirror way to say "this is configuration of the view" — the uploader
+ * A facet is the CodeMirror way to say "this is configuration of the view": the uploader
  * goes in through `attachments()` once, and anything holding the view can find it with
  * `view.state.facet(attachConfig)`. The alternatives were a callback prop threaded from
  * `Workspace` to the toolbar (neither owns the routine, so the toolbar would have reached
@@ -98,7 +98,7 @@ export function attachments(config: AttachConfig): Extension {
         /*
            A picture copied from the Attachments panel arrives twice: as a PNG, for other
            apps, and as a link naming the note it lives in. The link is the better source
-           here — copied key to key on the server, original bytes, no upload — so the
+           here (copied key to key on the server, original bytes, no upload), so the
            clipboard handler (editor/clipboard.ts) takes that paste, and this one declines.
         */
         if (findAbsoluteAttachmentLinks(event.clipboardData?.getData('text/plain') ?? '').length > 0) {
@@ -122,7 +122,7 @@ export function pendingUploads(view: EditorView): number {
  *
  * Every placeholder goes in before the first upload starts, in one transaction. The loop
  * used to insert each file's placeholder at `at` only when its turn came, after the
- * previous upload had finished — so three dropped files came out in reverse order, and
+ * previous upload had finished, so three dropped files came out in reverse order, and
  * landed in the wrong place if the user had typed above `at` in the meantime. One insert
  * is also one undo step, which is what dropping three files at once should be.
  *
@@ -131,11 +131,11 @@ export function pendingUploads(view: EditorView): number {
  * settled by the placeholders.
  *
  * `ownParagraph` sets each file apart as a paragraph of its own, with a blank line either
- * side — for a drop beside the text rather than into it (`noteDropZone`), which was not
+ * side, for a drop beside the text rather than into it (`noteDropZone`), which was not
  * aimed into the middle of anything. A single line break is not enough: markdown reads a
  * line written straight under a paragraph, a quote or a list item as more of it, so a
  * picture dropped under a closing quote would be drawn inside the quote. Only what is
- * missing goes in — no blank line is doubled — and a file that ends the note is followed
+ * missing goes in (no blank line is doubled), and a file that ends the note is followed
  * by one line break, as a file dropped into an empty note always was. Without it, a file
  * goes exactly where `at` is, on the line it is dropped into.
  */
@@ -145,7 +145,7 @@ export async function insertUploads(
   at: number,
   { ownParagraph = false }: { ownParagraph?: boolean } = {},
 ): Promise<void> {
-  // The one routine every way in shares — drop, paste, the toolbar's Attach — so the
+  // The one routine every way in shares (drop, paste, the toolbar's Attach), so the
   // read-only check here covers any caller that forgot its own.
   if (view.state.readOnly) return;
   const { upload } = view.state.facet(attachConfig);

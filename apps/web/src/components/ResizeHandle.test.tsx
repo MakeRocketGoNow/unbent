@@ -6,7 +6,7 @@ import { ResizeHandle } from './ResizeHandle.js';
 /**
  * The handle passes `toValue` the channel the grid puts before it, measured from the
  * rendered geometry. jsdom reports every box as zero, so the elements are given explicit
- * rects — the arithmetic under test is exactly what those rects feed.
+ * rects: the arithmetic under test is exactly what those rects feed.
  */
 function stubRect(el: Element, box: { left: number; right: number }) {
   el.getBoundingClientRect = () =>
@@ -59,7 +59,7 @@ afterEach(cleanup);
 
 describe('ResizeHandle', () => {
   /**
-   * The divider does not render at the sized track's edge — the grid puts a channel
+   * The divider does not render at the sized track's edge: the grid puts a channel
    * before it. Without subtracting that channel the computed width placed the handle a
    * channel further right than the pointer, and it trailed the cursor for the whole drag.
    */
@@ -77,7 +77,7 @@ describe('ResizeHandle', () => {
 
   /**
    * With the pointer on the divider, the width it computes has to be the width the
-   * divider already sits at — otherwise the handle jumps on the first move.
+   * divider already sits at: otherwise the handle jumps on the first move.
    */
   it('computes the current width when the pointer is on the divider', () => {
     const { handle, onResize } = setup((clientX, rect, gap) => clientX - rect.left - gap);

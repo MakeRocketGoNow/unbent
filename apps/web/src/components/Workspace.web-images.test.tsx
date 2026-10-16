@@ -22,7 +22,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
 
 /**
  * "Save web images" fetches every remote image the body draws and points the body at the
- * copies. Its pass is long — one request per address, in sequence — so arrowing to the
+ * copies. Its pass is long (one request per address, in sequence), so arrowing to the
  * next note while it runs is the ordinary thing, and the copies must not land on that note.
  */
 const IMAGE_URL = 'https://example.com/pic.png';
@@ -51,7 +51,7 @@ function mount(note: Note, others: Note[] = []) {
   });
 
   /*
-     Workspace is reused across notes — a new `noteId` prop, not a remount. The harness
+     Workspace is reused across notes: a new `noteId` prop, not a remount. The harness
      switches the same way so a "Save web images" pass for one note can be watched trying
      to land on another. Mirrors the Auto-fill test's harness.
   */

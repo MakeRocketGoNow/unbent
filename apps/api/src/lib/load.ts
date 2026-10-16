@@ -14,8 +14,8 @@ import type { LoadResult, UserStore } from '../store/user-store.js';
  * Bytes, not statements, cross to the object: the file is read from R2 as it comes and
  * cut into pages of `LOAD_PAGE_BYTES` wherever that falls, and the object finds the
  * statements (`store/load.ts` says why it is the object's job). A 31 MB archive is four
- * page calls, and with the dump written first — about five store calls and the upload's
- * seven — the whole route is some twenty-five subrequests for the biggest account, inside
+ * page calls, and with the dump written first (about five store calls and the upload's
+ * seven), the whole route is some twenty-five subrequests for the biggest account, inside
  * even the Free plan's fifty; the only thing that would not fit there is the CPU, which
  * the README's note on dumps already says.
  */
@@ -26,8 +26,8 @@ export const LOAD_PAGE_BYTES = 8 * 1024 * 1024;
 /**
  * The key a request's `dump` names, or null when it names nothing this route will load.
  * A date is the daily dump of that day; anything else must be a key under the account's
- * own prefix — the dump written before an earlier load, or one copied back by hand from
- * the mirror — so a dump can only ever be loaded into the account it was taken from. A
+ * own prefix (the dump written before an earlier load, or one copied back by hand from
+ * the mirror), so a dump can only ever be loaded into the account it was taken from. A
  * key with a `..` or an empty segment in it is refused for the same reason: the prefix
  * check is the whole rule, and a path that could be read as leaving it must not pass it.
  */
@@ -44,7 +44,7 @@ export function resolveDumpKey(userId: string, dump: string): string | null {
 /**
  * The key a dump download names, from the file's name under the account's prefix, or
  * null when the name is not one of the account's own files. The download route's rule
- * is `resolveDumpKey`'s — the key must be under `stores/<user>/` — and a name with a
+ * is `resolveDumpKey`'s (the key must be under `stores/<user>/`) and a name with a
  * slash would otherwise be read as a path under it, so it is refused before the prefix
  * check sees it. `filename` is the name as the `Content-Disposition` header may carry
  * it: a quote or a control character in a key, which R2 allows, would end the header
@@ -132,8 +132,8 @@ export async function dumpBeforeLoad(store: DurableObjectStub<UserStore>, bucket
 
 /**
  * Streams the object at `key` into the store a page at a time and finishes the load.
- * `loadBegin` has been called by the time this runs, so a failure here — a refused
- * statement, a dump of the wrong account, a lost connection — leaves the store loading
+ * `loadBegin` has been called by the time this runs, so a failure here (a refused
+ * statement, a dump of the wrong account, a lost connection) leaves the store loading
  * and refusing, which the route says so about; nothing here tries to put it back.
  */
 export async function streamDump(store: DurableObjectStub<UserStore>, body: ReadableStream<Uint8Array>, loadId: string): Promise<LoadResult> {

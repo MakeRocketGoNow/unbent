@@ -17,7 +17,7 @@
         Removing them from this file is not enough. `work-runtime` declares
         FOREGROUND_SERVICE and its `SystemForegroundService` in its own manifest, and the
         merger adds both to every app that depends on WorkManager whether or not it calls
-        `setForeground` — so this removal, and the matching one on the service inside
+        `setForeground`, so this removal, and the matching one on the service inside
         `application` below, are what keep them out of the built app.
 
         Why bother: Play reads the merged manifest, and a foreground service there requires
@@ -103,7 +103,7 @@
                 run in a Custom Tab during sign-in and must stay there, links in mail
                 (a password reset, confirming a deletion) belong where they were tapped,
                 and `/api` is files. A link whose host is not the instance the app is
-                pointed at now — someone who switched to their own — goes to a Custom Tab.
+                pointed at now (someone who switched to their own) goes to a Custom Tab.
 
                 Verification needs the asset links to list this exact package and signing
                 certificate. The debug build is a different package (`.debug`) and needs a

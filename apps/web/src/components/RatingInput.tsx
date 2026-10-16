@@ -10,14 +10,14 @@ interface RatingInputProps {
   readOnly?: boolean;
   onChange: (value: number | null) => void;
   id?: string | undefined;
-  /** An accessible name where no `<label>` points at the control — a table cell. */
+  /** An accessible name where no `<label>` points at the control: a table cell. */
   label?: string | undefined;
 }
 
 /**
  * How far a pointer must travel before the gesture counts as a drag rather than a click.
  *
- * Below this a press is a click, which is handled per input type — by position with a
+ * Below this a press is a click, which is handled per input type: by position with a
  * mouse, by repeat with a thumb. See `HALF_BY_POSITION` and `HALF_BY_REPEAT`.
  */
 const DRAG_SLOP = 6;
@@ -31,7 +31,7 @@ const DRAG_SLOP = 6;
  *
  * `HALF_BY_REPEAT` (touch): tapping a star sets the whole; tapping the *same* star again
  * drops it to the half, and again returns it to the whole. This is Letterboxd's mobile
- * behaviour, and it exists because position does not survive a thumb — a half zone is
+ * behaviour, and it exists because position does not survive a thumb: a half zone is
  * about 13px on a phone, well under the 44px a finger wants, while the whole star is a
  * target worth aiming at.
  *
@@ -40,7 +40,7 @@ const DRAG_SLOP = 6;
  * before it commits. Offering both on both would make a tap near a star's midpoint
  * unpredictable, which is the failure each of these avoids in its own way.
  *
- * Decided by `TOUCH_QUERY` — hover and pointer, not width — because that is the question
+ * Decided by `TOUCH_QUERY` (hover and pointer, not width) because that is the question
  * being asked: a tablet at 1024px has a thumb and a desktop window dragged narrow does
  * not. Dragging works on both regardless, and is unaffected by either.
  */
@@ -59,7 +59,7 @@ function fillAt(star: number, rating: number): Fill {
  *
  * The row is measured rather than each star, so the arithmetic is one rect and a
  * division: a five-star row is ten half-star zones, and the tenth of the width the
- * pointer sits in is the value. That is what makes a drag work — the same function
+ * pointer sits in is the value. That is what makes a drag work: the same function
  * answers every position, so moving across the row is a stream of values, not a set of
  * separate hit tests.
  *
@@ -84,7 +84,7 @@ function ratingAt(clientX: number, row: HTMLElement, scale: FieldScale): number 
  * ten levels, which is the scale most people mean by "out of ten".
  *
  * The stars are a radio group rather than buttons. A rating is one choice among a few, so
- * arrow keys should move it and a screen reader should say "3 of 5" — both of which come
+ * arrow keys should move it and a screen reader should say "3 of 5", both of which come
  * free from radios and neither of which comes free from a row of buttons. The inputs are
  * the accessible control; the pointer handlers on the row are an addition for mice and
  * thumbs, not the mechanism.
@@ -160,7 +160,7 @@ export function RatingInput({
    * What clicking `star` means, given how this input asks for halves.
    *
    * On touch, a repeat tap on the star the rating already sits on toggles to its half and
-   * back — `value` rather than `shown`, so the comparison is against what is stored and
+   * back: `value` rather than `shown`, so the comparison is against what is stored and
    * not against a preview. On a mouse the pointer's own position has already been read
    * into `hovering`, so a click takes that; the radio's `star` is the fallback for a
    * click with no pointer behind it, which is what a keyboard's Space produces.
@@ -187,7 +187,7 @@ export function RatingInput({
         onPointerDown={(e) => {
           if (readOnly || e.button !== 0) return;
           // Only the origin is recorded here. Committing on a press would take every
-          // click off the radio underneath — and a click on a star's own centre lands in
+          // click off the radio underneath, and a click on a star's own centre lands in
           // one of its two half-zones, so a plain click would have meant 2.5 where the
           // radio says 3. The radio stays the control for a click; the pointer path is
           // for the drag only, and does not exist until the pointer actually moves.
@@ -231,7 +231,7 @@ export function RatingInput({
           down.current = null;
           setDragging(null);
         }}
-        // The preview belongs to the pointer, so it goes when the pointer does — otherwise
+        // The preview belongs to the pointer, so it goes when the pointer does: otherwise
         // a row left mid-hover keeps showing a rating nobody chose.
         onPointerLeave={() => setHovering(null)}
       >
@@ -249,7 +249,7 @@ export function RatingInput({
           /*
              One radio per star. Its own value is the whole star, which is what a keyboard
              gets: arrows move by a half where the scale allows them, so tabbing does not
-             need a stop per half as well. What a *click* on it means is `clickValue` —
+             need a stop per half as well. What a *click* on it means is `clickValue`:
              the pointer's position with a mouse, a toggle with a thumb.
           */
           return (
@@ -261,15 +261,15 @@ export function RatingInput({
                 disabled={readOnly}
                 /*
                    The stored value, not `shown`. The fill previews what a drag or a hover
-                   would set, but which radio is *checked* is what the note actually holds
-                   — tying it to the preview would move the checked control under the
+                   would set, but which radio is *checked* is what the note actually holds.
+                   Tying it to the preview would move the checked control under the
                    mouse and have a screen reader announce a value nobody chose yet.
                 */
                 checked={value === star}
                 /*
                    Always the whole star this radio is, never what tapping it again would
                    do. A name that changed with the value would leave the group's names
-                   disagreeing with its values — arrowing onto the third star and hearing
+                   disagreeing with its values: arrowing onto the third star and hearing
                    "2.5 of 5" is a worse bug than the repeat toggle being undiscoverable
                    by ear. The half is reachable from the keyboard with the arrows, which
                    is the route that does not need this name to lie.
@@ -277,7 +277,7 @@ export function RatingInput({
                 aria-label={`${star} of ${scale.max}`}
                 /*
                    `onClick`, not `onChange`. A radio that is already checked fires no
-                   change event — there is nothing to change — so the repeat tap that
+                   change event (there is nothing to change) so the repeat tap that
                    halves it would have done silently nothing, which is the whole
                    mechanic. Click fires either way. Space and Enter on a focused radio
                    also arrive here, so the keyboard keeps working; a first activation of
@@ -313,7 +313,7 @@ export function RatingInput({
                 {/*
                    The half stays solid even in a preview. A hollow glyph clipped down the
                    middle is just the left edge of an outline, which reads as nothing at
-                   all — the half needs a filled area to be a half. The whole stars going
+                   all: the half needs a filled area to be a half. The whole stars going
                    hollow is what says "provisional"; this one keeps saying "half".
                 */}
                 {fill === 'half' && <span className="note-field-star-half">★</span>}
@@ -325,13 +325,13 @@ export function RatingInput({
       {/*
          The rating in words, and the only way back to no rating.
 
-         There is no zero star to click twice, by design — an unlit row means "no value"
-         and nothing else — so clearing needs its own affordance. It shows only when there
+         There is no zero star to click twice, by design (an unlit row means "no value"
+         and nothing else) so clearing needs its own affordance. It shows only when there
          is something to clear, so an empty row is the word "Empty" and nothing more.
 
          `Button` with `quiet`, not the `.note-field-act` the Open/Email/Call links use.
          Those navigate and are anchors; this changes the note, and `Button` exists to stop
-         actions being drawn as links — quiet is the variant for one in a dense row, and it
+         actions being drawn as links: quiet is the variant for one in a dense row, and it
          keeps the padding and hit area that make it a real target rather than bare text.
       */}
       {value === null ? (

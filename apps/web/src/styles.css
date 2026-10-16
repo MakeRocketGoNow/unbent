@@ -3,28 +3,28 @@
      Two families, one decision each.
 
      `--font-ui` is the application: chrome, lists, menus, prose in the preview. `--font-mono`
-     is for text where character positions carry meaning — code, and the pipe tables whose
+     is for text where character positions carry meaning: code, and the pipe tables whose
      columns are aligned by literal padding in the document rather than by layout. Anything
      that is neither is prose, and prose belongs to `--font-prose` below.
   */
   --font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   /*
-     The note itself, in rich mode — the one place a reader spends an hour at a stretch.
+     The note itself, in rich mode: the one place a reader spends an hour at a stretch.
 
      Not monospace, which tells a reader that character positions matter: true of the source
      view and false of a rendered note. Mono also has no real italic, only a slanted upright,
      and the headings it draws at 1.6em read as terminal banners.
 
      A serif was tried first and read as too bookish for a notes app. So: a sans, but a
-     text sans rather than a UI one. The distinction is real — Avenir Next and Seravek are
+     text sans rather than a UI one. The distinction is real: Avenir Next and Seravek are
      cut for running paragraphs, with the looser fit and taller lowercase that wants,
      where the interface stack is tuned for labels and buttons at small sizes. It also
      keeps rich mode visibly distinct from the chrome around it, which is what makes the
      mode toggle legible at a glance.
 
      `system-ui` is the floor and is everywhere. Nothing here is downloaded, so the first
-     paint is the final one — no reflow a writer would watch happen mid-sentence.
+     paint is the final one: no reflow a writer would watch happen mid-sentence.
   */
   --font-prose: "Avenir Next", Avenir, Seravek, "Segoe UI", system-ui, sans-serif;
 
@@ -35,8 +35,8 @@
   --good: #1a7f45;
   --bad: #b3261e;
   --accent: #2f6f4f;
-  /* The marks of an instance that is not production — the favicon's badge, the account
-     menu's dot, the drawer's ribbon (instance-marker.ts) — one colour per kind, so a dev
+  /* The marks of an instance that is not production: the favicon's badge, the account
+     menu's dot, the drawer's ribbon (instance-marker.ts). One colour per kind, so a dev
      tab and a preview's differ at a glance. None is red, which would read as "this is the
      dangerous one" when these are the safe ones, and none is the accent's green. Each
      reads on light and dark alike, so the dark theme does not redefine them. The `-ink`
@@ -48,7 +48,7 @@
   --instance-local: #8c8781;
   --instance-mark: var(--instance-local);
   /*
-     A chip's fill and ink — a chosen select option, a tag. Derived from the accent here,
+     A chip's fill and ink: a chosen select option, a tag. Derived from the accent here,
      so the site draws them as it always has, in a browser and inside the apps alike.
   */
   --chip-bg: color-mix(in srgb, var(--accent) 12%, transparent);
@@ -56,7 +56,7 @@
   /*
      Six soft tints, for the tags and the select options on a note's property list.
 
-     A word gets one of these from its own letters — see `tintIndex` — so the list reads
+     A word gets one of these from its own letters (see `tintIndex`) so the list reads
      the way Notion's properties do, each option its own colour, without a colour being
      stored anywhere. Mid-tone hues rather than pastels: the chip's wash and its ink are
      both mixed from the hue here, at the two ratios below, and one hue then gives a pale
@@ -82,7 +82,7 @@
      What restoring a version would change, in the History sheet (`HistoryChanges`): a
      wash under a whole line added or removed, and a stronger one under the words marked
      inside a line that changed. Mixed from --good and --bad so they follow the theme, and
-     only ever a ground under the page's own ink — the text stays --fg, so it reads at full
+     only ever a ground under the page's own ink: the text stays --fg, so it reads at full
      contrast on either, and the strike and the underline carry the meaning without them.
   */
   --diff-added-line: color-mix(in srgb, var(--good) 10%, transparent);
@@ -134,7 +134,7 @@ input[type='radio'] {
    Never let a WebView resize text on its own.
 
    Android's WebView runs a text-inflation pass that scales up what it decides is body
-   text and leaves the rest — which sized a tag chip's short label at 16px while the
+   text and leaves the rest, which sized a tag chip's short label at 16px while the
    field values beside it stayed at the 12px both were authored at, a difference visible
    only on the phone. Pinning the adjustment to 100% holds every element at its declared
    size. A no-op in a normal browser, where the property already resolves to 100%.
@@ -193,7 +193,7 @@ h1 {
 .muted { color: var(--muted); }
 
 /*
- * For user data that has to be read exactly and has no length limit — an email address in
+ * For user data that has to be read exactly and has no length limit: an email address in
  * a sentence, above all. `.settings-section p` caps its measure but nothing stops a long
  * address from pushing past it on a phone, and truncating one hides the half that says
  * which address it is. Same reasoning as the attachment filename further down.
@@ -282,7 +282,7 @@ h1 {
 /*
  * The re-verification form on Security, which reuses `.login-form` outside the narrow
  * `.login` column that normally caps it. Without a width of its own it grew to whatever
- * the widest line of intro text needed, then stretched its button to match — full-bleed
+ * the widest line of intro text needed, then stretched its button to match: full-bleed
  * on a wide monitor. Capped like `.login` and `.device-panel` are, with `align-items` so
  * the button reads as a control sized to its label instead of a bar sized to the form.
  */
@@ -338,7 +338,7 @@ h1 {
    A wordmark and an avatar, at every width.
 
    Centred rather than baseline-aligned because there is no longer a row of text links to
-   share a baseline with — the avatar is a box, and a box lines up with the wordmark by its
+   share a baseline with: the avatar is a box, and a box lines up with the wordmark by its
    middle. The bar can also sit tighter than it did when it had to reserve room for links
    that might wrap.
 */
@@ -374,8 +374,8 @@ h1 {
 /*
    A link, and now only ever a link.
 
-   This used to carry a button reset — `padding: 0`, `background: none`, `border: none`,
-   `cursor: pointer` — because it dressed `<button>`s as well as anchors. That was the
+   This used to carry a button reset (`padding: 0`, `background: none`, `border: none`,
+   `cursor: pointer`) because it dressed `<button>`s as well as anchors. That was the
    costume the Button component exists to end, and every action wearing it has moved onto
    `.btn`. What is left are four controls that genuinely navigate: the evernote-backup
    link in Import, "Open" in the PDF preview, "Go to your notes" on /device, and the
@@ -392,7 +392,7 @@ h1 {
    A <button> that acts as a link, styled as one rather than as a control.
 
    Most `.link`s are anchors with a real URL, so they carry no chrome. The few that only
-   act on the page in place — the picker's All/None — are buttons, and a button keeps the
+   act on the page in place (the picker's All/None) are buttons, and a button keeps the
    platform's border, background and padding unless they are turned off here. Without this
    they render as grey boxes beside the green anchor-links, which is the one look that says
    nobody checked. The inherited font and the accent colour come from `.link` above.
@@ -410,7 +410,7 @@ button.link {
  * Controls that became links.
  *
  * Note entries, the trash toggle, the topbar actions and the wordmark are anchors now
- * that each has a real URL — so middle-click and copy-link-address work. They were
+ * that each has a real URL, so middle-click and copy-link-address work. They were
  * <button>s before, which carry no underline, so the browser default has to be turned
  * off here or every note in the sidebar renders underlined.
  */
@@ -432,7 +432,7 @@ button.link {
 /*
    Links written inside a sentence.
 
-   Every other link in this app carries a class — `.link`, `.drawer-item`, `.note-item` —
+   Every other link in this app carries a class (`.link`, `.drawer-item`, `.note-item`)
    so a bare `<a>` in prose was never styled and fell back to the browser's default blue,
    which is not a colour this palette contains. There are only a few (the confirms offer
    "Review the trash" and "Export first"; the trash section offers the same review link
@@ -446,7 +446,7 @@ button.link {
 .confirm-detail a,
 /* The plain shell had no link treatment because until now it had no links: the sign-in
    card is all buttons and the reset page navigates with one. `/goodbye` genuinely
-   navigates, so it uses an anchor — which without this rendered as browser-default blue
+   navigates, so it uses an anchor, which without this rendered as browser-default blue
    on the dark theme, the one look that says nobody checked. */
 .login a,
 .panel > p a,
@@ -478,27 +478,27 @@ button.link {
   /* Explicitly none, not merely absent: .shell sets 46rem and this is the same element.
      The notes grid is the one view whose columns the user sizes, and a cap here would
      stop a drag short of the edge on a wide monitor. Routes that do want a measured
-     column set their own — see .settings and .panel. */
+     column set their own: see .settings and .panel. */
   max-width: none;
   /*
      A row, with the routed content one column of it (`.shell-main`, which carries the
      padding this used to). The row exists so navigation can stand beside the content at
      full height, flush with the window's edge, on a desktop; the two custom properties
      are what such a column would set. Declared here, and not on the column, because the
-     filter panel reads them from the top layer — it can only inherit from a DOM ancestor,
+     filter panel reads them from the top layer: it can only inherit from a DOM ancestor,
      and this is the ancestor both the panel and the column share.
   */
   --rail-width: 0px;
   --shell-pad-top: 0.75rem;
   /* The column's left gutter: the page margin on a phone, and beside a rail just enough
-     for the list's pull-out to land on the divider — see the rail's block. */
+     for the list's pull-out to land on the divider: see the rail's block. */
   --shell-pad-left: 1.5rem;
   padding: 0;
 
   /*
      The notes view fills the viewport exactly and never scrolls as a page.
 
-     Every scrolling region below — the note list, the editor, the preview — needs an
+     Every scrolling region below (the note list, the editor, the preview) needs an
      ancestor chain with a definite height to scroll inside. Without one, each pane simply
      grows to fit its content and the whole document scrolls instead, which drags the
      topbar and the formatting bar off screen and leaves the sidebar's own scrollbar
@@ -513,8 +513,8 @@ button.link {
 /*
    The routed content's column: what `.shell.wide` was before it became a row.
 
-   The column is the flex chain the panes scroll inside — `flex: 1` and `min-height: 0`
-   here are what let it be shorter than its content and hand a definite height down — and
+   The column is the flex chain the panes scroll inside (`flex: 1` and `min-height: 0`
+   here are what let it be shorter than its content and hand a definite height down) and
    it carries the frame's padding, so the notes grid, settings and the trash all keep the
    gutters they had. No `overflow` of its own: the note column reaches into the right
    gutter for its scrollbar (see `.workspace-main`), and the row above already clips at
@@ -561,7 +561,7 @@ button.link {
    the device is offline (`OfflineBanner`), the terms are still to be agreed to
    (`AgreementPending`), and the plan has ended or is about to (`PlanBanner`, MAK-108).
    Quiet on purpose, and defined once so they cannot drift apart the next time one is
-   tuned — they were three copies of these lines until the third arrived.
+   tuned: they were three copies of these lines until the third arrived.
 */
 .offline-banner,
 .agreement-pending,
@@ -634,7 +634,7 @@ button.link {
   /*
      Fills the space the topbar leaves, rather than growing past it.
 
-     This was `min-height`, which let the grid become as tall as its tallest child — so a
+     This was `min-height`, which let the grid become as tall as its tallest child, so a
      long note list pushed the page taller than the viewport and the whole document
      scrolled. `min-height: 0` is what actually permits a flex child to be smaller than
      its content, and is the difference between the panes scrolling and the page doing it.
@@ -646,8 +646,8 @@ button.link {
 /*
    The list drawn as a table: `NoteTable`, inside a notebook, at desktop width only.
 
-   Two shapes. With no note open the table is the whole grid — one track, the handle and
-   the empty workspace gone — because a table of a notebook's fields is the thing to look
+   Two shapes. With no note open the table is the whole grid (one track, the handle and
+   the empty workspace gone) because a table of a notebook's fields is the thing to look
    at, and "Select a note" beside it would be a pane saying nothing next to one saying
    everything. With a note open the table keeps its own dragged width on the left and the
    note takes the rest, which is the side-by-side the list already has; `24rem` is the
@@ -677,7 +677,7 @@ button.link {
      One pixel wide, and it is the divider line.
 
      This used to be a zero-width track whose hit area floated in the middle of the gap,
-     which put the grabbable strip about 12px from the border it moves — so the line you
+     which put the grabbable strip about 12px from the border it moves, so the line you
      aim at and the line that responds were different lines, and the channel had to stay
      wide enough to hold a highlight that never touched either. The handle draws the
      border now, so pointer, highlight and divider are all the same pixel.
@@ -707,7 +707,7 @@ button.link {
   /*
      An invisible strip centred on the 1px line, so a divider that is one pixel wide is
      still something a pointer can catch. It overhangs into both columns, which is exactly
-     what makes it grabbable — and it paints nothing, so the overhang is never seen.
+     what makes it grabbable, and it paints nothing, so the overhang is never seen.
   */
   position: absolute;
   top: 0;
@@ -719,7 +719,7 @@ button.link {
 /*
    Reaching for the divider thickens and tints the divider.
 
-   The tint used to land on the ::before — a rounded pill floating in the gap, separate
+   The tint used to land on the ::before: a rounded pill floating in the gap, separate
    from the line it moved. Colouring the handle itself means the thing that lights up is
    the thing that will move.
 */
@@ -742,8 +742,8 @@ button.link {
   /*
      One text edge down the whole sidebar.
 
-     The notes carry padding of their own — it is what the hover fill and the selected
-     entry are drawn around — so their text started 0.7rem in while the count, search,
+     The notes carry padding of their own (it is what the hover fill and the selected
+     entry are drawn around) so their text started 0.7rem in while the count, search,
      dates and tags started at zero, and the list read as indented under everything above
      it. Matching that inset here is what lines the two up; `.note-list` then pulls itself
      back out so the fill still runs the full width.
@@ -764,7 +764,7 @@ button.link {
    (`listDropZone`). The whole column rather than the list alone, since the head and the
    search field are part of what a person aims at. The sentence is centred in a card of
    its own so it reads over any row; the tint is the accent, the colour of the selection
-   the drop ends in, and never `--bad` — a drop is a safe action. `pointer-events: none`,
+   the drop ends in, and never `--bad`: a drop is a safe action. `pointer-events: none`,
    or the pointer crossing onto the hint would fire the column's dragleave.
 */
 .sidebar.dropping > :not(.list-drop-hint) {
@@ -825,7 +825,7 @@ button.link {
    Buttons.
 
    An action is a button and looks like one. This app used to draw actions as
-   `<button class="link">` — a real button wearing a link's clothes, with no padding, no
+   `<button class="link">`: a real button wearing a link's clothes, with no padding, no
    hit area past the text, and an underline on hover promising a navigation that never
    came. Links go somewhere; buttons change something. Drawing one as the other teaches
    people to distrust both, so the two now look different on purpose.
@@ -836,12 +836,12 @@ button.link {
    layered onto any of them.
 
    `.primary` above is the older filled button. Every `<button>` that wore it has moved
-   onto `.btn-primary`, which is the same shape and radius by design — one visual language
+   onto `.btn-primary`, which is the same shape and radius by design: one visual language
    with two spellings, not two systems, so nothing moved on the way across. It survives for
    a single caller: the export `<a href download>`, which has to stay an anchor so the
    browser streams a multi-gigabyte zip straight to disk instead of buffering it in the
    Worker. Button deliberately does not render anchors, so retiring that last `.primary` is
-   a question about how an anchor should wear button shape — not a rename.
+   a question about how an anchor should wear button shape, not a rename.
    --------------------------------------------------------------------------------- */
 .btn {
   display: inline-flex;
@@ -906,7 +906,7 @@ button.link {
 /*
    Borderless until you reach for it.
 
-   For actions inside a dense row — the trash's Restore and Delete forever — where a grid
+   For actions inside a dense row (the trash's Restore and Delete forever) where a grid
    of outlines would out-shout the notes themselves. The hover fill is what separates this
    from the `.link` styling it replaces: the control has a body, it just isn't drawn until
    the pointer is on it.
@@ -957,8 +957,8 @@ button.link {
 /*
    Neutral, filled: a primary's weight in the page's own ink rather than the brand green.
 
-   For the reassuring choice that sits beside a danger one, where two saturated fills —
-   accent green and --bad red — read as rivals. Filling in --fg over --bg drops the hue but
+   For the reassuring choice that sits beside a danger one, where two saturated fills
+   (accent green and --bad red) read as rivals. Filling in --fg over --bg drops the hue but
    keeps the emphasis, and because both tokens flip with the theme it comes out dark-on-light
    in light mode and light-on-dark in dark, with no per-mode override. Only the filled
    variant carries it; on an outline or a quiet button there is nothing to fill, so the class
@@ -977,13 +977,13 @@ button.link {
    Disclosures.
 
    One collapsible row, drawn one way. This app had three hand-rolled `<details>` and no
-   component, so the convention lived in comments and got copied by hand — and drifted. The
+   component, so the convention lived in comments and got copied by hand, and drifted. The
    note's filing row and the attachments panel ended up stacked directly on top of each other
    on a phone, one with a custom chevron on the right, the other with the browser's native
    triangle on the left. See Disclosure.tsx for the rest of that story.
 
    The marker is drawn here rather than left to the browser. `display: flex` on a summary
-   suppresses the native triangle — browsers only draw it for `list-item` — which is what made
+   suppresses the native triangle (browsers only draw it for `list-item`) which is what made
    the first hand-rolled version a line of text with no affordance at all. Drawing it
    explicitly also lets it rotate between states instead of swapping one glyph for another.
 
@@ -999,7 +999,7 @@ button.link {
      this is the desktop density, where the row is pointed at rather than tapped.
   */
   min-height: 2rem;
-  /* The same 0.78rem as every other secondary label — one number, not one per disclosure. */
+  /* The same 0.78rem as every other secondary label: one number, not one per disclosure. */
   font-size: 0.78rem;
   color: var(--muted);
   cursor: pointer;
@@ -1019,7 +1019,7 @@ button.link {
      Never shrinks.
 
      It is a flex item, and without this a long tag list squeezed it from 5.76px to 3.19px
-     wide while its height stayed put — a rotated box with only a right and a bottom border,
+     wide while its height stayed put: a rotated box with only a right and a bottom border,
      narrowed on one axis, reads as a checkmark rather than a chevron.
   */
   flex: 0 0 auto;
@@ -1049,12 +1049,12 @@ button.link {
 /*
    The half of the summary that yields.
 
-   It truncates so the chevron never has to — see the note on `flex: 0 0 auto` above for what
+   It truncates so the chevron never has to: see the note on `flex: 0 0 auto` above for what
    a squeezed chevron turns into. Anything that should sit hard right goes in here with
    `margin-left: auto`, which is why there is no separate trailing slot.
 
    No `line-height` here on purpose. An earlier version pinned it to 1 to get a fixed row
-   height, which `min-height` now does — and inside `overflow: hidden` it clipped the
+   height, which `min-height` now does, and inside `overflow: hidden` it clipped the
    descenders off any tag with a g or a y in it.
 */
 .disclosure-label {
@@ -1072,7 +1072,7 @@ button.link {
   list-style: none;
   margin: 0;
   /*
-     Stale rows dim while the next notebook's load — see `aria-busy` in `NotesLayout`.
+     Stale rows dim while the next notebook's load: see `aria-busy` in `NotesLayout`.
      The dimming waits 150ms before it starts: a local load is back inside that, and rows
      that flicker half-grey on every tap would be worse than rows that briefly stay put.
      The return to full strength is immediate, so the new rows arrive at once.
@@ -1103,7 +1103,7 @@ button.link {
      Claims 12rem before the leftovers are handed out, rather than taking what is left.
 
      `flex: 1` on its own made this last in line: the controls above are content-sized, they
-     summed to less than the column, so nothing overflowed and this got the remainder — which
+     summed to less than the column, so nothing overflowed and this got the remainder, which
      came to 20px back when a tag picker and a row of date presets sat above it. Those are
      behind the header's filter icon now, so the claim is rarely contested, but a
      `flex-basis` is a claim rather than a leftover and it stays as the list's floor.
@@ -1155,7 +1155,7 @@ button.link {
 }
 
 /*
-   Keyboard focus. `:focus-visible`, so a click selects a note without ringing it — the
+   Keyboard focus. `:focus-visible`, so a click selects a note without ringing it: the
    active fill already says which note is open, and a ring on every click reads as an
    error state.
 
@@ -1199,7 +1199,7 @@ button.link {
 
 /*
    The row's files: a glyph, a name, a count. The excerpt's size and tone, because it is
-   the same kind of line — what is in the note — and only the name may shrink: the glyph
+   the same kind of line (what is in the note) and only the name may shrink: the glyph
    and the count are what make an ellipsized name still legible as "a PDF, and two more".
 */
 .note-files {
@@ -1244,7 +1244,7 @@ button.link {
 .sample-notes p { margin: 0; }
 
 /* ---------------------------------------------------------------------------------
-   A state with nothing to list — `EmptyState`, which `EmptyLibrary` (an account with no
+   A state with nothing to list: `EmptyState`, which `EmptyLibrary` (an account with no
    notes) and `NotebookMissing` (a link to a notebook that is not there) both draw.
 
    One centred stack: a glyph in a soft tile, the heading, a line saying what to do, and
@@ -1252,8 +1252,8 @@ button.link {
    tuned for each, so the stack keeps one rhythm and a change to any piece does not need
    the others re-spaced.
 
-   Drawn in tall boxes — the desktop's workspace pane, or the list column in place of the
-   list — and the stack sits a little above the middle of them, where the eye takes the
+   Drawn in tall boxes (the desktop's workspace pane, or the list column in place of the
+   list) and the stack sits a little above the middle of them, where the eye takes the
    centre to be: the free space is split two parts above to three below by the container's
    own `::before` and `::after` (`.empty-state-pane`, `.empty-state-slot`), rather than a
    margin guessed against one height.
@@ -1273,7 +1273,7 @@ button.link {
 /*
    Once, as it arrives: a fade with a few pixels of rise, so the state settles in rather
    than snapping on. Nothing at all with reduced motion asked for. Neither state can play
-   it for the wrong screen, because neither is drawn until it is known to be true — an
+   it for the wrong screen, because neither is drawn until it is known to be true: an
    account known to hold no notes (`useLibraryTotal`), a notebook list that has loaded
    without the name in it.
 */
@@ -1306,7 +1306,7 @@ button.link {
 }
 
 /* `overflow-wrap: anywhere` on the heading and the line because either can carry a name
-   someone typed — a notebook's, which has no length limit a column can rely on — and a
+   someone typed (a notebook's, which has no length limit a column can rely on) and a
    long one must wrap inside the stack rather than widen it. Ordinary words never need it,
    so the states without a name in them draw exactly as they would without it. */
 .empty-state-heading {
@@ -1341,7 +1341,7 @@ button.link {
 
 /* The quieter action under the main ones (`EmptyState`'s `aside`): its own line, at its
    own width, centred by the stack, one gap below the actions like every other step. It is
-   left out of the phone's full-width rule below on purpose — stretched, a quiet button
+   left out of the phone's full-width rule below on purpose: stretched, a quiet button
    reads as a third equal choice, which is the one thing it must not. */
 .empty-state-aside {
   display: flex;
@@ -1350,7 +1350,7 @@ button.link {
 }
 
 /* A phone held upright: the actions one above the other, each the width of the stack
-   (the 44px height is the buttons' own, `btn-large`), the primary on top — the way the
+   (the 44px height is the buttons' own, `btn-large`), the primary on top: the way the
    app's own primary actions sit under a thumb, and how "Import from Evernote or Notion"
    fits at all at 320px. */
 @media (width < 480px) {
@@ -1440,14 +1440,14 @@ button.link {
 }
 
 /* ---------------------------------------------------------------------------------
-   The list as a table — `NoteTable`, inside a notebook at desktop width.
+   The list as a table: `NoteTable`, inside a notebook at desktop width.
 
    Takes the list's place in the sidebar column with the same claim on the height and the
    same pull-out to the sidebar's edge, so the head, the chips and the Trash link sit
    exactly as they do over the list. The wrap scrolls both ways: the heading row and the
    name column stay put, which is what lets a wide notebook be read without losing which
    row is which. Sticky cells need a real background, so the hover and the open row's
-   wash are mixed over `--bg` rather than laid over nothing — a see-through wash on the
+   wash are mixed over `--bg` rather than laid over nothing: a see-through wash on the
    pinned column would show the columns scrolling under it.
    --------------------------------------------------------------------------------- */
 .note-table-wrap {
@@ -1465,7 +1465,7 @@ button.link {
 
    The list and the table scroll inside the sidebar, whose right edge is a grid gap
    short of the handle that divides it from the note, so their scrollbar floated inside
-   the column — a bar with nothing beside it, on a screen where the divider a
+   the column: a bar with nothing beside it, on a screen where the divider a
    gap away is exactly where a bar belongs. The scroller reaches out through the gap and
    takes it back as padding, the pull `.workspace-main` makes to land its bar on the
    window: the rows do not move, only the bar. Over the full-width table there is no
@@ -1542,7 +1542,7 @@ button.link {
 .note-table [data-align='center'] { text-align: center; }
 
 /*
-   The table's selection column — see `NoteTable`.
+   The table's selection column: see `NoteTable`.
 
    The first column is the checkbox now, so the pin moves: the checkbox stays put at the
    left edge and the name pins beside it, one column's width in. The column is given its
@@ -1619,7 +1619,7 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
   border-radius: 0.3rem;
 }
 /*
-   A search's hint beside the name — "in scan.pdf" — when the match was in a file. One
+   A search's hint beside the name ("in scan.pdf") when the match was in a file. One
    line, as every cell is: the name keeps its room and the hint gives way first, both
    cut with an ellipsis, since a file name is as unbounded as a title.
 */
@@ -1658,10 +1658,10 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
    label centred in that sat in the middle of a row that could be twice the window, off
    the screen at either end of a sideways scroll. Sticky and sized to the wrap's own width
    (`100cqi` of the container the wrap declares), it is always the strip under the rows in
-   view. Most of the time it is only seen saying "Loading…" — see `useAutoLoad`.
+   view. Most of the time it is only seen saying "Loading…": see `useAutoLoad`.
 
-   The cell gives up what every first cell is given — the pin, the clip, the selection
-   column's width — since the button inside can only stick against the wrap if no cell
+   The cell gives up what every first cell is given (the pin, the clip, the selection
+   column's width) since the button inside can only stick against the wrap if no cell
    between them clips, and a pinned cell as wide as the table goes nowhere. `[colspan]`
    is the specificity to outrank `.selectable td:first-child`. The button is a block, so
    that rule's centring has nothing to centre: inline, it sat mid-table at the left edge.
@@ -1705,13 +1705,13 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
    The title row, the property list, the attachments strip, the formatting bar and the
    body all scroll as one, the way Keep's and Evernote's notes do, under a title that
    stays. This was the phone's model; the desktop kept the column as a flex box of chrome
-   around one scrolling pane, so that the formatting bar could never scroll out of reach —
+   around one scrolling pane, so that the formatting bar could never scroll out of reach,
    and drew the fields in a column beside the note so a long list could not push the body
    down. The two layouts diverged in what scrolled, where the fields were and how the
    filing was drawn, and none of that was a difference the width required. Now the bar is
    sticky under the title instead, and the list is the top of the note at every width.
 
-   `display: block` so nothing here is sized to fit — the list, the panes and the editor
+   `display: block` so nothing here is sized to fit: the list, the panes and the editor
    grow to their content and the column overflows the way a page does. CodeMirror is happy
    in flow: it finds the nearest scrolling ancestor for itself. `overscroll-behavior:
    contain` so a flick past the end does not become Chrome's pull-to-refresh. The phone
@@ -1725,8 +1725,8 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
   min-height: 0;
   /*
      Hidden on the x axis, not left to the `auto` that `overflow-y` alone would imply.
-     Nothing here scrolls sideways — the editor wraps, and the preview's wide tables and
-     code blocks own their own `overflow-x: auto` boxes — yet with `auto` Chromium drew a
+     Nothing here scrolls sideways (the editor wraps, and the preview's wide tables and
+     code blocks own their own `overflow-x: auto` boxes) yet with `auto` Chromium drew a
      full-width scrollbar along the column's foot wherever scrollbars are classic, for an
      overflow no measurement could find: no descendant reached past the column's edge and
      `scrollWidth` matched `clientWidth`. Whatever it was counting, there is nothing to
@@ -1741,15 +1741,15 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
      Reach the window's right edge, so the scrollbar sits against the glass.
 
      This is the column's own scroll region, and its scrollbar draws on its right edge.
-     `.shell-main` insets the whole notes grid by 1.5rem, which put that edge — and so the
-     bar — a gutter's width in from the window, with the shell's padding stranded to the
+     `.shell-main` insets the whole notes grid by 1.5rem, which put that edge (and so the
+     bar) a gutter's width in from the window, with the shell's padding stranded to the
      *right* of the scrollbar and the note's text pressed against its left. Pulling the
      right edge back out by exactly that inset lands the scrollbar on the window edge and
      moves the gutter inside it, where `padding-inline` already holds the text a clear
      1.5rem off the bar. Only the right edge: the left is the sidebar's channel and stays.
 
      In the split view the panes are the scroll regions, not this box, so the reach only
-     widens the column and the pane row keeps its 1.5rem inset through `padding-inline` — a
+     widens the column and the pane row keeps its 1.5rem inset through `padding-inline`: a
      gutter the preview pane and the capped property list share on that side. The phone
      block undoes the reach; there the shell runs the column to the glass already.
   */
@@ -1757,8 +1757,8 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
   /*
      The title row's height, for the bar to stick under: its 2.75rem control, its 0.5rem
      bottom padding and its 1px rule. Stated rather than measured, because the row is one
-     line at every width — the title is an input, with a line-height set so that even at
-     its desktop size it stays inside the control's height — and each of those numbers is
+     line at every width (the title is an input, with a line-height set so that even at
+     its desktop size it stays inside the control's height) and each of those numbers is
      set a few rules away. If any of them changes, this must change with it.
   */
   --workspace-head-h: calc(3.25rem + 1px);
@@ -1767,12 +1767,12 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
 /*
    The note's measure.
 
-   Everything in the column — the title row, the property list, the attachments, the bar
-   and the body — is capped at a reading width and centred, so that on a wide window the
+   Everything in the column (the title row, the property list, the attachments, the bar
+   and the body) is capped at a reading width and centred, so that on a wide window the
    text stops at a line a reader can follow and the note sits in air rather than running
    edge to edge. This is most of what makes a Notion page feel calm, taken a step tighter
    than Notion takes it. Set on each child rather than on a wrapper, so the title row and
-   the bar go on being the column's own children — which is what lets them stick.
+   the bar go on being the column's own children, which is what lets them stick.
 
    Not in the split view: two panes side by side are a workbench, and a workbench takes
    the whole bench. On a phone the column is narrower than the cap, so the cap is moot and
@@ -1796,7 +1796,7 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
 
 /*
    The formatting bar stays in reach on a desktop by sticking under the title as the body
-   scrolls past — the reason the column used to be chrome around a scrolling pane, kept
+   scrolls past: the reason the column used to be chrome around a scrolling pane, kept
    without the pane. Not when docked: the phone fixes the bar to the bottom of the screen
    instead, above the keyboard, and a sticky position would fight that.
 */
@@ -1808,7 +1808,7 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
 }
 
 /* The pane no longer scrolls; the column does. `.editor-host` is `height: 100%` of a
-   box that is now auto-height, which computes to auto — the editor grows. */
+   box that is now auto-height, which computes to auto: the editor grows. */
 .workspace-main .pane { overflow: visible; }
 
 /*
@@ -1816,7 +1816,7 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
    column: an absolutely positioned box still adds its height to the scrollable overflow
    of its scroll container, and the editor is as tall as the whole note here, so preview
    mode gained a screenful of empty scroll. Fixed boxes count toward nothing, and one the
-   size of the viewport keeps CodeMirror measuring a real height — the whole reason the
+   size of the viewport keeps CodeMirror measuring a real height: the whole reason the
    pane is hidden rather than removed.
 */
 .workspace-main > .panes.reading > .editor-pane {
@@ -1829,8 +1829,8 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
    The split view is the exception: two panes side by side, each scrolling on its own, is
    two scroll regions by definition, and a document that scrolled both together would
    leave the shorter one blank under the longer. So with the split on, the column is the
-   flex box it used to be — chrome sized to fit, the pane row taking what is left and each
-   pane scrolling inside it — and the property list is capped at half the screen and
+   flex box it used to be (chrome sized to fit, the pane row taking what is left and each
+   pane scrolling inside it) and the property list is capped at half the screen and
    scrolls within itself, since here a long notebook really would push the panes off the
    bottom. `:has()` rather than a class from the component: the view is already on the
    pane row, and this is a fact about layout.
@@ -1850,20 +1850,20 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
 }
 
 /*
-   The property list — notebook, tags, then the fields — in flow above the body.
+   The property list (notebook, tags, then the fields) in flow above the body.
 
    One placement at every width now: the site's phone and desktop layouts both draw this
    block, which is why it is not in the phone block. The column
    it sits in scrolls as one document (see `.workspace-main`), so the list is simply the
    top of the note and takes the height it needs.
 
-   No rule of its own. Whatever follows draws the seam — the attachments row and the
-   desktop's formatting bar each carry one — and a rule here as well stacked three lines
+   No rule of its own. Whatever follows draws the seam (the attachments row and the
+   desktop's formatting bar each carry one) and a rule here as well stacked three lines
    within a hand's height of the title. The one case with nothing in flow after the list
    is a docked bar, fixed to the screen's foot rather than to the list's, so there the
    list keeps a rule between its last row and the body.
 
-   The one place it is capped is the split view, where the column is a flex box again —
+   The one place it is capped is the split view, where the column is a flex box again:
    see the split rules under `.workspace-main`.
 */
 .fields-inline {
@@ -1876,7 +1876,7 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
 
 /*
    The tag row's chips start on the value column's edge, box and all, like every chip on
-   the list — see the alignment note on the select chip. This wrapper used to be pulled
+   the list: see the alignment note on the select chip. This wrapper used to be pulled
    left by a chip's padding so the first chip's *letters* met the line; the chips then sat
    a step left of the words above and below them. `align-self: center` keeps a one-line
    row centred in the taller label cell beside it.
@@ -1900,7 +1900,7 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
   border-bottom: 1px solid var(--border);
 }
 
-/* On a desktop this is transparent — the title row is just the back link and the input
+/* On a desktop this is transparent: the title row is just the back link and the input
    sharing the one flex row. It becomes the first of two rows below the breakpoint. */
 .workspace-title-row {
   display: flex;
@@ -1943,7 +1943,7 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
 
 /*
    List or table, as one icon that flips. Outside a notebook there is no table to switch
-   to, and it fades rather than hides: its name carries the reason — see `NotesViewToggle`.
+   to, and it fades rather than hides: its name carries the reason (see `NotesViewToggle`).
    A note's ⋯ fades the same way while offline; see `OverflowMenu`'s `disabled`, and the
    sort icon over a search in the table; see `NotesSort`'s `disabledReason`.
 */
@@ -1967,7 +1967,7 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
   /*
      Wide enough for an address, bounded so it never reaches the far edge.
 
-     10rem was sized for the item labels — "Settings", "Sign out" — and the account menu
+     10rem was sized for the item labels ("Settings", "Sign out") and the account menu
      then had to fit an email into the same box, which wrapped `casey.lindqvist@example.com` onto
      three lines. The address is the widest thing any of these menus carries, so the floor
      is sized for a typical one and the ceiling keeps a long one from spanning a phone:
@@ -2017,7 +2017,7 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
    what reserves it.
 
    Drawn as a rotated box with two borders, the same construction as the disclosure chevron
-   and the select's arrow — no glyph, no asset, and correct in dark mode for free because it
+   and the select's arrow: no glyph, no asset, and correct in dark mode for free because it
    inherits currentColor.
 */
 .overflow-list:has(.overflow-item.selected) .overflow-item { padding-left: 1.6rem; }
@@ -2042,7 +2042,7 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
    otherwise inherit, so it reads as a menu item and not as prose. */
 a.overflow-item { text-decoration: none; }
 
-/* A second, quieter line saying why an item is faded — on a phone the `title` that says
+/* A second, quieter line saying why an item is faded: on a phone the `title` that says
    the same is never shown. See `countMenuItems`. */
 .overflow-item-note {
   display: block;
@@ -2053,7 +2053,7 @@ a.overflow-item { text-decoration: none; }
 
 /* An item that says why it is faded is faded by colour instead of opacity. The opacity
    above stacked on the note's own muted colour left the one line that explains the item
-   at about 2:1 — unreadable on the phone it exists for. Muted ink on both lines still
+   at about 2:1, unreadable on the phone it exists for. Muted ink on both lines still
    reads as unavailable beside the full-ink items, with no hover fill to say otherwise. */
 .overflow-item:disabled:has(.overflow-item-note) {
   opacity: 1;
@@ -2062,12 +2062,12 @@ a.overflow-item { text-decoration: none; }
 
 /*
    The error state's header row holds only the back arrow, and that arrow is hidden above
-   the breakpoint — which left a bordered 9px strip above the message with nothing in it.
+   the breakpoint, which left a bordered 9px strip above the message with nothing in it.
    So the row goes too, on the same breakpoint and for the same reason: on a desktop the
    topbar is there and this row has nothing left to contribute.
 
    Its own class rather than a rule on `.workspace-head`, because the loaded note's header
-   also contains a `.view-back` and must keep its border at every width — it still holds
+   also contains a `.view-back` and must keep its border at every width: it still holds
    the title, the save state and the menu.
 */
 .workspace-error-head { display: none; }
@@ -2077,16 +2077,16 @@ a.overflow-item { text-decoration: none; }
 
    A note, Settings and Trash each fill the screen on a phone and each needs a way back to
    the list. They had three: a bare arrow top-left in a note, a text link top-right in
-   Settings, and a bordered button inside the sidebar in Trash — three answers to one
+   Settings, and a bordered button inside the sidebar in Trash: three answers to one
    question, only one of them in the corner a phone reserves for it and only one of them a
    44px target.
 
-   This is that one. It pairs with the heading beside it — the note's title, "Settings",
-   "Trash" — which is what lets the arrow stay a bare glyph and say where it goes.
+   This is that one. It pairs with the heading beside it (the note's title, "Settings",
+   "Trash") which is what lets the arrow stay a bare glyph and say where it goes.
 
    Hidden above the breakpoint: on a desktop the rail's wordmark and every place in it
    lead home, at every rail width, so a third way out is clutter. `display` is what the
-   breakpoint switches, so the control is always in the tree — making it conditional would
+   breakpoint switches, so the control is always in the tree: making it conditional would
    rebuild the note's uncontrolled CodeMirror view on resize.
 */
 .view-back {
@@ -2130,7 +2130,7 @@ a.overflow-item { text-decoration: none; }
 }
 
 /*
-   The head's status — "Saved", or what Auto-fill just did — gives way before the title
+   The head's status ("Saved", or what Auto-fill just did) gives way before the title
    does. It is a sentence for a few seconds; the title is how you know which note this is,
    and a status that read "Filled in the title, the notebook, a tag and 5 fields" left
    "ACME HARD" of it. Cut with an ellipsis rather than wrapped, since the row has one line,
@@ -2218,7 +2218,7 @@ a.overflow-item { text-decoration: none; }
    thing in the head rather than a second menu. The gap is the icon's, not a button's. */
 .autofill-btn { gap: 0.3rem; }
 
-/* While the press is out reading, the sparkle spins — the progress the header status line
+/* While the press is out reading, the sparkle spins: the progress the header status line
    used to carry, now on the trigger itself, which is the one spot that also works on a
    phone where the label is hidden. Still under `prefers-reduced-motion`. */
 .autofill-btn.busy svg {
@@ -2241,8 +2241,8 @@ a.overflow-item { text-decoration: none; }
    What an Auto-fill press just wrote, marked where it landed (`filled` in `Workspace`).
 
    The snackbar says what changed in a sentence; this says where. Each thing the press
-   wrote lights in turn down the record — the title, the notebook, the tags it added, then
-   the fields in the order they are drawn — holds for a beat, and fades back to how it
+   wrote lights in turn down the record (the title, the notebook, the tags it added, then
+   the fields in the order they are drawn) holds for a beat, and fades back to how it
    always looks. A value's own box takes an accent wash; a field's name and glyph, and the
    title, take the accent as their colour, since a row here is cells in the list's grid
    with no box of its own to tint (`.note-field` is `display: contents`), and the title has
@@ -2295,8 +2295,8 @@ a.overflow-item { text-decoration: none; }
 }
 
 /*
-   Three tracks again: editor, handle, preview. Percentages rather than calc() on fr units
-   — the percentage form is universally supported and the gap is handled by `gap`, so
+   Three tracks again: editor, handle, preview. Percentages rather than calc() on fr units:
+   the percentage form is universally supported and the gap is handled by `gap`, so
    there is nothing the fr version would buy here.
 */
 .panes.split {
@@ -2304,7 +2304,7 @@ a.overflow-item { text-decoration: none; }
     minmax(0, calc(var(--editor-fraction, 0.5) * 100%))
     1px
     minmax(0, 1fr);
-  /* Halved for the same reason as .notes — applied on both sides of the handle. */
+  /* Halved for the same reason as .notes: applied on both sides of the handle. */
   gap: 0 1rem;
 }
 
@@ -2398,7 +2398,7 @@ a.overflow-item { text-decoration: none; }
 
 
 
-/* Notebook scope — same tier as search, not tag pills */
+/* Notebook scope: same tier as search, not tag pills */
 .notebook-scope-wrap {
   position: relative;
 }
@@ -2437,7 +2437,7 @@ a.overflow-item { text-decoration: none; }
 }
 
 /*
- * Date range — the custom From/To pair on the sheet's dates page.
+ * Date range: the custom From/To pair on the sheet's dates page.
  *
  * Two inputs side by side rather than a single "period" control: an archive question is
  * usually open at one end ("anything before 2020"), which a preset list cannot express.
@@ -2484,23 +2484,23 @@ a.overflow-item { text-decoration: none; }
 
    Selected tags as chips, a find field, then the rest as rows in a scroll box. It
    replaced a wrapped field of pills, which was fine at sixteen tags and had no answer at
-   326 — it simply got taller. See `TagPicker.tsx` for the rest of that reasoning.
+   326: it simply got taller. See `TagPicker.tsx` for the rest of that reasoning.
 
-   It is a page of the filter sheet at every width — it was also a disclosure in the
+   It is a page of the filter sheet at every width: it was also a disclosure in the
    desktop sidebar once, and these rules carried a second set of sizes for that. The
    sheet's are the only ones left.
 
    The picker owns a fixed page, and the list inside it does the yielding. Left to size
-   itself, the sheet grew by the height of the chip row the moment a tag was picked — the
+   itself, the sheet grew by the height of the chip row the moment a tag was picked: the
    list stayed at its cap and the chips were added on top, so the surface got taller under
    the thumb that had just tapped. The phone app holds the sheet still and pushes its own
    content down instead, which is what these rules reproduce: the page claims a height,
    the chips and the field keep theirs, and the list takes what is left.
 
    `70dvh` rather than a fixed number of rows: the sheet is capped at 85dvh, so this stays
-   inside it on any screen, and `dvh` is right for the same reason it is right there — the
+   inside it on any screen, and `dvh` is right for the same reason it is right there: the
    mobile URL bar changes the viewport, and `vh` measures the tallest state. The desktop
-   panel is capped lower and overrides this — see the `width > 860px` block on `.sheet`.
+   panel is capped lower and overrides this: see the `width > 860px` block on `.sheet`.
 
    The gap matches the sheet body's, so header, chips and field are one evenly spaced
    stack: the first space in the column used to be the body's and the rest this box's
@@ -2542,10 +2542,10 @@ a.overflow-item { text-decoration: none; }
    dead space below the last row instead of filling it. From zero it is sized by what
    remains, which is what makes it absorb the chip row exactly.
 
-   `min-height: 0` is what lets it be shorter than its content and scroll at all — a flex
+   `min-height: 0` is what lets it be shorter than its content and scroll at all: a flex
    item's floor is its content, and without it the list refuses to shrink and pushes the
    sheet taller again. No `max-height` beside it: a cap and a flex claim are two answers
-   to one question, and when both were set the cap won on source order — the list stayed
+   to one question, and when both were set the cap won on source order: the list stayed
    at its old size while the page around it grew, leaving 173px of nothing under the last
    row.
 
@@ -2566,7 +2566,7 @@ a.overflow-item { text-decoration: none; }
    A row: denser than the 44px the phone gives every other control, and deliberately.
 
    44px is the floor for a control you must not miss. These are a scrolling list of
-   alternatives where the cost of a mis-tap is one more tap — the same trade the note list
+   alternatives where the cost of a mis-tap is one more tap: the same trade the note list
    itself makes, whose rows are shorter still. At 44px only eleven tags were on screen out
    of hundreds, which is the problem the picker exists to solve, so the rows give up the
    eight pixels the list needs to show two more. The same size at both widths: beside the
@@ -2598,7 +2598,7 @@ a.overflow-item { text-decoration: none; }
 }
 
 /*
-   The notebook picker a selection is moved with — `MoveSheet` — is this picker's shape:
+   The notebook picker a selection is moved with (`MoveSheet`) is this picker's shape:
    a find field over a capped, scrolling list. Its rows are the drawer's, so only the
    frame is shared here; see the component for why it is a sheet at all.
 */
@@ -2643,7 +2643,7 @@ a.overflow-item { text-decoration: none; }
    Here rather than in the topbar, which is account chrome and nothing else, and here
    rather than only in Settings, because this is the column people search from: a search
    that cannot yet see inside a PDF is a fact about this list. Rendered only while there
-   is something to say — a pass running, or a backlog left for the Import panel — so the
+   is something to say (a pass running, or a backlog left for the Import panel) so the
    floor is empty the rest of the time. The rule above it is the seam Trash used to draw
    under the list, before Trash moved to the rail; one line, clipped, because the sidebar
    can be narrowed to less than the sentence.
@@ -2715,8 +2715,8 @@ a.sidebar-status:hover {
 
 /*
    The menu's head: the address, and on dev and previews the instance under it. Labels, not
-   commands, so they take none of the item's box — no hover fill, no rounded corners, no
-   0.6rem of padding sized for a press target — and sit as tight lines of text with the
+   commands, so they take none of the item's box (no hover fill, no rounded corners, no
+   0.6rem of padding sized for a press target) and sit as tight lines of text with the
    head's air above and below the pair rather than around each. They wore the item's box
    once, under overrides, and hovering one painted a lopsided grey pill on a line that does
    nothing.
@@ -2732,7 +2732,7 @@ a.sidebar-status:hover {
      One line, truncated from the end.
 
      This wrapped before, on the reasoning that the alternative was stretching the menu off
-     the screen edge — but the menu is bounded now, so wrapping only bought a three-line
+     the screen edge, but the menu is bounded now, so wrapping only bought a three-line
      block of chrome above the two things you actually came here to press. An address is
      identification: the local part is what distinguishes two accounts, so the head of the
      string is the half worth keeping and the tail is what yields.
@@ -2810,14 +2810,14 @@ a.sidebar-status:hover {
   box-shadow: 0 1px 2px rgb(0 0 0 / 25%);
 }
 /* Pinned to the screen's corner rather than a panel's, above everything that scrolls
-   under it — the pointer goes through, so being on top costs nothing. */
+   under it: the pointer goes through, so being on top costs nothing. */
 .instance-ribbon-page {
   position: fixed;
   z-index: 40;
 }
 
 /* The phone's drawer has more room: its wordmark starts about 57px along the diagonal,
-   against the rail's 40, so the band can sit further out and be larger there — the drawer
+   against the rail's 40, so the band can sit further out and be larger there: the drawer
    is also the only place a phone shows it, where the rail is always on screen. */
 .sheet .instance-ribbon {
   width: 4.25rem;
@@ -2846,13 +2846,13 @@ a.sidebar-status:hover {
    A grid rather than stacked label/control pairs: the labels line up in one column, so
    eight fields read as a form and not as eight rows that each found their own width. It
    stretches across the row, unlike the picker and the tag entry, because a value can be
-   a sentence and the control has to have somewhere to put it. Every row is three cells —
-   label, control, and a side slot for Open/Call/Clear — and the third is always emitted,
+   a sentence and the control has to have somewhere to put it. Every row is three cells
+   (label, control, and a side slot for Open/Call/Clear) and the third is always emitted,
    even empty, so the rows cannot drift out of step in the grid.
 
    No type glyph beside the label. One icon per row, eight rows deep, read as decoration
    rather than as information: the label already names the field, and the control below it
-   already says what the type is — a date picker and a checkbox do not need announcing. The
+   already says what the type is: a date picker and a checkbox do not need announcing. The
    glyphs survive in the notebook's field settings, where the type is the subject and rows
    are picked out by it.
 
@@ -2865,8 +2865,8 @@ a.sidebar-status:hover {
   /*
      Glyph, name, value, and the value's own action (Open, Call). The name column is a
      fixed width, as Notion's is, so nothing that happens to the names can move the values:
-     a field added with a long name, or a note leaving its notebook — which relabels every
-     field "Destination *from Travel*" — used to widen a column sized to its longest name
+     a field added with a long name, or a note leaving its notebook (which relabels every
+     field "Destination *from Travel*") used to widen a column sized to its longest name
      and step every value to the right. A name longer than the column truncates, and
      carries its full text as a title. The phone block narrows it.
   */
@@ -2901,7 +2901,7 @@ a.sidebar-status:hover {
      Clearance from the value's box, which reaches into the column gap.
 
      Every value is pulled left by its own padding so its text lands on the column's
-     edge — a plain input by 0.35–0.45rem, a chip by 0.55rem — which puts the box's edge
+     edge (a plain input by 0.35–0.45rem, a chip by 0.55rem) which puts the box's edge
      that far back into the 0.5rem gap. A chip's box therefore started a hair inside the
      name column, and on a phone, where the column is as wide as its longest name, the
      notebook chip sat on the word "Notebook". The name keeps its own margin rather than
@@ -2923,7 +2923,7 @@ a.sidebar-status:hover {
    width left of the letters read as a box drawn in the wrong place, and the I-beam and
    the word "Empty" already say the value can be typed in. The box appears on focus, which
    is the state. The negative inline margin puts the text where a plain value would sit,
-   on the column's edge, rather than a padding-width inside it — so a resting row and an
+   on the column's edge, rather than a padding-width inside it, so a resting row and an
    editing row put the value in the same place.
 */
 .note-field-input {
@@ -2953,8 +2953,8 @@ a.sidebar-status:hover {
 .note-field-input::placeholder { color: color-mix(in srgb, var(--muted) 72%, transparent); }
 
 /*
-   A select is a chip once it holds a value — the shape a chosen option has in every
-   property list — and the word "Empty" until it does. The native menu stays: it is the
+   A select is a chip once it holds a value (the shape a chosen option has in every
+   property list) and the word "Empty" until it does. The native menu stays: it is the
    one control here that is better as the platform's own than as something drawn.
 */
 select.note-field-input {
@@ -2969,7 +2969,7 @@ select.note-field-input {
 
 /*
    An unfilled select is the chip's box with the word "Empty" in it, in muted ink and no
-   wash — not a text value. A select's slot holds chips, and drawing its empty state as
+   wash, not a text value. A select's slot holds chips, and drawing its empty state as
    text put the word on the column's edge and the box a padding's width left of it, so
    choosing a value jumped both to the right as the chip took over. With the chip's
    geometry in both states, a choice changes the colour and nothing else moves.
@@ -2977,7 +2977,7 @@ select.note-field-input {
    The box is drawn, faintly. Without it the word sat a padding's width inside the column
    for no reason anyone could see, a step right of every text value's "Empty" above and
    below it; a wash shows the slot the word is in. It is a third of the neutral chip's
-   wash — the notebook picker's — so it never reads as an option called "Empty".
+   wash (the notebook picker's) so it never reads as an option called "Empty".
 */
 select.note-field-input:not([data-filled]) {
   min-height: 1.75rem;
@@ -2994,14 +2994,14 @@ select.note-field-input:not([data-filled]):hover:not(:disabled) {
 
 select.note-field-input[data-filled] {
   /*
-     A chosen option is a chip — the shape a chosen option has in every property list,
-     Notion's included — in the option's own tint; see `.tag-chip` for the tint system the
+     A chosen option is a chip (the shape a chosen option has in every property list,
+     Notion's included) in the option's own tint; see `.tag-chip` for the tint system the
      two share. The notebook picker is the same chip in the neutral grey a token takes
      with no tint, which is what tells the note's place from its tags and its values.
 
      No pull to the left. A text value is drawn with its letters on the column's edge and
      its box, when it shows, hanging a padding's width to the left; a chip's box is the
-     value, so the box itself starts on the edge and the word sits inside it — Notion's
+     value, so the box itself starts on the edge and the word sits inside it: Notion's
      alignment, where "Other" and the sentence beneath it begin on one line. Pulling the
      chip out to align its letters instead left every chip a step left of every word.
   */
@@ -3081,7 +3081,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    Open, Email, Call: a link beside a value that can be acted on.
 
    Links only, and deliberately so. A control that acts on the note is a `Button` with the
-   `quiet` variant — the rating's Clear was briefly styled by this class and read as a
+   `quiet` variant: the rating's Clear was briefly styled by this class and read as a
    boxed control, because a button arrives with chrome a link does not have. Restyling the
    button to match the links was the wrong direction: `Button` exists precisely so actions
    stop being drawn as links.
@@ -3100,7 +3100,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 /*
    The app's own focus ring rather than the browser's default, which these links were
-   getting by omission — the same ring `.btn` and the star radios use, so a keyboard moving
+   getting by omission: the same ring `.btn` and the star radios use, so a keyboard moving
    through a note's properties is marked the same way throughout.
 */
 .note-field-act:focus-visible {
@@ -3112,7 +3112,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 /*
    A rating: a row of stars, and beside it either the word "Empty" or a way back to it.
 
-   No border and no fill, like every other value here — the stars *are* the value, so a
+   No border and no fill, like every other value here: the stars *are* the value, so a
    box around them would be the second thing drawn to say the same thing. The row is
    inline-flex so the clear link sits on the value's line rather than under it.
 */
@@ -3136,14 +3136,14 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   /*
      Room for the hover wash to sit around the glyphs rather than crop to them, pulled
      back on the left by the same amount so the first star still lands on the column's
-     edge — the alignment `.note-field-input` keeps with its own negative margin.
+     edge: the alignment `.note-field-input` keeps with its own negative margin.
   */
   padding: 0.1rem 0.35rem;
   margin-left: -0.35rem;
 }
 
 /*
-   A preview is drawn exactly as a chosen rating — same glyphs, same ink — and the *row*
+   A preview is drawn exactly as a chosen rating (same glyphs, same ink) and the *row*
    says it is provisional by lifting under the pointer. Nothing about the stars changes,
    which is the point: the two earlier attempts both put the distinction on the glyphs and
    both misread. Dimming them to 55% accent was the app's own `:disabled` signal, so the
@@ -3244,7 +3244,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    other row's: a plus where a glyph goes, "Add field" where a name goes, the empties
    toggle where a value goes, and "Manage fields" in the side slot where a value's own
    action (Open, Call) goes. It used to be a flex line holding a dashed chip and a green
-   link — two more costumes in a block that already wore too many, on a line that was in
+   link: two more costumes in a block that already wore too many, on a line that was in
    the list but not of it. While a field is being added the same cells hold the form.
 */
 .note-fields-foot {
@@ -3278,7 +3278,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    The resting foot's right-hand cell, across the value and side columns: the empties
    toggle at the value column's edge, "Manage fields" hard right. One spanning cell rather
    than a value cell and a side cell, because a grid column is as wide as its widest cell
-   in any row, and a link in the side column widened that column under every row — on a
+   in any row, and a link in the side column widened that column under every row: on a
    phone by enough to stack the tags one per line. A span that crosses the value column's
    flexible track adds nothing to the side track's intrinsic width.
 */
@@ -3310,7 +3310,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 /*
    The form's cells, while a field is being added: type and, for a select, its options in
    the value column; Add and Cancel in the side slot. Every control here is boxed while
-   the row is open — it is one edit, and the quiet-at-rest rule that lets a value read as
+   the row is open: it is one edit, and the quiet-at-rest rule that lets a value read as
    text is for values at rest, not for a name, a type and a list of options being typed
    together. A message that will not fit the side slot takes a line of its own beneath.
 */
@@ -3338,7 +3338,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 /*
    The name input contributes no width of its own. An input is some twenty characters
    wide by nature, and as a grid item that width would have grown the name column the
-   moment the form opened — every value on the list stepped right to make room. Zero
+   moment the form opened: every value on the list stepped right to make room. Zero
    width takes it out of the column's sizing; the percentage minimum then fills whatever
    the names beside it have already made the column.
 */
@@ -3391,7 +3391,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 /*
    The formatting run scrolls; the bar around it does not.
 
-   Scrolling used to sit on the bar itself, which took the view switcher with it — eleven
+   Scrolling used to sit on the bar itself, which took the view switcher with it: eleven
    44px targets overflow a phone by ~170px, so the switcher sat that far past the right
    edge and could only be reached by swiping. Wayfinding you have to go looking for has
    failed at its job, so the scroll moved in one level and the switcher stayed put.
@@ -3429,7 +3429,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    The run fading out under the switcher's edge while there is more of it to the right.
 
    At rest a scrolling row looks exactly like one that does not scroll, and the Attach
-   button — the phone's only way to add a file — sits past the fold beside Link. The
+   button (the phone's only way to add a file) sits past the fold beside Link. The
    toolbar measures the overflow and sets `tb-more`; the fade is on the switcher rather
    than the scroller because a positioned pseudo-element inside the scroller would scroll
    with it, and the switcher already owns that edge.
@@ -3480,7 +3480,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 /*
    No horizontal padding: the panel this sits in already provides the inset, and the row's
    own added a second one, so a filename started 8px right of the "Attachments" summary
-   above it and of the note body below. The vertical padding stays — that is the space
+   above it and of the note body below. The vertical padding stays: that is the space
    between rows, which nothing else supplies.
 
    The `.unlinked` variant below draws a fill and an inset rule, and those want a little
@@ -3501,7 +3501,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
    No negative margin to go with the padding: the panel has no inset of its own to pull back
    through, so a pull put the fill 8px outside the column every other row lines up with.
-   The label moving 8px right on the one row that is already shouting is the smaller cost —
+   The label moving 8px right on the one row that is already shouting is the smaller cost,
    and arguably the right one, since the inset rule reads as a callout.
 */
 .attachments-row.unlinked {
@@ -3557,7 +3557,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    The confirm gets the whole row, not the gap beside the filename.
 
    `.attachments-row` is a flex row, so a confirm rendered inside it became a flex item
-   next to the file info — 166px of a 375px screen, which wrapped "Permanently delete
+   next to the file info: 166px of a 375px screen, which wrapped "Permanently delete
    <filename>?" onto four lines and made the panel 282px tall. Wrapping the row's contents
    lets the confirm sit under them at full width instead.
 */
@@ -3569,7 +3569,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    The name yields; the actions do not.
 
    `.attachments-row` wraps so the confirm can take a line of its own, but that also let a
-   long filename claim the full width and push Delete onto a second line — the row grew
+   long filename claim the full width and push Delete onto a second line: the row grew
    from 55px to 92px and the actions drifted away from the file they act on. The name
    already truncates with an ellipsis; this is what makes it do so before the row breaks.
 */
@@ -3593,7 +3593,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 /*
    What became of an upload that did not simply go through, with its Dismiss on the
-   sentence's own line end — the same shape as the cleanup line above the list, so the
+   sentence's own line end: the same shape as the cleanup line above the list, so the
    panel has one way of saying a thing and offering a button for it.
 */
 .attachments-notices {
@@ -3636,7 +3636,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 /*
    Choosing another note, inline in an attachment row.
 
-   The same shape as `.confirm` — a bounded box on its own line under the file — with a
+   The same shape as `.confirm` (a bounded box on its own line under the file) with a
    capped list inside, so a long archive scrolls in the box rather than pushing the note
    body off the screen. `min-width: 0` for the same reason `.confirm` has it: a filename
    with nowhere to break must not set the box's width.
@@ -3720,14 +3720,14 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
      The old 1.9rem predates the chips having a height; against 1.65rem chips it left two
      dead pixels above and below the row, which is what made an otherwise even 8px rhythm
-     look uneven. The row is never empty — the "+ Add tag" entry is always present — so
+     look uneven. The row is never empty (the "+ Add tag" entry is always present) so
      there is nothing for a minimum to protect against.
   */
   cursor: text;
 }
 
 /*
-   Shown, not edited — the trash, or offline (`TagInput`'s `readOnly`). No text cursor over
+   Shown, not edited: the trash, or offline (`TagInput`'s `readOnly`). No text cursor over
    words that cannot be typed into. The row can be empty of chips here, so it keeps their
    height itself and the property list's rhythm does not move when a note locks. "No tags"
    is inset by the same half-rem as the "+ Add tag" it stands in for, which is also where
@@ -3747,14 +3747,14 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 /*
    A token's colour: the word's own tint, or a neutral wash when it has none.
 
-   Tags and chosen select options are the same kind of thing on a property list — a word
-   from a set — and they share this. Each carries `data-tint` from `tintIndex`, which maps
+   Tags and chosen select options are the same kind of thing on a property list (a word
+   from a set) and they share this. Each carries `data-tint` from `tintIndex`, which maps
    the six hues below onto it; the wash and the ink are both mixed from that one hue at the
    ratios the theme sets, so one hue reads on both grounds. With no tint the hue is the
    ink itself, which mixes to a plain grey wash and plain ink: Notion's default chip.
 
-   Every token used to be the accent on the accent's tint — one green for tags, chosen
-   options and the notebook alike — which made the list a form of green pills and spent
+   Every token used to be the accent on the accent's tint (one green for tags, chosen
+   options and the notebook alike) which made the list a form of green pills and spent
    the brand colour on data. The accent goes back to meaning "act".
 */
 /* `:where`, so these defaults have no specificity and the `[data-tint]` rules below win on
@@ -3794,7 +3794,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 /*
    The hash, on the note's own tags only. It is how the list rows already write a tag,
    and it is what tells the tags row from the notebook row at a glance. Not on the same chips in the notebook settings, where the editor holds a select
-   field's options — those are not tags. In the chip's own ink, a step back.
+   field's options: those are not tags. In the chip's own ink, a step back.
 */
 .filing-prop .tag-chip::before {
   content: '#';
@@ -3829,8 +3829,8 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    The earlier/later nudge, on a select option's chip only.
 
    Same manner as the × it sits beside: quiet at rest so a row of options reads as words,
-   surfacing on hover and focus. The pair keeps its layout space while hidden — the same
-   trick the × relies on — so a chip is the same width whether or not it is being pointed
+   surfacing on hover and focus. The pair keeps its layout space while hidden (the same
+   trick the × relies on) so a chip is the same width whether or not it is being pointed
    at, and the row never reflows as the pointer crosses it.
 */
 .tag-move-group {
@@ -3887,7 +3887,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    A select option's word, which renames it (`TagInput`'s `onRename`).
 
    The word is the button, so the target is as big as what it names, with a pencil beside
-   it that surfaces on hover and focus in the manner of the chevrons and the × — and keeps
+   it that surfaces on hover and focus in the manner of the chevrons and the ×, and keeps
    its space while hidden, for the same reason: the chip is one width whether or not it is
    pointed at. Pressing it swaps the word for a field in its place; see `.tag-chip.renaming`.
 */
@@ -3960,7 +3960,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 /*
    The entry point, which has to look like one.
 
-   It was a transparent borderless input whose only hint was a placeholder — and that
+   It was a transparent borderless input whose only hint was a placeholder, and that
    placeholder was suppressed as soon as the note had a tag, so adding a second one meant
    knowing to click an invisible strip. Idle it now reads as a dashed chip beside the real
    ones; focused it becomes a field. The input stays on top throughout, so the hint and the
@@ -3970,7 +3970,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    The wrapper owns the box, and the box never moves.
 
    The first version swapped the input between `position: absolute` and `static` on focus,
-   which re-flowed it past the hidden hint — it jumped to the right and changed width in
+   which re-flowed it past the hidden hint: it jumped to the right and changed width in
    the same frame. Now the input is absolutely positioned over the wrapper at every state
    and only the wrapper's width animates, so the field opens exactly where the "+ Add tag"
    chip was standing.
@@ -3981,7 +3981,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   align-items: center;
   /*
      Both ends of the transition are explicit lengths. `width: auto` does not animate, so
-     shrink-to-fit here would make the box snap open instead of growing out of the chip —
+     shrink-to-fit here would make the box snap open instead of growing out of the chip:
      5.5rem is the hint's own width, measured, and the label is centred in it either way.
   */
   width: 6rem;
@@ -3990,7 +3990,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
      A ghost at rest, not a dashed chip. The dashes were a third chip costume beside the
      filled and the outlined ones; the entry now reads as the muted words "+ Add tag" that
      go to ink on hover, like every other quiet control in the list, and only becomes a
-     box — the same solid accent edge a value gets — once it is being typed in.
+     box (the same solid accent edge a value gets) once it is being typed in.
   */
   border: 1px solid transparent;
   /* The chips' radius, so the box it becomes is the same shape as the boxes beside it. */
@@ -4011,7 +4011,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   align-items: center;
   /*
      Left-aligned, not centred. The box is a fixed 5.5rem measured against one font, and
-     where the system font runs narrower the centred label drifted right of its padding —
+     where the system font runs narrower the centred label drifted right of its padding,
      so its plus sat a step further in than the "+ Add field" chip directly under it, and
      the two chips read as different indents. Hugging the padding keeps every chip's plus
      on the same line whatever the font measures.
@@ -4034,7 +4034,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 /*
    Opacity rather than visibility, so the label fades as the box grows instead of
-   vanishing a frame before it. It keeps its size either way — the wrapper is measured
+   vanishing a frame before it. It keeps its size either way: the wrapper is measured
    from it while idle.
 */
 .tag-entry.active .tag-add-hint { opacity: 0; }
@@ -4077,7 +4077,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 /*
    An option, not a button. The list is a listbox now (Downshift's), and the item under
-   the arrow keys or the pointer is the highlighted one — one state for both, so a row
+   the arrow keys or the pointer is the highlighted one: one state for both, so a row
    never shows one highlight from the keyboard and another from the mouse.
 */
 .tag-suggestions li {
@@ -4115,7 +4115,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
  * The panel every settings page sits in.
  *
  * Named for the import when that was the only one; it now holds notebooks, export and
- * maintenance, security and connected apps too — every settings page, with its heading in
+ * maintenance, security and connected apps too: every settings page, with its heading in
  * a `.panel-head` and its prose `.muted.small`. Security and Connected apps once used
  * `.settings-panel` with a bare `<h2>` and unsized copy, which drew the same card around a
  * 24px heading and 16px text while every sibling page was set at a third less; one class
@@ -4126,7 +4126,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
  *
  * `align-items: flex-start` is the part that matters most here: without it, a flex column
  * stretches every child to the container's full width, which is what sent a plain `<Button>`
- * edge-to-edge on a wide monitor before this had a rule at all — see the passkey
+ * edge-to-edge on a wide monitor before this had a rule at all: see the passkey
  * re-verification form and its "Email me a code" button.
  */
 /* Also formerly capped by .shell.wide; see the note on .settings. */
@@ -4273,13 +4273,13 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 /* Rows of a thing you own and can revoke: passkeys, and connected apps.
    Both are a name, when it was added, and one quiet destructive control, and both were
-   rendering as default browser bullets with the action jammed against the text — a marker
+   rendering as default browser bullets with the action jammed against the text: a marker
    that means nothing next to a name, and no separation between one row and the next.
    The control sits right, away from the label, because that is where a per-row action
    belongs and because it then lines up down the list instead of moving with the name. */
 /* `width: 100%` alongside the cap: a flex column's child otherwise shrinks to its own
    content, which for a short name like "Claude" left the list a fraction of the measure
-   the text above it uses — narrow enough to read as an afterthought rather than the
+   the text above it uses: narrow enough to read as an afterthought rather than the
    point of the page. */
 .owned-list { list-style: none; width: 100%; margin: 0.75rem 0 0; padding: 0; max-width: 46rem; }
 .owned-list li {
@@ -4390,7 +4390,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   max-width: 24rem;
 }
 
-/* PDFs and images picked for notes: what was picked, where they go, and the one button —
+/* PDFs and images picked for notes: what was picked, where they go, and the one button:
    one block with the form's rhythm, drawn in place of Start import while it is there. */
 .import-batch {
   display: flex;
@@ -4413,7 +4413,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /* Collapsed by default: the answer is only needed once, and open by default would push
-   the file picker — the thing a returning user wants — below the fold. */
+   the file picker (the thing a returning user wants) below the fold. */
 .enex-help { width: 100%; max-width: 46rem; }
 .enex-help summary { cursor: pointer; color: var(--muted); }
 .enex-help summary:hover { color: var(--fg); }
@@ -4423,7 +4423,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 /* ---------------------------------------------------------------------------------
    Scope matches: tags and notebooks whose names match a search, above the notes that do.
 
-   Drawn as the tag picker's rows — an icon, a name, a count — rather than as note entries,
+   Drawn as the tag picker's rows (an icon, a name, a count) rather than as note entries,
    because they are not notes: picking one applies a filter. The horizontal padding is the
    note entry's, so the icon starts on the notes' text edge and the column stays one edge.
 
@@ -4491,7 +4491,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   text-overflow: ellipsis;
 }
 
-/* Reached by the arrow keys from the field, so the ring has to be there — the row's own
+/* Reached by the arrow keys from the field, so the ring has to be there: the row's own
    fill on hover is not a focus state. Inset like the note entries' and the sheet rows'. */
 .scope-match-btn:focus-visible {
   outline: 2px solid var(--accent);
@@ -4524,7 +4524,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 /*
    The passes over files already here: the PDFs, and with a vision model the images. One
    row each, stacked closer than the panel's own 0.9rem so the two read as a group, and
-   with a row's own wrap gap smaller still — on a phone the text wraps under its button,
+   with a row's own wrap gap smaller still: on a phone the text wraps under its button,
    and it has to sit nearer that button than the next row's.
 */
 .backfill {
@@ -4575,7 +4575,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /*
-   The formatting run. Wraps here, where there is no scroller — a desktop window narrow
+   The formatting run. Wraps here, where there is no scroller: a desktop window narrow
    enough to run out of room should use a second line rather than hide controls behind a
    gesture that only makes sense with a touch screen.
 */
@@ -4660,7 +4660,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
    No border around the track. It was the only outlined thing in a row whose controls are
    borderless until hover, which is what made it read as pasted on rather than as part of
-   the bar — the same reason `Button` has a `quiet` variant for dense rows. The filled
+   the bar: the same reason `Button` has a `quiet` variant for dense rows. The filled
    segment carries the grouping instead, and in the docked bar the seam to its left does.
 */
 .tb-segmented {
@@ -4721,8 +4721,8 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 /* Stale or unreachable note: the id stays in the URL, so explain rather than blank out. */
 /*
-   A note that failed to load stacks its two pieces — the back arrow's row, shown on a
-   phone, and the message — instead of setting them side by side as the note's own
+   A note that failed to load stacks its two pieces (the back arrow's row, shown on a
+   phone, and the message) instead of setting them side by side as the note's own
    `.workspace` row would. Side by side, the message's box shrank to its text at the left
    of the pane, so the centred text read as left-aligned with its button hanging off-centre
    below; and on a phone the arrow sat beside it, halfway down the screen.
@@ -4794,7 +4794,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 /*
    The page is the way in: a click on it opens the viewer. In a pane for reading nothing
-   else competes for that click, and it is what people try first — the icon in the head
+   else competes for that click, and it is what people try first: the icon in the head
    is there for the keyboard and for anyone who did not think to.
 */
 .pdf-preview-canvas { cursor: zoom-in; }
@@ -4896,7 +4896,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 .attachment-tool.danger { color: var(--bad); }
 
 /*
-   A read-only note — offline, or in the trash — keeps the tools that read (full screen,
+   A read-only note (offline, or in the trash) keeps the tools that read (full screen,
    download, copy) and drops the two that change it: saving a web image into the note, and
    the bin. CodeMirror marks the content `contenteditable="false"` when the editor takes no
    changes, which is the hook; the handlers refuse too (`rich-markdown.ts`), but a control
@@ -4914,7 +4914,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 /*
    The pill as the question: "Delete file? Delete · Cancel". Stays visible while asking,
-   pointer over the picture or not — a question that hid when the mouse drifted would be
+   pointer over the picture or not: a question that hid when the mouse drifted would be
    one nobody could answer.
 */
 .attachment-tools.confirming { opacity: 1; }
@@ -4954,7 +4954,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 /*
    A destructive control rings in its own red. The brand green around red text read as two
-   saturated hues fighting — festive, not careful — and the ring is where the eye lands as
+   saturated hues fighting (festive, not careful) and the ring is where the eye lands as
    the question is asked, so it should repeat what the button does rather than contradict
    it. The bin earlier in the row takes the same ring for the same reason.
 */
@@ -4965,7 +4965,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    The viewer: a `<dialog>` that is the whole screen.
 
    Full-bleed rather than a box in the middle, because the thing inside it is the size of
-   the screen — a page fitted to the viewport, or an image at its own pixels scrolled
+   the screen: a page fitted to the viewport, or an image at its own pixels scrolled
    around. The scrim is the dialog itself; there is nothing of the page to see around it,
    and it is opaque rather than the usual translucent black because at 92% the wordmark
    and the avatar still ghosted through behind the head. Fixed near-black in both themes
@@ -5029,7 +5029,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    In the head with the rest of the controls rather than floated over the picture's
    edges, so it is one bar to read and the arrows are where a Tab expects them. Beside
    the close button, to the right of the page count and the download link, which come
-   and go with the attachment — see the viewer for why. Tabular figures keep "9 of 12"
+   and go with the attachment: see the viewer for why. Tabular figures keep "9 of 12"
    from shifting the arrows as the count changes.
 */
 .viewer-nav {
@@ -5076,7 +5076,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /*
-   Drawn like the icon buttons beside it — a glyph, and a surface on hover — so it reads
+   Drawn like the icon buttons beside it (a glyph, and a surface on hover) so it reads
    as a control and not as a stray word after the page count. Still an anchor: it
    navigates, so it middle-clicks and copies, which is what a link is for.
 */
@@ -5179,7 +5179,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 /*
    A page, or the space for one.
 
-   A page not yet drawn holds a letter-sized placeholder — see the viewer — so the column
+   A page not yet drawn holds a letter-sized placeholder (see the viewer) so the column
    has its full height before anything is rasterized. The ratio comes off once the page is
    drawn, and the canvas's own proportions take over: a landscape page forced into a
    portrait box would be squashed. The `!important` on the height is what lets a drawn
@@ -5226,9 +5226,9 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    The trash view's heading row, on a phone only.
 
    Hidden above the breakpoint, heading and all: there the rail marks Trash current, so
-   the view already says what it is and already offers the way out — as a strip too, since
+   the view already says what it is and already offers the way out, as a strip too, since
    the strip keeps Trash and every place. This exists because below the breakpoint that
-   chrome is gone — the arrow needs a heading beside it to say where it goes, the same
+   chrome is gone: the arrow needs a heading beside it to say where it goes, the same
    pairing the note's title and "Settings" provide.
 
    Matches `.settings-head`: same centring, same small gap, for the same reasons.
@@ -5241,7 +5241,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    The row of actions under a trashed note.
 
    The buttons carry their own padding now, so the gap is tighter than it was for links
-   and the left inset is pulled in by that padding — otherwise the first label sits a
+   and the left inset is pulled in by that padding: otherwise the first label sits a
    half-step right of the note title above it, which reads as a misalignment rather than
    as a nested control.
 
@@ -5343,8 +5343,8 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 /* Creating is quieter than the names it makes more of. */
 .label-create .label-name { color: var(--muted); }
 
-/* The field a row becomes: the name's own type and inset, with nothing drawn around it —
-   the fence on the row is what marks the state. */
+/* The field a row becomes: the name's own type and inset, with nothing drawn around it.
+   The fence on the row is what marks the state. */
 .label-field {
   flex: 1;
   min-width: 0;
@@ -5376,7 +5376,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 /* The custom-field count on a notebook row: its glyph and a number, not a link, since the
    row already leads to where the fields live. A tight glyph-to-number gap so the two read as
    one unit, and it does not stretch, so the name's ellipsis takes the slack first. The icon
-   is drawn a shade smaller than a row glyph — this is a count beside the name, not a row of
+   is drawn a shade smaller than a row glyph: this is a count beside the name, not a row of
    its own. */
 .label-field-count {
   display: inline-flex;
@@ -5407,7 +5407,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   height: 0.95em;
 }
 
-/* The count that hugs the name, when a caller puts one there — a notebook's note count,
+/* The count that hugs the name, when a caller puts one there: a notebook's note count,
    like a field's value count on the notebook's own page. A small gap off the name, and it
    does not stretch, so the name's ellipsis still takes the slack on a narrow row. */
 .label-name .tag-count { margin-left: 0.4rem; flex: 0 0 auto; }
@@ -5427,8 +5427,8 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
    It sits inside the list, under the row that opened it, so it appears where the control
    was and the list's rows move down rather than something new covering them. The cards
-   are a grid that fills the panel's width — three or four across on a desktop, one on a
-   phone — because each one is read, not scanned: its line and its chips are the reason
+   are a grid that fills the panel's width (three or four across on a desktop, one on a
+   phone) because each one is read, not scanned: its line and its chips are the reason
    it is there.
    --------------------------------------------------------------------------------- */
 .label-chooser {
@@ -5707,7 +5707,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 /*
    The notebook's emoji, and the picker that opens from it (`EmojiField`).
 
-   The square is drawn as the name field beside it is — the same border, wash and radius —
+   The square is drawn as the name field beside it is (the same border, wash and radius)
    so the two read as one row of the same kind of thing, and a bordered square beside a
    field is plainly something to press. It shows what the notebook shows everywhere else,
    the book included, and the book keeps its muted ink here for the same reason it does in
@@ -5840,7 +5840,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    A notebook's edit page, on one vertical rhythm.
 
    Four steps, and nothing inside sets a margin of its own:
-     0.35rem  a label and its control, a control and its hint — one thing in two parts
+     0.35rem  a label and its control, a control and its hint: one thing in two parts
      1rem     one block to the next within a section
      1.25rem  the page title to the first section
      2rem     one section to the next
@@ -5869,7 +5869,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 /*
    The kept notebooks under Settings → Offline: a name that yields, a size under it, and
-   one quiet action at the row's end — the attachments list's shape, for the same reason.
+   one quiet action at the row's end: the attachments list's shape, for the same reason.
    A notebook's name is unbounded, so it truncates before the button wraps.
 */
 .offline-storage { gap: 1.25rem; }
@@ -5900,7 +5900,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 .offline-kept-row > .confirm { flex: 1 0 100%; margin: 0.25rem 0 0.5rem; }
 
-/* Section heading within the edit page — "Fields", "Delete notebook". Quieter than the
+/* Section heading within the edit page: "Fields", "Delete notebook". Quieter than the
    panel's h2, since the page title already names the notebook. */
 .notebook-section-head {
   align-self: stretch;
@@ -5991,8 +5991,8 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
    The type picker is pinned right with `margin-left: auto` instead of being pushed there by
    a name that grows: a name that grows is exactly what the rename box and the form's name
-   box must not do. The actions slot is one width in both places — the arrows and Delete in
-   a row, Add field in the form — so the type pickers above and below line up in a column.
+   box must not do. The actions slot is one width in both places (the arrows and Delete in
+   a row, Add field in the form) so the type pickers above and below line up in a column.
    9.25rem is the arrows-and-Delete group with a few pixels to spare; it is a floor, so if
    that group ever grows the rows stay whole and only the alignment slips.
 */
@@ -6027,7 +6027,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /*
-   A field name, being edited — renaming a row or naming a new field.
+   A field name, being edited: renaming a row or naming a new field.
 
    Sized for a name, not the row. Field names are a few words, and `.search-field`'s
    `width: 100%` made the rename box take a line of its own, dropping the row's type,
@@ -6058,7 +6058,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
    Rendered inside the field's own options row and positioned absolutely so it hangs over
    whatever fields sit below instead of pushing the page down and stranding the buttons off
-   the fold — the reflow the inline confirm caused here. It carries the panel's own surface
+   the fold: the reflow the inline confirm caused here. It carries the panel's own surface
    and a shadow so it reads as lifted above the rows it covers. Left-aligned directly under
    the option list rather than pointed at a single chip: the chips wrap, so the removed one
    can sit anywhere in the row, and a notch fixed to the popover's corner ended up aiming at
@@ -6079,7 +6079,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   filter: drop-shadow(0 1px 0 var(--border));
 }
 
-/* The confirm inside drops its own top margin — the popover owns the spacing now — and its
+/* The confirm inside drops its own top margin (the popover owns the spacing now) and its
    red hairline border becomes the popover's edge, sitting on the lifted surface. */
 .field-option-confirm .confirm {
   margin: 0;
@@ -6090,8 +6090,8 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 /* The new-field form spans the section rather than taking `.notebook-section`'s
    shrink-to-fit. Shrink-wrapped, the form was as wide as its widest line, and that line
    was whatever the chosen type put under the name: a rating's scale, a currency's
-   example, a select's option chips. So the name box grew every time the type changed —
-   170px for Text, 600 for Rating — and the Add field button walked right with it.
+   example, a select's option chips. So the name box grew every time the type changed
+   (170px for Text, 600 for Rating) and the Add field button walked right with it.
    Stretched, it lays out on the rows' columns above, and the type only ever adds a line
    below. The column gap is the rows' gap too, or the type column would be off by the
    difference; the row gap stays at the form's own, for the line a type adds. */
@@ -6156,8 +6156,8 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
  *
  * Consolidates .danger-confirm and .notebook-delete-confirm, which had drifted into two
  * near-identical rule sets for the same idea. Inline rather than a dialog on purpose:
- * every confirmation here is about a specific thing on screen — a named notebook, a
- * counted trash — and covering that thing forces its details into the prompt text.
+ * every confirmation here is about a specific thing on screen (a named notebook, a
+ * counted trash) and covering that thing forces its details into the prompt text.
  *
  * The border follows the tone of the first action offered (see `borderTone` in Confirm.tsx),
  * set by the modifier classes below. It used to be red for every confirm, including "keep
@@ -6172,7 +6172,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
      A confirm names the thing it is about, and an attachment can be called
      `763101075_1034781015860122_1690131728414798935_n.jpg`. With nowhere to break, that
-     one word set the panel's minimum width — 478px inside a 319px row on a phone, so the
+     one word set the panel's minimum width: 478px inside a 319px row on a phone, so the
      box hung 189px past the edge of the screen with its buttons out of reach.
   */
   min-width: 0;
@@ -6188,7 +6188,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 /*
    The operator-only notice that the title model rejected its key. Sits where a confirm
-   sits — same width and margins, below the header — but it asks nothing, so it reads as a
+   sits (same width and margins, below the header) but it asks nothing, so it reads as a
    line of prose with a dismiss beside it rather than a bordered question. A soft --bad
    tint says something is wrong without the alarm of a full red border; the message names
    the secret to fix. Only an operator ever sees it; see Workspace's `titleModelFault`.
@@ -6257,7 +6257,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 
 /*
    The snackbar: a one-shot result that lands at the bottom of the screen and clears
-   itself — Auto-fill's outcome, moved out of the header status line where it used to fade
+   itself: Auto-fill's outcome, moved out of the header status line where it used to fade
    beside the title (and fight the "Saved" for the room a phone gives the title).
 
    Fixed and centred, capped to a readable width so it reads as a card and not a bar. It
@@ -6321,7 +6321,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   flex: 1 1 auto;
   min-width: 0;
   font-size: 0.9rem;
-  /* A long "Filled in the title, the notebook and 4 fields" wraps rather than clips — the
+  /* A long "Filled in the title, the notebook and 4 fields" wraps rather than clips: the
      result is worth reading in full, unlike the header line it replaced. */
   overflow-wrap: anywhere;
 }
@@ -6329,7 +6329,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 /*
    The buttons sit on the dark ground, so they reverse: the page colour for their ink and
    hover, not the page's ink. `.btn-quiet`'s default hover fill is mixed from `--fg`, which
-   is the ground here and so invisible — restated in `--bg`.
+   is the ground here and so invisible: restated in `--bg`.
 */
 .snackbar-action,
 .snackbar-close {
@@ -6338,7 +6338,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 .snackbar-action {
-  /* The one thing to do about the result — given the accent so Undo reads as the offer it
+  /* The one thing to do about the result, given the accent so Undo reads as the offer it
      is, not another dismiss. Lightened for legibility on the dark ground. */
   color: color-mix(in srgb, var(--accent) 55%, var(--bg));
   font-weight: 600;
@@ -6388,7 +6388,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
      `anywhere` rather than `break-word`: only the former lets an unbreakable word count
      toward the element's min-content width, which is what stops the panel being sized by
      the filename in the first place. A name with no spaces or hyphens wraps mid-word,
-     which for an opaque string of digits is the readable outcome — truncating it would
+     which for an opaque string of digits is the readable outcome: truncating it would
      hide the very part that distinguishes one upload from another.
   */
   overflow-wrap: anywhere;
@@ -6429,29 +6429,29 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
  * The settings section.
  *
  * Notebooks, Import, Export and Maintenance each used to be a separate topbar link, which
- * made the topbar a list of unrelated verbs — and maintenance never got a link at all,
+ * made the topbar a list of unrelated verbs, and maintenance never got a link at all,
  * ending up at the bottom of the import panel. They are all "configure the app", so they
  * sit behind one entry with a sub-nav of their own.
  */
 /*
-   The settings section had no width of its own — it inherited the 78rem cap that used to
+   The settings section had no width of its own: it inherited the 78rem cap that used to
    sit on .shell.wide. That cap moved off the shell so the notes grid could use the whole
    monitor, so the measured column is declared here, where it is actually wanted.
 */
 /*
    The settings section scrolls itself.
 
-   `.shell.wide` is the notes view's frame — a viewport-height row that clips at the window,
-   with `.shell-main` the flex column inside it — so that the note list and editor can
+   `.shell.wide` is the notes view's frame (a viewport-height row that clips at the window,
+   with `.shell-main` the flex column inside it) so that the note list and editor can
    scroll inside it while the page never does. Every signed-in route shares that shell, so settings inherited a clipped box
-   it had no way to scroll — the foot of a long panel (122px of Maintenance on a phone) was
+   it had no way to scroll: the foot of a long panel (122px of Maintenance on a phone) was
    simply unreachable, with no page scrollbar to reach it.
 
    `min-height: 0` is the half that matters: a flex item's floor is its content, so without
    it this box refuses to shrink under the shell and `overflow-y` never engages.
 
    `width: 100%` does the same job on the other axis. A flex item is also floored by its
-   content's intrinsic width, and `min-width: 0` alone does not fix that here — an
+   content's intrinsic width, and `min-width: 0` alone does not fix that here: an
    unwrappable child (`.export-tree`) still reported 702px and stretched the whole column
    past the viewport, where the shell's `overflow: hidden` clipped it mid-sentence rather
    than scrolling. Pinning the width to the container takes the measurement away from the
@@ -6471,7 +6471,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    `space-between` and a baseline here were for the "Back to notes" link that used to sit
    opposite the heading; with that gone the row is the arrow and the heading reading as
    one unit from the left. Centred rather than baseline-aligned because the arrow is a
-   44px box, not a line of text — a box lines up with a heading by its middle, the same
+   44px box, not a line of text: a box lines up with a heading by its middle, the same
    reasoning `.topbar` records.
 
    The gap is small: the arrow is pulled out to the screen edge below the breakpoint, so
@@ -6587,7 +6587,7 @@ button.settings-nav-item {
 
     /*
        Picking a page fills the pill under the pointer with the accent, and the page that
-       was current lets it go, as the sidebar's current row does — for the sidebar's
+       was current lets it go, as the sidebar's current row does, for the sidebar's
        reasons, on its curve and timing. The border goes with the fill, since here the
        current pill is outlined in the same colour it is filled with. A pill drawn current
        on load has nothing to fade from.
@@ -6623,8 +6623,8 @@ button.settings-nav-item {
 
    Every settings page explains itself in `.muted.small` paragraphs, and at the app-wide
    0.78rem (12.5px) that explanation was smaller than the buttons it describes, which are
-   0.85rem. These pages are read rather than scanned — what a pass deletes, where a
-   passkey lives — so the copy is set at the buttons' size instead.
+   0.85rem. These pages are read rather than scanned (what a pass deletes, where a
+   passkey lives) so the copy is set at the buttons' size instead.
 
    Scoped to the settings body rather than changed on `.small` itself, because `.small` is
    also a note row's date and a chip's count, where 12.5px is the density the list needs.
@@ -6636,7 +6636,7 @@ button.settings-nav-item {
 /*
  * The MCP server URL and its copy button, inline in a paragraph.
  *
- * The wrap keeps them on one line — flex rather than inline-flex so the code can shrink
+ * The wrap keeps them on one line: flex rather than inline-flex so the code can shrink
  * with `overflow-wrap: anywhere` on narrow screens rather than pushing the button off.
  * The button is a quiet target: the URL is the point, and the copy is a convenience that
  * should not draw the eye before the user reads what it copies.
@@ -6679,8 +6679,8 @@ button.settings-nav-item {
 
 /*
  * The export link, shaped as a button. It stays an <a href download> so the browser
- * streams the archive straight to disk — a fetch would buffer a multi-gigabyte zip inside
- * the Worker — while looking like the deliberate action it is.
+ * streams the archive straight to disk (a fetch would buffer a multi-gigabyte zip inside
+ * the Worker) while looking like the deliberate action it is.
  */
 /* Read by a screen reader and drawn for no one: the export's live region, which speaks
    in steps while the count beside the button moves on every note. */
@@ -6719,8 +6719,8 @@ button.settings-nav-item {
 
      `.panel` is a column flex container with `align-items: flex-start`, which sizes its
      children to their own content on the cross axis rather than to the panel. For a block
-     of pre-formatted text that means the width of the longest line — 702px here, against a
-     375px phone — which the shell then clipped rather than scrolled. `align-self: stretch`
+     of pre-formatted text that means the width of the longest line (702px here, against a
+     375px phone) which the shell then clipped rather than scrolled. `align-self: stretch`
      opts this one child back into the panel's width; `min-width: 0` lets it be narrower
      than its text so the overflow actually has somewhere to go.
   */
@@ -6740,7 +6740,7 @@ button.settings-nav-item {
    The notebook drawer.
 
    Where the notes are, on a phone: the notebooks, the trash and the account. Rows rather
-   than the sidebar's controls, because these navigate — see `NotebookDrawer.tsx`.
+   than the sidebar's controls, because these navigate: see `NotebookDrawer.tsx`.
    --------------------------------------------------------------------------------- */
 .drawer-list {
   display: flex;
@@ -6759,11 +6759,11 @@ button.settings-nav-item {
      pill (`.drawer-list::before`, below): a box inside this scroller that sits on whichever
      row the pointer is over, glides between rows, and falls back to the top of the list
      when the pointer is on none. Each of those is a move of the reference, and anchoring
-     followed it — on a mouse wheel in Chromium, the list went from wherever it was to 0,
+     followed it: on a mouse wheel in Chromium, the list went from wherever it was to 0,
      with nothing in the page having touched it (2026-10-14). Safari has neither anchor
      positioning nor scroll anchoring and never showed it. Off for the whole list rather
      than the pill alone: what this list should keep still is the person's place, and
-     nothing that moves in it — a count rolling over, a row appearing above — is a reason
+     nothing that moves in it (a count rolling over, a row appearing above) is a reason
      to move that.
   */
   overflow-anchor: none;
@@ -6786,14 +6786,14 @@ button.settings-nav-item {
   background: none;
   border: none;
   /* Fully rounded, so the active fill reads as a pill around the row rather than as a
-     band across the drawer — the shape every drawer people arrive from uses. */
+     band across the drawer: the shape every drawer people arrive from uses. */
   border-radius: 999px;
   cursor: pointer;
 }
 
 .drawer-item:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); }
 
-/* The glyph names the row rather than competing with it, so it is quieter than the word —
+/* The glyph names the row rather than competing with it, so it is quieter than the word:
    except on the current row, where the whole row is the statement. */
 .drawer-item > svg {
   flex: 0 0 auto;
@@ -6829,12 +6829,12 @@ button.settings-nav-item {
 
 /*
    Where you are. The same tint `.note-item.active` uses for the selected note, because it
-   is the same statement — this is the thing on screen — and two different colours for one
+   is the same statement (this is the thing on screen) and two different colours for one
    idea is how a UI starts feeling assembled rather than designed.
 
    `.current` rather than `.active`, which is not a free choice: TanStack Router puts its own
    `active` class on a `<Link>` whose target matches the route, so the two destinations on
-   this drawer's floor would have lit up as the current *scope* — Trash permanently, while
+   this drawer's floor would have lit up as the current *scope*: Trash permanently, while
    the trash is open. Same reason the class is not `.selected` either; this says which place
    is on screen, and `aria-current` beside it says the same thing to a screen reader.
 */
@@ -6859,13 +6859,13 @@ button.settings-nav-item {
    after 100ms and spends the rest of its 0.4s settling, so it reads as following with a
    soft landing rather than chasing. The same 0.4s on `ease`, which is how the effect is
    usually shown, is about 40% of the way at 100ms and trails a pointer moving down a
-   list — for that long the pill sits on a row the click will not land on.
+   list: for that long the pill sits on a row the click will not land on.
 
    It appears in place rather than flying in. With no row hovered there is no anchor, so
    `anchor()` is invalid and `inset` falls back to `auto`, which does not interpolate: the
    pill drops out at once and appears on the next row the pointer reaches without
-   travelling there. That is also why it never sails across a section head or a rule —
-   the pointer has left the rows — and why the foot has a pill of its own rather than
+   travelling there. That is also why it never sails across a section head or a rule
+   (the pointer has left the rows) and why the foot has a pill of its own rather than
    sharing the list's: the list scrolls under it.
 
    The rows' 0.1rem gap would cut a glide between neighbours the same way, so each row's
@@ -6874,7 +6874,7 @@ button.settings-nav-item {
    under them: the pill is the first positioned box in its column, so it paints first.
 
    On the current row the pill shows through the current tint, so the place you are on
-   answers a hover too — before, the current rule simply won and it did not.
+   answers a hover too: before, the current rule simply won and it did not.
 
    Scoped to the navigation's two columns. The move picker draws the same rows in a list
    of its own, and must keep its plain hover rather than lose it to a pill it lacks.
@@ -6921,7 +6921,7 @@ button.settings-nav-item {
 
        The selection does not glide, though the anchor would make that one more rule. On a
        click the hover pill is already on the row, so a second pill travelling there from
-       the old place tells the same story twice — two animations for one event, in a part
+       the old place tells the same story twice: two animations for one event, in a part
        of the column nobody is looking at. It could not even do it consistently: the place
        can move from a notebook in the scrolling list to Trash in the foot, or to a row
        scrolled out of view, so it would glide one time and appear the next. And at the hover's 0.4s it would hold back the one answer a click
@@ -7038,7 +7038,7 @@ button.settings-nav-item {
 }
 
 /*
-   A section head that opens and closes its rows — the tags — drawn as the label the
+   A section head that opens and closes its rows (the tags) drawn as the label the
    notebooks' head is, with the chevron `.disclosure` draws: right when closed, down when
    open. A button rather than a `<details>`, because its state is remembered, which
    `Disclosure` is not for. The whole word is the target; the chevron only says the state.
@@ -7101,14 +7101,14 @@ button.settings-nav-item {
    The navigation rail: the drawer's rows, pinned open down the left on a desktop.
 
    A sibling of the content column in `.shell.wide`, flush with the window's left edge at
-   full height — see `Rail.tsx` for why it is not a track of the notes grid. Its width is
+   full height: see `Rail.tsx` for why it is not a track of the notes grid. Its width is
    the shell's `--rail-width`, set by the class the shell carries (`rail-auto`,
    `rail-open`, `rail-collapsed`) and read by the filter panel too, which is in the top
    layer and can only inherit it.
 
    Two widths. Open, 15rem: the labels' width, and the same 20rem-ish column Keep and
-   Evernote give it less a little. Collapsed, 3.25rem: a strip of 2.75rem targets — the
-   size every `.icon-btn` in the app takes — with a quarter-rem either side. `auto` is
+   Evernote give it less a little. Collapsed, 3.25rem: a strip of 2.75rem targets (the
+   size every `.icon-btn` in the app takes) with a quarter-rem either side. `auto` is
    open on a wide window and the strip on a narrow one, at the 1200px `RAIL_WIDE_QUERY`
    reads in JS; written here in range syntax as the exact complement, so no width lands
    in neither. Below the phone breakpoint the rail does not exist: the drawer is the
@@ -7117,7 +7117,7 @@ button.settings-nav-item {
    The strip is styled by the rail's own width, through a container query, rather than by
    the shell's class: under `rail-auto` the class does not say which width is showing.
    Labels are clipped, not `display: none`d, so a row's accessible name survives; what is
-   removed outright are the things a strip cannot show at all — the notebooks (one glyph
+   removed outright are the things a strip cannot show at all: the notebooks (one glyph
    each, indistinguishable as icons), the section head, New notebook.
 
    The surface is a mix over `--fg`, the idiom every second surface here uses, so it
@@ -7142,7 +7142,7 @@ button.settings-nav-item {
     container: rail / inline-size;
     /*
        Above the content column. The rail comes first in the DOM, so without a context of
-       its own anything it pops out — the account menu — would paint under the list's
+       its own anything it pops out (the account menu) would paint under the list's
        sticky heads, which carry z-indexes of their own.
     */
     position: relative;
@@ -7152,7 +7152,7 @@ button.settings-nav-item {
   /*
      While a menu is open, above the handle on its edge too. The handle has to outrank the
      rail or the rail paints over its line (see `.shell.wide > .resize-handle`), but a menu
-     wider than the rail — the account menu on a preview, whose instance line is long —
+     wider than the rail (the account menu on a preview, whose instance line is long)
      then has the divider drawn straight through it. Lifted only while one is open, so the
      line is the handle's again the moment it closes.
   */
@@ -7162,12 +7162,12 @@ button.settings-nav-item {
      The rail's edge is the handle that sizes it, as the list's edge is the handle that
      sizes the list: the same 1px line, tinted when reached for. As a flex item rather
      than a grid track it needs its width stated as a basis. Over the strip there is
-     nothing to size, so the handle goes and the rail draws the line itself — one line
+     nothing to size, so the handle goes and the rail draws the line itself: one line
      either way, and the strip's width is the stylesheet's alone.
   */
   /*
      Beside the rail the column's left gutter is not a page margin any more: the divider is
-     the edge, and 1.5rem of air past it — plus the sidebar's own 0.7rem — put the list's
+     the edge, and 1.5rem of air past it (plus the sidebar's own 0.7rem) put the list's
      heading 35px from the line while the rail's heading sat 19px from its own edge. The
      gutter is the rail's own inset now, the 0.5rem its rows sit in from its edges, so the
      two columns share one rhythm across the divider: a selected row's fill and a marked
@@ -7194,8 +7194,8 @@ button.settings-nav-item {
   .shell.wide > .resize-handle {
     flex: 0 0 1px;
     /* On the rail's last pixel rather than after it, so the rail is exactly `--rail-width`
-       wide with its edge drawn, and the content — and the filter panel that measures
-       from the rail's width — start where the rail ends. Above the rail's own stacking
+       wide with its edge drawn, and the content (and the filter panel that measures
+       from the rail's width) start where the rail ends. Above the rail's own stacking
        context, or the rail would paint over the line. */
     margin-left: -1px;
     z-index: 26;
@@ -7231,7 +7231,7 @@ button.settings-nav-item {
 
   /*
      The account menu opens up and to the right, into the page: the rail is on the left
-     edge, so the row's popup — which is right-anchored under a top-bar avatar — would hang
+     edge, so the row's popup, which is right-anchored under a top-bar avatar, would hang
      off the window from here, and it sits on the floor, so above is where the room is.
   */
   .rail .overflow-list {
@@ -7245,7 +7245,7 @@ button.settings-nav-item {
      The rows' scrollbar sits on the divider, not a gutter's width in from it.
 
      The rows scroll inside `.rail-inner`, which insets them by 0.5rem, so the bar was
-     drawn 8px short of the rail's own edge — a scrollbar floating inside a column reads
+     drawn 8px short of the rail's own edge: a scrollbar floating inside a column reads
      as a box within the box. The same pull `.workspace-main` makes: the scroller reaches
      out through the inset and takes it back as padding, so the rows keep their place and
      only the bar moves, to the edge. The right side only; the left inset is the rows'.
@@ -7355,7 +7355,7 @@ button.settings-nav-item {
 .list-head-actions {
   display: flex;
   align-items: center;
-  /* Tight, because each control already carries 44px of target around a 20px glyph — the
+  /* Tight, because each control already carries 44px of target around a 20px glyph: the
      space between them is the padding, not the gap. */
   gap: 0.1rem;
 }
@@ -7377,7 +7377,7 @@ button.settings-nav-item {
 
    The icons sit in 44px squares, which is the thumb target the phone needs and the size
    every `.icon-btn` in the app takes. Beside a 36px New on a desktop that left three
-   heights on one row — the count's line, the icons' boxes, the button — and the hover
+   heights on one row (the count's line, the icons' boxes, the button) and the hover
    fill drew the icon's box at its full size, so the row read as controls from two
    different apps. A pointer needs no 44px, so above the breakpoint the icons take the
    button's height and the button states it, and the fill matches the box it is on.
@@ -7401,7 +7401,7 @@ button.settings-nav-item {
    Keyed to the pointer rather than to the width, because the width was never the reason.
    36px was a compromise for every wide screen, and a wide screen is two different
    devices: a tablet in landscape is still a finger and keeps the rule above, while a
-   mouse can hit 32px without trying — Notion's toolbars are 28px — and three of these
+   mouse can hit 32px without trying (Notion's toolbars are 28px) and three of these
    plus New are what leave the count room to be read in a 19rem column. Here the glyph
    does shrink with its box: 22px of icon in a 32px square is all icon and no button.
 
@@ -7425,12 +7425,12 @@ button.settings-nav-item {
 }
 
 /*
-   The header as one toolbar row, over the full-width table — see `NoteListHead`.
+   The header as one toolbar row, over the full-width table: see `NoteListHead`.
 
    Each control takes the width of what it holds rather than of the window: the notebook
    picker up to 14rem, the search field up to 18rem and pushed to the icons' side, where a
    table's search sits in every app that has one. Both shrink before anything wraps, and
-   both take the row's height — the icons' 36px, or 32px under a mouse — instead of the
+   both take the row's height (the icons' 36px, or 32px under a mouse) instead of the
    taller box they have as rows of their own in the sidebar.
 */
 .list-head-toolbar { gap: 0.75rem; }
@@ -7454,8 +7454,8 @@ button.settings-nav-item {
 }
 
 /* The count yields before the controls do: the controls are the ones that have to be hit.
-   It rarely has to now — it states the total alone ("340 notes"), and how much of that is
-   loaded is the Load more button's to say — but a sidebar dragged to its narrowest can
+   It rarely has to now: it states the total alone ("340 notes"), and how much of that is
+   loaded is the Load more button's to say. But a sidebar dragged to its narrowest can
    still ask it to. */
 .list-title .count {
   overflow: hidden;
@@ -7464,7 +7464,7 @@ button.settings-nav-item {
 }
 
 /*
-   The count as a menu trigger — see `NoteListHead`'s `countMenu` for when it is one.
+   The count as a menu trigger: see `NoteListHead`'s `countMenu` for when it is one.
 
    It has to read as the count first and a control second: the count's own size and
    colour, a chevron after it, and the fill every icon in this row takes under the pointer.
@@ -7534,7 +7534,7 @@ button.settings-nav-item {
 
    Shares every declaration with `.overflow-trigger`, which is the same object: an icon that
    opens something. They are one selector rather than two rules so the next change to the
-   hit area cannot land on only one of them — the drift that made the toolbar's disclosures
+   hit area cannot land on only one of them: the drift that made the toolbar's disclosures
    disagree about their own chevrons.
 */
 .icon-btn {
@@ -7544,7 +7544,7 @@ button.settings-nav-item {
 /*
    Search open: the field on its own row, the match count under it.
 
-   The count moves rather than disappearing with the header it was in — "6 matches" is the
+   The count moves rather than disappearing with the header it was in: "6 matches" is the
    one thing a search has to report back, and the row itself has no width to spare for it
    beside a field that already had to take the whole line.
 */
@@ -7554,8 +7554,8 @@ button.settings-nav-item {
    A field sharing 375px with four controls is a field you cannot read back what you typed
    into, so it gets the whole line.
 
-   The `min-height` is the part that is not obvious. The closed header is two lines — a
-   title over a count — and this row is one, so without a floor here opening search pulled
+   The `min-height` is the part that is not obvious. The closed header is two lines (a
+   title over a count) and this row is one, so without a floor here opening search pulled
    the entire note list up by the difference and dropped it back on the way out. Motion
    nobody asked for, on the most-used control in the view.
 
@@ -7580,13 +7580,13 @@ button.settings-nav-item {
    The first control in a row lines its glyph up with the text below it.
 
    A 44px target around a ~22px glyph centres the picture, so the ink sits about 11px inside
-   the button — and the button's own left edge is already the column's edge, so the glyph
+   the button, and the button's own left edge is already the column's edge, so the glyph
    ended up indented from every line of text under it. Two rows of chrome that look like
    they start in different places is the thing this reads as.
 
    The pull is per-icon because the glyphs do not fill their boxes equally: the hamburger's
    strokes span x=4..20 of a 24 viewBox, the back chevron's only x=9..15. Aligning the SVG
-   boxes would leave the chevron nearly 8px in while the menu sat 3.5px in — which is what
+   boxes would leave the chevron nearly 8px in while the menu sat 3.5px in, which is what
    was on screen. These offsets are measured from the ink, so both land on the text.
 
    Only the leading control. Everything else in the row is a target among targets, where
@@ -7600,7 +7600,7 @@ button.settings-nav-item {
    The dot that says a filter is on.
 
    Positioned on the icon rather than beside it, so the control stays one 44px square and
-   the row does not reflow as filters come and go. It is decorative — the state is in the
+   the row does not reflow as filters come and go. It is decorative: the state is in the
    button's accessible name, because a dot says nothing to a screen reader.
 
    The ring is the page's own background, which is what keeps the dot legible where it
@@ -7627,7 +7627,7 @@ button.settings-nav-item {
 
    `env(safe-area-inset-bottom)` clears the home indicator on an iPhone and resolves to 0
    everywhere else. The z-index sits under the sheet's backdrop, which the top layer puts
-   above everything regardless — this only has to beat the note list.
+   above everything regardless: this only has to beat the note list.
 */
 .fab {
   position: fixed;
@@ -7668,7 +7668,7 @@ button.settings-nav-item {
    Full-width rows rather than the pills these replaced. A pill is for a value among a few
    that fit on one line; once a choice has its own page there is room to give each option a
    whole row, which is easier to hit and reads down the page instead of wrapping. It is the
-   same row `.tag-picker-item` uses, and deliberately so — three lists in one sheet that
+   same row `.tag-picker-item` uses, and deliberately so: three lists in one sheet that
    looked like three different kinds of control would be three, to the eye.
 */
 .sort-options,
@@ -7681,7 +7681,7 @@ button.settings-nav-item {
 /*
    These keep the full 44px while the tag rows give up eight of it, which is a difference
    worth stating rather than leaving to look like drift. Sort and Dates are closed lists of
-   five and seven — they fit on any screen with room to spare, so there is nothing to buy by
+   five and seven: they fit on any screen with room to spare, so there is nothing to buy by
    tightening them. The tag list is unbounded, and there density is the whole point.
 */
 .sort-option,
@@ -7696,7 +7696,7 @@ button.settings-nav-item {
   font: inherit;
   /* The same size as `.filter-row`, which these are reached from and sit on the same
      surface as. They were a step smaller, which is near enough to read as a mistake rather
-     than as a distinction — they are the same kind of row and should look like it. */
+     than as a distinction: they are the same kind of row and should look like it. */
   font-size: 1rem;
   text-align: left;
   color: var(--fg);
@@ -7728,7 +7728,7 @@ button.settings-nav-item {
 
    A tick rather than a fill: these are a choice among alternatives, not a set of things
    switched on, and the filled treatment is what `.filter-chip` uses for "this is
-   applied". Drawn as a rotated box with two borders — the same construction as the
+   applied". Drawn as a rotated box with two borders: the same construction as the
    disclosure chevron, so it needs no glyph and is correct in dark mode for free.
 */
 .sort-option.current,
@@ -7751,7 +7751,7 @@ button.settings-nav-item {
    directions.
 
    Set off by the same seam `.sheet-rule` draws, and headed, because these change with the
-   notebook where the five above never do — a list that grew and shrank as you moved between
+   notebook where the five above never do: a list that grew and shrank as you moved between
    notebooks, with nothing to say where the fixed part ended, would read as unstable.
 
    The rows keep the named orders' 44px and their inline padding, so a field's name starts on
@@ -7817,7 +7817,7 @@ button.settings-nav-item {
    The two directions, joined as one control.
 
    A segmented pair rather than two free buttons: they are one choice with two answers, and
-   joined they say so — the same reason the named orders are one list and not five buttons.
+   joined they say so: the same reason the named orders are one list and not five buttons.
    The pair is quieter than the list rows around it until one is in effect, because nine of
    these stacked would otherwise be eighteen outlined boxes competing with the names.
 
@@ -7870,7 +7870,7 @@ button.settings-nav-item {
    The fields page: a control per definition, each under its name.
 
    Stacked rather than label-beside-control, because the sheet is a phone's width and a
-   range is two inputs — a name plus two dated fields does not fit on one 320px line, and
+   range is two inputs: a name plus two dated fields does not fit on one 320px line, and
    a page where some rows wrap and some do not reads as broken. The name carries the type's
    glyph, as the note's own property list does, so "Amount" reads as a number without
    saying so.
@@ -7905,7 +7905,7 @@ button.settings-nav-item {
 /* ---------------------------------------------------------------------------------
    The active filters, as chips.
 
-   What is narrowing the list, where the list is — the filter controls are behind an icon on
+   What is narrowing the list, where the list is: the filter controls are behind an icon on
    a phone, and a dot alone says that something is filtering without saying what.
    --------------------------------------------------------------------------------- */
 .filter-chips {
@@ -7920,7 +7920,7 @@ button.settings-nav-item {
 
    The two are different questions and must not be mistaken for each other: a pill in the
    sheet offers a filter, and a chip here reports one that is already on. Filled is also
-   what the selected pill uses, so the chip is the same object the pill becomes — pressed
+   what the selected pill uses, so the chip is the same object the pill becomes: pressed
    in one place, reported in the other.
 */
 .filter-chip {
@@ -7937,7 +7937,7 @@ button.settings-nav-item {
   border-radius: 999px;
   cursor: pointer;
   /* A tag name is unbounded; the chip yields rather than pushing the row wider than the
-     screen. The × never shrinks — see the disclosure chevron for the same rule and why. */
+     screen. The × never shrinks: see the disclosure chevron for the same rule and why. */
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -7985,7 +7985,7 @@ button.settings-nav-item {
      `getBoundingClientRect` reports it in that layer's own coordinate space rather than the
      viewport's. On a scaled device-emulation pane the numbers come back larger than the
      viewport and look like an overhang. `getComputedStyle().top` plus `height` is the
-     reading that answers the question — it sums to the viewport height when this is right.
+     reading that answers the question: it sums to the viewport height when this is right.
   */
   margin: auto auto 0;
   width: 100%;
@@ -8008,7 +8008,7 @@ button.settings-nav-item {
 
    Pinned to the inline start and run to the full height, which is what separates navigation
    from the bottom sheet's "about the view behind it". `margin-inline-end: auto` is the
-   mirror of the bottom sheet's `margin-top: auto` — the free space goes on the far side, so
+   mirror of the bottom sheet's `margin-top: auto`: the free space goes on the far side, so
    the box lands against the near edge without either of them naming a direction that would
    be wrong in a right-to-left layout.
 
@@ -8029,7 +8029,7 @@ button.settings-nav-item {
    rows between head and foot are the part that scrolls.
 
    `height`, not `min-height`: a minimum let the body grow past the drawer once the rows
-   outran a phone — the tags did that — and then nothing scrolled at all. The rows' list
+   outran a phone (the tags did that) and then nothing scrolled at all. The rows' list
    is a scroll container that had nothing to scroll, and its `overscroll-behavior:
    contain` stopped the finger's scroll from reaching the drawer behind it, which was the
    only thing that could have moved. With the body bounded, the list is the scroller it
@@ -8074,7 +8074,7 @@ button.settings-nav-item {
    The rise.
 
    `allow-discrete` and the `@starting-style` block are what let an element that is
-   `display: none` until it opens animate at all — without them the sheet appears in place
+   `display: none` until it opens animate at all: without them the sheet appears in place
    and the transition never runs. Kept to a short slide with no bounce: this is a surface
    arriving, not a thing being thrown.
 */
@@ -8127,8 +8127,8 @@ button.settings-nav-item {
   /*
      The drawer's motion, which is not the sheet's.
 
-     The bottom sheet rises 1.5rem while fading in, which reads as a surface *arriving*
-     — right for a panel about the view behind it. A drawer is a panel that was always
+     The bottom sheet rises 1.5rem while fading in, which reads as a surface *arriving*:
+     right for a panel about the view behind it. A drawer is a panel that was always
      there, off the edge, and is being pulled on: it slides its whole width from the edge
      it lives on, at full opacity the whole way, so at no point is there a half-transparent
      panel floating a few pixels inside the screen. The 1.5rem-and-fade version this
@@ -8136,18 +8136,18 @@ button.settings-nav-item {
 
      The curves are Material's emphasized pair, which is what Keep's drawer runs on: a
      fast start that settles slowly on the way in, so the panel is readable long before it
-     stops, and the mirror on the way out — 250ms in, 200ms out, because leaving should be
+     stops, and the mirror on the way out: 250ms in, 200ms out, because leaving should be
      quicker than arriving. The two rules carry their own `transition` so the easing
      differs by direction; a single declaration would run the same curve both ways.
 
      `-100%` is the element's own width, so it holds whatever `min(20rem, 85vw)` resolves
      to. It is a physical direction, as the 1.5rem before it was: the drawer pins itself to
      the inline start through its margins, so this would need mirroring for a
-     right-to-left layout — as would the whole file.
+     right-to-left layout, as would the whole file.
 
      Inside the same `prefers-reduced-motion` block as the rest: with reduced motion asked
      for, none of this runs and the drawer simply appears, which for a full-width slide
-     is exactly the setting's request. After the sheet's own rules, deliberately — the
+     is exactly the setting's request. After the sheet's own rules, deliberately: the
      specificities are equal, so order is what lets these win.
   */
   .sheet-side {
@@ -8199,7 +8199,7 @@ button.settings-nav-item {
    The padding lives here rather than on the dialog.
 
    A padded dialog has a padding box that is part of the element, so a tap on it hits the
-   dialog itself — which is exactly the test the backdrop click uses. The sheet would then
+   dialog itself, which is exactly the test the backdrop click uses. The sheet would then
    dismiss when someone tapped the gap beside a control, which reads as closing at random.
 */
 .sheet-body {
@@ -8207,7 +8207,7 @@ button.settings-nav-item {
   flex-direction: column;
   /* Tighter than the sidebar column its controls came from: a sheet's rows are all of
      one kind, and 0.75rem between them read as a list with gaps in it. The same at both
-     widths — the phone used to override this, and the head's pull-up below was written
+     widths: the phone used to override this, and the head's pull-up below was written
      against the desktop's number, so it over-pulled by 0.15rem on every phone. */
   gap: 0.6rem;
   padding: 0.5rem 1rem 1rem;
@@ -8220,10 +8220,10 @@ button.settings-nav-item {
 
 /*
    The handle: the bar phones have taught for "this panel came up from the bottom", and
-   here it does what it implies — see `useGripDrag` in Sheet.tsx.
+   here it does what it implies: see `useGripDrag` in Sheet.tsx.
 
    The bar is drawn by `::after` rather than being the element, so the element can be a
-   thumb-sized target — 44px tall, the full width — while the mark stays a 4px line. The
+   thumb-sized target (44px tall, the full width) while the mark stays a 4px line. The
    element's box is what receives the pointer, and a 4px box would take a stylus to hit.
    The margins are what keep everything else still. The old grip was 0.25rem tall with
    0.25rem above and below: 0.75rem in the flow. This box is 2.75rem with -1rem above and
@@ -8290,7 +8290,7 @@ button.settings-nav-item {
 
    Bottom sheets only. The drawer hides its grip, so there is nothing above its header to
    close a gap against, and applying this there pulled the title flush to the top of the
-   screen — it cancelled padding that was doing its job. `:not(.sheet-side)` rather than an
+   screen: it cancelled padding that was doing its job. `:not(.sheet-side)` rather than an
    adjacent-sibling selector on the grip: the grip is `display: none` there, not absent, so
    `.sheet-grip + .sheet-head` still matches it.
 */
@@ -8311,7 +8311,7 @@ button.settings-nav-item {
    What the sheet is showing, in one line.
 
    It is the sheet's own state, not an instruction, so it is muted and it sits where the
-   chips will be when there are any — the two are the same slot in two states, which is
+   chips will be when there are any: the two are the same slot in two states, which is
    what keeps the head from moving as filters come and go.
 */
 .sheet-summary {
@@ -8323,7 +8323,7 @@ button.settings-nav-item {
    The back arrow on a sub-page, sized to the title beside it rather than to a 44px square.
 
    The head is a text row, and a full-height target in it would push the title down and make
-   the row taller than every other sheet head. The arrow keeps the width — the tap area runs
+   the row taller than every other sheet head. The arrow keeps the width: the tap area runs
    the full height of the row through the negative margin, which is what the row's own
    min-height then guarantees.
 */
@@ -8340,7 +8340,7 @@ button.settings-nav-item {
    Sized and pulled like `.sheet-back` is at the other end, so the two sit symmetrically
    against the body's padding: an icon button's box is wider than its glyph, and without the
    pull the ✕ floats a few pixels inside the edge every other row lines up with. It keeps the
-   44px target the mobile block gives every `.icon-btn` — the 2rem here is the drawn box, not
+   44px target the mobile block gives every `.icon-btn`: the 2rem here is the drawn box, not
    the tappable one.
 */
 .sheet-close {
@@ -8355,7 +8355,7 @@ button.settings-nav-item {
 /*
    The rule under the summary.
 
-   It separates what is applied from what can be changed — the two halves of this page — and
+   It separates what is applied from what can be changed (the two halves of this page) and
    it is the same seam the rail draws above its floor. `margin: 0` because
    the sheet body's own gap is the spacing; an `hr`'s default margin would double it.
 */
@@ -8369,21 +8369,21 @@ button.settings-nav-item {
    A filter that opens a page of its own.
 
    Drawn as a row rather than as a control, because what it does is navigate. The chevron is
-   the same rotated box the disclosure summary uses — no glyph, no asset, `currentColor`, so
+   the same rotated box the disclosure summary uses: no glyph, no asset, `currentColor`, so
    it is correct in dark mode without a second rule.
 */
 /*
    Sized against the Android sheet these mirror, which reads better than this did.
 
    Two differences, and the second is the one that showed. The label was 0.9rem against
-   its 16sp — small for the primary text on a row whose whole job is naming a filter — and
+   its 16sp (small for the primary text on a row whose whole job is naming a filter) and
    the rows were spaced 12px apart by the sheet body's gap, where Android's touch and take
    their breathing room from 12dp of padding inside each one. Spacing between rows makes two
    controls read as two lists of one; padding within them makes one list of two, and gives
    the taller row a larger target for free.
 
    The gap is cancelled rather than the body's rule changed, because every other child of
-   the sheet does want that gap — the chips and the rule. `+` so it only
+   the sheet does want that gap: the chips and the rule. `+` so it only
    collapses the space *between* rows and leaves the one above the first.
 */
 .filter-row {
@@ -8394,7 +8394,7 @@ button.settings-nav-item {
      The hover fill needs air at both ends.
 
      Inline padding was 0.2rem, which put the chevron 3px from the fill's right edge and
-     the glyph 3px from its left — on hover the row read as a box drawn too tight around
+     the glyph 3px from its left: on hover the row read as a box drawn too tight around
      its contents. The sub-pages' rows (`.date-option`, `.sort-option`) already use 0.5rem
      inside. Matching that here, and pulling the box out by the difference, gives the
      ends their room without moving the label: its text edge stays 0.2rem in, in line
@@ -8426,7 +8426,7 @@ button.settings-nav-item {
    The glyph naming the row.
 
    Muted like the value at the other end, so the label is the one thing at full strength on
-   the line — the icon and the chevron are both wayfinding, and the words are the content.
+   the line: the icon and the chevron are both wayfinding, and the words are the content.
    Fixed width so "Tags" and "Dates" start on the same column whatever the glyphs measure.
 */
 .filter-row-icon {
@@ -8472,7 +8472,7 @@ button.settings-nav-item {
 }
 
 /* ------------------------------------------------------------------------------------
-   A note's history — `HistorySheet`: a list of earlier versions, then one of them.
+   A note's history (`HistorySheet`): a list of earlier versions, then one of them.
 
    Both pages are one column on the sheet's own rhythm (`.sheet-body`'s gap), so nothing
    here sets a margin: the paragraphs and headings inside have theirs removed instead.
@@ -8498,8 +8498,8 @@ button.settings-nav-item {
 /*
    A version: two lines and a chevron, the whole row the target.
 
-   `.sort-option`'s row — it joins that rule's selectors, so the surface, the hover, the
-   focus ring and the 44px floor are one definition — with a second line. What is here is
+   `.sort-option`'s row (it joins that rule's selectors, so the surface, the hover, the
+   focus ring and the 44px floor are one definition) with a second line. What is here is
    only what differs: pulled out by its own padding so the text lines up with the sheet's
    title above it while the hover fill reaches a little past, as the drawer's rows do.
 */
@@ -8613,7 +8613,7 @@ button.settings-nav-item {
 .history-diff-note { color: var(--muted); }
 
 /*
-   Source keeps its own spacing — a table's padding, an indented list — so whitespace is
+   Source keeps its own spacing (a table's padding, an indented list) so whitespace is
    kept, and wraps, since the sheet is narrow: a long address or table row breaks where it
    must rather than widening the box. Monospace because this is source, where character
    positions carry meaning, as in the editor's Source view.
@@ -8686,7 +8686,7 @@ button.settings-nav-item {
 .history-diff-row.is-removed { background: var(--diff-removed-line); }
 
 /*
-   A mark is a ground under the page's ink plus a line through it or under it — never a
+   A mark is a ground under the page's ink plus a line through it or under it, never a
    colour of text alone. On a whole line the line's wash is already the ground, so the
    words keep only their decoration.
 */
@@ -8717,7 +8717,7 @@ button.settings-nav-item {
 /*
    A folded stretch of unchanged lines: a whole row wide and the 44px floor tall, on a
    faint fill so it reads as something to press and not as a line of the note. In the
-   sheet's own type, not the source's — it is the sheet talking, not the note.
+   sheet's own type, not the source's: it is the sheet talking, not the note.
 */
 .history-diff-fold {
   display: flex;
@@ -8795,8 +8795,8 @@ button.settings-nav-item {
    The controls behind the filter and sort icons are the same at every width, and so is
    the dialog that holds them; only its shape changes. A sheet rising from the floor of a
    1440px window reads as a phone app running in a desktop one, so above the breakpoint
-   the dialog is pinned where the sidebar's head row is — it appears where the control
-   that opened it was — sized to the sidebar, and drawn as a card.
+   the dialog is pinned where the sidebar's head row is (it appears where the control
+   that opened it was) sized to the sidebar, and drawn as a card.
 
    `width > 860px` is the complement of `MOBILE_QUERY`'s `max-width: 860px` in
    `useMediaQuery.ts`, written in range syntax so there is no fractional-width hole
@@ -8807,7 +8807,7 @@ button.settings-nav-item {
    `--panel-top` is a reference to the content column's top padding (`--shell-pad-top`,
    set on the shell so the top layer can inherit it), which is where the sidebar's head row
    begins now that no bar sits above it. It was a measurement while the top bar was there
-   — the padding plus the bar's avatar, rule and margin, pinned as a sum — and the bar is
+   (the padding plus the bar's avatar, rule and margin, pinned as a sum) and the bar is
    what the number stopped counting when the rail replaced it. Anchor positioning would
    make it a reference to the sidebar itself; it is not yet in every browser this app
    supports.
@@ -8816,19 +8816,19 @@ button.settings-nav-item {
    order at equal specificity, and the head's grip-cancel in particular would win if this
    block sat above it.
 
-   `--sidebar-width` reaches the dialog through inheritance — it is set inline on `.notes`,
+   `--sidebar-width` reaches the dialog through inheritance: it is set inline on `.notes`,
    which is the dialog's DOM ancestor, and inheritance follows the DOM rather than the top
-   layer — so the panel tracks a dragged sidebar. The floor of 20rem is for the narrowest
+   layer, so the panel tracks a dragged sidebar. The floor of 20rem is for the narrowest
    drag (`SIDEBAR_MIN` is 200px), where the sidebar is too narrow for a page of controls.
 
    Horizontally it follows the control that opened it, when `Sheet` is told which one:
    `--anchor-end` is that control's right edge, and the panel's ✕ is put exactly over it,
    so the click that opened the panel is where the click that closes it goes. The sidebar's
-   edge stays the floor, which is why the list's head looks as it always did — its filter
+   edge stays the floor, which is why the list's head looks as it always did: its filter
    icon is too near the sidebar's left for a panel ending there to fit, so `max()` leaves
    it where it was. The table's one-row toolbar is what this is for: its icons sit at the
    window's far end, and the panel opened at the sidebar's edge, a window's width from the
-   click. `0.6rem + 1px` is the ✕'s distance from the panel's edge — the body's 1rem
+   click. `0.6rem + 1px` is the ✕'s distance from the panel's edge: the body's 1rem
    padding less the ✕'s 0.4rem pull, inside the border. The ceiling is the shell's right
    padding, so a trigger near the edge never pushes the panel off the window. Vertically
    nothing changes: the toolbar row starts where the sidebar's head does.
@@ -8863,8 +8863,8 @@ button.settings-nav-item {
   }
 
   /*
-     Light, not absent. The page behind the panel is inert while it is open — that is
-     what `showModal` means — and a scrim that cannot be seen leaves clicks on the list
+     Light, not absent. The page behind the panel is inert while it is open (that is
+     what `showModal` means) and a scrim that cannot be seen leaves clicks on the list
      dying for no visible reason. 12% is enough to say "this is on top of that" without
      dimming the notes the filters are about.
   */
@@ -8899,7 +8899,7 @@ button.settings-nav-item {
      Sized to the sidebar like every other panel, a field's row was its name plus a pair of
      buttons in 20rem, and the buttons won: names were cut to a word or less, narrower than
      the same sheet on a phone. 26rem is a large phone's width, so a row reads the same on
-     both. Only with fields — the five named orders fit the sidebar's width, and a panel
+     both. Only with fields: the five named orders fit the sidebar's width, and a panel
      wider than what it holds is a panel with an empty right half. Still capped by the
      window, like the rule it overrides. The width is overridden through its property so
      the panel's left edge, which is reckoned from it, moves with it.
@@ -8933,8 +8933,8 @@ button.settings-nav-item {
 /*
  * The legal pages: the privacy policy, the terms, and the deletion instructions.
  *
- * They borrow `.preview`'s long-form typography — measured column, generous line height,
- * heading sizes — because it is already the answer to "a wall of prose someone has to
+ * They borrow `.preview`'s long-form typography (measured column, generous line height,
+ * heading sizes) because it is already the answer to "a wall of prose someone has to
  * actually read", and a second set of rules would drift from it.
  *
  * What has to be undone is the shell. These render in `PlainShell`, whose `.centered`
@@ -8984,7 +8984,7 @@ button.settings-nav-item {
   margin-top: 0.6rem;
 }
 
-/* The summary at the top, set slightly larger — it is the part most readers will stop
+/* The summary at the top, set slightly larger: it is the part most readers will stop
    after, so it should not look like the first paragraph of the fine print. */
 .legal-intro {
   font-size: 1.05rem;
@@ -9015,7 +9015,7 @@ button.settings-nav-item {
  * One pane at a time on a phone, driven by the URL rather than by stacking.
  *
  * The rule this replaced collapsed .notes to a single column, which put the entire
- * infinite note list above the workspace — you scrolled past every note you own to reach
+ * infinite note list above the workspace: you scrolled past every note you own to reach
  * the one you had just tapped. The router already encodes the right state machine:
  * /notes means "the list", /notes/$noteId means "this note". `.note-open` reflects that
  * onto the grid, so Back, shared links and the browser's own history all keep working
@@ -9027,7 +9027,7 @@ button.settings-nav-item {
  *
  * These rules never mention --sidebar-width or --editor-fraction. The drag handles write
  * those as inline custom properties, and a custom property is inert until a rule consumes
- * it — which is what stops a width dragged on a desktop from pinning a phone to two
+ * it, which is what stops a width dragged on a desktop from pinning a phone to two
  * columns. Keep it that way: an inline grid-template-columns would outrank this block.
  */
 @media (max-width: 860px) {
@@ -9048,7 +9048,7 @@ button.settings-nav-item {
 
   .view-back { display: inline-flex; }
 
-  /* Where the arrow is the only way out of a failed note — see `.workspace-error-head`. */
+  /* Where the arrow is the only way out of a failed note: see `.workspace-error-head`. */
   .workspace-error-head { display: flex; }
 
   /*
@@ -9063,7 +9063,7 @@ button.settings-nav-item {
      Not pulled the further 0.49rem that aligns the chevron's ink with the text below, the
      way the list header's leading icons are. Here the two goals conflict: this arrow is
      already pulled to put its target on the screen edge, and taking the ink offset as well
-     moved the target 8px off screen — trading a reachable corner control for a pixel of
+     moved the target 8px off screen: trading a reachable corner control for a pixel of
      alignment, which is the wrong way round. The ink lands ~7px inside the text instead,
      which is the cost of the target reaching the glass.
   */
@@ -9075,14 +9075,14 @@ button.settings-nav-item {
      The heading row reaches the screen edge, through its own scroll container.
 
      `.settings` sets `overflow-y: auto`, and that computes `overflow-x` to `auto` as
-     well — the same coupling `.note-list` records — so it clips anything pulled outside
+     well (the same coupling `.note-list` records) so it clips anything pulled outside
      its box. The arrow's own negative margin was being cut off: the box still laid out
      at the screen edge, but its leftmost 12px were dead to a tap, leaving the corner
      control quietly smaller than it looked.
 
      So the scroller is given the shell's padding back as its own, and the heading row is
-     pulled out through it. Nothing is outside the container any more — its edge simply
-     moved — and the arrow lands on the glass for real. The body below keeps the inset,
+     pulled out through it. Nothing is outside the container any more (its edge simply
+     moved) and the arrow lands on the glass for real. The body below keeps the inset,
      which is what the padding restores.
 
      The row itself needs no pull of its own: the arrow's `.view-back` margin already
@@ -9108,21 +9108,21 @@ button.settings-nav-item {
   }
 
   /*
-     In a full-screen view, the back arrow is the top-left control — as it is in every
+     In a full-screen view, the back arrow is the top-left control, as it is in every
      native app.
 
      The topbar is account chrome: a wordmark that navigates to the list, and an avatar
      hiding Settings and Sign out. Over a view that fills the phone it costs 69px of an
-     812px viewport — 11% of what is left after browser chrome, and a quarter of the
-     201px Settings put above its own content — while occupying the top-left slot a
+     812px viewport (11% of what is left after browser chrome, and a quarter of the
+     201px Settings put above its own content) while occupying the top-left slot a
      decade of muscle memory reserves for the way back.
 
      A note, Settings and Trash each carry their own heading and their own `.view-back`
      now, so none of them needs the wordmark to say where it is or how to leave. The
      wordmark's destination is one tap away through that arrow either way.
 
-     The list keeps its topbar. It is this app's home screen — exactly where a native app
-     does show its title and account — and it is the only view with no heading of its own
+     The list keeps its topbar. It is this app's home screen (exactly where a native app
+     does show its title and account) and it is the only view with no heading of its own
      and nowhere to go back to. Sign out lives behind the avatar there, which is one tap
      from any of these views.
 
@@ -9131,8 +9131,8 @@ button.settings-nav-item {
 
      Three selectors because there is no one class these views share: a note is marked by
      `.note-open` on the grid, Settings by its own wrapper, and the trash list by the
-     heading row that only it renders. A trashed note matches the first — `TrashLayout`
-     uses the same layout hook — and its sidebar, `.trash-head` included, is hidden by the
+     heading row that only it renders. A trashed note matches the first (`TrashLayout`
+     uses the same layout hook) and its sidebar, `.trash-head` included, is hidden by the
      rule above, so only one back arrow is ever on screen.
   */
   .shell-main:has(.notes) > .topbar,
@@ -9145,13 +9145,13 @@ button.settings-nav-item {
      The note list now goes too, which the comment above said it could not.
 
      Both reasons it kept the bar have been answered. It had no heading of its own, and now
-     the header names the notebook you are in — which the wordmark never did, on the one
+     the header names the notebook you are in, which the wordmark never did, on the one
      screen where which app you are in was never the question. And sign out was reachable
      only through the avatar here, which is now on the drawer's floor, one tap from the ☰ in
      the same row.
 
      `.notes` rather than `.notes.note-open`: the list and the open note are the same grid,
-     and both have their own top-left control now — the menu button and the back arrow.
+     and both have their own top-left control now: the menu button and the back arrow.
   */
 
   /*
@@ -9159,7 +9159,7 @@ button.settings-nav-item {
 
      Three insets were stacking on a phone: the shell's 0.75rem, the sidebar's 0.7rem, and
      the note row's own 0.7rem, which `.note-list` pulls back out. Text landed 23px from the
-     glass on a 412px screen — over 5% of the width on each side before a single character,
+     glass on a 412px screen: over 5% of the width on each side before a single character,
      on the view whose whole purpose is showing as much of a note list as possible.
 
      Zeroing this does not break the alignment the desktop rule protects. The note rows keep
@@ -9174,7 +9174,7 @@ button.settings-nav-item {
   }
 
   /* With the sidebar's inset gone the list has nothing to pull out of; the 3px stays, which
-     is the room the focus ring needs — see `.note-list`. */
+     is the room the focus ring needs: see `.note-list`. */
   .note-list {
     margin-left: -3px;
     margin-right: -3px;
@@ -9185,7 +9185,7 @@ button.settings-nav-item {
 
      The note list pulls itself out by 3px for focus rings, then each note item adds 0.7rem
      of internal padding. That puts the text at `0.7rem - 3px` from the sidebar edge, which
-     is what this rule matches. Only in the sidebar — the sheet has its own body padding.
+     is what this rule matches. Only in the sidebar: the sheet has its own body padding.
   */
   .sidebar > .filter-chips {
     padding-inline: calc(0.7rem - 3px);
@@ -9194,7 +9194,7 @@ button.settings-nav-item {
   /*
      Room for the floating button, so the last note is not left under it.
 
-     `.note-list` is the scroller, so the padding belongs there rather than on the sidebar —
+     `.note-list` is the scroller, so the padding belongs there rather than on the sidebar:
      on the sidebar it would be a permanent gap above the fold instead of scroll room at the
      end.
   */
@@ -9207,14 +9207,14 @@ button.settings-nav-item {
      The title gets the room; what is left of the controls tucks in beside it.
 
      The desktop row put the title, three actions and a save indicator side by side with
-     nowrap actions, so the title lost — it truncated to about a dozen characters, which
+     nowrap actions, so the title lost: it truncated to about a dozen characters, which
      is not enough to tell two dated notes apart.
   */
   /* The title takes the full width now, so it can afford to be a touch larger. */
   .workspace-title-row .title-input { font-size: 1.35rem; }
 
   /*
-     The actions row now holds only the save state and the ⋯ menu — the preview toggle
+     The actions row now holds only the save state and the ⋯ menu: the preview toggle
      moved into the toolbar, and the rest is behind the overflow. A row that sparse is
      mostly dead space above the note, so it overlaps the title line instead: the title
      sits on its own line, and these sit at its right end.
@@ -9246,7 +9246,7 @@ button.settings-nav-item {
 
   /*
      Confirmation buttons are tap targets like any other, and these end an irreversible
-     action — 33px for "Delete file" and 26px for "Cancel" is not enough to be sure which
+     action: 33px for "Delete file" and 26px for "Cancel" is not enough to be sure which
      one a thumb landed on.
   */
   .confirm-actions button {
@@ -9262,8 +9262,8 @@ button.settings-nav-item {
      Every disclosure is a thumb target here, not just the one that was noticed.
 
      This started as a fix for the sidebar's old tag disclosure, the one control left under 44px.
-     The note's filing row was 36px and the attachments summary about 19px — a line of
-     0.78rem text with no height of its own — because each had been styled where it was
+     The note's filing row was 36px and the attachments summary about 19px (a line of
+     0.78rem text with no height of its own) because each had been styled where it was
      written rather than as the same kind of thing. One rule now, so the next one cannot
      be missed.
   */
@@ -9282,12 +9282,12 @@ button.settings-nav-item {
      The side margins come in too, for the same reason the top one did.
 
      1.5rem is a desktop gutter, and it was the one number this block never revisited: at
-     375px it spent 48px — an eighth of the screen — on empty margin, and the note list
+     375px it spent 48px (an eighth of the screen) on empty margin, and the note list
      pays it twice, because `.sidebar` adds its own 0.7rem inset to line the list up with
      the text inside the note rows. That put a note's first character 35px from the glass
      while the Android app's list starts near the edge.
 
-     0.75rem is the reduction that leaves the sidebar's inset intact — it is what aligns
+     0.75rem is the reduction that leaves the sidebar's inset intact: it is what aligns
      the count, the search field and the note text, and `.note-list` pulls back out
      through it so a selected row's fill still runs the full width. Halving the shell
      instead gives that fill a margin to sit in rather than bleeding off the edge, and
@@ -9309,19 +9309,19 @@ button.settings-nav-item {
      The notes list runs closer to the edge than the rest.
 
      Every other view keeps the 0.75rem above: login, settings, import and trash are reading
-     width, and a gutter that frames them is the point. The notes list is the opposite — its
+     width, and a gutter that frames them is the point. The notes list is the opposite: its
      whole job is showing as much of the list as possible, and the Android app it mirrors
      starts its rows near the glass. So this view alone drops the shell inset to 0.25rem, and
      the row's fill and border begin a quarter-rem from the edge instead of three.
 
      Scoped by `:has(.notes:not(.note-open))` rather than by narrowing the shared rule, so
      it is the list view alone that changes and nothing else moves. `.notes` gains
-     `.note-open` when a note is open and the grid swaps the list for the editor — a reading
-     view like settings, which wants the full gutter — so the selector deliberately stops
+     `.note-open` when a note is open and the grid swaps the list for the editor (a reading
+     view like settings, which wants the full gutter) so the selector deliberately stops
      matching there and the column falls back to the shared 0.75rem. The compound outweighs
      `.shell-main` on specificity, which is what lets it win on the list while the shared
      rule keeps every other route, the open note included, at 0.75rem. The row keeps its
-     own 0.7rem, so a note's text still sits inside the fill the way it always has — see
+     own 0.7rem, so a note's text still sits inside the fill the way it always has: see
      `.note-item`.
 
      `:not(:has(.trash-head))` keeps the trash out: it shares the `.notes` grid but is a
@@ -9337,23 +9337,23 @@ button.settings-nav-item {
      identically, the rule between them looked like it was separating two halves of one
      thing, so it came out. On screen the opposite was true. Two identical rows with nothing
      between them read as one row that had wrapped, and the eye had to use the chevrons to
-     find where the first ended — while the divider, which the rest of the column already
+     find where the first ended, while the divider, which the rest of the column already
      uses to mean "different thing", said it at a glance. Sameness of style is what makes
      them a family; the rule is what keeps them countable.
   */
   /*
-     Label and value on one line, which is how a phone states a detail — and now how the
+     Label and value on one line, which is how a phone states a detail, and now how the
      desktop states one too, so the grid itself lives in the base rules. The reasoning
      that got the phone here first: the rows used to stack, label above a full-width
      boxed input, which cost two lines and a box per field, and eight fields filled the
      screen; and a flat 32% label share gave "Code" the same 110px as "Date Added", so
-     `fit-content` — as wide as the longest name and no wider — is what the base rule
+     `fit-content` (as wide as the longest name and no wider) is what the base rule
      draws at every width.
   */
 
   /*
-     Taller, for a thumb. The quiet-at-rest drawing — no border or fill until the value is
-     touched — is the base rule at every width now; only the size is the phone's.
+     Taller, for a thumb. The quiet-at-rest drawing (no border or fill until the value is
+     touched) is the base rule at every width now; only the size is the phone's.
   */
   .note-field-input {
     min-height: 2.75rem;
@@ -9363,8 +9363,8 @@ button.settings-nav-item {
   }
 
   /* The list at the phone's reading size, in the same touch height as every other row
-     here. The name column hugs its longest name — the floor the desktop puts under it
-     would take a third of this screen — and the columns sit half a rem apart. */
+     here. The name column hugs its longest name (the floor the desktop puts under it
+     would take a third of this screen) and the columns sit half a rem apart. */
   .note-fields {
     /* A narrower fixed name column: a third of a phone, no more. Names truncate past it. */
     grid-template-columns: auto 7.5rem minmax(0, 1fr) auto;
@@ -9401,12 +9401,12 @@ button.settings-nav-item {
   /*
      The docked bar's clearance, plus whatever the keyboard covers.
 
-     The column is the note's one scroll region at every width now — see `.workspace-main`
+     The column is the note's one scroll region at every width now: see `.workspace-main`
      in the base rules, which is where this block's document model moved once the desktop
      adopted it. What stays the phone's is the bottom padding: the bar is docked over the
      end of the column here, and a keyboard covers more of it. Android's keyboard shrinks
-     only the visual viewport — the layout viewport, and so `100dvh`, keep their full
-     height — so without the keyboard's share, from `--keyboard-inset` on the column, the
+     only the visual viewport (the layout viewport, and so `100dvh`, keep their full
+     height) so without the keyboard's share, from `--keyboard-inset` on the column, the
      note's last line could be scrolled to the bottom of the layout viewport and no
      further, which is under the keys; with it, the end of the note comes up above them.
   */
@@ -9418,7 +9418,7 @@ button.settings-nav-item {
        as padding, the way the base rule does with the desktop shell's 1.5rem: sized to
        the phone shell's 0.75rem here, since the base's reach would drag the column past
        the window. This used to be undone outright, on the reasoning that the phone was
-       edge-to-edge already — it was not: the column stopped at the shell's padding, so
+       edge-to-edge already. It was not: the column stopped at the shell's padding, so
        its scrollbar sat 12px in from the glass with dead space beyond it, and the text
        was 12px in from a bar that should have been the edge.
     */
@@ -9445,7 +9445,7 @@ button.settings-nav-item {
   /*
      The filter sheet's own controls are thumb targets like everything else here.
 
-     These are the sidebar's controls, and at desktop density they are 37-39px — pointed at
+     These are the sidebar's controls, and at desktop density they are 37-39px: pointed at
      rather than tapped. They were the only controls in the app still under the 44px this
      block sets everywhere else, and they are now the ones most likely to be tapped, since
      reaching them at all means being on a phone.
@@ -9459,13 +9459,13 @@ button.settings-nav-item {
   }
 
   /*
-     A tag row is a full-width target, so it gets the full 44px — unlike the chips below,
+     A tag row is a full-width target, so it gets the full 44px, unlike the chips below,
      which wrap and would push the notes down a row for every one of them.
   */
   /*
      The chips take a compromise height rather than the full target: they wrap, and a row
      of 44px chips would push the notes down as far as the controls this change removed.
-     They each remove a filter on one tap, so they need to be certain of — 36px with the ×
+     They each remove a filter on one tap, so they need to be certain of: 36px with the ×
      inside the target.
   */
   .filter-chip {
@@ -9605,7 +9605,7 @@ button.settings-nav-item {
   }
 }
 
-/* With reduced motion asked for, the page changes and nothing slides — the transition
+/* With reduced motion asked for, the page changes and nothing slides: the transition
    still runs, since the router starts it, but every part of it is instant. */
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-group(*),
@@ -9616,7 +9616,7 @@ button.settings-nav-item {
 }
 
 /* ---------------------------------------------------------------------------------
-   Selecting several notes — `useSelection`, `NoteListItem`, `SelectionBar`.
+   Selecting several notes: `useSelection`, `NoteListItem`, `SelectionBar`.
 
    Evernote's shape: Cmd/Ctrl-click and Shift-click pick rows, a held finger picks one on
    a phone, and a bar floats up over the foot of the screen with the count and the actions.
@@ -9628,8 +9628,8 @@ button.settings-nav-item {
 /*
    A selected row: a ring inside its edge, over whatever fill it has.
 
-   Inside rather than the focus ring's outside, so the two are different marks — a focused
-   row is where the keyboard is, a selected one is what an action will reach — and so the
+   Inside rather than the focus ring's outside, so the two are different marks (a focused
+   row is where the keyboard is, a selected one is what an action will reach) and so the
    ring is never clipped by the list's scroll box. The wash is lighter than the open note's
    14%, since the ring is the statement and the wash only keeps a selected row from looking
    like a hovered one when the pointer leaves it. Evernote outlines its selected cards the
@@ -9645,7 +9645,7 @@ button.settings-nav-item {
 }
 
 /*
-   A row with its own actions under it — the trash's Restore and Delete forever.
+   A row with its own actions under it: the trash's Restore and Delete forever.
 
    The fill and the ring move from the link to the whole row, so the open or selected
    note's card holds its buttons. Drawn on the link, the card ended above them and the
@@ -9679,7 +9679,7 @@ button.settings-nav-item {
 
    Outside the link (a control inside an anchor is invalid, and every click on it would
    follow the link), so it is laid over the row rather than in its flow. The title is
-   asked to stop short of it — below — for as long as the list is in its selection mode,
+   asked to stop short of it (below) for as long as the list is in its selection mode,
    which is the one moment every row changes at once and so the one moment a reflow is
    not a jump. Sized to the row's text, not to a thumb: on a touch screen the whole row
    toggles, and the box only reports.
@@ -9701,8 +9701,8 @@ button.settings-nav-item {
   .note-check { pointer-events: none; }
 
   /*
-     A held finger selects, so the browser's own answers to a held link — the callout on
-     iOS, a text selection on either — are switched off. The rows are links, not prose;
+     A held finger selects, so the browser's own answers to a held link (the callout on
+     iOS, a text selection on either) are switched off. The rows are links, not prose;
      nobody selects their text.
   */
   .note-item {
@@ -9717,8 +9717,8 @@ button.settings-nav-item {
 
    Fixed rather than in the list, so nothing under it moves when it comes or goes; and
    over the window rather than the column, so a narrow sidebar never squeezes its
-   controls off the screen. The colours are the dropdown's — the page's own background,
-   a border and a shadow — rather than the accent's, so the delete control can keep its
+   controls off the screen. The colours are the dropdown's (the page's own background,
+   a border and a shadow) rather than the accent's, so the delete control can keep its
    red and the icons their ink. On a phone it takes the New button's place; that button
    hides while anything is selected. Under the sheet's backdrop, which the top layer puts
    above everything regardless; this only has to beat the list.
@@ -9753,7 +9753,7 @@ button.settings-nav-item {
 .selection-bar .btn { white-space: nowrap; }
 
 /*
-   On a narrow phone the count is the number alone, beside the ✕ — Android's own selection
+   On a narrow phone the count is the number alone, beside the ✕: Android's own selection
    bars read "✕ 3" for the same reason. Five actions at the 44px a thumb gets, a Select
    all and "3 selected" came to about 390px, and a phone's bar has about 340: the last
    action, Delete, was pushed off the screen. The word was the one thing on the bar that
@@ -9799,7 +9799,7 @@ button.settings-nav-item {
 }
 
 /*
-   The selection's tags — `TagsSheet`: the note's tag field with no chips in it, then a
+   The selection's tags (`TagsSheet`): the note's tag field with no chips in it, then a
    row per tag the selection carries, each a checkbox beside the chip the note's own
    property list would draw for it. The chip loses the room it keeps for a × it does not
    have here.
@@ -9845,8 +9845,8 @@ button.settings-nav-item {
 /* ---------------------------------------------------------------------------------
    The front page: unbent.app's `/` for someone signed out (`FrontPage.tsx`).
 
-   One column of sections on one rhythm — every section is the same distance from the
-   next, set once on `.front-section` rather than tuned per block — and one width,
+   One column of sections on one rhythm (every section is the same distance from the
+   next, set once on `.front-section` rather than tuned per block) and one width,
    `.front-width`, which every band shares so their left edges line up down the page.
    Wider than the app's 46rem reading column because the screenshots need the room; the
    text inside stays at a reading measure on its own.
@@ -10123,7 +10123,7 @@ button.settings-nav-item {
   .front-shots { margin-top: 2.5rem; }
 
   /* Bigger relative to the desktop shot, which is small enough here that a 22% phone
-     would be a thumbnail — but no bigger than the desktop shot is tall, or the phone
+     would be a thumbnail, but no bigger than the desktop shot is tall, or the phone
      stands up out of the top of it. 27% of the width is a phone 58% of the width tall,
      inside the desktop shot's 62.5% plus the hang below it. */
   .front-shot-phone { width: 27%; right: 3%; }
@@ -10144,12 +10144,12 @@ button.settings-nav-item {
    `viewport-fit=cover`, and only then do the `env(safe-area-inset-*)` values below stop
    being zero. Everything here is the page keeping its own content clear of the clock and
    the home indicator, now that the app no longer does it by holding the page between
-   two strips — see that function for why it stopped.
+   two strips: see that function for why it stopped.
 
    What flows is moved down once, on the body, rather than each view learning the inset:
    the topbar, a settings page and the sign-in page all start under the status bar, and
    the body's own ground is what shows behind the clock. What sits on the bottom edge
-   already clears the home indicator — the docked bar, the New button, the snackbars and
+   already clears the home indicator: the docked bar, the New button, the snackbars and
    the sheets each add `env(safe-area-inset-bottom)` themselves, written when that was
    zero everywhere. What lives in the top layer covers the screen and is padded inside:
    the drawer and the file viewer.
@@ -10163,7 +10163,7 @@ html.host-ios body {
 }
 
 /*
-   A page that scrolls as a document — Settings, the sign-in page — would carry its text
+   A page that scrolls as a document (Settings, the sign-in page) would carry its text
    up behind the clock. This is the strip it passes under instead, in the page's ground.
    Below the top layer, so a sheet's scrim still dims it with the rest of the screen.
 */
@@ -10214,7 +10214,7 @@ html.host-ios .viewer {
 /*
    One size for the whole page: the settings prose size, 0.85rem, for every value, row
    and sentence, and 0.75rem muted for every label over one. Both pages are read like a
-   settings page — a number, a date, a filename at a time — and the first draft set the
+   settings page (a number, a date, a filename at a time) and the first draft set the
    facts at 16px, the rows at 16px, the counts at 13.6px and the labels at two sizes,
    which read as four different pages stacked. The one thing larger is the health card's
    word, which is the page's answer at a glance.
@@ -10225,7 +10225,7 @@ html.host-ios .viewer {
 .operator-page .operator-table th { font-size: 0.75rem; }
 
 /* The account's facts: the About page's list, at this page's size, which `.operator-page`
-   above already sets. The id is a word in a cell, not a bar across it — `.panel code` is
+   above already sets. The id is a word in a cell, not a bar across it: `.panel code` is
    full-width for the MCP address. */
 .panel .operator-facts code { width: auto; align-self: flex-start; }
 
@@ -10233,7 +10233,7 @@ html.host-ios .viewer {
    Two cards, one per half of the backup, side by side where there is room and stacked
    on a phone. Each leads with one word and a dot in its colour: an operator glancing at
    this wants "Healthy" or "Failed" before any number. A bad state takes the border too,
-   as a confirm's border takes its action's tone — red around what has gone wrong, and
+   as a confirm's border takes its action's tone: red around what has gone wrong, and
    plain around a half that has simply not run yet.
 */
 .health-cards {
@@ -10406,8 +10406,8 @@ html.host-ios .viewer {
 
 /*
    The dumps: one row per file, name and size on the left, the two row actions on the
-   right. Download is a link and Load a quiet button, as the rule has it — one goes
-   somewhere and the other does something — and the confirm a Load opens takes the row's
+   right. Download is a link and Load a quiet button, as the rule has it (one goes
+   somewhere and the other does something) and the confirm a Load opens takes the row's
    full width beneath them, as a file's confirm does in the attachments panel.
 */
 .dump-list {

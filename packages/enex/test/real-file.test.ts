@@ -76,7 +76,7 @@ describe.skipIf(!available)('real export files', () => {
 
   /**
    * The design claim: memory stays flat regardless of input size. Measured on a real
-   * 3.4GB notebook — 3,335 notes and 3,896 attachments in 69s with a 134MB peak heap.
+   * 3.4GB notebook: 3,335 notes and 3,896 attachments in 69s with a 134MB peak heap.
    * Skipped by default because it reads the whole file; set ENEX_BENCH=1 to run it.
    */
   it.skipIf(process.env['ENEX_BENCH'] !== '1')(

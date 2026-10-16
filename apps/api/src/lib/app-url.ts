@@ -3,7 +3,7 @@ import type { Env, RawEnv } from '../types.js';
 /**
  * The origin this instance is served on, settled before any route runs.
  *
- * `APP_URL` is the one value everything about identity hangs from — Better Auth's base
+ * `APP_URL` is the one value everything about identity hangs from: Better Auth's base
  * URL, the trusted origins, the passkey relying party, secure cookies, the MCP resource
  * and issuer, the host the legal documents print. It used to be required, and had to be
  * named in the deploy configuration, which meant every deployment had to know its own
@@ -13,16 +13,16 @@ import type { Env, RawEnv } from '../types.js';
  *
  * So when nothing has set it, the answer is the origin the request arrived on. That is
  * trustworthy on Workers for a reason that has nothing to do with the Host header: a
- * request only reaches this Worker on a hostname that routes to it — its workers.dev name,
- * or a custom domain attached to it — so the origin is one the operator chose, never one a
+ * request only reaches this Worker on a hostname that routes to it (its workers.dev name,
+ * or a custom domain attached to it), so the origin is one the operator chose, never one a
  * caller made up. Local development already trusts the request origin the same way, for
  * Tailscale and the emulator; see `baseURLFor` in auth.ts.
  *
  * The one thing derivation cannot decide is which of two origins is *the* one. A Worker
  * reachable on both a custom domain and its workers.dev name behaves as two instances of
  * the same data, each with its own cookies and passkeys. An operator who wants a single
- * front door sets `APP_URL` explicitly — a secret is the durable place, since a deploy
- * replaces plain vars — and then the other door refuses every sign-in as an untrusted
+ * front door sets `APP_URL` explicitly (a secret is the durable place, since a deploy
+ * replaces plain vars) and then the other door refuses every sign-in as an untrusted
  * origin, exactly as before.
  *
  * Memoized per origin rather than built per request, because `getAuth` keys its Better

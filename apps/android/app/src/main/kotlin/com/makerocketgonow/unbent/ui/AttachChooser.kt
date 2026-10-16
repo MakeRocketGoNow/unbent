@@ -18,14 +18,14 @@ import kotlinx.coroutines.withContext
  * The page's file chooser, answered by one activity: the system's file apps, the camera
  * beside them, HEIC made readable on the way back.
  *
- * A WebView opens no picker of its own — it asks its WebChromeClient and waits on a
- * callback — so every `<input type="file">` on the site comes here. For the editor's
+ * A WebView opens no picker of its own: it asks its WebChromeClient and waits on a
+ * callback, so every `<input type="file">` on the site comes here. For the editor's
  * Attach button that is a chooser of the phone's file apps with the camera offered
  * alongside, the way Chrome answers the same input: a photo of a receipt is the most
  * common thing attached from a phone, and making it a trip through the camera app and back
  * through the gallery was three steps where one would do. An input that asks for capture
- * outright goes straight to the camera. An input that only takes other kinds of file —
- * Import's — never offers it.
+ * outright goes straight to the camera. An input that only takes other kinds of file
+ * (Import's) never offers it.
  *
  * Constructed in the activity's `onCreate`, because a result launcher has to be registered
  * before the activity starts. The folder it writes photos to lives as long as the activity
@@ -60,7 +60,7 @@ class AttachChooser(private val activity: ComponentActivity, private val scope: 
             else -> params.createIntent()
         }
         // A phone with nothing to answer throws here, and false is how Chromium is told the
-        // request was not taken — answering as well would be answering twice.
+        // request was not taken: answering as well would be answering twice.
         return runCatching { launcher.launch(launch) }
             .onFailure {
                 request.forget()

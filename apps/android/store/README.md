@@ -16,16 +16,16 @@ Everything the Play Console store listing asks for, and how it was made.
 ## Release notes
 
 `whatsnew/whatsnew-en-US` is what testers see under "What's new". CI passes the directory to
-the publish step, so editing that file *is* how the note changes — nothing is entered in Play
+the publish step, so editing that file *is* how the note changes: nothing is entered in Play
 Console by hand, and a release whose notes were not updated ships the previous ones.
 
 Write it for someone holding a phone: what is different for them, in their words. The commit
 subjects are addressed to whoever changes the code next and make poor release notes.
 
-One file per locale, named `whatsnew-<BCP 47>` — `whatsnew-de-DE` beside the existing one is
+One file per locale, named `whatsnew-<BCP 47>`: `whatsnew-de-DE` beside the existing one is
 all German takes. Play's limit is 500 characters each.
 
-Upload `screenshots/` first — Play accepts modern tall phone ratios in practice. If the form
+Upload `screenshots/` first: Play accepts modern tall phone ratios in practice. If the form
 rejects them for aspect ratio, upload `screenshots-9x16/` instead; it is the same set scaled
 and padded with the app's own background colour, so nothing is cropped.
 
@@ -34,22 +34,22 @@ eligible for promotion.
 
 ## The screenshots
 
-1. `01-note-list.png` — the note list: notebooks, tags, previews
-2. `02-editor.png` — a note open: rendered code block, checkboxes, formatting bar
-3. `03-search.png` — full-text search with matches highlighted
-4. `04-tag-filter.png` — the tag picker, filtered to one tag
-5. `05-notebooks.png` — the notebook drawer with per-notebook counts
+1. `01-note-list.png`, the note list: notebooks, tags, previews
+2. `02-editor.png`, a note open: rendered code block, checkboxes, formatting bar
+3. `03-search.png`, full-text search with matches highlighted
+4. `04-tag-filter.png`, the tag picker, filtered to one tag
+5. `05-notebooks.png`, the notebook drawer with per-notebook counts
 
 ## How they were produced
 
 Shot on the `Pixel_9_API_36` emulator against a **local dev instance** with ten disposable
-sample notes — no real account data. The sample notes are generic (recipes, a bookshelf
+sample notes: no real account data. The sample notes are generic (recipes, a bookshelf
 build, a packing list) and contain no personal information.
 
 The debug build is normally named "Unbent (debug)", which must not appear in a store
 listing. For the shots, `resValue("string", "app_name", …)` in `app/build.gradle.kts` was
 temporarily set to "Unbent", the app rebuilt and installed, and the change reverted
-afterwards. **`build.gradle.kts` is unmodified in git** — check before committing.
+afterwards. **`build.gradle.kts` is unmodified in git**: check before committing.
 
 To reproduce:
 
@@ -68,7 +68,7 @@ of all this is in `AGENTS.md` under "Sample notes, and shooting the app".
 ## The graphics
 
 `icon.svg` and `feature.svg` are the sources, rendered with `rsvg-convert`. The icon is a
-pixel-faithful reproduction of the launcher icon — same white "U" path and same `#2F6B4F`
+pixel-faithful reproduction of the launcher icon: same white "U" path and same `#2F6B4F`
 green as `res/drawable/ic_launcher_{foreground,background}.xml`. Re-render after any change:
 
 ```sh

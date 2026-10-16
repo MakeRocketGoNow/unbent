@@ -4,7 +4,7 @@ import { LIBRARY_ROOTS, rootsOfNoteChanges } from './library-roots.js';
 /**
  * Which queries a change to the notes collection reaches. A save that changed only the
  * text re-runs the list and the note; anything that moves a note between lists or counts
- * — filing, tagging, trashing, a field, a row arriving or going — re-runs everything.
+ * (filing, tagging, trashing, a field, a row arriving or going) re-runs everything.
  */
 const row = { id: 'n1', title: 'a', body: 'b', updatedAt: 1, deletedAt: undefined, notebookId: 'nb', tagIds: ['t1', 't2'], fields: [{ fieldId: 'f', value: 1 }] };
 

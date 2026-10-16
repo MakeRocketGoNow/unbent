@@ -214,8 +214,8 @@ describe('loading a dump', () => {
     );
     expect(tables).toEqual([]);
 
-    // Starting again is the way out — the route does it with no dump taken first, since
-    // the store holds nothing worth one — and the object keeps the first attempt's ways
+    // Starting again is the way out (the route does it with no dump taken first, since
+    // the store holds nothing worth one), and the object keeps the first attempt's ways
     // back rather than offering a bookmark of the half-loaded store. A page of the old
     // load is refused once it has.
     const again = await woke.loadBegin({ key: 'stores/test/2026-10-07.sql', before: null });
@@ -233,8 +233,8 @@ describe('loading a dump', () => {
     const before = await stub.stats();
     const text = await dumpOf(stub, userId);
     // The dump as a store at 0004 would have written it: no deleted_blobs table, no rows
-    // for it, no record of 0005, and none of what came after — 0006's index, 0007's table,
-    // 0008's column and triggers.
+    // for it, no record of 0005, and none of what came after (0006's index, 0007's table,
+    // 0008's column and triggers).
     const scan = scanStatements(text);
     const older =
       scan.statements

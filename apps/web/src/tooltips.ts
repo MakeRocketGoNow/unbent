@@ -4,24 +4,24 @@
  *
  * It replaces `title` on controls, the icon buttons first. A native title waits about a
  * second and a half before it appears, draws in the operating system's style rather than
- * the app's, and once the pointer moves to the next icon in a row it waits all over again
- * — so in a bar of four glyphs, finding the one you want meant resting on each in turn.
+ * the app's, and once the pointer moves to the next icon in a row it waits all over again,
+ * so in a bar of four glyphs, finding the one you want meant resting on each in turn.
  * This one waits `SHOW_DELAY_MS`, and once a bubble has shown, the next one in the same
  * sweep shows at once (`WARM_MS`), the way a desktop toolbar behaves.
  *
  * One listener on the document and one bubble, rather than a `<Tooltip>` wrapped around
  * each control: there are dozens of controls, many of them already inside wrappers whose
  * layout a wrapper element would disturb, and an attribute costs a call site nothing. The
- * bubble is a `popover`, so it is drawn in the top layer — above a modal `<dialog>` like
+ * bubble is a `popover`, so it is drawn in the top layer, above a modal `<dialog>` like
  * `Sheet`, which a fixed element on the body would sit under.
  *
  * Never on touch. A phone has no hover, a long press already belongs to the system, and a
  * bubble that appeared on a tap would cover what the tap just did. A control whose meaning
- * a phone needs carries it some other way — its name, or a word under it on a tap, as
+ * a phone needs carries it some other way: its name, or a word under it on a tap, as
  * `NotSyncedMark` does.
  *
  * Drawn only, never read out. An icon button still needs its `aria-label`, and a tip that
- * says more than the name — why a control is faded, above all — needs `aria-description`
+ * says more than the name (why a control is faded, above all) needs `aria-description`
  * beside it, which `Button`'s `tip` prop writes for both. Tying the description to the
  * bubble was tried: `aria-describedby` set while it showed. A disabled button cannot be
  * focused, so its reason never reached a screen reader at all, where `title` had always
@@ -41,7 +41,7 @@ export function installTooltips(doc: Document = document): () => void {
   // Hidden from the accessibility tree: what it says is on the control already.
   bubble.setAttribute('aria-hidden', 'true');
   // `manual`: nothing but this module opens or closes it. An `auto` popover would close
-  // any other open popover — a menu, say — the moment a tip appeared over it.
+  // any other open popover (a menu, say) the moment a tip appeared over it.
   bubble.setAttribute('popover', 'manual');
   doc.body.appendChild(bubble);
 
@@ -78,7 +78,7 @@ export function installTooltips(doc: Document = document): () => void {
       hide();
       shown = el;
       // Watched while it shows, for two things nothing else reports. The text can change
-      // under the pointer — the rail's toggle goes from Collapse to Expand sidebar — and
+      // under the pointer (the rail's toggle goes from Collapse to Expand sidebar) and
       // the bubble follows. And the control can go: a removed element gets no `pointerout`,
       // and in some browsers no `focusout`, so Save in the label editor, or the not-synced
       // cloud once the note syncs, would leave a bubble floating over nothing. Connected
@@ -91,8 +91,8 @@ export function installTooltips(doc: Document = document): () => void {
       watcher.observe(el, { attributes: true, attributeFilter: ['data-tip'] });
     }
     bubble.textContent = text;
-    // Measured at the origin: left where the last tip was — clamped against the window's
-    // right edge, say — a long text would wrap into the room left there, and be placed as
+    // Measured at the origin: left where the last tip was (clamped against the window's
+    // right edge, say), a long text would wrap into the room left there, and be placed as
     // a narrow box that then reflows wide.
     bubble.style.left = '0px';
     bubble.style.top = '0px';
@@ -131,15 +131,15 @@ export function installTooltips(doc: Document = document): () => void {
   const onOut = (event: PointerEvent) => {
     const from = tipTarget(event.target);
     if (from === null) return;
-    // Moving between the parts of one control — the glyph and the button around it — is
+    // Moving between the parts of one control (the glyph and the button around it) is
     // not leaving it.
     if (event.relatedTarget instanceof Node && from.contains(event.relatedTarget)) return;
     if (from === pressed) pressed = null;
     if (from === shown || from === pending) hide();
   };
 
-  // A press is the answer to the question the tip was asking, and what it does — a sheet,
-  // a menu — is about to appear where the bubble is.
+  // A press is the answer to the question the tip was asking, and what it does (a sheet,
+  // a menu) is about to appear where the bubble is.
   const onDown = (event: PointerEvent) => {
     pressed = tipTarget(event.target);
     hide();
@@ -213,12 +213,12 @@ interface Box {
 
 /**
  * Where the bubble goes: centred under the control, or over it when there is no room
- * below — the selection bar sits on the floor of the screen — and slid sideways to stay
+ * below (the selection bar sits on the floor of the screen) and slid sideways to stay
  * inside the window rather than clipped at its edge.
  *
  * Under by default because most of the controls that carry a tip are in bars along the
  * top, and a bubble over them would cover the title or the tab beside them. A control in
- * a column of them — the rail drawn as a strip of icons — asks for `right`
+ * a column of them (the rail drawn as a strip of icons) asks for `right`
  * (`data-tip-side`), since under it is the next icon, and a bubble there hides the very
  * thing the pointer is about to look at.
  */

@@ -5,15 +5,15 @@ import { Disclosure } from './Disclosure.js';
 /**
  * The open-default contract.
  *
- * Everything else about a disclosure is CSS — the chevron, the truncation, the touch target —
+ * Everything else about a disclosure is CSS (the chevron, the truncation, the touch target),
  * and jsdom evaluates none of it. What is left is the one thing written in JS, and it is the
  * one thing that is easy to get quietly wrong: `open` is a DOM attribute the user can change
  * by clicking, so a new default only takes if the element is remounted. That remount is the
  * behaviour these tests pin.
  *
  * The `.not.toBe(before)` assertions are deliberate and are not testing an implementation
- * detail. A different host node *is* the mechanism — there is no other way to re-apply a
- * default to an element the user has already toggled — and asserting on `open` alone cannot
+ * detail. A different host node *is* the mechanism (there is no other way to re-apply a
+ * default to an element the user has already toggled), and asserting on `open` alone cannot
  * see it, because at every crossing the value the user toggled to happens to equal the next
  * breakpoint's default.
  */

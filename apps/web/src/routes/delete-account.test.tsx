@@ -28,7 +28,7 @@ const { Route } = await import('./delete-account.js');
  *
  * Its whole reason to exist is that opening a link must not be the deletion: Better Auth's
  * own callback deletes on a GET, and a GET is fired by prefetches, scanners and restored
- * tabs. So the case worth pinning hardest is the boring one — rendering this page calls
+ * tabs. So the case worth pinning hardest is the boring one: rendering this page calls
  * nothing.
  */
 function harness(search = '?token=tok-123') {
@@ -62,7 +62,7 @@ describe('/delete-account', () => {
     pending = false;
   });
 
-  /** The point of the page. Loading it — however it was loaded — destroys nothing. */
+  /** The point of the page. Loading it, however it was loaded, destroys nothing. */
   it('deletes nothing on load', async () => {
     const { findByRole } = harness();
     await findByRole('button', { name: 'Delete my account' });
@@ -106,7 +106,7 @@ describe('/delete-account', () => {
   /**
    * Better Auth answers the deleting request by re-writing the session-cache cookie from
    * the session it resolved on the way in, so without this the browser walks away holding
-   * a five-minute claim to an account that no longer exists — and `/login` turns away
+   * a five-minute claim to an account that no longer exists, and `/login` turns away
    * anyone it believes is signed in. The cookies are HttpOnly, so sign-out is the only
    * thing that can clear them.
    */

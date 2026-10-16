@@ -79,7 +79,7 @@ describe('Plan', () => {
     expect(screen.getByRole('button', { name: 'Update payment method' })).toBeTruthy();
   });
 
-  /** Past its paid period, a past-due account is read-only, and the card is the way back — never a second checkout. */
+  /** Past its paid period, a past-due account is read-only, and the card is the way back, never a second checkout. */
   it('sends a past-due account past its paid period to the card form, not to a checkout', async () => {
     harness({ state: 'inactive', source: 'paddle', until: NOW - DAY, subscription: { status: 'past_due', cancelsAt: null, pastDue: true } });
     expect(await screen.findByRole('heading', { name: 'Payment failed' })).toBeTruthy();

@@ -4,7 +4,7 @@ import type { Env } from '../types.js';
  * The preview sign-in relay: how a per-PR preview borrows a session from the dev instance.
  *
  * A preview lives at `https://unbent-pr-<N>.<subdomain>.workers.dev`, a hostname that
- * changes every PR and so can never have an OAuth callback registered against it — the same
+ * changes every PR and so can never have an OAuth callback registered against it: the same
  * wall `wrangler.toml` documents around why `dev.unbent.app` exists at all. The relay works
  * around it without registering anything per preview: the preview sends the browser to the
  * dev instance, which *can* sign in with Google, and the dev instance mints a one-time token
@@ -26,17 +26,17 @@ import type { Env } from '../types.js';
  * The subdomain is configured rather than inferred precisely because this is a security
  * boundary: the token minted here grants a session, so the host it is handed to must be one
  * we know is ours. Anyone can register their own `*.workers.dev` account, so "ends in
- * workers.dev" is not enough — it has to be *our* subdomain, which only configuration knows.
+ * workers.dev" is not enough: it has to be *our* subdomain, which only configuration knows.
  */
 
 /**
- * Whether this instance is a relay *source* — the dev instance that mints tokens for
+ * Whether this instance is a relay *source*: the dev instance that mints tokens for
  * previews. True only where `PREVIEW_RELAY_SUBDOMAIN` is set, which is the dev deploy alone:
  * production sets neither relay variable, and a preview sets only `PREVIEW_RELAY_ORIGIN`.
  *
  * This is the switch the `/api/preview-relay/*` route is gated on. Where it is false the
  * route answers 404, so the endpoint does not exist on production rather than existing and
- * refusing every request — the same "off means off, not hidden" line the auth plugins draw,
+ * refusing every request: the same "off means off, not hidden" line the auth plugins draw,
  * and what keeps `config.test.ts`'s "advertisement and endpoints agree" reading true.
  *
  * It is exactly the same condition `isTrustedPreviewOrigin` short-circuits on, named once so
@@ -73,12 +73,12 @@ export function previewRelayOrigin(env: Env): string | undefined {
  * one-time token against the caller's dev session and redirects it to `origin`; a lax check
  * would let any site that could get a signed-in user to click a link collect that token and
  * with it a session. So the rules are deliberately strict and exact, the same lesson the
- * Android `/connect` route's `ALLOWED_REDIRECTS` learned — an exact match, never a prefix,
+ * Android `/connect` route's `ALLOWED_REDIRECTS` learned: an exact match, never a prefix,
  * because `unbent-pr-1` is a prefix of `unbent-pr-1-evil`.
  *
  *   - The scheme must be exactly `https:`. A token over http is a token in the clear.
  *   - The host must be exactly `unbent-pr-<digits>.<our subdomain>.workers.dev`. The digits
- *     are a real PR number, so `\d+` and nothing else — no dots, no dashes, nothing that
+ *     are a real PR number, so `\d+` and nothing else: no dots, no dashes, nothing that
  *     could smuggle another label in. `<our subdomain>` comes from configuration, not from
  *     the URL, so an attacker's own workers.dev account does not match.
  *   - There must be no userinfo, and the port must be the default. `https://a@evil/` and
@@ -90,7 +90,7 @@ export function previewRelayOrigin(env: Env): string | undefined {
 export function isTrustedPreviewOrigin(env: Env, origin: string): boolean {
   // Lowercased because the comparison below is against `URL.hostname`, which the URL parser
   // has already lowercased. workers.dev subdomains are lowercase to begin with, so this only
-  // ever rescues a config typo — an operator who set `Of2668` would otherwise have every
+  // ever rescues a config typo: an operator who set `Of2668` would otherwise have every
   // legitimate preview silently rejected, with nothing pointing at the capitalization.
   const subdomain = env.PREVIEW_RELAY_SUBDOMAIN?.trim().toLowerCase();
   if (!subdomain) return false;
@@ -106,7 +106,7 @@ export function isTrustedPreviewOrigin(env: Env, origin: string): boolean {
   // A bare origin has none of these; their presence means the string is dressed up to read
   // like our host while pointing somewhere else.
   if (url.username || url.password || url.port || url.search || url.hash) return false;
-  // `new URL('https://host/path').pathname` is '/', never empty — anything longer is a path
+  // `new URL('https://host/path').pathname` is '/', never empty: anything longer is a path
   // smuggled into what should be an origin.
   if (url.pathname !== '/') return false;
 

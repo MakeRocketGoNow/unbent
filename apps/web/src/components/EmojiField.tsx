@@ -50,7 +50,7 @@ function EmojiCell({ emoji, ...props }: EmojiPickerListEmojiProps) {
 /**
  * A notebook's emoji, chosen from a picker that opens under it.
  *
- * The trigger is the glyph itself — the emoji, or the book when there is none — in a
+ * The trigger is the glyph itself (the emoji, or the book when there is none) in a
  * bordered square the height of the name field beside it. It is what the notebook looks
  * like everywhere else, so the control and its result are the same picture, and the
  * picker opens from where that picture is rather than somewhere else on the page.
@@ -61,7 +61,7 @@ function EmojiCell({ emoji, ...props }: EmojiPickerListEmojiProps) {
  * wears this app's tokens rather than bringing a look of its own. Its emoji data comes
  * from a CDN the first time the picker opens and is cached in the browser after that.
  *
- * Inline and absolutely positioned, dismissed by Escape or a press outside — the same
+ * Inline and absolutely positioned, dismissed by Escape or a press outside: the same
  * choices, for the same reasons, as `OverflowMenu`. Picking saves at once, like the field
  * type select below it: it is one choice, not text being typed, so there is nothing to
  * debounce.
@@ -124,7 +124,7 @@ export function EmojiField({ emoji, name, disabled = false, onChange }: EmojiFie
             columns={8}
             onEmojiSelect={({ emoji: picked }) => pick(picked)}
           >
-            {/* Focused on open, so typing a word finds the emoji straight away — the way
+            {/* Focused on open, so typing a word finds the emoji straight away, the way
                 every picker people know behaves. */}
             <EmojiPicker.Search
               className="search-field emoji-search"

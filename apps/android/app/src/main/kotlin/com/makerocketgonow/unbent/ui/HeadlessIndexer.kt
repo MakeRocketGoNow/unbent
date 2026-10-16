@@ -24,8 +24,8 @@ import kotlinx.coroutines.withTimeoutOrNull
  * design: a phone must never be handed the account's backlog to pull over a radio.
  *
  * On the main thread because a WebView is a View, whatever thread the caller is on. The
- * application context is enough for one that is never attached to a window — there is no
- * theme to inherit and no window to draw in — and it lets a background job own the view
+ * application context is enough for one that is never attached to a window: there is no
+ * theme to inherit and no window to draw in, and it lets a background job own the view
  * without an activity.
  *
  * `onRenderProcessGone` returns true. The default, false, has the system kill the whole

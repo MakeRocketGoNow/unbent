@@ -9,9 +9,9 @@ import type { Sql } from './sql.js';
  * come out in one order.
  *
  * Why rows here rather than "re-read everything newer than a timestamp": `updated_at` is
- * not moved by every write, deliberately — a restore from the trash keeps the note's date
+ * not moved by every write, deliberately (a restore from the trash keeps the note's date
  * so it does not jump to the top of the list, a tag rename changes what every note under
- * it shows without touching one — and a timestamp cannot carry a purge. A row per entity
+ * it shows without touching one), and a timestamp cannot carry a purge. A row per entity
  * touched, in the writing transaction, is complete by construction: if the write
  * committed, so did the row.
  */
@@ -41,7 +41,7 @@ export interface Change {
  * How much feed a store keeps. Enough that a device left in a drawer for a season, or an
  * archive-sized re-import, resumes from its cursor rather than starting over; little
  * enough that the table never becomes the biggest thing in the store. A cursor older than
- * what is kept gets `reset`, and the client hydrates again — the slow path, never a wrong
+ * what is kept gets `reset`, and the client hydrates again: the slow path, never a wrong
  * one.
  */
 export const RETAIN_ROWS = 50_000;
@@ -100,7 +100,7 @@ export class Feed {
    * written per change and one per transaction (measured 2026-10-02 against the
    * alternative of letting the rowid count, which saved that one write and cost 40% more
    * time through `RETURNING`). An upsert rather than an UPDATE, so a store rebuilt after
-   * a wipe — whose 0002 ran against an empty `_meta` — still counts from zero.
+   * a wipe (whose 0002 ran against an empty `_meta`) still counts from zero.
    *
    * Returns the last seq handed out, or null when there was nothing to write.
    */
@@ -139,8 +139,8 @@ export class Feed {
    * Keeps the feed to `RETAIN_ROWS` and `RETAIN_MS`, reading nothing it does not delete.
    *
    * By count: seq is dense, so the rows older than the last fifty thousand are exactly
-   * `seq <= latest - 50000`, a range on the primary key that is empty — and reads zero
-   * rows — until the cap is reached, and one row a write after. By age: the oldest row
+   * `seq <= latest - 50000`, a range on the primary key that is empty (and reads zero
+   * rows) until the cap is reached, and one row a write after. By age: the oldest row
    * alone says whether anything is past the window (one read), and when it is, the next
    * batch of the key's prefix goes. Seq and `at` rise together, so an old row is always
    * at the front; `IN (SELECT … ORDER BY seq LIMIT 500)` read every old row to find the
@@ -171,7 +171,7 @@ export class Feed {
 
   /**
    * The seq to announce on the object's sockets, once, after the write's transaction has
-   * returned — or null when nothing was written since the last announcement. Set by
+   * returned, or null when nothing was written since the last announcement. Set by
    * `flush`, which a rolled-back transaction never reaches, so a write that threw
    * announces nothing.
    */

@@ -6,7 +6,7 @@ import { OverflowMenu } from './OverflowMenu.js';
  * The selected state.
  *
  * The rest of this menu is dismissal and markup that has held for a while; what is new is
- * that a menu can now be a *choice* — the sort menu, where one of five is always in effect.
+ * that a menu can now be a *choice*: the sort menu, where one of five is always in effect.
  * The contract worth pinning is that saying so is opt-in: a command has no "not pressed"
  * state, and announcing one to a screen reader invites the question of how to press it.
  */
@@ -29,7 +29,7 @@ describe('OverflowMenu', () => {
 
   /*
    * The third kind of item. `href` renders a download and `to` renders a route, so a
-   * document an operator hosts on their own site had nowhere to go before this — handed to
+   * document an operator hosts on their own site had nowhere to go before this: handed to
    * `to` it became a route this app does not have.
    */
   it('renders a document hosted elsewhere as a plain anchor', () => {

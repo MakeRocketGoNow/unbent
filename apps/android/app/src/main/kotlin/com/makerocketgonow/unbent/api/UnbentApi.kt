@@ -26,7 +26,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
  *
  * [retryAfter] is the response's `Retry-After`, when it sent one: the server's own word
  * that the failure is passing and worth waiting out. Only the session check's 503 sends
- * it — the one a spent database allowance produces — so it is what tells that apart from
+ * it (the one a spent database allowance produces) so it is what tells that apart from
  * a 503 that will fail the same way however long a capture waits.
  */
 class ApiException(
@@ -38,8 +38,8 @@ class ApiException(
     /**
      * The server's own explanation, pulled out of the JSON body this wraps.
      *
-     * Worth surfacing because some refusals are deliberate and actionable — a sign-up
-     * allowlist rejecting an address, a notebook name already taken — and a generic "did
+     * Worth surfacing because some refusals are deliberate and actionable (a sign-up
+     * allowlist rejecting an address, a notebook name already taken) and a generic "did
      * not work" sends the user to retry something that will refuse them again for the
      * same reason. Better Auth says `message`; this API's own routes say `error`.
      */
@@ -54,7 +54,7 @@ class ApiException(
  *
  * Blocking calls on OkHttp, deliberately: every caller is already on a worker or an IO
  * dispatcher, and a suspend wrapper per method would be ceremony over `execute()`. The
- * streaming upload is what lets a 90MB video go up inside a phone's memory budget —
+ * streaming upload is what lets a 90MB video go up inside a phone's memory budget:
  * `asRequestBody` on a File never loads it whole.
  */
 class UnbentApi(
@@ -75,7 +75,7 @@ class UnbentApi(
     /**
      * `origin + path`, with any non-null query parameters.
      *
-     * A value may be a list, which is written as the same key repeated — `?tag=a&tag=b`,
+     * A value may be a list, which is written as the same key repeated: `?tag=a&tag=b`,
      * which is how the server takes several tags. Repeating the key rather than joining
      * on a delimiter because a tag name may contain the delimiter; the server's own
      * schema documents the same reasoning.

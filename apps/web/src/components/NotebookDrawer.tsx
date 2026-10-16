@@ -27,8 +27,8 @@ interface NotebookDrawerProps {
  *
  * The rows themselves, and the reasoning behind their order, are `NotebookNav`'s. What is
  * the drawer's own: it closes once a scope is picked, because the list behind it has
- * changed; and the account sits in its head beside the wordmark — where Keep's avatar sits
- * relative to its drawer, and out of the way of the rows that navigate — since on a phone
+ * changed; and the account sits in its head beside the wordmark (where Keep's avatar sits
+ * relative to its drawer, and out of the way of the rows that navigate) since on a phone
  * this is the only place the account is.
  */
 export function NotebookDrawer({

@@ -26,12 +26,12 @@ const LIMIT = 8;
 /**
  * Choose another note, by search or from the recent ones.
  *
- * Inline, in the row that opened it, like `Confirm` — the file being sent is right there,
+ * Inline, in the row that opened it, like `Confirm`: the file being sent is right there,
  * and a modal would cover it. It opens on the most recently edited notes rather than
  * empty, because the note a file is going to is very often the one that was open a moment
  * ago; the field takes focus at once, since on a desktop typing a title is the fastest
  * way to any other note. Matching is the app's own search, so a note is found by anything
- * search finds it by — a tag, a field, a word in a scanned PDF — not only by its title.
+ * search finds it by (a tag, a field, a word in a scanned PDF), not only by its title.
  *
  * The rows are buttons, not links: choosing one sends the file and stays here. Escape
  * cancels, the way it does in `Confirm`.
@@ -41,7 +41,7 @@ export function NotePicker({ label, excludeId, busy = false, onPick, onCancel }:
   const [needle, setNeedle] = useState('');
 
   // A short debounce: search usually hits the server, and a title is typed faster than it answers.
-  // Any letter searches, one included — see `searchQuery` for why that is no longer held back.
+  // Any letter searches, one included (see `searchQuery` for why that is no longer held back).
   useEffect(() => {
     const t = setTimeout(() => setNeedle(query.trim()), 200);
     return () => clearTimeout(t);

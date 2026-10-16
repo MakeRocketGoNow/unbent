@@ -13,7 +13,7 @@ const agreeBody = z.object({ version: z.string().min(1).max(64) });
  * Recording that someone agreed to the terms and privacy policy (MAK-209).
  *
  * The version in the body must be the one this instance publishes right now. An app
- * holding an older config — open in a tab across a deploy that moved `LEGAL_VERSION` —
+ * holding an older config, open in a tab across a deploy that moved `LEGAL_VERSION`,
  * would otherwise record agreement to documents it never showed, so it is told 409 and
  * reloads the config, which shows the new ones. The time is the server's, never the
  * client's: it is the record of when, kept for every version in `legal_agreement`.
@@ -22,7 +22,7 @@ const agreeBody = z.object({ version: z.string().min(1).max(64) });
  * for up to five minutes (`cookieCache` in `auth.ts`), and that cookie still says the
  * account has not agreed; without replacing it, the app would ask again the moment it
  * re-read the session. Passing the request through Better Auth's own `get-session` with the
- * cache bypassed reads the row just written and sets the cookie from it — the same thing
+ * cache bypassed reads the row just written and sets the cookie from it, the same thing
  * `/update-user` does after a change of name, and through the handler rather than a new
  * entry on `AuthInstance`, since it is one request rather than an API this module calls.
  */
@@ -38,8 +38,8 @@ export const legal = new Hono<AppEnv>().post('/legal/agree', requireAuth, async 
   }
 
   // The history first, then the version the session carries, in one batch. `OR IGNORE`
-  // keeps the first time each version was agreed to: a second press — another device, or
-  // a tab still holding the cached session — must not move it. See migration 0044.
+  // keeps the first time each version was agreed to: a second press (another device, or
+  // a tab still holding the cached session) must not move it. See migration 0044.
   const userId = c.get('userId')!;
   await c.env.DB.batch([
     c.env.DB.prepare('INSERT OR IGNORE INTO legal_agreement (user_id, version, agreed_at) VALUES (?, ?, ?)').bind(
@@ -90,13 +90,13 @@ const GRANTS: ReadonlySet<string> = new Set(['/api/auth/oauth2/consent', '/api/a
  * the signed-in shell, which shows the agreement first. This is the same rule for a client
  * that calls the endpoints directly, which could otherwise sign in with a code and mint a
  * long-lived token without ever being shown the terms. Grants that already exist keep
- * working — refusing them would break a connected assistant mid-task over a page it cannot
- * press — and so does refusing a consent (`accept: false`), which grants nothing.
+ * working (refusing them would break a connected assistant mid-task over a page it cannot
+ * press) and so does refusing a consent (`accept: false`), which grants nothing.
  *
  * In front of Better Auth's handler rather than in one of its hooks, because the session
  * is already resolved here (`sessionMiddleware`) and the check is this app's rule, not
  * Better Auth's. The paths are its plugins' own, so an upgrade that renamed one would let
- * that grant through unchecked — and this check would go on refusing the old path, so
+ * that grant through unchecked, and this check would go on refusing the old path, so
  * a refusal proves nothing. `test/legal-agreement.test.ts` also calls both once the
  * account has agreed, and fails if either is no longer Better Auth's endpoint.
  *

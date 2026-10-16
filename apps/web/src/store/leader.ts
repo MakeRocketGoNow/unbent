@@ -9,13 +9,13 @@ import { browserLocks, holdLock, type Hold, type Locks } from './locks.js';
  * `ifAvailable`, and a tab that loses never asks again. A tab opened beside another was
  * then a follower for good: close the leading tab and the survivor kept making every
  * write a request of its own, offline it could save nothing, and its banner blamed
- * "another Unbent tab" that no longer existed — until someone reloaded it. Its lock was
+ * "another Unbent tab" that no longer existed, until someone reloaded it. Its lock was
  * also named for the whole origin, so a window holding a different account's library
  * stopped this account's outbox from ever replaying, and its probe and its hold were two
  * requests, so two tabs starting together could both lead and both replay.
  *
- * This one asks the same way to answer the outbox promptly — the executor's start waits
- * on the answer, and the library's open waits on the executor — but a tab that loses then
+ * This one asks the same way to answer the outbox promptly (the executor's start waits
+ * on the answer, and the library's open waits on the executor) but a tab that loses then
  * leaves a request in the lock's queue. The browser grants it the moment the holder's
  * page goes, closes its library or signs out, and the executor is told through
  * `onLeadershipChange`, which is how it replays what waited. One request probes and

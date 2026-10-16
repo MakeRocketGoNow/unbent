@@ -279,8 +279,8 @@ describe('refundEffectOf', () => {
   });
 
   /**
-   * The same refund delivered again — or `adjustment.updated` after a `created` that was
-   * already approved — finds the row as the first delivery left it, and does nothing.
+   * The same refund delivered again (or `adjustment.updated` after a `created` that was
+   * already approved) finds the row as the first delivery left it, and does nothing.
    */
   it('finds nothing to do once the first delivery has cancelled the subscription', () => {
     const first = event('adjustment.created', refund(), T1);

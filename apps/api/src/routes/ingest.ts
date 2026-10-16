@@ -9,7 +9,7 @@ const PREFIX = '/ingest';
  * PostHog's traffic, forwarded through this Worker instead of straight from the browser.
  *
  * The reason is content blockers. A request to `posthog.com` from a page is on every
- * blocklist there is, and the reports that get dropped are not a random sample — they are
+ * blocklist there is, and the reports that get dropped are not a random sample: they are
  * the ones from people running a blocker, who skew towards exactly the technical users whose
  * bug reports are worth the most. Same-origin traffic is not blocked, so `/ingest/*` is what
  * the SDK is pointed at.
@@ -25,7 +25,7 @@ const PREFIX = '/ingest';
  * arrives from a Cloudflare data centre and looks like one person.
  *
  * An instance with no key answers 404 rather than forwarding. There is no key to forward
- * with, so nothing useful could happen — and a proxy that relays anything to PostHog for
+ * with, so nothing useful could happen, and a proxy that relays anything to PostHog for
  * whatever project token a caller supplies is an open relay pointed at somebody else's
  * quota. Written out rather than `c.notFound()`, which does not reach the root app's
  * handler from inside a mounted router.

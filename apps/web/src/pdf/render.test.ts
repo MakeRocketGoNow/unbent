@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 /**
  * pdf.js is mocked to the one behaviour these tests are about: what `page.render` is
  * called with. Rasterizing itself needs a real canvas and a real worker, neither of which
- * exists under jsdom — it is verified by rendering an actual scan in a browser instead.
+ * exists under jsdom: it is verified by rendering an actual scan in a browser instead.
  */
 type RenderParams = Record<string, unknown>;
 const render = vi.fn((_params: RenderParams) => ({ promise: Promise.resolve() }));
@@ -43,7 +43,7 @@ describe('renderPage parameters', () => {
    * pdf.js 6 discards a caller's context whenever `canvas` is also given
    * (`_canvasContext = params.canvas ? null : params.canvasContext`) and builds its own.
    * A `ctx.scale(dpr, dpr)` applied to the context passed in was therefore thrown away,
-   * so pages drew at 1x into a canvas sized for 2x — a quarter-filled, blank-margined
+   * so pages drew at 1x into a canvas sized for 2x: a quarter-filled, blank-margined
    * page on every retina screen.
    */
   it('never passes a canvasContext alongside the canvas', async () => {

@@ -33,8 +33,8 @@ import kotlin.concurrent.thread
  *
  * The shared bytes are copied into the app's cache the moment this starts, before the
  * sheet has even drawn, because the URI permissions granted with a share are tied to this
- * activity and die with it. Everything after that — naming, filing, and the upload itself
- * — depends on nothing but that copy, so the sending app can go away, and a person who
+ * activity and die with it. Everything after that (naming, filing, and the upload itself)
+ * depends on nothing but that copy, so the sending app can go away, and a person who
  * has to sign in first can leave and come back.
  *
  * Save enqueues the upload and leaves. The sheet never waits for bytes to travel: a phone

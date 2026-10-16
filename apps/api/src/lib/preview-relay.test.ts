@@ -18,7 +18,7 @@ describe('previewRelayEnabled', () => {
     expect(previewRelayEnabled(env({ PREVIEW_RELAY_SUBDOMAIN: 'of2668' }))).toBe(true);
   });
 
-  it('is off with no subdomain — production, and previews, which only set the origin', () => {
+  it('is off with no subdomain: production, and previews, which only set the origin', () => {
     expect(previewRelayEnabled(env({}))).toBe(false);
     expect(previewRelayEnabled(env({ PREVIEW_RELAY_SUBDOMAIN: '  ' }))).toBe(false);
     // A preview carries the origin but not the subdomain, so it is not a relay source itself.
@@ -77,7 +77,7 @@ describe('isTrustedPreviewOrigin', () => {
 
   it('refuses a workers.dev host on a different subdomain', () => {
     // The heart of it: anyone can register their own workers.dev account. "Ends in
-    // workers.dev" is not enough — it has to be our subdomain.
+    // workers.dev" is not enough: it has to be our subdomain.
     expect(
       isTrustedPreviewOrigin(withSub(), 'https://unbent-pr-1.attacker.workers.dev'),
     ).toBe(false);
@@ -132,7 +132,7 @@ describe('isTrustedPreviewOrigin', () => {
 
   it('accepts a mixed-case configured subdomain', () => {
     // `URL.hostname` is always lowercased by the parser, so a subdomain configured with any
-    // capitalization must still match — otherwise a typo like `Of2668` would silently reject
+    // capitalization must still match: otherwise a typo like `Of2668` would silently reject
     // every legitimate preview.
     expect(
       isTrustedPreviewOrigin(

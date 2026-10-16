@@ -105,7 +105,7 @@ describe('indexing', () => {
     indexing.start({ auto: false });
     workers[0]!.onerror?.({ message: '' } as ErrorEvent);
     expect(indexing.get().status).toBe('error');
-    expect(indexing.get().error).toMatch(/try again/);
+    expect(indexing.get().error).toMatch(/Try again/);
     expect(workers[0]!.terminate).toHaveBeenCalled();
 
     indexing.start({ auto: false });

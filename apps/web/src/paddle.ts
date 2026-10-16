@@ -4,8 +4,8 @@ import type { BillingConfig } from '@unbent/shared';
  * Paddle.js, loaded when a checkout is about to open and not before (MAK-108).
  *
  * The script is Paddle's own, from its CDN, and it is what draws the checkout overlay:
- * the card form is Paddle's page in an iframe, which is the point of a merchant of record
- * — no card number ever reaches this app. It is a third party on the page all the same,
+ * the card form is Paddle's page in an iframe, which is the point of a merchant of record:
+ * no card number ever reaches this app. It is a third party on the page all the same,
  * so it is fetched on the Subscribe press rather than at start-up, the way the error
  * tracker is loaded only where it is configured (`posthog.ts`): someone who never opens
  * the Plan page never loads it, and a self-hosted instance with billing off never could.
@@ -13,7 +13,7 @@ import type { BillingConfig } from '@unbent/shared';
  * Not the npm package: it is a loader for this same script with types on top, and a
  * dependency for a script tag is one more thing to hold back (DEPENDENCIES.md).
  *
- * One load and one `Initialize` per page — Paddle.js refuses a second — with the
+ * One load and one `Initialize` per page (Paddle.js refuses a second), with the
  * checkout's events fanned out to whoever is waiting on them.
  */
 

@@ -23,7 +23,7 @@ describe('httpErrorMessage', () => {
   it('names an HTML body rather than quoting it', async () => {
     const page = '<!DOCTYPE html> <!--[if lt IE 7]> <html class="no-js ie6 oldie" lang="en-US">';
     const message = await httpErrorMessage(response(404, page, 'text/html'));
-    expect(message).toBe('404 — the request did not reach the API; an error page came back instead');
+    expect(message).toBe('404: the request did not reach the API; an error page came back instead');
     expect(message).not.toContain('<');
   });
 

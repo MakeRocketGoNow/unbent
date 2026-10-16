@@ -2,7 +2,7 @@
 //
 // The step summary of a restore-files run (.github/workflows/restore-files.yml): what
 // `rclone copy` from the mirror back to the live bucket did, read from its JSON log the
-// way write-status.mjs reads the mirror's. Counts only — a file's key is a customer's
+// way write-status.mjs reads the mirror's. Counts only: a file's key is a customer's
 // filename, and the run page of an open-source repository is public.
 //
 //   node scripts/mirror/restore-summary.mjs <copy.log> <summary.md>
@@ -17,7 +17,7 @@ import { pathToFileURL } from 'node:url';
  * The final tally of an rclone copy run with `--use-json-log`: the last log line that
  * carries a `stats` object. `transfers` is what was copied; `checks` what was looked at
  * and left alone, which under `--ignore-existing` is every file already in live; `errors`
- * what failed. A log with no tally — a copy that died before its first stats line —
+ * what failed. A log with no tally (a copy that died before its first stats line)
  * gives nulls, never a failed summary.
  * @param {string} text
  */

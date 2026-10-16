@@ -23,8 +23,8 @@ import org.json.JSONObject
  * the API verifies. It is what a native app does, and it is why Evernote never shows a
  * connect screen.
  *
- * Only Google. There is no system account picker for GitHub — an OAuth provider the phone
- * knows nothing about has to go through a browser — so [ConnectAuth] remains the fallback,
+ * Only Google. There is no system account picker for GitHub: an OAuth provider the phone
+ * knows nothing about has to go through a browser, so [ConnectAuth] remains the fallback,
  * and the only path for anyone whose account is not a Google one.
  */
 class GoogleAuth(
@@ -43,7 +43,7 @@ class GoogleAuth(
             .setFilterByAuthorizedAccounts(false)
             /*
              * Auto-select only ever fires when exactly one account has already authorised
-             * this app, so it cannot skip a choice the user still had to make — and on the
+             * this app, so it cannot skip a choice the user still had to make, and on the
              * second sign-in it saves them making a choice of one.
              */
             .setAutoSelectEnabled(true)
@@ -52,7 +52,7 @@ class GoogleAuth(
         /*
          * `preferImmediatelyAvailableCredentials` is deliberately left at its default of
          * false, and must stay there. It used to be set true, to make a phone with no Google
-         * account fail at once rather than hang for thirteen seconds — but it bought that at
+         * account fail at once rather than hang for thirteen seconds, but it bought that at
          * the cost of the feature working at all.
          *
          * The flag means, in the library's own words, "return immediately when there is no
@@ -62,7 +62,7 @@ class GoogleAuth(
          * accounts which have *not* yet authorised this app, which are precisely the ones
          * that are not sitting locally as an available credential. So Play Services took the
          * request, found nothing already available, and returned NO_CREDENTIAL instantly
-         * without ever drawing the sheet — on phones signed into a Google account.
+         * without ever drawing the sheet, on phones signed into a Google account.
          *
          * That is indistinguishable from a phone with no account, which is why it read as a
          * signing or client-id problem for so long. If the thirteen-second hang comes back,
@@ -82,7 +82,7 @@ class GoogleAuth(
         }
 
         /*
-         * The account sheet has to run on the main thread — it is UI — but the exchange is
+         * The account sheet has to run on the main thread (it is UI) but the exchange is
          * a blocking HTTP call, which Android refuses there. Only this half moves off.
          */
         return withContext(Dispatchers.IO) { exchange(idToken) }

@@ -2,8 +2,8 @@
  * Minimal browser globals for running pdf.js under Node in tests.
  *
  * pdf.js targets browsers and Web Workers, both of which provide DOMMatrix, Path2D, and
- * ImageData — verified directly in a real Web Worker, which is where the import actually
- * runs. Node has none of them, so text extraction throws "DOMMatrix is not defined"
+ * ImageData (verified directly in a real Web Worker, which is where the import actually
+ * runs). Node has none of them, so text extraction throws "DOMMatrix is not defined"
  * before reading a single page.
  *
  * These stubs exist only to get past construction. Text extraction never rasterizes, so

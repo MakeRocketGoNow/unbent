@@ -3,7 +3,7 @@ import UIKit
 
 /// The spacing vocabulary, the same steps as the Android app's `Space`.
 ///
-/// A step scale leaves fewer choices — a gap is one of these or it is wrong — which is what
+/// A step scale leaves fewer choices (a gap is one of these or it is wrong), which is what
 /// keeps several screens written at different times reading as one hand. 4pt multiples,
 /// because the system's own controls are built on that grid.
 public enum Space {
@@ -19,7 +19,7 @@ public enum Space {
     /// Between a group of fields and the action under it, and around a divider.
     public static let large: CGFloat = 16
 
-    /// Around a screen that is mostly one column — sign-in, an empty state — and between
+    /// Around a screen that is mostly one column (sign-in, an empty state) and between
     /// its sections.
     public static let screen: CGFloat = 24
 }
@@ -43,7 +43,7 @@ public extension Color {
     /// Unbent's green, the site's `--accent` in each theme.
     ///
     /// Two values and not one: the light theme's green is too dark to sit on a near-black
-    /// ground — as a button fill it reads as a hole, and as text it fails contrast — so
+    /// ground (as a button fill it reads as a hole, and as text it fails contrast) so
     /// dark mode lifts the hue until it carries.
     static let unbentAccent = Color(UIColor.unbentAccent)
 
@@ -132,8 +132,8 @@ public extension ButtonStyle where Self == UnbentButtonStyle {
 }
 
 /// A text field drawn as a box the height of a button, with its border in the accent while
-/// it is being typed into. The placeholder is the label: every field here is one word —
-/// Email, Password, Code — and a label above each would double the height of a form whose
+/// it is being typed into. The placeholder is the label: every field here is one word
+/// (Email, Password, Code) and a label above each would double the height of a form whose
 /// whole job is to be short.
 ///
 /// The form owns the focus and tells the box about it, so a field has one focus state
@@ -141,7 +141,7 @@ public extension ButtonStyle where Self == UnbentButtonStyle {
 struct FieldBox<Content: View>: View {
     let focused: Bool
     /// The padding around the text is not the text field, so a tap there has to be handed
-    /// on — otherwise only the one line of text in a 48pt box would take it.
+    /// on. Otherwise only the one line of text in a 48pt box would take it.
     let onTap: () -> Void
     @ViewBuilder var content: Content
 

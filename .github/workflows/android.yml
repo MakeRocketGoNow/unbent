@@ -34,13 +34,13 @@ jobs:
     env:
       UNBENT_VERSION_CODE: ${{ github.run_number }}
       # Without this the release build compiles a client id of "", which disables the
-      # native account sheet silently — `isConfigured` sends the user to the browser
+      # native account sheet silently: `isConfigured` sends the user to the browser
       # instead, and nothing in the build says the button was dropped. A fork without the
       # secret still builds; it just gets the browser path.
       UNBENT_GOOGLE_WEB_CLIENT_ID: ${{ secrets.GOOGLE_WEB_CLIENT_ID }}
       # Both optional, and both for a fork building the app for an instance of its own:
       # the id Play knows the app by, and the instance it signs in to until changed in
-      # Settings. Unset, the build is unbent.app's — an unset variable arrives here as an
+      # Settings. Unset, the build is unbent.app's: an unset variable arrives here as an
       # empty string, which the build file treats as absent.
       UNBENT_APPLICATION_ID: ${{ vars.ANDROID_APPLICATION_ID }}
       UNBENT_DEFAULT_INSTANCE: ${{ vars.ANDROID_DEFAULT_INSTANCE }}
@@ -85,11 +85,11 @@ jobs:
           if-no-files-found: error
 
       # `secrets` cannot be read in an `if:`, and a step that pulls in an action cannot
-      # carry the `env:` that the signing step uses to smuggle one in — so presence is
+      # carry the `env:` that the signing step uses to smuggle one in, so presence is
       # decided once, here, and the publish reads the output.
       # Play names a release after `versionName` alone when nothing is supplied, so every
       # release reads "0.1.0" and the list gives no way to tell which build a tester has.
-      # This mirrors what Play shows beside the bundle — "39 (0.1.0)" — so the run number
+      # This mirrors what Play shows beside the bundle, "39 (0.1.0)", so the run number
       # in the name matches the version code in the row.
       #
       # `versionName` is read out of the Gradle file rather than repeated here, because a
@@ -116,7 +116,7 @@ jobs:
             echo "ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "No Play service account or no keystore — skipping publish." >> "$GITHUB_STEP_SUMMARY"
+            echo "No Play service account or no keystore, skipping publish." >> "$GITHUB_STEP_SUMMARY"
           fi
 
       # Straight to the testing track, because the step this replaces was a person
@@ -127,7 +127,7 @@ jobs:
       # right default for something every push to main triggers. Change it to `completed`
       # to have testers get the build without anyone asking.
       #
-      # `alpha` is the API's name for the default closed testing track — "closed" is not a
+      # `alpha` is the API's name for the default closed testing track: "closed" is not a
       # track name, and a custom closed track is referenced by the name it was given in
       # Play Console. Change this if the track being shipped to is not the default one.
       #

@@ -15,7 +15,7 @@ import { libraryChannelName } from './names.js';
  * offline was nothing. The shape most local-first apps land on is one owner and many
  * clients: one process holds the database, every tab talks to it. On the desktop the
  * owner could be a SharedWorker; Android Chrome has none, so the owner is the holding
- * tab, elected by the lock that already exists — and this protocol does not care which,
+ * tab, elected by the lock that already exists, and this protocol does not care which,
  * so a worker can take the holder's seat later with no change on the client's side.
  *
  * The client does not ask the holder its queries. It is sent the holder's four
@@ -146,8 +146,8 @@ export function addressee(message: Message): string | null {
 }
 
 /**
- * The account's channels in this tab — and, given this tab's client id, the one for it
- * alone — or null in a browser without BroadcastChannel, where there is nothing to
+ * The account's channels in this tab (and, given this tab's client id, the one for it
+ * alone) or null in a browser without BroadcastChannel, where there is nothing to
  * join. A holder opens a client's channel the first time it posts to that client and
  * keeps it until it closes.
  */

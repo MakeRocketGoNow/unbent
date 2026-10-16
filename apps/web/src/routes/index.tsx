@@ -7,7 +7,7 @@ import { FrontPage } from '../components/FrontPage.js';
 /**
  * The bare root: a doorway for most people, and a page for one.
  *
- * Signed in, it is `/notes`, as it always was — redirected rather than rendered, so there
+ * Signed in, it is `/notes`, as it always was: redirected rather than rendered, so there
  * is exactly one URL for the note list and links and history never disagree about what to
  * call it.
  *

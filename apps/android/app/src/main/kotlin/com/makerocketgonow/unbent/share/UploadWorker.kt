@@ -20,7 +20,7 @@ import kotlinx.coroutines.withContext
  * that started it. WorkManager also gives retries and a network constraint for free.
  *
  * Retries re-enter this function from the top. The note id is therefore written to the
- * staging directory as soon as the note exists, and files already on it are skipped —
+ * staging directory as soon as the note exists, and files already on it are skipped:
  * otherwise a dropped radio after `createNote` would leave a second, empty note beside
  * the first. See [CaptureResume].
  */
@@ -41,7 +41,7 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         val prefs = Prefs(context)
         if (!prefs.isSignedIn) {
             /*
-             * No session yet. ShareActivity has already opened the sign-in screen — it can,
+             * No session yet. ShareActivity has already opened the sign-in screen: it can,
              * being foreground at the time; a worker can run at any moment and must not
              * throw a screen over whatever the user is doing.
              *
@@ -51,7 +51,7 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
              */
             if (!awaitSession(prefs)) {
                 // Gave up, or never finished signing in. Say so rather than dropping it
-                // silently — the user shared something and deserves to know it did not land.
+                // silently: the user shared something and deserves to know it did not land.
                 CaptureNotifications.signInNeeded(context, jobId, title)
                 Staging.clear(context, jobId)
                 return@withContext Result.failure()
@@ -76,7 +76,7 @@ class UploadWorker(context: Context, params: WorkerParameters) : CoroutineWorker
              *
              * WorkManager re-runs this whole function after a network failure. Creating
              * the note again would leave a duplicate beside the one the first attempt
-             * already made — often without its files, if the failure was the upload.
+             * already made, often without its files, if the failure was the upload.
              * Written to the staging dir as soon as the server answers, so a process
              * death between create and the first PUT still finds the same note.
              */

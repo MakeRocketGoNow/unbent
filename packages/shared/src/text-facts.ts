@@ -47,7 +47,7 @@ const MONTHS = [
   'november',
   'december',
 ];
-/** `jan(?:uary)?|feb(?:ruary)?|…` — the abbreviation, with the rest of the name optional. */
+/** `jan(?:uary)?|feb(?:ruary)?|…`: the abbreviation, with the rest of the name optional. */
 const MONTH_NAME = MONTHS.map((m) => `${m.slice(0, 3)}(?:${m.slice(3)})?`).join('|');
 
 function monthNumber(name: string): number {
@@ -69,7 +69,7 @@ function isoDate(year: number, month: number, day: number): string | null {
  * dates are read month-first, as the archive's documents write them; a first number past
  * twelve can only be a day, so `25/3/2026` still reads.
  *
- * Once each day, in the order the patterns above are tried, not the order of the text —
+ * Once each day, in the order the patterns above are tried, not the order of the text:
  * auto-fill's candidates have always come this way. Sort by `index` for the text's order.
  */
 export function findDates(text: string): FoundDate[] {
@@ -103,8 +103,8 @@ export function findDates(text: string): FoundDate[] {
  * separators and fraction, an optional sign on either side of an optional currency mark
  * (`-$5.00` and `$-5.00` are both a refund, and the first used to lose its sign and its
  * mark both, read as `5.00`). Anything glued
- * to a slash, dash, colon or letter is left alone — that is a date, a time, an id or a
- * phone number — and so is a run of more than nine digits, which is an account number.
+ * to a slash, dash, colon or letter is left alone (that is a date, a time, an id or a
+ * phone number), and so is a run of more than nine digits, which is an account number.
  *
  * Once each value. Amounts (`amount`) come first, then the plain numbers, each in the
  * text's order, so a caller that keeps only the first few keeps the amounts.

@@ -2,8 +2,8 @@
  * The date ranges worth one tap.
  *
  * Two inputs can express any range, which is why they stay, but they cannot express one
- * quickly: "the last 30 days" is a question this archive gets asked constantly — it is a
- * paperless-office corpus, and most lookups are recent receipts — and answering it by
+ * quickly: "the last 30 days" is a question this archive gets asked constantly (it is a
+ * paperless-office corpus, and most lookups are recent receipts) and answering it by
  * opening two calendars and counting back is friction with no payoff.
  *
  * **Open-ended on purpose.** "The last 7 days" means "since a week ago", and pinning an end
@@ -11,8 +11,8 @@
  * open. The API's range is inclusive at both ends, so an absent end means "up to now" and
  * keeps meaning it. This is Android's `DatePreset` and its reasoning, ported.
  *
- * **The day is the user's, not UTC.** These answer a question about someone's own calendar —
- * "today", "this year" — so the boundary has to be their midnight. Built from local
+ * **The day is the user's, not UTC.** These answer a question about someone's own calendar
+ * ("today", "this year"), so the boundary has to be their midnight. Built from local
  * year/month/day rather than `toISOString`, which would hand back the previous day for
  * anyone west of London. `rangeLabel` in `format-when.ts` records the same trap from the
  * reading end.

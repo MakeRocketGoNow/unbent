@@ -163,7 +163,7 @@ function TemplatePreview({
 }) {
   /*
    * Names the server refused as taken, though the list did not have them: notebooks made
-   * since it was read — on another device, in another tab, or by an assistant. Kept beside the list rather than instead of it,
+   * since it was read: on another device, in another tab, or by an assistant. Kept beside the list rather than instead of it,
    * so they count as taken until the refreshed list brings them in.
    */
   const [refused, setRefused] = useState<{ name: string }[]>([]);
@@ -237,7 +237,7 @@ function TemplatePreview({
         /*
          * Made elsewhere since the list was read. Nothing was written, but the list is
          * behind the server, so it is refreshed. A name numbered from the template's goes
-         * on numbering from it — `Receipts 3`, not `Receipts 2 2` — and one the person
+         * on numbering from it (`Receipts 3`, not `Receipts 2 2`) and one the person
          * typed is numbered from what they typed.
          */
         onApplied();
@@ -317,7 +317,7 @@ function TemplatePreview({
       }}
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
-          // The preview is a step inside the chooser; Escape goes back a step, not out —
+          // The preview is a step inside the chooser; Escape goes back a step, not out,
           // and not at all while Create waits, as Back does not.
           e.stopPropagation();
           if (!busy) onBack();
@@ -411,8 +411,8 @@ function FieldGlyph({ field }: { field: NotebookFileField }) {
 }
 
 /**
- * What kind of field it is, in words: the type, and what the type carries — a rating's
- * top, an amount's currency, a select's choices. The choices are the part people most
+ * What kind of field it is, in words: the type, and what the type carries (a rating's
+ * top, an amount's currency, a select's choices). The choices are the part people most
  * want to see before choosing, and a long list is cut rather than wrapped into a
  * paragraph; all of them are on the notebook's page once it exists.
  */

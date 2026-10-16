@@ -5,7 +5,7 @@ import { dropBytes, takeBytes } from './backups.js';
  * Cutting the dump's stream into upload parts (`upload` in backups.ts): every part but
  * the last exactly `partBytes`, whatever the sizes of the slices it is cut from. The
  * store tests run it on parts of five megabytes; these are the edges, at sizes that
- * make them easy to see — a chunk that straddles a cut, one that ends on it, and one
+ * make them easy to see: a chunk that straddles a cut, one that ends on it, and one
  * bigger than a whole part.
  */
 const bytes = (...values: number[]) => new Uint8Array(values);

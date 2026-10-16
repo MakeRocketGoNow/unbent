@@ -127,7 +127,7 @@ describe('recognising a placeholder title', () => {
   });
 
   it('treats a title that is only one of the note’s file names as a placeholder', () => {
-    // Whatever the device's naming — a phone's scanner, a camera — with or without the
+    // Whatever the device's naming (a phone's scanner, a camera), with or without the
     // extension, and whatever the case.
     const files = ['Scanned_20250311-0942.pdf', 'IMG_4012.JPG'];
     expect(isPlaceholderTitle('Scanned_20250311-0942', files)).toBe(true);

@@ -52,14 +52,14 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 });
 
 /**
- * Three shells, chosen by what is rendered — `useShell` decides, and the same answer
+ * Three shells, chosen by what is rendered: `useShell` decides, and the same answer
  * decides what the gate above lets through unauthenticated.
  *
  * `/embed/` is the page the Android app loads off screen to extract a PDF's text after a
  * capture (`/embed/index-files`). Nobody sees it, and the app has already put a session
- * cookie in place before loading it. So that shell has no chrome and no gate — an
+ * cookie in place before loading it. So that shell has no chrome and no gate (an
  * unauthenticated load is reported to the app through the bridge rather than redirected
- * to a sign-in screen nobody would see — and no agreement to the terms either, which is
+ * to a sign-in screen nobody would see) and no agreement to the terms either, which is
  * asked for on the screens a person does see.
  *
  * `plain` is the pages that exist because there is no session: the sign-in screen and the
@@ -103,7 +103,7 @@ function PlainShell({ children }: { children?: ReactNode }) {
 
 /**
  * The front page draws its own header and footer, full width, so the shell adds nothing
- * but the instance's ribbon — the page is only ever shown on the dev instance, previews
+ * but the instance's ribbon: the page is only ever shown on the dev instance, previews
  * and production, and the first two must still say which they are.
  */
 function FrontShell() {
@@ -120,9 +120,9 @@ function FrontShell() {
  *
  * There is no gate here any more. The route guard has established a session before this
  * renders, so the session is read for two things: the address in the chrome, and
- * liveness — a session that expires, or a sign-out in another tab, arrives through this
+ * liveness (a session that expires, or a sign-out in another tab) arrives through this
  * hook and nowhere else, and has to move the user off a screen they can no longer load.
- * Through `useAppSession`, so a check that merely failed to reach the server — no signal —
+ * Through `useAppSession`, so a check that merely failed to reach the server (no signal)
  * is not mistaken for either.
  */
 function AppShell() {
@@ -168,7 +168,7 @@ function AppShell() {
    *
    * Cheap to ask on every open: the server answers from an index of the PDFs still
    * unread (0024), so when nothing is pending, which is nearly always, it reads nothing.
-   * The pass declines a backlog larger than one page — see AUTO_INDEX_LIMIT — so this can
+   * The pass declines a backlog larger than one page (see AUTO_INDEX_LIMIT), so this can
    * never start pulling gigabytes because a tab was opened on a phone; the sidebar says
    * what it left and Maintenance is where that gets run.
    *
@@ -193,7 +193,7 @@ function AppShell() {
   /**
    * The import run, which outlives the page it was started from.
    *
-   * Claimed for this user, and for nobody when the session goes away under this shell —
+   * Claimed for this user, and for nobody when the session goes away under this shell:
    * expiry, or a sign-out in another tab. See `ImportRun.claim`; `useSignOut` drops it
    * for a sign-out made here, and the `beforeLoad` claim catches one neither saw.
    */
@@ -205,13 +205,13 @@ function AppShell() {
 
   /**
    * An import creates notes, notebooks and tags, so nothing cached is still true once it
-   * ends — however it ends, since a failed run has usually landed some notes first. Here
+   * ends (however it ends), since a failed run has usually landed some notes first. Here
    * rather than on the import page because the run may end while that page is not
    * mounted.
    *
    * A separate effect from the claim, and not keyed on the user, so it is still listening
-   * when a claim throws a running import away. That reset is an ending like any other —
-   * notes landed before it, and the same person signing back in keeps their cache — and
+   * when a claim throws a running import away. That reset is an ending like any other
+   * (notes landed before it, and the same person signing back in keeps their cache), and
    * an effect that resubscribed on the user's change would be torn down just before it.
    */
   useEffect(() => {
@@ -225,7 +225,7 @@ function AppShell() {
   }, [queryClient]);
 
   /**
-   * The session going away under a rendered app — expiry, or a sign-out in another tab.
+   * The session going away under a rendered app: expiry, or a sign-out in another tab.
    * The guard cannot catch that: it runs on navigation, and this happens between them.
    */
   useEffect(() => {

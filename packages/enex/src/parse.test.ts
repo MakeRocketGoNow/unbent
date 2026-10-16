@@ -84,8 +84,8 @@ describe('fallbackFilename', () => {
 
 /**
  * Evernote writes `<file-name>` as a label rather than a path. A real export had two PDFs
- * named like `Menu Card` and `Lease Summary - DRAFT DRAFT ` — no extension, one with
- * a trailing space — and both arrived as files nothing downstream could recognise as PDFs.
+ * named like `Menu Card` and `Lease Summary - DRAFT DRAFT ` (no extension, one with
+ * a trailing space) and both arrived as files nothing downstream could recognise as PDFs.
  */
 describe('resourceFilename', () => {
   const MD5 = 'a'.repeat(32);
@@ -230,7 +230,7 @@ describe('uniqueResourceFilenames', () => {
 
   it('does not steal a name that is already a neighbour', () => {
     // `image-2.png` is already in the note, so the colliding second `image.png` has to
-    // skip it rather than overwrite that neighbour's link — even when the neighbour
+    // skip it rather than overwrite that neighbour's link, even when the neighbour
     // appears after the duplicates in the ENEX.
     const after = uniqueResourceFilenames([
       file('image.png', '1'.repeat(32)),

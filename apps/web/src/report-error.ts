@@ -2,7 +2,7 @@
  * Sends a crash in this page to the Worker, where its logs already are.
  *
  * The reason this exists is the Android app: the editor is this site in a WebView, so a
- * JavaScript error there is invisible to Play's crash reporting — the process never dies,
+ * JavaScript error there is invisible to Play's crash reporting: the process never dies,
  * and to Android nothing happened. See `apps/api/src/routes/client-errors.ts` for why the
  * far end is unauthenticated and what it does with a report.
  *
@@ -15,11 +15,11 @@
  * 2. It must not report itself. A failing POST that reports its own failure is an infinite
  *    loop pointed at the server. The send's own errors are dropped on the floor.
  * 3. It must be bounded. A render loop can throw thousands of times a second, so a cap and
- *    a duplicate filter sit in front of the network — see `sent` and `MAX_REPORTS`.
+ *    a duplicate filter sit in front of the network (see `sent` and `MAX_REPORTS`).
  *
  * The POST is unconditional because the Worker's log is the one destination every instance
  * has, configured or not. An instance that also runs an error-tracking service registers it
- * with `addErrorSink`, which is additional rather than instead — and behind the same cap
+ * with `addErrorSink`, which is additional rather than instead, and behind the same cap
  * and filter, so the three rules above hold for it too.
  */
 
@@ -32,7 +32,7 @@
  */
 const MAX_REPORTS = 5;
 
-/** Stacks are truncated here as well as at the far end — a long one is mostly framework. */
+/** Stacks are truncated here as well as at the far end: a long one is mostly framework. */
 const MAX_STACK = 4000;
 
 /**
@@ -51,7 +51,7 @@ function messageOf(value: unknown): string {
   try {
     return JSON.stringify(value) ?? String(value);
   } catch {
-    // A value whose own serialization throws — a circular structure, a hostile getter.
+    // A value whose own serialization throws: a circular structure, a hostile getter.
     return String(value);
   }
 }
@@ -77,7 +77,7 @@ export function routeOf(): string | undefined {
  * A report, as the sinks below receive it.
  *
  * `value` is the thrown thing itself, alongside the message already taken off it. A sink
- * that can read an `Error` better than this module does — into frames, say — should get the
+ * that can read an `Error` better than this module does (into frames, say) should get the
  * chance rather than being handed a string back.
  */
 export interface ErrorReport {
@@ -115,8 +115,8 @@ export function reportError(value: unknown, kind: 'error' | 'rejection'): void {
     if (count >= MAX_REPORTS) return;
     /*
      * A request that got no answer because there was no connection (`OfflineError` in
-     * `notes-api.ts`) is not a bug. Several are fired and forgotten — the sidebar's counts,
-     * the indexer's pass — and each would otherwise arrive here as a crash from every phone
+     * `notes-api.ts`) is not a bug. Several are fired and forgotten (the sidebar's counts,
+     * the indexer's pass) and each would otherwise arrive here as a crash from every phone
      * that went into a tunnel. Recognised by name rather than by class so this module stays
      * free of the app's; and when the connection returns, the report could not be sent now
      * anyway.
@@ -144,7 +144,7 @@ export function reportError(value: unknown, kind: 'error' | 'rejection'): void {
     }
 
     // Listed field by field rather than spread from the report: the endpoint's schema is
-    // `.strict()`, so `value` — the thrown object itself — would be rejected as an unknown
+    // `.strict()`, so `value` (the thrown object itself) would be rejected as an unknown
     // key, and it is not something to send anywhere regardless of what it happens to hold.
     const body = JSON.stringify({
       message: report.message,
@@ -154,7 +154,7 @@ export function reportError(value: unknown, kind: 'error' | 'rejection'): void {
     });
 
     /*
-     * `keepalive` so a report survives the navigation that often follows the error — an
+     * `keepalive` so a report survives the navigation that often follows the error: an
      * ordinary fetch is cancelled when the page goes away, which loses exactly the reports
      * from errors bad enough to make someone leave. `sendBeacon` would do the same, but it
      * cannot set a content type this endpoint will accept.
@@ -177,7 +177,7 @@ export function reportError(value: unknown, kind: 'error' | 'rejection'): void {
  * this once at startup and never removes them.
  *
  * `error` catches thrown exceptions that reach the window, `unhandledrejection` the
- * promises nobody caught — the second is the one that matters for this app, since an
+ * promises nobody caught: the second is the one that matters for this app, since an
  * awaited fetch that rejects is how most of its failures actually look.
  */
 export function installErrorReporting(): () => void {

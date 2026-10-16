@@ -39,7 +39,7 @@ function isAllowed(redirect: string | undefined): redirect is string {
 /**
  * Connects a phone, without the user reading a code out.
  *
- * The route guard gates on the session, so reaching this component means signed in — by
+ * The route guard gates on the session, so reaching this component means signed in, by
  * whichever provider, which is the point: Google, GitHub, and anything added later all
  * arrive here the same way. An unauthenticated visit is sent to `/login` and comes back
  * with the `redirect` still in the URL.

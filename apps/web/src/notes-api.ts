@@ -45,7 +45,7 @@ import { SERVED_HEADER, fileAddress } from './sw/routes.js';
  *
  * Carries the status as a number so callers can branch on it. The previous shape put the
  * status only in the message, which left the 404 check reading
- * `err.message.startsWith('404')` — a body beginning with a digit or a reworded message
+ * `err.message.startsWith('404')`: a body beginning with a digit or a reworded message
  * would have silently changed which branch ran.
  */
 export class ApiError extends Error {
@@ -92,8 +92,8 @@ export function isOfflineError(err: unknown): err is OfflineError {
 /**
  * How long a write waits for an answer while the app already believes it is offline. It
  * used to be refused before it was sent: the banner had said changes can't be saved, so
- * why wait on a socket. But the belief can be wrong — it was, for a day, on a laptop whose
- * browser reported no network while every request succeeded (see `connectivity.ts`) — and
+ * why wait on a socket. But the belief can be wrong: it was, for a day, on a laptop whose
+ * browser reported no network while every request succeeded (see `connectivity.ts`), and
  * a write refused on a belief is a save lost on a working connection. So it is sent, and
  * what is bounded is the wait: a device with no network fails it at once, and a
  * connection that carries nothing fails it in a few seconds rather than minutes.
@@ -108,11 +108,11 @@ export const OFFLINE_WRITE_TIMEOUT = 5_000;
  * connectivity store to check the server (`recheck`); so does an answer the service
  * worker served from its cache because the network failed (`X-Unbent-Served: cache`).
  * Neither decides by itself, since a slow save fails on a connection that works. An
- * answer the server itself gave — one the worker marked as neither its cache's nor the
- * device's — is the evidence the store exists to find, and says so (`confirmReachable`):
+ * answer the server itself gave (one the worker marked as neither its cache's nor the
+ * device's) is the evidence the store exists to find, and says so (`confirmReachable`):
  * the app is online the moment the server answers anything, whatever the browser's own
  * flag says. Only for the app's own API: a path, not another origin's address. The
- * caller's own abort is passed through untouched — the editor cancels uploads, and that
+ * caller's own abort is passed through untouched: the editor cancels uploads, and that
  * is not a lost connection.
  *
  * `timeout` is for the autosave, which must not hang: on a connection that is up and
@@ -160,7 +160,7 @@ const MAX_DETAIL = 200;
  * The message for a failed response, quoting the body only when the body says something.
  *
  * A request that never reached the Worker is answered by the edge instead, with its own
- * HTML error page — and the first 200 characters of that page are the IE conditional
+ * HTML error page, and the first 200 characters of that page are the IE conditional
  * comments of 2009, not what went wrong. An ENEX import repeats this message once per
  * note, so a run that outlived its Worker produced dozens of lines of `<!--[if lt IE 7]>`
  * and nothing a reader could act on. Naming the case is what makes it legible.
@@ -190,7 +190,7 @@ export async function httpErrorDetail(res: Response): Promise<{ message: string;
   }
 
   if (body.startsWith('<')) {
-    return { message: `${status} — the request did not reach the API; an error page came back instead` };
+    return { message: `${status}: the request did not reach the API; an error page came back instead` };
   }
 
   return { message: `${status}: ${body.slice(0, MAX_DETAIL)}` };
@@ -288,7 +288,7 @@ export const SAVE_TIMEOUT = 10_000;
 
 /**
  * A save refused because the note was saved somewhere else after the copy it was made
- * from — the 409 `updateNote` gets for a stale `ifUpdatedAt`. Carries the note as it now
+ * from: the 409 `updateNote` gets for a stale `ifUpdatedAt`. Carries the note as it now
  * stands, so the editor can offer it without reading it again.
  *
  * An `ApiError`, so code that only asks "did the save fail" still sees a failure; its own
@@ -347,7 +347,7 @@ async function throwIfStale(res: Response): Promise<void> {
 
 /**
  * What the model would file a note as. Nothing is written; the editor applies what it
- * wants of the answer — see `planAutofill`. The 422 for a note with nothing to read yet
+ * wants of the answer (see `planAutofill`). The 422 for a note with nothing to read yet
  * and the 503 for an instance with no key each carry a sentence meant to be shown as is.
  */
 export async function autofillNote(id: string): Promise<AutofillSuggestion> {
@@ -373,8 +373,8 @@ export async function duplicateNote(id: string, copyId?: string): Promise<Note> 
 
 /**
  * A note's history: the copies the server kept of what a write replaced, newest first,
- * without their bodies. Only ever from the server — history is not in the local copy of
- * the library — so offline this is an `OfflineError` like any other request.
+ * without their bodies. Only ever from the server (history is not in the local copy of
+ * the library), so offline this is an `OfflineError` like any other request.
  */
 export async function listRevisions(noteId: string): Promise<NoteRevisionSummary[]> {
   const res = await request(`/api/notes/${encodeURIComponent(noteId)}/revisions`);
@@ -394,8 +394,8 @@ export async function getRevision(noteId: string, revisionId: number): Promise<N
 
 /**
  * Puts a copy back as the note's title and body: the note as it then stands, and `kept`,
- * the id of the copy the server kept of what was replaced — null when the version was
- * already what the note said, and nothing happened. With `ifUpdatedAt`, only if the note
+ * the id of the copy the server kept of what was replaced (null when the version was
+ * already what the note said, and nothing happened). With `ifUpdatedAt`, only if the note
  * still carries that date: a `NoteChangedError` otherwise, as a save's precondition gives.
  */
 export async function restoreRevision(noteId: string, revisionId: number, opts: { ifUpdatedAt?: number } = {}): Promise<RestoredNote> {
@@ -436,14 +436,14 @@ export async function deleteNotePermanently(id: string): Promise<void> {
 }
 
 /*
-   Several notes at once — the list's selection. Each answers with a count, not the notes;
+   Several notes at once: the list's selection. Each answers with a count, not the notes;
    the caller refetches the list, which is where the notes are read from anyway.
 */
 
 /**
  * Refiles several notes: into a notebook (null for none), and with tags added or taken
  * away. `matched` is how many ids were live notes of this user's; `changed` how many were
- * actually written — a note already filed there, or already carrying the tag, keeps its date.
+ * actually written: a note already filed there, or already carrying the tag, keeps its date.
  */
 export async function updateNotes(
   ids: string[],
@@ -654,7 +654,7 @@ export async function renameNotebook(id: string, name: string): Promise<void> {
 export type NotebookImportSkip = { name: string; reason: string; kind?: 'emoji' | 'purpose' };
 
 /**
- * Applies a notebook definition — a template's, here — through the archive import's own
+ * Applies a notebook definition (a template's, here) through the archive import's own
  * endpoint. `create` makes a new notebook or answers `'taken'` with nothing written;
  * without it the definition is added to a notebook of that name, which is what the
  * chooser's "Add these fields to …" asks for by name.
@@ -777,7 +777,7 @@ export async function deleteNotebookField(notebookId: string, fieldId: string): 
   if (!res.ok) throw new ApiError(res.status, await httpErrorMessage(res));
 }
 
-/** How many notes still hold a select/multi-select option — the number a removal confirms. */
+/** How many notes still hold a select/multi-select option: the number a removal confirms. */
 export async function countOptionUsage(
   notebookId: string,
   fieldId: string,
@@ -820,7 +820,7 @@ export interface OptionEditResult {
 /**
  * Edits a select's or multi-select's options by what changes rather than by the whole
  * list. A rename moves the notes that held the old name to the new one; see the route. A
- * rename onto an option that exists is refused unless `merge` is set — the editor asks
+ * rename onto an option that exists is refused unless `merge` is set: the editor asks
  * before sending one, so the refusal only reaches a person when the list changed under
  * them, and then the store's own sentence says what happened.
  */
@@ -860,7 +860,7 @@ export async function uploadFile(
   file: File,
   /**
    * `id`: the id the file should have, for an upload made from the outbox, which may be
-   * sent twice — the server answers a second one with the file the first one made.
+   * sent twice: the server answers a second one with the file the first one made.
    */
   opts: { id?: string } = {},
 ): Promise<UploadedFile> {
@@ -896,8 +896,8 @@ export async function uploadFile(
  *
  * A URL rather than a fetch wrapper on purpose: this is meant for an anchor's href, so
  * the browser streams the response straight to disk. Reading it into JS first would
- * buffer a note's whole attachment payload in memory — the thing the streaming export was
- * built to avoid — and would lose Save-Link-As and middle-click besides.
+ * buffer a note's whole attachment payload in memory (the thing the streaming export was
+ * built to avoid) and would lose Save-Link-As and middle-click besides.
  *
  * What arrives is a `.md` for a note with no attachments and a `.zip` of its folder when
  * it has them; the server decides and names the file in Content-Disposition.
@@ -906,7 +906,7 @@ export function noteDownloadUrl(noteId: string): string {
   return `/api/notes/${encodeURIComponent(noteId)}/export`;
 }
 
-/** Attachment metadata for one note — includes files no longer linked in the body. */
+/** Attachment metadata for one note: includes files no longer linked in the body. */
 export async function listAttachments(noteId: string): Promise<AttachmentInfo[]> {
   const { files } = await json<{ files: AttachmentInfo[] }>(
     await request(`/api/notes/${noteId}/files`),
@@ -946,7 +946,7 @@ export interface CopiedAttachment extends AttachmentInfo {
 
 /**
  * Copies files from another note into this one, server side, and says what each is
- * called here — a name already taken in the destination is suffixed. `move` deletes
+ * called here: a name already taken in the destination is suffixed. `move` deletes
  * each source file the source body no longer links; see the route for why that guard.
  */
 export async function copyAttachments(
@@ -964,7 +964,7 @@ export async function copyAttachments(
 
 /**
  * Permanently deletes one attachment: D1 row and R2 object.
- * Does not rewrite the note body — callers strip links when needed.
+ * Does not rewrite the note body: callers strip links when needed.
  */
 export async function deleteAttachment(noteId: string, filename: string): Promise<void> {
   const res = await request(
@@ -1030,7 +1030,7 @@ export type SearchHit = SearchResult | SearchResultRow;
 
 /**
  * `rows` asks for each match's list row as well, for a table drawing the search in its
- * columns — see `rows` on the search query. The sidebar's results draw a title and a
+ * columns (see `rows` on the search query). The sidebar's results draw a title and a
  * snippet and leave it off, since the rows cost the server a page's worth of reads.
  */
 export async function searchNotes(
@@ -1058,7 +1058,7 @@ export interface PurgeResult {
 }
 
 /**
- * Permanently deletes notes and their attachments. Irreversible — the confirmation token
+ * Permanently deletes notes and their attachments. Irreversible: the confirmation token
  * is required by the server, so this cannot fire from a stray call.
  *
  * A page per request, until the server says nothing is left: one request may make only
@@ -1130,7 +1130,7 @@ export interface StoreStats {
   /**
    * Set while a dump is being loaded: the counts are zero and the store refuses every
    * data call. `undo` is the bookmark the load took as it began and `before` the dump
-   * the route wrote first — the two ways back, kept by the store itself so a load that
+   * the route wrote first: the two ways back, kept by the store itself so a load that
    * failed is recoverable from any page that reads it, not only the one that pressed.
    */
   loading: { id: string; key: string; startedAt: number; pages: number; undo: string | null; before: string | null } | null;
@@ -1264,7 +1264,7 @@ export async function previewLoad(userId: string, dump: string): Promise<LoadPre
 
 /**
  * A load that failed after the store was emptied. The route's 502 then carries the two
- * ways back — the bookmark the load took as it began, and the dump it wrote first — and
+ * ways back (the bookmark the load took as it began, and the dump it wrote first) and
  * a message alone would throw them away on the one path where they matter most: the
  * store is refusing every request until one of them is used.
  */
