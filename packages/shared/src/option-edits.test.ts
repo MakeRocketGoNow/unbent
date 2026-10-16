@@ -118,8 +118,9 @@ describe('applyOptionEdit', () => {
     expect(applyOptionEdit(['A', 'B'], { pinFirst: ['A'], pinLast: ['A'] })).toHaveProperty('error');
   });
 
-  it('refuses a position with nothing to add, or after an option the list lacks', () => {
+  it('refuses a position or a merge with nothing to apply to, or after an option the list lacks', () => {
     expect(applyOptionEdit(['A'], { position: 'alpha' })).toMatchObject({ error: expect.stringContaining('needs options') });
+    expect(applyOptionEdit(['A'], { merge: true, sort: 'alpha' })).toMatchObject({ error: expect.stringContaining('needs a rename') });
     // Every option already there, so nothing is added; the misspelt anchor is still refused.
     expect(applyOptionEdit(['A'], { add: ['A'], position: { after: 'Nope' } })).toMatchObject({ error: expect.stringContaining('"Nope"') });
   });
@@ -143,5 +144,6 @@ describe('optionEditSchema', () => {
     expect(isEmptyOptionEdit(edit)).toBe(false);
     expect(isEmptyOptionEdit(optionEditSchema.parse({ add: [] }))).toBe(true);
     expect(isEmptyOptionEdit(optionEditSchema.parse({ position: 'alpha' }))).toBe(false);
+    expect(isEmptyOptionEdit(optionEditSchema.parse({ merge: true }))).toBe(false);
   });
 });

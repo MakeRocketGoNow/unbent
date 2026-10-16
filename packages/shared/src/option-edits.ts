@@ -37,7 +37,8 @@ export type OptionEdit = z.infer<typeof optionEditSchema>;
 
 /**
  * True when the edit asks for nothing, so a caller can tell it apart from one that does. A
- * `position` alone is not nothing: it is a mistake, and `applyOptionEdit` says so.
+ * `position` or `merge: true` alone is not nothing: it is a mistake, and `applyOptionEdit`
+ * says so. `merge: false` asks for nothing, so beside a whole list it is not refused.
  */
 export function isEmptyOptionEdit(edit: OptionEdit): boolean {
   return (
@@ -45,6 +46,7 @@ export function isEmptyOptionEdit(edit: OptionEdit): boolean {
     !edit.remove?.length &&
     !edit.add?.length &&
     edit.position === undefined &&
+    !edit.merge &&
     !edit.sort &&
     !edit.pinFirst?.length &&
     !edit.pinLast?.length
@@ -96,6 +98,11 @@ export function applyOptionEdit(current: string[], edit: OptionEdit): OptionEdit
   const renamed: Array<{ from: string; to: string }> = [];
   const touched = new Set<string>();
 
+  // A merge flag with no rename could never have applied, and is refused as a position
+  // with nothing to add is: a caller that sent it misread what the call would do.
+  if (edit.merge && !edit.rename?.length) {
+    return { error: 'Merging is for a rename onto an existing option, so it needs a rename.' };
+  }
   const targets = new Set<string>();
   for (const { from, to } of edit.rename ?? []) {
     if (touched.has(from)) return { error: `"${from}" is named twice in the edit.` };
