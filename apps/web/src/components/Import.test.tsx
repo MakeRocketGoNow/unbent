@@ -17,6 +17,7 @@ import { Import } from './Import.js';
 vi.mock('../store/actions.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../store/actions.js')>()),
   createNote: vi.fn(),
+  synced: vi.fn(async () => true),
   uploadFile: vi.fn(),
   saveNote: vi.fn(),
   trashNotes: vi.fn(),

@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { formatAttachmentMarkdown } from '@unbent/shared';
 import type { QueryClient } from '@tanstack/react-query';
 import * as actions from './store/actions.js';
+import { offlineNow } from './connectivity.js';
 import { indexUploadedFile } from './index-files.js';
 import { invalidateNoteMembership } from './queries.js';
 
@@ -18,11 +19,12 @@ import { invalidateNoteMembership } from './queries.js';
  * "open a note and drop there".
  *
  * Every write goes through `store/actions.ts`, never the API: each note lands in the
- * local copy at once and its upload queues behind its own create, so a batch that loses
- * its connection halfway finishes from the outbox rather than leaving notes whose files
- * never came. One file at a time, in the order given, because the uploads are the cost and
- * twelve PDFs in flight at once is twelve times the memory on a phone for no shorter
- * wait.
+ * local copy at once, and with no connection its upload queues behind its own create,
+ * so a batch that loses its connection halfway finishes from the outbox rather than
+ * leaving notes whose files never came. With one, the upload is sent directly — see
+ * `noteFromFile` for the wait that makes it so. One file at a time, in the order given,
+ * because the uploads are the cost and twelve PDFs in flight at once is twelve times the
+ * memory on a phone for no shorter wait.
  *
  * The batch's state is the module's, not a component's, for the reason the import run's
  * is (`import-run.ts`): the snackbar that reports it is drawn by the root layout, and the
@@ -145,6 +147,17 @@ export function titleFor(filename: string): string {
 export async function noteFromFile(file: File, filing: Filing): Promise<string> {
   const body = formatAttachmentMarkdown(file.name, `files/${file.name}`, { image: file.type.startsWith('image/') }) + '\n';
   const created = await actions.createNote({ title: titleFor(file.name), body, tags: filing.tags, notebook: filing.notebook });
+  /*
+   * The create is queued, and `uploadFile` queues an upload behind any write of its
+   * note still waiting: without this wait every file of an online batch went to the
+   * device's pending shelf — two hundred megabytes of scans written to the file system
+   * before the first byte was sent, a phone short of room refusing a drop it could have
+   * uploaded, and "12 notes added" meaning queued rather than landed. So, with a
+   * connection, the upload waits for the create to reach the server first, bounded: a
+   * server that takes longer than this leaves the upload to the queue, which is what
+   * the queue is for.
+   */
+  if (!offlineNow()) await actions.synced(created.id, CREATE_LANDED_MS);
   let uploaded;
   try {
     uploaded = await actions.uploadFile(created.id, file);
@@ -157,6 +170,9 @@ export async function noteFromFile(file: File, filing: Filing): Promise<string> 
   indexUploadedFile(created.id, uploaded, file);
   return created.id;
 }
+
+/** How long an online upload waits for its note's create to land before queueing instead. */
+const CREATE_LANDED_MS = 10_000;
 
 /** The batches in order; each starts once the one before it has ended, however it ended. */
 let chain: Promise<unknown> = Promise.resolve();

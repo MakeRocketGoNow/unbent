@@ -2,12 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Note } from '@unbent/shared';
 import * as actions from './store/actions.js';
 import { indexUploadedFile } from './index-files.js';
+import { resetConnectivity, setReachableForTests } from './connectivity.js';
 import { claimFileNotesFor, getFileNotes, isNoteFile, notesFromFiles, resetFileNotesForTests, titleFor, undoFileNotes } from './file-notes.js';
 
 vi.mock('./store/actions.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./store/actions.js')>()),
   // `uploadRefusal` is the real one: the rule under test is the store's.
   createNote: vi.fn(),
+  synced: vi.fn(async () => true),
   uploadFile: vi.fn(),
   saveNote: vi.fn(),
   trashNote: vi.fn(),
@@ -66,19 +68,35 @@ describe('notesFromFiles', () => {
     expect(getFileNotes()).toMatchObject({ status: 'done', total: 2, done: 2, ids: ['n1', 'n2'], place: 'Receipts' });
   });
 
-  it('writes each note in full before starting the next', async () => {
+  /* Online, the upload waits for the create to land so it is sent rather than shelved. */
+  it('writes each note in full before starting the next, letting the create land before the upload', async () => {
     const order: string[] = [];
     vi.mocked(actions.createNote).mockImplementation(async (input) => {
       order.push(`create ${input.title}`);
       const note: Note = { id: input.title, ...input, createdAt: 1, updatedAt: 1, fields: [] };
       return note;
     });
+    vi.mocked(actions.synced).mockImplementation(async (noteId) => {
+      order.push(`landed ${noteId}`);
+      return true;
+    });
     vi.mocked(actions.uploadFile).mockImplementation(async (noteId, file) => {
       order.push(`upload ${noteId}`);
       return { filename: file.name, contentType: file.type, size: 1, path: `files/${file.name}`, indexing: 'server' as const };
     });
     await notesFromFiles([pdf('a.pdf'), pdf('b.pdf')], { notebook: null, tags: [] }, null, 'list');
-    expect(order).toEqual(['create a', 'upload a', 'create b', 'upload b']);
+    expect(order).toEqual(['create a', 'landed a', 'upload a', 'create b', 'landed b', 'upload b']);
+  });
+
+  it('does not wait for the create offline, where the upload is queued behind it anyway', async () => {
+    setReachableForTests(false);
+    try {
+      await notesFromFiles([pdf('a.pdf')], { notebook: null, tags: [] }, null, 'list');
+    } finally {
+      resetConnectivity();
+    }
+    expect(actions.synced).not.toHaveBeenCalled();
+    expect(actions.uploadFile).toHaveBeenCalledTimes(1);
   });
 
   it('keeps what landed when a file fails, trashes the note its upload left, and says so', async () => {
