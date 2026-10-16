@@ -3,14 +3,14 @@
 A personal note app that keeps your notes in Markdown and hands them back whenever you ask.
 
 Notes are Markdown with YAML frontmatter. Attachments are ordinary files. Export produces a
-plain folder tree — one directory per note, containing the note's markdown and a `files/`
-subdirectory — that you can read, grep, and back up without this app existing, and import
+plain folder tree (one directory per note, containing the note's markdown and a `files/`
+subdirectory) that you can read, grep, and back up without this app existing, and import
 back into any Unbent.
 
 The Markdown is the note, not a serialization of one. A note you save is byte-identical to
 what you typed: no reflowed lists, no `_italic_` quietly rewritten to `*italic*`, no escaped
 underscores in a filename. That is the whole promise, and it is what makes the export
-guarantee worth anything — a format the app rewrites behind your back is a format you do not
+guarantee worth anything: a format the app rewrites behind your back is a format you do not
 actually own.
 
 Editing it should still feel like a word processor. See [Editing](#editing).
@@ -22,14 +22,14 @@ should never depend on it being hard.
 
 ## Stack
 
-- **Cloudflare Workers** + Hono — API, and static-asset hosting for the SPA
-- **TanStack Router + Query** — real routes, typed search params, cached loaders
-- **Cloudflare Durable Objects** (SQLite) — one per account, holding its notes, metadata
+- **Cloudflare Workers** + Hono: API, and static-asset hosting for the SPA
+- **TanStack Router + Query**: real routes, typed search params, cached loaders
+- **Cloudflare Durable Objects** (SQLite): one per account, holding its notes, metadata
   and FTS5 full-text search; see [Where your notes live](#where-your-notes-live)
-- **Cloudflare D1** (SQLite) — accounts, sessions, OAuth clients, and the account directory
-- **Cloudflare R2** — attachment blobs
-- **Better Auth** — OAuth (Google, GitHub)
-- **Vite + React + CodeMirror 6** — Markdown editor, styled in place (see [Editing](#editing))
+- **Cloudflare D1** (SQLite): accounts, sessions, OAuth clients, and the account directory
+- **Cloudflare R2**: attachment blobs
+- **Better Auth**: OAuth (Google, GitHub)
+- **Vite + React + CodeMirror 6**: Markdown editor, styled in place (see [Editing](#editing))
 
 One Worker serves both the built SPA and `/api`, so the two are genuinely same-origin and
 the session cookie needs no CORS or `SameSite` workarounds.
@@ -48,7 +48,7 @@ unoptimized: per-note requests are what let an interrupted import resume without
 server-side progress tracking, and a re-run costs one request and *zero* D1 writes per note
 that already landed, because the content-hash lookup short-circuits before any insert.
 
-The tightest of these is D1 rows written per day, at roughly 2.3x headroom — so the thing
+The tightest of these is D1 rows written per day, at roughly 2.3x headroom, so the thing
 to avoid is importing a whole account twice in the same day. Nothing here needs Workers
 Paid; take it for the higher ceilings if the instance grows, not to get started.
 
@@ -97,7 +97,7 @@ pnpm dev          # web http://localhost:5217  api http://localhost:8817
 
 `worktree:setup` copies the gitignored files git cannot bring across (`.dev.vars`,
 `local.properties`), installs, and seeds the worktree's local state with a copy of the main
-checkout's — D1, R2 and the per-account note stores under `do/` — so the same notes are
+checkout's (D1, R2 and the per-account note stores under `do/`) so the same notes are
 there, and because the session cookie on localhost is host-only and ports do not scope
 cookies, the browser arrives already signed in. The copy is a snapshot: the two drift apart
 from then on, which is the point, since a branch's migrations must not reach the main
@@ -109,15 +109,15 @@ It only acts in a worktree that has no dependencies or no local database yet, ne
 main checkout, and always starts empty: copying your notes into a worktree is a choice you
 make by running `pnpm worktree:setup` without `--fresh` yourself.
 
-Social sign-in is the one thing a worktree does not get for free — Google and GitHub match
+Social sign-in is the one thing a worktree does not get for free: Google and GitHub match
 the redirect URI including its port, so a worktree's port has to be registered with the
-provider to use it. A password — `pnpm dev` turns password sign-up on for every local
-Worker — or the sign-in code printed to the Worker console needs nothing registered.
+provider to use it. A password (`pnpm dev` turns password sign-up on for every local
+Worker) or the sign-in code printed to the Worker console needs nothing registered.
 
 ## Running your own instance
 
 Unbent is one Cloudflare Worker serving the site and the API, and the top level of
-`apps/api/wrangler.toml` is that Worker — the same file whether the instance is unbent.app
+`apps/api/wrangler.toml` is that Worker, the same file whether the instance is unbent.app
 or yours. Nothing in the repository names a deployment: resources are named rather than
 identified and the first deploy provisions them, the origin is derived from the request
 when nothing configured one, and a custom domain is attached in the dashboard. So a fork
@@ -134,8 +134,8 @@ and `pnpm setup:instance --check` reads any of them back.
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/MakeRocketGoNow/unbent)
 
 Cloudflare copies the repository into your GitHub account, creates the database and the
-bucket, asks for the two things every instance has to decide — an auth secret and who may
-sign in, the uncommented lines of `apps/api/.dev.vars.example` — and deploys. From then on
+bucket, asks for the two things every instance has to decide (an auth secret and who may
+sign in, the uncommented lines of `apps/api/.dev.vars.example`) and deploys. From then on
 every push to your copy deploys through Workers Builds. The copy is not a GitHub fork, so
 taking upstream changes is a remote and a merge:
 
@@ -175,7 +175,7 @@ to Cloudflare, create the database, apply migrations, build and deploy with a ge
 secret, ask who may sign in and who runs the instance, and set the GitHub secrets above if
 you want pushes to deploy. Every step says what it is about to run; `--dry-run` prints the
 commands instead of running them, and `--check` reports without changing anything and exits
-non-zero when something required is missing — which makes it a status page for an instance
+non-zero when something required is missing, which makes it a status page for an instance
 you set up some other way:
 
 ```bash
@@ -199,7 +199,7 @@ pnpm exec wrangler secret put ALLOWED_EMAILS
 ```
 
 After the first deploy it is `pnpm release` from the repo root. Wrangler is a devDependency
-of `apps/api`, not a global install — the lockfile pins the version the config is known to
+of `apps/api`, not a global install: the lockfile pins the version the config is known to
 work with, and `pnpm exec` from that directory runs the pinned one; `npx` from the repo
 root downloads a different version instead.
 
@@ -251,11 +251,11 @@ says otherwise; `pnpm exec wrangler secret put NAME` from `apps/api`, or the das
 | Custom domain | serving from your own name | dashboard, not config |
 | `UNBENT_BUNDLE_ID_BASE`, `UNBENT_INSTANCE_HOST`, `DEVELOPMENT_TEAM` | an iOS build of your own | `apps/ios/Config/Local.xcconfig`, untracked; see [iOS app](#ios-app) |
 | `ANDROID_APPLICATION_ID`, `ANDROID_DEFAULT_INSTANCE` | the Android build in CI | GitHub repository **variables**; `unbent.applicationId` and `unbent.defaultInstance` in `local.properties` locally |
-| `CLOUDFLARE_WORKERS_SUBDOMAIN`, `DEV_BETTER_AUTH_SECRET`, `DEV_ALLOWED_EMAILS` | a dev instance and PR previews of your own | GitHub; see [The dev instance](#the-dev-instance) — every job skips itself without them |
-| `RESTORE_R2_ACCESS_KEY_ID`, `RESTORE_R2_SECRET_ACCESS_KEY` | putting one account's files back from the mirror | GitHub secrets in the `restore` environment, read-write on the live bucket, with the environment restricted to deployments from `main`; see [Where your notes live](#where-your-notes-live) — the run refuses without them |
-| `LIVE_R2_ACCOUNT_ID`, `LIVE_R2_ACCESS_KEY_ID`, `LIVE_R2_SECRET_ACCESS_KEY`, `DUMPS_R2_ACCESS_KEY_ID`, `DUMPS_R2_SECRET_ACCESS_KEY`, `MIRROR_R2_ACCOUNT_ID`, `MIRROR_R2_ACCESS_KEY_ID`, `MIRROR_R2_SECRET_ACCESS_KEY`, `D1_EXPORT_API_TOKEN` | the nightly mirror to a second Cloudflare account | GitHub secrets, with `BACKUPS_BUCKET` as a variable; the live key read-only, the R2 keys scoped to one bucket each, the D1 token D1 Read and Edit on the account, since the export endpoint refuses Read alone and needs no bucket; see [Where your notes live](#where-your-notes-live) — the job skips itself without them |
+| `CLOUDFLARE_WORKERS_SUBDOMAIN`, `DEV_BETTER_AUTH_SECRET`, `DEV_ALLOWED_EMAILS` | a dev instance and PR previews of your own | GitHub; see [The dev instance](#the-dev-instance); every job skips itself without them |
+| `RESTORE_R2_ACCESS_KEY_ID`, `RESTORE_R2_SECRET_ACCESS_KEY` | putting one account's files back from the mirror | GitHub secrets in the `restore` environment, read-write on the live bucket, with the environment restricted to deployments from `main`; see [Where your notes live](#where-your-notes-live); the run refuses without them |
+| `LIVE_R2_ACCOUNT_ID`, `LIVE_R2_ACCESS_KEY_ID`, `LIVE_R2_SECRET_ACCESS_KEY`, `DUMPS_R2_ACCESS_KEY_ID`, `DUMPS_R2_SECRET_ACCESS_KEY`, `MIRROR_R2_ACCOUNT_ID`, `MIRROR_R2_ACCESS_KEY_ID`, `MIRROR_R2_SECRET_ACCESS_KEY`, `D1_EXPORT_API_TOKEN` | the nightly mirror to a second Cloudflare account | GitHub secrets, with `BACKUPS_BUCKET` as a variable; the live key read-only, the R2 keys scoped to one bucket each, the D1 token D1 Read and Edit on the account, since the export endpoint refuses Read alone and needs no bucket; see [Where your notes live](#where-your-notes-live); the job skips itself without them |
 
-The one thing that *would* work by accident is who the legal documents name — a fork that
+The one thing that *would* work by accident is who the legal documents name: a fork that
 deployed the file unchanged would otherwise publish somebody else's legal entity. That is why
 it is configured outside the file entirely, as the next section describes.
 
@@ -273,7 +273,7 @@ sets none of them.
 
 Each pair is both-or-nothing, the same convention as an OAuth credential pair: a policy that
 names a company with no way to reach it is worse than one admitting there is none here. The
-external URLs win over the built-in documents when both are set — an operator who published
+external URLs win over the built-in documents when both are set: an operator who published
 their own is the one to believe.
 
 Two things in the built-in documents are not configurable: they say the service is hosted in
@@ -291,8 +291,8 @@ before the app opens: once, on a screen of its own, with both documents linked a
 in and signing up are the same press here, so the sign-in screen only gives notice; the
 agreement is the screen after it, and the Android and iOS apps reach it as the site. Someone
 who does not agree can still sign out, or export their notes and delete the account. The
-server holds the same line for the two ways a program gets a credential of its own —
-approving an OAuth client and approving a CLI's device code — which are refused to an
+server holds the same line for the two ways a program gets a credential of its own:
+approving an OAuth client and approving a CLI's device code, which are refused to an
 account that has not agreed, however they are called. Connections that already exist keep
 working.
 
@@ -314,7 +314,7 @@ pnpm exec wrangler secret put OPERATOR_NAME
 pnpm exec wrangler secret put OPERATOR_EMAIL
 ```
 
-Neither value is confidential — both are printed on a public page — but set them as
+Neither value is confidential (both are printed on a public page), but set them as
 secrets all the same, from here or as the Secret type in the dashboard. A plain text
 variable added in the dashboard is gone after the next deploy, which replaces plain
 variables with the file's; a secret is kept. What matters otherwise is only that they stay
@@ -329,22 +329,22 @@ previews of its own would otherwise publish this repository's operator on them.
 
 ### Page statistics
 
-Cloudflare Web Analytics, which is free, sets no cookie and assigns no identifier — the
+Cloudflare Web Analytics, which is free, sets no cookie and assigns no identifier: the
 reason the privacy policy can describe it as aggregate and anonymous and still promise
 nothing follows you between sites.
 
 There is nothing in this repo to configure it. Cloudflare injects the beacon itself, from
 Web Analytics in the dashboard, under the site's Real User Measurements setting.
 
-That is deliberate rather than the path of least resistance. Injecting it ourselves — a
-build-time token, a Vite plugin, a GitHub secret — was written and then thrown away, because
+That is deliberate rather than the path of least resistance. Injecting it ourselves (a
+build-time token, a Vite plugin, a GitHub secret) was written and then thrown away, because
 the dashboard offers **Enable, excluding visitor data in the EU**, which skips the beacon
 entirely for visitors from the EU. A tag in our own `index.html` cannot do that; it would
 load for everyone and leave us arguing that cookieless analytics needs no consent. Not
 collecting it at all is the better answer, and it costs a setting rather than code.
 
 The trade is that European visitors are missing from the numbers, and that the setting lives
-in the dashboard where nothing here can see it — a beacon that stops appearing is a change
+in the dashboard where nothing here can see it: a beacon that stops appearing is a change
 somebody made there, not a regression to look for in a build. Both are worth it for having
 no token to lose.
 
@@ -354,7 +354,7 @@ than as a count of anybody.
 ### Errors in the browser
 
 A thrown exception in the page POSTs itself to `/api/client-errors`, which logs one line
-into the Worker's own logs — `wrangler tail` live, or Workers Logs in the dashboard, where
+into the Worker's own logs: `wrangler tail` live, or Workers Logs in the dashboard, where
 it is searchable for three days on the free plan.
 
 It exists because of the Android app. The app is this site in a WebView, so a
@@ -377,7 +377,7 @@ What changed is not the judgement but who pays for it. `POSTHOG_KEY` adds PostHo
 second destination on the instance that sets it, and on no other: the SDK is imported
 dynamically, so an instance without a key never downloads it, and the privacy policy is
 built from the same config, so its policy does not mention a service it never contacts. The
-first-party log stays unconditional either way — it is the one destination that works with
+first-party log stays unconditional either way: it is the one destination that works with
 nothing configured, and an error thrown before anything else has loaded is already in it.
 
 Errors only. Page views stay with the hosting provider above, which sets no cookie and
@@ -391,7 +391,7 @@ cd apps/api
 pnpm exec wrangler secret put POSTHOG_KEY
 ```
 
-The token is public and write-only — it ships in the page — and is a secret here only to
+The token is public and write-only (it ships in the page) and is a secret here only to
 keep one fewer credential in a repository people fork. `POSTHOG_HOST` sets the region;
 unset means PostHog's US cloud, and the hosts the SDK needs are derived from it.
 
@@ -400,7 +400,7 @@ Two things to set in the PostHog project, neither of which this repository can d
 - **Cookieless server hash mode**, under Project settings → Web analytics. `cookieless_mode`
   needs it; with it off, events are dropped server-side and nothing in the browser says so.
 - **Discard client IP data**, if you want it. Worth checking against the cookieless hash,
-  which is computed from the address at ingestion — confirm in the UI that the two coexist
+  which is computed from the address at ingestion: confirm in the UI that the two coexist
   before relying on both, and say what is true in the policy either way.
 
 Reports travel through `/ingest/*` on this origin rather than to `posthog.com`, because a
@@ -411,7 +411,7 @@ in every environment or the SPA fallback answers it with `index.html`.
 
 Source maps are uploaded on release, without which every stack reads
 `index-CDkkheec.js:1:48213`. That needs `POSTHOG_CLI_API_KEY` and `POSTHOG_CLI_PROJECT_ID`
-as GitHub secrets — or exported locally before `pnpm release` — and is skipped silently
+as GitHub secrets (or exported locally before `pnpm release`) and is skipped silently
 when they are absent.
 
 The free tier is 100,000 exceptions a month and stops rather than bills. The reporter's own
@@ -422,7 +422,7 @@ reports, not five thousand.
 shadows any script of that name; a `deploy` script does exist, migrations then release, for
 deploy flows that look for one by that name, and is reached as `pnpm run deploy`. The first
 deploy has to happen before the secrets below: they attach to a Worker, and `wrangler secret
-put` fails until one exists — which is why the very first one carries `BETTER_AUTH_SECRET`
+put` fails until one exists, which is why the very first one carries `BETTER_AUTH_SECRET`
 in a secrets file, as [Running your own instance](#from-your-laptop) shows.
 
 Past this first setup neither command is routine. `.github/workflows/web.yml` runs both on
@@ -448,13 +448,13 @@ pnpm exec wrangler secret put POSTHOG_KEY          # optional, error tracking
 
 `RESEND_API_KEY` and `EMAIL_FROM` are what make password reset work. Without both, a reset
 link is written to the Worker log instead of being sent, which is right for local
-development and useless in production — anyone who forgets a password would have no way
+development and useless in production: anyone who forgets a password would have no way
 back to their notes.
 
 `ALLOWED_EMAILS` is what keeps a public URL from becoming a free notes host: without it,
 anyone who can satisfy any enabled sign-in method can create an account. It is a secret
 rather than a var only to keep the address list out of the repo. Leaving it empty is
-allowed — an instance is not locked to its operator — but a deployed Worker with no
+allowed (an instance is not locked to its operator) but a deployed Worker with no
 allowlist warns in its log, naming what a stranger could sign up with.
 
 An instance that means to be public says so with `PUBLIC_SIGNUPS=1`, which silences that
@@ -464,7 +464,7 @@ warning and nothing else:
 pnpm exec wrangler secret put PUBLIC_SIGNUPS       # 1, to mean it
 ```
 
-It opens nothing — an empty `ALLOWED_EMAILS` has already done that — so this is a record of
+It opens nothing (an empty `ALLOWED_EMAILS` has already done that), so this is a record of
 a decision rather than a switch. Without it the warning cannot tell an instance that chose
 to be public from one that forgot its allowlist, and on the first of those it becomes a
 recurring line about something already settled, which is how a log line stops being read.
@@ -476,8 +476,8 @@ recurring line about something already settled, which is how a log line stops be
 It runs on the `unbent-dev` D1 and the `unbent-dev-blobs` bucket that every preview also
 uses, so accounts, sessions and files are one scratch set across all of them, and the
 previews bind its note stores too (see [Preview deployments](#preview-deployments)), so a
-note is one set across all of them as well. `pnpm seed:demo` is local only — it signs up a
-password written into the script — so there is no seeding either of them; they hold
+note is one set across all of them as well. `pnpm seed:demo` is local only: it signs up a
+password written into the script, so there is no seeding either of them; they hold
 whatever was made there.
 
 It exists because a preview cannot be a stable host, and several things need one:
@@ -491,11 +491,11 @@ It exists because a preview cannot be a stable host, and several things need one
   had nothing to point at that was neither production nor gone by morning.
 
 Before it, production was the only instance anywhere with a hostname stable enough to prove
-a sign-in flow against — which is a poor place to find out that one does not work.
+a sign-in flow against, which is a poor place to find out that one does not work.
 
 It is not staging, and should not be treated as one. Nothing in it is backed up, every
 preview writes to the same control-plane database, and a PR's D1 migration lands there
-before the PR merges — so the dev instance can be briefly wrong for the code `main` is
+before the PR merges, so the dev instance can be briefly wrong for the code `main` is
 running. That is the same sharp edge previews have, with the same fix. A change to the note
 store's schema has no such edge: it is applied per object, on each object's next wake,
 by whichever Worker owns the object.
@@ -508,12 +508,12 @@ and extraction is the half of an import that differs most between the two.
 
 The [preview sign-in relay](#preview-deployments) bounces to the dev instance for OAuth, so
 the relay is only useful if the dev instance can sign in with Google. Two `DEV_GOOGLE_*`
-repository secrets configure it, mapped to the plain `GOOGLE_*` names the Worker reads — the
+repository secrets configure it, mapped to the plain `GOOGLE_*` names the Worker reads: the
 `DEV_` prefix so the dev instance can use a separate OAuth client from production, the way
 `DEV_BETTER_AUTH_SECRET` already does. Both or neither: a lone client id with no secret is
 not a working provider, so the deploy sends them only as a pair.
 
-The OAuth client — whichever one these secrets name — has to list the dev instance, since a
+The OAuth client, whichever one these secrets name, has to list the dev instance, since a
 callback is matched exactly:
 
 - Authorized redirect URI: `https://dev.unbent.app/api/auth/callback/google`
@@ -549,21 +549,21 @@ fails; that is the certificate still being issued, not a misconfiguration.
 | If the deploy fails with | The cause is |
 | --- | --- |
 | an authentication error, code 10000 | the token is missing DNS:Edit or Workers Routes:Edit on the zone |
-| a record already existing for `dev` | something else in the zone owns that name — delete it in the dashboard and redeploy |
+| a record already existing for `dev` | something else in the zone owns that name: delete it in the dashboard and redeploy |
 | the zone not being found | `unbent.app` is on another account, or another registrar entirely |
 
 If the zone is not on Cloudflare, or you would rather wrangler did not touch DNS: delete the
 `[[env.dev.routes]]` block, set `workers_dev = true`, and point `APP_URL` at
 `https://unbent-dev.<subdomain>.workers.dev`. A standing Worker's workers.dev URL is stable
-too, so OAuth, passkeys and mail all still work against it — only the name is uglier.
+too, so OAuth, passkeys and mail all still work against it: only the name is uglier.
 
 To point the Android app at it, put the host in App settings; `Prefs.instance` is per-origin,
 so the production session is kept rather than overwritten, and switching back finds it.
 
 ### Preview deployments
 
-Every pull request that touches the web app or the API gets a URL of its own —
-`https://unbent-pr-<N>.<subdomain>.workers.dev` — where the branch can be used rather than
+Every pull request that touches the web app or the API gets a URL of its own,
+`https://unbent-pr-<N>.<subdomain>.workers.dev`, where the branch can be used rather than
 read. `.github/workflows/previews.yml` deploys it on each push to the PR and deletes it when the
 PR closes, and posts the URL as a comment it edits in place on every push.
 
@@ -577,12 +577,12 @@ origin. That is why the Worker and its `APP_URL` are per PR.
 The data underneath is not. All previews share the `unbent-dev` D1, the `unbent-dev-blobs`
 bucket and the dev instance's note stores, configured as `[env.preview]` in
 `apps/api/wrangler.toml` and served with a stable hostname by [the dev
-instance](#the-dev-instance) above — kept well away from production but not from each
+instance](#the-dev-instance) above, kept well away from production but not from each
 other. Accounts, sessions and notes made on one preview are therefore on every other and on
 `dev.unbent.app`. It is a scratch environment, and nothing in it is backed up.
 
 The stores are shared by binding the `UserStore` class the `unbent-dev` Worker exports,
-and a Durable Object runs the code of the Worker that exports it — so a preview reading
+and a Durable Object runs the code of the Worker that exports it, so a preview reading
 dev's stores runs `main`'s note queries, whatever the PR changed. A PR that touches
 `apps/api/src/store/` therefore gets stores of its own instead: the workflow deploys it
 without that binding and with `PREVIEW_OWN_STORES=1`, so its own store code is what
@@ -602,13 +602,13 @@ hostname it claims, so a route here would be taken over by whichever preview dep
 
 Sign-in on a preview leans on the dev instance, through the **preview sign-in relay**. A
 callback URL still cannot be registered for a host that changes every PR, so a preview
-cannot run OAuth itself — but it does not have to. Its login screen shows **Continue on the
+cannot run OAuth itself, but it does not have to. Its login screen shows **Continue on the
 dev instance**, which sends the browser to `dev.unbent.app`, signs in there with Google (or
 whatever the dev instance offers), and comes back with a one-time token the preview redeems
 for a session of its own. It works because a preview and the dev instance share the
 `unbent-dev` database, so a session minted on one is valid on the other, and because the
 token is handed only to a host that matches `unbent-pr-<N>.<subdomain>.workers.dev` on the
-configured subdomain — the check in `apps/api/src/lib/preview-relay.ts`, which is why the
+configured subdomain: the check in `apps/api/src/lib/preview-relay.ts`, which is why the
 dev deploy is given `PREVIEW_RELAY_SUBDOMAIN` and the preview deploy `PREVIEW_RELAY_ORIGIN`.
 
 The session is shared rather than copied: redeeming the token sets the *dev instance's own*
@@ -616,14 +616,14 @@ session token as the preview's cookie, so the two hold one session between them.
 on either signs you out of both, and the preview's session expires when dev's does. That is
 a fair trade for a scratch environment, but it is surprising the first time it happens.
 
-A password with an allowlisted address still works too — the default any instance falls
-back to, as ["Choosing sign-in methods"](#choosing-sign-in-methods) describes — as do
+A password with an allowlisted address still works too (the default any instance falls
+back to, as ["Choosing sign-in methods"](#choosing-sign-in-methods) describes), as do
 passkeys, each bound to the one preview host it was created on. The relay is the fast path;
 these are the ones that need no round trip.
 
 D1 migrations are the sharp edge. A PR that adds one applies it to the shared database on
 its first preview deploy, and nothing rolls it back when the PR is abandoned. Wrangler tracks
-what it has applied by filename, so the stale file is simply never reconsidered — but its
+what it has applied by filename, so the stale file is simply never reconsidered, but its
 schema change stays, and the next migration written against a schema that does not have it
 fails on the preview while passing everywhere else. It reaches `dev.unbent.app` too, which
 runs `main` against whatever schema the last preview left. The fix is to recreate the
@@ -648,15 +648,15 @@ summary rather than failing.
 | `DEV_ALLOWED_EMAILS` | secret | who may sign in to a preview or the dev instance |
 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | secret | the same pair production deploys with, needing D1 and R2 edit scopes, plus the DNS scope [the dev instance](#dns-for-devunbentapp) describes |
 | `DEV_INSTANCE_ORIGIN` | variable, optional | where a preview's sign-in relay sends people; defaults to `https://dev.unbent.app`. Set it only if your dev instance has a different name |
-| `PREVIEW_OPERATOR_NAME`, `PREVIEW_OPERATOR_EMAIL` | variable, optional | who runs the previews, sent as their `OPERATOR_NAME` and `OPERATOR_EMAIL`, so their front page has the built-in terms and privacy policy beside its price; both or neither, and unset a preview publishes no documents — see [Who runs this instance](#who-runs-this-instance) |
-| `DEV_GOOGLE_CLIENT_ID`, `DEV_GOOGLE_CLIENT_SECRET` | secret, optional | Google on the dev instance, so the relay can sign in with it; both or neither, and the client must list `dev.unbent.app` — see [Google on the dev instance](#google-on-the-dev-instance) |
-| `DEV_TYPESAFE_API_KEY` | secret, optional | Auto-fill on the dev instance and every preview; a key of its own, so what they spend stays apart from production's — see [Filing a note from what it says](#filing-a-note-from-what-it-says) |
-| `DEV_ANTHROPIC_API_KEY` | secret, optional | Auto-fill's language model on the dev instance and every preview; a key of its own, for the same reason — see [Reading images](#reading-images) |
+| `PREVIEW_OPERATOR_NAME`, `PREVIEW_OPERATOR_EMAIL` | variable, optional | who runs the previews, sent as their `OPERATOR_NAME` and `OPERATOR_EMAIL`, so their front page has the built-in terms and privacy policy beside its price; both or neither, and unset a preview publishes no documents; see [Who runs this instance](#who-runs-this-instance) |
+| `DEV_GOOGLE_CLIENT_ID`, `DEV_GOOGLE_CLIENT_SECRET` | secret, optional | Google on the dev instance, so the relay can sign in with it; both or neither, and the client must list `dev.unbent.app`; see [Google on the dev instance](#google-on-the-dev-instance) |
+| `DEV_TYPESAFE_API_KEY` | secret, optional | Auto-fill on the dev instance and every preview; a key of its own, so what they spend stays apart from production's; see [Filing a note from what it says](#filing-a-note-from-what-it-says) |
+| `DEV_ANTHROPIC_API_KEY` | secret, optional | Auto-fill's language model on the dev instance and every preview; a key of its own, for the same reason; see [Reading images](#reading-images) |
 | `DEV_OPERATOR_EMAILS` | secret, optional | who is an operator on the dev instance and every preview, sent as their `OPERATOR_EMAILS`. Not implied by `DEV_ALLOWED_EMAILS`; unset, nobody is, and anything operator-only cannot be tried outside production. Removing it later leaves the dev instance's last list in place until `wrangler secret delete OPERATOR_EMAILS --env dev` |
 | `DEV_SWEEP_TOKEN` | secret, optional | the dev instance's `SWEEP_TOKEN`, so its deploy ends with a sweep of its note stores as production's does; its own value, not production's. Previews get none and never sweep |
 
 The subdomain is a variable rather than a secret because the workflow has to build the URL
-before deploying — `APP_URL` is baked in at deploy time — and a masked value would arrive
+before deploying (`APP_URL` is baked in at deploy time) and a masked value would arrive
 in the PR comment as `***`. It doubles as the dev instance's `PREVIEW_RELAY_SUBDOMAIN`, the
 allowlist its end of the sign-in relay checks a preview's return origin against.
 
@@ -666,7 +666,7 @@ nothing to deploy with; the job skips rather than failing halfway.
 ### Choosing sign-in methods
 
 Nothing here is compiled in. An instance decides what it offers through its environment,
-and `GET /api/config` reports the result — the web app and the Android app both draw their
+and `GET /api/config` reports the result: the web app and the Android app both draw their
 sign-in screens from that, so a method that is not configured is never shown.
 
 **Configure nothing and you get a password and a passkey.** Every instance can be signed in
@@ -683,7 +683,7 @@ never what gets you in the first time, and a code by email needs somewhere to se
 | Passkeys | always | `AUTH_PASSKEY=0` |
 
 The password row is the floor. It appears on an instance with no OAuth and no mail, and
-withdraws as soon as either arrives — so a self-hoster who configures nothing still gets in,
+withdraws as soon as either arrives, so a self-hoster who configures nothing still gets in,
 and unbent.app, which has providers, never sees it. `AUTH_PASSWORD=1` asks for a password
 *alongside* a configured provider; `AUTH_PASSWORD=0` refuses the floor, and is the one
 setting here that can leave nobody a way in.
@@ -693,8 +693,8 @@ An instance that accepts a sign-up from anyone says so in its log: deployed with
 `PUBLIC_SIGNUPS=1` to say the open door is deliberate and stop the warning; who may sign up
 is unchanged either way.
 
-The OAuth row means any of the thirty-five providers Better Auth ships — Apple, Discord,
-Microsoft, Slack, GitLab and the rest — not a list this repository maintains. Enabling one
+The OAuth row means any of the thirty-five providers Better Auth ships (Apple, Discord,
+Microsoft, Slack, GitLab and the rest), not a list this repository maintains. Enabling one
 is two secrets and no code:
 
 ```bash
@@ -723,7 +723,7 @@ The consequence is worth stating plainly, because enabling a provider is now one
 **A provider that will assert `email_verified` for an address its user does not own can be
 used to reach an existing account at that address.** Google and GitHub do not do this.
 Providers where the address is user-settable, or that were built for a single organisation
-and assume the operator controls the directory, historically have — this is the "nOAuth"
+and assume the operator controls the directory, historically have: this is the "nOAuth"
 class of bug, and it is a property of the identity provider rather than of this code.
 
 So: enable providers you would be willing to let someone sign in as. If you enable one you
@@ -735,7 +735,7 @@ account: { accountLinking: { disableImplicitLinking: true } },
 
 Accounts then link only when someone explicitly asks while already signed in, and a second
 provider on an existing address is refused rather than merged. It is the safer setting and
-the more annoying one — someone who signed up with Google and then presses Discord is told
+the more annoying one: someone who signed up with Google and then presses Discord is told
 the account is not linked instead of being let in.
 
 `ALLOWED_EMAILS` narrows this considerably on a closed instance: an address that cannot
@@ -743,14 +743,14 @@ create an account cannot be linked into one either.
 
 Two things to know before removing a provider people already use. An account whose only
 credential is that provider loses its way in, so check before deleting. And deploy the
-replacement first — a secret deletion takes effect immediately, while new code does not.
+replacement first: a secret deletion takes effect immediately, while new code does not.
 
 OAuth callbacks have to be registered against the real origin before anyone can sign in,
 including you:
 
 - Google: `https://unbent.app/api/auth/callback/google`
 - GitHub: `https://unbent.app/api/auth/callback/github`
-- Apple: `https://unbent.app/api/auth/callback/apple`, on the Services ID — see below
+- Apple: `https://unbent.app/api/auth/callback/apple`, on the Services ID (see below)
 
 Then deploy again so the Worker picks up the secrets. `custom_domain = true` means
 Cloudflare creates and manages the DNS record and certificate, so there is nothing to add
@@ -763,8 +763,8 @@ pnpm release
 #### Sign in with Apple
 
 Apple is the one provider whose secret is not a value it hands you. `APPLE_CLIENT_ID` is a
-**Services ID** — an identifier you create on the developer portal, with Sign in with Apple
-enabled and the callback above as its return URL — and `APPLE_CLIENT_SECRET` is a JWT you
+**Services ID** (an identifier you create on the developer portal, with Sign in with Apple
+enabled and the callback above as its return URL) and `APPLE_CLIENT_SECRET` is a JWT you
 sign with a Sign in with Apple key, which Apple refuses once it is more than six months
 old. `scripts/apple-client-secret.mjs` makes one from the team id, the key id and the
 `.p8`, and pipes it into wrangler without printing it:
@@ -776,7 +776,7 @@ node scripts/apple-client-secret.mjs --team TEAMID --key-id KEYID \
 ```
 
 It prints the expiry date; put a reminder a week before it. A lapsed secret breaks only the
-web Apple button, at the code exchange, while every other way in keeps working — which is
+web Apple button, at the code exchange, while every other way in keeps working, which is
 why it goes unnoticed. Generating the token in the Worker from the key itself would retire
 the reminder, and is left for later.
 
@@ -798,7 +798,7 @@ not offered, so local development works with none of them set.
 Password sign-in exists for self-hosted instances: OAuth needs a callback URL registered
 with each provider per deployment, which cannot be done on anyone else's behalf, while a
 password works anywhere. It is offered by default only where nothing else could create an
-account, so unbent.app — which has providers — does not show it. `ALLOWED_EMAILS` gates
+account, so unbent.app, which has providers, does not show it. `ALLOWED_EMAILS` gates
 account creation whatever the method. See [Choosing sign-in
 methods](#choosing-sign-in-methods).
 
@@ -812,12 +812,12 @@ Sessions are cookie-based and same-origin. Better Auth enforces CSRF by requirin
 
 Unbent is an [MCP](https://modelcontextprotocol.io) server, so Claude, Cursor, ChatGPT or
 anything else that speaks the protocol can work with your notes directly. The server URL is
-`https://unbent.app/api/mcp` — no trailing slash, and no API key to copy anywhere.
+`https://unbent.app/api/mcp`: no trailing slash, and no API key to copy anywhere.
 
 Connecting runs the ordinary OAuth flow: the client registers itself, a browser opens on the
 consent screen, and approving it hands the client a token of its own. The tools cover
-search and list, reading a note in full, create, edit, tag, move, trash and restore — create
-and the last four for several notes at once — attaching a file, and notebook management. Note bodies are Markdown and pass whole in both
+search and list, reading a note in full, create, edit, tag, move, trash and restore (create
+and the last four for several notes at once), attaching a file, and notebook management. Note bodies are Markdown and pass whole in both
 directions, so an assistant writes a complete note in one call.
 
 Three are worth knowing about:
@@ -829,14 +829,14 @@ Three are worth knowing about:
   what makes a scanned bill answerable; what the vision model read off a picture or a
   text-less scan when someone pressed Auto-fill on its note; or what an assistant recorded
   itself. A picture nothing has read yet is reported as waiting, and no tool makes the
-  instance's model read it — that runs only inside a press (MAK-179). Instead
+  instance's model read it: that runs only inside a press (MAK-179). Instead
   **`get_attachment`** hands the assistant the picture itself, as an image under about 3.7 MB, to
   read with its own model on its own bill, and **`set_attachment_text`** records what it
   read, marked `assistant`, so search and the summaries have it. It may fill a file that
   has no text, an empty row or its own earlier words, and never a text layer or the model's
   reading; the next Auto-fill press on the note has the model read the file itself and
-  replaces it. See [Searching inside PDFs](#searching-inside-pdfs). Before any of that, `get_note` —
-  and `list_notes` or `search_notes` with `attachmentSummaries` — already give each file a
+  replaces it. See [Searching inside PDFs](#searching-inside-pdfs). Before any of that, `get_note`
+  (and `list_notes` or `search_notes` with `attachmentSummaries`) already give each file a
   line of what it is: the vision model's name and description for a picture or a text-less
   scan; for a text layer, its opening and then the total, dates, order number and amounts
   found in it by pattern, so a receipt's total at the foot of the page is in the line; or
@@ -849,13 +849,13 @@ Three are worth knowing about:
   a receipt's merchant and total are in, rather than the pages of terms after it. A cut
   answer says how long the whole text is, and `offset` reads on from where it stopped.
 - **`add_attachment`** takes a URL, not bytes. A tool call is JSON the model writes token by
-  token, so a file cannot ride in one — a scan as base64 is millions of characters, past
+  token, so a file cannot ride in one: a scan as base64 is millions of characters, past
   what any client carries. What an assistant can hand over is the download link another
   system gave it when it read the page (a signed URL, typically good for an hour), and the
   Worker fetches that itself and stores the result exactly as an upload from the editor.
   The reply carries the filename it was stored under and the Markdown that shows it, which
-  is appended to the note unless the assistant asks to place it. A file with no link — one
-  on the assistant's own disk, or a screenshot in its sandbox — goes the other way:
+  is appended to the note unless the assistant asks to place it. A file with no link (one
+  on the assistant's own disk, or a screenshot in its sandbox) goes the other way:
   **`prepare_attachment_upload`** hands back a one-time URL, and the assistant's shell
   sends the bytes there with `curl -T`. The reply to that request is the same as
   `add_attachment`'s. The link works once, for one note, for half an hour, and needs no
@@ -870,7 +870,7 @@ create and change notes, and move them to the trash, from then on and without as
 Settings › Connected apps lists what is connected and disconnects any of it; disconnecting
 deletes the app's tokens, and the endpoint checks the grant on every call, so access ends
 rather than lingering until a token expires. There is deliberately no tool that deletes
-permanently — the trash is as far as an assistant can go. And what an assistant's edit
+permanently: the trash is as far as an assistant can go. And what an assistant's edit
 replaces is kept: see [Undoing an edit](#undoing-an-edit).
 
 Client registration is open, because clients register themselves at connect time and there
@@ -881,7 +881,7 @@ so the table cannot grow quickly. A public client whose redirects are all `http:
 MCP SDK does not; one that keeps a secret and redirects to this machine is refused with a
 message saying to register it as native.
 
-Locally, point the client at the **SPA** origin rather than the Worker's — the port
+Locally, point the client at the **SPA** origin rather than the Worker's: the port
 `pnpm dev` prints first. Tokens are bound to the MCP endpoint's URL as their audience, and
 that URL is built from `APP_URL`.
 
@@ -889,7 +889,7 @@ that URL is built from `APP_URL`.
 
 **The goal is WYSIWYG.** Bold looks bold, headings are sized, task lists get real
 checkboxes, attachment images render inline, and tables are edited with buttons rather
-than by hand. Markdown is the storage format, not the interface — nobody should have to
+than by hand. Markdown is the storage format, not the interface: nobody should have to
 count pipe characters to add a column.
 
 What we will not do is get there the usual way.
@@ -911,8 +911,8 @@ So the real constraint is narrower than "no WYSIWYG":
 > **The document text is the only source of truth, and every edit is an ordinary text edit
 > the user could have typed by hand.**
 
-WYSIWYG *behavior* is entirely compatible with that. WYSIWYG *architecture* — a parallel
-document model that owns the truth — is not.
+WYSIWYG *behavior* is entirely compatible with that. WYSIWYG *architecture*, a parallel
+document model that owns the truth, is not.
 
 ### How it works instead
 
@@ -926,7 +926,7 @@ Every affordance is built on top of that rather than around it:
 - A toolbar and the usual shortcuts (⌘B, ⌘I, ⌘K, ⌘⌥1) apply formatting as text edits.
 - Tab and Shift-Tab indent and outdent list items; outside a list Tab moves focus as
   usual, so the editor is never a keyboard trap.
-- Tables get a toolbar anchored to the table the cursor is in — insert and delete rows and
+- Tables get a toolbar anchored to the table the cursor is in: insert and delete rows and
   columns, set column alignment, and a grid size picker for creating one. Restructuring a
   Markdown table by hand means editing every row plus the delimiter, so the tedious
   operations get buttons; each one is still a plain edit through
@@ -944,7 +944,7 @@ not, however convenient that would be.
 
 Rendering uses GFM (tables, task lists, strikethrough, autolinks) plus soft line breaks:
 a single newline is a line break, not a space. CommonMark folds lone newlines into spaces,
-which turns a note written as separate lines into one run-on paragraph — pressing Enter in
+which turns a note written as separate lines into one run-on paragraph: pressing Enter in
 a notes app should start a new line. Soft breaks are not part of GFM itself; they are a
 separate remark plugin.
 
@@ -960,7 +960,7 @@ external-content (`content='notes'`), so it references the notes table rather th
 a second copy of every body.
 
 Rows must be removed from the index with FTS5's `'delete'` command carrying the old column
-values. A plain `DELETE FROM notes_fts` does not error — it silently corrupts the index,
+values. A plain `DELETE FROM notes_fts` does not error: it silently corrupts the index,
 and the damage surfaces later as edited or deleted notes still matching their old text.
 `test/search.test.ts` asserts this directly; introducing the plain-DELETE form makes three
 of those tests fail.
@@ -970,7 +970,7 @@ To rebuild the index from scratch: `INSERT INTO notes_fts(notes_fts) VALUES('reb
 ### Filtering and sorting
 
 Search takes the same `tag`, `notebook`, `from`, and `to` filters as the note list, so
-typing a query narrows the current view instead of escaping it — with a notebook selected,
+typing a query narrows the current view instead of escaping it: with a notebook selected,
 "insurance" means "insurance in here". The clauses are shared by `list`, `count`, and
 `search` through one helper so a filter cannot come to mean two different things, and they
 apply inside both search CTEs: the note index and the attachment-text index each join
@@ -980,7 +980,7 @@ The list is ordered by `sort` (updated, created, title) and `order`. Search is n
 come back ranked by relevance, and reordering them by date discards the ranking that makes
 them worth showing, so the sort control is hidden while searching.
 
-Sorting and keyset pagination have to agree — the cursor compares against the column that
+Sorting and keyset pagination have to agree: the cursor compares against the column that
 ordered the query, so `SORTS` in `apps/api/src/lib/notes-repo.ts` pairs each sort with its
 column and its cursor rather than leaving the route to know which is which. The cursor also
 carries the row id, because comparing the sort key alone is only safe when it is unique and
@@ -988,14 +988,14 @@ titles are not: an archive is full of notes called "Receipt", and paging nine id
 titled notes returns four without the tiebreak.
 
 Date bounds are `YYYY-MM-DD`, inclusive at both ends, read in UTC to match the epoch-ms
-columns. The range filters the date the sort's rows show — updated or created, and updated
-under the title sort, which has no date of its own — so the filter and the row always mean
+columns. The range filters the date the sort's rows show (updated or created, and updated
+under the title sort, which has no date of its own) so the filter and the row always mean
 the same date; search, having no sort, filters on `created_at`.
 
 ### Acting on several notes
 
 The list has a selection, in the shape people arrive with from Evernote. Cmd/Ctrl-click
-toggles a note into it — the open note comes along with the first — and Shift-click selects
+toggles a note into it (the open note comes along with the first) and Shift-click selects
 a run from the last one picked (or from the open note); on a touch screen a finger resting on a note for half a second selects it, and
 while anything is selected a tap toggles notes rather than opening them. Space picks the
 focused note, Cmd/Ctrl+A picks every loaded note, Escape clears. The table view has a
@@ -1003,7 +1003,7 @@ column of checkboxes with a select-all in its header as well. A bar floats up ov
 of the screen with the count and the actions: move to a notebook (an existing one, or a
 name that makes a new one), add or take away tags, delete. In the trash the same selection
 restores or permanently deletes. Opening a note or changing the filters drops the
-selection, so an action can never reach notes that are out of view — and Select all reaches
+selection, so an action can never reach notes that are out of view, and Select all reaches
 what is loaded, not what the filter would match.
 
 The API is `PATCH /api/notes` with `{ ids, notebook?, addTags?, removeTags? }`, and
@@ -1014,13 +1014,13 @@ are counted out rather than failing the request. Up to 500 ids per call.
 
 ## Searching inside PDFs
 
-Most notes in a real Evernote export are a scanned PDF with an empty body — in one notebook,
+Most notes in a real Evernote export are a scanned PDF with an empty body: in one notebook,
 90 of 108 sampled notes had zero body text. Searching note text alone would never find them.
 
 Evernote already ran OCR on those scans and embedded the text layer, so the import extracts
 it with pdf.js rather than re-OCRing: about 80% of real scans yield usable text, median ~8k
 characters. It lands in `attachment_text`, indexed by its own FTS5 table, and search unions
-both indexes — note matches rank above attachment matches, and a hit from a file reports
+both indexes: note matches rank above attachment matches, and a hit from a file reports
 which file it came from.
 
 Roughly a fifth of scans produce character noise instead of language (`> CO 5 I > — O —`).
@@ -1030,17 +1030,17 @@ Those are filtered out rather than indexed. Much of the usable text is letter-sp
 **When it runs.** The editor extracts text from a PDF the moment its upload returns, from the
 bytes already in hand, so a file dropped into a note is searchable seconds later. The Android
 app does the same for a capture by loading `/embed/index-files?note=…` in a WebView nobody
-sees — the site's own extractor, run by the phone for the one note it just made. And the
+sees: the site's own extractor, run by the phone for the one note it just made. And the
 app runs a pass over whatever is still pending each time it opens, so a file either of those
 missed is caught the next time anyone looks.
 
 **On the server, where it can.** unbent.app binds Workers AI, and the upload handler hands a
-PDF to its document conversion after the response is sent, then records the text itself — so
+PDF to its document conversion after the response is sent, then records the text itself, so
 every client gets a searchable PDF without doing anything, and the editor, the import and the
 phone skip their own extraction when the upload says `indexing: "server"`. The conversion
 reads the text layer, as pdf.js does; measured on fifty scans from a real export, the two agree
 on which files have text and which have none, with a median word overlap of 0.89. Its output
-opens with the file's metadata — PDF version, the scanner's name — which is stripped before
+opens with the file's metadata (PDF version, the scanner's name), which is stripped before
 indexing, or every scan from the same scanner would match a search for it. Files over 25MB, a
 deployment without the binding, and any failure fall back to the browser paths above; only a
 conversion that read the file and found nothing closes the row. The binding is on every deployed
@@ -1054,7 +1054,7 @@ not start flowing because a tab was opened on a phone. The sidebar says what it 
 "Index existing PDFs" on the Maintenance page is where that gets run.
 
 **Backfill.** Import is idempotent on content hash, so notes imported before extraction
-existed cannot be fixed by re-importing — they are skipped along with their attachments.
+existed cannot be fixed by re-importing: they are skipped along with their attachments.
 "Index existing PDFs" walks the gap instead, extracting text for any attachment that does
 not have it yet. `GET /api/attachments/pending-text` says what is still missing, scoped to
 one note with `?note=`, which is how the phone asks for its own capture and nothing else.
@@ -1075,16 +1075,16 @@ Locally, the same name in `apps/api/.dev.vars`; `DEV_ANTHROPIC_API_KEY` as a Git
 carries a separate key to the dev instance and previews. Without one, pictures have no text,
 as before, and nothing is sent anywhere.
 
-The model is asked for one fixed shape — a short name for the file, what kind of thing it is,
+The model is asked for one fixed shape (a short name for the file, what kind of thing it is,
 a sentence or two on what it shows and the facts someone filing it would want, and every
-legible word transcribed — and the whole of it becomes the file's text, in that order. The
+legible word transcribed) and the whole of it becomes the file's text, in that order. The
 same row search indexes and Auto-fill reads, so a photo of a card fills a Contacts notebook's
 fields the way a scan fills Receipts, and "lasagna" finds the plate. `get_attachment_text`
 over MCP returns it too.
 
 **When it runs: only when someone presses Auto-fill.** The press reads the note's own
-unread files first — its pictures, and a scan whose text layer turned out empty, whether
-the server's conversion found nothing or the browser's did — up to five at a press, with
+unread files first (its pictures, and a scan whose text layer turned out empty, whether
+the server's conversion found nothing or the browser's did), up to five at a press, with
 the rest reported as still waiting, and then suggests from what they say. That is the one
 place the instance calls the model to read a file, and the press is the person asking for
 it. Never for a PDF that has a text layer: the free reader goes first, and the paid one only
@@ -1092,8 +1092,8 @@ gets what it leaves. The bytes go to Anthropic and are not kept there; each file
 once, and a decline is recorded so it is not asked again.
 
 A picture nobody presses Auto-fill for stays unsearchable, and that is the trade, made in
-MAK-178. Until then every picture was read as it arrived — from the editor, the phone, an
-import or an assistant — and a bulk pass on the Maintenance page read the backlog: on a
+MAK-178. Until then every picture was read as it arrived (from the editor, the phone, an
+import or an assistant) and a bulk pass on the Maintenance page read the backlog: on a
 real archive thousands of paid requests nobody asked for, and every one of them a photo
 leaving the instance that its owner never chose to send. Cost that grows with uploads cannot
 be covered by a flat price, and a press is consent where an upload is not.
@@ -1106,13 +1106,13 @@ instance's model read the file and replaces them, and an assistant may never wri
 text layer or the model's reading. The instance calls no model for any of it, and the
 bytes go to the assistant the person connected, nowhere else.
 
-**Which model.** The model has three jobs inside a press — reading the files, writing the
+**Which model.** The model has three jobs inside a press: reading the files, writing the
 title, writing the text field values (see [Filing a note from what it
-says](#filing-a-note-from-what-it-says)) — and each has a variable: `ANTHROPIC_READ_MODEL`,
+says](#filing-a-note-from-what-it-says)), and each has a variable: `ANTHROPIC_READ_MODEL`,
 `ANTHROPIC_TITLE_MODEL` and `ANTHROPIC_FIELDS_MODEL`, each falling back to `ANTHROPIC_MODEL`
 and then to `claude-haiku-5-5`. The reading is the one whose cost grows with what you keep,
-so it was measured on forty-five hard files from a real archive — faded receipts, business
-cards, handwritten forms, scans with no text layer, a twenty-two-page lease — against an
+so it was measured on forty-five hard files from a real archive (faded receipts, business
+cards, handwritten forms, scans with no text layer, a twenty-two-page lease) against an
 answer key of 261 facts. Haiku 5.5 read 240 of 243 right; Sonnet 5.5 read every one of its
 236 and Opus 5.5 all but one. Every model read every phone number, email, merchant and
 total; the difference was one handwritten form, a word and a date. A read cost about 0.1¢ on Haiku, 1.6¢ on Sonnet and
@@ -1123,7 +1123,7 @@ those only copy words off a reading already made, and gained nothing from a bigg
 
 `ANTHROPIC_READ_EFFORT` is how hard the reading model thinks, `low` to `max`. Unset, the
 default model reads at `low`, which on the same sample tied `medium` and `high` on what it
-read and was the fastest and cheapest — thinking harder does not change what is on the page.
+read and was the fastest and cheapest: thinking harder does not change what is on the page.
 A model you name gets no effort unless you set one, and beside a Sonnet read you should set
 `low`: at its default effort its thinking alone fills the output budget on a long scan, and
 the read never finishes. The whole of it sits behind one interface in
@@ -1132,8 +1132,8 @@ keep images in place, is one more implementation of it.
 
 ## Filing a note from what it says
 
-A scan arrives as an untitled note in the Inbox holding one PDF, and filing it — a title, a
-notebook, tags, the amount and the date copied into the notebook's fields — is the same
+A scan arrives as an untitled note in the Inbox holding one PDF, and filing it (a title, a
+notebook, tags, the amount and the date copied into the notebook's fields) is the same
 minute of work for every one of thirteen thousand. **Auto-fill**, in a note's head, does that
 minute: it reads what the note and its files say and fills in whatever is empty, and asks
 before replacing anything already set. What it fills lands in the editor's draft like a
@@ -1151,7 +1151,7 @@ Locally, the same name in `apps/api/.dev.vars`. A key of its own for development
 usage apart from production's.
 
 **What is sent, on each press.** The note's title and body, the text already extracted from
-its PDFs (see [Searching inside PDFs](#searching-inside-pdfs) — a scan that has not been read
+its PDFs (see [Searching inside PDFs](#searching-inside-pdfs): a scan that has not been read
 yet is reported as such rather than guessed at, and a photograph's text is what the press
 itself reads first, where the instance [reads images](#reading-images)), and
 the names of your notebooks, tags and fields, with a few recent titles from each notebook and
@@ -1161,8 +1161,8 @@ button is pressed.
 **Why Jev.** It chooses rather than writes: the notebook, the tags and every select or
 checkbox are choices among things that already exist, so it cannot invent a notebook or
 misspell a tag, and each answer comes with a confidence. For free-form fields the code finds the
-candidates — every date the text writes for a date field, every amount for a number, the
-document's own lines for a text field — and the model picks one or says none of them. The
+candidates (every date the text writes for a date field, every amount for a number, the
+document's own lines for a text field) and the model picks one or says none of them. The
 title is written rather than chosen: where the instance has a language model, the same key
 that [reads images](#reading-images), it is asked for the title a careful person would give
 the note, and Jev's pick of the document's own lines stands where there is none. The same
@@ -1174,7 +1174,7 @@ it is always something the document actually says, and anything the model is uns
 left empty rather than guessed. Ratings are left alone: a document has no opinion to read.
 
 **What it costs, and the ceiling.** Every press is counted per account, and so is every
-token the language model is paid for inside one — by day, by job (reading a file, the
+token the language model is paid for inside one: by day, by job (reading a file, the
 title, the fields) and by model, since a token's price is the model's. Maintenance shows
 the account's presses and tokens for the year. A press is one request anyone signed in can
 send in a loop, so `AUTOFILL_DAILY_CAP` sets how many one account may make in a UTC day;
@@ -1185,22 +1185,22 @@ does. The Android app is the site in a WebView, so it has the same control.
 
 ## Your library on the device
 
-The installed app — and the Android app, which is the site in a WebView — opens with no
+The installed app (and the Android app, which is the site in a WebView) opens with no
 signal and works. A service worker keeps the app itself on the device, and your library
 lives there too: the notes, notebooks and tags of the signed-in account, in a SQLite file in
 the browser's private storage, copied from the server the first time you sign in on a device
 (a line across the top counts the notes as they arrive, and a copy interrupted by closing the
 app picks up where it stopped) and kept current by the change feed
-after — on open, when you come back to the tab, and the moment another device saves,
+after: on open, when you come back to the tab, and the moment another device saves,
 through a socket that says only that something changed. A warm open draws the list with no
 request at all. One tab or window holds the library file at a time, and every other tab
-of the same account works through it — reading the same copy, saving into the same queue,
-offline included — so nothing tells them apart. Settings → Offline says which tab holds
+of the same account works through it (reading the same copy, saving into the same queue,
+offline included) so nothing tells them apart. Settings → Offline says which tab holds
 the file and moves it to the one you are in with one press.
 
 Edits land on the device first. A note you write, make, file, tag, trash or restore with
-no connection is saved here at once — the note head says "Saved", with a small cloud
-beside it until the server has the note too — and goes to the server, in order, when the
+no connection is saved here at once (the note head says "Saved", with a small cloud
+beside it until the server has the note too) and goes to the server, in order, when the
 connection returns. A save that would overwrite
 an edit made on another device meanwhile is refused there and put to you as before: reload
 theirs, or keep yours on top of it. What needs the server now says so and waits:
@@ -1208,19 +1208,19 @@ Auto-fill, and the settings pages that manage notebooks, tags and fields. A lost
 is never taken for signing out.
 
 Search works without a connection too. The device keeps an index of its own beside the
-library — the same FTS5, stemmer and ranking the server uses, in the SQLite the library
-already runs in the browser — over
+library (the same FTS5, stemmer and ranking the server uses, in the SQLite the library
+already runs in the browser) over
 every note's title, body, tags and field values, and with no connection the search box asks
 it instead: the same results, the same filters. The text inside files is the exception. It
 is the largest thing an account stores after the files themselves, so a device holds it
 only for the notebooks it keeps offline and for the last five hundred notes opened on
 it (up to about 20 MB of text between them, newest first), and a line under the results says when a search was answered on the device and how many
-files' text it could not see — "No matches" offline should never be read as "not in your
+files' text it could not see: "No matches" offline should never be read as "not in your
 notes". When the connection returns the same search is asked of the server, and its answer
 replaces the device's in place.
 
 Files are the bulk of an archive, so they are on the device by choice rather than by
-default. A file you open is kept, within a budget — 500 MB, the ones opened longest ago
+default. A file you open is kept, within a budget: 500 MB, the ones opened longest ago
 going first. A notebook can be kept whole: its page offers **Keep offline**, says how big
 that is and how much room the device has before it starts, and from then on fetches the
 notebook's files, including ones added later from another device. A file added to a note
@@ -1238,22 +1238,22 @@ held to are in `apps/web/src/store/` and AGENTS.md.
 
 `pnpm --filter @unbent/api db:reset` rebuilds the local D1 from migrations and clears the
 local note stores, copying both into `.wrangler/backups/` first. Use it instead of removing
-the state directory by hand — that has no undo and has already cost one set of local notes.
+the state directory by hand: that has no undo and has already cost one set of local notes.
 The two go together: local notes live in Durable Objects under `.wrangler/state/v3/do/`,
 keyed by the user ids in D1, and resetting one without the other leaves ghost objects
-behind — notes with no account, or a fresh account whose first open finds an object already
+behind: notes with no account, or a fresh account whose first open finds an object already
 holding someone's earlier state.
 
 ## Undoing an edit
 
-The trash covers a note that was deleted. A note that was changed for the worse — a paste
+The trash covers a note that was deleted. A note that was changed for the worse (a paste
 over the wrong selection, an assistant's `edit_note` that replaced more than it was meant
-to, a batch that refiled the wrong forty notes — is covered by its history: **History** in
+to, a batch that refiled the wrong forty notes) is covered by its history: **History** in
 a note's ⋯ menu lists earlier versions, shows any of them as the note would read, shows
 what restoring it would change, and puts one back.
 
 A version is the note's title and body, and its notebook, tags and field values. In a
-notebook that is mostly fields — a watch list, a log, a set of business cards — the fields
+notebook that is mostly fields (a watch list, a log, a set of business cards), the fields
 are the note, and changing only those keeps a version like any other edit.
 
 A version is kept when a write changes the note, and how often depends on who is writing:
@@ -1272,7 +1272,7 @@ A version is kept when a write changes the note, and how often depends on who is
 
 Restoring puts the fields, tags and notebook back with the text, as far as they still fit.
 A notebook, tag or field deleted since stays deleted, and a value its field can no longer
-hold — the field was converted, or lost that choice — stays as the note has it. The
+hold (the field was converted, or lost that choice) stays as the note has it. The
 Changes view says so beforehand and the message after the restore names what was left;
 the rest of the version is restored either way. What a notebook's or a tag's own settings
 do to every note under them (a rename, a field converted) is not a note's history, and a
@@ -1304,14 +1304,14 @@ person can put one back.
 
 ## Deleting notes
 
-Note deletion in the app is a soft delete — the note goes to trash and its attachments stay
+Note deletion in the app is a soft delete: the note goes to trash and its attachments stay
 in R2 so a restore is not left with dead links. To reclaim that storage, Settings has a
 Maintenance page:
 
-- **Empty trash** — permanently deletes soft-deleted notes and their files.
-- **Sweep orphaned files** — removes R2 objects with no attachment row. Files you
+- **Empty trash**: permanently deletes soft-deleted notes and their files.
+- **Sweep orphaned files**: removes R2 objects with no attachment row. Files you
   unlinked from a note still have a row; delete those from the note’s Attachments list.
-- **Delete all notes** — wipes every note and attachment in the account. Requires typing
+- **Delete all notes**: wipes every note and attachment in the account. Requires typing
   `DELETE`, since nothing in your own hands reverses it: an export is the only way back
   you hold, and an operator's wind-back or dump load (see [Durability](#durability)) is
   theirs to offer, not a control of yours.
@@ -1324,7 +1324,7 @@ single note from it and deleting a file from a note remove the rows at once, but
 objects: the store writes each file's key to a table of deleted files (`deleted_blobs`,
 schema 0005) in the transaction that removes the row, and the hourly sweep deletes from R2
 only what has sat there for thirty-five days, then has the store forget it. Nothing a
-person can do brings a purged note back — this is for the operator. A store keeps thirty
+person can do brings a purged note back: this is for the operator. A store keeps thirty
 days of history, and [winding one back](#where-your-notes-live) winds the table of deleted
 files back with the rows, so a restored note finds its files still in the bucket; the five
 days on top are so a restore to the far end of the window still finds them. The account's
@@ -1334,7 +1334,7 @@ once, as they always did, because the account's deletion is what its owner asked
 
 For local development, `pnpm --filter @unbent/api reset:local` clears D1, R2 and the note
 stores entirely and rebuilds the schema, backing up D1 and the stores first. Use that rather
-than the in-app sweep to clear fixtures left by deleted test users — the scoped sweep cannot
+than the in-app sweep to clear fixtures left by deleted test users: the scoped sweep cannot
 reach another account's prefix by design.
 
 ## Selling the plan
@@ -1342,23 +1342,23 @@ reach another account's prefix by design.
 unbent.app sells one plan, $36 a year, with 10 GB of attachments and 25 GB more for $12 a
 year (the reasoning is in MAK-47). Paddle is the merchant of record: it takes the payment,
 handles VAT and sales tax, and tells the Worker what happened over a webhook. Nothing about
-it exists on an instance that has not set the five `PADDLE_*` settings — every account is
-active for good there, and no Plan tab is drawn — so a fork never has to think about it.
+it exists on an instance that has not set the five `PADDLE_*` settings (every account is
+active for good there, and no Plan tab is drawn) so a fork never has to think about it.
 The numbers the pages quote are in `packages/shared/src/plan.ts`; the prices Paddle charges
 are in its catalog, and the two are changed together.
 
-Every account starts with a fortnight's trial, no card asked for — counted from its first
+Every account starts with a fortnight's trial, no card asked for, counted from its first
 request after billing is on, so an account that existed before the keys went on gets its
 fortnight from then, not from the deploy. When it runs out, or a subscription lapses, the
 account turns **inactive**: everything still opens, searches and
 exports, and every write but a delete is refused with a 402 that the app shows as a
 read-only banner. The same state, and the same code path, for an expired trial, a lapsed
 subscription and a comp that ended (`requireActivePlan` in the API). After a year inactive
-the account *may* be deleted, after a reminder to export first — a right the terms reserve,
-not a job: nothing deletes on a timer, by decision (MAK-47, and `INACTIVE_KEPT_DAYS`).
+the account *may* be deleted, after a reminder to export first (a right the terms reserve,
+not a job): nothing deletes on a timer, by decision (MAK-47, and `INACTIVE_KEPT_DAYS`).
 
 Comps do not go through Paddle. A 100% discount there still asks for a card and charges it
-when the discount ends, so an account that should not pay — the owner, a gifted friend — is
+when the discount ends, so an account that should not pay (the owner, a gifted friend) is
 comped from the operator's page, with an end date or none, and Paddle never hears of it.
 Paddle discount codes are for marketing.
 
@@ -1394,8 +1394,8 @@ so on an account whose plan has lapsed, which is the moment it matters.
 Sandbox and live are two separate Paddle accounts, with separate logins, keys, prices and
 webhook secrets: [sandbox-vendors.paddle.com](https://sandbox-vendors.paddle.com) is for
 building against, and needs no approval; [vendors.paddle.com](https://vendors.paddle.com)
-is the real one, and its verification — the website review, the business and the
-identity checks — takes days, so start it early. Everything below is done in both, the
+is the real one, and its verification (the website review, the business and the
+identity checks) takes days, so start it early. Everything below is done in both, the
 sandbox first.
 
 1. **Catalog → Products.** Two products: the plan, with one price of $36 a year, and
@@ -1405,8 +1405,8 @@ sandbox first.
 2. **Developer tools → Authentication.** An API key with `customer`, `transaction` and
    `subscription` read and write and `customer_portal_session` write, which is shown
    once; and a client-side token, which is public and ships in the page.
-3. **Checkout → Checkout configuration.** A default payment link — the homepage is fine,
-   and `https://localhost/` in the sandbox — and the payment methods to offer. The
+3. **Checkout → Checkout configuration.** A default payment link (the homepage is fine,
+   and `https://localhost/` in the sandbox) and the payment methods to offer. The
    checkout itself is Paddle's overlay on the Plan page, so no page of yours needs it.
 4. **Developer tools → Notifications.** A destination of type webhook at
    `https://<host>/api/billing/webhook`, with the subscription events
@@ -1430,26 +1430,26 @@ sandbox first.
    mail that says a plan has ended names it. That mail goes out from the hourly sweep
    through the same provider and allowance as the sign-in codes, so it is capped at two
    an hour (`LAPSE_MAIL_PER_RUN`): on Resend's free tier of a hundred a day, a cluster of
-   trials ending together — every account that existed when billing went on starts its
-   fortnight at its first visit — must not crowd the codes out. On a paid mail tier the
+   trials ending together (every account that existed when billing went on starts its
+   fortnight at its first visit) must not crowd the codes out. On a paid mail tier the
    cap can go up (MAK-220).
 
 Locally, Paddle cannot reach a webhook on `localhost`; a tunnel (`cloudflared tunnel
 --url http://localhost:<API_PORT>`) gives it an address for a session, or the sandbox's
 simulator sends a sample event to one. The live suite proves the rest with a signed body
 of its own (`apps/api/test/plan.test.ts`), given the dev server's secret and price ids as
-`PADDLE_WEBHOOK_SECRET`, `PADDLE_PLAN_PRICE_ID` and `PADDLE_STORAGE_PRICE_ID` — the same
+`PADDLE_WEBHOOK_SECRET`, `PADDLE_PLAN_PRICE_ID` and `PADDLE_STORAGE_PRICE_ID`, the same
 lines as `.dev.vars`. Test cards are in Paddle's sandbox docs; `4242 4242 4242 4242` with
 any future date succeeds.
 
 Going live is the same five settings from the live account, after its verification. The
 website review wants the pricing public, and terms, a privacy policy and a refund policy
 naming Paddle as the merchant of record. The built-in documents say all of it wherever
-the instance sells a plan — billing on, or `FRONT_PAGE=1`, since the front page states the
+the instance sells a plan: billing on, or `FRONT_PAGE=1`, since the front page states the
 price and the review comes before the live keys that turn billing on. They are the terms'
 "Plans and payment" and "Refunds", and Paddle among the policy's services. The refund
 policy is at `/terms#refunds`, under the Terms link in the front page's footer rather than
-a link of its own. Everything an account is told — the trial's end, a lapse, the mail — is
+a link of its own. Everything an account is told (the trial's end, a lapse, the mail) is
 the same in both environments.
 
 ## Deleting an account
@@ -1463,11 +1463,11 @@ button there is pressed. It deliberately does not point at Better Auth's own
 `/delete-user/callback`, which deletes on a bare GET: a GET is fired by link prefetches,
 mail scanners, restored tabs and mistaps as readily as by people, and while a request with
 no cookies fails, webmail read in the browser that holds the session is exactly the case
-cookies do not cover. `/reset-password` has the same shape for the same reason — an emailed
+cookies do not cover. `/reset-password` has the same shape for the same reason: an emailed
 token names an intention, and the click that acts on it should be a person's.
 
-Pressing it sweeps `users/{id}/` out of R2, wipes the account's note store — the object
-holding every note, tag, notebook, field and attachment record — and then removes the user
+Pressing it sweeps `users/{id}/` out of R2, wipes the account's note store (the object
+holding every note, tag, notebook, field and attachment record) and then removes the user
 row, whose cascade takes the sessions. It does not touch the backups: the account's
 dumps, its mirrored files and the D1 exports that name it age out on their own, every one
 within about three months (see [Durability](#durability)), and neither the wind-back nor
@@ -1487,12 +1487,12 @@ password. The link works once and expires in a day. Export first if you want any
 
 Unlike **Delete all notes**, the confirm does not ask you to type `DELETE`. That gate
 belongs to a button that *is* the irreversible step; this one only sends mail, and asking
-for the word to send an email would be friction guarding nothing — and would teach the
+for the word to send an email would be friction guarding nothing, and would teach the
 habit of typing it unread on the page where the other control means it. The typed word is
 not what is missing from the mail's end either: a second press is.
 
 An instance with no mail configured does not offer the endpoint at all, since the
-confirmation is the mechanism — the same test that decides codes by email. `/api/config`
+confirmation is the mechanism: the same test that decides codes by email. `/api/config`
 reports it as `accountDeletion` alongside the sign-in methods, so the settings section is
 simply absent there rather than drawing a control the server would answer with a 404. In
 local development `sendEmail` prints the link to the Worker console instead of sending it,
@@ -1507,9 +1507,9 @@ because the store's rows are what the blob sweep reads to know which objects are
 referenced.
 
 An operator can delete someone else's account from that account's page under Settings →
-Operator, for a sign-up that should not exist — a bot, a test account, someone who asked
-by other means. It is `DELETE /api/admin/accounts/<id>?confirm=<id>` — the id twice, so
-neither a stray retry nor a hand-typed URL deletes anything — and it is the same deletion in
+Operator, for a sign-up that should not exist: a bot, a test account, someone who asked
+by other means. It is `DELETE /api/admin/accounts/<id>?confirm=<id>` (the id twice, so
+neither a stray retry nor a hand-typed URL deletes anything) and it is the same deletion in
 the same order, by the same code (`lib/account-deletion.ts`), with no email: the link is a
 person's proof that an account is theirs, which is not what lets an operator act. The
 confirm names the account and what is in it, and asks for `DELETE` typed, since here the
@@ -1518,7 +1518,7 @@ own account is refused; that one is deleted here, with its link.
 
 ## Blob garbage collection
 
-R2 has no foreign keys, so objects can outlive their metadata — a crash between the upload
+R2 has no foreign keys, so objects can outlive their metadata: a crash between the upload
 and the metadata insert, or a store wiped without its prefix having been swept first.
 `POST /api/admin/gc-blobs` reads every key the caller's note store references, sweeps the
 caller's own prefix and reports what it finds; add `?apply=1` to delete. It is scoped to
@@ -1554,7 +1554,7 @@ through Android's account sheet, GitHub through a Custom Tab to `/connect` that 
 with a one-time token, or email and password against Better Auth directly. Every path ends
 the same way: the session cookie the response set is stored per origin in app-private
 preferences. Its value goes out as `Authorization: Bearer` from the app's own client, and
-the same cookie is written into the WebView's jar before the site loads — one sign-in,
+the same cookie is written into the WebView's jar before the site loads: one sign-in,
 one session, nothing exchanged between the two. A Trusted Web Activity could never do
 this, because Chrome's cookie jar is Chrome's; that is why the previous shell needed a
 handoff on every launch. Signing out on the page tells the app, which forgets its copy and
@@ -1594,8 +1594,8 @@ the phone first, for the reason given under captures below.
 
 **How a capture works.** Sharing to Unbent opens a sheet over the sending app with the
 title, the notebook and the tags, prefilled so that the lazy case is one tap on Save. The
-shared files are copied into the app's cache the moment the sheet opens — the URI
-permission dies with the activity, so this cannot wait — which is also what lets someone
+shared files are copied into the app's cache the moment the sheet opens (the URI
+permission dies with the activity, so this cannot wait), which is also what lets someone
 who is signed out sign in and come back to find the share still there. Save enqueues a
 WorkManager job that creates one note, filed and tagged as the sheet said, and streams
 each file to `PUT /api/notes/:id/files?link=1`. The `link=1` flag is what makes the server
@@ -1644,7 +1644,7 @@ unbent.applicationId=com.example.notes
 
 The first is where the app signs in until someone changes it in App settings; unset, it is
 `https://unbent.app`. Its host is also the one the app claims links on. The second is the identity Play, the Google OAuth client and the app
-links document all key on, and a fork that publishes needs one of its own — Play will not
+links document all key on, and a fork that publishes needs one of its own: Play will not
 take a second app under an id it already has, and a reverse-domain id has to be one you
 control. The Kotlin package stays `com.makerocketgonow.unbent` either way; only the id
 changes, and `scripts/app-id.sh` prints what a build of this checkout gets. CI reads the
@@ -1655,7 +1655,7 @@ variables, and the Play upload publishes under the same id.
 offer the site's passkeys to it, if the site says which app that is: a Digital Asset Links
 document at `/.well-known/assetlinks.json` naming the package and the SHA-256 of every
 certificate that signs it. The instance serves that document from its `ANDROID_ASSET_LINKS`
-secret — the JSON verbatim, an array of statements — and an instance that has not set one
+secret (the JSON verbatim, an array of statements) and an instance that has not set one
 vouches for no app, which is right until you have one. The debug build is a different
 package (`.debug`) and needs a statement of its own. Three keys usually sign a published
 app, and all three belong in it: the debug keystore, the upload key, and the App Signing
@@ -1696,9 +1696,9 @@ and the files the app saves, each a port of the Kotlin one with its tests. `Unbe
 the native screens as SwiftUI views that take values and closures, apart from the app so
 the share extension can draw the same ones.
 
-Every build setting is in `apps/ios/Config/` — `Base.xcconfig`, with `Debug.xcconfig` and
+Every build setting is in `apps/ios/Config/` (`Base.xcconfig`, with `Debug.xcconfig` and
 `Release.xcconfig` over it, and `Share.xcconfig` for what the extension's build differs
-in — and the project file holds none. `Info.plist` reads them, and
+in) and the project file holds none. `Info.plist` reads them, and
 `BuildInfo.swift` reads `Info.plist`. The plist is run through the C preprocessor for the
 two blocks only the debug build has, which is why it has no DOCTYPE and no apostrophes: the
 preprocessor takes `//` for a comment and a lone `'` for an unfinished character.
@@ -1715,7 +1715,7 @@ which signs the challenge from `/api/auth/passkey/generate-authenticate-options`
 cookie that response sets names the challenge and is sent back with the answer by hand,
 since the app's client keeps no cookie jar. And a browser at `/connect`
 (`ASWebAuthenticationSession`, sharing Safari's cookies) for Google and for any other
-provider the instance has, which comes back on `unbent://connect` with a one-time token —
+provider the instance has, which comes back on `unbent://connect` with a one-time token,
 the Android app's flow, and the same two redirect schemes, since a scheme belongs to one
 platform's install. Google has no sheet of its own here: Google's SDK would be a
 dependency that ends in a web sheet anyway. Passkeys need the app to claim the instance's
@@ -1723,7 +1723,7 @@ host (`webcredentials:` in `Config/Unbent.entitlements`) and the instance to vou
 app, below; the debug build claims `dev.unbent.app` too, in developer mode, and a dev
 server on localhost cannot be claimed at all. Every path ends the same way as on Android:
 the session cookie the response set is kept per origin, here in the Keychain under the App
-Group so the share extension can read it, and is `AfterFirstUnlockThisDeviceOnly` — usable
+Group so the share extension can read it, and is `AfterFirstUnlockThisDeviceOnly`: usable
 while the phone is locked in a pocket, and never restored onto another phone. Its value
 goes out as `Authorization: Bearer` from the app's own client, and the same cookie is put
 into the web view's store before every load. `URLSession` hands a response's `Set-Cookie`
@@ -1748,7 +1748,7 @@ there as well, since the rounded one is Material's shape and iOS side panels are
 status bar's text follows the lightness of the colour the page reports. The keyboard
 shrinks the web view rather than covering it, so the editor's toolbar sits on the keys. The bridge is a script the app
 injects before the page's own, which builds `window.UnbentApp` over WebKit's message
-handlers — the object Android installs with `addJavascriptInterface` — so the page calls
+handlers (the object Android installs with `addJavascriptInterface`) so the page calls
 either host the same way (`apps/web/src/app-bridge.ts`, `Bridge.swift`). There is no Back to
 handle: the edge swipe walks the web view's history, and the page closes a sheet when the
 history moves under it.
@@ -1766,8 +1766,8 @@ a photo chosen from the library arrives as a JPEG even when the phone took it as
 the transcoding the Android app does by hand is not needed for those. A HEIC picked through
 Choose Files is handed over as it is.
 
-**Why a build opens one instance.** WebKit gives an app's web view a service worker — and
-so the offline shell, see [Your library on the device](#your-library-on-the-device) — only
+**Why a build opens one instance.** WebKit gives an app's web view a service worker (and
+so the offline shell, see [Your library on the device](#your-library-on-the-device)) only
 for the domains the app binds itself to, in `WKAppBoundDomains`, and a web view bound that
 way can open nothing else. So a release build opens the instance it was built for and App
 settings shows the address without a field; a self-hoster builds the app for their own
@@ -1783,7 +1783,7 @@ system's to reclaim under pressure, like any app's caches; nothing the server ha
 of is kept only there for long, since the outbox drains whenever there is a connection.
 
 **How a capture is saved.** Sharing to Unbent from another app opens the extension's
-sheet — title, notebook, tags, prefilled as on Android — over a copy of what was shared,
+sheet (title, notebook, tags, prefilled as on Android) over a copy of what was shared,
 made in the App Group's container before the sheet has drawn (`CaptureStager`): what a
 share hands over lasts only as long as the sheet. A HEIC with no JPEG offered beside it
 is transcoded, since the server serves HEIC to nobody inline.
@@ -1872,7 +1872,7 @@ an association document naming it.
 offers the site's passkeys to it, only if the site says which app that is: an Apple App
 Site Association document at `/.well-known/apple-app-site-association`, naming each app by
 its team id and bundle id. The instance serves it from its `APPLE_APP_SITE_ASSOCIATION`
-secret — the JSON verbatim, an object rather than Android's array — and an instance that
+secret (the JSON verbatim, an object rather than Android's array) and an instance that
 has not set one vouches for no app. The team id is on the Apple Developer portal's
 Membership page; the debug build is a different bundle id (`.debug`) and is listed beside
 the release one.
@@ -1917,8 +1917,8 @@ same document to the dev instance and previews.
 **Sign in with Apple from the app.** The app signs in natively and posts Apple's identity
 token to `/api/auth/sign-in/social`, as the Android app does with Google's. That token's
 audience is the app's bundle id, not the Services ID the web button uses, so an instance
-accepts it only for the bundle ids in `APPLE_BUNDLE_ID` — comma-separated, the release and
-the debug build both, since either may be pointed at any instance:
+accepts it only for the bundle ids in `APPLE_BUNDLE_ID` (comma-separated, the release and
+the debug build both, since either may be pointed at any instance):
 
 ```bash
 echo "com.example.notes,com.example.notes.debug" | pnpm exec wrangler secret put APPLE_BUNDLE_ID
@@ -1941,7 +1941,7 @@ capability on the portal.
 Each account's notes are in a database of their own: a SQLite-backed Durable Object per
 user, `UserStore` in `apps/api/src/store/`, holding that account's notes, tags, notebooks,
 fields, attachment rows and search indexes and nothing else. D1 keeps what is shared across
-accounts — sign-in, connected apps, upload links, and a directory of accounts — and R2
+accounts (sign-in, connected apps, upload links, and a directory of accounts) and R2
 keeps the files. The reasons are in the decision record on the issue that started this; the
 short one is that the app's partition is absolute (no sharing, no cross-account read
 anywhere), and when the natural partition is the user and each partition is tens of
@@ -1969,7 +1969,7 @@ reads and writes through it. Five rules hold the shape, and tests hold the rules
 **The cutover** (September 2026) copied every account's rows out of the shared D1 tables
 into its store, verified each table's count against what D1 held, and then dropped the
 tables: migration 0036, guarded so it refuses to run while any account with rows is not
-recorded as copied. The directory's `migrated_at` and `copied_at` are its record — when
+recorded as copied. The directory's `migrated_at` and `copied_at` are its record: when
 each account's rows were frozen against writes during the deploy, and when they were
 verified copied. The copy, the freeze that protected the rows, and the operator's route for
 it are in the history of MakeRocketGoNow/unbent#202; nothing in the code reads D1 for notes
@@ -1977,9 +1977,9 @@ any more, and there is no way back to the shared tables. Restoring an account is
 account: to a moment in the last thirty days, or from its dump (below).
 
 **Schema changes** are files in `apps/api/src/store/schema/`, applied per object on its next
-wake, additive only. The sweep is what makes that safe to rely on: it wakes every object —
-twenty an hour, from a cursor it keeps in D1, since every store call counts against an
-invocation's fifty subrequests on Free — so a migration that fails for one account fails in
+wake, additive only. The sweep is what makes that safe to rely on: it wakes every object
+(twenty an hour, from a cursor it keeps in D1, since every store call counts against an
+invocation's fifty subrequests on Free) so a migration that fails for one account fails in
 the log with the user id on it. Each visit reads a few rows of the account (its size and
 the stored note counts), never a table. The deploy runs a whole pass as its last step, when
 the repository has a `SWEEP_TOKEN` secret: `scripts/sweep-stores.mjs` sends the token in
@@ -1989,7 +1989,7 @@ store did not wake. Without the secret the step skips and the cron gets there wi
 day.
 
 **Daily dumps.** Where a backups bucket is bound as `BACKUPS`, the same cron at :47 dumps
-every account whose store has changed into it, as `stores/<user>/<YYYY-MM-DD>.sql` — the
+every account whose store has changed into it, as `stores/<user>/<YYYY-MM-DD>.sql`: the
 file `GET …/dump` below writes. An account is tried once a day; it is dumped when its change
 feed has moved since its last dump, and in any case once that dump is a week old, so a
 bucket whose lifecycle rule deletes dumps after fourteen days always holds one of every
@@ -2018,7 +2018,7 @@ live listing that comes back empty fails the run rather than planning against it
 run then reads the Worker's `status/dumps.json` and fails if a dump failed, an account has
 no dump found current in forty-eight hours, or the status is older than that, so the
 Worker's half of the backup fails loudly too; and it writes `status/mirror.json` back to
-the dumps bucket — when it ran, what it copied and pruned, the export's size — for the
+the dumps bucket (when it ran, what it copied and pruned, the export's size) for the
 operator's page. It runs only where the repository has the nine secrets in the
 [configuration table](#everything-you-can-set) and the `BACKUPS_BUCKET` variable, read-only on the
 live bucket, and skips itself otherwise; a fork names its live and mirror buckets at the top
@@ -2031,12 +2031,12 @@ with the account id and the word `RESTORE` typed in; anything else in that box i
 run that lists the counts and copies nothing. It is the one workflow that can write to
 the live bucket, with a credential of its own (`RESTORE_R2_ACCESS_KEY_ID` and
 `RESTORE_R2_SECRET_ACCESS_KEY`, in the `restore` GitHub environment, which only a
-workflow on `main` may use — that rule on the environment is what keeps an edited copy
+workflow on `main` may use: that rule on the environment is what keeps an edited copy
 of the file on a branch away from a key that can delete from the live bucket).
 `rclone copy --ignore-existing` is the whole of what it does: nothing
 is deleted and nothing already in the live bucket is overwritten, so running it twice is
 the same as once, and it never writes to the mirror, so the prune's state file is left
-alone — the files reappearing in live are enough for the next night's prune to forget
+alone: the files reappearing in live are enough for the next night's prune to forget
 their gone-dates. The run's summary has counts; the files' names stay out of it.
 
 **Losing the whole Cloudflare account.** Everything above is in one account but the
@@ -2053,13 +2053,13 @@ in the mirror and come back as orphans the file sweep reclaims.
    putting its schema first: `node scripts/mirror/order-d1-export.mjs d1.sql ordered.sql`,
    then `wrangler d1 execute <name> --remote --file ordered.sql`. The export as written
    puts every index after all the rows, and a fresh database refuses the first row whose
-   foreign key points at a column one of those indexes makes unique — a "foreign key
+   foreign key points at a column one of those indexes makes unique: a "foreign key
    mismatch" that D1's import reports only as `{"D1_RESET_DO":true}`, with nothing
    imported. The script exits non-zero if the export holds a statement it does not
    know; read what it says before importing. Then deploy: every migration is recorded
    in the export, so the deploy's migration step applies nothing, and the
    Worker's secrets come from the password manager, which is the one place they are
-   kept — `BETTER_AUTH_SECRET` above all, or every session is lost with it and everyone
+   kept: `BETTER_AUTH_SECRET` above all, or every session is lost with it and everyone
    signs in again. If that secret is gone too, deploy with a new one and then
    `wrangler d1 execute <name> --remote --command "DELETE FROM jwks"`: the export
    carries Better Auth's signing key encrypted with the old secret, and until the row is
@@ -2083,7 +2083,7 @@ in the mirror and come back as orphans the file sweep reclaims.
 
 **The change feed.** Every write records what it touched, numbered by the store's own
 counter, and `GET /api/changes?since=N` answers "what changed since N?" with the changed
-notes whole — body, tags, values, files — the changed notebooks and tags, and a tombstone
+notes whole (body, tags, values, files), the changed notebooks and tags, and a tombstone
 for anything purged. A device with no copy yet walks the whole library through
 `GET /api/changes/snapshot`, then follows the feed from the counter the first page
 reported. `GET /api/changes/socket` is the push: a WebSocket the store tells the counter
@@ -2096,29 +2096,29 @@ browser syncs from; see [Your library on the device](#your-library-on-the-device
 **What the operator can see.** An object has no console, so the Worker has one, under
 `/api/admin/store` for a session in `OPERATOR_EMAILS`:
 
-- `GET …/stats` — row counts, size and schema version, the caller's own or `?user=`'s. A
+- `GET …/stats`: row counts, size and schema version, the caller's own or `?user=`'s. A
   name the directory does not have is refused, since a store is created for any name it
   is asked for.
-- `POST …/sql` — one `SELECT` (or `EXPLAIN`) against a store, always rolled back.
-- `GET …/dump` — the store as SQL text, `sqlite3 account.db < dump.sql` rebuilds it: what
+- `POST …/sql`: one `SELECT` (or `EXPLAIN`) against a store, always rolled back.
+- `GET …/dump`: the store as SQL text, `sqlite3 account.db < dump.sql` rebuilds it: what
   `d1 export` was, and how a migration is rehearsed against a real account before it
-  ships — dump, load, run the new schema file's SQL against the copy. The daily dumps
+  ships (dump, load, run the new schema file's SQL against the copy). The daily dumps
   (above) are the same file.
-- `POST …/restore` — winds one store back to a moment in the last thirty days; see below.
-- `POST …/load` — replaces one store with a dump from the backups bucket; see below.
-- `POST …/feed-epoch` — makes every device of an account resync its local copy, by
+- `POST …/restore`: winds one store back to a moment in the last thirty days; see below.
+- `POST …/load`: replaces one store with a dump from the backups bucket; see below.
+- `POST …/feed-epoch`: makes every device of an account resync its local copy, by
   naming a new history for its change feed. The restore does this itself.
-- `POST …/sweep` — one batch of the walk, now; `?restart=1` on the first call starts from
+- `POST …/sweep`: one batch of the walk, now; `?restart=1` on the first call starts from
   the top of the directory, then call without it until it says `done`. Also open to the
   deploy, with the deployment's `SWEEP_TOKEN` in an `X-Unbent-Sweep-Token` header instead of
   a session.
 
 Reading another account's store is logged with both ids. Rows read and written inside an
 object are metered as D1's were, and every statement over a threshold is logged with the
-user id — which is the accounting `wrangler d1 insights` used to give.
+user id, which is the accounting `wrangler d1 insights` used to give.
 
 **Winding a store back.** Every store keeps thirty days of history, and `POST …/restore`
-puts one back as it was at a moment in them — the rollback for a schema file that broke an
+puts one back as it was at a moment in them: the rollback for a schema file that broke an
 account, or an edit that should not have happened. It is for one account at a time and
 the operator only; moving notes between accounts or instances is export and import. A
 deleted account is refused: its wipe is part of the history, and winding back past it
@@ -2129,7 +2129,7 @@ would bring back notes its owner asked to have removed.
    `confirm` this is a dry run: it says which bookmark the time resolves to, refuses one
    outside the window, and shows the store as it is now.
 3. Repeat with `"confirm": "RESTORE"`. The store restarts to apply it, and the answer has
-   the restored store's counts and an `undo` bookmark — the store as it was the instant
+   the restored store's counts and an `undo` bookmark: the store as it was the instant
    before. `{ "user": "<id>", "bookmark": "<undo>", "confirm": "RESTORE" }` reverses it.
    Every restore and load is also kept in D1 (the `restores` table) with the operator who
    asked, and the operator page lists them under the wind-back form. It offers Undo on the
@@ -2145,13 +2145,13 @@ tombstone back with the row, so the file is simply the note's again. The five da
 thirty of history are the margin for a restore to the oldest moment it can reach. One
 uploaded since the restored moment is an orphan, which the account's own
 [file sweep](#deleting-an-account) reclaims. Local development has no
-history to restore from — Miniflare refuses, and the route answers 501 — so a restore is
+history to restore from (Miniflare refuses, and the route answers 501) so a restore is
 tried on a preview of a PR that touches `src/store/`, which has stores of its own.
 
 **Loading a dump.** A fault noticed after the thirty days, or a store that is simply
 gone, is put back from a dump: `POST …/load` with `{ "user": "<id>", "dump": "2026-10-06" }`
 names that day's daily dump in the backups bucket, and `"dump": "stores/<id>/<file>.sql"`
-names any other file under the account's own prefix — the one written before an earlier
+names any other file under the account's own prefix: the one written before an earlier
 load, or one copied back by hand from the mirror. A dump can only be loaded into the
 account it was taken from. Without `confirm` it is a dry run: whose the file is, when it
 was taken, whether its rows are one moment of the store or were read while it was being
@@ -2207,7 +2207,7 @@ the object refuses on every wake a database whose stored owner is not the user i
 created for. Route handlers never reach for a store or for `env.DB` themselves; a static
 test in `apps/api/src/store/guards.test.ts` holds that line.
 
-What stays in D1 — sessions, OAuth clients, upload links, the account directory — has no
+What stays in D1 (sessions, OAuth clients, upload links, the account directory) has no
 row-level security, so for those tables isolation is still application code: the scoped
 repos in `apps/api/src/lib/repo.ts` take the user id as a constructor argument, and an
 unscoped query is not expressible from a route. `apps/api/test/isolation.test.ts` asserts
@@ -2228,7 +2228,7 @@ and nothing further. The mechanics are in [Where your notes live](#where-your-no
 the customer-facing version is the privacy policy's "How long it is kept" and the
 deletion page, both of which say this only on an instance that keeps backups
 (`backups` in `/api/config`, true where a `BACKUPS` bucket is bound). A fork with no
-bucket makes no dumps and has no mirror — the first two rows of the table still hold —
+bucket makes no dumps and has no mirror (the first two rows of the table still hold)
 and its documents describe only that. The Worker cannot see whether the mirror workflow
 runs, so a fork that binds a bucket and never sets the mirror up has its documents
 overstate the off-account half; such a fork should publish its own, as `legal/documents.ts`
@@ -2263,7 +2263,7 @@ backups, which age out on their own: a dump fourteen days after it was written
 on-account and ninety days after the night it was copied off-account, a file fifty-five
 days after the night it was first seen gone from the live bucket, a D1 export ninety days
 after its night. The last copy of a note purged today is therefore the dump written this
-morning, copied tonight, deleted ninety days on — **a deleted note or a deleted account is
+morning, copied tonight, deleted ninety days on: **a deleted note or a deleted account is
 gone from every copy within about three months**, ninety-one or ninety-two days at the
 longest, which the customer-facing text rounds to "about three months" rather than
 promising a number the lifecycle rule can miss by a day. A note's history is in the dumps
@@ -2273,7 +2273,7 @@ too, so **Clear history** is final once they have aged out, not before.
 was at some moment and loses what came after.
 
 - *Winding the store back*, to a moment in the last thirty days: everything written after
-  that moment, and nothing else — files follow the store through their tombstones, so a
+  that moment, and nothing else: files follow the store through their tombstones, so a
   file deleted since is the note's again. Reversible for thirty days by the undo bookmark.
 - *Loading a dump*, for a fault noticed too late to wind back: everything since the dump
   was taken, which is up to a day; the store's thirty days of history and its undo
@@ -2297,7 +2297,7 @@ the before-load dump listed, and that load undone; and steps 1 to 5 of the whole
 runbook into a scratch Worker in the second account, with the dumps loading to counts
 identical to dev. On 8 October, restore-files for real: a throwaway account's one file,
 copied to the mirror by a hand-started mirror run, deleted from the live bucket by hand,
-and put back by the workflow with `RESTORE` — one file in the mirror, one copied, byte
+and put back by the workflow with `RESTORE`: one file in the mirror, one copied, byte
 for byte the object that was deleted. Dry-run only: the runbook's step 6, new credentials
 for a new account and a hand-started mirror, which is designed and not proven. The
 write-ups are on MAK-171 and MAK-200.
@@ -2316,8 +2316,8 @@ untitled-e080eb5b/untitled-e080eb5b.md
 notebooks/coupons.yaml
 ```
 
-Each markdown file carries YAML frontmatter — id, title, created, updated, tags, notebook,
-and any custom field values by name — above the body exactly as written. The directory name
+Each markdown file carries YAML frontmatter (id, title, created, updated, tags, notebook,
+and any custom field values by name) above the body exactly as written. The directory name
 is a slug plus an id fragment, so two notes with the same title do not collide, and the
 markdown repeats it so a search of the unpacked tree finds one file per title rather than a
 thousand `note.md`s. Standard `unzip` reads it; no part of this app is needed to get your
@@ -2328,22 +2328,22 @@ file, as a plain `<filename>.txt`: `text/` for what the file's own text layer ga
 `described/` for what the vision model read from a picture or a scan with no layer,
 `written/` for what an assistant recorded over MCP after reading the picture itself. A file
 with no text has none. They are what makes a scanned bill answerable, so they are also
-what a person would want to `grep` in the unpacked folder — and without them a restore read
+what a person would want to `grep` in the unpacked folder, and without them a restore read
 every file again, a PDF extraction or a paid vision request per file, and got different
 words than search and Auto-fill had been built on.
 
 `notebooks/` holds what is about a notebook rather than a note: one `<slug>.yaml` per
-notebook with its emoji and its purpose when it has them — the purpose is what Auto-fill
-files by, so a restore without it files differently — and its fields in order, each with its type and, where it has them, its select
+notebook with its emoji and its purpose when it has them (the purpose is what Auto-fill
+files by, so a restore without it files differently) and its fields in order, each with its type and, where it has them, its select
 or multi-select options, its rating scale or its currency. A multi-select's value is a YAML list under the
 field's name, the way `tags` is. A value in frontmatter says nothing about the field that holds it,
-and without this file a restore rebuilt every field from the first value it met — URLs and
+and without this file a restore rebuilt every field from the first value it met: URLs and
 selects as text, ratings as plain numbers, and a field with no values not at all. An
 unfiltered export lists every notebook, empty ones included; a filtered export lists the
 notebooks its notes are in, plus the one the filter named.
 
 The browser builds the archive. `GET /api/export/notes` hands back a page of whole notes
-— body, tags, fields, and the names of their files — and the web app walks its cursor,
+(body, tags, fields, and the names of their files) and the web app walks its cursor,
 fetches each file through the note's own file route, and writes the zip with the names and
 markdown that `packages/shared/src/export-format.ts` defines. It used to be one request
 that streamed the whole zip, and that request read every note and every file from the
@@ -2354,7 +2354,7 @@ file the person chooses, so a library larger than the tab's memory still exports
 browsers hold it in memory and hand it over as a download when it is done.
 
 The page endpoint takes the note list's `tag`, `notebook`, `field`, `from`, and `to`, so an
-export can be a slice rather than the whole library — a year of records for a doctor, the
+export can be a slice rather than the whole library: a year of records for a doctor, the
 receipts an accountant asked for. Settings → Notebooks offers the `notebook` slice as a
 download beside each notebook, since "a copy of this notebook" is the slice people reach
 for, and the note list offers the filter on screen beneath its filters. The enumeration
@@ -2375,12 +2375,12 @@ sign-in, connected apps, upload links and the account directory. It used to refu
 whole database because of the search tables, which have since moved into each account's
 store, and a refused export left D1 answering every query with "processing export"
 ([workers-sdk#9519](https://github.com/cloudflare/workers-sdk/issues/9519)). So never put a
-virtual table — FTS5 or any other — back in D1.
+virtual table (FTS5 or any other) back in D1.
 
 ### Restoring, or moving to another Unbent
 
 The same zip goes back in through Settings → Import, on the instance that wrote it or any
-other — as does a single note's download, zip or bare `.md`. Every note's metadata is in its
+other, as does a single note's download, zip or bare `.md`. Every note's metadata is in its
 own frontmatter, so a notebook exported with `?notebook=` arrives as that notebook, with its
 tags, dates, custom fields and files; nothing about the notes lives outside the archive.
 
@@ -2392,31 +2392,31 @@ a select's or multi-select's options are merged. A notebook's emoji and purpose 
 when it has none and otherwise kept. A note's value naming an option the field
 lacks adds that option rather than being dropped, so a vault with no `notebooks/` file still
 lands with its choices intact. Anything left unapplied is named in the import's failure log.
-An archive without `notebooks/` — an older export, a hand-made vault — imports as before,
+An archive without `notebooks/` (an older export, a hand-made vault) imports as before,
 with each field's type inferred from its first value. A single note's download carries no
 definitions, since it is not a notebook.
 
 Each note keeps the id it had when the id is free, so a restore puts notes back at their old
-addresses and links between them keep working. A note that is already present — by id, or
-by content hash for archives without ids — is skipped, so restoring a backup over a live
+addresses and links between them keep working. A note that is already present (by id, or
+by content hash for archives without ids) is skipped, so restoring a backup over a live
 library duplicates nothing and never overwrites an edit made since. The trash is not
 consulted: a note deleted on purpose stays deleted, and importing it again brings back a
 fresh live copy under a new id.
 
 The archive is read in the browser, one note and one attachment at a time, by the same
-worker that reads ENEX files — the requests, the resumability and the per-note failure log
+worker that reads ENEX files: the requests, the resumability and the per-note failure log
 are all the ENEX import's. Attachment types are recovered from the bytes and then the
 extension, since a zip carries neither. A file that arrives with a `text/`, `described/` or
 `written/` sidecar is uploaded with `?text=supplied`, which stops the Worker reading it, and its text is
 recorded as it was, under the reader that wrote it; nothing is extracted, nothing goes back
-to pending, and no vision request is made. A file without one — from an older export — is
+to pending, and no vision request is made. A file without one (from an older export) is
 read as any upload is, so search works after that restore too. Only the layout is assumed: markdown with frontmatter, and a `files/` directory
 beside it. Directory names are ignored, so an archive unpacked, rearranged and zipped again
 by hand reads the same as the original.
 
 ### Importing from Notion
 
-Notion's "Markdown & CSV" export — of a workspace, or of one database or page — goes in
+Notion's "Markdown & CSV" export (of a workspace, or of one database or page) goes in
 through the same Settings → Import. The zip is read before anything is imported, and the
 panel lists what it holds: one row per top-level database or page, with its notes, files
 and columns counted, to tick or untick. The usual reason to untick is a database that is
@@ -2430,15 +2430,15 @@ holds, conservatively: Yes/No is a checkbox, a run of stars a rating, `$29.99` a
 USD, short values that repeat a select, comma-separated parts that repeat a multi-select,
 and anything the rules cannot place is text, which the Fields page can convert. A column
 named Tags becomes the note's tags (an option under the list keeps it as a field), and
-Notion's own created and last-edited columns become the note's dates — the one place the
+Notion's own created and last-edited columns become the note's dates: the one place the
 export carries a timestamp; every other note is dated at import. A text column too long
 for a field goes into the body under its own heading. Formulas and rollups are not in the
 CSV and are dropped.
 
 A page and its sub-pages become a notebook too, with any database nested in the tree
 adding its columns; pages outside any database or tree go into one notebook named in the
-panel, or none. Every page keeps Notion's id as its note id — the 32 digits are a UUID
-without its dashes — so importing the same zip again skips what landed, and links between
+panel, or none. Every page keeps Notion's id as its note id (the 32 digits are a UUID
+without its dashes) so importing the same zip again skips what landed, and links between
 exported pages, relative or `notion.so`, become links between the notes. Attachments sit
 in a folder named for their page and are uploaded as the note's files; callouts become
 quotes. The driver is `importNotion` in `packages/enex`, beside the ENEX and archive
