@@ -3,7 +3,7 @@ import { runInDurableObject } from 'cloudflare:test';
 import { REVISIONS_KEPT, UNFILED, encodeCursor } from '@unbent/shared';
 import { beginDump } from '@unbent/api/lib/dump';
 import { DUMP_TABLES } from '@unbent/api/store/tables';
-import { freshStore } from './helpers.js';
+import { feedRows, feedSeq, freshStore } from './helpers.js';
 
 /**
  * `NotesStore` through the object's RPC surface, against the real schema.
@@ -935,6 +935,55 @@ describe('custom fields', () => {
     expect((await stub.get(c.id))!.fields).toBeUndefined();
     expect((await stub.listAllFields()).map((f) => f.name)).toEqual(['Rating']);
     expect(await stub.recountNotes()).toBe(0);
+  });
+
+  it('edits options by what changes, moving a renamed option\'s values with it', async () => {
+    const { stub } = freshStore('option-edits');
+    const nb = (await stub.createNotebook('Coupons'))!;
+    const kind = (await stub.createField(nb.id, { name: 'Kind', type: 'select', options: ['Misc', 'fuel', 'Bank', 'Old'] })) as { id: string };
+    const tags = (await stub.createField(nb.id, { name: 'Labels', type: 'multiselect', options: ['Grocery', 'Groceries', 'Gift'] })) as { id: string };
+    const text = (await stub.createField(nb.id, { name: 'Store', type: 'text', options: [] })) as { id: string };
+    const a = await stub.create(note({ notebook: 'Coupons', fields: { [kind.id]: 'Misc', [tags.id]: ['Grocery', 'Groceries'] } }));
+    const b = await stub.create(note({ notebook: 'Coupons', fields: { [kind.id]: 'Old', [tags.id]: ['Grocery', 'Gift'] } }));
+    const c = await stub.create(note({ notebook: 'Coupons', fields: { [kind.id]: 'fuel' } }));
+
+    // Rename, remove, sort with a pin last: one call, and no list sent.
+    let seq = await feedSeq(stub);
+    const sorted = await stub.editFieldOptions(nb.id, kind.id, {
+      rename: [{ from: 'Misc', to: 'Other' }],
+      remove: ['Old'],
+      sort: 'alpha',
+      pinLast: ['Other'],
+    });
+    expect(sorted).toMatchObject({
+      field: { options: ['Bank', 'fuel', 'Other'] },
+      renamed: [{ from: 'Misc', to: 'Other', notes: 1 }],
+      removed: [{ option: 'Old', notes: 1 }],
+      added: [],
+    });
+    expect((await stub.get(a.id))!.fields!.find((v) => v.name === 'Kind')!.value).toBe('Other');
+    // A removed option stays on the note that held it, as removeFieldOption leaves it.
+    expect((await stub.get(b.id))!.fields!.find((v) => v.name === 'Kind')!.value).toBe('Old');
+    expect((await stub.get(c.id))!.fields!.find((v) => v.name === 'Kind')!.value).toBe('fuel');
+    expect(await feedRows(stub, seq)).toEqual([{ entity: 'notebook', id: nb.id }, { entity: 'note', id: a.id }]);
+
+    // A rename onto an option that stands merges them; a note holding both keeps one.
+    const merged = await stub.editFieldOptions(nb.id, tags.id, { rename: [{ from: 'Grocery', to: 'Groceries' }], add: ['Fuel'], position: 'alpha' });
+    expect(merged).toMatchObject({ field: { options: ['Fuel', 'Groceries', 'Gift'] }, renamed: [{ notes: 2 }], added: ['Fuel'] });
+    expect((await stub.get(a.id))!.fields!.find((v) => v.name === 'Labels')!.value).toEqual(['Groceries']);
+    expect((await stub.get(b.id))!.fields!.find((v) => v.name === 'Labels')!.value).toEqual(['Groceries', 'Gift']);
+    expect(await stub.countOptionUsage(nb.id, tags.id, 'Grocery')).toBe(0);
+
+    // The field's own name rides along, and a clash refuses before any note moves.
+    expect(await stub.editFieldOptions(nb.id, kind.id, { rename: [{ from: 'fuel', to: 'Fuel' }] }, { name: 'store' })).toBe('conflict');
+    expect((await stub.get(c.id))!.fields!.find((v) => v.name === 'Kind')!.value).toBe('fuel');
+    expect(await stub.editFieldOptions(nb.id, kind.id, { add: ['Cash'] }, { name: 'Category' })).toMatchObject({ field: { name: 'Category', options: ['Bank', 'fuel', 'Other', 'Cash'] } });
+
+    seq = await feedSeq(stub);
+    expect(await stub.editFieldOptions(nb.id, kind.id, { remove: ['Nope'] })).toEqual({ refused: expect.stringContaining('not one of') });
+    expect(await stub.editFieldOptions(nb.id, text.id, { add: ['x'] })).toEqual({ refused: expect.stringContaining('select') });
+    expect(await stub.editFieldOptions(nb.id, crypto.randomUUID(), { add: ['x'] })).toBe('missing');
+    expect(await feedSeq(stub)).toBe(seq);
   });
 
   it('holds a hundred field ids in one patch without running out of binds', async () => {

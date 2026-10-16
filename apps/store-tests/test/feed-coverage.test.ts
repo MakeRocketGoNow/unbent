@@ -91,6 +91,7 @@ const WRITES: Record<string, (s: Seeded) => Promise<unknown>> = {
   reorderFields: (s) => s.stub.reorderFields(s.notebookId, [s.selectId, s.fieldId]),
   deleteField: (s) => s.stub.deleteField(s.notebookId, s.fieldId),
   removeFieldOption: (s) => s.stub.removeFieldOption(s.notebookId, s.selectId, 'fuel', true),
+  editFieldOptions: (s) => s.stub.editFieldOptions(s.notebookId, s.selectId, { rename: [{ from: 'fuel', to: 'petrol' }] }),
   importNotebook: (s) => s.stub.importNotebook({ name: 'Coupons', fields: [{ name: 'Store', type: 'text' }] }),
   recordAttachment: (s) => s.stub.recordAttachment({ id: 'a9', noteId: s.noteId, filename: 'new.pdf', contentType: 'application/pdf', size: 1, r2Key: 'k/a9' }),
   removeAttachment: (s) => s.stub.removeAttachment(s.noteId, 'scan.pdf'),

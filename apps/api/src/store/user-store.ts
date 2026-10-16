@@ -11,6 +11,7 @@ import {
   type Note,
   type NoteFieldsPatch,
   type NotebookDefinition,
+  type OptionEdit,
   type SnapshotPage,
 } from '@unbent/shared';
 import { AttachmentsStore, type FileSummary } from './attachments.js';
@@ -958,6 +959,10 @@ export class UserStore extends DurableObject<StoreEnv> {
   removeFieldOption(notebookId: string, fieldId: string, option: string, clear: boolean) {
     return this.writing(() => this.notes.removeFieldOption(notebookId, fieldId, option, clear));
   }
+  editFieldOptions(notebookId: string, fieldId: string, edit: OptionEdit, patch: Parameters<NotesStore['editFieldOptions']>[3] = {}) {
+    return this.writing(() => this.notes.editFieldOptions(notebookId, fieldId, edit, patch));
+  }
+
   importNotebook(definition: NotebookDefinition, opts: { create?: boolean } = {}) { return this.writing(() => this.notes.importNotebook(definition, opts)); }
 
   // --- Attachments: the repository, one for one -----------------------------------------

@@ -13,6 +13,8 @@ import {
   planConversion,
   fitRatingScale,
   UNFILED,
+  applyOptionEdit,
+  type OptionEdit,
   type FieldDef,
   type FieldFilter,
   type FieldScale,
@@ -3115,6 +3117,98 @@ export class NotesStore {
       });
       if (typeof updated === 'string') return null;
       return { field: updated.field, cleared };
+    });
+  }
+
+  /**
+   * Edits a select's or multi-select's options by what changes rather than by the whole
+   * list (`applyOptionEdit`), and moves the values of a renamed option with it.
+   *
+   * A rename is the reason this is a store method and not the MCP tool calling
+   * `updateField` with a list it worked out: through the list, a rename is an option
+   * removed and another added, and every note holding the old one is left on a value the
+   * field no longer offers. Here the list and the values change in one transaction, so a
+   * note is never seen holding an option that is gone. A rename onto an option that
+   * already stands merges the two, and a multi-select holding both keeps one.
+   *
+   * A removal changes no note, as `removeFieldOption` without `clear` does not: the value
+   * stays and reads as no longer an option. What it reports is how many notes still hold
+   * each, so a caller that removed one by mistake hears it at once rather than never.
+   *
+   * Like the rest of a field's management, this keeps no revision of the notes it
+   * rewrites (see `update`); each one is in the feed, after the notebook.
+   *
+   * `name` and `currency` ride along so a rename of the field and its options is one
+   * call; they go to `updateField`, which owns the clash check. A type change does not:
+   * converting to a select makes its own options, and an edit to the list it replaces
+   * would be an edit to nothing.
+   */
+  editFieldOptions(
+    notebookId: string,
+    fieldId: string,
+    edit: OptionEdit,
+    patch: { name?: string | undefined; currency?: string | null | undefined } = {},
+  ):
+    | {
+        field: FieldDef;
+        renamed: Array<{ from: string; to: string; notes: number }>;
+        removed: Array<{ option: string; notes: number }>;
+        added: string[];
+      }
+    | 'missing'
+    | 'conflict'
+    | { refused: string } {
+    return this.sql.tx(() => {
+      const field = this.getField(notebookId, fieldId);
+      if (!field) return 'missing';
+      if (!fieldHasOptions(field.type)) return { refused: 'Only a select or multiselect field has options.' };
+
+      const applied = applyOptionEdit(field.options, edit);
+      if ('error' in applied) return { refused: applied.error };
+
+      // First, because it is the one that can refuse (a name another field has), and it
+      // refuses before writing anything: returning from `tx` commits, so a refusal after
+      // the notes below had moved would leave them moved. It records the notebook, and
+      // the notes follow it in the feed.
+      const updated = this.updateField(notebookId, fieldId, { ...patch, options: applied.options });
+      if (typeof updated === 'string') return updated;
+
+      const moves = new Map(applied.renamed.map((r) => [r.from, r.to]));
+      const movedBy = new Map<string, number>(applied.renamed.map((r) => [r.from, 0]));
+      const heldBy = new Map<string, number>(applied.removed.map((o) => [o, 0]));
+      const touched: Change[] = [];
+      for (const { noteId, text } of this.fieldValueRows(fieldId)) {
+        // A select stores the option itself; a multi-select a JSON list of them. The same
+        // distinction `removeFieldOption` draws, so a select whose option happens to look
+        // like a list is never parsed as one.
+        const held =
+          field.type === 'multiselect' && isJsonArray(text) ? (JSON.parse(text) as string[]) : [text];
+        for (const option of held) {
+          const count = heldBy.get(option);
+          if (count !== undefined) heldBy.set(option, count + 1);
+        }
+        if (!held.some((o) => moves.has(o))) continue;
+        for (const option of held) {
+          const count = movedBy.get(option);
+          if (count !== undefined) movedBy.set(option, count + 1);
+        }
+        const next = [...new Set(held.map((o) => moves.get(o) ?? o))];
+        this.sql.exec(
+          `UPDATE note_fields SET value_text = ?1 WHERE note_id = ?2 AND field_id = ?3`,
+          field.type === 'multiselect' && isJsonArray(text) ? JSON.stringify(next) : next[0]!,
+          noteId,
+          fieldId,
+        );
+        touched.push({ entity: 'note', id: noteId });
+      }
+
+      this.feed.record(touched);
+      return {
+        field: updated.field,
+        renamed: applied.renamed.map((r) => ({ ...r, notes: movedBy.get(r.from) ?? 0 })),
+        removed: applied.removed.map((option) => ({ option, notes: heldBy.get(option) ?? 0 })),
+        added: applied.added,
+      };
     });
   }
 
