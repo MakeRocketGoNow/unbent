@@ -170,7 +170,8 @@ describe('claimFileNotesFor', () => {
     await vi.waitFor(() => expect(getFileNotes().status).toBe('running'));
     claimFileNotesFor('u2');
     release();
-    await first;
+    // Cut short: the one note made is the earlier account's, so nothing is handed back.
+    expect(await first).toEqual([]);
     expect(await second).toEqual([]);
     expect(actions.createNote).toHaveBeenCalledTimes(1);
   });
@@ -212,6 +213,17 @@ describe('undoFileNotes', () => {
     expect(actions.trashNotes).toHaveBeenCalledTimes(1);
     expect(actions.trashNotes).toHaveBeenCalledWith(['n1', 'n2']);
     expect(getFileNotes()).toMatchObject({ status: 'idle', ids: [] });
+  });
+
+  it('leaves a batch that started while the trash was on its way alone', async () => {
+    await notesFromFiles([pdf('a.pdf')], { notebook: null, tags: [] }, null, 'list');
+    let release!: () => void;
+    vi.mocked(actions.trashNotes).mockReturnValueOnce(new Promise((r) => (release = () => r(1))));
+    const undo = undoFileNotes();
+    await notesFromFiles([pdf('b.pdf')], { notebook: null, tags: [] }, null, 'list');
+    release();
+    await undo;
+    expect(getFileNotes()).toMatchObject({ status: 'done', ids: ['n2'] });
   });
 
   it('says so, and keeps the notes, when the trash is refused', async () => {

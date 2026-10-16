@@ -237,12 +237,14 @@ async function runBatch(files: File[], filing: Filing, place: string | null, sou
   try {
     for (const file of files) {
       ids.push(await noteFromFile(file, filing));
-      if (!theirs()) return ids;
+      // Cut short by a hand-over: the ids are the earlier account's, and a caller that
+      // opened or selected them would be showing the next person notes not theirs.
+      if (!theirs()) return [];
       set({ done: ids.length, ids: [...ids] });
     }
     set({ status: 'done' });
   } catch (err) {
-    if (!theirs()) return ids;
+    if (!theirs()) return [];
     const made = ids.length === 0 ? 'No notes added' : `${ids.length} of ${files.length} added`;
     set({ status: 'error', error: `${made}; the rest failed: ${(err as Error).message}` });
   } finally {
@@ -263,15 +265,17 @@ async function runBatch(files: File[], filing: Filing, place: string | null, sou
  * has already gone with the press and the notes are still there.
  */
 export async function undoFileNotes(queryClient?: QueryClient): Promise<void> {
-  const { ids } = state;
+  const { ids, run } = state;
   if (ids.length === 0) return;
+  // Only the report of the batch Undo was pressed for is written: a drop made while the
+  // trash was on its way has a batch of its own running by now.
   try {
     await actions.trashNotes(ids);
   } catch (err) {
-    set({ status: 'error', error: `Could not undo: ${(err as Error).message}`, run: state.run + 1 });
+    if (state.run === run) set({ status: 'error', error: `Could not undo: ${(err as Error).message}`, run: state.run + 1 });
     return;
   }
-  set({ ...initial, run: state.run });
+  if (state.run === run) set({ ...initial, run: state.run });
   if (queryClient) {
     void queryClient.invalidateQueries({ queryKey: ['notes'] });
     void queryClient.invalidateQueries({ queryKey: ['trash'] });
