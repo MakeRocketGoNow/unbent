@@ -32,6 +32,17 @@ export default defineConfig({
           include: ['test/**/*.test.ts'],
         },
       },
+      /*
+         `eval/` is measurement, not tests: a harness that runs Auto-fill's arms against a
+         private sample and prints counts (see eval/autofill.eval.ts). It skips itself
+         unless `AUTOFILL_EVAL_SAMPLE` is set, so the default run and CI are unchanged.
+      */
+      {
+        test: {
+          name: 'eval',
+          include: ['eval/**/*.eval.ts'],
+        },
+      },
     ],
   },
 });
