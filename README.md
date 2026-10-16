@@ -1367,6 +1367,28 @@ duplicate past the plan's quota is a 402 that names the numbers, and the Plan pa
 what the account holds against it. The sum is kept on each account's store by triggers
 (schema 0008), never by reading the files table.
 
+### Changing the price
+
+The terms promise every subscriber an email at least 30 days before the renewal a price
+change applies to, and nothing sends it. `packages/shared/src/plan.test.ts` pins the two
+prices so that changing one fails a test with that promise in its message; it is the
+reminder, not a check. The order is:
+
+1. Write to every current subscriber with the new price and the date it starts, at least
+   30 days before the first renewal it would apply to. A subscriber who cancels before
+   then keeps the year already paid for at the old price.
+2. After the 30 days, change the price in Paddle's catalog — a new price on the product,
+   with the old one archived, so renewals move and nothing already in flight does.
+3. Change `PLAN_PRICE_USD` or `STORAGE_ADDON_PRICE_USD` in `packages/shared/src/plan.ts`
+   and the pinned number in its test in the same commit, and deploy. The front page and
+   the Plan page quote the constants; the terms deliberately do not, and their effective
+   date does not move for a price.
+
+A lapsed account is the other promise the terms make by hand: it is kept read-only for a
+year and may then be deleted, after an email asking its owner to export it. Nothing
+deletes on a timer and nothing sends that mail either. The operator's delete confirm says
+so on an account whose plan has lapsed, which is the moment it matters.
+
 ### Setting up Paddle
 
 Sandbox and live are two separate Paddle accounts, with separate logins, keys, prices and
