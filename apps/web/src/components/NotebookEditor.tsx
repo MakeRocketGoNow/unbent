@@ -443,11 +443,12 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
    * which left the notes holding the old name on a value the field no longer offered;
    * `renameOption` sends it as a rename instead, and the notes move with it.
    *
-   * Adding and reordering write straight through, since neither can strand a value. The
-   * exception is removing an option that notes still hold. That is the one option edit
-   * here that can orphan data, so it is the one that asks first: the field's own value keeps working (it shows as "no longer an option"), but
-   * whether those notes should lose it is the person's call, not a silent effect of tidying
-   * the list. When more than one option leaves at once — a rare multi-remove — it is not
+   * Adding and reordering write straight through, as a `replace` edit on the same route
+   * the rename uses, since neither can strand a value. The exception is removing an option
+   * that notes still hold. That is the one option edit here that can orphan data, so it is
+   * the one that asks first: the field's own value keeps working (it shows as "no longer
+   * an option"), but whether those notes should lose it is the person's call, not a silent
+   * effect of tidying the list. When more than one option leaves at once — a rare multi-remove — it is not
    * worth a prompt per option; the whole edit writes through, matching how the list behaved
    * before this guard existed and never destroying a value without a single removal's intent.
    */
@@ -465,7 +466,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
       });
       return;
     }
-    void run(() => api.updateNotebookField(notebookId, field.id, { options }));
+    void run(() => api.editNotebookFieldOptions(notebookId, field.id, { replace: options }));
   }
 
   /**

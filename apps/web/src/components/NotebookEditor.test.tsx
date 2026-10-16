@@ -259,20 +259,22 @@ describe('NotebookEditor', () => {
   });
 
   /*
-     Reordering an option PATCHes the field with the whole list in its new order — the same
-     write an add or a remove makes, since the options column is just that array. Order is
-     the only thing the picker shows them in, so it is a real edit, not cosmetic.
+     Reordering an option sends the whole list in its new order as a `replace` edit — the
+     same write an add makes, on the route a rename goes through. Order is the only thing
+     the picker shows them in, so it is a real edit, not cosmetic.
   */
   it('writes the reordered options when an option is nudged', async () => {
-    vi.mocked(api.updateNotebookField).mockResolvedValue({
+    vi.mocked(api.editNotebookFieldOptions).mockResolvedValue({
       field: { ...fields[1]!, options: ['Travel', 'Food'] },
-      cleared: 0,
+      renamed: [],
+      removed: [],
+      added: [],
     });
     mount();
     await screen.findByText('Category');
     fireEvent.click(screen.getByLabelText('Move option Travel earlier'));
     await waitFor(() =>
-      expect(api.updateNotebookField).toHaveBeenCalledWith('nb1', 'f2', { options: ['Travel', 'Food'] }),
+      expect(api.editNotebookFieldOptions).toHaveBeenCalledWith('nb1', 'f2', { replace: ['Travel', 'Food'] }),
     );
   });
 
