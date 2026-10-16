@@ -18,6 +18,7 @@ import type {
   NoteSummary,
   NotebookDefinition,
   NotebookSummary,
+  OptionEdit,
   RestoredNote,
   SearchResult,
   SearchResultRow,
@@ -806,6 +807,34 @@ export async function removeNotebookFieldOption(
       method: 'DELETE',
     }),
   );
+}
+
+/** What an option edit did: the field as it now stands, and the notes each change touched. */
+export interface OptionEditResult {
+  field: FieldDef;
+  renamed: Array<{ from: string; to: string; notes: number }>;
+  removed: Array<{ option: string; notes: number }>;
+  added: string[];
+}
+
+/**
+ * Edits a select's or multi-select's options by what changes rather than by the whole
+ * list. A rename moves the notes that held the old name to the new one; see the route. A
+ * rename onto an option that exists is refused unless `merge` is set — the editor asks
+ * before sending one, so the refusal only reaches a person when the list changed under
+ * them, and then the store's own sentence says what happened.
+ */
+export async function editNotebookFieldOptions(
+  notebookId: string,
+  fieldId: string,
+  edit: OptionEdit,
+): Promise<OptionEditResult> {
+  const res = await request(`/api/notebooks/${notebookId}/fields/${fieldId}/options`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(edit),
+  });
+  return json(res);
 }
 
 export interface UploadedFile {
