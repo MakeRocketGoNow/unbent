@@ -1778,15 +1778,15 @@ export async function uploadFile(noteId: string, file: File, attachmentId: strin
 
   const refused = uploadRefusal(file);
   if (refused) throw new Error(refused);
-  const named = filenameSchema.safeParse(file.name);
-  if (!named.success) throw new Error(named.error.issues[0]?.message ?? 'Invalid filename');
+  // Already refused above for a name the schema does not take; parsed again for its value.
+  const named = filenameSchema.parse(file.name);
   const room = await navigator.storage.estimate?.().catch(() => null);
   if (room?.quota !== undefined && room.usage !== undefined && file.size > room.quota - room.usage) {
     throw new Error('Not enough room on this device to keep the file until it can upload');
   }
 
   const taken = [...lib.attachments.values()].filter((a) => a.noteId === noteId).map((a) => a.filename);
-  const filename = availableFilename(taken, named.data);
+  const filename = availableFilename(taken, named);
   const contentType = file.type || 'application/octet-stream';
   // Again for the ways here that were not known at the start; a second ask is free.
   askToPersist();
