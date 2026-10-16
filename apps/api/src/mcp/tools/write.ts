@@ -1074,7 +1074,11 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
       // Refused rather than ordered: either combination has two lists claiming to be the
       // field's options, and picking one would quietly drop what the other asked for.
       if (options) return toolError('Send options or the option edits, not both.');
-      if (type) return toolError('Change the type in one call and edit the options in another.');
+      if (type) {
+        return toolError(
+          'Leave type out when editing options, even to repeat the current one; a type change goes in a call of its own.',
+        );
+      }
       const result = await notes.editFieldOptions(notebookId, fieldId, edit, { name, currency });
       if (result === 'missing') return notFound('field', fieldId);
       if (result === 'conflict') {
