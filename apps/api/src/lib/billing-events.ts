@@ -1,5 +1,5 @@
 import { BASE_STORAGE_GB, STORAGE_ADDON_GB } from '@unbent/shared';
-import type { PaddleConfig, PaddleSubscription, PaddleTransaction } from './paddle.js';
+import type { PaddleAdjustment, PaddleConfig, PaddleLineItem, PaddleSubscription, PaddleTransaction } from './paddle.js';
 import type { PlanPatch, PlanRow } from './plan.js';
 
 /**
@@ -19,7 +19,7 @@ export interface PaddleEvent {
   event_id: string;
   event_type: string;
   occurred_at: string;
-  data: PaddleSubscription | PaddleTransaction;
+  data: PaddleSubscription | PaddleTransaction | PaddleAdjustment;
 }
 
 /** The subscription events the row follows. The rest (`subscription.imported`, say) are ignored by name. */
@@ -34,8 +34,17 @@ export const SUBSCRIPTION_EVENTS: ReadonlySet<string> = new Set([
   'subscription.canceled',
 ]);
 
+/**
+ * The adjustment events a refund arrives on. `adjustment.created` carries a refund made
+ * with its approval (a sandbox refund, a live one Paddle approves at once, a chargeback)
+ * and one still `pending_approval`; `adjustment.updated` is the approval or the
+ * rejection of the latter. Both are read for the same thing — an approved refund — and
+ * the row never follows a pending one, so a refund Paddle rejects changes nothing.
+ */
+export const ADJUSTMENT_EVENTS: ReadonlySet<string> = new Set(['adjustment.created', 'adjustment.updated']);
+
 /** Which events the destination is asked for, for the setup notes and the operator's check. */
-export const HANDLED_EVENTS: readonly string[] = [...SUBSCRIPTION_EVENTS, 'transaction.completed'];
+export const HANDLED_EVENTS: readonly string[] = [...SUBSCRIPTION_EVENTS, 'transaction.completed', ...ADJUSTMENT_EVENTS];
 
 /** A comp still in force at `at`: `source` stays `comp` after one ends, so the dates say. */
 function compRunning(row: PlanRow, at: number): boolean {
@@ -143,4 +152,72 @@ export function planPatchFor(paddle: PaddleConfig, event: PaddleEvent, row: Plan
     };
   }
   return null;
+}
+
+/**
+ * What an approved refund does to the subscription it names (MAK-108): the terms say a
+ * refunded plan is cancelled and does not renew, and nothing in Paddle keeps that —
+ * a refund there is an adjustment on the transaction, and the subscription it was for
+ * stays active and renews at the period's end. So the webhook ends it, with the same
+ * call account deletion makes.
+ *
+ * `cancel` is a refund of the plan: the whole transaction (`type: 'full'`), or any line
+ * of it that is the plan's price. The subscription is cancelled at once and the account
+ * turns read-only from the refund, not from the period's end — the period was given
+ * back. `remove-storage` is a refund of only the add-on's lines: the person keeps the
+ * plan they paid for and the add-on comes off the subscription, with nothing billed and
+ * nothing credited (`removeSubscriptionStorage`). All of it, not some units of it: an
+ * adjustment names an amount of money against a line, never a quantity, so a partial
+ * amount on the add-on's line cannot say which of three units it meant. `needs-transaction`
+ * is a partial refund whose lines have not been read yet; the caller reads the
+ * transaction and asks again with its `details.line_items`, which is where the
+ * `txnitm_` ids an adjustment names are resolved to prices. A line the transaction does
+ * not name — Paddle's own tax line, say — is read as the plan's, since a refund that
+ * cannot be told apart from the plan's is cancelled rather than left renewing.
+ *
+ * A chargeback is the card issuer's refund and is read as one: a subscription that keeps
+ * charging a disputed card is the worse outcome. Credits (`credit`) are not refunds —
+ * money kept on the customer's balance for the next charge — and reversals undo
+ * nothing here: a person whose chargeback Paddle won can subscribe again.
+ *
+ * Nothing for a refund with no subscription (a one-off charge), for one naming a
+ * subscription that is not the row's live one (a former subscription's late refund, or
+ * one the row already holds as canceled, which is also how a second delivery of the
+ * same refund — or `adjustment.updated` after a `created` that was already approved —
+ * finds nothing left to do), or while the account is comped, for `planPatchFor`'s
+ * reasons.
+ */
+export type RefundEffect = 'cancel' | 'remove-storage' | 'needs-transaction';
+
+export function refundEffectOf(paddle: PaddleConfig, event: PaddleEvent, row: PlanRow, lineItems?: PaddleLineItem[]): RefundEffect | null {
+  if (!ADJUSTMENT_EVENTS.has(event.event_type)) return null;
+  const adj = event.data as PaddleAdjustment;
+  if (adj.action !== 'refund' && adj.action !== 'chargeback') return null;
+  if (adj.status !== 'approved') return null;
+  if (!adj.subscription_id || adj.subscription_id !== row.paddleSubscriptionId || row.paddleStatus === 'canceled') return null;
+  if (compRunning(row, ms(event.occurred_at) ?? Date.now())) return null;
+  if (adj.type === 'full') return 'cancel';
+  if (!lineItems) return 'needs-transaction';
+  const priceOf = new Map(lineItems.map((l) => [l.id, l.price_id]));
+  const refundedPrices = adj.items.map((i) => priceOf.get(i.item_id));
+  const onlyStorage = refundedPrices.length > 0 && refundedPrices.every((p) => p === paddle.storagePriceId);
+  return onlyStorage ? 'remove-storage' : 'cancel';
+}
+
+/**
+ * The row after a refund's effect has gone through at Paddle. A cancel ends the plan at
+ * the refund — `planUntil` at the event, and the status Paddle will confirm — so the
+ * `subscription.canceled` that follows, which carries no period, keeps that date rather
+ * than the year's end the row held. Stamped with the adjustment's time: the cancel it
+ * caused happened after it, so the confirming event still applies, and an older
+ * subscription snapshot delivered late cannot put the period back. The storage goes
+ * back to the base for the same reason, ahead of the `subscription.updated` that will
+ * say the same.
+ */
+export function refundPatchFor(effect: Exclude<RefundEffect, 'needs-transaction'>, event: PaddleEvent): PlanPatch {
+  const at = ms(event.occurred_at) ?? Date.now();
+  if (effect === 'cancel') {
+    return { plan: 'active', source: 'paddle', planUntil: at, paddleStatus: 'canceled', paddleCancelsAt: null, paddleEventAt: event.occurred_at };
+  }
+  return { storageGb: BASE_STORAGE_GB, paddleEventAt: event.occurred_at };
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { planPatchFor, storageGbOf, type PaddleEvent } from './billing-events.js';
-import type { PaddleConfig, PaddleSubscription, PaddleTransaction } from './paddle.js';
+import { HANDLED_EVENTS, planPatchFor, refundEffectOf, refundPatchFor, storageGbOf, type PaddleEvent } from './billing-events.js';
+import type { PaddleAdjustment, PaddleConfig, PaddleSubscription, PaddleTransaction } from './paddle.js';
 import type { PlanRow } from './plan.js';
 
 const paddle: PaddleConfig = {
@@ -47,7 +47,7 @@ function sub(over: Partial<PaddleSubscription> = {}): PaddleSubscription {
   };
 }
 
-const event = (event_type: string, data: PaddleSubscription | PaddleTransaction, occurred_at = T0): PaddleEvent => ({
+const event = (event_type: string, data: PaddleSubscription | PaddleTransaction | PaddleAdjustment, occurred_at = T0): PaddleEvent => ({
   event_id: 'evt_1',
   event_type,
   occurred_at,
@@ -210,5 +210,103 @@ describe('planPatchFor', () => {
   it('ignores what it does not follow', () => {
     expect(planPatchFor(paddle, event('subscription.imported', sub()), row)).toBeNull();
     expect(planPatchFor(paddle, event('customer.updated', sub()), row)).toBeNull();
+  });
+});
+
+/**
+ * A refund in Paddle leaves the subscription renewing; the terms say it does not. These
+ * are the rules that keep the terms' word, on the refund alone and on the transaction's
+ * lines when a partial refund needs them.
+ */
+describe('refundEffectOf', () => {
+  const paid: PlanRow = { ...row, plan: 'active', source: 'paddle', paddleSubscriptionId: 'sub_1', paddleStatus: 'active', planUntil: Date.parse(NEXT_YEAR) };
+  // The transaction's lines as a read of it names them: the plan, and two units of storage.
+  const lines = [
+    { id: 'txnitm_plan', price_id: 'pri_plan', quantity: 1 },
+    { id: 'txnitm_storage', price_id: 'pri_storage', quantity: 2 },
+  ];
+  function refund(over: Partial<PaddleAdjustment> = {}): PaddleAdjustment {
+    return {
+      id: 'adj_1',
+      action: 'refund',
+      type: 'full',
+      status: 'approved',
+      transaction_id: 'txn_1',
+      subscription_id: 'sub_1',
+      customer_id: 'ctm_1',
+      items: [],
+      ...over,
+    };
+  }
+
+  it('cancels the subscription for a refund of the whole transaction, on either adjustment event', () => {
+    expect(refundEffectOf(paddle, event('adjustment.created', refund()), paid)).toBe('cancel');
+    expect(refundEffectOf(paddle, event('adjustment.updated', refund()), paid)).toBe('cancel');
+    // A chargeback is the card issuer's refund.
+    expect(refundEffectOf(paddle, event('adjustment.created', refund({ action: 'chargeback' })), paid)).toBe('cancel');
+  });
+
+  it('reads a partial refund by the lines it names, once the transaction has been read', () => {
+    const ofPlan = refund({ type: 'partial', items: [{ id: 'adjitm_1', item_id: 'txnitm_plan', type: 'full', amount: null }] });
+    expect(refundEffectOf(paddle, event('adjustment.created', ofPlan), paid)).toBe('needs-transaction');
+    expect(refundEffectOf(paddle, event('adjustment.created', ofPlan), paid, lines)).toBe('cancel');
+    const ofStorage = refund({ type: 'partial', items: [{ id: 'adjitm_1', item_id: 'txnitm_storage', type: 'partial', amount: '600' }] });
+    expect(refundEffectOf(paddle, event('adjustment.created', ofStorage), paid, lines)).toBe('remove-storage');
+    const ofBoth = refund({ type: 'partial', items: [...ofPlan.items, ...ofStorage.items] });
+    expect(refundEffectOf(paddle, event('adjustment.created', ofBoth), paid, lines)).toBe('cancel');
+    // A line the transaction does not name cannot be told from the plan's, and is read as it.
+    const ofUnknown = refund({ type: 'partial', items: [{ id: 'adjitm_1', item_id: 'txnitm_tax', type: 'tax', amount: null }] });
+    expect(refundEffectOf(paddle, event('adjustment.created', ofUnknown), paid, lines)).toBe('cancel');
+    expect(refundEffectOf(paddle, event('adjustment.created', refund({ type: 'partial' })), paid, lines)).toBe('cancel');
+  });
+
+  it('does nothing for a refund that is not of this subscription, not approved, or not a refund', () => {
+    // A one-off charge.
+    expect(refundEffectOf(paddle, event('adjustment.created', refund({ subscription_id: null })), paid)).toBeNull();
+    // A former subscription's late refund.
+    expect(refundEffectOf(paddle, event('adjustment.created', refund({ subscription_id: 'sub_old' })), paid)).toBeNull();
+    // A row that never subscribed.
+    expect(refundEffectOf(paddle, event('adjustment.created', refund()), row)).toBeNull();
+    // Awaiting Paddle's approval, or refused it.
+    expect(refundEffectOf(paddle, event('adjustment.created', refund({ status: 'pending_approval' })), paid)).toBeNull();
+    expect(refundEffectOf(paddle, event('adjustment.updated', refund({ status: 'rejected' })), paid)).toBeNull();
+    // A credit stays on the balance; a reversal undoes nothing here.
+    expect(refundEffectOf(paddle, event('adjustment.created', refund({ action: 'credit' })), paid)).toBeNull();
+    expect(refundEffectOf(paddle, event('adjustment.created', refund({ action: 'chargeback_reverse' })), paid)).toBeNull();
+    // A comped account is not Paddle's to move.
+    expect(refundEffectOf(paddle, event('adjustment.created', refund()), { ...paid, source: 'comp', planUntil: null })).toBeNull();
+    expect(refundEffectOf(paddle, event('subscription.updated', sub()), paid)).toBeNull();
+  });
+
+  /**
+   * The same refund delivered again — or `adjustment.updated` after a `created` that was
+   * already approved — finds the row as the first delivery left it, and does nothing.
+   */
+  it('finds nothing to do once the first delivery has cancelled the subscription', () => {
+    const first = event('adjustment.created', refund(), T1);
+    expect(refundEffectOf(paddle, first, paid)).toBe('cancel');
+    const after: PlanRow = { ...paid, ...refundPatchFor('cancel', first) } as PlanRow;
+    expect(refundEffectOf(paddle, first, after)).toBeNull();
+    expect(refundEffectOf(paddle, event('adjustment.updated', refund(), NEXT_YEAR), after)).toBeNull();
+    // And the cancel the first delivery caused keeps the refund's date, not the year's end.
+    const canceled = sub({ status: 'canceled', current_billing_period: null, canceled_at: T1 });
+    expect(planPatchFor(paddle, event('subscription.canceled', canceled, NEXT_YEAR), after)?.planUntil).toBe(Date.parse(T1));
+  });
+
+  it('writes the row as the refund leaves the subscription', () => {
+    expect(refundPatchFor('cancel', event('adjustment.created', refund(), T1))).toEqual({
+      plan: 'active',
+      source: 'paddle',
+      planUntil: Date.parse(T1),
+      paddleStatus: 'canceled',
+      paddleCancelsAt: null,
+      paddleEventAt: T1,
+    });
+    expect(refundPatchFor('remove-storage', event('adjustment.created', refund(), T1))).toEqual({ storageGb: 10, paddleEventAt: T1 });
+  });
+
+  it('is among the events the destination is asked for', () => {
+    expect(HANDLED_EVENTS).toContain('adjustment.created');
+    expect(HANDLED_EVENTS).toContain('adjustment.updated');
   });
 });

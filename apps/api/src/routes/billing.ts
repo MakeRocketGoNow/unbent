@@ -2,19 +2,23 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { BASE_STORAGE_GB, GB, MAX_STORAGE_UNITS, STORAGE_ADDON_GB, storageQuotaBytes } from '@unbent/shared';
-import { planPatchFor, type PaddleEvent } from '../lib/billing-events.js';
+import { ADJUSTMENT_EVENTS, planPatchFor, refundEffectOf, refundPatchFor, type PaddleEvent } from '../lib/billing-events.js';
 import { accountPlanOf, planFor, planRowByCustomer, planStateOf, updatePlan, updatePlanStatement } from '../lib/plan.js';
 import {
   PaddleError,
   billingOn,
   createCheckoutTransaction,
   createPortalSession,
+  ensureSubscriptionCanceled,
   findOrCreateCustomer,
   getSubscription,
+  getTransaction,
   newestSubscription,
   paddleOf,
+  removeSubscriptionStorage,
   setSubscriptionStorage,
   verifyWebhookSignature,
+  type PaddleAdjustment,
 } from '../lib/paddle.js';
 import { reposFor } from '../lib/repos.js';
 import { requireAuth } from '../lib/session.js';
@@ -247,6 +251,13 @@ export const billing = new Hono<AppEnv>()
    * behind it cannot happen; and the change applies only while the row's newest event is
    * not after this one (`notBefore`), so two deliveries racing both write the same thing
    * and a late one writes nothing.
+   *
+   * A refund is the one event that acts on Paddle rather than only on the row
+   * (`refundEffectOf`): the subscription is cancelled, or its add-on removed, before
+   * anything is recorded, so a call Paddle refuses or does not answer is a 502 and the
+   * event is delivered again — the row still names the subscription as live, and the
+   * retry asks again. Once the call is through, the row is written as the cancel will
+   * leave it, in the same batch as the event's row.
    */
   .post('/billing/webhook', async (c) => {
     const paddle = paddleOf(c.env);
@@ -277,7 +288,26 @@ export const billing = new Hono<AppEnv>()
       return c.json({ applied: false, reason: 'no account' });
     }
     const now = Date.now();
-    const patch = planPatchFor(paddle, { event_id, event_type, occurred_at, data: data as unknown as PaddleEvent['data'] }, row);
+    const paddleEvent: PaddleEvent = { event_id, event_type, occurred_at, data: data as unknown as PaddleEvent['data'] };
+    let patch = planPatchFor(paddle, paddleEvent, row);
+    if (ADJUSTMENT_EVENTS.has(event_type)) {
+      const adjustment = paddleEvent.data as PaddleAdjustment;
+      let effect = refundEffectOf(paddle, paddleEvent, row);
+      try {
+        if (effect === 'needs-transaction') {
+          const txn = await getTransaction(paddle, adjustment.transaction_id);
+          effect = refundEffectOf(paddle, paddleEvent, row, txn.details?.line_items ?? []);
+        }
+        if (effect === 'cancel') await ensureSubscriptionCanceled(paddle, row.paddleSubscriptionId!);
+        if (effect === 'remove-storage') await removeSubscriptionStorage(paddle, row.paddleSubscriptionId!);
+      } catch (err) {
+        return paddleRefused(err, `act on the refund ${adjustment.id ?? event_id}`, row.userId);
+      }
+      if (effect === 'cancel' || effect === 'remove-storage') {
+        console.log(`[billing] ${event_type} ${event_id} for user=${row.userId}: refund, ${effect === 'cancel' ? 'subscription cancelled' : 'storage add-on removed'}`);
+        patch = refundPatchFor(effect, paddleEvent);
+      }
+    }
     const record = c.env.DB.prepare(`INSERT OR IGNORE INTO billing_event (event_id, event_type, occurred_at, received_at) VALUES (?1, ?2, ?3, ?4)`).bind(
       event_id,
       event_type,
