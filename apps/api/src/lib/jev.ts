@@ -121,7 +121,13 @@ function readAnswer(id: string, raw: unknown): JevAnswer {
   throw new JevError(0, `Jev answered "${id}" in a shape this code does not read`);
 }
 
-export function jevFrom(env: JevEnv, fetchImpl: typeof fetch = fetch): Jev {
+/**
+ * `model` is TypeSafe's alias unless the caller names another. Production never does; it
+ * is there for the Auto-fill harness (apps/api/eval), which points this same client at
+ * another System One endpoint (SubQ Snap) whose model has a name of its own, by way of
+ * `TYPESAFE_API_URL` and this.
+ */
+export function jevFrom(env: JevEnv, fetchImpl: typeof fetch = fetch, model: string = JEV_MODEL): Jev {
   const apiKey = env.TYPESAFE_API_KEY?.trim();
   if (!apiKey) throw new Error('Refusing to build a Jev client without a key');
   const url = env.TYPESAFE_API_URL?.trim() || JEV_API_URL;
@@ -145,7 +151,7 @@ export function jevFrom(env: JevEnv, fetchImpl: typeof fetch = fetch): Jev {
       // empty map, and a caller with no questions should not pay for one.
       if (Object.keys(questions).length === 0) return {};
 
-      const body = JSON.stringify({ state, model: JEV_MODEL, questions });
+      const body = JSON.stringify({ state, model, questions });
       let res = await post(body);
       if (RETRY_STATUSES.has(res.status)) {
         await new Promise((resolve) => setTimeout(resolve, RETRY_AFTER_MS));

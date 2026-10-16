@@ -61,6 +61,13 @@ describe('jev', () => {
     expect(fetchImpl.mock.calls[0]?.[0]).toBe('http://localhost:9999/jev');
   });
 
+  it('names the model it is given, for another System One endpoint', async () => {
+    const fetchImpl = answering(200, { answers: {} });
+    const jev = jevFrom(env, fetchImpl as unknown as typeof fetch, 'other-model');
+    await jev.ask('x', { q: { type: 'noul', instructions: 'Is it?' } });
+    expect(JSON.parse(fetchImpl.mock.calls[0]![1]!.body as string).model).toBe('other-model');
+  });
+
   it('says why the API refused, with the status', async () => {
     const fetchImpl = answering(401, { error: 'invalid api key' });
     const jev = jevFrom(env, fetchImpl as unknown as typeof fetch);
