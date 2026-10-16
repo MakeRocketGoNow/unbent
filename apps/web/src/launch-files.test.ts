@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
 import type { Note } from '@unbent/shared';
 import * as actions from './store/actions.js';
-import { resetFileNotesForTests } from './file-notes.js';
+import { claimFileNotesFor, resetFileNotesForTests } from './file-notes.js';
 import { launchFiles } from './launch-files.js';
 
 vi.mock('./store/actions.js', async (importOriginal) => ({
@@ -24,6 +24,9 @@ let n = 0;
 beforeEach(() => {
   n = 0;
   resetFileNotesForTests();
+  // Signed in, as the root route has claimed before any of this can happen: a batch
+  // begun with nobody claimed waits to be adopted (`file-notes.test.ts`).
+  claimFileNotesFor('u1');
   vi.mocked(actions.createNote).mockImplementation(async (input) => {
     const note: Note = { id: `n${++n}`, ...input, createdAt: 1, updatedAt: 1, fields: [] };
     return note;

@@ -5,7 +5,7 @@ import { createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet
 import type { Note } from '@unbent/shared';
 import * as actions from '../store/actions.js';
 import { pickImportFile } from '../import-run.js';
-import { resetFileNotesForTests } from '../file-notes.js';
+import { claimFileNotesFor, resetFileNotesForTests } from '../file-notes.js';
 import { Import } from './Import.js';
 
 /**
@@ -53,6 +53,9 @@ let n = 0;
 beforeEach(() => {
   n = 0;
   resetFileNotesForTests();
+  // Signed in, as the root route has claimed before any of this can happen: a batch
+  // begun with nobody claimed waits to be adopted (`file-notes.test.ts`).
+  claimFileNotesFor('u1');
   pickImportFile(null);
   vi.mocked(actions.createNote).mockImplementation(async (input) => {
     const made: Note = { id: `n${++n}`, ...input, createdAt: 1, updatedAt: 1, fields: [] };

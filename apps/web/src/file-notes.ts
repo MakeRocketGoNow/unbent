@@ -74,18 +74,34 @@ let owner: string | null = null;
 /** Who adopted the batches begun before anyone was claimed; see `claimFileNotesFor`. */
 let firstOwner: string | null = null;
 /**
- * Occupancy of this tab: increments when the account goes to nobody. A batch begun
+ * Occupancy of this tab: counts up each time the account goes to nobody. A batch begun
  * before anyone was claimed is adopted by the first person (`firstOwner`), and a
  * sign-out must stop that batch — but it must not also poison the *next* unowned
  * launch. The installed app is `focus-existing`, so a scanner sending files to a
  * window sitting on `/login` after a sign-out or an expired session does not reload;
- * those files reach `notesFromFiles` with `owner === null` the same way a cold launch
- * does. Without a new occupancy they compared against the previous `firstOwner` and
- * were dropped with no report, which is how a scan sent at the login screen vanished.
- * Captured at enqueue (`born` in `runBatch`), so a batch that waited its turn across
- * a sign-out is still not the next person's.
+ * those files reach `notesFromFiles` with `owner === null`, the shape of a cold launch.
+ * Before this, they were compared against the previous `firstOwner` and dropped with no
+ * report, which is how a scan sent at the login screen vanished. Each batch takes the
+ * era it was enqueued in (`born` in `runBatch`), so one that waited its turn across a
+ * sign-out is still not the next person's.
  */
 let era = 0;
+/**
+ * Resolved by each claim that adopts the unowned batches; `runBatch` waits on it while
+ * nobody is signed in. Starting at once was tried and does not land the files: on
+ * `/login` the library is closed and the session is gone, so every create goes out as a
+ * request with no cookie and fails, and the next person signs in to the report of a
+ * batch that failed before they arrived. A cold launch only got away with it because its
+ * cookie already existed. Replaced after each resolve, so the batches of the next
+ * occupancy wait on a promise of their own.
+ */
+let claimed = resolver();
+
+function resolver(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((r) => (resolve = r));
+  return { promise, resolve };
+}
 
 function set(patch: Partial<FileNotesState>) {
   state = { ...state, ...patch };
@@ -120,25 +136,24 @@ export function claimFileNotesFor(userId: string | undefined): void {
   /*
    * The first person claimed adopts whatever began before anyone was: the launch queue's
    * consumer is set before the first render, so a cold launch from the Dock or a scanner
-   * reaches `notesFromFiles` ahead of the guard. Wiping then would clear a report that
-   * is still running and let a reload land mid-batch. Adopted, the batch is theirs from
-   * here on, and a later sign-out stops it as it stops any other.
+   * reaches `notesFromFiles` ahead of the guard, and a scan sent to the login screen
+   * reaches it with nobody signed in. Those batches wait here (`claimed`); dropping them
+   * instead would lose the very files the person is signing in to add. Adopted, the
+   * batch is theirs from here on, and a later sign-out stops it as it stops any other.
    */
   if (owner === null && next !== null && firstOwner === null) {
     firstOwner = next;
     owner = next;
+    claimed.resolve();
+    claimed = resolver();
     return;
   }
   // Whatever report there is goes with the change of hands — one written while nobody
   // was signed in included, since it is about the files of whoever was before.
   if (state.status !== 'idle') set({ ...initial, run: state.run });
   owner = next;
-  // Nobody is signed in: this occupancy is over. `firstOwner` would otherwise keep
-  // answering for every later unowned batch (`theirs` uses it when `by` is null), and
-  // a scanner's files arriving on the login screen would fail that check against the
-  // person who just left. A new occupancy lets the next claim adopt them the way a
-  // cold launch does. An in-flight batch captured the previous `era` at enqueue, so
-  // it still stops here rather than continuing as whoever signs in next.
+  // Nobody is signed in: this occupancy is over, and the next claim adopts whatever
+  // arrives meanwhile. See `era`.
   if (next === null) {
     firstOwner = null;
     era += 1;
@@ -258,10 +273,15 @@ async function runBatch(
   queryClient?: QueryClient,
 ): Promise<string[]> {
   // Still theirs: not once the account changed hands, or nobody is signed in now. A
-  // batch begun before anyone was claimed belongs to whoever is claimed first — but
-  // only in this occupancy, so a sign-out's unowned wait is a new cold launch, not a
-  // silent drop against the previous `firstOwner`.
+  // batch begun before anyone was claimed belongs to whoever is claimed first in the
+  // occupancy it was begun in; see `era`.
   const theirs = () => born === era && (by ?? firstOwner) === owner;
+  if (!theirs()) return [];
+  // Begun while nobody is signed in: wait to be adopted before writing anything, since
+  // there is no session to write with (`claimed`). `theirs` held, so `by` is null here
+  // and the claim that resolves this is the one that adopts the batch; the check is made
+  // again all the same, for a batch born before a sign-out that is still the queue's.
+  if (owner === null) await claimed.promise;
   if (!theirs()) return [];
   const refused = refusals(files);
   if (refused) {
@@ -328,6 +348,7 @@ export function resetFileNotesForTests(): void {
   owner = null;
   firstOwner = null;
   era = 0;
+  claimed = resolver();
   chain = Promise.resolve();
   for (const fn of listeners) fn();
 }
