@@ -38,7 +38,7 @@ describe('legalDocuments', () => {
 
   it.each(all)('leaves nothing of the hosted instance in the %s document', (_name, doc) => {
     const body = text(doc);
-    expect(body).not.toContain('CDeutsch');
+    expect(body).not.toContain('MakeRocketGoNow');
     expect(body).not.toContain('unbent.app');
     expect(body).not.toContain('hello@');
   });

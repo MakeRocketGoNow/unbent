@@ -6,10 +6,10 @@
  * editable without reading JSX. One renderer walks all three; see `LegalDoc.tsx`.
  *
  * Built for an operator rather than exported as constants, which is the change that made
- * this repository publishable. The documents used to name one company and one domain from
- * constants at the top of this file, so every self-hosted copy served `CDeutsch Consulting
- * LLC` and `hello@unbent.app` on somebody else's site — a legal claim that operator never
- * made and could not stand behind. Now the server says who runs the instance and these are
+ * this repository publishable. The documents used to name unbent.app's own operator and
+ * contact address from constants at the top of this file, so every self-hosted copy served
+ * them on somebody else's site — a legal claim that operator never made and could not stand
+ * behind. Now the server says who runs the instance and these are
  * filled in, or it says nobody does and the pages say so instead. See `LegalPage.tsx` for
  * the three states and `lib/instance.ts` on the server for where the answer comes from.
  *
