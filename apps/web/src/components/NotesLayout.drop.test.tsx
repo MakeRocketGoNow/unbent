@@ -7,7 +7,7 @@ import * as api from '../notes-api.js';
 import * as actions from '../store/actions.js';
 import { installTestLibrary, type TestLibrary } from '../store/test-library.js';
 import { installLibraryQueries } from '../queries.js';
-import { resetFileNotesForTests } from '../file-notes.js';
+import { claimFileNotesFor, resetFileNotesForTests } from '../file-notes.js';
 import { NotesLayout } from './NotesLayout.js';
 import { FileNotesSnackbar } from './FileNotesSnackbar.js';
 import { filters } from '../routes/notes.js';
@@ -116,6 +116,9 @@ beforeEach(() => {
   n = 0;
   planInactive = false;
   resetFileNotesForTests();
+  // Signed in, as the root route has claimed before any of this can happen: a batch
+  // begun with nobody claimed waits to be adopted (`file-notes.test.ts`).
+  claimFileNotesFor('u1');
   session = { user: { id: 'u1', email: 'someone@example.com' } };
   vi.stubGlobal('matchMedia', (query: string) => ({ matches: false, media: query, addEventListener: () => {}, removeEventListener: () => {} }));
   vi.mocked(api.getConfig).mockResolvedValue({ providers: [] } as unknown as Awaited<ReturnType<typeof api.getConfig>>);

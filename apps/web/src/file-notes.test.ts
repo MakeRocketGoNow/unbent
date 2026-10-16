@@ -16,7 +16,7 @@ vi.mock('./store/actions.js', async (importOriginal) => ({
   trashNote: vi.fn(),
   trashNotes: vi.fn(),
 }));
-vi.mock('./index-files.js', () => ({ indexUploadedFile: vi.fn() }));
+vi.mock('./index-files.js', () => ({ indexUploadedFile: vi.fn(), indexing: { get: () => ({ status: 'idle' }) } }));
 
 /**
  * One note per file, through the store's actions and in order: the create, with the link
@@ -31,6 +31,9 @@ beforeEach(() => {
   made.length = 0;
   failOn = null;
   resetFileNotesForTests();
+  // Someone is signed in, as they are for every drop and pick: a batch begun with nobody
+  // claimed waits to be adopted, and the tests of that say so themselves.
+  claimFileNotesFor('u1');
   vi.mocked(actions.createNote).mockImplementation(async (input) => {
     const note: Note = { id: `n${made.length + 1}`, ...input, createdAt: 1, updatedAt: 1, fields: [] };
     made.push(note);
@@ -47,6 +50,8 @@ beforeEach(() => {
 
 afterEach(() => vi.clearAllMocks());
 
+/** A turn of the event loop, so whatever a batch would have started by now has. */
+const settled = () => new Promise<void>((r) => setTimeout(r, 0));
 const pdf = (name: string) => new File(['%PDF'], name, { type: 'application/pdf' });
 const png = (name: string) => new File(['png'], name, { type: 'image/png' });
 
@@ -148,7 +153,6 @@ describe('notesFromFiles', () => {
 describe('claimFileNotesFor', () => {
   /* A sign-out mid-batch: the rest would be made as whoever signs in next. */
   it('stops a running batch and clears its report when the account changes hands', async () => {
-    claimFileNotesFor('u1');
     let release!: () => void;
     vi.mocked(actions.uploadFile).mockReturnValueOnce(new Promise((r) => (release = () => r({ filename: 'a.pdf', contentType: 'application/pdf', size: 1, path: 'files/a.pdf', indexing: 'server' as const }))));
     const batch = notesFromFiles([pdf('a.pdf'), pdf('b.pdf')], { notebook: 'Receipts', tags: [] }, 'Receipts', 'list');
@@ -162,7 +166,6 @@ describe('claimFileNotesFor', () => {
   });
 
   it('does not run a batch that waited its turn across a sign-out', async () => {
-    claimFileNotesFor('u1');
     let release!: () => void;
     vi.mocked(actions.uploadFile).mockReturnValueOnce(new Promise((r) => (release = () => r({ filename: 'a.pdf', contentType: 'application/pdf', size: 1, path: 'files/a.pdf', indexing: 'server' as const }))));
     const first = notesFromFiles([pdf('a.pdf')], { notebook: null, tags: [] }, null, 'list');
@@ -178,6 +181,7 @@ describe('claimFileNotesFor', () => {
 
   /* A cold launch reaches the batch before the guard has claimed anyone. */
   it('lets the first person claimed adopt a batch begun before anyone was, and a sign-out then stops it', async () => {
+    resetFileNotesForTests();
     // The first two uploads are held until released; `held` fills as they are made.
     const held: (() => void)[] = [];
     const answer = { filename: 'x', contentType: 'application/pdf', size: 1, path: 'files/x', indexing: 'server' as const };
@@ -185,8 +189,8 @@ describe('claimFileNotesFor', () => {
       held.length < 2 ? new Promise((r) => held.push(() => r(answer))) : Promise.resolve(answer),
     );
     const batch = notesFromFiles([pdf('a.pdf'), pdf('b.pdf'), pdf('c.pdf')], { notebook: null, tags: [] }, null, 'launch');
-    await vi.waitFor(() => expect(held).toHaveLength(1));
     claimFileNotesFor('u1');
+    await vi.waitFor(() => expect(held).toHaveLength(1));
     expect(getFileNotes().status).toBe('running');
     expect(pageBusy()).toBe(true);
     held[0]!();
@@ -198,8 +202,40 @@ describe('claimFileNotesFor', () => {
     expect(getFileNotes().status).toBe('idle');
   });
 
+  /*
+   * The installed app does not reload on sign-out (`focus-existing`), so a scanner sending
+   * files to a window sitting on the login screen reaches `notesFromFiles` with nobody
+   * claimed — the shape of a cold launch, and with no session to write with. The previous
+   * occupancy's `firstOwner` used to fail that batch's `theirs` check, and the files
+   * vanished with no report.
+   */
+  it('holds a launch after a sign-out until the next person signs in, then runs it as theirs', async () => {
+    claimFileNotesFor(undefined);
+    const batch = notesFromFiles([pdf('a.pdf'), pdf('b.pdf')], { notebook: null, tags: [] }, null, 'launch');
+    await settled();
+    // Nothing is written while nobody is signed in: a create sent now has no session.
+    expect(actions.createNote).not.toHaveBeenCalled();
+    expect(getFileNotes().status).toBe('idle');
+    // The files are held in this page only, so a reload must not land on them.
+    expect(pageBusy()).toBe(true);
+    claimFileNotesFor('u2');
+    expect(await batch).toEqual(['n1', 'n2']);
+    expect(getFileNotes()).toMatchObject({ status: 'done', ids: ['n1', 'n2'] });
+    expect(pageBusy()).toBe(false);
+  });
+
+  it('writes nothing, and reports nothing, for a launch on the login screen while nobody signs in', async () => {
+    claimFileNotesFor(undefined);
+    const batch = notesFromFiles([pdf('a.pdf')], { notebook: null, tags: [] }, null, 'launch');
+    // The shell says the session is gone too: the same occupancy, not a new one.
+    claimFileNotesFor(undefined);
+    await settled();
+    expect(await Promise.race([batch, settled().then(() => 'waiting')])).toBe('waiting');
+    expect(actions.createNote).not.toHaveBeenCalled();
+    expect(getFileNotes().status).toBe('idle');
+  });
+
   it('keeps a finished report for the same person, and drops it for the next', async () => {
-    claimFileNotesFor('u1');
     await notesFromFiles([pdf('a.pdf')], { notebook: null, tags: [] }, null, 'list');
     claimFileNotesFor('u1');
     expect(getFileNotes().status).toBe('done');
@@ -231,7 +267,6 @@ describe('undoFileNotes', () => {
 
   /* Pressed, then a sign-out while the trash is on its way: the refusal is not the next person's. */
   it('writes nothing once the account has changed hands', async () => {
-    claimFileNotesFor('u1');
     await notesFromFiles([pdf('a.pdf')], { notebook: null, tags: [] }, null, 'list');
     let refuse!: () => void;
     vi.mocked(actions.trashNotes).mockReturnValueOnce(new Promise((_, reject) => (refuse = () => reject(new Error('Unauthorized')))));

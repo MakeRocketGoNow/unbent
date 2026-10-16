@@ -1,5 +1,5 @@
 import { getImportRun } from './import-run.js';
-import { getFileNotes } from './file-notes.js';
+import { fileNotesWaiting, getFileNotes } from './file-notes.js';
 import { isExportRunning } from './export-archive.js';
 import { indexing } from './index-files.js';
 
@@ -32,8 +32,10 @@ export function pageBusy(): boolean {
     holds.size > 0 ||
     getImportRun().status === 'running' ||
     // Files becoming notes: a reload mid-batch loses every file not yet handed to the
-    // outbox, and a note already made and linking to it stays.
+    // outbox, and a note already made and linking to it stays. Files handed over on the
+    // login screen are held in memory until someone signs in, and are lost the same way.
     getFileNotes().status === 'running' ||
+    fileNotesWaiting() ||
     isExportRunning() ||
     indexing.get().status === 'running'
   );

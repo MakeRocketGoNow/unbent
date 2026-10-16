@@ -73,6 +73,44 @@ const listeners = new Set<() => void>();
 let owner: string | null = null;
 /** Who adopted the batches begun before anyone was claimed; see `claimFileNotesFor`. */
 let firstOwner: string | null = null;
+/**
+ * Occupancy of this tab: counts up each time the account goes to nobody. A batch begun
+ * before anyone was claimed is adopted by the first person (`firstOwner`), and a
+ * sign-out must stop that batch — but it must not also poison the *next* unowned
+ * launch. The installed app is `focus-existing`, so a scanner sending files to a
+ * window sitting on `/login` after a sign-out or an expired session does not reload;
+ * those files reach `notesFromFiles` with `owner === null`, the shape of a cold launch.
+ * Before this, they were compared against the previous `firstOwner` and dropped with no
+ * report, which is how a scan sent at the login screen vanished. Each batch takes the
+ * era it was enqueued in (`born` in `runBatch`), so one that waited its turn across a
+ * sign-out is still not the next person's.
+ */
+let era = 0;
+/**
+ * Resolved by each claim that adopts the unowned batches; `runBatch` waits on it while
+ * nobody is signed in. Starting at once was tried and does not land the files: on
+ * `/login` the library is closed and the session is gone, so every create goes out as a
+ * request with no cookie and fails, and the next person signs in to the report of a
+ * batch that failed before they arrived. A cold launch only got away with it because its
+ * cookie already existed. Replaced after each resolve, so the batches of the next
+ * occupancy wait on a promise of their own.
+ *
+ * The files of a waiting batch live in this page's memory and nowhere else, so the wait
+ * counts as busy (`fileNotesWaiting`, read by `pageBusy`) and the update notice's Reload
+ * does not land on them. A sign-in that leaves the page — Google's redirect — still
+ * loses them; only a sign-in that stays on the page, by code or passkey, reaches the
+ * claim. Keeping them on the device's `pending` shelf across the redirect would be the
+ * fix for that, and is not attempted here.
+ */
+let claimed = resolver();
+/** Batches begun with nobody signed in, waiting on `claimed`; see `fileNotesWaiting`. */
+let waiting = 0;
+
+function resolver(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((r) => (resolve = r));
+  return { promise, resolve };
+}
 
 function set(patch: Partial<FileNotesState>) {
   state = { ...state, ...patch };
@@ -81,6 +119,15 @@ function set(patch: Partial<FileNotesState>) {
 
 export function getFileNotes(): FileNotesState {
   return state;
+}
+
+/**
+ * Whether files handed over with nobody signed in are waiting for a sign-in. They are
+ * held here and nowhere else, so a reload under them loses them; `pageBusy` reads this
+ * beside the running status, which a waiting batch has not reached.
+ */
+export function fileNotesWaiting(): boolean {
+  return waiting > 0;
 }
 
 export function useFileNotes(): FileNotesState {
@@ -107,19 +154,28 @@ export function claimFileNotesFor(userId: string | undefined): void {
   /*
    * The first person claimed adopts whatever began before anyone was: the launch queue's
    * consumer is set before the first render, so a cold launch from the Dock or a scanner
-   * reaches `notesFromFiles` ahead of the guard. Wiping then would clear a report that
-   * is still running and let a reload land mid-batch. Adopted, the batch is theirs from
-   * here on, and a later sign-out stops it as it stops any other.
+   * reaches `notesFromFiles` ahead of the guard, and a scan sent to the login screen
+   * reaches it with nobody signed in. Those batches wait for this claim (`claimed`), so
+   * a sign-in made on this page adds the files it was made for. Adopted, the batch is
+   * theirs from here on, and a later sign-out stops it as it stops any other.
    */
   if (owner === null && next !== null && firstOwner === null) {
     firstOwner = next;
     owner = next;
+    claimed.resolve();
+    claimed = resolver();
     return;
   }
   // Whatever report there is goes with the change of hands — one written while nobody
   // was signed in included, since it is about the files of whoever was before.
   if (state.status !== 'idle') set({ ...initial, run: state.run });
   owner = next;
+  // Nobody is signed in: this occupancy is over, and the next claim adopts whatever
+  // arrives meanwhile. See `era`.
+  if (next === null) {
+    firstOwner = null;
+    era += 1;
+  }
 }
 
 /** Forgets a finished batch; the Import page's "Add more files". Ignored while one runs. */
@@ -201,9 +257,10 @@ let chain: Promise<unknown> = Promise.resolve();
 export function notesFromFiles(files: File[], filing: Filing, place: string | null, source: FileNotesSource, queryClient?: QueryClient): Promise<string[]> {
   if (files.length === 0) return Promise.resolve([]);
   // Whose files these are, taken now: a batch waiting its turn across a sign-out must
-  // not run as the next person.
+  // not run as the next person. `era` is taken now for the same reason — see its comment.
   const by = owner;
-  const run = () => runBatch(files, filing, place, source, by, queryClient);
+  const born = era;
+  const run = () => runBatch(files, filing, place, source, by, born, queryClient);
   const next = chain.then(run, run);
   chain = next;
   return next;
@@ -224,10 +281,32 @@ export function refusals(files: File[]): string | null {
   return `Nothing was added. ${bad.length === 1 ? 'One file' : `${bad.length} files`} cannot become a note: ${bad.join(', ')}.`;
 }
 
-async function runBatch(files: File[], filing: Filing, place: string | null, source: FileNotesSource, by: string | null, queryClient?: QueryClient): Promise<string[]> {
+async function runBatch(
+  files: File[],
+  filing: Filing,
+  place: string | null,
+  source: FileNotesSource,
+  by: string | null,
+  born: number,
+  queryClient?: QueryClient,
+): Promise<string[]> {
   // Still theirs: not once the account changed hands, or nobody is signed in now. A
-  // batch begun before anyone was claimed belongs to whoever is claimed first.
-  const theirs = () => (by ?? firstOwner) === owner;
+  // batch begun before anyone was claimed belongs to whoever is claimed first in the
+  // occupancy it was begun in; see `era`.
+  const theirs = () => born === era && (by ?? firstOwner) === owner;
+  if (!theirs()) return [];
+  // Begun while nobody is signed in: wait to be adopted before writing anything, since
+  // there is no session to write with (`claimed`). `theirs` held, so `by` is null here
+  // and the claim that resolves this is the one that adopts the batch. Checked again
+  // after, for a sign-out that lands between the adopting claim and this continuation.
+  if (owner === null) {
+    waiting += 1;
+    try {
+      await claimed.promise;
+    } finally {
+      waiting -= 1;
+    }
+  }
   if (!theirs()) return [];
   const refused = refusals(files);
   if (refused) {
@@ -293,6 +372,9 @@ export function resetFileNotesForTests(): void {
   state = initial;
   owner = null;
   firstOwner = null;
+  era = 0;
+  claimed = resolver();
+  waiting = 0;
   chain = Promise.resolve();
   for (const fn of listeners) fn();
 }
