@@ -9,9 +9,9 @@ import { OfflineIcon } from './icons.js';
  * Placed in the column itself, after the top bar in source order, rather than attached to
  * that bar: the bar is hidden on the desktop and on most phone views, and a line that
  * lived inside it would say nothing to most people. Where the bar does show, the page
- * reads top to bottom — which app, then its state.
+ * reads top to bottom: which app, then its state.
  *
- * Quiet on purpose — muted ink on a faint wash, not the danger colour and not the dark
+ * Quiet on purpose: muted ink on a faint wash, not the danger colour and not the dark
  * snackbar. Nothing has gone wrong that anyone can fix, and the sentence already says what
  * still works: the library is on the device and note writes go to the outbox, so what
  * offline stops is search and files. It says it once and stays until the connection is
@@ -23,7 +23,7 @@ import { OfflineIcon } from './icons.js';
  *
  * The second sentence is a promise only a tab whose outbox is durable can keep: the tab
  * holding the account's library, once it leads the outbox too, which it does a moment
- * after opening (`store/leader.ts`) — and every tab that is that tab's client, whose
+ * after opening (`store/leader.ts`), and every tab that is that tab's client, whose
  * writes go to the same outbox and whose `durable` is the holder's, mirrored
  * (`store/client-library.ts`). A device with no library at all (a browser without the
  * file system it lives in) keeps nothing and queues nothing, and is told that and

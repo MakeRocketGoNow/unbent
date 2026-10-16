@@ -9,8 +9,8 @@ import { useSyncExternalStore } from 'react';
  * URL in a fresh tab is opening an existing note, whoever created it a second ago.
  *
  * An id rather than a boolean. A bare flag can only be cleared by whoever reads it, and if
- * the navigation never lands — a create that fails after the flag is set, a Back pressed
- * mid-flight — it stays set and takes the focus of whatever note is opened next. Matching
+ * the navigation never lands (a create that fails after the flag is set, a Back pressed
+ * mid-flight) it stays set and takes the focus of whatever note is opened next. Matching
  * on the id makes that impossible: it can only ever answer for the note it was set for.
  */
 let newNoteId: string | null = null;

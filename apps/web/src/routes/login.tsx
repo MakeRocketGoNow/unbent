@@ -16,7 +16,7 @@ import { Login } from '../components/Login.js';
 const search = z.object({
   redirect: z.string().max(2048).optional().catch(undefined).transform(safeRedirect),
   /**
-   * The code the auth callback redirects back with when a provider sign-in fails — the
+   * The code the auth callback redirects back with when a provider sign-in fails, the
    * refused sign-up above all. Bounded and otherwise taken as is: the screen maps known
    * codes to its own sentences and names the rest, and never shows the
    * `error_description` the callback puts beside it, so that parameter is not read.
@@ -30,7 +30,7 @@ export const Route = createFileRoute('/login')({
    * Signing in is not something to offer somebody who already has.
    *
    * Reaching this while signed in means a stale link, a bookmark, or a second tab that
-   * signed in first — in every case the answer is the page they were trying to reach.
+   * signed in first: in every case the answer is the page they were trying to reach.
    * There is no loop with the gate in `auth-gate.ts`: that one redirects here only when
    * there is no session, and this one leaves only when there is.
    */

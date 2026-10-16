@@ -4,7 +4,7 @@
  *
  * Every name carries the account's id. The service worker's caches are keyed by address
  * and had to be emptied whenever the account on a device changed hands; the local store
- * is keyed by account instead, so two people who share a browser never share a file —
+ * is keyed by account instead, so two people who share a browser never share a file,
  * and the wipe on sign-out still removes every file with the prefix, in case the id of
  * the person leaving is not known (a session the server refused, say).
  */
@@ -17,8 +17,8 @@ export const OUTBOX_PREFIX = 'unbent-outbox-';
  * The OPFS directory an account's file bytes live in (`store/files.ts`): the files of the
  * notebooks it chose to keep on this device, and the files added here that the server has
  * not taken yet. Beside the database rather than in the service worker's cache because
- * both are the account's and deliberate — a kept notebook is gigabytes someone confirmed,
- * a waiting upload exists nowhere else — and the cache goes on every account change, a
+ * both are the account's and deliberate (a kept notebook is gigabytes someone confirmed,
+ * a waiting upload exists nowhere else) and the cache goes on every account change, a
  * refused session included.
  */
 export const FILES_PREFIX = 'unbent-files-';

@@ -110,7 +110,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
      A trashed note is read-only wherever it is opened, not only from the trash. The
      server serves one by id so the trash can show it, which means a link saved before the
      note was deleted, or a note trashed on another device while it is open here, now
-     loads instead of failing — and would load editable, with every save refused, if this
+     loads instead of failing, and would load editable, with every save refused, if this
      followed the route alone.
   */
   const inTrash = inTrashView || note?.deletedAt !== undefined;
@@ -121,14 +121,14 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
      rest: the trash withdraws the ⋯ menu and the files panel, because a trashed note has
      nothing to do but come back; a lapsed account keeps Download and Delete, and its
      files to open, download and delete, which is what the banner promises. Only the
-     writes go — History's restore, Duplicate, saving web images, adding a file.
+     writes go: History's restore, Duplicate, saving web images, adding a file.
   */
   const { inactive: planInactive } = usePlan();
   const readOnly = inTrash || planInactive;
   /*
      Opening a note is how its files become searchable offline without keeping its whole
      notebook: the device holds the text of the files of the last few hundred notes opened
-     on it (`noteOpened`). Not a trashed note's — it is on its way out.
+     on it (`noteOpened`). Not a trashed note's: it is on its way out.
   */
   const openedId = note && !readOnly ? note.id : undefined;
   useEffect(() => {
@@ -137,11 +137,11 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   /*
      Offline, the note is as editable as ever: it is read from the local copy of the
      library and a save goes to the outbox, which replays when the connection returns.
-     What offline does stop is what needs the server now — Auto-fill, the ⋯ menu's
-     actions, a file upload — and those fade in place rather than the whole note locking.
+     What offline does stop is what needs the server now (Auto-fill, the ⋯ menu's
+     actions, a file upload) and those fade in place rather than the whole note locking.
 
-     Except in a tab that holds the library but not yet its outbox's lock — a moment
-     during a hand-over, or for good in a browser without Web Locks: a save there is a
+     Except in a tab that holds the library but not yet its outbox's lock (a moment
+     during a hand-over, or for good in a browser without Web Locks): a save there is a
      request made now, which offline fails and rolls back, so that tab locks the note
      while offline (`stranded`, below). A tab whose library another tab holds is that
      tab's client (`store/client-library.ts`): its saves go to the holder's outbox and
@@ -164,7 +164,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
 
   /**
    * The notebook the draft names, as the list knows it, for its id. By name because that
-   * is what the draft and the picker hold — ids never leave the database's world except
+   * is what the draft and the picker hold: ids never leave the database's world except
    * to address a notebook's own settings, which is what this one is for.
    */
   const currentNotebook = notebooks.data?.notebooks.find(
@@ -175,15 +175,15 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
      Every definition this session has loaded, not only the current notebook's.
 
      A newly typed value has no stored row yet, so the patch can encode it only from a
-     definition. Changing the notebook swaps `fieldDefs` for the new notebook's — or
-     undefined while they load — and used to drop that value: Amount typed, note filed,
+     definition. Changing the notebook swaps `fieldDefs` for the new notebook's (or
+     undefined while they load) and used to drop that value: Amount typed, note filed,
      Amount gone. The editor still renders `fieldDefs.data`; this list is for the save.
   */
   const seenFieldDefs = useRef(new Map<string, FieldDef>());
   const knownFieldDefs = rememberFieldDefs(seenFieldDefs.current, fieldDefs.data);
   /*
      The fields the editor draws an input for, which is what decides whether a half-typed
-     value is held — not every one seen. A value whose field the notebook no longer has
+     value is held, not every one seen. A value whose field the notebook no longer has
      (filed elsewhere, or deleted in another tab) has no input: at most a read-only row
      carried from the old notebook. Holding it would keep the head on Unsaved over
      nothing the person can finish. An unfiled note draws none. Undefined while the
@@ -202,8 +202,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   /**
    * Editor is uncontrolled: the open note's saved body is its seed, and a remount (the
    * revision) is how it is given another text. The override is that other text when it
-   * is not the saved body — a draft put back on screen after a refused save (see
-   * `showDraft`) — and it names its note, since the editor mounts for a new note in the
+   * is not the saved body (a draft put back on screen after a refused save, see
+   * `showDraft`), and it names its note, since the editor mounts for a new note in the
    * render before the effects that seed the draft run: an override left over from the
    * previous note would otherwise seed this one. Showing a conflict's draft once cleared
    * the override instead, so the editor showed the server's body under a draft that held
@@ -218,14 +218,14 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
    *
    * One value rather than the two booleans this used to be. `showPreview` ("is there a
    * second pane") and `richEditor` ("which editor") were independent, so they could
-   * express states that had no meaning — a rich editor beside a preview is the same
-   * document rendered twice — and a phone needed a third variable to say which of the two
+   * express states that had no meaning (a rich editor beside a preview is the same
+   * document rendered twice) and a phone needed a third variable to say which of the two
    * panes it was actually looking at. Three exclusive views need none of that.
    *
    * `preview` is deliberately not restored. It is somewhere you go to read what you just
    * wrote, never the state you want a note to open in, and persisting it meant every note
    * you opened landed on a pane you cannot type into. The editing views persist, so the
-   * choice that is a real preference — which editor you write in — survives a reload.
+   * choice that is a real preference (which editor you write in) survives a reload.
    */
   const [noteView, setNoteView] = usePersistentState<NoteView>('noteView', 'rich', (raw) =>
     raw === 'rich' || raw === 'source' ? raw : undefined,
@@ -234,7 +234,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   /**
    * Show the rendered note beside the source rather than instead of it.
    *
-   * A modifier on the source view, not a fourth view — see `NoteView`. Persisted because
+   * A modifier on the source view, not a fourth view (see `NoteView`). Persisted because
    * it is a genuine working preference, and device-local because it is really a statement
    * about how much screen this machine has: a stored `true` from a wide monitor should not
    * follow the user to a laptop. Off by default; the split is the specialist's layout, and
@@ -250,7 +250,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
    * Whether this note was reached with the sidebar's arrow keys.
    *
    * If it was, the editor must not take focus on mount: the next arrow press belongs to
-   * the list. Every other way of opening a note — a click, a fresh load, a shared link —
+   * the list. Every other way of opening a note (a click, a fresh load, a shared link)
    * still lands in the editor ready to type.
    */
   const cameFromList = useCameFromList();
@@ -284,7 +284,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   const panesRef = useRef<HTMLDivElement>(null);
 
   /*
-     The whole note takes a dragged file, not only the lines its text fills — on a new
+     The whole note takes a dragged file, not only the lines its text fills: on a new
      note, one line. See `noteDropZone` for where a file let go off the text lands. Not in
      the preview, where the Attach button is off too: the editor is hidden there, so the
      drop would have no point to show and nothing to show it on.
@@ -309,8 +309,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
    * Whether opening this note would raise a keyboard.
    *
    * Deliberately not `isMobile`. The question here is whether focus costs half the screen,
-   * which is about the keyboard rather than the layout, and the two disagree at both ends —
-   * see `TOUCH_QUERY`.
+   * which is about the keyboard rather than the layout, and the two disagree at both ends
+   * (see `TOUCH_QUERY`).
    */
   const touch = useMediaQuery(TOUCH_QUERY);
 
@@ -354,7 +354,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
    * Kept apart from the query cache's copy on purpose. That one is replaced by any
    * refetch, and a draft diffed against a copy it was never seeded from sends its stale
    * keys as edits: the phone's new title arrives in the cache, the draft still holds the
-   * old one, and the next keystroke in the body writes the old title back — with a
+   * old one, and the next keystroke in the body writes the old title back, with a
    * precondition that passes, because it was taken from the same fresh copy.
    *
    * By note id rather than one ref, because a save can outlive the note being open:
@@ -364,8 +364,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   const bases = useRef(new Map<string, Note>());
   /**
    * The notes whose base may be newer than the truth. The feed engine empties and
-   * refills the collections on a `reset` — an operator's wind-back or load, which make
-   * every row older, not newer — and the rule below that takes only a newer copy would
+   * refills the collections on a `reset` (an operator's wind-back or load, which make
+   * every row older, not newer) and the rule below that takes only a newer copy would
    * leave the open note showing what the wind-back removed: the list dropped the edit
    * and the note did not (MAK-196, found in the restore rehearsal). After a reset every
    * base is suspect until the next copy of its note has been taken, whatever its date.
@@ -381,7 +381,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   const whole = feedState !== null && isWhole(feedState);
   const seenResets = useRef(resets);
   useEffect(() => {
-    // No library — closed by a refused session, or changing hands — is not a reset of one;
+    // No library (closed by a refused session, or changing hands) is not a reset of one;
     // the count the reopened library then reports is a first state, heard as below.
     if (resets === null) {
       seenResets.current = null;
@@ -407,7 +407,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   const conflictNotice = useRef<HTMLDivElement>(null);
   /*
      The notice sits under the head but scrolls with the note, and the refusal comes while
-     someone is typing — on a long note, far below it. The inputs lock at the same moment,
+     someone is typing (on a long note, far below it). The inputs lock at the same moment,
      so without this the editor simply stops taking keys, with the two ways out off-screen
      above. Guarded because jsdom has no scrollIntoView, as `Confirm` guards it.
   */
@@ -417,7 +417,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   /**
    * Whether the note's inputs take edits: not while a conflict waits on a choice. Typing
    * on during one would only be refused again, and the choice is between two versions
-   * the person can see — a third, still moving, would make it a guess.
+   * the person can see: a third, still moving, would make it a guess.
    */
   const outbox = useOutbox();
   const sync = useSyncStatus();
@@ -449,8 +449,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
 
      The refusal brings the draft the save carried and the copy it was made from. When
      the note is open and that draft is what is on screen, nothing moves. When it is not
-     — the note was closed when the refusal came, and reopened from the row, which the
-     ended entry had rolled back to the server's copy — the draft is put back on screen
+     (the note was closed when the refusal came, and reopened from the row, which the
+     ended entry had rolled back to the server's copy), the draft is put back on screen
      and its base taken, so the choice is between the two versions that exist and "Keep
      mine" has something to keep. Typing since the refused save is left alone: the draft
      on screen already holds everything the refused one did.
@@ -471,7 +471,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   /*
      The server's copy after a save of this note went through: the base the next save is
      made against. Reseeded only when nothing has been typed since and the copy differs
-     from the draft — the server normalised something — so typing is never disturbed.
+     from the draft (the server normalised something), so typing is never disturbed.
      While typing is still in flight the body stays, but whatever the person has not
      edited takes the answer's (`rebaseAfterAck`): a rename or a merge elsewhere can
      reach the answer without moving the note's date, and leaving the stale value
@@ -501,7 +501,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   /**
    * The field definitions seen so far, read when called rather than at render.
    * `rebaseDraft` and `reseed` run from the outbox's and the feed's subscriptions, which
-   * hold the render that subscribed — for a note opened straight from a load, one from
+   * hold the render that subscribed: for a note opened straight from a load, one from
    * before its notebook's definitions arrived. Without them a value typed into a field
    * the note had no row for has no type to be judged by, is not held, and snaps back.
    */
@@ -525,11 +525,11 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
 
   /**
    * Re-seeds the open note from a copy of it the server just gave, rebuilding the editor
-   * only when the body is what changed — a title or a tag from elsewhere has no reason to
+   * only when the body is what changed: a title or a tag from elsewhere has no reason to
    * throw away the caret and the undo history. The bump to `seedGeneration` makes the
    * autosave take the new copy as its baseline rather than as an edit to save.
    *
-   * `keep` is the draft on screen when this reseed is automatic — a save's answer, or
+   * `keep` is the draft on screen when this reseed is automatic: a save's answer, or
    * the feed. Half-typed field values live only there; without them, `seedFrom` drops
    * the digits the person is still looking at. An explicit replace (theirs, a restore)
    * passes nothing, and takes the copy whole.
@@ -542,7 +542,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
 
   /**
    * Puts a draft on screen as the autosave's baseline, rebuilding the editor only if
-   * the body differs from what it shows — with that body as the seed, since the saved
+   * the body differs from what it shows, with that body as the seed, since the saved
    * body in the row is not it.
    */
   function showDraft(next: NoteDraft) {
@@ -581,19 +581,19 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
      A new note opens with the caret in its title.
 
      Only a note that was just created. Opening one that already has a name means adding to
-     it — you clicked it to write in it — so every other way in still lands in the editor,
+     it (you clicked it to write in it), so every other way in still lands in the editor,
      which is what its `autoFocus` below does. `cameFromList` outranks both: while the
      arrow keys are driving, the next press belongs to the list, not to either field.
 
      The field is empty, with the placeholder showing, rather than holding a selected
-     "Untitled" to type over. A selection is lost to any stray click or arrow press — and
-     on a phone, to the tap that puts the caret in the field at all — and the next
+     "Untitled" to type over. A selection is lost to any stray click or arrow press (and
+     on a phone, to the tap that puts the caret in the field at all) and the next
      keystroke then appends to the word instead of replacing it: "UntitledMeeting notes".
      Nothing can go wrong with an empty field, and nothing has to be typed over.
 
      Both flags are read as they stand when the note loads and are deliberately not
      dependencies, the same way the editor reads its own `autoFocus` at mount. Either can
-     change while the note is open — a click clears one, Escape and Enter move the other —
+     change while the note is open (a click clears one, Escape and Enter move the other)
      and re-running on that would drag the caret out of whatever it had reached and put it
      back in the title.
   */
@@ -613,7 +613,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
        written over it (MAK-113). The refusal, when there is one, comes back through the
        outbox's conflicts and the effect above; "Keep mine" sends the draft again against
        the copy the refusal brought. 'unchanged' when nothing the server can hold differs
-       from the base — a space typed and deleted — so the head does not flash "Saved".
+       from the base (a space typed and deleted) so the head does not flash "Saved".
     */
     let outcome: Awaited<ReturnType<typeof actions.saveNote>>;
     try {
@@ -631,8 +631,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     }
     if (outcome === 'unchanged') return 'unchanged';
     if (typeof outcome === 'object') {
-      // The server answered the save itself — no local copy, or a note the copy does
-      // not hold yet — so no acknowledgement follows, and the answer is taken here as it
+      // The server answered the save itself (no local copy, or a note the copy does
+      // not hold yet) so no acknowledgement follows, and the answer is taken here as it
       // is there. A client tab's save is queued on the holder and comes back
       // `'queued'`, with the acknowledgement mirrored from there. Nothing typed since:
       // a reseed, whose new reset key re-arms the autosave's baseline. A rebase alone
@@ -655,7 +655,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
 
   /*
      Lets the table beside this note change one of its fields. The edit lands in the draft
-     and saves like one typed in the property list below — see `open-note-fields.ts` for
+     and saves like one typed in the property list below. See `open-note-fields.ts` for
      why the table cannot save it directly. Withdrawn when this stops being the note
      being edited.
   */
@@ -668,7 +668,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
 
   /*
      And its filing, for a bulk action on the list that includes this note: the notebook
-     it was moved to, the tags it gained or lost. Into the draft for the same reason —
+     it was moved to, the tags it gained or lost. Into the draft for the same reason:
      the next autosave would otherwise write the old filing back over the batch.
   */
   useEffect(() => {
@@ -707,7 +707,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   }
 
   /**
-   * Keep mine: this draft saved over the version the refusal brought back — against that
+   * Keep mine: this draft saved over the version the refusal brought back, against that
    * version, which is still a precondition: a third save landing meanwhile is refused in
    * turn, and the notice comes back. The draft keeps whatever of theirs it never touched.
    */
@@ -719,7 +719,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     if (!base) return;
     outbox?.resolveConflict(id);
     setConflict(null);
-    // Diffed against the copy the draft came from — only what was typed here — and
+    // Diffed against the copy the draft came from (only what was typed here) and
     // preconditioned on theirs, so it lands on top of their version rather than over it.
     const definitions = liveFieldDefs();
     void actions.saveNote({ noteId: id, value: draftRef.current, base, against: theirs.updatedAt, definitions }).then(
@@ -786,7 +786,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
        copy older than the base is otherwise not another device's save: it is the row
        between a replayed write of our own ending and the feed delivering the server's
        copy, and taking it would reseed the editor with text already replaced. After a
-       reset the older copy is the truth — the store was wound back — and the base is what
+       reset the older copy is the truth (the store was wound back) and the base is what
        is stale (`staleBases`). The reset is heard before the walk delivers that row,
        while the query still holds the copy the base was taken from, so a copy with the
        base's own date says nothing and leaves the flag standing; a different copy clears
@@ -816,8 +816,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   }, [editing, noteId, note?.updatedAt, conflicted, whole]);
 
   /*
-     The connection back: a save that failed for want of one — typing that landed in the
-     moment before the editor locked — goes now rather than waiting for the next keystroke,
+     The connection back: a save that failed for want of one (typing that landed in the
+     moment before the editor locked) goes now rather than waiting for the next keystroke,
      which a locked editor could not have taken anyway.
   */
   const wasOffline = useRef(offline);
@@ -830,7 +830,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
      Typing the autosave has not sent, a save in flight or one that failed and waits to
      be retried, and files still uploading all live in this page and nowhere else. While
      any of them is true, a waiting deploy does not reload the app on the next navigation
-     — see `busy.ts`.
+     (see `busy.ts`).
   */
   const [uploadsPending, setUploadsPending] = useState(0);
   const unsent =
@@ -838,13 +838,13 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   useEffect(() => (unsent || uploadsPending > 0 ? holdPage() : undefined), [unsent, uploadsPending]);
 
   /*
-     A field value the type cannot read yet — a number at "12.", a URL at "http://" — is
+     A field value the type cannot read yet (a number at "12.", a URL at "http://") is
      left out of the patch so the title and body typed beside it still save. The save then
      succeeds with that value held nowhere but the draft, and "Saved" over it is a word the
      user can act on: switch notes or close the tab and the half-typed value is gone.
 
      So the head keeps saying "Unsaved" until the value is one the field can hold. The
-     state machine is left alone — the save did succeed, and failing it would put back the
+     state machine is left alone: the save did succeed, and failing it would put back the
      400 that took the body down with it.
   */
   const holdingField = editing && unstoreableFieldIds(draft, note, knownFieldDefs, editableFieldIds).length > 0;
@@ -858,8 +858,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
      "Saved" is the local copy's word now, and it stays one word: the head has room for
      about that beside a title on a phone, and a sentence here shrank the title (a lesson
      learned twice). What the server has not heard of yet is said by a glyph beside the
-     word while this note has an entry waiting in the outbox — the blink of a replay
-     online, the whole stretch offline — with "Not synced yet" on hover or tap. The
+     word while this note has an entry waiting in the outbox (the blink of a replay
+     online, the whole stretch offline) with "Not synced yet" on hover or tap. The
      device's state is the banner's to say, and a sync that is stuck is the strip's
      (`SyncingLine`).
   */
@@ -869,7 +869,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       ? SAVE_LABEL.dirty
       : SAVE_LABEL[saveState];
   // Not `readOnly`: a lapsed plan locks the editor but keeps the entry the 402 refused
-  // (MAK-108), and that entry is exactly what this glyph is for — the typing the server
+  // (MAK-108), and that entry is exactly what this glyph is for: the typing the server
   // has not heard of. Only the trash, whose notes have no draft, has nothing to say.
   const notSynced = !inTrash && sync.waiting.has(noteId);
 
@@ -902,7 +902,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   /**
    * The notebook and the tags as the first two rows of the property list, at every width.
    *
-   * They used to be a row that opened a sheet holding them — a full-height modal surface
+   * They used to be a row that opened a sheet holding them: a full-height modal surface
    * for a select and a chip, once the fields had left it, and a tap that bought nothing the
    * row had not already said. `FilingRows` is the shared drawing; the Android app's embed
    * draws the same rows.
@@ -923,8 +923,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   /**
    * The note's fields, as a property list, above the body at every width.
    *
-   * The fields are a list that is as much the note as its body is — a coupon's code, a
-   * game's rating — and with the notebook and the tags as its first two rows (`lead`) it
+   * The fields are a list that is as much the note as its body is (a coupon's code, a
+   * game's rating) and with the notebook and the tags as its first two rows (`lead`) it
    * is the whole of how the note is filed, the way Notion's page states its properties
    * before its text. They used to take a column of their own beside the note on a desktop,
    * so a long list never pushed the body down; the column scrolls as one document now, so
@@ -1054,7 +1054,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
    * nowhere. So the draft is flushed, and the save has to have worked. `flush` reports
    * through the save state, which is a render behind it, hence the turn of the event
    * loop before it is read. A conflict waiting on a choice counts as unsaved even when
-   * the state reads clean — the refusal comes from the outbox, after the save was taken
+   * the state reads clean: the refusal comes from the outbox, after the save was taken
    * locally, and can arrive while the History sheet is already open.
    */
   async function savedFirst(id: string): Promise<boolean> {
@@ -1079,7 +1079,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     // What the version held that no longer fits, said with the result either way.
     const except = skippedPhrase(skipped ?? []);
     /*
-       The version was already what the note says — the one just restored, picked again,
+       The version was already what the note says: the one just restored, picked again,
        or the "Before a restore" copy of the text now on screen. Nothing was written and
        nothing kept, so there is nothing to undo, and "Restored" with an Undo would be
        an offer to reverse something else.
@@ -1103,7 +1103,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     if (noteIdRef.current !== id) return;
     /*
        Only over the draft that was saved. Nothing holds the sheet open while the request
-       is out — the platform's back gesture closes the dialog without asking — so the
+       is out (the platform's back gesture closes the dialog without asking) so the
        person can be typing again by the time it lands, and a reseed would drop what is
        still waiting for the autosave. That typing then saves against the note the restore
        replaced, and comes back as a conflict, the way `undoRestore` leaves it.
@@ -1127,7 +1127,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
    *
    * `keptId` is that copy, named by the server in the restore's own answer. It was
    * found before by reading the list back and matching a date, which cost a request and
-   * rested on the copy's date equalling the note's — true, but nothing here should have
+   * rested on the copy's date equalling the note's: true, but nothing here should have
    * to know it. The server is asked to put it back only over a note still carrying the
    * date the restore gave it (`ifUpdatedAt`): the editor is live while the snackbar is
    * up, typing saved since leaves no copy of its own inside the window, and an Undo that
@@ -1190,7 +1190,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
    * Workspace is reused across notes, and this pass outlives a switch the same way
    * Auto-fill's round trip does. `startedFor` is what keeps it honest: `draftBodyRef` is
    * the incoming note's after a switch, so rewriting from it would write the previous
-   * note's localized links onto the one now open — and the status would land on it too.
+   * note's localized links onto the one now open, and the status would land on it too.
    * Bail once `noteIdRef` has moved on. The images already fetched stay stored on the note
    * they belong to; coming back to it starts a new press, as with `runAutofill`.
    */
@@ -1234,8 +1234,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   /**
    * The draft as it stands, for auto-fill to plan against after its round trip: the plan
    * compares the suggestion with what is on screen when the answer arrives, not with
-   * what was there when the button was pressed. That is a same-note comparison — the
-   * user typing a title while Jev reads — not a licence to file the next note. `noteIdRef`
+   * what was there when the button was pressed. That is a same-note comparison (the
+   * user typing a title while Jev reads), not a licence to file the next note. `noteIdRef`
    * is what makes the distinction: after a switch, this draft is the incoming note's.
    */
   const draftRef = useRef(draft);
@@ -1257,7 +1257,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   /** Changes that would replace something already set, waiting to be confirmed. */
   const [autofillReplace, setAutofillReplace] = useState<AutofillChanges | null>(null);
   /**
-   * Set when the last Auto-fill told us — and it tells only an operator — that the title
+   * Set when the last Auto-fill told us (and it tells only an operator) that the title
    * model rejected its key. A standing fault, not a passing one, so it holds as a
    * dismissible notice rather than a status that fades, until the operator dismisses it or
    * leaves the note. See the server's `lib/autofill.ts` and `titleModel`.
@@ -1265,7 +1265,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   const [titleModelFault, setTitleModelFault] = useState(false);
 
   /*
-     A round trip outlives a note switch — Workspace is reused, the same way autosave is.
+     A round trip outlives a note switch: Workspace is reused, the same way autosave is.
      Drop the in-flight head UI here so a "Reading…", a replace confirm, or a "Saving…"
      from the previous note cannot sit on this one. The requests themselves are left to
      finish; wasting one is cheaper than landing it on the wrong note, which `runAutofill`
@@ -1298,7 +1298,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
    * API's `lib/autofill.ts` for what is read. The draft is flushed first so the server
    * reads the note as it is on screen, and the suggestion's definitions are remembered
    * before its values land, so the patch can encode a value for a notebook whose fields
-   * this session has not loaded yet — the same gap `rememberFieldDefs` closes for a
+   * this session has not loaded yet, the same gap `rememberFieldDefs` closes for a
    * typed value.
    */
   async function runAutofill() {
@@ -1306,7 +1306,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     setAutofilling(true);
     setAutofillReplace(null);
     setFilled(null);
-    // The press is its own progress now — the button goes busy; the last result, if one is
+    // The press is its own progress now: the button goes busy; the last result, if one is
     // still up, clears so it can't be mistaken for this press's answer.
     setSnackbar(null);
     try {
@@ -1318,7 +1318,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
          The note's files, beside the suggestion rather than after it, so a title that is
          only a file's name is filled over instead of offered (`isPlaceholderTitle`). The
          attachments panel has usually loaded them already, so this is the cache; a list
-         that fails to load costs only that — the title is offered, as it was before.
+         that fails to load costs only that: the title is offered, as it was before.
       */
       const [suggestion, files] = await Promise.all([
         api.autofillNote(startedFor),
@@ -1337,8 +1337,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       /*
          A file this press had no text for, named so the person knows which. It said "a
          file is still being read", which promised a read in progress where there was
-         none — a deployed server reads the note's files before it answers, so a file
-         still pending is usually one whose read failed — and gave no file to look at.
+         none (a deployed server reads the note's files before it answers, so a file
+         still pending is usually one whose read failed) and gave no file to look at.
          See `NothingToRead` for the cases where "couldn't read" means something milder.
       */
       const { pending } = suggestion.read;
@@ -1347,7 +1347,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
         showFillResult(`Nothing empty to fill in${unread}`);
       } else {
         // The draft as it stood, captured before the fill lands, so Undo is one assignment
-        // back to it — `applyAutofill` returns a new object and never touches this one.
+        // back to it: `applyAutofill` returns a new object and never touches this one.
         const before = draftRef.current;
         setDraft((d) => applyAutofill(d, plan.fill));
         setFilled(plan.fill);
@@ -1364,7 +1364,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       if (noteIdRef.current !== startedFor) return;
       // The server's own sentence, without the status it arrives prefixed with: "422:
       // Nothing to read yet…" is not what a person wants to read. A failure stays until
-      // dismissed rather than fading — no `duration`.
+      // dismissed rather than fading (no `duration`).
       setSnackbar({ message: api.errorText(err), tone: 'error' });
     } finally {
       if (noteIdRef.current === startedFor) setAutofilling(false);
@@ -1381,7 +1381,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
     const missing = isStatus(error, 404);
     /*
        A third case: no connection, and no copy of this note on the device, because it was
-       never opened here. Not a failure — muted, like the 404 — and no Retry, since the
+       never opened here. Not a failure (muted, like the 404) and no Retry, since the
        note loads by itself when the connection returns (`connectivity.ts` refetches what
        is on screen).
     */
@@ -1395,7 +1395,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
             above it already offered a way out. Below the breakpoint that topbar is hidden
             (and above it the rail has taken its place), so on a phone this state had no
             route anywhere except the "Clear" link in
-            the card — and "Clear" reads as dismissing a message, not as leaving the view.
+            the card, and "Clear" reads as dismissing a message, not as leaving the view.
 
             The same row the loaded note draws, minus the controls that need a note to act
             on. `backTo` is carried so a trashed note that fails to load returns to the
@@ -1457,7 +1457,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
      Two derived booleans rather than three branches at each use: the rendered pane is on
      in `preview` and in a split `source`, and the second track only exists in the latter.
      `isMobile` gates the split because the pane row has no room for two below the
-     breakpoint — the preference stays set, it simply does not apply here.
+     breakpoint: the preference stays set, it simply does not apply here.
   */
   const showSplit = noteView === 'source' && splitPreview && !isMobile;
   const showPreviewPane = noteView === 'preview' || showSplit;
@@ -1468,7 +1468,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
           One column at every width: the note, with its property list above the body.
 
           The fields used to have a column of their own beside the note on a desktop, so a
-          long list never pushed the body down — and that put the notebook and tags in one
+          long list never pushed the body down, and that put the notebook and tags in one
           place, the fields in another, and the two drawn differently from the phone. The
           column scrolls as one document now, under a title that stays, so the list is
           simply the top of the note the way Notion pins a page's properties, and one
@@ -1492,7 +1492,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
             press below the last line of a page does in any editor. On a phone that blank
             is most of the screen under a short note, and it is where a thumb goes to add
             to it; it is the column's, not the editor's, so the press used to do nothing.
-            Only the column itself — never a press that landed on something inside it —
+            Only the column itself (never a press that landed on something inside it)
             and only below the editor's bottom edge, across the column's whole width:
             the margins beside the note's text stay inert, the space under it does not.
         */
@@ -1512,7 +1512,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       {/*
           Two rows on a phone, one on a desktop.
 
-          The single flex row squeezed the title to a few characters — "2026-03-25 - P" —
+          The single flex row squeezed the title to a few characters ("2026-03-25 - P"),
           because the actions sat beside it with `white-space: nowrap`. A note's title is
           the thing you need to confirm you opened the right note, so below the breakpoint
           it gets the full width and what is left of the controls sits at its right end.
@@ -1525,14 +1525,14 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
               breakpoint: making it conditional would change the tree on resize, and the
               editor below is an uncontrolled CodeMirror view that must not be rebuilt.
 
-              `search` is carried rather than dropped — going back to an unfiltered list
+              `search` is carried rather than dropped: going back to an unfiltered list
               from a note you reached through a tag is the same trap `newNote` guards.
 
               Back through the history when the list is the page behind the note, which
               it is whenever the note was opened from it (`goBackToList`). It used to open
               the list as a new page on top, so a swipe back or Android's Back right after
               it reopened the note the arrow had just left. Where something else is behind
-              — a link from another note, a notification — the link replaces the note with
+              (a link from another note, a notification), the link replaces the note with
               the list instead, so Back from there still never lands on the note.
           */}
           <Link
@@ -1551,7 +1551,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
 
               Tab cannot be it. The save state, the ⋯ menu and the toolbar's twelve
               controls all sit between this field and the editor in the DOM, so Tab is
-              several presses from the text — and it is also how those controls are reached
+              several presses from the text, and it is also how those controls are reached
               on purpose, which taking it would cost.
 
               The same move the sidebar's Enter makes, through the same registration, so
@@ -1590,8 +1590,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
 
           {/*
               Auto-fill: the one action promoted out of the ⋯ below, because it is the
-              reason a scanned note gets opened at all — the scanner made the note, and
-              filing it is the next thing — and a control reached through a menu is one
+              reason a scanned note gets opened at all (the scanner made the note, and
+              filing it is the next thing) and a control reached through a menu is one
               nobody learns is there. Quiet, so it does not outrank the title beside it,
               and only where the instance can answer (`config.autofill`); a trashed note
               has no filing to fill. Below the breakpoint the label goes and the sparkle
@@ -1628,7 +1628,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
               head's contents change at the breakpoint. Grouping by what an action acts on
               rather than by how often it is used settles it without a width: the views
               moved to the toolbar, over the panes they change, and what is left is the
-              note itself — so the head needs no buttons at all.
+              note itself, so the head needs no buttons at all.
 
               Delete sits behind the ⋯ rather than beside the title on purpose. It is one
               of two irreversible things in the app, and a destructive control a single
@@ -1637,7 +1637,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
               that a confirmation dialog alone was carrying.
           */}
           {/* A trashed note has neither action, and a ⋯ that opens an empty box is worse
-              than no ⋯ — so the trigger goes with its contents. */}
+              than no ⋯, so the trigger goes with its contents. */}
           {!inTrash && (
             <span className="overflow-slot" ref={overflowSlot}>
               <OverflowMenu
@@ -1662,7 +1662,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
                   /*
                      Earlier versions of the note's text, and a way back to one. Beside
                      Delete on purpose: the two are how a note is lost and how it is got
-                     back. Not while a conflict waits on a choice — a restore would be a
+                     back. Not while a conflict waits on a choice: a restore would be a
                      third version arriving in the middle of choosing between two. The
                      draft is flushed as the sheet opens, so by the time a version is
                      picked the server already has what is on screen.
@@ -1708,7 +1708,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
           A save this note refused because another device saved it first (MAK-113). Under
           the head, where the save state reports, and inline rather than a dialog: the
           typing it is about stays on screen, locked, to be read before choosing, and a
-          modal would cover exactly that. No dismiss — the typing exists nowhere but here
+          modal would cover exactly that. No dismiss: the typing exists nowhere but here
           until one of the two is chosen, and closing the question would leave it so.
 
           Neither action is filled: each throws a version away, and which one is right
@@ -1740,7 +1740,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
           instance (the server gates the signal), because it names a secret only they can
           replace, and left to the status line it would fade as if it were nothing. A note
           filed on a misconfigured instance still fills everything else and reads normally
-          for everyone else — this is the one person who can fix it, told plainly.
+          for everyone else: this is the one person who can fix it, told plainly.
       */}
       {titleModelFault && (
         <div className="operator-notice" role="status">
@@ -1761,7 +1761,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       )}
 
       {/*
-          Auto-fill's offer to replace what is already set — the warning the issue asked
+          Auto-fill's offer to replace what is already set: the warning the issue asked
           for, as an inline confirm above the list it would change, so the values it
           would replace are on screen while deciding. Applied as one: the fields that
           come with a move mean nothing without it. `Confirm` is for what cannot be
@@ -1817,11 +1817,11 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
           The note's filing: the notebook, its tags, and the notebook's own fields, as one
           property list above the body.
 
-          The same list at every width — the notebook and the tags as its first two rows,
-          the fields after them — because it is one record, and a desktop that drew the
+          The same list at every width (the notebook and the tags as its first two rows,
+          the fields after them) because it is one record, and a desktop that drew the
           first two as a row of pickers and the rest in a column beside the note was the
           same record in two hands. The column scrolls as a document (see `.workspace-main`),
-          so the list is the top of the note and takes the height it needs — open at every
+          so the list is the top of the note and takes the height it needs, open at every
           width. It was briefly folded closed between the phone and the full desktop, a
           habit left over from when the fields had a column of their own that a 960px
           screen could not spare; above the body the list costs only height, which the
@@ -1840,8 +1840,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
           noteId={note.id}
           /*
              The saved body until the draft is this note's. The draft is seeded in an
-             effect, so the first render of a note hands down the previous note's text —
-             or the empty initial draft — and every file looks unlinked for a frame. The
+             effect, so the first render of a note hands down the previous note's text
+             (or the empty initial draft) and every file looks unlinked for a frame. The
              panel latches open on unlinked files (`hadUnlinked`), so that one frame left
              every note with files opening expanded (MAK-149).
           */
@@ -1859,8 +1859,8 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
             Docked for the whole of a phone's note view, not only while the editor holds
             the caret.
 
-            Keying this on focus made the bar jump: tapping the filing disclosure — or
-            anything else that takes focus off the editor — undocked it mid-interaction,
+            Keying this on focus made the bar jump: tapping the filing disclosure (or
+            anything else that takes focus off the editor) undocked it mid-interaction,
             so it dropped out of the bottom of the screen and reappeared underneath a
             block that had just grown taller. The keyboard inset already handles the only
             thing focus was standing in for, which is where the bar sits when a keyboard
@@ -1885,7 +1885,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
           One pane, or two when the source view has its preview beside it.
 
           `split` is the only modifier left here. What used to also need a `mobile-preview`
-          class — a phone showing the second pane instead of the first — is now just
+          class (a phone showing the second pane instead of the first) is now just
           `noteView === 'preview'`, which renders one pane at every width and needs no CSS
           to swap anything.
       */}
@@ -1907,7 +1907,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
             Not conditional, because this is an uncontrolled CodeMirror view: unmounting it
             to show the preview and remounting it on the way back would throw away the undo
             history and the cursor, so switching views twice would cost you your place. The
-            preview view hides the box in CSS instead — see `.panes.reading`.
+            preview view hides the box in CSS instead (see `.panes.reading`).
         */}
         <div className="pane editor-pane">
           <Editor
@@ -1920,7 +1920,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
             pdfFilenames={pdfFilenames}
             onChange={(body) => setDraft((d) => ({ ...d, body }))}
             // No uploader on a read-only note: its autosave is off, so a dropped file
-            // would be stored with a link that is never saved — a blob nobody can see.
+            // would be stored with a link that is never saved: a blob nobody can see.
             onUpload={
               readOnly
                 ? undefined
@@ -1965,7 +1965,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
                an editor grabbing it on mount would take it straight back.
 
                And on a touch device, for every note. Taking focus there raises the keyboard
-               over half the screen before anything has been tapped — so opening a note to
+               over half the screen before anything has been tapped, so opening a note to
                read one costs a dismissal first, and the note is half hidden while you do
                it. Every notes app worth copying opens an existing note reading; the
                keyboard is the reader's decision, and the body is one tap away. A new note

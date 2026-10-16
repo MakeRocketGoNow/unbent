@@ -5,36 +5,36 @@ import { BackArrow } from './BackArrow.js';
 
 interface NoteListHeadProps {
   /**
-   * "30 notes", "12 matches" — built by the caller, which knows what it is counting. Null
-   * when there is nothing to count — a notebook the link names that does not exist — and
+   * "30 notes", "12 matches": built by the caller, which knows what it is counting. Null
+   * when there is nothing to count (a notebook the link names that does not exist) and
    * the line is then kept empty rather than removed, so the title above it does not move
    * when the notebooks finish loading and the count turns out not to apply.
    */
   count: string | null;
   /**
-   * What the count offers, when it offers anything — see `countMenuItems`. With it the
+   * What the count offers, when it offers anything (see `countMenuItems`). With it the
    * count is a menu trigger, "37 notes ⌄"; without it, plain text.
    *
    * The caller passes it only while `count` is a count of notes on a list that is not
    * being searched: "Loading…" and "Searching…" are not numbers anything could be done
-   * to, and a search's query is not part of an export. It is a menu filtered or not —
+   * to, and a search's query is not part of an export. It is a menu filtered or not:
    * one that opened only while something was filtered would hide that it ever does.
    *
    * The count rather than a control of its own because it is the one thing in this row
-   * that names the slice on screen, at every width and in every view — a notebook alone
+   * that names the slice on screen, at every width and in every view: a notebook alone
    * or a lone tag has no chips, which is why Export on the chip row did not work.
    */
   countMenu?: OverflowItem[];
   /**
    * Where the list is: the notebook's name, "Inbox", or "All notes".
    *
-   * The heading this view did not have. It is what lets the topbar go on a phone — the
+   * The heading this view did not have. It is what lets the topbar go on a phone: the
    * wordmark was saying which app you were in, on the one screen where that was never in
    * doubt, while the thing actually in doubt was which notebook you were looking at.
    *
    * At every width. It was the phone's alone while the desktop had a notebook picker one
    * row down, which named the notebook itself; the picker is a rail beside the column now,
-   * and a rail can be a strip of icons, so the column says what it holds on its own — the
+   * and a rail can be a strip of icons, so the column says what it holds on its own, the
    * way Evernote heads its middle column with the notebook's name and count.
    */
   title: string;
@@ -52,13 +52,13 @@ interface NoteListHeadProps {
   searchOpen: boolean;
   /**
    * Opens the field over the row. When absent, the field is not behind an icon at all:
-   * it is a permanent row under the header, which is the desktop's shape — see below.
+   * it is a permanent row under the header, which is the desktop's shape (see below).
    */
   onOpenSearch?: () => void;
-  /** Closes the field *and* clears the query — see the comment on the back arrow. */
+  /** Closes the field *and* clears the query (see the comment on the back arrow). */
   onCloseSearch: () => void;
   onOpenFilters: () => void;
-  /** The filter icon's element, which the filter panel opens over on a desktop — see `Sheet`'s `anchor`. */
+  /** The filter icon's element, which the filter panel opens over on a desktop (see `Sheet`'s `anchor`). */
   filterRef?: RefObject<HTMLButtonElement | null>;
   /** Opens the drawer of notebooks. Absent where there is no drawer. */
   onOpenMenu?: () => void;
@@ -74,7 +74,7 @@ interface NoteListHeadProps {
   sort: ReactNode;
   /**
    * The list/table toggle, after the sort and before New, or nothing where the table is
-   * not on offer — a phone, or a search. Passed in like the sort so this owns no routing
+   * not on offer: a phone, or a search. Passed in like the sort so this owns no routing
    * and no storage.
    */
   view?: ReactNode;
@@ -83,7 +83,7 @@ interface NoteListHeadProps {
    *
    * Over the sidebar the search field is a row of its own and the notebook picker another
    * under it, which suits a 19rem column. Over the full-width table the same three rows
-   * became a search field and a select each a window wide — controls sized by the space
+   * became a search field and a select each a window wide: controls sized by the space
    * they were in rather than by what they hold. So there the header is a toolbar: the
    * title and count, then a search field capped at a width a query needs, and the icons
    * and New. Only meaningful where the field is permanent; a phone's header already is
@@ -95,7 +95,7 @@ interface NoteListHeadProps {
    *
    * On a phone New floats over the list, so nothing is passed here. On a desktop a
    * floating button over a column has nothing to float clear of, and the primary action
-   * belongs where the old head row kept it — at the end of the row, after the controls
+   * belongs where the old head row kept it: at the end of the row, after the controls
    * that are about what is already on screen.
    */
   action?: ReactNode;
@@ -105,7 +105,7 @@ interface NoteListHeadProps {
  * The note list's header: where you are, and the controls that are about what is on screen.
  *
  * The controls this replaces cost about half a small screen before a single note was
- * visible — a search field, two selects, a pair of date inputs and a tag row, all present
+ * visible: a search field, two selects, a pair of date inputs and a tag row, all present
  * on every visit and most of them used on few. They are all still here; they are one tap
  * away instead of permanently open, which is the trade the Android app makes and the one
  * every notes app people arrive from has settled on.
@@ -125,7 +125,7 @@ interface NoteListHeadProps {
  * **Search on a desktop is a permanent row under the header.** It is the one control used
  * on most visits, the column has the width for it, and every notes app with a desktop
  * keeps its search visible there; putting it behind an icon would trade a click for
- * nothing. The caller says which shape it wants by passing `onOpenSearch` or not — the
+ * nothing. The caller says which shape it wants by passing `onOpenSearch` or not: the
  * field is then either something to open or something that is simply there.
  *
  * New is not in the row on a phone. It is a floating button over the list, which is where
@@ -159,7 +159,7 @@ export function NoteListHead({
   const fieldAlways = onOpenSearch === undefined;
 
   /*
-   * Focus follows the field being opened, but not a field that was already open — a deep
+   * Focus follows the field being opened, but not a field that was already open: a deep
    * link arriving with `?q=` should show its results, not the keyboard. `searchOpen` only
    * transitions here, so the effect keying off it does exactly that. A permanent field is
    * never "opened", so this never fires for it.
@@ -173,7 +173,7 @@ export function NoteListHead({
    * The field keeps focus across the two layouts.
    *
    * The toolbar draws it inside the row and the stacked header draws it under, so a
-   * change between them is a new element — and the first keystroke of a search is exactly
+   * change between them is a new element, and the first keystroke of a search is exactly
    * such a change: results are never drawn as a table, so typing in the table's toolbar
    * puts the list and its stacked header back. Without this the field would drop focus
    * after one character. Whether it had focus is read during the render that makes the
@@ -206,7 +206,7 @@ export function NoteListHead({
       onChange={(e) => onQuery(e.target.value)}
       onKeyDown={(e) => {
         // Escape leaves the search the way it does everywhere else in the app. For the
-        // permanent field that means clearing it — there is nothing to close.
+        // permanent field that means clearing it: there is nothing to close.
         if (e.key === 'Escape') onCloseSearch();
         // Arrow Down goes to the results, the way it does in Apple Notes and Finder: the
         // list under the field is what the typing produced, and a search should be one
@@ -224,7 +224,7 @@ export function NoteListHead({
      * One row, the same height as the row it replaces.
      *
      * The count is deliberately not here. It was, on a second line under the field, and
-     * that made the search row taller than the closed header — so opening search pushed
+     * that made the search row taller than the closed header, so opening search pushed
      * the whole note list down and closing it pulled the list back up. Motion the user did
      * not ask for reads as jank, and it was happening on the most-used control in the view.
      *
@@ -302,8 +302,8 @@ export function NoteListHead({
             /*
              * The state goes in the name, not only in the dot. The dot is the glanceable half
              * and it is invisible to a screen reader; a control that reads "Filter notes"
-             * either way would leave the one fact worth knowing — that the list is already
-             * narrowed — available to sighted users alone.
+             * either way would leave the one fact worth knowing (that the list is already
+             * narrowed) available to sighted users alone.
              */
             aria-label={filtered ? 'Filter notes, filters are active' : 'Filter notes'}
             data-tip={filtered ? 'Filter notes, some are on' : 'Filter notes'}

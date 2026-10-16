@@ -50,7 +50,7 @@ const count = (n: number) => `${n.toLocaleString()} file${n === 1 ? '' : 's'}`;
  *
  * The notebook's rows are on the device already; this is about its files, which are the
  * bulk of an archive and cannot all be on a phone. So keeping is asked for per notebook,
- * and the question names the size — "Keep 1.2 GB on this device?" — and what the device
+ * and the question names the size ("Keep 1.2 GB on this device?") and what the device
  * has room for, from the browser's own estimate. That number is the point of the
  * confirmation, not decoration: the real archive is three gigabytes in thirteen thousand
  * files, and a toggle that started fetching that on a tap would be a mistake someone
@@ -58,7 +58,7 @@ const count = (n: number) => `${n.toLocaleString()} file${n === 1 ? '' : 's'}`;
  *
  * A section with a button and an inline `Confirm`, like Delete below it, rather than a
  * switch: a switch says "this is on now", and this is on only once gigabytes have
- * arrived. What it shows while kept is how much has — the one thing someone about to
+ * arrived. What it shows while kept is how much has: the one thing someone about to
  * board a plane wants to know.
  *
  * Not drawn at all where files cannot be kept (a browser without the file system, or a

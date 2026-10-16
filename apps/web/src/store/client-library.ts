@@ -23,14 +23,14 @@ export type CallName = keyof typeof forwardable | HolderCall;
  * what they read in the holder's. What is not a mirror is a call: a write, a search of
  * the index, keeping a notebook, a conflict resolved.
  *
- * Between holders — the one serving this tab closed, or its tab went — the rows stay
+ * Between holders (the one serving this tab closed, or its tab went) the rows stay
  * as they were and the calls wait, and this tab says hello until a holder answers. The
  * lock's queue decides who that is (`library-lock.ts`): often this very tab, in which
  * case this client is closed by the open that replaces it, and a call still in hand is
  * refused with `LibraryMovedError`, which its caller answers by doing the thing again
  * where the library now is (`away` in `actions.ts`). A call the old holder ran but never
- * answered — its tab went between the two, or was taken over with an upload still on its
- * way — is sent to the next holder again, or run here. So a call must be safe to run
+ * answered (its tab went between the two, or was taken over with an upload still on its
+ * way) is sent to the next holder again, or run here. So a call must be safe to run
  * twice: the writes that make something new mint its id where the person acted and
  * carry it (`createNote`, `duplicateNote`, `uploadFile`), and the server answers a
  * second request under an id it has with the thing the first one made.
@@ -38,7 +38,7 @@ export type CallName = keyof typeof forwardable | HolderCall;
 
 /**
  * A client was closed with a call still in hand; the caller does the thing again where
- * the library now is — unless the call had reached a holder and is one that must not run
+ * the library now is, unless the call had reached a holder and is one that must not run
  * twice (`SEND_ONCE`), in which case the caller is told it may not have finished.
  */
 export class LibraryMovedError extends Error {
@@ -82,7 +82,7 @@ export const HELLO_RETRY_MAX_MS = 30_000;
  * `serving`, no rows and no `opening` is a tab that holds the lock and runs nothing for
  * this account: one frozen by the browser, or one on a build from before the channel
  * existed, which cannot answer a hello at all. Until this, such a tab cost every reload
- * the whole of `LIBRARY_OPEN_TIMEOUT_MS` — twenty seconds of nothing, then the server —
+ * the whole of `LIBRARY_OPEN_TIMEOUT_MS` (twenty seconds of nothing, then the server),
  * which is what a deploy looked like with an older tab left open (2026-10-14).
  *
  * The two numbers are not the same bound. The count is what decides, and where the
@@ -104,9 +104,9 @@ export const UNANSWERED_HELLOS = 3;
 export const HELLO_UNANSWERED_MS = 5_000;
 /**
  * How long after the first of a holder's rows the client waits for `attached` before
- * asking again. The asking stops the moment rows arrive — an archive is tens of
+ * asking again. The asking stops the moment rows arrive (an archive is tens of
  * megabytes, which a phone takes longer than `HELLO_RETRY_MS` to receive, and every
- * hello sent meanwhile was answered with the whole library again — and only a send cut
+ * hello sent meanwhile was answered with the whole library again), and only a send cut
  * short, by a holder that closed mid-way, starts it again.
  */
 export const ATTACH_STALL_MS = 15_000;
@@ -114,8 +114,8 @@ export const ATTACH_STALL_MS = 15_000;
 export const PING_MS = 5_000;
 /**
  * How long, and how many pings, a holder may leave unanswered before its client stops
- * waiting on it. A holder tab the browser has frozen — a background tab on a phone,
- * routinely — still holds the lock and answers nothing, and a client's save would
+ * waiting on it. A holder tab the browser has frozen (a background tab on a phone,
+ * routinely) still holds the lock and answers nothing, and a client's save would
  * otherwise wait on it for good, with the typing held nowhere but that tab. Silence is
  * pings unanswered, never time since the holder last spoke: a hidden tab's interval
  * runs once a minute under Chrome's throttling, and a tab resumed from a freeze fires
@@ -142,7 +142,7 @@ export const SILENT_PINGS = 3;
  * lock's queue opening the library; but that tab may be one the browser has frozen,
  * granted the lock and never to open, or the old holder's close may have wedged before
  * letting go. A save in hand would wait for good either way, so after this long with
- * no sign of a holder — a `serving`, a chunk of rows — and a call waiting, the client
+ * no sign of a holder (a `serving`, a chunk of rows) and a call waiting, the client
  * asks to take the library over as it does from a silent holder. As long as the open's
  * own bound (`LIBRARY_OPEN_TIMEOUT_MS`), since a hand-over is an open on a phone.
  */
@@ -213,10 +213,10 @@ const keepingNothing: KeepStatus = { supported: false, kept: new Set(), counted:
 type Pending = { name: string; args: unknown[]; sentTo: string | null; resolve: (value: unknown) => void; reject: (err: unknown) => void };
 
 /**
- * Joins the account's channel as a client — `me` is this client's id, which the port was
- * opened with so this tab alone hears what is for it — and answers once a holder has
- * sent its rows. Rejects only when `halting` aborts first — a close or a switch took this open's entry
- * — with an `AbortError`; a holder that never answers is waited for, since the caller's
+ * Joins the account's channel as a client (`me` is this client's id, which the port was
+ * opened with so this tab alone hears what is for it) and answers once a holder has
+ * sent its rows. Rejects only when `halting` aborts first (a close or a switch took this open's entry)
+ * with an `AbortError`; a holder that never answers is waited for, since the caller's
  * wait is bounded elsewhere (`acquireLibrary`) and the step it is in must end on the
  * queue's terms.
  */
@@ -244,7 +244,7 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
   let silentHellos = 0;
   let firstSilentHello = 0;
   let askedToTakeOver = false;
-  /** A holder spoke — any holder, anything — so the tab is not one that runs nothing. */
+  /** A holder spoke (any holder, anything), so the tab is not one that runs nothing. */
   const heard = () => {
     silentHellos = 0;
   };
@@ -311,8 +311,8 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
     orphaned = null;
   };
   /**
-   * Starts, or starts again, the wait for a holder: counted from the last sign of one —
-   * `closing`, a `serving`, each chunk of rows — never from `closing` alone, since the
+   * Starts, or starts again, the wait for a holder: counted from the last sign of one
+   * (`closing`, a `serving`, each chunk of rows), never from `closing` alone, since the
    * next holder's open on a phone and the library's arrival after it can together
    * outlast the bound, and a client that fired then took the library from the very tab
    * the person had pressed Open here in (review of #354). Only ever fires with a call waiting:
@@ -413,7 +413,7 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
         feedListeners.forEach((l) => l(feed));
         statusListeners.forEach((l) => l(status));
         keepListeners.forEach((l) => l(keep));
-        // The calls in hand go to this holder — unless it has them already: a holder
+        // The calls in hand go to this holder, unless it has them already: a holder
         // answers every hello, and a second hello reached it before this client heard
         // the first answer. One that reached another holder and must not run twice is
         // refused instead.

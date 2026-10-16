@@ -14,19 +14,19 @@ interface SelectionBarProps {
 }
 
 /**
- * What is selected, and what can be done to it — floating over the foot of the screen.
+ * What is selected, and what can be done to it, floating over the foot of the screen.
  *
  * Evernote's shape, which is where the people using this arrive from: select with the
  * modifier keys, and a bar rises from the bottom saying "3 notes selected" with the
  * actions beside it. Floating rather than in the list's head, because the head is about
  * where you are and this is about what you have picked; and floating rather than docked,
- * so the list under it does not move when a selection begins or ends — motion nobody
+ * so the list under it does not move when a selection begins or ends, motion nobody
  * asked for, on a gesture as small as a Cmd-click. It covers the last row or two, which
  * scrolling gets back; a docked bar would cost that height for as long as it stayed.
  *
- * One bar for every width. On a phone it sits where the New button was — that button
+ * One bar for every width. On a phone it sits where the New button was (that button
  * hides while anything is selected, since making a note is not something you do to a
- * selection — and the ✕ is the way out there, where a plain tap toggles rows rather than
+ * selection) and the ✕ is the way out there, where a plain tap toggles rows rather than
  * opening them. On a desktop, opening a note also drops the selection, as it does in
  * Finder.
  *
@@ -42,7 +42,7 @@ export function SelectionBar({ count, total, onClear, onSelectAll, children }: S
         <CancelIcon />
       </button>
       {/* The word is dropped from sight on a narrow phone, where the bar's five 44px
-          actions leave no room for it — see `.selection-count-word`. */}
+          actions leave no room for it (see `.selection-count-word`). */}
       <span className="selection-count" aria-live="polite">
         {count}
         <span className="selection-count-word"> selected</span>

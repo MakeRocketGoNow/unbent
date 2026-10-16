@@ -2,7 +2,7 @@
  * What the browser hands the installed app when it launches it: files, or a link.
  *
  * The manifest's `launch_handler` is `focus-existing`, so a launch aimed at an app that is
- * already open brings its window forward and changes nothing else — no navigation, no
+ * already open brings its window forward and changes nothing else: no navigation, no
  * reload. What the launch was for arrives on `window.launchQueue` instead, and is dropped
  * unless the page takes it. Two kinds arrive:
  *
@@ -10,7 +10,7 @@
  *   scanner's "send to application". Each becomes a note (`launch-files.ts`).
  * - **A link**, from link capturing: a note's address clicked in a chat app or another
  *   tab. Chrome sends any in-scope link to the open app, and the window came forward on
- *   the note it was already showing — the consumer only took files, and returned on a
+ *   the note it was already showing: the consumer only took files, and returned on a
  *   launch with none. The link is opened here, through the router.
  *
  * `focus-existing` rather than `navigate-existing`, which would do the link without any of
@@ -41,7 +41,7 @@ declare global {
  * launcher into an open window arrives with this address and no files, and means "bring
  * the app forward", not "go to the list": followed, every re-launch would close the note
  * the window was on. So it is ignored, and the cost is that a clicked link to the bare
- * list — `/notes`, nothing after it — only brings the window forward too. Any other
+ * list (`/notes`, nothing after it) only brings the window forward too. Any other
  * address of the list, `/notes?view=table` say, is followed. `launch-queue.test.ts` holds
  * this to the manifest.
  */
@@ -65,7 +65,7 @@ export function installLaunchQueue(handlers: LaunchHandlers): void {
   /*
    * The address this page was loaded at, taken before the router has had a chance to
    * redirect it. A cold launch is delivered here too, with the address the window was
-   * opened at — which the router is already showing, or has redirected from on purpose:
+   * opened at, which the router is already showing, or has redirected from on purpose:
    * `/` to the notes, a signed-out visitor to the sign-in page. Opening it again would
    * fight the redirect, so the first launch is skipped when it is for this address.
    */
@@ -94,8 +94,8 @@ export function installLaunchQueue(handlers: LaunchHandlers): void {
 /**
  * The path on this site to show for a launch's address; undefined for another site's.
  *
- * A file's address — `/api/notes/<id>/files/<name>`, which is what copying an attachment
- * puts on the clipboard (`attachment-clipboard.ts`) — is the Worker's, not a page of the
+ * A file's address, `/api/notes/<id>/files/<name>`, which is what copying an attachment
+ * puts on the clipboard (`attachment-clipboard.ts`), is the Worker's, not a page of the
  * app, so it opens the note the file belongs to. Loading the file itself would put a bare
  * PDF where the app was, with no way back but the window's own; the note has the file one
  * tap away. That holds only for a window already open: a captured file link with no

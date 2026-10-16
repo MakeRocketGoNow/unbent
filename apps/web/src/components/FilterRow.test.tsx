@@ -27,7 +27,7 @@ describe('FilterRow', () => {
     expect(container.querySelector('.filter-row-value')?.textContent).toBe('3 tags');
   });
 
-  /* The icon names the row alongside the label, so a screen reader must not hear both —
+  /* The icon names the row alongside the label, so a screen reader must not hear both:
      the accessible name is the label and the value, and nothing else. */
   it('draws the icon without letting it into the accessible name', () => {
     const { getByRole, getByTestId } = render(

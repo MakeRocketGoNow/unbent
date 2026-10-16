@@ -3,7 +3,7 @@
  *
  * Inline paths rather than a package. Each of these is a few hundred bytes of `d`
  * attribute, so the whole set costs less than the import statement for an icon library
- * would, and nothing is fetched at runtime — a sign-in screen that waits on a CDN for its
+ * would, and nothing is fetched at runtime: a sign-in screen that waits on a CDN for its
  * logos is a sign-in screen that renders wrong on a bad connection.
  *
  * Monochrome marks inherit `currentColor`, so they follow the button's text colour in
@@ -16,7 +16,7 @@
  *
  * There is deliberately no fallback icon. An instance can enable any of Better Auth's
  * thirty-five providers, most of which are not here, and a generic placeholder next to a
- * real mark reads as a broken image — a button with a label and no icon does not.
+ * real mark reads as a broken image: a button with a label and no icon does not.
  */
 
 /** A single-path monochrome mark, drawn in the current text colour. */

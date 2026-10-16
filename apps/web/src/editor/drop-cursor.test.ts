@@ -10,7 +10,7 @@ import { fileDropCursor } from './drop-cursor.js';
  * files, so before this there was no aim: you dropped a screenshot and found out
  * afterwards where it had gone.
  *
- * jsdom has no layout, so `posAtCoords` cannot be exercised — what is testable is the
+ * jsdom has no layout, so `posAtCoords` cannot be exercised: what is testable is the
  * part that is not geometry: that a marker appears only for a drag carrying files, and
  * that it is cleared again by every path that ends a drag. A marker left behind is worse
  * than none, because it points at a position nothing is going to use.
@@ -30,7 +30,7 @@ function mount(doc: string, { readOnly = false } = {}) {
  * A DragEvent carrying whatever `types` claims; jsdom has no DataTransfer of its own.
  *
  * `getData` and `files` are stubbed because CodeMirror's own drop handler runs after this
- * extension's and reaches for both — without them the drop test throws out of a handler
+ * extension's and reaches for both: without them the drop test throws out of a handler
  * that has nothing to do with what is under test.
  */
 function dragEvent(type: string, types: string[]): Event {

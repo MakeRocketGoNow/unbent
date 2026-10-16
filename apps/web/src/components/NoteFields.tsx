@@ -39,7 +39,7 @@ export interface NoteFieldsProps {
   manage?: ReactNode;
   /**
    * The fields an Auto-fill press just wrote, marked for a moment (`.filled`), and where in
-   * the press's order the first of them falls — the title and the filing rows above take
+   * the press's order the first of them falls: the title and the filing rows above take
    * the places before it, so the marks run down the record as one sequence.
    */
   filled?: { ids: ReadonlySet<string>; start: number };
@@ -59,10 +59,10 @@ export interface NoteFieldsProps {
  *
  * Drawn the way Notion draws a page's properties, which is what the people who will use
  * fields arrive knowing: a glyph for the type, the field's name, and the value as the
- * thing it is — text, a chip, a checkbox, a link — with no box around it. It used to be
+ * thing it is (text, a chip, a checkbox, a link) with no box around it. It used to be
  * a form, every value in a bordered input. That reads at five fields and fails at thirty:
  * thirty boxed inputs is a tax return, thirty rows of name and value is a record. The
- * glyphs came back for the same reason the drawer got them — a column with a picture
+ * glyphs came back for the same reason the drawer got them: a column with a picture
  * beside each word is scanned by looking, and "Amount" beside a hash reads as a number
  * without a type in brackets.
  *
@@ -74,17 +74,17 @@ export interface NoteFieldsProps {
  *
  * A value that is missing says "Empty" rather than showing a blank patch of screen, so
  * filled and unfilled are told apart at a glance; and once a notebook has enough fields
- * for the empties to be noise, they can be hidden — a preference that sticks, since the
+ * for the empties to be noise, they can be hidden: a preference that sticks, since the
  * notebooks that need it need it every time.
  *
- * A value the note carries from a notebook it has since left is shown, not hidden — it is
- * the note's data — but as text with a Clear rather than as a control. Editing it would
+ * A value the note carries from a notebook it has since left is shown, not hidden (it is
+ * the note's data), but as text with a Clear rather than as a control. Editing it would
  * mean editing a field the note's notebook does not have, and moving the note back is the
  * way to do that.
  *
  * Adding a field happens here as well as in settings, because the moment someone wants a
  * field is the moment they are looking at the note that needs it. The form opens as one
- * more row of the list, in the list's own columns — see `AddFieldRow`.
+ * more row of the list, in the list's own columns (see `AddFieldRow`).
  */
 /** From this many fields, hiding the empty ones is offered. */
 const HIDE_EMPTY_FROM = 8;
@@ -111,8 +111,8 @@ export function NoteFields({
   );
   /*
    * Whether the add-field row is open. Held here rather than in the row, because the
-   * foot draws different cells in each state — the "+ Add field" row at rest, the form's
-   * cells while open — and the cells are the foot's to arrange.
+   * foot draws different cells in each state (the "+ Add field" row at rest, the form's
+   * cells while open) and the cells are the foot's to arrange.
    */
   const [adding, setAdding] = useState(false);
   // Not yet known which fields the notebook has: showing every value as foreign for a
@@ -175,7 +175,7 @@ export function NoteFields({
 
           At rest: a plus where a row's glyph goes, "Add field" where its name goes, the
           empties toggle where its value goes, and "Manage fields" in the side slot where a
-          value's own action (Open, Call) goes — the way Notion ends a page's properties
+          value's own action (Open, Call) goes, the way Notion ends a page's properties
           with "Add a property" in the property column. It used to be a dashed chip and a
           green link on a line of their own, two more costumes in a block that already had
           too many. While a field is being added the same four cells hold the form.
@@ -203,7 +203,7 @@ export function NoteFields({
               {/*
                   One cell across the value and side columns, not a value cell and a side
                   cell. A grid column is as wide as its widest cell in any row, and "Manage
-                  fields" in the side column widened that column for every row — on a phone
+                  fields" in the side column widened that column for every row, on a phone
                   by enough to stack the tags one per line. A cell that spans the value
                   column's flexible track adds nothing to the side track's width, and the
                   link still sits hard right, where a value's own action would.
@@ -261,7 +261,7 @@ function FieldRow({ def, value, readOnly, filledAt, onChange }: FieldRowProps) {
      unfilled at a glance, which with thirty rows is the first thing anyone wants.
 
      Only for the inputs that would otherwise render nothing. A checkbox and a date input
-     draw their own empty state, and a select's is its first option — `placeholder` on a
+     draw their own empty state, and a select's is its first option: `placeholder` on a
      `<select>` is not a thing at all, which is why this is spread rather than folded
      into `common`.
   */
@@ -281,7 +281,7 @@ function FieldRow({ def, value, readOnly, filledAt, onChange }: FieldRowProps) {
       }
       /*
          Not `type="number"`. A number input reports "" for any value that is not yet a
-         valid float — "12.", "-", "12.5e" — and `setText` maps "" to null, which the
+         valid float ("12.", "-", "12.5e") and `setText` maps "" to null, which the
          draft treats as a clear. Autosave then deletes the stored amount while the user
          is still typing the decimal. `buildNotePatch` is written to *hold* "12." until it
          is a number; that only works if the string actually reaches the draft.
@@ -305,8 +305,8 @@ function FieldRow({ def, value, readOnly, filledAt, onChange }: FieldRowProps) {
       // being typed. The input itself stays the plain number.
       if (isCurrencyField(def) && def.currency) {
         /*
-           Written to the currency's cents at rest — `141.80`, not the `141.8` a stored
-           number prints as — but exactly as typed while it has focus. Padding as the
+           Written to the currency's cents at rest (`141.80`, not the `141.8` a stored
+           number prints as) but exactly as typed while it has focus. Padding as the
            person types would turn "141.8" into "141.80" under the cursor, between the 8
            and the 5 they were about to press. So focus takes a copy of the text shown,
            typing edits that copy, and blur lets the padded form back.
@@ -422,8 +422,8 @@ interface AddFieldRowProps {
  * The add-field form, as a row of the list: the cells of the foot while a field is being
  * added.
  *
- * The type's glyph where a row's glyph goes — it changes as the type is chosen, so the
- * row previews itself — the name where a name goes, the type and, for a select, its
+ * The type's glyph where a row's glyph goes (it changes as the type is chosen, so the
+ * row previews itself), the name where a name goes, the type and, for a select, its
  * options where the value goes, and Add and Cancel in the side slot. It used to be a run
  * of controls dropped into the list, with the name boxed because it had focus and the
  * options bare because they did not: the quiet-at-rest rule applied per control inside a

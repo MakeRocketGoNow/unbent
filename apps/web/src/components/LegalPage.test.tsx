@@ -21,7 +21,7 @@ const ELSEWHERE = { privacy: 'https://example.com/privacy', terms: 'https://exam
 
 /**
  * The three states a legal page can be in, each of which somebody can arrive at from a
- * store listing — so what is pinned here is that none of them is blank or an error.
+ * store listing, so what is pinned here is that none of them is blank or an error.
  */
 function harness(which: LegalWhich, config: Partial<AppConfig>) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });

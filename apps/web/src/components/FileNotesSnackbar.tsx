@@ -11,7 +11,7 @@ const IMPORT_PAGE = '/settings/import';
  *
  * `ImportSnackbar`'s shape, for the same reason: the uploads outlive the drop that
  * started them, and twelve PDFs take long enough that the person has moved on. Progress
- * while they land, then "12 notes added" with Undo — the afterthought path, beside the
+ * while they land, then "12 notes added" with Undo: the afterthought path, beside the
  * selection the list makes of the same notes. Undo trashes the batch, where it can still
  * be restored, and the card goes with the press, as `Snackbar`'s action does; the rows
  * leaving the list are the word that it worked.

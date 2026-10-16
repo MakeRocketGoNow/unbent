@@ -4,7 +4,7 @@
  *
  * The session check is a request. With no signal it fails, and the app used to read that
  * failure exactly as it read "nobody is signed in": it sent the page to `/login` and told
- * the Android app `unauthorized` — so the one moment someone opened the installed app to
+ * the Android app `unauthorized`, so the one moment someone opened the installed app to
  * read a note they had already opened was the moment it threw them out. The server can
  * say which it is (a 401, or a session answer with nobody in it); a request that never
  * arrived cannot. When it cannot, the app carries on as whoever this remembers, and the

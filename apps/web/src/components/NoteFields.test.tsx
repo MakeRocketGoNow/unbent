@@ -6,7 +6,7 @@ import { NoteFields } from './NoteFields.js';
 /**
  * The field block is a form drawn from data: each type has to become the right control,
  * a value has to come back the way the draft stores it, and the two things the block does
- * on its own — showing a value from another notebook, and adding a field in place — have
+ * on its own (showing a value from another notebook, and adding a field in place) have
  * to be right without the server.
  */
 const def = (id: string, name: string, type: FieldType, options: string[] = []): FieldDef => ({

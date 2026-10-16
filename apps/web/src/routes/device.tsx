@@ -10,7 +10,7 @@ import {
 } from '../device-api.js';
 
 /**
- * `user_code` is optional so `/device` alone is a usable destination — a CLI can tell
+ * `user_code` is optional so `/device` alone is a usable destination: a CLI can tell
  * someone to "open /device and type the code" without templating a URL, and it is what a
  * user lands on if they retype the address from memory. `catch` drops a malformed code
  * rather than erroring: the form below can always ask for it again.
@@ -27,7 +27,7 @@ export const Route = createFileRoute('/device')({
 type Outcome = 'approved' | 'denied';
 
 /**
- * Approves a device — the browser half of the CLI sign-in.
+ * Approves a device: the browser half of the CLI sign-in.
  *
  * The route guard already gates on the session, so reaching this component means signed
  * in; an unauthenticated visit is redirected to `/login` carrying this URL, code included,
@@ -94,7 +94,7 @@ function DevicePage() {
             : 'Nothing was granted. If you did not start this, no further action is needed.'}
         </p>
         {/* A way off this page. Without it the browser sits on /device?user_code=… after
-            approving, and going back to the app later — or restoring the tab — reopens a
+            approving, and going back to the app later (or restoring the tab) reopens a
             code that is by then used or expired, which reads as sign-in dumping you on a
             broken page rather than as a stale URL. */}
         <Link to="/notes" className="link">
@@ -116,7 +116,7 @@ function DevicePage() {
             {info.client_id ? <code>{info.client_id}</code> : 'A program'} is asking for
             access to your notes. Approve only if you started this yourself, just now.
           </p>
-          {/* Shown back so the user can compare it against what their terminal printed —
+          {/* Shown back so the user can compare it against what their terminal printed,
               the one check that catches a code typed into the wrong window. */}
           <p className="device-code">{info.user_code}</p>
           <div className="device-actions">

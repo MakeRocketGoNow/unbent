@@ -7,7 +7,7 @@ import { UNFILED } from '@unbent/shared';
  * the user can see it; "All notes" is the unnarrowed list. Each matches a row of the
  * drawer and the rail, so the heading and the place you picked it from agree.
  *
- * A single tag with no notebook is a place too — the rail's tag rows go there — so it is
+ * A single tag with no notebook is a place too (the rail's tag rows go there), so it is
  * the heading then, the way a notebook is. Two tags are not: the rail marks no row for
  * them, the heading falls back to "All notes", and the chips under it say the rest. That
  * a second tag changes the heading is the price of the rule being the rail's rule.

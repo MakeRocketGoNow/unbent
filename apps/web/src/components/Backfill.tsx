@@ -14,7 +14,7 @@ function pdfText(state: IndexingState): string {
     case 'idle':
       return PDF_OFFER;
     case 'running': {
-      // The file in flight is left to finish — see `Indexing.stop` — so the press has to
+      // The file in flight is left to finish (see `Indexing.stop`), so the press has to
       // be seen to have registered before anything moves.
       const of = p?.total ? ` / ${p.total.toLocaleString()}` : '';
       return state.stopping

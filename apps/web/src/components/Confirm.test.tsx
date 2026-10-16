@@ -33,7 +33,7 @@ describe('Confirm', () => {
     const input = screen.getByLabelText('Type DELETE to confirm');
     expect(button.disabled).toBe(true);
 
-    // A near-miss is still a miss — the gate is exact, not case-insensitive.
+    // A near-miss is still a miss: the gate is exact, not case-insensitive.
     fireEvent.change(input, { target: { value: 'delete' } });
     expect(button.disabled).toBe(true);
 
@@ -58,8 +58,8 @@ describe('Confirm', () => {
     );
 
     // The safe outcome is the filled one; the cascade is demoted to an outlined danger
-    // button — bordered and the same height, quieter than the fill it must not be mistaken
-    // for — dropped onto its own line by its wrapper. Asserted by variant class rather than
+    // button (bordered and the same height, quieter than the fill it must not be mistaken
+    // for), dropped onto its own line by its wrapper. Asserted by variant class rather than
     // the whole className, so adding a layout class to either one is not a test failure.
     const safe = screen.getByRole('button', { name: 'Delete notebook' });
     expect(safe.classList.contains('btn-primary')).toBe(true);

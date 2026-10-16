@@ -168,7 +168,7 @@ describe('document fidelity', () => {
  * List indentation.
  *
  * The indent width must match the parent's marker rather than a fixed size: two spaces
- * nests under `- `, but an item under `1. ` needs three. A wrong width does not error —
+ * nests under `- `, but an item under `1. ` needs three. A wrong width does not error:
  * the line stays a sibling, so the key appears to do nothing.
  */
 describe('indentList', () => {
@@ -287,11 +287,11 @@ describe('indent produces real nesting', () => {
    * Nesting depth according to the parse tree, which has to be *forced* rather than read.
    *
    * `syntaxTree(state)` returns whatever the initial parse managed within its 20ms
-   * wall-clock budget — `Work.Apply`, in @codemirror/language. Blowing that budget is not
+   * wall-clock budget (`Work.Apply`, in @codemirror/language). Blowing that budget is not
    * an error and raises nothing: the parser calls `takeTree()` and hands back a partial
    * tree, on the assumption that a view plugin will finish the job on idle. There is no
    * view here, so the tree stays partial for good, and `- one\n  - two` reads as depth 1
-   * instead of 2 — the assertion below fails with `expected 1 to be 2`.
+   * instead of 2: the assertion below fails with `expected 1 to be 2`.
    *
    * Twenty milliseconds is ample for two lines on an idle machine, and not reliably ample
    * when the suite is running two dozen jsdom environments at once. That is why this test
@@ -299,8 +299,8 @@ describe('indent produces real nesting', () => {
    * its own, which is the shape of a flake that gets dismissed as noise.
    *
    * `ensureSyntaxTree` is the documented way to ask for a tree that actually spans the
-   * document. The timeout is a ceiling and not a delay — the real parse takes well under a
-   * millisecond — and null means it genuinely could not finish, which is worth a loud
+   * document. The timeout is a ceiling and not a delay (the real parse takes well under a
+   * millisecond), and null means it genuinely could not finish, which is worth a loud
    * failure rather than a silent depth of 0.
    */
   function nestingDepth(doc: string): number {
@@ -503,7 +503,7 @@ describe('Enter through the real keymap', () => {
   /**
    * CodeMirror expresses Shift-Enter as a property of the Enter binding rather than a
    * separate key, so binding only `run` leaves Shift-Enter falling through to the default
-   * keymap — which split the fence line instead of closing it. Shift means nothing here,
+   * keymap, which split the fence line instead of closing it. Shift means nothing here,
    * so the two must not diverge.
    */
   it('closes an open fence on Shift-Enter', () => {
@@ -521,7 +521,7 @@ describe('Enter through the real keymap', () => {
   /**
    * Pressing Enter at the end of a closing fence is the obvious way to carry on writing
    * below a block. A closing fence is textually identical to an opening one, so without
-   * asking the tree which it is, this added a second fence — which then opened a block
+   * asking the tree which it is, this added a second fence, which then opened a block
    * that swallowed everything typed after it.
    */
   it('does not add a fence when Enter is pressed on a closing fence', () => {
@@ -847,7 +847,7 @@ describe('table resize', () => {
     return { handled, out: state.doc.toString(), cursor: state.selection.main.head };
   }
 
-  /** Body rows, excluding the header — the way the picker counts them. */
+  /** Body rows, excluding the header: the way the picker counts them. */
   it('reports the size the picker shows', () => {
     const table = cmd.readTable(EditorState.create({ doc: T }), 3);
     expect(cmd.tableSize(table!)).toEqual({ rows: 3, columns: 2 });

@@ -20,12 +20,12 @@ export interface SavedChange {
  * the list had been scrolled through. D1 bills every row a query visits, and a list page
  * reads hundreds to thousands of rows once its tag, field and file subqueries are counted,
  * so a writing session with a scrolled table open cost hundreds of thousands of rows for
- * rows that had not changed — the one being edited was the only one that could.
+ * rows that had not changed: the one being edited was the only one that could.
  *
  * The saved note is what the PATCH returned, so the row can be rebuilt exactly and put
  * where the server would list it. Only when the save could move the note into or out of a
- * list, or somewhere along it this code cannot place, is that one list refetched — see
- * `listAfterSave`. Counts beside a list only move when the note's filing did.
+ * list, or somewhere along it this code cannot place, is that one list refetched (see
+ * `listAfterSave`). Counts beside a list only move when the note's filing did.
  */
 export function applySaveToLists(queryClient: QueryClient, saved: Note, change: SavedChange) {
   for (const [key, data] of queryClient.getQueriesData<InfiniteData<NotePage>>({
@@ -45,7 +45,7 @@ export function applySaveToLists(queryClient: QueryClient, saved: Note, change: 
   /*
      A table drawing a search draws each match's list row, so those rows follow the save
      too. In place, and never refetched: the matches are ranked, a save does not re-rank
-     them, and the sidebar's results — titles and snippets — have never followed a save
+     them, and the sidebar's results (titles and snippets) have never followed a save
      either. A search that carries no rows has nothing here to change.
   */
   for (const [key, data] of queryClient.getQueriesData<SearchAnswer>({ queryKey: ['search'] })) {
@@ -75,7 +75,7 @@ function noteListKey(key: QueryKey): { filter: NoteFilter; ordering: NoteOrderin
  * touch, or on its updated date, which the save sets and the PATCH returns: under
  * "Recently updated" the row moves to the top, as it did when the list was refetched. It cannot when the save changed what a filter tests (filing under a notebook
  * or tag filter, a field under a field filter, the updated date under a range on it) or
- * what a title or field sort orders by — the new position is somewhere among rows this
+ * what a title or field sort orders by: the new position is somewhere among rows this
  * list may not have loaded.
  */
 export function listAfterSave(
@@ -92,7 +92,7 @@ export function listAfterSave(
     return 'refetch';
   }
   if (filter.field?.length && change.fields) return 'refetch';
-  // Every sort but `created` applies a date range to the updated date — see SORTS in the API.
+  // Every sort but `created` applies a date range to the updated date (see SORTS in the API).
   if ((filter.from || filter.to) && sort !== 'created') return 'refetch';
   if (sort === 'field' && change.fields) return 'refetch';
   if (sort === 'title' && change.title) return 'refetch';

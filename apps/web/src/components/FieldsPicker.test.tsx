@@ -15,7 +15,7 @@ import { FieldsPicker } from './FieldsPicker.js';
  * What is pinned: that every definition gets a row whatever is set, that a choice writes
  * the filter to the URL and "Any" takes it off again, that a range writes each end on
  * its own, and that a change to one field leaves the others' filters alone. The URL is
- * where the filters live, so it is where a change can be observed — read as `href` for
+ * where the filters live, so it is where a change can be observed: read as `href` for
  * the reason `ActiveFilters.test.tsx` gives.
  */
 const def = (id: string, name: string, type: FieldDef['type'], options: string[] = []): FieldDef => ({

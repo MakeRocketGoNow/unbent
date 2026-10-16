@@ -10,7 +10,7 @@ interface DatePickerProps {
    * Called when a choice finishes the page's job.
    *
    * A preset is one tap and the whole answer, so the page has nothing left to say and goes
-   * back on its own — the phone app does the same, and being returned to where you came
+   * back on its own: the phone app does the same, and being returned to where you came
    * from is what makes a sub-page feel like one rather than a place you get stranded.
    * Deliberately not called for "Custom…", which opens the fields rather than answering.
    */
@@ -21,13 +21,13 @@ interface DatePickerProps {
  * The date range, as a page of choices.
  *
  * The presets and the two inputs used to sit inline on the sheet's root, where they were
- * the tallest thing on it — a wrapped row of five pills plus a labelled pair of date fields,
+ * the tallest thing on it: a wrapped row of five pills plus a labelled pair of date fields,
  * for a filter most visits never set. Behind a row that names the current range they cost
  * one line, which is what the tags already do beside them.
  *
  * Presets first, then "Any time", then the custom fields, which is Android's order and the
- * order of how often each is wanted. Every preset is open-ended — see `date-presets.ts` for
- * why that matters at midnight.
+ * order of how often each is wanted. Every preset is open-ended (see `date-presets.ts` for
+ * why that matters at midnight).
  *
  * The custom fields are revealed rather than always shown: they are two labelled inputs and
  * a calendar each, and the presets answer the question most of the time. They open already
@@ -67,7 +67,7 @@ export function DatePicker({ from, to, onDone }: DatePickerProps) {
         );
       })}
 
-      {/* Clearing both ends, named the way Android names it — "Clear" describes the
+      {/* Clearing both ends, named the way Android names it: "Clear" describes the
           gesture, "Any time" describes the result, and the result is what the other rows
           on this page are describing. */}
       <button

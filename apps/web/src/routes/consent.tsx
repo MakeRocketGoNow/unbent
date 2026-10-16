@@ -7,8 +7,8 @@ import { oauth2 } from '../auth-client.js';
 /**
  * The authorization query, passed through rather than read.
  *
- * The provider redirects here with the whole OAuth request in the URL — client id, scopes,
- * redirect target, and a signature over all of it — and expects to get it back when the
+ * The provider redirects here with the whole OAuth request in the URL (client id, scopes,
+ * redirect target, and a signature over all of it) and expects to get it back when the
  * user answers. `looseObject` keeps every parameter, including the ones this screen never
  * looks at, because dropping one would break the signature and fail the authorization.
  *
@@ -32,7 +32,7 @@ export const Route = createFileRoute('/consent')({
  * This is the only screen in the app that grants a *program* standing access, and the
  * consequence is unlike anything else here: not one action, but everything the person could
  * do, for as long as the grant lasts. So it says that in words, names who is asking, and
- * gives refusing equal weight — no pre-selected Allow, no styling that makes Deny look like
+ * gives refusing equal weight: no pre-selected Allow, no styling that makes Deny look like
  * the mistake.
  *
  * It is behind the session gate like any other app route, which is what makes the
@@ -72,7 +72,7 @@ function ConsentPage() {
         setBusy(false);
         return;
       }
-      // The provider answers with where the browser goes next — back to whatever asked for
+      // The provider answers with where the browser goes next: back to whatever asked for
       // access, carrying either the grant or the refusal. Assigning rather than routing,
       // for the reason `/connect` does the same: the destination belongs to the client and
       // is not a route this SPA can render.

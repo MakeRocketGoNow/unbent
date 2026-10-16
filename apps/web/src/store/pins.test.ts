@@ -9,7 +9,7 @@ import pkg from '../../package.json';
  * `feedControls` in `collections.ts` for the rows a tombstone is checked against, and the
  * IndexedDB adapter's `db`, which the outbox's `dispose` closes. Neither is part of a
  * contract, so the versions are pinned exactly and this says so the day an upgrade moves
- * them — rather than the base of a save quietly becoming the local, unsynced view, or a
+ * them, rather than the base of a save quietly becoming the local, unsynced view, or a
  * purged note's tombstone being dropped again.
  */
 describe('the pinned library internals', () => {

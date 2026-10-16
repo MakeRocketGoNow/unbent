@@ -20,8 +20,8 @@ import { useRef } from 'react';
  * The desktop's navigation rail.
  *
  * The rows are `NotebookNav`'s and are pinned there. What is the rail's own: it reads
- * where it stands from the router — the notebook from the notes' search params, the
- * destination from the path — and it remembers whether it is open, by width until the
+ * where it stands from the router (the notebook from the notes' search params, the
+ * destination from the path) and it remembers whether it is open, by width until the
  * user chooses and by the user's choice after.
  *
  * jsdom has no `matchMedia`; the stub below answers the rail's width query and can be

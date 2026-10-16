@@ -14,12 +14,12 @@ function bound(def: FieldDef | undefined, value: string | undefined): string {
  *
  * The definition supplies the name and the type; the filter supplies the op and the value.
  * A checkbox reads as a statement rather than "Reimbursed: true", because that is how a
- * person would say it. Dates and numbers keep the symbols — "Amount ≥ 20" is what the
- * control that set it showed, and an amount's bound is drawn as money, "Price ≥ $20" —
+ * person would say it. Dates and numbers keep the symbols ("Amount ≥ 20" is what the
+ * control that set it showed, and an amount's bound is drawn as money, "Price ≥ $20")
  * and `set`/`empty` are the two words the picker used.
  *
- * A filter whose field is not among the definitions — a link from before the field was
- * deleted, or a filter on a field from another notebook — is still named, by what can be
+ * A filter whose field is not among the definitions (a link from before the field was
+ * deleted, or a filter on a field from another notebook) is still named, by what can be
  * read of it, so the chip that removes it is not blank.
  */
 export function fieldFilterLabel(raw: string, defs: FieldDef[]): string {

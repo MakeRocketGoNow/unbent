@@ -8,8 +8,8 @@ import { SHED, type Entry, type Kind, type SearchReader } from './search-index.j
  * what its joins do.
  *
  * The index (`search-index.ts`) says which notes, tags, field values and files match and
- * how well. Everything else the server's query knows — which notes carry a tag, whether a
- * note is live, whether it is in the notebook being looked at — the library already
+ * how well. Everything else the server's query knows (which notes carry a tag, whether a
+ * note is live, whether it is in the notebook being looked at) the library already
  * holds, whole and current, so it is asked here rather than copied into the index to go
  * stale. The outcome is the server's: one row per note, from the best tier it matched
  * in, ordered by tier, then relevance, then id.
@@ -21,7 +21,7 @@ export const fieldEntryId = (noteId: string, fieldId: string) => `${noteId}${FIE
 export const fieldEntryPrefix = (noteId: string) => `${noteId}${FIELD_SEP}`;
 
 /**
- * A stamp for text: fifty-three bits of cyrb53. Not a digest — it has to tell an edited
+ * A stamp for text: fifty-three bits of cyrb53. Not a digest: it has to tell an edited
  * note from the copy already indexed, across an archive, without reading the index's
  * text back. A collision costs one stale entry until that note next changes.
  */
@@ -162,7 +162,7 @@ export async function searchLocal(opts: LocalSearchOptions): Promise<LocalSearch
      * The best matches first, a few pages of them, and wider only if that did not fill
      * the page: forty pages, then every match. Unfiltered, the first ask is nearly
      * always enough. A filter can be satisfied by the thousandth match, so it may need
-     * them all — but asking for them all at once, as this did, sent every match in an
+     * them all. But asking for them all at once, as this did, sent every match in an
      * archive across the worker on each keystroke of a one-letter search in a notebook,
      * when the first few hundred usually hold a page of that notebook's. Each ask starts
      * from the top again; a note already taken is skipped. Tags are asked whole: there
@@ -257,7 +257,7 @@ export async function searchLocal(opts: LocalSearchOptions): Promise<LocalSearch
 /**
  * What the search could see: whether the index is whole, and of the files with text on
  * the notes in scope, how many are indexed here. The second is the honest part of an
- * offline search — a phrase from a scan in a notebook that is not kept offline finds
+ * offline search: a phrase from a scan in a notebook that is not kept offline finds
  * nothing, and the line under the results has to be able to say that is why.
  */
 async function coverageOf(
@@ -289,7 +289,7 @@ export interface TextSnapshot {
 }
 
 /**
- * How much text the notes opened here may hold between them, in characters — for a
+ * How much text the notes opened here may hold between them, in characters: for a
  * scan's text, about as many bytes. A count of notes does not bound this: one file's text
  * can be half a million characters, so five hundred notes of long manuals would be a
  * quarter of a gigabyte nobody chose. Kept notebooks are not counted: their size was
@@ -328,7 +328,7 @@ export interface TextPlan {
  * the cases are here, and a table can test them.
  *
  * Not every file's. Extracted text is the largest thing an account stores after the
- * files — tens of megabytes on an archive — and most of it is never searched from a
+ * files (tens of megabytes on an archive) and most of it is never searched from a
  * given phone; a kept notebook and an opened note are the two ways someone has already
  * said which documents they want with them.
  *

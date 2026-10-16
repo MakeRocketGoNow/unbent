@@ -136,7 +136,7 @@ describe('useListKeys', () => {
     fireEvent.keyDown(screen.getByRole('list'), { key: 'ArrowDown' });
     expect(screen.getByTestId('flag').textContent).toBe('true');
 
-    // A click on a phone row — one whose list is replaced by the note — opens the editor,
+    // A click on a phone row (one whose list is replaced by the note) opens the editor,
     // so it must not inherit the arrow keys' keep-focus rule.
     fireEvent.pointerDown(screen.getByTestId('c'));
     expect(screen.getByTestId('flag').textContent).toBe('false');
@@ -151,7 +151,7 @@ describe('useListKeys', () => {
     fireEvent.pointerDown(screen.getByTestId('desktop'));
     expect(screen.getByTestId('flag').textContent).toBe('true');
 
-    // A press outside any note — the editor, the New button — still opens ready to type.
+    // A press outside any note (the editor, the New button) still opens ready to type.
     fireEvent.pointerDown(document.body);
     expect(screen.getByTestId('flag').textContent).toBe('false');
   });
@@ -173,7 +173,7 @@ describe('useListKeys', () => {
 /**
  * The same list drawn as a table: the rows are `<tr>`s whose name cell holds the link.
  * The keys must browse those links exactly as they browse sidebar entries, and a press
- * anywhere on a row — not only on its link — is browsing.
+ * anywhere on a row (not only on its link) is browsing.
  */
 function Table({ onActivate }: { onActivate?: (id: string) => void }) {
   const onKeyDown = useListKeys();

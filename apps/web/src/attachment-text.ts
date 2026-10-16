@@ -4,7 +4,7 @@ import { ApiError, httpErrorMessage } from './notes-api.js';
 /**
  * Extracting attachment text for search, wherever that happens to run.
  *
- * pdf.js lives in the browser, so extraction does too — Maintenance's button, the
+ * pdf.js lives in the browser, so extraction does too: Maintenance's button, the
  * pass the app makes on open, the editor after an upload, and the page the Android app
  * hosts all need the same loop and the same two calls. This module is that loop, written
  * against nothing but `fetch`, so it runs in a Web Worker and on a page's own thread alike.
@@ -36,7 +36,7 @@ export interface IndexResult extends IndexProgress {
  * The most an unasked pass will download.
  *
  * The pass on open pulls the same bytes the button does, and a backlog from before PDF
- * search existed is thousands of scans — gigabytes that must not start flowing because a
+ * search existed is thousands of scans, gigabytes that must not start flowing because a
  * tab was opened on a phone. One page of the pending list is the line between "a few
  * captures since last time" and "a backlog someone should choose to run".
  */
@@ -94,7 +94,7 @@ export interface IndexOptions {
  *
  * Needed because import is idempotent on content hash: notes imported before extraction
  * existed cannot be fixed by re-importing, since they are skipped along with their
- * attachments. This walks the gap instead — and, since the editor and the phone both
+ * attachments. This walks the gap instead, and, since the editor and the phone both
  * upload without extracting, it is also what catches anything they missed.
  *
  * Each file is fetched back from the server: this is the pass for files whose bytes are
@@ -107,7 +107,7 @@ export async function indexPendingFiles(opts: IndexOptions = {}): Promise<IndexR
 
   /**
    * A file that fails stays pending, so the server offers it again on the next page. It is
-   * skipped from then on, and a page made only of skipped files ends the pass — otherwise
+   * skipped from then on, and a page made only of skipped files ends the pass. Otherwise
    * one unreadable file at the head of the list would be fetched forever.
    */
   const failed = new Set<string>();

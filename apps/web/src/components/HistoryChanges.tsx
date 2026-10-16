@@ -305,7 +305,7 @@ function Same({ text }: { text: string }) {
 }
 
 /*
-   `abuts`: this mark starts where another ended, which is what a replaced word is — its
+   `abuts`: this mark starts where another ended, which is what a replaced word is: its
    old text and its new, back to back. Two numbers so set read as one: 45 for 40 was
    "4540", with only the tints to say where one stopped. The class puts a sliver between
    them, as a margin and not a space, which would be a character the note never had

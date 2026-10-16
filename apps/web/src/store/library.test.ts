@@ -20,8 +20,8 @@ vi.mock('./db.js', () => ({ openLocalStore: vi.fn(), closeLocalStore: vi.fn(asyn
 import { closeLocalStore } from './db.js';
 vi.mock('../report-error.js', () => ({ reportError: vi.fn() }));
 /*
- * What `open` builds on, stood in for so the lifecycle — the queue, the bound, a close
- * taking a stuck open's entry — can be driven end to end without a worker or a file. The
+ * What `open` builds on, stood in for so the lifecycle (the queue, the bound, a close
+ * taking a stuck open's entry) can be driven end to end without a worker or a file. The
  * engine is real; its pull never starts, since the stand-in collections never register.
  */
 vi.mock('./collections.js', () => ({ createCollections: vi.fn(), cursorStore: vi.fn() }));
@@ -90,8 +90,8 @@ describe('fetchJson', () => {
 const row = { id: 'n1', title: 'a', body: 'b', updatedAt: 1, deletedAt: undefined, notebookId: 'nb', tagIds: ['t1', 't2'], fields: [{ fieldId: 'f', value: 1 }] };
 
 /**
- * Opening the library is bounded for its caller. It waits on things outside the tab —
- * the outbox's database, the collections' leader — and an open that never settled left
+ * Opening the library is bounded for its caller. It waits on things outside the tab
+ * (the outbox's database, the collections' leader) and an open that never settled left
  * every screen on "Opening your notes…" with nothing reported. Past the bound the page
  * reads the server and the error is reported; the open itself goes on in the queue, the
  * account keeps its refusal so no navigation waits again, and a close or a later open
@@ -99,8 +99,8 @@ const row = { id: 'n1', title: 'a', body: 'b', updatedAt: 1, deletedAt: undefine
  */
 /**
  * A page with a store to open: the stand-ins above, a socket that records itself, and
- * an outbox whose `ready` the test holds. What `open` reaches before that wait — the
- * engine, the socket, the listeners — is real.
+ * an outbox whose `ready` the test holds. What `open` reaches before that wait (the
+ * engine, the socket, the listeners) is real.
  */
 function page(opts: { ready?: Promise<void>; pending?: number; notes?: Collection<typeof row, string> } = {}) {
   class FakeSocket {
@@ -515,7 +515,7 @@ describe('acquireLibrary', () => {
       expect(libraryElsewhere()).toBe('u1');
       expect(openLocalStore).not.toHaveBeenCalled();
       // Three hellos in six seconds, none answered: the lock is taken from that tab, and
-      // this one opens the library — well inside the bound it used to wait out.
+      // this one opens the library, well inside the bound it used to wait out.
       await vi.advanceTimersByTimeAsync(20);
       await expect(theirHold).rejects.toMatchObject({ name: 'AbortError' });
       await vi.advanceTimersByTimeAsync(10);
@@ -583,7 +583,7 @@ describe('acquireLibrary', () => {
       await vi.advanceTimersByTimeAsync(0);
       const first = acquireLibrary('u1');
       await vi.advanceTimersByTimeAsync(10);
-      // The holding tab is a hand-off still opening — seconds, on a phone — and says so.
+      // The holding tab is a hand-off still opening (seconds, on a phone) and says so.
       channel.port('other').post({ type: 'opening', holder: 'other' });
       await vi.advanceTimersByTimeAsync(HELLO_RETRY_MS * 3);
       expect(libraryElsewhere()).toBe('u1');
@@ -835,7 +835,7 @@ describe('acquireLibrary', () => {
   /*
    * The holder's own subscriptions, on a real collection. A subscription that is not
    * told otherwise reports only the rows it has emitted before: a tombstone for a note
-   * that had not changed since the open — purged on another device — never reached the
+   * that had not changed since the open (purged on another device) never reached the
    * query bridge, so the list kept the note until something else moved it, and an update
    * of such a note arrived as an insert, which re-ran every query rather than its own.
    */

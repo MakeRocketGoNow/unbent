@@ -34,7 +34,7 @@ interface EditorToolbarProps {
    * It lives here rather than in the workspace head because every one of these acts on the
    * panes directly below it, and because a row that already spans the editor's width has
    * the one piece of layout it needs: somewhere to push a control to the far end. The head
-   * is for the note as an object — what it is called, and what can be done to it.
+   * is for the note as an object: what it is called, and what can be done to it.
    */
   noteView: {
     current: NoteView;
@@ -44,13 +44,13 @@ interface EditorToolbarProps {
      *
      * A modifier on `source` rather than a fourth view: it is two renderings of one
      * document, which is only a coherent thing to ask for when one of them is the source.
-     * Undefined where it cannot apply — on a phone, which has room for one pane — and the
+     * Undefined where it cannot apply (on a phone, which has room for one pane), and the
      * control is then not rendered at all rather than rendered inert.
      */
     split?: { on: boolean; onToggle: () => void };
   };
   /**
-   * A note that takes no changes — offline, or in the trash. Formatting, Attach and the
+   * A note that takes no changes: offline, or in the trash. Formatting, Attach and the
    * table control are disabled, the way the preview view disables them, rather than
    * hidden: the bar keeps its shape, and the view switcher stays usable because it
    * changes nothing.
@@ -76,7 +76,7 @@ interface Action {
  * does, so the row reads as one set.
  *
  * `ToolbarIcon` itself moved to `icons.tsx` when the note list header started drawing icons
- * too — it was never specific to this toolbar, and importing it from here would have said
+ * too: it was never specific to this toolbar, and importing it from here would have said
  * it was. The reasoning about not taking an icon library moved with it.
  */
 
@@ -138,7 +138,7 @@ const ACTIONS: Action[] = [
  * The picker's styles, injected once.
  *
  * They live with the module that owns those class names rather than in the global
- * stylesheet, so the control and its appearance cannot drift apart — and the CodeMirror
+ * stylesheet, so the control and its appearance cannot drift apart, and the CodeMirror
  * copy of the picker gets them from the same string.
  */
 function usePickerStyles() {
@@ -156,7 +156,7 @@ function usePickerStyles() {
  * The table button, which opens the same size picker the table toolbar does.
  *
  * Inserting a fixed 2×3 made the same icon mean two different things depending on where it
- * was clicked — a picker over a table, a silent insert in the formatting bar. Choosing the
+ * was clicked: a picker over a table, a silent insert in the formatting bar. Choosing the
  * size up front is also simply what people expect of a table button.
  */
 function TableButton({ view, disabled = false }: { view: EditorView | null; disabled?: boolean }) {
@@ -225,7 +225,7 @@ function TableButton({ view, disabled = false }: { view: EditorView | null; disa
 }
 
 /**
- * The way a file gets in without a mouse to drag it or a clipboard to paste it from —
+ * The way a file gets in without a mouse to drag it or a clipboard to paste it from,
  * which is to say, the way on a phone. Files land at the cursor through the same routine
  * a drop uses, so the result is one undoable text edit either way.
  *
@@ -233,7 +233,7 @@ function TableButton({ view, disabled = false }: { view: EditorView | null; disa
  * the note rather than shaping what is there, and that is the family it belongs to. On a
  * phone that puts it in the part of the bar that scrolls, so the fade at the switcher's
  * edge (`tb-more`) is what says the bar continues. Pinned at the left edge was tried
- * first — always visible, but it left a run three buttons wide and read as a different
+ * first: always visible, but it left a run three buttons wide and read as a different
  * kind of control from its family.
  *
  * Opened from `onClick` rather than the `onMouseDown` its neighbours use. A file input
@@ -263,7 +263,7 @@ function AttachButton({
   docked: boolean;
 }) {
   const input = useRef<HTMLInputElement>(null);
-  // No uploader means a note that cannot take files — read-only, in the trash — and a
+  // No uploader means a note that cannot take files (read-only, in the trash), and a
   // button that opened a picker for nothing would be a lie.
   const canUpload = view !== null && view.state.facet(attachConfig).upload !== undefined;
 
@@ -392,7 +392,7 @@ export function EditorToolbar({
       {/*
           The formatting run, and the only part of the bar that scrolls.
 
-          Twelve 44px touch targets do not fit a phone's width and never did — the bar has
+          Twelve 44px touch targets do not fit a phone's width and never did: the bar has
           always scrolled here. That is fine for formatting, which you dip into and can
           swipe for. It is not fine for the view switcher, which answers "where am I", so
           that sits outside this box and stays put. Splitting them is what lets each
@@ -427,7 +427,7 @@ export function EditorToolbar({
           pane rather than on the selection, and sitting in the same run as B/I/S implied
           they were more formatting commands.
 
-          Outside the scroller on purpose — see the comment above it.
+          Outside the scroller on purpose: see the comment above it.
       */}
       <div className="tb-views">
         {noteView.split && noteView.current === 'source' && (
@@ -454,7 +454,7 @@ export function EditorToolbar({
         {/*
             A radio group, not three toggles: exactly one is always on, which is what
             `radio` means and what a set of `aria-pressed` buttons would fail to say. The
-            labels are words because there is no icon anyone reads as "plain source" —
+            labels are words because there is no icon anyone reads as "plain source":
             `</>` is already the inline-code button three positions to the left.
         */}
         <div className="tb-segmented" role="radiogroup" aria-label="View">

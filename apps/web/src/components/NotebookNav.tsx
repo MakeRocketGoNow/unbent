@@ -30,7 +30,7 @@ const TAG_CAP = 25;
  *
  * The capped list and the full one answer different questions. The first 25 by use are
  * the tags someone works in every day, and use is the order that puts them first. The
- * full list is an index — "I have a tag called something like this" — and past the
+ * full list is an index ("I have a tag called something like this") and past the
  * well-used head, an order by count is a long tail of ones and twos in no order a person
  * can scan. Evernote lists every tag by name for this reason. A setting to choose between
  * the two was considered and turned down: each order is wrong for one of the two jobs, so
@@ -66,7 +66,7 @@ interface NotebookNavProps {
    */
   onNavigate?: (() => void) | undefined;
   /**
-   * The labels are clipped from view — a desktop's rail drawn as a strip of icons. The
+   * The labels are clipped from view: a desktop's rail drawn as a strip of icons. The
    * rows then carry their label as a tooltip too, since a glyph alone says less than a
    * word; the stylesheet does the clipping, this only adds the tips (`tooltips.ts`).
    */
@@ -79,14 +79,14 @@ interface NotebookNavProps {
  * Where the notes are: the rows of places, and the floor of destinations.
  *
  * A notebook is a place you go, not a filter you apply. The app has said so all along in
- * the one rule the picker carries — choosing a notebook clears the tags, because the two
- * are different kinds of question — and Evernote, Apple Notes and the Android app all draw
+ * the one rule the picker carries (choosing a notebook clears the tags, because the two
+ * are different kinds of question) and Evernote, Apple Notes and the Android app all draw
  * it as navigation. On the web it had become a `<select>` two taps inside a sheet headed
  * "Filter notes", which is the weakest reading of it available.
  *
  * The shape of it is Keep's: a glyph on every row, the places at the top under a section
  * head that carries the way to edit them, and on the floor the things that are not
- * places — Trash, then Settings — as plain rows. Settings used to be behind the avatar,
+ * places (Trash, then Settings) as plain rows. Settings used to be behind the avatar,
  * which on a phone was the one screen with no topbar to show the avatar on; a row on the
  * floor is one tap from the ☰ and is where every drawer people arrive from puts it. Sign
  * out stays behind the avatar on purpose: it is rare and disruptive, and a row for it on
@@ -108,9 +108,9 @@ export function NotebookNav({
   footer,
 }: NotebookNavProps) {
   /*
-   * Whether the tags are shown. Closed to begin with — the notebooks are the places most
+   * Whether the tags are shown. Closed to begin with (the notebooks are the places most
    * people move between, and a long tag list under them would push the floor out of
-   * sight — and remembered, since someone who works by tag opens it every time. Not
+   * sight) and remembered, since someone who works by tag opens it every time. Not
    * `Disclosure`, whose own comment rules out state that anything else depends on; this
    * is a button with `aria-expanded`, and the stylesheet draws it with the same chevron.
    */
@@ -125,14 +125,14 @@ export function NotebookNav({
    * is how you are looking, not what at, and it rides along.
    *
    * The sort does not, though it once did. Each place opens in the order it was last left
-   * in (`rememberedSort`) — a notebook of receipts wants its newest first and one of
+   * in (`rememberedSort`): a notebook of receipts wants its newest first and one of
    * recipes wants A–Z, and the order that suited the place being left said nothing about
    * the one being entered. It is written into the link rather than filled in on arrival so
    * that the list is fetched once, in the right order, instead of in the old one first.
    *
    * Picking a scope clears the tags, the same rule the notebook select followed: tags
    * cross notebook boundaries, so carrying one into a new notebook routinely lands on an
-   * empty list with no visible cause. Field filters go with them — a field belongs to the
+   * empty list with no visible cause. Field filters go with them: a field belongs to the
    * notebook being left.
    */
   const scopeOf = (next: string | undefined) => (prev: Record<string, unknown>) => ({
@@ -144,13 +144,13 @@ export function NotebookNav({
   });
 
   /*
-   * A tag as a place: every note carrying it, across all notebooks — Evernote's tag view.
+   * A tag as a place: every note carrying it, across all notebooks (Evernote's tag view).
    * The notebook goes, and with it the field filter, which belongs to it; the order is
    * the one All notes remembers, since a tag place is the whole archive narrowed, and the
    * dates stay. Only ever one tag from here: narrowing to several is the
    * filter sheet's job, where a tag is a refinement of where you are rather than a place.
    * A search pick made from All notes with nothing else set lands on this same URL, so
-   * the row marks it — see `ScopeMatches`.
+   * the row marks it (see `ScopeMatches`).
    */
   const tagOf = (name: string) => (prev: Record<string, unknown>) => ({
     ...prev,
@@ -164,7 +164,7 @@ export function NotebookNav({
   const picked = () => onNavigate?.();
 
   /*
-   * All notes means no notebook *and* no tags — the unnarrowed list, not merely unfiled.
+   * All notes means no notebook *and* no tags: the unnarrowed list, not merely unfiled.
    * Every place is gated on being over the notes at all: on the trash or in settings the
    * URL still carries a notebook, and lighting its row there would say the trash is in it.
    */
@@ -175,8 +175,8 @@ export function NotebookNav({
   const tagPlace = here && !notebook && selectedTags.length === 1 ? selectedTags[0] : undefined;
   /*
    * The tags listed: the first `TAG_CAP` by use. The current tag is always among them,
-   * past the cap or not — the same rule that keeps the Inbox on screen while it is where
-   * you are — so the navigation never fails to say where you are. Once the full list is
+   * past the cap or not (the same rule that keeps the Inbox on screen while it is where
+   * you are) so the navigation never fails to say where you are. Once the full list is
    * asked for it says so, and the current tag is in that.
    */
   const usedTags = tags.slice(0, TAG_CAP);
@@ -232,7 +232,7 @@ export function NotebookNav({
         </Link>
 
         {/*
-            "Inbox" is the label for having no notebook — the same bucket the API and the
+            "Inbox" is the label for having no notebook: the same bucket the API and the
             UNFILED sentinel call unfiled. Offered only when there is something in it, since
             otherwise it leads to a guaranteed empty list; it stays while it is the active
             scope so the navigation never fails to show where you are.
@@ -258,8 +258,8 @@ export function NotebookNav({
         {/*
             The section's name, and the way to change what is in it.
 
-            Keep heads its labels the same way — a muted word on the left, Edit on the
-            right — and the reason is that the rows below are places to go, so anything that
+            Keep heads its labels the same way (a muted word on the left, Edit on the
+            right) and the reason is that the rows below are places to go, so anything that
             changes them has to live outside the rows or every row would need two targets.
             Edit is a `Link` to the notebooks page, which navigates away. Shown even with no
             notebooks: the way to make the first one is the row at the end of this section.

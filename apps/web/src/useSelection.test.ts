@@ -5,7 +5,7 @@ import { useSelection } from './useSelection.js';
 /**
  * The selection's rules, which are the part a screenshot cannot check: what a range runs
  * from, what a change of scope does, and that rows the list no longer holds are not
- * counted — since an action reaches exactly what `ids` says.
+ * counted, since an action reaches exactly what `ids` says.
  */
 const rows = ['a', 'b', 'c', 'd', 'e'];
 

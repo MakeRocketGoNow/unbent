@@ -40,7 +40,7 @@ const h = vi.hoisted(async () => {
     static instances: MemoryAdapter[] = [];
     /**
      * The connection the real adapter keeps under `db`: closable, told of a delete, and
-     * opened on first use as the real one is — null until then, which is what a tab that
+     * opened on first use as the real one is: null until then, which is what a tab that
      * does not lead the outbox has when its executor's init settles.
      */
     db: { close: () => void; onversionchange: null | (() => void); closed: boolean } | null = null;
@@ -393,7 +393,7 @@ describe('a replayed write', () => {
     await tick();
     // The entry has ended and its optimistic change is dropped: what shows is the copy
     // the server answered with, written in as a feed row, not the one from before the
-    // save — and nothing was asked of the server for it.
+    // save, and nothing was asked of the server for it.
     expect(lib.notes.get('n1')).toMatchObject({ title: 'new', updatedAt: 101 });
     expect(engine.applyNotes).toHaveBeenCalledWith([expect.objectContaining({ id: 'n1', title: 'new', updatedAt: 101, tagIds: [], notebookId: null })]);
     expect(engine.pull).not.toHaveBeenCalled();
@@ -477,7 +477,7 @@ describe('a replayed write', () => {
     }
     expect(fake.queue).toHaveLength(2);
 
-    // The plan's 402 is kept — it changes when the person subscribes — and the storage's
+    // The plan's 402 is kept (it changes when the person subscribes) and the storage's
     // is not: the account is full until something goes (MAK-108). While the kept one
     // waits at the head of the queue, a delete goes to the server directly rather than
     // behind it, since the queue would hold it there until the subscription.
@@ -500,8 +500,8 @@ describe('a replayed write', () => {
 
   /**
    * Once the page has read the plan and it says inactive, the kept entry is not sent
-   * again — the answer would be the same 402, once a minute for as long as the tab is
-   * open — and the plan reading as active again replays it at once (MAK-108).
+   * again (the answer would be the same 402, once a minute for as long as the tab is
+   * open) and the plan reading as active again replays it at once (MAK-108).
    */
   it('holds a write the plan refused while the plan reads inactive, and replays it the moment it reads active', async () => {
     // A save, which is what the server refuses for the plan; a delete it never does.
@@ -541,7 +541,7 @@ describe('a replayed write', () => {
   });
 
   it('takes the 404 of a trash or purge the server already made as done, through the real client, so the writes behind it go', async () => {
-    // A replay of a request that already went — the tab closed before its entry ended —
+    // A replay of a request that already went (the tab closed before its entry ended)
     // finds the note trashed or purged already, and the route says 404. The client threw
     // that as a bare Error, which nothing read as a 404: the entry was kept and tried
     // again for good, the restores queued behind it never went, and a reload changed
@@ -628,7 +628,7 @@ describe('a replay that pulls the feed', () => {
     // Two notes trashed a moment apart: two entries, the second in flight until its turn.
     // The first replay's pull brings its own row back, and TanStack DB holds a page of
     // sync back while any write on the collection is in flight; the entry waited for the
-    // page, the page for the entry, and only a reload ended it — sending the trash again.
+    // page, the page for the entry, and only a reload ended it, sending the trash again.
     const { lib, fake, server, synced } = await fedLibrary([row('n1'), row('n2')]);
     const trash = async (ids: string[]) => {
       for (const id of ids) server.wrote(row(id, { deletedAt: 5 }));
@@ -672,7 +672,7 @@ describe('saves of one note', () => {
     const base = note('n1');
     await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'a' }, base });
     await tick();
-    // The second autosave comes with a base the workspace moved on — it does not, in the
+    // The second autosave comes with a base the workspace moved on: it does not, in the
     // library path, but a later copy must never become the precondition.
     await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'ab' }, base: { ...base, updatedAt: 100 } });
     await tick();
@@ -998,7 +998,7 @@ describe('a tab that does not hold the outbox', () => {
   it('sends a newly typed field, reading the type from the library this tab still holds', async () => {
     // A library whose outbox is not durable does not queue, but it has the notebook's
     // definitions. Passing none used to skip Amount as a leftover id, so the autosave
-    // reported "Saved" and the number existed nowhere but the draft — gone on the next
+    // reported "Saved" and the number existed nowhere but the draft, gone on the next
     // open.
     const { fake, note } = library([row('n1', { title: 'old', notebookId: 'nb1' })], [receipts]);
     fake.lead(false);
@@ -1634,8 +1634,8 @@ describe('a write made here', () => {
 /**
  * A tab that is a client of the tab holding the library (`client-library.ts`): its writes
  * are sent to the holder by name rather than run here, and are heard here as writes made
- * here, before they go. A call refused because the library moved — this tab became the
- * holder with the call in hand — is made again where the library now is.
+ * here, before they go. A call refused because the library moved (this tab became the
+ * holder with the call in hand) is made again where the library now is.
  */
 describe('a tab that is a client of the holder', () => {
   afterEach(() => provideForwarder(async () => null));

@@ -10,7 +10,7 @@ interface ActiveFiltersProps {
   /**
    * The notebook, when this strip is the only thing reporting it.
    *
-   * Omitted under the list header, where the heading already names the notebook — a chip
+   * Omitted under the list header, where the heading already names the notebook: a chip
    * there repeated the title word for word on the line directly below it, and spent a whole
    * row of a phone screen doing it. Passed in the filter sheet, which claims to show
    * everything that is applied and so has to show this too; Android's sheet carries the
@@ -30,7 +30,7 @@ interface ActiveFiltersProps {
  * What is narrowing the list, as chips that remove themselves.
  *
  * On a phone the controls are behind an icon, so without this the only sign that a list is
- * filtered would be a dot on that icon — enough to say *that* something is filtering, and
+ * filtered would be a dot on that icon, enough to say *that* something is filtering, and
  * nothing about *what*. A count of 12 with no explanation is how an archive comes to look
  * like it has lost notes.
  *
@@ -44,7 +44,7 @@ interface ActiveFiltersProps {
  * so the eye moving between the chips and the sheet is not re-sorting them.
  *
  * Renders nothing at all when it has nothing to report, so a caller can mount it without
- * first working out whether this particular combination leaves anything to say — which the
+ * first working out whether this particular combination leaves anything to say, which the
  * header does, now that the notebook alone is not enough to fill it.
  */
 export function ActiveFilters({
@@ -70,13 +70,13 @@ export function ActiveFilters({
         <button
           type="button"
           className="filter-chip"
-          // The notebook's own name, not "Notebook: X" — a chip has room for one of them,
+          // The notebook's own name, not "Notebook: X". A chip has room for one of them,
           // and the value is the half that says what is on screen.
           aria-label={`Remove notebook filter: ${notebook === UNFILED ? 'Inbox' : notebook}`}
           /*
            * Drops the tags with it, the same rule the notebook select follows: tags cross
            * notebook boundaries, so leaving one selected here routinely yields an empty list
-           * with no visible cause. The field filters too — they belong to this notebook.
+           * with no visible cause. The field filters too: they belong to this notebook.
            * The list opens in the order All notes was last left in, as the drawer's link
            * to it would.
            */

@@ -7,7 +7,7 @@ import { noteQuery } from '../queries.js';
  *
  * The loader deliberately does not throw `notFound()`. A note id arrives from shared
  * links and reloads long after the note was deleted, so a 404 is an expected outcome
- * rather than an exceptional one — the id stays in the URL so the link remains copyable
+ * rather than an exceptional one: the id stays in the URL so the link remains copyable
  * and retryable, and the workspace explains what happened. Throwing would replace the
  * whole view with an error page and lose the address.
  *

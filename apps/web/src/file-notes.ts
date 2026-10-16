@@ -13,25 +13,25 @@ import { invalidateNoteMembership } from './queries.js';
  * Three ways in, one routine. Files let go on the note list (`list-drop-zone.ts`), filed
  * where the list is scoped; files picked on the Import page, filed in the notebook named
  * there; and files the operating system launched the installed app with
- * (`launch-files.ts`). The drop target is what decides what a file becomes — a file let
- * go on the open note attaches there, one let go on the list is a note of its own — so
+ * (`launch-files.ts`). The drop target is what decides what a file becomes (a file let
+ * go on the open note attaches there, one let go on the list is a note of its own), so
  * there is deliberately no "combine into one note" choice anywhere: the one-note case is
  * "open a note and drop there".
  *
  * Every write goes through `store/actions.ts`, never the API: each note lands in the
  * local copy at once, and with no connection its upload queues behind its own create,
  * so a batch that loses its connection halfway finishes from the outbox rather than
- * leaving notes whose files never came. With one, the upload is sent directly — see
- * `noteFromFile` for the wait that makes it so. One file at a time, in the order given,
+ * leaving notes whose files never came. With one, the upload is sent directly (see
+ * `noteFromFile` for the wait that makes it so). One file at a time, in the order given,
  * because the uploads are the cost and twelve PDFs in flight at once is twelve times the
  * memory on a phone for no shorter wait.
  *
  * The batch's state is the module's, not a component's, for the reason the import run's
  * is (`import-run.ts`): the snackbar that reports it is drawn by the root layout, and the
- * person may well have left the list — or the Import page — before the last upload
+ * person may well have left the list, or the Import page, before the last upload
  * lands. Batches run one after another: a second drop, a pick on the Import page or a
  * launch that arrives while one runs waits its turn rather than being refused. Refusing
- * was tried first, and the launch had no way to say so — a scanner's second job went to
+ * was tried first, and the launch had no way to say so: a scanner's second job went to
  * the console and nowhere else. The report shows the batch now running.
  */
 
@@ -76,7 +76,7 @@ let firstOwner: string | null = null;
 /**
  * Occupancy of this tab: counts up each time the account goes to nobody. A batch begun
  * before anyone was claimed is adopted by the first person (`firstOwner`), and a
- * sign-out must stop that batch — but it must not also poison the *next* unowned
+ * sign-out must stop that batch, but it must not also poison the *next* unowned
  * launch. The installed app is `focus-existing`, so a scanner sending files to a
  * window sitting on `/login` after a sign-out or an expired session does not reload;
  * those files reach `notesFromFiles` with `owner === null`, the shape of a cold launch.
@@ -97,7 +97,7 @@ let era = 0;
  *
  * The files of a waiting batch live in this page's memory and nowhere else, so the wait
  * counts as busy (`fileNotesWaiting`, read by `pageBusy`) and the update notice's Reload
- * does not land on them. A sign-in that leaves the page — Google's redirect — still
+ * does not land on them. A sign-in that leaves the page (Google's redirect) still
  * loses them; only a sign-in that stays on the page, by code or passkey, reaches the
  * claim. Keeping them on the device's `pending` shelf across the redirect would be the
  * fix for that, and is not attempted here.
@@ -140,12 +140,12 @@ function subscribe(fn: () => void): () => void {
 }
 
 /**
- * Ties the batch to whoever is signed in, and drops it if that changes or if nobody is —
+ * Ties the batch to whoever is signed in, and drops it if that changes or if nobody is:
  * `ImportRun.claim`'s rule, for the same reason. A batch keeps calling the actions after
  * a sign-out, and once the library has closed each is a plain request with whatever
  * cookie the page holds: a long batch would finish as the next person to sign in here.
- * The report is theirs too — "12 notes added to Receipts", with an Undo over ids that
- * are not theirs — so it goes with the owner. Called from `useSignOut`, from the shell
+ * The report is theirs too ("12 notes added to Receipts", with an Undo over ids that
+ * are not theirs), so it goes with the owner. Called from `useSignOut`, from the shell
  * when the session goes under it, and from the route guard's hand-over.
  */
 export function claimFileNotesFor(userId: string | undefined): void {
@@ -166,7 +166,7 @@ export function claimFileNotesFor(userId: string | undefined): void {
     claimed = resolver();
     return;
   }
-  // Whatever report there is goes with the change of hands — one written while nobody
+  // Whatever report there is goes with the change of hands: one written while nobody
   // was signed in included, since it is about the files of whoever was before.
   if (state.status !== 'idle') set({ ...initial, run: state.run });
   owner = next;
@@ -192,8 +192,8 @@ export function resetFileNotes(): void {
  */
 export function isNoteFile(file: File): boolean {
   if (file.type === 'application/pdf' || file.type.startsWith('image/')) return true;
-  // A file arriving with no type — a drag from some file managers, a picker on an older
-  // phone — is judged by its name, so a scan is not refused for how it was handed over.
+  // A file arriving with no type (a drag from some file managers, a picker on an older
+  // phone) is judged by its name, so a scan is not refused for how it was handed over.
   return /\.(pdf|png|jpe?g|gif|webp|heic|heif|avif|bmp|tiff?|svg)$/i.test(file.name);
 }
 
@@ -208,7 +208,7 @@ export function titleFor(filename: string): string {
  *
  * The link is written before the upload rather than after it, on purpose. The upload
  * moves the note's date on the server, so a body written afterwards against the copy the
- * create answered was refused as a conflict on every note and went again — one wasted
+ * create answered was refused as a conflict on every note and went again: one wasted
  * round trip per file, and a queue entry that lands as a conflict offline. A fresh note
  * has no file for the name to collide with, so the path the upload will answer is known
  * before it is made: `files/<name>`, on the server (`availableFilename`) and in the
@@ -222,7 +222,7 @@ export async function noteFromFile(file: File, filing: Filing): Promise<string> 
   /*
    * The create is queued, and `uploadFile` queues an upload behind any write of its
    * note still waiting: without this wait every file of an online batch went to the
-   * device's pending shelf — two hundred megabytes of scans written to the file system
+   * device's pending shelf: two hundred megabytes of scans written to the file system
    * before the first byte was sent, a phone short of room refusing a drop it could have
    * uploaded, and "12 notes added" meaning queued rather than landed. So, with a
    * connection, the upload waits for the create to reach the server first, bounded: a
@@ -251,13 +251,13 @@ let chain: Promise<unknown> = Promise.resolve();
 
 /**
  * Makes a note per file and reports as it goes, after any batch already running.
- * Resolves with the ids made — all of them, or the ones made before a file failed, which
+ * Resolves with the ids made: all of them, or the ones made before a file failed, which
  * the state then says.
  */
 export function notesFromFiles(files: File[], filing: Filing, place: string | null, source: FileNotesSource, queryClient?: QueryClient): Promise<string[]> {
   if (files.length === 0) return Promise.resolve([]);
   // Whose files these are, taken now: a batch waiting its turn across a sign-out must
-  // not run as the next person. `era` is taken now for the same reason — see its comment.
+  // not run as the next person. `era` is taken now for the same reason (see its comment).
   const by = owner;
   const born = era;
   const run = () => runBatch(files, filing, place, source, by, born, queryClient);
@@ -341,8 +341,8 @@ async function runBatch(
 
 /**
  * Takes the batch back: every note it made goes to the trash, where it can be restored,
- * and the report is over. A trash the server refused — a device with no local copy, a
- * 4xx — is said in the report's place rather than lost, since the card that offered Undo
+ * and the report is over. A trash the server refused (a device with no local copy, a
+ * 4xx) is said in the report's place rather than lost, since the card that offered Undo
  * has already gone with the press and the notes are still there.
  */
 export async function undoFileNotes(queryClient?: QueryClient): Promise<void> {

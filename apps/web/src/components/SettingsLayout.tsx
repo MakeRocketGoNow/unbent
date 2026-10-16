@@ -39,7 +39,7 @@ const OPERATOR_TAB = { to: '/settings/operator', label: 'Operator' } as const;
  * The settings section: one heading, one sub-nav, one outlet.
  *
  * These four pages accreted as separate topbar links until the topbar read as a list of
- * unrelated verbs — and maintenance never got a link at all, ending up buried inside the
+ * unrelated verbs, and maintenance never got a link at all, ending up buried inside the
  * import panel. They are all "configure the app", so they belong behind one entry with
  * their own nav.
  */
@@ -59,8 +59,8 @@ export function SettingsLayout({ children }: { children: ReactNode }) {
               This was a "← Back to notes" text link on the right of this row at every
               width. On a desktop it was a third route to a list the rail beside it already
               reaches from every place it lists, strip or open. On a phone it was
-              a 25px target in the top-right corner — the corner a phone reserves for
-              forward actions — while every other full-screen view here puts a 44px arrow
+              a 25px target in the top-right corner (the corner a phone reserves for
+              forward actions), while every other full-screen view here puts a 44px arrow
               top-left.
 
               So it is the same `.view-back` the note and trash views use, in the same
@@ -90,7 +90,7 @@ export function SettingsLayout({ children }: { children: ReactNode }) {
               Only inside the app, where they exist.
 
               A pill beside the others rather than a button of its own, because it is the
-              same gesture — go to a settings page — and only its destination differs: a
+              same gesture (go to a settings page) and only its destination differs: a
               native screen, which no anchor can reach, hence a `<button>`. Inert during an
               import, unlike its siblings: the run outlives the page but not the site, and
               changing the instance from that screen reloads the site under it.

@@ -6,9 +6,9 @@ import { FTS_TOKENIZE, NOTE_FTS_WEIGHTS, SNIPPET_ARGS } from '@unbent/shared';
  *
  * The same engine as the server's. The WASM build the library's persistence loads
  * (`wa-sqlite.wasm`) carries FTS5, bm25 and the porter stemmer, so the tables here are
- * declared as the account's store declares its own (`apps/api/src/store/schema`) — one
+ * declared as the account's store declares its own (`apps/api/src/store/schema`): one
  * for a note's title and body, one for tag names, one for field values, one for the text
- * read out of files — and a search asks each the question the server asks. What the
+ * read out of files. And a search asks each the question the server asks. What the
  * server answers with joins, the caller answers from the library's rows (`search-local.ts`):
  * this file knows ids and text and nothing about notebooks or filters.
  *
@@ -18,11 +18,11 @@ import { FTS_TOKENIZE, NOTE_FTS_WEIGHTS, SNIPPET_ARGS } from '@unbent/shared';
  * of its transactions and be rolled back with it. And a search of an archive is tens of
  * milliseconds of engine time; on the library's connection that is a save waiting behind
  * every keystroke in the search box. The price is a second engine instance, and that
- * the index can fall behind the rows — which it could anyway, and which `SearchSync`
+ * the index can fall behind the rows, which it could anyway, and which `SearchSync`
  * exists to close.
  *
  * Everything here is derived: the notes come from the library and the files' text from
- * the server. So there are no migrations — a version that does not match is dropped and
+ * the server. So there are no migrations: a version that does not match is dropped and
  * built again.
  */
 
@@ -174,7 +174,7 @@ export class SearchIndex {
     });
   }
 
-  /** Every entry of a kind with its stamp — or, given ids, those among them that are indexed. */
+  /** Every entry of a kind with its stamp, or, given ids, those among them that are indexed. */
   async stamps(kind: Kind, ids?: string[]): Promise<Map<string, string>> {
     await this.ready();
     const rows = ids
@@ -217,7 +217,7 @@ export class SearchIndex {
    * so the rows travel as one JSON array and SQLite takes it apart (`json_each`).
    *
    * `shouldStop` is asked before each batch. A device's first index is the whole archive
-   * in one call, and closing the library — a sign-out, an account switch — waits for
+   * in one call, and closing the library (a sign-out, an account switch) waits for
    * whoever is writing to let go. Stopping part-way loses nothing: each batch is its own
    * transaction, and the next pass compares stamps and writes what is still missing.
    */

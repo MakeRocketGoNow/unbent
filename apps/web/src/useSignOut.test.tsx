@@ -50,7 +50,7 @@ describe('useSignOut', () => {
   /*
    * The device's memory of who was signed in is what lets the app open offline as them
    * (`session-memory.ts`). Inside the app the hook returns before refreshing the session,
-   * so the forgetting has to happen ahead of that — the path most likely to skip it.
+   * so the forgetting has to happen ahead of that: the path most likely to skip it.
    */
   it.each([
     ['in a browser', false],
@@ -65,7 +65,7 @@ describe('useSignOut', () => {
   /*
    * A running import sends whatever cookie the page holds, so it must not outlive the
    * session it was started under. Inside the app the store is never refreshed, so the
-   * shell's own drop never runs — this is the only one on that path.
+   * shell's own drop never runs: this is the only one on that path.
    */
   it.each([
     ['in a browser', false],
@@ -78,8 +78,8 @@ describe('useSignOut', () => {
   });
 
   /*
-   * The request could not reach the server. In a browser nothing has been signed out —
-   * the HttpOnly cookie is still good — so nothing is cleared and nothing pretends it was;
+   * The request could not reach the server. In a browser nothing has been signed out:
+   * the HttpOnly cookie is still good, so nothing is cleared and nothing pretends it was;
    * the menu offers Sign out there only with a connection. In the Android app the app
    * clears its own cookies when told, so the sign-out completes on the device.
    */

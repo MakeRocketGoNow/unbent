@@ -30,7 +30,7 @@ function count(n: number, noun: string): string {
  * The import page: a view of the run in `import-run.ts`, which outlives it.
  *
  * Leaving this page while a run goes, or after one, and coming back shows the same run.
- * What is only the form's — the Notion choices, the PDF checkbox — stays here, since it
+ * What is only the form's (the Notion choices, the PDF checkbox) stays here, since it
  * means nothing once a run has started.
  */
 export function Import() {
@@ -64,7 +64,7 @@ export function Import() {
 
   /*
    * A file picked and not started is dropped on leaving. The run is worth keeping; a
-   * pick is not, and the file input cannot be given it back — so returning would show
+   * pick is not, and the file input cannot be given it back, so returning would show
    * "No file chosen" above a line naming the file, with Start enabled.
    */
   useEffect(() => {
@@ -87,7 +87,7 @@ export function Import() {
 
   /**
    * Whether Start does anything: a file an importer takes, and for a zip, one the worker
-   * has read — this app's own, or Notion's with at least one unit ticked.
+   * has read (this app's own, or Notion's with at least one unit ticked).
    */
   const canStart =
     picked !== null &&
@@ -134,7 +134,7 @@ export function Import() {
    *
    * The summary stays until one is pressed. A small import finishes in well under a
    * second, and previously the only way back to the file picker was closing and reopening
-   * the panel — which threw away the result before it could be read.
+   * the panel, which threw away the result before it could be read.
    */
   function reset() {
     resetImport();
@@ -151,7 +151,7 @@ export function Import() {
       {/* A batch of notes from files started on this page, drawn where it was started:
           the snackbar that reports it everywhere else stands down here for it
           (`FileNotesSnackbar`). A batch from a drop on the list keeps its card, and is
-          not drawn here — it was not started here, and it would sit above the picker
+          not drawn here: it was not started here, and it would sit above the picker
           until something cleared it. Running, a bar; finished, the count and the way to
           the notes. */}
       {fileNotes.source === 'import' && fileNotes.status === 'running' && (
@@ -290,7 +290,7 @@ export function Import() {
               <span>
                 {file.name} · {formatBytes(file.size)}
               </span>
-              {/* Says what the run will do with this file — or why it will not start. */}
+              {/* Says what the run will do with this file, or why it will not start. */}
               <span className={picked.format === null || zip?.kind === 'unreadable' ? 'bad' : 'muted'}>
                 {zip?.kind === 'unreadable' ? zip.message : picked.text}
               </span>
@@ -432,9 +432,9 @@ export function Import() {
         <details className="failures">
           {/* Not "notes failed": a notebook's definitions the server would not take, or one
               field of them it declined, are listed here too, under the notebook's or the
-              field's name — see `ImportRun.problem`. */}
+              field's name (see `ImportRun.problem`). */}
           <summary className="small">{failures.length} failed</summary>
-          {/* The retry is free — importNote is idempotent per note — but nothing said so,
+          {/* The retry is free (importNote is idempotent per note), but nothing said so,
               so a run ending with failures looked like data lost rather than data to retry. */}
           <p className="small muted">
             Importing the same file again retries just these; everything that already landed
@@ -483,8 +483,8 @@ function unitKind(unit: NotionUnit): string {
  * The export is read before Start so the list is real: its counts are the notes and files
  * that would land, and a database whose rows never made it into the zip is shown and
  * greyed rather than silently absent, since "where did my Library go" is the question a
- * missing row would leave. Everything importable starts ticked — the common case is the
- * whole workspace — and All and None are one click each for the rest.
+ * missing row would leave. Everything importable starts ticked (the common case is the
+ * whole workspace), and All and None are one click each for the rest.
  *
  * The two choices under the list are the two things the importer cannot decide alone:
  * where pages that belong to no database go, and whether a column called Tags is the

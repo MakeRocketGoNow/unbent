@@ -11,7 +11,7 @@ const MAX_TAGS = 5;
 const MAX_NOTEBOOKS = 3;
 
 interface ScopeMatchesProps {
-  /** The search term as it was sent — the debounced one, so these arrive with the results. */
+  /** The search term as it was sent (the debounced one), so these arrive with the results. */
   query: string;
   tags: TagCount[];
   notebooks: NotebookData | undefined;
@@ -28,12 +28,12 @@ interface ScopeMatchesProps {
  * Tags and notebooks whose names match the search, offered above the notes that do.
  *
  * Typing the name of a tag into the search box used to find nothing unless the word also
- * appeared in a note's text — the search index covers titles, bodies, field values and
+ * appeared in a note's text: the search index covers titles, bodies, field values and
  * attachment text, and a tag is none of those. Evernote answers the same keystrokes two
  * ways, and this is the first: the tag itself, as a thing to pick, at the top of the
  * results. Picking it applies the filter and clears the search, which is what it means to
- * have found what you were looking for. (The second — notes that carry the tag matching as
- * notes — is the API's, and comes back with the results below.)
+ * have found what you were looking for. (The second, notes that carry the tag matching as
+ * notes, is the API's, and comes back with the results below.)
  *
  * Computed here rather than asked of the server: every tag and every notebook is already
  * in hand for the drawer and the rail, and a substring match over a few hundred names
@@ -43,7 +43,7 @@ interface ScopeMatchesProps {
  * The rows are buttons, not links. Picking one applies a filter, which is an action; a
  * link here would promise a page to open in a new tab. They are rows of the note list
  * rather than a menu under the field, and the arrow keys reach them from the field the
- * way they reach the notes — see `useListKeys`. A combobox was tried in between: a menu
+ * way they reach the notes (see `useListKeys`). A combobox was tried in between: a menu
  * of tags over a list of notes answered the same keystrokes in two places, and a palette
  * that held the notes too would have drawn the results twice. One list, captioned.
  *
@@ -52,7 +52,7 @@ interface ScopeMatchesProps {
  * over the picks and "Notes" over the results is what Apple Notes' "Suggested" does, and
  * costs one line each only while there is something to caption.
  *
- * Selected tags and the current notebook are left out — offering a filter that is already
+ * Selected tags and the current notebook are left out: offering a filter that is already
  * on would be a control that does nothing. Tags keep the API's order, by count, so the
  * likeliest pick is first. Notebooks come after tags: a tag is added to the scope and a
  * notebook replaces it (clearing the tags and field filters, the rule the rail and the
@@ -60,7 +60,7 @@ interface ScopeMatchesProps {
  *
  * Renders nothing for an empty needle, so the caller mounts it whenever results are shown.
  */
-/** What the search would offer as picks — exported so the caller can caption the notes below. */
+/** What the search would offer as picks, exported so the caller can caption the notes below. */
 export function scopeMatches(
   query: string,
   tags: TagCount[],
@@ -98,8 +98,8 @@ export function ScopeMatches({
   if (tagHits.length === 0 && notebookHits.length === 0) return null;
 
   /*
-   * A tag picked here is added to where you are — the notebook stays, and so do the tags
-   * already applied — because search narrows the current view. The rail's tag rows do the
+   * A tag picked here is added to where you are (the notebook stays, and so do the tags
+   * already applied) because search narrows the current view. The rail's tag rows do the
    * opposite, replacing the scope with the one tag across every notebook: those are
    * places, this is a refinement. From All notes with nothing applied the two land on the
    * same URL, and the rail marks that tag as where you are.

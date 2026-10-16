@@ -12,8 +12,8 @@ const OPENING_GRACE_MS = 250;
 
 /**
  * Whether the library is still arriving on this device, and how: `'opening'` while the
- * store opens — on a first open that is the persistence worker, a 1.7 MB chunk, fetched
- * and booted, several seconds on a phone — then `'copying'` while the first snapshot
+ * store opens (on a first open that is the persistence worker, a 1.7 MB chunk, fetched
+ * and booted, several seconds on a phone) then `'copying'` while the first snapshot
  * walk runs, with its count. Null once the copy is on the device, and on a device that
  * keeps none. What the status line and the list's empty state read: an empty app with
  * no word about it was what the first open looked like (seen on a phone, 2026-10-02).
@@ -48,7 +48,7 @@ export function useLibraryArriving(): { stage: 'opening' | 'copying'; applied: n
  * Whether what the views read from this device is the whole account: a library whose walk
  * has finished (`isWhole`), or no library at all, where every read is the server's and so
  * whole. False while the store opens and while its first copy, or a copy after a `reset`,
- * is under way — when a notebook not in the list yet is still on its way, not missing.
+ * is under way: when a notebook not in the list yet is still on its way, not missing.
  */
 export function useLibraryWhole(): boolean {
   const presence = useLibraryPresence();
@@ -60,8 +60,8 @@ export function useLibraryWhole(): boolean {
 type Subscribable = { subscribe: (fn: (s: FeedState) => void) => () => void; state: () => FeedState };
 
 /**
- * The feed engine's state for the open library — whether the copy is current, being
- * taken for the first time, or could not be brought current — for the line that says so.
+ * The feed engine's state for the open library (whether the copy is current, being
+ * taken for the first time, or could not be brought current) for the line that says so.
  * Null until the library opens, and on a device with no local copy. Follows the library
  * as `useOutbox` does, for the same reason.
  */

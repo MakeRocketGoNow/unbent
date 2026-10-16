@@ -11,7 +11,7 @@ import { prefersReducedMotion } from './useMediaQuery.js';
  * to disappear and every row under it jump up a row's height in one frame, so the eye lost
  * its place and had to find it again. Now the row fades where it stood while the rows under
  * it slide up into its place; a row coming back fades in while the rest make room. The
- * motion says what happened — this one went, those closed up — which the jump left the
+ * motion says what happened (this one went, those closed up), which the jump left the
  * reader to work out.
  *
  * Only for a write made here (`onLocalWrite`). The feed brings other devices' changes and
@@ -23,14 +23,14 @@ import { prefersReducedMotion } from './useMediaQuery.js';
  * changing which rows a list holds, and the next redraw after it may be a notebook picked,
  * a search typed or Load more. So a write names the notes it touches, and a redraw is
  * played only if every row that came or went is one of them; anything else drops the
- * measurement and draws as it always did. A change to the list's own address — its
- * filters, its sort, its search — drops it too, since that redraw may only reorder. And a
+ * measurement and draws as it always did. A change to the list's own address (its
+ * filters, its sort, its search) drops it too, since that redraw may only reorder. And a
  * list that is not drawn, or that holds none of the notes a write touches and cannot gain
  * one, is not measured at all.
  *
  * The technique is FLIP, done by hand rather than with a library: where every row in the
- * list stands is measured when a write is about to land — `onLocalWrite` is heard before
- * the change reaches the rows — and once the list has redrawn, each row that moved is
+ * list stands is measured when a write is about to land (`onLocalWrite` is heard before
+ * the change reaches the rows), and once the list has redrawn, each row that moved is
  * started at its old place and let go to its new one. Transforms only, so nothing is laid
  * out again while it runs, and the list scrolls and takes clicks throughout; a view
  * transition was the other way in, and would have frozen the page for its length and drawn
@@ -39,7 +39,7 @@ import { prefersReducedMotion } from './useMediaQuery.js';
  * scrolls with the rows and is clipped where they are.
  *
  * A write whose redraw does not come within `ARMED_MS` is let go, and anything that is not
- * a change in which rows the list holds — a title retyped, a date updated — moves nothing,
+ * a change in which rows the list holds (a title retyped, a date updated) moves nothing,
  * since only the list's own children are watched.
  */
 
@@ -53,8 +53,8 @@ const ARRIVE_MS = 220;
 const ARRIVE_DELAY_MS = 60;
 
 /**
- * The list's rows: its notes, and the rows after them that move when a note leaves — Load
- * more, the line that says the list is empty — which carry `data-motion-key` instead. Those
+ * The list's rows: its notes, and the rows after them that move when a note leaves (Load
+ * more, the line that says the list is empty), which carry `data-motion-key` instead. Those
  * slide with the notes rather than jumping under the last one while it is still sliding.
  */
 const ROWS = ':scope > [data-note-id], :scope > [data-motion-key]';
@@ -103,11 +103,11 @@ function surfaceOf(el: HTMLElement): string {
 
 /**
  * Whether the rows that came and went are all ones the writes touched. A row that appeared
- * or left for any other reason — a different filter, the next page, the feed — means the
+ * or left for any other reason (a different filter, the next page, the feed) means the
  * redraw is not the writes' doing, and nothing of it should move.
  */
 function explained(before: Snapshot, present: Map<string, HTMLElement>, touched: ReadonlySet<string>): boolean {
-  // Trailing rows come and go as a consequence — the empty line when the last note leaves —
+  // Trailing rows come and go as a consequence (the empty line when the last note leaves),
   // so only the notes are asked to be explained.
   for (const id of present.keys()) if (isNote(id) && !before.rows.has(id) && !touched.has(id)) return false;
   for (const id of before.rows.keys()) if (isNote(id) && !present.has(id) && !touched.has(id)) return false;
@@ -157,7 +157,7 @@ function play(list: HTMLElement, before: Snapshot, touched: ReadonlySet<string>)
     // keys pass over it too (`useListKeys`).
     for (const el of ghost.querySelectorAll('[href]')) el.removeAttribute('href');
     for (const el of ghost.querySelectorAll('[id]')) el.removeAttribute('id');
-    // In the list's own coordinates — it scrolls, and the copy is placed inside it — at
+    // In the list's own coordinates (it scrolls, and the copy is placed inside it), at
     // the place on screen the row left.
     ghost.style.top = `${was.rect.top - before.view.top - list.clientTop + list.scrollTop}px`;
     ghost.style.left = `${was.rect.left - before.view.left - list.clientLeft + list.scrollLeft}px`;
@@ -186,7 +186,7 @@ function play(list: HTMLElement, before: Snapshot, touched: ReadonlySet<string>)
 
 /** Whether a write can change what this list holds or where its rows stand. */
 function concerns(list: HTMLElement, write: LocalWrite): boolean {
-  // Not drawn — a phone's list behind the open note — so there is nothing to measure.
+  // Not drawn (a phone's list behind the open note), so there is nothing to measure.
   if (list.getClientRects().length === 0) return false;
   // A filing change can bring a note in from anywhere; anything else only moves its own row.
   return write.refiles || write.ids.some((id) => list.querySelector(`:scope > [data-note-id="${CSS.escape(id)}"]`));

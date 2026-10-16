@@ -16,7 +16,7 @@ describe('open note field edits', () => {
     const first = registerOpenNoteFieldEdit('n1', () => {});
     const second = vi.fn();
     registerOpenNoteFieldEdit('n2', second);
-    // The first note's cleanup runs after the second registered — a route change — and
+    // The first note's cleanup runs after the second registered (a route change) and
     // must not withdraw the second.
     first();
     expect(editOpenNoteField('n2', 'f', 'x')).toBe(true);

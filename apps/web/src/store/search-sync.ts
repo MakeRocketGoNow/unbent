@@ -25,8 +25,8 @@ import { BUILT, fieldEntryPrefix, heldText, noteEntries, tagEntries, textPlan, t
  *    server, a request at a time, while there is a connection; what it says should not be
  *    is dropped, and what the opened notes have no room for is let go.
  *
- * A file's text is fetched once. One read again on the server — a scan the vision model
- * took a second pass at — keeps its old text here until the file leaves and returns, or
+ * A file's text is fetched once. One read again on the server (a scan the vision model
+ * took a second pass at) keeps its old text here until the file leaves and returns, or
  * the library starts over (`startOver`):
  * the feed's row for a file says only that it has text, not which, and asking again on
  * every row the feed delivers would fetch a notebook's text on every edit to it.
@@ -58,8 +58,8 @@ export interface SearchSyncOptions {
   channel?: string;
   /**
    * The index holds something it did not: a pass wrote to it, here or in the tab that
-   * leads. An answer already on screen was made from the index as it was — "still
-   * indexing", or without the text of files that have since arrived — and is asked for
+   * leads. An answer already on screen was made from the index as it was ("still
+   * indexing", or without the text of files that have since arrived) and is asked for
    * again on this.
    */
   onIndexed?: () => void;
@@ -71,8 +71,8 @@ export interface SearchSync {
   /** Something moved that decides which files' text is wanted: a file, the kept list, the connection. */
   touchFiles: () => void;
   /**
-   * The library is starting over: the feed refused its cursor — a restore on the server,
-   * say — and the collections are emptied and copied again. The index is emptied before
+   * The library is starting over: the feed refused its cursor (a restore on the server,
+   * say) and the collections are emptied and copied again. The index is emptied before
    * the next pass rather than compared, because a comparison cannot see a file's text: an
    * id that survives the restore would keep the text it was first indexed with.
    */
@@ -228,7 +228,7 @@ export function createSearchSync(opts: SearchSyncOptions): SearchSync {
       const left = new Set(answer.left);
       const got = new Map(answer.texts.map((t) => [t.id, t.text]));
       /*
-       * A file asked for and neither answered nor left over has no text on the server —
+       * A file asked for and neither answered nor left over has no text on the server:
        * gone since the plan was made, or read and found empty. It is indexed as empty so
        * the next plan does not ask again; if it has gone, the feed says so and the plan
        * drops it.
@@ -247,7 +247,7 @@ export function createSearchSync(opts: SearchSyncOptions): SearchSync {
   async function pass(): Promise<void> {
     if (stopped) return;
     /*
-     * Not whole — the first copy is under way, or a reset has emptied the collections —
+     * Not whole (the first copy is under way, or a reset has emptied the collections)
      * or not this tab's job. What was touched stays touched; and a library that is not
      * whole now will be a different library when it is, so the pass that follows looks at
      * everything.

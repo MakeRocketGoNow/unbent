@@ -8,15 +8,15 @@ import { timeAgo } from './components/format-when.js';
  *
  * Four states, one word each, and the order they are decided in matters:
  *
- * - `never`: no file. The bucket is bound and the run has not happened yet — the first
+ * - `never`: no file. The bucket is bound and the run has not happened yet: the first
  *   dump run after a deploy, or a mirror whose first dispatch is still to come. Plain,
  *   not red: nothing has failed.
  * - `failed`: the run says so. A dump run with failing accounts, a mirror that was not
  *   `ok`. Decided before staleness, because a failed run that is also old is a failure
  *   first; "stale" would send the reader looking at the cron when the file names the
  *   fault.
- * - `stale`: the last run is older than the window — the file's own `staleAfterHours`
- *   for dumps, two nights for the mirror — or, for dumps, an account no run has found
+ * - `stale`: the last run is older than the window (the file's own `staleAfterHours`
+ *   for dumps, two nights for the mirror) or, for dumps, an account no run has found
  *   current in that long. The cron has stopped, the binding has gone, or an account is
  *   being skipped.
  * - `healthy`: ran inside the window, and nothing failed.
@@ -33,8 +33,8 @@ export interface Health {
 export const MIRROR_STALE_HOURS = 48;
 
 /**
- * `nameOf` turns an account id in the file into what the page calls the account — its
- * email, once the directory has been read — so a reason names who, not a 32-character
+ * `nameOf` turns an account id in the file into what the page calls the account (its
+ * email, once the directory has been read), so a reason names who, not a 32-character
  * id to match against the table by eye. The file itself carries ids only.
  */
 export function dumpsHealth(status: DumpStatus | null, now = Date.now(), nameOf: (userId: string) => string = (id) => id): Health {

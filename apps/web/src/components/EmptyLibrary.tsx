@@ -32,7 +32,7 @@ import { WELCOME_BODY, WELCOME_TITLE } from '../welcome-note.js';
  * note made then would sit in the outbox refused, uneditable, with nothing to say why.
  *
  * Only for an account that is genuinely empty, which the callers decide with
- * `useLibraryTotal` — never for an empty notebook, tag, filter or search, where the list's
+ * `useLibraryTotal`, never for an empty notebook, tag, filter or search, where the list's
  * one-line message stays, since offering the import there would read as filling that
  * notebook. One drawing at each width, never two at once: in the list on a phone, where
  * the list is the whole screen, and in the workspace pane on a desktop, beside a list
@@ -56,8 +56,8 @@ export function EmptyLibrary({ heading = 'h2' }: { heading?: 'h2' | 'h3' }) {
       actions={
         <>
           {/* A link wearing the filled button's shape, as the front page's call to action
-              does: it goes to another page — it can be opened in a new tab, middle-clicked
-              and copied — so it is a link, and it is the thing this state is for, so it is
+              does: it goes to another page (it can be opened in a new tab, middle-clicked
+              and copied), so it is a link, and it is the thing this state is for, so it is
               filled. `Button` deliberately renders no anchors; see its header. First, so
               it is first in the tab order as well as on the left. */}
           <Link to="/settings/import" className="btn btn-primary btn-large empty-state-action">
@@ -77,7 +77,7 @@ export function EmptyLibrary({ heading = 'h2' }: { heading?: 'h2' | 'h3' }) {
         </>
       }
       aside={
-        // Large for its height — a 44px target under a thumb — and quiet for its weight,
+        // Large for its height (a 44px target under a thumb) and quiet for its weight,
         // so it reads as an aside under the two choices rather than a third one.
         <Button
           variant="quiet"

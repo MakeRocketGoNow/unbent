@@ -14,7 +14,7 @@ import { keys } from '../queries.js';
 import { Workspace } from './Workspace.js';
 
 /**
- * A press on the blank column under a note writes at its bottom — on a phone that blank is
+ * A press on the blank column under a note writes at its bottom: on a phone that blank is
  * most of the screen under a short note, and outside the editor. What the editor does with
  * it is `caretBelowEnd`'s, tested beside it; these pin which presses count.
  *

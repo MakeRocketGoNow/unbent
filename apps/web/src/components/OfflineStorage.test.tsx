@@ -25,8 +25,8 @@ import { useLibraryElsewhere, useLibraryPresence } from '../store/use-outbox.js'
 import { takeOverLibrary } from '../store/library.js';
 
 /**
- * The intro says which of three things this tab is — the holder, a client working
- * through the holder, or a tab with no library at all — and the one way to bring the
+ * The intro says which of three things this tab is (the holder, a client working
+ * through the holder, or a tab with no library at all) and the one way to bring the
  * library here is drawn only when another tab holds it, with its tip read out as the
  * button's description, as the tooltip rule asks.
  */

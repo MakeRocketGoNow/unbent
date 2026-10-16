@@ -4,7 +4,7 @@ import { useAutoLoad } from './useAutoLoad.js';
 
 /**
  * A stand-in for `IntersectionObserver`, which jsdom does not implement. Like the real
- * one, it reports once on `observe` — with whatever `inView` says — and again only when
+ * one, it reports once on `observe` (with whatever `inView` says) and again only when
  * a test says the element moved.
  */
 let inView = false;

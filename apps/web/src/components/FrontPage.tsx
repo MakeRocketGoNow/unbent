@@ -26,7 +26,7 @@ const SOURCE_URL = 'https://github.com/MakeRocketGoNow/unbent';
  *
  * Written for a person arriving from a link with no idea what this is: what it promises,
  * what it looks like, how their notes get in, what it costs and what happens if they stop
- * paying — in that order, because each answers the question the one before it raises. The
+ * paying, in that order, because each answers the question the one before it raises. The
  * promise and its wording are the README's, so the page and the repository make the same
  * claim.
  *
@@ -39,7 +39,7 @@ const SOURCE_URL = 'https://github.com/MakeRocketGoNow/unbent';
  * quotes too and which Paddle's catalog is kept in step with (MAK-108): one place to change
  * a number, and this page and the checkout agree.
  *
- * The screenshots are of the demo library `pnpm seed:demo` loads — never of anyone's real
+ * The screenshots are of the demo library `pnpm seed:demo` loads, never of anyone's real
  * notes, which is a rule about this repository and not only about this page. They are WebP
  * in `public/front/`, which keeps them out of the service worker's precache (it takes PNGs,
  * for the app icons): every visit to the app would otherwise download pictures of the app.
@@ -71,7 +71,7 @@ export function FrontPage() {
           </p>
           <div className="front-cta">
             {/* An anchor wearing the filled button's shape, which the stylesheet allows for
-                exactly this: it goes somewhere — it can be opened in a new tab and copied —
+                exactly this: it goes somewhere (it can be opened in a new tab and copied),
                 so it is a link, and it is the one thing this page is for, so it is filled.
                 `Button` deliberately renders no anchors; see its header. */}
             <Link to={LOGIN} className="btn btn-primary front-cta-button">
@@ -193,7 +193,7 @@ export function FrontPage() {
           {legal && <LegalLink href={legal.privacy}>Privacy</LegalLink>}
           {legal && <LegalLink href={legal.terms}>Terms</LegalLink>}
           {operator && <a href={`mailto:${operator.email}`}>Contact</a>}
-          {/* The mark says where the link goes before the word does — the one footer
+          {/* The mark says where the link goes before the word does: the one footer
               link that leaves for another site. The sign-in screen's copy of it, so
               there is one GitHub mark in the app. */}
           <a href={SOURCE_URL} rel="noopener noreferrer" className="front-source">
@@ -227,7 +227,7 @@ function Section({
 }
 
 /**
- * One claim and its paragraph. `help` sits under the paragraph — the import notes, which
+ * One claim and its paragraph. `help` sits under the paragraph: the import notes, which
  * are a click away rather than spelled out, because most people reading them have not
  * decided yet and only the ones who have need the menus.
  */

@@ -14,10 +14,10 @@ interface NotebookPickerProps {
 
 /**
  * The notebook picker: filing a note by picking from the notebooks that exist, rather than
- * retyping a name — which is how case-variant duplicates used to appear.
+ * retyping a name, which is how case-variant duplicates used to appear.
  *
  * Drawn as the property list draws a chosen option: a chip, in the neutral grey a token
- * takes when it has no tint of its own — which is what tells it from the tags and the
+ * takes when it has no tint of its own, which is what tells it from the tags and the
  * select values beside it, all of which are coloured by their word. The Inbox is the
  * absence of a notebook, drawn like "Empty". It was briefly the name in ink with a
  * chevron, on the reasoning that a place is not a token; but a select is a select, and a
@@ -73,7 +73,7 @@ interface FilingRowsProps {
  *
  * Where a phone's note is filed, stated the way Notion states a page's location and its
  * tags: two facts about the record, at the top, edited where they are read. Rows in the
- * list's own grid — the `lead` of `NoteFields` — so their labels share the fields' column
+ * list's own grid (the `lead` of `NoteFields`), so their labels share the fields' column
  * and the whole thing reads as one record rather than a row of chrome over a list.
  *
  * Drawn by the site's phone layout and by the Android app's embed alike, which is the

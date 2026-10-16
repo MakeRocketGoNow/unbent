@@ -9,15 +9,15 @@ export type StoreWipe = 'all' | { except: string } | 'none';
 
 /**
  * Empties what this device keeps of an account's notes and files: the service worker's
- * caches, and — as asked — the local copy of the library with its outbox (`store/wipe.ts`).
+ * caches, and, as asked, the local copy of the library with its outbox (`store/wipe.ts`).
  *
- * The worker's caches are keyed by address — `/api/notes/<id>` is the same address whoever
- * is signed in — so they go every time, cheap to refill. The local store and the outbox
+ * The worker's caches are keyed by address (`/api/notes/<id>` is the same address whoever
+ * is signed in), so they go every time, cheap to refill. The local store and the outbox
  * are keyed by account, and the outbox holds writes the server has not heard of, so they
  * go only when the account on this device has changed hands for good: on signing out, on
  * deleting the account, and when a different person signs in (`except` the one arriving,
  * whose own copy is kept). A session the server refuses is not that: someone edited
- * offline for longer than their sign-in lasted, reconnected, and got a 401 — wiping then
+ * offline for longer than their sign-in lasted, reconnected, and got a 401: wiping then
  * deleted every pending edit without a word before they could sign in again (review of
  * #232). Their store is closed and kept (`'none'`), and their sign-in reopens it and
  * replays what waited.

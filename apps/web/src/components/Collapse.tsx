@@ -9,7 +9,7 @@ interface CollapseProps {
   children: ReactNode;
   /** On the outer box, for the control that opens it to name with `aria-controls`. */
   id?: string;
-  /** On the box the content lays itself out in — the rows' own flex or grid. */
+  /** On the box the content lays itself out in: the rows' own flex or grid. */
   className?: string;
 }
 
@@ -29,7 +29,7 @@ interface CollapseProps {
  * it was a plain `open &&`. While closing it is `inert`, so focus and a screen reader leave
  * it with the click rather than a quarter-second later.
  *
- * Drawn with the grid-rows technique — one row that goes between `0fr` and `1fr` — which
+ * Drawn with the grid-rows technique (one row that goes between `0fr` and `1fr`), which
  * every current browser animates, rather than `height: auto` and `interpolate-size`, which
  * not all do. With reduced motion asked for it opens and closes at once.
  */

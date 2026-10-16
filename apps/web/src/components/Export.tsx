@@ -10,8 +10,8 @@ import { isHosted, savesTo } from '../app-bridge.js';
  *
  * Export used to be a bare topbar link, so a click started a possibly multi-gigabyte
  * download with no warning and no account of what was in it. It is the only copy of the
- * library the person holds themselves — the instance's own backups (MAK-171, "Durability"
- * in the README) are the operator's, for a fault on the service's side, and age out — which
+ * library the person holds themselves: the instance's own backups (MAK-171, "Durability"
+ * in the README) are the operator's, for a fault on the service's side, and age out, which
  * makes it worth a page that says so.
  *
  * A button rather than a link now: the archive is built here in the browser, a page of
@@ -133,7 +133,7 @@ export function Export() {
       {/* Said plainly because the old text here called this "the backup", which stopped
           being the whole truth where the instance keeps copies of its own. Those are not
           the person's to reach, and they age out, so the zip is still the one copy in their
-          own hands — the distinction a customer who lost something would care about. */}
+          own hands: the distinction a customer who lost something would care about. */}
       <p className="muted small">
         {backups
           ? 'This is the copy you hold. Unbent keeps backups of its own for putting things right ' +
@@ -179,7 +179,7 @@ function announcement(state: ExportState): string {
 /**
  * What the export is doing, beside its button: a count that moves while it runs, and
  * where the archive went when it is done. The bar is the count as a fraction, drawn only
- * once the total is known — before that, the count alone is the honest picture.
+ * once the total is known: before that, the count alone is the honest picture.
  *
  * Seen rather than heard: the live region beside it (`announcement`) speaks for it, so
  * none of this is a live region itself. The bar is a real progressbar, for a reader who

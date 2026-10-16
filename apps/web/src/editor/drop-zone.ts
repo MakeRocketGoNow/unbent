@@ -7,7 +7,7 @@ import { carriesFiles, refuseFile, showDropAt } from './drop-cursor.js';
  * Where a file let go on the note, but not on its text, goes: the point of the text
  * nearest the pointer.
  *
- * - **Above the text** — the title, the properties, the attachments, the formatting bar —
+ * - **Above the text** (the title, the properties, the attachments, the formatting bar)
  *   at the top. The attachments row on purpose, though a file let go there reads as
  *   "attach this": a note's files live in its text, so attaching one is putting it there,
  *   and the top is the text nearest the row. Sending it to the end instead would be the
@@ -21,7 +21,7 @@ import { carriesFiles, refuseFile, showDropAt } from './drop-cursor.js';
  * so the line beside the pointer can be a row of either, and a file set apart there by
  * blank lines (`ownParagraph`) went inside the fence as literal text, or cut the table in
  * two and left the rows under it without a header. A list and a quote split the same way.
- * The top-level block of the markdown — a paragraph, a list, a quote, a fence, a table —
+ * The top-level block of the markdown (a paragraph, a list, a quote, a fence, a table)
  * is the unit a file put beside the text can go before or after without breaking it.
  *
  * The nearer edge, not the side, once the block is taller than its line. Going by the side
@@ -33,7 +33,7 @@ import { carriesFiles, refuseFile, showDropAt } from './drop-cursor.js';
  *
  * By position alone, deliberately. Sending everything that comes before the body in the
  * page to the top was tried, so that the title and the bar, which stick while the body
- * scrolls beneath them, would not aim at the line hidden behind them — but on a phone the
+ * scrolls beneath them, would not aim at the line hidden behind them, but on a phone the
  * bar is docked to the bottom of the screen and comes before the body all the same, and a
  * file let go on it went to the top of the note. A note scrolled down under a sticky title
  * now takes the file at the line behind it, which is at least the line the pointer was on.
@@ -73,8 +73,8 @@ function blockAround(view: EditorView, line: { from: number; to: number }): { fr
 /**
  * Makes the whole note take a dragged file, not only the lines it already has.
  *
- * The editor is as tall as its text, so the drop target was the text alone — on a new
- * note, the one line of its placeholder — and a file let go anywhere else on the note,
+ * The editor is as tall as its text, so the drop target was the text alone (on a new
+ * note, the one line of its placeholder) and a file let go anywhere else on the note,
  * the empty page under it included, was not taken: the browser opened it in place of the
  * app. `zone` is the element around the editor, the note's column; a file over any part of
  * it the editor did not claim goes to the point `landingFor` picks, as a paragraph of its
@@ -82,7 +82,7 @@ function blockAround(view: EditorView, line: { from: number; to: number }): { fr
  * drop point draws that place during the drag, as it does over the text, so what is shown
  * is where the drop goes.
  *
- * The editor's own handlers run first — its content is inside the zone — and a drag they
+ * The editor's own handlers run first (its content is inside the zone), and a drag they
  * claimed arrives here with its default prevented, so a drop on the text still lands
  * exactly where it was let go. A note that takes no changes refuses the file with the
  * pointer, as the editor does.
@@ -92,8 +92,8 @@ function blockAround(view: EditorView, line: { from: number; to: number }): { fr
  */
 export function noteDropZone(zone: HTMLElement, view: EditorView): () => void {
   /*
-     Whether this drag is the note's to take. Not over a sheet open on top of the note —
-     History is one — which is a child of the column in the page, so its events bubble
+     Whether this drag is the note's to take. Not over a sheet open on top of the note
+     (History is one), which is a child of the column in the page, so its events bubble
      through here, but is drawn above the note in the top layer, with the note behind it
      inert. A file let go on it is left to the window's guard (`refuseStrayFileDrops`).
   */

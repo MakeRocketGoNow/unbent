@@ -5,10 +5,10 @@ import { useAutosave } from './useAutosave.js';
 /**
  * Autosave must not fire for a value it was merely handed.
  *
- * Workspace stays mounted when the route param changes — it is the same instance with a
- * new note id — and seeds its draft from the loaded note one render after that. A "skip
+ * Workspace stays mounted when the route param changes (it is the same instance with a
+ * new note id) and seeds its draft from the loaded note one render after that. A "skip
  * the first render" guard is spent on the empty initial draft, so the seeded value looks
- * like an edit and every note is written just by being opened — which silently rewrites
+ * like an edit and every note is written just by being opened, which silently rewrites
  * `updated_at` and destroys the real modification dates carried over from Evernote.
  * `resetKey` is what makes the guard per-note instead of per-mount.
  */
@@ -19,7 +19,7 @@ describe('useAutosave priming', () => {
   it('does not save the value it is seeded with', async () => {
     const save = vi.fn().mockResolvedValue(undefined);
     // Mirrors the workspace: autosave stays off until the note has loaded, so the seeded
-    // draft — not the empty placeholder — is the first value autosave ever sees.
+    // draft (not the empty placeholder) is the first value autosave ever sees.
     const { rerender } = renderHook(
       ({ value, enabled }) => useAutosave(value, save, { delay: 10, enabled, resetKey: 'note-1' }),
       { initialProps: { value: 'empty', enabled: false } },
@@ -54,7 +54,7 @@ describe('useAutosave priming', () => {
     const save = vi.fn().mockResolvedValue(undefined);
     // Mirrors the workspace again: while the draft still holds the outgoing note's text,
     // `draftFor === noteId` is false and autosave is disabled. It re-enables only once
-    // the incoming note has seeded the draft — which must not count as an edit.
+    // the incoming note has seeded the draft, which must not count as an edit.
     const { rerender } = renderHook(
       ({ value, resetKey, enabled }) => useAutosave(value, save, { delay: 10, enabled, resetKey }),
       { initialProps: { value: 'first body', resetKey: 'note-1', enabled: true } },
@@ -120,7 +120,7 @@ describe('useAutosave priming', () => {
 /**
  * Switching notes is not an unmount. The hook used to clear the debounce timer and leave
  * the outgoing edit in `pending`, then either drop it when the incoming note was edited
- * or flush it with the incoming note's save — writing one note's body onto another.
+ * or flush it with the incoming note's save, writing one note's body onto another.
  */
 describe('useAutosave note switches', () => {
   beforeEach(() => vi.useFakeTimers());
@@ -302,14 +302,14 @@ describe('useAutosave in-flight failure', () => {
  * A flush that turns out to have nothing to write must not claim it saved.
  *
  * The debounce fires on time elapsed rather than on a change, so a draft can reach the
- * save identical to what the server already holds — typing a space and deleting it is the
+ * save identical to what the server already holds: typing a space and deleting it is the
  * ordinary way. The callers diff before sending and answer `'unchanged'`; without that,
  * their early return looked exactly like a successful write and the head flashed "Saved"
  * for a save that never left the browser.
  *
  * The value here is an object, because that is what the workspace holds: a draft rebuilt
  * on every keystroke. The hook's own `Object.is` guard only catches a value handed back
- * by identity — a refetch — so a draft that returns to the stored *content* in a fresh
+ * by identity (a refetch), so a draft that returns to the stored *content* in a fresh
  * object still reaches the save, and only the save can tell there is nothing in it. (The
  * embed's body is a plain string and so is caught earlier, which is why that path never
  * flashed.)
@@ -419,7 +419,7 @@ describe('useAutosave with nothing to save', () => {
        A further draft object holding that same content still reaches the save: the
        baseline compares by identity, so only a value handed back by reference (a refetch)
        is skipped here. The save answers 'unchanged' again and nothing goes to the network,
-       which is the property that matters — the workspace only rebuilds its draft on a
+       which is the property that matters: the workspace only rebuilds its draft on a
        keystroke, so this is not a render loop.
     */
     rerender({ value: { body: 'Line one' }, enabled: true });
@@ -440,8 +440,8 @@ describe('useAutosave with nothing to save', () => {
 });
 
 /**
- * A save refused because the note changed elsewhere is held like any failed save — the
- * typing must not be lost — but reported as `conflict`, which the editor answers with a
+ * A save refused because the note changed elsewhere is held like any failed save (the
+ * typing must not be lost) but reported as `conflict`, which the editor answers with a
  * choice rather than a retry. `discard` is the "Reload" half of that choice: the held
  * value is dropped, and re-seeding afterwards must not flush it on the way out.
  */

@@ -12,7 +12,7 @@ import { attachmentsQuery } from './queries.js';
  * the declared content type, which is the only thing that knows better.
  *
  * A hook rather than a filter written out at each call site, because the rich editor and
- * the preview pane must agree — a note that renders as a document in one and a bare link
+ * the preview pane must agree: a note that renders as a document in one and a bare link
  * in the other is the bug this exists to prevent. React Query dedupes the fetch, so asking
  * from both panes of one note costs a single request.
  *

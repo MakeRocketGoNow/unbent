@@ -83,7 +83,7 @@ describe('useLibraryTotal', () => {
     await waitFor(() => expect(result.current).toBe(1));
   });
 
-  /** Off, it asks nothing — no count from the library, no request — and answers null. */
+  /** Off, it asks nothing (no count from the library, no request) and answers null. */
   it('asks nothing while the caller says the answer cannot matter', async () => {
     vi.mocked(api.listNotes).mockResolvedValue({ items: [], cursor: null, total: 0 });
     const { result } = renderHook(() => useLibraryTotal(false), { wrapper });

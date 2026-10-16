@@ -5,7 +5,7 @@ import { DATE_PRESETS, activePreset } from './date-presets.js';
  * The one-tap date ranges.
  *
  * Two properties matter and both fail silently if broken. They are computed in the user's
- * own zone, because "today" and "this year" are questions about their calendar — building
+ * own zone, because "today" and "this year" are questions about their calendar: building
  * the string with `toISOString` would hand back yesterday for everyone west of London, and
  * the filter would look like it had lost a day's notes. And they are open-ended, because
  * "the last 7 days" means "since a week ago": pinning an end to today makes the filter
@@ -69,7 +69,7 @@ describe('date presets', () => {
   });
 
   /*
-   * A preset is open-ended, so a range with an end is not one however its start reads —
+   * A preset is open-ended, so a range with an end is not one however its start reads:
    * the user narrowed it by hand, and a lit pill would name a range that is not on screen.
    */
   it('stops claiming a range once an end is added by hand', () => {

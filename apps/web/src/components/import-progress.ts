@@ -7,15 +7,15 @@ import type { ImportProgress } from '@unbent/enex';
  * knows a different thing before it starts.
  *
  * An archive lists every note directory up front, so it counts notes: the bar is notes
- * processed out of the total. That is the unit the person is watching — the count beside
- * the bar shows the same notes mounting up — and it is steady, because an import's time
+ * processed out of the total. That is the unit the person is watching (the count beside
+ * the bar shows the same notes mounting up) and it is steady, because an import's time
  * is mostly a server round-trip per note. Bytes were the wrong unit here: a real export
  * is almost entirely its attachments, so a couple of notes with images are nearly the
  * whole file, and a byte bar raced to full on them and then crawled across the dozens of
  * text notes that were most of the actual work.
  *
- * An ENEX cannot count notes — the parser streams the file and only learns how many notes
- * there were once it reaches the end — so it measures bytes off that stream instead, which
+ * An ENEX cannot count notes (the parser streams the file and only learns how many notes
+ * there were once it reaches the end), so it measures bytes off that stream instead, which
  * for a single flat file is an honest proxy. That is the `notesTotal === 0` branch.
  *
  * Pinned to 100% when the run is over: an ENEX reads its last bytes just before the final

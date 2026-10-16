@@ -14,7 +14,7 @@ import { NOTE_SORTS, type NoteSort } from '@unbent/shared';
  * a second device. `usePersistentState` is not used because this is read from plain link
  * builders and a route effect, not held as one component's state; it shares the prefix.
  *
- * Keyed by the notebook's name, because the URL carries the name — the id is not known
+ * Keyed by the notebook's name, because the URL carries the name: the id is not known
  * until the notebooks load, and a link has to be built before then. A rename therefore
  * starts the notebook over at the default, which is a lost preference, not a wrong one.
  * All notes and the tag places have no notebook and share the empty key: they are the
@@ -87,7 +87,7 @@ export function rememberedSort(notebook: string | undefined): {
   };
 }
 
-/** Whether a place has anything remembered — the defaults are not written down. */
+/** Whether a place has anything remembered: the defaults are not written down. */
 export function hasRememberedSort(notebook: string | undefined): boolean {
   const o = rememberedSort(notebook);
   return o.sort !== undefined || o.order !== undefined || o.sortField !== undefined;
@@ -107,7 +107,7 @@ export function rememberSort(notebook: string | undefined, ordering: Ordering) {
 }
 
 /**
- * Forgets a place's sort once its field no longer resolves — the field was deleted, or
+ * Forgets a place's sort once its field no longer resolves: the field was deleted, or
  * the notebook renamed onto one without it. The whole entry goes, not just the field: the
  * direction was chosen for that field, and left on its own it would pair with the default
  * sort as "oldest updated", which is not an order the app offers.

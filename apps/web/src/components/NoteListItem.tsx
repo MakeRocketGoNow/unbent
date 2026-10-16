@@ -17,7 +17,7 @@ const LONG_PRESS_MS = 500;
 const PRESS_SLOP_PX = 10;
 
 /**
- * How a row takes part in the list's selection. Absent where a row is only a way in —
+ * How a row takes part in the list's selection. Absent where a row is only a way in:
  * search results, and any list that offers no bulk actions.
  */
 export interface RowSelection {
@@ -38,7 +38,7 @@ interface NoteListItemProps {
   sort?: NoteSort;
   /**
    * The note replaces the list when it opens, as it does on a phone; on a desktop the two
-   * sit side by side. Decides where focus goes on a click — see `data-keep-focus` below.
+   * sit side by side. Decides where focus goes on a click (see `data-keep-focus` below).
    */
   replacedByNote?: boolean;
   selection?: RowSelection | undefined;
@@ -53,15 +53,15 @@ interface NoteListItemProps {
  *
  * The date follows the list's order: sorted by creation, the entry shows when the note was
  * created. Showing "last edited" under a list ordered by creation date invites reading the
- * order as wrong, and for an imported archive the two are often years apart — an Evernote
+ * order as wrong, and for an imported archive the two are often years apart: an Evernote
  * export carries a real `created` from the day a document was filed and an `updated` from
  * whenever it was last touched.
  *
- * Trashed notes show when they were deleted rather than either — in the bin, "how long
+ * Trashed notes show when they were deleted rather than either: in the bin, "how long
  * until this is really gone" is the useful fact.
  *
  * **Selecting several.** Cmd- or Ctrl-click toggles a row into the selection and
- * Shift-click selects a run of them — Finder's keys, and Evernote's, which is where the
+ * Shift-click selects a run of them: Finder's keys, and Evernote's, which is where the
  * people using this arrive from. On a touch screen, where there are no modifiers, a
  * finger resting on a row for half a second selects it, and while anything is selected a
  * plain tap toggles a row rather than opening it; a pointer's plain click still opens,
@@ -74,8 +74,8 @@ interface NoteListItemProps {
  * works; a list of notes is selected with those keys in every app this one is compared to,
  * and a new tab per Cmd-click is not what anyone pressing it in a note list means.
  *
- * The checkbox is outside the link rather than in it — a control inside an anchor is
- * invalid and every click on it would also follow the link — and drawn over the row's
+ * The checkbox is outside the link rather than in it (a control inside an anchor is
+ * invalid and every click on it would also follow the link) and drawn over the row's
  * corner, where the title has been asked to leave it room (see `.note-list.selecting`).
  */
 export function NoteListItem({
@@ -91,7 +91,7 @@ export function NoteListItem({
 
   /*
      The long press. A timer started on touch-down and cancelled by anything that makes
-     the touch something else — lifting, drifting more than the slop, the browser taking
+     the touch something else: lifting, drifting more than the slop, the browser taking
      the pointer for a scroll. When it fires, the row is picked and the click that follows
      the finger lifting is swallowed, since it would open the note that was just selected.
      The context menu a browser offers for a held link is swallowed for the same press:
@@ -125,7 +125,7 @@ export function NoteListItem({
         aria-selected={selection ? selection.selected : undefined}
         // On a side-by-side list a click is browsing, not editing: the row keeps focus and
         // the editor stands down so the arrow keys keep working, the same as arrowing to it.
-        // Marked only where the list survives the open — a phone replaces it with the note,
+        // Marked only where the list survives the open: a phone replaces it with the note,
         // so there focus has nowhere to stay and the note opens ready to write in. Read by
         // the pointerdown handler in `useListKeys`.
         {...(replacedByNote ? {} : { 'data-keep-focus': '' })}
@@ -186,7 +186,7 @@ export function NoteListItem({
           many more there are.
 
           Under the excerpt rather than folded into it, because the two answer different
-          questions — what the note says, and what it carries — and for most of an imported
+          questions (what the note says, and what it carries) and for most of an imported
           archive only one of them has an answer: a scanned document has files and no
           prose, a journal entry the reverse. Each row then shows the line it has, and a
           note with both shows both.

@@ -26,7 +26,7 @@ import './styles.css';
 /*
  * Before anything else renders, so that a crash while mounting the app is reported rather
  * than only shown. The editor runs in the Android app's WebView, where a JavaScript error
- * is invisible to Play's crash reporting — see `report-error.ts`.
+ * is invisible to Play's crash reporting (see `report-error.ts`).
  */
 installErrorReporting();
 
@@ -46,7 +46,7 @@ const queryClient = new QueryClient({
       /*
        * Always make the first attempt, even when the browser says it is offline, because
        * the service worker may hold the answer (`sw/sw.ts`). React Query's default waits
-       * for the connection instead — so the request never reached the worker, and a
+       * for the connection instead, so the request never reached the worker, and a
        * route loader awaiting it waited with the page on its way in. Retries still pause
        * while offline and resume with the connection.
        */
@@ -109,7 +109,7 @@ refuseStrayFileDrops();
 installTooltips();
 
 /*
- * Error tracking, on the instances that have it — see `posthog.ts`.
+ * Error tracking, on the instances that have it (see `posthog.ts`).
  *
  * Here in module scope rather than in an effect, because `StrictMode` runs effects twice in
  * development and `posthog.init` is not something to call twice. Through the query client so
@@ -149,7 +149,7 @@ const router = createRouter({
    * The router resets the window on every navigation, but the window never scrolls here:
    * the signed-in shell is a viewport-height frame that clips, and each view scrolls a box
    * of its own inside it. Those boxes belong to layouts that stay mounted while their child
-   * route changes — Settings around each of its pages, the note column around each note —
+   * route changes (Settings around each of its pages, the note column around each note)
    * so they kept whatever offset the last page left. Editing the last notebook in a long
    * list opened its settings already scrolled away from the name, and opening a note from
    * the list landed as far down it as the previous note had been read.
@@ -162,13 +162,13 @@ const router = createRouter({
    * `querySelector`, so one element each; the split view's two panes are named apart. The
    * note list is left out on purpose: it is what a note is picked from, and has to stay
    * where it was when one is opened. Leaving a selector here that matches nothing on the
-   * current page is harmless — the router skips it.
+   * current page is harmless: the router skips it.
    */
   scrollToTopSelectors: ['.settings', '.workspace-main', '.editor-pane', '.preview-pane'],
   /*
    * How a navigation is drawn, decided for every one in one place: the slide between a
    * list and a note on a phone, and nothing anywhere else. Here rather than on the links,
-   * because most ways in and out of a note are not a link — a new note, Back, a swipe —
+   * because most ways in and out of a note are not a link (a new note, Back, a swipe)
    * and each should slide the same way for the same move. See `note-nav.ts`.
    */
   defaultViewTransition: canTypeTransitions() ? { types: noteTransitionTypes } : false,
@@ -180,7 +180,7 @@ trackWhatIsBehind(router);
 /*
  * Files and links the browser launched the installed app with; see `launch-queue.ts`.
  * After the router exists, because both are opened through it. A link the router has no
- * page for — one of the Worker's own addresses — is loaded, which is what the browser would
+ * page for (one of the Worker's own addresses) is loaded, which is what the browser would
  * have done with it had the app not been open.
  */
 installLaunchQueue({

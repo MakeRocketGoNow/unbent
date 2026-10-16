@@ -7,8 +7,8 @@ import type { NoteDraft } from './note-patch.js';
  *
  * The server judges; this decides what to do with the judgement, by one rule: fill what
  * is empty without asking, and ask before replacing anything already set. A freshly
- * scanned note is unfiled and untagged and titled only by its filename — a timestamp the
- * scanner made, not a title anyone chose (see `isPlaceholderTitle`) — so on the case this
+ * scanned note is unfiled and untagged and titled only by its filename: a timestamp the
+ * scanner made, not a title anyone chose (see `isPlaceholderTitle`). So on the case this
  * exists for everything lands at once. A note someone has already filed, or titled by
  * hand, gets its empties filled and an offer for the rest, which is the warning the issue
  * asked for without a dialog in front of the common case.
@@ -16,7 +16,7 @@ import type { NoteDraft } from './note-patch.js';
  * Into the draft rather than to the server, for the reason `open-note-fields.ts` gives
  * for the table's edits: the draft is what autosave writes, and a value put on the server
  * behind it would be put back by the next keystroke. Landing here also makes the fill an
- * ordinary edit — undone by retyping, saved when the note saves.
+ * ordinary edit: undone by retyping, saved when the note saves.
  */
 export interface AutofillChanges {
   title?: string;
@@ -37,14 +37,14 @@ const nothing = (): AutofillChanges => ({ tags: [], fields: [] });
 
 /**
  * A title the note carries only because something had to fill the slot, not because
- * anyone chose it — so auto-fill overwrites it like an empty one, without asking.
+ * anyone chose it, so auto-fill overwrites it like an empty one, without asking.
  *
  * Three cases: genuinely blank, the name of one of the note's own files, and the
  * timestamp a scanner leaves.
  *
  * The file name is the general rule, and the one that does the work. Every way a file
- * becomes a note names the note after it — `titleFor` here, the Android share sheet's
- * `deriveTitle`, a scanner writing straight into Evernote — and every device names its
+ * becomes a note names the note after it (`titleFor` here, the Android share sheet's
+ * `deriveTitle`, a scanner writing straight into Evernote), and every device names its
  * files differently: ScanSnap `2026_09_18_15_38_48.pdf`, a Pixel `Scanned_20260928-2018`,
  * a camera `IMG_4012`. Matching shapes meant a new bug report per device; asking "is the
  * title just the file's name?" covers all of them, including ones not yet seen, and the
@@ -52,8 +52,8 @@ const nothing = (): AutofillChanges => ({ tags: [], fields: [] });
  * It compares with or without the extension, ignoring case, since the paths differ on
  * whether they keep it.
  *
- * The cost is a file someone named by hand — `Lease renewal.pdf` titling its note "Lease
- * renewal" — which is now replaced without asking too. Accepted: that is rare in a
+ * The cost is a file someone named by hand (`Lease renewal.pdf` titling its note "Lease
+ * renewal"), which is now replaced without asking too. Accepted: that is rare in a
  * paperless archive, where the device names nearly every file, the suggested title is
  * usually the better one anyway, and the snackbar's Undo puts it back in one press. A
  * title that differs from every file name, however little, is still someone's and still
@@ -62,15 +62,15 @@ const nothing = (): AutofillChanges => ({ tags: [], fields: [] });
  * The timestamp stays as a second net for a note whose file was since renamed or
  * removed, so its title no longer matches anything attached. `launch-files.ts`
  * names a scanned note after its file, and a ScanSnap file is `2026_09_18_15_38_48.pdf`,
- * which lands as the title `2026_09_18_15_38_48`. We match that shape — a full
- * `YYYY_MM_DD_HH_MM_SS`, and the same date with a `-` separator or without the time —
+ * which lands as the title `2026_09_18_15_38_48`. We match that shape (a full
+ * `YYYY_MM_DD_HH_MM_SS`, and the same date with a `-` separator or without the time)
  * and nothing looser: the whole string must be the stamp, with real month/day/hour
  * ranges, so a title someone typed that merely opens with a year ("2026 tax plan") is
  * left alone and still prompts before it is replaced.
  *
  * The stamp may keep its file extension. `titleFor` strips it, but a note that arrived
- * any other way — years of scans imported from Evernote, which titled a scanned note
- * after the whole file name — reads `2026_09_18_15_38_48.pdf`, and the first version of
+ * any other way (years of scans imported from Evernote, which titled a scanned note
+ * after the whole file name) reads `2026_09_18_15_38_48.pdf`, and the first version of
  * this, which anchored on the bare stamp, asked before replacing every one of them. The
  * extension is allowed only after a complete stamp, so it widens nothing else.
  */

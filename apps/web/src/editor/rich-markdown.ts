@@ -38,7 +38,7 @@ import {
 /**
  * Rich markdown rendering inside CodeMirror.
  *
- * Styles markdown as it is written — bold looks bold, headings are larger, images show —
+ * Styles markdown as it is written (bold looks bold, headings are larger, images show)
  * while the document stays exactly the text that was typed. That is the point: there is no
  * document model and no serializer, so nothing can rewrite the source behind the user's
  * back. A WYSIWYG editor round-trips through its own tree and rewrites on save, which
@@ -79,7 +79,7 @@ const MARK_NODES = new Set([
 /**
  * Block marks are separated from their content by a space that the mark node excludes.
  *
- * Hiding only `#` leaves that space visible, indenting every heading by one character —
+ * Hiding only `#` leaves that space visible, indenting every heading by one character,
  * and at heading font sizes the gap is obvious against the paragraphs around it. These
  * node types get the following whitespace hidden along with the mark. Inline marks like
  * `**` are not in this set: the space after them is real content.
@@ -90,7 +90,7 @@ const MARKS_WITH_TRAILING_SPACE = new Set(['HeaderMark', 'QuoteMark']);
  * Fenced code gets a line decoration per line rather than one block decoration.
  *
  * A ViewPlugin cannot emit block decorations, and the whole point is a background that
- * spans the run — so each line is marked, with the first and last also flagged so the
+ * spans the run, so each line is marked, with the first and last also flagged so the
  * corners round and the padding sits at the ends rather than on every line.
  */
 const CODE_BLOCK_LINE = Decoration.line({ class: 'cm-md-codeblock' });
@@ -103,7 +103,7 @@ const CODE_BLOCK_ONLY = Decoration.line({
 /**
  * A heading line positions its own hanging mark, and keeps its height while the mark is
  * the only thing on it: an absolutely positioned span leaves no in-flow content, and a
- * line with none is zero pixels tall — the caret would then sit beside the line below
+ * line with none is zero pixels tall: the caret would then sit beside the line below
  * while `## ` is being typed. `lh` is the line's own line-height, whatever the level.
  */
 const HEADING_LINE = { position: 'relative', minHeight: '1lh' } as const;
@@ -122,26 +122,26 @@ const hiddenMark = Decoration.mark({ class: 'cm-md-hidden' });
  * The `(url)` of a `[text](url)` or `![alt](url)`, once the caret has revealed it.
  *
  * Dimmed because it is the link's plumbing, like a revealed `##`, not text a reader reads.
- * Only the destination: a URL anywhere else — the text of a label, a bare URL in running
- * text — is what a reader reads, and dimming those made every pasted link look disabled.
+ * Only the destination: a URL anywhere else (the text of a label, a bare URL in running
+ * text) is what a reader reads, and dimming those made every pasted link look disabled.
  */
 const urlDestination = Decoration.mark({ class: 'cm-md-url' });
 /**
  * An image's revealed destination, dimmed one step further than a link's.
  *
- * A link's destination is edited by hand — pasted, corrected, swapped — so it stays
+ * A link's destination is edited by hand (pasted, corrected, swapped), so it stays
  * readable at a glance. An image's is almost never: a stored file's `files/name` is set
  * by the attachments panel, which renames and moves it, and a web image's address is
  * what the save control turns into a stored file. Drawn at the brackets' own strength,
- * the `(url)` reads as plumbing with the `![` and `](` around it, and the alt — the one
- * part a person edits in place — stands out as the editable thing on the line.
+ * the `(url)` reads as plumbing with the `![` and `](` around it, and the alt (the one
+ * part a person edits in place) stands out as the editable thing on the line.
  */
 const imageDestination = Decoration.mark({ class: 'cm-md-url cm-md-image-url' });
 /**
  * A syntax mark on the line being edited.
  *
- * Revealed rather than hidden, but drawn as punctuation the editor owns — dimmed, at
- * normal weight — instead of in the style of the text it marks. A `##` set at heading
+ * Revealed rather than hidden, but drawn as punctuation the editor owns (dimmed, at
+ * normal weight) instead of in the style of the text it marks. A `##` set at heading
  * size and weight reads as two characters of the heading; the same `##` in light grey
  * reads as the control that made it one, which is what Bear and iA Writer draw and what
  * lets someone who has never seen markdown click into a heading without a jolt.
@@ -152,7 +152,7 @@ const revealedMark = Decoration.mark({ class: 'cm-md-mark' });
  *
  * Hidden, `## ` takes no room and the heading starts at the column's edge. Revealed in
  * flow, it pushes the whole heading three characters to the right and back again when
- * the caret leaves — the jump is the thing people notice, more than the hashes. iA
+ * the caret leaves: the jump is the thing people notice, more than the hashes. iA
  * Writer's answer is to hang the marks to the left of the text, and that is what this
  * does: the span covers the mark and its separating space, and the theme takes it out
  * of the flow and sets its right edge on the line's left edge.
@@ -165,7 +165,7 @@ const listBullet = Decoration.mark({ class: 'cm-md-bullet' });
  * An unfocused image's alt text, kept on screen as the picture's caption.
  *
  * Its own class rather than the link label's: this is not a link, and it should not move
- * if link styling ever changes. Drawn quiet — dimmed and a touch smaller — so it reads as
+ * if link styling ever changes. Drawn quiet (dimmed and a touch smaller) so it reads as
  * metadata belonging to the picture below it, not as a line of body text that happens to
  * sit above an image. See the `Image` branch for why the alt is kept at all.
  */
@@ -176,14 +176,14 @@ const imageAlt = Decoration.mark({ class: 'cm-md-image-alt' });
  *
  * A real `<table>` is not on offer here: CodeMirror lays out every line independently, so
  * making a cell in one row share a column with the row above needs either a widget
- * replacing the whole block — which takes the text, and the cursor, out of the document —
+ * replacing the whole block (which takes the text, and the cursor, out of the document)
  * or per-cell width measurement that fights line wrapping and reruns on every keystroke.
  *
  * Tables are set in monospace, which is the whole reason the pipe format exists: when cells
  * are padded to equal width the columns line up on their own. Rich mode sets the rest of the
  * document in a proportional serif, so the table's own `font-family` in the theme below is
- * what keeps that true here. The rendering styles what is already there — header in bold,
- * separators dimmed, the alignment row hidden — and `formatTable` in the commands module
+ * what keeps that true here. The rendering styles what is already there (header in bold,
+ * separators dimmed, the alignment row hidden) and `formatTable` in the commands module
  * does the aligning as a real edit the user can undo.
  */
 const tableHeaderCell = Decoration.mark({ class: 'cm-md-th' });
@@ -196,8 +196,8 @@ const alignRowLine = Decoration.line({ class: 'cm-md-table-align' });
  * Ordered-list markers cycle by depth the way Evernote and word processors do:
  * `1.` → `a.` → `i.` → back to `1.`.
  *
- * Markdown has no syntax for an alphabetic or roman list — `a.` in the source is a
- * paragraph, not a list item — so the cycle is a rendering of the marker, never a rewrite
+ * Markdown has no syntax for an alphabetic or roman list (`a.` in the source is a
+ * paragraph, not a list item), so the cycle is a rendering of the marker, never a rewrite
  * of it. The buffer keeps ordinary `1.`/`2.` numbering, which means the note still nests,
  * exports, and renders as a real ordered list everywhere outside this editor.
  *
@@ -274,7 +274,7 @@ function listDepth(
  * Bullet glyphs by depth, cycling the way word processors do: `•` → `◦` → `▪`.
  *
  * A markdown bullet is a `-`, `*` or `+` in the buffer, and a dash is not a bullet to
- * anyone who has not written markdown — it was the one piece of syntax visible on every
+ * anyone who has not written markdown: it was the one piece of syntax visible on every
  * list line whether or not the caret was anywhere near it. Same rule as the ordered
  * markers above: the glyph is a rendering, the buffer keeps the dash, and the dash comes
  * back on the line being edited.
@@ -287,7 +287,7 @@ export function bulletGlyph(depth: number): string {
 }
 
 /**
- * Displays a rendered list marker in place of the one in the buffer — a letter or numeral
+ * Displays a rendered list marker in place of the one in the buffer: a letter or numeral
  * for a nested ordered item, a bullet glyph for a dash.
  *
  * A widget rather than CSS: the marker lives in the text, so there is no list element to
@@ -370,7 +370,7 @@ const waiting = new WeakMap<HTMLElement, () => void>();
  * to stand in for it: a missing attachment with its source hidden too would be an empty
  * line with nothing to click on and nothing to explain the gap. The widget records the
  * failure here and asks for a repaint, and the next build leaves that image's source
- * visible and draws no widget for it — the same appearance a broken image had before the
+ * visible and draws no widget for it: the same appearance a broken image had before the
  * source learned to hide at all.
  *
  * Module-level for the same reason `expandedPdfs` is: the widget is destroyed whenever its
@@ -386,7 +386,7 @@ export function resetFailedImages(): void {
 /**
  * Keeps a control inside a widget from being a click on the editor.
  *
- * CodeMirror would otherwise move the caret to the click — which scrolls the note,
+ * CodeMirror would otherwise move the caret to the click, which scrolls the note,
  * reveals the markdown under the widget, and steals the focus a button needs to stay
  * keyboard-operable. `contentEditable = false` keeps the caret from entering the
  * control's text as document content.
@@ -428,7 +428,7 @@ function toolButton(className: string, label: string, glyph: string): HTMLButton
  * The toolbar on an attachment: what you can do with the thing you are looking at.
  *
  * One pill in the picture's corner, shown on hover, holding every action in a fixed
- * order — full screen, download, copy, remove — rather than a disc per action: two discs
+ * order (full screen, download, copy, remove) rather than a disc per action: two discs
  * were already crowding the corner, and a third would have been a row of circles. The
  * shape is Linear's image toolbar, which people have seen. It shows on hover so a note of
  * photographs does not become a note of buttons, and stays, quieter, where there is no
@@ -436,13 +436,13 @@ function toolButton(className: string, label: string, glyph: string): HTMLButton
  *
  * The same pill on an image and on a PDF page. A remote image gets less of it: no copy,
  * because there is no stored file to name, and no download, because a browser ignores
- * the `download` attribute across origins and would open the picture in a tab instead —
- * see `attachment-viewer.ts` for the same reasoning.
+ * the `download` attribute across origins and would open the picture in a tab instead
+ * (see `attachment-viewer.ts` for the same reasoning).
  *
  * The bin deletes the file, confirmed in place: the pill itself becomes the question,
  * "Delete file? Delete · Cancel", so the second click is where the first was. It began as
  * "remove from note", which only cut the markdown and left the file for the Attachments
- * panel to delete behind its own confirmation — safe, and four clicks to get rid of a
+ * panel to delete behind its own confirmation: safe, and four clicks to get rid of a
  * picture. Every note app people know deletes on the spot; the confirmation here is the
  * one concession, because a blob in R2 has no ⌘Z. Cutting only the markdown needs no
  * button: select the line and press Backspace, and the file waits in the panel. A remote
@@ -521,7 +521,7 @@ function attachmentToolbar(
  * Turns the pill into the question, and back.
  *
  * The buttons that were there are kept aside and put back on Cancel, on Escape, and on
- * a press anywhere else on the page — which is how the inline `Confirm` behaves, and
+ * a press anywhere else on the page, which is how the inline `Confirm` behaves, and
  * what a person who has changed their mind tries first. While asking, the pill stays
  * visible whether or not the pointer is still over the picture (`.confirming`), since a
  * question that vanished when the mouse drifted would be a question nobody could answer.
@@ -623,7 +623,7 @@ async function deleteStored(
  * The control that puts a stored file on the clipboard.
  *
  * A clipboard write has nothing to show for itself, so the glyph becomes a tick for a
- * moment and the label says so — the same feedback the Attachments panel's Copy gives.
+ * moment and the label says so: the same feedback the Attachments panel's Copy gives.
  */
 function copyButton(filename: string, kind: 'image' | 'pdf', copy: CopyAttachment): HTMLButtonElement {
   const button = toolButton('zoom-copy', 'Copy', copyIconMarkup());
@@ -659,8 +659,8 @@ function copyButton(filename: string, kind: 'image' | 'pdf', copy: CopyAttachmen
  * The control that brings a web image into the note as a stored file.
  *
  * In the slot copy and download would take on a stored image: the one thing to do with
- * a remote picture is to stop it being remote. The fetch happens on the server — the
- * browser cannot read a cross-origin image — and on success the markdown under the
+ * a remote picture is to stop it being remote. The fetch happens on the server (the
+ * browser cannot read a cross-origin image), and on success the markdown under the
  * picture is rewritten in place to `files/<name>`, at which point the widget is rebuilt
  * as a stored image with the full toolbar. A fetch the site refused leaves the address
  * as it was and says so for a moment.
@@ -676,7 +676,7 @@ function saveButton(
   button.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
-    // Saving rewrites the link to the stored copy — an edit a read-only note refuses.
+    // Saving rewrites the link to the stored copy: an edit a read-only note refuses.
     if (busy || view.state.readOnly) return;
     busy = true;
     button.setAttribute('aria-label', 'Saving…');
@@ -713,8 +713,8 @@ function saveButton(
  * The syntax node a widget stands for, found from the DOM at click time.
  *
  * Not remembered from the build: the widget is reused across edits (`eq`), so any offset
- * it kept would be stale. The widget sits at one end of its node — an image replaces it,
- * or follows it while the line is revealed; a PDF page always follows its link — so the
+ * it kept would be stale. The widget sits at one end of its node (an image replaces it,
+ * or follows it while the line is revealed; a PDF page always follows its link), so the
  * node is looked for on both sides.
  */
 function findWidgetNode(view: EditorView, host: HTMLElement, source: 'Image' | 'Link') {
@@ -776,8 +776,8 @@ type Siblings = () => readonly ViewerTarget[];
  * Inline preview for an attachment image.
  *
  * Stands in for the `![alt](url)` while the cursor is elsewhere and sits after it once the
- * cursor is on its line — see the Image branch of `buildDecorations` for why it is not
- * simply appended in both cases. Declared as an inline widget styled to fill the line:
+ * cursor is on its line (see the Image branch of `buildDecorations` for why it is not
+ * simply appended in both cases). Declared as an inline widget styled to fill the line:
  * CodeMirror forbids true block decorations from a ViewPlugin, and this needs the
  * plugin's viewport awareness.
  */
@@ -810,7 +810,7 @@ class ImageWidget extends WidgetType {
     wrap.className = 'cm-md-image';
 
     // Shrink-wrapped to the picture, so the corner control sits on the picture's corner
-    // and not the line's — the wrap is as wide as the line.
+    // and not the line's: the wrap is as wide as the line.
     const frame = document.createElement('span');
     frame.className = 'cm-md-image-frame zoom-host';
     wrap.appendChild(frame);
@@ -819,7 +819,7 @@ class ImageWidget extends WidgetType {
     img.src = this.url;
     img.alt = this.alt;
     img.loading = 'lazy';
-    // A missing attachment should not leave a broken-image icon mid-document — and its
+    // A missing attachment should not leave a broken-image icon mid-document, and its
     // source must come back into view, since the image was what stood in for it. The
     // effect is what gets the decorations rebuilt; nothing else about the view changed.
     //
@@ -844,7 +844,7 @@ class ImageWidget extends WidgetType {
      * This used to be the editor's click, on the grounds that it was the mouse's way to
      * the markdown the picture stands in for. That was the wrong trade. Two attachments
      * in one note answered a click differently, revealing an image's source is a rare
-     * edit, and the reveal itself moved the picture down under a line of text — the
+     * edit, and the reveal itself moved the picture down under a line of text: the
      * motion this file otherwise works to avoid. The source is still reached the way
      * every other hidden syntax here is, by arrowing onto its line, and by a click beside
      * the picture when it does not fill the width. The mousedown is kept from the editor
@@ -917,7 +917,7 @@ const expandedPdfs = new Set<string>();
  * Forgets every expansion.
  *
  * Exists for tests. The set is deliberately module-level so an expansion outlives the
- * widget that made it, which also means it outlives one test's editor — without this, a
+ * widget that made it, which also means it outlives one test's editor: without this, a
  * test that expands an attachment decides what the next test sees for the same URL.
  */
 export function resetExpandedPdfs(): void {
@@ -930,7 +930,7 @@ export function resetExpandedPdfs(): void {
  * Appended after the markdown rather than replacing it, for the same reason `ImageWidget`
  * is: the link text is frequently the only title a scanned note has, and a replaced link
  * would be the one thing in the document the cursor could not reach. The rendering is
- * quieter than the preview pane's viewer — no chrome, no per-page numbering — because here
+ * quieter than the preview pane's viewer (no chrome, no per-page numbering) because here
  * it sits among text being written rather than in a pane being read.
  *
  * One page is drawn by default; the page-count line below it is a button that draws the
@@ -957,7 +957,7 @@ class PdfWidget extends WidgetType {
    *
    * CodeMirror reuses the existing DOM when this returns true, which is what stops a
    * keystroke anywhere in the note from throwing away a rasterized page and drawing it
-   * again. Nothing else about the widget affects what is painted — expansion is keyed by
+   * again. Nothing else about the widget affects what is painted: expansion is keyed by
    * the same URL in `expandedPdfs`, so it survives the rebuild rather than needing to be
    * compared here.
    */
@@ -966,7 +966,7 @@ class PdfWidget extends WidgetType {
   }
 
   /**
-   * What the viewer opens: the same URL, and no label — the viewer falls back to the
+   * What the viewer opens: the same URL, and no label. The viewer falls back to the
    * filename, which is what the link text nearly always is anyway. The widget is built
    * from the destination alone and does not carry the link's text.
    */
@@ -975,8 +975,8 @@ class PdfWidget extends WidgetType {
   }
 
   /**
-   * A page, which opens the viewer when clicked — the same rule as an image, see
-   * `ImageWidget`. A page has no markdown standing behind it at all: the link that
+   * A page, which opens the viewer when clicked: the same rule as an image (see
+   * `ImageWidget`). A page has no markdown standing behind it at all: the link that
    * references it sits above and is where the caret goes, so the click costs the editor
    * nothing. The mousedown is kept from the editor, or the caret would jump to the link
    * and the note would scroll under the opening dialog.
@@ -1085,7 +1085,7 @@ class PdfWidget extends WidgetType {
      * Drawing is one-way and one-shot.
      *
      * Once the pages are on screen the button becomes the collapse control, which only
-     * hides them — the canvases stay in the DOM so expanding again is free rather than a
+     * hides them: the canvases stay in the DOM so expanding again is free rather than a
      * second rasterizing pass over a document that may run to dozens of pages.
      */
     let drawn = false;
@@ -1141,8 +1141,8 @@ class PdfWidget extends WidgetType {
   /**
    * Balances the `acquirePdf` in `toDOM`.
    *
-   * CodeMirror calls this when the widget leaves the document — scrolled out of the
-   * viewport, or its line deleted — which is exactly when the shared document should lose
+   * CodeMirror calls this when the widget leaves the document (scrolled out of the
+   * viewport, or its line deleted), which is exactly when the shared document should lose
    * a holder.
    */
   override destroy(dom: HTMLElement): void {
@@ -1187,7 +1187,7 @@ const BLOCK_BOUNDARIES = new Set(['ListItem', 'TableRow', 'TableHeader']);
  *
  * Clamped to the cursor's own line, which is where Unbent departs from Typora and has to.
  * The shared pipeline renders with `remark-breaks`, so a single newline is a line break
- * and each line is its own visual unit here — but CommonMark still parses consecutive
+ * and each line is its own visual unit here, but CommonMark still parses consecutive
  * lines as one Paragraph. Revealing the whole node would reflow lines the user is not
  * editing and can see are separate. For a heading, a list item, or a table row, block and
  * line coincide and the clamp changes nothing; it only bites on the multi-line paragraph,
@@ -1213,7 +1213,7 @@ function revealScope(
   };
 }
 
-/** Attachment links pointing at a PDF, by extension — mirrors the shared pipeline. */
+/** Attachment links pointing at a PDF, by extension (mirrors the shared pipeline). */
 const PDF_PATH = /\.pdf$/i;
 
 /** Percent-decodes when valid, leaving a literal `%` alone rather than throwing. */
@@ -1235,7 +1235,7 @@ function unwrapUrl(raw: string): string {
  *
  * The `Link` branch matches `(…)` whole, which is the destination plus whatever title
  * followed it. A title is display text for a tooltip, never part of where the link goes,
- * and a URL cannot contain a bare space — so the first whitespace ends it, unless the
+ * and a URL cannot contain a bare space, so the first whitespace ends it, unless the
  * destination is angle-bracketed, where spaces are allowed and `>` ends it instead.
  */
 function linkDestination(raw: string): string {
@@ -1252,14 +1252,14 @@ function linkDestination(raw: string): string {
  *
  * The same set the preview pane's sanitizer lets through as an `href` (rehype-sanitize's
  * default `http`, `https`, `mailto`, `tel`), so the two modes agree on what is a working
- * link. Anything else — `javascript:`, `data:`, a relative path like `notes.md` — is text
+ * link. Anything else (`javascript:`, `data:`, a relative path like `notes.md`) is text
  * that happens to be in brackets, and a click on it does what a click on text does. A path
  * from the root of this site is the exception, below (`SITE_PATH`).
  *
  * A web page opens in a new tab: the note is what the reader was in, and a link that
  * replaced it would unmount the editor mid-thought. Mail and phone stay in this window
  * because the browser hands them to another app without navigating, whereas a `_blank`
- * for them leaves an empty tab behind in Chrome. The Android shell routes both — a
+ * for them leaves an empty tab behind in Chrome. The Android shell routes both: a
  * `_blank` off the site to a Custom Tab through `onCreateWindow`, a same-window
  * `mailto:` to the mail app through `shouldOverrideUrlLoading`. A `_blank` *on* the
  * site has to go through the bridge instead: the WebView has no tabs, and loading the
@@ -1269,7 +1269,7 @@ const WEB_SCHEME = /^https?:\/\//i;
 const HANDOFF_SCHEME = /^(mailto|tel):/i;
 
 /**
- * A path from the root of this site — `/settings/import` — and not `//host`, which is an
+ * A path from the root of this site (`/settings/import`) and not `//host`, which is an
  * address on another site spelled without its scheme.
  *
  * Followed inside the app, in place, through `pathOpener`: the sample note an empty account
@@ -1278,11 +1278,11 @@ const HANDOFF_SCHEME = /^(mailto|tel):/i;
  * point back at the old one after an export and an import elsewhere. In place rather
  * than a new tab because the page it names is part of this app, the way a link in the
  * sidebar is; and through the router rather than a navigation, so the app is not loaded
- * again — in the Android and iOS apps a navigation would reload the whole site and drop
+ * again: in the Android and iOS apps a navigation would reload the whole site and drop
  * an upload in flight, as `followInHost` explains.
  *
- * A path the app has no page for — `/Folder/Note.md` in a note imported from another
- * tool, or a stored file's `/api/…` address — stays text, as every such link was before
+ * A path the app has no page for (`/Folder/Note.md` in a note imported from another
+ * tool, or a stored file's `/api/…` address) stays text, as every such link was before
  * paths were followed: a new tab would only show the not-found page. So does every path
  * without `pathOpener` (a test, or a host with no router).
  */
@@ -1294,7 +1294,7 @@ const SITE_PATH = /^\/(?!\/)/;
  * A detached `<a>` rather than `window.open`: the browser treats its click as the user's
  * own navigation, so it is never taken for a popup, `rel` keeps the opened page from
  * reaching back through `window.opener`, and the Android WebView sees exactly what it
- * sees for every other `target=_blank` on the site — except a same-origin one, which
+ * sees for every other `target=_blank` on the site, except a same-origin one, which
  * `followInHost` takes first so the app navigates in place rather than replacing itself.
  */
 function followUrl(url: string, newTab: boolean): void {
@@ -1314,7 +1314,7 @@ function followUrl(url: string, newTab: boolean): void {
  * `__unbent.open` is how a notification already reaches a note without reloading the
  * site. Using it here means a link to another note (or to settings, or to this instance)
  * keeps the page alive, so the editor can flush and an upload is not killed. Off-site
- * addresses, and the same link in a browser — where a real tab exists — still fall
+ * addresses, and the same link in a browser (where a real tab exists) still fall
  * through to `_blank`. A path that is not on this site is refused the same way the
  * handler itself refuses one, rather than handed to `open` as a courtesy.
  *
@@ -1322,7 +1322,7 @@ function followUrl(url: string, newTab: boolean): void {
  * can look redundant. It is here for the versions of the app that predate that: they
  * still load the address into the WebView and destroy the page, and a deploy of this
  * site reaches them long before an app update does. Only the editor's links get it
- * because only they are routinely same-origin — a link from one note to another. A URL
+ * because only they are routinely same-origin: a link from one note to another. A URL
  * field or an off-site link almost never is, and the app handles those anyway.
  */
 function followInHost(url: string): boolean {
@@ -1342,8 +1342,8 @@ function followInHost(url: string): boolean {
 /**
  * What a click on a link should do, or `undefined` when it should do nothing special.
  *
- * Returned as a thunk so the mousedown can ask "is this a link I will open?" — and keep
- * the caret where it was — while the open itself waits for the click, as it does on any
+ * Returned as a thunk so the mousedown can ask "is this a link I will open?" (and keep
+ * the caret where it was) while the open itself waits for the click, as it does on any
  * anchor: a press that turns into a drag is a selection, not a navigation.
  *
  * A stored PDF opens the viewer, the same as a click on its pages below the link; any
@@ -1426,8 +1426,8 @@ const MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator
  *
  * Two ways in, and they answer different people:
  *
- * - **A plain click on a rendered link** — a label, or a bare URL on a line the caret is
- *   not on. It is drawn as a link — accent colour, underline, pointer — and a thing drawn
+ * - **A plain click on a rendered link**: a label, or a bare URL on a line the caret is
+ *   not on. It is drawn as a link (accent colour, underline, pointer), and a thing drawn
  *   as a link has to act like one; before this a click only moved the caret and revealed
  *   `[text](url)`, which read as the link being broken. It is also the only way to open
  *   one on a phone. The cost is that a click on the link no longer puts the caret in it,
@@ -1473,7 +1473,7 @@ function linkClickOpener(
  * The http(s) schemes the preview pane's sanitizer permits for an image `src`.
  *
  * The two panes must agree on what is a picture. Preview renders through rehype-sanitize,
- * whose default schema allows an `<img src>` only over `http`/`https` — `data:` and
+ * whose default schema allows an `<img src>` only over `http`/`https`: `data:` and
  * `javascript:` are dropped there. The rich editor sets `img.src` itself, with no sanitizer
  * in the path, so it repeats the same allowlist rather than trusting whatever the note
  * wrote. Matched case-insensitively because a scheme is.
@@ -1487,10 +1487,10 @@ const REMOTE_IMAGE_SCHEME = /^https?:\/\//i;
  *
  * - A stored attachment (`files/…`), resolved through the caller's callback to a URL the
  *   browser can fetch. Without a resolver there is nothing to load, so it stays as markdown.
- * - A remote `http(s)` image, loaded at its own address — the case the preview pane already
+ * - A remote `http(s)` image, loaded at its own address: the case the preview pane already
  *   rendered and the editor did not, which is what this brings into line.
  *
- * Everything else — a `data:` or `javascript:` URL, a bare relative path — returns
+ * Everything else (a `data:` or `javascript:` URL, a bare relative path) returns
  * `undefined` and keeps its markdown visible, the same outcome the sanitizer produces in
  * preview by stripping the tag.
  */
@@ -1510,8 +1510,8 @@ function resolveImageSrc(
  *
  * From the syntax tree rather than the DOM: CodeMirror only builds widgets for the lines
  * in and around the viewport, so a walk of the rendered note would miss every scan that
- * is scrolled away. The same rules as the decoration builder decide what counts — an image
- * with a source the editor would load, a link to a stored PDF — and an image that failed
+ * is scrolled away. The same rules as the decoration builder decide what counts (an image
+ * with a source the editor would load, a link to a stored PDF), and an image that failed
  * to load is left out, since it is not on screen to page to.
  *
  * `ensureSyntaxTree` finishes the parse of a long note before the walk, within a bound;
@@ -1569,8 +1569,8 @@ export interface RichMarkdownOptions {
    *
    * A live callback rather than a set, because the attachment list is fetched and the
    * view is built before it lands. Asked again on every decoration rebuild, so an answer
-   * that changes from false to true takes effect on the next repaint — see
-   * `pdfNamesChanged` for making one happen.
+   * that changes from false to true takes effect on the next repaint (see
+   * `pdfNamesChanged` for making one happen).
    */
   isPdfAttachment?: (filename: string) => boolean;
   /**
@@ -1593,7 +1593,7 @@ export interface RichMarkdownOptions {
   deleteAttachment?: (filename: string) => Promise<void>;
   /**
    * How to open a path on this site in place, for a link whose destination starts at the
-   * root (`/settings/import`) — see `SITE_PATH`. Undefined for a path the app has no page
+   * root (`/settings/import`). See `SITE_PATH`. Undefined for a path the app has no page
    * for, which stays text; absent, every such link is text, as it was before.
    */
   pathOpener?: (path: string) => (() => void) | undefined;
@@ -1603,14 +1603,14 @@ export interface RichMarkdownOptions {
  * Tells the rich renderer its answer to `isPdfAttachment` has changed.
  *
  * The decorations rebuild on edits, scrolls and selection changes, none of which a
- * finished attachment fetch produces — without this the viewer would appear only after
+ * finished attachment fetch produces: without this the viewer would appear only after
  * the next keystroke. Dispatching this on a transaction is the CodeMirror way to say
  * "repaint", and costs one rebuild.
  */
 export const pdfNamesChanged = StateEffect.define<null>();
 
 /**
- * Tells the rich renderer an image it drew has failed to load — see `failedImages`.
+ * Tells the rich renderer an image it drew has failed to load (see `failedImages`).
  *
  * Internal: only `ImageWidget` has reason to dispatch it.
  */
@@ -1621,7 +1621,7 @@ const imageOnlyLine = Decoration.line({ class: 'cm-md-image-line' });
 
 /**
  * The edges of every caption drawn by the last build, and where a caret landing on one
- * belongs — see `snapCaptionCaret`.
+ * belongs (see `snapCaptionCaret`).
  *
  * `doc` is the document the edges were measured against. A build and the transaction
  * that reads its edges are separated by whatever the person did in between, so the
@@ -1647,7 +1647,7 @@ function buildDecorations(
    *
    * A reveal is the editing affordance: put the caret on a heading and its `##` comes back,
    * on an image and its `![alt](url)` comes back. That only makes sense in an editor the
-   * user is actually in. An unfocused view still carries a selection — CodeMirror seeds one
+   * user is actually in. An unfocused view still carries a selection: CodeMirror seeds one
    * at offset 0 when none is given, which is where a note opened by the sidebar's arrow keys
    * (it mounts each editor without focus) lands. When the note begins with an image, that
    * phantom caret sat on it and the first image alone showed its raw markdown while every
@@ -1678,7 +1678,7 @@ function buildDecorations(
           const revealed = reveals(node.from, node.to);
 
           /**
-           * A fence row with the cursor on it is left as plain text — no slab, no hiding.
+           * A fence row with the cursor on it is left as plain text: no slab, no hiding.
            *
            * Typing ``` opens a `FencedCode` node immediately, on the very keystroke, so
            * painting the slab as soon as the node exists wrapped three backticks the user
@@ -1745,14 +1745,14 @@ function buildDecorations(
              *
              * Only while the block is unterminated. Once a closing fence exists the block
              * is formed, and putting the caret back on either fence should reveal its
-             * backticks inside the slab like any other reveal — skipping the row there
+             * backticks inside the slab like any other reveal: skipping the row there
              * left the closing fence hanging outside a block with an unrounded edge.
              */
             if (isFence && cursorLines.has(n) && !closed) continue;
 
             /**
              * A hidden fence row still occupies a line, so the rounding and padding go on
-             * the first and last *visible* rows — otherwise the slab has a flat edge and a
+             * the first and last *visible* rows: otherwise the slab has a flat edge and a
              * blank strip where the fence used to be.
              */
             const isTop = n === firstLine.number;
@@ -1794,7 +1794,7 @@ function buildDecorations(
 
           const url = unwrapUrl(match[2]!.trim());
           const src = resolveImageSrc(url, options.resolveAttachment);
-          // No source we are willing to load — a stored file with no resolver, or a
+          // No source we are willing to load: a stored file with no resolver, or a
           // destination outside the http(s)/attachment set the preview pane renders.
           // Leaving early keeps the markdown on screen so the source stays readable and
           // editable, exactly as before an image was ever drawn.
@@ -1822,7 +1822,7 @@ function buildDecorations(
            *
            * Same reveal rule as a link: the cursor on the line brings `![alt](url)` back to
            * be edited, and anywhere else the picture is what a reader sees. But the alt text
-           * is kept on screen the way a link keeps its label — hidden entirely, the image is
+           * is kept on screen the way a link keeps its label: hidden entirely, the image is
            * an object with no text beside it, and there is nowhere to click to put a cursor
            * before typing a caption or editing the alt. Showing it gives the reader that
            * seam and names the picture. It is drawn in its own quiet caption style
@@ -1830,7 +1830,7 @@ function buildDecorations(
            * to the picture below it, not as a line of body copy above an image.
            *
            * The syntax around the alt hides at zero size like every other mark, and the
-           * picture is appended after it as an inline widget — the same shape as the focused
+           * picture is appended after it as an inline widget: the same shape as the focused
            * branch below, minus the raw `![` / `](url)`, and in source order so the caption
            * sits before its picture. The line keeps its text height for the alt, so none of
            * the caret-traversal trouble of a collapsed image-only line (see the empty-alt
@@ -1840,7 +1840,7 @@ function buildDecorations(
           if (!reveals(scope.from, scope.to)) {
             const alt = match[1] ?? '';
             if (alt) {
-              // `![` before the alt, `](url)` after it — hidden, with the alt itself drawn
+              // `![` before the alt, `](url)` after it: hidden, with the alt itself drawn
               // as a caption and the picture appended after the whole node.
               const altStart = node.from + 2;
               const altEnd = altStart + alt.length;
@@ -1863,7 +1863,7 @@ function buildDecorations(
              * asks the line it lands in for the coordinates of its last position; if the
              * probe is below those, it decides it hit the line's padding and skips on. Hidden
              * text is a zero-height point at the top of its line, and on a line collapsed
-             * around a picture — see below — the probe is always below it, so the caret
+             * around a picture (see below) the probe is always below it, so the caret
              * stepped straight over the image from above while reaching it from below. A
              * replacing widget answers that question with the picture's own rectangle, in
              * both directions. The source is still in the document: the caret lands on
@@ -1873,7 +1873,7 @@ function buildDecorations(
              * The line has to give up its text height too: even with nothing but a widget
              * in it, the buffers CodeMirror places around an inline widget keep the strut of
              * an ordinary text line, and the image would sit under a blank one. When the
-             * image is all the line holds, the line collapses that height — the same trick
+             * image is all the line holds, the line collapses that height: the same trick
              * as a code fence row. A line mixing text and an image keeps its height for the
              * text.
              */
@@ -1901,7 +1901,7 @@ function buildDecorations(
            * No table-wide reveal flag, unlike the other block constructs.
            *
            * A table's rows carry ordinary text that stays styled whether the cursor is in
-           * them or not — there is no syntax to uncover. The one row with syntax, the
+           * them or not: there is no syntax to uncover. The one row with syntax, the
            * alignment row, is judged on its own line below.
            */
           for (let row = node.node.firstChild; row; row = row.nextSibling) {
@@ -1913,8 +1913,8 @@ function buildDecorations(
              * revealed, unlike every other mark here.
              *
              * It is the one piece of markdown in a note that must never be edited by hand.
-             * It carries no content — its only job is to declare column alignment, which
-             * the toolbar sets and `renderTable` rewrites — while being what makes GFM
+             * It carries no content (its only job is to declare column alignment, which
+             * the toolbar sets and `renderTable` rewrites) while being what makes GFM
              * parse the block as a table at all. Editing it cannot improve the table and
              * can only break it: delete a cell from it and the whole thing silently
              * reverts to paragraphs of pipes.
@@ -1928,13 +1928,13 @@ function buildDecorations(
                *
                * A collapsed line is still a line the caret can be moved onto, and text it
                * cannot see is text it cannot edit out of. Showing the row it is actually
-               * on keeps the document honest — nothing is ever hidden from the point the
-               * user is working at — without putting it on screen the rest of the time.
+               * on keeps the document honest (nothing is ever hidden from the point the
+               * user is working at) without putting it on screen the rest of the time.
                */
               const onThisRow = reveals(line.from, line.to);
               if (!onThisRow) {
                 // The line decoration collapses the row; the mark hides its text. Both are
-                // needed — hiding the text alone leaves an empty row inside the table.
+                // needed: hiding the text alone leaves an empty row inside the table.
                 marks.push(alignRowLine.range(line.from));
                 if (line.to > line.from) marks.push(hiddenAlignRow.range(line.from, line.to));
               }
@@ -1961,7 +1961,7 @@ function buildDecorations(
          * Inside one it is either the destination, dimmed when revealed (`urlDestination`),
          * or the label's own text, which the `Link` branch already draws as the link it is.
          *
-         * Anywhere else — a bare URL, or the inside of an `<autolink>` — it is drawn and
+         * Anywhere else (a bare URL, or the inside of an `<autolink>`) it is drawn and
          * behaves exactly like a label: the link style, the destination as a tooltip, and a
          * click that follows it, until the caret is on its line. Then it is text being
          * edited, like a revealed `[text](url)`, and a click places the caret. Before,
@@ -2017,7 +2017,7 @@ function buildDecorations(
            * Read as a link: style the label, hide the brackets and destination.
            *
            * Same reveal rule as every other mark, so putting the cursor on the line brings
-           * the whole `[text](url)` back to be edited. A label is required — hiding the
+           * the whole `[text](url)` back to be edited. A label is required: hiding the
            * destination of `[](…)` would leave nothing on screen at all, and the link
            * would be impossible to find again without turning off rich text.
            */
@@ -2044,7 +2044,7 @@ function buildDecorations(
           if (!url.startsWith(ATTACHMENT_PREFIX)) return;
 
           const filename = url.slice(ATTACHMENT_PREFIX.length);
-          // Extension on the path, then the stored content type — matching how the shared
+          // Extension on the path, then the stored content type, matching how the shared
           // pipeline decides the same thing for the preview pane. The two must agree or a
           // note renders differently in each, which is exactly what happened when only the
           // preview learned to trust the content type.
@@ -2139,7 +2139,7 @@ function buildDecorations(
         /**
          * Hide syntax punctuation, but only while the cursor is elsewhere.
          *
-         * Hiding it unconditionally would make the markdown uneditable — you could not see
+         * Hiding it unconditionally would make the markdown uneditable: you could not see
          * what you were deleting. Revealing on cursor entry is what keeps this a text
          * editor rather than a WYSIWYG imitation.
          *
@@ -2150,7 +2150,7 @@ function buildDecorations(
         if (MARK_NODES.has(node.name)) {
           /**
            * Fence rows are handled by the `FencedCode` branch, which hides the whole line
-           * rather than just the backticks — see there for why.
+           * rather than just the backticks (see there for why).
            */
           if (node.name === 'CodeMark' && node.node.parent?.name === 'FencedCode') return;
 
@@ -2188,7 +2188,7 @@ function buildDecorations(
  * sits at the very end of the document.
  *
  * Read from the decorations the view is actually drawing rather than from the syntax tree,
- * so it agrees with what is on screen — an image that failed to load draws no widget, its
+ * so it agrees with what is on screen: an image that failed to load draws no widget, its
  * source is back in view, and there is nothing to get below.
  */
 function endsInPicture(view: EditorView, decorations: DecorationSet): boolean {
@@ -2221,7 +2221,7 @@ export const caretRoom = Annotation.define<true>();
  * Getting the caret below a picture that ends a note.
  *
  * The picture is a widget at the end of its markdown, so the last position in the document
- * is the end of that markdown — above the picture as drawn. With nothing after it there was
+ * is the end of that markdown, above the picture as drawn. With nothing after it there was
  * no position below the picture at all: Down did nothing, a tap under it put the caret back
  * above it, and the only way to write under an image was to know that Enter at the end of
  * its hidden source would do it. Every rich editor people know lets the caret through the
@@ -2235,7 +2235,7 @@ export const caretRoom = Annotation.define<true>();
  *
  * The line is made on demand rather than kept. Writing a trailing newline into every note
  * that ends in a picture is a save no one made, on open, across an archive that is mostly
- * scans — a new revision and a new `updatedAt` each, and a write racing another device's
+ * scans: a new revision and a new `updatedAt` each, and a write racing another device's
  * for a note nobody touched. Keeping one in the editor without saving it was the other
  * option, and was turned down because the editor's text would then differ from the saved
  * body for as long as any such note was open, which is what the autosave and the conflict
@@ -2245,7 +2245,7 @@ export const caretRoom = Annotation.define<true>();
  */
 const ROOM_CLASS = 'cm-md-room-below';
 
-/** Whether a picture ends the note and the note can be written to — when the room shows. */
+/** Whether a picture ends the note and the note can be written to: when the room shows. */
 function wantsRoomBelow(view: EditorView, plugin: ViewPlugin<{ decorations: DecorationSet }>): boolean {
   if (view.state.readOnly) return false;
   const decorations = view.plugin(plugin)?.decorations;
@@ -2323,8 +2323,8 @@ function tapBelowPicture(
  * Moves a caret put on the edge of a drawn caption to the edge of its image's markdown.
  *
  * An unfocused image is its alt text with `![` and `](url)` hidden at zero width on either
- * side. A click at the right end of the caption therefore resolves to the end of the alt —
- * there is nothing of any width to click past — and the next build reveals the line with
+ * side. A click at the right end of the caption therefore resolves to the end of the alt
+ * (there is nothing of any width to click past), and the next build reveals the line with
  * the caret between `alt` and `](url)`: the middle of the markdown, when the person aimed
  * at its end. The left edge has the mirror problem, landing after `![`. Nobody clicking
  * the edge of a caption means the seam between the alt and its hidden syntax, so both
@@ -2335,7 +2335,7 @@ function tapBelowPicture(
  * the caret through the DOM with no mouse event the editor sees, snaps the same way. The
  * edges come from the last build, so an entry exists only while the caption is drawn: once
  * the line is revealed there is nothing to snap, and arrowing along the markdown is
- * unaffected. Only a lone empty cursor moves — a drag that ends on an edge keeps the
+ * unaffected. Only a lone empty cursor moves: a drag that ends on an edge keeps the
  * range the person drew.
  */
 function snapCaptionCaret(
@@ -2364,10 +2364,10 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
 
       update(update: ViewUpdate) {
         // Selection changes matter as much as edits: they reveal and hide syntax. Focus
-        // matters for the same reason — a reveal only happens in a focused editor (see
+        // matters for the same reason: a reveal only happens in a focused editor (see
         // `reveals`), so gaining or losing focus changes what is shown even with the
         // selection unmoved. The effects cover the inputs that change without a transaction
-        // of their own — the attachment list arriving after the view was built, and an
+        // of their own: the attachment list arriving after the view was built, and an
         // image failing to load.
         const repaint = update.transactions.some((tr) =>
           tr.effects.some((e) => e.is(pdfNamesChanged) || e.is(imageFailed)),
@@ -2378,8 +2378,8 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
            rest arrives as a transaction that changes neither the document nor the
            selection. On a desktop a note parses inside the budget and this never
            matters; on a phone the parser's first run can overshoot it, and then the view
-           was built from an empty tree and drew the note as bare markdown — images and
-           PDFs as their brackets — until something else happened to repaint. Seen on
+           was built from an empty tree and drew the note as bare markdown (images and
+           PDFs as their brackets) until something else happened to repaint. Seen on
            the Android emulator, where the first tap into the note was what finally drew
            it. Comparing the trees is the documented way to notice the parse landing.
         */
@@ -2410,7 +2410,7 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
     ),
 
     /**
-     * Following a link — see `linkClickOpener` for which clicks do.
+     * Following a link: see `linkClickOpener` for which clicks do.
      *
      * The mousedown is claimed so CodeMirror neither moves the caret nor reveals the
      * line's syntax under the pointer; the open waits for the click, as an anchor's does.
@@ -2436,7 +2436,7 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
        * Hide syntax without removing it from layout.
        *
        * `display: none` takes the element out of the layout tree, and CodeMirror measures
-       * cursor positions from rendered geometry — `coordsAtPos` returned null for every
+       * cursor positions from rendered geometry: `coordsAtPos` returned null for every
        * line starting with a hidden mark, so arrow keys could not land on them. A line
        * hidden at both ends (`**bold**` alone) had no measurable position at all.
        *
@@ -2500,8 +2500,8 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
       /**
        * A collapsed fence row.
        *
-       * The line still exists — the cursor has to be able to land on it, which is why the
-       * text is hidden at zero size rather than removed — but it must not leave a blank
+       * The line still exists (the cursor has to be able to land on it, which is why the
+       * text is hidden at zero size rather than removed), but it must not leave a blank
        * strip inside the slab. Zero height with the background still painted keeps the
        * block looking continuous.
        */
@@ -2549,7 +2549,7 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
        * Tables.
        *
        * The columns line up because `formatTable` pads the cells with literal spaces and
-       * this rule puts them back in a monospace face — nothing here does layout, so both
+       * this rule puts them back in a monospace face: nothing here does layout, so both
        * halves are load-bearing. Rich mode sets the rest of the document in a proportional
        * serif, where equal character counts are no longer equal widths; the table would
        * come apart without its own font. See the note by the decorations.
@@ -2591,11 +2591,11 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
         cursor: 'pointer',
       },
       /**
-       * An unfocused image's alt, kept as a caption — see `imageAlt`.
+       * An unfocused image's alt, kept as a caption (see `imageAlt`).
        *
        * Quiet on purpose: dimmed by opacity so it reads the same against either theme (the
        * same reasoning as `.cm-md-mark`), a touch smaller, and italic so it reads as a
-       * caption for the picture rather than as body text. No underline or accent — it is not
+       * caption for the picture rather than as body text. No underline or accent: it is not
        * a link, and it must not be mistaken for one.
        */
       '.cm-md-image-alt': {
@@ -2606,7 +2606,7 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
       '.cm-md-punct': { opacity: '0.35' },
       /**
        * Revealed syntax, see `revealedMark`. Opacity rather than a colour so it dims
-       * whatever the mark sits in — a heading, a quote, a link — by the same amount.
+       * whatever the mark sits in (a heading, a quote, a link) by the same amount.
        */
       '.cm-md-mark': { opacity: '0.35', fontWeight: '400' },
 
@@ -2649,7 +2649,7 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
       '.cm-md-pdf-canvas': {
         display: 'block',
         maxWidth: '100%',
-        // A click opens the viewer — see `pageCanvas`.
+        // A click opens the viewer (see `pageCanvas`).
         cursor: 'zoom-in',
         borderRadius: '0.35rem',
         border: '1px solid color-mix(in srgb, currentColor 15%, transparent)',
@@ -2662,7 +2662,7 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
        * The expand control, styled as the quiet caption it replaced.
        *
        * A button carries a platform look that would be far louder than anything else in a
-       * rendered note, so the browser's own chrome is stripped back off — but it stays a
+       * rendered note, so the browser's own chrome is stripped back off, but it stays a
        * button for the keyboard and the screen reader.
        */
       '.cm-md-pdf-more': {
@@ -2685,19 +2685,19 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
       /**
        * A line holding nothing but an image standing in for its source.
        *
-       * The line box keeps its strut even with no text in it — see the Image branch of
-       * `buildDecorations`. Zero line height removes it, along with the `<br>` CodeMirror
+       * The line box keeps its strut even with no text in it (see the Image branch of
+       * `buildDecorations`). Zero line height removes it, along with the `<br>` CodeMirror
        * appends after a block-shaped widget, leaving the widget as the line's only height
        * so the image sits in the paragraph rhythm rather than under a blank line. Zero
        * font size is for the widget buffers CodeMirror puts around the widget: inline
        * `<img>`s sized `1em` tall that otherwise leave a text-height gap above the
-       * picture, visibly wider than the gap below it. The caret can still land here — the
-       * picture has a rectangle of its own — and the moment it does the line reveals and
+       * picture, visibly wider than the gap below it. The caret can still land here (the
+       * picture has a rectangle of its own), and the moment it does the line reveals and
        * this class comes off.
        */
       '.cm-md-image-line': { lineHeight: '0', fontSize: '0' },
       /**
-       * The room below a picture that ends the note — see `ROOM_CLASS`. 44px, the touch
+       * The room below a picture that ends the note (see `ROOM_CLASS`). 44px, the touch
        * target the rest of the app sizes lone controls to, since a thumb is what it is for.
        */
       [`.cm-content.${ROOM_CLASS}`]: { paddingBottom: '2.75rem' },
@@ -2706,13 +2706,13 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
        * The empty break CodeMirror leaves after a block-shaped widget.
        *
        * When the image is the whole line, `.cm-md-image-line` above zeroes this along with
-       * the rest of the line. When the line also holds text — the source revealed while the
-       * cursor is on its line, or a caption sharing the line — that collapse is off, so the
+       * the rest of the line. When the line also holds text (the source revealed while the
+       * cursor is on its line, or a caption sharing the line) that collapse is off, so the
        * break keeps the line's height and hangs an empty text line under the picture. It has
        * no content and the image's own padding already spaces the picture, so hide it and
        * the gap below a focused image matches the gap below an unfocused one.
        *
-       * A PDF's line always holds text — its link stays on screen above the pages — so its
+       * A PDF's line always holds text (its link stays on screen above the pages), so its
        * break was never collapsed at all, and every PDF carried a blank line under its
        * page count that an image did not. Two PDFs in a row read as twice as far apart as
        * two pictures. The same rule closes it, and both kinds of attachment now end on
@@ -2725,14 +2725,14 @@ export function richMarkdown(options: RichMarkdownOptions = {}): Extension {
        * Sized to fill the line the way the preview pane does.
        *
        * This used to cap at 26rem, which was noticeably tighter than the preview's 100%
-       * within its 46rem prose column — the same image rendered smaller in Rich than in
+       * within its 46rem prose column: the same image rendered smaller in Rich than in
        * Preview, which read as a bug rather than as a deliberate density difference.
        * Matching the preview keeps the two modes visually consistent.
        */
       '.cm-md-image img': {
         maxWidth: '100%',
         height: 'auto',
-        // A click opens the viewer — see `ImageWidget.toDOM`.
+        // A click opens the viewer (see `ImageWidget.toDOM`).
         cursor: 'zoom-in',
         borderRadius: '0.35rem',
         border: '1px solid color-mix(in srgb, currentColor 15%, transparent)',

@@ -63,14 +63,14 @@ import { normalizeContentType, type FieldType } from '@unbent/shared';
  * The glyphs come from lucide. They were hand-drawn until the fifteenth one: the first
  * dozen were a few straight lines each and a library would not have drawn them better, but
  * the tag with its punched hole and the calendar were traced from Android's drawables by
- * eye, which is exactly the work an icon set exists to save — and custom field types then
+ * eye, which is exactly the work an icon set exists to save, and custom field types then
  * asked for eight more. AGENTS.md records the same arc. lucide rather than Material because
  * its defaults are the geometry this file already had: a 24×24 box, `currentColor` at
  * stroke width 2, round caps and joins.
  *
  * Still one seam on purpose. Callers import named components from here and never lucide
  * directly, so the sizes stay consistent (an icon is sized against what it sits beside,
- * not against a pixel grid — see the three wrappers) and swapping the library again would
+ * not against a pixel grid, see the three wrappers) and swapping the library again would
  * be this file rather than a hunt across the codebase.
  */
 
@@ -126,7 +126,7 @@ export function RowIcon({ icon: Icon }: { icon: LucideIcon }) {
 
    Every row gets a glyph, as every drawer people arrive from gives it: a column of bare
    words is scanned by reading, and a column with a picture beside each word is scanned by
-   looking. They are `RowIcon`s — sized to the label, muted by the row — and they name
+   looking. They are `RowIcon`s (sized to the label, muted by the row) and they name
    what the row is rather than decorate it, which is why a notebook gets the same book as
    every other unless its owner has given it an emoji (`NotebookGlyph`).
 */
@@ -145,7 +145,7 @@ export function NotebookRowIcon() {
 /**
  * One notebook's own glyph: its emoji where it has one, and the book where it does not.
  *
- * For rows that are a particular notebook — the drawer, the move sheet, a search match, the
+ * For rows that are a particular notebook: the drawer, the move sheet, a search match, the
  * settings list. Not for a row that means "notebook" in general, like the property row a
  * note is filed from, which keeps the book whatever it is filed in.
  *
@@ -189,7 +189,7 @@ export function OfflineIcon() {
  * The note head's mark for a note the server has not heard of yet: an entry of its own
  * waiting in the outbox. A `RowIcon` beside the word "Saved", since the word is still
  * the label and this only qualifies it; a cloud with an arrow up, which is the picture
- * Photos and Drive draw for the same state. Drawn only while the note waits — nothing
+ * Photos and Drive draw for the same state. Drawn only while the note waits: nothing
  * is the picture for synced, as it is there.
  */
 export function NotSyncedIcon() {
@@ -199,7 +199,7 @@ export function NotSyncedIcon() {
 /*
    The label editor's controls: the two a resting row offers and the two an editing row
    offers. `HeaderIcon`-sized, because each sits alone in a 44px button rather than
-   beside a word — the pencil is the row's one control and the check, cross and trash
+   beside a word: the pencil is the row's one control and the check, cross and trash
    can are the editing row's. Keep's "Edit labels" screen draws exactly this set.
 */
 export function PencilIcon() {
@@ -219,7 +219,7 @@ export function TrashIcon() {
 }
 
 /*
-   The selection bar's controls — what can be done to several notes at once. Each sits
+   The selection bar's controls: what can be done to several notes at once. Each sits
    alone in a button, so they are `HeaderIcon`-sized like the list head's. The notebook
    and the tag are the same glyphs the drawer's rows and the filter sheet use for the
    same two things, drawn larger; a second picture for "notebook" here would be a second
@@ -328,7 +328,7 @@ export function MenuIcon() {
  *
  * Sized in rem, not em: it should not grow with the heading's type, and 2.5rem is where it
  * reads as a picture rather than a control without becoming clip art. Thinner than the
- * house 2 to match — a lucide icon scales its stroke with its box, so at 40px the usual
+ * house 2 to match: a lucide icon scales its stroke with its box, so at 40px the usual
  * weight comes out over 3px and looks bold beside the heading's text; 1.5 lands it near
  * the 2.5px a heading's strokes have.
  */
@@ -350,7 +350,7 @@ export function EmptyLibraryIcon() {
  * A book with a magnifier over it, for a link to a notebook that is not there
  * (`NotebookMissing`). The drawer's book, because it is a notebook that is missing; the
  * magnifier rather than a cross, because what happened is that it was looked for and not
- * found — a cross reads as an error, and nothing here went wrong.
+ * found: a cross reads as an error, and nothing here went wrong.
  */
 export function NotebookMissingIcon() {
   return <IllustrationIcon icon={BookSearch} />;
@@ -380,7 +380,7 @@ export function TagIcon() {
 
 /**
  * Sliders, for the fields row: a set of values to adjust, which is what the page behind
- * it is — one control per field rather than one list to pick from.
+ * it is: one control per field rather than one list to pick from.
  */
 export function FieldsIcon() {
   return <RowIcon icon={SlidersHorizontal} />;
@@ -423,7 +423,7 @@ export function KeptIcon({ complete }: { complete: boolean }) {
  * A calendar, for the dates row.
  *
  * The same grid and stroke weight as the tag beside it, which is what makes the two rows
- * read as siblings — Android's drawable says the same thing in its own comment.
+ * read as siblings: Android's drawable says the same thing in its own comment.
  */
 export function CalendarIcon() {
   return <RowIcon icon={Calendar} />;
@@ -434,7 +434,7 @@ export function CalendarIcon() {
  *
  * The glyph says the type so the label does not have to: "Amount" beside a hash reads
  * as a number without "(number)" after it. Drawn through `RowIcon` because that is what
- * these are — a picture beside a row of text, sized against the words.
+ * these are: a picture beside a row of text, sized against the words.
  */
 const FIELD_TYPE_ICONS: Record<FieldType, LucideIcon> = {
   text: Type,
@@ -471,11 +471,11 @@ export function FieldTypeIcon({
 /**
  * What kind of file a note holds, labelling its name on the list row.
  *
- * The glyph says the kind so the name does not have to — an Evernote export carries PDFs
+ * The glyph says the kind so the name does not have to: an Evernote export carries PDFs
  * named `Menu Card`, and a row scanning for "that receipt photo" is looking for the
  * picture, not reading extensions. Four kinds are worth telling apart at a glance; the
  * rest share the paperclip, which is what every mail client has taught "a file" to look
- * like. Decided from the declared type, which is unverified — it chooses a picture here
+ * like. Decided from the declared type, which is unverified: it chooses a picture here
  * and nothing more.
  */
 export function AttachmentKindIcon({ contentType }: { contentType: string }) {
@@ -505,15 +505,15 @@ export function MoveDownIcon() {
  * A cross, for removing one filter from a chip.
  *
  * Small and a touch heavier: it rides inside a chip beside the filter's name, so it is
- * sized against the label rather than against a touch target — the whole chip is the
- * target — and at that size stroke width 2 goes faint.
+ * sized against the label rather than against a touch target (the whole chip is the
+ * target) and at that size stroke width 2 goes faint.
  */
 export function CloseIcon() {
   return <X size="0.85em" strokeWidth={2.5} aria-hidden="true" focusable="false" />;
 }
 
 /**
- * The pencil beside a chip's word where pressing the word renames it — a select option's.
+ * The pencil beside a chip's word where pressing the word renames it: a select option's.
  * The chip's size, like the chevrons and the cross beside it, since it reads with the word
  * rather than standing alone in a 44px target as the label editor's `PencilIcon` does.
  */
@@ -525,7 +525,7 @@ export function ChipPencilIcon() {
  * Chevrons for nudging a chip one step earlier or later in an ordered list.
  *
  * Sized like `CloseIcon`, and for the same reason: they ride inside a chip beside its
- * label, so they answer to the word rather than to a touch target — the chip carries them.
+ * label, so they answer to the word rather than to a touch target: the chip carries them.
  * The select-option editor gives each option a pair, to set the order the choices appear
  * in. Left is earlier and right is later, the reading-order direction the chips already
  * wrap in, rather than the up/down the field list uses for its one-per-row column.
@@ -539,7 +539,7 @@ export function MoveLaterIcon() {
 }
 
 /**
- * The chevron at the end of a row that opens a page of its own — a version in a note's
+ * The chevron at the end of a row that opens a page of its own: a version in a note's
  * history. Muted and sized against the row's text: it says "this goes somewhere", which
  * the row's hover says too, and it is what tells a row that opens from one that selects.
  */
@@ -548,7 +548,7 @@ export function RowChevronIcon() {
 }
 
 /**
- * The chevron after the list's count when the count opens a menu — see `NoteListHead`.
+ * The chevron after the list's count when the count opens a menu (see `NoteListHead`).
  * Text-sized, since it is a suffix of the count rather than a control of its own.
  */
 export function CountChevronIcon() {
@@ -596,7 +596,7 @@ export function ExpandIcon() {
  * viewer is a `<dialog>` built without React; neither can render a component. The path
  * data is lucide's own (`maximize-2` and `x`), copied rather than imported: the package
  * publishes each icon as a component and not as data, and shipping `react-dom/server` to
- * stringify two glyphs is the wrong trade. Kept in this file so it is the one seam still —
+ * stringify two glyphs is the wrong trade. Kept in this file so it is the one seam still:
  * if the library changes, this is where the copies change with it.
  *
  * Sized in pixels rather than `em`. An image standing alone on its line has its font size

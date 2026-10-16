@@ -23,7 +23,7 @@ const count = (n: number) => `${n.toLocaleString()} file${n === 1 ? '' : 's'}`;
  * Three things take room, and they are listed apart because each is there for a different
  * reason and leaves a different way: notebooks someone chose to keep (until they stop),
  * files they opened (within a budget, oldest-opened out first, or all at once from here),
- * and files added with no connection that have not uploaded yet (until they do — there is
+ * and files added with no connection that have not uploaded yet (until they do: there is
  * no button for those, since removing one would be deleting the only copy).
  *
  * A settings page rather than a line under each notebook: "what is using my phone's
@@ -83,8 +83,8 @@ export function OfflineStorage() {
       </div>
       <p className="muted small">
         {/* Three tabs: the holder; a client, attached or still attaching, which works as
-            the holder does; and one with no library at all — a browser with no channel to
-            join the holder over, or an attach the open's bound refused — which keeps
+            the holder does; and one with no library at all (a browser with no channel to
+            join the holder over, or an attach the open's bound refused) which keeps
             nothing and reads the server. */}
         {elsewhere && presence !== 'none'
           ? 'Your notes are always on this device. Another tab or window has them open, and this one works through it. The files are kept when you open one, and for whole notebooks you choose.'
@@ -208,7 +208,7 @@ function LibraryHolderLine() {
 /**
  * What the app believes about its connection and why: what decided it and when, and the
  * browser's own flag when that disagrees. Here so the next "it says I'm offline" comes with
- * its cause rather than a screenshot of a Network tab full of 200s — which is how the
+ * its cause rather than a screenshot of a Network tab full of 200s, which is how the
  * one on 2026-10-13 arrived, and why it took a day to read (`connectivity.ts`). "Since"
  * is when the outage began, not when the last poll failed: every failed poll moves what
  * decided the answer, and the line would otherwise creep forward every few minutes.

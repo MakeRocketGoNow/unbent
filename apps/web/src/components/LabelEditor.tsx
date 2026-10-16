@@ -27,7 +27,7 @@ interface LabelEditorProps {
   /** Set while a request is in flight; the controls wait for it. */
   busy: boolean;
   /**
-   * Makes something new. Absent for tags, which exist only on a note — a tag with no note
+   * Makes something new. Absent for tags, which exist only on a note: a tag with no note
    * would vanish from the list the moment it was made.
    */
   onCreate?: (name: string) => Promise<boolean>;
@@ -36,11 +36,11 @@ interface LabelEditorProps {
   /** Asks to delete. The caller confirms, since only it knows what deleting means for this kind. */
   onDelete: (item: LabelItem) => void;
   /**
-   * When set, a row is a link to this destination rather than an inline rename — the whole
+   * When set, a row is a link to this destination rather than an inline rename: the whole
    * row navigates, and its name and pencil are anchors. It is how the notebook list works:
    * a notebook has a page of its own (its name, purpose, fields, delete), so the list is a
    * way in rather than a place to correct a name in passing. A tag has no such page and
-   * leaves this unset, keeping the inline editor. Delete still rides on the row here — the
+   * leaves this unset, keeping the inline editor. Delete still rides on the row here: the
    * one destructive act that stays reachable without opening the page.
    */
   rowHref?: (item: LabelItem) => string;
@@ -48,7 +48,7 @@ interface LabelEditorProps {
   renderExtra?: (item: LabelItem) => ReactNode;
   /**
    * A count that sits against the name rather than at the row's right edge. Given this, a
-   * caller takes over the count entirely — the trailing bare number is dropped. It is how
+   * caller takes over the count entirely: the trailing bare number is dropped. It is how
    * the notebook list carries its note count: hard against the name, the way a field's
    * value count sits against the field name on the notebook's own page, so it is not a
    * second number stranded beside "Fields N" reading as more fields. Returning null shows
@@ -56,7 +56,7 @@ interface LabelEditorProps {
    * trailing number, which is the information a tag row is mostly for.
    */
   renderNameCount?: (item: LabelItem) => ReactNode;
-  /** The item, if any, whose row should be in its editing state — the caller keeps it there under a confirm. */
+  /** The item, if any, whose row should be in its editing state: the caller keeps it there under a confirm. */
   editingId?: string | null;
   /** The find field, offered once a list is long enough to need one. */
   findable?: boolean;
@@ -95,11 +95,11 @@ const FIND_THRESHOLD = 8;
  *
  * Nothing moves when a row starts editing. The glyph and the trash can share one slot,
  * the pencil and the check share another, and the fence is laid out transparent on a
- * resting row so it costs no height when it appears — the Android screen learned both of
+ * resting row so it costs no height when it appears: the Android screen learned both of
  * those the hard way and they are written into the CSS here from the start.
  *
  * One component for two kinds rather than two pages that drift: the difference between
- * a notebook and a tag is real — a notebook is a place and a tag an attribute — but the
+ * a notebook and a tag is real (a notebook is a place and a tag an attribute), but the
  * act of correcting a name is the same act, and Evernote users arrive with hundreds of
  * each to correct. A tag list that long gets a find field; the caller decides.
  */
@@ -123,7 +123,7 @@ export function LabelEditor({
   const [creating, setCreating] = useState<string | null>(null);
   const [find, setFind] = useState('');
 
-  // The caller can hold a row open — under a merge confirm, say — after this component
+  // The caller can hold a row open (under a merge confirm, say) after this component
   // would otherwise have closed it.
   const openId = editing?.id ?? editingId ?? null;
 
@@ -144,15 +144,15 @@ export function LabelEditor({
   };
 
   /*
-   * Open only once the list has arrived. What a chooser offers depends on what exists — a
-   * template's name may be taken — and one opened from the rail's New notebook on a cold
+   * Open only once the list has arrived. What a chooser offers depends on what exists (a
+   * template's name may be taken), and one opened from the rail's New notebook on a cold
    * load would otherwise be chosen from against a list it has not seen.
    */
   const chooserOpen = Boolean(chooser?.open) && creating === null && items !== null;
 
   /*
-   * Asked open from outside — the rail's New notebook pressed again while Blank's name
-   * field is out — the chooser wins: that press is a request to choose again, and it
+   * Asked open from outside (the rail's New notebook pressed again while Blank's name
+   * field is out), the chooser wins: that press is a request to choose again, and it
    * would otherwise vanish, its `?new=1` already dropped from the address.
    */
   const askedOpen = Boolean(chooser?.open);
@@ -161,8 +161,8 @@ export function LabelEditor({
   }, [askedOpen]);
 
   /*
-   * Closing the chooser hands focus back to the row that opened it. Whatever held focus —
-   * a card, the cross — is gone with it, and a keyboard or screen reader would otherwise
+   * Closing the chooser hands focus back to the row that opened it. Whatever held focus
+   * (a card, the cross) is gone with it, and a keyboard or screen reader would otherwise
    * start again from the top of the page.
    */
   const createRef = useRef<HTMLButtonElement>(null);
@@ -408,7 +408,7 @@ export function LabelEditor({
  * A bare input rather than a boxed one: the row is still the row, only now you can type
  * in it, and a box drawn around the name would make it jump into a different kind of
  * control. Focus is taken on arrival with the caret at the end, since a rename is usually
- * a correction there — and a caret at the start, where a focused input puts it, makes
+ * a correction there, and a caret at the start, where a focused input puts it, makes
  * the first keystroke land in front of the name. Enter commits and Escape leaves; a click
  * elsewhere does neither, because the check and the cross beside the field are the
  * decision, and a field that saved itself on blur would decide for a reader who only

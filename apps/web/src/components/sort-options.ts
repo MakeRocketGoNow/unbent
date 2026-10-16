@@ -8,13 +8,13 @@ import { DEFAULT_NOTE_SORT, type FieldDef, type FieldType, type NoteSort } from 
  * "created" and "ascending" themselves. `created:asc` and `updated:asc` would both be
  * offerable and neither is a question anyone asks.
  *
- * They live here rather than inline in the sidebar because two controls now render them —
- * the desktop `<select>` and the phone's sort menu — and a list duplicated in two places is
+ * They live here rather than inline in the sidebar because two controls now render them
+ * (the desktop `<select>` and the phone's sort menu), and a list duplicated in two places is
  * a list that drifts. The key is the `<select>` value's shape, which is what makes it the
  * one spelling both controls can use as a React key and an equality test.
  */
 export interface SortOption {
-  /** `${sort}:${order}` — the composite the desktop select stores as its value. */
+  /** `${sort}:${order}`: the composite the desktop select stores as its value. */
   key: string;
   label: string;
   sort: NoteSort;
@@ -42,7 +42,7 @@ export function sortKey(sort: NoteSort | undefined, order: 'asc' | 'desc' | unde
  * A key as the search params to write.
  *
  * The default comes back as `undefined` rather than as itself, so a plain `/notes` link
- * stays clean — picking "Newest first" removes the parameters instead of spelling out
+ * stays clean: picking "Newest first" removes the parameters instead of spelling out
  * what absence already means.
  */
 export function parseSortKey(key: string): {
@@ -70,7 +70,7 @@ export interface FieldSortDirection {
  *
  * "Ascending" is a word for the query, not for the person reading the list: nobody asks for
  * their receipts by date ascending, they ask for the oldest first. So each type names its
- * ends the way the named orders above do, and puts first the end people reach for — the
+ * ends the way the named orders above do, and puts first the end people reach for: the
  * newest date, as "Newest first" leads the named list; a checkbox's ticked notes, which are
  * the ones the box was added to find; A–Z and low to high for everything else, as the
  * table's headers do on a first click. A rating and an amount are numbers underneath and
@@ -108,7 +108,7 @@ export function fieldSortDirections(type: FieldType): [FieldSortDirection, Field
  * What the current sort is called, for a control that shows its value rather than a list.
  *
  * A sort by a custom field is none of the named orders, so it is named from the field and
- * its direction in the field's own words — "Date, newest first" — rather than falling back
+ * its direction in the field's own words ("Date, newest first") rather than falling back
  * to "Newest first" over a list that is ordered by something else.
  */
 export function sortLabel(
@@ -148,8 +148,8 @@ export function columnSortState(target: SortTarget, search: SortSearch): 'asc' |
 /**
  * The search params a click on a column header writes.
  *
- * A first click sorts the way that column is usually wanted — names and field values
- * A–Z or low to high, dates newest first — and a click on the column already in charge
+ * A first click sorts the way that column is usually wanted (names and field values
+ * A–Z or low to high, dates newest first) and a click on the column already in charge
  * flips it. There is no third state: the list always has *some* order, and a header that
  * cycled to "none" would silently put "Newest first" back under a column that no
  * longer said so. The two kinds of sort are exclusive on the wire, so choosing one

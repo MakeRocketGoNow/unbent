@@ -2,12 +2,12 @@
  * The sample note an empty account can ask for: "See a sample note", the quiet third
  * action in `EmptyLibrary`.
  *
- * A note is the one place that can show what a note holds by being it — a checklist that
- * ticks, a table, a link that goes somewhere — so the tour is a note rather than a modal,
+ * A note is the one place that can show what a note holds by being it (a checklist that
+ * ticks, a table, a link that goes somewhere), so the tour is a note rather than a modal,
  * and the person learns the editor by editing the thing that explains it. It is made on
  * request, on the device, like any note: through `useCreateNote` and `store/actions.ts`,
  * so it is written offline as well as on, syncs like any other, and is an ordinary note
- * afterwards — in no notebook, untagged, editable, trashable, with nothing marking it as
+ * afterwards: in no notebook, untagged, editable, trashable, with nothing marking it as
  * special. Code that looked for it by title would break on the account that renamed it.
  *
  * It used to be written into every account at sign-up, by the API, and that was tried and
@@ -19,13 +19,13 @@
  *
  * Written for every instance, not for unbent.app: a self-hosted instance offers the same
  * note, so the text names no host and no price, and every link in it is a path on this
- * site — the test beside this file holds both, and that each path is a page the router
+ * site: the test beside this file holds both, and that each path is a page the router
  * has. Paths rather than addresses also survive an export and an import into another
  * instance, where an absolute link would point back at the one it came from; a click on
  * one is followed in place (`openSitePath`).
  *
  * Short on purpose: nobody reads a manual, and the note's last line says it may be
- * deleted. No image, though one would be nice — a picture in a note is a stored file, and
+ * deleted. No image, though one would be nice: a picture in a note is a stored file, and
  * this one would be uploaded again for every account that asked for the note.
  *
  * The table's rows are 31 characters, padded so the columns line up, and both are on

@@ -13,7 +13,7 @@ import {
 /**
  * The sort key round trip.
  *
- * Two controls read this list now — the desktop `<select>`, whose value *is* the key, and
+ * Two controls read this list now: the desktop `<select>`, whose value *is* the key, and
  * the phone's sort menu, which compares against it to mark the active option. What the
  * tests pin is the asymmetry between them: `sortKey` fills the default *in* so a control
  * always has a value to show, and `parseSortKey` takes it back *out* so the default never

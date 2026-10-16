@@ -176,7 +176,7 @@ describe('noteDropZone', () => {
   });
 
   /**
-   * A sheet open over the note — History — sits inside the column in the page, so its
+   * A sheet open over the note (History) sits inside the column in the page, so its
    * events bubble through the zone, but the note is inert behind it.
    */
   it('leaves a file over a sheet open on the note alone', async () => {

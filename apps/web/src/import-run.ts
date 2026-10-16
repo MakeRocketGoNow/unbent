@@ -77,7 +77,7 @@ export interface ImportRun {
    * The summary lists note titles, and a run still going after a sign-out is sending the
    * next person's cookies. Neither should reach a different account on the same browser.
    * `undefined` is a sign-out: the worker used to die with the panel, and now it has to
-   * be stopped here or it keeps posting until the next request 401s — or until a second
+   * be stopped here or it keeps posting until the next request 401s, or until a second
    * person signs in on this tab and the request goes out as them.
    */
   claim(userId: string | undefined): void;
@@ -89,8 +89,8 @@ export interface ImportRun {
  * The import run and its worker, held by the module rather than by the panel.
  *
  * They were the panel's own state, and the panel terminated the worker when it unmounted.
- * So anything that navigated away ended a running import, and a finished one's summary —
- * failures, the skipped-note list — went with the page. Three things worked around that:
+ * So anything that navigated away ended a running import, and a finished one's summary
+ * (failures, the skipped-note list) went with the page. Three things worked around that:
  * the rail and the settings sub-nav went inert for the whole run, the skipped-note rows
  * opened in a new tab, and in the Android app, which has no tabs, the rows stopped being
  * links while a run went. Each was a patch on the one real problem, and the last still
@@ -224,7 +224,7 @@ export function createImportRun(
       // A different person, or nobody. Signing out used to unmount the panel and kill
       // the worker; the run now outlives the page, so it has to be dropped here or the
       // next fetch uses whoever's cookie is in the jar. The titles in the summary are
-      // the other half — they must not be sitting there when the next person arrives.
+      // the other half: they must not be sitting there when the next person arrives.
       if (owner !== null || state.status === 'running') {
         worker?.terminate();
         worker = null;

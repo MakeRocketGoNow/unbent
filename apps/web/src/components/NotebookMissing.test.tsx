@@ -37,7 +37,7 @@ describe('NotebookMissing', () => {
     );
   });
 
-  /** The way out is navigation, so a real link — outlined, since leaving is not the view's point. */
+  /** The way out is navigation, so a real link, outlined, since leaving is not the view's point. */
   it('offers All notes as a link drawn as the outlined button', async () => {
     harness(<NotebookMissing notebook="Receipts" notebooks={loaded} whole />);
     const out = await screen.findByRole('link', { name: 'Show all notes' });

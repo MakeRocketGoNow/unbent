@@ -238,7 +238,7 @@ describe('the keeper', () => {
       await other.keep('receipts');
       await vi.waitFor(() => expect(lead.status().have).toEqual({ files: 3, bytes: 600 }), { timeout: 4000 });
       expect(lead.status().kept.has('receipts')).toBe(true);
-      // And the tab that asked sees them arrive — from the fetching tab's own totals, not
+      // And the tab that asked sees them arrive, from the fetching tab's own totals, not
       // by listing the shelf again for each report.
       const shelfDir = await (await root.getDirectoryHandle('unbent-files-u1')).getDirectoryHandle('kept');
       const entries = shelfDir.entries.bind(shelfDir);

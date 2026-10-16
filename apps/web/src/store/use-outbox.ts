@@ -112,7 +112,7 @@ const keepingNothing: KeepStatus = { supported: false, kept: new Set(), counted:
 /**
  * The open library's keeper and what it holds: which notebooks are kept on this device,
  * how much of them has arrived. Null and `supported: false` until the library opens and
- * on a device with no local copy, where nothing can be kept — the controls that offer
+ * on a device with no local copy, where nothing can be kept: the controls that offer
  * keeping read `supported` and are not drawn without it.
  */
 export function useKeeper(): { keeper: Keeper | null; status: KeepStatus } {

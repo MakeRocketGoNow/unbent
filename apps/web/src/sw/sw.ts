@@ -10,21 +10,21 @@ import { findFile } from '../store/files.js';
  * The service worker: what lets the installed app open with no connection.
  *
  * Built by `vite-plugin-pwa` in `injectManifest` mode, which does exactly one thing for
- * it — replace `self.__WB_MANIFEST` with the list of files this build produced, each with
+ * it: replace `self.__WB_MANIFEST` with the list of files this build produced, each with
  * a revision. Everything else here is ours and Workbox's runtime modules, deliberately: if
  * the plugin ever falls behind a Vite major, a small Vite plugin of our own can write that
  * list and this file does not change. See `vite.config.ts`.
  *
  * Typechecked by its own program, `tsconfig.sw.json`. The app's program loads the Workers
- * types for the API client, and those declare a `ServiceWorkerGlobalScope` of their own —
+ * types for the API client, and those declare a `ServiceWorkerGlobalScope` of their own:
  * the Workers runtime's, which has no `clients`, `registration` or `skipWaiting`.
  *
  * What it does, in order of what matters:
  *
  * - A page load is answered from the network first, and from the cached shell only when
  *   the network does not answer. So a reload is always the newest build, and the whole
- *   question of *when* to move a page onto a new deploy — a change of section, five
- *   minutes away, nothing touched yet — goes away with the rules that answered it.
+ *   question of *when* to move a page onto a new deploy (a change of section, five
+ *   minutes away, nothing touched yet) goes away with the rules that answered it.
  * - Each build's shell is kept in a cache of its own, and the previous build's cache is
  *   kept until the one after it. A tab still running the previous build asks for its
  *   chunks under their old names, and finds them: a new worker taking charge no longer
@@ -40,8 +40,8 @@ declare const self: ServiceWorkerGlobalScope;
  * pdf.js with its WebAssembly decoders, so a PDF someone opened can still be drawn. The
  * list and what it leaves out is in `vite.config.ts`.
  *
- * In a cache named for this build — the revision of its `index.html`, which carries the
- * commit and so changes with every deploy — rather than Workbox's one cache for every
+ * In a cache named for this build (the revision of its `index.html`, which carries the
+ * commit and so changes with every deploy) rather than Workbox's one cache for every
  * build. With one cache, activating a new worker deleted every chunk the previous build
  * had and the current one does not, in every tab at once, and only the tab that asked
  * for the hand-off was reloaded; the rest ran on with their next route's chunk gone,
@@ -66,15 +66,15 @@ self.addEventListener('activate', shell.activate);
  * Workbox's own install fetches them strictly one after another (its issue 2528: a first
  * install is over two hundred files, and firing them all at once is what that guards
  * against). But a new deploy's worker does not reach `waiting` until every file is in,
- * and the page cannot be moved onto it before then — so the whole queue is the time
+ * and the page cannot be moved onto it before then, so the whole queue is the time
  * between a reload and the new version. Vite's hashes cascade, so a one-line change
  * re-fetches forty-odd chunks: with 150 ms added to every request, about what unbent.app
  * answers in, that queue took seven seconds one at a time and under two and a half six at
- * a time — and longer on a phone, or behind the app's own startup traffic. Six is still
+ * a time, and longer on a phone, or behind the app's own startup traffic. Six is still
  * only a handful in flight.
  *
  * The same work as Workbox's install otherwise: a file already cached under its key costs
- * nothing, and a revisioned file — one whose name has no hash, `index.html` above all —
+ * nothing, and a revisioned file (one whose name has no hash, `index.html` above all)
  * is fetched past the HTTP cache, which is what Workbox's `reload` mode is for. Its key
  * carries `__WB_REVISION__` where a hashed file's key is its address, which is how that is
  * told without its private map. A redirected response is stored as a plain copy, as
@@ -131,7 +131,7 @@ async function fillShell(): Promise<void> {
   if (failure) throw failure;
   // Last, so a cached page means a whole shell: the navigation route refills on its
   // absence and on nothing else. Stored in manifest order it could land early, and a
-  // refill that then stopped — the worker killed, a chunk gone from a newer deploy —
+  // refill that then stopped (the worker killed, a chunk gone from a newer deploy)
   // was never taken up again; the app worked online and had no shell offline until the
   // next deploy (review of #331).
   for (const entry of entries.filter(isPage)) await store(entry);
@@ -145,7 +145,7 @@ function unredirected(response: Response): Response {
 /**
  * Once the shell is in, take charge: the previous build's shell stays cached for the
  * pages still running it, so there is nothing to wait for. The page used to say when
- * (`SKIP_WAITING`), through workbox-window's `waiting` event — which it fires only for
+ * (`SKIP_WAITING`), through workbox-window's `waiting` event, which it fires only for
  * the first update a page sees within a minute of registering; every later deploy sat
  * in `waiting` until the last tab closed.
  */
@@ -169,15 +169,15 @@ function refillShell(): Promise<void> {
 
 /**
  * The shell caches that are neither this build's nor the one before it, once this worker
- * is in charge — and the one cache Workbox used to keep every build in, from before each
+ * is in charge, and the one cache Workbox used to keep every build in, from before each
  * build had its own.
  *
  * The previous build is kept on purpose: a tab still running it keeps finding its chunks
  * (the assets route) until it reloads. A tab that outlives two deploys without a reload
  * loses them, and gets the reload `recoverFromMissingChunks` does for a chunk that is
  * gone. Which build was previous is remembered in a cache of its own, since cache names
- * carry no order. A worker of the same build activating again — the registration removed
- * and made anew — finds its own name remembered as previous and keeps no older build;
+ * carry no order. A worker of the same build activating again (the registration removed
+ * and made anew) finds its own name remembered as previous and keeps no older build;
  * accepted, since that is not a deploy and no page is running an older build under it.
  */
 const SHELL_META = `${SHELL_CACHE_PREFIX}meta`;
@@ -204,7 +204,7 @@ self.addEventListener('activate', (event) => {
  * waiting for their next load.
  *
  * Without this the page that registers the worker is never under it: the first session
- * after installing the app — sign in, open a note, walk into a tunnel — kept nothing,
+ * after installing the app (sign in, open a note, walk into a tunnel) kept nothing,
  * because none of its reads passed through the worker. On the phone that first session
  * is the one a reviewer tries. Safe for an update, because the previous build's shell
  * stays cached: a page still running it goes on finding its chunks under this worker.
@@ -217,7 +217,7 @@ self.addEventListener('activate', (event) => {
  * Navigation preload: the browser starts the page load's request the moment the load
  * begins, in parallel with starting this worker, and hands it to the route as
  * `preloadResponse`. Without it the request waited for the worker to boot and match its
- * routes first, which on a phone's WebView is a noticeable share of a cold start — and a
+ * routes first, which on a phone's WebView is a noticeable share of a cold start, and a
  * cold start is now a round trip to the server by design (the navigation route).
  */
 self.addEventListener('activate', (event) => {
@@ -237,7 +237,7 @@ const NAVIGATION_TIMEOUT_MS = 3000;
  * and from the cached `index.html` when the network does not answer in time, which is
  * what lets the installed app open on a plane. The router takes it from there either way.
  *
- * It used to be the other way round — the cached shell always, online too — which is
+ * It used to be the other way round (the cached shell always, online too), which is
  * what an app shell classically is, and what made a deploy unreachable: a reload drew the
  * build the worker held, and a set of rules grew around when the page could be moved
  * onto the new one (a change of section, five minutes away, nothing touched since the
@@ -293,7 +293,7 @@ registerRoute(new PrecacheRoute(shell));
 /**
  * A hashed asset this build's shell does not hold: the previous build's, asked for by a
  * tab still running it. Answered from whichever shell cache has it, and otherwise from
- * the network — unless the network answers with the page, which is the asset layer
+ * the network, unless the network answers with the page, which is the asset layer
  * saying the file is gone: that is turned into the 404 it is, so the import fails as a
  * missing module and the page reloads itself (`recoverFromMissingChunks`), rather than
  * failing as HTML where a script was expected, which it does too, but later and less
@@ -343,7 +343,7 @@ const servedFromCache: Plugin = {
  * What the note list and an open note were last drawn from, for drawing them again with
  * no connection. Which reads these are is `classify` in `routes.ts`.
  *
- * Network first, always, and the cache only when the network fails — never the other way
+ * Network first, always, and the cache only when the network fails, never the other way
  * round. The page already caches in memory with React Query, and every save invalidates
  * exactly the entries it changed; a worker that answered from its own copy first would
  * hand that refetch the note as it was before the save, and an editor seeded from such a
@@ -388,7 +388,7 @@ const keepableFile: Plugin = {
 };
 
 /**
- * The cache's budget — bytes, count and age, oldest-opened out first — in place of
+ * The cache's budget (bytes, count and age, oldest-opened out first) in place of
  * Workbox's expiration plugin, which counts entries and cannot order them by use. The
  * rule and the reasons are in `budget.ts`; this is where the cache tells it what happened.
  */
@@ -413,13 +413,13 @@ self.addEventListener('activate', (event) => {
  *
  * The budget above keeps the cache under 500 MB; it cannot know the device has less than
  * that to give. When a store fails with a quota error, Workbox runs the callbacks its
- * plugins registered, and this plugin's is "delete this cache" — the cheapest storage the
+ * plugins registered, and this plugin's is "delete this cache", the cheapest storage the
  * app holds, refilled by opening things. Without it the cache went on failing to store
  * while sitting on whatever it had (review of #236).
  *
  * The expiration plugin is here for that alone: `purgeOnQuotaError` is the only way to
  * that callback without `workbox-core` as a dependency of our own. It must be given an
- * age or a count to be constructed, and it is given a count it will never reach — not an
+ * age or a count to be constructed, and it is given a count it will never reach, not an
  * age. With an age the plugin also refuses a cached response whose `Date` header is older
  * than it, and that header is when the file was fetched, not when it was last opened: a
  * manual read every week would have gone missing a month after its first download, which
@@ -431,12 +431,12 @@ self.addEventListener('activate', (event) => {
 const emptiedWhenFull = new ExpirationPlugin({ maxEntries: Number.MAX_SAFE_INTEGER, purgeOnQuotaError: true });
 
 /**
- * The bytes of a file someone looked at — an image drawn in a note, a PDF opened in the
- * viewer — so the same note reads the same with no connection.
+ * The bytes of a file someone looked at (an image drawn in a note, a PDF opened in the
+ * viewer) so the same note reads the same with no connection.
  *
  * Cache first, because these never change: the Worker serves them `immutable`, keyed by
  * the attachment. Only what was looked at, never what the indexer or an export read in
- * bulk — see `classify` for why that distinction is the whole rule.
+ * bulk: see `classify` for why that distinction is the whole rule.
  */
 const openedFiles = new CacheFirst({ cacheName: FILES_CACHE, plugins: [keepableFile, budgeted, emptiedWhenFull, servedFromCache] });
 
@@ -445,7 +445,7 @@ const openedFiles = new CacheFirst({ cacheName: FILES_CACHE, plugins: [keepableF
  * the cache of what was opened, then the network.
  *
  * The shelves (`store/files.ts`) hold a kept notebook's files and a file added here that
- * has not uploaded yet — the second is why this comes first and for every read: a photo
+ * has not uploaded yet. The second is why this comes first and for every read: a photo
  * taken with no connection has an address in the note the moment it is added, and this
  * is the only thing that can answer it. Which requests may be answered so is `shelved`.
  *
@@ -494,8 +494,8 @@ registerRoute(
  * Messages from the page.
  *
  * `BUILD`: which deploy this worker is. Answered on the port the page sent, with the
- * commit read out of the precached page — the one place the worker can learn it without
- * the build plumbing it through — so a page can tell whether the worker now in charge
+ * commit read out of the precached page (the one place the worker can learn it without
+ * the build plumbing it through), so a page can tell whether the worker now in charge
  * is a newer build than itself, and say that a reload would bring it (`UpdateSnackbar`).
  *
  * `FILES_CHANGED`: the page put a file in the files cache itself.

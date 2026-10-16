@@ -18,7 +18,7 @@ import { Workspace } from './Workspace.js';
  *
  * It opens by itself only for a note with files its body no longer links. The draft is
  * seeded in an effect, so the first render of a note used to hand the panel the previous
- * note's body — or the empty initial draft — and for that one render every file looked
+ * note's body (or the empty initial draft) and for that one render every file looked
  * unlinked. The panel latches open on unlinked files, so every note with files opened
  * expanded.
  */

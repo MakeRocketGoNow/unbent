@@ -9,7 +9,7 @@ import { useEffect, useState } from 'react';
  * between the two is the keyboard.
  *
  * Returns 0 wherever there is no keyboard, no `visualViewport` support, or nothing is
- * focused — so a caller can position against it unconditionally.
+ * focused, so a caller can position against it unconditionally.
  */
 export function useKeyboardInset(): number {
   const [inset, setInset] = useState(0);
@@ -53,7 +53,7 @@ export function useKeyboardInset(): number {
     measure();
     vv.addEventListener('resize', measure);
     vv.addEventListener('scroll', measure);
-    // Browser chrome appearing or going — Brave's bottom toolbar, a URL bar — can move the
+    // Browser chrome appearing or going (Brave's bottom toolbar, a URL bar) can move the
     // fixed edge without the visual viewport's own size changing.
     window.addEventListener('resize', measure);
     return () => {

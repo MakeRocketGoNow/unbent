@@ -15,7 +15,7 @@ export interface Maintenance {
 /**
  * Runs one destructive maintenance action.
  *
- * Shared because emptying the trash is offered in two places — the trash view, where you
+ * Shared because emptying the trash is offered in two places: the trash view, where you
  * can see what you are about to destroy and restore anything first, and the maintenance
  * page, which has to list every destructive operation to be worth trusting. Two copies
  * would drift on what they invalidate, and a missed invalidation here leaves a note on

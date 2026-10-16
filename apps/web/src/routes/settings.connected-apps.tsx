@@ -21,7 +21,7 @@ interface Grant {
  * The MCP server URL for this instance, with a button that copies it.
  *
  * The URL is built from the current origin rather than hardcoded, because the same page
- * serves unbent.app and every self-hosted instance — and a self-hosted user pasting a
+ * serves unbent.app and every self-hosted instance, and a self-hosted user pasting a
  * production URL into Claude would get someone else's consent screen.
  */
 function McpUrl() {
@@ -80,7 +80,7 @@ function ConnectedAppsPage() {
       /**
        * The consent rows carry a client id and nothing readable, so each name is a second
        * request. Fetched together rather than in series, and a client that cannot be named
-       * still gets a row — it can still be revoked, which is what the page is for.
+       * still gets a row: it can still be revoked, which is what the page is for.
        */
       const named = await Promise.all(
         rows.map(async (row): Promise<Grant> => {

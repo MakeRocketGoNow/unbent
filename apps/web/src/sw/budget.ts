@@ -6,13 +6,13 @@ import { FILES_CACHE } from './routes.js';
  * The files cache (`files-v1`) fills as files are looked at. It had a count and an age,
  * from Workbox's expiration plugin; a count is the wrong unit for an archive of scans,
  * where a hundred and fifty files is fifteen megabytes or two gigabytes depending on the
- * scanner. So the budget is in bytes as well, and oldest-opened goes first — opened, not
+ * scanner. So the budget is in bytes as well, and oldest-opened goes first. Opened, not
  * stored: a manual read every week should outlast a receipt looked at once.
  *
  * That order is why this is ours and not the plugin's. Workbox keeps its timestamps in a
  * database of its own with no size beside them, and Cache Storage orders its keys by when
- * they were put, not used. So the cache carries a small index of its own — address, size,
- * last opened — as one more entry in it, under an address no route serves. In the cache
+ * they were put, not used. So the cache carries a small index of its own (address, size,
+ * last opened) as one more entry in it, under an address no route serves. In the cache
  * rather than in IndexedDB so that emptying the cache, which the page does on every
  * account change (`offline-cache.ts`), takes the index with it; and reconciled against
  * the cache's real keys on every pass, so an entry either side lost is noticed.
@@ -125,7 +125,7 @@ export function createFilesLedger(budget: FilesBudget = FILES_BUDGET, now: () =>
       if (isIndex(request.url)) continue;
       held.add(request.url);
       if (index[request.url]) continue;
-      // Put there by something that did not say so — the page, after an upload it made
+      // Put there by something that did not say so: the page, after an upload it made
       // offline went through. Its size is in its headers; it was opened now.
       const res = await cache.match(request);
       index[request.url] = { size: Number(res?.headers.get('Content-Length') ?? 0), used: now() };

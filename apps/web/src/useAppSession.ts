@@ -13,7 +13,7 @@ import { rememberedSession } from './session-memory.js';
  * `useSession`, read by the same rule as the route guard's `ensureSession`: a check that
  * could not reach the server leaves whoever was last signed in on this device signed in,
  * rather than sending them to `/login`. The signed-in chrome reads this, so a lost
- * connection and a session that has ended stop looking the same to it — the second still
+ * connection and a session that has ended stop looking the same to it: the second still
  * arrives here, as a 401 or an answer with nobody in it, and still signs the page out.
  *
  * Its own module, beside `useSignOut`, because `auth-client.ts` is kept free of React

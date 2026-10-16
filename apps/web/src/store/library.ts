@@ -20,7 +20,7 @@ import type { FeedNotebook, FeedTag } from '@unbent/shared';
 
 /**
  * One account's library on this device: its local store, the collections in it, the
- * engine that keeps them current, and the things that make the engine pull — the tab
+ * engine that keeps them current, and the things that make the engine pull: the tab
  * being shown again, the connection returning, and the socket saying the feed moved.
  *
  * Opened once per account, as a module singleton the queries and actions look up and
@@ -68,7 +68,7 @@ export interface Searching {
 }
 
 /**
- * What a reader of the library needs of it: the rows, the feed's state and the version —
+ * What a reader of the library needs of it: the rows, the feed's state and the version,
  * and the search index, where there is one. The holder's library answers it from its
  * collections; a client tab's answers it from the rows the holder sent it
  * (`client-library.ts`), and a test's from collections in memory (`test-library.ts`).
@@ -90,7 +90,7 @@ export type AnyLibrary = Library | ClientLibrary;
 /**
  * The account whose library this tab holds or is opening. `opened` is the open itself,
  * the queue's step; `library` is what callers are given, which is `opened` bounded by
- * `LIBRARY_OPEN_TIMEOUT_MS` — the same promise while the open is quick, a refusal after
+ * `LIBRARY_OPEN_TIMEOUT_MS`: the same promise while the open is quick, a refusal after
  * the bound, and the library again once a slow open has finished (`acquireLibrary`).
  */
 let current: { userId: string; library: Promise<AnyLibrary>; opened: Promise<AnyLibrary>; halt: () => void } | null = null;
@@ -158,8 +158,8 @@ export class LibraryElsewhereError extends Error {
 }
 
 /**
- * The account whose library another tab holds, while this tab is its client, or — in a
- * browser with no channel to be one over — reads the server: what Settings → Offline
+ * The account whose library another tab holds, while this tab is its client, or, in a
+ * browser with no channel to be one over, reads the server: what Settings → Offline
  * says, with the way to bring the library here (`library-lock.ts`). `waiting` is the
  * request in the lock's queue, so this tab opens the library on its own when the holder
  * goes. `refusal` is only the no-channel case: what every ask for the library gets
@@ -219,8 +219,8 @@ function standAside(userId: string, refusal?: Promise<never>): void {
       elsewhere = null;
       // The lock first, and the client's close only with it in hand: every waiting
       // tab is woken when the holder goes, one after another, and all but one would
-      // otherwise have closed a working client — dropping its rows and refusing its
-      // calls — to find the lock taken and attach again from nothing (review of #354).
+      // otherwise have closed a working client (dropping its rows and refusing its
+      // calls) to find the lock taken and attach again from nothing (review of #354).
       // A tab that lost the race stays the client it is and waits again.
       const hold = await holdLibrary(userId);
       if (generation !== asOf) {
@@ -264,7 +264,7 @@ export function subscribeWrites(listener: (pending: number) => void): () => void
 
 /**
  * Waits, for at most `ms`, for the writes this account's outbox holds to reach the
- * server, and answers with how many are still waiting — or `null` if they could not
+ * server, and answers with how many are still waiting, or `null` if they could not
  * be counted. What a sign-out does first: the wipe that follows removes the outbox.
  *
  * The open itself is waited for, not the bounded promise callers see. After
@@ -279,7 +279,7 @@ export async function settleWrites(ms: number, userId: string | null = null): Pr
   const entry = current;
   // No entry is not no outbox. An open that failed (a damaged store file, or one that
   // timed out and then failed), and a tab told the library is held elsewhere, all leave
-  // `current` empty with the last session's entries still in IndexedDB — so the account
+  // `current` empty with the last session's entries still in IndexedDB, so the account
   // the sign-out names is peeked as a stuck open's would be.
   if (!entry) return userId ? peekStoredWrites(userId, ms) : 0;
   const deadline = Date.now() + ms;
@@ -304,7 +304,7 @@ export async function settleWrites(ms: number, userId: string | null = null): Pr
     return lib.outbox.status().pending;
   }
   // Still not open: look at the durable store the wipe is about to remove. Half a second
-  // even when the wait above used the whole bound — the peek is a read, not a drain.
+  // even when the wait above used the whole bound: the peek is a read, not a drain.
   return peekStoredWrites(entry.userId, Math.max(500, deadline - Date.now()));
 }
 
@@ -368,10 +368,10 @@ export function notifySearchIndexed(): void {
 const changeListeners = new Set<(roots: ReadonlySet<string>) => void>();
 
 /**
- * Hears every change to any collection of the open library — a feed page applied, an
- * optimistic write, a replay settling — coalesced to one call per task, with the query
+ * Hears every change to any collection of the open library (a feed page applied, an
+ * optimistic write, a replay settling) coalesced to one call per task, with the query
  * roots the changes can reach. What the query bridge in `queries.ts` listens to, so a
- * view reads the library again when it moves — and only the views the change reaches: a
+ * view reads the library again when it moves, and only the views the change reaches: a
  * save that changed a body changes the list and the note, not the tags, the notebooks or
  * any count, and re-deriving those on every autosave was most of the cost of a keystroke
  * at archive scale (review of #232). Anything but an update of a note's text, or one the
@@ -440,12 +440,12 @@ export class LibraryOpenTimeoutError extends Error {
  * it had built and barred the account until the teardown was done: the teardown was one
  * more thing beside the queue, and the bar was either too wide (every account) or absent
  * (a fresh wait on every click). So a step is never abandoned; it runs to its end, and
- * what is bounded is what a caller sees — an open answers within
+ * what is bounded is what a caller sees: an open answers within
  * `LIBRARY_OPEN_TIMEOUT_MS` whatever the queue is doing, and a wipe waits on the queue
- * for a bounded time (`closeLocalStores`) — with the page reading the server meanwhile.
+ * for a bounded time (`closeLocalStores`), with the page reading the server meanwhile.
  *
- * A step that never settles — an open held by another tab's queued delete of the
- * outbox, or by a leader that is not running — holds the steps after it until a reload.
+ * A step that never settles (an open held by another tab's queued delete of the
+ * outbox, or by a leader that is not running) holds the steps after it until a reload.
  * What it holds besides is the store's file and the outbox's connection, and nothing
  * live: the moment a close or a switch takes its entry, the open's engine, socket and
  * listeners are halted (`halt` in `open`), since a bounded wipe lets a sign-out move on
@@ -473,8 +473,8 @@ function enqueue<T>(step: () => Promise<T>): Promise<T> {
 
 /**
  * What a close or a switch uses to halt an open's engine and socket before the step
- * ends: a signal, so a halt asked for while the open is still booting the store — a
- * sign-out pressed during a cold open on a phone — is honoured when the open arms the
+ * ends: a signal, so a halt asked for while the open is still booting the store (a
+ * sign-out pressed during a cold open on a phone) is honoured when the open arms the
  * handle rather than dropped. A slot the open filled later dropped it, and the open went
  * on to start the engine and socket the halt was for. The open checks the signal when it
  * has something to halt, and listens from then on.
@@ -496,7 +496,7 @@ export function acquireLibrary(userId: string, options: { takeOver?: boolean } =
 
 /**
  * The hooks a client library tells this module through: the same listeners the holder's
- * library fires, and the one thing a client decides for itself — that its holder has
+ * library fires, and the one thing a client decides for itself: that its holder has
  * gone silent, on which it takes the library over, if it is still this tab's library.
  */
 const clientHooks = (userId: string, isMine: () => boolean, deadline: number) => {
@@ -504,12 +504,12 @@ const clientHooks = (userId: string, isMine: () => boolean, deadline: number) =>
   // is the same ask continued, and a frozen holder's file keeps the open waiting just
   // as its silence kept the attach, so the caller is refused at the bound it was
   // promised and not the hellos' six seconds later. A takeover from a holder that went
-  // quiet after serving — pings unanswered with a call in hand, or no holder since the
-  // last one closed — is a new ask, made minutes or hours later, and gets a bound of
+  // quiet after serving (pings unanswered with a call in hand, or no holder since the
+  // last one closed) is a new ask, made minutes or hours later, and gets a bound of
   // its own: under the attach's it was refused at once, reported as a timeout, and the
   // save it was for went out as a plain request (review of #358, twice). A hello
-  // takeover can itself come after the attach's bound — `opening` after `opening`, then
-  // silence, with the backoff grown to thirty seconds — and is then refused at once, as
+  // takeover can itself come after the attach's bound (`opening` after `opening`, then
+  // silence, with the backoff grown to thirty seconds) and is then refused at once, as
   // its callers already were; `reportError` says each message once a page, so that is
   // not a second report.
   let inherited: number | undefined = deadline;
@@ -558,7 +558,7 @@ function announceOpening(userId: string): () => void {
 
 /**
  * Opens the account's library in this tab as a step on the queue, closing whatever was
- * current first — another account's library, or this account's client library when the
+ * current first: another account's library, or this account's client library when the
  * holder has gone (`standAside`) or Open here was pressed (`takeOver`). Holds the
  * lock when it can; otherwise attaches to the tab that holds it, as its client.
  */
@@ -573,7 +573,7 @@ function openFor(userId: string, takeOver: boolean, held?: LibraryHold, inherite
     // The account before this one, closed first; what it was told is the queue's.
     if (previous) await previous.opened.then((l) => l.close()).catch(() => {});
     // One tab holds an account's library (`library-lock.ts`): this one, or another, in
-    // which case this tab is that one's client — or, with no channel to be one over,
+    // which case this tab is that one's client, or, with no channel to be one over,
     // reads the server.
     const hold = held ?? (await holdLibrary(userId, takeOver));
     if (!hold) {
@@ -584,7 +584,7 @@ function openFor(userId: string, takeOver: boolean, held?: LibraryHold, inherite
       const port = openPort(userId, me);
       if (!port) throw new LibraryElsewhereError();
       // In the lock's queue from now, not from the attach: the holder may be a page on
-      // its way out — this tab's own previous page, on a reload — whose lock is let go a
+      // its way out (this tab's own previous page, on a reload) whose lock is let go a
       // moment after this ask found it held, and nobody would answer hello. The queue
       // then gives this tab the library, and the open that follows closes this attach.
       standAside(userId);
@@ -595,7 +595,7 @@ function openFor(userId: string, takeOver: boolean, held?: LibraryHold, inherite
     try {
       // Whether the library this open makes is still the one this tab holds: the
       // entry's own step, which the late-finish replacement of the entry copies. Not the
-      // account — a reopen after a back/forward-cache restore, or a slow open finishing
+      // account: a reopen after a back/forward-cache restore, or a slow open finishing
       // late, is the same account's and a different library.
       return await open(userId, halting.signal, () => current?.opened === opened, hold);
     } catch (err) {
@@ -611,7 +611,7 @@ function openFor(userId: string, takeOver: boolean, held?: LibraryHold, inherite
    * on "Opening your notes…". Past the bound the caller is refused and the error
    * reported; the queries read the server, which is the app as it is on a device that
    * cannot keep a copy. The open itself goes on (see `queue`) and stays the account's
-   * entry, so every later ask — the root `beforeLoad` asks on every navigation — is
+   * entry, so every later ask (the root `beforeLoad` asks on every navigation) is
    * answered at once with the same refusal, and if it does finish it is the library from
    * then on, with the hooks told. The deadline is `LIBRARY_OPEN_TIMEOUT_MS` from now, or
    * the one a client's takeover inherited from its attach (`clientHooks`).
@@ -746,7 +746,7 @@ export class FeedTimeoutError extends Error {
  *
  * Without any timeout, a request that never answered held the engine's pull for good: a
  * fresh sign-in sat on "Copying your notes to this device…" until a reload, because every
- * later reason to pull — focus, the socket, the connection back — coalesces into the pull
+ * later reason to pull (focus, the socket, the connection back) coalesces into the pull
  * in flight (seen in a new private window, 2026-10-08). Timed out, it is a failed pull,
  * which the engine retries.
  *
@@ -833,7 +833,7 @@ async function open(userId: string, halting: Halting, isMine: () => boolean, hol
   /*
    * `includeInitialState: false`, spelled out. Left unset, a subscription reports only
    * the rows it has emitted before: a tombstone for a note that had not changed since
-   * the library opened — purged on another device, say — was dropped, so the list kept
+   * the library opened (purged on another device, say) was dropped, so the list kept
    * the note until something else moved it, and an update of such a row arrived as an
    * insert, which reaches every query (`rootsOfNoteChanges`) rather than the note's own.
    * `true` would fix both by emitting every row at open, which `rootsOfNoteChanges` would
@@ -910,7 +910,7 @@ async function open(userId: string, halting: Halting, isMine: () => boolean, hol
 
   /*
    * Asked to keep the store rather than evict it under storage pressure, once; the
-   * answer is the browser's and a refusal changes nothing — an evicted copy is taken
+   * answer is the browser's and a refusal changes nothing: an evicted copy is taken
    * again from a snapshot. Not awaited: some browsers answer only after a prompt.
    */
   askToPersist();
@@ -1002,8 +1002,8 @@ async function open(userId: string, halting: Halting, isMine: () => boolean, hol
   });
 
   /*
-   * The one wait in here that can wedge — the outbox's database held by another tab's
-   * queued delete (`store/wipe.ts`) — and so the one that can hold this step, and the
+   * The one wait in here that can wedge: the outbox's database held by another tab's
+   * queued delete (`store/wipe.ts`), and so the one that can hold this step, and the
    * queue behind it, for good. Not given up on: a step runs to its end (see `queue`),
    * and what `acquireLibrary` bounds is its caller's wait, not this. Before the keeper
    * and the search index are started, so an open stuck here holds the store and this
@@ -1014,17 +1014,17 @@ async function open(userId: string, halting: Halting, isMine: () => boolean, hol
   /*
    * The kept notebooks' files follow the library: a file the feed delivers into one is
    * fetched, one that leaves is dropped. Nudged by any change that can move a file or a
-   * note between notebooks — not by a change to a note's text alone, which is most
+   * note between notebooks, not by a change to a note's text alone, which is most
    * changes and every keystroke.
    */
   const rows = collections;
   /*
-   * Whole once a walk has finished — see `isWhole` for what that means and why. Not "the
+   * Whole once a walk has finished: see `isWhole` for what that means and why. Not "the
    * last pull succeeded": a device opened on a plane never has one, and that is exactly
    * where someone looks to see their files are here (review of #236).
    *
-   * One answer for everything that works over the library in the background — the
-   * keeper of files and the search index — as is which tab does that work: the one that
+   * One answer for everything that works over the library in the background (the
+   * keeper of files and the search index) as is which tab does that work: the one that
    * holds the outbox.
    */
   const settled = () => isWhole(engine.state);
@@ -1038,8 +1038,8 @@ async function open(userId: string, halting: Halting, isMine: () => boolean, hol
   const stopKeeping = onLibraryChange((roots) => {
     if (roots.has('attachments')) keeper.nudge();
   });
-  // And by every pull settling — the first copy finishing, or a pull failing offline with
-  // the copy already whole — before which the keeper stands down.
+  // And by every pull settling (the first copy finishing, or a pull failing offline with
+  // the copy already whole), before which the keeper stands down.
   listeners.add(() => keeper.nudge());
 
   /*
@@ -1049,7 +1049,7 @@ async function open(userId: string, halting: Halting, isMine: () => boolean, hol
    * something the note list should wait for, and it did, on every cold start. So the
    * library is returned without it and `search` is filled in when it is ready; what
    * needs the index meanwhile waits on `searchReady`. Opening it can also fail where
-   * opening the library did not — storage that filled between the two — and the library
+   * opening the library did not (storage that filled between the two) and the library
    * is not failed by it. Its passes run in the tab the keeper's do, and wait for the
    * same thing: a library that is whole.
    *

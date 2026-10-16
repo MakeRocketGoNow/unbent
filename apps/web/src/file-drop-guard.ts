@@ -1,7 +1,7 @@
 /**
  * Refuses a file dropped where nothing in the app takes it.
  *
- * A browser opens a file let go on a page that did not claim the drag — in the tab, in
+ * A browser opens a file let go on a page that did not claim the drag: in the tab, in
  * place of the app. The note takes files anywhere on it (`noteDropZone`), but a drop that
  * missed it, onto the list beside it or the rail or a settings page, still replaced the app
  * with the picture, and Back was the only way home. This listens on the window, so every
@@ -11,7 +11,7 @@
  *
  * Only for drags carrying files: dragged text keeps the browser's own handling, which is
  * how it gets into a text field. A native file input is left alone too, since taking a
- * dropped file is its default action — the Import page's picker accepts one that way.
+ * dropped file is its default action: the Import page's picker accepts one that way.
  *
  * Returns the cleanup, for tests; the app installs it once and keeps it.
  */

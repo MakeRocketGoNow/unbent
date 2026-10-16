@@ -14,7 +14,7 @@ interface Renaming {
 interface TagInputProps {
   tags: string[];
   /**
-   * Tags just added for the person rather than by them — an Auto-fill press — ringed for a
+   * Tags just added for the person rather than by them (an Auto-fill press), ringed for a
    * moment so they can be told from the ones that were there, in order from `at`.
    */
   fresh?: { at: number; names: readonly string[] } | undefined;
@@ -30,7 +30,7 @@ interface TagInputProps {
   /**
    * Whether each token carries controls to nudge it one step earlier or later.
    *
-   * Off by default, because for a note's tags order is nothing — they are a set, and the
+   * Off by default, because for a note's tags order is nothing: they are a set, and the
    * list draws them in one fixed order however they were entered. A select field's options
    * are a sequence: they are the order the choices appear in the picker, so that editor
    * turns this on. The controls sit inside the chip, revealed on hover and focus like the
@@ -45,19 +45,19 @@ interface TagInputProps {
    * notes holding the old name move to the new one, which the remove-then-add this editor
    * otherwise offers cannot do. The word is the target, with a pencil beside it surfacing
    * on hover like the chip's other controls, and pressing it swaps the word for a field of
-   * the same size in the same place — the chip does not move or reflow. Enter or leaving
+   * the same size in the same place: the chip does not move or reflow. Enter or leaving
    * the field renames; Escape puts the word back.
    *
    * Resolves `true` once the rename is applied, and the chip shows the new name until the
    * list it is given catches up, so it does not flick back to the old one while the save
-   * and the refetch are in flight. `false` — refused, or held for a confirm — shows the
+   * and the refetch are in flight. `false` (refused, or held for a confirm) shows the
    * old name at once, since nothing has changed yet.
    */
   onRename?: ((from: string, to: string) => Promise<boolean>) | undefined;
   /**
    * An action for the whole list, drawn at the far end of the row's last line, after the
    * "+ Add" entry: a select's "Sort A–Z". In the row rather than beside it, so it takes no
-   * width from the chips — beside it, a phone's chips went one to a line.
+   * width from the chips: beside it, a phone's chips went one to a line.
    */
   trailing?: ReactNode;
   /**
@@ -79,7 +79,7 @@ interface TagInputProps {
    */
   caseless?: boolean;
   /**
-   * Shown, not edited — a note in the trash, or any note while offline. The chips stay as
+   * Shown, not edited: a note in the trash, or any note while offline. The chips stay as
    * words; the × on each and the "+ Add" entry go, since a control that is drawn but
    * cannot be used is the thing this app keeps removing. Nothing at all to show reads as
    * "No tags" rather than as an empty row, which would look like a layout fault.
@@ -90,7 +90,7 @@ interface TagInputProps {
 /**
  * Token-style tag editor: a combobox over the note's existing tags.
  *
- * Commits on Enter, Tab, and comma, and on blur — committing only on Enter silently drops
+ * Commits on Enter, Tab, and comma, and on blur: committing only on Enter silently drops
  * a tag the user typed and then clicked away from, which reads as the app losing data.
  *
  * Enter keeps the caret here, in a now-empty field, rather than moving to the next control:
@@ -99,7 +99,7 @@ interface TagInputProps {
  * "next", and the handler refocuses to make it so even where the hint is ignored.
  *
  * The suggestions are Downshift's `useCombobox`, not a hand-rolled list. The first version
- * was one — an input over a list of buttons — and it had no arrow keys, no Escape, and none
+ * was one (an input over a list of buttons) and it had no arrow keys, no Escape, and none
  * of the roles a screen reader needs to know a list is attached to a field. Downshift owns
  * the highlighted item, the arrow, Home and End keys, Escape, and the combobox, listbox and
  * option semantics, and hands back plain props to spread on our own markup, so the row's
@@ -122,7 +122,7 @@ export function TagInput({
   const [draft, setDraft] = useState('');
   /**
    * The chip whose word is a field just now, what has been typed into it, and how wide
-   * the word and its pencil were — the field's floor, so the chip never narrows as the
+   * the word and its pencil were: the field's floor, so the chip never narrows as the
    * name is cleared and retyped and the row after it never reflows. Only a longer name
    * than the old one widens it.
    */
@@ -186,7 +186,7 @@ export function TagInput({
     setRenamed({ from, to });
     void onRename(from, to).then((applied) => {
       if (!applied) {
-        // Refused, or held for a confirm — which takes the focus itself. A chip already
+        // Refused, or held for a confirm, which takes the focus itself. A chip already
         // named `to` (a merge) must not be focused here: it would pull focus off the
         // question about it.
         setRenamed(null);
@@ -203,7 +203,7 @@ export function TagInput({
    * Whether the field is being used, as opposed to merely present.
    *
    * The entry point used to be an unstyled transparent input that only announced itself
-   * through a placeholder — and that placeholder was hidden as soon as the note had one
+   * through a placeholder, and that placeholder was hidden as soon as the note had one
    * tag, leaving an invisible target you had to know to click. Idle, it now renders as a
    * "+ Add tag" hint beside the real chips; focused, it becomes a field.
    */
@@ -267,7 +267,7 @@ export function TagInput({
         /*
            Leaving the field commits what was typed, not what was highlighted. Downshift's
            default selects the highlighted item on blur, and the pointer highlights whatever
-           it passes over — so typing "d", brushing "build" on the way to click elsewhere,
+           it passes over, so typing "d", brushing "build" on the way to click elsewhere,
            and leaving would have filed the note under "build". The blur handler below
            commits the draft instead.
         */
@@ -317,7 +317,7 @@ export function TagInput({
 
   return (
     <div className="tag-input" onClick={() => inputRef.current?.focus()}>
-      {/* Each chip's tint is the word's own — see `tintIndex` — so a tag keeps its colour everywhere. */}
+      {/* Each chip's tint is the word's own (see `tintIndex`), so a tag keeps its colour everywhere. */}
       {tags.map((t, index) => {
         const chip = chipProps(t);
         return (
@@ -459,7 +459,7 @@ export function TagInput({
               }
               // Backspace on an empty field does nothing to the tags. It used to remove the
               // last one, as many chip inputs do, but clearing a typo means pressing it a few
-              // times too many, and each extra press then took a tag off the note — saved at
+              // times too many, and each extra press then took a tag off the note, saved at
               // once, with nothing to say it happened. The same field edits a notebook
               // field's options, where it deleted those. A chip's own × is the way to remove.
             },

@@ -24,7 +24,7 @@ export const Route = createFileRoute('/delete-account')({
  * The confirmation the deletion mail asks for.
  *
  * This page exists so that opening the link is not itself the deletion. Better Auth will
- * delete on a bare GET of its own callback, and anything can fire a GET — a prefetch, a
+ * delete on a bare GET of its own callback, and anything can fire a GET: a prefetch, a
  * scanner, a restored tab, a mistap. A request without cookies fails, which covers the
  * scanners, but webmail read in the browser that holds the session is exactly the case
  * cookies do not cover. So the link lands here and the destruction happens on a POST that
@@ -60,14 +60,14 @@ function DeleteAccountPage() {
        * Sign out of an account that no longer exists, which is less strange than it reads.
        * Better Auth answers this request by re-writing the session-cache cookie from the
        * session it resolved before deleting, so the browser leaves here holding a signed
-       * five-minute claim to a user that is gone — and `/login` turns away anyone it
+       * five-minute claim to a user that is gone, and `/login` turns away anyone it
        * believes is signed in, which would bounce someone who just deleted their account
        * into an app with nothing behind it. The cookies are HttpOnly, so only the server
        * can clear them, and sign-out is what asks it to. Verified: it answers 200 after
        * the row is gone and expires every cookie.
        *
        * Best effort, though. The account is already deleted by this point, so a failure
-       * here must not strand the page on a spinner — worst case the stale cookie expires
+       * here must not strand the page on a spinner: worst case the stale cookie expires
        * on its own in five minutes.
        */
       await signOut()

@@ -11,7 +11,7 @@ export const AUTO_LOAD_MARGIN = '800px';
  * device; making someone press for it was paging for its own sake, and in the wide table
  * the button was easy not to see at all. The button stays, and this attaches to it: it is
  * what a keyboard reaches, what shows "Loading…" while a page arrives, and what is left to
- * press when a page fails — a failed page is not asked for again until the list changes,
+ * press when a page fails. A failed page is not asked for again until the list changes,
  * so a refusing server is one request, not a loop, and the press is how to try again.
  *
  * The observer's root is the nearest scrolling ancestor rather than the viewport. With
@@ -33,7 +33,7 @@ export function useAutoLoad(opts: {
   onLoad: () => void;
 }): (el: HTMLElement | null) => void {
   const [el, setEl] = useState<HTMLElement | null>(null);
-  // Read at the moment the observer fires, so a change of either does not re-observe —
+  // Read at the moment the observer fires, so a change of either does not re-observe:
   // re-observing reports at once, and on `enabled` turning back on after a failed page
   // that would be the retry loop this avoids.
   const latest = useRef(opts);

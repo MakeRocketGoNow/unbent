@@ -10,14 +10,14 @@ import { Button } from './Button.js';
  * Such a preview exists because its PR changes the note store, and only stores of its own
  * run that code; the dev instance's would answer with `main`'s. They start empty, and a
  * store change tried against an empty account proves very little, so the page offers the
- * same notes `pnpm seed:demo` loads locally — notebooks with every kind of field, receipts
+ * same notes `pnpm seed:demo` loads locally: notebooks with every kind of field, receipts
  * with files, the layout's awkward cases. It loads through this preview's own API, so what
  * writes and reads them is the branch's store.
  *
  * In the page rather than in the deploy, because the deploy has no session: the notes go
  * into whichever account is signed in, and only the page knows who that is. Offered, not
  * automatic, so nobody signs in to a preview and finds four hundred notes they did not
- * ask for — and so a preview that is meant to be tested empty can be.
+ * ask for, and so a preview that is meant to be tested empty can be.
  *
  * The seed is imported when the button is pressed, as a chunk of its own: no instance
  * but these previews ever needs it, so nothing else downloads it.

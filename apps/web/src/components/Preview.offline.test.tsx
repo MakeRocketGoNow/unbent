@@ -4,7 +4,7 @@ import { resetConnectivity, setReachableForTests } from '../connectivity.js';
 import { Preview } from './Preview.js';
 
 // A PDF link splits the pane into segments, which is what lets one segment's HTML stay
-// the same string — and so the same DOM — while another is edited.
+// the same string (and so the same DOM) while another is edited.
 vi.mock('../usePdfAttachments.js', () => ({ usePdfAttachments: () => new Set(['doc.pdf']) }));
 vi.mock('./PdfPreview.js', () => ({ PdfPreview: () => null }));
 
@@ -25,7 +25,7 @@ describe('a picture in the preview pane with no connection', () => {
     expect(container.querySelector('.file-unavailable')?.textContent).toBe('photo · Not available offline');
 
     // Typing below the PDF: the picture's own segment is the same string, so React keeps
-    // its DOM, the stand-in with it — and the wait for the connection has to be kept too.
+    // its DOM, the stand-in with it, and the wait for the connection has to be kept too.
     rerender(<Preview markdown={note('second')} noteId="n1" />);
     expect(container.querySelector('img')).toBe(img);
     expect(container.querySelector('.file-unavailable')).not.toBeNull();
@@ -51,7 +51,7 @@ describe('a picture in the preview pane with no connection', () => {
 });
 
 /**
- * A link to a page of this app goes through the router, as it does in the rich editor —
+ * A link to a page of this app goes through the router, as it does in the rich editor,
  * not a navigation that would load the whole app again. In this file because it is the
  * pane's only test file; nothing here is about the connection.
  */

@@ -70,7 +70,7 @@ function mount(doc: string, cursor = doc.length): EditorView {
  *
  * A reveal needs focus (see `reveals` in rich-markdown): a caret alone no longer uncovers
  * syntax, which is the whole point of the fix. `focus()` sets `hasFocus` at once but does
- * not itself rebuild the decorations — that happens on the next update — so a selection is
+ * not itself rebuild the decorations (that happens on the next update), so a selection is
  * dispatched after it to force the focused build synchronously, the way real editing does.
  */
 function focusAt(v: EditorView, cursor: number): void {
@@ -90,7 +90,7 @@ function mountWithAttachments(
   doc: string,
   cursor = 0,
   pdfNames: string[] = [],
-  // Off for the tests about how a note reads when the editor has no focus — the state a
+  // Off for the tests about how a note reads when the editor has no focus: the state a
   // note opened by the sidebar's arrow keys is in, where the caret sits at offset 0 without
   // anyone having put it there. See the unfocused image test.
   focus = true,
@@ -173,7 +173,7 @@ describe('syntax hiding', () => {
     expect(visibleText(v, 1)).toBe('quoted');
   });
 
-  /** A list without its bullet is unreadable, so the mark stays — as a bullet. */
+  /** A list without its bullet is unreadable, so the mark stays, as a bullet. */
   it('renders a list marker as a bullet', () => {
     const v = mount('- item\n\nplain', 10);
     expect(visibleText(v, 1)).toBe('• item');
@@ -265,7 +265,7 @@ describe('reveal scope', () => {
  * Hidden syntax must stay in the layout tree.
  *
  * `display: none` removes an element from layout, and CodeMirror derives cursor positions
- * from rendered geometry — with it, coordsAtPos returned null for every line beginning
+ * from rendered geometry: with it, coordsAtPos returned null for every line beginning
  * with a hidden mark, so arrow keys could not land on them. A line hidden at both ends,
  * like `**bold**` alone, had no measurable position anywhere.
  */
@@ -274,7 +274,7 @@ describe('layout', () => {
    * Hidden syntax must stay in the layout tree.
    *
    * `display: none` removes an element from layout, and CodeMirror derives cursor
-   * positions from rendered geometry — with it, coordsAtPos returned null for every line
+   * positions from rendered geometry: with it, coordsAtPos returned null for every line
    * beginning with a hidden mark and arrow keys could not land on them. A line hidden at
    * both ends, like `**bold**` alone, had no measurable position anywhere.
    *
@@ -578,7 +578,7 @@ describe('inline PDF', () => {
    * An imported file may not admit to being a PDF: Evernote writes `<file-name>` as a
    * display label, so a real export carries PDFs called `Menu Card`. The note's
    * attachment row records the declared type, and rich mode has to reach the same verdict
-   * as the preview pane — a note that draws a document in one and a bare link in the other
+   * as the preview pane: a note that draws a document in one and a bare link in the other
    * is precisely the bug this covers.
    */
   it('renders a PDF whose name has no extension', () => {
@@ -604,7 +604,7 @@ describe('inline PDF', () => {
   /**
    * The list is fetched, so it lands after the view is built. Nothing about that is a
    * document change, a scroll or a selection move, which are the only things that rebuild
-   * decorations — without the effect the viewer would wait for the next keystroke.
+   * decorations: without the effect the viewer would wait for the next keystroke.
    */
   it('draws the viewer when the attachment list arrives after mount', () => {
     const names = new Set<string>();
@@ -758,7 +758,7 @@ describe('inline images', () => {
    * that caret sat on it and, treated as an edit-in-progress, the first image alone kept
    * its markdown while every later one rendered. An editor no one is typing in should show
    * the finished note: the picture draws, its alt stands in as the caption, and the `![` /
-   * `](url)` around it stay hidden — the same as any image the caret is nowhere near.
+   * `](url)` around it stay hidden: the same as any image the caret is nowhere near.
    */
   it('renders a leading image in an unfocused editor rather than its markdown', () => {
     const v = mountWithAttachments('![scan](files/scan.jpg)\n\nplain', 0, [], false);
@@ -816,7 +816,7 @@ describe('inline images', () => {
   /**
    * A remote picture is not a stored file: nothing of the note's to copy, and no download,
    * which a browser would turn into a tab across origins. In their place, the one thing
-   * to do with a web image — bring it in.
+   * to do with a web image: bring it in.
    */
   it('offers save instead of copy and download for a remote image', () => {
     const doc = '![web](https://example.com/a.png)\n\nplain';
@@ -952,14 +952,14 @@ describe('inline images', () => {
   });
 
   /**
-   * The alt is kept the way a link keeps its label — a caption, and a place to click before
+   * The alt is kept the way a link keeps its label: a caption, and a place to click before
    * the picture. Only the `![` and `](url)` around it hide; the picture draws after it.
    */
   it('keeps the alt as a caption with the cursor elsewhere', () => {
     const doc = '![scan](files/scan.jpg)\n\nplain';
     const v = mountWithAttachments(doc, doc.length);
     expect(visibleText(v, 1)).toBe('scan');
-    // Its own caption style, not the link label's — see `.cm-md-image-alt`.
+    // Its own caption style, not the link label's (see `.cm-md-image-alt`).
     expect(v.dom.querySelector('.cm-md-image-alt')?.textContent).toBe('scan');
     expect(v.dom.querySelector('.cm-md-link')).toBeNull();
     expect(image(v)).not.toBeNull();
@@ -969,11 +969,11 @@ describe('inline images', () => {
 
   /**
    * The bug this fixes: a click at the end of the caption put the caret after the alt,
-   * which on the revealed line is the middle of `![alt](url)` — between `alt` and `](`.
+   * which on the revealed line is the middle of `![alt](url)`, between `alt` and `](`.
    * The hidden syntax has no width, so the click could not have meant that seam; the
    * caret belongs at the end of the whole markdown. See `snapCaptionCaret`.
    *
-   * A pointer can only be stubbed here — jsdom lays nothing out — so the test dispatches
+   * A pointer can only be stubbed here (jsdom lays nothing out), so the test dispatches
    * the selection the click would have produced, tagged as the pointer event it was.
    */
   describe('a caret put on the edge of a caption', () => {
@@ -1087,7 +1087,7 @@ describe('inline images', () => {
 
   /**
    * Hidden text keeps its line box; an alt-less image whose line collapses to nothing has to
-   * give that height up too. (An image with an alt keeps the alt caption, and its height —
+   * give that height up too. (An image with an alt keeps the alt caption, and its height:
    * see 'keeps the alt as a caption'.)
    */
   it('collapses a line that holds only an alt-less image', () => {
@@ -1112,7 +1112,7 @@ describe('inline images', () => {
   /**
    * With the source revealed the line keeps its height for the text, so the collapse that
    * hides the trailing break on an image-only line is off. The break itself is hidden, so a
-   * focused image gets no extra line under it — see the `.cm-md-image + br` theme rule.
+   * focused image gets no extra line under it (see the `.cm-md-image + br` theme rule).
    */
   it('hides the trailing break under a revealed image', () => {
     const v = mountWithAttachments('![scan](files/scan.jpg)\n\nplain', 3);
@@ -1158,7 +1158,7 @@ describe('inline images', () => {
 
   /**
    * A missing attachment used to leave nothing but its source; hiding that too would leave
-   * nothing at all. The failure has to bring the text back on its own — no keystroke or
+   * nothing at all. The failure has to bring the text back on its own: no keystroke or
    * selection change is coming to trigger a rebuild.
    */
   it('brings the source back when the image fails to load', () => {
@@ -1176,8 +1176,8 @@ describe('inline images', () => {
 
   /**
    * Offline, nothing is missing: the file is in the account and not on this device. The
-   * picture's place says so, the source stays hidden, and nothing is remembered as failed
-   * — so the picture is simply asked for again when the connection returns.
+   * picture's place says so, the source stays hidden, and nothing is remembered as failed,
+   * so the picture is simply asked for again when the connection returns.
    */
   it('says the picture is not available offline rather than bringing the source back', () => {
     const doc = '![scan](files/elsewhere.jpg)\n\nplain';
@@ -1217,7 +1217,7 @@ describe('inline images', () => {
 });
 
 /**
- * Down from the end of a note that ends in a picture opens a line under it — the only way
+ * Down from the end of a note that ends in a picture opens a line under it: the only way
  * to get the caret below an image or a PDF that is the last thing in a note.
  */
 describe('a line below a closing picture', () => {
@@ -1409,7 +1409,7 @@ describe('block-level reveal', () => {
     expect(visibleText(v, 1)).toBe(two);
   });
 
-  /** Between the two, touching neither span — the old per-node scope hid both here. */
+  /** Between the two, touching neither span: the old per-node scope hid both here. */
   it('reveals both marks with the cursor between them', () => {
     const v = mount(two, two.indexOf('and') + 1);
     expect(visibleText(v, 1)).toBe(two);
@@ -1540,8 +1540,8 @@ describe('fenced code blocks', () => {
 
   /**
    * Moving off the fence is what forms the block, the way Typora does it. The backticks
-   * are still shown here because the cursor is inside the block — the ordinary reveal
-   * rule — but the slab is now drawn, which is the change from a bare line of text.
+   * are still shown here because the cursor is inside the block (the ordinary reveal
+   * rule), but the slab is now drawn, which is the change from a bare line of text.
    */
   it('draws the slab once the cursor leaves the fence row', () => {
     const doc2 = '```ts\nfoo';
@@ -1562,7 +1562,7 @@ describe('fenced code blocks', () => {
 
   /**
    * Once the block is closed it is formed, so the caret on a fence reveals its backticks
-   * inside the slab rather than dropping the row out of the block — which left the
+   * inside the slab rather than dropping the row out of the block, which left the
    * closing fence hanging below an unrounded edge.
    */
   it('keeps a closed block whole with the cursor on its closing fence', () => {
@@ -1757,7 +1757,7 @@ describe('following links', () => {
   });
 
   /**
-   * A path from the root of the site — the sample note's links to its settings pages —
+   * A path from the root of the site (the sample note's links to its settings pages)
    * goes to the router in place, the way a link in the sidebar would, and claims the press
    * like any link the editor opens.
    */
@@ -1792,8 +1792,8 @@ describe('following links', () => {
   });
 
   /**
-   * A path with no page — a link carried over from another tool's export, or a stored
-   * file's address — is text, as before: a new tab would only show the not-found page.
+   * A path with no page (a link carried over from another tool's export, or a stored
+   * file's address) is text, as before: a new tab would only show the not-found page.
    */
   it('leaves a path the app has no page for as text', () => {
     for (const doc of ['[Note](/Folder/Note.md)\n\nplain', '[File](/api/notes/n1/files/a.txt)\n\nplain']) {
@@ -1833,7 +1833,7 @@ describe('following links', () => {
   });
 
   /**
-   * Attachments are served sandboxed, so a navigation would download anyway — and in the
+   * Attachments are served sandboxed, so a navigation would download anyway, and in the
    * Android app a same-origin tab replaces the app.
    */
   it('downloads any other stored file', () => {

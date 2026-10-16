@@ -114,7 +114,7 @@ describe('classify', () => {
  * The Worker answers some paths itself, ahead of its SPA fallback (`run_worker_first` in
  * `apps/api/wrangler.toml`, once per environment). The service worker must leave page
  * loads of exactly those alone, or it would answer an OAuth callback with the app on every
- * device that has it — until another deploy.
+ * device that has it, until another deploy.
  */
 describe('WORKER_PREFIXES', () => {
   it('is the Worker’s own run_worker_first, in every environment', () => {

@@ -35,12 +35,12 @@ export function editOpenNoteField(noteId: string, fieldId: string, value: FieldV
 }
 
 /**
- * The same seam for the note's filing — its notebook and its tags — which a bulk action
+ * The same seam for the note's filing (its notebook and its tags), which a bulk action
  * on the list can change under the open note.
  *
  * The hazard is the one above, in the other direction: the list refiles forty notes,
  * one of them is open, and the editor's draft still says the old notebook. Its next
- * autosave — a keystroke in the body — would put the old filing back over the batch.
+ * autosave (a keystroke in the body) would put the old filing back over the batch.
  * So the batch tells the draft what it did, the way a cell edit does, and the editor's
  * next save finds nothing to undo. Tags are given as a function of the draft's own,
  * because the batch adds and removes rather than sets: the note keeps whatever else it

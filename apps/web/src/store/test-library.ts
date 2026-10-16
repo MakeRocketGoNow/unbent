@@ -6,7 +6,7 @@ import { LIBRARY_ROOTS, rootsOfNoteChanges } from './library-roots.js';
 
 /**
  * An in-memory library for component tests: the four collections with no persistence
- * and no feed, seeded with rows, and a way to change them the way a feed page would —
+ * and no feed, seeded with rows, and a way to change them the way a feed page would:
  * through the collections' sync path, and told to the query bridge as the real library
  * tells it (`open` in `library.ts`: the same roots, the same subscription options, one
  * call per task), so a test that installs `installLibraryQueries` sees the queries re-run.
@@ -72,7 +72,7 @@ export function installTestLibrary(rows: Rows = {}): TestLibrary {
   // roots a task's changes reach, in one call on a microtask, so a test sees one
   // invalidation per write and never one in the middle of it. The subscription option
   // is explicit for the same reason as there: unset, a subscription drops the removal of
-  // a row it has not emitted — every seeded row, here — and the holder's bug would not show.
+  // a row it has not emitted (every seeded row, here) and the holder's bug would not show.
   let touched = new Set<string>();
   const changed = (roots: ReadonlySet<string>) => {
     const first = touched.size === 0;

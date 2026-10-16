@@ -11,7 +11,7 @@ interface FieldCellInputProps {
   onChange: (value: FieldValue | null) => void;
   /** For a labelled row in the property list; the table names the control instead. */
   id?: string | undefined;
-  /** An accessible name where no `<label>` points at the control — a table cell. */
+  /** An accessible name where no `<label>` points at the control: a table cell. */
   label?: string | undefined;
 }
 
@@ -23,20 +23,20 @@ interface FieldCellInputProps {
  * same way and the select has a rule worth keeping in one place: a value that is no
  * longer among the options stays selectable rather than being blanked. The note said it,
  * and the option list changing is not the note's edit. The stylesheet draws a chosen
- * option as a chip in the option's own tint — the tint the tag editor gives the word —
+ * option as a chip in the option's own tint (the tint the tag editor gives the word),
  * and an unchosen one as "Empty", which is Notion's word for it.
  *
  * A multi-select is the tag editor over the field's options: chips for what is chosen,
  * and a restricted entry that offers the rest. The same rule about retired options
- * holds — a chip the list no longer offers stays, removable, until the note lets go of
+ * holds: a chip the list no longer offers stays, removable, until the note lets go of
  * it. Read-only, it is the chips alone.
  *
  * A rating belongs here for the same reason: it is picked, not typed. It is the one
- * control whose shape depends on its definition rather than only its type — a `number`
- * with a scale — which is what `isRatingField` is for.
+ * control whose shape depends on its definition rather than only its type (a `number`
+ * with a scale), which is what `isRatingField` is for.
  *
  * Null for every other type: those are typed into, and a cell is not the place for that
- * yet — the note is.
+ * yet: the note is.
  */
 export function FieldCellInput({
   def,

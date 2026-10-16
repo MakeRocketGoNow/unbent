@@ -8,11 +8,11 @@ import type { ImportEvent, ImportRequest } from './import-worker.js';
  * The one place PDF indexing is started from, and the one place its state lives.
  *
  * Indexing used to be a private affair of the Import panel: it made a worker, listened to
- * it, and terminated it on unmount — so leaving Settings killed a run in progress. Now the
+ * it, and terminated it on unmount, so leaving Settings killed a run in progress. Now the
  * app starts a pass on open, the editor hands over a file it has just uploaded, and the
  * panel's button is one caller among several. A run has to outlive any one screen, and
  * every screen has to be able to see it, so the state is a module-level store that React
- * reads through `useSyncExternalStore` — which is what that hook is for.
+ * reads through `useSyncExternalStore`, which is what that hook is for.
  *
  * Built by a factory so a test can hand in a fake worker; the instance at the bottom spawns
  * the real one.
@@ -48,7 +48,7 @@ export interface Indexing {
    */
   start(opts: { auto: boolean }): void;
   /**
-   * Ends the running pass, between files — the worker's abort — with the file in flight
+   * Ends the running pass, between files (the worker's abort), with the file in flight
    * left to land rather than wasted, and the state saying `stopping` until it does.
    * Nothing happens when no pass is running.
    */
@@ -77,8 +77,8 @@ export function createIndexing(spawn: () => Worker): Indexing {
   let autoStarted = false;
   /**
    * A stop asked for during this pass, read by the worker's answers: an abort ends the
-   * worker's pass with the same `backfill-done` a finished one sends — or, when it cuts a
-   * fetch short, an `error` — and this is what tells those apart from the real thing.
+   * worker's pass with the same `backfill-done` a finished one sends (or, when it cuts a
+   * fetch short, an `error`), and this is what tells those apart from the real thing.
    */
   let stopping = false;
 
@@ -91,7 +91,7 @@ export function createIndexing(spawn: () => Worker): Indexing {
    * One worker, made on first use and kept.
    *
    * Kept rather than made per run because the editor posts it single files as they are
-   * uploaded, and a worker per file would load pdf.js — about a megabyte — every time.
+   * uploaded, and a worker per file would load pdf.js (about a megabyte) every time.
    */
   function ensureWorker(): Worker {
     if (worker) return worker;
@@ -109,7 +109,7 @@ export function createIndexing(spawn: () => Worker): Indexing {
       }
     };
     w.onerror = (event) => {
-      // Module workers often die with an empty message — the nested pdf.js worker's
+      // Module workers often die with an empty message: the nested pdf.js worker's
       // teardown is one way. Say something actionable, and drop the worker so the next
       // start gets a fresh one instead of posting into a corpse.
       set({ status: 'error', stopping: false, error: event.message || 'Indexing stopped unexpectedly — try again.' });
@@ -126,7 +126,7 @@ export function createIndexing(spawn: () => Worker): Indexing {
       /**
        * The unasked run happens once per page load. StrictMode mounts effects twice in
        * development, and the shell re-renders whenever the session does; neither should
-       * start a second download of the same files. The button is not gated this way —
+       * start a second download of the same files. The button is not gated this way:
        * pressing it is asking.
        */
       if (auto) {
@@ -155,7 +155,7 @@ export function createIndexing(spawn: () => Worker): Indexing {
      * The File goes across as it is: it is structured-cloneable, and Chromium passes the
      * blob by reference, so the bytes already in hand reach the worker without a copy and
      * without fetching them back from R2. `filename` is the name the server stored, which
-     * is not always the file's own — `availableFilename` suffixes a collision.
+     * is not always the file's own: `availableFilename` suffixes a collision.
      */
     indexFile(noteId, filename, file) {
       if (!isExtractable(file.type)) return;
@@ -188,7 +188,7 @@ export function stopIndexing(): void {
 /**
  * Indexes a file the editor just uploaded, unless the server said it is doing that.
  * The server's word wins because the server has the bytes and the client's pass would
- * only race it — and lose, since the upsert takes whichever text lands last.
+ * only race it, and lose, since the upsert takes whichever text lands last.
  */
 export function indexUploadedFile(noteId: string, uploaded: UploadedFile, file: File): void {
   if (uploaded.indexing === 'server') return;

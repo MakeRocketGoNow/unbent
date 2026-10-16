@@ -7,7 +7,7 @@ import { useFeedState } from './store/use-feed-state.js';
 /**
  * How many live notes the account holds, or null while that is not known yet.
  *
- * The one place the notes view asks "is this account empty?" — the list's empty state on a
+ * The one place the notes view asks "is this account empty?": the list's empty state on a
  * phone and the workspace's on a desktop both read it. Null whenever the answer
  * would be a guess: the library still opening or taking its first copy, a count not taken
  * yet, a count that failed. Every caller treats null as "draw nothing new", which is what
@@ -17,8 +17,8 @@ import { useFeedState } from './store/use-feed-state.js';
  * an empty account, and each caller decides separately whether the scope on screen is the
  * whole account. See `libraryTotalQuery` for how whole and count are read together.
  *
- * The feed's state is followed only to know when to count again. A device with no library
- * — no file system to keep one in (`PersistenceUnavailableError`), or a test — has no feed
+ * The feed's state is followed only to know when to count again. A device with no library,
+ * no file system to keep one in (`PersistenceUnavailableError`) or a test, has no feed
  * state, and its count comes from the server or the test's library, both of which are
  * whole.
  *
@@ -63,14 +63,14 @@ export function showsWholeAccount(search: {
  * How many rows the notes column has loaded, for the workspace pane beside it.
  *
  * The pane only acts on an account with no notes, so it asks for the total only while the
- * column shows no rows — on All notes those rows are the account's. Read from the
+ * column shows no rows: on All notes those rows are the account's. Read from the
  * column rather than from a list query of the pane's own: the column's query is keyed by
  * its order, which on All notes is often a remembered one, so a query of `notesQuery({})`
  * here would be a second list to keep in step rather than the same one. `NotesLayout`
  * provides it around the routed workspace. Null while the column's first load is pending,
  * or while it still shows the previous place's rows: its rows say nothing about the
  * account then, so the pane waits rather than counting an archive on every open. Zero
- * where nothing provides it — a test mounting the pane alone — which the pane reads as a
+ * where nothing provides it (a test mounting the pane alone), which the pane reads as a
  * column with no rows, and asks.
  */
 export const ListRowsContext = createContext<number | null>(0);

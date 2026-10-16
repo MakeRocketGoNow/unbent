@@ -6,7 +6,7 @@ import { RatingInput } from './RatingInput.js';
 /**
  * A rating has two ways in and they must not fight: a click on a star means that whole
  * star, and a drag across the row means the half-star zone under the pointer. They did
- * fight once — the row committed the pointer's position on press, so clicking the middle
+ * fight once: the row committed the pointer's position on press, so clicking the middle
  * of the third star stored 2.5, because a star's own centre falls in one of its two
  * half-zones. The click tests below are that bug.
  *
@@ -18,7 +18,7 @@ const wholes: FieldScale = { max: 5, step: 1 };
 
 /**
  * jsdom ships no `matchMedia`, and the control asks `TOUCH_QUERY` which half-star
- * mechanic to use — so this is both the switch between them and what keeps the component
+ * mechanic to use, so this is both the switch between them and what keeps the component
  * mountable at all. `false` is a mouse, which is the default every test here assumes
  * unless it is about the touch behaviour.
  */
@@ -84,7 +84,7 @@ describe('dragging across the row', () => {
     render(<RatingInput scale={halves} value={null} onChange={onChange} label="Rating" />);
     const row = measureRow();
     fireEvent.pointerDown(row, { clientX: 5, button: 0, pointerId: 1 });
-    // Past the slop, so this is a drag; 45px of 100 is the 5th of ten zones — 2.5.
+    // Past the slop, so this is a drag; 45px of 100 is the 5th of ten zones: 2.5.
     fireEvent.pointerMove(row, { clientX: 45, pointerId: 1 });
     fireEvent.pointerUp(row, { clientX: 45, pointerId: 1 });
     expect(onChange).toHaveBeenCalledWith(2.5);
@@ -95,7 +95,7 @@ describe('dragging across the row', () => {
     render(<RatingInput scale={halves} value={null} onChange={onChange} label="Rating" />);
     const row = measureRow();
     fireEvent.pointerDown(row, { clientX: 5, button: 0, pointerId: 1 });
-    // 65px of 100 is the 7th of ten zones — 3.5, so the 4th star is drawn half filled.
+    // 65px of 100 is the 7th of ten zones: 3.5, so the 4th star is drawn half filled.
     fireEvent.pointerMove(row, { clientX: 65, pointerId: 1 });
     // Nothing is saved yet: the fill is a preview of what lifting here would commit.
     expect(onChange).not.toHaveBeenCalled();
@@ -205,7 +205,7 @@ describe('a half by pointer position (mouse)', () => {
     const onChange = vi.fn();
     render(<RatingInput scale={halves} value={null} onChange={onChange} label="Rating" />);
     const row = measureRow();
-    // 45px of 100 is the 5th of ten zones — the left half of star 3.
+    // 45px of 100 is the 5th of ten zones: the left half of star 3.
     fireEvent.pointerMove(row, { clientX: 45, pointerId: 1, pointerType: 'mouse' });
     fireEvent.click(screen.getByRole('radio', { name: '3 of 5' }));
     expect(onChange).toHaveBeenCalledWith(2.5);
@@ -233,7 +233,7 @@ describe('a half by pointer position (mouse)', () => {
 
   it('draws a preview with the same glyphs a chosen rating uses', () => {
     /*
-       The row, not the stars, says a rating is provisional — `data-preview` drives a wash
+       The row, not the stars, says a rating is provisional: `data-preview` drives a wash
        in the stylesheet. Two earlier attempts marked the glyphs instead: dimming them hit
        the app's own `:disabled` look, and hollowing them made a preview of five read as an
        empty rating. So a previewed 3 and a stored 3 draw identically, on purpose.

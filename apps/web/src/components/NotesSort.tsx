@@ -29,8 +29,8 @@ interface NotesSortProps {
   /**
    * Why there is no order to choose, when there is not: a search drawn as a table, whose
    * matches are ranked. The icon fades and stays where it was rather than leaving the row,
-   * which would slide the search field along it under the typing — see `NotesViewToggle`
-   * for the same fade.
+   * which would slide the search field along it under the typing (see `NotesViewToggle`
+   * for the same fade).
    */
   disabledReason?: string | undefined;
 }
@@ -39,7 +39,7 @@ interface NotesSortProps {
  * The note list's sort control: one icon, and the sheet of orders behind it.
  *
  * This was a ⋯ menu holding "Sort: …" and Settings. Settings was here only because the
- * phone hid the topbar over the list and the avatar menu that carried it went with it —
+ * phone hid the topbar over the list and the avatar menu that carried it went with it:
  * a view with no route to Settings was the bigger problem, so sort paid for it with an
  * extra tap. The drawer's floor carries Settings now, as a row beside Trash, which is
  * where Keep puts it and where a thumb that opened the ☰ already is. That frees this
@@ -49,7 +49,7 @@ interface NotesSortProps {
  * which notes are on screen and this only changes their order, so among the filters
  * "Title A–Z" invites being read as something that narrows.
  *
- * The current order is named in the icon's accessible name rather than beside it — the
+ * The current order is named in the icon's accessible name rather than beside it: the
  * row has no room for a caption, and the sheet marks the current choice the moment it
  * opens, so nothing is hidden that a second tap would have revealed.
  *
@@ -60,7 +60,7 @@ interface NotesSortProps {
  * `<select>` in its column for this, which showed the current order without a tap and
  * was the better control for a mouse; it went with the rest of that column, because the
  * column's whole problem was rows of controls above a list with no room left for notes.
- * Above the breakpoint the sheet is drawn as a panel beside the list — see `Sheet`.
+ * Above the breakpoint the sheet is drawn as a panel beside the list (see `Sheet`).
  */
 export function NotesSort({ notebook, sort, order, sortField, fields = [], disabledReason }: NotesSortProps) {
   const navigate = useNavigate();
@@ -141,7 +141,7 @@ export function NotesSort({ notebook, sort, order, sortField, fields = [], disab
             One row per field rather than two per field in the list above, which is the
             shape this would otherwise take: a notebook with nine fields would put eighteen rows under five, and the orders
             most people want would scroll away beneath the ones most people do not. The
-            name is said once and the choice is only which way — the same thing the
+            name is said once and the choice is only which way, the same thing the
             table's header does with a click, made visible here as two buttons, because
             clicking the same row again to flip it is a gesture nobody would guess.
 

@@ -6,7 +6,7 @@ import { closeLibraryAndStore as closeLibrary, currentLibraryUser } from './libr
 
 /**
  * What the wipe removes, against a stand-in file system and IndexedDB: every account's
- * copy, outbox and files, or every account's but the one named — whose database, its
+ * copy, outbox and files, or every account's but the one named, whose database, its
  * journal and WAL beside it, its files directory and its outbox stay, since the outbox may hold writes the server has
  * not heard of. The engine's own directory is never ours to remove.
  */

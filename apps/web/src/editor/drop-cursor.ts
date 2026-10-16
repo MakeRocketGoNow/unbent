@@ -8,7 +8,7 @@ const setDropPos = StateEffect.define<number | null>();
  * A caret drawn between two characters.
  *
  * A zero-width widget rather than a styled range: the target is a position, not a
- * character, and a range decoration would have to highlight the character next to it —
+ * character, and a range decoration would have to highlight the character next to it,
  * which points at the wrong gap by half a glyph and looks like a selection.
  */
 class DropCaret extends WidgetType {
@@ -64,14 +64,14 @@ export function showDropAt(view: EditorView, pos: number | null): void {
   view.dispatch({ effects: setDropPos.of(pos) });
 }
 
-/** Whether a drag carries files — the only drags the editor and the note around it aim. */
+/** Whether a drag carries files: the only drags the editor and the note around it aim. */
 export function carriesFiles(event: DragEvent): boolean {
   return event.dataTransfer?.types.includes('Files') ?? false;
 }
 
 /**
- * Refuses a dragged file, for a note that takes no changes — in the trash, or held by a
- * save conflict: the pointer says no, and no point is drawn. It used to draw the point all
+ * Refuses a dragged file, for a note that takes no changes (in the trash, or held by a
+ * save conflict): the pointer says no, and no point is drawn. It used to draw the point all
  * the same, and the drop then did nothing (`attachments` takes the file and keeps it), so
  * the person aimed at a place the note was never going to put anything.
  *
@@ -86,8 +86,8 @@ export function refuseFile(view: EditorView, event: DragEvent): void {
 /**
  * Shows where a dragged file will land.
  *
- * The browser draws no insertion point for a drag carrying files — its own caret only
- * appears for dragged *text* — so dropping a screenshot into a note was aiming at
+ * The browser draws no insertion point for a drag carrying files (its own caret only
+ * appears for dragged *text*), so dropping a screenshot into a note was aiming at
  * nothing. The drop handler already resolves the pointer to a document position with
  * `posAtCoords`; this draws that same position while the pointer is still moving, so what
  * you see during the drag is exactly what the drop uses.
@@ -107,7 +107,7 @@ export function fileDropCursor(): Extension {
           refuseFile(view, event);
           return false;
         }
-        // `posAtCoords` measures rendered geometry, so it throws where there is none —
+        // `posAtCoords` measures rendered geometry, so it throws where there is none:
         // a headless test environment, or a pointer over a line that has been scrolled
         // out of the rendered viewport. Neither is worth failing a drag over: without a
         // position there is simply nothing to point at, and the drop still lands

@@ -19,7 +19,7 @@ import { useShell } from './auth-gate.js';
  * `location` renders the incoming route's chrome around the outgoing route's content for
  * the whole of that gap. Signing in is where it was visible: `/notes` loads four requests,
  * and for as long as they took, the topbar and `.shell.wide` were drawn around the still
- * rendered sign-in screen — and `wide` sets `max-width: none` over the centred 46rem
+ * rendered sign-in screen, and `wide` sets `max-width: none` over the centred 46rem
  * column of `.shell`, so the login card jumped to the left edge and stayed there.
  *
  * The shells here are the real ones by class name; what is asserted is that the class and

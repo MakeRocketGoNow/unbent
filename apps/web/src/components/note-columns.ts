@@ -7,7 +7,7 @@ import type { SortTarget } from './sort-options.js';
  * A plain description rather than a render function: what the column is, what it sorts
  * by, and how its cells align. `NoteTable` draws it. Kept as data so that a table
  * library's column definitions could be built from it one to one if resizing, hiding or
- * reordering columns ever makes one worth adopting — the rendering would change, not this.
+ * reordering columns ever makes one worth adopting: the rendering would change, not this.
  */
 export interface NoteColumn {
   id: string;
@@ -24,7 +24,7 @@ export interface NoteColumn {
 /**
  * The columns for a notebook: its name first, then its fields in the order the notebook
  * keeps them, then the tags and the two dates. The name column is the one that stays put
- * when the rest scroll — see the stylesheet — which is why it is always first.
+ * when the rest scroll (see the stylesheet), which is why it is always first.
  */
 export function noteColumns(defs: readonly FieldDef[]): NoteColumn[] {
   const fields = [...defs]

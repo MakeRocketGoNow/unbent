@@ -25,7 +25,7 @@ import { useOutbox, useSyncStatus } from '../store/use-outbox.js';
  * A conflict that comes back from the outbox, long after the save: the save went to the
  * local copy at once and to the server later, and the refusal arrived with the note
  * closed. Ending the entry rolled the row back to the server's copy, so opening the note
- * shows that — and the refusal must bring the typing back, or "Keep mine" keeps nothing.
+ * shows that, and the refusal must bring the typing back, or "Keep mine" keeps nothing.
  */
 const server: Note = {
   id: 'n1',
@@ -105,7 +105,7 @@ describe('a conflict that comes back from the outbox', () => {
     vi.mocked(api.updateNote).mockResolvedValue({ ...theirs, title: typed.title, updatedAt: 201 });
     mount();
 
-    // The typing, not the row, with the notice and the editor locked — the body too:
+    // The typing, not the row, with the notice and the editor locked, the body too:
     // the editor seeds from the row unless told otherwise, and the row is the server's.
     await waitFor(async () => expect((await title()).value).toBe(typed.title));
     expect(screen.getByRole('alert').textContent).toContain('This note changed on another device.');

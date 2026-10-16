@@ -9,7 +9,7 @@ vi.mock('./store/wipe.js', () => ({ wipeLocalStores: vi.fn(async () => {}), clos
  * first read, so each case imports a fresh copy.
  *
  * What these hold is the distinction the route guard used to miss: only the server can
- * say nobody is signed in. A request that never arrives — no signal — or one that hangs
+ * say nobody is signed in. A request that never arrives (no signal) or one that hangs
  * must leave whoever this device remembers signed in, instead of sending them to `/login`.
  */
 const USER = { id: 'u1', email: 'someone@example.com', name: 'Someone' };
@@ -197,8 +197,8 @@ describe('ensureSession', () => {
 
   /*
      Airplane mode: the browser says there is no network before any request is made, and
-     on Android the request then hangs rather than failing. Waiting for it — even for the
-     timeout — is a blank page at launch, so a remembered user is answered at once.
+     on Android the request then hangs rather than failing. Waiting for it, even for the
+     timeout, is a blank page at launch, so a remembered user is answered at once.
   */
   it('does not wait for the check when the browser already says it is offline', async () => {
     rememberSession(USER);
@@ -214,8 +214,8 @@ describe('ensureSession', () => {
 
   /*
      A cold start offline leaves the store holding the network error from then. Once the
-     connection is back, a navigation must not read that old error as news — it put the
-     app back offline on every page change — and the app must ask again by itself.
+     connection is back, a navigation must not read that old error as news (it put the
+     app back offline on every page change), and the app must ask again by itself.
   */
   describe('after a cold start offline', () => {
     async function freshGraph() {

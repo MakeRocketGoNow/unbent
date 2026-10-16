@@ -12,7 +12,7 @@ const PREFIX = 'unbent.';
  * flickering from a default, and writing in the setter rather than an effect means
  * mounting a component never rewrites what it just read.
  *
- * Values are JSON so that numbers come back as numbers — the pane widths need that, and a
+ * Values are JSON so that numbers come back as numbers: the pane widths need that, and a
  * bare `localStorage` string would have to be parsed at every call site instead.
  *
  * Both storage calls are guarded. Reading has to survive a hand-edited or half-written
@@ -23,7 +23,7 @@ export function usePersistentState<T>(
   key: string,
   fallback: T,
   /**
-   * Rejects values that parse but are no longer meaningful — a pane width from before the
+   * Rejects values that parse but are no longer meaningful: a pane width from before the
    * clamps were retuned, say. Returning undefined falls back, which is what a fresh
    * browser would have done anyway.
    */
@@ -67,7 +67,7 @@ export function usePersistentState<T>(
   return [value, set];
 }
 
-/** Keeps a resize within its track's limits. Exported for its own test — the drag that
+/** Keeps a resize within its track's limits. Exported for its own test: the drag that
  *  calls it is pointer-driven, and pointer capture is not worth simulating in jsdom. */
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));

@@ -49,7 +49,7 @@ function row(id: string): HTMLLIElement {
   return li;
 }
 
-/** A row after the notes — Load more, the empty line — which moves with them. */
+/** A row after the notes (Load more, the empty line), which moves with them. */
 function trailing(key: string): HTMLLIElement {
   const li = row(key);
   delete li.dataset.noteId;

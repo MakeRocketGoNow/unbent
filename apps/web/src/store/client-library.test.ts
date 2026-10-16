@@ -25,8 +25,8 @@ import { forwardable } from './actions.js';
 /**
  * The channel between the tab holding the library and the account's other tabs
  * (`library-channel.ts`): a holder served from collections in memory, a client attached
- * over the fake channel, and what crosses between them — the rows once, the changes
- * after, the statuses, the calls and their answers — and what happens when the holder
+ * over the fake channel, and what crosses between them (the rows once, the changes
+ * after, the statuses, the calls and their answers) and what happens when the holder
  * goes.
  */
 
@@ -262,7 +262,7 @@ describe('a client of the holding tab', () => {
     const lib = await client(hk);
     const before = lib.version();
     hk.changes.length = 0;
-    // A change of text alone reaches the list and the note — from the second change to a
+    // A change of text alone reaches the list and the note, from the second change to a
     // row on: the collection reports the first change to a row a subscription has not
     // seen as an insert with no previous value, which reaches everything, in the holder's
     // own tab as much as here.
@@ -468,7 +468,7 @@ describe('a client of the holding tab', () => {
     expect(patient.silent).toBe(0);
     expect(lib.notes.size).toBe(1);
     // Served once, a client never counts hellos again: its holder closes, nothing serves
-    // for as long as it likes, and with no call in hand it stays where it is — a steal
+    // for as long as it likes, and with no call in hand it stays where it is: a steal
     // from an idle client undid a person's Open here elsewhere (review of #354).
     served.server.stop();
     await settle();
@@ -531,8 +531,8 @@ describe('a client of the holding tab', () => {
     const attachedTimes = () => channel.posted.filter((m) => m.type === 'attached').length;
     expect(hellos()).toHaveLength(1);
     expect(attachedTimes()).toBe(1);
-    // A second hello from this client reaches the holder — one sent before the first
-    // answer arrived, say — once the holder's dedupe window has passed.
+    // A second hello from this client reaches the holder (one sent before the first
+    // answer arrived, say) once the holder's dedupe window has passed.
     vi.setSystemTime(Date.now() + HELLO_DEDUPE_MS + 1);
     const waiting = lib.call('trashNote', ['n1']);
     channel.port().post(hellos()[0]!);

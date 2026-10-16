@@ -4,7 +4,7 @@ import { vi } from 'vitest';
  * An origin-private file system in memory, for tests of what is written to one
  * (`files.ts`, the keeper, an upload waiting in the outbox). jsdom has none. Only what
  * those call: directories and files by name, `entries` and `keys`, `removeEntry`, and a
- * writable that swaps its contents in on `close`, as the real one does — so a test can
+ * writable that swaps its contents in on `close`, as the real one does, so a test can
  * see that an aborted write left nothing behind.
  */
 class NotFound extends Error {

@@ -14,12 +14,12 @@ import { useNotesLayout } from './useNotesLayout.js';
  * The class the mobile layout hangs on.
  *
  * Below 860px, `.note-open` is the entire difference between showing the note list and
- * showing the open note — the rest of that behaviour is CSS, which jsdom does not
+ * showing the open note: the rest of that behaviour is CSS, which jsdom does not
  * evaluate. So this is the one piece worth pinning in a test: if the route no longer
  * reaches the grid, every mobile rule silently stops applying and nothing else fails.
  *
  * The routes are rebuilt rather than imported from the generated tree so the test needs no
- * session gate, no API and no loaders — the same approach as settings-routing.test.tsx.
+ * session gate, no API and no loaders, the same approach as settings-routing.test.tsx.
  */
 function harness(initial: string, mode: 'list' | 'table' = 'list') {
   const rootRoute = createRootRoute({ component: Outlet });

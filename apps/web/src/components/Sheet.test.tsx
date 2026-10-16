@@ -5,13 +5,13 @@ import { Sheet } from './Sheet.js';
 /**
  * The modality contract.
  *
- * Everything that makes this a sheet rather than a box — the top layer, the inert
- * background, the scrim, the focus return — is the platform's, and jsdom implements none
+ * Everything that makes this a sheet rather than a box (the top layer, the inert
+ * background, the scrim, the focus return) is the platform's, and jsdom implements none
  * of it. What is left is the seam: the prop has to be pushed onto the element by calling
  * `showModal`/`close`, and every way the platform can close the element has to come back
  * as `onClose` or the next open finds the element already shut and does nothing.
  *
- * jsdom ships no `showModal`, so these stub it on the prototype and track `open` by hand —
+ * jsdom ships no `showModal`, so these stub it on the prototype and track `open` by hand:
  * the same shape as `Disclosure.test.tsx`'s `matchMedia` stub, and for the same reason.
  */
 function stubDialog() {
@@ -53,7 +53,7 @@ describe('Sheet', () => {
      The visible way out.
 
      The grip at the top looks like a drag handle, and dragging is the one thing this sheet
-     deliberately does not implement — so the gesture it advertises does nothing, and without
+     deliberately does not implement, so the gesture it advertises does nothing, and without
      a control that does, a phone user's first instinct is a dead end. Asserted here rather
      than left to the callers: every sheet in the app gets this, and a missing ✕ is invisible
      to a type check.
@@ -70,7 +70,7 @@ describe('Sheet', () => {
     const grip = (c: HTMLElement) => c.querySelector('.sheet-grip') as HTMLElement;
     /*
        A drag of `ms` milliseconds. The hook reads `performance.now()` at the start and at
-       the end, so the clock is stubbed to answer those two reads in order — jsdom fires the
+       the end, so the clock is stubbed to answer those two reads in order: jsdom fires the
        events microseconds apart, which would make every pull a flick.
     */
     const drag = (el: HTMLElement, from: number, to: number, ms: number) => {
@@ -362,7 +362,7 @@ describe('Sheet', () => {
   });
 
   /*
-   * One component, two edges. The class is the whole difference — everything hard about
+   * One component, two edges. The class is the whole difference: everything hard about
    * this (the modality, the four ways out, where the padding lives) is shared, which is why
    * a separate `Drawer` component would have meant maintaining that list twice.
    */

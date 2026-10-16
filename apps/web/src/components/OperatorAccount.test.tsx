@@ -308,7 +308,7 @@ describe('OperatorAccount: wind back', () => {
 
 /**
  * The history, which is what a reload of the page reads: every wind-back, undo and load
- * with who asked, and an Undo on the newest row alone — an older row's bookmark is from
+ * with who asked, and an Undo on the newest row alone: an older row's bookmark is from
  * before every row above it.
  */
 /** The section's rows, found by its heading. */
@@ -540,7 +540,7 @@ describe('OperatorAccount: load a dump', () => {
     // The route's message already begins "The load failed:", said once here, and ends with a full stop whether or not the runtime's did.
     expect(failed.textContent).toContain('stopped partway: statement 12 refused. The store is');
     expect(failed.textContent).toContain('2026-10-06T12-00-00Z-before-load.sql, is in the list above');
-    // The confirm is gone — its counts are of a store that no longer exists — and the
+    // The confirm is gone (its counts are of a store that no longer exists) and the
     // bookmark is one press away rather than a line in the Worker log.
     expect(screen.queryByRole('group', { name: 'Confirm load dump' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Undo the load' }));

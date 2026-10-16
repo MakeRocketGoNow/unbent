@@ -58,7 +58,7 @@ function toggleWrap(before: string, after = before): StateCommand {
 /**
  * Adds or removes a line prefix such as `## ` or `> `.
  *
- * Applied per line across the selection, and toggled off when every line already has it —
+ * Applied per line across the selection, and toggled off when every line already has it:
  * pressing "quote" twice should return the text to where it started.
  */
 function toggleLinePrefix(prefix: string): StateCommand {
@@ -76,7 +76,7 @@ function toggleLinePrefix(prefix: string): StateCommand {
 
     /**
      * `existing` matches any heading level so one can replace another; `exact` matches
-     * only this prefix. Toggling off requires the exact prefix — otherwise asking for H1
+     * only this prefix. Toggling off requires the exact prefix: otherwise asking for H1
      * on an H3 line would strip the heading instead of changing its level.
      */
     const existing = prefix.startsWith('#') ? /^#{1,6} / : new RegExp(`^${escapeRegExp(prefix)}`);
@@ -132,7 +132,7 @@ function asOrdered(marker: string): { ordinal: number; delimiter: string } | nul
 /**
  * The ordinal an item should carry at `indent`, given the lines above it.
  *
- * A nested list is a new list and starts over at 1 — carrying the parent's count down a
+ * A nested list is a new list and starts over at 1: carrying the parent's count down a
  * level is what produces `1. 2. 3.` where the third item is a child, which then renders
  * as `c.` instead of the `a.` that indenting a list is supposed to give you. Scanning
  * upward stops at the first shallower item, which is the parent: anything above that
@@ -175,7 +175,7 @@ function selectedLines(state: Parameters<StateCommand>[0]['state']) {
  *
  * The indent width has to match the parent's marker, not a fixed size: a bullet nests
  * under `- ` with two spaces, but an item under `1. ` needs three. Getting this wrong does
- * not error — the line simply stays a sibling, which looks like the key did nothing.
+ * not error: the line simply stays a sibling, which looks like the key did nothing.
  */
 export const indentList: StateCommand = ({ state, dispatch }) => {
   const lines = selectedLines(state);
@@ -210,7 +210,7 @@ export const indentList: StateCommand = ({ state, dispatch }) => {
      * Restart the numbering at the level being moved into.
      *
      * Indenting only shifts the line, so an item that read `3.` stays `3.` as the first
-     * child of its new parent — and since depth decides how the marker is displayed, that
+     * child of its new parent, and since depth decides how the marker is displayed, that
      * shows up as `c.` where the user expected `a.`. Renumbering here keeps the source
      * markdown correct too: a nested list genuinely restarts at 1.
      */
@@ -248,8 +248,8 @@ export const outdentList: StateCommand = ({ state, dispatch }) => {
     /**
      * Remove exactly one level rather than a fixed width.
      *
-     * Levels are not uniformly sized — a bullet under `1. ` is indented three spaces while
-     * one under `- ` is two — so the amount removed is measured from the nearest shallower
+     * Levels are not uniformly sized: a bullet under `1. ` is indented three spaces while
+     * one under `- ` is two, so the amount removed is measured from the nearest shallower
      * ancestor, keeping outdent the exact inverse of indent.
      */
     let target = 0;
@@ -329,7 +329,7 @@ export const toggleTask = toggleLinePrefix('- [ ] ');
 /**
  * Opening fence rows, capturing the indent, the fence characters, and the language.
  *
- * Backticks and tildes are both CommonMark fences, and a fence may be indented — inside a
+ * Backticks and tildes are both CommonMark fences, and a fence may be indented: inside a
  * list item, most often. The closing fence has to repeat the same character and be at
  * least as long, so both are carried over rather than assumed to be three backticks.
  */
@@ -345,8 +345,8 @@ const FENCE_LINE = /^(\s*)(`{3,}|~{3,})([^`]*)$/;
  * Only fires when the fence is not already closed. The syntax tree cannot answer that
  * question: an unterminated fence swallows the rest of the document, claiming a later
  * block's opening fence as its own closing mark, so a node with two `CodeMark`s may still
- * be one the user is in the middle of opening. The check is textual instead — scan forward
- * for a line that would close this fence — which is what CommonMark itself does.
+ * be one the user is in the middle of opening. The check is textual instead: scan forward
+ * for a line that would close this fence, which is what CommonMark itself does.
  */
 export const closeCodeFence: StateCommand = ({ state, dispatch }) => {
   const range = state.selection.main;
@@ -369,8 +369,8 @@ export const closeCodeFence: StateCommand = ({ state, dispatch }) => {
    * A closing fence is the same three characters as an opening one, so the text alone
    * cannot tell them apart.
    *
-   * Without this, pressing Enter at the end of a block's closing fence — the obvious way
-   * to carry on writing below it — saw a fence-shaped line with nothing closing it after
+   * Without this, pressing Enter at the end of a block's closing fence (the obvious way
+   * to carry on writing below it) saw a fence-shaped line with nothing closing it after
    * and helpfully added another. That stray fence then opened a block that swallowed
    * everything the user typed next.
    */
@@ -409,7 +409,7 @@ function isOpeningFence(state: EditorState, lineFrom: number): boolean {
     return state.doc.lineAt(first.from).number === state.doc.lineAt(lineFrom).number;
   }
 
-  // No enclosing fenced block yet — the fence is the one being typed right now.
+  // No enclosing fenced block yet: the fence is the one being typed right now.
   return true;
 }
 
@@ -501,7 +501,7 @@ function padCell(text: string, width: number, align: Align): string {
 /**
  * Rewrites the table under the cursor so its columns line up.
  *
- * Tables are rendered in monospace, so equal-width cells are aligned columns — which is what
+ * Tables are rendered in monospace, so equal-width cells are aligned columns, which is what
  * the pipe format was designed for and why a table typed by hand is readable at all. Rich mode
  * sets prose in a serif but exempts table rows, so this holds in both views. This is
  * an ordinary edit rather than a rendering trick: the alignment is in the file, so it
@@ -515,7 +515,7 @@ function padCell(text: string, width: number, align: Align): string {
  * A table read out of the document: its extent, its cells, and its column alignments.
  *
  * The header and body are kept as one `rows` array with the delimiter row removed, because
- * every structural operation — adding a column, deleting a row — has to treat the header
+ * every structural operation (adding a column, deleting a row) has to treat the header
  * as just another row. Alignment lives in `aligns` instead, one entry per column.
  */
 export interface TableModel {
@@ -527,7 +527,7 @@ export interface TableModel {
   lastLine: number;
   /** Leading whitespace, so a table inside a list item keeps its indent. */
   indent: string;
-  /** Header first, then body. The delimiter row is not here — see `aligns`. */
+  /** Header first, then body. The delimiter row is not here (see `aligns`). */
   rows: string[][];
   aligns: Align[];
 }
@@ -574,7 +574,7 @@ export function readTable(state: EditorState, pos: number): TableModel | null {
 /**
  * Renders a table back to markdown with its columns padded to equal width.
  *
- * Tables are rendered in monospace, so equal-width cells are aligned columns — that is what
+ * Tables are rendered in monospace, so equal-width cells are aligned columns: that is what
  * the pipe format was designed for and why a table typed by hand is readable at all.
  */
 export function renderTable(table: TableModel): string {
@@ -602,7 +602,7 @@ export function renderTable(table: TableModel): string {
     line(widths.map((width, c) => padCell(row[c] ?? '', width, table.aligns[c] ?? null))),
   );
 
-  // Header, delimiter, then the rest — the delimiter always sits second.
+  // Header, delimiter, then the rest: the delimiter always sits second.
   return [body[0] ?? line(widths.map(() => '')), line(delimiter), ...body.slice(1)].join('\n');
 }
 
@@ -667,7 +667,7 @@ export function cellOffset(rendered: string, from: number, cell: CellRef): numbe
   }
 
   const pipes = pipePositions(line);
-  // Cell `n` opens two characters after pipe `n` — the pipe and the padding space.
+  // Cell `n` opens two characters after pipe `n`: the pipe and the padding space.
   const at = pipes[cell.column];
   return from + offset + (at === undefined ? line.length : Math.min(at + 2, line.length));
 }
@@ -703,7 +703,7 @@ function editTable(
   return true;
 }
 
-/** Inserts a column at `index`, giving every row — header included — an empty cell. */
+/** Inserts a column at `index`, giving every row, header included, an empty cell. */
 export function insertColumn(table: TableModel, index: number): void {
   for (const row of table.rows) row.splice(index, 0, '');
   table.aligns.splice(index, 0, null);
@@ -735,7 +735,7 @@ export const addColumnBefore: StateCommand = ({ state, dispatch }) =>
 /**
  * Deletes the cursor's column, unless it is the only one.
  *
- * A table with no columns is not a table — it renders as a run of bare pipes — so the last
+ * A table with no columns is not a table (it renders as a run of bare pipes), so the last
  * column stays and the user deletes the table instead.
  */
 export const deleteColumn: StateCommand = ({ state, dispatch }) =>
@@ -828,7 +828,7 @@ export function buildTable(rows: number, columns: number, indent = ''): string {
  * user is dragging away from a known starting point rather than guessing. The edit is an
  * ordinary one, so an accidental shrink is a single undo away.
  *
- * Rows are counted excluding the header, matching how the picker presents them — a 3×2
+ * Rows are counted excluding the header, matching how the picker presents them: a 3×2
  * table has a header and three rows of data.
  */
 export function resizeTable(table: TableModel, rows: number, columns: number): void {
@@ -872,7 +872,7 @@ export function resizeOrInsertTable(rows: number, columns: number): StateCommand
     const rendered = renderTable(table);
     if (rendered === before) return false;
 
-    // Clamp the cursor into the table that now exists — it may have just shrunk past it.
+    // Clamp the cursor into the table that now exists: it may have just shrunk past it.
     const cell = cellAt(state, table, state.selection.main.head) ?? { row: 0, column: 0 };
     const clamped = {
       row: Math.min(cell.row, table.rows.length - 1),
@@ -918,7 +918,7 @@ export function insertTableOfSize(rows: number, columns: number): StateCommand {
  * Inserts a starter table at the cursor.
  *
  * The toolbar's size picker only exists once the cursor is inside a table, so it cannot be
- * how the first one is made. This is the way in — a 2×3 to type over, which is the size
+ * how the first one is made. This is the way in: a 2×3 to type over, which is the size
  * most tables start at.
  */
 export const insertTableCommand: StateCommand = insertTableOfSize(2, 3);
@@ -931,7 +931,7 @@ export const insertTableCommand: StateCommand = insertTableOfSize(2, 3);
  * falls through to list indenting, which is what it does everywhere else.
  *
  * At the last cell of the last row this adds a new row rather than escaping the table,
- * matching a spreadsheet — leaving is what the arrow keys and the mouse are for.
+ * matching a spreadsheet: leaving is what the arrow keys and the mouse are for.
  */
 export const tableNextCell: StateCommand = ({ state, dispatch }) => {
   const head = state.selection.main.head;
@@ -949,7 +949,7 @@ export const tableNextCell: StateCommand = ({ state, dispatch }) => {
    * Which cell the cursor is in, counted before formatting.
    *
    * Formatting rewrites the whole table, so a character offset taken beforehand means
-   * nothing afterwards — the cursor has to be re-derived from the cell index rather than
+   * nothing afterwards: the cursor has to be re-derived from the cell index rather than
    * carried across as a position. This counts the separators to the cursor's left.
    */
   const cellIndex = countCellsBefore(line.text, head - line.from);
@@ -960,8 +960,8 @@ export const tableNextCell: StateCommand = ({ state, dispatch }) => {
    *
    * Both the reformat and the cursor move have to reach the editor as a single
    * transaction. Dispatching a selection-only update built from the formatted state
-   * against the editor's current state silently drops the text changes — the offsets are
-   * interpreted, the edits are not — so Tab appeared to do nothing at all.
+   * against the editor's current state silently drops the text changes (the offsets are
+   * interpreted, the edits are not), so Tab appeared to do nothing at all.
    */
   let working = state;
   let changes: ChangeSpec | null = null;
@@ -1050,7 +1050,7 @@ export const markdownKeymap: KeyBinding[] = [
    * `shift` as well as `run`: CodeMirror expresses Shift-Enter as a property of the Enter
    * binding rather than a separate `'Shift-Enter'` key, which is how the default keymap
    * gives both the same command. Binding only `run` left Shift-Enter falling through to
-   * that default, so it split a fence line instead of closing it — the same keystroke
+   * that default, so it split a fence line instead of closing it: the same keystroke
    * doing two different things depending on a modifier that means nothing here.
    */
   { key: 'Enter', run: closeCodeFence, shift: closeCodeFence },

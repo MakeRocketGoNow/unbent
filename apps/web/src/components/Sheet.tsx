@@ -15,7 +15,7 @@ export interface SheetProps {
    * Go back to the sheet's previous page, drawn as an arrow before the title.
    *
    * Set only on a sub-page. A sheet that shows another sheet dims the first one behind the
-   * second and leaves two scrims on the screen, so pages swap inside one dialog instead —
+   * second and leaves two scrims on the screen, so pages swap inside one dialog instead:
    * Android's `FilterSheet` makes the same choice and records the same reason. This arrow
    * is the way back up; Escape and the backdrop still close the whole thing, because that
    * is what a scrim means.
@@ -24,7 +24,7 @@ export interface SheetProps {
   /**
    * Which edge it comes from.
    *
-   * `bottom` is a sheet about the whole view — the filters, which are about the list behind
+   * `bottom` is a sheet about the whole view: the filters, which are about the list behind
    * them. `start` is navigation: a drawer of places to go, which is why it takes the side
    * the back gesture and the hamburger both live on, and why it runs the full height rather
    * than sizing to its content.
@@ -32,7 +32,7 @@ export interface SheetProps {
   side?: 'bottom' | 'start';
   /**
    * A class for the dialog itself, beside the sheet's own, for a sheet whose contents need
-   * a different box — the sort panel, whose field rows are wider than the sidebar it is
+   * a different box: the sort panel, whose field rows are wider than the sidebar it is
    * otherwise sized to. The shape stays the sheet's; this is for sizing, not restyling.
    */
   className?: string | undefined;
@@ -46,7 +46,7 @@ export interface SheetProps {
    *
    * The panel used to be pinned to the sidebar's left edge whatever opened it, because
    * every control that opened one lived in the sidebar's head. The table's one-row toolbar
-   * spans the window, and its filter and sort icons sit near the right edge — so the panel
+   * spans the window, and its filter and sort icons sit near the right edge, so the panel
    * opened a window's width away from the click. Measured rather than assumed, so the head
    * can rearrange without this following it. The phone's sheet ignores it: it comes from
    * the floor at every width.
@@ -59,10 +59,10 @@ export interface SheetProps {
 }
 
 /**
- * A sheet, on the platform's `<dialog>` — from the floor by default, or from the side.
+ * A sheet, on the platform's `<dialog>`: from the floor by default, or from the side.
  *
  * Nothing else in this app portals, and both `OverflowMenu` and `Confirm` carry comments
- * explaining why they do not — a menu of three items and an inline confirmation about a
+ * explaining why they do not: a menu of three items and an inline confirmation about a
  * named thing on screen need none of the machinery, and a confirmation especially must not
  * cover the very thing being decided about. This is the case those comments leave room for
  * rather than a contradiction of them: a surface holding six controls, which on a phone is
@@ -82,7 +82,7 @@ export interface SheetProps {
  * usual hand-rolled version listens on the whole sheet, and that is the one that feels
  * broken: a drag that begins on a scrolled list has to decide, mid-gesture, whether it is
  * scrolling or dismissing, and getting that wrong strands the sheet half off the screen.
- * A drag that begins on the grip or the title has no such question to answer — neither is
+ * A drag that begins on the grip or the title has no such question to answer: neither is
  * scrollable content, so a finger there can only mean one thing. That is the gesture
  * `useGripDrag` implements, on the grip and on the head around it, and the reason it does
  * not reach any further down. The head is included for the same reason a native sheet's
@@ -92,24 +92,24 @@ export interface SheetProps {
  * no swipe, and a control that says "close" costs nothing beside a handle that only
  * implies it.
  *
- * Above the breakpoint the same element is a floating panel beside the list — see the
- * `@media (width > 860px)` block on `.sheet` in styles.css. That is CSS deciding the shape;
+ * Above the breakpoint the same element is a floating panel beside the list (see the
+ * `@media (width > 860px)` block on `.sheet` in styles.css). That is CSS deciding the shape;
  * nothing here changes but the drag, which is switched off there. The grip is hidden at
  * that width, but the head is part of the handle, and a mouse pulling the title 72px down
- * would translate the panel and close it — a gesture no floating panel has, and one that
+ * would translate the panel and close it: a gesture no floating panel has, and one that
  * looks like the window is broken. The ✕ and Escape are the ways out of the panel, and
  * the scrim: it is still a modal dialog, so a click outside closes it the way it does on
  * a phone.
  *
  * The drawer has none. Its head is the wordmark and the account, which is what Keep's
  * drawer is headed by, and a ✕ beside them made a navigation panel read as a dialog about
- * something. The ways out it keeps are the ones a drawer is expected to have — the scrim,
- * Escape, the platform's back gesture — and picking a row, which is how a drawer is
+ * something. The ways out it keeps are the ones a drawer is expected to have (the scrim,
+ * Escape, the platform's back gesture) and picking a row, which is how a drawer is
  * normally left. A screen reader still has Escape, which the platform wires for a modal
  * dialog without any help from here.
  *
  * One component for both edges rather than a `Drawer` beside a `Sheet`: everything that is
- * hard here — the modality, the four ways out, the padding that must not be on the dialog —
+ * hard here (the modality, the four ways out, the padding that must not be on the dialog)
  * is the same for both, and the difference is which edge the box is pinned to. Splitting
  * them would mean maintaining that list twice.
  */
@@ -120,7 +120,7 @@ const DISMISS_VELOCITY = 0.6;
 
 /**
  * Hands the desktop panel its trigger's right edge, as `--anchor-end`; the stylesheet does
- * the rest — see the `width > 860px` block on `.sheet`. A sheet with no trigger to follow
+ * the rest (see the `width > 860px` block on `.sheet`). A sheet with no trigger to follow
  * has the property removed, and falls back to the sidebar's edge.
  */
 function placeAt(sheet: HTMLDialogElement | null, trigger: HTMLElement | null | undefined) {
@@ -136,12 +136,12 @@ function placeAt(sheet: HTMLDialogElement | null, trigger: HTMLElement | null | 
  * code path. `setPointerCapture` keeps the move and up events coming to the grip after the
  * finger has left its 4px box, which it does within the first few pixels of any drag.
  *
- * A press that lands on a control inside the head — the ✕, a Back arrow, a head action —
+ * A press that lands on a control inside the head (the ✕, a Back arrow, a head action)
  * is left alone entirely: it has to reach that control as a click, and capturing it here
  * would retarget the pointerup and swallow the click.
  *
- * The sheet follows the finger downward by setting `translate` inline — that overrides the
- * stylesheet's open-state `translate: 0 0` for the duration — and `data-dragging` switches
+ * The sheet follows the finger downward by setting `translate` inline (that overrides the
+ * stylesheet's open-state `translate: 0 0` for the duration) and `data-dragging` switches
  * the rise transition off so the follow is immediate rather than eased 220ms behind. On
  * release the inline value is cleared: either the sheet snaps back under its transition,
  * or `onClose` runs and it leaves the way it always does. Upward drags are ignored; the
@@ -215,7 +215,7 @@ export function Sheet({
     if (!el) return;
     /*
      * `open` is a prop here but a DOM state on the element, and the two are only kept in
-     * step by calling these methods — setting the attribute directly opens a non-modal
+     * step by calling these methods: setting the attribute directly opens a non-modal
      * dialog with no backdrop and no inertness, which looks like a styling bug rather than
      * the missing modality it is.
      */
@@ -272,7 +272,7 @@ export function Sheet({
        * The backdrop.
        *
        * A click on it targets the dialog itself, because the backdrop is a pseudo-element
-       * with no node of its own — so the test is whether the target *is* the dialog rather
+       * with no node of its own, so the test is whether the target *is* the dialog rather
        * than something inside it. That only holds because the padding belongs to the inner
        * wrapper below: give the dialog padding and its own padding box becomes a strip that
        * dismisses the sheet when tapped, which reads as the sheet closing at random.
@@ -285,7 +285,7 @@ export function Sheet({
       <div className="sheet-body">
         {/*
             The handle. The drawn bar is 4px; the element is taller than that (see
-            `.sheet-grip`) so a thumb can find it. Hidden from assistive tech on purpose —
+            `.sheet-grip`) so a thumb can find it. Hidden from assistive tech on purpose:
             the gesture has no keyboard equivalent and needs none, because the ✕ beside it
             is the accessible way out.
         */}
@@ -300,7 +300,7 @@ export function Sheet({
           <h2>{title}</h2>
           {headAction}
           {/* Last in the row, where a phone has taught people to look for it. Not on the
-              drawer — see the note on the ✕ above. */}
+              drawer (see the note on the ✕ above). */}
           {side === 'bottom' && (
             <button
               type="button"

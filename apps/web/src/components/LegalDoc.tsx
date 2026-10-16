@@ -5,8 +5,8 @@ import type { LegalDocument } from '../legal/documents.js';
 /**
  * One renderer for both legal documents.
  *
- * Deliberately not the Markdown pipeline. `Preview` is bound to a note — it takes a note id
- * and resolves attachments against it — and `renderMarkdown` runs `remarkBreaks`, which
+ * Deliberately not the Markdown pipeline. `Preview` is bound to a note (it takes a note id
+ * and resolves attachments against it), and `renderMarkdown` runs `remarkBreaks`, which
  * turns every wrapped line into a `<br>`. Legal prose is long and hand-wrapped, so it would
  * arrive full of spurious line breaks. The content is a small tree in `legal/documents.ts`
  * instead, which is also what keeps the text editable without touching JSX.

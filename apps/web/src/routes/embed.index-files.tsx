@@ -8,8 +8,8 @@ import { postToApp } from '../app-bridge.js';
 /**
  * Indexes one note's PDFs, for the Android app to run in a WebView it never shows.
  *
- * The app's share sheet uploads a capture without any page — a background job streams
- * the files to the API — so nothing extracts their text the way the editor does for its
+ * The app's share sheet uploads a capture without any page (a background job streams
+ * the files to the API) so nothing extracts their text the way the editor does for its
  * own uploads. pdf.js is the one extractor this project has and it lives in the browser;
  * the app has a browser. So after the upload the app loads this page, off screen, with
  * the note's id, and it does for that one note what Maintenance's button does for
@@ -36,7 +36,7 @@ function IndexFilesRoute() {
   return <IndexFiles note={note} />;
 }
 
-/** The page's whole behaviour, apart from reading `note` off the URL — so a test can hand it one. */
+/** The page's whole behaviour, apart from reading `note` off the URL, so a test can hand it one. */
 export function IndexFiles({ note }: { note: string }) {
   const [line, setLine] = useState('Indexing…');
 

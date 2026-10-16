@@ -6,20 +6,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
  * Plain React state rather than the URL, unlike every filter: a selection is about the
  * rows on screen at this moment, not a place someone can be sent a link to, and a URL
  * naming forty ids would be a URL nobody could read. It is also deliberately not kept
- * across a change of scope — `resetKey` — because the rows it named are no longer the
+ * across a change of scope (`resetKey`) because the rows it named are no longer the
  * rows on screen, and acting on notes you cannot see is the one thing a bulk action must
  * never do. For the same reason `ids` is the selection *as loaded*: an id the list no
  * longer holds (trashed from another tab, filtered out) is not counted and not acted on.
  *
- * The open note is a selection of one. Nothing says so while it is the only one — the
- * bar would be noise over every note anyone reads — but the first pick of another row
+ * The open note is a selection of one. Nothing says so while it is the only one (the
+ * bar would be noise over every note anyone reads) but the first pick of another row
  * brings it along, and a Shift-click ranges from it: Cmd-clicking a second note when one
  * is open selects the two, as it does in Finder and Evernote, rather than leaving the one
  * on screen out of the selection it visibly started. Picking the open note itself just
  * selects it.
  *
  * The anchor is the last row picked on its own, and a range runs from it to the row
- * picked with Shift — Finder's rule again. When nothing has been picked yet the open note
+ * picked with Shift: Finder's rule again. When nothing has been picked yet the open note
  * stands in, so Shift-clicking a row three below the one you are reading selects the
  * four; a range that lands nowhere selects the one row. Ranges add to the selection
  * rather than replace it, as Gmail's do, since building up a selection is the common
@@ -28,7 +28,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 export interface Selection {
   /** The selected rows that the list currently holds, in the list's order. */
   ids: string[];
-  /** Whether anything is selected — the list is in its selection mode. */
+  /** Whether anything is selected: the list is in its selection mode. */
   active: boolean;
   has(id: string): boolean;
   /**
@@ -42,8 +42,8 @@ export interface Selection {
   /**
    * Replaces the selection with these rows: what a drop on the list does with the notes
    * it just made, so the bar offers Move, Tag and Delete on them. Rows the list has not
-   * loaded are kept and counted once it has — the rows arrive a render after the notes
-   * are made — but, as ever, only the ones on screen are acted on.
+   * loaded are kept and counted once it has (the rows arrive a render after the notes
+   * are made), but, as ever, only the ones on screen are acted on.
    */
   select(ids: readonly string[]): void;
   clear(): void;
@@ -93,7 +93,7 @@ export function useSelection(
       anchorRef.current = id;
       setPicked((prev) => {
         const next = new Set(prev);
-        // The open note comes along on the first pick of another row — see above. Judged
+        // The open note comes along on the first pick of another row (see above). Judged
         // on the rows on screen, since `prev` may still name rows that have left the list.
         const nothingYet = !rows.some((row) => prev.has(row));
         if (nothingYet && defaultAnchor && defaultAnchor !== id && rows.includes(defaultAnchor)) {

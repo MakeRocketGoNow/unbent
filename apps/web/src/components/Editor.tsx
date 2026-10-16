@@ -31,8 +31,8 @@ interface EditorProps {
   /**
    * Copies files from another note into this one, for a paste that links them.
    *
-   * Resolves to the name each file has here, by the name asked for. Absent — a read-only
-   * note — pasted links to other notes' files stay absolute; see editor/clipboard.ts.
+   * Resolves to the name each file has here, by the name asked for. Absent (a read-only
+   * note): pasted links to other notes' files stay absolute; see editor/clipboard.ts.
    */
   onCopyAttachments?: (
     from: string,
@@ -41,7 +41,7 @@ interface EditorProps {
   ) => Promise<Map<string, string>>;
   /**
    * Fetches a web image into this note as a stored file, resolving to its filename.
-   * Absent — a read-only note — remote images offer no save control.
+   * Absent (a read-only note): remote images offer no save control.
    */
   onSaveRemoteImage?: (url: string) => Promise<string>;
   /**
@@ -53,7 +53,7 @@ interface EditorProps {
    * How to open a path on this site in place, for a link written from the root
    * (`[Import](/settings/import)`), as the router would; undefined for a path the app has
    * no page for, which stays text to edit, as does every such link when this is absent. A
-   * prop because the editor knows nothing of the router — the workspace hands over
+   * prop because the editor knows nothing of the router: the workspace hands over
    * `sitePathOpener`.
    */
   pathOpener?: (path: string) => (() => void) | undefined;
@@ -62,14 +62,14 @@ interface EditorProps {
   /**
    * Names of this note's files that are stored as PDFs, for the rich renderer.
    *
-   * Only needed for the ones whose name does not say so — an imported `Menu Card`.
+   * Only needed for the ones whose name does not say so: an imported `Menu Card`.
    * May arrive after mount, and does not remount the view when it does.
    */
   pdfFilenames?: ReadonlySet<string>;
   /**
    * Take focus when the view mounts.
    *
-   * On by default, which is what opening a note should do — you clicked it to write in it.
+   * On by default, which is what opening a note should do: you clicked it to write in it.
    * The sidebar's arrow keys turn it off: they mount a new editor for every note they
    * pass, and an editor that grabbed focus each time would take the second arrow press
    * and move a cursor through text instead of moving down the list. A note that has just
@@ -87,7 +87,7 @@ interface EditorProps {
   /** Receives the view so a toolbar can act on it. */
   onViewReady?: (view: EditorView | null) => void;
   /**
-   * Show the document without accepting any change to it — offline, or a note in the
+   * Show the document without accepting any change to it: offline, or a note in the
    * trash. Flips in place rather than rebuilding the view, so the undo history and the
    * caret survive going offline and coming back.
    */
@@ -169,7 +169,7 @@ export function Editor({
    * The view is torn down when `rich` flips: the two modes are different extensions, not
    * a decoration that can be swapped in place. `initialValue` is the last *saved* body
    * the parent knows, so seeding the new view from it used to throw away whatever had
-   * been typed since — switching Rich → Source before the debounce landed put the saved
+   * been typed since: switching Rich → Source before the debounce landed put the saved
    * text back on screen, and the next keystroke then saved *that*, losing the edit.
    * Carrying the live document across is what makes the toggle a change of mode rather
    * than a revert.
@@ -180,7 +180,7 @@ export function Editor({
    *
    * The caret rides along with the text. A mode toggle that dropped the selection back to
    * the document start would be exactly the unasked-for motion the rest of this file works
-   * to avoid — you flip to Source to fix a pipe and the cursor is suddenly three paragraphs
+   * to avoid: you flip to Source to fix a pipe and the cursor is suddenly three paragraphs
    * up. The offsets stay valid because the same doc string is carried across; a note change
    * clears both together, so a stale caret is never applied to a different note.
    */
@@ -210,8 +210,8 @@ export function Editor({
              Before the default keymap, which is what gets the key first.
 
              Returning false when there is no handler leaves Escape to CodeMirror, so the
-             behaviours that rely on it — closing an autocomplete, leaving the tab-capture
-             escape hatch — keep working.
+             behaviours that rely on it (closing an autocomplete, leaving the tab-capture
+             escape hatch) keep working.
           */
           keymap.of([
             {
@@ -225,7 +225,7 @@ export function Editor({
           ]),
           keymap.of([...markdownKeymap, ...defaultKeymap, ...historyKeymap]),
           // GFM parses task lists, tables, and strikethrough, which plain CommonMark
-          // would leave as literal text — `[x]` otherwise reads as a link.
+          // would leave as literal text: `[x]` otherwise reads as a link.
           markdown({ codeLanguages: languages, extensions: [GFM] }),
           // Structural table editing, which is what markdown tables are worst at by hand.
           // Only in rich mode: in plain source the point is to see the pipes.
@@ -260,7 +260,7 @@ export function Editor({
                       }
                     : undefined,
                   // Read through the ref, like the handlers above: the view outlives the
-                  // props. Offered on a read-only note too — following a link changes nothing.
+                  // props. Offered on a read-only note too: following a link changes nothing.
                   pathOpener: pathOpener ? (path) => pathOpenerRef.current?.(path) : undefined,
                 }),
               ]
@@ -299,7 +299,7 @@ export function Editor({
           /*
              Attachment links across the clipboard: copied ones name this note, pasted
              ones bring their files across. The same ref pattern as the uploader, and the
-             same absence rule — no handler, no copies, and foreign links stay absolute.
+             same absence rule: no handler, no copies, and foreign links stay absolute.
           */
           attachmentClipboard({
             noteId,
@@ -318,7 +318,7 @@ export function Editor({
              Source is markup: the asterisks and pipes are the content, character positions
              matter, and monospace is the honest rendering of that. Rich mode has hidden the
              markup and is showing a document, so it gets a serif at the larger size prose
-             wants — mono there reads as a code editor no matter how the headings are styled.
+             wants: mono there reads as a code editor no matter how the headings are styled.
 
              Tables keep their own monospace inside rich mode; see the rich theme, where the
              padding that aligns their columns depends on it.
@@ -332,7 +332,7 @@ export function Editor({
                  The note's text starts where everything above it does.
 
                  CodeMirror indents every line by 6px of its own, which put the body 6px
-                 right of the title, the filing row and the attachments panel — close enough
+                 right of the title, the filing row and the attachments panel: close enough
                  to read as a mistake rather than as an indent, and the workspace column
                  already supplies the inset those share.
 
@@ -343,8 +343,8 @@ export function Editor({
                  offset 0 landed exactly on the scroller's left edge with nothing to spare.
 
                  So the room moves rather than disappears: pulled 6px left and given the 6px
-                 back as padding. The line boxes now begin at the column's own inset — the
-                 text aligns — while the caret keeps the same margin it always had. The 2px
+                 back as padding. The line boxes now begin at the column's own inset
+                 (the text aligns), while the caret keeps the same margin it always had. The 2px
                  on the right is CodeMirror's own and is left alone; nothing else is doing
                  that job at the end of a line.
               */
@@ -367,7 +367,7 @@ export function Editor({
     onViewReadyRef.current?.(view);
 
     return () => {
-      // Written on every teardown, the last unmount included — where it is a dead store,
+      // Written on every teardown, the last unmount included, where it is a dead store,
       // since the ref goes with the component. Only a same-note rebuild that runs straight
       // after this cleanup ever reads it back; a note change clears it first.
       preservedDoc.current = view.state.doc.toString();

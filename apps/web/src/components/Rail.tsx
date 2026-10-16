@@ -14,8 +14,8 @@ import { usePersistentState, clamp } from '../usePersistentState.js';
  *
  * Below 11rem the labels stop being labels, and the strip is what "small" means here;
  * above 20rem the rail is eating the note, and a longer name is what the tooltip is for.
- * A drag that goes on past the floor collapses the rail instead of stopping at it — the
- * gesture Apple Notes and Evernote both honour — so the toggle is the discoverable way
+ * A drag that goes on past the floor collapses the rail instead of stopping at it (the
+ * gesture Apple Notes and Evernote both honour) so the toggle is the discoverable way
  * to a strip and the drag is the fast one, with no dead zone between them.
  */
 export const RAIL_DEFAULT = 240;
@@ -26,13 +26,13 @@ export const RAIL_COLLAPSE_BELOW = 144;
 import { RailToggleIcon } from './icons.js';
 
 /**
- * How the rail is drawn, as the user last chose it — or `auto` until they have.
+ * How the rail is drawn, as the user last chose it, or `auto` until they have.
  *
  * Three states rather than a boolean, because a wide window and a narrow one want
  * different defaults: at 1440px the open rail is what a desktop app looks like, and at
  * 1024px it leaves the note narrower than a phone. `auto` lets the stylesheet pick by
  * width; the first click on the toggle settles it for every width, and nothing in the UI
- * puts it back — a chosen layout should not undo itself when a window is resized.
+ * puts it back: a chosen layout should not undo itself when a window is resized.
  */
 export type RailPref = 'auto' | 'open' | 'collapsed';
 
@@ -54,7 +54,7 @@ function placeOf(pathname: string): NavPlace {
 /**
  * The desktop's navigation: the phone's drawer, pinned open down the left.
  *
- * The notes sidebar used to be two things at once — where you are (a notebook select,
+ * The notes sidebar used to be two things at once: where you are (a notebook select,
  * and Trash on its floor) and the list of what is there. That held while the list was the
  * narrowest thing on screen. The table view made it the widest, and everything parked in
  * it stretched with it: a select a window wide, Trash orphaned under a table. So the
@@ -71,26 +71,26 @@ function placeOf(pathname: string): NavPlace {
  * The grid keeps the open note above a floor by subtracting from its own width, and
  * measures its drag handle against its own edges; a track added in front of the sidebar
  * would silently shrink that floor and shift that measurement. And the trash and settings
- * screens have grids of their own — the rail has to stand beside whichever is there.
+ * screens have grids of their own: the rail has to stand beside whichever is there.
  *
  * Collapsed, it is a strip of icons rather than nothing: the way to expand it again, the
  * places that have a glyph of their own, Trash, Settings, and the account, all still one
  * click away on every screen, with no drawer over a desktop. The notebooks drop out of
  * the strip because they all share one glyph.
  *
- * Open, its width is dragged, like the list's — see `useRailWidth`. It was fixed at
+ * Open, its width is dragged, like the list's (see `useRailWidth`). It was fixed at
  * first, on the reasoning that one drag handle on the screen was enough and a rail's
  * width is its labels' width; the labels are notebook and tag names, which are anyone's
  * length, and every three-column app this is compared against lets the first column be
  * sized. The strip is not draggable: it is the width of its icons.
  *
- * It also took over what the desktop's top bar held — the wordmark, the way to Settings,
- * the account — which retired that bar above the breakpoint and gave every screen its
+ * It also took over what the desktop's top bar held (the wordmark, the way to Settings,
+ * the account) which retired that bar above the breakpoint and gave every screen its
  * height back. Settings is a row on the floor rather than an item in the account menu,
  * as it was a gear beside the avatar before: the two are different kinds of thing, the
  * row is about the app and the menu about the account, and Keep draws exactly this
  * pair. It also keeps the desktop honest with the phone, where Settings is the same row
- * on the drawer's floor — one click at both widths, never a menu to open first. The
+ * on the drawer's floor: one click at both widths, never a menu to open first. The
  * account sits under Settings, on the floor, rather than in the head beside the
  * wordmark as it does in the drawer: the strip's head has room for one control, which
  * has to be the way to expand it, and the floor is outside the scrolling rows, so the
@@ -103,7 +103,7 @@ export function Rail({ pref, onPref, email, onSignOut }: RailProps) {
   /*
    * The notes' search params, from wherever the rail is standing. `/notes` is the only
    * route that validates them; from the trash or settings there is no such match and this
-   * is undefined, which is right — no place is current there.
+   * is undefined, which is right: no place is current there.
    */
   const search = useSearch({ from: '/notes', shouldThrow: false });
   const place = useRouterState({
@@ -118,7 +118,7 @@ export function Rail({ pref, onPref, email, onSignOut }: RailProps) {
       <InstanceRibbon placement="rail" />
       <div className="rail-inner">
         <div className="rail-head">
-          {/* The wordmark, as it was in the top bar: a link home. Gone in the strip —
+          {/* The wordmark, as it was in the top bar: a link home. Gone in the strip,
               hidden rather than clipped, so it is not an invisible stop on the Tab path. */}
           <h1 className="rail-wordmark">
             <Link to="/notes" className="plain">
@@ -156,8 +156,8 @@ export function Rail({ pref, onPref, email, onSignOut }: RailProps) {
  *
  * The same split the list's width makes (`useNotesLayout`): a drag re-renders without
  * writing, and the release writes once. The width reaches the stylesheet as a custom
- * property on the shell rather than on the rail, because the filter panel — in the top
- * layer, and positioned past the rail — can only inherit it from a shared ancestor. It is
+ * property on the shell rather than on the rail, because the filter panel (in the top
+ * layer, and positioned past the rail) can only inherit it from a shared ancestor. It is
  * consumed only while the rail is open; the strip's width is the stylesheet's own.
  */
 export function useRailWidth() {

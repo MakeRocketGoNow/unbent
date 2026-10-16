@@ -18,7 +18,7 @@ import { Workspace } from './Workspace.js';
  * Where the caret lands when a note opens.
  *
  * A new note is the one case that goes to the title; everything else goes to the body. The
- * two are decided in different places — an effect here and the editor's `autoFocus` — and
+ * two are decided in different places (an effect here and the editor's `autoFocus`) and
  * getting either alone right still leaves the caret in the wrong field, so this asserts
  * what actually holds focus rather than the props behind it.
  *
@@ -39,7 +39,7 @@ const note: Note = {
  * The workspace under a router, with every query already answered.
  *
  * Seeded rather than mocked, and never stale, so nothing this test is not about goes to
- * the network — a refetch in jsdom would land on a relative URL and fail, and the note is
+ * the network: a refetch in jsdom would land on a relative URL and fail, and the note is
  * exactly what focus is being decided from.
  */
 function mount(noteOverrides: Partial<Note> = {}) {
@@ -78,7 +78,7 @@ const editorHost = () => document.querySelector('.cm-content');
  * Lets the editor finish arriving.
  *
  * The view hands itself to the workspace as it mounts, and the workspace registers the way
- * into it a commit later — so there is a moment, after the title already has the caret,
+ * into it a commit later, so there is a moment, after the title already has the caret,
  * when Enter has nothing to hand the note to. That is the documented behaviour of an Enter
  * pressed before an editor exists, and it is measured in one render rather than anything a
  * person could hit; here it is the difference between the test pressing the key and a user
@@ -89,7 +89,7 @@ const settle = () => act(async () => {});
 /**
  * Answers each query on its own rather than answering `false` to everything.
  *
- * The workspace asks two questions now — the width and whether there is a keyboard — and
+ * The workspace asks two questions now (the width and whether there is a keyboard) and
  * they are different questions with different answers, which a blanket stub cannot say.
  * jsdom ships no `matchMedia` at all, so this is also what keeps the component mountable.
  */
@@ -160,7 +160,7 @@ describe('opening a note', () => {
 
      Keyed on the pointer rather than the width: a tablet at 1024px is not `MOBILE_QUERY`
      and still raises a keyboard. Asserted as "the body has focus" rather than "the editor
-     does not", because a caret parked anywhere is the failure — the screen has to open
+     does not", because a caret parked anywhere is the failure: the screen has to open
      with nothing focused at all.
   */
   it('leaves an existing note unfocused on a touch device', async () => {
@@ -174,7 +174,7 @@ describe('opening a note', () => {
 
   /*
      The exception. A note that was just created was created to be typed into, and the
-     keyboard is what you asked for — so the title still takes the caret on a phone.
+     keyboard is what you asked for, so the title still takes the caret on a phone.
   */
   it('still puts the caret in the title of a new note on a touch device', async () => {
     stubMedia((q) => q === TOUCH_QUERY);

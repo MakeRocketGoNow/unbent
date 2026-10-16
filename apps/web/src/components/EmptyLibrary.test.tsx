@@ -134,8 +134,8 @@ describe('EmptyLibrary', () => {
   });
 
   /**
-   * Two presses before the re-render that disables the button — a double tap on a slow
-   * phone — reach the handler twice; the action's own guard is what makes one note. Native
+   * Two presses before the re-render that disables the button (a double tap on a slow
+   * phone) reach the handler twice; the action's own guard is what makes one note. Native
    * clicks, not `fireEvent`, whose `act` would render the disabled button between them.
    */
   it('makes one note from two presses that land before the button is disabled', async () => {

@@ -13,7 +13,7 @@ import { ScopeMatches } from './ScopeMatches.js';
  *
  * What is pinned: that a name containing the term is offered and one that does not is not,
  * that what is already applied is left out, that the offer is capped, and that a pick
- * writes the filter to the URL and drops the query — the URL being where the filters live,
+ * writes the filter to the URL and drops the query, the URL being where the filters live,
  * so it is the only place a pick can be observed. Read as `href` for the reason
  * `ActiveFilters.test.tsx` gives.
  */
@@ -124,7 +124,7 @@ describe('ScopeMatches', () => {
     expect(none.container.querySelectorAll('li').length).toBe(0);
   });
 
-  /* Picking a tag adds it to the scope — two selected narrows to both — and drops the
+  /* Picking a tag adds it to the scope (two selected narrows to both) and drops the
      query: having found the thing, there is nothing left to search for. */
   it('adds a picked tag to the filter and clears the search', async () => {
     const onPick = vi.fn();

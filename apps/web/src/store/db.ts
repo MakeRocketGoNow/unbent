@@ -71,7 +71,7 @@ export async function closeLocalStore(): Promise<void> {
 /**
  * Opens the account's search index file: a second database beside the library's, on a
  * worker of its own (see `search-index.ts` for why it is not the library's connection).
- * Not held here — the library that opens it closes it, and ends an open still in hand
+ * Not held here: the library that opens it closes it, and ends an open still in hand
  * with the signal.
  */
 export function openSearchDatabase(userId: string, signal?: AbortSignal): Promise<BrowserWASQLiteDatabase> {

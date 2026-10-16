@@ -4,9 +4,9 @@ import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 /**
  * When the disclosure starts open.
  *
- * `wide` — open where there is room, closed on a phone. For a row that is part of the note
+ * `wide`: open where there is room, closed on a phone. For a row that is part of the note
  * and costs nothing at desktop width, but would push the content off a small screen.
- * `never` — closed until asked, at every width. For content that is unbounded, occasional,
+ * `never`: closed until asked, at every width. For content that is unbounded, occasional,
  * or carries destructive controls.
  *
  * A policy rather than a boolean, because the breakpoint case needs two things that must
@@ -25,9 +25,9 @@ export interface DisclosureProps {
   /** What the disclosure is hiding, stated. See the grammar note above. */
   summary: ReactNode;
   children: ReactNode;
-  /** Defaults to `never` — the safe choice for content of unknown size. */
+  /** Defaults to `never`: the safe choice for content of unknown size. */
   defaultOpen?: DisclosureDefault;
-  /** Escape hatch for the container box only — border, padding, where it sits. Never the summary. */
+  /** Escape hatch for the container box only: border, padding, where it sits. Never the summary. */
   className?: string;
 }
 
@@ -47,7 +47,7 @@ export interface DisclosureProps {
  * not just the web.
  *
  * **The summary states the value.** A noun is added only when the value cannot identify
- * itself. `Coupons  #Groceries` needs none — a notebook name and hashed tags say
+ * itself. `Coupons  #Groceries` needs none: a notebook name and hashed tags say
  * what they are. `(4)` does, so it is `Attachments (4)`. `Tags` earns its noun because when
  * nothing is filtering, the value is a bare count.
  *
@@ -58,7 +58,7 @@ export interface DisclosureProps {
  * which reads as a sentence rather than a chip.
  *
  * Deliberately does not take `onToggle`, `id`, or a class for the summary. A disclosure whose
- * open state something else depends on is not this component — it is a panel with state, and
+ * open state something else depends on is not this component: it is a panel with state, and
  * it should hold that state in React rather than in a DOM attribute.
  *
  * Note for tests: jsdom ships no `matchMedia`, so any test that renders a `Disclosure` has to
@@ -80,12 +80,12 @@ export function Disclosure({
          `open` is a default here, not a controlled value, and that is the whole subtlety.
 
          It is a DOM attribute the user can change by clicking, and React will not re-assert
-         it on a later render — so once someone has toggled the element, a new default has no
+         it on a later render, so once someone has toggled the element, a new default has no
          way in. Changing the `key` deletes the host node and builds a fresh one, which is the
          only thing that makes the new default take.
 
          Keyed *only* for `wide`. Keying a `never` disclosure would collapse a panel the user
-         had opened every time the viewport crossed the breakpoint — a rotation closing the
+         had opened every time the viewport crossed the breakpoint: a rotation closing the
          attachments list out from under them.
       */
       key={always ? 'always' : byBreakpoint ? String(isMobile) : undefined}

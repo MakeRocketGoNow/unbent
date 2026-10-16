@@ -7,8 +7,8 @@ import { addErrorSink, routeOf } from './report-error.js';
  *
  * `/api/client-errors` logs every report into the Worker's own logs, which every instance
  * has and which keeps them for three days with no grouping and no way to mark one fixed.
- * This is the second destination for an instance that wants those things — see
- * `addErrorSink`, which is why this is additional rather than a replacement.
+ * This is the second destination for an instance that wants those things (see
+ * `addErrorSink`, which is why this is additional rather than a replacement).
  *
  * What it deliberately is not is analytics. Page views are counted by the hosting provider,
  * which sets no cookie and assigns no identifier, and moving them here would trade that for
@@ -18,7 +18,7 @@ import { addErrorSink, routeOf } from './report-error.js';
  *
  * The configuration below is what lets the privacy policy keep saying nothing tracks you:
  *
- * - `cookieless_mode: 'always'` stores nothing in the browser at all — no cookie, no
+ * - `cookieless_mode: 'always'` stores nothing in the browser at all: no cookie, no
  *   localStorage. People are counted by a hash PostHog computes server-side from a salt it
  *   discards daily, so there is no identifier that outlives a day and `identify` is a
  *   no-op. NOTE: this needs "Cookieless server hash mode" enabled in the PostHog project;
@@ -35,7 +35,7 @@ import { addErrorSink, routeOf } from './report-error.js';
  * listeners with neither of those bounds and report everything twice. So it is switched off
  * by name, not just left out: unset, the SDK takes the project's "Exception autocapture"
  * setting from PostHog's remote config, which is on in a project that has error tracking,
- * and every uncaught error arrived twice — once handled from here, once unhandled from it.
+ * and every uncaught error arrived twice: once handled from here, once unhandled from it.
  */
 
 /** Where the Worker proxies this traffic. See `routes/ingest.ts` for why it is proxied. */
@@ -45,7 +45,7 @@ const INGEST_PATH = '/ingest';
  * The last gate before an event leaves the browser.
  *
  * Returning null drops the event. Only exceptions pass, so a capture path enabled by a
- * future default — a pageview, a survey shown, a flag evaluated — is dropped here even
+ * future default (a pageview, a survey shown, a flag evaluated) is dropped here even
  * though `init` already asked for it to be off.
  *
  * The URL is replaced rather than trimmed. PostHog fills `$current_url` from `location`,
@@ -90,7 +90,7 @@ export function scrub(event: CaptureResult | null): CaptureResult | null {
  *
  * Never throws. A blocked script, a failed init or a network the SDK cannot reach are all
  * reasons to have no error tracking, not reasons to break the app that was trying to set it
- * up — and rule 1 of `report-error.ts` applies to its sinks as much as to itself.
+ * up, and rule 1 of `report-error.ts` applies to its sinks as much as to itself.
  */
 export async function installPosthog(config: NonNullable<AppConfig['posthog']>): Promise<void> {
   try {
@@ -103,7 +103,7 @@ export async function installPosthog(config: NonNullable<AppConfig['posthog']>):
       ui_host: config.uiHost,
       // The SDK's defaults as they stood on this date, so an upgrade of `posthog-js` does
       // not change them underneath this file. Moving the date is a decision, made here and
-      // read against PostHog's changelog — not something a dependency bump does by itself.
+      // read against PostHog's changelog, not something a dependency bump does by itself.
       defaults: '2026-05-30',
       cookieless_mode: 'always',
       person_profiles: 'never',

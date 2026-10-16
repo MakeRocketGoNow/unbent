@@ -7,13 +7,13 @@ import { clearShelf, filesSupported, listShelf, readKeptNotebooks, removeFile, s
  * Whole notebooks kept on the device: Evernote's "offline notebooks", for the PDF someone
  * opens on a plane.
  *
- * The rows of every notebook are already local. The bytes are the bulk of an archive —
- * gigabytes against the database's megabytes — so they cannot all be here, and which ones
+ * The rows of every notebook are already local. The bytes are the bulk of an archive
+ * (gigabytes against the database's megabytes) so they cannot all be here, and which ones
  * are is a choice made per notebook, per device, with the size stated first. A kept
  * notebook's files are fetched to the account's `kept` shelf (`files.ts`), where the
  * service worker finds them by address; a file that arrives in one later, through the
- * feed, is fetched when the feed delivers its row; one that leaves — deleted, its note
- * trashed or moved out — is removed. So the shelf is always what `plan` says it should
+ * feed, is fetched when the feed delivers its row; one that leaves (deleted, its note
+ * trashed or moved out) is removed. So the shelf is always what `plan` says it should
  * be, and `plan` is a pure function of the library and the list of kept notebooks.
  *
  * The decision of what to fetch and what to drop is the part with cases, so it is apart
@@ -34,8 +34,8 @@ export interface WantedFile {
 
 /**
  * A notebook's files as they would be kept: every file of every live note filed in it.
- * Not a trashed note's — the trash is on its way out, and keeping its scans would be
- * storage spent on what was thrown away. Not a file still waiting to upload — its bytes
+ * Not a trashed note's: the trash is on its way out, and keeping its scans would be
+ * storage spent on what was thrown away. Not a file still waiting to upload: its bytes
  * are on the `pending` shelf already, and the server has nothing to fetch.
  *
  * By `notebookId`, the feed's own key. A note filed here a moment ago into a notebook the
@@ -65,7 +65,7 @@ export interface KeepPlan {
  * What to fetch and what to drop so the shelf holds exactly the kept notebooks' files.
  *
  * A file is "on the shelf" when one of its name and size is: attachments are immutable,
- * but a name can be reused — delete `scan.pdf`, add another — and the size is what tells
+ * but a name can be reused (delete `scan.pdf`, add another) and the size is what tells
  * the new one from the old without reading either. Smallest first, so that with a
  * connection that lasts a minute the shelf gains forty receipts rather than a third of
  * one manual.
@@ -138,11 +138,11 @@ export interface KeeperOptions {
    * Whether the library holds the whole account: a walk of it has finished, whether or
    * not the latest pull did. A pass during the first copy, or after a `reset` has emptied
    * the collections, would see no notes in a kept notebook and drop a gigabyte it would
-   * then fetch again — and would count "0 of 0", so nothing is counted then either.
+   * then fetch again, and would count "0 of 0", so nothing is counted then either.
    */
   settled: () => boolean;
   /**
-   * Whether this tab is the one that does the account's background work — the tab that
+   * Whether this tab is the one that does the account's background work: the tab that
    * holds the outbox. Two tabs fetching the same notebook would write the same files
    * twice over.
    */
@@ -174,7 +174,7 @@ export function createKeeper(opts: KeeperOptions): Keeper {
    * What is on the `kept` shelf, by note and name, as this keeper last knew it: read from
    * the disk on the first pass and after anything failed, and kept in step by the writes
    * and removals made here. Listing the shelf is a `getFile()` per file, and the library
-   * changes in bursts — a feed page, an import, a rename — each of which asks for a pass;
+   * changes in bursts (a feed page, an import, a rename) each of which asks for a pass;
    * on an archive-sized notebook that was thousands of file-system calls per burst to
    * learn what the keeper had written itself (review of #236).
    */
@@ -184,7 +184,7 @@ export function createKeeper(opts: KeeperOptions): Keeper {
    * Set when a notebook is released, to stop the pass in hand: it is fetching files that
    * are no longer wanted. Nothing else stops one. A change to the library asks for
    * another pass after this one (`again`), and that pass fetches only what is still
-   * missing — abandoning the fetch in hand on every nudge meant a busy feed could keep a
+   * missing: abandoning the fetch in hand on every nudge meant a busy feed could keep a
    * large file from ever finishing.
    */
   let halt = false;
@@ -201,7 +201,7 @@ export function createKeeper(opts: KeeperOptions): Keeper {
    * remembers of the shelf is dropped with it, and a pass in hand is stopped if a
    * notebook was released, as it is for a release made here.
    *
-   * Until a read has succeeded the keeper knows nothing — not "nothing is kept" — and
+   * Until a read has succeeded the keeper knows nothing (not "nothing is kept") and
    * does nothing: a pass over an empty list removes the whole shelf, and a `keep` would
    * write a list of one over the real one. After one has, a failed read leaves the last
    * list standing, and the pass that follows removes nothing on its word.
@@ -223,7 +223,7 @@ export function createKeeper(opts: KeeperOptions): Keeper {
    * How the tabs of one account tell each other: `list` when the kept list was changed,
    * so the tab that fetches starts on it now rather than at its next pass; `shelf` when
    * the fetching tab has put files on the shelf or taken them off, with its totals, so a
-   * tab that is only showing progress shows them. A convenience on top of reading the list every pass —
+   * tab that is only showing progress shows them. A convenience on top of reading the list every pass:
    * a browser without it is still right, a pass later.
    */
   const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel(`unbent-keep-${opts.userId}`);
@@ -244,8 +244,8 @@ export function createKeeper(opts: KeeperOptions): Keeper {
       }
       /*
        * The fetching tab's own totals, taken as they are. A watching tab used to answer
-       * this by counting for itself, which is a listing of the shelf — a `getFile()` per
-       * file — every few seconds for as long as an archive-sized notebook was arriving
+       * this by counting for itself, which is a listing of the shelf (a `getFile()` per
+       * file) every few seconds for as long as an archive-sized notebook was arriving
        * (review of #236). The numbers it would have reached are the ones in the message.
        */
       const totals = (event.data as { shelf?: Totals } | null)?.shelf;
@@ -257,7 +257,7 @@ export function createKeeper(opts: KeeperOptions): Keeper {
 
   /**
    * One pass: bring the shelf to what `plan` says, removals first so their room is free
-   * for the fetches. Stops at the first file the network does not answer — the next
+   * for the fetches. Stops at the first file the network does not answer: the next
    * connection starts another pass, and what was fetched stays fetched.
    *
    * Fetched through `request`, so a lost connection is heard by the connectivity store
@@ -338,10 +338,10 @@ export function createKeeper(opts: KeeperOptions): Keeper {
       /*
        * The connection went while a file was on its way: `request` only hears a fetch
        * that never answered, and a body that dies part-way is a `TypeError` out of the
-       * stream instead. That is the takeoff, not a fault — the connectivity store is
+       * stream instead. That is the takeoff, not a fault. The connectivity store is
        * asked to check, and the file is asked for again shortly: by then the app knows it
        * is offline and the pass stands down, or the connection was only flaky and the
-       * file arrives. A few times, not for ever — a stream that fails every time on a
+       * file arrives. A few times, not for ever: a stream that fails every time on a
        * connection that is up is a fault after all, and is said.
        * (The half-written file was never swapped in; see `writeFile`.)
        */
@@ -375,8 +375,8 @@ export function createKeeper(opts: KeeperOptions): Keeper {
   }
 
   /**
-   * A pass, soon. The library changes in bursts — a feed page is hundreds of rows, an
-   * import thousands — and each change would otherwise list the shelf again.
+   * A pass, soon. The library changes in bursts (a feed page is hundreds of rows, an
+   * import thousands) and each change would otherwise list the shelf again.
    */
   function nudge(): void {
     if (stopped || !supported || timer) return;

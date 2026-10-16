@@ -3,7 +3,7 @@ import { request } from './notes-api.js';
 import { VIEW_HEADER } from './sw/routes.js';
 
 /**
- * Puts one attachment on the system clipboard, as a link and — for a picture — as a picture.
+ * Puts one attachment on the system clipboard, as a link and, for a picture, as a picture.
  *
  * A page can write only a few types to the clipboard: plain text, HTML, and PNG. Not a
  * PDF, in any browser. So what goes across for every kind of file is a link that names
@@ -14,14 +14,14 @@ import { VIEW_HEADER } from './sw/routes.js';
  * An image goes as PNG too, so a paste into a chat or a document shows the picture. The
  * editor still prefers the link when both arrive: a link is copied key to key with no
  * bytes through the browser and keeps the original file, where the PNG would be a
- * re-encoded upload. A JPEG is converted through a canvas for the PNG slot only — that
+ * re-encoded upload. A JPEG is converted through a canvas for the PNG slot only: that
  * copy is for other apps, and the original is what the link reaches.
  *
  * The blobs are handed over as promises created inside the click. Safari refuses a
  * clipboard write that starts after the gesture has ended, and a fetch of the picture
  * takes long enough to end it; a promise made synchronously keeps the write inside.
  * Browsers that cannot take a promise, or an image the fetch could not turn into a PNG,
- * fall back to the text alone — the link is the part that matters inside the app.
+ * fall back to the text alone: the link is the part that matters inside the app.
  */
 export type CopiedAs = 'image' | 'link';
 

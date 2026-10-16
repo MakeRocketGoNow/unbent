@@ -24,7 +24,7 @@ const MANY_TAGS = Array.from({ length: 30 }, (_, i) => ({ name: `tag-${i}`, coun
  * the rule it shares with the notebook picker: choosing a scope clears the tags, because
  * tags cross notebook boundaries and carrying one across lands on an empty list with
  * nothing on screen to explain it. That, and which row is marked as where you are, are
- * what these pin. The surface around the rows — a phone's drawer, a desktop's rail — has
+ * what these pin. The surface around the rows (a phone's drawer, a desktop's rail) has
  * tests of its own.
  */
 const NOTEBOOKS = {
@@ -75,7 +75,7 @@ describe('NotebookNav', () => {
     ]);
   });
 
-  /* All notes is the unnarrowed list, not merely "no notebook" — a tag is still a
+  /* All notes is the unnarrowed list, not merely "no notebook": a tag is still a
      narrowing, so the row must not claim to be where you are while one is applied. */
   it('marks All notes only when nothing at all is narrowing the list', async () => {
     const { findByRole } = harness();
@@ -90,7 +90,7 @@ describe('NotebookNav', () => {
 
   /*
    * Beside the trash or settings the URL still names a notebook, and lighting its row
-   * there would say the trash is in it. The destination lights instead — by the screen,
+   * there would say the trash is in it. The destination lights instead: by the screen,
    * never by the router's own `active`, which is the phone drawer's test to keep.
    */
   it('marks the destination it stands beside, and no place, off the notes', async () => {
@@ -305,7 +305,7 @@ describe('NotebookNav', () => {
 
     /*
      * The full list is an index, read by name: under the most used, which stay where they
-     * were, every tag A to Z — the head's included, so the alphabet has no gaps.
+     * were, every tag A to Z, the head's included, so the alphabet has no gaps.
      */
     it('lists every tag by name under the most used once the rest are asked for', async () => {
       localStorage.setItem('unbent.navTagsOpen', 'true');

@@ -22,8 +22,8 @@ const decodeEntitiesNodeBuild = require
  * pdf.js's WebAssembly image decoders, served at a fixed path the renderer points
  * `wasmUrl` at (see `src/pdf/render.ts`).
  *
- * pdf.js 6 decodes JBIG2 and CCITT fax images — the 1-bit encodings every B&W document
- * scanner writes — and JPEG 2000 with these modules, and without them it drops the image
+ * pdf.js 6 decodes JBIG2 and CCITT fax images (the 1-bit encodings every B&W document
+ * scanner writes) and JPEG 2000 with these modules, and without them it drops the image
  * and draws the page blank. It builds each file's URL from a base directory, so they
  * cannot go through Vite's hashed `?url` imports: they are served as-is in development
  * and copied under the same path into the build.
@@ -63,7 +63,7 @@ function pdfjsWasm(): Plugin {
 
 /**
  * The commit this build is made from, for Settings › About, the account menu's instance
- * line and `index.html` — see `src/build-info.ts` for why it is the page's commit and not
+ * line and `index.html`. See `src/build-info.ts` for why it is the page's commit and not
  * the server's.
  *
  * Read from git rather than from `GITHUB_SHA`, so a local build and a self-hoster's
@@ -140,7 +140,7 @@ export default defineConfig({
     pdfjsWasm(),
     buildMeta(),
     /*
-     * The service worker that lets the installed app open with no connection — see
+     * The service worker that lets the installed app open with no connection. See
      * `src/sw/sw.ts`.
      *
      * `injectManifest`, so the plugin's whole job is to build that file and write this
@@ -152,8 +152,8 @@ export default defineConfig({
      * its host, and if this one ever lags Vite, a small plugin that writes the file list
      * replaces it without the worker changing.
      *
-     * `manifest: false` because `public/manifest.webmanifest` is written by hand — its file
-     * handlers are what a scanner hands files to — and generating one would replace it.
+     * `manifest: false` because `public/manifest.webmanifest` is written by hand: its file
+     * handlers are what a scanner hands files to, and generating one would replace it.
      * Off in development, where Vite serves modules the worker would cache under names the
      * next edit changes; the worker is tried against the built app the Worker serves.
      */
@@ -168,7 +168,7 @@ export default defineConfig({
         globIgnores: [
           /*
            * pdf.js's pure-JavaScript stand-ins for its WebAssembly decoders, for browsers
-           * without WebAssembly — none this app runs in. Half a megabyte that would be
+           * without WebAssembly (none this app runs in). Half a megabyte that would be
            * fetched on every install and never read.
            */
           '**/*_nowasm_fallback.js',
@@ -184,7 +184,7 @@ export default defineConfig({
   ],
   resolve: {
     // better-auth/react is a linked workspace dependency with its own nested react
-    // symlink, which Vite would otherwise pre-bundle into a second React instance —
+    // symlink, which Vite would otherwise pre-bundle into a second React instance,
     // producing "invalid hook call" at runtime. Force one copy.
     dedupe: ['react', 'react-dom'],
     alias: {
@@ -193,7 +193,7 @@ export default defineConfig({
        *
        * The package's browser build decodes HTML entities with `document.createElement`.
        * The markdown pipeline pulls it in, and the import runs in a Web Worker where
-       * there is no document — without this the worker dies on load with "document is
+       * there is no document: without this the worker dies on load with "document is
        * not defined". The `worker` export condition would also select the right build,
        * but Vite's dep optimizer pre-bundles for the browser before worker resolution
        * applies, so the alias is what actually takes effect.

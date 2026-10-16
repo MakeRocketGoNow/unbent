@@ -6,8 +6,8 @@ import { indexing } from './index-files.js';
 /**
  * Whether this page is in the middle of something a full reload would lose.
  *
- * Asked by the update notice's Reload before it reloads into a newer build — see
- * `sw-register.ts`, which waits for this to clear rather than refusing. A reload must not
+ * Asked by the update notice's Reload before it reloads into a newer build (see
+ * `sw-register.ts`, which waits for this to clear rather than refusing). A reload must not
  * land while a note has typing the autosave has not sent, a file is uploading, or an
  * import, export, indexing pass or batch of notes made from files is running, since
  * each of those lives in this page and nowhere else.

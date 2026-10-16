@@ -4,7 +4,7 @@ import { useCallback, useSyncExternalStore, type KeyboardEvent } from 'react';
  * Arrow-key navigation for the sidebar's list.
  *
  * Kept in the DOM rather than in React state. The sidebar's list is three sources at once
- * — the paged note list, search results, and the trash — plus a "Load more" button sitting
+ * (the paged note list, search results, and the trash) plus a "Load more" button sitting
  * in the same `ul`, and the rendered order is the only place those agree. Asking the DOM
  * for "the next row" is therefore both simpler and harder to get wrong than threading an
  * index through every caller, and it cannot drift out of sync with what is actually on
@@ -12,13 +12,13 @@ import { useCallback, useSyncExternalStore, type KeyboardEvent } from 'react';
  *
  * Two kinds of row. A note entry is a link: arrowing onto it opens it, because browsing
  * is what the arrows are for, and Enter then hands the note over to be written in. A
- * search pick — a tag or a notebook offered above the results — is a button: arrowing
+ * search pick (a tag or a notebook offered above the results) is a button: arrowing
  * onto it only focuses it, since applying a filter is a commitment a glance should not
  * make, and Enter is the button's own. Both are real controls, so the browser's focus
  * ring, middle-click and copy-link-address come for free and this adds no routing.
  *
  * The list is entered from the search field with Arrow Down and left from its first row
- * with Arrow Up — `enterList` and `onLeaveTop` — so a search is one keyboard path from
+ * with Arrow Up (`enterList` and `onLeaveTop`), so a search is one keyboard path from
  * the first keystroke to the note: type, arrow into the picks and the results, Enter.
  * That is Apple Notes' and Finder's shape rather than a combobox's, because the results
  * are the list under the field, not a menu of their own.
@@ -26,7 +26,7 @@ import { useCallback, useSyncExternalStore, type KeyboardEvent } from 'react';
 
 /**
  * The rows the arrows move between, in the order they are on screen. A note is a sidebar
- * entry or a table row's name link — the list drawn two ways, browsed by one set of keys.
+ * entry or a table row's name link: the list drawn two ways, browsed by one set of keys.
  * Not the copy of a row that has just left the list, which stays drawn while it closes up
  * (`list-motion.ts`): it is not a row any more.
  */
@@ -51,7 +51,7 @@ function reach(row: HTMLElement) {
 }
 
 /**
- * Enters the list from above — the search field's Arrow Down — on its first row.
+ * Enters the list from above (the search field's Arrow Down) on its first row.
  * Returns whether there was one to land on.
  */
 export function enterList(list: HTMLElement | null): boolean {
@@ -64,7 +64,7 @@ export function enterList(list: HTMLElement | null): boolean {
  * Whether the note on screen was reached with the arrow keys.
  *
  * A module-level flag rather than router state or a context. It answers a question about
- * the last input device, not about the application — it is deliberately not in the URL,
+ * the last input device, not about the application: it is deliberately not in the URL,
  * because arrowing to a note and opening that same URL in a new tab should not behave
  * differently. Read by the workspace to decide whether the editor may take focus.
  */
@@ -95,9 +95,9 @@ export function useCameFromList(): boolean {
    Clicking a note in a side-by-side list is browsing, the same as arrowing to it: focus
    stays on the row and the editor stands down, so the arrows keep working and the note
    opens to be read, not written in. So a press inside such a row *sets* the flag, exactly
-   as `reach` does for the keyboard. Every other press clears it — the editor, the New
+   as `reach` does for the keyboard. Every other press clears it: the editor, the New
    button, a row in a list that is about to replace itself with the note (a phone, where
-   there is no list left to keep focus on) — so those still open ready to type.
+   there is no list left to keep focus on). So those still open ready to type.
 
    The row marks itself with `data-keep-focus` when it is one whose list survives the open;
    see `NoteListItem`, and the table's `<tr>`, whose whole width opens the note. Captured
@@ -137,10 +137,10 @@ export function useListKeys(opts: {
       /*
          Enter on a note commits: it hands the note over to be written in.
 
-         The link is already on the right note — arrowing opened it — so this is a focus
+         The link is already on the right note (arrowing opened it), so this is a focus
          move, not a navigation. It is what separates the two modes: arrows browse, Enter
          edits, and without it the only way out of the list is the mouse or a Tab through
-         whatever sits between. Enter on a pick presses it — which a button does on its own,
+         whatever sits between. Enter on a pick presses it, which a button does on its own,
          but said here so the list's Enter means one thing on every row rather than
          depending on which element happens to carry the focus.
       */
@@ -215,7 +215,7 @@ export function focusActiveListItem(): boolean {
   active.focus();
   // Focus is the proof, not the query: on a phone the sidebar is display:none, and a
   // hidden element silently refuses focus rather than throwing. Asking what actually took
-  // it covers that without a visibility test of its own — which `offsetParent` could not
+  // it covers that without a visibility test of its own, which `offsetParent` could not
   // give honestly anyway, since jsdom reports null for every element.
   return document.activeElement === active;
 }

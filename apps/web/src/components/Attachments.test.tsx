@@ -26,7 +26,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
 
 /**
  * The attachments panel lives on Workspace, which is reused across notes. Deleting a
- * linked file rewrites the draft after the server round trip — the same class of wait
+ * linked file rewrites the draft after the server round trip, the same class of wait
  * Auto-fill and "Save web images" already refuse to land on the next note.
  */
 const scan: AttachmentInfo = {
@@ -162,7 +162,7 @@ describe('Attachments', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /Second/ })).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: /Second/ }));
 
-    // The copy resolves, then the delete hangs — the move's rewrite is still ahead of it.
+    // The copy resolves, then the delete hangs: the move's rewrite is still ahead of it.
     await waitFor(() =>
       expect(api.copyAttachments).toHaveBeenCalledWith('n2', {
         from: 'n1',
@@ -179,7 +179,7 @@ describe('Attachments', () => {
     await act(async () => {
       await Promise.resolve();
     });
-    // n2's body — including its own scan.pdf link — is left exactly as it was.
+    // n2's body, including its own scan.pdf link, is left exactly as it was.
     expect(screen.getByTestId('draft-body').textContent).toBe(n2WithScan);
     expect(api.deleteAttachment).toHaveBeenCalledTimes(1);
     expect(api.deleteAttachment).toHaveBeenCalledWith('n1', 'scan.pdf');
@@ -198,7 +198,7 @@ describe('Attachments', () => {
 });
 
 /*
- * A locked note — offline, or a copy read from the offline cache — takes no changes, and
+ * A locked note (offline, or a copy read from the offline cache) takes no changes, and
  * that includes this panel. Insert link most of all: it writes into the editor directly,
  * where read-only does not reach, and the draft would be saved over a newer copy later.
  * The controls fade in place; Copy and the download link keep working.
@@ -231,8 +231,8 @@ describe('Attachments on a locked note', () => {
   /**
    * A lapsed plan is narrower than a locked note (MAK-108): the server refuses every
    * write but a delete, so the panel keeps the files to open, download and delete, and
-   * fades only what would write — a copy or move to another note, and a link into the
-   * body — under the plan's own tip rather than the offline one.
+   * fades only what would write (a copy or move to another note, and a link into the
+   * body) under the plan's own tip rather than the offline one.
    */
   it('keeps Delete and the download for a lapsed account, and fades only the writes', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });

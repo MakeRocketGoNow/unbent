@@ -118,7 +118,7 @@ export function PdfPreview({ src, label }: PdfPreviewProps) {
   /**
    * The full-screen viewer, from the head's button or a click on the page itself.
    *
-   * The page is the target people reach for — see `.pdf-preview-canvas` — and the button
+   * The page is the target people reach for (see `.pdf-preview-canvas`) and the button
    * is the one the keyboard can reach and the one that says what a click would do. The
    * viewer is handed every attachment in the pane, found from the pane this sits in, so
    * it can page to the others.

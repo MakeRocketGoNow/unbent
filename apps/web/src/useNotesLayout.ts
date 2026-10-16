@@ -30,7 +30,7 @@ const within = (min: number, max: number) => (raw: unknown) =>
  * The shared state behind the `.notes` grid, for both the notes and trash shells.
  *
  * The two layouts duplicate their sidebar markup because their sidebars genuinely have
- * nothing in common — one has search and filters, the other has restore and delete. What
+ * nothing in common: one has search and filters, the other has restore and delete. What
  * they do share is this grid, and the mobile rule has to agree between them or backing out
  * of a trashed note lands on a blank screen.
  *

@@ -3,8 +3,8 @@ import { useExactCount } from './use-exact-count.js';
 
 /**
  * The two-option delete a notebook gets, in one place because it is offered from two: the
- * notebook list and the notebook's own page. Both need to say the same thing — a notebook's
- * notes have somewhere to go, so deleting the notebook does not delete them unless you ask —
+ * notebook list and the notebook's own page. Both need to say the same thing: a notebook's
+ * notes have somewhere to go, so deleting the notebook does not delete them unless you ask,
  * and both need the same emphasis, keeping the notes first so the cascade is reached for
  * deliberately.
  *
@@ -23,7 +23,7 @@ export function DeleteNotebookConfirm({
   name: string;
   /**
    * Live notes in the notebook, as the list showing it has them. Replaced by a count read
-   * from the notes as soon as that arrives — see `useExactCount` — since it decides both
+   * from the notes as soon as that arrives (see `useExactCount`), since it decides both
    * whether the cascade is offered and how many notes it says it will trash.
    */
   count: number;

@@ -22,7 +22,7 @@ interface NoteTableProps {
    */
   ranked?: boolean;
   /**
-   * Why a row matched, beside its name, when nothing else on the row says — a search
+   * Why a row matched, beside its name, when nothing else on the row says: a search
    * that found the word in one of the note's files. Keyed by note id.
    */
   hints?: ReadonlyMap<string, string> | undefined;
@@ -42,7 +42,7 @@ interface NoteTableProps {
   /** What to say when there are no rows, or nothing while the first page loads. */
   empty: ReactNode;
   /**
-   * A cell was edited. Only the single-choice types edit in place — a checkbox, a select;
+   * A cell was edited. Only the single-choice types edit in place: a checkbox, a select;
    * the rest open the note. Absent, every cell is read-only.
    */
   onEdit?: ((noteId: string, def: FieldDef, value: FieldValue | null) => void) | undefined;
@@ -68,14 +68,14 @@ export interface TableSelection {
  * The note list drawn as a table: one row per note, one column per field.
  *
  * The same rows, filters, sort and pages as the sidebar's list, drawn so that a field can
- * be read down a column rather than one note at a time — which is the whole point of a
+ * be read down a column rather than one note at a time, which is the whole point of a
  * notebook having fields. The headers sort; the URL is the sort state, so a header only
  * reports what it reads there and asks the caller to write the next one.
  *
  * The name is a real link, the way a sidebar entry is, so middle-click and copy-link
  * work; the rest of the row opens the note too, by pressing that link, because a row
  * whose only live pixels were its first word would feel broken. Cells the row's link would
- * swallow — a control, another link — are left to themselves.
+ * swallow (a control, another link) are left to themselves.
  *
  * A hand-written `<table>` rather than a table library, for now. Everything a library
  * would own here is small: the sort is URL state fed to the server, the pages come from
@@ -83,8 +83,8 @@ export interface TableSelection {
  * changes.
  *
  * Selecting several is the table's own shape rather than the sidebar's: a column of
- * checkboxes, always there, with the header's box selecting or clearing every loaded row
- * — Gmail's table, and every spreadsheet's. A table is wide enough to spend a column on
+ * checkboxes, always there, with the header's box selecting or clearing every loaded row:
+ * Gmail's table, and every spreadsheet's. A table is wide enough to spend a column on
  * it, where the sidebar's rows were not. The modifier clicks still work on a row, for
  * the hand that has learnt them in the list, and a checkbox takes Shift for a range.
  */
@@ -161,7 +161,7 @@ export function NoteTable({
                       // place it shows and an arrow is not read aloud.
                       aria-label={`Sort by ${col.label}${state ? `, ${state === 'asc' ? 'ascending' : 'descending'}` : ''}`}
                       // Disabled rather than withdrawn, so the header row keeps its shape
-                      // as a search starts and ends — see `ranked`.
+                      // as a search starts and ends (see `ranked`).
                       disabled={ranked}
                       data-tip={ranked ? 'Matches are in order of relevance' : undefined}
                       aria-description={ranked ? 'Matches are in order of relevance' : undefined}
@@ -267,8 +267,8 @@ function cell(
           search={(prev) => prev}
           className="note-row-link"
           activeProps={{ className: 'note-row-link active' }}
-          // The modifier clicks pick, as they do on a sidebar entry — see `NoteListItem`
-          // for why they are taken from the link. Space picks too.
+          // The modifier clicks pick, as they do on a sidebar entry (see `NoteListItem`
+          // for why they are taken from the link). Space picks too.
           onClick={(e) => {
             if (selection && (e.metaKey || e.ctrlKey || e.shiftKey)) {
               e.preventDefault();
