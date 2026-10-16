@@ -865,6 +865,32 @@ Three are worth knowing about:
   deliberately no tool that takes the bytes as an argument: it would work only for files
   small enough not to matter, and fail silently above that.
 
+**Filling a notebook's fields in bulk is an assistant's job, on the assistant's own
+model.** Pressing Auto-fill fills one note's empty fields, and there is deliberately no
+button, and no tool, that runs it across a notebook: a press that ran a few hundred notes
+would be a few hundred model calls on the instance's bill, which no daily cap on presses
+can bound and no flat price can cover (MAK-176, canceled under MAK-178). The notebook that
+needs it is usually one that existed before its fields did, and that is a one-off. The
+recipe needs nothing beyond the tools above:
+
+1. `list_notes` with `notebook`, `compact`, and `fields` set to
+   `[{"field": "Merchant", "op": "empty"}]` lists the notes still to fill, five hundred a
+   page. With `include` naming the fields instead, a page shows which are empty.
+2. The same list without `compact` and with `attachmentSummaries` carries, for each note's
+   scans, the total, the dates, an order number and the amounts found in the text by
+   pattern, which fills most of a receipt's fields with no further call. Where it is not
+   enough, `get_attachment_text` with `maxChars` reads the opening of the file, where a
+   merchant and a total are.
+3. `update_note` sets that note's values; `update_note_fields` sets the same values on
+   many notes at once, which suits a column that is the same across a batch. Both refuse
+   a value that does not fit its field, and each write is kept in the note's history as
+   the assistant's.
+
+Read what is there before writing: a value a person set is theirs, and the `empty` filter
+is what keeps a second pass from touching it. A picture nothing has read yet shows as
+waiting in the summaries; `get_attachment` hands it over to read, as above, rather than
+having the instance read it.
+
 **Approving a client gives it standing access to everything.** It can read every note,
 create and change notes, and move them to the trash, from then on and without asking again.
 Settings › Connected apps lists what is connected and disconnects any of it; disconnecting
