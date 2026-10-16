@@ -3878,6 +3878,71 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /*
+   A select option's word, which renames it (`TagInput`'s `onRename`).
+
+   The word is the button, so the target is as big as what it names, with a pencil beside
+   it that surfaces on hover and focus in the manner of the chevrons and the × — and keeps
+   its space while hidden, for the same reason: the chip is one width whether or not it is
+   pointed at. Pressing it swaps the word for a field in its place; see `.tag-chip.renaming`.
+*/
+.tag-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0;
+  font: inherit;
+  line-height: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.tag-label-pencil {
+  display: inline-flex;
+  opacity: 0;
+}
+
+.tag-chip:hover .tag-label-pencil,
+.tag-chip:focus-within .tag-label-pencil { opacity: 0.7; }
+
+.tag-label:hover .tag-label-pencil,
+.tag-label:focus-visible .tag-label-pencil { opacity: 1; }
+
+@media (hover: none) {
+  .tag-label-pencil { opacity: 0.6; }
+}
+
+/*
+   Renaming: the word is a field, drawn where the word was. The chip keeps its wash and
+   gains the accent edge a field has (`.tag-entry.active`), as a ring so no edge adds a
+   pixel. The field is sized by its text and padded by the pencil's width, and never
+   narrower than the word and pencil it replaced (`TagInput` measures them), so the chip
+   and everything after it stay put until the name outgrows the old one. The chip's other controls keep their space but are not drawn: a move or a removal
+   mid-rename would be of a name the field is about to change.
+*/
+.tag-chip.renaming {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.tag-chip.renaming .tag-move-group,
+.tag-chip.renaming .tag-remove { visibility: hidden; }
+
+.tag-rename-field {
+  box-sizing: border-box;
+  field-sizing: content;
+  margin: 0;
+  /* The pencil (0.8em) and the gap before it (0.2rem). */
+  padding: 0 calc(0.8em + 0.2rem) 0 0;
+  font: inherit;
+  line-height: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  outline: none;
+}
+
+/*
    The entry point, which has to look like one.
 
    It was a transparent borderless input whose only hint was a placeholder — and that
