@@ -16,7 +16,7 @@ vi.mock('./store/actions.js', async (importOriginal) => ({
   trashNote: vi.fn(),
   trashNotes: vi.fn(),
 }));
-vi.mock('./index-files.js', () => ({ indexUploadedFile: vi.fn() }));
+vi.mock('./index-files.js', () => ({ indexUploadedFile: vi.fn(), indexing: { get: () => ({ status: 'idle' }) } }));
 
 /**
  * One note per file, through the store's actions and in order: the create, with the link
@@ -216,9 +216,12 @@ describe('claimFileNotesFor', () => {
     // Nothing is written while nobody is signed in: a create sent now has no session.
     expect(actions.createNote).not.toHaveBeenCalled();
     expect(getFileNotes().status).toBe('idle');
+    // The files are held in this page only, so a reload must not land on them.
+    expect(pageBusy()).toBe(true);
     claimFileNotesFor('u2');
     expect(await batch).toEqual(['n1', 'n2']);
     expect(getFileNotes()).toMatchObject({ status: 'done', ids: ['n1', 'n2'] });
+    expect(pageBusy()).toBe(false);
   });
 
   it('writes nothing, and reports nothing, for a launch on the login screen while nobody signs in', async () => {
