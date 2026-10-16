@@ -43,7 +43,7 @@ describe('legalDocuments', () => {
     expect(body).not.toContain('hello@');
   });
 
-  /** The software's name, not the operator's — it stays whoever is running the instance. */
+  /** The software's name, not the operator's: it stays whoever is running the instance. */
   it.each(all)('still calls the software Unbent in the %s document', (_name, doc) => {
     expect(text(doc)).toContain('Unbent');
   });
@@ -88,8 +88,8 @@ describe('legalDocuments and error tracking', () => {
 /**
  * The backups (MAK-171) are described exactly where the instance keeps them. What a
  * customer who lost data would hold us to is pinned by phrase: how long each copy is kept,
- * that a deletion leaves every copy within about three months — "about", because the
- * lifecycle rule counts from the night of the copy, a day or two after the deletion — that
+ * that a deletion leaves every copy within about three months ("about", because the
+ * lifecycle rule counts from the night of the copy, a day or two after the deletion), that
  * the sign-in records are copied too, that the files pass through
  * GitHub's servers, and that the copies are not a way to bring one note back. An instance
  * with no backups bucket says none of it, and its deletion page keeps the shorter promise.
@@ -139,8 +139,8 @@ describe('legalDocuments and backups', () => {
 /**
  * The plan, its renewal and the refund policy (MAK-108) are in the terms exactly where the
  * instance sells one, and Paddle is in the policy exactly then. What Paddle's website review
- * reads for is pinned by phrase — the price, Paddle as merchant of record, how to cancel,
- * the refund window — and the refund section keeps the anchor that is handed to the review.
+ * reads for is pinned by phrase (the price, Paddle as merchant of record, how to cancel,
+ * the refund window) and the refund section keeps the anchor that is handed to the review.
  */
 describe('legalDocuments and billing', () => {
   const without = legalDocuments(OPERATOR, { errorTracking: false, backups: false, sellsPlan: false });
@@ -200,7 +200,7 @@ describe('legalDocuments and billing', () => {
 
 /**
  * The version people agree to (MAK-209) moves only for a change worth asking about, and
- * the documents' dates move for every change — so a date older than the version means a
+ * the documents' dates move for every change, so a date older than the version means a
  * version was moved without the documents saying they changed, and people would be asked
  * to agree again to text dated before the change they were told about.
  */

@@ -2,13 +2,13 @@
  * The privacy policy, terms and deletion page, as data.
  *
  * Kept out of the components that render them because the text is the part that changes,
- * and it changes for legal reasons rather than layout ones — a paragraph should be
+ * and it changes for legal reasons rather than layout ones: a paragraph should be
  * editable without reading JSX. One renderer walks all three; see `LegalDoc.tsx`.
  *
  * Built for an operator rather than exported as constants, which is the change that made
  * this repository publishable. The documents used to name unbent.app's own operator and
  * contact address from constants at the top of this file, so every self-hosted copy served
- * them on somebody else's site — a legal claim that operator never made and could not stand
+ * them on somebody else's site, a legal claim that operator never made and could not stand
  * behind. Now the server says who runs the instance and these are
  * filled in, or it says nobody does and the pages say so instead. See `LegalPage.tsx` for
  * the three states and `lib/instance.ts` on the server for where the answer comes from.
@@ -42,7 +42,7 @@ export interface LegalSection {
   /** A bulleted list, after the paragraphs. */
   list?: string[];
   /**
-   * A numbered list, after the paragraphs — instructions to follow in order, rather than
+   * A numbered list, after the paragraphs: instructions to follow in order, rather than
    * facts that happen to be enumerated.
    *
    * Separate from `list` because the distinction is the reader's, not the renderer's: a
@@ -85,7 +85,7 @@ export interface LegalOptions {
    */
   errorTracking: boolean;
   /**
-   * Whether this instance keeps backups of its own — the daily dumps and, on unbent.app,
+   * Whether this instance keeps backups of its own: the daily dumps and, on unbent.app,
    * the nightly copy to a second account (MAK-171; "Durability" in the README).
    *
    * `AppConfig.backups`, true where a backups bucket is bound. The policy and the deletion
@@ -99,7 +99,7 @@ export interface LegalOptions {
    * which states the price.
    *
    * The front page counts on its own because a price on offer is a sale the terms have to
-   * cover, whether or not checkout works yet — and because Paddle's website review reads
+   * cover, whether or not checkout works yet, and because Paddle's website review reads
    * the terms for a refund policy before it will issue the live keys that turn billing on.
    * Billing alone left unbent.app unable to pass the review that billing waits on.
    *
@@ -126,9 +126,9 @@ const EFFECTIVE = '2026-10-16';
 const COUNT = ['', '', 'Two', 'Three', 'Four', 'Five'] as const;
 
 /**
- * The privacy policy's own date, moved when its terms change — "How long it is kept"
+ * The privacy policy's own date, moved when its terms change: "How long it is kept"
  * changed on 5 October 2026, when deleted files began staying in storage for thirty-five
- * days, and again on 8 October 2026, when the backups were described (both MAK-171) —
+ * days, and again on 8 October 2026, when the backups were described (both MAK-171),
  * without moving the terms', which did not. The deletion page restates the policy's
  * retention terms, so it carries this date too.
  *
@@ -143,7 +143,7 @@ const COUNT = ['', '', 'Two', 'Three', 'Four', 'Five'] as const;
  * only where the instance sells a plan: those sections are drawn only there
  * (`LegalOptions.sellsPlan`), and an instance that sells none stays on the version before
  * (`LEGAL_CHANGE.since`). The dates are one pair for every instance all the same, so on
- * such an instance the date above the unchanged text moves and the version does not —
+ * such an instance the date above the unchanged text moves and the version does not:
  * the documents' rule that the dates move for every change and the version only for one
  * worth asking about, seen from the other side.
  *
@@ -165,7 +165,7 @@ export interface LegalDocuments {
  * The three documents, written for the operator publishing them.
  *
  * A function rather than three constants because the operator is not known until the
- * server answers, and because there is no honest default for it — see the header. Cheap
+ * server answers, and because there is no honest default for it; see the header. Cheap
  * enough to call on every render: it builds three object literals and nothing else.
  */
 export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDocuments {
@@ -191,7 +191,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
             'and nothing about it is tied to your account or to anything you write. It cannot ' +
             'tell us that a particular person visited a particular page, and we could not ' +
             'reconstruct that if we wanted to. Visitors from the European Union are excluded ' +
-            'from it altogether — nothing is counted for them at all.',
+            'from it altogether: nothing is counted for them at all.',
           ...(opts.errorTracking
             ? [
                 'When something in the app goes wrong, a report of the error is sent to an ' +
@@ -232,7 +232,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
         body: [
           'To run the service and nothing else: to show you your notes, to search them, to sync ' +
             'between your devices, and to sign you in. Email is used to reach you about your own ' +
-            'account — a sign-in code, a password reset, a verification link' +
+            'account: a sign-in code, a password reset, a verification link' +
             (opts.sellsPlan ? ', and word that a trial or a plan has ended' : '') +
             '. There is no marketing mail, and no newsletter to unsubscribe from.',
           'We do not sell personal information, and we do not share it for advertising or for ' +
@@ -254,10 +254,10 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
             `are involved, each for one narrow job:`,
         ],
         list: [
-          'A sign-in provider, if you choose to sign in with one — Google or Apple, for example. The ' +
+          'A sign-in provider, if you choose to sign in with one (Google or Apple, for example). The ' +
             'provider tells us your email address, name and profile image; we tell it nothing ' +
             'about your notes.',
-          'An email delivery service, for the messages described above — sign-in codes, password ' +
+          'An email delivery service, for the messages described above: sign-in codes, password ' +
             'resets, verification links. It sees your email address and the contents of those ' +
             'messages, which never include your notes.',
           ...(opts.errorTracking
@@ -268,8 +268,8 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
             : []),
           ...(opts.backups
             ? [
-                'GitHub, whose servers run the nightly job that copies our backups — your notes, ' +
-                  'your files and our sign-in records — to a second account with our hosting ' +
+                'GitHub, whose servers run the nightly job that copies our backups (your notes, ' +
+                  'your files and our sign-in records) to a second account with our hosting ' +
                   'provider, as described under “How long it is kept”. The copy passes through ' +
                   'those servers on the way and none of your content is kept on them.',
               ]
@@ -341,7 +341,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
         heading: 'How long it is kept',
         body: [
           'Your notes stay until you delete them. Deleting a note moves it to trash, where it stays ' +
-            'until you empty the trash — at which point the note is gone for good. Files you ' +
+            'until you empty the trash, at which point the note is gone for good. Files you ' +
             'delete, from a note or with it, are removed from our storage about 35 days later. ' +
             'Everything else is kept for as long as the account exists, and removed when it is ' +
             'deleted. Sent email may persist for a short period in our email provider’s own logs.',
@@ -416,7 +416,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
         body: [
           'If this policy changes, the effective date above changes with it. When the change ' +
             'affects how your information is handled, you will be asked to agree to the new ' +
-            'version in the app before you go on using it — and if you do not, you can still ' +
+            'version in the app before you go on using it, and if you do not, you can still ' +
             'export your notes and delete your account.',
         ],
       },
@@ -591,7 +591,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
    *
    * This exists for the Google Play listing, which requires a public URL where the deletion
    * process is explained, and which checks that the URL loads. Pointing it at
-   * `/settings/maintenance` — where the control actually is — returned a 403 in the console,
+   * `/settings/maintenance` (where the control actually is) returned a 403 in the console,
    * because the reviewer following the link has no session and never will.
    *
    * Play asks a store listing's deletion URL for three specific things, and each is a
@@ -600,12 +600,12 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
    * how long.
    *
    * It is a `LegalDocument` because it has to say the same things `privacy` says about
-   * deletion and retention, and two prose copies of one fact drift apart — one gets corrected
+   * deletion and retention, and two prose copies of one fact drift apart: one gets corrected
    * and the other quietly becomes a lie a store listing points at. Everything here is stated
    * in the Privacy Policy's "Deleting your account" and "How long it is kept"; change both
    * together, or neither.
    *
-   * No `effective` date of its own in the sense the legal documents have one — it carries
+   * No `effective` date of its own in the sense the legal documents have one: it carries
    * the privacy policy's, because it is a restatement of that policy's retention terms
    * rather than a separate promise, and moves when they do.
    */
@@ -613,7 +613,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
     title: 'Deleting your Unbent account',
     effective: PRIVACY_EFFECTIVE,
     intro: [
-      `Unbent is a notes application — a website at ${operator.host} and Android and iOS apps — operated ` +
+      `Unbent is a notes application (a website at ${operator.host} and Android and iOS apps) operated ` +
         `by ${operator.name}. You can delete your account and everything in it yourself, at any time, ` +
         `without asking us.`,
       `This page explains how, and exactly what deletion removes. It is the same process ` +
@@ -629,7 +629,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
           'Open Settings, then Maintenance.',
           'Press Delete account, and confirm when asked.',
           'We email a confirmation link to the address on the account. Nothing has been ' +
-            'deleted at this point — the press only sends the mail, so a stray tap costs you ' +
+            'deleted at this point: the press only sends the mail, so a stray tap costs you ' +
             'nothing.',
           'Open that link in the same browser you are signed in with, and press Delete my ' +
             'account. The account is deleted at that press. The link works once and expires ' +
@@ -646,8 +646,8 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
       {
         heading: 'What is deleted',
         body: [
-          'All of it, permanently. Deletion cannot be undone, and there is no export afterwards ' +
-            '— so if any of it matters, use Settings, then Export first, which gives you the ' +
+          'All of it, permanently. Deletion cannot be undone, and there is no export afterwards, ' +
+            'so if any of it matters, use Settings, then Export first, which gives you the ' +
             'whole account as a zip of ordinary Markdown files with your attachments beside them.',
         ],
         list: [
@@ -676,7 +676,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
           'Two other things outlive it, neither of which is your notes, and both are ordinary ' +
             'infrastructure rather than anything we keep on purpose. Our hosting provider ' +
             'retains routine server request logs, as any web host does. Mail we have already ' +
-            'sent you — a sign-in code, the deletion link itself — may persist for a short ' +
+            'sent you (a sign-in code, the deletion link itself) may persist for a short ' +
             'period in our email provider’s own logs.',
           'We may also keep a record where the law requires us to, which for a notes account is ' +
             'not the ordinary case.',
@@ -694,7 +694,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
  * What Paddle's website review reads for: that there is a price, that Paddle is the
  * merchant of record, that the plan renews and how to stop it, and a refund policy.
  *
- * No numbers — not the price, the storage or the trial's length. The front page and the
+ * No numbers: not the price, the storage or the trial's length. The front page and the
  * checkout state those, and terms that quoted `plan.ts`'s constants would be rewritten by a
  * price change without their effective date moving or anyone being asked to agree, which
  * is the one way legal text must never change. The refund window and how long a lapsed
@@ -707,7 +707,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
  * left renewing, which Paddle itself would do (`refundEffectOf` in the API's billing
  * events, acted on by the webhook with `ensureSubscriptionCanceled`, the call account
  * deletion makes). Deleting an account a year after it lapsed is a right reserved, not
- * a job — "may", by decision (`INACTIVE_KEPT_DAYS`).
+ * a job: "may", by decision (`INACTIVE_KEPT_DAYS`).
  */
 function payment(operator: Operator): LegalSection[] {
   return [
@@ -739,8 +739,8 @@ function payment(operator: Operator): LegalSection[] {
       heading: 'Refunds',
       id: REFUNDS_ID,
       body: [
-        `If Unbent is not for you, ask for a refund within ${REFUND_DAYS} days of any charge — ` +
-          `the first year or a renewal, the plan or added storage — and you will get the whole ` +
+        `If Unbent is not for you, ask for a refund within ${REFUND_DAYS} days of any charge (` +
+          `the first year or a renewal, the plan or added storage) and you will get the whole ` +
           `of that charge back. No reason is needed. Write to ${operator.email} from the ` +
           `address the account used, or ask Paddle directly with the link in your receipt.`,
         'A refunded plan is cancelled, so it does not renew. After ' +
