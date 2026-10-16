@@ -36,8 +36,8 @@ function isElement(node: Node, tag?: string): boolean {
 /**
  * Rewrites `<en-media hash>` into an image or link pointing at a relative `files/` path.
  *
- * The hash is an MD5 of the resource's decoded bytes — ENEX does not store it on the
- * resource itself — so resolution is by lookup, never by position. Resources appear in a
+ * The hash is an MD5 of the resource's decoded bytes (ENEX does not store it on the
+ * resource itself) so resolution is by lookup, never by position. Resources appear in a
  * different order than their references, so pairing them positionally attaches the wrong
  * file to the wrong note.
  */
@@ -182,7 +182,7 @@ export function enmlToMarkdown(enml: string, resources: EnexResource[]): Convert
   // ENML wraps content in <en-note>; strip the XML prolog and doctype first.
   //
   // en-media and en-todo are void elements in ENML, but an HTML parser has never heard of
-  // them and so treats them as containers — nesting everything that follows *inside* the
+  // them and so treats them as containers, nesting everything that follows *inside* the
   // tag. That silently swallows sibling attachments and list item text. Rewriting them to
   // known void elements before parsing keeps the tree flat; the transforms below then key
   // off the preserved data-en attribute.
@@ -223,7 +223,7 @@ export function enmlToMarkdown(enml: string, resources: EnexResource[]): Convert
      * Leave intra-word underscores alone.
      *
      * The default escapes every `_`, turning a filename like `2020_02_29.pdf` into
-     * `2021\_01\_23.pdf` — unreadable in the editor and wrong if copied back out.
+     * `2021\_01\_23.pdf`: unreadable in the editor and wrong if copied back out.
      * CommonMark does not treat an underscore inside a word as emphasis, so the escape
      * buys nothing. `handle` runs after the default escaping, so undo it there.
      */

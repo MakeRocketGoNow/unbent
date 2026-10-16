@@ -4,7 +4,7 @@ import { cleanExtractedText, type CleanedText } from './ocr-text.js';
  * Pulls the existing text layer out of a PDF.
  *
  * This is extraction, not OCR. Evernote already ran OCR on scanned attachments and
- * embedded the result, so the searchable text is sitting in the file — most notes in a
+ * embedded the result, so the searchable text is sitting in the file: most notes in a
  * real export are a scanned PDF with an empty body, and without this they import as
  * title-only stubs nothing can find.
  *

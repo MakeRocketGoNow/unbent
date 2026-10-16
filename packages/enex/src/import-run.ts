@@ -7,7 +7,7 @@ import { extractPdfText } from './pdf-text.js';
  * What every import shares, whatever file it reads.
  *
  * Two formats arrive here: Evernote's ENEX and Unbent's own export archive. They differ
- * in how a note and its files are found, and in nothing after that — the same request
+ * in how a note and its files are found, and in nothing after that: the same request
  * per note, the same upload per file, the same idea of a failure worth stopping for. This
  * module is that second half, so the two drivers cannot drift apart on how a run is
  * accounted for or when it gives up.
@@ -28,8 +28,8 @@ export interface ImportProgress {
    *
    * Zero means unknown, which is the ENEX case: the parser streams the file and cannot say
    * how many notes are in it without reading it first, so its progress is measured in bytes
-   * off the stream instead. An archive is the opposite — `getEntries` has already listed
-   * every note directory before the first note is touched — so it fills this in, and the
+   * off the stream instead. An archive is the opposite (`getEntries` has already listed
+   * every note directory before the first note is touched), so it fills this in, and the
    * bar counts notes rather than bytes.
    *
    * Bytes are a poor proxy for how far along an archive is: a real export is mostly its
@@ -70,8 +70,8 @@ export interface ImportSkip {
 /**
  * Consecutive failures carrying the same HTTP status that end a run.
  *
- * Low on purpose. The failures this catches are not a property of the notes — they are the
- * server having gone away — so every attempt after the first few is a request nobody
+ * Low on purpose. The failures this catches are not a property of the notes (they are the
+ * server having gone away), so every attempt after the first few is a request nobody
  * wanted, against a host that will not answer, producing a failure line that looks
  * individually actionable and is not.
  */
@@ -99,7 +99,7 @@ export class ImportStoppedError extends Error {
  * The HTTP status an injected client attached to its error, if it attached one.
  *
  * Duck-typed rather than shared through a common error class: the client is whatever the
- * host injects — a browser worker, the CLI, a test fake — and requiring them all to throw
+ * host injects (a browser worker, the CLI, a test fake) and requiring them all to throw
  * one library's error type to get a working breaker would be the wrong trade. An error
  * without a numeric status is a note-shaped failure and never trips it.
  */
@@ -112,7 +112,7 @@ function statusOf(err: unknown): number | undefined {
  * Statuses that are about this note, not the host.
  *
  * The breaker exists because a deleted preview Worker answered every remaining request
- * with the same status — 404, 502, 503. The browser client attaches that status to every
+ * with the same status: 404, 502, 503. The browser client attaches that status to every
  * `ApiError`, including the 400/413 a healthy server returns for a body over the cap or a
  * name it will not store. Five of those in a row used to abort the rest of the file, and
  * re-importing could not get past them: they fail again in the same order, the breaker
@@ -125,13 +125,13 @@ function isNoteFailure(status: number): boolean {
 /**
  * Statuses worth trying the same note again for, rather than counting straight away.
  *
- * A 503/502/504 is the edge answering because the Worker was momentarily unavailable — an
+ * A 503/502/504 is the edge answering because the Worker was momentarily unavailable: an
  * overloaded or briefly-evicted isolate, not a note the server refuses and not a host that
  * is gone for good. Under a bulk import these come in bursts and then clear, so the same
  * note usually lands on a second try a moment later. Retrying it in place is what keeps one
  * blip from aborting the run and spending a fresh import's worth of requests re-treading
  * everything that already landed. A host that really has gone away fails every retry too,
- * so the breaker still trips — just after each note has tried a few times first.
+ * so the breaker still trips, just after each note has tried a few times first.
  *
  * 404 is deliberately not here: the deleted-preview-Worker case answers 404, and a gone
  * Worker will not come back within a note's worth of backoff, so retrying it only delays
@@ -252,7 +252,7 @@ export interface ImportOptions {
  * One run's accounting: progress, per-note failures and skips, and the breaker.
  *
  * A driver wraps each note in `attempt` and calls `finish` when its file is exhausted.
- * `halt` is what the driver's reader should stop on — it fires for either reason a run
+ * `halt` is what the driver's reader should stop on: it fires for either reason a run
  * ends early, the caller cancelling or the breaker tripping, and `finish` tells the two
  * apart: a cancel returns the progress so far, a trip throws.
  */
@@ -300,8 +300,8 @@ export class ImportRun {
    * The retry is per note and in place: a 503 from an overloaded Worker usually clears in a
    * moment, so trying the same note again is what keeps a burst from counting as failures
    * and aborting the run. A note-shaped failure (a rejected body, a bad name) and a host
-   * that has truly gone (404) are not retried — the first is not the host's fault and the
-   * second will not recover within a note's backoff — so both reach the breaker as before.
+   * that has truly gone (404) are not retried (the first is not the host's fault and the
+   * second will not recover within a note's backoff), so both reach the breaker as before.
    * Whatever the last try threw is rethrown, so the streak still sees the real status.
    */
   private async runWithRetries(work: () => Promise<void>): Promise<void> {
@@ -330,8 +330,8 @@ export class ImportRun {
    * Imports one note, recording the outcome either way.
    *
    * `title` is what the driver knows before the work starts. A driver that only learns
-   * the real title partway through — an archive names a note inside the file it has yet
-   * to read — may overwrite `progress.currentTitle` from inside `work`, and a failure is
+   * the real title partway through (an archive names a note inside the file it has yet
+   * to read) may overwrite `progress.currentTitle` from inside `work`, and a failure is
    * reported under whichever name is current when it happens.
    */
   async attempt(title: string, work: () => Promise<void>): Promise<void> {
@@ -359,7 +359,7 @@ export class ImportRun {
 
       if (status === 401) {
         // Not a streak: one is enough. The run's credentials are gone, and every request
-        // after this one carries whatever session the browser holds next — which, once
+        // after this one carries whatever session the browser holds next, which, once
         // somebody else signs in on the same device, is theirs. Waiting for five would
         // leave that window open for as long as the next note takes to parse.
         this.stopped = new ImportStoppedError(
@@ -378,7 +378,7 @@ export class ImportRun {
         this.stopped = new ImportStoppedError(
           status,
           this.streak.count,
-          `Stopped after ${this.streak.count} consecutive failures with status ${status} — ` +
+          `Stopped after ${this.streak.count} consecutive failures with status ${status}: ` +
             `the server stopped responding partway through the file. ` +
             `${progress.created.toLocaleString()} notes were imported before that. ` +
             `Import the same file again to continue; everything that landed is skipped.`,
@@ -395,7 +395,7 @@ export class ImportRun {
    * Records something that went wrong that was not a note: a notebook's definitions the
    * server would not take, or one field of them it could not apply. Counted with the
    * failures and reported through the same log, since that is the list a person reads
-   * to find out what did not land — but outside `attempt`, so it never counts toward the
+   * to find out what did not land, but outside `attempt`, so it never counts toward the
    * notes processed and the bar still measures notes.
    */
   problem(title: string, reason: string): void {
@@ -460,7 +460,7 @@ export interface ImportFile {
  * happened to, so the caller can repoint the body's links.
  *
  * Takes an async iterable as readily as an array so a driver that can read its files
- * lazily — an archive, where each is a byte range — holds one attachment in memory at a
+ * lazily (an archive, where each is a byte range) holds one attachment in memory at a
  * time rather than a note's worth.
  */
 export async function uploadFiles(
@@ -475,8 +475,8 @@ export async function uploadFiles(
   for await (const file of files) {
     /*
        A file that arrived with its text is not read again, by anyone. The server is told
-       before the bytes land, because it starts reading the moment they do — a PDF through
-       extraction, a picture through the vision model, a paid request per file — and a read
+       before the bytes land, because it starts reading the moment they do (a PDF through
+       extraction, a picture through the vision model, a paid request per file) and a read
        that finished after the archive's text was saved would replace it with other words.
        The text then goes in as it was, under the reader that wrote it. If saving it fails
        the file is simply left unread, where the passes over pending files find it.
@@ -531,7 +531,7 @@ export function storedName(renames: Map<string, string>, requested: string): str
  * Repoints every `files/<from>` link in a body at the names the server actually stored.
  *
  * Exact paths, not substrings. Replacing `files/IMG_1.jpg` with a split/join also rewrote
- * `files/IMG_10.jpg` — camera-roll notes are full of those neighbours — so a collision
+ * `files/IMG_10.jpg` (camera-roll notes are full of those neighbours) so a collision
  * suffix on the shorter file silently retargeted the longer one's link, and sometimes
  * produced a name that is not a file at all (`files/IMG_1-2.jpg0.jpg`). Longest first is
  * not enough on its own: the longer neighbour is often *not* in the rename map.

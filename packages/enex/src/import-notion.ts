@@ -17,7 +17,7 @@ import { parseCsv } from './notion-csv.js';
 import { parseNotionPage, rewriteNotionBody, type NotionLinkTarget } from './notion-page.js';
 
 /**
- * Imports a Notion workspace export — the "Markdown & CSV" zip.
+ * Imports a Notion workspace export: the "Markdown & CSV" zip.
  *
  * Notion writes one bundle per top-level item. A database is a stub page, a CSV of every
  * row, and a folder holding one markdown page per row with each row's attachments in a
@@ -27,8 +27,8 @@ import { parseNotionPage, rewriteNotionBody, type NotionLinkTarget } from './not
  * re-importable: it is a UUID without its dashes, so it becomes the note's id here, and a
  * second import of the same zip finds every note already present.
  *
- * Each top-level bundle is a unit the person can choose to import or not — the picker
- * in the import panel is built from `describeNotion` — and each becomes a notebook: a
+ * Each top-level bundle is a unit the person can choose to import or not (the picker
+ * in the import panel is built from `describeNotion`) and each becomes a notebook: a
  * database's rows are its notes and its columns its fields (see `inferColumns` for how
  * the types are read from untyped CSV); a page tree's pages are its notes, and a
  * database nested inside it adds its columns to the same notebook. Loose pages have no
@@ -204,7 +204,7 @@ interface Model {
    * The page id that owns each attachment folder, by the folder's path.
    *
    * Notion names a row's attachment folder after the row's title, with no id, so two rows
-   * with the same title share one folder name. Both pages would otherwise claim it — the
+   * with the same title share one folder name. Both pages would otherwise claim it: the
    * files landing on whichever the run reached first, and duplicated onto the other. The
    * owner is the page whose body links a file in the folder; a folder no page links (a
    * file too big for Notion, which the export kept but never referenced) falls to the page
@@ -221,7 +221,7 @@ const RELATIVE_LINK = /\]\(\s*<?([^)>\s][^)>]*?)\/[^)>]+>?\s*\)/g;
  * Which page owns each attachment folder.
  *
  * A folder is any directory holding files; its candidates are the pages in its parent
- * whose own folder it would be — same base name. When one candidate's body links into
+ * whose own folder it would be: same base name. When one candidate's body links into
  * it, that page owns it; otherwise the first candidate by archive order does, which for
  * the common case of a unique name is the only one. Reading bodies is scoped to folders
  * with more than one candidate, which a real export has a handful of.
@@ -298,7 +298,7 @@ async function readModel(entries: Entry[], options: NotionImportOptions): Promis
   async function descend(dir: string, into: Located[], dbs: Database[]): Promise<void> {
     const d = tree.get(dir);
     if (!d) return;
-    // Two rows can share a title, so two rows can name the same folder — the shared
+    // Two rows can share a title, so two rows can name the same folder: the shared
     // attachment folder that `resolveFolderOwners` sorts out. Walk it once, or a sub-page
     // sitting in it (a row's own sub-page) would be added, counted and imported twice.
     if (descended.has(dir)) return;
@@ -398,7 +398,7 @@ async function readModel(entries: Entry[], options: NotionImportOptions): Promis
     loose.push({ page, database: null });
   }
 
-  // A database with rows but no stub page — a hand-made zip of one folder and its CSV.
+  // A database with rows but no stub page: a hand-made zip of one folder and its CSV.
   for (const csv of root.csvs) {
     if (root.pages.some((p) => p.id === csv.id)) continue;
     const db = await database(csv);
@@ -552,7 +552,7 @@ async function importPage(
 
   // The folder this page owns holds its attachments; a link may also reach a file
   // elsewhere. Ownership, not the base name, is what keeps two rows with the same title
-  // from each claiming the one folder they share — see `resolveFolderOwners`.
+  // from each claiming the one folder they share (see `resolveFolderOwners`).
   const folder = join(page.dir, page.base);
   const uploads = new Map<string, Attachment>();
   if (model.folderOwner.get(folder) === page.id) {
@@ -593,7 +593,7 @@ async function importPage(
 
   const files = [...uploads.values()];
 
-  // Already here: the same rule as the other importers — skip the note, fill in any
+  // Already here: the same rule as the other importers. Skip the note, fill in any
   // attachment a prior run that died mid-upload never stored.
   if (!result.created) {
     run.skipped(result.id);

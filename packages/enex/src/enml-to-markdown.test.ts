@@ -101,8 +101,8 @@ describe('en-media resolution', () => {
   });
 
   /**
-   * Resources are not in the same order as their references — verified against the real
-   * export — so resolution must be by hash lookup and never by position.
+   * Resources are not in the same order as their references (verified against the real
+   * export) so resolution must be by hash lookup and never by position.
    */
   it('resolves by hash, not document order', () => {
     const first = resource({ md5: '1'.repeat(32), filename: 'first.pdf' });

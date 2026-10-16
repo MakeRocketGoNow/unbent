@@ -27,27 +27,27 @@ import { contentHash } from './note-body.js';
  * a single note's bare `.md`.
  *
  * The archive is read the way it was written. A note is a markdown file with frontmatter,
- * and its attachments are whatever sits in a `files/` directory beside it — the layout
+ * and its attachments are whatever sits in a `files/` directory beside it: the layout
  * `writeNoteEntry` in the API lays down, nested one directory per note for a library and
  * flat at the root for a single note. Nothing else is assumed: the directory names are
  * ignored (they are a slug and an id fragment, both also in the frontmatter), so an
- * archive someone unpacked, moved around and re-zipped — with a top-level folder added and
- * Finder's `__MACOSX` beside it — reads the same as the original.
+ * archive someone unpacked, moved around and re-zipped (with a top-level folder added and
+ * Finder's `__MACOSX` beside it) reads the same as the original.
  *
  * Every note's metadata comes from its own frontmatter: notebook, tags, dates, custom
  * fields and the id it had. That is the whole reason a zip can move a notebook between
- * two instances — nothing about the notes lives outside the files.
+ * two instances: nothing about the notes lives outside the files.
  *
  * What is not about a note lives in `notebooks/`: one `<slug>.yaml` per notebook, naming
  * its fields with their types, options and scales. Those are applied first, before any
  * note, so that values arrive against the definitions they were written under rather
- * than ones inferred from the first value seen — which is how a URL field used to come
+ * than ones inferred from the first value seen, which is how a URL field used to come
  * back as text and a rating as a plain number. An archive without that directory (an
  * older export, or a vault someone assembled by hand) imports exactly as before.
  *
  * Beside `files/`, a note may have `text/`, `described/` and `written/`: each file's text as the
  * exporting instance held it, from the file's own text layer or from the vision model. A
- * file that has one is uploaded with its text rather than read again — no extraction, no
+ * file that has one is uploaded with its text rather than read again: no extraction, no
  * paid vision request, and the same words search and Auto-fill were built on. A file
  * without one is read as it always was.
  *
@@ -138,7 +138,7 @@ async function importOne(
     updatedAt: note.updated.getTime(),
     // The id belongs in the hash. Title and body alone made two empty Untitled drafts
     // (or two receipts typed the same way) look like one note, and the second was
-    // skipped — its files uploaded onto the first, or dropped when the names matched.
+    // skipped: its files uploaded onto the first, or dropped when the names matched.
     // Re-import still matches: same id, same hash, even if a prior run had to mint a
     // fresh row because this id was taken.
     contentHash: await contentHash(note.title, note.body, note.id),
@@ -147,7 +147,7 @@ async function importOne(
   });
 
   // Already here: skip the note, but still fill attachments a prior run may have missed.
-  // The same rule as the ENEX importer, for the same reason — a run that died mid-upload
+  // The same rule as the ENEX importer, for the same reason: a run that died mid-upload
   // must be repairable by running it again.
   if (!result.created) {
     run.skipped(result.id);
@@ -168,7 +168,7 @@ async function importOne(
    * Every file in `files/` is uploaded, linked from the body or not. The export wrote
    * every stored file for the same reason: a file that was attached and then unlinked is
    * still the note's, and the Attachments panel still shows it. The body is left exactly
-   * as exported — no appended list of unlinked files, which would change the note and,
+   * as exported: no appended list of unlinked files, which would change the note and,
    * with it, the hash the next import would be matched on.
    */
   const renames = await uploadFiles(
@@ -187,7 +187,7 @@ async function importOne(
  * Applies one notebook's definitions, and reports what could not be applied.
  *
  * Not wrapped in `run.attempt`: that counts notes, and this is not one. A file the server
- * refuses, or a field it declines — already here under another type, say — goes into the
+ * refuses, or a field it declines (already here under another type, say) goes into the
  * failure log by name, where a person looking for why a field came back wrong will find
  * it. A host without `importNotebook` (an older CLI against a newer export) reads the
  * entry and moves on, which leaves the import exactly as it was before this file existed.
@@ -283,7 +283,7 @@ async function* noteSources(
   try {
     const { groups, notebooks } = groupEntries(await reader.getEntries(), progress);
 
-    // The note count is known now, before the first note is touched — every group that
+    // The note count is known now, before the first note is touched: every group that
     // holds a markdown file is one note. This is what the bar divides by, so it measures
     // notes done rather than bytes read. Set once, not per note, or the bar's denominator
     // would grow as the run went and it could never reach the end.
@@ -353,7 +353,7 @@ interface ArchiveEntries {
 /**
  * Sorts the archive's entries into note directories, setting the definitions aside.
  *
- * A definitions file is any `.yaml` in a directory called `notebooks` — at the root, as
+ * A definitions file is any `.yaml` in a directory called `notebooks`: at the root, as
  * the export writes it, or under whatever top-level folder a re-pack added, for the same
  * reason directory names are ignored for notes. It is never mistaken for one: a note is
  * markdown and sits in its own `{slug}-{id}` directory.
@@ -368,7 +368,7 @@ interface ArchiveEntries {
  *
  * Skipped outright: directory entries, which carry no bytes; Finder's `__MACOSX` tree,
  * which is resource forks for every file in the archive; and any dotfile, which is
- * `.DS_Store` and its relatives — the upload would refuse the name anyway. Their bytes
+ * `.DS_Store` and its relatives: the upload would refuse the name anyway. Their bytes
  * still count as read, so the progress bar can reach the end of the file.
  */
 function groupEntries(entries: Entry[], progress: ImportProgress): ArchiveEntries {

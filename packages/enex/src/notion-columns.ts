@@ -13,7 +13,7 @@ import {
  *
  * Notion's CSV carries no types: a date, a select and a formula all arrive as text. So
  * each column's type is inferred from every value it holds across the rows, and the
- * inference is deliberately conservative — a column is a select only when its values
+ * inference is deliberately conservative: a column is a select only when its values
  * repeat, a multi-select only when its comma-separated parts do, and anything the rules
  * cannot place is text, which the notebook's Fields page can convert afterwards with the
  * confirmation that step deserves. Guessing wrong toward text loses nothing; guessing
@@ -22,8 +22,8 @@ import {
  * Some columns are not fields at all. The first is the title. One named Tags is the
  * note's tags, since that is what those were in every source this export was assembled
  * from. Notion's own created and last-edited stamps become the note's own dates, which
- * is the one place this export carries a timestamp. A column too long for a field —
- * a text property holding paragraphs — goes into the body under its own heading.
+ * is the one place this export carries a timestamp. A column too long for a field
+ * (a text property holding paragraphs) goes into the body under its own heading.
  */
 
 export type NotionColumnKind = 'title' | 'field' | 'tags' | 'created' | 'updated' | 'body';
@@ -137,7 +137,7 @@ export interface NotionNumber {
 
 const NUMBER_RE = /^(-?)([^\d\s.,-]*|[A-Z]{3})\s?(-?)((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s?([^\d\s.,-]*|[A-Z]{3})$/;
 
-/** Reads a Notion number — `22`, `1,234.5`, `-3`, `$29.99`, `€1.50`, `CHF 12` — or null. */
+/** Reads a Notion number (`22`, `1,234.5`, `-3`, `$29.99`, `€1.50`, `CHF 12`) or null. */
 export function parseNotionNumber(raw: string): NotionNumber | null {
   const m = NUMBER_RE.exec(raw.trim());
   if (!m) return null;
@@ -304,8 +304,8 @@ export function inferColumns(
 /**
  * A property's text as the value its field stores, or null for none.
  *
- * Reads by the field's type rather than re-inferring: a value the type cannot read — a
- * row page the CSV left out, holding something the rows never showed — comes back as
+ * Reads by the field's type rather than re-inferring: a value the type cannot read (a
+ * row page the CSV left out, holding something the rows never showed) comes back as
  * text where the type is text-like, and as null otherwise, so the note still lands and
  * the field is simply empty on it.
  */

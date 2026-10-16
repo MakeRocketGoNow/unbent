@@ -6,7 +6,7 @@ import type { EnexNote, EnexResource } from './types.js';
  * Streaming ENEX parser.
  *
  * Holds exactly one `<note>` in memory at a time. The largest file in a real export is
- * 3.4GB in a single XML document — it cannot be read into a string, cannot be uploaded
+ * 3.4GB in a single XML document: it cannot be read into a string, cannot be uploaded
  * whole (Cloudflare caps request bodies at 100MB), and cannot be chunked across requests
  * without reassembling parser state server-side. Streaming a SAX parse in the browser
  * avoids all three: `File` is already a disk-backed handle.
@@ -60,7 +60,7 @@ export function fallbackFilename(md5: string, mime: string): string {
  * trailing space and, for anything the user did not attach from a file, with no extension
  * at all. A real export has PDFs named `Menu Card` and `Lease Summary - DRAFT DRAFT `.
  *
- * That matters because the extension is load-bearing downstream — the preview decides
+ * That matters because the extension is load-bearing downstream: the preview decides
  * whether to embed a document viewer by the path it resolves, the export writes these
  * names to disk, and a phone picks its handler the same way. So the declared `<mime>`,
  * which is the one trustworthy thing in the pair, supplies what the name is missing.
@@ -74,7 +74,7 @@ export function fallbackFilename(md5: string, mime: string): string {
  * Unicode`. Separators are replaced rather than stripped so the words stay readable and
  * two labels differing only there cannot collide, a leading dot is dropped because
  * `filenameSchema` reserves it, and an over-long label is truncated with its extension
- * kept — the extension is what the preview and the export dispatch on. Sanitizing here
+ * kept: the extension is what the preview and the export dispatch on. Sanitizing here
  * rather than letting the upload 400 keeps a cosmetic quirk of the label from costing the
  * note its attachment.
  */
@@ -130,8 +130,8 @@ function truncate(name: string, ext: string): string {
  * that only differed by a slash and became the same after `resourceFilename` replaced
  * the separator. The markdown is written from these names (`files/<filename>`), and
  * the upload then suffixes the second. A later substring rewrite of `files/image.png`
- * would retarget *every* link — including the first file's, and including a neighbour
- * like `files/image.png.bak` — so both attachments have to carry distinct names before
+ * would retarget *every* link (including the first file's, and including a neighbour
+ * like `files/image.png.bak`) so both attachments have to carry distinct names before
  * either the conversion or the upload sees them.
  *
  * Same algorithm as `availableFilename` in the API, and deterministic, so a resumed
@@ -140,7 +140,7 @@ function truncate(name: string, ext: string): string {
 export function uniqueResourceFilenames(resources: EnexResource[]): EnexResource[] {
   if (resources.length <= 1) return resources;
   // Every original name is reserved so a suffix never steals a neighbour that already
-  // held `image-2.png` — that file is a different attachment, and renaming it would
+  // held `image-2.png`: that file is a different attachment, and renaming it would
   // retarget its link the same way a substring replace used to.
   const reserved = new Set(resources.map((r) => r.filename));
   const assigned = new Set<string>();
@@ -191,7 +191,7 @@ export interface ParseCallbacks {
 /**
  * Parses an ENEX stream, invoking `onNote` for each note as it completes.
  *
- * `onNote` is awaited, so a caller that uploads inside it applies natural backpressure —
+ * `onNote` is awaited, so a caller that uploads inside it applies natural backpressure:
  * parsing pauses while the upload runs and memory stays bounded by one note.
  */
 export async function parseEnexStream(
@@ -298,7 +298,7 @@ export async function parseEnexStream(
    * Count bytes before decoding, not characters after.
    *
    * `TextDecoderStream` yields strings, so measuring the decoded chunk counts UTF-16 code
-   * units — which disagrees with the `File.size` the UI shows progress against as soon as
+   * units, which disagrees with the `File.size` the UI shows progress against as soon as
    * a file contains any non-ASCII text. Tapping the byte stream on the way past keeps the
    * two in the same unit.
    */
@@ -322,7 +322,7 @@ export async function parseEnexStream(
    *
    * Progress is reported after *each* note rather than once per chunk. A chunk is
    * 64KB–512KB of ENEX, which can hold many notes, and the uploads inside `onNote` are the
-   * slow part — so a per-chunk update leaves the UI frozen for the entire time real work is
+   * slow part, so a per-chunk update leaves the UI frozen for the entire time real work is
    * happening, which reads as a hang. This is the difference between a progress bar that
    * moves and one that appears stuck at its first value.
    */
@@ -397,7 +397,7 @@ function decodeResource(pending: PendingResource): EnexResource | null {
 }
 
 /**
- * MD5 of the decoded bytes — the value `<en-media hash>` refers to.
+ * MD5 of the decoded bytes: the value `<en-media hash>` refers to.
  *
  * Implemented here rather than pulled from a dependency because WebCrypto deliberately
  * omits MD5, and this is the only place it is needed. It is used purely to match Evernote's

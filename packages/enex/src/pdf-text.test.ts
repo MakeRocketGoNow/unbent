@@ -1,8 +1,8 @@
 /**
  * PDF text extraction against scanned attachments shaped like an Evernote export's.
  *
- * The feature exists because real scans carry Evernote's OCR layer — a page image with
- * invisible text laid over it — and its quality varies enough that both a good and a
+ * The feature exists because real scans carry Evernote's OCR layer (a page image with
+ * invisible text laid over it) and its quality varies enough that both a good and a
  * failed scan are worth asserting on. The fixtures used to be two of those real files;
  * they were personal documents and have been withdrawn from the repository and its
  * history. `scripts/make-scan-fixtures.mjs` now builds a pair with the same structure and
@@ -27,7 +27,7 @@ describe('isExtractable', () => {
 
 /**
  * pdf.js resolves GlobalWorkerOptions.workerSrc before deciding whether to spawn a worker
- * and throws when it is blank — in the browser, even on the legacy build. Node tolerates a
+ * and throws when it is blank (in the browser, even on the legacy build). Node tolerates a
  * blank value, which is why a version that failed on every real file passed these tests.
  * Asserting the setting directly is the part that transfers.
  */
@@ -48,7 +48,7 @@ describe('extractPdfText', () => {
     expect(result.pages).toBeGreaterThan(0);
     expect(result.quality.usable).toBe(true);
     expect(result.text.length).toBeGreaterThan(500);
-    // Real content from a pharmacy record — the kind of thing worth searching for.
+    // Real content from a pharmacy record, the kind of thing worth searching for.
     expect(result.text).toContain('Northfield');
   }, 30_000);
 

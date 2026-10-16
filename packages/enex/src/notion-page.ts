@@ -1,17 +1,17 @@
 /**
  * One page of a Notion export, read from its markdown.
  *
- * Notion writes a page as its title as an H1, then — for a row of a database — one
+ * Notion writes a page as its title as an H1, then (for a row of a database) one
  * `Property: value` line per property that has a value, a blank line, and the body.
  * A page that is not a row has no property block. The block's keys are the database's
  * columns, so the caller says which names to expect; a line under a property that is
  * not itself a known property continues the one above, which is how a text property
- * holding several paragraphs arrives. A key the columns do not name — a formula or a
- * rollup, which the CSV leaves out — is dropped rather than glued onto its neighbour.
+ * holding several paragraphs arrives. A key the columns do not name (a formula or a
+ * rollup, which the CSV leaves out) is dropped rather than glued onto its neighbour.
  */
 
 export interface NotionPage {
-  /** The H1, whole — the filename truncates long titles, the heading does not. */
+  /** The H1, whole: the filename truncates long titles, the heading does not. */
   title: string;
   /** Property values by Notion's own column name, in page order. */
   props: Array<[string, string]>;
@@ -24,7 +24,7 @@ const LOOKS_LIKE_KEY = /^[A-Z][^:\n]{0,60}: /;
 /**
  * The known property a line starts, if any: the longest known name the line opens with,
  * followed by a colon. Matched against the names rather than cut at the first colon,
- * because a name can hold one — Notion writes a property that shares a built-in's name
+ * because a name can hold one: Notion writes a property that shares a built-in's name
  * as `userDefined:URL`, and cutting at its first colon would leave every such line
  * looking like the continuation of whatever came before it.
  */
@@ -106,7 +106,7 @@ function fileDestination(name: string): string {
  *
  * Relative links are how Notion refers to its own: an attachment sits in a folder named
  * for the page, a sub-page is a markdown file beside it, a database is its CSV. Each
- * becomes what the app expects — a `files/` link, a link to the imported note, or the
+ * becomes what the app expects: a `files/` link, a link to the imported note, or the
  * database's name as plain text, whether or not the CSV made it into the export. An
  * absolute notion.so link to a page that was imported
  * becomes a link to it too; one to anything else is left as it was, since it still
@@ -129,7 +129,7 @@ export function rewriteNotionBody(body: string, ctx: RewriteContext): string {
     } catch {
       return whole;
     }
-    // A database the export left out — a linked view, an empty one — is still a
+    // A database the export left out (a linked view, an empty one) is still a
     // database: its name as text, the same as one that is here.
     const target = ctx.resolve(path) ?? (/\.csv$/i.test(path) ? { kind: 'database' as const } : null);
     if (!target) return whole;
@@ -162,8 +162,8 @@ function dropCaptions(body: string): string {
 }
 
 /**
- * `<aside>` blocks as blockquotes: the icon Notion puts first — an emoji on its own line,
- * or an `<img>` of one of its stock icons — leads the first line, and the icon images are
+ * `<aside>` blocks as blockquotes: the icon Notion puts first (an emoji on its own line,
+ * or an `<img>` of one of its stock icons) leads the first line, and the icon images are
  * dropped since they are decoration the preview cannot draw meaningfully anyway.
  */
 function calloutsToQuotes(body: string): string {

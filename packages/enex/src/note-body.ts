@@ -3,13 +3,13 @@
  *
  * Split out of `import.ts` so both importers can share it without also pulling in the ENEX
  * stream parser: the server converts ENML for syncing clients and never parses an ENEX
- * file. Sharing matters more than the file size — the two paths must produce byte-identical
+ * file. Sharing matters more than the file size: the two paths must produce byte-identical
  * bodies, because the hash of the body is what makes re-import idempotent. A note that hashed
  * differently depending on how it arrived would import twice.
  */
 
 /**
- * sha256 of title and body — the idempotency key for a note from an Unbent export.
+ * sha256 of title and body: the idempotency key for a note from an Unbent export.
  *
  * `id` is included when the source named the note. Two empty Untitled drafts are two
  * notes; hashing title and body alone treated the second as a duplicate of the first and

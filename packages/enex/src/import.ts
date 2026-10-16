@@ -15,7 +15,7 @@ import type { EnexNote } from './types.js';
 /**
  * Drives an ENEX import: parse, convert, upload.
  *
- * Runs wherever it is called from — the API calls are injected — so the orchestration can
+ * Runs wherever it is called from (the API calls are injected) so the orchestration can
  * be tested against a fake client without a browser or a server. What is specific to
  * Evernote is here; the accounting and the uploads are `import-run.ts`, shared with the
  * importer for Unbent's own archives.
@@ -98,7 +98,7 @@ async function importOne(
   });
 
   // Already imported: skip the note, but still fill attachments a prior run may have
-  // missed. Without this, a worker crash mid-PDF leaves a permanent hole — re-import
+  // missed. Without this, a worker crash mid-PDF leaves a permanent hole: re-import
   // sees the content hash, returns skipped, and never retries the upload.
   if (!result.created) {
     run.skipped(result.id);

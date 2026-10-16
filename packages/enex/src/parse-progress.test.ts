@@ -4,7 +4,7 @@ import { parseEnexStream } from './parse.js';
 /**
  * Progress reporting during a parse.
  *
- * A real ENEX arrives in very few stream chunks — a 968KB file yields three — and each can
+ * A real ENEX arrives in very few stream chunks (a 968KB file yields three) and each can
  * hold many notes. Reporting progress only between chunks meant the UI sat at its first
  * value for the entire import, which is indistinguishable from a hang.
  */
@@ -63,7 +63,7 @@ describe('progress reporting', () => {
       onProgress: () => order.push('progress'),
     });
 
-    // A progress event must land between notes, not all of them at the end — that is what
+    // A progress event must land between notes, not all of them at the end: that is what
     // makes a slow import look alive.
     const firstNote = order.indexOf('note:One');
     const secondNote = order.indexOf('note:Two');
