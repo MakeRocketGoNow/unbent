@@ -36,8 +36,10 @@ describe('needsAgreement', () => {
     expect(needsAgreement(LEGAL, '2026-01-01', '/notes')).toBe(true);
   });
 
+  /** The comparison is `coversLegalVersion`'s, tested in `@unbent/shared`; this pins the wiring. */
   it('lets through an account that agreed to this version', () => {
     expect(needsAgreement(LEGAL, '2026-10-09', '/notes')).toBe(false);
+    expect(needsAgreement(LEGAL, '2026-10-14', '/notes')).toBe(false);
   });
 
   /** Nothing published, or an instance older than the agreement step: nothing to agree to. */

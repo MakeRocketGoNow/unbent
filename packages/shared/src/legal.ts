@@ -60,3 +60,19 @@ export const LEGAL_CHANGE: LegalChange | undefined = {
   billingOnly: true,
   since: '2026-10-09',
 };
+
+/**
+ * Whether an account that agreed to `agreed` has agreed to `required`, the version its
+ * instance asks for now (`legalVersionOf` in the API).
+ *
+ * Equality, with one case more: an instance that sold a plan and stopped — the Paddle
+ * settings removed, or its front page turned off — asks for `since` again, the version
+ * before a billing-only change, and an account that agreed to `LEGAL_VERSION` agreed to
+ * everything in it and more. Without this, every account on it would be asked again,
+ * under "We’ve updated our terms", for text it had already agreed to. The one place the
+ * comparison is made, for the server's refusal and the app's gate alike.
+ */
+export function coversLegalVersion(agreed: string | null | undefined, required: string): boolean {
+  if (agreed === required) return true;
+  return LEGAL_CHANGE?.billingOnly === true && required === LEGAL_CHANGE.since && agreed === LEGAL_VERSION;
+}

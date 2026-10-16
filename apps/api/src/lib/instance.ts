@@ -128,7 +128,9 @@ const OWN_DOCUMENTS_VERSION = '1';
  * (`billingOnly`) is no change at all where it sells none (`sellsPlanOf`): those terms
  * read word for word as they did, so that instance stays on the version the change moved
  * from (`since`) and nobody there is asked again. An instance that starts selling later
- * moves to the new version then, and its accounts are asked once, with the sentence.
+ * moves to the new version then, and its accounts are asked once, with the sentence; one
+ * that stops selling moves back, and `coversLegalVersion` keeps the accounts that agreed
+ * to the newer version from being asked for the older one.
  */
 export function legalVersionOf(
   env: Pick<Env, 'LEGAL_VERSION' | 'FRONT_PAGE'> & PaddleEnv,
