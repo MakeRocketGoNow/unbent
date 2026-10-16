@@ -181,5 +181,25 @@ describe('the webhook', () => {
 
     // An event for a customer no row holds is accepted and ignored.
     expect(await (await deliver({ event_id: `evt_${customer}_9`, event_type: 'subscription.created', occurred_at: '2026-10-12T00:00:00Z', data: subscription({ customer_id: 'ctm_nobody' }) })).json()).toEqual({ applied: false, reason: 'no account' });
+
+    // A refund's adjustment is read: one of a one-off charge, or one still awaiting
+    // Paddle's approval, is accepted and changes nothing. (A refund of the plan asks
+    // Paddle to cancel the subscription, which the sandbox refuses for a subscription
+    // it does not hold, so that case is the unit test's.)
+    const adjustment = (over: Record<string, unknown> = {}) => ({
+      id: 'adj_test',
+      action: 'refund',
+      type: 'full',
+      status: 'approved',
+      transaction_id: 'txn_first',
+      subscription_id: 'sub_first',
+      customer_id: customer2,
+      items: [],
+      ...over,
+    });
+    expect(await (await deliver({ event_id: `evt_${customer2}_a1`, event_type: 'adjustment.created', occurred_at: '2026-10-13T00:00:00Z', data: adjustment({ subscription_id: null }) })).json()).toEqual({ applied: false, reason: 'not followed' });
+    expect(await (await deliver({ event_id: `evt_${customer2}_a2`, event_type: 'adjustment.created', occurred_at: '2026-10-13T00:00:00Z', data: adjustment({ status: 'pending_approval' }) })).json()).toEqual({ applied: false, reason: 'not followed' });
+    plan = (await (await call('GET', '/api/me/plan')).json()) as typeof plan;
+    expect(plan).toMatchObject({ state: 'active', storageGb: 35 });
   });
 });

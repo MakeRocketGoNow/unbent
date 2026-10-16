@@ -1389,10 +1389,15 @@ sandbox first.
 4. **Developer tools → Notifications.** A destination of type webhook at
    `https://<host>/api/billing/webhook`, with the subscription events
    (`subscription.created`, `activated`, `trialing`, `updated`, `past_due`, `paused`,
-   `resumed`, `canceled`) and `transaction.completed`. Its secret, `pdl_ntfset_…`, is
+   `resumed`, `canceled`), `transaction.completed`, and the adjustment events
+   (`adjustment.created`, `adjustment.updated`). Its secret, `pdl_ntfset_…`, is
    what every delivery is signed with. The Worker answers inside Paddle's five seconds
    and applies each event once, in any order, so a retry or a late delivery changes
-   nothing.
+   nothing. The adjustment events are how a refund reaches the Worker: Paddle leaves a
+   refunded subscription renewing, and the terms say it does not, so an approved refund
+   of the plan cancels the subscription at once and a refund of only the storage add-on
+   takes the add-on off. A destination made before those two were listed has to be
+   edited to send them, or a refund is money back and nothing else.
 5. **The five settings** on the Worker, as secrets: `PADDLE_API_KEY`,
    `PADDLE_WEBHOOK_SECRET`, `PADDLE_CLIENT_TOKEN`, `PADDLE_PLAN_PRICE_ID` and
    `PADDLE_STORAGE_PRICE_ID`. Which environment they belong to is read off the key:

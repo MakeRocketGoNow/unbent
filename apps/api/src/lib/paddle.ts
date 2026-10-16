@@ -173,6 +173,43 @@ export interface PaddleTransaction {
   billing_period: { starts_at: string; ends_at: string } | null;
   items: Array<{ price: { id: string }; quantity: number }>;
   checkout: { url: string | null } | null;
+  /**
+   * The lines as billed, each with the `txnitm_` id an adjustment's items name: the one
+   * way back from a refund to the price it refunded. On a read of the transaction; a
+   * `transaction.completed` event carries it too, but nothing here reads it from one.
+   */
+  details?: { line_items: PaddleLineItem[] } | null;
+}
+
+export interface PaddleLineItem {
+  id: string;
+  price_id: string;
+  quantity: number;
+}
+
+export async function getTransaction(paddle: PaddleConfig, transactionId: string): Promise<PaddleTransaction> {
+  return paddleCall<PaddleTransaction>(paddle, 'GET', `/transactions/${transactionId}`);
+}
+
+/**
+ * An adjustment: money given back on a transaction after it was paid — a refund, a
+ * credit, a chargeback. The webhook reads a refund of the plan as the end of the
+ * subscription (`refundEffectOf` in billing-events.ts), since Paddle itself leaves the
+ * subscription active and renewing. `items` name the transaction's lines by `txnitm_`
+ * id, not by price, so telling the plan's refund from the add-on's takes a read of the
+ * transaction.
+ */
+export interface PaddleAdjustment {
+  id: string;
+  action: string;
+  /** `full` is the whole transaction; `partial` is the lines in `items`. */
+  type: 'full' | 'partial';
+  /** `pending_approval`, `approved`, `rejected` or `reversed`. */
+  status: string;
+  transaction_id: string;
+  subscription_id: string | null;
+  customer_id: string;
+  items: Array<{ id: string; item_id: string; type: string; amount: string | null }>;
 }
 
 /**
@@ -259,6 +296,41 @@ export async function setSubscriptionStorage(paddle: PaddleConfig, subscriptionI
  */
 export async function cancelSubscriptionNow(paddle: PaddleConfig, subscriptionId: string): Promise<void> {
   await paddleCall(paddle, 'POST', `/subscriptions/${subscriptionId}/cancel`, { effective_from: 'immediately' });
+}
+
+/**
+ * `cancelSubscriptionNow`, for a caller that may be asking twice. Paddle refuses to
+ * cancel a subscription that is already canceled, and both callers can be: a deletion
+ * retried after the first try's cancel went through, and a refund's event delivered
+ * again before the first delivery's `subscription.canceled` has reached the row. A
+ * refusal is read once more against the subscription itself before it is passed on, so
+ * a cancel that already happened counts as done and a real refusal is still thrown.
+ */
+export async function ensureSubscriptionCanceled(paddle: PaddleConfig, subscriptionId: string): Promise<void> {
+  try {
+    await cancelSubscriptionNow(paddle, subscriptionId);
+  } catch (err) {
+    const already =
+      err instanceof PaddleError &&
+      (await getSubscription(paddle, subscriptionId)
+        .then((s) => s.status === 'canceled')
+        .catch(() => false));
+    if (!already) throw err;
+  }
+}
+
+/**
+ * The storage add-on taken off a subscription with nothing billed and nothing credited,
+ * for a refund of the add-on's charge: the money has already gone back through the
+ * adjustment, and `setSubscriptionStorage`'s `prorated_immediately` would credit the
+ * rest of the period a second time. The plan item stays, since the list is the whole
+ * subscription. `do_not_bill` is the mode Paddle offers for exactly this.
+ */
+export async function removeSubscriptionStorage(paddle: PaddleConfig, subscriptionId: string): Promise<PaddleSubscription> {
+  return paddleCall<PaddleSubscription>(paddle, 'PATCH', `/subscriptions/${subscriptionId}`, {
+    items: [{ price_id: paddle.planPriceId, quantity: 1 }],
+    proration_billing_mode: 'do_not_bill',
+  });
 }
 
 export interface PaddlePortalSession {
