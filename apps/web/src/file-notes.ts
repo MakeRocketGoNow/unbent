@@ -61,6 +61,8 @@ const initial: FileNotesState = { status: 'idle', total: 0, done: 0, ids: [], pl
 
 let state: FileNotesState = initial;
 const listeners = new Set<() => void>();
+/** Whose batch this is; see `claimFileNotesFor`. */
+let owner: string | null = null;
 
 function set(patch: Partial<FileNotesState>) {
   state = { ...state, ...patch };
@@ -78,6 +80,22 @@ export function useFileNotes(): FileNotesState {
 function subscribe(fn: () => void): () => void {
   listeners.add(fn);
   return () => void listeners.delete(fn);
+}
+
+/**
+ * Ties the batch to whoever is signed in, and drops it if that changes or if nobody is —
+ * `ImportRun.claim`'s rule, for the same reason. A batch keeps calling the actions after
+ * a sign-out, and once the library has closed each is a plain request with whatever
+ * cookie the page holds: a long batch would finish as the next person to sign in here.
+ * The report is theirs too — "12 notes added to Receipts", with an Undo over ids that
+ * are not theirs — so it goes with the owner. Called from `useSignOut`, from the shell
+ * when the session goes under it, and from the route guard's hand-over.
+ */
+export function claimFileNotesFor(userId: string | undefined): void {
+  const next = userId ?? null;
+  if (next === owner) return;
+  if (owner !== null || state.status === 'running') set({ ...initial, run: state.run });
+  owner = next;
 }
 
 /** Forgets a finished batch; the Import page's "Add more files". Ignored while one runs. */
@@ -142,22 +160,31 @@ let chain: Promise<unknown> = Promise.resolve();
  */
 export function notesFromFiles(files: File[], filing: Filing, place: string | null, queryClient?: QueryClient): Promise<string[]> {
   if (files.length === 0) return Promise.resolve([]);
-  const run = () => runBatch(files, filing, place, queryClient);
+  // Whose files these are, taken now: a batch waiting its turn across a sign-out must
+  // not run as the next person.
+  const by = owner;
+  const run = () => runBatch(files, filing, place, by, queryClient);
   const next = chain.then(run, run);
   chain = next;
   return next;
 }
 
-async function runBatch(files: File[], filing: Filing, place: string | null, queryClient?: QueryClient): Promise<string[]> {
+async function runBatch(files: File[], filing: Filing, place: string | null, by: string | null, queryClient?: QueryClient): Promise<string[]> {
+  // Still theirs: the account changed hands, or nobody is signed in now. A batch begun
+  // before anyone was claimed — a launch ahead of the guard — is let through.
+  const theirs = () => by === null || owner === by;
+  if (!theirs()) return [];
   set({ status: 'running', total: files.length, done: 0, ids: [], place, error: null, run: state.run + 1, undone: false });
   const ids: string[] = [];
   try {
     for (const file of files) {
       ids.push(await noteFromFile(file, filing));
+      if (!theirs()) return ids;
       set({ done: ids.length, ids: [...ids] });
     }
     set({ status: 'done' });
   } catch (err) {
+    if (!theirs()) return ids;
     set({ status: 'error', error: (err as Error).message });
   } finally {
     // A device with no local copy reads the lists from the server, so they are asked
@@ -185,6 +212,7 @@ export async function undoFileNotes(queryClient?: QueryClient): Promise<void> {
 /** For tests: back to nothing, whatever was running; a batch still waiting is not. */
 export function resetFileNotesForTests(): void {
   state = initial;
+  owner = null;
   chain = Promise.resolve();
   for (const fn of listeners) fn();
 }

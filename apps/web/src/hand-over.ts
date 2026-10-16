@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { claimCacheFor } from './queries.js';
 import { claimImportFor } from './import-run.js';
+import { claimFileNotesFor } from './file-notes.js';
 import { acquireLibrary } from './store/library.js';
 
 /**
@@ -28,6 +29,9 @@ export function handOver(queryClient: QueryClient, userId: string | undefined): 
   claimCacheFor(queryClient, userId);
   if (userId) {
     claimImportFor(userId);
+    // The batch of notes made from files is the import run's kind of leftover, and
+    // claimed on the same terms; see `claimFileNotesFor`.
+    claimFileNotesFor(userId);
     // The local copy of the library, opened here so a route's loader finds it: every
     // note query reads it (`queries.ts`), and the guard is the last moment before the
     // loaders run. Not awaited — opening takes a few milliseconds on a warm device and

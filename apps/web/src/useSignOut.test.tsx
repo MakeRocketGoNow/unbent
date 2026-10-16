@@ -6,6 +6,7 @@ import { refreshSession, signOut } from './auth-client.js';
 import { rememberSession, rememberedSession } from './session-memory.js';
 import { setReachableForTests } from './connectivity.js';
 import { claimImportFor } from './import-run.js';
+import { claimFileNotesFor } from './file-notes.js';
 
 const navigate = vi.fn();
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }));
@@ -14,6 +15,7 @@ vi.mock('./auth-client.js', () => ({
   refreshSession: vi.fn().mockResolvedValue(null),
 }));
 vi.mock('./import-run.js', () => ({ claimImportFor: vi.fn() }));
+vi.mock('./file-notes.js', () => ({ claimFileNotesFor: vi.fn() }));
 
 /**
  * Where signing out lands. In a browser, the sign-in page. Inside the Android app, nowhere
@@ -72,6 +74,7 @@ describe('useSignOut', () => {
     if (hosted) window.UnbentApp = { postMessage: vi.fn() };
     renderHook(() => useSignOut()).result.current();
     await waitFor(() => expect(claimImportFor).toHaveBeenCalledWith(undefined));
+    expect(claimFileNotesFor).toHaveBeenCalledWith(undefined);
   });
 
   /*

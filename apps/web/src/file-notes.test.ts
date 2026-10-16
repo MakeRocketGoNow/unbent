@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Note } from '@unbent/shared';
 import * as actions from './store/actions.js';
 import { indexUploadedFile } from './index-files.js';
-import { getFileNotes, isNoteFile, notesFromFiles, resetFileNotesForTests, titleFor, undoFileNotes } from './file-notes.js';
+import { claimFileNotesFor, getFileNotes, isNoteFile, notesFromFiles, resetFileNotesForTests, titleFor, undoFileNotes } from './file-notes.js';
 
 vi.mock('./store/actions.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./store/actions.js')>()),
@@ -115,6 +115,46 @@ describe('notesFromFiles', () => {
     failOn = 'a.pdf';
     await notesFromFiles([pdf('a.pdf')], { notebook: null, tags: [] }, null);
     expect(await notesFromFiles([pdf('b.pdf')], { notebook: null, tags: [] }, null)).toEqual(['n2']);
+  });
+});
+
+describe('claimFileNotesFor', () => {
+  /* A sign-out mid-batch: the rest would be made as whoever signs in next. */
+  it('stops a running batch and clears its report when the account changes hands', async () => {
+    claimFileNotesFor('u1');
+    let release!: () => void;
+    vi.mocked(actions.uploadFile).mockReturnValueOnce(new Promise((r) => (release = () => r({ filename: 'a.pdf', contentType: 'application/pdf', size: 1, path: 'files/a.pdf', indexing: 'server' as const }))));
+    const batch = notesFromFiles([pdf('a.pdf'), pdf('b.pdf')], { notebook: 'Receipts', tags: [] }, 'Receipts');
+    await vi.waitFor(() => expect(getFileNotes().status).toBe('running'));
+    claimFileNotesFor(undefined);
+    expect(getFileNotes()).toMatchObject({ status: 'idle', ids: [], place: null });
+    release();
+    await batch;
+    expect(actions.createNote).toHaveBeenCalledTimes(1);
+    expect(getFileNotes().status).toBe('idle');
+  });
+
+  it('does not run a batch that waited its turn across a sign-out', async () => {
+    claimFileNotesFor('u1');
+    let release!: () => void;
+    vi.mocked(actions.uploadFile).mockReturnValueOnce(new Promise((r) => (release = () => r({ filename: 'a.pdf', contentType: 'application/pdf', size: 1, path: 'files/a.pdf', indexing: 'server' as const }))));
+    const first = notesFromFiles([pdf('a.pdf')], { notebook: null, tags: [] }, null);
+    const second = notesFromFiles([pdf('b.pdf')], { notebook: null, tags: [] }, null);
+    await vi.waitFor(() => expect(getFileNotes().status).toBe('running'));
+    claimFileNotesFor('u2');
+    release();
+    await first;
+    expect(await second).toEqual([]);
+    expect(actions.createNote).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a finished report for the same person, and drops it for the next', async () => {
+    claimFileNotesFor('u1');
+    await notesFromFiles([pdf('a.pdf')], { notebook: null, tags: [] }, null);
+    claimFileNotesFor('u1');
+    expect(getFileNotes().status).toBe('done');
+    claimFileNotesFor('u2');
+    expect(getFileNotes().status).toBe('idle');
   });
 });
 

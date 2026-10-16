@@ -5,6 +5,7 @@ import { isHosted, postToApp } from './app-bridge.js';
 import { forgetSession, rememberedSession } from './session-memory.js';
 import { clearOfflineCaches } from './offline-cache.js';
 import { claimImportFor } from './import-run.js';
+import { claimFileNotesFor } from './file-notes.js';
 import { settleWrites, subscribeWrites } from './store/library.js';
 
 /**
@@ -172,6 +173,7 @@ export function useSignOut(): () => void {
         // See `ImportRun.claim`.
         forgetSession();
         claimImportFor(undefined);
+        claimFileNotesFor(undefined);
         await clearOfflineCaches();
         /*
          * Inside the Android app, the app still holds its own copy of the session and

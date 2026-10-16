@@ -20,6 +20,7 @@ import { postToApp } from '../app-bridge.js';
 import { ExportSnackbar } from '../components/ExportSnackbar.js';
 import { ImportSnackbar } from '../components/ImportSnackbar.js';
 import { FileNotesSnackbar } from '../components/FileNotesSnackbar.js';
+import { claimFileNotesFor } from '../file-notes.js';
 import { SignOutSnackbar } from '../components/SignOutSnackbar.js';
 import { SignOutConfirm } from '../components/SignOutConfirm.js';
 import { SyncingLine } from '../components/SyncingLine.js';
@@ -198,6 +199,8 @@ function AppShell() {
    */
   useEffect(() => {
     claimImportFor(userId);
+    // And the batch of notes made from files, which outlives its page the same way.
+    claimFileNotesFor(userId);
   }, [userId]);
 
   /**
