@@ -270,8 +270,14 @@ export interface AppConfig {
    * `change` what is new in it for someone who agreed to an earlier one. See
    * `LEGAL_VERSION`. Optional only so a client stays compatible with an instance older
    * than the agreement step, which it reads as one that asks for none.
+   *
+   * `sellsPlan` is set when the built-in terms carry the sections on payment, renewal and
+   * refunds, and the policy names Paddle: billing on, or a front page stating the price.
+   * The server decides (`sellsPlanOf`) and the web app only reads it, so the documents it
+   * renders and the sentence the server sends about a change to them cannot disagree.
+   * Absent where the instance sells none, and on an operator's own documents.
    */
-  legal?: { privacy: string; terms: string; version?: string; change?: string };
+  legal?: { privacy: string; terms: string; version?: string; change?: string; sellsPlan?: true };
   /**
    * The error-tracking service this instance reports browser crashes to, if it has one.
    *

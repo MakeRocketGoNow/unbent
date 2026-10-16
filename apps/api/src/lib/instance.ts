@@ -1,5 +1,6 @@
 import { LEGAL_CHANGE, LEGAL_VERSION, type AppConfig } from '@unbent/shared';
 import type { Env } from '../types.js';
+import { billingOn, type PaddleEnv } from './paddle.js';
 
 /**
  * What this instance says about itself, beyond how to sign in to it.
@@ -73,8 +74,35 @@ export function legalLinksOf(env: Env): AppConfig['legal'] | undefined {
   const privacy = env.LEGAL_PRIVACY_URL?.trim();
   const terms = env.LEGAL_TERMS_URL?.trim();
   if (privacy && terms) return { privacy, terms, ...legalVersionOf(env, 'own') };
-  if (operatorOf(env)) return { privacy: '/privacy', terms: '/terms', ...legalVersionOf(env, 'built-in') };
+  if (operatorOf(env)) {
+    return {
+      privacy: '/privacy',
+      terms: '/terms',
+      ...legalVersionOf(env, 'built-in'),
+      ...(sellsPlanOf(env) ? { sellsPlan: true } : {}),
+    };
+  }
   return undefined;
+}
+
+/**
+ * Whether this instance sells a plan, which is what decides whether the built-in terms
+ * carry the sections on payment, renewal and refunds, and the policy names Paddle.
+ *
+ * Billing on, or a front page stating the price. The front page counts on its own because
+ * a price on offer is a sale the terms have to cover whether or not checkout works yet, and
+ * because Paddle's website review reads the terms for a refund policy before it issues the
+ * live keys that turn billing on. Billing alone left unbent.app unable to pass the review
+ * that billing waits on.
+ *
+ * Said here once and sent in `/api/config` (`legal.sellsPlan`), so the web app reads the
+ * answer rather than working it out again from `billing` and `frontPage`: the sentence on
+ * what changed and the documents it describes must agree, and two copies of the rule would
+ * part the first time one of them learned a new case. `undefined` rather than `false` when
+ * off, so the field is dropped and an older instance reads the same as one that sells none.
+ */
+export function sellsPlanOf(env: Pick<Env, 'FRONT_PAGE'> & PaddleEnv): true | undefined {
+  return billingOn(env) || frontPageOf(env) || undefined;
 }
 
 /**
@@ -95,13 +123,22 @@ const OWN_DOCUMENTS_VERSION = '1';
  * know when those change, so the operator moves it, and everyone is asked again. Unset,
  * everyone is asked once. No sentence on what changed — the built-in one describes other
  * documents, and an operator who wants one can say it in their own.
+ *
+ * A change only to the sections an instance publishes because it sells a plan
+ * (`billingOnly`) is no change at all where it sells none (`sellsPlanOf`): those terms
+ * read word for word as they did, so that instance stays on the version the change moved
+ * from (`since`) and nobody there is asked again. An instance that starts selling later
+ * moves to the new version then, and its accounts are asked once, with the sentence; one
+ * that stops selling moves back, and `coversLegalVersion` keeps the accounts that agreed
+ * to the newer version from being asked for the older one.
  */
 export function legalVersionOf(
-  env: Pick<Env, 'LEGAL_VERSION'>,
+  env: Pick<Env, 'LEGAL_VERSION' | 'FRONT_PAGE'> & PaddleEnv,
   documents: 'built-in' | 'own',
 ): { version: string; change?: string } {
   if (documents === 'own') return { version: env.LEGAL_VERSION?.trim() || OWN_DOCUMENTS_VERSION };
-  return { version: LEGAL_VERSION, ...(LEGAL_CHANGE ? { change: LEGAL_CHANGE } : {}) };
+  if (LEGAL_CHANGE?.billingOnly && !sellsPlanOf(env)) return { version: LEGAL_CHANGE.since };
+  return { version: LEGAL_VERSION, ...(LEGAL_CHANGE ? { change: LEGAL_CHANGE.text } : {}) };
 }
 
 /**

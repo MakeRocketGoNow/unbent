@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import type { AppConfig } from '@unbent/shared';
+import { coversLegalVersion, type AppConfig } from '@unbent/shared';
 import { refreshSession } from '../auth-client.js';
 import { agreeToLegal, isStatus } from '../notes-api.js';
 import { keys } from '../queries.js';
@@ -28,7 +28,7 @@ export function needsAgreement(
 ): boolean {
   if (!legal?.version) return false;
   if (OPEN_WITHOUT_AGREEMENT.has(pathname.replace(/\/$/, ''))) return false;
-  return agreed !== legal.version;
+  return !coversLegalVersion(agreed, legal.version);
 }
 
 /**
@@ -65,7 +65,7 @@ export function agreementGate(opts: {
   if (opts.unreachable) return { kind: 'open' };
   if (opts.config.isPending) return { kind: 'wait' };
   const legal = opts.config.data?.legal;
-  if (!legal?.version || opts.agreed === legal.version) return { kind: 'open' };
+  if (!legal?.version || coversLegalVersion(opts.agreed, legal.version)) return { kind: 'open' };
   if (!needsAgreement(legal, opts.agreed, opts.pathname)) return { kind: 'open', pending: true };
   return { kind: 'ask', legal: { ...legal, version: legal.version } };
 }

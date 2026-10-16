@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { createMiddleware } from 'hono/factory';
+import { coversLegalVersion } from '@unbent/shared';
 import { z } from 'zod';
 import { getAuth } from '../auth.js';
 import { legalLinksOf } from '../lib/instance.js';
@@ -106,7 +107,7 @@ export const refuseGrantsWithoutAgreement = createMiddleware<AppEnv>(async (c, n
   if (c.req.method !== 'POST' || !GRANTS.has(c.req.path)) return next();
   const version = legalLinksOf(c.env)?.version;
   const user = c.get('user');
-  if (!version || !user || user.legalVersion === version) return next();
+  if (!version || !user || coversLegalVersion(user.legalVersion, version)) return next();
   if (c.req.path.endsWith('/consent')) {
     // A clone, so Better Auth still has the body to read.
     const body = (await c.req.raw.clone().json().catch(() => null)) as { accept?: unknown } | null;

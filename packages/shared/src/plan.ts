@@ -21,18 +21,30 @@ export const BASE_STORAGE_GB = 10;
 /** What each storage add-on adds. Sold by the block, never metered. */
 export const STORAGE_ADDON_GB = 25;
 
-/** The plan's price, a year at a time. The yearly figure is the only one there is. */
+/**
+ * The plan's price, a year at a time. The yearly figure is the only one there is.
+ *
+ * Raising this, or the storage price below, owes every subscriber an email at least 30
+ * days before the renewal it applies to — the terms promise it ("Plans and payment" in the
+ * web app's `legal/documents.ts`). Nothing sends that mail: it is written by hand, or built
+ * first. Changing the price in Paddle's catalog without it breaks the terms.
+ */
 export const PLAN_PRICE_USD = 36;
 
-/** One storage block's price, a year at a time. */
+/** One storage block's price, a year at a time. The same 30 days' notice applies. */
 export const STORAGE_ADDON_PRICE_USD = 12;
 
 /**
- * How long an `inactive` account is kept before it is deleted: a year of reading and
- * exporting, with reminders, as the terms will say (MAK-45). Stewardship, not cost. The
- * deletion and its reminders are a follow-up to MAK-108 and not built yet, which is why
- * the pages and the mail say "will be"; the number is here so that, once the job exists,
- * what they promise and what it does cannot disagree.
+ * How long an `inactive` account is kept before it *may* be deleted: at least a year of
+ * reading and exporting, as the terms say ("Plans and payment").
+ *
+ * "May", never "will", and decided on 14 October 2026 (MAK-47): the pages, the mail and
+ * the terms reserve the right and nothing deletes on a timer. The product's promise is
+ * that nothing is held hostage, and a cron job that removes a paperless archive because
+ * its owner missed a year of mail is the worst thing it could do to someone; a read-only
+ * account costs almost nothing to keep. The right is there for an abandoned trial that
+ * uploaded a lot, or abuse, decided by a person. Anything built later should be scoped to
+ * those, and must send the reminder to export first, which every one of these promises.
  */
 export const INACTIVE_KEPT_DAYS = 365;
 

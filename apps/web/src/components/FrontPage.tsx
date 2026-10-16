@@ -180,8 +180,8 @@ export function FrontPage() {
               <p>
                 Nothing is held hostage. When a trial ends or a plan lapses, the account turns
                 read-only: every note still opens, searches and exports, and you can still
-                delete. It stays that way for a year, with reminders to export, before the
-                account is deleted.
+                delete. It is kept that way for at least a year, and you will be reminded to
+                export before anything is removed.
               </p>
             </div>
           </div>

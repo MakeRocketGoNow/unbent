@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LEGAL_VERSION } from '@unbent/shared';
+import { LEGAL_CHANGE, LEGAL_VERSION } from '@unbent/shared';
 import {
   frontPageOf,
   isOperator,
@@ -76,6 +76,21 @@ describe('operatorEmails and isOperator', () => {
   });
 });
 
+/** The five settings that turn billing on (`billingOn`). */
+const PADDLE = {
+  PADDLE_API_KEY: 'pdl_sdbx_x',
+  PADDLE_WEBHOOK_SECRET: 'pdl_ntfset_x',
+  PADDLE_CLIENT_TOKEN: 'test_x',
+  PADDLE_PLAN_PRICE_ID: 'pri_plan',
+  PADDLE_STORAGE_PRICE_ID: 'pri_storage',
+};
+
+/**
+ * The version an instance that sells nothing is on: the one before a billing-only change,
+ * since for it the documents did not change, else the current one (`legalVersionOf`).
+ */
+const PLAIN_VERSION = LEGAL_CHANGE?.billingOnly ? LEGAL_CHANGE.since : LEGAL_VERSION;
+
 describe('legalLinksOf', () => {
   const EXTERNAL = {
     LEGAL_PRIVACY_URL: 'https://example.com/privacy',
@@ -83,7 +98,7 @@ describe('legalLinksOf', () => {
   };
 
   it('points at the built-in documents when an operator is named', () => {
-    expect(legalLinksOf(env(OPERATOR))).toEqual({ privacy: '/privacy', terms: '/terms', version: LEGAL_VERSION });
+    expect(legalLinksOf(env(OPERATOR))).toEqual({ privacy: '/privacy', terms: '/terms', version: PLAIN_VERSION });
   });
 
   /** Someone who published their own documents went to the trouble; believe them. */
@@ -102,12 +117,24 @@ describe('legalLinksOf', () => {
    */
   it('ignores half a pair of external URLs', () => {
     const half = { ...OPERATOR, LEGAL_PRIVACY_URL: 'https://example.com/privacy' };
-    expect(legalLinksOf(env(half))).toEqual({ privacy: '/privacy', terms: '/terms', version: LEGAL_VERSION });
+    expect(legalLinksOf(env(half))).toEqual({ privacy: '/privacy', terms: '/terms', version: PLAIN_VERSION });
     expect(legalLinksOf(env({ LEGAL_TERMS_URL: 'https://example.com/terms' }))).toBeUndefined();
   });
 
   it('has nothing to link to when the instance publishes neither', () => {
     expect(legalLinksOf(env({}))).toBeUndefined();
+  });
+
+  /*
+   * The web app draws the payment terms on this word alone, rather than reading `billing`
+   * and `frontPage` for itself, so the field is the one place the rule is answered. Only
+   * on the built-in documents: an operator's own say what they say.
+   */
+  it('says the built-in documents cover a sale exactly where the instance makes one', () => {
+    expect(legalLinksOf(env(OPERATOR))?.sellsPlan).toBeUndefined();
+    expect(legalLinksOf(env({ ...OPERATOR, FRONT_PAGE: '1' }))?.sellsPlan).toBe(true);
+    expect(legalLinksOf(env({ ...OPERATOR, ...PADDLE }))?.sellsPlan).toBe(true);
+    expect(legalLinksOf(env({ ...OPERATOR, ...EXTERNAL, FRONT_PAGE: '1' }))?.sellsPlan).toBeUndefined();
   });
 });
 
@@ -118,8 +145,29 @@ describe('legalLinksOf', () => {
  */
 describe('legalVersionOf', () => {
   it('asks for the built-in version, whatever the environment says', () => {
-    expect(legalVersionOf(env({}), 'built-in').version).toBe(LEGAL_VERSION);
-    expect(legalVersionOf(env({ LEGAL_VERSION: '2027-01-01' }), 'built-in').version).toBe(LEGAL_VERSION);
+    expect(legalVersionOf(env({}), 'built-in').version).toBe(PLAIN_VERSION);
+    expect(legalVersionOf(env({ LEGAL_VERSION: '2027-01-01' }), 'built-in').version).toBe(PLAIN_VERSION);
+  });
+
+  /*
+   * A change only to the payment terms is no change where there is no sale: those sections
+   * are not in that instance's terms (MAK-108), so it stays on the version before and its
+   * accounts are not asked again. Where there is one, the version moves and the sentence
+   * says what is new.
+   */
+  it('moves the version for a billing-only change only where billing is on', () => {
+    expect(LEGAL_CHANGE?.billingOnly).toBe(true);
+    if (!LEGAL_CHANGE?.billingOnly) return;
+    expect(LEGAL_CHANGE.since < LEGAL_VERSION).toBe(true);
+    expect(legalVersionOf(env(PADDLE), 'built-in')).toEqual({ version: LEGAL_VERSION, change: LEGAL_CHANGE.text });
+    expect(legalVersionOf(env({}), 'built-in')).toEqual({ version: LEGAL_CHANGE.since });
+  });
+
+  /* The front page states a price, so its instance publishes the payment terms before
+     Paddle has issued the keys that turn billing on — which its review requires. */
+  it('says it where the front page is on, with or without billing', () => {
+    expect(legalVersionOf(env({ FRONT_PAGE: '1' }), 'built-in').change).toBe(LEGAL_CHANGE?.text);
+    expect(legalVersionOf(env({ FRONT_PAGE: '1', ...PADDLE }), 'built-in').change).toBe(LEGAL_CHANGE?.text);
   });
 
   it('asks for the operator’s own version for their own documents', () => {
