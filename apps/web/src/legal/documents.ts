@@ -117,7 +117,7 @@ export const REFUNDS_ID = 'refunds';
 /** How long a lapsed account is kept, as the sentence says it. */
 const KEPT = INACTIVE_KEPT_DAYS === 365 ? 'a year' : `${INACTIVE_KEPT_DAYS} days`;
 
-const EFFECTIVE = '2026-10-14';
+const EFFECTIVE = '2026-10-16';
 
 /**
  * How many "other kinds of service" the policy lists, as the word the sentence needs. Two
@@ -538,7 +538,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
         body: [
           'These terms are governed by the laws of the State of Minnesota, without regard to its ' +
             'conflict of law rules. Any dispute will be brought in the state or federal courts ' +
-            'located in Hennepin County, Minnesota, and both of us consent to the jurisdiction of ' +
+            'located in Dakota County, Minnesota, and both of us consent to the jurisdiction of ' +
             'those courts. If you are a consumer elsewhere, this does not deprive you of the ' +
             'protection of your own country’s mandatory laws.',
         ],
