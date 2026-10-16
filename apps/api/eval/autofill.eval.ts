@@ -203,6 +203,11 @@ interface Run {
   decisionTokens: number;
   /** Requests made to the decision model in the press. */
   decisionRequests: number;
+  /**
+   * The decision model's own notebook answer, before the press's confidence floor drops
+   * it: whether a "none" was the model's choice or a right answer under the floor.
+   */
+  notebookAnswer?: { choice: string; confidence: number };
 }
 
 type Env = LlmEnv & { TYPESAFE_API_KEY?: string; TYPESAFE_API_URL?: string; SUBQ_API_KEY?: string };
@@ -228,6 +233,18 @@ function metered(meter: Meter): typeof fetch {
   };
 }
 
+/** A client that hands back what `inner` answers, and keeps its notebook answer in `seen`. */
+function recording(inner: Jev, seen: { notebook?: { choice: string; confidence: number } }): Jev {
+  return {
+    async ask(state, questions) {
+      const answers = await inner.ask(state, questions);
+      const nb = answers['notebook'];
+      if (nb?.type === 'choice') seen.notebook = { choice: nb.choice, confidence: nb.confidence };
+      return answers;
+    },
+  };
+}
+
 /** The press with `jev` choosing, and Haiku writing the title and text fields beside it. */
 async function runPress(
   env: Env,
@@ -240,7 +257,8 @@ async function runPress(
   const usage = new PressUsage();
   const llm = usage.metering(llmFrom(env));
   const started = performance.now();
-  const suggestion = await autofill(jev, input, llm, false, stateChars);
+  const seen: { notebook?: { choice: string; confidence: number } } = {};
+  const suggestion = await autofill(recording(jev, seen), input, llm, false, stateChars);
   await usage.settled();
   const seconds = (performance.now() - started) / 1000;
   const used = usage.entries.map((e) => e as LlmUsage);
@@ -252,6 +270,7 @@ async function runPress(
     usage: used,
     decisionTokens: decision.tokens,
     decisionRequests: meter.requests,
+    notebookAnswer: seen.notebook,
   };
 }
 
@@ -657,6 +676,7 @@ describe('Auto-fill arms', () => {
                 title: run.suggestion.title?.value,
               },
               score: s,
+              notebookAnswer: run.notebookAnswer,
               seconds: run.seconds,
               cents: run.cents,
             });
