@@ -320,6 +320,13 @@ variable added in the dashboard is gone after the next deploy, which replaces pl
 variables with the file's; a secret is kept. What matters otherwise is only that they stay
 out of the file a fork inherits.
 
+Pull-request previews show the front page too, and a price with no terms beside it is not
+what ships, so they take the pair from the `PREVIEW_OPERATOR_NAME` and
+`PREVIEW_OPERATOR_EMAIL` repository variables (`previews.yml` passes them with `--var`).
+Both or neither; unset, a preview publishes no documents. Variables rather than lines in
+`wrangler.toml`'s preview environment for the same reason as above: a fork that runs
+previews of its own would otherwise publish this repository's operator on them.
+
 ### Page statistics
 
 Cloudflare Web Analytics, which is free, sets no cookie and assigns no identifier — the
@@ -641,6 +648,7 @@ summary rather than failing.
 | `DEV_ALLOWED_EMAILS` | secret | who may sign in to a preview or the dev instance |
 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | secret | the same pair production deploys with, needing D1 and R2 edit scopes, plus the DNS scope [the dev instance](#dns-for-devunbentapp) describes |
 | `DEV_INSTANCE_ORIGIN` | variable, optional | where a preview's sign-in relay sends people; defaults to `https://dev.unbent.app`. Set it only if your dev instance has a different name |
+| `PREVIEW_OPERATOR_NAME`, `PREVIEW_OPERATOR_EMAIL` | variable, optional | who runs the previews, sent as their `OPERATOR_NAME` and `OPERATOR_EMAIL`, so their front page has the built-in terms and privacy policy beside its price; both or neither, and unset a preview publishes no documents — see [Who runs this instance](#who-runs-this-instance) |
 | `DEV_GOOGLE_CLIENT_ID`, `DEV_GOOGLE_CLIENT_SECRET` | secret, optional | Google on the dev instance, so the relay can sign in with it; both or neither, and the client must list `dev.unbent.app` — see [Google on the dev instance](#google-on-the-dev-instance) |
 | `DEV_TYPESAFE_API_KEY` | secret, optional | Auto-fill on the dev instance and every preview; a key of its own, so what they spend stays apart from production's — see [Filing a note from what it says](#filing-a-note-from-what-it-says) |
 | `DEV_ANTHROPIC_API_KEY` | secret, optional | Auto-fill's language model on the dev instance and every preview; a key of its own, for the same reason — see [Reading images](#reading-images) |

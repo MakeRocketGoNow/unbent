@@ -306,14 +306,11 @@ INSTANCE_KIND = "preview"
 # unbent.app's front page, so a PR that changes it can be seen before it ships. Production
 # sets it as a secret rather than here, where a fork would inherit it (src/types.ts).
 FRONT_PAGE = "1"
-# Who runs it, so the built-in terms and privacy policy are published and the front page's
-# footer links them, as on production and dev. A front page with a price and no terms
-# beside it is not what ships. The same public name and contact production's pages print.
-# Production and dev hold them as secrets set once by hand; a preview is a new Worker for
-# every PR, and two values published on every page need no secret to carry them, so here,
-# in an environment a fork never deploys.
-OPERATOR_NAME = "MakeRocketGoNow LLC"
-OPERATOR_EMAIL = "hello@unbent.app"
+# Who runs it — `OPERATOR_NAME` and `OPERATOR_EMAIL`, so the built-in terms and privacy
+# policy are published beside the price — comes from the `PREVIEW_OPERATOR_NAME` and
+# `PREVIEW_OPERATOR_EMAIL` repository variables through the deploy command, never from
+# here: a fork deploying previews of its own would otherwise publish this repository's
+# operator on its pages (.github/workflows/previews.yml).
 
 [env.preview.assets]
 directory = "../web/dist"
