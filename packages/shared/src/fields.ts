@@ -41,9 +41,9 @@ export const FIELD_TYPE_LABELS: Record<FieldType, string> = {
  * Whether a type's definition carries an option list.
  *
  * A select and a multi-select are the same list of choices; they differ in how many of
- * them a note may hold. Everything that treats options as "a select's" — the column
+ * them a note may hold. Everything that treats options as "a select's" (the column
  * that stores them, the editor that edits them, the definitions file that carries them,
- * the seeding when a field is converted — asks this rather than naming the types, so the
+ * the seeding when a field is converted) asks this rather than naming the types, so the
  * two cannot drift apart on which fields have options.
  */
 export function fieldHasOptions(type: FieldType): boolean {
@@ -84,7 +84,7 @@ export const MAX_SELECT_OPTIONS = 100;
  *
  * A rating is not its own type, because under the storage model it already *is* a number.
  * `encodeFieldValue` gives it the same `{text, num}`, `fieldSortsNumerically` already
- * orders it, and `gte`/`lte` already compare its numeric shadow — so "rated 4 and up" is a
+ * orders it, and `gte`/`lte` already compare its numeric shadow, so "rated 4 and up" is a
  * filter that exists before this feature does. What a rating adds is a bound and a step,
  * which a plain number has neither of. A second type would have duplicated the encode,
  * sort, filter, export and import paths to gain nothing, and would have made "5 instead of
@@ -96,7 +96,7 @@ export const MAX_SELECT_OPTIONS = 100;
  * in there would come back out as a select option.
  *
  * Ratings run from 1, not 0. Zero and "no value" both draw as an unlit row, while the
- * storage genuinely separates them — `encodeFieldValue` turns an empty string into
+ * storage genuinely separates them: `encodeFieldValue` turns an empty string into
  * `'clear'`. Starting at 1 keeps an unlit row meaning exactly one thing, so `set`/`empty`
  * stay honest and the stars need no rival clear affordance beside them.
  */
@@ -130,7 +130,7 @@ export const fieldScaleSchema = z.object({
  *
  * A currency is not a type, for the reason a rating is not one: the value is a number,
  * and is stored, sorted, ranged and exported as one. What a currency adds is how the
- * number is drawn — `$29.99` rather than `29.99` — so it is a column on the definition
+ * number is drawn (`$29.99` rather than `29.99`) so it is a column on the definition
  * beside the scale. The two are exclusive: a rating is not an amount of money, and the
  * schemas below refuse both at once.
  *
@@ -176,7 +176,7 @@ export function isCurrencyField(def: {
  *
  * Five glyphs is a comfortable row of tap targets; ten is not, and ten of them in a
  * property row repeats the failure that turned `NoteFields` from boxed inputs into a
- * property list. Above five, the value reads as `7/10` — honest, compact, and sorting
+ * property list. Above five, the value reads as `7/10`: honest, compact, and sorting
  * identically. Half steps are what keep this rare rather than limiting: max 5 with halves
  * already offers ten levels.
  */
@@ -217,12 +217,12 @@ export const DEFAULT_RATING_SCALE: FieldScale = { max: 5, step: 0.5 };
  * Half steps stay on when a value needs them, and on a five-point scale because that is
  * the default; on a wider scale of whole numbers they would only add levels nobody used.
  *
- * Rescaling was the alternative — an 8 out of 10 becoming four stars — and was not taken:
+ * Rescaling was the alternative (an 8 out of 10 becoming four stars) and was not taken:
  * it rewrites every value on a guess about the scale they were written on, where fitting
  * the scale keeps each number exactly as it was typed. Narrowing afterwards stays the
  * person's call, through the scale picker and its own confirmation.
  *
- * Only values a rating could ever hold count — 1 to `MAX_RATING_MAX`, on half steps — so a
+ * Only values a rating could ever hold count (1 to `MAX_RATING_MAX`, on half steps) so a
  * stray 250 or 0 is cleared rather than dragging the scale past what it can be. With none
  * of those, it is the default. Which values those are is asked of `planConversion` on the
  * widest scale there is, rather than read here a second way: the conversion decodes each
@@ -292,7 +292,7 @@ export type UpdateFieldInput = z.infer<typeof updateFieldSchema>;
 /**
  * A value as a program sees it: what the API accepts and what export writes to YAML.
  *
- * A list is a multi-select's value — its chosen options, each a string. It is the one
+ * A list is a multi-select's value: its chosen options, each a string. It is the one
  * non-scalar, and it is a plain list rather than a joined string so that an option can
  * contain a comma and a YAML reader sees a sequence, the way it sees `tags`.
  */
@@ -308,7 +308,7 @@ export const fieldValueInputSchema = z.union([
 /**
  * Values on a note, keyed by field id. `null` clears one. Merge semantics: keys absent
  * from the patch are left alone, so a caller setting one field does not have to know
- * the rest — see `NotesRepo.setNoteFields`.
+ * the rest: see `NotesRepo.setNoteFields`.
  */
 export const noteFieldsPatchSchema = z.record(z.string().uuid(), fieldValueInputSchema.nullable());
 export type NoteFieldsPatch = z.infer<typeof noteFieldsPatchSchema>;
@@ -343,7 +343,7 @@ export interface NoteFieldValue {
   /**
    * The scale, when the field is a rating. Here for the same reason `type` is: a list row
    * draws `★★★★☆` rather than `4`, and without the scale it could not know how many
-   * glyphs the row has — or that the number is a rating at all.
+   * glyphs the row has, or that the number is a rating at all.
    */
   scale?: FieldScale | null;
   /** The currency, when the field has one, for the same reason `scale` rides here: a row draws `$12.50`, not `12.5`. */
@@ -363,7 +363,7 @@ const NUMBER_RE = /^-?\d+(\.\d+)?$/;
 /**
  * Read a value under a type. Returns the stored form, `'clear'` for an empty string (an
  * emptied input means "no value", never "the empty string"), or `null` when the value
- * cannot be read as this type — the caller turns that into a message with
+ * cannot be read as this type: the caller turns that into a message with
  * `expectedFieldValue`.
  */
 export function encodeFieldValue(
@@ -398,7 +398,7 @@ export function encodeFieldValue(
       if (!Number.isFinite(n)) return null;
       // A scale bounds the number and quantises it. Enforced here rather than in the star
       // control, so a value arriving from the API, MCP or an import is held to the same
-      // scale as one set by tapping — the module's whole reason for existing.
+      // scale as one set by tapping, the module's whole reason for existing.
       if (def.scale) {
         if (n < 1 || n > def.scale.max) return null;
         // Scaled to integers before the remainder: `3.3 % 0.5` is not 0 in floating point.
@@ -426,7 +426,7 @@ export function encodeFieldValue(
     }
     case 'multiselect': {
       /*
-         A list of options, or one option as a bare string — which is what a select's
+         A list of options, or one option as a bare string, which is what a select's
          value looks like, so converting a select to a multi-select carries every value
          across. An empty list clears, the way an emptied input does.
 
@@ -451,11 +451,11 @@ export function encodeFieldValue(
 /**
  * The comparisons a list can be narrowed by, on one field.
  *
- * `eq` compares the stored text — a select's option, a checkbox's `true`/`false`, a date
+ * `eq` compares the stored text: a select's option, a checkbox's `true`/`false`, a date
  * as written. `gte`/`lte` compare the numeric shadow that migration 0014 keeps for every
  * number and date, so a range never has to parse text in SQL. `set`/`empty` ask whether
- * the note holds a value at all, which for a record-like notebook — "coupons with no
- * expiry" — is the question asked most.
+ * the note holds a value at all, which for a record-like notebook ("coupons with no
+ * expiry") is the question asked most.
  *
  * Text "contains" is deliberately not here: search already covers field values, and a
  * substring filter would be a second, worse search box.
@@ -477,7 +477,7 @@ const FIELD_ID_RE = /^[A-Za-z0-9-]{1,64}$/;
  * One field filter as it travels in a URL: `<fieldId>:<op>` or `<fieldId>:<op>:<value>`.
  *
  * The id and the op can contain no `:`, so the first two are the separators and the value
- * is everything after them, whatever it contains — a select option with a colon in it is
+ * is everything after them, whatever it contains: a select option with a colon in it is
  * fine. Repeated `field=` params carry several, ANDed, the way `tag=` does. Returns null
  * for anything unreadable: a bad id, an unknown op, a missing or over-long value, or a
  * range bound that is neither a number nor a date.
@@ -540,7 +540,7 @@ export function fieldSortsNumerically(type: FieldType): boolean {
  * numeric type, the text otherwise, or `''` when the note holds no value for the field.
  *
  * This is what the keyset cursor carries for a field sort. `''` is unambiguous as the
- * "no value" marker because a stored text is never empty — `encodeFieldValue` turns an
+ * "no value" marker because a stored text is never empty: `encodeFieldValue` turns an
  * empty string into a clear rather than a value. Deliberately not `encodeFieldValue`: a
  * select option retired after the note stored it would come back `null` from that, and a
  * row the API just returned under that value still has to page past it.
@@ -574,8 +574,8 @@ export function fieldSortKey(
  *
  * Options can shrink without converting the field. The editor keeps a retired value on
  * notes that already hold it ("Travel (no longer an option)"), and it resends every field
- * on every save. Rejecting that resend would fail the whole patch — title and body
- * included — until someone cleared the value by hand. So a retired option the note holds
+ * on every save. Rejecting that resend would fail the whole patch (title and body
+ * included) until someone cleared the value by hand. So a retired option the note holds
  * stays legal for that note: for a select that is the one stored option, for a
  * multi-select each option in the stored list. A multi-select in particular needs this
  * to be a widening rather than an "unchanged, skip" check, because adding a live option
@@ -654,7 +654,7 @@ export function decodeFieldValue(type: FieldType, text: string): FieldValue {
 /**
  * The type a value arriving without a definition should create: a boolean is a checkbox,
  * a number a number, a `YYYY-MM-DD` string a date, and anything else text. Nothing more
- * adventurous — guessing "url" from a string that starts with http would make the field
+ * adventurous: guessing "url" from a string that starts with http would make the field
  * reject the next value that does not.
  */
 export function inferFieldType(value: FieldValue): FieldType {
@@ -675,7 +675,7 @@ export interface ConversionPlan<R> {
 }
 
 /**
- * What changing a field's type — or a rating's scale — does to its existing values.
+ * What changing a field's type (or a rating's scale) does to its existing values.
  *
  * Shared by the preview (so the confirmation can name how many values would be cleared)
  * and by the write, so the two cannot disagree. Converting *to* select never clears:
@@ -683,7 +683,7 @@ export interface ConversionPlan<R> {
  *
  * `toScale` is why a scale is an edit rather than a type change. Widening 5 to 10 keeps
  * every value, because a rating legal on the old scale is legal on the wider one. Narrowing
- * 10 to 5, or dropping half steps, cannot keep a 7 or a 3.5 — those land in `drop` and are
+ * 10 to 5, or dropping half steps, cannot keep a 7 or a 3.5: those land in `drop` and are
  * counted in the same confirmation that a type change gets, instead of being silently
  * rewritten to something the person never chose.
  */
@@ -698,7 +698,7 @@ export function planConversion<R extends { text: string }>(
 
   /*
      Seeded from what the rows hold, one option per distinct value. A multi-select's rows
-     are lists, so it is their elements that become options — both when a multi-select is
+     are lists, so it is their elements that become options: both when a multi-select is
      becoming a select and when a select is becoming a multi-select, where every value
      carries across as a one-element list.
   */

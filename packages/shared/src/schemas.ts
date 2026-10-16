@@ -29,7 +29,7 @@ export const MAX_ATTACHMENT_BYTES = 95 * 1024 * 1024;
 /**
  * ENML accepted for server-side conversion.
  *
- * Larger than MAX_BODY_BYTES because ENML is markup around the same text — a note whose
+ * Larger than MAX_BODY_BYTES because ENML is markup around the same text: a note whose
  * Markdown fits comfortably can carry several times that in tags and inline styling. The
  * converted result is still checked against MAX_BODY_BYTES, so this only decides how much
  * markup is worth attempting rather than what may be stored.
@@ -49,8 +49,8 @@ export const MAX_NOTEBOOK_PURPOSE_LENGTH = 500;
  * adds on collision, and for the multi-byte case: this is a byte budget, while the check
  * below counts UTF-16 code units, so a name of CJK or accented characters can cost up to
  * three times its length. The earlier 255 was the POSIX `NAME_MAX` default rather than a
- * limit anything here imposes — nothing writes these to a filesystem, and the D1 column is
- * TEXT — and it rejected real Evernote attachments whose display label was a sentence.
+ * limit anything here imposes (nothing writes these to a filesystem, and the D1 column is
+ * TEXT) and it rejected real Evernote attachments whose display label was a sentence.
  */
 export const MAX_FILENAME_LENGTH = 768;
 
@@ -99,7 +99,7 @@ const EMOJI_PART = /\p{Extended_Pictographic}|\p{Regional_Indicator}|⃣/u;
  *
  * One grapheme because it is drawn where a single icon was, at the size of one: two emoji
  * or a word would overflow the square every row gives it. Counted with `Intl.Segmenter`
- * because a code-point or length count gets ZWJ sequences, flags and skin tones wrong —
+ * because a code-point or length count gets ZWJ sequences, flags and skin tones wrong:
  * 👩‍💻 is five code points and one picture.
  */
 export function isSingleEmoji(value: string): boolean {
@@ -124,14 +124,14 @@ export const notebookEmojiSchema = z
  * The `tag` filter, which may be given more than once.
  *
  * Repeated params (`?tag=a&tag=b`) rather than one delimited value, because a tag name may
- * contain whatever character the delimiter would have been — this archive has tags with
- * spaces, dots and digits — and an escaping scheme is a bug waiting to happen. Hono hands
+ * contain whatever character the delimiter would have been (this archive has tags with
+ * spaces, dots and digits) and an escaping scheme is a bug waiting to happen. Hono hands
  * back a bare string for one occurrence and an array for several, so both are coerced to
  * an array here and every caller downstream sees the same shape.
  *
  * Several tags narrow conjunctively: a note must carry all of them. Union was never the
- * useful reading — two common tags OR'd together return most of an archive rather than
- * narrowing it — and AND makes the one-tag case identical to what a single filter meant
+ * useful reading: two common tags OR'd together return most of an archive rather than
+ * narrowing it, and AND makes the one-tag case identical to what a single filter meant
  * before, which is what lets this be a widening rather than a change in behaviour.
  */
 export const tagFilterSchema = z
@@ -141,7 +141,7 @@ export const tagFilterSchema = z
   .pipe(z.array(tagNameSchema).max(20).optional());
 
 /**
- * The `field` filter, which may be given more than once — the same wire shape as `tag`.
+ * The `field` filter, which may be given more than once: the same wire shape as `tag`.
  *
  * Each value is `<fieldId>:<op>[:<value>]`, read by `parseFieldFilter`; several narrow
  * conjunctively. Field definitions belong to a notebook, so this only means anything
@@ -194,13 +194,13 @@ export const UNFILED = '[unfiled]';
  * registered with a third party, unlike OAuth, whose callback URLs cannot be registered on
  * a self-hoster's behalf.
  *
- * `passkey` needs nothing registered either — the other half of WebAuthn is the browser
+ * `passkey` needs nothing registered either: the other half of WebAuthn is the browser
  * and the user's own device. It is not a way to *create* an account: one is added from
  * settings once you are signed in by something else, and only then appears on the sign-in
  * screen as a way back in.
  *
  * `email-otp` can create an account without any third-party account at all, needing only
- * that the instance can send mail — so where there is mail, it is the floor: without it an
+ * that the instance can send mail, so where there is mail, it is the floor: without it an
  * instance offering only OAuth turns anyone lacking those accounts away at the door.
  *
  * Where there is no mail either, `password` is the floor instead, and the server offers it
@@ -237,7 +237,7 @@ export interface AppConfig {
    * Whether an account can delete itself here.
    *
    * Deletion is confirmed by a link in the mail, so an instance with no mail configured
-   * does not offer the endpoint at all — see `accountDeletionOffered` in the API. Settings
+   * does not offer the endpoint at all (see `accountDeletionOffered` in the API). Settings
    * reads this to decide whether the control exists, rather than drawing a button that
    * answers 404.
    *
@@ -250,7 +250,7 @@ export interface AppConfig {
    *
    * There is deliberately no default. The documents used to name one operator from a
    * constant, which meant a self-hosted copy published somebody else's legal entity on its
-   * own domain — a claim that operator never made and cannot stand behind. Absent means
+   * own domain, a claim that operator never made and cannot stand behind. Absent means
    * nobody has said, and the documents say so rather than guessing.
    *
    * `host` comes from the server's `APP_URL` rather than from `location`, because the
@@ -262,7 +262,7 @@ export interface AppConfig {
    * Where the privacy policy and terms are: absolute URLs when they are hosted elsewhere,
    * `/privacy` and `/terms` for the built-in ones.
    *
-   * Absent means this instance publishes neither, and nothing links to them anywhere — a
+   * Absent means this instance publishes neither, and nothing links to them anywhere: a
    * link to a page that says "nothing here" is worse than no link at all. Absent also means
    * nobody is asked to agree to anything: there is nothing to agree to.
    *
@@ -281,7 +281,7 @@ export interface AppConfig {
   /**
    * The error-tracking service this instance reports browser crashes to, if it has one.
    *
-   * Absent means the SDK is never downloaded — it is imported dynamically on the strength
+   * Absent means the SDK is never downloaded: it is imported dynamically on the strength
    * of this field, so an instance without it pays nothing for the feature and its privacy
    * policy does not mention it.
    *
@@ -295,8 +295,8 @@ export interface AppConfig {
    * preview at all.
    *
    * Present only on a per-PR preview, whose own hostname changes every PR and so can never
-   * have an OAuth callback registered against it. `origin` is the standing dev instance —
-   * e.g. `https://dev.unbent.app` — that a preview's login screen sends people to to sign
+   * have an OAuth callback registered against it. `origin` is the standing dev instance
+   * (e.g. `https://dev.unbent.app`) that a preview's login screen sends people to to sign
    * in, and which redirects them back with a one-time token. Absent everywhere else,
    * including production and the dev instance itself, which have their own sign-in and read
    * this as "draw no relay button". See `previewRelayOrigin` in the API.
@@ -305,7 +305,7 @@ export interface AppConfig {
   /**
    * Whether this instance can fill in a note's filing from what it says.
    *
-   * On when the operator has set a Jev key — `TYPESAFE_API_KEY` in the API — and the
+   * On when the operator has set a Jev key (`TYPESAFE_API_KEY` in the API) and the
    * editor draws the Auto-fill control on the strength of this alone, since the route
    * answers 503 without one. Optional for the same reason `accountDeletion` is: absent
    * reads as not offered.
@@ -321,7 +321,7 @@ export interface AppConfig {
    */
   ownStores?: boolean;
   /**
-   * What this instance is, when it is not the one people use — "Dev", "PR 222", "Local".
+   * What this instance is, when it is not the one people use: "Dev", "PR 222", "Local".
    * The page puts it in front of the tab title, badges the favicon, and names it in the
    * account menu, so a tab of a scratch instance cannot be mistaken for the real one, or
    * the real one for scratch. Absent on production, which draws none of it.
@@ -335,7 +335,7 @@ export interface AppConfig {
    */
   instanceKind?: InstanceKind;
   /**
-   * This instance is the public one — unbent.app — and `/` shows a signed-out visitor
+   * This instance is the public one (unbent.app) and `/` shows a signed-out visitor
    * the front page: what Unbent is, what it costs, and the way in.
    *
    * Absent everywhere else, which keeps `/` the sign-in screen. The page states one
@@ -351,8 +351,8 @@ export interface AppConfig {
    * True exactly where a `BACKUPS` bucket is bound, and read by the built-in privacy policy
    * and deletion page, which describe those copies and how long a deletion takes to leave
    * them. Like `posthog`, it is here so the legal text says nothing about copies an instance
-   * does not keep. The Worker cannot see whether the mirror workflow runs — that is a
-   * GitHub secret, not a binding — so a fork that binds a bucket and never sets the mirror
+   * does not keep. The Worker cannot see whether the mirror workflow runs (that is a
+   * GitHub secret, not a binding), so a fork that binds a bucket and never sets the mirror
    * up has its policy overstate the off-account half; such a fork should publish its own
    * documents, as the README says. Optional for the same reason the rest are: absent means
    * no backups to speak of.
@@ -363,7 +363,7 @@ export interface AppConfig {
    * page initialises Paddle.js with, and which of Paddle's environments it belongs to.
    * Present exactly where the Worker has the Paddle secrets, and the Plan tab, the trial
    * banner and the 402 on a lapsed account all exist on the strength of it. Absent, the
-   * instance has nothing to sell and every account is active for good — every
+   * instance has nothing to sell and every account is active for good: every
    * self-hosted copy. See `BillingConfig`.
    */
   billing?: BillingConfig;
@@ -376,13 +376,13 @@ export type InstanceKind = (typeof INSTANCE_KINDS)[number];
  * What auto-fill proposes for a note, as `POST /notes/:id/autofill` answers.
  *
  * Suggestions, never writes. The editor holds a draft and an autosave, and a server that
- * wrote behind them would be undone by the next keystroke — the hazard the web's
+ * wrote behind them would be undone by the next keystroke: the hazard the web's
  * `open-note-fields.ts` describes. So the server judges and the client applies, which is
  * also what lets the client fill what is empty at once and ask before replacing anything
  * already set.
  *
  * Each part carries the model's confidence in it, 0 to 1, already above the floor the
- * server applies — anything below is not returned at all. It rides along so a client can
+ * server applies: anything below is not returned at all. It rides along so a client can
  * show it, or hold a low one back further than the server did.
  */
 export interface AutofillSuggestion {
@@ -396,7 +396,7 @@ export interface AutofillSuggestion {
   /** Existing tags that apply, likeliest first. Tags the note already carries are left out. */
   tags: Array<{ name: string; confidence: number }>;
   /**
-   * Values for the fields of the notebook the note would end up in — the suggested one,
+   * Values for the fields of the notebook the note would end up in: the suggested one,
    * or the note's own when there is no suggestion. Each carries its definition, so a
    * client can write the value before it has loaded that notebook's fields.
    *
@@ -405,18 +405,18 @@ export interface AutofillSuggestion {
    */
   fields: Array<{ field: FieldDef; value: FieldValue; confidence?: number }>;
   /**
-   * Which of the note's files were read, and which had no text for this press — usually
+   * Which of the note's files were read, and which had no text for this press: usually
    * a read the press tried that failed, but also a file past its cap, or a PDF the
    * browser has yet to read on an instance with no converter.
    */
   read: { attachments: string[]; pending: string[] };
   /**
    * A standing fault in the language model the title is written by, surfaced only to an
-   * operator and only when it is one the operator has to fix — an API key the model
+   * operator and only when it is one the operator has to fix: an API key the model
    * rejected, or a model this key cannot use. Not a transient outage: a rate limit or a
    * 5xx leaves this absent and Jev's picked title stands, because retrying would work.
    *
-   * `'auth-failed'` is the key case — a 401/403 from the model, which fails every call
+   * `'auth-failed'` is the key case: a 401/403 from the model, which fails every call
    * until the key is replaced, and looks in the UI exactly like "the model had no better
    * title" without this. Absent for a non-operator, or where the title call succeeded,
    * declined, or failed only for a moment; see the API's `lib/autofill.ts`.
@@ -458,7 +458,7 @@ export interface LlmJobUsage extends LlmTokens {
 /**
  * `GET /api/autofill/usage`: the account's Auto-fill this calendar year, UTC (MAK-180). Presses,
  * and the model's tokens by job and model, so a price can be put on them at display when
- * one is wanted — the counter itself keeps no money. `today` and `dailyCap` are what the
+ * one is wanted: the counter itself keeps no money. `today` and `dailyCap` are what the
  * press route refuses on; `dailyCap` is null where the instance sets none.
  */
 export interface AutofillUsage {
@@ -496,7 +496,7 @@ export interface AttachmentTexts {
  *
  * `from` is not `noteIdSchema`: imported notes keep the ids their export carried, which
  * need not be UUIDs, and ownership is what the repo checks anyway. `move` deletes each
- * source file once it is copied — but only one the source body no longer links, so a
+ * source file once it is copied, but only one the source body no longer links, so a
  * paste after a cut that has not yet saved falls back to a copy rather than taking a file
  * the source still shows.
  */
@@ -511,7 +511,7 @@ export const copyAttachmentsSchema = z.object({
   move: z.boolean().default(false),
   /**
    * Also append a markdown link for each copied file to the destination body, for a
-   * caller with no editor open on that note — the panel's copy-to. The editor's paste
+   * caller with no editor open on that note: the panel's copy-to. The editor's paste
    * writes its own links and leaves this off, as the upload's `?link=1` does.
    */
   link: z.boolean().default(false),
@@ -547,21 +547,21 @@ export const updateNoteSchema = z.object({
   fields: noteFieldsPatchSchema.optional(),
   /**
    * The `updatedAt` of the copy this patch was written against. When the note has been
-   * saved since — by another device, another tab, an assistant over MCP — the patch is
+   * saved since (by another device, another tab, an assistant over MCP) the patch is
    * refused with a 409 carrying the note as it now stands, rather than written over it.
    *
    * Optional, so a writer that means "whatever is there, replace it" still can; the web
    * editor always sends it. A timestamp rather than a revision counter because the column
    * already exists and every client already holds it: `updated_at` moves on every write
    * that changes something, always forward and never onto the value it had (see the stamp
-   * in `NotesStore.update`), and only then — exactly the property a precondition needs.
+   * in `NotesStore.update`), and only then: exactly the property a precondition needs.
    */
   ifUpdatedAt: z.number().int().nonnegative().optional(),
 });
 
 /**
  * What a restore from a note's history answers with: the note as it now stands, and the
- * id of the copy the restore kept of what it replaced — the one an Undo puts back.
+ * id of the copy the restore kept of what it replaced: the one an Undo puts back.
  * `kept` is null when the version was already what the note said: nothing was written,
  * nothing was kept, and there is nothing to undo. The client cannot tell that from a
  * real restore by looking at the note, and saying "Restored" with an Undo for it once
@@ -590,8 +590,8 @@ export const restoreRevisionSchema = z.object({
  * A set of notes to act on at once: the list's selection.
  *
  * Ids rather than a filter, deliberately. "Every note matching the filter" would let a
- * client trash what it has not seen — the list is paged, and a filter that reads as forty
- * rows on screen can match four thousand — whereas a client that names ids can only name
+ * client trash what it has not seen (the list is paged, and a filter that reads as forty
+ * rows on screen can match four thousand), whereas a client that names ids can only name
  * what it has loaded. The cap is generous next to the pages the list loads; it exists so a
  * request stays one request rather than a job.
  *
@@ -604,7 +604,7 @@ export const MAX_BATCH_NOTES = 500;
 
 const noteIdsSchema = z.array(z.string().trim().min(1).max(100)).min(1).max(MAX_BATCH_NOTES);
 
-/** The notes a batch acts on — trash, restore, purge. */
+/** The notes a batch acts on: trash, restore, purge. */
 export const noteBatchSchema = z.object({ ids: noteIdsSchema });
 
 /**
@@ -613,7 +613,7 @@ export const noteBatchSchema = z.object({ ids: noteIdsSchema });
  * Tags are added and removed rather than set, because the notes need not agree: three
  * notes with three different tag lists gain a fourth tag each and keep their own. Setting
  * would make every list the same, which is never what "tag these" means. A tag in both
- * lists is added — the rule `update_note_tags` states over MCP. A body naming nothing to
+ * lists is added: the rule `update_note_tags` states over MCP. A body naming nothing to
  * change is refused rather than answered with a count of zero, since it is a client bug.
  */
 export const updateNotesSchema = z
@@ -635,7 +635,7 @@ export const updateNotesSchema = z
  * How the note list is ordered.
  *
  * `created` is the default: this is a paperless archive more than a worklist, and a list
- * ordered by when each document arrived stays put — under `updated` an autosave, a tag or
+ * ordered by when each document arrived stays put: under `updated` an autosave, a tag or
  * an auto-fill sent an old receipt to the top, and the list reshuffled under whoever was
  * reading it. `updated` is still offered for working through what was touched last, and
  * `title` for finding a document by name.
@@ -661,7 +661,7 @@ export const listNotesQuerySchema = z.object({
   /**
    * Sort by a custom field's value instead of `sort`. Wins over `sort` when both arrive;
    * `order` still applies. Notes without a value come last either way. The date range
-   * then reads `updated_at`, as it does under the title sort — the rows show that date.
+   * then reads `updated_at`, as it does under the title sort: the rows show that date.
    * The web table's sortable field columns are what send this; the phone and the MCP
    * tool keep to the named sorts.
    */
@@ -702,7 +702,7 @@ export const searchQuerySchema = z.object({
   from: dateOnlySchema.optional(),
   to: dateOnlySchema.optional(),
   /**
-   * Each match also carries its note's list row — fields, tags, dates, files — as
+   * Each match also carries its note's list row (fields, tags, dates, files) as
    * `SearchResultRow`, for a table drawing the search in its columns. Off by default: the
    * sidebar's results draw a title and a snippet, and the row costs a read of every
    * match's tags, fields and files. Same "1" rule as `exact`.
@@ -723,7 +723,7 @@ export const EXPORT_IDS_PER_PAGE = 90;
  * Export takes the note list's filters, so an export is the view the user was looking at.
  *
  * No `limit`: a partial backup is a trap rather than a feature. `sort` orders nothing
- * anyone sees — a zip of directories has no order worth choosing. It is here because the
+ * anyone sees: a zip of directories has no order worth choosing. It is here because the
  * date range filters whichever column the sort names, so without it an export of "2021"
  * would quietly mean a different set of notes than the list showing "2021"; and, for the
  * paged export, because it is the column the cursor walks.
@@ -748,8 +748,8 @@ export const exportPageQuerySchema = exportQuerySchema
     limit: z.coerce.number().int().min(1).max(100).default(50),
     /**
      * Only these notes: an export of a selection, which no filter can describe. Given once
-     * per id, like `tag`, and at most `EXPORT_IDS_PER_PAGE` in one request — the store
-     * binds them in one statement, whose engine takes a hundred values at most — so the
+     * per id, like `tag`, and at most `EXPORT_IDS_PER_PAGE` in one request (the store
+     * binds them in one statement, whose engine takes a hundred values at most), so the
      * browser asks for a selection a run of ids at a time (`selectionSource` in the web
      * app's `export-archive.ts`).
      */
@@ -761,7 +761,7 @@ export const exportPageQuerySchema = exportQuerySchema
   })
   /*
    * Ids or filters, never both. A selection is already the notes it names, so a filter
-   * beside it could only drop some of them without saying so — and every filter binds
+   * beside it could only drop some of them without saying so, and every filter binds
    * values of its own, which would carry the statement past the engine's hundred.
    */
   .refine((q) => !q.id || !(q.tag?.length || q.notebook || q.field?.length || q.from || q.to), {
@@ -779,7 +779,7 @@ export const importNoteSchema = z.object({
    * An export writes each note's id into its frontmatter, and a restore should put the
    * note back at the same address: bookmarks, links from other notes and anything an MCP
    * client remembered keep working. It is also the only reliable way to tell "this note is
-   * already here" — a note created in the editor has no content hash to match on, and one
+   * already here": a note created in the editor has no content hash to match on, and one
    * edited since the export would not match anyway. The server keeps it when it is free
    * and mints a fresh one otherwise, so it is a request, not a claim.
    */
@@ -798,7 +798,7 @@ export const importNoteSchema = z.object({
    * Custom field values keyed by field *name*, the interchange form, resolved against the
    * note's notebook on the way in; a name with no definition creates one. Keys are only
    * length-checked here so that one reserved or unreadable value skips that field rather
-   * than failing the whole note — the import reports what it skipped.
+   * than failing the whole note: the import reports what it skipped.
    */
   fields: z.record(z.string().max(MAX_FIELD_NAME_LENGTH), fieldValueInputSchema).optional(),
 });
@@ -808,12 +808,12 @@ export const importNoteSchema = z.object({
  *
  * The ENEX path converts ENML to Markdown on the client, because the browser is already
  * holding the file and conversion there costs the server nothing. A syncing client has no
- * such converter — it would have to reimplement `enmlToMarkdown` in its own language, and
+ * such converter: it would have to reimplement `enmlToMarkdown` in its own language, and
  * the second implementation would drift from the first. So it posts ENML and the server
  * converts, keeping one definition of what Evernote's markup means.
  *
  * Resources are metadata only. The converter needs `md5` to rewrite `<en-media hash>` into
- * a `files/` link, and the filename to point at, but not the bytes — those are far larger
+ * a `files/` link, and the filename to point at, but not the bytes: those are far larger
  * than the note and go through the normal attachment route afterwards.
  */
 export const importEnmlSchema = z.object({
@@ -828,7 +828,7 @@ export const importEnmlSchema = z.object({
   resources: z
     .array(
       z.object({
-        /** Lowercase hex md5 of the decoded bytes — what `<en-media hash>` refers to. */
+        /** Lowercase hex md5 of the decoded bytes: what `<en-media hash>` refers to. */
         md5: z.string().regex(/^[0-9a-f]{32}$/),
         filename: z.string().min(1).max(255),
         mime: z.string().max(255),
@@ -862,7 +862,7 @@ export interface NoteSummary {
    * The files the note stores, oldest first. Omitted when there are none.
    *
    * Name and declared type only: enough for a row to show what kind of thing is attached
-   * and which one it is. The type is the stored value, unverified — fine for choosing a
+   * and which one it is. The type is the stored value, unverified: fine for choosing a
    * glyph, which is all a row does with it.
    */
   attachments?: Pick<AttachmentInfo, 'filename' | 'contentType'>[];
@@ -877,7 +877,7 @@ export interface Note extends NoteSummary {
 }
 
 /**
- * A save refused because the note changed after the copy it was written against — see
+ * A save refused because the note changed after the copy it was written against: see
  * `ifUpdatedAt`. Carries the note as it now stands, so the writer has both sides without
  * a second read; the API sends this as the 409's body.
  */
@@ -892,15 +892,15 @@ export interface StaleNote {
  * absence wrongly.
  *
  * The window is how long one copy stands for the typing that follows it. The editor saves
- * every second or so while someone types, and a copy per save would be a row — with the
- * whole body in it — per pause. One per half hour is one per sitting.
+ * every second or so while someone types, and a copy per save would be a row (with the
+ * whole body in it) per pause. One per half hour is one per sitting.
  */
 export const REVISION_WINDOW_MS = 30 * 60 * 1000;
 /**
  * Copies kept per note; the next write past this drops the oldest.
  *
- * Fifty rather than the twenty this began with. The cap is what bounds storage — the
- * tools this sits beside keep by age alone, on plans that charge for it — so there has
+ * Fifty rather than the twenty this began with. The cap is what bounds storage (the
+ * tools this sits beside keep by age alone, on plans that charge for it), so there has
  * to be one, but too few is a loss nobody can take back and too many is a longer list.
  * Twenty was two or three weeks of a note edited every day, and every restore and its
  * undo spends one. Fifty costs a prune that reads about a hundred index entries, once
@@ -911,7 +911,7 @@ export const REVISIONS_KEPT = 50;
  * And none older than this. A year, not the ninety days it began with: the clock starts
  * at the write that replaced the text, so this is how long someone has to notice, and
  * in an archive most notes are opened a few times a year. The age limit saves almost
- * nothing where it bites — a note edited rarely has one or two small copies — and the
+ * nothing where it bites (a note edited rarely has one or two small copies) and the
  * privacy case for a short one is answered by Clear history instead.
  */
 export const REVISION_MAX_AGE_MS = 365 * 24 * 60 * 60 * 1000;
@@ -950,10 +950,10 @@ export interface NoteRevisionProps {
 
 /**
  * One thing a version holds that Restore would leave as the note has it, and why:
- * `deleted` — the notebook, tag or field is gone; `type` — the field has been converted
- * to a type the value cannot be read as; `option` — the field no longer has the choice.
+ * `deleted`: the notebook, tag or field is gone; `type`: the field has been converted
+ * to a type the value cannot be read as; `option`: the field no longer has the choice.
  * `id` is the notebook's, tag's or field's own, which is how the sheet matches a skip to
- * the row it is about; `name` is for saying it — the name the version knew a deleted
+ * the row it is about; `name` is for saying it: the name the version knew a deleted
  * thing by, and today's name for a field that still exists.
  */
 export interface RevisionSkip {

@@ -36,7 +36,7 @@ describe('formatAttachmentMarkdown', () => {
     );
   });
 
-  /** Without brackets the whole line is literal text — no link, no PDF viewer. */
+  /** Without brackets the whole line is literal text: no link, no PDF viewer. */
   it('produces markdown the renderer can turn into a PDF embed', () => {
     const md = formatAttachmentMarkdown(
       'Principal Software Engineer in Remote _ Careers at US Remote.pdf',
@@ -100,7 +100,7 @@ describe('removeAttachmentLinks', () => {
 /**
  * The round trip the clipboard makes: relative links leave a note absolute, so they say
  * which note's file they mean, and come back relative once the file is stored in the
- * destination — under whatever name it got there.
+ * destination, under whatever name it got there.
  */
 describe('absolutizeAttachmentLinks', () => {
   it('names the note in every same-note link and image', () => {
@@ -359,7 +359,7 @@ describe('structure', () => {
  * The marker that turns an attachment link into an inline viewer.
  *
  * The security property under test is that only this pipeline can produce it. If note
- * content could forge the class, imported ENML — which is untrusted — could make arbitrary
+ * content could forge the class, imported ENML (which is untrusted) could make arbitrary
  * links render as embedded documents.
  */
 describe('pdf embed marker', () => {

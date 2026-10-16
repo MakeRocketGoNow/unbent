@@ -22,7 +22,7 @@ export const ATTACHMENT_PREFIX = 'files/';
  *
  * CommonMark destinations cannot contain whitespace unless wrapped in angle brackets.
  * Dropped files keep their original names, so a PDF like `Treatment Plan.pdf` must become
- * `[Treatment Plan.pdf](<files/Treatment Plan.pdf>)` — without the brackets the preview
+ * `[Treatment Plan.pdf](<files/Treatment Plan.pdf>)`: without the brackets the preview
  * shows the raw markdown instead of a link, and PDFs never get an inline viewer.
  */
 export function formatAttachmentMarkdown(
@@ -49,14 +49,14 @@ function decodePathSegment(segment: string): string {
 /**
  * Filenames pointed at by relative `files/…` image or link destinations in markdown.
  *
- * Used to mark attachments that are still stored but no longer referenced in the body —
+ * Used to mark attachments that are still stored but no longer referenced in the body:
  * removing a link does not delete the file.
  */
 export function attachmentFilenamesInMarkdown(markdown: string): Set<string> {
   const names = new Set<string>();
   // Two destination forms, and the delimiter that ends the filename differs between them.
   // Angle-bracket `[…](<files/x (y).pdf>)`: the name runs to the closing `>`, so a `)` in
-  // the name — a real thing in imported filenames — is content, not the end. Bare
+  // the name (a real thing in imported filenames) is content, not the end. Bare
   // `[…](files/x)`: CommonMark forbids whitespace, so the name ends at the `)`. Both cover
   // image forms via the leading `!?`.
   const re =
@@ -95,7 +95,7 @@ export function removeAttachmentLinks(markdown: string, filename: string): strin
  * The URL an attachment is served at, for text that leaves its note.
  *
  * `files/<name>` only means something inside the note that holds the file. The moment
- * that markdown is copied — to another note, to another app — the relative path points
+ * that markdown is copied (to another note, to another app), the relative path points
  * at nothing, or worse, at a different note's file of the same name. This is the
  * self-describing form the clipboard carries instead: it names the note, so a paste can
  * find the bytes and copy them across, and it is a real link anywhere else. `origin` is
@@ -115,7 +115,7 @@ const RELATIVE_ATTACHMENT_LINK_RE =
 /**
  * Rewrites every same-note `files/…` link to the absolute form `attachmentUrl` produces.
  *
- * Run on the way *out* of a note — the editor's copy handler — never on the stored body,
+ * Run on the way *out* of a note (the editor's copy handler), never on the stored body,
  * which stays relative so an exported folder works in any editor. The label is kept as
  * written; only the destination changes. Angle brackets are dropped along with the
  * spaces that needed them: the encoded URL has none.
@@ -198,7 +198,7 @@ export function relativeAttachmentLink(link: Pick<AbsoluteAttachmentLink, 'label
  * Turns absolute attachment links back into `files/…` links, for text arriving in a note.
  *
  * `rename` answers, for each link, the filename the file now has in the destination note
- * — which may differ from the source's, since a name already taken there is suffixed —
+ * (which may differ from the source's, since a name already taken there is suffixed)
  * or null to leave that link as it is. Leaving it absolute is the honest fallback when the
  * copy failed: the link still opens for the owner, and nothing pretends the file is here.
  */
@@ -229,7 +229,7 @@ const REMOTE_IMAGE_LINK_RE =
  *
  * A note converted from a bookmark by an assistant, or clipped from a page, links its
  * pictures to the site they came from. Those rot, get hotlink-blocked, are in no export
- * and no search — Evernote never left an image on the web, and neither should a note
+ * and no search: Evernote never left an image on the web, and neither should a note
  * here. This is what "Save web images" counts and fetches; `localizeImageLinks` is how
  * the links are rewritten once the files are stored.
  */
@@ -246,7 +246,7 @@ export function remoteImageUrls(markdown: string): string[] {
  * Points remote images at the files they were saved as.
  *
  * `stored` answers, for a web address, the filename the file now has in this note, or
- * null to leave that image where it was — a fetch that failed stays a working web link
+ * null to leave that image where it was: a fetch that failed stays a working web link
  * rather than becoming a broken local one. The label is kept; only the destination
  * changes, bracketed when the name needs it.
  */
@@ -266,7 +266,7 @@ export function localizeImageLinks(
 /**
  * Rewrites relative attachment paths to API URLs at render time.
  *
- * The markdown stored in D1 is never mutated — `files/diagram.png` stays relative on disk
+ * The markdown stored in D1 is never mutated: `files/diagram.png` stays relative on disk
  * so an exported folder works in any editor. Only the rendered output points at the API.
  */
 export function remarkResolveAttachments(opts: { noteId: string }) {
@@ -278,7 +278,7 @@ export function remarkResolveAttachments(opts: { noteId: string }) {
 
       // remark hands back the URL exactly as written, so it may already be
       // percent-encoded (`files/my%20photo.png`) or raw (`<files/my photo.png>`).
-      // Normalize by decoding first, then encoding each segment exactly once —
+      // Normalize by decoding first, then encoding each segment exactly once:
       // encoding blindly would turn `%20` into `%2520` and break the image.
       const filename = url.slice(ATTACHMENT_PREFIX.length);
       const encoded = filename
@@ -303,7 +303,7 @@ export function remarkResolveAttachments(opts: { noteId: string }) {
  *
  * Deliberately a class on an ordinary link rather than an embed element. Emitting an
  * `<iframe>` here would mean teaching rehype-sanitize to permit iframes, and a sanitizer
- * that permits them permits *any* note content to author one — including imported ENML,
+ * that permits them permits *any* note content to author one, including imported ENML,
  * which is untrusted. Instead this stage marks a link it built itself, and the viewer is
  * mounted client-side from the marked anchor's href.
  */
@@ -324,7 +324,7 @@ export interface RenderOptions {
    * are already imported under that name. The attachment row records the declared type, so
    * the note itself can say which of its files are documents.
    *
-   * Trusted because of where it comes from — the note's own attachment rows, not its
+   * Trusted because of where it comes from: the note's own attachment rows, not its
    * markdown. Note content can name any file it likes; it cannot put a name in this set.
    */
   pdfFilenames?: ReadonlySet<string>;
@@ -340,7 +340,7 @@ interface HastNode {
  * Flags resolved attachment links that point at a PDF.
  *
  * Runs after sanitization, so any class an author wrote is already stripped and the marker
- * cannot be forged from note content. It only inspects URLs this pipeline produced — the
+ * cannot be forged from note content. It only inspects URLs this pipeline produced: the
  * `/api/notes/` prefix is written by `remarkResolveAttachments`, never by the author.
  */
 export function rehypeMarkPdfEmbeds(opts: { pdfFilenames?: ReadonlySet<string> } = {}) {
@@ -360,7 +360,7 @@ export function rehypeMarkPdfEmbeds(opts: { pdfFilenames?: ReadonlySet<string> }
       }
 
       // The name is the last segment of a path this pipeline built, so it is the stored
-      // filename — the same key the attachment rows are listed under.
+      // filename, the same key the attachment rows are listed under.
       const filename = path.slice(path.lastIndexOf('/') + 1);
       if (!PDF_PATH.test(path) && !opts.pdfFilenames?.has(filename)) return;
 
@@ -382,14 +382,14 @@ interface HastParent extends HastNode {
 /**
  * Wraps every image in a link to itself.
  *
- * The preview pane is for reading, and an image in it should open when clicked — that is
+ * The preview pane is for reading, and an image in it should open when clicked: that is
  * what every notes app does, and it is what people try. The pane renders the pipeline's
  * HTML as a string it does not own node by node, so the control has to be in the markup:
  * a link around the image is the one that is honest without any script at all. It
  * focuses and activates from the keyboard, it can be middle-clicked into a new tab, and
  * the pane intercepts an ordinary click to open its viewer instead.
  *
- * An image already inside a link is left alone — `[![alt](img)](url)` is a picture that
+ * An image already inside a link is left alone: `[![alt](img)](url)` is a picture that
  * goes somewhere, and a link inside a link is not HTML. Runs after sanitization, so the
  * marker cannot be forged from note content, and the `href` it writes is an image source
  * the sanitizer has already passed.
@@ -440,7 +440,7 @@ const schema = {
  * parsing buys nothing and breaks nested lists.
  */
 function remarkDisableSetext() {
-  // @ts-expect-error — unified plugin `this` typing.
+  // @ts-expect-error: unified plugin `this` typing.
   const self = this;
   const data = self.data();
   const extensions = data.micromarkExtensions || (data.micromarkExtensions = []);
@@ -455,7 +455,7 @@ function remarkDisableSetext() {
  * in order; a task keeps its box. Three kinds of node contribute nothing, on purpose:
  *
  * - **Images and attachment links.** A note that is one scanned PDF used to excerpt as
- *   `[Scan.pdf](<files/Scan.pdf>)` — the markup was the whole line. The list shows a
+ *   `[Scan.pdf](<files/Scan.pdf>)`: the markup was the whole line. The list shows a
  *   note's files as their own line, from the attachment rows rather than from the body,
  *   so repeating them here as prose would say it twice and say it worse. An image's alt
  *   is nearly always its filename, so it goes with the image.
@@ -549,7 +549,7 @@ function* blockTexts(node: MdNode): Generator<string> {
       }
       return;
     default:
-      // thematicBreak, html, definition, yaml — nothing to read.
+      // thematicBreak, html, definition, yaml: nothing to read.
       return;
   }
 }
@@ -585,7 +585,7 @@ export function renderMarkdown(markdown: string, opts: RenderOptions): string {
      * Treat a single newline as a line break.
      *
      * CommonMark folds a lone newline into a space, so a note written as separate lines
-     * renders as one run-on paragraph — surprising in a notes app, where people press
+     * renders as one run-on paragraph: surprising in a notes app, where people press
      * Enter expecting a new line rather than a new paragraph. This is what chat apps and
      * GitHub comments do; note that it is not part of GFM itself, which covers tables,
      * task lists, strikethrough, and autolinks.

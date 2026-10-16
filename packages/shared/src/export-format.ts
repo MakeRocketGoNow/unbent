@@ -29,7 +29,7 @@ export function slugify(title: string): string {
 /**
  * Directory name for a note: `{slug}-{id8}`.
  *
- * The id suffix is not decoration — two notes titled "Meeting notes" would otherwise
+ * The id suffix is not decoration: two notes titled "Meeting notes" would otherwise
  * collide into one directory and the second would overwrite the first.
  *
  * Eight characters is only unique enough for ids this instance minted, which are random.
@@ -43,7 +43,7 @@ export function noteDirName(title: string, id: string, idChars = 8): string {
 }
 
 /**
- * A note as markdown — frontmatter from its columns, then the body.
+ * A note as markdown: frontmatter from its columns, then the body.
  *
  * Shared with the single-note route, which serves this same text directly when a note has
  * no attachments to put beside it. One definition so the two spellings of "a note on
@@ -58,7 +58,7 @@ export function noteMarkdown(note: Note): string {
     tags: note.tags,
     ...(note.notebook ? { notebook: note.notebook } : {}),
     // Every value the note carries, by field name, including any left over from a
-    // notebook it has since left — an export that dropped those would be a lossy backup.
+    // notebook it has since left: an export that dropped those would be a lossy backup.
     ...(note.fields?.length ? { fields: fieldsByName(note.fields, note.notebookId ?? null) } : {}),
     body: note.body,
   });
@@ -91,13 +91,13 @@ export interface ExportedNote extends Note {
  * Where a file's text sits in the archive, beside its `files/` directory.
  *
  * Without it a restore read every file again: each PDF back through extraction, and each
- * picture and text-less scan back to pending for the vision model — a paid call per file,
+ * picture and text-less scan back to pending for the vision model, a paid call per file,
  * on an instance that may have no key at all, producing different words than the ones
  * search and Auto-fill were built on. So the text travels with the file, as a plain
  * `<filename>.txt` a person can `grep` in the unpacked folder.
  *
- * The directory says who wrote it — `text/` for the file's own text layer, `described/`
- * for the vision model, `written/` for an assistant over MCP — which is the one other
+ * The directory says who wrote it (`text/` for the file's own text layer, `described/`
+ * for the vision model, `written/` for an assistant over MCP), which is the one other
  * thing the row records. That keeps the filename exactly the file's, needs no index, and
  * leaves a hand-unpacked archive readable. A file never has two; the export writes one or
  * none. The marker matters on the way back in: an Auto-fill press re-reads what an
@@ -137,7 +137,7 @@ export interface ExportFilter {
   to?: string | undefined;
   sort?: NoteSort | undefined;
   /**
-   * Only these notes — the ones selected in the list — in place of every other filter.
+   * Only these notes (the ones selected in the list) in place of every other filter.
    * The client asks for them a run at a time (`EXPORT_IDS_PER_PAGE`); see `id` on
    * `exportPageQuerySchema`.
    */
@@ -185,7 +185,7 @@ export function exportFilename(filter: ExportFilter, stamp: string): string {
 /**
  * Which notebooks an archive carries a `notebooks/<slug>.yaml` for.
  *
- * All of them for an unfiltered export, empty ones included — a backup that dropped a
+ * All of them for an unfiltered export, empty ones included: a backup that dropped a
  * notebook because it happened to hold no notes that day would not be a backup of the
  * account. A filtered export is a slice, so it carries the notebooks its notes are in,
  * plus the one the filter named even if nothing matched inside it; a person exporting a

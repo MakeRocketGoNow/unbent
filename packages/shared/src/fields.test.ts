@@ -303,7 +303,7 @@ describe('fieldsByName', () => {
  * The field filter's wire form: `<fieldId>:<op>[:<value>]`.
  *
  * The id and the op can hold no `:`, so the first two are the separators and the value
- * is whatever follows — which is what lets a select option with a colon in it travel
+ * is whatever follows, which is what lets a select option with a colon in it travel
  * unescaped. Everything unreadable is null, so the route can refuse it rather than
  * silently list an unfiltered archive.
  */

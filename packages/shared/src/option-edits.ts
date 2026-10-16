@@ -7,8 +7,8 @@ import { MAX_FIELD_NAME_LENGTH, MAX_SELECT_OPTIONS, fieldOptionsSchema } from '.
  * The options editor in the app works on the whole list, because the whole list is on
  * screen. A model does not have it on screen: to add one option it had to read the list,
  * resend every entry with the new one, and an entry it dropped on the way left the field
- * without a word (MAK-227). These say what changes — a rename, a removal, an addition, an
- * order — and the list the store already holds is the one they apply to, so nothing the
+ * without a word (MAK-227). These say what changes (a rename, a removal, an addition, an
+ * order) and the list the store already holds is the one they apply to, so nothing the
  * caller did not name can go missing.
  */
 

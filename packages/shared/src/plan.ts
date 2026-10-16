@@ -25,7 +25,7 @@ export const STORAGE_ADDON_GB = 25;
  * The plan's price, a year at a time. The yearly figure is the only one there is.
  *
  * Raising this, or the storage price below, owes every subscriber an email at least 30
- * days before the renewal it applies to — the terms promise it ("Plans and payment" in the
+ * days before the renewal it applies to: the terms promise it ("Plans and payment" in the
  * web app's `legal/documents.ts`). Nothing sends that mail: it is written by hand, or built
  * first. Changing the price in Paddle's catalog without it breaks the terms.
  */
@@ -72,8 +72,8 @@ export const STORAGE_FULL_CODE = 'STORAGE_FULL';
 /**
  * Where an account stands.
  *
- * `trial` and `active` can do everything; `inactive` — a trial that ran out, a
- * subscription that lapsed, a comp that ended — reads, searches, exports and deletes, and
+ * `trial` and `active` can do everything; `inactive` (a trial that ran out, a
+ * subscription that lapsed, a comp that ended) reads, searches, exports and deletes, and
  * is refused every other write with a 402 (`requireActivePlan` in the API). One state for
  * all three ways of lapsing, so there is one code path and one banner.
  */
@@ -98,7 +98,7 @@ export interface AccountPlan {
   /**
    * When the account turns read-only unless something changes first, which a client
    * locks on rather than `until`: the same instant for a trial or a comp, and for a
-   * renewing subscription its end plus the server's renewal grace — the period's end is
+   * renewing subscription its end plus the server's renewal grace: the period's end is
    * when Paddle bills, and the webhook carrying the next period lands after it. Null
    * for a plan with no end; for an `inactive` account, when it became so.
    */

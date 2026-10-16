@@ -1,5 +1,5 @@
 /**
- * The notebook definitions file — the part of the export that is about a notebook rather
+ * The notebook definitions file, the part of the export that is about a notebook rather
  * than a note.
  *
  * A note's markdown carries its field *values* as frontmatter keys by name, and that is
@@ -25,7 +25,7 @@
  * syntax, not two. Field order is the list order, which both formats keep.
  *
  * A definition file is deliberately not a manifest. It says what a notebook is, not what
- * the archive contains — the walker still finds notes by their own layout, and an archive
+ * the archive contains: the walker still finds notes by their own layout, and an archive
  * with no `notebooks/` directory (an older export, a hand-made vault) reads exactly as it
  * did before, with types inferred.
  */
@@ -70,8 +70,8 @@ export interface NotebookDefinition {
 /**
  * The file's shape, which is also what the import endpoint accepts.
  *
- * Strict where the field editor is strict — reserved names, the option cap, the rating
- * bounds — because a file that fails here was written by hand, not by the export, and a
+ * Strict where the field editor is strict (reserved names, the option cap, the rating
+ * bounds) because a file that fails here was written by hand, not by the export, and a
  * clear refusal beats a definition that half-applies. The emoji and the purpose go through
  * the same schemas the notebook's settings page saves through, so a file cannot put an icon
  * or a sentence on a notebook that the picker or the purpose editor would have refused.
@@ -154,7 +154,7 @@ export function parseNotebook(text: string): NotebookDefinition {
 /**
  * Where a notebook's definitions sit in the archive, from the same slug rule the note
  * directories use. The name inside the file is the one that counts; the filename is for
- * a person browsing the unpacked tree. Callers suffix a collision — two notebooks can
- * slug the same way — since only they can see the whole set.
+ * a person browsing the unpacked tree. Callers suffix a collision (two notebooks can
+ * slug the same way) since only they can see the whole set.
  */
 export const NOTEBOOKS_DIR = 'notebooks';

@@ -1,5 +1,5 @@
 /**
- * Frontmatter codec — the contract the entire disaster-recovery story rests on.
+ * Frontmatter codec: the contract the entire disaster-recovery story rests on.
  *
  * In D1, a note's title/tags/timestamps live in real columns and `body` holds markdown
  * WITHOUT frontmatter. Frontmatter exists only in the export format, where it is generated
@@ -66,7 +66,7 @@ function parseDate(value: unknown, field: string): Date {
 }
 
 /**
- * Render a note as its markdown file — YAML frontmatter followed by the body.
+ * Render a note as its markdown file: YAML frontmatter followed by the body.
  *
  * Timestamps are emitted unquoted so they read as dates in any YAML parser; every other
  * scalar is left to `yaml` to quote as needed.
@@ -104,7 +104,7 @@ export function serialize(note: ParsedNote): string {
 
 /**
  * Parse an exported note back into its columns. Throws FrontmatterError when it has no
- * frontmatter or is missing required fields — an import should surface that note as failed
+ * frontmatter or is missing required fields: an import should surface that note as failed
  * rather than silently inventing an id or timestamp.
  */
 export function parse(source: string): ParsedNote {
