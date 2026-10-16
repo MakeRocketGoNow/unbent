@@ -35,12 +35,16 @@ export const optionEditSchema = z.object({
 export type OptionPosition = z.infer<typeof optionPositionSchema>;
 export type OptionEdit = z.infer<typeof optionEditSchema>;
 
-/** True when the edit asks for nothing, so a caller can tell it apart from one that does. */
+/**
+ * True when the edit asks for nothing, so a caller can tell it apart from one that does. A
+ * `position` alone is not nothing: it is a mistake, and `applyOptionEdit` says so.
+ */
 export function isEmptyOptionEdit(edit: OptionEdit): boolean {
   return (
     !edit.rename?.length &&
     !edit.remove?.length &&
     !edit.add?.length &&
+    edit.position === undefined &&
     !edit.sort &&
     !edit.pinFirst?.length &&
     !edit.pinLast?.length
@@ -131,6 +135,14 @@ export function applyOptionEdit(current: string[], edit: OptionEdit): OptionEdit
   }
 
   const added: string[] = [];
+  // Checked whether or not anything turns out to be new, for the reason names are checked
+  // at all: a position that could never have applied is a misread the caller should hear.
+  if (edit.position !== undefined && !edit.add?.length) {
+    return { error: 'A position says where added options go, so it needs options to add.' };
+  }
+  if (typeof edit.position === 'object' && !list.includes(edit.position.after)) {
+    return { error: `"${edit.position.after}" is not one of this field's options.` };
+  }
   const fresh = [...new Set(edit.add ?? [])].filter((o) => !list.includes(o));
   if (fresh.length > 0) {
     const position = edit.position ?? 'end';
@@ -145,9 +157,7 @@ export function applyOptionEdit(current: string[], edit: OptionEdit): OptionEdit
         else list.splice(at, 0, option);
       }
     } else {
-      const at = list.indexOf(position.after);
-      if (at < 0) return { error: `"${position.after}" is not one of this field's options.` };
-      list.splice(at + 1, 0, ...fresh);
+      list.splice(list.indexOf(position.after) + 1, 0, ...fresh);
     }
     added.push(...fresh);
   }

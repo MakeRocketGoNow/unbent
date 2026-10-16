@@ -115,6 +115,12 @@ describe('applyOptionEdit', () => {
     expect(applyOptionEdit(['A', 'B'], { pinFirst: ['A'], pinLast: ['A'] })).toHaveProperty('error');
   });
 
+  it('refuses a position with nothing to add, or after an option the list lacks', () => {
+    expect(applyOptionEdit(['A'], { position: 'alpha' })).toMatchObject({ error: expect.stringContaining('needs options') });
+    // Every option already there, so nothing is added; the misspelt anchor is still refused.
+    expect(applyOptionEdit(['A'], { add: ['A'], position: { after: 'Nope' } })).toMatchObject({ error: expect.stringContaining('"Nope"') });
+  });
+
   it('refuses growing past the limit', () => {
     const full = Array.from({ length: MAX_SELECT_OPTIONS }, (_, i) => `O${i}`);
     expect(applyOptionEdit(full, { add: ['One more'] })).toMatchObject({ error: expect.stringContaining('at most') });
@@ -132,6 +138,7 @@ describe('optionEditSchema', () => {
     const edit = optionEditSchema.parse({ add: ['  Fuel '] });
     expect(edit.add).toEqual(['Fuel']);
     expect(isEmptyOptionEdit(edit)).toBe(false);
-    expect(isEmptyOptionEdit(optionEditSchema.parse({ add: [], position: 'alpha' }))).toBe(true);
+    expect(isEmptyOptionEdit(optionEditSchema.parse({ add: [] }))).toBe(true);
+    expect(isEmptyOptionEdit(optionEditSchema.parse({ position: 'alpha' }))).toBe(false);
   });
 });
