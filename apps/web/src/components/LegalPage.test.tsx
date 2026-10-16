@@ -109,6 +109,24 @@ describe('LegalPage', () => {
     expect(queryByText(/error-tracking/)).toBeNull();
   });
 
+  /*
+   * The payment terms follow `legal.sellsPlan`, which the server sets for billing or a
+   * front page. The front-page-only case is the one Paddle's review reads before billing
+   * is on, so it is the one pinned.
+   */
+  it('publishes the refund policy only where the server says it sells a plan', async () => {
+    const { findByRole } = harness('terms', {
+      operator: OPERATOR,
+      legal: { ...BUILT_IN, sellsPlan: true },
+    });
+    expect(await findByRole('heading', { name: 'Refunds' })).toBeTruthy();
+
+    cleanup();
+    const plain = harness('terms', { operator: OPERATOR, legal: BUILT_IN, frontPage: true });
+    await plain.findByRole('heading', { name: 'Terms of Service' });
+    expect(plain.queryByRole('heading', { name: 'Refunds' })).toBeNull();
+  });
+
   /** The backups' paragraphs follow `config.backups`, the way error tracking follows `posthog`. */
   it('describes the backups only where the instance keeps them', async () => {
     const { findByText } = harness('deletion', {

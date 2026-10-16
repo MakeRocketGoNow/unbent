@@ -299,7 +299,9 @@ working.
 Moving `LEGAL_VERSION` in `packages/shared/src/legal.ts` asks everyone again, worded as an
 update, with `LEGAL_CHANGE` beside it to say what changed. Move it for a change worth
 interrupting people for, not for every correction: the documents' effective dates move for
-those on their own. An operator with their own documents sets `LEGAL_VERSION` in the
+those on their own. A change only to the payment terms (`billingOnly`) moves it only where
+the instance sells a plan; everywhere else those sections are not published, so nothing
+changed and nobody is asked. An operator with their own documents sets `LEGAL_VERSION` in the
 environment instead, since only they know when those change; unset, everyone is asked once,
 and a change to the built-in documents never asks them again.
 
@@ -312,9 +314,18 @@ pnpm exec wrangler secret put OPERATOR_NAME
 pnpm exec wrangler secret put OPERATOR_EMAIL
 ```
 
-Neither value is confidential — both are printed on a public page — so a plain environment
-variable in the Cloudflare dashboard does just as well. What matters is only that they stay
+Neither value is confidential — both are printed on a public page — but set them as
+secrets all the same, from here or as the Secret type in the dashboard. A plain text
+variable added in the dashboard is gone after the next deploy, which replaces plain
+variables with the file's; a secret is kept. What matters otherwise is only that they stay
 out of the file a fork inherits.
+
+Pull-request previews show the front page too, and a price with no terms beside it is not
+what ships, so they take the pair from the `PREVIEW_OPERATOR_NAME` and
+`PREVIEW_OPERATOR_EMAIL` repository variables (`previews.yml` passes them with `--var`).
+Both or neither; unset, a preview publishes no documents. Variables rather than lines in
+`wrangler.toml`'s preview environment for the same reason as above: a fork that runs
+previews of its own would otherwise publish this repository's operator on them.
 
 ### Page statistics
 
@@ -637,6 +648,7 @@ summary rather than failing.
 | `DEV_ALLOWED_EMAILS` | secret | who may sign in to a preview or the dev instance |
 | `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | secret | the same pair production deploys with, needing D1 and R2 edit scopes, plus the DNS scope [the dev instance](#dns-for-devunbentapp) describes |
 | `DEV_INSTANCE_ORIGIN` | variable, optional | where a preview's sign-in relay sends people; defaults to `https://dev.unbent.app`. Set it only if your dev instance has a different name |
+| `PREVIEW_OPERATOR_NAME`, `PREVIEW_OPERATOR_EMAIL` | variable, optional | who runs the previews, sent as their `OPERATOR_NAME` and `OPERATOR_EMAIL`, so their front page has the built-in terms and privacy policy beside its price; both or neither, and unset a preview publishes no documents — see [Who runs this instance](#who-runs-this-instance) |
 | `DEV_GOOGLE_CLIENT_ID`, `DEV_GOOGLE_CLIENT_SECRET` | secret, optional | Google on the dev instance, so the relay can sign in with it; both or neither, and the client must list `dev.unbent.app` — see [Google on the dev instance](#google-on-the-dev-instance) |
 | `DEV_TYPESAFE_API_KEY` | secret, optional | Auto-fill on the dev instance and every preview; a key of its own, so what they spend stays apart from production's — see [Filing a note from what it says](#filing-a-note-from-what-it-says) |
 | `DEV_ANTHROPIC_API_KEY` | secret, optional | Auto-fill's language model on the dev instance and every preview; a key of its own, for the same reason — see [Reading images](#reading-images) |
@@ -1342,8 +1354,8 @@ account turns **inactive**: everything still opens, searches and
 exports, and every write but a delete is refused with a 402 that the app shows as a
 read-only banner. The same state, and the same code path, for an expired trial, a lapsed
 subscription and a comp that ended (`requireActivePlan` in the API). After a year inactive
-the account will be deleted, with reminders to export first; the job that does it and the
-reminders are a follow-up to MAK-108, and the terms will say so with MAK-45.
+the account *may* be deleted, after a reminder to export first — a right the terms reserve,
+not a job: nothing deletes on a timer, by decision (MAK-47, and `INACTIVE_KEPT_DAYS`).
 
 Comps do not go through Paddle. A 100% discount there still asks for a card and charges it
 when the discount ends, so an account that should not pay — the owner, a gifted friend — is
@@ -1410,9 +1422,13 @@ any future date succeeds.
 
 Going live is the same five settings from the live account, after its verification. The
 website review wants the pricing public, and terms, a privacy policy and a refund policy
-naming Paddle as the merchant of record, which the built-in documents do not yet say; that
-is MAK-45 and MAK-46. Everything an account is told — the trial's end, a lapse, the mail —
-is the same in both environments.
+naming Paddle as the merchant of record. The built-in documents say all of it wherever
+the instance sells a plan — billing on, or `FRONT_PAGE=1`, since the front page states the
+price and the review comes before the live keys that turn billing on. They are the terms'
+"Plans and payment" and "Refunds", and Paddle among the policy's services. The refund
+policy is at `/terms#refunds`, under the Terms link in the front page's footer rather than
+a link of its own. Everything an account is told — the trial's end, a lapse, the mail — is
+the same in both environments.
 
 ## Deleting an account
 

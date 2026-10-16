@@ -279,6 +279,13 @@ jobs:
       # `DEV_INSTANCE_ORIGIN` repository variable. It only draws the relay button on the
       # preview; the dev side's own trust check is the subdomain the dev deploy sets.
       DEV_INSTANCE_ORIGIN: ${{ vars.DEV_INSTANCE_ORIGIN || 'https://dev.unbent.app' }}
+      # Who runs the previews, so their front page has the built-in terms and privacy policy
+      # beside its price, as production's does. Repository variables, with no default, rather
+      # than values in `wrangler.toml`: a fork that deploys previews of its own would
+      # otherwise publish this repository's operator on its pages, which is the bug the
+      # documents' design exists to prevent. Unset, a preview publishes no documents.
+      PREVIEW_OPERATOR_NAME: ${{ vars.PREVIEW_OPERATOR_NAME }}
+      PREVIEW_OPERATOR_EMAIL: ${{ vars.PREVIEW_OPERATOR_EMAIL }}
     steps:
       # The subdomain is set but the secrets may not be; same gate as the dev job.
       - name: Are the preview secrets set?
@@ -389,6 +396,12 @@ jobs:
           if [ -n "$DEV_INSTANCE_ORIGIN" ]; then
             relay_var=(--var "PREVIEW_RELAY_ORIGIN:$DEV_INSTANCE_ORIGIN")
           fi
+          # The operator, both or neither: half a pair would name a company with no way to
+          # reach it, and the Worker publishes the documents only with both anyway.
+          operator_var=()
+          if [ -n "$PREVIEW_OPERATOR_NAME" ] && [ -n "$PREVIEW_OPERATOR_EMAIL" ]; then
+            operator_var=(--var "OPERATOR_NAME:$PREVIEW_OPERATOR_NAME" --var "OPERATOR_EMAIL:$PREVIEW_OPERATOR_EMAIL")
+          fi
           config=wrangler.toml
           own_var=()
           if [ "$OWN_STORES" = true ]; then
@@ -404,7 +417,7 @@ jobs:
           # The PR's number, so a tab of this preview reads "PR 222 · Unbent".
           pnpm exec wrangler deploy --config "$config" --env preview --name "$WORKER_NAME" \
             --var "APP_URL:$PREVIEW_URL" --var "INSTANCE_LABEL:PR $PR_NUMBER" \
-            "${relay_var[@]}" "${own_var[@]}" \
+            "${relay_var[@]}" "${operator_var[@]}" "${own_var[@]}" \
             --secrets-file "$RUNNER_TEMP/preview-secrets.env"
           rm -f "$RUNNER_TEMP/preview-secrets.env"
 
