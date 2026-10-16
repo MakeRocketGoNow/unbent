@@ -685,11 +685,14 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
  * is the one way legal text must never change. The refund window and how long a lapsed
  * account is kept are here because they are promises, not prices.
  *
- * Two promises here are behaviour, not prose, and hold only while the code keeps them:
+ * Three promises here are behaviour, not prose, and hold only while the code keeps them:
  * cancelling keeps the year already paid for (`planStateOf` reads a canceled subscription
- * as active until its period ends), and a lapsed account reads, searches, exports and
- * deletes (`requireActivePlan`). Deleting an account a year after it lapsed is a right
- * reserved, not a job — "may", by decision (`INACTIVE_KEPT_DAYS`).
+ * as active until its period ends); a lapsed account reads, searches, exports and
+ * deletes (`requireActivePlan`); and a refunded plan is cancelled at once rather than
+ * left renewing, which Paddle itself would do (`refundEffectOf` in the API's billing
+ * events, acted on by the webhook with `ensureSubscriptionCanceled`, the call account
+ * deletion makes). Deleting an account a year after it lapsed is a right reserved, not
+ * a job — "may", by decision (`INACTIVE_KEPT_DAYS`).
  */
 function payment(operator: Operator): LegalSection[] {
   return [
