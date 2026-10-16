@@ -20,10 +20,15 @@ export function LegalDoc({ doc }: { doc: LegalDocument }) {
   // one scroll the browser and the router make for a fragment, at load, found no element
   // with that id. Scrolled again here, once the document is in the DOM. Guarded because
   // jsdom has no `scrollIntoView`, as `Confirm` guards it.
+  //
+  // Keyed on the title, not `doc`: `LegalPage` builds the documents on every render, so
+  // `doc` is a new object each time, and on it the effect would pull a reader who had
+  // scrolled away back to the fragment whenever the config query refetched or a parent
+  // redrew. Once per document drawn is the intent.
   useEffect(() => {
     const id = decodeURIComponent(window.location.hash.slice(1));
     if (id) document.getElementById(id)?.scrollIntoView?.();
-  }, [doc]);
+  }, [doc.title]);
 
   return (
     <article className="preview legal">
