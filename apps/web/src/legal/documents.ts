@@ -260,10 +260,12 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
             : []),
           ...(opts.sellsPlan
             ? [
-                'Paddle, which sells the plan as merchant of record. When you subscribe it collects ' +
-                  'your name, email address, billing address and payment details, under its own ' +
-                  'privacy policy, and tells us only whether the account is paid for, until when, ' +
-                  'and how much storage it includes. It never sees your notes.',
+                'Paddle, which sells the plan as merchant of record. When you start a checkout we ' +
+                  'give it your account’s email address and an identifier for the account, so the ' +
+                  'purchase can be matched to it; it then collects your name, billing address and ' +
+                  'payment details, under its own privacy policy, and tells us only whether the ' +
+                  'account is paid for, until when, and how much storage it includes. It never ' +
+                  'sees your notes.',
               ]
             : []),
         ],
