@@ -177,7 +177,16 @@ export function Import() {
             {/* A link wearing the button's shape, since it navigates: it middle-clicks and
                 opens in a new tab, which a button that called `navigate` could not. */}
             {fileNotes.ids.length > 0 && (
-              <Link to="/notes" search={fileNotes.filing.notebook ? { notebook: fileNotes.filing.notebook } : {}} className="btn btn-secondary" onClick={resetFileNotes}>
+              <Link
+                to="/notes"
+                search={fileNotes.filing.notebook ? { notebook: fileNotes.filing.notebook } : {}}
+                className="btn btn-secondary"
+                // Only a plain click ends the report: a modified one opens the list in a
+                // new tab, and the tab left behind keeps its result and its Undo.
+                onClick={(e) => {
+                  if (!e.metaKey && !e.ctrlKey && !e.shiftKey) resetFileNotes();
+                }}
+              >
                 Show them
               </Link>
             )}
