@@ -167,6 +167,7 @@ describe('legalVersionOf', () => {
      Paddle has issued the keys that turn billing on — which its review requires. */
   it('says it where the front page is on, with or without billing', () => {
     expect(legalVersionOf(env({ FRONT_PAGE: '1' }), 'built-in').change).toBe(LEGAL_CHANGE?.text);
+    expect(legalVersionOf(env({ FRONT_PAGE: '1', ...PADDLE }), 'built-in').change).toBe(LEGAL_CHANGE?.text);
   });
 
   it('asks for the operator’s own version for their own documents', () => {
