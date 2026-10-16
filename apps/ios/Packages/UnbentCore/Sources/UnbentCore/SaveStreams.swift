@@ -5,8 +5,8 @@ import Foundation
 /// The site builds an export's zip itself (apps/web/src/export-archive.ts). In a browser it
 /// writes to a file the person picked or hands over a `blob:` download at the end; a web
 /// view has no picker, and a `blob:` address is readable only by the page that made it. So
-/// the page streams the bytes here through the bridge, and they go to storage as they come
-/// — a library far larger than the web view could hold in memory exports the same as a
+/// the page streams the bytes here through the bridge, and they go to storage as they come:
+/// a library far larger than the web view could hold in memory exports the same as a
 /// notebook.
 ///
 /// Android's bridge calls are synchronous, which is its backpressure. A WKWebView has no
@@ -17,7 +17,7 @@ import Foundation
 /// a write to it is under way. The lock guards the table of open saves and nothing more;
 /// it does not make the files themselves safe to share.
 ///
-/// A save that ends without `end` — the export stopped or failed, or the page went away —
+/// A save that ends without `end` (the export stopped or failed, or the page went away)
 /// is removed, never left half-written where it would look like a backup.
 ///
 /// A port of `SaveStreams.kt`, test for test.
@@ -156,7 +156,7 @@ public struct SavedFiles: Sendable {
     }
 
     /// A path for a hidden file that does not exist yet, for a writer that insists on
-    /// creating its own — a WKDownload refuses a destination that is already there.
+    /// creating its own: a WKDownload refuses a destination that is already there.
     public func reserve() -> URL {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory.appendingPathComponent(".\(UUID().uuidString)\(Self.partialSuffix)")

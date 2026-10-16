@@ -5,7 +5,7 @@ import Foundation
 /// The keyboard's return key adds a typed tag, but nobody owes the field that key. On an
 /// account with no tags yet there are no suggestions to tap, so typing is the only way
 /// in, and the natural gesture is to type the word and tap Save. A sheet that drops it on
-/// the way out has lost the one piece of filing the person did by hand — and says nothing,
+/// the way out has lost the one piece of filing the person did by hand, and says nothing,
 /// since the note still saves. Every button that leaves a sheet runs its tags through
 /// here, and so does the return key, so the two ways of entering a tag cannot disagree.
 ///

@@ -1,6 +1,6 @@
 import Foundation
 
-/// What this build was configured with, read out of Info.plist — which is where the
+/// What this build was configured with, read out of Info.plist, which is where the
 /// values in `Config/*.xcconfig` end up. Swift has no `BuildConfig`; this is it.
 ///
 /// In `Shared/`, which is compiled into the app and into the Share Extension: each reads
@@ -23,7 +23,7 @@ enum BuildInfo {
     static let version = string("CFBundleShortVersionString") ?? "0"
     static let build = string("CFBundleVersion") ?? "0"
 
-    /// The hosts the web view may open, or nil for a build with no such list — one made
+    /// The hosts the web view may open, or nil for a build with no such list: one made
     /// without `WKAppBoundDomains`, which may then open any address and has no service
     /// worker.
     static let appBoundHosts: [String]? = {

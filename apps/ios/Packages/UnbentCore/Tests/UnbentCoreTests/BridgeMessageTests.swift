@@ -5,7 +5,7 @@ import XCTest
 ///
 /// The protocol is a handful of JSON shapes agreed with apps/web/src/app-bridge.ts; what
 /// is worth pinning is that each field is read only with the type it belongs to, and that
-/// a message with more in it than this build knows still parses — a page from a newer
+/// a message with more in it than this build knows still parses: a page from a newer
 /// deploy must not break the screen around it. Ported from `NoteBridgeTest.kt` and
 /// `PageColourTest.kt`.
 final class BridgeMessageTests: XCTestCase {

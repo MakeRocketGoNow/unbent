@@ -30,7 +30,7 @@ public struct SignInScreen: View {
     /// - Parameters:
     ///   - codeSentTo: the address a code has been sent to, once one has. The form shows
     ///     the code step for exactly as long as this is set, so a send the server refused
-    ///     — a mistyped address — leaves the person at the address, beside the reason.
+    ///     (a mistyped address) leaves the person at the address, beside the reason.
     ///   - onBrowser: the site's own sign-in in a browser, for Google and for any
     ///     provider this app has no sheet for.
     ///   - onEmailCode: sends a code, then signs in with it. A nil code means "send one to
@@ -119,7 +119,7 @@ public struct SignInScreen: View {
                 .padding(Space.screen)
                 .frame(maxWidth: Metrics.column, alignment: .leading)
                 // Centred in whatever height there is, and scrolling once there is not
-                // enough of it — a small phone with the keyboard up.
+                // enough of it: a small phone with the keyboard up.
                 .frame(maxWidth: .infinity, minHeight: proxy.size.height)
             }
             .scrollBounceBehavior(.basedOnSize)
@@ -148,7 +148,7 @@ private struct Methods: View {
         // The order the site shows them in: social first, because it is one tap and needs
         // nothing typed; then the passkey, which is faster still but only for someone who
         // already has one. Outlined and equal: filling one would say the app prefers it,
-        // and it does not — and Apple's rule is that its button is no quieter than the
+        // and it does not; and Apple's rule is that its button is no quieter than the
         // others. The email form's own submit is the filled button.
         if hasSheets {
             VStack(alignment: .leading, spacing: Space.medium) {
@@ -160,7 +160,7 @@ private struct Methods: View {
                 }
                 // Google has no sheet of its own on an iPhone without Google's SDK, which
                 // is a dependency that ends in a web sheet anyway. So it is the site's
-                // own Google button, in a browser — named for where it leads, since
+                // own Google button, in a browser, named for where it leads, since
                 // "a browser" says nothing to someone looking for the word Google.
                 if config.google {
                     Button("Continue with Google", action: onBrowser)
@@ -225,8 +225,8 @@ private struct OrDivider: View {
 ///
 /// The address is asked once and the ways to proceed hang off it: a password box and Sign
 /// in where passwords are on, "Email me a code" where codes are on, both where both are.
-/// Two forms one after the other would be two address boxes a divider apart — the same
-/// question asked twice — which the site and the Android app both had and both fixed.
+/// Two forms one after the other would be two address boxes a divider apart (the same
+/// question asked twice), which the site and the Android app both had and both fixed.
 ///
 /// The password is the primary action when both exist, and the code button goes quiet
 /// beside it: someone who has a password is signing in with it, and the code is for having
@@ -368,7 +368,7 @@ private struct EmailForm: View {
     }
 }
 
-/// Which Unbent this is signing in to, and — only where the build allows another — a way
+/// Which Unbent this is signing in to, and (only where the build allows another) a way
 /// to change it.
 private struct InstanceLine: View {
     let instance: String

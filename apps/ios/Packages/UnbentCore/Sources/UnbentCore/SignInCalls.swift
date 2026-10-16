@@ -2,7 +2,7 @@ import Foundation
 
 /*
  * The two ways in that are nothing but requests: a password, and a code by email. Both go
- * to Better Auth's own endpoints, and both end the way every sign-in here ends — with the
+ * to Better Auth's own endpoints, and both end the way every sign-in here ends: with the
  * session cookie the response set, read by `SessionCookie.fromSetCookie`.
  *
  * The Android app's halves are `PasswordAuth.kt` and `EmailOtpAuth.kt`.
@@ -45,7 +45,7 @@ public struct PasswordAuth: Sendable {
 /// sign-in lands somewhere the person cannot see. A code is typed back into the screen that
 /// asked for it.
 ///
-/// Sign-up and sign-in are one flow — an address with no account gets one — so there is no
+/// Sign-up and sign-in are one flow (an address with no account gets one) so there is no
 /// separate registration call here. The instance's allowlist still decides, and `signIn`
 /// surfaces its refusal through `ApiError.serverMessage`.
 public struct EmailOtpAuth: Sendable {

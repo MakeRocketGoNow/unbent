@@ -6,7 +6,7 @@ import PackageDescription
  * nothing about where either comes from.
  *
  * A package of its own, apart from the app target, for the Share Extension: it is a second
- * target that has to draw in the same hand — the same spacing steps, the same buttons —
+ * target that has to draw in the same hand (the same spacing steps, the same buttons)
  * and a view compiled into the app cannot be used from it.
  */
 let package = Package(

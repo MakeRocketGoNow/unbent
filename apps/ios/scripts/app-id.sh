@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# The debug build's bundle id, resolved the way Xcode resolves it — Config/*.xcconfig, then
-# Local.xcconfig — so a fork's own id reaches the scripts without an edit. UNBENT_APP_ID
+# The debug build's bundle id, resolved the way Xcode resolves it (Config/*.xcconfig, then
+# Local.xcconfig) so a fork's own id reaches the scripts without an edit. UNBENT_APP_ID
 # and not PRODUCT_BUNDLE_IDENTIFIER: the scheme builds two products, and the Share
 # Extension's id is not the one to launch. Sourced; needs DIR, sets APP_ID.
 

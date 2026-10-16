@@ -3,13 +3,13 @@ import UnbentCore
 
 /// The app's own settings: which Unbent it opens, and which build it is.
 ///
-/// Everything else a person configures lives on the site, which the app hosts whole —
+/// Everything else a person configures lives on the site, which the app hosts whole:
 /// notebooks, tags, import and export, security, deleting the account. What stays here is
 /// what the site cannot know or change: the address the app points its web view at is the
 /// app's, and so is its version.
 ///
 /// A sheet over the web view rather than a page drawn in it, so the page behind is
-/// untouched on the way back — its scroll, an open note, an upload in flight. A `Form`,
+/// untouched on the way back: its scroll, an open note, an upload in flight. A `Form`,
 /// because this is the one screen in the app that is settings in the system's sense, and
 /// the system's grouped list is what settings look like on this phone.
 public struct AppSettingsScreen: View {

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Finds the simulator to use, booting one if none is running. Sourced; sets UDID.
 #
-# A simulator that is already booted is used as it is — it is the one being looked at.
+# A simulator that is already booted is used as it is: it is the one being looked at.
 # With none, IOS_SIMULATOR names the device to boot ("iPhone 16 Pro"), and without that
 # the first available iPhone does. Booting is for a person at a keyboard: an agent should
 # find `xcrun simctl list devices booted` empty, stop, and ask.

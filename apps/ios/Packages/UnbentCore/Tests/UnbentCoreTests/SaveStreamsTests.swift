@@ -2,7 +2,7 @@ import XCTest
 @testable import UnbentCore
 
 /// The app's half of an export streamed onto the phone. What matters is that the bytes
-/// arrive whole and in order, and that a save which does not finish is never kept — a
+/// arrive whole and in order, and that a save which does not finish is never kept: a
 /// half-written zip in Files would look like a backup and not be one. The first six cases
 /// are ported from `SaveStreamsTest.kt`; the rest are the folder iOS writes into.
 final class SaveStreamsTests: XCTestCase {

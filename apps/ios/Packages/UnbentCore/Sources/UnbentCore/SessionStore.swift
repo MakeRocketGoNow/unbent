@@ -92,7 +92,7 @@ public final class SessionStore: SessionStoring {
 }
 
 /// The Keychain refusing something, with the status it gave. The number is what gets
-/// looked up — `-34018` is a missing entitlement — so it is in the description as well as
+/// looked up (`-34018` is a missing entitlement) so it is in the description as well as
 /// the system's sentence for it, which is often no more than "the operation failed".
 public struct KeychainError: Error, Equatable, CustomStringConvertible {
     public let status: OSStatus

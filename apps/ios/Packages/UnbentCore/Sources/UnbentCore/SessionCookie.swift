@@ -2,7 +2,7 @@ import Foundation
 
 /// The one credential this app holds: the session cookie Better Auth set when it signed in.
 ///
-/// Stored as the cookie itself — name and signed value — rather than the bare session token
+/// Stored as the cookie itself (name and signed value) rather than the bare session token
 /// the JSON body also carries, because the same string serves two clients. `UnbentApi` sends
 /// the value as `Authorization: Bearer`, which the API's bearer plugin accepts unchanged
 /// since a signed value already carries its signature. The web view gets the cookie put
@@ -77,7 +77,7 @@ public struct SessionCookie: Codable, Equatable, Sendable {
     /// The `Set-Cookie` lines of a response, one cookie each.
     ///
     /// `URLSession` hands every header over as one value per name, so several `Set-Cookie`
-    /// headers arrive joined with commas — and a cookie's own `Expires` date has a comma in
+    /// headers arrive joined with commas, and a cookie's own `Expires` date has a comma in
     /// it. `HTTPCookie` can parse the joined form, but it gives back cookies without their
     /// `Max-Age`, which is the one attribute that tells a deletion from a session. So the
     /// join is undone here instead: a comma starts a new cookie only where what follows

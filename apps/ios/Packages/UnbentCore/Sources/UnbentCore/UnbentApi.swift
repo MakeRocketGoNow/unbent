@@ -4,7 +4,7 @@ import Foundation
 ///
 /// `retryAfter` is the response's `Retry-After`, when it sent one: the server's own word
 /// that the failure is passing and worth waiting out. Only the session check's 503 sends
-/// it — the one a spent database allowance produces — so it is what tells that apart from
+/// it (the one a spent database allowance produces) so it is what tells that apart from
 /// a 503 that will fail the same way however long a capture waits.
 ///
 /// A call that got no answer at all throws `URLError` instead, and the difference is the
@@ -26,8 +26,8 @@ public struct ApiError: Error, Equatable, LocalizedError {
 
     /// The server's own explanation, pulled out of the JSON body this wraps.
     ///
-    /// Worth surfacing because some refusals are deliberate and actionable — a sign-up
-    /// allowlist rejecting an address, a notebook name already taken — and a generic "did
+    /// Worth surfacing because some refusals are deliberate and actionable (a sign-up
+    /// allowlist rejecting an address, a notebook name already taken) and a generic "did
     /// not work" sends the person to retry something that will refuse them again for the
     /// same reason. Better Auth says `message`; this API's own routes say `error`.
     public func serverMessage() -> String? {
@@ -64,7 +64,7 @@ public struct UnbentApi: Sendable {
     }
 
     /// The configuration every client here uses: no cookies kept or sent, and nothing
-    /// cached — an answer to `/api/me` from yesterday is worse than none.
+    /// cached: an answer to `/api/me` from yesterday is worse than none.
     public static func configuration() -> URLSessionConfiguration {
         let config = URLSessionConfiguration.ephemeral
         config.httpCookieStorage = nil

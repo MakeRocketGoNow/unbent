@@ -4,8 +4,8 @@ import UserNotifications
 /// The one notification a capture has, from Save to the note it became.
 ///
 /// The share sheet is gone before the upload has started, so a capture's status lives in
-/// Notification Center: "Saving…" as the sheet closes, replaced in place — one identifier
-/// per capture — by "Saved" naming the note, which opens it when tapped. The extension
+/// Notification Center: "Saving…" as the sheet closes, replaced in place (one identifier
+/// per capture) by "Saved" naming the note, which opens it when tapped. The extension
 /// posts the first and the app the rest; because they share the identifier, neither needs
 /// to know what the other did.
 ///

@@ -9,12 +9,12 @@ import WebKit
 /// The app: either the site, or the screen that signs in to it.
 ///
 /// The site, whole, in one web view (`WebShellController`), with native code only for what
-/// a page cannot do on an iPhone — sign-in, saving files, links that leave, and the app's
+/// a page cannot do on an iPhone: sign-in, saving files, links that leave, and the app's
 /// own address and version. It is the Android app's shape (`MainActivity.kt`), for the
 /// reason given there: every feature the site gains would otherwise be built a second time.
 ///
-/// This controller holds the two things that outlive either screen — which instance, and
-/// the session for it — and swaps between them. Nothing is shown before sign-in: nothing
+/// This controller holds the two things that outlive either screen (which instance, and
+/// the session for it) and swaps between them. Nothing is shown before sign-in: nothing
 /// in the app works without a session, so there is nothing to show first.
 final class RootViewController: UIViewController {
     private let prefs: AppPrefs
@@ -29,8 +29,8 @@ final class RootViewController: UIViewController {
     private weak var captureSheet: UIViewController?
     private weak var captureModel: CaptureModel?
 
-    /// What arrived before the first screen was up and has to present something — a
-    /// file to capture, a link for Safari, App settings — held until it is. UIKit
+    /// What arrived before the first screen was up and has to present something (a
+    /// file to capture, a link for Safari, App settings) held until it is. UIKit
     /// refuses to present from a view that is not in a window yet.
     private var waitingForScreen: [() -> Void] = []
     private var appeared = false
@@ -42,7 +42,7 @@ final class RootViewController: UIViewController {
     init() {
         // Made as the Share Extension makes them (`Captures`). A build whose group is
         // named but not provisioned still gets a defaults suite, private to the app,
-        // and it is the Keychain that then refuses — see `signIn`.
+        // and it is the Keychain that then refuses. See `signIn`.
         prefs = Captures.prefs()
         sessions = Captures.sessions()
         super.init(nibName: nil, bundle: nil)
@@ -98,8 +98,8 @@ final class RootViewController: UIViewController {
 
     /// Goes to `path` on the site: now if the site is up, and otherwise when it next is.
     ///
-    /// Every caller is something from outside the app — a notification, a link, a quick
-    /// action — so the page is what should show: App settings, a Safari sheet or a preview
+    /// Every caller is something from outside the app (a notification, a link, a quick
+    /// action) so the page is what should show: App settings, a Safari sheet or a preview
     /// left open goes, or the page moved under it and the person saw nothing happen. Not
     /// a capture sheet, which is someone partway through filing a file (see
     /// `dismissForSignOut`).
@@ -230,7 +230,7 @@ final class RootViewController: UIViewController {
         // Cancel or Save, not a swipe: a swipe would leave the copied files behind with
         // nothing to say whether they were wanted.
         sheet.isModalInPresentation = true
-        // Over whatever is up — App settings, a Safari sheet — rather than not at all.
+        // Over whatever is up (App settings, a Safari sheet) rather than not at all.
         topmost.present(sheet, animated: true)
         captureSheet = sheet
         captureModel = model
@@ -256,8 +256,8 @@ final class RootViewController: UIViewController {
         clearCookies { [weak self] in self?.start() }
     }
 
-    /// Takes down whatever is over the site as the site goes — Safari, App settings, a
-    /// preview — unless a capture sheet is among it.
+    /// Takes down whatever is over the site as the site goes (Safari, App settings, a
+    /// preview) unless a capture sheet is among it.
     ///
     /// That sheet is someone partway through filing a file, and it works signed out: its
     /// Save queues the capture for the next sign-in. Dismissing it from here skipped its
@@ -274,13 +274,13 @@ final class RootViewController: UIViewController {
 
     // MARK: - Links and quick actions
 
-    /// A link to the site tapped in another app — a universal link, which iOS hands over
+    /// A link to the site tapped in another app, a universal link, which iOS hands over
     /// only for the paths the instance's apple-app-site-association gives this app: notes,
     /// the trash, settings.
     ///
     /// Opened at the same place on the instance the app is pointed at, which `linkPath`
     /// finds by host alone, as Android's does. A link to a host the app is not pointed at
-    /// now — a debug build moved to a laptop, sent a link to unbent.app — opens in
+    /// now (a debug build moved to a laptop, sent a link to unbent.app) opens in
     /// Safari's sheet: that is a different account's note, and nothing here could show it.
     func follow(_ activity: NSUserActivity) {
         guard activity.activityType == NSUserActivityTypeBrowsingWeb, let url = activity.webpageURL else { return }

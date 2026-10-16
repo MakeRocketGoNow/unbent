@@ -5,8 +5,8 @@ import UnbentUI
 
 /// Safari's sheet over the app, for a web page that is not this site.
 ///
-/// The iOS answer to Android's Custom Tab: the page gets a real browser — its own cookies,
-/// an address bar, Reader — and none of this app's session, and Done comes back to the
+/// The iOS answer to Android's Custom Tab: the page gets a real browser (its own cookies,
+/// an address bar, Reader) and none of this app's session, and Done comes back to the
 /// note that linked to it.
 enum SFSafari {
     static func controller(for url: URL) -> SFSafariViewController {

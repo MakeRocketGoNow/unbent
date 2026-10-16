@@ -58,7 +58,7 @@ public struct PageColour: Equatable, Sendable {
         blue = Double(rgb & 0xff) / 255
     }
 
-    /// Whether this ground wants light text over it — the clock and the battery, which the
+    /// Whether this ground wants light text over it: the clock and the battery, which the
     /// system draws on top of the strip the app paints in this colour.
     ///
     /// Relative luminance, as WCAG defines it. The page's theme usually follows the phone's

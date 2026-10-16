@@ -16,7 +16,7 @@ public struct BannerAction: Identifiable {
 /// with it.
 ///
 /// Android says this with a notification, which the download manager posts for it. A file
-/// saved inside an iOS app announces itself nowhere — it is simply in Files — so the app
+/// saved inside an iOS app announces itself nowhere (it is simply in Files) so the app
 /// says so, over the page, where the person was looking when they asked for it. It goes
 /// after a few seconds on its own; the file does not.
 public struct SavedBanner: View {

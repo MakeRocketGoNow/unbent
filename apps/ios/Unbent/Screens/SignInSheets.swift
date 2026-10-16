@@ -2,7 +2,7 @@ import AuthenticationServices
 import UIKit
 import UnbentCore
 
-/// The system's own sign-in sheets — a browser, Apple's, the passkey one — each as a call
+/// The system's own sign-in sheets (a browser, Apple's, the passkey one) each as a call
 /// that returns what the sheet gave back.
 ///
 /// The requests either side of them are `UnbentCore`'s (`NativeSignIn.swift`); this is the
@@ -26,7 +26,7 @@ final class SignInSheets: NSObject {
     /// Opens `url` in the system's sign-in browser and returns the address it came back on.
     ///
     /// Not ephemeral, deliberately: the browser shares Safari's cookies, so someone
-    /// already signed in to Google there — or to this very site — is a tap from done
+    /// already signed in to Google there (or to this very site) is a tap from done
     /// instead of typing a password into a sheet. The price is the system's "wants to use
     /// … to sign in" prompt, which an ephemeral session skips.
     func browse(_ url: URL, scheme: String) async throws -> URL {

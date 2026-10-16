@@ -8,7 +8,7 @@ import UnbentUI
 ///
 /// Two are nothing but requests: a code by email, and a password. Three put a sheet of the
 /// system's first (`SignInSheets`): Apple's, the passkey one, and a browser at `/connect`
-/// for Google and any other provider the instance has. Whichever it is ends the same way —
+/// for Google and any other provider the instance has. Whichever it is ends the same way:
 /// the session cookie the response set, handed to `onSignedIn`.
 ///
 /// The Android app's half is `SignInActivity.kt`.
@@ -164,8 +164,8 @@ final class SignInModel {
                 status = nil
             } catch {
                 log.warning("Sign-in failed: \(error.localizedDescription, privacy: .public)")
-                // The server's own words when it has some — "this instance is not open
-                // for sign-ups" — since a generic message sends the person to retry a
+                // The server's own words when it has some ("this instance is not open
+                // for sign-ups") since a generic message sends the person to retry a
                 // button that will refuse them again for the same reason.
                 status = (error as? ApiError)?.serverMessage() ?? failure
             }

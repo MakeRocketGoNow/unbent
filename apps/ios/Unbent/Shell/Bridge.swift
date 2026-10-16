@@ -4,8 +4,8 @@ import WebKit
 /// the names it talks back on.
 ///
 /// Android installs that object with `addJavascriptInterface`, whose methods answer
-/// synchronously. A WKWebView has nothing like it — a page can only post to a message
-/// handler — so the object is made by a script of the app's own, run before any of the
+/// synchronously. A WKWebView has nothing like it (a page can only post to a message
+/// handler) so the object is made by a script of the app's own, run before any of the
 /// page's, and what the page calls is the same either way (apps/web/src/app-bridge.ts).
 /// The `save` calls go to a handler that replies, which reaches the page as a promise;
 /// the page was taught to wait for one in MAK-150.
@@ -20,7 +20,7 @@ enum Bridge {
     static let log = "unbentLog"
 
     /// Installs `window.UnbentApp`. Frozen, so nothing on the page can swap a method for
-    /// one of its own, and `platform` says which host this is — Android's object cannot,
+    /// one of its own, and `platform` says which host this is: Android's object cannot,
     /// so a host that says nothing is Android.
     static let script = WKUserScript(
         source: """
@@ -93,7 +93,7 @@ enum Bridge {
 /// A message handler that does not keep its target alive.
 ///
 /// `WKUserContentController` holds its handlers strongly, and the shell holds the web view
-/// that holds the controller — handed the shell itself, that is a cycle, and a shell that
+/// that holds the controller: handed the shell itself, that is a cycle, and a shell that
 /// is replaced on sign-out would never be freed.
 final class WeakMessageHandler: NSObject, WKScriptMessageHandler, WKScriptMessageHandlerWithReply {
     typealias Target = WKScriptMessageHandler & WKScriptMessageHandlerWithReply

@@ -34,13 +34,13 @@ public protocol CaptureNotifying: Sendable {
 /// extension and the woken app contending for it whenever two shares come close together.
 ///
 /// **A retry is the system's to time.** A request to be sent later is created now with
-/// `earliestBeginDate`, and the system holds it — through a suspended app, a relaunch, a
+/// `earliestBeginDate`, and the system holds it: through a suspended app, a relaunch, a
 /// restart of the phone. A background refresh task was the other way, and would have been
 /// a timer the system may never fire for an app nobody has opened lately.
 ///
 /// **What makes sending twice safe** is in `CaptureJob`: both requests carry ids of the
 /// capture's choosing. This class relies on it wherever it cannot know whether a request
-/// is still out — a result that arrives while the list of live requests is being read.
+/// is still out: a result that arrives while the list of live requests is being read.
 public final class CaptureQueue: NSObject, @unchecked Sendable {
     public enum Role: Equatable, Sendable {
         /// The app: one long-lived session, and every capture on disk is its to finish.
@@ -59,7 +59,7 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
 
     /// Everything below runs here: the sessions' delegate calls, and every read and write
     /// of a capture's record. One queue is what makes "load, change, save" a step nothing
-    /// else can land in the middle of — in this process. The extension is another one,
+    /// else can land in the middle of, in this process. The extension is another one,
     /// and what protects against it is that it sends a single request and exits.
     private let work = DispatchQueue(label: "app.unbent.capture")
     private var urlSessions: [String: URLSession] = [:]
@@ -106,7 +106,7 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
 
     /// Takes a capture at Save: writes its record, and sends the note if there is a
     /// session to send it with. Signed out, the record is all there is, and the app
-    /// sends it after the next sign-in (`resumeAll`) — the files are already staged.
+    /// sends it after the next sign-in (`resumeAll`): the files are already staged.
     ///
     /// `done` is called once the system has the request, which is when an extension may
     /// close: a request it has only been asked to take is lost with the process.
@@ -138,8 +138,8 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
     /// not for a capture that was never sent because nobody was signed in. This is the
     /// other way a capture moves, and it is safe to call at any time.
     ///
-    /// One pass at a time. A cold launch asks three times within a moment — at launch,
-    /// when the site starts, when the scene becomes active — and a pass reads what the
+    /// One pass at a time. A cold launch asks three times within a moment (at launch,
+    /// when the site starts, when the scene becomes active) and a pass reads what the
     /// system holds before it sends. Three at once each read the list before any had
     /// sent, and each sent everything: correct, because of the ids, and a 100 MB video
     /// uploaded three times over a phone connection. A call during a pass asks for one
@@ -274,7 +274,7 @@ public final class CaptureQueue: NSObject, @unchecked Sendable {
     // MARK: - Results
 
     /// Loads a capture's record, changes it, writes it back, and does what follows. A
-    /// capture that is no longer on disk — saved, given up on — has nothing to change.
+    /// capture that is no longer on disk (saved, given up on) has nothing to change.
     private func update(_ jobId: String, _ change: (inout CaptureJob) -> CaptureAction) {
         let directory = store.directory(jobId)
         guard var job = CaptureJob.load(from: directory) else { return }
