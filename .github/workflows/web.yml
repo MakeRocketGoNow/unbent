@@ -38,8 +38,9 @@ concurrency:
 jobs:
   # Which of the two long test suites a pull request can affect. Together they were seven of
   # the job's nine minutes, and about half of pull requests touch only one side: a store
-  # change sat through five minutes of web tests that could not have noticed it, and a
-  # styling change through two minutes of Durable Object tests.
+  # change sat through five minutes of web tests that could not have noticed it (two, now
+  # that they are sharded), and a styling change through two minutes of Durable Object
+  # tests.
   #
   # Decided here rather than by `paths` on a second workflow, because `paths` decides
   # whether a whole workflow runs, and `deploy` has to wait for every suite that did. A
@@ -118,12 +119,28 @@ jobs:
       - run: pnpm --filter @unbent/seed test
       - run: pnpm build
 
-  # The longest of the jobs, at about five minutes, so the other two finish inside it when
-  # all three run.
+  # The longest of the suites, split three ways so the other jobs are no longer waiting on
+  # it. The whole suite is about three hundred CPU-seconds — 183 files, each building its
+  # own jsdom — and a private repository's standard runner has two cores, so in one job it
+  # took five to six minutes against under a minute on a laptop. vitest's own remedies
+  # were measured and rejected: a shared environment (`isolate: false`) fails nearly two
+  # hundred tests on module-level state that leaks between files, `vmThreads` fails seven
+  # on `instanceof` across contexts, and `threads` runs in the same time as forks.
+  #
+  # Each shard does a third of the files and pays its own half-minute of install, so the
+  # suite bills about a minute more in total and finishes in about two instead of six.
+  # `--shard` slices a hash-sorted list, so a file always lands in the same shard and a
+  # shard's failure is reproducible with the same flag. A matrix job's result, as `ci`
+  # and `deploy` read it, is the worst of its shards; `fail-fast` is off so a failure in
+  # one shard still shows what the others found.
   web-tests:
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -132,7 +149,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @unbent/web test
+      - run: pnpm --filter @unbent/web test -- --shard=${{ matrix.shard }}/3
 
   # The per-account note store, tested inside workerd against real Durable Object
   # SQLite: schema, triggers, cascades and the bind limits a fake would not enforce.
