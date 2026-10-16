@@ -3895,12 +3895,20 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   display: inline-flex;
   align-items: center;
   gap: 0.2rem;
-  padding: 0;
+  /*
+     Padded and pulled back by the same amount: the box is larger than the word, so the
+     focus ring has room inside it rather than touching the letters, and the word sits
+     exactly where it would unpadded. The sideways inset is the chevrons' own margin, so
+     the ring meets them and does not cross them; the chip's padding has room for the rest.
+  */
+  padding: 0.1rem 0.15rem;
+  margin: -0.1rem -0.15rem;
   font: inherit;
   line-height: inherit;
   color: inherit;
   background: none;
   border: none;
+  border-radius: 0.2rem;
   cursor: pointer;
 }
 
@@ -3937,9 +3945,10 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 .tag-rename-field {
   box-sizing: border-box;
   field-sizing: content;
-  margin: 0;
-  /* The pencil (0.8em) and the gap before it (0.2rem). */
-  padding: 0 calc(0.8em + 0.2rem) 0 0;
+  /* The word's own inset (`.tag-label`), so the floor `TagInput` measures from that box
+     comes out at the word's footprint, plus the pencil (0.8em) and its gap (0.2rem). */
+  margin: 0 -0.15rem;
+  padding: 0 calc(0.8em + 0.35rem) 0 0.15rem;
   font: inherit;
   line-height: inherit;
   color: inherit;
