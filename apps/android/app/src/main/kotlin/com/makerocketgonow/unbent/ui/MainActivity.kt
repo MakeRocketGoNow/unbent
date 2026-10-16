@@ -69,7 +69,7 @@ import org.json.JSONObject
  * It used to draw its own note list, filters, notebooks, trash and settings in Compose,
  * with only a note's body in a WebView. Every feature the site gained then had to be built
  * a second time here, and the two drifted apart within a week. The site is already a phone
- * layout — it is held to that standard on purpose — so the app now shows it, and keeps as
+ * layout (it is held to that standard on purpose) so the app now shows it, and keeps as
  * native only what a page cannot do on Android: the share sheet ([ShareActivity]), sign-in
  * through the phone's account sheet ([SignInActivity]), the file picker and camera
  * ([AttachChooser]), saving into Downloads ([download], [SaveStreams]), and its own
@@ -82,7 +82,7 @@ import org.json.JSONObject
  *
  * `singleTop` so a notification tapped while the app is open lands in [onNewIntent] rather
  * than stacking a second copy. Rotation and keyboard changes are handled in the manifest,
- * because recreating the activity would recreate the WebView and reload the site — a
+ * because recreating the activity would recreate the WebView and reload the site: a
  * cursor, an undo history and an upload in flight all gone mid-thought.
  */
 class MainActivity : ComponentActivity() {
@@ -124,7 +124,7 @@ class MainActivity : ComponentActivity() {
          * asked. Nothing below works without a session, so there is nothing to show first.
          */
         if (!prefs.isSignedIn) {
-            // Whatever the app was opened for — a link, a notification's note — waits for
+            // Whatever the app was opened for (a link, a notification's note) waits for
             // the sign-in and is opened after it, rather than being dropped on the way.
             startActivity(
                 Intent(this, SignInActivity::class.java)
@@ -280,8 +280,8 @@ class MainActivity : ComponentActivity() {
             return
         }
         requestedPath(intent)?.let(::open)
-        // A link to a site the app is not pointed at — after someone switched to their own
-        // instance, a link to unbent.app still arrives here — opens where it belongs.
+        // A link to a site the app is not pointed at (after someone switched to their own
+        // instance, a link to unbent.app still arrives here) opens where it belongs.
         val link = intent.data
         if (intent.action == Intent.ACTION_VIEW && link != null && linkPath(prefs.instance, link.toString()) == null) {
             openOutside(this, classify(prefs.instance, link.toString()))
@@ -301,7 +301,7 @@ class MainActivity : ComponentActivity() {
     /**
      * Goes to [path] on the site. In place when a page is up to ask, so a notification tapped
      * while the app is open does not reload the site under an upload in flight; by loading
-     * it when the page cannot answer — still loading, or a deploy from before `open`.
+     * it when the page cannot answer: still loading, or a deploy from before `open`.
      */
     private fun open(path: String) {
         val view = webView
@@ -319,7 +319,7 @@ class MainActivity : ComponentActivity() {
      * Android's Back. The page first, because only it knows whether a sheet is open over
      * it; then the WebView's own history; then the app goes to the background rather than
      * finishing, the way a browser tab would be kept. Finishing would destroy the WebView,
-     * and with it an upload in flight and everything the page held — the next launch would
+     * and with it an upload in flight and everything the page held: the next launch would
      * reload the site from nothing.
      */
     private fun back() {
@@ -458,7 +458,7 @@ class MainActivity : ComponentActivity() {
         }
 
         /**
-         * The page's renderer died — out of memory on a huge PDF, most likely. The WebView
+         * The page's renderer died: out of memory on a huge PDF, most likely. The WebView
          * that held it cannot be used again, not even to reload, so it is thrown away and a
          * new one built where it was, on the address it was showing. True tells the platform
          * this was handled, which is what keeps the whole app from being killed with it.
@@ -491,13 +491,13 @@ class MainActivity : ComponentActivity() {
          * Off the site that is a Custom Tab (or the mail app, the dialer): a second
          * WebView would run that page with this app's session in it. On the site it is
          * [open], the same in-place navigation a notification uses. Loading the address
-         * into the app used to look right — there are no tabs — but a full navigation
+         * into the app used to look right (there are no tabs) but a full navigation
          * destroys the page, so a link in a note dropped unsaved edits and an upload in
          * flight. In place, the editor flushes and the upload carries on.
          *
          * In place is still leaving the page, though, so it keeps only what outlives a
          * route change. Work a page does in the background has to be held above the page
-         * to survive it, the way an import run is (`import-run.ts`) — its skipped-note
+         * to survive it, the way an import run is (`import-run.ts`): its skipped-note
          * rows used to go unlinked in the app mid-run, because leaving ended the import.
          * They are ordinary in-place links now and never reach this.
          */
@@ -578,7 +578,7 @@ class MainActivity : ComponentActivity() {
 }
 
 /**
- * What shows when the site cannot be reached, in place of Chromium's own error page — which
+ * What shows when the site cannot be reached, in place of Chromium's own error page, which
  * names an error code, offers nothing to do, and looks like a different app.
  */
 @Composable

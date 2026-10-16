@@ -11,7 +11,7 @@ import org.junit.Test
  *
  * The name is the part that has bitten: JPEG bytes under a `.HEIC` name render on the
  * share path only because the server trusts the declared type, and through the file
- * chooser — where the WebView derives the type from the name — they would not render at
+ * chooser (where the WebView derives the type from the name) they would not render at
  * all.
  */
 class HeifTest {

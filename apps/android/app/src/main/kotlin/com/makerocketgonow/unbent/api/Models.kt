@@ -39,7 +39,7 @@ data class AppConfig(val providers: List<String> = emptyList()) {
      * Any OAuth provider that is not Google.
      *
      * They are deliberately not listed one button each. A phone has no account picker for
-     * an arbitrary provider, so every one of them ends at the same place — /connect in a
+     * an arbitrary provider, so every one of them ends at the same place: /connect in a
      * browser, which offers whatever the instance configured. N buttons that all open the
      * same page would be a menu pretending to be a choice.
      *

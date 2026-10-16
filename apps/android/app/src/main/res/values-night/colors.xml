@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    The light theme's green is too dark to sit on a near-black surface — as a button fill it
+    The light theme's green is too dark to sit on a near-black surface: as a button fill it
     reads as a hole, and as text it fails contrast. These are the same hue lifted until they
     carry on dark, which is what the web app's dark mode does with the same colour.
 -->

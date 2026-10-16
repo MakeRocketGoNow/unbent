@@ -46,13 +46,13 @@ import com.makerocketgonow.unbent.ui.theme.UnbentTheme
 /**
  * The app's own settings: which Unbent it opens, and which build it is.
  *
- * Everything else a person configures lives on the site, which the app hosts whole —
+ * Everything else a person configures lives on the site, which the app hosts whole:
  * notebooks, tags, import and export, security, deleting the account. What stays here is
  * what the site cannot know or change: the address the app points its WebView at is the
  * app's, and so is its version.
  *
  * An activity of its own rather than a page drawn over the WebView, so the WebView behind
- * it is untouched on the way back — its scroll, an open note, an upload in flight. Reached
+ * it is untouched on the way back: its scroll, an open note, an upload in flight. Reached
  * from the site's Settings (the "App settings" pill posts `app-settings` over the bridge)
  * and from the launcher's long-press shortcut, which goes through [MainActivity] because
  * that one is exported and this need not be.
@@ -84,8 +84,8 @@ class AppSettingsActivity : ComponentActivity() {
      *
      * The WebView's cookie jar is emptied, because it would otherwise hold the old site's
      * cookies alongside the new; the app writes the right session into it again before the
-     * next load. The task is cleared and started fresh because everything in it — the page,
-     * its history, the address it loaded — belongs to the instance being left.
+     * next load. The task is cleared and started fresh because everything in it (the page,
+     * its history, the address it loaded) belongs to the instance being left.
      */
     private fun use(prefs: Prefs, address: String) {
         WebSession.clear()

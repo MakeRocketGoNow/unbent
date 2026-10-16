@@ -30,7 +30,7 @@ import kotlinx.coroutines.withTimeoutOrNull
  *
  * From API 33 the WebView reads `prefers-color-scheme` off the activity's theme and this
  * does nothing. Below that, force-dark with the web-theme-only strategy asks the page for
- * its own dark stylesheet — which it has — and never algorithmically inverts anything.
+ * its own dark stylesheet, which it has, and never algorithmically inverts anything.
  */
 @Suppress("DEPRECATION")
 internal fun applyDarkMode(view: WebView, dark: Boolean) {
@@ -48,7 +48,7 @@ internal fun applyDarkMode(view: WebView, dark: Boolean) {
 }
 
 /**
- * `evaluateJavascript`, awaited: resumes with the script's result, as JSON — `"true"` for
+ * `evaluateJavascript`, awaited: resumes with the script's result, as JSON: `"true"` for
  * a page that answered true, `"null"` for a page with nothing registered to answer.
  *
  * Bounded, because a WebView destroyed before the script finishes never calls back, and
@@ -91,7 +91,7 @@ internal fun download(
 
 /**
  * Sends a link the site does not own where it belongs: a web page to a Custom Tab, anything
- * else — mail, a phone number — to whichever app handles it. Nothing at all when nothing
+ * else (mail, a phone number) to whichever app handles it. Nothing at all when nothing
  * does, rather than a crash.
  */
 internal fun openOutside(context: Context, destination: Destination) {

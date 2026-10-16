@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
     Debug-only override. The label alone ("Unbent (debug)") is truncated by the launcher and
-    by the share sheet, which is exactly where telling the two apart matters most — picking
+    by the share sheet, which is exactly where telling the two apart matters most: picking
     the wrong one sends the thing you just shared to a different install with a different
     session. Amber instead of green is legible at icon size and needs no reading.
 -->

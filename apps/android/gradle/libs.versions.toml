@@ -15,7 +15,7 @@ credentials = "1.6.0"
 googleid = "1.2.1"
 serialization = "1.11.0"
 composeBom = "2026.09.00"
-# Discontinued by Google — 1.7.8 is the final release, and the Compose BOM no longer
+# Discontinued by Google: 1.7.8 is the final release, and the Compose BOM no longer
 # carries it. The four icons the native screens still draw (back, close, and the capture
 # sheet's two arrows) are all from the core set, so it stays pinned here rather than
 # becoming a rewrite.

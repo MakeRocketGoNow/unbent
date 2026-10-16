@@ -18,8 +18,8 @@ import java.util.Locale
  * it, and Chrome could not render it anyway. So a photo is transcoded to JPEG on the
  * phone, which is the one place that can decode it, before it goes anywhere.
  *
- * One object because two paths need it — the share sheet's staging and the WebView's
- * file chooser — and because the two were about to disagree on details that matter: the
+ * One object because two paths need it (the share sheet's staging and the WebView's
+ * file chooser) and because the two were about to disagree on details that matter: the
  * name the JPEG gets, and what happens on a phone too old to decode.
  */
 object Heif {
@@ -33,7 +33,7 @@ object Heif {
 
     /**
      * `ImageDecoder` arrived in API 28 and minSdk is 26. Below it the file is left as it
-     * is — uploaded, not rendered — rather than crashing the share, which is what calling
+     * is (uploaded, not rendered) rather than crashing the share, which is what calling
      * the decoder unguarded used to do. Such a phone is unlikely to produce HEIC at all:
      * the format's support came in the same release.
      */

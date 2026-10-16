@@ -82,7 +82,7 @@ object Staging {
      *
      * The server rejects path separators, `.`/`..`, and leading dots (filenameSchema), and a
      * rejected name loses the file for a reason the user cannot act on. Names arriving from
-     * other apps are arbitrary — sometimes absent, sometimes a whole path.
+     * other apps are arbitrary: sometimes absent, sometimes a whole path.
      */
     fun sanitize(raw: String?, index: Int, fallbackExtension: String): String {
         val candidate = raw
@@ -141,7 +141,7 @@ object Staging {
      * A title for the note.
      *
      * The subject line when the sending app supplies one, otherwise the single file's own
-     * name, otherwise the date — because an untitled note is much harder to find later than
+     * name, otherwise the date, because an untitled note is much harder to find later than
      * one named for the afternoon it arrived.
      */
     fun deriveTitle(
@@ -165,11 +165,11 @@ object Staging {
         if (body.isNotEmpty()) {
             /*
              * A shared link, which arrives as bare text. The host is what someone would
-             * recognise a month later — the full URL is unreadable in a list, and its
+             * recognise a month later: the full URL is unreadable in a list, and its
              * path is usually a slug or an id.
              */
             hostOf(body)?.let { host ->
-                return if (sourceApp.isNullOrEmpty()) host else "$host — via $sourceApp".take(200)
+                return if (sourceApp.isNullOrEmpty()) host else "$host, via $sourceApp".take(200)
             }
             // Plain text: its first line, which is how a note would title itself anyway.
             body.lineSequence().firstOrNull()?.trim()?.takeIf { it.isNotEmpty() }
@@ -177,11 +177,11 @@ object Staging {
         }
 
         /*
-         * Nothing to go on. The app it came from beats a bare timestamp — "Photos" or
+         * Nothing to go on. The app it came from beats a bare timestamp: "Photos" or
          * "Chrome" is at least a hint about what this was.
          */
         val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(now)
-        return if (sourceApp.isNullOrEmpty()) "Capture $stamp" else "$sourceApp — $stamp".take(200)
+        return if (sourceApp.isNullOrEmpty()) "Capture $stamp" else "$sourceApp: $stamp".take(200)
     }
 
     /** The host of the first URL in some text, without the www. Null when there is none. */
@@ -198,7 +198,7 @@ object Staging {
      * `noBackupFilesDir`, not `cacheDir`. A capture can now wait out a day of the server
      * being unavailable (see [UploadWorker]), and Android empties a cache under storage
      * pressure whenever it likes. Losing `.note-id` there made the retry create a second
-     * note, and losing a staged file had the upload skip it and still say "Saved" — a small
+     * note, and losing a staged file had the upload skip it and still say "Saved", a small
      * risk over the four minutes a capture used to last, a real one over a day. Nor is a
      * capture something a device backup should carry.
      *
@@ -224,7 +224,7 @@ object Staging {
      * Deletes job directories nothing has touched in [ABANDONED_MS].
      *
      * [clear] is the cleanup, and every way a job ends through [UploadWorker] calls it.
-     * This is for a job that never got there — cancelled, or forgotten by WorkManager —
+     * This is for a job that never got there (cancelled, or forgotten by WorkManager)
      * whose files the cache would once have reclaimed on its own and this directory never
      * will. Touched means any file in it: a capture waiting on a 503
      * rewrites its count on every attempt, so a live one never looks abandoned.
@@ -240,8 +240,8 @@ object Staging {
     private const val SHARES = "shares"
 
     /**
-     * Three days: well past the longest a capture waits — about 28 hours of a server that
-     * cannot serve, at five-hour gaps — so only a job WorkManager has let go of is swept.
+     * Three days: well past the longest a capture waits (about 28 hours of a server that
+     * cannot serve, at five-hour gaps) so only a job WorkManager has let go of is swept.
      */
     private const val ABANDONED_MS = 3 * 24 * 60 * 60 * 1000L
 }

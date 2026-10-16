@@ -19,8 +19,8 @@ import java.util.UUID
  *
  * The editor's Attach button is an `<input type="file">` inside the WebView, and a WebView
  * opens no picker of its own: it asks its WebChromeClient, hands over a callback, and
- * waits. What the app does with that — the system picker, HEIC on the way back, and the
- * answer — lives here, out of the screen's way, and mostly as plain functions so the
+ * waits. What the app does with that (the system picker, HEIC on the way back, and the
+ * answer) lives here, out of the screen's way, and mostly as plain functions so the
  * parts that decide anything run under a JVM test.
  */
 
@@ -28,8 +28,8 @@ import java.util.UUID
  * The one request the page may have open.
  *
  * Chromium will not ask for another picker until the last callback has been answered, so
- * a request dropped on the floor — a launch that threw, a second request before the
- * first came back — locks the Attach button for the life of the WebView. Every way out
+ * a request dropped on the floor (a launch that threw, a second request before the
+ * first came back) locks the Attach button for the life of the WebView. Every way out
  * of here answers it: [answer] with what was chosen, or null for nothing; [open] answers
  * a superseded request with null before adopting the new one; and [forget] is for a
  * launch that failed, where returning false to Chromium is what cancels, and answering
@@ -61,7 +61,7 @@ class FileChooserRequest {
  * `data`, none when cancelled.
  *
  * Not the platform's `FileChooserParams.parseResult`, which hands the work to the WebView
- * provider — and Chromium's reads `data` alone, so a multiple selection came back as its
+ * provider, and Chromium's reads `data` alone, so a multiple selection came back as its
  * first file.
  */
 fun chosenUris(resultCode: Int, data: Intent?): List<Uri> {
@@ -78,7 +78,7 @@ fun chosenUris(resultCode: Int, data: Intent?): List<Uri> {
  *
  * The SDK's own note on `createIntent` says the result is untrusted: any app can answer
  * GET_CONTENT, and one could answer with a `file://` path into this app's private storage,
- * or a `content://` URI on this app's own provider — which the WebView would then read
+ * or a `content://` URI on this app's own provider, which the WebView would then read
  * with the app's permissions and upload as an attachment. A real picker returns
  * `content://` URIs on other apps' authorities, and that is all that passes.
  */
@@ -138,7 +138,7 @@ fun acceptsImages(acceptTypes: Array<String>): Boolean {
  * the camera took, if one was offered and a camera answered: a camera returns no URI at
  * all, or echoes the one it was given, and the photo is only real if something was written.
  *
- * The photo's URI is on this app's own provider, which [trustedUris] refuses on purpose — a
+ * The photo's URI is on this app's own provider, which [trustedUris] refuses on purpose: a
  * rogue picker could answer with one to read this app's files. So it is accepted here by
  * identity, as the one URI this app minted for this shot, and never by its authority.
  */

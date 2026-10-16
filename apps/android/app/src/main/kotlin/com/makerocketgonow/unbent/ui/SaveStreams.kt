@@ -20,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap
  * writes to a file the person picked or hands over a `blob:` download at the end; a
  * WebView has no picker, and a `blob:` address is readable only by the page that made it,
  * so the download manager handed one fetches nothing. So the page streams the bytes here
- * through the bridge, and they go to storage as they come — a library far larger than the
+ * through the bridge, and they go to storage as they come: a library far larger than the
  * WebView could hold in memory exports the same as a notebook.
  *
  * Every call is synchronous and comes in on WebView's bridge thread, not the main one,
@@ -28,7 +28,7 @@ import java.util.concurrent.ConcurrentHashMap
  * each call instead of queueing the library in memory. Several saves may be open at once,
  * keyed by an id this hands out, though the site only ever runs one.
  *
- * A save that ends without [end] — the export stopped or failed, or the page went away —
+ * A save that ends without [end] (the export stopped or failed, or the page went away)
  * is removed, never left half-written in Downloads where it would look like a backup.
  */
 class SaveStreams(private val create: (name: String, type: String) -> Target?) {
@@ -135,7 +135,7 @@ class SaveStreams(private val create: (name: String, type: String) -> Target?) {
 
         /**
          * Below Android 10, public Downloads needs a storage permission this app does not
-         * ask for, so the file goes to the app's own Downloads folder — the same place
+         * ask for, so the file goes to the app's own Downloads folder, the same place
          * [download] puts attachments on those versions.
          */
         private fun appDownloads(context: Context, name: String): Target? {

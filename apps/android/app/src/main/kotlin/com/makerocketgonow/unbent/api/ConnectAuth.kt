@@ -10,7 +10,7 @@ import org.json.JSONObject
  * Trading a one-time token for a session.
  *
  * The other half of /connect. The phone opens that page in a Custom Tab, where the browser
- * is already signed in — by whichever provider the user chose, which is the point: Google,
+ * is already signed in, by whichever provider the user chose, which is the point: Google,
  * GitHub, and anything added later all work without this file knowing they exist. The page
  * mints a token, redirects into the app, and this exchanges it for an ordinary session.
  *
@@ -28,7 +28,7 @@ class ConnectAuth(
     /**
      * Exchanges the token for the session cookie the response sets; see [SessionCookie].
      *
-     * The one-time token is spent by this call — replaying it fails — so a session that
+     * The one-time token is spent by this call (replaying it fails) so a session that
      * does not get stored is simply lost, and the user connects again.
      */
     fun redeem(token: String): SessionCookie {

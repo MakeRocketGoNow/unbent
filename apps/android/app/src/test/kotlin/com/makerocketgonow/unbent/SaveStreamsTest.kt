@@ -13,7 +13,7 @@ import org.junit.Test
 
 /**
  * The app's half of an export streamed into Downloads. What matters is that the bytes
- * arrive whole and in order, and that a save which does not finish is never kept — a
+ * arrive whole and in order, and that a save which does not finish is never kept: a
  * half-written zip in Downloads would look like a backup and not be one.
  */
 class SaveStreamsTest {

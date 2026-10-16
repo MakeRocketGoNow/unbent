@@ -12,7 +12,7 @@ import com.makerocketgonow.unbent.ui.HeadlessIndexer
  * The upload streams bytes and nothing else, so a PDF shared from the phone used to sit
  * unindexed until someone pressed a button on the web. pdf.js is the extractor this
  * project has and it lives in the browser, so this job runs the site's own indexing page
- * in a WebView nobody sees — see [HeadlessIndexer] — for the one note the upload made.
+ * in a WebView nobody sees (see [HeadlessIndexer]) for the one note the upload made.
  *
  * A job of its own, chained after [UploadWorker], rather than a phase of it: if the
  * WebView dies, the retry must not create the note again. Only the indexing is retried,
@@ -21,7 +21,7 @@ import com.makerocketgonow.unbent.ui.HeadlessIndexer
  * Every outcome but a retry is success, on purpose. The note and its files are saved;
  * a failure here would tell no one anything they could act on, and the file stays on
  * the server's pending list, where the web app's pass on open picks it up. An
- * `unauthorized` answer does not clear the app's session either — the upload seconds
+ * `unauthorized` answer does not clear the app's session either: the upload seconds
  * earlier succeeded with the same cookie, so that is the WebView's problem, not a dead
  * session.
  */

@@ -17,7 +17,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
  * sign-in lands somewhere the user cannot see. A code is typed back into the screen that
  * asked for it.
  *
- * Sign-up and sign-in are one flow — an address with no account gets one — so there is no
+ * Sign-up and sign-in are one flow (an address with no account gets one) so there is no
  * separate registration call here. The instance's allowlist still decides, and [signIn]
  * surfaces its refusal through [ApiException.serverMessage].
  */

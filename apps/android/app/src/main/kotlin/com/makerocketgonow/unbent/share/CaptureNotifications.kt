@@ -15,7 +15,7 @@ import com.makerocketgonow.unbent.ui.SignInActivity
  *
  * A toast cannot be tapped and cannot change its mind, and the sheet that showed it is
  * gone before the upload has started. So a capture's status lives in the shade:
- * "Saving…" the moment Save is tapped, replaced in place — one id per capture — by
+ * "Saving…" the moment Save is tapped, replaced in place (one id per capture) by
  * "Saved" naming the note, which peeks down over whatever is on screen and opens the
  * note when tapped. The share sheet posts the first and the worker the rest; because
  * they share the id, neither needs to know what the other did. The sheet still shows a

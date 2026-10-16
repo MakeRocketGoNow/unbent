@@ -17,13 +17,13 @@ import okhttp3.RequestBody.Companion.toRequestBody
  * The same WebAuthn credential the web app makes, reachable from here because the app and
  * the site are linked: the instance serves `/.well-known/assetlinks.json`, from its
  * `ANDROID_ASSET_LINKS` secret, declaring this package and its signing certificate, and
- * passkeys reuse that association. That document is what makes this work — an instance
+ * passkeys reuse that association. That document is what makes this work: an instance
  * that has not published one, or that names a different app, leaves the sheet finding no
  * credential for the domain and showing nothing.
  *
  * Two round trips, both to Better Auth's own endpoints: ask for a challenge, hand it to
  * Credential Manager, then post what the authenticator signed. The private key never
- * leaves the device, and this app never sees it either — it forwards an assertion.
+ * leaves the device, and this app never sees it either: it forwards an assertion.
  *
  * Unlike [GoogleAuth] this needs no client id, and unlike [ConnectAuth] it shows no web
  * page. It is the only method here that is both native and configuration-free.
@@ -54,7 +54,7 @@ class PasskeyAuth(
         return verify(credential.authenticationResponseJson)
     }
 
-    /** The challenge. Public — it has to be, since asking for one precedes signing in. */
+    /** The challenge. Public: it has to be, since asking for one precedes signing in. */
     private fun requestOptions(): String {
         val req = Request.Builder()
             .url("$origin/api/auth/passkey/generate-authenticate-options")
@@ -75,8 +75,8 @@ class PasskeyAuth(
      * Hands the signed assertion back for verification, and collects the session.
      *
      * The body is what the authenticator produced, forwarded unchanged for the same reason
-     * the options were. A failure here is a real one — a credential the server does not
-     * know, or a challenge that has expired — so the server's own words are worth keeping.
+     * the options were. A failure here is a real one: a credential the server does not
+     * know, or a challenge that has expired, so the server's own words are worth keeping.
      */
     private fun verify(assertionJson: String): SessionCookie {
         val req = Request.Builder()

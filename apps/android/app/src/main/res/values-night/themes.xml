@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
     Dark mode inverts which end of the green carries text. The fill is light here, so the
-    label on top of it has to be dark — inheriting the light theme's white would put white
+    label on top of it has to be dark: inheriting the light theme's white would put white
     on mint.
 -->
 <resources>

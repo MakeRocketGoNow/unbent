@@ -35,8 +35,8 @@ import kotlinx.coroutines.withContext
  * Signs this phone in to an Unbent account, by whichever methods the instance offers.
  *
  * Google goes through Android's own account sheet and shows no web page. GitHub, which has
- * no native sheet, opens /connect in a Custom Tab — the browser, with the browser's own
- * session — and comes back through the `unbent://connect` deep link with a one-time token
+ * no native sheet, opens /connect in a Custom Tab (the browser, with the browser's own
+ * session) and comes back through the `unbent://connect` deep link with a one-time token
  * this activity exchanges for a session. A password goes straight to the API. All three
  * end in the same place: the session cookie stored in [Prefs], and the app continues.
  *
@@ -49,8 +49,8 @@ class SignInActivity : ComponentActivity() {
 
     /*
      * Screen state lives on the activity rather than in a ViewModel: there is one screen,
-     * its state is four values, and the one thing a ViewModel would add — surviving
-     * rotation — costs at most a repeated /api/config request here.
+     * its state is four values, and the one thing a ViewModel would add (surviving
+     * rotation) costs at most a repeated /api/config request here.
      */
     private var instance by mutableStateOf("")
     private var config by mutableStateOf<AppConfig?>(null)
@@ -127,7 +127,7 @@ class SignInActivity : ComponentActivity() {
      * Android's own account sheet: no web page, one tap.
      *
      * A build without a Google client id cannot ask for the sheet, so it falls back to the
-     * browser, where the site's own Google button works — the same path GitHub takes.
+     * browser, where the site's own Google button works, the same path GitHub takes.
      */
     private fun signInWithGoogle() {
         if (!GoogleAuth.isConfigured(BuildConfig.GOOGLE_WEB_CLIENT_ID)) {
@@ -143,7 +143,7 @@ class SignInActivity : ComponentActivity() {
             busy = false
             result.onSuccess(::finishSignIn).onFailure { e ->
                 /*
-                 * Dismissing the sheet is a choice, not an error — say nothing and leave
+                 * Dismissing the sheet is a choice, not an error: say nothing and leave
                  * the user on this screen with the other methods still there. Any other
                  * failure gets the server's own words when it has some ("this instance is
                  * not open for sign-ups"), since a generic message sends the user to retry
@@ -155,7 +155,7 @@ class SignInActivity : ComponentActivity() {
                     // methods where they were.
                     GoogleAuth.wasCancelled(e) -> null
                     // The cause most likely to have a fix the user can carry out, so it gets
-                    // its own words — which suggest rather than assert, since NO_CREDENTIAL
+                    // its own words, which suggest rather than assert, since NO_CREDENTIAL
                     // also covers failures that are ours. See GoogleAuth.hasNoAccount.
                     GoogleAuth.hasNoAccount(e) -> getString(R.string.sign_in_google_no_account)
                     // Anything the server explained gets the server's own words: "this instance
@@ -198,7 +198,7 @@ class SignInActivity : ComponentActivity() {
      *
      * One entry point for both steps because the screen drives the sequence: a null code
      * means "send one to this address", and a present one means "this is what arrived".
-     * Sending reports nothing on success — the screen has already moved to the code field,
+     * Sending reports nothing on success: the screen has already moved to the code field,
      * and a confirmation the user did not ask for would only be one more thing to read.
      */
     private fun signInWithEmailOtp(email: String, code: String?) {
@@ -263,7 +263,7 @@ class SignInActivity : ComponentActivity() {
      * A sign-in screen that finds itself signed in has nothing left to ask.
      *
      * It happens: the app opens this screen and finishes itself, the person signs in from
-     * somewhere else — the share sheet's own copy of this screen — and comes back to a
+     * somewhere else (the share sheet's own copy of this screen) and comes back to a
      * task whose only content is a stale sign-in form. Continuing into the app is what
      * they expect; a form to fill in again is not.
      */
