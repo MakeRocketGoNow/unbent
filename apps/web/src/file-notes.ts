@@ -73,6 +73,19 @@ const listeners = new Set<() => void>();
 let owner: string | null = null;
 /** Who adopted the batches begun before anyone was claimed; see `claimFileNotesFor`. */
 let firstOwner: string | null = null;
+/**
+ * Occupancy of this tab: increments when the account goes to nobody. A batch begun
+ * before anyone was claimed is adopted by the first person (`firstOwner`), and a
+ * sign-out must stop that batch — but it must not also poison the *next* unowned
+ * launch. The installed app is `focus-existing`, so a scanner sending files to a
+ * window sitting on `/login` after a sign-out or an expired session does not reload;
+ * those files reach `notesFromFiles` with `owner === null` the same way a cold launch
+ * does. Without a new occupancy they compared against the previous `firstOwner` and
+ * were dropped with no report, which is how a scan sent at the login screen vanished.
+ * Captured at enqueue (`born` in `runBatch`), so a batch that waited its turn across
+ * a sign-out is still not the next person's.
+ */
+let era = 0;
 
 function set(patch: Partial<FileNotesState>) {
   state = { ...state, ...patch };
@@ -120,6 +133,16 @@ export function claimFileNotesFor(userId: string | undefined): void {
   // was signed in included, since it is about the files of whoever was before.
   if (state.status !== 'idle') set({ ...initial, run: state.run });
   owner = next;
+  // Nobody is signed in: this occupancy is over. `firstOwner` would otherwise keep
+  // answering for every later unowned batch (`theirs` uses it when `by` is null), and
+  // a scanner's files arriving on the login screen would fail that check against the
+  // person who just left. A new occupancy lets the next claim adopt them the way a
+  // cold launch does. An in-flight batch captured the previous `era` at enqueue, so
+  // it still stops here rather than continuing as whoever signs in next.
+  if (next === null) {
+    firstOwner = null;
+    era += 1;
+  }
 }
 
 /** Forgets a finished batch; the Import page's "Add more files". Ignored while one runs. */
@@ -201,9 +224,10 @@ let chain: Promise<unknown> = Promise.resolve();
 export function notesFromFiles(files: File[], filing: Filing, place: string | null, source: FileNotesSource, queryClient?: QueryClient): Promise<string[]> {
   if (files.length === 0) return Promise.resolve([]);
   // Whose files these are, taken now: a batch waiting its turn across a sign-out must
-  // not run as the next person.
+  // not run as the next person. `era` is taken now for the same reason — see its comment.
   const by = owner;
-  const run = () => runBatch(files, filing, place, source, by, queryClient);
+  const born = era;
+  const run = () => runBatch(files, filing, place, source, by, born, queryClient);
   const next = chain.then(run, run);
   chain = next;
   return next;
@@ -224,10 +248,20 @@ export function refusals(files: File[]): string | null {
   return `Nothing was added. ${bad.length === 1 ? 'One file' : `${bad.length} files`} cannot become a note: ${bad.join(', ')}.`;
 }
 
-async function runBatch(files: File[], filing: Filing, place: string | null, source: FileNotesSource, by: string | null, queryClient?: QueryClient): Promise<string[]> {
+async function runBatch(
+  files: File[],
+  filing: Filing,
+  place: string | null,
+  source: FileNotesSource,
+  by: string | null,
+  born: number,
+  queryClient?: QueryClient,
+): Promise<string[]> {
   // Still theirs: not once the account changed hands, or nobody is signed in now. A
-  // batch begun before anyone was claimed belongs to whoever is claimed first.
-  const theirs = () => (by ?? firstOwner) === owner;
+  // batch begun before anyone was claimed belongs to whoever is claimed first — but
+  // only in this occupancy, so a sign-out's unowned wait is a new cold launch, not a
+  // silent drop against the previous `firstOwner`.
+  const theirs = () => born === era && (by ?? firstOwner) === owner;
   if (!theirs()) return [];
   const refused = refusals(files);
   if (refused) {
@@ -293,6 +327,7 @@ export function resetFileNotesForTests(): void {
   state = initial;
   owner = null;
   firstOwner = null;
+  era = 0;
   chain = Promise.resolve();
   for (const fn of listeners) fn();
 }

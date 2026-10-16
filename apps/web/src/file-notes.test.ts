@@ -198,6 +198,29 @@ describe('claimFileNotesFor', () => {
     expect(getFileNotes().status).toBe('idle');
   });
 
+  /*
+   * The installed app does not reload on sign-out (`focus-existing`), so a scanner sending
+   * files to a window sitting on the login screen reaches `notesFromFiles` with nobody
+   * claimed — the same shape as a cold launch. The previous occupancy's `firstOwner` used
+   * to fail that batch's `theirs` check, and the files vanished with no report.
+   */
+  it('lets a launch after a sign-out be adopted by the next person, rather than dropping the files', async () => {
+    claimFileNotesFor('u1');
+    claimFileNotesFor(undefined);
+    const held: (() => void)[] = [];
+    const answer = { filename: 'x', contentType: 'application/pdf', size: 1, path: 'files/x', indexing: 'server' as const };
+    vi.mocked(actions.uploadFile).mockImplementation(() =>
+      held.length < 1 ? new Promise((r) => held.push(() => r(answer))) : Promise.resolve(answer),
+    );
+    const batch = notesFromFiles([pdf('a.pdf'), pdf('b.pdf')], { notebook: null, tags: [] }, null, 'launch');
+    await vi.waitFor(() => expect(held).toHaveLength(1));
+    expect(getFileNotes().status).toBe('running');
+    claimFileNotesFor('u2');
+    held[0]!();
+    expect(await batch).toEqual(['n1', 'n2']);
+    expect(getFileNotes()).toMatchObject({ status: 'done', ids: ['n1', 'n2'] });
+  });
+
   it('keeps a finished report for the same person, and drops it for the next', async () => {
     claimFileNotesFor('u1');
     await notesFromFiles([pdf('a.pdf')], { notebook: null, tags: [] }, null, 'list');
