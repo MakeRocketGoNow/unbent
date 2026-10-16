@@ -189,6 +189,23 @@ describe('files dropped on the note list', () => {
     expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy();
   });
 
+  /* Twelve uploads take a while; a selection put over another notebook's rows would be wrong. */
+  it('does not select the notes when the list has moved to another scope meanwhile', async () => {
+    lib = installTestLibrary({ notes: [note('a', { title: 'Alpha' })], notebooks: [{ id: 'nb1', name: 'Receipts', purpose: null, emoji: null, fieldDefs: [] }] });
+    const { router } = mount('/notes?notebook=Receipts');
+    await screen.findByRole('heading', { name: 'Receipts' });
+    let release!: () => void;
+    vi.mocked(actions.uploadFile).mockReturnValueOnce(new Promise((r) => (release = () => r({ filename: 'a.pdf', contentType: 'application/pdf', size: 1, path: 'files/a.pdf', indexing: 'server' as const }))));
+    drag('drop', column(), [pdf('a.pdf')]);
+    await waitFor(() => expect(actions.uploadFile).toHaveBeenCalled());
+    await router.navigate({ to: '/notes', search: {} });
+    await screen.findByRole('heading', { name: 'All notes' });
+    release();
+    await screen.findByRole('status');
+    await screen.findByText('a');
+    expect(screen.queryByRole('toolbar', { name: 'Selected notes' })).toBeNull();
+  });
+
   it('files the notes with the list’s tag, and nowhere, on a tag', async () => {
     lib = installTestLibrary({ notes: [note('a', { title: 'Alpha', tagIds: ['t1'] })], tags: [{ id: 't1', name: 'urgent' }] });
     mount('/notes?tag=urgent');

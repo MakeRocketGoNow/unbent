@@ -504,10 +504,14 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * change of scope drops the selection, since it names rows that are no longer on screen.
    */
   const rowIds = (tableMode && tableRows ? tableRows : notes).map((n) => n.id);
+  const scopeKey = JSON.stringify([filter, ordering, debounced]);
   const selection = useSelection(rowIds, {
     anchor: layout.open,
-    resetKey: JSON.stringify([filter, ordering, debounced]),
+    resetKey: scopeKey,
   });
+  /** The scope as it is now, for a drop's batch to check against the one it was made in. */
+  const scopeRef = useRef(scopeKey);
+  scopeRef.current = scopeKey;
   /*
    * Opening a note drops the selection too, as it does in Finder: a plain click or an
    * arrow key is browsing, and a selection left standing behind the note you moved to
@@ -863,7 +867,10 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    *
    * The notes made are selected once they are in the list, so the bar offers Move, Tags
    * and Delete on exactly these: filing them somewhere else, or taking a wrong drop back,
-   * is then one press, with no sheet asked for before the drop.
+   * is then one press, with no sheet asked for before the drop. Only while the list is
+   * still the one dropped on: twelve uploads take a while, and a selection put over
+   * whatever the person has picked or opened meanwhile, in some other notebook, would
+   * be the bar offering actions on rows they cannot see.
    */
   const asideRef = useRef<HTMLElement>(null);
   const [dropHint, setDropHint] = useState<string | null>(null);
@@ -873,8 +880,9 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   dropTarget.current = {
     accept: (count) => (planInactive ? null : dropSentence(count, dropPlace)),
     onFiles: (files) => {
+      const droppedIn = scopeRef.current;
       void notesFromFiles(files, filing, dropPlace, 'list', queryClient).then((ids) => {
-        if (ids.length > 0) selection.select(ids);
+        if (ids.length > 0 && scopeRef.current === droppedIn) selection.select(ids);
       });
     },
   };
