@@ -8,7 +8,7 @@
  * is should be added: this file is public.
  *
  * Dates are relative. `age` is how many days ago a note was made, and `day(n)` is a date
- * field `n` days from the day the seed runs — negative for the past — so a coupon that
+ * field `n` days from the day the seed runs (negative for the past) so a coupon that
  * expired last month has always expired last month, whenever the seed is loaded. The
  * loader turns both into absolute values.
  *
@@ -268,7 +268,7 @@ const RECEIPTS = [
     category: 'Hardware',
     reimbursed: false,
     // A filename far longer than any panel row, with spaces and parentheses, the shape
-    // that once broke a markdown link — see `formatAttachmentMarkdown`.
+    // that once broke a markdown link: see `formatAttachmentMarkdown`.
     files: [
       {
         name: 'Fabrikam Hardware Receipt (final) - Cordless Drill Invoice 2026-0042 - copy kept for the warranty claim v2.pdf',
@@ -380,7 +380,7 @@ const slug = (s) =>
 export const RECORDS = [
   ...RESTAURANTS.map(([restaurant, dish, rating, again, review, tags, age]) => ({
     key: `restaurants/${slug(restaurant)}/${slug(dish)}`,
-    title: `${restaurant} — ${dish}`,
+    title: `${restaurant}: ${dish}`,
     notebook: 'Restaurants',
     body: `${review}\n\nOrdered the ${dish.toLowerCase()}.`,
     tags,
@@ -391,7 +391,7 @@ export const RECORDS = [
     key: `watch/${slug(title)}`,
     title,
     notebook: 'Watch List',
-    body: `${type} — ${status.toLowerCase()}.`,
+    body: `${type}: ${status.toLowerCase()}.`,
     tags: [],
     fields: {
       Type: type,
@@ -407,7 +407,7 @@ export const RECORDS = [
   })),
   ...COUPONS.map(([vendor, code, discount, added, expires, used, notes]) => ({
     key: `coupons/${slug(code)}`,
-    title: `${vendor} — ${discount}`,
+    title: `${vendor}: ${discount}`,
     notebook: 'Coupons',
     body: notes || `${discount} at ${vendor}.`,
     tags: [],
@@ -424,7 +424,7 @@ export const RECORDS = [
   })),
   ...CONTACTS.map(([name, company, role, email, phone, website, categories, met]) => ({
     key: `contacts/${slug(name)}`,
-    title: `${name} — ${company}`,
+    title: `${name}: ${company}`,
     notebook: 'Contacts',
     body: `${role} at ${company}.`,
     tags: [],
@@ -442,7 +442,7 @@ export const RECORDS = [
   })),
   ...RECEIPTS.map((r) => ({
     key: `receipts/${slug(r.files[0].name)}`,
-    title: `${r.vendor} — $${r.amount.toFixed(2)}`,
+    title: `${r.vendor}: $${r.amount.toFixed(2)}`,
     notebook: 'Receipts',
     body: `Receipt from ${r.vendor}.`,
     tags: ['receipt'],

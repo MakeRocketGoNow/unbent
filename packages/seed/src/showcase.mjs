@@ -9,8 +9,8 @@
  * The showcase: ten notes written for screenshots.
  *
  * Written to look like somebody's actual notes without being anybody's: no names, no
- * addresses, no real accounts. Between them they cover what the app is for — a table, a
- * fenced block, checkboxes, headings, tags and notebooks — so one screenshot of the list
+ * addresses, no real accounts. Between them they cover what the app is for (a table, a
+ * fenced block, checkboxes, headings, tags and notebooks) so one screenshot of the list
  * and one of an open note show most of the feature surface.
  *
  * Keep the first line of every body a plain sentence. The note list renders a preview from
@@ -19,7 +19,7 @@
  */
 export const SHOWCASE = [
   {
-    title: 'Sourdough — the loaf that finally worked',
+    title: 'Sourdough: the loaf that finally worked',
     notebook: 'Recipes',
     tags: ['baking', 'weekend'],
     body: `Third attempt, and the crumb is finally open.
@@ -27,7 +27,7 @@ export const SHOWCASE = [
 ## What changed
 
 - Starter fed **twice** the day before, not once
-- Hydration down to 72% — easier to shape, same crumb
+- Hydration down to 72%: easier to shape, same crumb
 - Cold retard overnight in the fridge
 
 ## Timings
@@ -61,14 +61,14 @@ Watering: every other day once it warms up, daily in the tomato pots. The mint s
 its own pot or it takes everything.`,
   },
   {
-    title: 'Trail notes — the ridge loop',
+    title: 'Trail notes: the ridge loop',
     notebook: 'Travel',
     tags: ['hiking', 'day-trip'],
     body: `About 11 km, four hours with stops. Marked blue the whole way.
 
 ## Getting there
 
-Bus to the trailhead runs hourly until 6pm. Last one back is the one that matters —
+Bus to the trailhead runs hourly until 6pm. Last one back is the one that matters:
 missing it means a long road walk.
 
 ## Along the way
@@ -76,7 +76,7 @@ missing it means a long road walk.
 The first climb is the steep part; it eases after the saddle. Water at the halfway hut,
 nothing after that, so fill up there.
 
-Best view is *not* the summit — it's the bench about twenty minutes past it, looking back
+Best view is *not* the summit: it's the bench about twenty minutes past it, looking back
 over the valley.
 
 ## Bring
@@ -86,10 +86,10 @@ over the valley.
 - Something for lunch at the hut`,
   },
   {
-    title: 'Bookshelf build — measurements',
+    title: 'Bookshelf build: measurements',
     notebook: 'Projects',
     tags: ['woodworking', 'build'],
-    body: `The alcove is not square — the left side is 8 mm narrower at the top.
+    body: `The alcove is not square: the left side is 8 mm narrower at the top.
 
 \`\`\`
 Alcove width  (bottom)  912 mm
@@ -115,7 +115,7 @@ Shelf spacing: 320 mm for the bottom three, 260 mm above.`,
 
 ## Reading now
 
-- A history of the sea trade routes — slow, but the maps are worth it
+- A history of the sea trade routes: slow, but the maps are worth it
 
 ## Next
 
@@ -125,7 +125,7 @@ Shelf spacing: 320 mm for the bottom three, 260 mm above.`,
 
 ## Finished
 
-- [x] Essays on walking — *the chapter on paths as arguments was the good one*
+- [x] Essays on walking: *the chapter on paths as arguments was the good one*
 - [x] A novel about a lighthouse keeper
 
 > Note to self: stop buying faster than reading.`,
@@ -150,10 +150,10 @@ Settled on 13. Anything finer and it chokes.`,
     tags: ['cooking', 'weeknight'],
     body: `Rules: under 30 minutes, one pan where possible, ingredients that keep.
 
-- **Lentils and greens** — onion, garlic, tin of lentils, whatever green is wilting
-- **Fried rice** — needs day-old rice, so cook extra on Sunday
-- **Sheet pan sausages** — sausages, potatoes, red onion, 220°C for 35
-- **Noodle soup** — stock, ginger, noodles, an egg
+- **Lentils and greens**: onion, garlic, tin of lentils, whatever green is wilting
+- **Fried rice**: needs day-old rice, so cook extra on Sunday
+- **Sheet pan sausages**: sausages, potatoes, red onion, 220°C for 35
+- **Noodle soup**: stock, ginger, noodles, an egg
 
 Keep in the cupboard: tinned tomatoes, lentils, coconut milk, noodles, stock paste.`,
   },
@@ -165,7 +165,7 @@ Keep in the cupboard: tinned tomatoes, lentils, coconut milk, noodles, stock pas
 
 - [x] Tyre pressure
 - [x] Chain clean and lube
-- [ ] Brake pads — check the wear line
+- [ ] Brake pads: check the wear line
 - [ ] Cable tension
 - [ ] Bolts: stem, seatpost, rack
 
@@ -178,7 +178,7 @@ fixed it.`,
     tags: ['ideas'],
     body: `Things worth doing eventually, kept here so they stop rattling around.
 
-- A proper index for the recipe notes — tag by main ingredient
+- A proper index for the recipe notes: tag by main ingredient
 - Scan the old paper maps before they fall apart
 - Fix the squeaky door properly instead of oiling it every winter
 - Work out whether the tomato variety from two summers ago is still sold anywhere
@@ -186,7 +186,7 @@ fixed it.`,
 *Nothing here is urgent. That is the point of the list.*`,
   },
   {
-    title: 'Packing list — long weekend',
+    title: 'Packing list: long weekend',
     notebook: 'Travel',
     tags: ['packing', 'travel'],
     body: `Carry-on only. If it doesn't fit, it doesn't come.

@@ -2,7 +2,7 @@
  * Volume: a few hundred ordinary notes, generated.
  *
  * The hand-written notes are enough to look at and too few to page, rank or select in
- * bulk. These fill that gap — enough that the list needs its second and third page, a
+ * bulk. These fill that gap: enough that the list needs its second and third page, a
  * search for a common word returns more than fits, and Select all means something.
  *
  * Deterministic: a fixed-seed generator, so every run produces the same notes with the
