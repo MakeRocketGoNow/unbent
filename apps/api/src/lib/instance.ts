@@ -124,18 +124,19 @@ const OWN_DOCUMENTS_VERSION = '1';
  * everyone is asked once. No sentence on what changed — the built-in one describes other
  * documents, and an operator who wants one can say it in their own.
  *
- * A sentence about the sections only an instance that sells a plan publishes
- * (`billingOnly`) is left out where it sells none (`sellsPlanOf`). The version still moves
- * there, as it does for any change here, and the prompt is the plain "We’ve updated our
- * terms".
+ * A change only to the sections an instance publishes because it sells a plan
+ * (`billingOnly`) is no change at all where it sells none (`sellsPlanOf`): those terms
+ * read word for word as they did, so that instance stays on the version the change moved
+ * from (`since`) and nobody there is asked again. An instance that starts selling later
+ * moves to the new version then, and its accounts are asked once, with the sentence.
  */
 export function legalVersionOf(
   env: Pick<Env, 'LEGAL_VERSION' | 'FRONT_PAGE'> & PaddleEnv,
   documents: 'built-in' | 'own',
 ): { version: string; change?: string } {
   if (documents === 'own') return { version: env.LEGAL_VERSION?.trim() || OWN_DOCUMENTS_VERSION };
-  const change = LEGAL_CHANGE && (!LEGAL_CHANGE.billingOnly || sellsPlanOf(env)) ? LEGAL_CHANGE.text : undefined;
-  return { version: LEGAL_VERSION, ...(change ? { change } : {}) };
+  if (LEGAL_CHANGE?.billingOnly && !sellsPlanOf(env)) return { version: LEGAL_CHANGE.since };
+  return { version: LEGAL_VERSION, ...(LEGAL_CHANGE ? { change: LEGAL_CHANGE.text } : {}) };
 }
 
 /**

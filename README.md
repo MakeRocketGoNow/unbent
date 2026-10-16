@@ -299,7 +299,9 @@ working.
 Moving `LEGAL_VERSION` in `packages/shared/src/legal.ts` asks everyone again, worded as an
 update, with `LEGAL_CHANGE` beside it to say what changed. Move it for a change worth
 interrupting people for, not for every correction: the documents' effective dates move for
-those on their own. An operator with their own documents sets `LEGAL_VERSION` in the
+those on their own. A change only to the payment terms (`billingOnly`) moves it only where
+the instance sells a plan; everywhere else those sections are not published, so nothing
+changed and nobody is asked. An operator with their own documents sets `LEGAL_VERSION` in the
 environment instead, since only they know when those change; unset, everyone is asked once,
 and a change to the built-in documents never asks them again.
 

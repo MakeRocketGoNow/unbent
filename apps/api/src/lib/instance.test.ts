@@ -85,6 +85,12 @@ const PADDLE = {
   PADDLE_STORAGE_PRICE_ID: 'pri_storage',
 };
 
+/**
+ * The version an instance that sells nothing is on: the one before a billing-only change,
+ * since for it the documents did not change, else the current one (`legalVersionOf`).
+ */
+const PLAIN_VERSION = LEGAL_CHANGE?.billingOnly ? LEGAL_CHANGE.since : LEGAL_VERSION;
+
 describe('legalLinksOf', () => {
   const EXTERNAL = {
     LEGAL_PRIVACY_URL: 'https://example.com/privacy',
@@ -92,7 +98,7 @@ describe('legalLinksOf', () => {
   };
 
   it('points at the built-in documents when an operator is named', () => {
-    expect(legalLinksOf(env(OPERATOR))).toEqual({ privacy: '/privacy', terms: '/terms', version: LEGAL_VERSION });
+    expect(legalLinksOf(env(OPERATOR))).toEqual({ privacy: '/privacy', terms: '/terms', version: PLAIN_VERSION });
   });
 
   /** Someone who published their own documents went to the trouble; believe them. */
@@ -111,7 +117,7 @@ describe('legalLinksOf', () => {
    */
   it('ignores half a pair of external URLs', () => {
     const half = { ...OPERATOR, LEGAL_PRIVACY_URL: 'https://example.com/privacy' };
-    expect(legalLinksOf(env(half))).toEqual({ privacy: '/privacy', terms: '/terms', version: LEGAL_VERSION });
+    expect(legalLinksOf(env(half))).toEqual({ privacy: '/privacy', terms: '/terms', version: PLAIN_VERSION });
     expect(legalLinksOf(env({ LEGAL_TERMS_URL: 'https://example.com/terms' }))).toBeUndefined();
   });
 
@@ -139,18 +145,22 @@ describe('legalLinksOf', () => {
  */
 describe('legalVersionOf', () => {
   it('asks for the built-in version, whatever the environment says', () => {
-    expect(legalVersionOf(env({}), 'built-in').version).toBe(LEGAL_VERSION);
-    expect(legalVersionOf(env({ LEGAL_VERSION: '2027-01-01' }), 'built-in').version).toBe(LEGAL_VERSION);
+    expect(legalVersionOf(env({}), 'built-in').version).toBe(PLAIN_VERSION);
+    expect(legalVersionOf(env({ LEGAL_VERSION: '2027-01-01' }), 'built-in').version).toBe(PLAIN_VERSION);
   });
 
   /*
-   * A sentence about the price and refunds is not said where there is no sale: those
-   * sections are not in that instance's terms (MAK-108).
+   * A change only to the payment terms is no change where there is no sale: those sections
+   * are not in that instance's terms (MAK-108), so it stays on the version before and its
+   * accounts are not asked again. Where there is one, the version moves and the sentence
+   * says what is new.
    */
-  it('says a billing-only change only where billing is on', () => {
+  it('moves the version for a billing-only change only where billing is on', () => {
     expect(LEGAL_CHANGE?.billingOnly).toBe(true);
-    expect(legalVersionOf(env(PADDLE), 'built-in').change).toBe(LEGAL_CHANGE?.text);
-    expect(legalVersionOf(env({}), 'built-in')).toEqual({ version: LEGAL_VERSION });
+    if (!LEGAL_CHANGE?.billingOnly) return;
+    expect(LEGAL_CHANGE.since < LEGAL_VERSION).toBe(true);
+    expect(legalVersionOf(env(PADDLE), 'built-in')).toEqual({ version: LEGAL_VERSION, change: LEGAL_CHANGE.text });
+    expect(legalVersionOf(env({}), 'built-in')).toEqual({ version: LEGAL_CHANGE.since });
   });
 
   /* The front page states a price, so its instance publishes the payment terms before

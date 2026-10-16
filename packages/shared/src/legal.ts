@@ -42,13 +42,18 @@ export const REFUND_DAYS = 14;
  * were edited.
  *
  * `billingOnly` when what changed is only in the sections an instance publishes because it
- * sells a plan — billing on, or a front page stating the price — about payment, renewal and
- * refunds. An instance that sells nothing does not publish them, so it asks again with the plain "We’ve updated our terms" rather than a
- * sentence about terms its readers will not find (`legalVersionOf` in the API).
+ * sells a plan — billing on, or a front page stating the price — about payment, renewal
+ * and refunds. An instance that sells nothing does not publish them, so for it nothing
+ * changed: it stays on `since`, the version this one moved from, and asks nobody again
+ * (`legalVersionOf` in the API). Asking a self-hosted instance's accounts to agree to text
+ * that reads word for word as before would teach them to press through the step. The
+ * next change that is not billing-only drops both fields, and every instance moves to it
+ * together.
  */
-export const LEGAL_CHANGE: { text: string; billingOnly: boolean } | undefined = {
+export const LEGAL_CHANGE: { text: string; billingOnly: true; since: string } | { text: string; billingOnly?: false } | undefined = {
   text:
     'The terms now say how a plan is billed, how it renews and how to cancel it, and that ' +
     `any charge is refunded in full if you ask within ${REFUND_DAYS} days.`,
   billingOnly: true,
+  since: '2026-10-09',
 };
