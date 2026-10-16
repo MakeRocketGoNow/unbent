@@ -151,6 +151,16 @@ export interface SearchFilters {
 type Statement = [sql: string, binds: Bind[]];
 
 /**
+ * A multi-select's stored value as its list of options, or null for a value that is one
+ * option whole — a select's, or a multi-select value that is not a list. Both
+ * reading and writing back go by it, so a select whose option happens to look like a JSON
+ * list is never parsed as one, and a value is written in the shape it was read in.
+ */
+function heldList(type: FieldType, text: string): string[] | null {
+  return type === 'multiselect' && isJsonArray(text) ? (JSON.parse(text) as string[]) : null;
+}
+
+/**
  * All note access for one account, inside that account's own SQLite.
  *
  * This is `NotesRepo` moved onto the per-user store: the same methods, the same SQL, with
@@ -3086,8 +3096,8 @@ export class NotesStore {
           // A multi-select stores a JSON list; a select stores the bare option. Only rows
           // that actually hold the option are touched, so an unrelated value is never
           // rewritten (which would bump its row for no reason).
-          if (field.type === 'multiselect' && isJsonArray(text)) {
-            const list = JSON.parse(text) as string[];
+          const list = heldList(field.type, text);
+          if (list) {
             if (!list.includes(option)) continue;
             const remaining = list.filter((o) => o !== option);
             if (remaining.length === 0) {
@@ -3178,12 +3188,12 @@ export class NotesStore {
       const movedBy = new Map<string, number>(applied.renamed.map((r) => [r.from, 0]));
       const heldBy = new Map<string, number>(applied.removed.map((o) => [o, 0]));
       const touched: Change[] = [];
-      for (const { noteId, text } of this.fieldValueRows(fieldId)) {
-        // A select stores the option itself; a multi-select a JSON list of them. The same
-        // distinction `removeFieldOption` draws, so a select whose option happens to look
-        // like a list is never parsed as one.
-        const held =
-          field.type === 'multiselect' && isJsonArray(text) ? (JSON.parse(text) as string[]) : [text];
+      // A sort, a pin or an addition moves no value and counts none, so it reads none: on
+      // an archive-sized notebook the scan is a row per note for a reorder of the list.
+      const rows = moves.size > 0 || heldBy.size > 0 ? this.fieldValueRows(fieldId) : [];
+      for (const { noteId, text } of rows) {
+        const list = heldList(field.type, text);
+        const held = list ?? [text];
         for (const option of held) {
           const count = heldBy.get(option);
           if (count !== undefined) heldBy.set(option, count + 1);
@@ -3196,7 +3206,7 @@ export class NotesStore {
         const next = [...new Set(held.map((o) => moves.get(o) ?? o))];
         this.sql.exec(
           `UPDATE note_fields SET value_text = ?1 WHERE note_id = ?2 AND field_id = ?3`,
-          field.type === 'multiselect' && isJsonArray(text) ? JSON.stringify(next) : next[0]!,
+          list ? JSON.stringify(next) : next[0]!,
           noteId,
           fieldId,
         );
