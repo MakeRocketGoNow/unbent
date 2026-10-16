@@ -67,6 +67,9 @@ describe('applyOptionEdit', () => {
       error: expect.stringContaining('merge'),
       merge: true,
     });
+    expect(applyOptionEdit(['A', 'B'], { rename: [{ from: 'A', to: 'Z' }, { from: 'B', to: 'Z' }] })).toMatchObject({
+      error: expect.stringContaining('more than one rename'),
+    });
     expect(applyOptionEdit(['Grocery', 'Fuel', 'Groceries'], { rename: [{ from: 'Grocery', to: 'Groceries' }], merge: true })).toMatchObject({
       options: ['Fuel', 'Groceries'],
       renamed: [{ from: 'Grocery', to: 'Groceries' }],

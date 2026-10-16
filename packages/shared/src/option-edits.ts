@@ -113,7 +113,12 @@ export function applyOptionEdit(current: string[], edit: OptionEdit): OptionEdit
     if (list.includes(to)) {
       if (!edit.merge) {
         return {
-          error: `"${to}" is already an option, so renaming "${from}" to it would merge the two.`,
+          // "Already an option" only when it was one before this edit: two renames onto
+          // one new name meet here too, and the caller never saw that name on the list.
+          error: current.includes(to)
+            ? `"${to}" is already an option, so renaming "${from}" to it would merge the two: ` +
+              `every note holding "${from}" would hold "${to}" instead.`
+            : `"${to}" is the new name of more than one rename, which would merge them into one.`,
           merge: true,
         };
       }

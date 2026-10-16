@@ -1087,8 +1087,8 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
       if ('refused' in result) {
         return toolError(
           result.merge
-            ? `${result.refused} Pass mergeOptions:true to fold it in: every note holding it will ` +
-                'hold the other instead. That cannot be undone, so confirm it with the person first.'
+            ? `${result.refused} Pass mergeOptions:true to do that. A merge cannot be undone, so ` +
+                'confirm it with the person first.'
             : result.refused,
         );
       }
