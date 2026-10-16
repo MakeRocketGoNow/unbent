@@ -229,6 +229,20 @@ describe('undoFileNotes', () => {
     expect(getFileNotes()).toMatchObject({ status: 'done', ids: ['n2'] });
   });
 
+  /* Pressed, then a sign-out while the trash is on its way: the refusal is not the next person's. */
+  it('writes nothing once the account has changed hands', async () => {
+    claimFileNotesFor('u1');
+    await notesFromFiles([pdf('a.pdf')], { notebook: null, tags: [] }, null, 'list');
+    let refuse!: () => void;
+    vi.mocked(actions.trashNotes).mockReturnValueOnce(new Promise((_, reject) => (refuse = () => reject(new Error('Unauthorized')))));
+    const undo = undoFileNotes();
+    claimFileNotesFor(undefined);
+    refuse();
+    await undo;
+    claimFileNotesFor('u2');
+    expect(getFileNotes().status).toBe('idle');
+  });
+
   it('says so, and keeps the notes, when the trash is refused', async () => {
     await notesFromFiles([pdf('a.pdf')], { notebook: null, tags: [] }, null, 'list');
     vi.mocked(actions.trashNotes).mockRejectedValueOnce(new Error('Not found'));

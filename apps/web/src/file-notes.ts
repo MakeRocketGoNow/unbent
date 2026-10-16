@@ -116,7 +116,9 @@ export function claimFileNotesFor(userId: string | undefined): void {
     owner = next;
     return;
   }
-  if (owner !== null || state.status === 'running') set({ ...initial, run: state.run });
+  // Whatever report there is goes with the change of hands — one written while nobody
+  // was signed in included, since it is about the files of whoever was before.
+  if (state.status !== 'idle') set({ ...initial, run: state.run });
   owner = next;
 }
 
@@ -267,15 +269,18 @@ async function runBatch(files: File[], filing: Filing, place: string | null, sou
 export async function undoFileNotes(queryClient?: QueryClient): Promise<void> {
   const { ids, run } = state;
   if (ids.length === 0) return;
-  // Only the report of the batch Undo was pressed for is written: a drop made while the
-  // trash was on its way has a batch of its own running by now.
+  // Only the report of the batch Undo was pressed for is written, and only for the person
+  // who pressed it: a drop made while the trash was on its way has a batch of its own
+  // running by now, and a sign-out meanwhile has wiped the report for whoever is next.
+  const who = owner;
+  const current = () => state.run === run && owner === who;
   try {
     await actions.trashNotes(ids);
   } catch (err) {
-    if (state.run === run) set({ status: 'error', error: `Could not undo: ${(err as Error).message}`, run: state.run + 1 });
+    if (current()) set({ status: 'error', error: `Could not undo: ${(err as Error).message}`, run: state.run + 1 });
     return;
   }
-  if (state.run === run) set({ ...initial, run: state.run });
+  if (current()) set({ ...initial, run: state.run });
   if (queryClient) {
     void queryClient.invalidateQueries({ queryKey: ['notes'] });
     void queryClient.invalidateQueries({ queryKey: ['trash'] });
