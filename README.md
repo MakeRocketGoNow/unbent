@@ -1377,7 +1377,7 @@ reminder, not a check. The order is:
 1. Write to every current subscriber with the new price and the date it starts, at least
    30 days before the first renewal it would apply to. A subscriber who cancels before
    then keeps the year already paid for at the old price.
-2. After the 30 days, change the price in Paddle's catalog — a new price on the product,
+2. After the 30 days, change the price in Paddle's catalog: a new price on the product,
    with the old one archived, so renewals move and nothing already in flight does.
 3. Change `PLAN_PRICE_USD` or `STORAGE_ADDON_PRICE_USD` in `packages/shared/src/plan.ts`
    and the pinned number in its test in the same commit, and deploy. The front page and

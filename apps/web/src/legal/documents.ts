@@ -237,7 +237,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
             '. There is no marketing mail, and no newsletter to unsubscribe from.',
           'We do not sell personal information, and we do not share it for advertising or for ' +
             'anyone else to build a profile from.',
-          'If you connect another app to your account — an assistant, say — it can read and ' +
+          'If you connect another app to your account, such as an assistant, it can read and ' +
             'change your notes as you can, for as long as it stays connected. That is your ' +
             'choice, made when the app asks and undone from Settings, then Connected apps. ' +
             'What that app does with what it reads is governed by its own policy, not this one.',
