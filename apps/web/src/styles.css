@@ -3877,6 +3877,86 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   .tag-move:disabled { opacity: 0.25; }
 }
 
+/* `TagInput`'s `trailing`: pushed to the far end of whichever line it lands on. */
+.tag-input-trailing {
+  margin-left: auto;
+  cursor: auto;
+}
+
+/*
+   A select option's word, which renames it (`TagInput`'s `onRename`).
+
+   The word is the button, so the target is as big as what it names, with a pencil beside
+   it that surfaces on hover and focus in the manner of the chevrons and the × — and keeps
+   its space while hidden, for the same reason: the chip is one width whether or not it is
+   pointed at. Pressing it swaps the word for a field in its place; see `.tag-chip.renaming`.
+*/
+.tag-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  /*
+     Padded and pulled back by the same amount: the box is larger than the word, so the
+     focus ring has room inside it rather than touching the letters, and the word sits
+     exactly where it would unpadded. The sideways inset is the chevrons' own margin, so
+     the ring meets them and does not cross them; the chip's padding has room for the rest.
+  */
+  padding: 0.1rem 0.15rem;
+  margin: -0.1rem -0.15rem;
+  font: inherit;
+  line-height: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  border-radius: 0.2rem;
+  cursor: pointer;
+}
+
+.tag-label-pencil {
+  display: inline-flex;
+  opacity: 0;
+}
+
+.tag-chip:hover .tag-label-pencil,
+.tag-chip:focus-within .tag-label-pencil { opacity: 0.7; }
+
+.tag-label:hover .tag-label-pencil,
+.tag-label:focus-visible .tag-label-pencil { opacity: 1; }
+
+@media (hover: none) {
+  .tag-label-pencil { opacity: 0.6; }
+}
+
+/*
+   Renaming: the word is a field, drawn where the word was. The chip keeps its wash and
+   gains the accent edge a field has (`.tag-entry.active`), as a ring so no edge adds a
+   pixel. The field is sized by its text and padded by the pencil's width, and never
+   narrower than the word and pencil it replaced (`TagInput` measures them), so the chip
+   and everything after it stay put until the name outgrows the old one. The chip's other controls keep their space but are not drawn: a move or a removal
+   mid-rename would be of a name the field is about to change.
+*/
+.tag-chip.renaming {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.tag-chip.renaming .tag-move-group,
+.tag-chip.renaming .tag-remove { visibility: hidden; }
+
+.tag-rename-field {
+  box-sizing: border-box;
+  field-sizing: content;
+  /* The word's own inset (`.tag-label`), so the floor `TagInput` measures from that box
+     comes out at the word's footprint, plus the pencil (0.8em) and its gap (0.2rem). */
+  margin: 0 -0.15rem;
+  padding: 0 calc(0.8em + 0.35rem) 0 0.15rem;
+  font: inherit;
+  line-height: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  outline: none;
+}
+
 /*
    The entry point, which has to look like one.
 

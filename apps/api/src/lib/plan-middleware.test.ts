@@ -28,6 +28,7 @@ const GATED = new Set([
   'POST /api/notebooks/:id/fields',
   'PUT /api/notebooks/:id/fields/order',
   'PATCH /api/notebooks/:id/fields/:fieldId',
+  'POST /api/notebooks/:id/fields/:fieldId/options',
   'PATCH /api/tags/:id',
   'PUT /api/notes/:id/files',
   'POST /api/notes/:id/files/copy',

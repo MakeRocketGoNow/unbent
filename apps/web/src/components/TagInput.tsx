@@ -1,9 +1,15 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useCombobox } from 'downshift';
-import { sameName } from '@unbent/shared';
+import { MAX_FIELD_NAME_LENGTH, sameName } from '@unbent/shared';
 import { tintIndex } from '../tint.js';
-import { MoveEarlierIcon, MoveLaterIcon } from './icons.js';
+import { ChipPencilIcon, MoveEarlierIcon, MoveLaterIcon } from './icons.js';
 import { filledStyle } from './filled.js';
+
+interface Renaming {
+  from: string;
+  value: string;
+  width: number;
+}
 
 interface TagInputProps {
   tags: string[];
@@ -32,6 +38,28 @@ interface TagInputProps {
    * three buttons each.
    */
   reorderable?: boolean;
+  /**
+   * Turns each chip's word into a button that renames it in place.
+   *
+   * For a select field's options, where a rename is not a removal and an addition: the
+   * notes holding the old name move to the new one, which the remove-then-add this editor
+   * otherwise offers cannot do. The word is the target, with a pencil beside it surfacing
+   * on hover like the chip's other controls, and pressing it swaps the word for a field of
+   * the same size in the same place — the chip does not move or reflow. Enter or leaving
+   * the field renames; Escape puts the word back.
+   *
+   * Resolves `true` once the rename is applied, and the chip shows the new name until the
+   * list it is given catches up, so it does not flick back to the old one while the save
+   * and the refetch are in flight. `false` — refused, or held for a confirm — shows the
+   * old name at once, since nothing has changed yet.
+   */
+  onRename?: ((from: string, to: string) => Promise<boolean>) | undefined;
+  /**
+   * An action for the whole list, drawn at the far end of the row's last line, after the
+   * "+ Add" entry: a select's "Sort A–Z". In the row rather than beside it, so it takes no
+   * width from the chips — beside it, a phone's chips went one to a line.
+   */
+  trailing?: ReactNode;
   /**
    * Whether only a suggestion may be added.
    *
@@ -88,8 +116,89 @@ export function TagInput({
   caseless = true,
   readOnly = false,
   fresh,
+  onRename,
+  trailing,
 }: TagInputProps) {
   const [draft, setDraft] = useState('');
+  /**
+   * The chip whose word is a field just now, what has been typed into it, and how wide
+   * the word and its pencil were — the field's floor, so the chip never narrows as the
+   * name is cleared and retyped and the row after it never reflows. Only a longer name
+   * than the old one widens it.
+   */
+  const [renaming, setRenamingState] = useState<Renaming | null>(null);
+  // Mirrored in a ref, cleared the moment a rename ends: Enter unmounts the field, a
+  // browser may blur it on the way out, and that blur's handler still closes over the
+  // render where the field was open. The ref is what tells it the rename is over.
+  const renamingRef = useRef(renaming);
+  function setRenaming(next: Renaming | null) {
+    renamingRef.current = next;
+    setRenamingState(next);
+  }
+  /** A rename sent and applied, drawn over the old name until `tags` stops holding it. */
+  const [renamed, setRenamed] = useState<{ from: string; to: string } | null>(null);
+  /** The chip whose word gets focus back once it is drawn, after a rename by keyboard. */
+  const focusAfter = useRef<string | null>(null);
+  const labelRefs = useRef(new Map<string, HTMLButtonElement>());
+  useEffect(() => {
+    setRenamed((r) => (r && !tags.includes(r.from) ? null : r));
+  }, [tags]);
+  // After every commit that could have drawn it: the chip a cancel puts back is drawn on
+  // the next render, the one a rename makes only once the new list arrives.
+  useEffect(() => {
+    const name = focusAfter.current;
+    const button = name === null ? undefined : labelRefs.current.get(name);
+    if (button) {
+      focusAfter.current = null;
+      button.focus();
+    }
+  });
+
+  // Focused with the old name selected, so typing replaces it and an arrow key keeps it to
+  // correct. Not `autoFocus` with a select on focus: React's autoFocus runs before the
+  // focus listener can, and the caret landed at the end of the old name.
+  const renameRef = useRef<HTMLInputElement>(null);
+  const renamingFrom = renaming?.from;
+  useEffect(() => {
+    if (renamingFrom === undefined) return;
+    renameRef.current?.focus();
+    renameRef.current?.select();
+  }, [renamingFrom]);
+
+  function startRename(from: string, width: number) {
+    setRenaming({ from, value: from, width });
+  }
+
+  /**
+   * Ends a rename. Empty or unchanged is a cancel, not a refusal: the word goes back as it
+   * was. Called from Enter, Escape and blur alike, and only the first of them acts.
+   */
+  function finishRename(save: boolean, refocus: boolean) {
+    const current = renamingRef.current;
+    if (!current) return;
+    const { from } = current;
+    const to = current.value.trim();
+    setRenaming(null);
+    if (!save || to === '' || to === from || !onRename) {
+      if (refocus) focusAfter.current = from;
+      return;
+    }
+    setRenamed({ from, to });
+    void onRename(from, to).then((applied) => {
+      if (!applied) {
+        // Refused, or held for a confirm — which takes the focus itself. A chip already
+        // named `to` (a merge) must not be focused here: it would pull focus off the
+        // question about it.
+        setRenamed(null);
+        return;
+      }
+      if (!refocus) return;
+      // The list may have caught up already; if not, the effect focuses it when it does.
+      const button = labelRefs.current.get(to);
+      if (button) button.focus();
+      else focusAfter.current = to;
+    });
+  }
   /**
    * Whether the field is being used, as opposed to merely present.
    *
@@ -209,56 +318,108 @@ export function TagInput({
   return (
     <div className="tag-input" onClick={() => inputRef.current?.focus()}>
       {/* Each chip's tint is the word's own — see `tintIndex` — so a tag keeps its colour everywhere. */}
-      {tags.map((t, index) => (
-        <span key={t} {...chipProps(t)}>
-          {t}
-          {/* Earlier/later before the ×, so the chip's controls read left to right as
-              "move, move, remove". The ends' buttons stay rendered but disabled, the same
-              as the field list's, so the pair never shifts under the pointer as a chip
-              reaches an end. */}
-          {reorderable && (
-            <span className="tag-move-group">
+      {tags.map((t, index) => {
+        const chip = chipProps(t);
+        return (
+          <span key={t} {...chip} className={renaming?.from === t ? `${chip.className} renaming` : chip.className}>
+            {onRename && renaming?.from === t ? (
+              <input
+                className="tag-rename-field"
+                aria-label={`Rename ${label} ${t}`}
+                value={renaming.value}
+                maxLength={MAX_FIELD_NAME_LENGTH}
+                // Measured by its text where the browser can (`field-sizing` in the
+                // stylesheet); `size` is the fallback, about a character a column.
+                size={Math.max(renaming.value.length, 1)}
+                enterKeyHint="done"
+                ref={renameRef}
+                onClick={(e) => e.stopPropagation()}
+                style={{ minWidth: renaming.width }}
+                onChange={(e) => setRenaming({ ...renaming, value: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    finishRename(true, true);
+                  } else if (e.key === 'Escape') {
+                    // Ours, not the sheet's or the page's: Escape here undoes the typing.
+                    e.preventDefault();
+                    e.stopPropagation();
+                    finishRename(false, true);
+                  }
+                }}
+                onBlur={() => finishRename(true, false)}
+              />
+            ) : onRename ? (
               <button
                 type="button"
-                className="tag-move"
-                aria-label={`Move ${label} ${t} earlier`}
-                data-tip="Move earlier"
-                disabled={index === 0}
+                className="tag-label"
+                ref={(el) => {
+                  if (el) labelRefs.current.set(t, el);
+                  else labelRefs.current.delete(t);
+                }}
+                aria-label={`Rename ${label} ${t}`}
+                data-tip="Rename"
                 onClick={(e) => {
                   e.stopPropagation();
-                  move(index, -1);
+                  startRename(t, e.currentTarget.getBoundingClientRect().width);
                 }}
               >
-                <MoveEarlierIcon />
+                {renamed?.from === t ? renamed.to : t}
+                <span className="tag-label-pencil" aria-hidden="true">
+                  <ChipPencilIcon />
+                </span>
               </button>
-              <button
-                type="button"
-                className="tag-move"
-                aria-label={`Move ${label} ${t} later`}
-                data-tip="Move later"
-                disabled={index === tags.length - 1}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  move(index, 1);
-                }}
-              >
-                <MoveLaterIcon />
-              </button>
-            </span>
-          )}
-          <button
-            type="button"
-            className="tag-remove"
-            aria-label={`Remove ${label} ${t}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              remove(t);
-            }}
-          >
-            ×
-          </button>
-        </span>
-      ))}
+            ) : (
+              t
+            )}
+            {/* Earlier/later before the ×, so the chip's controls read left to right as
+                "move, move, remove". The ends' buttons stay rendered but disabled, the same
+                as the field list's, so the pair never shifts under the pointer as a chip
+                reaches an end. */}
+            {reorderable && (
+              <span className="tag-move-group">
+                <button
+                  type="button"
+                  className="tag-move"
+                  aria-label={`Move ${label} ${t} earlier`}
+                  data-tip="Move earlier"
+                  disabled={index === 0}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    move(index, -1);
+                  }}
+                >
+                  <MoveEarlierIcon />
+                </button>
+                <button
+                  type="button"
+                  className="tag-move"
+                  aria-label={`Move ${label} ${t} later`}
+                  data-tip="Move later"
+                  disabled={index === tags.length - 1}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    move(index, 1);
+                  }}
+                >
+                  <MoveLaterIcon />
+                </button>
+              </span>
+            )}
+            <button
+              type="button"
+              className="tag-remove"
+              aria-label={`Remove ${label} ${t}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                remove(t);
+              }}
+            >
+              ×
+            </button>
+          </span>
+        );
+      })}
 
       <span className={active || draft !== '' ? 'tag-entry active' : 'tag-entry'}>
         {/* Sits behind the input and is hidden once it is in use, so the affordance and
@@ -325,6 +486,13 @@ export function TagInput({
             ))}
         </ul>
       </span>
+
+      {trailing && (
+        // Its own target: a press here is not a press on the row, which focuses the field.
+        <span className="tag-input-trailing" onClick={(e) => e.stopPropagation()}>
+          {trailing}
+        </span>
+      )}
     </div>
   );
 }

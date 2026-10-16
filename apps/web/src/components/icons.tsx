@@ -513,6 +513,15 @@ export function CloseIcon() {
 }
 
 /**
+ * The pencil beside a chip's word where pressing the word renames it — a select option's.
+ * The chip's size, like the chevrons and the cross beside it, since it reads with the word
+ * rather than standing alone in a 44px target as the label editor's `PencilIcon` does.
+ */
+export function ChipPencilIcon() {
+  return <Pencil size="0.8em" strokeWidth={2.25} aria-hidden="true" focusable="false" />;
+}
+
+/**
  * Chevrons for nudging a chip one step earlier or later in an ordered list.
  *
  * Sized like `CloseIcon`, and for the same reason: they ride inside a chip beside its

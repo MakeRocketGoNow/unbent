@@ -81,6 +81,7 @@ describe('NotebookEditor', () => {
     vi.spyOn(api, 'updateNotebookField');
     vi.spyOn(api, 'countOptionUsage');
     vi.spyOn(api, 'removeNotebookFieldOption');
+    vi.spyOn(api, 'editNotebookFieldOptions');
     vi.spyOn(api, 'updateNotebook').mockResolvedValue(undefined);
     vi.spyOn(api, 'deleteNotebook').mockResolvedValue(undefined);
   });
@@ -258,20 +259,22 @@ describe('NotebookEditor', () => {
   });
 
   /*
-     Reordering an option PATCHes the field with the whole list in its new order — the same
-     write an add or a remove makes, since the options column is just that array. Order is
-     the only thing the picker shows them in, so it is a real edit, not cosmetic.
+     Reordering an option sends the whole list in its new order as a `replace` edit — the
+     same write an add makes, on the route a rename goes through. Order is the only thing
+     the picker shows them in, so it is a real edit, not cosmetic.
   */
   it('writes the reordered options when an option is nudged', async () => {
-    vi.mocked(api.updateNotebookField).mockResolvedValue({
+    vi.mocked(api.editNotebookFieldOptions).mockResolvedValue({
       field: { ...fields[1]!, options: ['Travel', 'Food'] },
-      cleared: 0,
+      renamed: [],
+      removed: [],
+      added: [],
     });
     mount();
     await screen.findByText('Category');
     fireEvent.click(screen.getByLabelText('Move option Travel earlier'));
     await waitFor(() =>
-      expect(api.updateNotebookField).toHaveBeenCalledWith('nb1', 'f2', { options: ['Travel', 'Food'] }),
+      expect(api.editNotebookFieldOptions).toHaveBeenCalledWith('nb1', 'f2', { replace: ['Travel', 'Food'] }),
     );
   });
 
@@ -363,6 +366,89 @@ describe('NotebookEditor', () => {
     fireEvent.pointerDown(document.body);
     await waitFor(() => expect(screen.queryByRole('group', { name: 'Confirm remove option' })).toBeNull());
     expect(api.removeNotebookFieldOption).not.toHaveBeenCalled();
+  });
+
+  /*
+     A rename is sent as a rename, not as the whole list without the old name and with the
+     new one: that remove-and-add left the notes holding the old name on a value the field
+     no longer offered, and the rename route moves them.
+  */
+  it('renames an option in place through the option edit, not the whole list', async () => {
+    vi.mocked(api.editNotebookFieldOptions).mockResolvedValue({
+      field: { ...fields[1]!, options: ['Meals', 'Travel'] },
+      renamed: [{ from: 'Food', to: 'Meals', notes: 4 }],
+      removed: [],
+      added: [],
+    });
+    mount();
+    await screen.findByText('Category');
+    fireEvent.click(screen.getByRole('button', { name: 'Rename option Food' }));
+    const input = screen.getByRole('textbox', { name: 'Rename option Food' });
+    fireEvent.change(input, { target: { value: 'Meals' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() =>
+      expect(api.editNotebookFieldOptions).toHaveBeenCalledWith('nb1', 'f2', {
+        rename: [{ from: 'Food', to: 'Meals' }],
+      }),
+    );
+    expect(api.updateNotebookField).not.toHaveBeenCalled();
+    expect(api.removeNotebookFieldOption).not.toHaveBeenCalled();
+  });
+
+  /*
+     Renaming onto an option that already exists would fold the two, which cannot be taken
+     apart again: it asks, naming both and the notes that would move, and only the yes
+     sends `merge`.
+  */
+  it('asks before a rename that would merge two options, and sends merge on yes', async () => {
+    vi.mocked(api.countOptionUsage).mockResolvedValue(2);
+    vi.mocked(api.editNotebookFieldOptions).mockResolvedValue({
+      field: { ...fields[1]!, options: ['Travel'] },
+      renamed: [{ from: 'Food', to: 'Travel', notes: 2 }],
+      removed: [],
+      added: [],
+    });
+    mount();
+    await screen.findByText('Category');
+    fireEvent.click(screen.getByRole('button', { name: 'Rename option Food' }));
+    const input = screen.getByRole('textbox', { name: 'Rename option Food' });
+    fireEvent.change(input, { target: { value: 'Travel' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    const ask = await screen.findByRole('group', { name: 'Confirm merge options' });
+    expect(ask.textContent).toContain('Merge Food into Travel?');
+    expect(ask.textContent).toContain('2 notes with Food will show Travel instead');
+    expect(api.editNotebookFieldOptions).not.toHaveBeenCalled();
+    // The old name is back on its chip: nothing has changed until the answer.
+    expect(screen.getByRole('button', { name: 'Rename option Food' }).textContent).toBe('Food');
+
+    fireEvent.click(within(ask).getByText('Merge'));
+    await waitFor(() =>
+      expect(api.editNotebookFieldOptions).toHaveBeenCalledWith('nb1', 'f2', {
+        rename: [{ from: 'Food', to: 'Travel' }],
+        merge: true,
+      }),
+    );
+  });
+
+  it('sorts the options A–Z, and fades the action once they are', async () => {
+    vi.mocked(api.editNotebookFieldOptions).mockResolvedValue({
+      field: fields[1]!,
+      renamed: [],
+      removed: [],
+      added: [],
+    });
+    mount([{ ...fields[1]!, options: ['Travel', 'Food'] }]);
+    await screen.findByText('Category');
+    fireEvent.click(screen.getByRole('button', { name: 'Sort A–Z' }));
+    await waitFor(() =>
+      expect(api.editNotebookFieldOptions).toHaveBeenCalledWith('nb1', 'f2', { sort: 'alpha' }),
+    );
+    cleanup();
+
+    mount();
+    await screen.findByText('Category');
+    expect((screen.getByRole('button', { name: 'Sort A–Z' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('asks before deleting, naming how many notes lose a value', async () => {

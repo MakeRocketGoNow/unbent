@@ -8,6 +8,8 @@ import {
   notebookEmojiSchema,
   notebookNameSchema,
   notebookPurposeSchema,
+  isEmptyOptionEdit,
+  optionEditSchema,
   reorderFieldsSchema,
   updateFieldSchema,
 } from '@unbent/shared';
@@ -243,6 +245,44 @@ export const notebooks = new Hono<AppEnv>()
         .get('notes')
         .removeFieldOption(c.req.param('id'), c.req.param('fieldId'), option, clear);
       if (!result) return c.json({ error: 'Not found' }, 404);
+      return c.json(result);
+    },
+  )
+
+  /**
+   * Edits a select's or multi-select's options by what changes — a rename, a removal, an
+   * addition, a sort, a pin — through the store's `editFieldOptions`, the same call the
+   * MCP tool `update_notebook_field` makes (MAK-227).
+   *
+   * The PATCH above takes the whole list, which cannot say "this option is now called
+   * that": a rename through it was a removal and an addition, and the notes that held the
+   * old name were left on a value the field no longer offered. Here a rename moves them,
+   * in the transaction that changes the list.
+   *
+   * A rename onto an option that already stands would fold the two into one, and is
+   * refused with a 409 carrying `merge: true` unless the body says `merge`; the client
+   * asks the person first, naming both. Any other refusal — a name the field does not
+   * have, a list over the limit — is a 400 with the store's sentence. Answers what the
+   * store answers: the field, and how many notes each rename moved.
+   */
+  .post(
+    '/notebooks/:id/fields/:fieldId/options',
+    zValidator('json', optionEditSchema),
+    async (c) => {
+      const edit = c.req.valid('json');
+      if (isEmptyOptionEdit(edit)) return c.json({ error: 'The edit changes nothing' }, 400);
+      const result = await c
+        .get('notes')
+        .editFieldOptions(c.req.param('id'), c.req.param('fieldId'), edit);
+      if (result === 'missing') return c.json({ error: 'Not found' }, 404);
+      // Only a name in the patch can clash, and this route sends none; kept so a store
+      // that ever answers it is not read as a success.
+      if (result === 'conflict') return c.json({ error: 'A field with that name already exists in this notebook' }, 409);
+      if ('refused' in result) {
+        return result.merge
+          ? c.json({ error: result.refused, merge: true }, 409)
+          : c.json({ error: result.refused }, 400);
+      }
       return c.json(result);
     },
   )

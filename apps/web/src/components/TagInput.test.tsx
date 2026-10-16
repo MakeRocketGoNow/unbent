@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import { TagInput } from './TagInput.js';
 
 /**
@@ -364,5 +364,74 @@ describe('TagInput read-only', () => {
   it('says there are none rather than drawing an empty row', () => {
     render(<TagInput tags={[]} suggestions={[]} onChange={vi.fn()} readOnly />);
     expect(screen.getByText('No tags')).toBeTruthy();
+  });
+});
+
+/**
+ * Renaming a chip in place (`onRename`), the select option editor's. The word is the
+ * button; pressing it swaps in a field holding the name, Enter or leaving renames, and
+ * Escape puts the word back. Nothing that is not a change is reported as one.
+ */
+describe('TagInput rename', () => {
+  afterEach(cleanup);
+
+  function open(onRename = vi.fn().mockResolvedValue(true)) {
+    render(<TagInput tags={['Food', 'Travel']} suggestions={[]} onChange={vi.fn()} label="option" caseless={false} onRename={onRename} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Rename option Food' }));
+    return { onRename, input: screen.getByRole('textbox', { name: 'Rename option Food' }) as HTMLInputElement };
+  }
+
+  it('offers no rename where none is asked for', () => {
+    render(<TagInput tags={['Food']} suggestions={[]} onChange={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /Rename/ })).toBeNull();
+  });
+
+  it('opens a field holding the name, and renames on Enter', async () => {
+    const { onRename, input } = open();
+    expect(input.value).toBe('Food');
+    fireEvent.change(input, { target: { value: ' Meals ' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onRename).toHaveBeenCalledWith('Food', 'Meals');
+    // Shown under the new name while the list it was given still has the old one.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Rename option Food' }).textContent).toBe('Meals'));
+  });
+
+  it('renames once when Enter is followed by the blur of the field going away', () => {
+    const { onRename, input } = open();
+    fireEvent.change(input, { target: { value: 'Meals' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.blur(input);
+    expect(onRename).toHaveBeenCalledTimes(1);
+  });
+
+  it('renames on leaving the field, as the add field commits on blur', () => {
+    const { onRename, input } = open();
+    fireEvent.change(input, { target: { value: 'Meals' } });
+    fireEvent.blur(input);
+    expect(onRename).toHaveBeenCalledWith('Food', 'Meals');
+  });
+
+  it('puts the word back on Escape without renaming', () => {
+    const { onRename, input } = open();
+    fireEvent.change(input, { target: { value: 'Meals' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(onRename).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Rename option Food' }).textContent).toBe('Food');
+  });
+
+  it('treats an empty or unchanged name as a cancel', () => {
+    const { onRename, input } = open();
+    fireEvent.change(input, { target: { value: '   ' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: 'Rename option Food' }));
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Rename option Food' }), { key: 'Enter' });
+    expect(onRename).not.toHaveBeenCalled();
+  });
+
+  it('shows the old name again when the rename is not applied', async () => {
+    const { input } = open(vi.fn().mockResolvedValue(false));
+    fireEvent.change(input, { target: { value: 'Travel' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Rename option Food' }).textContent).toBe('Food'));
   });
 });

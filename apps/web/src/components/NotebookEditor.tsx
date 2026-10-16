@@ -10,6 +10,7 @@ import {
   MAX_RATING_MAX,
   MIN_RATING_MAX,
   notebookNameSchema,
+  compareOptions,
   fieldHasOptions,
   fieldNameSchema,
   isCurrencyField,
@@ -70,6 +71,18 @@ interface PendingOption {
   usage: number;
 }
 
+/**
+ * A rename onto an option that already exists, held while the person decides: the two
+ * would become one, and afterwards nothing tells which notes held which. `usage` is how
+ * many notes hold `from`, the ones that would move.
+ */
+interface PendingMerge {
+  field: FieldDef;
+  from: string;
+  to: string;
+  usage: number;
+}
+
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 /** What a field becomes when "Currency" is picked; the picker under it changes it. */
@@ -120,6 +133,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
   const [pendingDelete, setPendingDelete] = useState<FieldDef | null>(null);
   const [pendingType, setPendingType] = useState<PendingType | null>(null);
   const [pendingOption, setPendingOption] = useState<PendingOption | null>(null);
+  const [pendingMerge, setPendingMerge] = useState<PendingMerge | null>(null);
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState<FieldType>('text');
   const [newOptions, setNewOptions] = useState<string[]>([]);
@@ -157,14 +171,18 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
      slow CI runner, where the timer Testing Library drains with fires before React's task.
   */
   const optionConfirmRef = useRef<HTMLDivElement>(null);
+  // The merge confirm floats in the same place and dismisses the same way.
+  const optionPopoverOpen = pendingOption !== null || pendingMerge !== null;
   useLayoutEffect(() => {
-    if (!pendingOption || busy) return;
+    if (!optionPopoverOpen || busy) return;
     const onDown = (e: PointerEvent) => {
-      if (!optionConfirmRef.current?.contains(e.target as Node)) setPendingOption(null);
+      if (optionConfirmRef.current?.contains(e.target as Node)) return;
+      setPendingOption(null);
+      setPendingMerge(null);
     };
     document.addEventListener('pointerdown', onDown);
     return () => document.removeEventListener('pointerdown', onDown);
-  }, [pendingOption, busy]);
+  }, [optionPopoverOpen, busy]);
 
   // Seed the name and purpose drafts into the controlled inputs from the notebook, and
   // follow the saved values when they change under us (another tab, a fresh load) — but only
@@ -418,14 +436,19 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
   }
 
   /**
-   * Applies an edit to a select's or multi-select's options.
+   * Applies an edit to a select's or multi-select's options: an addition, a removal or a
+   * new order, as the chip list reports them — the whole list, which is all it knows.
    *
-   * Every edit but one writes straight through: adding an option, renaming one, reordering
-   * them — none can strand a value. The exception is removing an option that notes still
-   * hold. That is the one option edit that can orphan data, so it is the one that asks
-   * first: the field's own value keeps working (it shows as "no longer an option"), but
-   * whether those notes should lose it is the person's call, not a silent effect of tidying
-   * the list. When more than one option leaves at once — a rare multi-remove — it is not
+   * A rename is not one of these. Through the whole list it was a removal and an addition,
+   * which left the notes holding the old name on a value the field no longer offered;
+   * `renameOption` sends it as a rename instead, and the notes move with it.
+   *
+   * Adding and reordering write straight through, as a `replace` edit on the same route
+   * the rename uses, since neither can strand a value. The exception is removing an option
+   * that notes still hold. That is the one option edit here that can orphan data, so it is
+   * the one that asks first: the field's own value keeps working (it shows as "no longer
+   * an option"), but whether those notes should lose it is the person's call, not a silent
+   * effect of tidying the list. When more than one option leaves at once — a rare multi-remove — it is not
    * worth a prompt per option; the whole edit writes through, matching how the list behaved
    * before this guard existed and never destroying a value without a single removal's intent.
    */
@@ -443,7 +466,42 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
       });
       return;
     }
-    void run(() => api.updateNotebookField(notebookId, field.id, { options }));
+    void run(() => api.editNotebookFieldOptions(notebookId, field.id, { replace: options }));
+  }
+
+  /**
+   * Renames an option, moving every note that holds it (MAK-227's `editFieldOptions`,
+   * through its route). Resolves whether the rename was applied, which is what tells the
+   * chip to keep showing the new name until the list catches up.
+   *
+   * A rename onto an option that already stands is a merge, which cannot be taken apart
+   * again, so it is not sent: the person is asked first, with both names and the number
+   * of notes that would move, and only their yes sends `merge`. Names compare exactly, as
+   * options do everywhere — "grocery" beside "Grocery" is a rename, not a merge.
+   */
+  async function renameOption(field: FieldDef, from: string, to: string): Promise<boolean> {
+    let applied = false;
+    setPendingOption(null);
+    setPendingMerge(null);
+    await run(async () => {
+      if (field.options.includes(to)) {
+        const usage = await api.countOptionUsage(notebookId, field.id, from);
+        setPendingMerge({ field, from, to, usage });
+        return;
+      }
+      await api.editNotebookFieldOptions(notebookId, field.id, { rename: [{ from, to }] });
+      applied = true;
+    });
+    return applied;
+  }
+
+  function confirmMerge() {
+    if (!pendingMerge) return;
+    const { field, from, to } = pendingMerge;
+    void run(async () => {
+      await api.editNotebookFieldOptions(notebookId, field.id, { rename: [{ from, to }], merge: true });
+      setPendingMerge(null);
+    });
   }
 
   /** Carries out a confirmed option removal: `clear` decides the notes' fate. */
@@ -721,9 +779,54 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
                     suggestions={[]}
                     reorderable
                     onChange={(options) => editOptions(field, options)}
+                    onRename={(from, to) => renameOption(field, from, to)}
+                    trailing={
+                      // Faded rather than gone once the list is in order, so the row does
+                      // not change shape after a press.
+                      field.options.length > 1 && (
+                        <Button
+                          variant="quiet"
+                          size="small"
+                          disabled={busy || isSorted(field.options)}
+                          tip={isSorted(field.options) ? 'Already in A–Z order' : undefined}
+                          onClick={() =>
+                            void run(() => api.editNotebookFieldOptions(notebookId, field.id, { sort: 'alpha' }))
+                          }
+                        >
+                          Sort A–Z
+                        </Button>
+                      )
+                    }
                   />
                   {/* The removal confirm floats over the rows below rather than pushing them,
                       and sits under the option it is about so the two read as one action. */}
+                  {pendingMerge?.field.id === field.id && (
+                    <div className="field-option-confirm" ref={optionConfirmRef}>
+                      <Confirm
+                        label="Confirm merge options"
+                        question={
+                          <>
+                            Merge <strong>{pendingMerge.from}</strong> into <strong>{pendingMerge.to}</strong>?
+                          </>
+                        }
+                        detail={
+                          (pendingMerge.usage === 0
+                            ? `No note uses ${pendingMerge.from}, so it only leaves the list.`
+                            : `${plural(pendingMerge.usage, 'note')} with ${pendingMerge.from} will show ` +
+                              `${pendingMerge.to} instead, and ${pendingMerge.from} leaves the list. `) +
+                          (pendingMerge.usage === 0 ? '' : "The two can't be told apart afterwards.")
+                        }
+                        busy={busy}
+                        // The field the rename was typed in is gone by now, so focus would
+                        // otherwise be on the page; Cancel is the safe place to land.
+                        focusCancel
+                        onCancel={() => setPendingMerge(null)}
+                        actions={[
+                          { label: 'Merge', busyLabel: 'Merging…', tone: 'primary', onConfirm: confirmMerge },
+                        ]}
+                      />
+                    </div>
+                  )}
                   {pendingOption?.field.id === field.id && (
                     <div className="field-option-confirm" ref={optionConfirmRef}>
                       <Confirm
@@ -1010,6 +1113,11 @@ function conversionDetail(pending: PendingType): string {
  * a 10-point scale to 5, and "out of 5" is the wrong question for turning a number into
  * stars.
  */
+/** Whether a list of options is already in the order "Sort A–Z" would put it in. */
+function isSorted(options: string[]): boolean {
+  return options.every((o, i) => i === 0 || compareOptions(options[i - 1]!, o) <= 0);
+}
+
 function scaleOnlyConfirm(
   pending: PendingType,
 ): pending is PendingType & { scale: FieldScale; field: FieldDef & { scale: FieldScale } } {
