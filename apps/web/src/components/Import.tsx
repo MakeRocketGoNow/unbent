@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { DEFAULT_PAGES_NOTEBOOK, type NotionUnit } from '@unbent/enex';
 import {
@@ -48,7 +48,6 @@ export function Import() {
   const [pickerKey, setPickerKey] = useState(0);
   const fileNotes = useFileNotes();
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
   /** The Notion units to import, by key; every non-empty one until the person unticks it. */
   const [include, setInclude] = useState<ReadonlySet<string>>(new Set());
   const [pagesNotebook, setPagesNotebook] = useState(DEFAULT_PAGES_NOTEBOOK);
@@ -173,19 +172,12 @@ export function Import() {
             </p>
           )}
           <span className="import-batch-actions">
+            {/* A link wearing the button's shape, since it navigates: it middle-clicks and
+                opens in a new tab, which a button that called `navigate` could not. */}
             {fileNotes.ids.length > 0 && (
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  resetFileNotes();
-                  void navigate({
-                    to: '/notes',
-                    search: fileNotes.place ? { notebook: fileNotes.place } : {},
-                  });
-                }}
-              >
+              <Link to="/notes" search={fileNotes.place ? { notebook: fileNotes.place } : {}} className="btn btn-secondary" onClick={resetFileNotes}>
                 Show them
-              </Button>
+              </Link>
             )}
             <Button variant="secondary" onClick={resetFileNotes}>
               Add more files

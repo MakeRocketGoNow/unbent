@@ -88,8 +88,10 @@ describe('the Import page with PDFs and images', () => {
       { title: 'Gas bill', body: '[Gas bill.pdf](<files/Gas bill.pdf>)\n', tags: [], notebook: 'Receipts' },
     ]);
     await screen.findByText('2 notes added to Receipts.');
-    // "Show them" leads to the notebook the notes went to.
-    fireEvent.click(screen.getByRole('button', { name: 'Show them' }));
+    // "Show them" is a link to the notebook the notes went to.
+    const show = screen.getByRole('link', { name: 'Show them' });
+    expect(show.getAttribute('href')).toBe('/notes?notebook=Receipts');
+    fireEvent.click(show);
     await waitFor(() => expect(router.state.location.href).toBe('/notes?notebook=Receipts'));
   });
 
