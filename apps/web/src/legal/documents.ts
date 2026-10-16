@@ -33,7 +33,7 @@
  * email delivery service", and the operator's postal address is not here at all.
  */
 
-import { INACTIVE_KEPT_DAYS, type AppConfig } from '@unbent/shared';
+import { INACTIVE_KEPT_DAYS, REFUND_DAYS, type AppConfig } from '@unbent/shared';
 
 export interface LegalSection {
   heading?: string;
@@ -113,15 +113,6 @@ export interface LegalOptions {
 
 /** The refund policy's anchor in the terms: `/terms#refunds`. See `LegalSection.id`. */
 export const REFUNDS_ID = 'refunds';
-
-/**
- * How long after a charge it can be refunded in full, for any reason.
- *
- * Fourteen days because that is the floor Paddle's review accepts, and the right to cancel
- * that a consumer in Europe or the UK has anyway. It covers a renewal as much as a first
- * charge: a renewal is the charge someone is most likely to have forgotten was coming.
- */
-const REFUND_DAYS = 14;
 
 /** How long a lapsed account is kept, as the sentence says it. */
 const KEPT = INACTIVE_KEPT_DAYS === 365 ? 'a year' : `${INACTIVE_KEPT_DAYS} days`;

@@ -20,6 +20,19 @@
 export const LEGAL_VERSION = '2026-10-14';
 
 /**
+ * How long after a charge it can be refunded in full, for any reason.
+ *
+ * Fourteen days because that is the floor Paddle's review accepts, and the right to cancel
+ * that a consumer in Europe or the UK has anyway. It covers a renewal as much as a first
+ * charge: a renewal is the charge someone is most likely to have forgotten was coming.
+ *
+ * Here beside the version because the terms ("Refunds" in the web app's
+ * `legal/documents.ts`) and `LEGAL_CHANGE`'s sentence both state it, and the sentence
+ * describing a change must not disagree with the terms it describes.
+ */
+export const REFUND_DAYS = 14;
+
+/**
  * One sentence on what changed in `LEGAL_VERSION`, for the people who agreed to an earlier
  * one. Shown under "We’ve updated our terms", so they can tell a new
  * clause from a reworded one without reading both documents again.
@@ -34,6 +47,8 @@ export const LEGAL_VERSION = '2026-10-14';
  * sentence about terms its readers will not find (`legalVersionOf` in the API).
  */
 export const LEGAL_CHANGE: { text: string; billingOnly: boolean } | undefined = {
-  text: 'The terms now say how a plan is billed, how it renews and how to cancel it, and that any charge is refunded in full if you ask within 14 days.',
+  text:
+    'The terms now say how a plan is billed, how it renews and how to cancel it, and that ' +
+    `any charge is refunded in full if you ask within ${REFUND_DAYS} days.`,
   billingOnly: true,
 };
