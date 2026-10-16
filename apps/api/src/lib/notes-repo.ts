@@ -12,6 +12,7 @@ import type {
   NoteRevisionSummary,
   NoteSummary,
   NotebookDefinition,
+  OptionEdit,
   RestoredNote,
   NotebookSummary,
   SearchResult,
@@ -371,6 +372,25 @@ export class NotesRepo extends StoreRepo {
     clear: boolean,
   ): Promise<{ field: FieldDef; cleared: number } | null> {
     return this.call((s) => s.removeFieldOption(notebookId, fieldId, option, clear));
+  }
+
+  editFieldOptions(
+    notebookId: string,
+    fieldId: string,
+    edit: OptionEdit,
+    patch: { name?: string | undefined; currency?: string | null | undefined } = {},
+  ): Promise<
+    | {
+        field: FieldDef;
+        renamed: Array<{ from: string; to: string; notes: number }>;
+        removed: Array<{ option: string; notes: number }>;
+        added: string[];
+      }
+    | 'missing'
+    | 'conflict'
+    | { refused: string; merge?: true }
+  > {
+    return this.call(async (s) => s.editFieldOptions(notebookId, fieldId, edit, patch));
   }
 
   importNotebook(
