@@ -121,6 +121,8 @@ export function applyOptionEdit(current: string[], edit: OptionEdit): OptionEdit
   const removed: string[] = [];
   for (const option of edit.remove ?? []) {
     if (touched.has(option)) return { error: `"${option}" is named twice in the edit.` };
+    // The notes a rename just moved onto it would be left on a value the list no longer has.
+    if (targets.has(option)) return { error: `"${option}" is a rename's new name; it cannot also be removed.` };
     touched.add(option);
     const at = list.indexOf(option);
     if (at < 0) return { error: `"${option}" is not one of this field's options.` };

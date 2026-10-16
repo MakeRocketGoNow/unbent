@@ -106,10 +106,12 @@ describe('applyOptionEdit', () => {
     }
   });
 
-  it('refuses chains, swaps and an option both renamed and removed', () => {
+  it('refuses chains, swaps, and an option both renamed and removed either way round', () => {
     expect(applyOptionEdit(['A', 'B'], { rename: [{ from: 'A', to: 'B' }, { from: 'B', to: 'A' }], merge: true })).toHaveProperty('error');
     expect(applyOptionEdit(['A', 'B'], { rename: [{ from: 'A', to: 'X' }, { from: 'X', to: 'Y' }] })).toHaveProperty('error');
     expect(applyOptionEdit(['A', 'B'], { rename: [{ from: 'A', to: 'X' }], remove: ['A'] })).toHaveProperty('error');
+    expect(applyOptionEdit(['A', 'B'], { rename: [{ from: 'A', to: 'X' }], remove: ['X'] })).toHaveProperty('error');
+    expect(applyOptionEdit(['A', 'B'], { rename: [{ from: 'A', to: 'B' }], merge: true, remove: ['B'] })).toHaveProperty('error');
     expect(applyOptionEdit(['A', 'B'], { pinFirst: ['A'], pinLast: ['A'] })).toHaveProperty('error');
   });
 
