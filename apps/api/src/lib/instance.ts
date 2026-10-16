@@ -74,8 +74,35 @@ export function legalLinksOf(env: Env): AppConfig['legal'] | undefined {
   const privacy = env.LEGAL_PRIVACY_URL?.trim();
   const terms = env.LEGAL_TERMS_URL?.trim();
   if (privacy && terms) return { privacy, terms, ...legalVersionOf(env, 'own') };
-  if (operatorOf(env)) return { privacy: '/privacy', terms: '/terms', ...legalVersionOf(env, 'built-in') };
+  if (operatorOf(env)) {
+    return {
+      privacy: '/privacy',
+      terms: '/terms',
+      ...legalVersionOf(env, 'built-in'),
+      ...(sellsPlanOf(env) ? { sellsPlan: true } : {}),
+    };
+  }
   return undefined;
+}
+
+/**
+ * Whether this instance sells a plan, which is what decides whether the built-in terms
+ * carry the sections on payment, renewal and refunds, and the policy names Paddle.
+ *
+ * Billing on, or a front page stating the price. The front page counts on its own because
+ * a price on offer is a sale the terms have to cover whether or not checkout works yet, and
+ * because Paddle's website review reads the terms for a refund policy before it issues the
+ * live keys that turn billing on. Billing alone left unbent.app unable to pass the review
+ * that billing waits on.
+ *
+ * Said here once and sent in `/api/config` (`legal.sellsPlan`), so the web app reads the
+ * answer rather than working it out again from `billing` and `frontPage`: the sentence on
+ * what changed and the documents it describes must agree, and two copies of the rule would
+ * part the first time one of them learned a new case. `undefined` rather than `false` when
+ * off, so the field is dropped and an older instance reads the same as one that sells none.
+ */
+export function sellsPlanOf(env: Pick<Env, 'FRONT_PAGE'> & PaddleEnv): true | undefined {
+  return billingOn(env) || frontPageOf(env) || undefined;
 }
 
 /**
@@ -98,16 +125,16 @@ const OWN_DOCUMENTS_VERSION = '1';
  * documents, and an operator who wants one can say it in their own.
  *
  * A sentence about the sections only an instance that sells a plan publishes
- * (`billingOnly`) is left out where it sells none — billing off and no front page, the
- * same test the web app's `LegalOptions.sellsPlan` makes. The version still moves there, as
- * it does for any change here, and the prompt is the plain "We’ve updated our terms".
+ * (`billingOnly`) is left out where it sells none (`sellsPlanOf`). The version still moves
+ * there, as it does for any change here, and the prompt is the plain "We’ve updated our
+ * terms".
  */
 export function legalVersionOf(
   env: Pick<Env, 'LEGAL_VERSION' | 'FRONT_PAGE'> & PaddleEnv,
   documents: 'built-in' | 'own',
 ): { version: string; change?: string } {
   if (documents === 'own') return { version: env.LEGAL_VERSION?.trim() || OWN_DOCUMENTS_VERSION };
-  const change = LEGAL_CHANGE && (!LEGAL_CHANGE.billingOnly || billingOn(env) || frontPageOf(env)) ? LEGAL_CHANGE.text : undefined;
+  const change = LEGAL_CHANGE && (!LEGAL_CHANGE.billingOnly || sellsPlanOf(env)) ? LEGAL_CHANGE.text : undefined;
   return { version: LEGAL_VERSION, ...(change ? { change } : {}) };
 }
 

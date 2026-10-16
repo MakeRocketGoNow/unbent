@@ -76,6 +76,15 @@ describe('operatorEmails and isOperator', () => {
   });
 });
 
+/** The five settings that turn billing on (`billingOn`). */
+const PADDLE = {
+  PADDLE_API_KEY: 'pdl_sdbx_x',
+  PADDLE_WEBHOOK_SECRET: 'pdl_ntfset_x',
+  PADDLE_CLIENT_TOKEN: 'test_x',
+  PADDLE_PLAN_PRICE_ID: 'pri_plan',
+  PADDLE_STORAGE_PRICE_ID: 'pri_storage',
+};
+
 describe('legalLinksOf', () => {
   const EXTERNAL = {
     LEGAL_PRIVACY_URL: 'https://example.com/privacy',
@@ -109,6 +118,18 @@ describe('legalLinksOf', () => {
   it('has nothing to link to when the instance publishes neither', () => {
     expect(legalLinksOf(env({}))).toBeUndefined();
   });
+
+  /*
+   * The web app draws the payment terms on this word alone, rather than reading `billing`
+   * and `frontPage` for itself, so the field is the one place the rule is answered. Only
+   * on the built-in documents: an operator's own say what they say.
+   */
+  it('says the built-in documents cover a sale exactly where the instance makes one', () => {
+    expect(legalLinksOf(env(OPERATOR))?.sellsPlan).toBeUndefined();
+    expect(legalLinksOf(env({ ...OPERATOR, FRONT_PAGE: '1' }))?.sellsPlan).toBe(true);
+    expect(legalLinksOf(env({ ...OPERATOR, ...PADDLE }))?.sellsPlan).toBe(true);
+    expect(legalLinksOf(env({ ...OPERATOR, ...EXTERNAL, FRONT_PAGE: '1' }))?.sellsPlan).toBeUndefined();
+  });
 });
 
 /**
@@ -127,15 +148,8 @@ describe('legalVersionOf', () => {
    * sections are not in that instance's terms (MAK-108).
    */
   it('says a billing-only change only where billing is on', () => {
-    const paddle = {
-      PADDLE_API_KEY: 'pdl_sdbx_x',
-      PADDLE_WEBHOOK_SECRET: 'pdl_ntfset_x',
-      PADDLE_CLIENT_TOKEN: 'test_x',
-      PADDLE_PLAN_PRICE_ID: 'pri_plan',
-      PADDLE_STORAGE_PRICE_ID: 'pri_storage',
-    };
     expect(LEGAL_CHANGE?.billingOnly).toBe(true);
-    expect(legalVersionOf(env(paddle), 'built-in').change).toBe(LEGAL_CHANGE?.text);
+    expect(legalVersionOf(env(PADDLE), 'built-in').change).toBe(LEGAL_CHANGE?.text);
     expect(legalVersionOf(env({}), 'built-in')).toEqual({ version: LEGAL_VERSION });
   });
 

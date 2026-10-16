@@ -75,12 +75,14 @@ export function LegalPage({ which }: { which: LegalWhich }) {
     // The documents describe an error-tracking service only where this instance has one, so
     // that a self-hosted policy does not name a third party it never contacts; and the
     // backups, with the ninety days a deletion takes to leave them, only where it keeps any;
-    // and a price, its renewal and the refund policy only where it sells a plan — billing
-    // on, or a front page stating the price. See `LegalOptions.sellsPlan`.
+    // and a price, its renewal and the refund policy only where the server says it sells a
+    // plan — read from the link, like `builtIn` above, rather than worked out again from
+    // `billing` and `frontPage`, so the terms drawn here and the server's sentence about a
+    // change to them answer the same rule. See `LegalOptions.sellsPlan`.
     const docs = legalDocuments(operator, {
       errorTracking: Boolean(config.data?.posthog),
       backups: Boolean(config.data?.backups),
-      sellsPlan: Boolean(config.data?.billing || config.data?.frontPage),
+      sellsPlan: Boolean(legal?.sellsPlan),
     });
     return <LegalDoc doc={docs[which]} />;
   }
