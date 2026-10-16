@@ -3,6 +3,7 @@ import type { Note } from '@unbent/shared';
 import * as actions from './store/actions.js';
 import { indexUploadedFile } from './index-files.js';
 import { resetConnectivity, setReachableForTests } from './connectivity.js';
+import { pageBusy } from './busy.js';
 import { claimFileNotesFor, getFileNotes, isNoteFile, notesFromFiles, resetFileNotesForTests, titleFor, undoFileNotes } from './file-notes.js';
 
 vi.mock('./store/actions.js', async (importOriginal) => ({
@@ -172,6 +173,25 @@ describe('claimFileNotesFor', () => {
     await first;
     expect(await second).toEqual([]);
     expect(actions.createNote).toHaveBeenCalledTimes(1);
+  });
+
+  /* A cold launch reaches the batch before the guard has claimed anyone. */
+  it('lets the first person claimed adopt a batch begun before anyone was, and a sign-out then stops it', async () => {
+    const held: (() => void)[] = [];
+    const hold = () => new Promise<Awaited<ReturnType<typeof actions.uploadFile>>>((r) => held.push(() => r({ filename: 'x', contentType: 'application/pdf', size: 1, path: 'files/x', indexing: 'server' as const })));
+    vi.mocked(actions.uploadFile).mockReturnValueOnce(hold()).mockReturnValueOnce(hold());
+    const batch = notesFromFiles([pdf('a.pdf'), pdf('b.pdf'), pdf('c.pdf')], { notebook: null, tags: [] }, null, 'launch');
+    await vi.waitFor(() => expect(held).toHaveLength(1));
+    claimFileNotesFor('u1');
+    expect(getFileNotes().status).toBe('running');
+    expect(pageBusy()).toBe(true);
+    held[0]!();
+    await vi.waitFor(() => expect(held).toHaveLength(2));
+    claimFileNotesFor(undefined);
+    held[1]!();
+    await batch;
+    expect(actions.createNote).toHaveBeenCalledTimes(2);
+    expect(getFileNotes().status).toBe('idle');
   });
 
   it('keeps a finished report for the same person, and drops it for the next', async () => {

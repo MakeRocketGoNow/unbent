@@ -71,6 +71,8 @@ let state: FileNotesState = initial;
 const listeners = new Set<() => void>();
 /** Whose batch this is; see `claimFileNotesFor`. */
 let owner: string | null = null;
+/** Who adopted the batches begun before anyone was claimed; see `claimFileNotesFor`. */
+let firstOwner: string | null = null;
 
 function set(patch: Partial<FileNotesState>) {
   state = { ...state, ...patch };
@@ -102,6 +104,18 @@ function subscribe(fn: () => void): () => void {
 export function claimFileNotesFor(userId: string | undefined): void {
   const next = userId ?? null;
   if (next === owner) return;
+  /*
+   * The first person claimed adopts whatever began before anyone was: the launch queue's
+   * consumer is set before the first render, so a cold launch from the Dock or a scanner
+   * reaches `notesFromFiles` ahead of the guard. Wiping then would clear a report that
+   * is still running and let a reload land mid-batch. Adopted, the batch is theirs from
+   * here on, and a later sign-out stops it as it stops any other.
+   */
+  if (owner === null && next !== null && firstOwner === null) {
+    firstOwner = next;
+    owner = next;
+    return;
+  }
   if (owner !== null || state.status === 'running') set({ ...initial, run: state.run });
   owner = next;
 }
@@ -209,9 +223,9 @@ export function refusals(files: File[]): string | null {
 }
 
 async function runBatch(files: File[], filing: Filing, place: string | null, source: FileNotesSource, by: string | null, queryClient?: QueryClient): Promise<string[]> {
-  // Still theirs: the account changed hands, or nobody is signed in now. A batch begun
-  // before anyone was claimed — a launch ahead of the guard — is let through.
-  const theirs = () => by === null || owner === by;
+  // Still theirs: not once the account changed hands, or nobody is signed in now. A
+  // batch begun before anyone was claimed belongs to whoever is claimed first.
+  const theirs = () => (by ?? firstOwner) === owner;
   if (!theirs()) return [];
   const refused = refusals(files);
   if (refused) {
@@ -269,6 +283,7 @@ export async function undoFileNotes(queryClient?: QueryClient): Promise<void> {
 export function resetFileNotesForTests(): void {
   state = initial;
   owner = null;
+  firstOwner = null;
   chain = Promise.resolve();
   for (const fn of listeners) fn();
 }
