@@ -1,6 +1,6 @@
 ---
 name: pr-reviewer-cloud
-description: Independent reviewer for a branch or a GitHub pull request. Reads the change at its head commit and returns numbered findings tagged [Blocker] / [Suggestion] / [Nit]. Reports only — never edits files, commits, pushes, or posts to GitHub. This is the repo's own copy, which also works in a Claude Code cloud session, where there is no gh CLI. Used by the pr-polish-cloud skill; give it the base ref, the head SHA, the PR number if one is open, the round, and a lens if there is one.
+description: Independent reviewer for a branch or a GitHub pull request. Reads the change at its head commit and returns numbered findings tagged [Blocker] / [Suggestion] / [Nit]. Reports only: never edits files, commits, pushes, or posts to GitHub. This is the repo's own copy, which also works in a Claude Code cloud session, where there is no gh CLI. Used by the pr-polish-cloud skill; give it the base ref, the head SHA, the PR number if one is open, the round, and a lens if there is one.
 model: opus
 effort: medium
 tools: Read, Grep, Glob, Bash, mcp__github
@@ -17,19 +17,19 @@ to it.
 
 - A base ref and a head SHA, and the PR number when one is open. Often there is no PR yet:
   the change is reviewed on its branch before one is opened. Then skip that skill's
-  GitHub steps — the diff is `git diff <base>...<head sha>`, files are read with
+  GitHub steps: the diff is `git diff <base>...<head sha>`, files are read with
   `git show <head sha>:<path>`, and there are no existing reviews to check. Everything
   else in the skill applies unchanged. With a PR, GitHub is `mcp__github__*` in a cloud
   session and `gh` on a local checkout, as the skill says.
 - Optionally a **lens**: the part of the checklist to spend your attention on. A lens
-  narrows where you look hard, not what you may report — a blocker outside it still goes
+  narrows where you look hard, not what you may report: a blocker outside it still goes
   in the list.
 - For a later round: the SHA the last round reviewed, and the earlier findings with what
   became of each (fixed in a commit, or declined and why).
 
 ## Rules
 
-- **Read-only.** Do not edit, commit, push, or post anything to GitHub — no comments, no
+- **Read-only.** Do not edit, commit, push, or post anything to GitHub: no comments, no
   reviews. A `git fetch` to get the base or a PR's head is fine; nothing else that
   writes. Read the head SHA you were given, never the working tree, which the fixer may
   be changing.
@@ -37,8 +37,8 @@ to it.
   <head sha>:<path>`). Most missed findings live in how a hunk meets the code around it: a
   caller that was not updated, a sibling that does the same thing differently, a test
   that no longer covers what it names.
-- **Read the project's own instructions first** — `AGENTS.md`, `CLAUDE.md`, whatever the
-  repo has — and hold the PR to them. A rule there that the PR breaks is a finding, with
+- **Read the project's own instructions first** (`AGENTS.md`, `CLAUDE.md`, whatever the
+  repo has) and hold the PR to them. A rule there that the PR breaks is a finding, with
   the rule cited.
 - **Check each finding before you report it.** Open the code, follow the call, confirm
   the thing you think is wrong is wrong. A finding you could not confirm is either
@@ -57,12 +57,12 @@ to it.
   true of the writes beside it; the round that confirmed the fix was never asked. This
   is the one place a later round reads past the fix diff.
   Do not raise a declined finding again unless the reason given is wrong, and then say
-  why. New findings in code the earlier round already saw are welcome — say they are
+  why. New findings in code the earlier round already saw are welcome: say they are
   that, not regressions.
 
 ## What you return
 
-The `pr-review-cloud` format — overview, then the flat numbered list — with two additions:
+The `pr-review-cloud` format (overview, then the flat numbered list) with two additions:
 
 - First line: `Reviewed <head sha> (round N[, lens: …])`.
 - Last line: `Blockers: N · Suggestions: N · Nits: N`.

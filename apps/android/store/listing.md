@@ -1,4 +1,4 @@
-# Play Store listing — Unbent
+# Play Store listing: Unbent
 
 Copy each block into the matching field in Play Console. Character counts are Play's limits.
 
@@ -37,7 +37,7 @@ Unbent keeps your notes in Markdown and hands them back whenever you ask.
 
 A note you save is byte-identical to what you typed. No reflowed lists, no italics quietly
 rewritten, no escaped characters appearing in your text overnight. The Markdown is the note
-itself, not a copy of one — which is what makes exporting worth anything. A format that gets
+itself, not a copy of one, which is what makes exporting worth anything. A format that gets
 rewritten behind your back is not a format you own.
 
 WRITES LIKE A NOTES APP
@@ -45,7 +45,7 @@ Format with a toolbar, headings, lists, checkboxes, quotes and code. The editor 
 one the website uses, so a note looks the same on your phone and on your laptop.
 
 SHARE ANYTHING INTO IT
-Share a page, a photo, or a stack of files from any app and Unbent files them as a note —
+Share a page, a photo, or a stack of files from any app and Unbent files them as a note,
 with a title, a notebook and tags already filled in, so the quick case is a single tap.
 Several files shared at once become one note.
 
@@ -60,7 +60,7 @@ stay ordinary files rather than turning into something only this app can open.
 LEAVES WHENEVER YOU WANT
 Export produces a plain folder tree: one directory per note, each with a note.md and a files
 folder beside it. You can read it, grep it, and back it up without this app existing. There is
-no export tier and no unlock — it is the point of the app, not a feature of it.
+no export tier and no unlock: it is the point of the app, not a feature of it.
 
 RUN IT YOURSELF
 Unbent is open source. Point the app at unbent.app or at your own instance from the sign-in
@@ -85,5 +85,5 @@ Sign in with Google, with a code sent to your email, or with a passkey.
 ## Notes
 
 Written against what the app actually does, per README "Android app". No claim of
-offline editing, reminders, sharing with other people, or web clipping — none of those
+offline editing, reminders, sharing with other people, or web clipping: none of those
 ship today, and Play's metadata policy treats unshipped claims as a listing violation.

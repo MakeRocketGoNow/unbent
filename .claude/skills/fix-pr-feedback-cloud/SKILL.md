@@ -15,7 +15,7 @@ Invoke with `/fix-pr-feedback-cloud`. If `$ARGUMENTS` is a PR number, use that P
 find the one for the current branch. Extra arguments are guidance (e.g. only certain
 threads), not a license to skip unanswered ones.
 
-**There is no `gh` in a cloud session** — GitHub goes through `mcp__github__*`, and `git` is
+**There is no `gh` in a cloud session**: GitHub goes through `mcp__github__*`, and `git` is
 for local state only. Don't amend review-fix commits, force-push, rebase, or touch git
 config. Don't pass `--no-verify` or `--no-gpg-sign`. Pushing the fixes (step 6) happens
 *before* any reply, so the reply can cite a commit the reviewer can see.
@@ -38,7 +38,7 @@ PR number: `$ARGUMENTS` if given, else
    mcp__github__pull_request_read({ method: "get_review_comments", owner, repo, pullNumber })
    ```
 
-   This returns threads, not loose comments — each carries its GraphQL node ID (`PRRT_…`),
+   This returns threads, not loose comments: each carries its GraphQL node ID (`PRRT_…`),
    its resolved state, and the comments inside it with `path` and line coordinates. That is
    everything the fix *and* the resolve need, so there is no separate GraphQL query to run
    the way there is with `gh`.
@@ -50,7 +50,7 @@ PR number: `$ARGUMENTS` if given, else
 
    Skip threads already marked resolved.
 
-2. **Fetch the top-level review summaries too** — bot findings often live in the summary
+2. **Fetch the top-level review summaries too**: bot findings often live in the summary
    body rather than on a line:
 
    ```
@@ -59,34 +59,34 @@ PR number: `$ARGUMENTS` if given, else
 
 3. **Read the cited file at the cited lines and verify the problem still exists.** The
    branch may have moved since the review was posted. A finding's line coordinates can be
-   stale or null on an outdated comment — find the code, don't trust the number.
+   stale or null on an outdated comment. Find the code, don't trust the number.
 
 4. **If the issue is real, fix it. If it is stale, wrong, or the wrong trade-off, do not
-   silently skip it** — push back on the thread with a short reason. If the comment is
+   silently skip it**. Push back on the thread with a short reason. If the comment is
    ambiguous, ask a follow-up question on the thread rather than guessing.
 
    Match the pattern the rest of the codebase uses; don't invent a new one to satisfy a
    comment. If a finding is about a missing guard, grep for that variable in sibling files
    to confirm the expected shape first.
 
-5. **Commit each fix separately** — one commit per reviewed finding, so it is traceable and
+5. **Commit each fix separately**: one commit per reviewed finding, so it is traceable and
    individually revertable. Subjects follow AGENTS.md: a plain sentence saying what changed
    for the user, never `fix: …`. Use a heredoc for the body.
 
    Stage with `git add -u <path>` when a filename contains characters the shell expands
    (`$` in particular); avoid a bare `git add <path>` in that case.
 
-   If you bundle several fixes by accident, split them — `git reset HEAD~1`, then recommit
+   If you bundle several fixes by accident, split them: `git reset HEAD~1`, then recommit
    one at a time.
 
 6. **Re-run the checks over the whole batch, then push.** A pile of review patches routinely
    breaks formatting, types, or an adjacent test that no single change touched:
 
    Run what AGENTS.md's "Verifying" section names, for every part of the repo the fixes
-   touched — not a list copied here, which would go stale as the repo grows. Apps outside
+   touched, not a list copied here, which would go stale as the repo grows. Apps outside
    the pnpm workspace (`apps/android`, and any other native app) are skipped silently by
    `pnpm -r` and have checks of their own; AGENTS.md says how. A check this session cannot
-   run — a toolchain the cloud machine does not have — is not a pass: say in the reply
+   run (a toolchain the cloud machine does not have) is not a pass: say in the reply
    which checks ran and which did not.
 
    Fix anything red, commit the breakage as its own commit (never amend a review-fix
@@ -98,7 +98,7 @@ PR number: `$ARGUMENTS` if given, else
 
    Do not reply or resolve until the push succeeds.
 
-7. **Reply on every thread.** Each one gets a GitHub reply — what changed and which commit
+7. **Reply on every thread.** Each one gets a GitHub reply: what changed and which commit
    addresses it, a clarifying question, or a push back with a short reason.
 
    ```
@@ -117,7 +117,7 @@ PR number: `$ARGUMENTS` if given, else
    PR comment instead:
    `mcp__github__add_issue_comment({ owner, repo, issue_number: pullNumber, body })`.
 
-8. **Resolve the threads you fixed** — including ones already addressed by an earlier
+8. **Resolve the threads you fixed**, including ones already addressed by an earlier
    commit:
 
    ```
@@ -129,10 +129,10 @@ PR number: `$ARGUMENTS` if given, else
 
 ## Notes
 
-- A finding from a review bot is a bug report until you have checked it — verify, then fix
+- A finding from a review bot is a bug report until you have checked it: verify, then fix
   or rebut. "It's a bot" is not a reason to skip one, and neither is "design-level".
 - Cross-check a finding against the rest of the codebase before accepting it; grep for the
   same pattern elsewhere to tell a real inconsistency from noise.
 - Never skip, disable, or quarantine a test to make a check pass.
-- If the branch is not yours — you did not open the PR and its author did not ask you to
-  drive it — larger asks get a proposal on the thread, not a push.
+- If the branch is not yours (you did not open the PR and its author did not ask you to
+  drive it), larger asks get a proposal on the thread, not a push.

@@ -6,13 +6,13 @@ Two suites, split by what they need to run.
 bindings. They are the `unit` project and run anywhere, including CI.
 
 `test/**/*.test.ts` run against a live Worker rather than a mock, because the thing under
-test is the real path from a route to a user's note store and back — a mock would happily
+test is the real path from a route to a user's note store and back: a mock would happily
 return whatever it was told to. They are the `live` project, and they need a dev server
 already up. (The stores themselves have a third suite, in `apps/store-tests`, which runs
 inside workerd against real Durable Object SQLite and needs no server.)
 
 ```bash
-# just the unit tests — no server needed, and what CI runs
+# just the unit tests: no server needed, and what CI runs
 pnpm --filter @unbent/api test:unit
 
 # both suites
@@ -23,15 +23,15 @@ pnpm --filter @unbent/api dev
 pnpm --filter @unbent/api test
 ```
 
-`test` runs both projects and then purges the throwaway data the live suite creates —
-through the dev server, which wipes each actor's note store before deleting the account —
+`test` runs both projects and then purges the throwaway data the live suite creates
+(through the dev server, which wipes each actor's note store before deleting the account)
 which is why it is the one to reach for locally. `test:unit` skips that, having created
 none.
 
 The suite signs up its own actors through the email/password provider, which `pnpm dev`
 turns on by passing `ALLOW_TEST_CREDENTIALS=1` to the Worker. A deployed environment
 cannot set it by accident, since it is a flag on the dev command rather than a line in a
-file a deploy might read — though
+file a deploy might read, though
 password sign-in can still appear there on its own, since an instance offers it when nothing
 else could create an account. unbent.app has providers, so it does not.
 

@@ -1,7 +1,7 @@
 ---
 name: submit-pr-review-cloud
-description: Submit already-identified code review findings as a formal, batched GitHub PR review — one pending review, line-specific inline comments, then a single summary submission. Use whenever a review pass has surfaced numbered findings in the conversation and the user wants them filed — "submit issues 1, 3, 5", "submit all of these findings", "post this as a review", "file the review", "send it to GitHub". Also use for leaving inline PR comments with GitHub suggested-change blocks. This is the repo's own copy, written for a Claude Code cloud session, where there is no gh CLI. Do not use for reviewing code itself — only for submitting findings that already exist.
-compatibility: Needs GitHub access through the mcp__github__* tools (pull_request_review_write, add_comment_to_pending_review). A checkout of the branch helps map findings to line numbers but is not required — the PR diff can be read over MCP.
+description: Submit already-identified code review findings as a formal, batched GitHub PR review: one pending review, line-specific inline comments, then a single summary submission. Use whenever a review pass has surfaced numbered findings in the conversation and the user wants them filed: "submit issues 1, 3, 5", "submit all of these findings", "post this as a review", "file the review", "send it to GitHub". Also use for leaving inline PR comments with GitHub suggested-change blocks. This is the repo's own copy, written for a Claude Code cloud session, where there is no gh CLI. Do not use for reviewing code itself, only for submitting findings that already exist.
+compatibility: Needs GitHub access through the mcp__github__* tools (pull_request_review_write, add_comment_to_pending_review). A checkout of the branch helps map findings to line numbers but is not required: the PR diff can be read over MCP.
 allowed-tools: Read, Glob, Grep, Bash(git:*), mcp__github
 ---
 
@@ -11,7 +11,7 @@ Turn a set of already-identified findings into a formal GitHub review: one pendi
 batched line-specific inline comments, and a single top-level summary. The author gets one
 notification instead of a flood.
 
-**There is no `gh` in a cloud session** — every step here is an `mcp__github__*` call.
+**There is no `gh` in a cloud session**: every step here is an `mcp__github__*` call.
 
 ## Prerequisites
 
@@ -23,22 +23,22 @@ notification instead of a flood.
 
 The user may specify:
 
-- **Which findings** — "submit issues 1, 3, 5", "all", or nothing. Given numbers, submit
+- **Which findings**: "submit issues 1, 3, 5", "all", or nothing. Given numbers, submit
   only those. Given "all", or nothing, submit every one, nits included.
-- **The verdict** — `approve`, `comment`, or `request_changes`. If unspecified, infer from
+- **The verdict**: `approve`, `comment`, or `request_changes`. If unspecified, infer from
   severity: any **[Blocker]** → `REQUEST_CHANGES`; only suggestions and nits → `COMMENT`.
 
 **Never infer `APPROVE`.** Approving is a judgment the user makes, not one to derive from an
-empty findings list — if nothing is wrong, submit `COMMENT` and say the review found nothing
+empty findings list: if nothing is wrong, submit `COMMENT` and say the review found nothing
 blocking, and let them approve it themselves.
 
 **If the authenticated user wrote the PR, the verdict is locked to `COMMENT`**, whatever the
 severity and whatever the user asks. GitHub rejects `APPROVE` and `REQUEST_CHANGES` from a
 PR's own author, so there is no alternative to fall back to. Check authorship in step 1 and
-skip verdict inference entirely when they match — don't ask which verdict they want, and
+skip verdict inference entirely when they match: don't ask which verdict they want, and
 don't try one and retry on failure.
 
-## Step 1 — Prepare
+## Step 1: Prepare
 
 ```bash
 git branch --show-current
@@ -56,29 +56,29 @@ the rule above.
 
 Then map each selected finding to an exact path and line. `mcp__github__pull_request_read`
 with `method: "get_diff"` gives the diff without needing the branch checked out; locally
-`git diff <base>...HEAD` does the same. **Line numbers must be in the NEW file — the right
+`git diff <base>...HEAD` does the same. **Line numbers must be in the NEW file: the right
 side of the diff.** A comment anchored to a line that isn't in the diff is rejected.
 
-## Step 2 — Draft the summary
+## Step 2: Draft the summary
 
 Draft a summary in a human, collegial tone, one to five sentences:
 
 - Open with a `## Agent Review 🤖️` header, so it is clear an agent wrote it rather than the
   person submitting it.
-- **Don't summarize what the PR changes** — the description already does.
+- **Don't summarize what the PR changes**: the description already does.
 - State the risk level (low / medium / high).
-- Explain the key concern(s) and **why** they matter — user impact, correctness,
-  maintainability — rather than restating the what.
+- Explain the key concern(s) and **why** they matter (user impact, correctness,
+  maintainability) rather than restating the what.
 - Say how many inline comments were posted.
 - **Don't re-describe each finding**; the inline comments do that.
 - Write like a teammate, not a linter. Acknowledge the effort, be direct about what has to
   change, and give the reasoning.
 
-**Don't stop to confirm** — asking for the findings to be filed is the go-ahead, so go
+**Don't stop to confirm**: asking for the findings to be filed is the go-ahead, so go
 straight to step 3. Pause first only when something is genuinely ambiguous, such as a
 finding that can't be mapped to a line in the diff.
 
-## Step 3 — Submit
+## Step 3: Submit
 
 1. **Create a pending review.**
 
@@ -86,7 +86,7 @@ finding that can't be mapped to a line in the diff.
    mcp__github__pull_request_review_write({ method: "create", owner, repo, pullNumber })
    ```
 
-   Omit `event` — that is what keeps it pending so the comments batch. If a pending review
+   Omit `event`: that is what keeps it pending so the comments batch. If a pending review
    already exists for you, `create` fails; `method: "delete_pending"` first, then recreate.
 
 2. **Add each inline comment.**
@@ -145,12 +145,12 @@ finding that can't be mapped to a line in the diff.
 
 ## Notes
 
-- Everything batches into one submission — one notification for the author, not many.
+- Everything batches into one submission: one notification for the author, not many.
 - The `body` on `submit_pending` is the top-level summary. It should not repeat the inline
   comments.
 - AGENTS.md's "real notes stay out of the repo" applies to review comments too. Describe the
   case; don't quote a real note, filename, or notebook name.
 - Report the review URL back as a markdown link so it is clickable, with the findings that
-  were posted (number and title) and the verdict — saying plainly if it was locked to
+  were posted (number and title) and the verdict, saying plainly if it was locked to
   `COMMENT` because the user authored the PR. Nothing was shown before posting, so this is
   where the user sees it.

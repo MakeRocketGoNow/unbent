@@ -5,7 +5,7 @@ Runtime-agnostic: no DOM, no node built-ins, so the same code runs in a browser 
 and in tests.
 
 The name predates the second format. `importEnex` reads Evernote's files; `importArchive`
-reads Unbent's own export — the library zip, a single note's zip, or its bare `.md` — through
+reads Unbent's own export (the library zip, a single note's zip, or its bare `.md`) through
 `@unbent/shared`'s frontmatter codec. Everything past the reader is shared (`import-run.ts`):
 the request per note, the upload per file, PDF text extraction, and the breaker that ends a
 run when the server has gone away.
@@ -23,7 +23,7 @@ across requests without reassembling XML parser state server-side.
 ## Attachments
 
 ENEX resources carry no hash. `<en-media hash="…">` refers to the **MD5 of the decoded
-bytes**, so resolution is a lookup keyed on a computed digest — never positional. In the
+bytes**, so resolution is a lookup keyed on a computed digest, never positional. In the
 real export the first resource in a note matched the *second* `en-media` reference.
 
 MD5 is implemented locally because WebCrypto omits it. It matches Evernote's identifiers
@@ -32,7 +32,7 @@ and is never used for security. Verified against the RFC 1321 test vectors.
 ## Void elements
 
 `en-media` and `en-todo` are void in ENML, but an HTML parser treats unknown tags as
-containers and nests everything that follows inside them — silently swallowing sibling
+containers and nests everything that follows inside them, silently swallowing sibling
 attachments and list item text. They are rewritten to `img`/`input` before parsing.
 
 ## Tests

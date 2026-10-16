@@ -2,7 +2,7 @@
 
 Most dependencies here take whatever is current. The ones below don't, and each says why,
 what would release it, and what to run when it moves. Read this before an update round,
-and add to it whenever a version is chosen for a reason the manifest cannot say — a
+and add to it whenever a version is chosen for a reason the manifest cannot say: a
 `package.json` has no comments, and a pin with no reason written down gets "fixed" by the
 next person or bot to see it.
 
@@ -19,9 +19,9 @@ pnpm outdated -r
 ```
 
 Take everything that isn't held below, in one commit for the plain minors and patches and
-one per family or major that needs reading. Then run what CI runs — `pnpm typecheck`,
+one per family or major that needs reading. Then run what CI runs: `pnpm typecheck`,
 `pnpm --filter @unbent/api test:unit`, `pnpm --filter @unbent/seed test`, `pnpm build`,
-`pnpm --filter @unbent/web test`, `pnpm --filter @unbent/store-tests test` — and
+`pnpm --filter @unbent/web test`, `pnpm --filter @unbent/store-tests test`, and
 `pnpm gate:offline` for anything the local library, the outbox or the service worker sits
 on. A major gets its changelog read, not just its tests run.
 
@@ -41,12 +41,12 @@ it in the graph. Pick the versions that agree: 0.11.1 is react-db 0.5.1, persist
 **Not 0.12.** 0.12.0 removes `begin({ immediate })` from the sync API and queues sync
 writes behind any mutation in flight. `feedControls` begins every transaction immediate
 because, without it, a page of the feed waited on the outbox entry that was itself waiting
-for that page — a second queued write stuck until a reload (2026-10-08). Moving to 0.12
+for that page: a second queued write stuck until a reload (2026-10-08). Moving to 0.12
 means redesigning that, not bumping a version.
 
 **0.11.2 and 0.11.3 are not free either.** They are patches by number but rewrite how
-rows and updates are held internally — rows reused rather than copied, local-only
-collections skipping the optimistic stage — which is the layer the private fields above
+rows and updates are held internally (rows reused rather than copied, local-only
+collections skipping the optimistic stage) which is the layer the private fields above
 belong to. Take them in a change of their own, with `pnpm gate:offline`.
 
 **`@journeyapps/wa-sqlite` ^1.** The persistence adapter peers on `^1.4.1` (as of 0.2.32,
