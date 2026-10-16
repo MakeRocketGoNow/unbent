@@ -17,6 +17,8 @@ import {
   fieldOptionsSchema,
   fieldScaleSchema,
   fieldTypeSchema,
+  isEmptyOptionEdit,
+  optionEditSchema,
   notebookNameSchema,
   notebookEmojiSchema,
   notebookPurposeSchema,
@@ -983,21 +985,36 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
     },
   );
 
+  /**
+   * Options can be sent whole, or edited by what changes. The whole list is the editor's
+   * shape and stays for a model that means to set one; the edits are what a model usually
+   * wants, and they apply to the list the store holds, so an option the model did not
+   * name cannot go missing on the way (MAK-227). A rename goes through the store's
+   * `editFieldOptions`, which moves the notes holding the old option with it — through the
+   * whole list, a rename left them on a value the field no longer offered.
+   */
   server.registerTool(
     'update_notebook_field',
     {
-      title: 'Rename or retype a custom field',
+      title: 'Rename or retype a custom field, or edit its options',
       description:
         'Change a field\'s name, type, or the options of a select or multiselect. Omit any ' +
-        'of them to leave it unchanged. Options replace the whole list rather than adding ' +
-        'to it: to add one, send every current option (list_notebooks has them) with the ' +
-        'new one, in the order they should show. An option left out leaves the list, but ' +
-        'notes that hold it keep their value; only new choices of it are refused until it ' +
-        'is sent again. Changing the type converts the values notes already hold; any ' +
-        'value that cannot be read as the new type is cleared, and the result says how ' +
-        'many were. Changing to select or multiselect makes the existing values the ' +
-        'options. A currency on a number is display only: setting or clearing one changes ' +
-        'no value.',
+        'of them to leave it unchanged. To change options, prefer the edits, which apply to ' +
+        'the current list so it need not be read or sent: renameOptions renames an option ' +
+        'and moves every note holding it to the new name (renaming onto an option that ' +
+        'already exists merges the two); removeOptions takes options off the list, and ' +
+        'notes that hold one keep their value; addOptions adds, at the end unless position ' +
+        'says otherwise; sort "alpha" orders the list alphabetically, ignoring case; ' +
+        'pinFirst and pinLast keep named options at either end. They combine in one call, ' +
+        'applied in that order, and the result says how many notes each rename moved and ' +
+        'how many still hold each removed option. Options are named exactly, case included, ' +
+        'and one the field lacks is refused. options instead replaces the whole list, and ' +
+        'cannot be combined with the edits; an option left out of it leaves the list. ' +
+        'Changing the type converts the values notes already hold; any value that cannot ' +
+        'be read as the new type is cleared, and the result says how many were. Changing ' +
+        'to select or multiselect makes the existing values the options, so it cannot be ' +
+        'combined with options or the edits. A currency on a number is display only: ' +
+        'setting or clearing one changes no value.',
       inputSchema: z.object({
         notebookId: z.string().min(1),
         fieldId: z.string().uuid(),
@@ -1006,19 +1023,58 @@ export function registerWriteTools(server: Pick<McpServer, 'registerTool'>, note
         options: fieldOptionsSchema
           .optional()
           .describe('For select and multiselect: the complete list, which replaces the current one.'),
+        renameOptions: optionEditSchema.shape.rename.describe(
+          'Options to rename, each { from, to }. Notes holding `from` are moved to `to`.',
+        ),
+        removeOptions: optionEditSchema.shape.remove.describe(
+          'Options to take off the list. Notes that hold one keep it as their value.',
+        ),
+        addOptions: optionEditSchema.shape.add.describe('Options to add. One already on the list is skipped.'),
+        position: optionEditSchema.shape.position.describe(
+          'Where added options go: "end" (the default), "start", "alpha" (each in its ' +
+            'alphabetical place), or { after: "<option>" }.',
+        ),
+        sort: optionEditSchema.shape.sort.describe('"alpha" orders the whole list alphabetically, ignoring case.'),
+        pinFirst: optionEditSchema.shape.pinFirst.describe('Options to put first, in this order, after any sort.'),
+        pinLast: optionEditSchema.shape.pinLast.describe(
+          'Options to put last, in this order, after any sort; ["Other"] keeps a catch-all at the end.',
+        ),
         currency: currencySchema
           .nullable()
           .optional()
           .describe('For number: an ISO 4217 code such as USD, or null to show a plain number.'),
       }),
-      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     },
-    async ({ notebookId, fieldId, name, type, options, currency }) => {
-      const result = await notes.updateField(notebookId, fieldId, { name, type, options, currency });
+    async ({ notebookId, fieldId, name, type, options, currency, ...edits }) => {
+      const edit = {
+        rename: edits.renameOptions,
+        remove: edits.removeOptions,
+        add: edits.addOptions,
+        position: edits.position,
+        sort: edits.sort,
+        pinFirst: edits.pinFirst,
+        pinLast: edits.pinLast,
+      };
+      if (isEmptyOptionEdit(edit)) {
+        const result = await notes.updateField(notebookId, fieldId, { name, type, options, currency });
+        if (result === 'missing') return notFound('field', fieldId);
+        if (result === 'conflict') {
+          return toolError(`This notebook already has a field called "${name}".`);
+        }
+        return jsonResult(result);
+      }
+
+      // Refused rather than ordered: either combination has two lists claiming to be the
+      // field's options, and picking one would quietly drop what the other asked for.
+      if (options) return toolError('Send options or the option edits, not both.');
+      if (type) return toolError('Change the type in one call and edit the options in another.');
+      const result = await notes.editFieldOptions(notebookId, fieldId, edit, { name, currency });
       if (result === 'missing') return notFound('field', fieldId);
       if (result === 'conflict') {
         return toolError(`This notebook already has a field called "${name}".`);
       }
+      if ('refused' in result) return toolError(result.refused);
       return jsonResult(result);
     },
   );
