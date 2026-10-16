@@ -57,14 +57,13 @@ export interface FileNotesState {
   ids: string[];
   /** Where they were filed, in a word, for the report: "Receipts", or null for nowhere. */
   place: string | null;
+  /** What went wrong, as the sentence the report shows: the batch cut short, or an Undo refused. */
   error: string | null;
   /** Counts batches, so a snackbar dismissed for one does not hide the next. */
   run: number;
-  /** Whether Undo has taken this batch back, so the snackbar says so instead of offering it again. */
-  undone: boolean;
 }
 
-const initial: FileNotesState = { status: 'idle', source: null, filing: { notebook: null, tags: [] }, total: 0, done: 0, ids: [], place: null, error: null, run: 0, undone: false };
+const initial: FileNotesState = { status: 'idle', source: null, filing: { notebook: null, tags: [] }, total: 0, done: 0, ids: [], place: null, error: null, run: 0 };
 
 let state: FileNotesState = initial;
 const listeners = new Set<() => void>();
@@ -181,7 +180,7 @@ async function runBatch(files: File[], filing: Filing, place: string | null, sou
   // before anyone was claimed — a launch ahead of the guard — is let through.
   const theirs = () => by === null || owner === by;
   if (!theirs()) return [];
-  set({ status: 'running', source, filing, total: files.length, done: 0, ids: [], place, error: null, run: state.run + 1, undone: false });
+  set({ status: 'running', source, filing, total: files.length, done: 0, ids: [], place, error: null, run: state.run + 1 });
   const ids: string[] = [];
   try {
     for (const file of files) {
@@ -192,7 +191,8 @@ async function runBatch(files: File[], filing: Filing, place: string | null, sou
     set({ status: 'done' });
   } catch (err) {
     if (!theirs()) return ids;
-    set({ status: 'error', error: (err as Error).message });
+    const made = ids.length === 0 ? 'No notes added' : `${ids.length} of ${files.length} added`;
+    set({ status: 'error', error: `${made}; the rest failed: ${(err as Error).message}` });
   } finally {
     // A device with no local copy reads the lists from the server, so they are asked
     // again; with one, the collections already re-ran them.
@@ -204,11 +204,22 @@ async function runBatch(files: File[], filing: Filing, place: string | null, sou
   return ids;
 }
 
-/** Takes the batch back: every note it made goes to the trash, where it can be restored. */
+/**
+ * Takes the batch back: every note it made goes to the trash, where it can be restored,
+ * and the report is over. A trash the server refused — a device with no local copy, a
+ * 4xx — is said in the report's place rather than lost, since the card that offered Undo
+ * has already gone with the press and the notes are still there.
+ */
 export async function undoFileNotes(queryClient?: QueryClient): Promise<void> {
-  if (state.ids.length === 0 || state.undone) return;
-  await actions.trashNotes(state.ids);
-  set({ undone: true });
+  const { ids } = state;
+  if (ids.length === 0) return;
+  try {
+    await actions.trashNotes(ids);
+  } catch (err) {
+    set({ status: 'error', error: `Could not undo: ${(err as Error).message}`, run: state.run + 1 });
+    return;
+  }
+  set({ ...initial, run: state.run });
   if (queryClient) {
     void queryClient.invalidateQueries({ queryKey: ['notes'] });
     void queryClient.invalidateQueries({ queryKey: ['trash'] });

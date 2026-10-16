@@ -19,6 +19,7 @@ vi.mock('../store/actions.js', async (importOriginal) => ({
   createNote: vi.fn(),
   uploadFile: vi.fn(),
   saveNote: vi.fn(),
+  trashNotes: vi.fn(),
 }));
 vi.mock('../index-files.js', () => ({ indexUploadedFile: vi.fn() }));
 vi.mock('../use-plan.js', () => ({ usePlan: () => ({ inactive: false }) }));
@@ -93,6 +94,17 @@ describe('the Import page with PDFs and images', () => {
     expect(show.getAttribute('href')).toBe('/notes?notebook=Receipts');
     fireEvent.click(show);
     await waitFor(() => expect(router.state.location.href).toBe('/notes?notebook=Receipts'));
+  });
+
+  it('offers Undo beside the result, which trashes the notes', async () => {
+    vi.mocked(actions.trashNotes).mockResolvedValue(1);
+    const { picker } = await mount();
+    fireEvent.change(picker, { target: { files: [pdf('scan.pdf')] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    await screen.findByText('1 note added.');
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(actions.trashNotes).toHaveBeenCalledWith(['n1']));
+    await waitFor(() => expect(screen.queryByText('1 note added.')).toBeNull());
   });
 
   it('files them nowhere when no notebook is named', async () => {

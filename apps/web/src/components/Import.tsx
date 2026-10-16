@@ -17,7 +17,7 @@ import { importPercent } from './import-progress.js';
 import { formatBytes } from '../format-bytes.js';
 import { ImportSkips } from './ImportSkips.js';
 import { usePlan } from '../use-plan.js';
-import { isNoteFile, notesFromFiles, resetFileNotes, useFileNotes } from '../file-notes.js';
+import { isNoteFile, notesFromFiles, resetFileNotes, undoFileNotes, useFileNotes } from '../file-notes.js';
 
 /** `1 note`, `3,325 notes`. */
 function count(n: number, noun: string): string {
@@ -168,10 +168,7 @@ export function Import() {
               {count(fileNotes.ids.length, 'note')} added{fileNotes.place ? ` to ${fileNotes.place}` : ''}.
             </p>
           ) : (
-            <p className="bad small">
-              {fileNotes.done === 0 ? 'No notes added' : `${count(fileNotes.done, 'note')} of ${fileNotes.total} added`}; the rest failed:{' '}
-              {fileNotes.error}
-            </p>
+            <p className="bad small">{fileNotes.error}</p>
           )}
           <span className="import-batch-actions">
             {/* A link wearing the button's shape, since it navigates: it middle-clicks and
@@ -184,6 +181,13 @@ export function Import() {
             <Button variant="secondary" onClick={resetFileNotes}>
               Add more files
             </Button>
+            {/* The same Undo the card offers elsewhere: twelve scans filed in the wrong
+                notebook from here had no way back but finding them one by one. */}
+            {fileNotes.ids.length > 0 && (
+              <Button variant="quiet" tone="danger" onClick={() => void undoFileNotes(queryClient)}>
+                Undo
+              </Button>
+            )}
           </span>
         </div>
       )}

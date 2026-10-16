@@ -50,14 +50,8 @@ export function FileNotesSnackbar() {
         />
       );
     case 'error':
-      return (
-        <Snackbar
-          message={`${state.done === 0 ? 'No notes added' : `${notes(state.done)} of ${state.total} added`}; the rest failed: ${state.error}`}
-          tone="error"
-          action={state.done > 0 ? undo : undefined}
-          onDismiss={onDismiss}
-        />
-      );
+      // The sentence is the module's: a batch cut short, or an Undo the server refused.
+      return <Snackbar message={state.error ?? 'Something went wrong.'} tone="error" action={state.ids.length > 0 ? undo : undefined} onDismiss={onDismiss} />;
   }
 }
 

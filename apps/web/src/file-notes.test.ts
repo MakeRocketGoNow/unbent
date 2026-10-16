@@ -84,7 +84,7 @@ describe('notesFromFiles', () => {
     failOn = 'b.pdf';
     const ids = await notesFromFiles([pdf('a.pdf'), pdf('b.pdf'), pdf('c.pdf')], { notebook: null, tags: [] }, null, 'list');
     expect(ids).toEqual(['n1']);
-    expect(getFileNotes()).toMatchObject({ status: 'error', done: 1, total: 3, ids: ['n1'], error: 'Attachment exceeds 100MB limit' });
+    expect(getFileNotes()).toMatchObject({ status: 'error', done: 1, total: 3, ids: ['n1'], error: '1 of 3 added; the rest failed: Attachment exceeds 100MB limit' });
     expect(actions.createNote).toHaveBeenCalledTimes(2);
     // The note whose file never arrived does not stay, linking to nothing.
     expect(actions.trashNote).toHaveBeenCalledWith('n2');
@@ -92,7 +92,7 @@ describe('notesFromFiles', () => {
 
   it('refuses a file the upload would refuse before making a note of it', async () => {
     await notesFromFiles([new File(['x'], '.hidden.pdf', { type: 'application/pdf' })], { notebook: null, tags: [] }, null, 'list');
-    expect(getFileNotes()).toMatchObject({ status: 'error', error: 'Filename may not start with a dot' });
+    expect(getFileNotes()).toMatchObject({ status: 'error', error: 'No notes added; the rest failed: Filename may not start with a dot' });
     expect(actions.createNote).not.toHaveBeenCalled();
   });
 
@@ -159,13 +159,20 @@ describe('claimFileNotesFor', () => {
 });
 
 describe('undoFileNotes', () => {
-  it('trashes the batch, once', async () => {
+  it('trashes the batch, once, and ends its report', async () => {
     await notesFromFiles([pdf('a.pdf'), pdf('b.pdf')], { notebook: null, tags: [] }, null, 'list');
     await undoFileNotes();
     await undoFileNotes();
     expect(actions.trashNotes).toHaveBeenCalledTimes(1);
     expect(actions.trashNotes).toHaveBeenCalledWith(['n1', 'n2']);
-    expect(getFileNotes().undone).toBe(true);
+    expect(getFileNotes()).toMatchObject({ status: 'idle', ids: [] });
+  });
+
+  it('says so, and keeps the notes, when the trash is refused', async () => {
+    await notesFromFiles([pdf('a.pdf')], { notebook: null, tags: [] }, null, 'list');
+    vi.mocked(actions.trashNotes).mockRejectedValueOnce(new Error('Not found'));
+    await undoFileNotes();
+    expect(getFileNotes()).toMatchObject({ status: 'error', ids: ['n1'], error: 'Could not undo: Not found' });
   });
 });
 

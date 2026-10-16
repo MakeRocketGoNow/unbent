@@ -207,7 +207,7 @@ describe('files dropped on the note list', () => {
     expect(screen.getByRole('status').textContent).toContain('1 note added.');
   });
 
-  it('Undo trashes the batch and says so', async () => {
+  it('Undo trashes the batch', async () => {
     lib = installTestLibrary({ notes: [] });
     mount('/notes');
     await screen.findByText('nothing open');
