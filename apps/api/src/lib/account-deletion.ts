@@ -1,7 +1,7 @@
 import type { Env } from '../types.js';
 import { deleteUserBlobs } from './blobs.js';
 import { tombstoneDirectoryRow } from './directory.js';
-import { PaddleError, cancelSubscriptionNow, getSubscription, paddleOf, type PaddleEnv } from './paddle.js';
+import { ensureSubscriptionCanceled, paddleOf, type PaddleEnv } from './paddle.js';
 import { planRow, updatePlan } from './plan.js';
 import { storeFor } from './store-client.js';
 
@@ -73,10 +73,10 @@ export async function clearAccount(env: DeletionEnv, userId: string): Promise<vo
  * account that never subscribed, or whose subscription is already canceled.
  *
  * The row is marked canceled as soon as Paddle agrees, so a deletion that then fails at
- * the files or the store is retried without asking Paddle to cancel again. And a refusal
- * is read once more before it stops anything: a cancel Paddle refuses because the
- * subscription is already canceled — the webhook for the first try's cancel not yet
- * landed — is not a reason to keep the account.
+ * the files or the store is retried without asking Paddle to cancel again. And a cancel
+ * Paddle refuses because the subscription is already canceled — the webhook for the
+ * first try's cancel not yet landed — is not a reason to keep the account, which is
+ * what `ensureSubscriptionCanceled` reads a refusal for before passing it on.
  */
 async function cancelSubscription(env: DeletionEnv, userId: string): Promise<void> {
   const paddle = paddleOf(env);
@@ -84,13 +84,10 @@ async function cancelSubscription(env: DeletionEnv, userId: string): Promise<voi
   const row = await planRow(env.DB, userId);
   if (!row?.paddleSubscriptionId || row.paddleStatus === 'canceled') return;
   try {
-    await cancelSubscriptionNow(paddle, row.paddleSubscriptionId);
+    await ensureSubscriptionCanceled(paddle, row.paddleSubscriptionId);
   } catch (err) {
-    const already = err instanceof PaddleError && (await getSubscription(paddle, row.paddleSubscriptionId).then((s) => s.status === 'canceled').catch(() => false));
-    if (!already) {
-      console.error(`Paddle subscription ${row.paddleSubscriptionId} for ${userId} could not be cancelled; account deletion abandoned:`, err);
-      throw err;
-    }
+    console.error(`Paddle subscription ${row.paddleSubscriptionId} for ${userId} could not be cancelled; account deletion abandoned:`, err);
+    throw err;
   }
   await updatePlan(env.DB, userId, { paddleStatus: 'canceled', paddleCancelsAt: null });
 }

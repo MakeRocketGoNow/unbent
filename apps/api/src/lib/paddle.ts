@@ -261,6 +261,27 @@ export async function cancelSubscriptionNow(paddle: PaddleConfig, subscriptionId
   await paddleCall(paddle, 'POST', `/subscriptions/${subscriptionId}/cancel`, { effective_from: 'immediately' });
 }
 
+/**
+ * `cancelSubscriptionNow`, for a caller that may be asking twice. Paddle refuses to
+ * cancel a subscription that is already canceled, and both callers can be: a deletion
+ * retried after the first try's cancel went through, and a refund's event delivered
+ * again before the first delivery's `subscription.canceled` has reached the row. A
+ * refusal is read once more against the subscription itself before it is passed on, so
+ * a cancel that already happened counts as done and a real refusal is still thrown.
+ */
+export async function ensureSubscriptionCanceled(paddle: PaddleConfig, subscriptionId: string): Promise<void> {
+  try {
+    await cancelSubscriptionNow(paddle, subscriptionId);
+  } catch (err) {
+    const already =
+      err instanceof PaddleError &&
+      (await getSubscription(paddle, subscriptionId)
+        .then((s) => s.status === 'canceled')
+        .catch(() => false));
+    if (!already) throw err;
+  }
+}
+
 export interface PaddlePortalSession {
   urls: {
     general: { overview: string };
