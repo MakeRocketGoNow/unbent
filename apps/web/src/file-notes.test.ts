@@ -6,6 +6,7 @@ import { claimFileNotesFor, getFileNotes, isNoteFile, notesFromFiles, resetFileN
 
 vi.mock('./store/actions.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./store/actions.js')>()),
+  // `uploadRefusal` is the real one: the rule under test is the store's.
   createNote: vi.fn(),
   uploadFile: vi.fn(),
   saveNote: vi.fn(),
@@ -90,9 +91,16 @@ describe('notesFromFiles', () => {
     expect(actions.trashNote).toHaveBeenCalledWith('n2');
   });
 
-  it('refuses a file the upload would refuse before making a note of it', async () => {
-    await notesFromFiles([new File(['x'], '.hidden.pdf', { type: 'application/pdf' })], { notebook: null, tags: [] }, null, 'list');
-    expect(getFileNotes()).toMatchObject({ status: 'error', error: 'No notes added; the rest failed: Filename may not start with a dot' });
+  /* Judged over the whole batch first: one bad file of twelve makes no notes, and says which. */
+  it('refuses the batch before making any note when a file cannot become one, naming it', async () => {
+    await notesFromFiles([pdf('a.pdf'), new File(['x'], '.hidden.pdf', { type: 'application/pdf' }), pdf('c.pdf')], { notebook: null, tags: [] }, null, 'list');
+    expect(getFileNotes()).toMatchObject({ status: 'error', ids: [], error: 'Nothing was added. One file cannot become a note: .hidden.pdf (Filename may not start with a dot).' });
+    expect(actions.createNote).not.toHaveBeenCalled();
+  });
+
+  it('refuses a file that is not a PDF or an image', async () => {
+    await notesFromFiles([new File(['x'], 'notes.enex', { type: 'application/xml' }), new File([''], 'folder')], { notebook: null, tags: [] }, null, 'list');
+    expect(getFileNotes().error).toBe('Nothing was added. 2 files cannot become a note: notes.enex (not a PDF or an image), folder (not a PDF or an image).');
     expect(actions.createNote).not.toHaveBeenCalled();
   });
 

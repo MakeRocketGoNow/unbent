@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { filenameSchema, formatAttachmentMarkdown, MAX_ATTACHMENT_BYTES } from '@unbent/shared';
+import { formatAttachmentMarkdown } from '@unbent/shared';
 import type { QueryClient } from '@tanstack/react-query';
 import * as actions from './store/actions.js';
 import { indexUploadedFile } from './index-files.js';
@@ -110,7 +110,12 @@ export function resetFileNotes(): void {
   set({ ...initial, run: state.run });
 }
 
-/** What the picker and the drop take: the kinds the manifest's `file_handlers` name. */
+/**
+ * What becomes a note: the kinds the manifest's `file_handlers` name. The Import page's
+ * picker offers only these, and the list's drop refuses a batch holding anything else
+ * (`refusals`): someone who drags an .enex onto the list wants it imported, not attached,
+ * and a dragged folder arrives as a file with no type that fails when read.
+ */
 export function isNoteFile(file: File): boolean {
   if (file.type === 'application/pdf' || file.type.startsWith('image/')) return true;
   // A file arriving with no type — a drag from some file managers, a picker on an older
@@ -133,14 +138,11 @@ export function titleFor(filename: string): string {
  * round trip per file, and a queue entry that lands as a conflict offline. A fresh note
  * has no file for the name to collide with, so the path the upload will answer is known
  * before it is made: `files/<name>`, on the server (`availableFilename`) and in the
- * outbox alike. What the upload would refuse — a name the route does not take, a file
- * over the cap — is refused here first, before any note exists; a note whose upload
- * fails all the same goes to the trash, so the batch leaves no note linking to nothing.
+ * outbox alike. What the upload would refuse is refused before the batch starts
+ * (`refusals`); a note whose upload fails all the same goes to the trash, so the batch
+ * leaves no note linking to nothing.
  */
 export async function noteFromFile(file: File, filing: Filing): Promise<string> {
-  const named = filenameSchema.safeParse(file.name);
-  if (!named.success) throw new Error(named.error.issues[0]?.message ?? 'Invalid filename');
-  if (file.size > MAX_ATTACHMENT_BYTES) throw new Error(`${file.name} is over the ${Math.floor(MAX_ATTACHMENT_BYTES / 1024 / 1024)}MB limit`);
   const body = formatAttachmentMarkdown(file.name, `files/${file.name}`, { image: file.type.startsWith('image/') }) + '\n';
   const created = await actions.createNote({ title: titleFor(file.name), body, tags: filing.tags, notebook: filing.notebook });
   let uploaded;
@@ -175,11 +177,31 @@ export function notesFromFiles(files: File[], filing: Filing, place: string | nu
   return next;
 }
 
+/**
+ * What keeps a batch from starting, as a sentence naming the files, or null. Judged over
+ * every file before the first note is made, so a batch of twelve with one bad file makes
+ * no notes and says which file, rather than making two, stopping at the third and
+ * saying the other nine failed. Both checks need no I/O.
+ */
+export function refusals(files: File[]): string | null {
+  const bad = files.flatMap((file) => {
+    const why = isNoteFile(file) ? actions.uploadRefusal(file) : 'not a PDF or an image';
+    return why ? [`${file.name} (${why})`] : [];
+  });
+  if (bad.length === 0) return null;
+  return `Nothing was added. ${bad.length === 1 ? 'One file' : `${bad.length} files`} cannot become a note: ${bad.join(', ')}.`;
+}
+
 async function runBatch(files: File[], filing: Filing, place: string | null, source: FileNotesSource, by: string | null, queryClient?: QueryClient): Promise<string[]> {
   // Still theirs: the account changed hands, or nobody is signed in now. A batch begun
   // before anyone was claimed — a launch ahead of the guard — is let through.
   const theirs = () => by === null || owner === by;
   if (!theirs()) return [];
+  const refused = refusals(files);
+  if (refused) {
+    set({ status: 'error', source, filing, total: files.length, done: 0, ids: [], place, error: refused, run: state.run + 1 });
+    return [];
+  }
   set({ status: 'running', source, filing, total: files.length, done: 0, ids: [], place, error: null, run: state.run + 1 });
   const ids: string[] = [];
   try {

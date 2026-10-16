@@ -38,6 +38,8 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
   searchNotes: vi.fn(),
 }));
 vi.mock('../index-files.js', () => ({ indexUploadedFile: vi.fn(), useIndexing: () => ({ queued: 0, running: false, failed: 0 }) }));
+let planInactive = false;
+vi.mock('../use-plan.js', () => ({ usePlan: () => ({ inactive: planInactive }) }));
 
 const note = (id: string, over: Partial<FeedNote> = {}): FeedNote => ({
   id,
@@ -111,6 +113,7 @@ let n = 0;
 
 beforeEach(() => {
   n = 0;
+  planInactive = false;
   resetFileNotesForTests();
   session = { user: { id: 'u1', email: 'someone@example.com' } };
   vi.stubGlobal('matchMedia', (query: string) => ({ matches: false, media: query, addEventListener: () => {}, removeEventListener: () => {} }));
@@ -205,6 +208,29 @@ describe('files dropped on the note list', () => {
     await router.navigate({ to: '/settings/import' });
     await waitFor(() => expect(router.state.location.pathname).toBe('/settings/import'));
     expect(screen.getByRole('status').textContent).toContain('1 note added.');
+  });
+
+  /* An .enex on the list is meant for the Import page, not for a note; a folder is not a file. */
+  it('refuses a drop holding a file that is not a PDF or an image, and says which', async () => {
+    lib = installTestLibrary({ notes: [] });
+    mount('/notes');
+    await screen.findByText('nothing open');
+    drag('drop', column(), [pdf('a.pdf'), new File(['<en-export/>'], 'Coupons.enex', { type: 'application/xml' })]);
+    const status = await screen.findByRole('status');
+    expect(status.textContent).toContain('Coupons.enex (not a PDF or an image)');
+    expect(actions.createNote).not.toHaveBeenCalled();
+  });
+
+  it('refuses the drag with the pointer while the plan has ended', async () => {
+    planInactive = true;
+    lib = installTestLibrary({ notes: [] });
+    mount('/notes');
+    await screen.findByText('nothing open');
+    const event = drag('dragover', column(), [pdf('a.pdf')]);
+    expect(event.defaultPrevented).toBe(true);
+    expect((event as unknown as { dataTransfer: { dropEffect: string } }).dataTransfer.dropEffect).toBe('none');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(hint()).toBeUndefined();
   });
 
   it('Undo trashes the batch', async () => {
