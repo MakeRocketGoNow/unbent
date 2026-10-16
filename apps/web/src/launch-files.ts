@@ -25,7 +25,7 @@ export type OpenNote = (noteId: string) => void;
 /** The launch queue's handler for files: makes the notes, then opens the first. */
 export function launchFiles(queryClient: QueryClient, openNote: OpenNote) {
   return async (files: File[]): Promise<void> => {
-    const [first] = await notesFromFiles(files, { notebook: null, tags: [] }, null, queryClient);
+    const [first] = await notesFromFiles(files, { notebook: null, tags: [] }, null, 'launch', queryClient);
     if (first) openNote(first);
   };
 }

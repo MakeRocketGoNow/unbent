@@ -16,7 +16,8 @@ const IMPORT_PAGE = '/settings/import';
  * be restored, and the card goes with the press, as `Snackbar`'s action does; the rows
  * leaving the list are the word that it worked.
  *
- * Not on the Import page, which draws the same batch inline where it was started. A
+ * Not on the Import page for a batch started there, which that page draws inline; one
+ * started from the list is reported here on every page, since nothing else does. A
  * clean batch clears itself; one that stopped short stays, like any failure, and still
  * offers Undo, since three notes of twelve are more often a wrong drop to take back than
  * a job to finish by hand.
@@ -29,7 +30,7 @@ export function FileNotesSnackbar() {
   const [dismissed, setDismissed] = useState<string | null>(null);
   const key = `${state.run}:${state.status}`;
 
-  if (state.status === 'idle' || onImportPage || dismissed === key) return null;
+  if (state.status === 'idle' || (onImportPage && state.source === 'import') || dismissed === key) return null;
   const onDismiss = () => setDismissed(key);
   const undo = { label: 'Undo', onClick: () => void undoFileNotes(queryClient) };
 

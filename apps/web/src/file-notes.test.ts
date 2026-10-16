@@ -48,7 +48,7 @@ const png = (name: string) => new File(['png'], name, { type: 'image/png' });
 
 describe('notesFromFiles', () => {
   it('makes one note per file, named after it, filed where asked, with the file linked from the body', async () => {
-    const ids = await notesFromFiles([pdf('Water bill.pdf'), png('page 2.png')], { notebook: 'Receipts', tags: ['2026'] }, 'Receipts');
+    const ids = await notesFromFiles([pdf('Water bill.pdf'), png('page 2.png')], { notebook: 'Receipts', tags: ['2026'] }, 'Receipts', 'list');
     expect(ids).toEqual(['n1', 'n2']);
     expect(vi.mocked(actions.createNote).mock.calls.map((c) => c[0])).toEqual([
       { title: 'Water bill', body: '[Water bill.pdf](<files/Water bill.pdf>)\n', tags: ['2026'], notebook: 'Receipts' },
@@ -76,13 +76,13 @@ describe('notesFromFiles', () => {
       order.push(`upload ${noteId}`);
       return { filename: file.name, contentType: file.type, size: 1, path: `files/${file.name}`, indexing: 'server' as const };
     });
-    await notesFromFiles([pdf('a.pdf'), pdf('b.pdf')], { notebook: null, tags: [] }, null);
+    await notesFromFiles([pdf('a.pdf'), pdf('b.pdf')], { notebook: null, tags: [] }, null, 'list');
     expect(order).toEqual(['create a', 'upload a', 'create b', 'upload b']);
   });
 
   it('keeps what landed when a file fails, trashes the note its upload left, and says so', async () => {
     failOn = 'b.pdf';
-    const ids = await notesFromFiles([pdf('a.pdf'), pdf('b.pdf'), pdf('c.pdf')], { notebook: null, tags: [] }, null);
+    const ids = await notesFromFiles([pdf('a.pdf'), pdf('b.pdf'), pdf('c.pdf')], { notebook: null, tags: [] }, null, 'list');
     expect(ids).toEqual(['n1']);
     expect(getFileNotes()).toMatchObject({ status: 'error', done: 1, total: 3, ids: ['n1'], error: 'Attachment exceeds 100MB limit' });
     expect(actions.createNote).toHaveBeenCalledTimes(2);
@@ -91,7 +91,7 @@ describe('notesFromFiles', () => {
   });
 
   it('refuses a file the upload would refuse before making a note of it', async () => {
-    await notesFromFiles([new File(['x'], '.hidden.pdf', { type: 'application/pdf' })], { notebook: null, tags: [] }, null);
+    await notesFromFiles([new File(['x'], '.hidden.pdf', { type: 'application/pdf' })], { notebook: null, tags: [] }, null, 'list');
     expect(getFileNotes()).toMatchObject({ status: 'error', error: 'Filename may not start with a dot' });
     expect(actions.createNote).not.toHaveBeenCalled();
   });
@@ -100,9 +100,9 @@ describe('notesFromFiles', () => {
   it('runs a second batch after the first, not refusing it and not interleaving them', async () => {
     let release!: () => void;
     vi.mocked(actions.uploadFile).mockReturnValueOnce(new Promise((r) => (release = () => r({ filename: 'a.pdf', contentType: 'application/pdf', size: 1, path: 'files/a.pdf', indexing: 'server' as const }))));
-    const first = notesFromFiles([pdf('a.pdf')], { notebook: null, tags: [] }, null);
+    const first = notesFromFiles([pdf('a.pdf')], { notebook: null, tags: [] }, null, 'list');
     await vi.waitFor(() => expect(getFileNotes().status).toBe('running'));
-    const second = notesFromFiles([pdf('b.pdf')], { notebook: null, tags: [] }, null);
+    const second = notesFromFiles([pdf('b.pdf')], { notebook: null, tags: [] }, null, 'list');
     await new Promise((r) => setTimeout(r, 10));
     expect(actions.createNote).toHaveBeenCalledTimes(1);
     release();
@@ -113,8 +113,8 @@ describe('notesFromFiles', () => {
 
   it('runs the batch after one that failed', async () => {
     failOn = 'a.pdf';
-    await notesFromFiles([pdf('a.pdf')], { notebook: null, tags: [] }, null);
-    expect(await notesFromFiles([pdf('b.pdf')], { notebook: null, tags: [] }, null)).toEqual(['n2']);
+    await notesFromFiles([pdf('a.pdf')], { notebook: null, tags: [] }, null, 'list');
+    expect(await notesFromFiles([pdf('b.pdf')], { notebook: null, tags: [] }, null, 'list')).toEqual(['n2']);
   });
 });
 
@@ -124,7 +124,7 @@ describe('claimFileNotesFor', () => {
     claimFileNotesFor('u1');
     let release!: () => void;
     vi.mocked(actions.uploadFile).mockReturnValueOnce(new Promise((r) => (release = () => r({ filename: 'a.pdf', contentType: 'application/pdf', size: 1, path: 'files/a.pdf', indexing: 'server' as const }))));
-    const batch = notesFromFiles([pdf('a.pdf'), pdf('b.pdf')], { notebook: 'Receipts', tags: [] }, 'Receipts');
+    const batch = notesFromFiles([pdf('a.pdf'), pdf('b.pdf')], { notebook: 'Receipts', tags: [] }, 'Receipts', 'list');
     await vi.waitFor(() => expect(getFileNotes().status).toBe('running'));
     claimFileNotesFor(undefined);
     expect(getFileNotes()).toMatchObject({ status: 'idle', ids: [], place: null });
@@ -138,8 +138,8 @@ describe('claimFileNotesFor', () => {
     claimFileNotesFor('u1');
     let release!: () => void;
     vi.mocked(actions.uploadFile).mockReturnValueOnce(new Promise((r) => (release = () => r({ filename: 'a.pdf', contentType: 'application/pdf', size: 1, path: 'files/a.pdf', indexing: 'server' as const }))));
-    const first = notesFromFiles([pdf('a.pdf')], { notebook: null, tags: [] }, null);
-    const second = notesFromFiles([pdf('b.pdf')], { notebook: null, tags: [] }, null);
+    const first = notesFromFiles([pdf('a.pdf')], { notebook: null, tags: [] }, null, 'list');
+    const second = notesFromFiles([pdf('b.pdf')], { notebook: null, tags: [] }, null, 'list');
     await vi.waitFor(() => expect(getFileNotes().status).toBe('running'));
     claimFileNotesFor('u2');
     release();
@@ -150,7 +150,7 @@ describe('claimFileNotesFor', () => {
 
   it('keeps a finished report for the same person, and drops it for the next', async () => {
     claimFileNotesFor('u1');
-    await notesFromFiles([pdf('a.pdf')], { notebook: null, tags: [] }, null);
+    await notesFromFiles([pdf('a.pdf')], { notebook: null, tags: [] }, null, 'list');
     claimFileNotesFor('u1');
     expect(getFileNotes().status).toBe('done');
     claimFileNotesFor('u2');
@@ -160,7 +160,7 @@ describe('claimFileNotesFor', () => {
 
 describe('undoFileNotes', () => {
   it('trashes the batch, once', async () => {
-    await notesFromFiles([pdf('a.pdf'), pdf('b.pdf')], { notebook: null, tags: [] }, null);
+    await notesFromFiles([pdf('a.pdf'), pdf('b.pdf')], { notebook: null, tags: [] }, null, 'list');
     await undoFileNotes();
     await undoFileNotes();
     expect(actions.trashNotes).toHaveBeenCalledTimes(1);

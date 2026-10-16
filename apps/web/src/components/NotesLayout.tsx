@@ -873,7 +873,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   dropTarget.current = {
     accept: (count) => (planInactive ? null : dropSentence(count, dropPlace)),
     onFiles: (files) => {
-      void notesFromFiles(files, filing, dropPlace, queryClient).then((ids) => {
+      void notesFromFiles(files, filing, dropPlace, 'list', queryClient).then((ids) => {
         if (ids.length > 0) selection.select(ids);
       });
     },

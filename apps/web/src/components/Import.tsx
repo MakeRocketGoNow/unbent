@@ -113,7 +113,7 @@ export function Import() {
   function startBatch() {
     if (batch.length === 0 || planInactive) return;
     const notebook = batchNotebook.trim() || null;
-    void notesFromFiles(batch, { notebook, tags: [] }, notebook, queryClient);
+    void notesFromFiles(batch, { notebook, tags: [] }, notebook, 'import', queryClient);
     setBatch([]);
     setPickerKey((k) => k + 1);
   }
@@ -145,11 +145,13 @@ export function Import() {
         <h2>Import</h2>
       </div>
 
-      {/* The batch of notes from files, where it was started: the snackbar that reports it
-          everywhere else stands down on this page (`FileNotesSnackbar`). Running, a bar;
-          finished, the count and the way to the notes, with Undo left to the list, where
-          the notes are selected and the bar's Delete is the same press. */}
-      {fileNotes.status === 'running' && (
+      {/* A batch of notes from files started on this page, drawn where it was started:
+          the snackbar that reports it everywhere else stands down here for it
+          (`FileNotesSnackbar`). A batch from a drop on the list keeps its card, and is
+          not drawn here — it was not started here, and it would sit above the picker
+          until something cleared it. Running, a bar; finished, the count and the way to
+          the notes. */}
+      {fileNotes.source === 'import' && fileNotes.status === 'running' && (
         <div className="import-batch-run">
           <div className="progress-bar" aria-label="notes added">
             <div className="progress-fill" style={{ width: `${Math.round((fileNotes.done / Math.max(1, fileNotes.total)) * 100)}%` }} />
@@ -159,7 +161,7 @@ export function Import() {
           </p>
         </div>
       )}
-      {(fileNotes.status === 'done' || fileNotes.status === 'error') && (
+      {fileNotes.source === 'import' && (fileNotes.status === 'done' || fileNotes.status === 'error') && (
         <div className="import-finished">
           {fileNotes.status === 'done' ? (
             <p className="good small">
@@ -175,7 +177,7 @@ export function Import() {
             {/* A link wearing the button's shape, since it navigates: it middle-clicks and
                 opens in a new tab, which a button that called `navigate` could not. */}
             {fileNotes.ids.length > 0 && (
-              <Link to="/notes" search={fileNotes.place ? { notebook: fileNotes.place } : {}} className="btn btn-secondary" onClick={resetFileNotes}>
+              <Link to="/notes" search={fileNotes.filing.notebook ? { notebook: fileNotes.filing.notebook } : {}} className="btn btn-secondary" onClick={resetFileNotes}>
                 Show them
               </Link>
             )}

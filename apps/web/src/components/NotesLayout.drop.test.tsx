@@ -195,6 +195,18 @@ describe('files dropped on the note list', () => {
     await waitFor(() => expect(actions.createNote).toHaveBeenCalledWith({ title: 'a', body: '[a.pdf](files/a.pdf)\n', tags: ['urgent'], notebook: null }));
   });
 
+  /* Reported on every page: nothing else draws a drop's batch, the Import page included. */
+  it('keeps the card on the Import page for a batch from a drop', async () => {
+    lib = installTestLibrary({ notes: [] });
+    const { router } = mount('/notes');
+    await screen.findByText('nothing open');
+    drag('drop', column(), [pdf('a.pdf')]);
+    await screen.findByRole('status');
+    await router.navigate({ to: '/settings/import' });
+    await waitFor(() => expect(router.state.location.pathname).toBe('/settings/import'));
+    expect(screen.getByRole('status').textContent).toContain('1 note added.');
+  });
+
   it('Undo trashes the batch and says so', async () => {
     lib = installTestLibrary({ notes: [] });
     mount('/notes');

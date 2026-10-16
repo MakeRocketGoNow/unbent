@@ -41,8 +41,15 @@ export interface Filing {
 
 export type FileNotesStatus = 'idle' | 'running' | 'done' | 'error';
 
+/** Where a batch was started: the report is drawn differently for each. */
+export type FileNotesSource = 'list' | 'import' | 'launch';
+
 export interface FileNotesState {
   status: FileNotesStatus;
+  /** Where the batch was started; `null` while nothing has been. */
+  source: FileNotesSource | null;
+  /** Where the notes were filed, for the way to them; the sentence is `place`. */
+  filing: Filing;
   /** How many files the batch was given, and how many have become notes so far. */
   total: number;
   done: number;
@@ -57,7 +64,7 @@ export interface FileNotesState {
   undone: boolean;
 }
 
-const initial: FileNotesState = { status: 'idle', total: 0, done: 0, ids: [], place: null, error: null, run: 0, undone: false };
+const initial: FileNotesState = { status: 'idle', source: null, filing: { notebook: null, tags: [] }, total: 0, done: 0, ids: [], place: null, error: null, run: 0, undone: false };
 
 let state: FileNotesState = initial;
 const listeners = new Set<() => void>();
@@ -158,23 +165,23 @@ let chain: Promise<unknown> = Promise.resolve();
  * Resolves with the ids made — all of them, or the ones made before a file failed, which
  * the state then says.
  */
-export function notesFromFiles(files: File[], filing: Filing, place: string | null, queryClient?: QueryClient): Promise<string[]> {
+export function notesFromFiles(files: File[], filing: Filing, place: string | null, source: FileNotesSource, queryClient?: QueryClient): Promise<string[]> {
   if (files.length === 0) return Promise.resolve([]);
   // Whose files these are, taken now: a batch waiting its turn across a sign-out must
   // not run as the next person.
   const by = owner;
-  const run = () => runBatch(files, filing, place, by, queryClient);
+  const run = () => runBatch(files, filing, place, source, by, queryClient);
   const next = chain.then(run, run);
   chain = next;
   return next;
 }
 
-async function runBatch(files: File[], filing: Filing, place: string | null, by: string | null, queryClient?: QueryClient): Promise<string[]> {
+async function runBatch(files: File[], filing: Filing, place: string | null, source: FileNotesSource, by: string | null, queryClient?: QueryClient): Promise<string[]> {
   // Still theirs: the account changed hands, or nobody is signed in now. A batch begun
   // before anyone was claimed — a launch ahead of the guard — is let through.
   const theirs = () => by === null || owner === by;
   if (!theirs()) return [];
-  set({ status: 'running', total: files.length, done: 0, ids: [], place, error: null, run: state.run + 1, undone: false });
+  set({ status: 'running', source, filing, total: files.length, done: 0, ids: [], place, error: null, run: state.run + 1, undone: false });
   const ids: string[] = [];
   try {
     for (const file of files) {
