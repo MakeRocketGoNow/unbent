@@ -22,14 +22,14 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const { worktree, web, api, moved } = await bindablePortsFor(root);
 
 const where = worktree ? `${worktree}: ` : '';
-// `moved` means something else already had this worktree's usual pair — most often its own
+// `moved` means something else already had this worktree's usual pair, most often its own
 // `pnpm dev`, still running in another terminal. Said out loud, because the alternative is
 // a second set of servers on ports nobody went looking for.
 const why = moved ? '  (its usual pair was taken)' : '';
 process.stdout.write(`${where}web http://localhost:${web}  api http://localhost:${api}${why}\n`);
 
 // `[assets] directory` in wrangler.toml points at the SPA's build output, and wrangler
-// refuses to start if it is missing — which it is in any checkout that has not run a
+// refuses to start if it is missing, which it is in any checkout that has not run a
 // build, a fresh worktree included. Vite serves the SPA in development and the proxy only
 // forwards /api, so an empty directory is all the Worker needs.
 mkdirSync(join(root, 'apps', 'web', 'dist'), { recursive: true });

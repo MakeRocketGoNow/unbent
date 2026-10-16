@@ -4,7 +4,7 @@
 # `git worktree add` brings tracked files and nothing else, and the desktop app adds only
 # the two gitignored files in .worktreeinclude. So a session that starts in a worktree the
 # app just made has no dependencies and no local database, and nothing runs
-# `pnpm worktree:setup` until someone remembers to — which showed up as a Worker with no
+# `pnpm worktree:setup` until someone remembers to, which showed up as a Worker with no
 # schema and a note in a hand-off saying the state still needed seeding. This runs it,
 # once, when a session starts somewhere it is needed.
 #

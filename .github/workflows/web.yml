@@ -23,7 +23,7 @@ on:
       - '.github/workflows/web.yml'
   # Every pull request, with no `paths`: the `ci` job at the end is the one check the
   # ruleset on `main` requires, and a required check whose workflow never started is
-  # waited for indefinitely — a docs-only or Android-only pull request could not merge.
+  # waited for indefinitely. A docs-only or Android-only pull request could not merge.
   # What a pull request does not reach is skipped inside the workflow instead (`changes`).
   pull_request:
 
@@ -46,10 +46,10 @@ jobs:
   # whether a whole workflow runs, and `deploy` has to wait for every suite that did. A
   # small job of its own, rather than a first step in each suite's job, so a suite that has
   # nothing to check shows as skipped in the pull request's checks instead of as a green
-  # tick that ran nothing — and so it costs no install. A push to `main` runs everything:
+  # tick that ran nothing, and so it costs no install. A push to `main` runs everything:
   # it is what deploys, and a merge carries every pull request since the last one.
   #
-  # Everything else — typecheck, the API's unit tests, the seed's, the build — runs on
+  # Everything else (typecheck, the API's unit tests, the seed's, the build) runs on
   # every change in `check`: together they are about a minute, and typecheck is what
   # catches an API change that breaks the web app, which imports the API's route types.
   changes:
@@ -61,7 +61,7 @@ jobs:
     steps:
       # A pull request's checkout is the merge of its head into the base, so with two
       # commits of history the first parent is the base as it is now, and the diff between
-      # them is exactly what merging would change — with no API call, and no limit on how
+      # them is exactly what merging would change, with no API call, and no limit on how
       # many files it can list. A diff that fails fails the job, rather than skipping a
       # suite on an answer nobody got.
       - uses: actions/checkout@v7
@@ -79,7 +79,7 @@ jobs:
           changed=$(git diff --name-only HEAD^1 HEAD)
           # What every package builds on. A change here reaches both suites.
           shared='packages/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|tsconfig\.base\.json$|\.github/workflows/web\.yml$'
-          # The web tests import no API code — only its types, which vitest strips and
+          # The web tests import no API code: only its types, which vitest strips and
           # typecheck covers. The store tests import from all over `apps/api/src`, not only
           # `store/`, so any API change reaches them.
           web=false
@@ -87,14 +87,14 @@ jobs:
           if printf '%s\n' "$changed" | grep -qE "^(apps/web/|$shared)"; then web=true; fi
           if printf '%s\n' "$changed" | grep -qE "^(apps/api/|apps/store-tests/|$shared)"; then store=true; fi
           # What `check` covers: anything the workspace builds from. A pull request that
-          # touches none of it — docs, Android, iOS, other workflows — runs nothing here.
+          # touches none of it (docs, Android, iOS, other workflows) runs nothing here.
           any=false
           if printf '%s\n' "$changed" | grep -qE "^(apps/web/|apps/api/|apps/store-tests/|$shared)"; then any=true; fi
           echo "any=$any" >> "$GITHUB_OUTPUT"
           echo "web=$web" >> "$GITHUB_OUTPUT"
           echo "store=$store" >> "$GITHUB_OUTPUT"
-          [ "$web" = true ] || echo "No web, shared or root file changed — web tests skipped." >> "$GITHUB_STEP_SUMMARY"
-          [ "$store" = true ] || echo "No API, store-test, shared or root file changed — store tests skipped." >> "$GITHUB_STEP_SUMMARY"
+          [ "$web" = true ] || echo "No web, shared or root file changed: web tests skipped." >> "$GITHUB_STEP_SUMMARY"
+          [ "$store" = true ] || echo "No API, store-test, shared or root file changed: store tests skipped." >> "$GITHUB_STEP_SUMMARY"
 
   check:
     needs: changes
@@ -111,7 +111,7 @@ jobs:
       - run: pnpm typecheck
       # The API's unit tests only read a stubbed Env, so they run anywhere. Its `test`
       # script also drives a live wrangler dev with real D1 and R2, which does not run
-      # here — that half stays local. See apps/api/test/README.md.
+      # here. That half stays local. See apps/api/test/README.md.
       - run: pnpm --filter @unbent/api test:unit
       # The seed's invariants: every value fits its field, every file opens. What the
       # previews of store changes fill themselves with, and checked nowhere else between
@@ -120,8 +120,8 @@ jobs:
       - run: pnpm build
 
   # The longest of the suites, split three ways so the other jobs are no longer waiting on
-  # it. The whole suite is about three hundred CPU-seconds — 183 files, each building its
-  # own jsdom — and a private repository's standard runner has two cores, so in one job it
+  # it. The whole suite is about three hundred CPU-seconds (183 files, each building its
+  # own jsdom) and a private repository's standard runner has two cores, so in one job it
   # took five to six minutes against under a minute on a laptop. vitest's own remedies
   # were measured and rejected: a shared environment (`isolate: false`) fails nearly two
   # hundred tests on module-level state that leaks between files, `vmThreads` fails seven
@@ -172,7 +172,7 @@ jobs:
 
   # The one check the ruleset on `main` requires, so the ruleset never has to name the
   # jobs above and never goes stale when one is renamed or split. It always runs and
-  # always reports — a required check that is skipped or never started blocks the merge
+  # always reports: a required check that is skipped or never started blocks the merge
   # forever, which is how requiring the mirror's `test` job left every other pull request
   # unmergeable. A suite skipped because the change cannot reach it is a pass; a failed
   # or cancelled one, including `changes` itself, is not.
@@ -196,7 +196,7 @@ jobs:
   #
   # Waits for every suite. On a push none is skipped (see `changes`), and if one ever were,
   # the implicit `success()` in this `if` would hold the deploy back rather than ship
-  # unchecked — which is the side to fail on.
+  # unchecked, which is the side to fail on.
   deploy:
     needs: [check, web-tests, store-tests]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -212,13 +212,13 @@ jobs:
       # Optional, and what makes a fork's very first push deploy a working instance with no
       # laptop involved. wrangler.toml declares BETTER_AUTH_SECRET required, and a Worker
       # that does not exist yet cannot have a secret put on it, so the first deploy has to
-      # carry the value. Set this repository secret and the deploy step sends it along —
+      # carry the value. Set this repository secret and the deploy step sends it along,
       # additively, so re-sending it on every push is harmless and a rotated value flows.
       # A Worker that already has the secret, as unbent.app's does, leaves this unset and
       # inherits.
       BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
       # Optional: the Android app-links document, for a repository that builds the app.
-      # Sent the same way, and for the same reason it is not in a file — it names one
+      # Sent the same way, and for the same reason it is not in a file: it names one
       # deployment's app.
       ANDROID_ASSET_LINKS: ${{ secrets.ANDROID_ASSET_LINKS }}
       # Optional: its iOS counterpart, the Apple App Site Association document, for the
@@ -226,7 +226,7 @@ jobs:
       APPLE_APP_SITE_ASSOCIATION: ${{ secrets.APPLE_APP_SITE_ASSOCIATION }}
       # Optional: the one origin this instance answers sign-in on, for a deployment with a
       # custom domain that wants its workers.dev name closed. Sent with the deploy rather
-      # than put afterwards because a deploy replaces plain vars — and, once, because a var
+      # than put afterwards because a deploy replaces plain vars, and, once, because a var
       # of the same name has to be gone before a secret can take it, which only the upload
       # that drops the var can arrange.
       APP_URL: ${{ secrets.APP_URL }}
@@ -262,13 +262,13 @@ jobs:
 
       # The deploy would provision the database by name, but migrations run first and a
       # database has to exist to be migrated. So on a repository whose account has none
-      # yet — a fork's first push — this creates it, and everywhere else it is a no-op.
+      # yet (a fork's first push) this creates it, and everywhere else it is a no-op.
       # `d1 info` exits non-zero for a name the account does not have.
       - name: Make sure the database exists
         working-directory: apps/api
         run: |
           if ! pnpm exec wrangler d1 info unbent >/dev/null 2>&1; then
-            echo "No D1 database named unbent on this account — creating it."
+            echo "No D1 database named unbent on this account. Creating it."
             pnpm exec wrangler d1 create unbent
           fi
 
@@ -321,7 +321,7 @@ jobs:
             printf 'SWEEP_TOKEN=%s\n' "$SWEEP_TOKEN" >> "$RUNNER_TEMP/secrets.env"
           fi
           # The backups bucket, when one is named, as one more top-level binding in a copy
-          # of the config written beside it, so its relative paths still resolve — the
+          # of the config written beside it, so its relative paths still resolve, the
           # same way the previews make their own-stores config. An array-of-tables entry
           # may follow any table in TOML, so appending it is enough.
           config=wrangler.toml

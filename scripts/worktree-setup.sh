@@ -2,14 +2,14 @@
 # Make a freshly added worktree runnable.
 #
 # `git worktree add` brings across tracked files and nothing else, so a new worktree has no
-# secrets, no dependencies and no local database — a Worker started there has no
+# secrets, no dependencies and no local database: a Worker started there has no
 # BETTER_AUTH_SECRET, and the SPA has nothing to show. This copies what git left behind.
 #
 # Local state is seeded by copying the main checkout's D1 and R2 rather than shared: two
 # Miniflare processes on one SQLite file is not something Miniflare promises to survive,
 # and a branch's migration must not be able to alter the main checkout's schema. The copy
-# brings the sessions table with it, and the session cookie on localhost is host-only —
-# ports do not scope cookies — so the browser arrives at the worktree's port already signed
+# brings the sessions table with it, and the session cookie on localhost is host-only
+# (ports do not scope cookies), so the browser arrives at the worktree's port already signed
 # in, with the same notes to look at.
 #
 # Idempotent: anything already present is left alone. --fresh skips the seed, for a
@@ -37,7 +37,7 @@ MAIN=$(dirname "$COMMON")
 # Stop rather than act: the main checkout is where everything is copied *from*, and the
 # steps below would run migrations against the database a dev server is probably using.
 if [ "$MAIN" = "$ROOT" ]; then
-  echo "$ROOT is the main checkout, not a worktree — nothing to set up."
+  echo "$ROOT is the main checkout, not a worktree: nothing to set up."
   echo "For a first run here: pnpm install && pnpm migrate:local"
   exit 0
 fi
@@ -68,7 +68,7 @@ elif [ "$FRESH" = 1 ]; then
 else
   MAIN_STATE="$MAIN/apps/api/.wrangler/state/v3"
   mkdir -p "$STATE"
-  # d1, r2 and do — the objects that hold each account's notes — but not `cache`, which is
+  # d1, r2 and do (the objects that hold each account's notes) but not `cache`, which is
   # disposable, or `observability`, which is hundreds of megabytes of logs that mean
   # nothing outside the run that wrote them.
   for dir in d1 r2 do; do

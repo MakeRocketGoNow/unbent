@@ -123,7 +123,7 @@ jobs:
             echo "ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "::error::No ${missing[*]} secret(s): the restore environment or the repository lacks them. Nothing was copied."
-            echo "No ${missing[*]} secret(s) — this repository has no mirror to restore from. Skipping." >> "$GITHUB_STEP_SUMMARY"
+            echo "No ${missing[*]} secret(s). This repository has no mirror to restore from. Skipping." >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
 

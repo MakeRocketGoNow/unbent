@@ -18,7 +18,7 @@
 //   failed                  one line per step that failed, written by each step's EXIT trap
 // and the run's identity and outcome in the environment: MIRROR_RAN_AT, MIRROR_OK
 // ("true"/"false"), MIRROR_JOB_STATUS (GitHub's `job.status`: success, failure or
-// cancelled — a run killed by its timeout or cancelled by hand fires no step's trap, so
+// cancelled: a run killed by its timeout or cancelled by hand fires no step's trap, so
 // this is the only word the file has for it), MIRROR_EVENT, MIRROR_RUN_ID and
 // MIRROR_RUN_URL.
 //

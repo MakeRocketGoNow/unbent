@@ -7,8 +7,8 @@
 #
 # Two things made `rclone lsf … | grep -q name` wrong for this. On S3, a prefix with
 # nothing under it is not a directory to rclone, which exits 3 ("directory not found")
-# rather than printing nothing — the first night's `state/` and `status/` are exactly that
-# — so the error had to be silenced, and silencing it silenced a refused credential too,
+# rather than printing nothing (the first night's `state/` and `status/` are exactly that),
+# so the error had to be silenced, and silencing it silenced a refused credential too,
 # which read as "absent" and would have restarted every prune clock. And `grep -q` exits on
 # its first match, so a listing with a later line can die of SIGPIPE, which under
 # `pipefail` turns a present file into a missing one. The listing is read whole here, and

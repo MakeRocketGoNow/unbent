@@ -6,7 +6,7 @@
  * Apple key from the developer portal, naming the team, the key and the Services ID, and
  * Apple refuses one that expires more than six months after it was issued. So it is not set
  * once: it is regenerated before it lapses, and when it does lapse the web Apple button
- * fails at the code exchange while every other sign-in keeps working — easy to miss.
+ * fails at the code exchange while every other sign-in keeps working (easy to miss).
  *
  *   node scripts/apple-client-secret.mjs --team TEAMID --key-id KEYID \
  *     --client-id com.example.notes.web --key AuthKey_KEYID.p8 \
@@ -17,7 +17,7 @@
  * `--days` shortens the lifetime (default and maximum 180).
  *
  * Web Crypto rather than a JOSE library: the repository root has no dependencies to lean
- * on, and an ES256 JWT is a header, a payload and one `sign` call — `subtle.sign` already
+ * on, and an ES256 JWT is a header, a payload and one `sign` call. `subtle.sign` already
  * returns the raw r‖s signature JWS expects, not DER.
  *
  * Generating this inside the Worker at runtime, from the key itself, would retire the

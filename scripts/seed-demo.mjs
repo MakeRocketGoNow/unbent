@@ -3,7 +3,7 @@
  * Sample notes on a local instance: for trying a branch against something real-shaped,
  * and for screenshots.
  *
- * What it loads is `packages/seed/` — ten presentable notes, five notebooks with every kind
+ * What it loads is `packages/seed/`: ten presentable notes, five notebooks with every kind
  * of custom field and a few dozen invented records in each, receipts with PDF and image
  * scans whose text is searchable, the cases that have broken a layout before, a few notes
  * in the trash, and three hundred generated notes behind them for volume. Nothing in it
@@ -15,7 +15,7 @@
  * disposable local D1; a saved one would only drift out of sync with the next `--fresh`
  * worktree or `migrate:local`. Sign-up works because `pnpm dev` passes
  * `ALLOW_TEST_CREDENTIALS=1` to the Worker, which turns on password auth for local
- * development — the same switch the API test suite mints its sessions with. See the
+ * development, the same switch the API test suite mints its sessions with. See the
  * comment on `passwordEnabled` in `apps/api/src/auth.ts`.
  *
  * Idempotent: run it twice and you get the same notes, not twice as many. Each note is
@@ -47,8 +47,8 @@ function arg(name) {
 /**
  * The instance to seed: `--url`, else this checkout's own dev server.
  *
- * Derived rather than hardcoded because a worktree's ports are derived — see
- * `scripts/ports.mjs`. Hardcoding 5173 would seed the main checkout from a worktree, which
+ * Derived rather than hardcoded because a worktree's ports are derived (see
+ * `scripts/ports.mjs`). Hardcoding 5173 would seed the main checkout from a worktree, which
  * is the one mistake this script must not make quietly.
  */
 function baseUrl() {
@@ -166,7 +166,7 @@ async function main() {
   const seconds = ((Date.now() - started) / 1000).toFixed(1);
   process.stdout.write(
     `${counts.created} note(s) created, ${counts.updated} updated, ${counts.files} file(s) uploaded, ` +
-      `${counts.trashed} trashed in ${seconds}s — sign in at ${BASE}\n`,
+      `${counts.trashed} trashed in ${seconds}s. Sign in at ${BASE}\n`,
   );
   process.stdout.write(`  email    ${EMAIL}\n  password ${PASSWORD}\n`);
 }

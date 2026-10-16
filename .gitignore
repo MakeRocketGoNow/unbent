@@ -20,7 +20,7 @@ nohup.out
 # wrangler generated
 apps/api/worker-configuration.d.ts
 
-# Android (apps/android) — Gradle build output and machine-local config
+# Android (apps/android): Gradle build output and machine-local config
 apps/android/.gradle/
 apps/android/build/
 apps/android/app/build/
@@ -30,7 +30,7 @@ apps/android/.kotlin/
 *.keystore
 .cxx/
 
-# iOS (apps/ios) — Xcode and SwiftPM build output, per-user Xcode state, machine-local config
+# iOS (apps/ios): Xcode and SwiftPM build output, per-user Xcode state, machine-local config
 apps/ios/build/
 apps/ios/Packages/*/.build/
 apps/ios/Packages/*/.swiftpm/

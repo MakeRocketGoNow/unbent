@@ -15,7 +15,7 @@
  *
  * What it will not do: anything with no API. Enabling R2 on an account, minting an API
  * token for GitHub Actions, and owning a domain are dashboard actions; it links to each
- * and waits. And it never prints a secret's value — it reads names from `wrangler secret
+ * and waits. And it never prints a secret's value: it reads names from `wrangler secret
  * list`, and what it sets comes from the person at the keyboard or from `openssl rand`.
  *
  * No dependencies: node, the pinned wrangler under apps/api, and `gh` if it is installed.
@@ -267,7 +267,7 @@ function checkWorker() {
 
 /**
  * What the secret names say, by the same rules the Worker applies. The Worker is the
- * authority on what is offered — `/api/config` below reports that — so this only flags
+ * authority on what is offered (`/api/config` below reports that), so this only flags
  * shapes the Worker would silently ignore: half a pair, and an allowlist nobody set.
  */
 function readSecrets(names) {
@@ -334,7 +334,7 @@ function report(state) {
   say(c.bold(`Unbent instance: ${config.name}`) + c.dim(`  (apps/api/${CONFIG})`));
   say();
 
-  line(login.ok ? OK : BAD, 'Cloudflare login', login.ok ? `${login.email ?? ''} — ${login.account?.name ?? 'account'} ${c.dim(login.account?.id ?? '')}` : 'not logged in');
+  line(login.ok ? OK : BAD, 'Cloudflare login', login.ok ? `${login.email ?? ''}, ${login.account?.name ?? 'account'} ${c.dim(login.account?.id ?? '')}` : 'not logged in');
   line(database.ok ? OK : BAD, `D1 "${config.database}"`, database.ok ? c.dim(database.id ?? 'exists') : 'does not exist on this account');
   if (database.ok) {
     line(
@@ -349,15 +349,15 @@ function report(state) {
   if (worker.ok) {
     say();
     say(c.bold('  Secrets') + c.dim('  (names only)'));
-    line(secrets.auth ? OK : BAD, 'BETTER_AUTH_SECRET', secrets.auth ? '' : 'missing — nobody can sign in');
+    line(secrets.auth ? OK : BAD, 'BETTER_AUTH_SECRET', secrets.auth ? '' : 'missing: nobody can sign in');
     line(
       secrets.allowlist === 'unset' ? WARN : OK,
       'Who may sign in',
-      secrets.allowlist === 'set' ? 'ALLOWED_EMAILS' : secrets.allowlist === 'public' ? 'anyone, by choice (PUBLIC_SIGNUPS)' : 'anyone — ALLOWED_EMAILS is unset',
+      secrets.allowlist === 'set' ? 'ALLOWED_EMAILS' : secrets.allowlist === 'public' ? 'anyone, by choice (PUBLIC_SIGNUPS)' : 'anyone: ALLOWED_EMAILS is unset',
     );
-    line(secrets.operator === 'half' ? BAD : secrets.operator === 'set' ? OK : INFO, 'Operator', secrets.operator === 'half' ? 'half a pair — both OPERATOR_NAME and OPERATOR_EMAIL, or neither' : secrets.operator === 'set' ? 'named; built-in legal pages render' : c.dim('unset; no privacy policy or terms are published'));
-    line(secrets.legal === 'half' ? BAD : secrets.legal === 'set' ? OK : INFO, 'External legal pages', secrets.legal === 'half' ? 'half a pair — both LEGAL_PRIVACY_URL and LEGAL_TERMS_URL, or neither' : secrets.legal === 'set' ? 'linked' : c.dim('not used'));
-    line(secrets.mail === 'half' ? BAD : secrets.mail === 'set' ? OK : INFO, 'Mail', secrets.mail === 'half' ? 'half a pair — both RESEND_API_KEY and EMAIL_FROM, or neither' : secrets.mail === 'set' ? 'Resend configured' : c.dim('none; codes by email and password reset are off'));
+    line(secrets.operator === 'half' ? BAD : secrets.operator === 'set' ? OK : INFO, 'Operator', secrets.operator === 'half' ? 'half a pair: both OPERATOR_NAME and OPERATOR_EMAIL, or neither' : secrets.operator === 'set' ? 'named; built-in legal pages render' : c.dim('unset; no privacy policy or terms are published'));
+    line(secrets.legal === 'half' ? BAD : secrets.legal === 'set' ? OK : INFO, 'External legal pages', secrets.legal === 'half' ? 'half a pair: both LEGAL_PRIVACY_URL and LEGAL_TERMS_URL, or neither' : secrets.legal === 'set' ? 'linked' : c.dim('not used'));
+    line(secrets.mail === 'half' ? BAD : secrets.mail === 'set' ? OK : INFO, 'Mail', secrets.mail === 'half' ? 'half a pair: both RESEND_API_KEY and EMAIL_FROM, or neither' : secrets.mail === 'set' ? 'Resend configured' : c.dim('none; codes by email and password reset are off'));
     line(secrets.halfProviders.length ? BAD : INFO, 'OAuth providers', secrets.providers.length ? secrets.providers.map((p) => p.toLowerCase()).join(', ') + (secrets.halfProviders.length ? c.bad(`  half-configured: ${secrets.halfProviders.join(', ')}`) : '') : secrets.halfProviders.length ? c.bad(`half-configured: ${secrets.halfProviders.join(', ')}`) : c.dim('none'));
     line(INFO, 'APP_URL', secrets.appUrl ? 'pinned to one origin' : c.dim('derived from each request; pin it if the Worker answers on two hostnames'));
     line(INFO, 'Android app-links', secrets.assetLinks ? 'published' : c.dim('none; only needed for an Android build of your own'));
@@ -368,7 +368,7 @@ function report(state) {
   say();
   say(c.bold('  Live'));
   if (live.unknown) {
-    line(WARN, 'Address', 'unknown — pass --url https://… (the deploy prints it; a custom domain is in the dashboard)');
+    line(WARN, 'Address', 'unknown: pass --url https://… (the deploy prints it; a custom domain is in the dashboard)');
   } else if (!live.ok) {
     line(BAD, url, live.status ? `health answered ${live.status}` : `unreachable (${live.error})`);
   } else {
@@ -391,7 +391,7 @@ function report(state) {
     const have = (n) => github.names.has(n);
     const both = have('CLOUDFLARE_API_TOKEN') && have('CLOUDFLARE_ACCOUNT_ID');
     line(both ? OK : INFO, 'Cloudflare secrets', both ? 'set; pushes to main deploy' : c.dim('unset; deploy from this machine with `pnpm release`, or set them below'));
-    if (both && !worker.ok) line(INFO, 'BETTER_AUTH_SECRET', have('BETTER_AUTH_SECRET') ? 'set; the first push can create the Worker' : c.warn('unset — the first push cannot create a Worker without it'));
+    if (both && !worker.ok) line(INFO, 'BETTER_AUTH_SECRET', have('BETTER_AUTH_SECRET') ? 'set; the first push can create the Worker' : c.warn('unset: the first push cannot create a Worker without it'));
   }
   say();
 }
@@ -441,7 +441,7 @@ async function fillMigrations() {
  * `pnpm release` or a push, and both inherit what this one sets.
  *
  * Returns the address the deploy printed, and the generated auth secret, which the GitHub
- * step may want — only a secret this run created can safely be handed to CI, because CI
+ * step may want: only a secret this run created can safely be handed to CI, because CI
  * sends it on every push and a different value would sign everyone out.
  */
 async function fillFirstDeploy(login, secretsAlready) {

@@ -2,7 +2,7 @@
 /**
  * Which ports this checkout's dev servers use.
  *
- * The main checkout keeps 5173/8787, so nothing about the usual setup changes — the
+ * The main checkout keeps 5173/8787, so nothing about the usual setup changes: the
  * Android emulator's `10.0.2.2:5173`, the OAuth redirect URIs registered with Google and
  * GitHub, and every `curl localhost:5173` in the docs all still point at it.
  *
@@ -50,7 +50,7 @@ function real(path) {
  *
  * A worktree's git directory is `<main>/.git/worktrees/<name>` while its *common* dir is
  * the main checkout's `.git`; in the main checkout the two are the same path. That
- * distinction is the reliable one — a worktree can live anywhere, so its location says
+ * distinction is the reliable one: a worktree can live anywhere, so its location says
  * nothing.
  */
 export function worktreeName(cwd = process.cwd()) {
@@ -87,7 +87,7 @@ function fromEnv(name, env) {
 
 /**
  * `{ worktree, web, api }` for a checkout. An explicit `WEB_PORT` / `API_PORT` in the
- * environment wins, so a run can always be pinned by hand — which is how the API tests
+ * environment wins, so a run can always be pinned by hand, which is how the API tests
  * point themselves at a particular pair.
  */
 export function portsFor(cwd = process.cwd(), env = process.env) {
@@ -121,7 +121,7 @@ function free(port) {
  *
  * `portsFor` derives a pair from the worktree's name and stops there, which is right up
  * until something outside this repo answers on one of them first. These bands are not ours
- * to reserve — an editor, a container, another project's server can be sitting on one —
+ * to reserve (an editor, a container, another project's server can be sitting on one),
  * and when that happened `pnpm dev` died on Miniflare's `Address already in use` with a
  * raw stack trace, no mention of which half had failed, and nothing to do about it.
  *
@@ -132,7 +132,7 @@ function free(port) {
  *
  * Two cases deliberately do not move. The main checkout stays on 5173/8787, which the
  * emulator's `10.0.2.2:5173`, the registered OAuth redirect URIs and every `curl` in the
- * docs all name — a busy port there is the user's own dev server, which AGENTS.md says to
+ * docs all name: a busy port there is the user's own dev server, which AGENTS.md says to
  * use rather than start a second one beside it. An explicit `WEB_PORT` / `API_PORT` does
  * not move either: it was named on purpose, which is how the API tests aim themselves.
  *
