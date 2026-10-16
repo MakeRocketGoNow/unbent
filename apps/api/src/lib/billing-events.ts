@@ -7,7 +7,7 @@ import type { PlanPatch, PlanRow } from './plan.js';
  * rules are tested without a request or a database. The route (routes/billing.ts) finds
  * the row by the event's customer id, asks this for the patch, and writes it.
  *
- * Every patch is absolute — the status, the end date, the storage as they stand — never
+ * Every patch is absolute (the status, the end date, the storage as they stand), never
  * an increment, so an event applied twice lands as it landed once. Paddle promises
  * delivery, not order, and retries anything not answered in five seconds; the route
  * refuses an event it has seen by id and `updatePlanStatement`'s `notBefore` keeps an
@@ -38,7 +38,7 @@ export const SUBSCRIPTION_EVENTS: ReadonlySet<string> = new Set([
  * The adjustment events a refund arrives on. `adjustment.created` carries a refund made
  * with its approval (a sandbox refund, a live one Paddle approves at once, a chargeback)
  * and one still `pending_approval`; `adjustment.updated` is the approval or the
- * rejection of the latter. Both are read for the same thing — an approved refund — and
+ * rejection of the latter. Both are read for the same thing (an approved refund), and
  * the row never follows a pending one, so a refund Paddle rejects changes nothing.
  */
 export const ADJUSTMENT_EVENTS: ReadonlySet<string> = new Set(['adjustment.created', 'adjustment.updated']);
@@ -79,8 +79,8 @@ export function storageGbOf(paddle: PaddleConfig, items: Array<{ price: { id: st
  * paid for, and the end date decides the rest. Only an event whose subscription is
  * `active` or `trialing` moves that date, since only those name a period that has been
  * paid for: a `past_due` subscription's current period is the one whose renewal failed,
- * and a `canceled` one — a scheduled cancellation taking effect at the period's end, a
- * cancellation made effective at once, or dunning giving up — carries no period at all.
+ * and a `canceled` one (a scheduled cancellation taking effect at the period's end, a
+ * cancellation made effective at once, or dunning giving up) carries no period at all.
  * For those the end date the row already holds stands, which is the end of the last
  * period paid for; the account keeps that, and no more. A row that never had one (a
  * subscription that was never active) ends at the event.
@@ -88,7 +88,7 @@ export function storageGbOf(paddle: PaddleConfig, items: Array<{ price: { id: st
  * A completed transaction is the other way the first checkout reaches the row: Paddle
  * sends it and `subscription.created` for the same moment in no promised order, so
  * either makes the account active with the period the transaction covers. The
- * subscription it names replaces the row's when it is a different one — a subscriber
+ * subscription it names replaces the row's when it is a different one: a subscriber
  * who lapsed and subscribed again has a new subscription, and the old canceled one must
  * not keep answering for the row. The storage is left to the subscription event, which
  * names the items as they stand; a proration's items name what was bought then, not the
@@ -97,7 +97,7 @@ export function storageGbOf(paddle: PaddleConfig, items: Array<{ price: { id: st
  * For that reason a transaction does not move the row's event stamp. The subscription
  * event for the same checkout happened a moment *before* the transaction completed, so
  * a transaction delivered first and stamped would have `notBefore` refuse the
- * subscription event as older — and with it the storage the person had just paid for,
+ * subscription event as older, and with it the storage the person had just paid for,
  * which only the subscription event carries; `/billing/refresh` could not mend it
  * either, since the subscription's `updated_at` is older still. The stamp orders
  * subscription snapshots against each other, which is the one ordering that matters:
@@ -107,13 +107,13 @@ export function storageGbOf(paddle: PaddleConfig, items: Array<{ price: { id: st
  * lapses, pays and lapses again is told the second time too.
  *
  * Two events change nothing however new they are. One about a subscription that is not
- * the row's while the row's own is live: a former subscription's late news — a
+ * the row's while the row's own is live: a former subscription's late news (a
  * `subscription.canceled` for the one a person lapsed from, arriving after they
- * subscribed again — would otherwise point the row back at the old subscription, and
+ * subscribed again) would otherwise point the row back at the old subscription, and
  * the account's deletion, which cancels what the row names, would then leave the live
  * one charging. And any event while the account is comped: a comp keeps the customer id
  * of a former subscriber, so the webhook can find the row, and a comp is the operator's
- * word that the account is not Paddle's to move — the checkout route refuses a new
+ * word that the account is not Paddle's to move: the checkout route refuses a new
  * subscription while one runs for the same reason. Once the comp has ended the row is a
  * lapsed account like any other, and a new subscription's events are its way back.
  */
@@ -156,14 +156,14 @@ export function planPatchFor(paddle: PaddleConfig, event: PaddleEvent, row: Plan
 
 /**
  * What an approved refund does to the subscription it names (MAK-108): the terms say a
- * refunded plan is cancelled and does not renew, and nothing in Paddle keeps that —
+ * refunded plan is cancelled and does not renew, and nothing in Paddle keeps that:
  * a refund there is an adjustment on the transaction, and the subscription it was for
  * stays active and renews at the period's end. So the webhook ends it, with the same
  * call account deletion makes.
  *
  * `cancel` is a refund of the plan: the whole transaction (`type: 'full'`), or any line
  * of it that is the plan's price. The subscription is cancelled at once and the account
- * turns read-only from the refund, not from the period's end — the period was given
+ * turns read-only from the refund, not from the period's end: the period was given
  * back. `remove-storage` is a refund of only the add-on's lines: the person keeps the
  * plan they paid for and the add-on comes off the subscription, with nothing billed and
  * nothing credited (`removeSubscriptionStorage`). All of it, not some units of it: an
@@ -172,18 +172,18 @@ export function planPatchFor(paddle: PaddleConfig, event: PaddleEvent, row: Plan
  * is a partial refund whose lines have not been read yet; the caller reads the
  * transaction and asks again with its `details.line_items`, which is where the
  * `txnitm_` ids an adjustment names are resolved to prices. A line the transaction does
- * not name — Paddle's own tax line, say — is read as the plan's, since a refund that
+ * not name (Paddle's own tax line, say) is read as the plan's, since a refund that
  * cannot be told apart from the plan's is cancelled rather than left renewing.
  *
  * A chargeback is the card issuer's refund and is read as one: a subscription that keeps
- * charging a disputed card is the worse outcome. Credits (`credit`) are not refunds —
- * money kept on the customer's balance for the next charge — and reversals undo
+ * charging a disputed card is the worse outcome. Credits (`credit`) are not refunds
+ * (money kept on the customer's balance for the next charge), and reversals undo
  * nothing here: a person whose chargeback Paddle won can subscribe again.
  *
  * Nothing for a refund with no subscription (a one-off charge), for one naming a
  * subscription that is not the row's live one (a former subscription's late refund, or
  * one the row already holds as canceled, which is also how a second delivery of the
- * same refund — or `adjustment.updated` after a `created` that was already approved —
+ * same refund, or `adjustment.updated` after a `created` that was already approved,
  * finds nothing left to do), or while the account is comped, for `planPatchFor`'s
  * reasons.
  */
@@ -206,7 +206,7 @@ export function refundEffectOf(paddle: PaddleConfig, event: PaddleEvent, row: Pl
 
 /**
  * The row after a refund's effect has gone through at Paddle. A cancel ends the plan at
- * the refund — `planUntil` at the event, and the status Paddle will confirm — so the
+ * the refund (`planUntil` at the event, and the status Paddle will confirm), so the
  * `subscription.canceled` that follows, which carries no period, keeps that date rather
  * than the year's end the row held. Stamped with the adjustment's time: the cancel it
  * caused happened after it, so the confirming event still applies, and an older

@@ -57,7 +57,7 @@ describe('withReaderSlot', () => {
     });
     await expect(boom).rejects.toThrow('conversion failed');
 
-    // Two more must both still be admittable after the failure — the slot came back.
+    // Two more must both still be admittable after the failure: the slot came back.
     const a = heldSlot();
     const b = heldSlot();
     await Promise.all([a.started, b.started]);

@@ -3,8 +3,8 @@
  * read of their own store, and what only an operator may do. Runs against a live
  * `wrangler dev`; see test/README.md.
  *
- * The operator's own paths — `?user=` on another account, the SQL route, the restore, the
- * sweep and its token — are exercised only on the refusal side here: the suite signs up throwaway actors, and none
+ * The operator's own paths (`?user=` on another account, the SQL route, the restore, the
+ * sweep and its token) are exercised only on the refusal side here: the suite signs up throwaway actors, and none
  * of them is in the instance's OPERATOR_EMAILS. The sweep itself is tested against real
  * objects in apps/store-tests.
  */
@@ -152,7 +152,7 @@ describe('operator-only routes', () => {
     }));
     expect(load.status).toBe(404);
     // The operator page's reads (MAK-171, part 5): the backup's health, the account
-    // list, and an account's dumps — the caller's own included, since the page is the
+    // list, and an account's dumps, the caller's own included, since the page is the
     // operator's alone. The health route is how the page learns whose session this is,
     // so its 404 is what keeps the tab from being drawn for anyone else.
     for (const path of ['/api/admin/backups', '/api/admin/accounts', `/api/admin/accounts/${alice.userId}`, `/api/admin/accounts/${alice.userId}/dumps`, `/api/admin/accounts/${alice.userId}/dumps/2026-10-06.sql`, `/api/admin/accounts/${alice.userId}/restores`]) {

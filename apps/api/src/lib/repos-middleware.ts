@@ -8,7 +8,7 @@ import type { AppEnv } from '../types.js';
  *
  * This is the enforcement point for tenant isolation: handlers receive repos already
  * bound to a user's object and never reach for a store or the database themselves, so a
- * request cannot address another account's notes. Must run after requireAuth — it throws
+ * request cannot address another account's notes. Must run after requireAuth: it throws
  * rather than silently building an unscoped repo if the user id is missing.
  */
 export const withRepos = createMiddleware<AppEnv>(async (c, next) => {

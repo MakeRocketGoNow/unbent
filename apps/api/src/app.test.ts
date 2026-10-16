@@ -11,7 +11,7 @@ vi.mock('./auth.js', () => ({ getAuth: () => ({ api: { getSession } }) }));
 const { app } = await import('./app.js');
 
 /**
- * Health is exempt from the session check by its position in app.ts — registered before
+ * Health is exempt from the session check by its position in app.ts, registered before
  * the middleware, which Hono applies only to routes registered after it. Nothing but
  * this test fails if someone moves it back into the chain, or adds a middleware above
  * it that waits on the session; the web app would then read a stalled auth store as the

@@ -4,8 +4,8 @@
  *
  * The OAuth provider takes a client that sends no `application_type` to be a web client,
  * as the registration spec says to, and a web client may only redirect to https on a
- * public host. A program that signs in through a local redirect — `http://127.0.0.1:53682/
- * callback` — is a native client (RFC 8252), and registers as one only by saying so. The
+ * public host. A program that signs in through a local redirect (`http://127.0.0.1:53682/
+ * callback`) is a native client (RFC 8252), and registers as one only by saying so. The
  * official MCP SDK does not say so: its client metadata has no `application_type` at all,
  * so a stock MCP client was refused before anyone saw a sign-in page, with a message
  * calling its loopback address "non-loopback".
@@ -81,8 +81,8 @@ export function loopbackRegistration(body: unknown): RegistrationDecision {
  * Registration metadata with every empty value taken out: `null`, `""` and `[]` (MAK-224).
  *
  * RFC 7591 metadata is optional field by field, and a client that has nothing to say for
- * one is meant to leave it out. Plenty of clients write it out empty instead — a struct
- * serialized with every field present, a Pydantic model dumped without `exclude_none` —
+ * one is meant to leave it out. Plenty of clients write it out empty instead (a struct
+ * serialized with every field present, a Pydantic model dumped without `exclude_none`),
  * and the provider's schema reads `"contacts": []` as a list that is too short and
  * `"client_uri": null` as a string that is not a string, and refuses the whole
  * registration. The client is then told only that registration failed, and Gemini, which
@@ -97,7 +97,7 @@ export function loopbackRegistration(body: unknown): RegistrationDecision {
  *
  * A *choice* written out empty is different, and kept: `""` or `[]` for how the client
  * authenticates, what kind of app it is, or which grants and responses it wants. Taking
- * one of those out would have the provider pick its default instead of refusing — an
+ * one of those out would have the provider pick its default instead of refusing: an
  * empty auth method would be issued a secret it never asked for, then fail at the token
  * endpoint with a worse error than a clear refusal here, and an empty application type
  * could be registered as native by `loopbackRegistration`. `null` is still taken out of
@@ -120,8 +120,8 @@ export function withoutEmptyMetadata(body: unknown): Record<string, unknown> | n
  *
  * The registration endpoint is unauthenticated and refusals were silent, so when an
  * assistant could not connect the only evidence was its own one-line message. This is the
- * request's shape — the fields it sent, how it wants to authenticate, which grants and
- * responses, which redirect *hosts* — beside the provider's reason. Hosts and not whole
+ * request's shape (the fields it sent, how it wants to authenticate, which grants and
+ * responses, which redirect *hosts*) beside the provider's reason. Hosts and not whole
  * redirects, because a relay's path can carry a per-user id (Google's does); the client's
  * name, because it is the program's and is how the line is found.
  *

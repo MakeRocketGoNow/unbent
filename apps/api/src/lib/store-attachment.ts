@@ -40,7 +40,7 @@ export interface StoreAttachmentInput {
   contentType: string | null | undefined;
   /**
    * The bytes. A stream goes straight to R2 and is never held in memory, which is what
-   * lets an attachment be larger than the Worker's own memory — but R2 has to know how
+   * lets an attachment be larger than the Worker's own memory, but R2 has to know how
    * long it is, so a stream here must carry a known length: a request body with a
    * Content-Length, or a FixedLengthStream.
    */
@@ -61,7 +61,7 @@ export interface StoreAttachmentInput {
    */
   quota: number | null;
   /**
-   * How many bytes are coming, when the caller knows before they move — a request's
+   * How many bytes are coming, when the caller knows before they move: a request's
    * Content-Length. Checked against the quota before R2 is touched; the true size is
    * checked again after, since this is a claim.
    */
@@ -75,9 +75,9 @@ export interface StoreAttachmentInput {
  * This is the one place a new attachment comes into being from bytes. The upload route
  * calls it with a request body; the MCP server calls it with a response it fetched on an
  * assistant's behalf. Both used to need the same six steps in the same order, and the
- * order matters — the row is written after R2 confirms the object, the extraction reads
- * the object back after the row exists, the link uses the name that was actually stored
- * — so it lives once, here, rather than being kept in step by hand. `copyAttachments` is
+ * order matters (the row is written after R2 confirms the object, the extraction reads
+ * the object back after the row exists, the link uses the name that was actually stored),
+ * so it lives once, here, rather than being kept in step by hand. `copyAttachments` is
  * deliberately not a caller: a copy carries its source's extracted text across instead of
  * reading the file again, which is a different pipeline with a different middle.
  *
@@ -103,7 +103,7 @@ export async function storeAttachment(
    *
    * Kept rather than verified: the search backfill filters on `application/pdf`, and the
    * export needs real types for the files it writes. What makes this safe is that nothing
-   * is *served* from it unchecked — see the GET handler in routes/attachments.ts, which
+   * is *served* from it unchecked: see the GET handler in routes/attachments.ts, which
    * decides the response type independently. Parameters are stripped here so a stored
    * value like `text/html; charset=utf-8` cannot later differ from what the allowlist
    * compares.
@@ -148,7 +148,7 @@ export async function storeAttachment(
    * than before it, because the caller should return the moment the bytes are safe and a
    * reader is seconds of waiting on another service; `waitUntil` gives it thirty. A
    * failure of any kind leaves the row pending, and the browser's pass over pending files
-   * remains the fallback — only a reader that looked and found nothing writes the empty
+   * remains the fallback: only a reader that looked and found nothing writes the empty
    * row. The result says which way it went, so a client that would extract on its own
    * knows not to.
    *
@@ -171,7 +171,7 @@ export async function storeAttachment(
         size: object.size,
         r2Key: key,
       }).catch((err: unknown) => {
-        // Left pending for the passes — and said so, because a request the API refused
+        // Left pending for the passes, and said so, because a request the API refused
         // (a bad key, a shape it will not take) would otherwise look exactly like a file
         // nobody has got to yet. The id rather than the name: names come from the archive.
         console.error('read after upload:', id, (err as Error).message);

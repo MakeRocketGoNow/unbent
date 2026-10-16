@@ -107,7 +107,7 @@ describe('upload and serve', () => {
 
   /**
    * The row for a note shows what it holds from the attachment rows, not from links in the
-   * body — the two tests above attached files to a note whose body is still empty.
+   * body: the two tests above attached files to a note whose body is still empty.
    */
   it('lists the files on the note summary, oldest first, and omits the key when none', async () => {
     const other = await createNote(alice, 'Without attachments');
@@ -135,7 +135,7 @@ describe('upload and serve', () => {
   });
 
   /**
-   * A file's declared type is attacker-controlled — a request header on upload, or an ENEX
+   * A file's declared type is attacker-controlled: a request header on upload, or an ENEX
    * `<mime>` field on import. Echoing it back means a file uploaded as `text/html` becomes
    * a same-origin document: its scripts can read the app's DOM and call the API with the
    * user's session. These assert the response, not the stored metadata.
@@ -160,7 +160,7 @@ describe('upload and serve', () => {
 
       expect(get.headers.get('content-type')).toBe('application/octet-stream');
       expect(get.headers.get('content-disposition')).toContain('attachment');
-      // The bytes are still returned intact — this is about how they are labelled.
+      // The bytes are still returned intact: this is about how they are labelled.
       expect(await get.text()).toBe(html);
     });
 
@@ -282,7 +282,7 @@ describe('upload and serve', () => {
 
 /** A filename must never be able to address anything outside its own note prefix. */
 /**
- * `?link=1` — the server writes the markdown link the uploader cannot.
+ * `?link=1`: the server writes the markdown link the uploader cannot.
  *
  * The browser editor inserts its own link at the cursor and never sends this flag. A phone
  * share sheet has no cursor and no copy of the body, so without the flag its uploads would
@@ -435,8 +435,8 @@ describe('copying between notes', () => {
 
   /**
    * Deleting the copy's source must leave the copy readable. This is the invariant the
-   * whole endpoint exists to keep — R2 keys embed the note id and every delete path assumes
-   * one object per row — so it is asserted directly rather than trusted.
+   * whole endpoint exists to keep: R2 keys embed the note id and every delete path assumes
+   * one object per row, so it is asserted directly rather than trusted.
    */
   it('gives the copy its own object, so deleting the source leaves it intact', async () => {
     await fetch(`${BASE}/api/notes/${source.id}/files/pic.png`, {
@@ -549,7 +549,7 @@ describe('duplicating a note', () => {
 
 /**
  * Fetching a web image into a note. The picture server is this test process, on
- * loopback — which the Worker accepts only under the local-dev flag, so the address
+ * loopback, which the Worker accepts only under the local-dev flag, so the address
  * policy is exercised on its own in `src/lib/web-image.test.ts`. What is asserted here
  * is the round trip: the bytes land, the type is kept, the name follows the rules, and a
  * page or an oversized answer is refused with a reason.
@@ -689,7 +689,7 @@ describe('filename validation', () => {
    * A percent sign is the one character that tells a single decode from a double one.
    *
    * The router decodes a path parameter before a handler sees it, so `50%25%20off` arrives
-   * as `50% off`. Decoding that again throws on the bare `%` — a 500 — and for a name like
+   * as `50% off`. Decoding that again throws on the bare `%` (a 500) and for a name like
    * `100%41.txt` it would be worse, quietly addressing `100A.txt` instead. Every route that
    * takes the name in the path is walked here, because each decoded for itself.
    */
@@ -882,7 +882,7 @@ describe('orphaned blob gc', () => {
     await upload(actor, note.id, 'a.txt', 'a');
     await upload(actor, note.id, 'b.txt', 'b');
 
-    // Soft-deleting the note keeps its blobs by design — exactly the case that strands
+    // Soft-deleting the note keeps its blobs by design, exactly the case that strands
     // objects once the note is eventually purged.
     await fetch(`${BASE}/api/notes/${note.id}`, {
       method: 'DELETE',
@@ -987,9 +987,9 @@ describe('purge', () => {
     }).then((r) => r.json());
     expect(items).toEqual([]);
 
-    // The blob is still in R2 — the store keeps a deleted file for thirty-five days, so
-    // the account can be wound back to before the purge with its files (MAK-171, part 1)
-    // — and the account's own sweep counts it as awaiting deletion, not as an orphan.
+    // The blob is still in R2: the store keeps a deleted file for thirty-five days, so
+    // the account can be wound back to before the purge with its files (MAK-171, part 1),
+    // and the account's own sweep counts it as awaiting deletion, not as an orphan.
     const gc = await fetch(`${BASE}/api/admin/gc-blobs`, {
       method: 'POST',
       headers: { Cookie: actor.cookie, Origin: ORIGIN },

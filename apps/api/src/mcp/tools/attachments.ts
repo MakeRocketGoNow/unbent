@@ -19,8 +19,8 @@ import { jsonResult, notFound, toolError } from './result.js';
 
 /**
  * The most of a picture `get_attachment` hands over, as bytes on disk. The model's
- * platforms cap an image by the length of its base64 — 10 MiB on the Claude API, 5 MiB on
- * Bedrock and Vertex — and which one the assistant's client talks to is unknown here, so
+ * platforms cap an image by the length of its base64 (10 MiB on the Claude API, 5 MiB on
+ * Bedrock and Vertex) and which one the assistant's client talks to is unknown here, so
  * the lower bound rules: three quarters of 5 MiB, less a little for the JSON around it. A
  * phone photo fits; a scan at print resolution does not, and the refusal names the size so
  * the person can resize it. MAK-185 is downscaling on the server, which would retire this.
@@ -38,9 +38,9 @@ const MAX_ASSISTANT_TEXT_CHARS = 100_000;
  * The tools that give a note a file, and the two that let an assistant read one.
  *
  * Bytes flow out here and never in. `get_attachment` returns a picture as an image block
- * for the assistant's own model to look at — since MAK-179 nothing on the instance reads
+ * for the assistant's own model to look at (since MAK-179 nothing on the instance reads
  * a picture except an Auto-fill press, so an assistant that wants to know what a photo
- * shows reads it itself, on its own bill, by the person's choice in connecting it — and
+ * shows reads it itself, on its own bill, by the person's choice in connecting it) and
  * `set_attachment_text` records what it read, marked as the assistant's, so search and
  * the summaries have it until a press has the model read the file, where the instance
  * has one (see `writeAssistantText` in the store for what yields to it and what does not).
@@ -49,7 +49,7 @@ const MAX_ASSISTANT_TEXT_CHARS = 100_000;
  *
  * No tool takes the bytes as an argument, and not because one was forgotten. A tool call
  * is JSON the model writes, so the only way bytes could arrive through one is base64 in an
- * argument — and a model producing a scan that way is millions of characters of output,
+ * argument, and a model producing a scan that way is millions of characters of output,
  * past what any client will carry or any model will finish; even a phone screenshot is over
  * a million. Such a tool would advertise a capability that works only for files small
  * enough not to matter. It was proposed again (MAK-126) and declined for the same reason.
@@ -91,8 +91,8 @@ export function registerAttachmentTools(
         'attachment under about 3.7 MB. For a picture that get_attachment_text, get_note or a ' +
         'summary reports as "pending": nothing on this instance reads a picture on its own' +
         (vision
-          ? ' — an Auto-fill press by the person does, and so can you. '
-          : ' — this instance has no vision model, so you are the only reader it has. ') +
+          ? '; an Auto-fill press by the person does, and so can you. '
+          : '; this instance has no vision model, so you are the only reader it has. ') +
         'Read it, then record what you read with set_attachment_text, so search, the ' +
         'summaries and the next session have it without looking again. The bytes come to ' +
         "you and to no model the instance runs. PDFs are not returned: a PDF's text layer is " +
@@ -169,7 +169,7 @@ export function registerAttachmentTools(
         'record is marked as yours (read "assistant")' +
         (vision
           ? ', and for a picture or a scan the next time the person presses Auto-fill on the ' +
-            'note the instance has its model read the file itself and replaces it — so write ' +
+            'note the instance has its model read the file itself and replaces it, so write ' +
             'it for search in the meantime, not as the last word. If the model declines the ' +
             'file, your words stay and it is offered again on later presses. For any other ' +
             'kind of file what you record stands.'
@@ -233,8 +233,8 @@ export function registerAttachmentTools(
       description:
         'Attach a file to a note. The server fetches the URL itself and stores what it ' +
         'gets, so the bytes never pass through the conversation: to bring a file over from ' +
-        'another system, read that system for a download link — usually a signed URL that ' +
-        'is valid for an hour or so — and pass it here. Only http and https can be fetched; ' +
+        'another system, read that system for a download link (usually a signed URL that ' +
+        'is valid for an hour or so) and pass it here. Only http and https can be fetched; ' +
         'a file: or other internal reference is not a download link. For a picture or file ' +
         'found on a web page, pass that page as referer: the request is made as a browser on ' +
         'that page would make it, which some hosts require. Give a filename when ' +
@@ -244,10 +244,10 @@ export function registerAttachmentTools(
         'the exact Markdown that shows it in the note. By default that Markdown is appended ' +
         'to the end of the body; pass link false and place it yourself with edit_note when ' +
         'it belongs somewhere in particular. A PDF becomes searchable once its text is ' +
-        'extracted, which happens in the background. For a file with no URL — one on your ' +
-        'own disk or in your sandbox — use prepare_attachment_upload instead. If the host ' +
-        'refuses this server (401, 403 or 429), fetch the file yourself — in a browser tab ' +
-        "with the file's own URL open, or with your own tools — and send the bytes with " +
+        'extracted, which happens in the background. For a file with no URL (one on your ' +
+        'own disk or in your sandbox), use prepare_attachment_upload instead. If the host ' +
+        'refuses this server (401, 403 or 429), fetch the file yourself (in a browser tab ' +
+        "with the file's own URL open, or with your own tools) and send the bytes with " +
         'prepare_attachment_upload, whose URL accepts a PUT from any origin. The answer ' +
         'also carries url, the note in Unbent: give it to the person as a link.',
       inputSchema: z.object({
@@ -313,8 +313,8 @@ export function registerAttachmentTools(
         });
         return jsonResult({ noteId, url: links.note(noteId), ...stored, linked: link });
       } catch (err) {
-        // A transfer that fails midway — the source sent fewer bytes than it declared, say
-        // — is the model's to retry, not an exception to end the conversation on.
+        // A transfer that fails midway (the source sent fewer bytes than it declared, say)
+        // is the model's to retry, not an exception to end the conversation on.
         return toolError(
           `Storing the file failed: ${err instanceof Error ? err.message : String(err)}. ` +
             'Nothing was attached; try again, or read the source for a fresh URL.',
@@ -340,7 +340,7 @@ export function registerAttachmentTools(
         "bytes you fetched in a browser tab when add_attachment was refused by the file's " +
         'host. Returns a one-time upload URL. Send the raw bytes to it with an HTTP PUT, for ' +
         'example curl -T "photo.png" "<uploadUrl>", or from a script in a browser, ' +
-        "fetch(uploadUrl, { method: 'PUT', body: blob }) — the URL accepts requests from " +
+        "fetch(uploadUrl, { method: 'PUT', body: blob }). The URL accepts requests from " +
         'any origin and needs no cookies or other credentials. In a browser, run it with ' +
         "the file's own URL open in the tab, where no page's scripts can see the upload URL " +
         '(trackers on a shop page can record requests, and claim the URL first); run it on ' +

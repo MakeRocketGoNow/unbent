@@ -2,7 +2,7 @@
 # Wipes local development state: D1, R2 and the per-account note stores.
 #
 # The in-app sweep is scoped to the signed-in user's prefix, so it cannot reclaim objects
-# belonging to accounts that no longer exist — test fixtures leave those behind by the
+# belonging to accounts that no longer exist: test fixtures leave those behind by the
 # hundred. This clears everything and rebuilds the schema from migrations. The note
 # stores (`do/`) go too, for the reason reset-local-db.sh gives: an object with no account
 # behind it is a ghost.

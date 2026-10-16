@@ -8,7 +8,7 @@ import type { Env } from '../types.js';
  *
  * The verifier hands back jose's `JWTPayload`, a wider structural type than anything here
  * needs. Declared locally rather than imported so the API does not take a direct dependency
- * on jose for one type used in one place — the same reasoning as `AuthInstance` in auth.ts.
+ * on jose for one type used in one place, the same reasoning as `AuthInstance` in auth.ts.
  */
 export interface AccessTokenClaims {
   sub?: unknown;
@@ -20,7 +20,7 @@ export interface AccessTokenClaims {
 /**
  * Cache key for the signing keys, so they are read once per isolate rather than once per
  * tool call. The verifier caches against object identity, so this must be a stable module
- * constant — a fresh object per request would defeat it silently.
+ * constant: a fresh object per request would defeat it silently.
  */
 const jwksCacheKey = {};
 
@@ -34,8 +34,8 @@ const jwksCacheKey = {};
  * servers a client has connected to.
  *
  * The keys are read through the auth instance rather than fetched over HTTP. The published
- * key set at /api/auth/jwks is the same material, and the packaged helpers reach it by URL
- * — which a Worker cannot do to itself. In local development that URL is the SPA's origin,
+ * key set at /api/auth/jwks is the same material, and the packaged helpers reach it by URL,
+ * which a Worker cannot do to itself. In local development that URL is the SPA's origin,
  * which is a Vite proxy that may not even be running; in production it is the Worker's own
  * hostname, and a Worker fetching itself is a request that leaves and has to come back. An
  * in-process call has neither problem and is faster than both.
@@ -81,7 +81,7 @@ export function protectMcp(
  *
  * Better Auth stamps `iss` from the base URL it resolved for the request that minted the
  * token. Deployed that is `APP_URL` and nothing moves. Locally it is whichever hostname the
- * Worker was reached on — localhost, a Tailscale name, the emulator's 10.0.2.2 — because
+ * Worker was reached on (localhost, a Tailscale name, the emulator's 10.0.2.2) because
  * `baseURLFor` deliberately trusts several, and the SPA's port is not the Worker's. Checking
  * against a guess therefore rejects perfectly good tokens in development, which is exactly
  * what happened: a token issued at :8802 measured against a :5202 expectation.
@@ -104,7 +104,7 @@ async function issuerFor(env: Env, request: Request): Promise<string> {
  *
  * Signature checking alone cannot answer that. A token is valid for its whole lifetime by
  * construction, so someone who disconnects an assistant in Settings would otherwise keep
- * being read for up to an hour afterwards — and "disconnect" would mean "disconnect
+ * being read for up to an hour afterwards, and "disconnect" would mean "disconnect
  * shortly", which is not what the word promises or what the settings page says.
  *
  * So each call checks that the consent row is still there. That is one indexed lookup on
@@ -134,7 +134,7 @@ async function grantStillStands(env: Env, claims: AccessTokenClaims): Promise<bo
  * and connecting becomes impossible rather than merely manual.
  *
  * `createResourceServerChallenge` builds that header, but only for the typed errors Better
- * Auth's own verifier raises — handed anything else it returns undefined. Verification here
+ * Auth's own verifier raises; handed anything else it returns undefined. Verification here
  * can also fail with a plain `Error` (a missing header, a malformed token), and an early
  * version of this function let those through with no header at all: a 401 that told the
  * client nothing. So the header is constructed directly when the packaged builder declines,
@@ -178,7 +178,7 @@ function resourceMetadataUrl(resource: string): string {
  *
  * `sub` is the subject claim, which this provider sets to the user id. Read through a
  * function rather than inline so there is one place that knows that, and one place that
- * fails loudly if a token ever arrives without it — an unscoped repo is not something to
+ * fails loudly if a token ever arrives without it: an unscoped repo is not something to
  * construct from `undefined`.
  */
 export function userIdFrom(claims: AccessTokenClaims): string {

@@ -4,11 +4,11 @@ import { z } from 'zod';
  * Jev, TypeSafe's "System One" model, over its one endpoint.
  *
  * Not a language model in the generating sense. It takes a piece of state and a set of
- * typed questions about it — pick one of these, is this true — and answers every question
+ * typed questions about it (pick one of these, is this true) and answers every question
  * at once with a probability per option. Nothing it says can fall outside the options it
  * was given, which is what makes it safe to wire straight into a note's filing: it cannot
  * invent a notebook, misspell a tag or hand a date field a sentence. What it cannot do is
- * write, so anything free-form — a title, a text field — is asked as a choice between
+ * write, so anything free-form (a title, a text field) is asked as a choice between
  * candidates the code found first; see lib/autofill.ts.
  *
  * One `fetch` against one endpoint, as lib/email.ts does with Resend, rather than the
@@ -47,7 +47,7 @@ export function canAutofill(env: JevEnv): boolean {
 /**
  * What the API takes wherever it takes text: a string, or JSON built from strings. The
  * docs recommend an object for state, so its parts are labelled, and objects for criteria
- * that need more than a sentence — `what`, `not_for`, `examples`.
+ * that need more than a sentence: `what`, `not_for`, `examples`.
  */
 export type JevEntry = string | null | JevEntry[] | { [key: string]: JevEntry };
 
@@ -72,7 +72,7 @@ export interface JevChoiceAnswer {
   /** The likeliest key. */
   choice: string;
   probabilities: Record<string, number>;
-  /** How peaked the distribution is, 0 to 1 — TypeSafe's own summary of `probabilities`. */
+  /** How peaked the distribution is, 0 to 1: TypeSafe's own summary of `probabilities`. */
   confidence: number;
 }
 
@@ -153,7 +153,7 @@ export function jevFrom(env: JevEnv, fetchImpl: typeof fetch = fetch): Jev {
       }
 
       if (!res.ok) {
-        // The body says why — an invalid key, a question the API could not read — and
+        // The body says why (an invalid key, a question the API could not read) and
         // the status alone does not. Truncated because this ends up in a log and on screen.
         const detail = (await res.text().catch(() => '')).trim().slice(0, 200);
         throw new JevError(res.status, `Jev answered ${res.status}${detail ? `: ${detail}` : ''}`);

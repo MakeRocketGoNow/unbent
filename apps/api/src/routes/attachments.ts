@@ -25,7 +25,7 @@ import type { AppEnv } from '../types.js';
  *
  * Blobs are proxied through the Worker rather than served by R2 presigned URLs. Presigning
  * needs S3 credentials and SigV4 signing inside the Worker (real secrets, versus a binding
- * that is already there), and a presigned URL cannot be revoked before it expires — a
+ * that is already there), and a presigned URL cannot be revoked before it expires: a
  * leaked link to a private note's attachment would stay live. Authorization here is a
  * scoped DB lookup we control. R2 egress is free either way, and immutable caching means
  * the browser fetches each blob once.
@@ -44,7 +44,7 @@ export const attachments = new Hono<AppEnv>()
 
   /**
    * Upload. The body streams straight into R2 and is never buffered, so the Worker's
-   * 128MB memory ceiling does not bound attachment size — Cloudflare's 100MB request cap
+   * 128MB memory ceiling does not bound attachment size: Cloudflare's 100MB request cap
    * does, and we reject above that with a clear error rather than a truncated object.
    *
    * What happens to the bytes once they are accepted lives in lib/store-attachment.ts,
@@ -57,7 +57,7 @@ export const attachments = new Hono<AppEnv>()
     /**
      * `?text=supplied`: the client has this file's text already and will put it next, so
      * the read that would otherwise start here is skipped. What the importer sends for a
-     * file that arrived with a `text/` or `described/` sidecar — see `storeAttachment`.
+     * file that arrived with a `text/` or `described/` sidecar (see `storeAttachment`).
      */
     const textSupplied = c.req.query('text') === 'supplied';
 
@@ -66,7 +66,7 @@ export const attachments = new Hono<AppEnv>()
      * can be (`POST /notes`). A file added with no connection is uploaded later from an
      * outbox, and an outbox replays: a request whose answer was lost is sent again. With
      * an id, the second one finds the file the first one made and is answered 200 with
-     * it, its body unread — without, it stored the same bytes again as `scan-2.pdf`. An
+     * it, its body unread; without, it stored the same bytes again as `scan-2.pdf`. An
      * id held by a file of another note is a conflict, not a find.
      */
     const claimed = c.req.header('X-Attachment-Id');
@@ -80,7 +80,7 @@ export const attachments = new Hono<AppEnv>()
         const { filename, contentType, size } = existing;
         // The answer the first request gave, worked out again: it was lost, so the client
         // never heard it. A flat `server` here left a file the server cannot read with
-        // nobody reading it — the client that holds the bytes was told not to (review of
+        // nobody reading it: the client that holds the bytes was told not to (review of
         // #236). Where the server can, its reader is already on the first request's bytes.
         const indexing = !textSupplied && serverCanRead(c.env, contentType, size) ? 'server' : 'client';
         return c.json({ filename, contentType, size, path: `files/${filename}`, indexing }, 200);
@@ -160,7 +160,7 @@ export const attachments = new Hono<AppEnv>()
    * What a paste across notes calls, and what the Attachments panel's copy-to and move-to
    * call. The editor could have downloaded the bytes and re-uploaded them, but a scan is
    * tens of megabytes and the phone's radio is slow; a copy between two keys in R2 is one
-   * request and no bytes through the client. Both notes must be this user's and live —
+   * request and no bytes through the client. Both notes must be this user's and live:
    * the source check is inside `copyAttachments`, through the same scoped resolve the
    * download uses, so a note id from another account reads as missing.
    *
@@ -193,7 +193,7 @@ export const attachments = new Hono<AppEnv>()
    * Fetches a picture off the web and stores it on the note.
    *
    * What "Save web images" calls, once per address. The Worker fetches because the
-   * browser cannot — see `lib/web-image.ts` for that and for the address policy. The body
+   * browser cannot (see `lib/web-image.ts` for that and for the address policy). The body
    * is not rewritten here: the client holds the draft and puts `files/<name>` in place of
    * the address itself, from the name in the answer, which may be suffixed.
    */
@@ -240,7 +240,7 @@ export const attachments = new Hono<AppEnv>()
    * `c.req.param()` has already percent-decoded it, once, which is all the client encoded.
    * Each of these handlers used to decode it again, and a second pass is wrong for any name
    * holding a percent sign: `20% off.pdf` threw a URIError and answered 500, and a name
-   * shaped like an escape — `100%41.txt` — silently addressed `100A.txt` instead. The
+   * shaped like an escape (`100%41.txt`) silently addressed `100A.txt` instead. The
    * upload is different: its name arrives in a header, which nothing decodes for us.
    */
   .get('/notes/:id/files/:filename', async (c) => {
@@ -265,13 +265,13 @@ export const attachments = new Hono<AppEnv>()
      * Serve a safe type rather than the one the uploader declared.
      *
      * `writeHttpMetadata` restores whatever was stored on the R2 object, which came from a
-     * client header or an ENEX `<mime>` field — neither verified against the bytes. Echoing
+     * client header or an ENEX `<mime>` field, neither verified against the bytes. Echoing
      * it means a file uploaded as `text/html` runs as a same-origin document with access to
      * the session. Anything not known-inert is downgraded to a binary type and marked
      * `attachment`, so the browser saves it instead of executing it.
      */
     headers.set('Content-Type', serveContentType(row.content_type));
-    // `?download=1` forces a save — needed for PDFs, which are otherwise inline for preview.
+    // `?download=1` forces a save: needed for PDFs, which are otherwise inline for preview.
     const disposition =
       c.req.query('download') === '1' ? 'attachment' : serveDisposition(row.content_type);
     headers.set(
@@ -299,11 +299,11 @@ export const attachments = new Hono<AppEnv>()
    * Stores text extracted from an attachment, for search.
    *
    * A separate call rather than part of the upload because extraction happens on the
-   * client after the bytes are already sent, and because it is optional — an attachment
+   * client after the bytes are already sent, and because it is optional: an attachment
    * with no usable text simply never gets one.
    *
-   * `readBy` records who wrote the text when it was not a text layer — `vision` for the
-   * model, `assistant` for an assistant over MCP — and here it is only ever true of text
+   * `readBy` records who wrote the text when it was not a text layer (`vision` for the
+   * model, `assistant` for an assistant over MCP) and here it is only ever true of text
    * restored from an archive's `described/` or `written/`: the model runs on the server,
    * an assistant writes through its own tool, and every other caller here sends a text
    * layer. Anything else is refused rather than stored as a layer, so a typo cannot
@@ -357,7 +357,7 @@ export const attachments = new Hono<AppEnv>()
   /**
    * Lists attachments that still need text extracted, with their bytes fetchable.
    *
-   * Backfill runs on the client because that is where the PDF library lives — the same
+   * Backfill runs on the client because that is where the PDF library lives, the same
    * extraction the import uses. The server only says which files still need it.
    *
    * `?note=` narrows the list, and the count, to one note. The Android app indexes the
@@ -365,7 +365,7 @@ export const attachments = new Hono<AppEnv>()
    * and walks whatever the account has left.
    *
    * The web asks on every open of the app, so both halves read only the files still
-   * unread — nothing at all once everything has been. `extractable` and `indexed`, the
+   * unread: nothing at all once everything has been. `extractable` and `indexed`, the
    * account's PDF totals, used to come back too; no client read them, and counting them
    * meant reading every PDF each time.
    */

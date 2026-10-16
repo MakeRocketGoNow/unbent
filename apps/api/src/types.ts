@@ -12,7 +12,7 @@ export interface Env {
    * switch that turns them on: unbound, the dump run at :47 returns before it makes a
    * call. Bound on unbent.app's production (by the deploy workflow, when the repository
    * names a bucket in `BACKUPS_BUCKET`) and on its dev instance (`[env.dev]` in
-   * wrangler.toml), and nowhere else — not at the top level, which a fork deploys, so a
+   * wrangler.toml), and nowhere else: not at the top level, which a fork deploys, so a
    * self-hoster's instance never starts dumping into a bucket they did not ask for.
    */
   BACKUPS?: R2Bucket;
@@ -26,12 +26,12 @@ export interface Env {
    * One SQLite-backed Durable Object per account, holding that account's notes. Reached
    * by user id: `USER_STORE.get(USER_STORE.idFromName(userId))`. A type-only import of the
    * class, so nothing outside src/store/ and the entry point pulls `cloudflare:workers`
-   * into its module graph — the unit tests run under Node, where that import has no
+   * into its module graph: the unit tests run under Node, where that import has no
    * meaning. See src/store/user-store.ts.
    */
   USER_STORE: DurableObjectNamespace<UserStore>;
   /**
-   * Where each account's store is created. Unset — every instance today — lets the
+   * Where each account's store is created. Unset (every instance today) lets the
    * runtime place an object near the first request for it. `eu` pins every new store to
    * the EU jurisdiction, for an operator whose users need their notes kept there; it
    * applies to objects created after it is set, and moves none. Read once per request in
@@ -63,26 +63,26 @@ export interface Env {
    */
   INSTANCE_LABEL?: string;
   /**
-   * Which kind of scratch instance this is — `dev`, `preview` or `local` — for the page to
+   * Which kind of scratch instance this is (`dev`, `preview` or `local`) for the page to
    * colour its marks by and to decide whether the drawer wears a ribbon (dev and previews
    * do; local does not, so the store screenshots shot against `pnpm dev` stay clean). Set
    * beside `INSTANCE_LABEL` in wrangler.toml; anything else reads as unset.
    */
   INSTANCE_KIND?: string;
   /**
-   * Workers AI, for extracting a PDF's text on upload. Bound in production only — see
-   * wrangler.toml — so it is optional here, and its absence means the browser does the
+   * Workers AI, for extracting a PDF's text on upload. Bound in production only (see
+   * wrangler.toml), so it is optional here, and its absence means the browser does the
    * extracting, as it did before.
    */
   AI?: Ai;
   /**
-   * The origin the app is served on — what Better Auth, the passkey relying party, secure
+   * The origin the app is served on: what Better Auth, the passkey relying party, secure
    * cookies, the MCP audience and the legal documents' host all derive from.
    *
    * Always present by the time a route sees it, and optional in the deployment: the
    * Worker's entry point fills it from the request origin when nothing configured one
    * (see lib/app-url.ts), so an instance need not know its own address before its first
-   * deploy. Setting it — as a secret, which survives deploys — pins one origin and makes
+   * deploy. Setting it (as a secret, which survives deploys) pins one origin and makes
    * every other hostname the Worker answers on refuse sign-in, which is what a deployment
    * with both a custom domain and a workers.dev name wants.
    */
@@ -111,7 +111,7 @@ export interface Env {
    * '1' offers email-and-password sign-in, '0' refuses it.
    *
    * Neither is usually needed. Password is offered by default when nothing else on the
-   * instance can create an account — no OAuth and no mail — and withdrawn as soon as
+   * instance can create an account (no OAuth and no mail) and withdrawn as soon as
    * something can, so a self-hoster gets a way in without asking and unbent.app never sees
    * it. '1' is for wanting a password alongside a configured provider; '0' is for refusing
    * the default, and is the one setting here that can leave nobody a way in.
@@ -137,7 +137,7 @@ export interface Env {
   AUTH_PASSKEY?: string;
   /**
    * Comma-separated emails allowed to create an account. Unset or empty means anyone
-   * can sign up, which is fine locally but not for a deployed instance — unless that is
+   * can sign up, which is fine locally but not for a deployed instance, unless that is
    * what the instance wants, which is what PUBLIC_SIGNUPS is for.
    */
   ALLOWED_EMAILS?: string;
@@ -150,14 +150,14 @@ export interface Env {
    */
   PUBLIC_SIGNUPS?: string;
   /**
-   * '1' declares that this is the instance the public signs up to — unbent.app — and
+   * '1' declares that this is the instance the public signs up to (unbent.app) and
    * turns on the front page at `/` for signed-out visitors: what Unbent is, what it costs,
    * and the way in.
    *
    * Opt-in for the reason the operator's name is: that page states unbent.app's prices and
    * trial, and a fork deployed unchanged must not publish somebody else's offer on its own
    * domain. Unset, `/` is the sign-in screen, as it always was. Separate from
-   * PUBLIC_SIGNUPS, which says only that an open allowlist is deliberate — a family
+   * PUBLIC_SIGNUPS, which says only that an open allowlist is deliberate: a family
    * instance can be open to sign-ups without having anything to sell. See `frontPageOf`.
    */
   FRONT_PAGE?: string;
@@ -177,7 +177,7 @@ export interface Env {
    * Who runs this instance: the legal entity the built-in privacy policy and terms name,
    * and the address they tell people to write to.
    *
-   * Both or neither, the same shape as an OAuth credential pair — a policy naming a company
+   * Both or neither, the same shape as an OAuth credential pair: a policy naming a company
    * with no way to reach it is worse than one that admits it does not exist. Unset is the
    * deliberate default for a fresh checkout: this repository is open source, and an
    * instance that has not said who runs it must not publish somebody else's name. See
@@ -188,9 +188,9 @@ export interface Env {
   /**
    * Comma-separated emails of the accounts that run this instance, the shape of
    * `ALLOWED_EMAILS`. Distinct from the pair above, which name one legal contact for the
-   * documents: this is who, when signed in, is shown an operator-only fault they can fix —
-   * currently a title model that rejected its `ANTHROPIC_API_KEY`. Unset — every fresh
-   * checkout — means nobody is flagged and nothing operator-only is ever surfaced. See
+   * documents: this is who, when signed in, is shown an operator-only fault they can fix,
+   * currently a title model that rejected its `ANTHROPIC_API_KEY`. Unset (every fresh
+   * checkout) means nobody is flagged and nothing operator-only is ever surfaced. See
    * `isOperator` in lib/instance.ts.
    */
   OPERATOR_EMAILS?: string;
@@ -199,7 +199,7 @@ export interface Env {
    * `X-Unbent-Sweep-Token` header; see lib/sweep-token.ts. Per deployment, carried by the
    * deploy workflows from a repository secret of the same name (`DEV_SWEEP_TOKEN` for the
    * dev instance), so the job that sends it and the Worker that checks it always agree.
-   * Unset — every fresh instance — the sweep route answers operator sessions only.
+   * Unset (every fresh instance), the sweep route answers operator sessions only.
    */
   SWEEP_TOKEN?: string;
   /**
@@ -224,7 +224,7 @@ export interface Env {
    * The Digital Asset Links document this origin serves at /.well-known/assetlinks.json:
    * which Android apps, by package and signing certificate, it vouches for. Verbatim JSON.
    *
-   * Per deployment because it names an app. Unset — every fresh instance — means the origin
+   * Per deployment because it names an app. Unset (every fresh instance) means the origin
    * vouches for none, which is right until an operator has an app of their own; see
    * routes/well-known.ts and the README's Android section.
    */
@@ -241,8 +241,8 @@ export interface Env {
    * PostHog, for grouping the browser errors that `/api/client-errors` only ever logs.
    *
    * Setting the key is what turns it on: the SPA loads the SDK only when the config says
-   * so, and `/ingest/*` refuses to proxy anything without it. Unset — the default, and what
-   * every self-hosted instance gets — means no SDK, no third party, and a privacy policy
+   * so, and `/ingest/*` refuses to proxy anything without it. Unset (the default, and what
+   * every self-hosted instance gets) means no SDK, no third party, and a privacy policy
    * that does not mention one.
    *
    * The token is public and write-only, so it could sit in this file; it is a secret on the
@@ -251,7 +251,7 @@ export interface Env {
   POSTHOG_KEY?: string;
   /**
    * Where the Worker forwards that traffic. Defaults to PostHog's US cloud; set it for the
-   * EU cloud or a self-hosted PostHog. The browser never sees it — it talks to `/ingest` on
+   * EU cloud or a self-hosted PostHog. The browser never sees it: it talks to `/ingest` on
    * this origin, which is what keeps content blockers from dropping the reports.
    */
   POSTHOG_HOST?: string;
@@ -266,29 +266,29 @@ export interface Env {
    *
    * `PREVIEW_RELAY_SUBDOMAIN` is set on the *dev instance* and names the account's
    * workers.dev subdomain, e.g. of2668. It is the allowlist `/api/preview-relay/start`
-   * checks a return origin against before handing it a one-time token — a security
+   * checks a return origin against before handing it a one-time token, a security
    * boundary, so it is configured rather than inferred: anyone can own a `*.workers.dev`
    * account, and only configuration knows which subdomain is ours.
    */
   PREVIEW_RELAY_ORIGIN?: string;
   PREVIEW_RELAY_SUBDOMAIN?: string;
   /**
-   * A TypeSafe API key, which turns on auto-fill: the control on a note that files it —
-   * title, notebook, tags and fields — from what it and its scans say. Read by lib/jev.ts;
+   * A TypeSafe API key, which turns on auto-fill: the control on a note that files it
+   * (title, notebook, tags and fields) from what it and its scans say. Read by lib/jev.ts;
    * lib/autofill.ts says exactly what is sent. Unset, the editor draws no control and the
    * route answers 503. `wrangler secret put TYPESAFE_API_KEY`, or .dev.vars locally.
    */
   TYPESAFE_API_KEY?: string;
   /**
    * Where those requests go instead of TypeSafe's endpoint. For a stand-in during
-   * development — the kind of server a test runs to answer with canned judgements — and
+   * development (the kind of server a test runs to answer with canned judgements) and
    * nothing else; a deployed instance leaves it unset.
    */
   TYPESAFE_API_URL?: string;
   /**
    * An Anthropic API key, which turns on the language model inside Auto-fill: reading the
-   * note's pictures and text-less scans — what a file shows, and any text on it, recorded
-   * as the file's text for search and auto-fill — and writing the title and the text
+   * note's pictures and text-less scans (what a file shows, and any text on it, recorded
+   * as the file's text for search and auto-fill) and writing the title and the text
    * fields. Only inside a press; nothing reads a file with it on upload (MAK-179). Read by
    * lib/llm.ts. Unset, pictures have no text and titles are Jev's pick of a line, as
    * before. `wrangler secret put ANTHROPIC_API_KEY`, or .dev.vars locally.

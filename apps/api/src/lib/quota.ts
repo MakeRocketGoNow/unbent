@@ -7,7 +7,7 @@ import { planFor, type PlanRow } from './plan.js';
  * The plan's storage, enforced where bytes come in (MAK-108): an upload, a copy, a
  * fetched picture, a duplicate. The quota is the plan row's `storage_gb`; what is held
  * is the store's own sum of its files (`attachmentBytes`, schema 0008). Null is no quota
- * — an instance with billing off — and a caller that has null checks nothing.
+ * (an instance with billing off), and a caller that has null checks nothing.
  *
  * Decided in the store, in the transaction that records the row, against the sum it
  * keeps (`AttachmentsStore.record`), so two uploads in flight cannot both take the last
@@ -15,7 +15,7 @@ import { planFor, type PlanRow } from './plan.js';
  * where refusing early saves something real: a streamed upload, so the client stops
  * sending into a refusal, and a copy of several files, so none are copied to be deleted.
  * It costs its own call to the account's object (`storageUsed`), one more per file than
- * the record makes, so a path whose bytes are already in hand — a fetched picture —
+ * the record makes, so a path whose bytes are already in hand (a fetched picture)
  * skips it and lets the record decide alone.
  */
 

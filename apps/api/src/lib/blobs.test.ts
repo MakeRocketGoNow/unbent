@@ -5,7 +5,7 @@ import { deleteKeys, deleteUserBlobs, deleteUserBlobsPage } from './blobs.js';
  * The sweep that empties an account's storage, tested here rather than against a live
  * Worker because nothing over HTTP can observe it. `gc-blobs` only ever sees the caller's
  * own prefix, so once the account is deleted there is no request anyone can make that
- * distinguishes a swept prefix from a stranded one — which is how the first version of
+ * distinguishes a swept prefix from a stranded one, which is how the first version of
  * this shipped with two tests that passed either way.
  *
  * A fake bucket also buys the case R2 will not reproduce on demand: an account larger
@@ -22,7 +22,7 @@ interface Call {
 /**
  * Enough of R2 to sweep against.
  *
- * The cursor is modelled the way R2's is — a position in key order, not a handle on a
+ * The cursor is modelled the way R2's is: a position in key order, not a handle on a
  * row. That matters here: the sweep deletes each page before asking for the next one, so
  * by the time the cursor is used the object it names is gone, and a fake that resolved it
  * by lookup would pass a loop that hangs against the real thing.
@@ -110,7 +110,7 @@ describe('deleteUserBlobs', () => {
 
   /**
    * The safety property. The prefix is derived from the user id, so an id is the only
-   * thing that can widen the sweep — and it cannot, because every key under another
+   * thing that can widen the sweep, and it cannot, because every key under another
    * account's prefix sorts outside this one.
    */
   it('never reaches outside the account it was given', async () => {

@@ -11,16 +11,16 @@ import { withReaderSlot } from './reader-gate.js';
  *
  * Two readers, tried in order of cost. The text layer first: Workers AI's conversion
  * reads a PDF's for free and in a second, and most scans have one. The vision model for
- * what that leaves — a picture, which has no layer, or a scan the conversion read and
- * found empty — at a request per file. The order is what keeps a text-layer PDF from ever
+ * what that leaves (a picture, which has no layer, or a scan the conversion read and
+ * found empty) at a request per file. The order is what keeps a text-layer PDF from ever
  * being sent to the paid reader, and a scan from being read twice.
  *
  * Who gets which reader is decided here too, and it is the one rule of MAK-179: the
  * layer reads anything, since it is free, and the model reads only inside an Auto-fill
  * press, since a person asked. An upload gets `uploadReaders`, the layer alone; the press
- * gets `autofillReaders`, both. Until then every picture was read as it arrived — from
+ * gets `autofillReaders`, both. Until then every picture was read as it arrived (from
  * the editor, the phone, an import or an assistant, a paid request nobody asked for and
- * an archive's worth of them at once on an import — and a scan the browser found empty
+ * an archive's worth of them at once on an import), and a scan the browser found empty
  * was sent to the model the moment it said so. Both now wait, pending, for the press.
  */
 
@@ -40,7 +40,7 @@ export interface Readers {
   /** The language model, when the deployment has a key for one. Only its reading is needed here. */
   llm?: Pick<LanguageModel, 'read'>;
   /**
-   * Where a reading the model was paid for but that came to nothing is counted — a reply
+   * Where a reading the model was paid for but that came to nothing is counted: a reply
    * cut off at its budget, which records no text to carry its cost (MAK-180). A reading
    * that records text carries its own cost into that write. Only a press has one.
    */
@@ -57,8 +57,8 @@ export function uploadReaders(env: { AI?: MarkdownConverter }): Readers {
 
 /**
  * The readers an Auto-fill press may use: the layer, and the model where the instance
- * has a key. The one place the model is built for reading — a test in
- * read-attachment.test.ts greps the source to keep it so — and `POST /notes/:id/autofill`
+ * has a key. The one place the model is built for reading (a test in
+ * read-attachment.test.ts greps the source to keep it so) and `POST /notes/:id/autofill`
  * is its one caller.
  */
 export function autofillReaders(env: LlmEnv & { AI?: MarkdownConverter }): Readers {
@@ -127,7 +127,7 @@ export async function readAttachment(
   /*
      Everything past here loads the whole file into the isolate. An import fires these off
      back to back in `waitUntil` on one isolate, so `withReaderSlot` caps how many hold a
-     file at once — without it a burst of large attachments evicts the isolate with
+     file at once: without it a burst of large attachments evicts the isolate with
      `exceededResources`, which reaches the browser as a 503 and stops the run. See
      reader-gate.ts.
   */
@@ -135,8 +135,8 @@ export async function readAttachment(
     if (readers.converter && canExtractOnServer({ AI: readers.converter }, file.contentType, file.size)) {
       /*
          A conversion that throws is let through, not treated like an error answer. An
-         error answer is about the file; a throw is about the service — an untyped blob
-         (see `extractOnServer`), a capacity limit mid-import, an outage — and it says so
+         error answer is about the file; a throw is about the service: an untyped blob
+         (see `extractOnServer`), a capacity limit mid-import, an outage, and it says so
          for every file at once. Handing those to the vision model was tried, and on the
          upload path it would have sent every text-layer PDF of an import to the paid
          reader for the length of the fault. Thrown, the file stays pending and the
@@ -166,9 +166,9 @@ export async function readAttachment(
 
 /**
  * A file still waiting for a reader, and which one: `text` for a PDF nothing has looked
- * at, which takes the whole path (`readAttachment` — the layer, then the model for what
- * the layer lacks); `vision` for a file already past the layer — a picture, or a scan the
- * browser read and found empty — which goes to the model alone. The two are what the
+ * at, which takes the whole path (`readAttachment`: the layer, then the model for what
+ * the layer lacks); `vision` for a file already past the layer (a picture, or a scan the
+ * browser read and found empty), which goes to the model alone. The two are what the
  * store's `needingText` and `needingVision` list, respectively, and `writtenBy` is the
  * store's too: `assistant` when the text an assistant wrote over MCP is what a press is
  * re-reading past.
@@ -181,7 +181,7 @@ export interface ReadCounts {
   read: number;
   /** A reader looked and found nothing; recorded, so it is not offered again. */
   empty: number;
-  /** The file threw — missing object, model outage — and stays pending for a later pass. */
+  /** The file threw (missing object, model outage) and stays pending for a later pass. */
   failed: number;
   /** No reader here takes it; stays pending for a deployment that has one. */
   unread: number;
@@ -194,7 +194,7 @@ export interface ReadCounts {
  * confined the model to a press.
  *
  * The rules are that bulk pass's, which this was lifted from. One unreadable file must
- * not stop the pass — it is counted and the rest go on. A file past the model's size caps
+ * not stop the pass: it is counted and the rest go on. A file past the model's size caps
  * is recorded as the model's empty answer rather than skipped, or every pass would offer
  * it again. The id is what gets logged, never the name, which comes from the archive and
  * can say too much.
@@ -241,7 +241,7 @@ export async function readPendingFile(
 /**
  * The vision model alone, for a file that is past the text layer: a picture, or a scan
  * the layer had nothing for. Whatever it says is recorded under its name, so a later
- * press never pays for the same file twice — a decline included — and what it cost is
+ * press never pays for the same file twice (a decline included) and what it cost is
  * recorded in the same write.
  */
 async function readWithLlm(
@@ -261,8 +261,8 @@ async function readWithLlm(
   const { value: reading, usage } = answer;
   // A decline over an assistant's words leaves them standing: the model gave nothing to
   // put in their place, and an empty row would take text search and summaries were using.
-  // The file stays offered to later presses — after anything nothing has read, which is
-  // how `needingVision` orders them — so it is the one case a press pays for more than
+  // The file stays offered to later presses (after anything nothing has read, which is
+  // how `needingVision` orders them) so it is the one case a press pays for more than
   // once. The tool that writes those words says so. Nothing is written, so the cost goes
   // with the press's own.
   if (!reading && file.writtenBy === 'assistant') {
@@ -284,7 +284,7 @@ async function readWithLlm(
   } catch (err) {
     // The write that would have carried the cost did not happen; the reading was still
     // paid for, so it goes with the press's own record instead. A write that committed
-    // and lost its reply is counted twice by this — rare, and the safer side to be wrong on.
+    // and lost its reply is counted twice by this: rare, and the safer side to be wrong on.
     press?.entries.push(entry);
     throw err;
   }

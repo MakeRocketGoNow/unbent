@@ -17,31 +17,31 @@ export const authRoutes = new Hono<AppEnv>()
    */
   .post('/auth/oauth2/register', (c) => registerClient(getAuth(c.env).handler, c.req.raw))
   /**
-   * Better Auth owns everything under /api/auth — the OAuth start and callback URLs,
+   * Better Auth owns everything under /api/auth: the OAuth start and callback URLs,
    * sign-out, and session endpoints. It receives the raw Request and returns a Response.
    * Two of them, the ones that grant a program a credential, first need the account to
    * have agreed to the terms; see `refuseGrantsWithoutAgreement`.
    */
   .all('/auth/*', refuseGrantsWithoutAgreement, (c) => getAuth(c.env).handler(c.req.raw))
 
-  /** Who am I? Null when there is nobody, 503 when we could not tell — see `whoAmI`. */
+  /** Who am I? Null when there is nobody, 503 when we could not tell (see `whoAmI`). */
   .get('/me', whoAmI)
 
   /**
    * What this instance offers. Public by necessity: a login screen has to know which
    * buttons to draw before there is a session. See `offeredProviders`.
    *
-   * `accountDeletion` is here for the same reason the providers are — a control the server
+   * `accountDeletion` is here for the same reason the providers are: a control the server
    * would answer with a 404 should not be drawn. It is not a permission: the endpoint
    * enforces itself, and this only says whether asking it is worth the user's time.
    *
    * `operator` and `legal` are the same idea applied to the legal documents, which used to
    * be constants naming one company. A self-hosted instance that has not said who runs it
-   * publishes no documents and draws no links to them — see lib/instance.ts.
+   * publishes no documents and draws no links to them (see lib/instance.ts).
    *
    * `previewRelay` is the same convention again: set only on a per-PR preview, where it
-   * names the dev instance the login screen can borrow a Google session from — see
-   * `previewRelayOrigin`. Absent everywhere else, and read as "no relay button".
+   * names the dev instance the login screen can borrow a Google session from (see
+   * `previewRelayOrigin`). Absent everywhere else, and read as "no relay button".
    *
    * `autofill` is `accountDeletion`'s shape once more: true only where the instance has a
    * key for the model, so the editor draws the control only where the route would answer.
@@ -54,7 +54,7 @@ export const authRoutes = new Hono<AppEnv>()
    *
    * `billing` is the same convention for the plan (MAK-108): present where the Worker has
    * the Paddle secrets, and the Plan tab and the trial banner are drawn on its presence
-   * alone. It carries the client-side token, which is public by design — see `billingOf`.
+   * alone. It carries the client-side token, which is public by design (see `billingOf`).
    *
    * `satisfies` rather than a return annotation: the fields whose value is `undefined` are
    * dropped by `JSON.stringify` on the way out, which is exactly the "absent means not

@@ -3,7 +3,7 @@
  *
  * The rule is *keep by default*: taking an option off the field's list does not touch a
  * note's stored value, which is what lets a value show as "no longer an option" instead of
- * vanishing. Clearing is the opt-in — a deliberate cleanup the client confirms — and only
+ * vanishing. Clearing is the opt-in (a deliberate cleanup the client confirms), and only
  * then are the notes rewritten. This is the real query path, so the two storage shapes are
  * both exercised: a select stores the option as the whole value, a multi-select as one
  * member of a JSON list, and clearing a member must leave the rest of the list intact.

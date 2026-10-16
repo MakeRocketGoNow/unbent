@@ -128,7 +128,7 @@ describe('POST /api/legal/agree', () => {
  * The two endpoints that give a program a credential of its own refuse an account that
  * has not agreed (`refuseGrantsWithoutAgreement`). The bodies name no real device code or
  * authorization, so past the check Better Auth refuses them for its own reasons. Before
- * agreeing, the refusal must be ours; after, it must be Better Auth's, and not its 404 — so
+ * agreeing, the refusal must be ours; after, it must be Better Auth's, and not its 404, so
  * an upgrade that renamed either endpoint fails here rather than leaving it unguarded.
  */
 describe('granting a credential before agreeing', () => {

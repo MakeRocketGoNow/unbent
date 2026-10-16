@@ -15,14 +15,14 @@ import type { AppEnv } from '../types.js';
 const ASK_AGAIN = 'Ask for a new one with prepare_attachment_upload.';
 
 /**
- * Any origin may send the PUT, so an assistant working inside a browser — with a picture
- * open in a tab, say, after `add_attachment` was refused by its host — can hand over
+ * Any origin may send the PUT, so an assistant working inside a browser (with a picture
+ * open in a tab, say, after `add_attachment` was refused by its host) can hand over
  * bytes it already holds. Without this the preflight fails and the browser never sends
  * the request at all.
  *
  * A wildcard widens nothing, because the token is the whole of the authority: whoever
  * holds the link can already use it from curl, and whoever does not cannot use it from
- * any origin. What must never ride along is a cookie, so credentials stay off — `*` and
+ * any origin. What must never ride along is a cookie, so credentials stay off: `*` and
  * credentials cannot be combined anyway, and the route reads no session. The CORS rule is
  * on this path alone; every other route answers with the session and must keep refusing
  * other origins.
@@ -43,7 +43,7 @@ const anyOrigin = cors({
  * Where a file goes that an assistant holds on its own machine: the other half of the MCP
  * tool prepare_attachment_upload, which mints the link this route is reached by.
  *
- * Authorized by the token in the path and nothing else — no cookie, no bearer token. That
+ * Authorized by the token in the path and nothing else: no cookie, no bearer token. That
  * is the point of it: the request comes from curl in an agent's shell, or from a page in a
  * browser, which has the file but should never hold the OAuth token its client signed in
  * with. The token names one note of one user's and works once; see lib/upload-grants.ts

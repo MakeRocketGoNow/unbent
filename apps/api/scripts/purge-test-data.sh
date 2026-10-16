@@ -3,13 +3,13 @@
 #
 # One SQL statement used to do this, deleting the `@example.test` user rows from local D1
 # and letting the cascade take their notes. The notes live in per-account objects now, and
-# only the Worker can reach one, so the purge is a route the running dev server answers —
+# only the Worker can reach one, so the purge is a route the running dev server answers:
 # `POST /api/admin/test/purge-fixtures`, which exists only when the Worker was started by
 # `pnpm dev` (it passes ALLOW_TEST_CREDENTIALS=1). The suites need that server running
 # anyway, so this runs after them against the same one.
 #
 # API_URL names the Worker, as it does for the suites; unset, this checkout's usual port is
-# derived the way `pnpm dev` derives it — which is where `pnpm dev` started looking, not
+# derived the way `pnpm dev` derives it, which is where `pnpm dev` started looking, not
 # necessarily where it landed: when the usual pair was taken it steps to the next free one
 # and says so on its first line. Set API_URL to that when the two differ.
 #

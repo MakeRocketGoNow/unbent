@@ -14,7 +14,7 @@ export const exportRoutes = new Hono<AppEnv>()
    *
    * The export used to be one request that streamed the whole zip, and it read each note
    * and each of its files from here as it went. A Worker request may make only so many
-   * calls to D1 and R2 — a thousand on Workers Free by the platform's limits page — and
+   * calls to D1 and R2 (a thousand on Workers Free by the platform's limits page) and
    * a library is tens of thousands of them, so the backup could never have completed on
    * the archive it existed for. This page is one statement. The client walks the cursor,
    * fetches each file through the note's own file route, and writes the zip itself; see
@@ -30,10 +30,10 @@ export const exportRoutes = new Hono<AppEnv>()
    *
    * Each file comes with the text this instance holds for it, and who read it, so the
    * archive can carry that text beside the file and a restore need not read everything
-   * again — see `textSidecarPath` in `@unbent/shared`. One more statement per page, after
+   * again (see `textSidecarPath` in `@unbent/shared`). One more statement per page, after
    * the page, because it needs the page's note ids.
    *
-   * `id` names the notes instead — a selection in the list, which no filter describes. A
+   * `id` names the notes instead: a selection in the list, which no filter describes. A
    * run of them per request, never beside a filter (the schema refuses the pair); the
    * total is of the run, which is all this request knows, so the browser counts the
    * selection itself.
@@ -43,7 +43,7 @@ export const exportRoutes = new Hono<AppEnv>()
     const filter = { tags, notebook, fields, from, to, sort, ids };
     // One call: the page, the total on the first page, the files' texts, and the cursor.
     // The store computes the cursor rather than this route because it can cut a page
-    // short — a page of scans' texts can pass the size an RPC result may be — and a short
+    // short (a page of scans' texts can pass the size an RPC result may be) and a short
     // page from `nextCursor`'s point of view would read as the end.
     const { notes, total, texts: held, cursor: next } = await c
       .get('notes')
@@ -73,7 +73,7 @@ export const exportRoutes = new Hono<AppEnv>()
    * reading it. Either way the file is named for the note, so both land in a downloads
    * folder as something recognisable.
    *
-   * The user is never asked which — the wrong answer is silently lossy, and they have no
+   * The user is never asked which: the wrong answer is silently lossy, and they have no
    * way to know that at the moment of clicking.
    *
    * `notes.get` returns only live notes, so a trashed note 404s here. That matches the

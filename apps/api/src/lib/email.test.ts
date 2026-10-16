@@ -3,7 +3,7 @@ import { canSendEmail, sendEmail } from './email.js';
 
 /**
  * The body posted to Resend, which is the part worth pinning: the field names are theirs,
- * not ours, and a rename here is silent — mail simply stops carrying the header, and
+ * not ours, and a rename here is silent: mail simply stops carrying the header, and
  * nothing fails.
  */
 function captureRequest() {
@@ -83,7 +83,7 @@ describe('sendEmail', () => {
 
   /**
    * The local path. Without a key the code or link is printed instead of sent, which is
-   * what makes the flows testable offline — and what must never be reached deployed.
+   * what makes the flows testable offline, and what must never be reached deployed.
    */
   it('logs instead of sending when mail is not configured', async () => {
     const fetchMock = vi.fn();

@@ -3,8 +3,8 @@
  *
  * Each step changes something through the ordinary API and then asks the recount to count
  * everything again from the rows: a recount that corrects anything means a trigger missed
- * that write. That is the whole claim the stored counts make — that nothing has to be
- * recounted — so it is checked the way a drifted count would be noticed, and against the
+ * that write. That is the whole claim the stored counts make (that nothing has to be
+ * recounted), so it is checked the way a drifted count would be noticed, and against the
  * live Worker's D1 rather than stock SQLite, which is where 0017 learned the difference.
  *
  * The recount only proves the stored numbers match what the recount thinks is true, so the
@@ -58,7 +58,7 @@ async function total(query: string, exact: boolean): Promise<number> {
 }
 
 /**
- * Every count the app shows, served stored and counted exact, must agree — and the
+ * Every count the app shows, served stored and counted exact, must agree, and the
  * recount must find nothing to fix.
  */
 async function expectCountsConsistent(step: string): Promise<void> {

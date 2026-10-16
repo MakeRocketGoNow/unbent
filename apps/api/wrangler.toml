@@ -1,4 +1,4 @@
-# The Worker every deployment of Unbent runs — yours included.
+# The Worker every deployment of Unbent runs, yours included.
 #
 # The top level of this file is the instance a bare `wrangler deploy` ships, and it is
 # written so that a fork deploys it unchanged. Three things make that possible:
@@ -31,8 +31,8 @@ compatibility_flags = ["nodejs_compat"]
 # On, and on purpose: with no routes in this file the workers.dev name is the only address
 # a fresh deploy has, and a Deploy to Cloudflare button relies on it. An instance that also
 # has a custom domain is then reachable on two origins, each its own front door with its
-# own cookies and passkeys. Pinning APP_URL (see above) closes the second one — sign-in
-# from any other hostname is refused as an untrusted origin — which is what unbent.app does.
+# own cookies and passkeys. Pinning APP_URL (see above) closes the second one: sign-in
+# from any other hostname is refused as an untrusted origin, which is what unbent.app does.
 workers_dev = true
 # Off, for the same reason APP_URL gets pinned: a per-version preview URL is one more
 # origin the Worker would answer on, and nothing here needs one. Wrangler turns them on by
@@ -45,7 +45,7 @@ enabled = true
 # Secrets a deploy must find on the Worker, or refuse. Only the one nothing can work
 # without: Better Auth cannot sign a cookie without it, so a Worker missing it fails on its
 # first request in a way that reads as a broken sign-in rather than a missing setting.
-# Everything else — mail, providers, the allowlist, the operator — is optional by design;
+# Everything else (mail, providers, the allowlist, the operator) is optional by design;
 # see .dev.vars.example for the whole list.
 [secrets]
 required = ["BETTER_AUTH_SECRET"]
@@ -98,7 +98,7 @@ new_sqlite_classes = ["UserStore"]
 # and continues each hour until a pass is done, then starts over.
 #
 # At :47, the daily dumps of every changed account into the backups bucket
-# (src/lib/backups.ts), which do nothing at all where no `BACKUPS` bucket is bound — at
+# (src/lib/backups.ts), which do nothing at all where no `BACKUPS` bucket is bound: at
 # this level, so on every fork. Half an hour from the sweep, and its own invocation, so
 # each has the whole fifty to itself.
 #
@@ -187,7 +187,7 @@ INSTANCE_KIND = "local"
 
 # No `[env.local.secrets]`, and the omission is load-bearing. Once an environment declares
 # `secrets`, `wrangler dev` loads from .dev.vars only the names that list contains and the
-# vars above — every optional secret, an OAuth pair, a Resend key, the operator's name,
+# vars above: every optional secret, an OAuth pair, a Resend key, the operator's name,
 # silently stops reaching the Worker. Verified by watching GitHub vanish from the offered
 # sign-in methods. Wrangler warns on every start that the top-level `secrets` was not
 # inherited here; that warning, like the one for `ai`, is this block doing its job.
@@ -207,7 +207,7 @@ run_worker_first = [
 #
 # One Worker per PR, `unbent-pr-<N>`, all of them bound to the same `unbent-dev` D1,
 # `unbent-dev-blobs` R2 and note stores that `[env.dev]` below serves. The Worker is per
-# PR only because its URL — and therefore APP_URL — has to differ; the data is shared on
+# PR only because its URL (and therefore APP_URL) has to differ; the data is shared on
 # purpose. Nothing here touches production. Deployed and torn down by
 # .github/workflows/previews.yml.
 #
@@ -245,7 +245,7 @@ run_worker_first = [
 workers_dev = true
 
 # A preview is a brand-new Worker on every PR, and a required secret has to be present
-# when a new Worker is first deployed — `secret put` cannot manage that, since it needs a
+# when a new Worker is first deployed: `secret put` cannot manage that, since it needs a
 # Worker to exist. The workflow therefore sends the secrets with the deploy itself, through
 # `--secrets-file`, which is what lets this list be the real one rather than empty.
 [env.preview.secrets]
@@ -262,7 +262,7 @@ bucket_name = "unbent-dev-blobs"
 
 # The dev instance's note stores, not the preview's own: `script_name` binds the class
 # that the `unbent-dev` Worker exports, so a preview reads and writes the same objects
-# dev.unbent.app does, and a note made on either is on both — what the shared D1 gave
+# dev.unbent.app does, and a note made on either is on both: what the shared D1 gave
 # before the notes moved into per-account objects. Without it each preview Worker has a
 # namespace of its own, empty, and the account you sign in with (the same user id, from
 # the shared D1) finds no notes; that is how the cutover shipped, and nothing could fill
@@ -270,7 +270,7 @@ bucket_name = "unbent-dev-blobs"
 # read are gone.
 #
 # The cost is that an object runs the code of the Worker that exports it. Every store
-# call a preview makes here is answered by `main`'s `src/store/` — dev's deploy — and
+# call a preview makes here is answered by `main`'s `src/store/` (dev's deploy) and
 # never the PR's, so a PR that changed a query would not be exercised on its preview, a
 # method it adds would be missing, and a schema file it appends would never be applied.
 # So a PR that touches `src/store/` does not get this line: the workflow deploys it from
@@ -306,8 +306,8 @@ INSTANCE_KIND = "preview"
 # unbent.app's front page, so a PR that changes it can be seen before it ships. Production
 # sets it as a secret rather than here, where a fork would inherit it (src/types.ts).
 FRONT_PAGE = "1"
-# Who runs it — `OPERATOR_NAME` and `OPERATOR_EMAIL`, so the built-in terms and privacy
-# policy are published beside the price — comes from the `PREVIEW_OPERATOR_NAME` and
+# Who runs it (`OPERATOR_NAME` and `OPERATOR_EMAIL`, so the built-in terms and privacy
+# policy are published beside the price) comes from the `PREVIEW_OPERATOR_NAME` and
 # `PREVIEW_OPERATOR_EMAIL` repository variables through the deploy command, never from
 # here: a fork deploying previews of its own would otherwise publish this repository's
 # operator on its pages (.github/workflows/previews.yml).
@@ -335,7 +335,7 @@ enabled = true
 # trusted origins and the passkey rpID from APP_URL, so a hostname that changes with every
 # PR can never have an OAuth callback registered against it, and a passkey enrolled on one
 # preview is useless on the next. Proving a sign-in flow end to end anywhere other than
-# production needs a hostname that stays put — and until this block existed, production was
+# production needs a hostname that stays put, and until this block existed, production was
 # the only instance in the world with one.
 #
 # Sharing the previews' data is deliberate. A second database would be another thing to
@@ -352,7 +352,7 @@ enabled = true
 name = "unbent-dev"
 # One hostname and one origin. A workers.dev URL alongside the custom domain would be a
 # second origin that APP_URL does not name, so every sign-in through it would fail on an
-# untrusted origin — a failure that reads as a broken deploy rather than the wrong URL.
+# untrusted origin, a failure that reads as a broken deploy rather than the wrong URL.
 workers_dev = false
 
 [[env.dev.d1_databases]]

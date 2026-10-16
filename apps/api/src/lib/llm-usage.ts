@@ -5,14 +5,14 @@ import { LlmError, type LanguageModel, type LlmUsage, type Metered } from './llm
 /**
  * The Worker's half of the usage counter (MAK-180): the cap an instance sets, the
  * sentence a refused press is answered with, and the log a press keeps of what the model
- * cost it. The store's half — the table, the check and the count — is store/llm-usage.ts.
+ * cost it. The store's half (the table, the check and the count) is store/llm-usage.ts.
  */
 
 export interface UsageEnv {
   /**
    * The most Auto-fill presses one account may make in a UTC day; a press past it is
-   * answered 429. Unset — every instance until a number is chosen with the plans' pricing
-   * (MAK-108) — enforces nothing, though every press is still counted. The variable exists
+   * answered 429. Unset, every instance until a number is chosen with the plans' pricing
+   * (MAK-108), enforces nothing, though every press is still counted. The variable exists
    * so that the number is one deploy away. Not an allowance: this is the guard against a
    * press sent in a loop, which a price cannot absorb, and holds whatever the plan.
    */
@@ -68,7 +68,7 @@ export function usageEntry(job: LlmJob, usage: LlmUsage): UsageEntry {
  * records them at the end (`recordLlmUsage`). Readings are not kept here: their cost goes
  * into the transaction that records their text. What is kept is the title and the fields,
  * which have no row of their own to ride with, and any answer that was paid for and then
- * thrown away — a reply cut off at its budget.
+ * thrown away: a reply cut off at its budget.
  */
 export class PressUsage {
   readonly entries: UsageEntry[] = [];

@@ -22,8 +22,8 @@ import type { AppEnv } from '../types.js';
  *
  * Notebooks are addressed by id here, unlike the note list which filters by name: an id is
  * stable across a rename, and renaming is the whole reason these routes exist. Names remain
- * the interchange format everywhere they cross the app's boundary — export frontmatter, the
- * `?notebook=` filter — so an id never leaves the database's own world.
+ * the interchange format everywhere they cross the app's boundary (export frontmatter, the
+ * `?notebook=` filter), so an id never leaves the database's own world.
  *
  * A notebook that is not this user's returns 404 rather than 403, matching the notes
  * routes: confirming an id exists is itself a leak.
@@ -31,7 +31,7 @@ import type { AppEnv } from '../types.js';
 const nameBody = z.object({ name: notebookNameSchema });
 
 /**
- * A PATCH may change the name, the purpose, the emoji, or any mix, so each is optional — but
+ * A PATCH may change the name, the purpose, the emoji, or any mix, so each is optional, but
  * an empty body changes nothing, and that is a stale client, not a request. `purpose` and
  * `emoji` accept `null` to clear them; an absent key leaves that column untouched (see
  * `updateNotebook`).
@@ -80,7 +80,7 @@ export const notebooks = new Hono<AppEnv>()
   /**
    * Deletes a notebook. By default its notes survive, unfiled.
    *
-   * `?trashNotes=1` also soft-deletes those notes into the trash — recoverable, not a
+   * `?trashNotes=1` also soft-deletes those notes into the trash: recoverable, not a
    * permanent wipe. Deleting an organisational label must never permanently destroy what
    * it organised; the cascade option is trash, not purge.
    */
@@ -152,10 +152,10 @@ export const notebooks = new Hono<AppEnv>()
   })
 
   /**
-   * What a type change — or a re-scale — would clear, so the client can say so first.
+   * What a type change, or a re-scale, would clear, so the client can say so first.
    *
    * `scale` is `max:step`, empty for a rating becoming a plain number, or `fit` for the
-   * scale the field's own values suggest — the answer names the scale either way. Omitting it
+   * scale the field's own values suggest: the answer names the scale either way. Omitting it
    * means the field keeps whatever scale it has, which is what a pure type change wants:
    * the repo reads an absent scale as "unchanged" rather than as "none".
    */
@@ -199,7 +199,7 @@ export const notebooks = new Hono<AppEnv>()
    *
    * The option rides in a query param rather than the path: an option is free text and
    * can hold a slash or an ampersand, which a path segment would split or a proxy rewrite.
-   * A field that is not one with options, or an id that is not this user's, is a 404 — the
+   * A field that is not one with options, or an id that is not this user's, is a 404: the
    * same "no such thing" as elsewhere, told apart from "an option no note uses", which is
    * a `0` count.
    */
@@ -218,7 +218,7 @@ export const notebooks = new Hono<AppEnv>()
   /**
    * Removes one option from a select or multi-select.
    *
-   * `?clear=1` also takes the option off every note that held it — the deliberate cleanup
+   * `?clear=1` also takes the option off every note that held it, the deliberate cleanup
    * the client confirms by name and count. Without it, the option leaves the list and the
    * notes keep their value, shown as "(no longer an option)": the default, because
    * removing an option is usually a reorganisation, not a decision to erase data.
@@ -250,8 +250,8 @@ export const notebooks = new Hono<AppEnv>()
   )
 
   /**
-   * Edits a select's or multi-select's options by what changes — a rename, a removal, an
-   * addition, a sort, a pin — through the store's `editFieldOptions`, the same call the
+   * Edits a select's or multi-select's options by what changes (a rename, a removal, an
+   * addition, a sort, a pin) through the store's `editFieldOptions`, the same call the
    * MCP tool `update_notebook_field` makes (MAK-227).
    *
    * The PATCH above takes the whole list, which cannot say "this option is now called
@@ -261,8 +261,8 @@ export const notebooks = new Hono<AppEnv>()
    *
    * A rename onto an option that already stands would fold the two into one, and is
    * refused with a 409 carrying `merge: true` unless the body says `merge`; the client
-   * asks the person first, naming both. Any other refusal — a name the field does not
-   * have, a list over the limit — is a 400 with the store's sentence. Answers what the
+   * asks the person first, naming both. Any other refusal (a name the field does not
+   * have, a list over the limit) is a 400 with the store's sentence. Answers what the
    * store answers: the field, and how many notes each rename moved.
    */
   .post(

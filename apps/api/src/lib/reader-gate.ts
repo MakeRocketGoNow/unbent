@@ -5,16 +5,16 @@
  * thing back out of R2 into the isolate: the Workers AI conversion needs it as a Blob, and
  * the vision reader needs its bytes. Either way that is up to the read caps' worth of file
  * inside the 128MB an isolate has. One at a time it is well clear of the ceiling. A bulk
- * import is not one at a time — its uploads land back to back on the same isolate, each
+ * import is not one at a time: its uploads land back to back on the same isolate, each
  * starts a read in `waitUntil`, and `waitUntil` keeps every one of them alive for up to
  * thirty seconds after its own request returned. So a run of files stacks several full ones
  * in memory together, and enough at once is how the isolate is evicted with
- * `exceededResources` — which reaches the browser as an edge 503 and stops the import.
+ * `exceededResources`, which reaches the browser as an edge 503 and stops the import.
  *
  * This gate makes the reads take turns. It is a module-level singleton on purpose: the
  * thing being protected is the isolate's memory, which every request on that isolate shares,
  * so the count that matters is across requests, not within one. A slot is held only for the
- * read itself, never for the upload — the upload streams straight to R2 and holds nothing,
+ * read itself, never for the upload: the upload streams straight to R2 and holds nothing,
  * so it must not be made to wait behind a read.
  */
 
@@ -53,7 +53,7 @@ function release(): void {
 
 /**
  * Runs `work` with a slot held, waiting its turn when the isolate is already at the
- * ceiling. Releases the slot however `work` ends — a throw is the caller's to handle, but
+ * ceiling. Releases the slot however `work` ends: a throw is the caller's to handle, but
  * the slot is freed first so one failed read never wedges the queue.
  */
 export async function withReaderSlot<T>(work: () => Promise<T>): Promise<T> {

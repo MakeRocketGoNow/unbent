@@ -4,7 +4,7 @@
  * The date is not bookkeeping: the user reads it, sorts by it, and for an imported note it
  * is a real modification date carried over from Evernote. Autosave means a client can fire
  * a PATCH for a space typed and deleted, and before this the API re-dated the note for any
- * key that was merely *present* — so the note's date tracked when it was last looked at
+ * key that was merely *present*, so the note's date tracked when it was last looked at
  * rather than last changed.
  *
  * Checked over HTTP against the live Worker rather than by unit-testing the comparison,

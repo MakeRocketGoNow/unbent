@@ -10,22 +10,22 @@ export const MANIFEST_PATH = '/manifest.webmanifest';
  *
  * An installed web app is named and drawn from its manifest, and the manifest was one
  * static file, so production, dev.unbent.app and every PR's preview installed as the same
- * green "Unbent" — beside the Android app's own green icon on the same home screen, with
+ * green "Unbent", beside the Android app's own green icon on the same home screen, with
  * nothing to say which of them was the scratch copy. The tab already said so
  * (`instance-marker.ts`); the home screen, where the title and the favicon's badge are not
  * shown, did not.
  *
  * So the Worker answers this one path itself (`run_worker_first` in wrangler.toml) and,
- * on an instance with an `INSTANCE_LABEL`, renames the app the way the tab is titled —
- * "PR 222 · Unbent", the label first so a launcher that cuts the name short keeps the part
- * that differs — and points its icons at a copy in the kind's colour from styles.css: amber
+ * on an instance with an `INSTANCE_LABEL`, renames the app the way the tab is titled
+ * ("PR 222 · Unbent", the label first so a launcher that cuts the name short keeps the part
+ * that differs) and points its icons at a copy in the kind's colour from styles.css: amber
  * for dev, violet for a preview, grey for local. The whole tile changes colour rather than
  * gaining the favicon's corner dot, because a launcher masks the icon to a circle or a
  * squircle and a dot in the corner is the first thing it cuts.
  *
  * The splash an installed app opens on is filled with `background_color`, so that is the
  * kind's colour too: a violet icon that launched into production's green would undo it.
- * `theme_color` is left alone, as is the page's own `theme-color` — those frame the page
+ * `theme_color` is left alone, as is the page's own `theme-color`: those frame the page
  * a preview exists to review, which is why the marks stay off it (`instance-marker.ts`).
  *
  * Production has no label and is handed the static file untouched, byte for byte; the
@@ -75,7 +75,7 @@ interface WebManifest {
 
 /**
  * The manifest renamed for `label` and, when the kind is one there are icons for, drawn in
- * that kind's colour. A label with no known kind — a self-hoster's "Staging" — is renamed
+ * that kind's colour. A label with no known kind (a self-hoster's "Staging") is renamed
  * only.
  */
 export function instanceManifest(manifest: WebManifest, label: string, kind: InstanceKind | undefined): WebManifest {

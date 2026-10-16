@@ -17,7 +17,7 @@ import type { AppEnv } from '../types.js';
  * endpoint covers with logging we already pay for. See the README.
  *
  * Unauthenticated on purpose. The errors most worth seeing are the ones that stop a page
- * working, and a page that fails on load has no session to send — gating this would lose
+ * working, and a page that fails on load has no session to send: gating this would lose
  * exactly the reports that matter most. `sessionMiddleware` still runs ahead of it, so a
  * signed-in report carries a user id and an anonymous one does not.
  *
@@ -34,7 +34,7 @@ const reportSchema = z
     /** Truncated client-side; capped again here because the client is not to be trusted. */
     stack: z.string().max(4000).optional(),
     /**
-     * Where it happened — the route, never the full URL. A note id in a path is not
+     * Where it happened: the route, never the full URL. A note id in a path is not
      * interesting enough to be worth logging an address that identifies what someone was
      * reading.
      */

@@ -20,7 +20,7 @@ export function storeFor(env: Pick<Env, 'USER_STORE' | 'STORE_JURISDICTION'>, us
   // Objects are keyed by user id and nothing else. The jurisdiction, when set, is part of
   // the key: `idFromName` on a jurisdiction namespace names a different object from the
   // same user id on the plain namespace. So it is set once, before an instance's first
-  // account, and never changed — turning it on for a running instance would point every
+  // account, and never changed: turning it on for a running instance would point every
   // account at a new, empty object, and turning it off would do the same. Recording a
   // jurisdiction per account in the directory would allow a change, at a D1 read per
   // request to find the store; not worth it for a setting a self-hoster decides once. No

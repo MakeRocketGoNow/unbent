@@ -3,7 +3,7 @@
  *
  * The important cases here are index integrity. External-content FTS5 corrupts silently
  * when rows are removed with a plain DELETE instead of the 'delete' command, and the
- * damage only shows up later as stale hits — a note that was edited or deleted still
+ * damage only shows up later as stale hits: a note that was edited or deleted still
  * matching its old text. Those are asserted directly rather than assumed.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -45,7 +45,7 @@ async function createNote(
  * Which of the two query shapes a filtered search takes; see `scopeDrivenSearchSql`. Every
  * notebook and tag here is small, so by default a filtered search is scope-driven, and the
  * FTS-driven shape production uses for a larger one would go untested. The search route
- * lets the suite move the threshold with a header — `-1` puts every scope over it, a huge
+ * lets the suite move the threshold with a header: `-1` puts every scope over it, a huge
  * number every scope under.
  */
 type SearchShape = 'fts' | 'scope';
@@ -254,7 +254,7 @@ describe('index maintenance', () => {
 
 /**
  * Attachment text participates in search, so it needs the same scoping guarantees as note
- * text — and its own cross-tenant case, since it joins through a different table.
+ * text, and its own cross-tenant case, since it joins through a different table.
  */
 describe('attachment text', () => {
   async function noteWithText(
@@ -373,7 +373,7 @@ describe('attachment text', () => {
   /**
    * Prefix search must reach attachment text too.
    *
-   * Typing "phar" should find a PDF containing "pharmacy" — the search box matches
+   * Typing "phar" should find a PDF containing "pharmacy": the search box matches
    * prefixes as you type, and an index that only answered whole words would look broken.
    */
   it('matches attachment text by prefix', async () => {
@@ -387,7 +387,7 @@ describe('attachment text', () => {
 
   /**
    * The gap that shipped: import is idempotent on content hash, so notes imported before
-   * extraction existed cannot be fixed by re-importing — they are skipped along with their
+   * extraction existed cannot be fixed by re-importing: they are skipped along with their
    * attachments. Backfill is the only way to reach them.
    */
   it('reports attachments still needing text', async () => {
@@ -470,7 +470,7 @@ describe('attachment text', () => {
 
   /**
    * The phone indexes only the capture it just uploaded. Scoped, the answer and its counts
-   * describe that one note, not the account's backlog — a phone must never be told it has
+   * describe that one note, not the account's backlog: a phone must never be told it has
    * four thousand files to pull over a radio.
    */
   it('scopes pending attachments to one note when asked', async () => {
@@ -814,7 +814,7 @@ describe('custom field values', () => {
  * Tag names.
  *
  * A note filed under a tag is found by the tag's name even when the name appears nowhere
- * in the note — which is how an archive filed by tag is looked up. The index is external
+ * in the note, which is how an archive filed by tag is looked up. The index is external
  * content over `tags`, so the cases that matter are the same as for fields: the match
  * names its source, it follows a rename, it stops on removal from the note and on the
  * tag's deletion or merge, and it never crosses users.

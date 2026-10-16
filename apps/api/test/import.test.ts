@@ -2,8 +2,8 @@
  * Import round-trip: the other half of the disaster-recovery guarantee.
  *
  * `export.test.ts` asserts the archive is real. This asserts it comes back: what one
- * account exports, another can import — same ids, same notebooks, same tags, same fields,
- * same files — and importing it again changes nothing.
+ * account exports, another can import (same ids, same notebooks, same tags, same fields,
+ * same files), and importing it again changes nothing.
  */
 import { BlobWriter } from '@zip.js/zip.js';
 import { importArchive, writeArchive, type ExportSource } from '@unbent/enex';
@@ -434,7 +434,7 @@ describe('the text read from files, across an import', () => {
     expect(progress).toMatchObject({ created: 1, failed: 0, filesUploaded: 2, filesIndexed: 2 });
 
     // The Worker was told before the bytes landed that the text would follow, so it started
-    // no read of its own — no extraction, and no vision request — and nothing waits.
+    // no read of its own (no extraction, and no vision request) and nothing waits.
     expect(indexing).toEqual(['client', 'client']);
     expect(await pending(target)).toBe(0);
 
@@ -502,7 +502,7 @@ describe('notebook definitions across an import', () => {
       purpose: 'Things to buy: where, how much, whether ordered.',
     });
 
-    // Same types, options, scale and order — including the field no note had a value for,
+    // Same types, options, scale and order, including the field no note had a value for,
     // which inference from values could never have brought back.
     const copied = await fieldsOf(bob, notebook);
     expect(copied.map(({ name, type, options, scale }) => ({ name, type, options, scale }))).toEqual([
@@ -549,7 +549,7 @@ describe('notebook definitions across an import', () => {
         { name: 'merchant', type: 'url' },
         // A select's options merge; a case-only duplicate is not a new option.
         { name: 'Kind', type: 'select', options: ['food', 'Travel'] },
-        // A scale is never changed on the way in — tightening one clears values.
+        // A scale is never changed on the way in: tightening one clears values.
         { name: 'Score', type: 'number', scale: { max: 10, step: 0.5 } },
         // New, so it appends after what was there.
         { name: 'Paid', type: 'checkbox' },

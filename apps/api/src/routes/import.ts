@@ -45,7 +45,7 @@ export const importRoutes = new Hono<AppEnv>().post(
     });
 
     // `created: false` tells the client this note was already imported, so it can skip
-    // re-uploading the attachments too — the expensive part of a resumed run.
+    // re-uploading the attachments too, the expensive part of a resumed run.
     // `skippedFields` names any custom field values that could not be stored, so the
     // client can report them rather than the import quietly dropping data.
     return c.json({ id, created, skippedFields }, created ? 201 : 200);
@@ -54,8 +54,8 @@ export const importRoutes = new Hono<AppEnv>().post(
 
 /**
  * A notebook's definitions from an export's `notebooks/<slug>.yaml`, applied before the
- * notes that hold values for them — see `NotesRepo.importNotebook` for what "applied"
- * means. One request per notebook, for the same reason the note import is one per note:
+ * notes that hold values for them (see `NotesRepo.importNotebook` for what "applied"
+ * means). One request per notebook, for the same reason the note import is one per note:
  * it is idempotent, so a run that stopped can simply be run again.
  *
  * `skipped` names each field the definition could not apply and why, so the client can
@@ -94,7 +94,7 @@ export const importNotebookRoutes = new Hono<AppEnv>().post(
  * definition of what Evernote's markup means.
  *
  * Attachments still go through the normal upload route afterwards. Only their metadata
- * arrives here — the converter needs an md5 to resolve `<en-media hash>` into a `files/`
+ * arrives here: the converter needs an md5 to resolve `<en-media hash>` into a `files/`
  * link, not the bytes, which are far larger than the note and would make this request the
  * expensive one.
  */
@@ -106,7 +106,7 @@ export const importEnmlRoutes = new Hono<AppEnv>().post(
   async (c) => {
     const input = c.req.valid('json');
 
-    // Resources arrive without bytes, which enmlToMarkdown does not read — it matches on
+    // Resources arrive without bytes, which enmlToMarkdown does not read: it matches on
     // md5 to decide which links to rewrite. An empty array keeps the shared type honest
     // rather than widening it for this one caller.
     const { markdown, usedMd5 } = enmlToMarkdown(
@@ -143,7 +143,7 @@ export const importEnmlRoutes = new Hono<AppEnv>().post(
     });
 
     // The md5s actually referenced come back so the client knows which attachments the
-    // body links to, and which it should append as unreferenced — the same distinction the
+    // body links to, and which it should append as unreferenced, the same distinction the
     // ENEX importer makes, but the client cannot compute it without having converted.
     return c.json(
       { id, created, usedMd5: [...usedMd5] },

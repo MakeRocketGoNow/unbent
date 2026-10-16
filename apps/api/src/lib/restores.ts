@@ -117,7 +117,7 @@ export async function dropRestore(db: D1Database, id: number): Promise<void> {
 
 /**
  * The newest of the account's rows whose bookmark is `bookmark`, which a restore to that
- * bookmark undoes, or null for one the history does not hold — written by hand from the
+ * bookmark undoes, or null for one the history does not hold: written by hand from the
  * log, or older than the list. Newest, since a load started over keeps the first
  * attempt's bookmark and so two rows can share one.
  */

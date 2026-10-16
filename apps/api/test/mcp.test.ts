@@ -3,8 +3,8 @@
  *
  * This is the cross-tenant case `isolation.test.ts` requires of any route that touches user
  * data. It lives in its own file because reaching the route means performing a whole OAuth
- * flow first — register a client, authorize as a signed-in user, consent, exchange the code
- * — rather than presenting a cookie, and that machinery would swamp the suite it belongs to.
+ * flow first (register a client, authorize as a signed-in user, consent, exchange the code)
+ * rather than presenting a cookie, and that machinery would swamp the suite it belongs to.
  *
  * The isolation question here has a second half that no cookie-based route has: a token is
  * bound to a resource as well as a user, so a token that is otherwise perfectly valid must
@@ -779,8 +779,8 @@ describe('a write through MCP against a copy that has since changed', () => {
  * Attaching a file by URL.
  *
  * The bytes come from a throwaway HTTP server in this process rather than from the
- * internet, so the suite needs no network and can serve exactly the awkward cases —
- * a body with no declared length, a declared length far past the cap, a generic type —
+ * internet, so the suite needs no network and can serve exactly the awkward cases
+ * (a body with no declared length, a declared length far past the cap, a generic type)
  * and can count what was fetched, which is how the cross-tenant case proves that nothing
  * was downloaded on a stranger's behalf. The Worker reaches it on loopback, which is
  * where `wrangler dev` runs; nothing here would hold on the deployed instance, where
@@ -1027,7 +1027,7 @@ describe('add_attachment', () => {
   });
 
   it('refuses a private-network address (SSRF), before fetching anything', async () => {
-    // A link-local address is refused whatever the loopback setting — the server must not
+    // A link-local address is refused whatever the loopback setting: the server must not
     // be pointed at its own metadata endpoint or a neighbour on the private network. This
     // is the same guard the web-image fetch applies, shared so the two cannot disagree.
     const before = await listFiles(carol, carolNoteId);
@@ -1077,8 +1077,8 @@ describe('add_attachment', () => {
 /**
  * Uploading a file the assistant holds, through a link prepare_attachment_upload mints.
  *
- * The PUT goes to the link exactly as the tool hands it out — on the SPA origin, through
- * whatever sits in front of the Worker — with no cookie and no bearer token, because the
+ * The PUT goes to the link exactly as the tool hands it out (on the SPA origin, through
+ * whatever sits in front of the Worker), with no cookie and no bearer token, because the
  * request is curl in an agent's shell and the link is the only credential it has. What
  * these prove is that the link is enough, that it is enough only once, and that it is not
  * spent by a request that was wrong on its face.
@@ -1218,7 +1218,7 @@ describe('prepare_attachment_upload', () => {
 
      These go to the Worker, not through the SPA origin the link is built on: in
      development that origin is Vite, whose own CORS layer answers every preflight before
-     its proxy sees it — and is there to keep other sites from reading the dev server's
+     its proxy sees it, and is there to keep other sites from reading the dev server's
      source, so it stays. In production the Worker is the SPA origin and answers itself.
   */
   const viaWorker = (uploadUrl: string) => uploadUrl.replace(ORIGIN, BASE);
@@ -1291,8 +1291,8 @@ describe('prepare_attachment_upload', () => {
  *
  * The handlers have unit tests against a mocked repo and the store has its own; what
  * neither proves is that a field written to a set of notes, a count taken inside a
- * notebook and a tag folded into another survive the real path — the tool's schema, the
- * RPC to the object and the SQL — in the order an assistant would actually use them:
+ * notebook and a tag folded into another survive the real path (the tool's schema, the
+ * RPC to the object and the SQL) in the order an assistant would actually use them:
  * look at what a notebook's notes carry, give them a field, retire the tag the field
  * replaced, and remove the notebook that is left over.
  */

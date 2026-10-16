@@ -1,5 +1,5 @@
 /**
- * Editing a select's or multi-select's options by what changes, over HTTP — the route the
+ * Editing a select's or multi-select's options by what changes, over HTTP: the route the
  * notebook editor's rename and sort use. The store's rules are pinned in its own tests;
  * these pin what the route makes of each answer: a rename moves the notes that held the
  * old name, a rename onto an existing option is a 409 that says `merge` until the body

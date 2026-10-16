@@ -22,8 +22,8 @@ import type { Env } from '../types.js';
  *     walk, a migration that fails for one account is found by that account's owner, from
  *     a broken page, whenever they next open the app. With it, every object is woken
  *     within a day of a deploy and a failure is a line in the log with the user id on it.
- *   - The directory's usage columns — bytes and notes per account, the cross-account view
- *     billing and limits read — are written here and nowhere on the request path.
+ *   - The directory's usage columns (bytes and notes per account, the cross-account view
+ *     billing and limits read) are written here and nowhere on the request path.
  *   - An account whose deletion was interrupted between wiping the object and dropping the
  *     row, or whose `afterDelete` hook never ran, is finished here: a tombstoned row, or a
  *     row whose `user` row is gone, has its object wiped and, once the object reports
@@ -41,8 +41,8 @@ import type { Env } from '../types.js';
  * wipe on, and only by saying the account is gone.
  *
  * One invocation walks `BATCH` accounts, not all of them. Every call to a store and every
- * D1 query counts against the subrequests an invocation may make — fifty on Workers Free
- * — and an account costs one or two store calls, so a walk over more than a few dozen has
+ * D1 query counts against the subrequests an invocation may make (fifty on Workers Free)
+ * and an account costs one or two store calls, so a walk over more than a few dozen has
  * to span invocations. Where it got to is kept in D1 (`_unbent_meta`), each invocation
  * continues from there, and a batch that comes up short is the end of a pass: the next
  * invocation starts from the top. The cron in wrangler.toml runs hourly, so a pass over
@@ -54,7 +54,7 @@ import type { Env } from '../types.js';
  * `restart` starts the batch from the top of the directory instead of the cursor. The
  * deploy's pass sends it on its first call: the cursor is the cron's, and usually sits
  * partway through the directory, so a pass that resumed from it would end at the bottom
- * having never visited the accounts above it — and a migration that broke one of those
+ * having never visited the accounts above it, and a migration that broke one of those
  * would go green. The cron never sends it, and carries on from wherever the pass left
  * the cursor.
  *
@@ -64,7 +64,7 @@ import type { Env } from '../types.js';
  *
  * One account's failure does not stop the batch; it is logged with the id and counted in
  * `failed`, and the next pass tries again. An account whose store asked to be called
- * again — the runtime's own transient failures carry `retryable` — is counted in
+ * again (the runtime's own transient failures carry `retryable`) is counted in
  * `deferred` rather than `failed`.
  */
 export interface SweepReport {
@@ -88,7 +88,7 @@ export interface SweepReport {
 }
 
 /**
- * Accounts per invocation. Each is at most two store calls — `sweepVisit`, or `wipe` and
+ * Accounts per invocation. Each is at most two store calls: `sweepVisit`, or `wipe` and
  * `usage` for a deleted one. With the batch's own four D1 queries, twenty is forty-four
  * of the Free plan's fifty. A deleted account's files, the R2 half of finishing it, are
  * not in that count: they are budgeted with the expiries, below.
@@ -98,12 +98,12 @@ export const BATCH = 20;
 /**
  * What one invocation may make on the Free plan, and so what every instance's sweep is
  * sized to: every store call, D1 query and R2 call counts. Deleting an account's expired
- * files costs two more on top of its visit — the R2 delete and the store's `forgetBlobs`
- * — and a batch of twenty accounts that all had files due would be sixty-four. So the
+ * files costs two more on top of its visit (the R2 delete and the store's `forgetBlobs`),
+ * and a batch of twenty accounts that all had files due would be sixty-four. So the
  * expiry is budgeted, and runs after every account has been visited, when what the
  * batch has spent is known exactly: what is left buys `pickAffordable` as many accounts
  * as fit, and the rest are counted in `blobsDeferred` and asked again on the next walk
- * of the directory — which, with the cursor moving twenty accounts an hour, is later
+ * of the directory, which, with the cursor moving twenty accounts an hour, is later
  * than the next hour. A batch of live accounts spends twenty-four on its visits and fits
  * thirteen expiries (pinned in sweep.test.ts).
  *
@@ -117,8 +117,8 @@ export const BATCH = 20;
  * under its prefix, and one page a walk drains it without spending a batch on it.
  *
  * Which accounts get the slots rotates with the hour. A batch whose page is the same
- * twenty accounts every walk — and it is, since the directory order and the cursor's
- * steps are stable — would otherwise put off the same accounts on every walk, and a
+ * twenty accounts every walk (and it is, since the directory order and the cursor's
+ * steps are stable) would otherwise put off the same accounts on every walk, and a
  * large trash takes several visits to drain at a thousand keys each, so "later" could
  * have been "never" for an account that always came last. Reserving two subrequests for
  * every account still ahead, the first design, was worse: it fixed the losers to the
@@ -138,7 +138,7 @@ export const FINISH_COST = 2;
 /**
  * How long after a deletion's tombstone its row is kept before the sweep may finish it:
  * the session cookie cache's lifetime, during which a session open at the deletion still
- * writes, and half an hour more for a request it admitted at the last moment to finish —
+ * writes, and half an hour more for a request it admitted at the last moment to finish:
  * an upload of a large scan over a phone's radio takes minutes. Once it has passed,
  * nothing can add to the store or the prefix again, so what the sweep finds is all there
  * will ever be. Waiting costs a deleted account a wipe each walk until then; finishing
@@ -170,7 +170,7 @@ async function readCursor(db: D1Database): Promise<string> {
 export async function sweepStores(
   env: Pick<Env, 'DB' | 'USER_STORE' | 'STORE_JURISDICTION' | 'STORE_SWEEP' | 'BLOBS'>,
   /**
-   * `spent`: subrequests the invocation has already made before the walk — the lapse
+   * `spent`: subrequests the invocation has already made before the walk, the lapse
    * mail's (lib/plan-mail.ts), which runs ahead of it in the cron's one invocation.
    * Counted against the same budget, so a mail-heavy hour defers a few expiries rather
    * than running the walk's tail past Free's fifty.
@@ -330,12 +330,12 @@ async function sweepOne(
     await store.wipe();
     report.wiped += 1;
     // The row goes once the object is empty and the user row is too. A tombstone whose
-    // user row is still there — a deletion that wiped the store and then failed to remove
-    // the user — stays, and is wiped again each pass, because the heal above would
+    // user row is still there (a deletion that wiped the store and then failed to remove
+    // the user) stays, and is wiped again each pass, because the heal above would
     // otherwise re-create a live row for an account that is empty.
     if (row.userExists) return [];
     // Not before the late writes are over (`LATE_WRITES_MS`), which are measured from the
-    // tombstone. A row with none — the deletion's last step never ran — gets one now, and
+    // tombstone. A row with none (the deletion's last step never ran) gets one now, and
     // waits from there: later than the deletion, so longer than it needed, never shorter.
     if (row.deletedAt === null) {
       writes.push(tombstoneDirectoryRowStatement(env.DB, row.userId, now));
@@ -351,8 +351,8 @@ async function sweepOne(
   // Waking the object is the point: a pending migration runs in its constructor, and a
   // failure there surfaces here as this row's error. `sweepVisit`, not `stats`: this runs
   // for every account on every walk, and must not scan a table. The visit also answers
-  // which deleted files have waited their thirty-five days, so that the common case —
-  // none — costs nothing beyond the call that was being made anyway.
+  // which deleted files have waited their thirty-five days, so that the common case
+  // (none) costs nothing beyond the call that was being made anyway.
   budget.spent += 1;
   const visit = await store.sweepVisit(now);
   writes.push(recordDirectoryUsageStatement(env.DB, row.userId, { storageBytes: visit.databaseSize, noteCount: visit.notes, lastActiveAt: visit.lastWriteAt }));

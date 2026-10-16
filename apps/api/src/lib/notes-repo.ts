@@ -60,7 +60,7 @@ export class NotesRepo extends StoreRepo {
    * The search threshold, `SCOPE_DRIVEN_SEARCH_MAX`, on the instance so the live suite can
    * move it. Every notebook and tag the suite creates is under a hundred notes, so left
    * alone every filtered search there takes the scope-driven shape, and the FTS-driven one
-   * — what production uses for any larger notebook — goes untested. The search route sets
+   * (what production uses for any larger notebook) goes untested. The search route sets
    * this from a header, and only where `ALLOW_TEST_CREDENTIALS` is on; see `search.ts`.
    * Passed to the store with each search, so the object holds no state for it.
    */

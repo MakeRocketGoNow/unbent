@@ -75,7 +75,7 @@ describe('offeredProviders', () => {
   /**
    * The dead end this closes: a passkey is added from an account you already have and a
    * code needs a mail provider, so an instance with neither used to advertise one button
-   * that nobody without an account could use — including whoever had just deployed it.
+   * that nobody without an account could use, including whoever had just deployed it.
    */
   it('offers a password when nothing else can create an account', () => {
     expect(offeredProviders(env({}))).toContain('password');
@@ -163,7 +163,7 @@ describe('providerOrigins', () => {
 /**
  * The iOS app's identity tokens name its bundle id as their audience, the web flow's the
  * Services ID. Each case goes through Better Auth's own Apple provider, because what
- * matters is the audience *it* verifies against — its `appBundleIdentifier` option looks
+ * matters is the audience *it* verifies against: its `appBundleIdentifier` option looks
  * like the answer and replaces the Services ID instead of adding to it.
  */
 describe('socialConfig for Apple', () => {
@@ -289,7 +289,7 @@ describe('warnIfOpenToAnyone', () => {
  * Where the deletion mail points.
  *
  * At the SPA, not at Better Auth's `/delete-user/callback`, because that endpoint deletes
- * on a bare GET — and a GET is fired by prefetches, scanners and restored tabs as readily
+ * on a bare GET, and a GET is fired by prefetches, scanners and restored tabs as readily
  * as by people. The page it lands on asks once more and deletes with a POST.
  */
 describe('confirmDeletionUrl', () => {
@@ -352,8 +352,8 @@ describe('accountDeletionOffered', () => {
 /**
  * The D1 adapter's connection lock; see `database` in auth.ts. Kysely serialises every
  * query of an adapter that reports one connection, and the lock lives on the Better Auth
- * instance every request of an isolate shares. A query that never settles — a request
- * cancelled mid-flight — then holds every later one. The D1 adapter reports several
+ * instance every request of an isolate shares. A query that never settles (a request
+ * cancelled mid-flight) then holds every later one. The D1 adapter reports several
  * connections since Better Auth 1.7.8, and this is what fails if an upgrade brings the
  * lock back.
  *

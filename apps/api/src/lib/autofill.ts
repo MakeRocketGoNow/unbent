@@ -20,14 +20,14 @@ import { titleCase } from './title-case.js';
  * Jev judges them.
  *
  * The case this is for is a scan. A document goes through the scanner into the Inbox as
- * an untitled note holding one PDF, and filing it — naming it, choosing the notebook,
- * tagging it, copying the amount and the date into the fields — is the same minute of
+ * an untitled note holding one PDF, and filing it (naming it, choosing the notebook,
+ * tagging it, copying the amount and the date into the fields) is the same minute of
  * work for every one of thirteen thousand. The text is already there; search extracted
  * it. This hands that text to a model that answers questions about it, and turns the
  * answers into a suggestion the editor applies.
  *
  * Jev chooses; it does not write. That fits the notebook, the tags and every field with
- * options exactly — each is a choice among things that already exist, and the model
+ * options exactly: each is a choice among things that already exist, and the model
  * cannot answer with a notebook that does not. For the rest, the code finds the
  * candidates and the model picks: every date in the text for a date field, every amount
  * for a number, the document's own lines for a text field. A value can still be wrong,
@@ -35,20 +35,20 @@ import { titleCase } from './title-case.js';
  *
  * The title is the exception, because a title is written, not found. A line picked off
  * the document gets "Invoice #4471"; the language model, where the instance has one,
- * gets "Acme Hardware Invoice, March 2026". Jev is still asked to pick a line — its
- * question rides in a request that is being made anyway — and its pick is what stands
+ * gets "Acme Hardware Invoice, March 2026". Jev is still asked to pick a line (its
+ * question rides in a request that is being made anyway) and its pick is what stands
  * where there is no language model, or when that model declines or fails.
  *
  * A text field's value is the same case at a smaller size: the vendor is a few words in
  * the middle of a letterhead's line, and only a model that writes can copy those words
  * out. That model writes the text fields too, and a value it writes is kept only when the
- * document contains it — so the promise above holds for every field. See
+ * document contains it, so the promise above holds for every field. See
  * `textFieldValues`.
  *
  * Two round trips. The fields to fill are the chosen notebook's, and the choice has to
  * come back first; every question in a round shares one state, so each round is one
- * request. What goes to the API is the note's own content — title, body, the text of its
- * files — and the names of the notebooks, tags and fields, with a few titles from each
+ * request. What goes to the API is the note's own content (title, body, the text of its
+ * files) and the names of the notebooks, tags and fields, with a few titles from each
  * notebook and tag as examples of what belongs there. Nothing else in the archive.
  */
 
@@ -60,9 +60,9 @@ import { titleCase } from './title-case.js';
 // A yes/no is held higher: many are asked at once and each is judged alone, so a low bar
 // would tag a note with everything it faintly resembles.
 
-/** The least confidence a choice — notebook, title, select, candidate — is applied at. */
+/** The least confidence a choice (notebook, title, select, candidate) is applied at. */
 export const MIN_CHOICE_CONFIDENCE = 0.5;
-/** The least probability a yes/no — a tag, a multi-select option, a checkbox — is applied at. */
+/** The least probability a yes/no (a tag, a multi-select option, a checkbox) is applied at. */
 export const MIN_YES_PROBABILITY = 0.75;
 /** However many tags pass, only the likeliest few are suggested. */
 export const MAX_SUGGESTED_TAGS = 5;
@@ -95,8 +95,8 @@ export interface AutofillInput {
     notebookId: string | null;
   };
   /**
-   * The note's files with their extracted text: `null` while none has been recorded — the
-   * file is unread — and `''` for a file that was read and held none, or is a
+   * The note's files with their extracted text: `null` while none has been recorded (the
+   * file is unread) and `''` for a file that was read and held none, or is a
    * kind of file nothing here can read. `readBy` is `'vision'` when the language model
    * wrote the text, which then opens with a name for the file; see `nameFromReading`.
    */
@@ -117,7 +117,7 @@ export interface AutofillInput {
  * A file's text as Auto-fill is shown it. `null` means "still being read" and `''` means
  * "nothing there", and a file no reader here will ever take has to read as the second: a
  * PDF always has a reader, a picture only where the vision model is. Words an assistant
- * recorded over MCP count wherever they stand — on an instance without a model they are
+ * recorded over MCP count wherever they stand: on an instance without a model they are
  * the only text a picture has, and they are what the person's own assistant chose to leave.
  */
 export function attachmentTextFor(
@@ -224,7 +224,7 @@ function gather(input: AutofillInput): Corpus {
 /**
  * The lines of the content a title or a text value could be: short, containing words, and
  * not a bare link or picture. Markdown's leading marks are dropped so a heading reads as
- * its words. Each is described by where it sits, which is a hint the model can use — a
+ * its words. Each is described by where it sits, which is a hint the model can use: a
  * letterhead is near the top.
  */
 export function candidateLines(sources: Array<{ text: string; where: string }>): Option[] {
@@ -256,7 +256,7 @@ export function candidateLines(sources: Array<{ text: string; where: string }>):
  * A text field's value is usually half a line: "Order number: 112-0042" holds the order
  * number, but the line is not it, and a field filled with the whole line is one the
  * person has to clean up. So a line written as a label and a value offers the value too.
- * Short labels only — a colon forty characters in is a sentence, not a label.
+ * Short labels only: a colon forty characters in is a sentence, not a label.
  *
  * Where the instance has a language model, it writes these values instead; this is what
  * an instance without one gets, and what stands when that model fails.
@@ -393,7 +393,7 @@ function yes(answer: JevAnswer | undefined): number | null {
 /**
  * The first round: the title, the notebook, and one yes/no per tag.
  *
- * Tags the note already carries are not asked about — they are not suggestions — and
+ * Tags the note already carries are not asked about (they are not suggestions) and
  * neither are tags past the cap, which are the least used. The examples ride in each
  * question's criteria, where TypeSafe's guidance puts them.
  */
@@ -426,7 +426,7 @@ function firstRound(input: AutofillInput, corpus: Corpus) {
             guidance:
               'Each notebook holds one kind of document. A notebook\'s purpose, when it has ' +
               'one, is its owner\'s own statement of what belongs there and what does not, and ' +
-              'it decides the question — a note goes in a notebook only when it fits that ' +
+              'it decides the question: a note goes in a notebook only when it fits that ' +
               'purpose, even if the name alone would seem to invite it. Its fields say what is ' +
               'recorded about each note, and its examples are titles of notes already filed ' +
               'there. Choose "No notebook fits this note" when none of the purposes plainly ' +
@@ -500,7 +500,7 @@ function fieldAsks(fields: FieldDef[], corpus: Corpus): Ask[] {
     /**
      * Read back under the definition before it is offered. A candidate the pattern found
      * is still a string a `number` may not hold, an option can be retired between the
-     * question and the answer, and this is the same check the write would make — so a
+     * question and the answer, and this is the same check the write would make, so a
      * suggestion that survives it is one the note can store.
      */
     const suggest = (value: FieldValue, confidence: number): FieldSuggestion | null => {
@@ -561,7 +561,7 @@ function fieldAsks(fields: FieldDef[], corpus: Corpus): Ask[] {
           {
             question: `Which of these lines is the ${label} of this note?`,
             guidance:
-              'Choose the line that is the value itself — not a label for it, and not a ' +
+              'Choose the line that is the value itself, not a label for it, and not a ' +
               'sentence that mentions it.',
           },
           labelledValues(corpus.lines),
@@ -640,8 +640,8 @@ const comparable = (text: string) => text.toLowerCase().replace(/\s+/g, ' ').tri
  * A model that writes can also write something the document never says, which is the
  * thing this file was built to rule out. So a value is kept only when the document
  * contains it, ignoring case and spacing; anything else is dropped and Jev's pick stands
- * for that field. That keeps the promise at the top of this file — a value is always
- * something the document says — while letting the value be the part of a line that is
+ * for that field. That keeps the promise at the top of this file (a value is always
+ * something the document says) while letting the value be the part of a line that is
  * the answer.
  *
  * Only text fields. A date, an amount, an address or an option is already a value Jev
@@ -672,7 +672,7 @@ async function textFieldValues(
   const document = comparable(corpus.text);
   asked.forEach((f, i) => {
     const value = answer[`field_${i}`] ?? '';
-    // A mark alone — "-", "—" — is a model saying "none" its own way, and has no word in
+    // A mark alone ("-", "—") is a model saying "none" its own way, and has no word in
     // it for the check below to anchor on.
     if (!/[\p{L}\p{N}]/u.test(value)) return;
     // Whole words: "Rent" is in "Acme Rentals", and is not something the document says.
@@ -685,7 +685,7 @@ async function textFieldValues(
 
 /**
  * The name the language model already wrote for a note that is one picture and nothing
- * else — the most common capture, a photo shared from a phone.
+ * else: the most common capture, a photo shared from a phone.
  *
  * The reader's text opens with a name for the file, written from the same pixels a title
  * call would send back, so for an untitled note whose only content is that one reading
@@ -718,7 +718,7 @@ function nameFromReading(input: AutofillInput): string | null {
  * secret they have to replace, and left silent it looks like the model merely having no
  * better title (see `titleModel` on the suggestion). The signal is set only for them, so
  * a note filed on a misconfigured instance reads the same for everyone else as it did
- * before — Jev's picked title, no error — while the person who can fix it is told.
+ * before (Jev's picked title, no error) while the person who can fix it is told.
  *
  * Only the title call reports this. The text fields' call uses the same key and fails
  * the same way, so in nearly every press the title has already said it. The exception
@@ -744,7 +744,7 @@ export async function autofill(
       ? llm.title(corpus.note).then(({ value }) => value, (err: unknown) => {
           if (isLlmAuthError(err)) {
             titleAuthFailed = true;
-            console.error('autofill title: LLM auth/config failure —', (err as Error).message);
+            console.error('autofill title: LLM auth/config failure:', (err as Error).message);
           } else {
             console.error('autofill title:', (err as Error).message);
           }
@@ -784,7 +784,7 @@ export async function autofill(
     const questions = Object.assign({}, ...asks.map((ask) => ask.questions)) as Record<string, JevQuestion>;
     // Jev is still asked the text fields, in the round it makes anyway: its pick is what
     // stands wherever the model's value does not. The two requests overlap. Either may
-    // have nothing to do — a document whose lines are all too long to offer leaves Jev
+    // have nothing to do: a document whose lines are all too long to offer leaves Jev
     // no question for a text field, and that is when the model's value is worth most.
     const [second, writtenFields] = await Promise.all([
       Object.keys(questions).length > 0 ? jev.ask(corpus.state, questions) : {},
@@ -818,7 +818,7 @@ export async function autofill(
     if (title) suggestion.title = { value: titleCase(String(title.value)), confidence: title.confidence };
   }
 
-  // Only the operator, and only when the model's own title never came — a suggestion that
+  // Only the operator, and only when the model's own title never came: a suggestion that
   // still got its title has nothing to report. `await writing` above has already resolved,
   // so `titleAuthFailed` is settled by here.
   if (operator && titleAuthFailed && !written) suggestion.titleModel = 'auth-failed';

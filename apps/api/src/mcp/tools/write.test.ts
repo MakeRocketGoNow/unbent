@@ -10,7 +10,7 @@ import type { NotesRepo } from '../../lib/notes-repo.js';
  *
  * That decision is worth testing on its own because both of its failure modes are silent if
  * they go wrong. A `find` that matches nothing must not report success, and one that matches
- * twice must not pick one — an assistant editing a note it cannot see is relying on the
+ * twice must not pick one: an assistant editing a note it cannot see is relying on the
  * server to refuse rather than guess.
  */
 

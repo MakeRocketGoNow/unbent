@@ -19,7 +19,7 @@ export interface EmailEnv {
   /**
    * Where a reply should go, when that is not the From address.
    *
-   * Sending domains are usually a subdomain — mail.unbent.app — kept separate so a
+   * Sending domains are usually a subdomain, mail.unbent.app, kept separate so a
    * problem with bulk mail cannot damage the reputation of the apex that carries real
    * correspondence. That subdomain is not a mailbox, so a From of noreply@mail.unbent.app
    * is honest but leaves someone who hits Reply talking to nobody. This is the address
@@ -33,7 +33,7 @@ export interface Message {
   subject: string;
   text: string;
   /**
-   * An HTML alternative to `text`, for the few messages whose layout carries meaning —
+   * An HTML alternative to `text`, for the few messages whose layout carries meaning:
    * the sign-in code, which a mail client can only offer to copy if it can find it.
    * Always beside `text`, never instead of it: the text part is what a plain-text
    * client shows, what the dev fallback prints, and what spam filters expect to find.
@@ -59,7 +59,7 @@ export function canSendEmail(env: EmailEnv): boolean {
  * The dev fallback is deliberate and load-bearing: a local instance has no Resend key, and
  * a password reset that threw there would make the flow untestable without signing up for
  * an account and putting a real key in .dev.vars. Printing the link instead means the whole
- * path — request, token, redemption — can be exercised offline, which is how it gets
+ * path (request, token, redemption) can be exercised offline, which is how it gets
  * tested. It logs the body, so it must never be reached in production; `canSendEmail`
  * gates the feature so a deployed instance either has mail or does not offer the flow.
  */
@@ -92,7 +92,7 @@ export async function sendEmail(env: EmailEnv, message: Message): Promise<void> 
       subject: message.subject,
       text: message.text,
       ...(message.html ? { html: message.html } : {}),
-      // Resend names this `reply_to`, and omits the header entirely when it is absent —
+      // Resend names this `reply_to`, and omits the header entirely when it is absent,
       // which is what an unset EMAIL_REPLY_TO should mean, rather than an empty header.
       ...(env.EMAIL_REPLY_TO ? { reply_to: env.EMAIL_REPLY_TO } : {}),
     }),
@@ -100,7 +100,7 @@ export async function sendEmail(env: EmailEnv, message: Message): Promise<void> 
 
   if (!res.ok) {
     /**
-     * Read the body for the reason — Resend explains itself there (an unverified sending
+     * Read the body for the reason: Resend explains itself there (an unverified sending
      * domain, a malformed address) and the status alone does not. Truncated because this
      * ends up in `wrangler tail`, and the recipient is deliberately left out of the thrown
      * message: it is an email address, and the caller already knows who it was sending to.

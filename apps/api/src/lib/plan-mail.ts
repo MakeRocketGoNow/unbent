@@ -9,9 +9,9 @@ import { LAPSE_DUE_SQL, RENEWAL_GRACE_MS, updatePlanStatement } from './plan.js'
  *
  * Found by the end date rather than by a state change, since the state is derived
  * (`planStateOf`): a trial that ran out at midnight is inactive from midnight, and this
- * is what notices. Each account is told once per lapse — `lapse_notified_at` is written
- * with the mail and cleared by the webhook or a comp when a paid period is ahead again
- * — so an account that lapses, pays and lapses again is told the second time too.
+ * is what notices. Each account is told once per lapse: `lapse_notified_at` is written
+ * with the mail and cleared by the webhook or a comp when a paid period is ahead again,
+ * so an account that lapses, pays and lapses again is told the second time too.
  *
  * Every message says the notes are still there and readable, which is the whole point
  * of the read-only state (MAK-47), and what a person whose trial ran out most needs to
@@ -28,8 +28,8 @@ import { LAPSE_DUE_SQL, RENEWAL_GRACE_MS, updatePlanStatement } from './plan.js'
 
 /**
  * The most accounts told per run. Two an hour is forty-eight a day, which leaves the
- * sign-in codes more than half of the hundred a day Resend's free tier allows — the
- * tier unbent.app is on — on the day a fortnight's trials end together. Five was the
+ * sign-in codes more than half of the hundred a day Resend's free tier allows (the
+ * tier unbent.app is on) on the day a fortnight's trials end together. Five was the
  * first number, and would have let the mail crowd the codes out; MAK-220 is raising it
  * again once the mail tier allows. Nobody waits on this mail, so a backlog of lapses
  * drains at two an hour and is told a little later, which is the right side to err on.
@@ -85,7 +85,7 @@ export function lapseKind(row: { plan: PlanState; source: PlanSource | null; pad
 
 /**
  * Tells up to `limit` accounts whose plan has run out. Returns how many were told, and
- * how many subrequests it took — the query, each send and each mark — for the walk's
+ * how many subrequests it took (the query, each send and each mark) for the walk's
  * budget. The mark is written after the mail is accepted, so a mail that fails is tried again on
  * the next run rather than lost; one that is accepted and then fails to be marked would
  * be sent twice, which is the better of the two mistakes.

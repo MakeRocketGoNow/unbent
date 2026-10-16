@@ -12,7 +12,7 @@ import type { Env } from '../types.js';
  * object then refuses a database that is not its user's on every wake, which is the
  * check the shared database could never make.
  *
- * Both facades share one stub, so a request that uses both — the note and its files —
+ * Both facades share one stub, so a request that uses both (the note and its files)
  * holds one connection to the object. Cheap and side-effect free: the notes router runs
  * it twice per request, once from its own `use` and once from a sub-route's.
  */

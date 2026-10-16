@@ -30,7 +30,7 @@ export type { DumpStatus };
  * the second account's copy of `stores/` is under a retention lock and refuses an
  * overwrite. That holds because a dump's directory row is written the moment its upload
  * completes, not with the rest of the run's writes at the end, so a run that dies partway
- * — the CPU limit, an evicted isolate — has recorded every dump it finished. A dump whose
+ * (the CPU limit, an evicted isolate) has recorded every dump it finished. A dump whose
  * row then fails to write is recorded as failed instead, by the closing batch, and waits
  * for tomorrow's key. Only if that batch is lost too, or the run dies in the moment
  * between the two calls, is the account dumped again next hour over its own key; if the
@@ -43,7 +43,7 @@ export type { DumpStatus };
  * feed's mark first (`dumpBegin`), and when that is the mark of the newest dump the
  * account costs this run one call and is recorded as checked. But a dump nobody replaces
  * is deleted by the lifecycle rule after fourteen days, and the second account's copy
- * after ninety, so an account nobody touched would end up with no dump anywhere — the
+ * after ninety, so an account nobody touched would end up with no dump anywhere: the
  * one a whole-account restore would need. So an account whose newest dump is
  * `REFRESH_MS` old is dumped whatever its mark: always one inside the fourteen days on
  * this account, and a fresh key for the mirror to copy within its ninety. Decided with
@@ -52,7 +52,7 @@ export type { DumpStatus };
  *
  * The budget. Every store call, D1 query and R2 call counts against an invocation's
  * subrequests, fifty on Workers Free, and this keeps to that even on unbent.app, which
- * is on Paid — the sweep's budget at :17 is a separate invocation's, so the two never
+ * is on Paid: the sweep's budget at :17 is a separate invocation's, so the two never
  * compete. The run's own cost is three: the query for the accounts due, the `batch` that
  * records the rest and reads the status back, and the status file. An unchanged account
  * is one store call; a small changed one is that call, one `put` and its directory row;
@@ -248,7 +248,7 @@ export async function dumpStores(
 
   // The writes, then the status read back in the same call, so it says what this run did.
   // The lists are cut in the query, not after it: a failure that hits every account at
-  // once — a bucket that refuses writes — is when they would be longest.
+  // once (a bucket that refuses writes) is when they would be longest.
   const stale = now - STALE_MS;
   const statusQuery = env.DB.prepare(DUMP_SQL.status).bind(stale, STATUS_LIST);
   const results = await env.DB.batch<StatusRow>([...writes, statusQuery]);

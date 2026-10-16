@@ -38,7 +38,7 @@ app.use('*', logger());
  * whether the Worker and D1 are reachable, which is all the web app's connectivity check
  * asks of it (`connectivity.ts`: any HTTP answer, within a timeout, means online), and it
  * reads nothing of the user. Behind the session middleware it inherited every stall of the
- * auth store — on 2026-10-13 a wedged session check made health time out too, and the
+ * auth store. On 2026-10-13 a wedged session check made health time out too, and the
  * app told a person with a working connection that they were offline. Hono applies
  * middleware only to routes registered after it, so this placement is the exemption. It
  * is outside the `routes` chain below, so `AppType` does not carry it; the web app calls
@@ -55,7 +55,7 @@ app.use('*', sessionMiddleware);
 app.use('/api/*', requireActivePlan);
 
 app.onError((err, c) => {
-  // The note store could not answer and will shortly — the object was reset by a deploy,
+  // The note store could not answer and will shortly: the object was reset by a deploy,
   // or is overloaded. A 503 with Retry-After, the same shape `requireAuth` answers when
   // the session cannot be checked, so every client already handles it: the web app
   // retries, and the Android capture worker waits it out rather than failing the share.
@@ -79,7 +79,7 @@ const routes = app
   .route('/', wellKnown)
   /**
    * PostHog's traffic, forwarded so a content blocker does not drop it. At the root for the
-   * same reason as the block above — the SDK is pointed at a path, not at /api — and with
+   * same reason as the block above (the SDK is pointed at a path, not at /api) and with
    * the same requirement of a matching `run_worker_first` entry in wrangler.toml.
    */
   .route('/', ingest)

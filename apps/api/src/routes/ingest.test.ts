@@ -12,7 +12,7 @@ const KEYED = env({ POSTHOG_KEY: 'phc_x' });
 /**
  * The proxy exists so that a content blocker does not drop error reports, which means it
  * carries the browser's own request to a third party. What is pinned here is everything
- * that must not go with it — the session cookie above all — and the one thing that must:
+ * that must not go with it (the session cookie above all) and the one thing that must:
  * the client address PostHog counts a visitor by.
  */
 describe('ingest', () => {
