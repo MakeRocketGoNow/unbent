@@ -20,7 +20,7 @@ export function usageDay(at: number): string {
  * The language model's cost and the Auto-fill presses, by day (schema 0007, MAK-180).
  *
  * Private helpers in the sense `Sql.tx` means: each runs inside the transaction of the
- * object method that calls it — `add` inside `recordText`'s, so a file's reading and what
+ * object method that calls it: `add` inside `recordText`'s, so a file's reading and what
  * it cost are written together or not at all. Nothing here records in the change feed;
  * no client holds this.
  *
@@ -38,8 +38,8 @@ export class LlmUsageCounter {
    * Counts a press, unless `cap` presses have been counted today already. The check and
    * the count are one transaction in a single-threaded object, so a loop of presses sent
    * all at once cannot each read the same count and all go through: the press is counted
-   * before it runs, not after. A press that is then answered with an error — Jev down,
-   * nothing to read — has still been counted. That is the guard working: it caps what can
+   * before it runs, not after. A press that is then answered with an error (Jev down,
+   * nothing to read) has still been counted. That is the guard working: it caps what can
    * be asked, and a failed press asked as much.
    *
    * `cap` null counts and never refuses, which is every instance until it sets
@@ -91,7 +91,7 @@ export class LlmUsageCounter {
 
   /**
    * The calendar year of `at`, UTC: presses, today's presses, and the tokens by job and
-   * model. A range on the primary key, so it reads the year's rows — at most four a day —
+   * model. A range on the primary key, so it reads the year's rows (at most four a day)
    * and none of another year's.
    */
   year(at: number): { year: number; presses: number; today: number; models: LlmJobUsage[] } {

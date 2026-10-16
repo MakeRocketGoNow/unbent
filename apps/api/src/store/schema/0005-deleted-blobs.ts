@@ -6,7 +6,7 @@
  * file removed the object the moment the row went, so a restored row could point at
  * nothing. Now the methods that delete an attachment row write its key here instead, in
  * the transaction that removes the row, and the hourly sweep deletes from R2 only what has
- * sat here for `DELETED_BLOB_RETENTION_MS` — thirty-five days, five more than the history
+ * sat here for `DELETED_BLOB_RETENTION_MS`: thirty-five days, five more than the history
  * a restore can reach, so a store wound back to any moment it can be wound back to finds
  * the file still in the bucket. A restore winds this table back with the rows, which is
  * the point: a row that comes back has its tombstone taken away in the same move, and
@@ -18,7 +18,7 @@
  * tombstone away when it records a row, and the probe it makes to do so is one read on
  * this index. The second index is the sweep's: "what has been here longer than the
  * retention" is a range on `deleted_at`, read from the index's first entry, so a store
- * with nothing due reads nothing — the sweep visits every account on every walk of the
+ * with nothing due reads nothing: the sweep visits every account on every walk of the
  * directory, twenty accounts an hour, and a query that scanned here would be the table
  * scan AGENTS.md forbids a periodic job. The
  * row and its two index entries are written per file deleted, and read and removed when
@@ -26,7 +26,7 @@
  *
  * Not in the feed: a client holds no deleted files. Dumped with the data tables
  * (`DATA_TABLES`), so a store rebuilt from a dump knows which files it has still to let
- * go of — without them, every file deleted before the dump would stay in the bucket as
+ * go of: without them, every file deleted before the dump would stay in the bucket as
  * an orphan nobody's sweep would find.
  */
 export default `

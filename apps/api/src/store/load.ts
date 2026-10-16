@@ -17,8 +17,8 @@
 
 /**
  * The statements of `text` that are whole, and what follows the last one. A statement
- * ends at a `;` outside a string literal and outside a `--` comment — a note's body is in
- * a literal and holds both — except inside a `CREATE TRIGGER`, whose body is statements
+ * ends at a `;` outside a string literal and outside a `--` comment (a note's body is in
+ * a literal and holds both), except inside a `CREATE TRIGGER`, whose body is statements
  * of its own between `BEGIN` and `END`: there the `;` that ends it is the one that brings
  * the body's depth back to zero. `rest` is the text after the last whole statement, to be
  * put in front of the next page; at the end of a dump it is the file's closing comments.
@@ -66,7 +66,7 @@ export function scanStatements(text: string): { statements: string[]; rest: stri
 }
 
 /**
- * How many `BEGIN`s and `CASE`s of a `CREATE TRIGGER` statement are still open — zero for
+ * How many `BEGIN`s and `CASE`s of a `CREATE TRIGGER` statement are still open, zero for
  * anything that is not one. Counted over the text with its literals and comments removed,
  * so a word in a note's body is never a keyword. A trigger body in this schema is plain
  * inserts and updates, but `CASE … END` inside one would otherwise end the trigger early.
@@ -109,12 +109,12 @@ export function statementKind(statement: string): string {
  * `PRAGMA foreign_keys` lines, since a pragma inside a transaction does nothing and the
  * object turns foreign keys off around each page itself; and anything that is only
  * comments; and a `CREATE` or `INSERT` on a table of the runtime's or of SQLite's own
- * (`_cf_*`, `sqlite_*`), which a dump taken before MAK-197 carries — `_cf_KV`, where the
+ * (`_cf_*`, `sqlite_*`), which a dump taken before MAK-197 carries (`_cf_KV`, where the
  * object's key-value storage lives, listed in `sqlite_master` once that storage has been
- * written — and which the object being loaded already has, so running it ended the load
+ * written) and which the object being loaded already has, so running it ended the load
  * on its first statement. Run: the `CREATE`s and `INSERT`s a dump is made of, and
- * nothing else, so a file that is not a dump — or a dump someone edited a `DROP` or
- * `DELETE` into — stops the load at its first such top-level statement rather than
+ * nothing else, so a file that is not a dump (or a dump someone edited a `DROP` or
+ * `DELETE` into) stops the load at its first such top-level statement rather than
  * running it against the account. A trigger's body is not looked into: the schema's own
  * triggers update and delete by design, and a dump is read from the operator's own
  * bucket, so the check is against a file that is not a dump, not against one written to
@@ -140,7 +140,7 @@ const RUNTIME_TABLE = /^(?:CREATE\s+(?:UNIQUE\s+)?(?:TABLE|INDEX)\s+(?:IF\s+NOT\
 /**
  * The most bytes of SQL text one statement may be run as. The runtime refuses a
  * statement over 100 KB of UTF-8 with `SQLITE_TOOBIG` (measured 2026-10-06: 99,000 ASCII
- * characters run, 101,000 do not, and 40,000 CJK characters — 120 KB — do not either),
+ * characters run, 101,000 do not, and 40,000 CJK characters (120 KB) do not either),
  * and a dump writes each row as one `INSERT` with its values as literals: a note body of
  * up to 1.8 MB, a file's text of up to half a million characters. A statement past this
  * runs with its literals bound instead (`liftLiterals`); a bound value may be 2 MB, which
@@ -219,8 +219,8 @@ export function dumpOwner(header: string): string | null {
 /**
  * What the object records in its key-value storage while a load is under way, and what
  * `stats` reports instead of counts. Written by `loadBegin` right after `deleteAll` and
- * removed by `loadFinish` as its last act, so a store that was emptied and not filled —
- * a load that failed, a Worker that died between pages — refuses every request until an
+ * removed by `loadFinish` as its last act, so a store that was emptied and not filled
+ * (a load that failed, a Worker that died between pages) refuses every request until an
  * operator finishes a load or winds the store back, and is never read as whole.
  */
 export interface LoadMarker {
@@ -241,7 +241,7 @@ export interface LoadMarker {
  * What a data method throws while a load is under way. `retryable` is an own property,
  * which is what `translateStoreError` turns into the 503 with `Retry-After` the Worker
  * answers for any passing unavailability, and what the sweep and the daily dumps defer
- * on — so the store is unavailable, in the one way the rest of the system already knows,
+ * on, so the store is unavailable, in the one way the rest of the system already knows,
  * rather than empty.
  */
 export class StoreLoading extends Error {

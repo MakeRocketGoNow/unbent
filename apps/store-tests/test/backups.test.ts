@@ -7,8 +7,8 @@ import { listOperatorAccounts, operatorAccountRow } from '@unbent/api/lib/direct
  * The daily dumps (MAK-171, part 2), against real objects, a local D1 carrying the two
  * control-plane tables the run reads, and Miniflare's R2. The files bucket stands in for
  * the backups bucket: the local environment binds none, on purpose, so `pnpm dev` never
- * dumps. What a real bucket does that Miniflare's may not — its lifecycle rule, a
- * multipart upload's limits as production enforces them — is not checked here.
+ * dumps. What a real bucket does that Miniflare's may not (its lifecycle rule, a
+ * multipart upload's limits as production enforces them) is not checked here.
  *
  * The directory is this file's own and emptied before each test, since the run takes
  * every account it finds due.

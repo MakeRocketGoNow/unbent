@@ -1,7 +1,7 @@
 /**
  * Tag names unique without case, as notebook names have always been (MAK-127).
  *
- * 0001 kept tags exact — "Receipt" and "receipt" two tags, as Evernote had them — and that
+ * 0001 kept tags exact ("Receipt" and "receipt" two tags, as Evernote had them), and that
  * made tags the one name in the app a write could miss by case. An assistant tagging a
  * note "receipts" beside an existing Receipts made a second tag, removing "receipts" left
  * Receipts on the note and said nothing, and `?tag=receipts` found none of Receipts' notes.
@@ -15,8 +15,8 @@
  * notebooks.
  *
  * Before the index can exist, a store holding both spellings has to be made to hold one.
- * Each set of names that differ only in case folds into the one on the most live notes —
- * the spelling the person has used most — and, between equals, the oldest row, which is
+ * Each set of names that differ only in case folds into the one on the most live notes
+ * (the spelling the person has used most) and, between equals, the oldest row, which is
  * the spelling that came first. The others' notes are moved onto it and their rows go,
  * which is exactly what `renameTag` does when asked to merge, written in SQL because a
  * schema file is SQL:
@@ -30,12 +30,12 @@
  *     that no longer exists. The rows are numbered from `_meta.seq` as `Feed.flush`
  *     numbers them, through a staging table whose rowid counts them, so the counter
  *     moves by exactly the rows written and `seq` stays dense. Nothing is announced on
- *     the sockets — a migration runs before any request — so a device finds them on its
+ *     the sockets (a migration runs before any request), so a device finds them on its
  *     next pull, which opening the app makes.
  *   - The two staging tables are dropped in the same transaction; nothing outside this
  *     file ever sees them, and a dump never holds them.
  *
- * A store with no near-duplicates — every new one, and most others — stages nothing,
+ * A store with no near-duplicates (every new one, and most others) stages nothing,
  * writes no feed row and moves no counter: every statement below is then a read of the
  * tags table, which is a few hundred rows on an archive, once.
  *

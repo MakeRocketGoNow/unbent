@@ -8,8 +8,8 @@
  * loop, with nothing to stop it. This is the number both of those need.
  *
  * One row per day, job and model, upserted: `read`, `title` and `fields` are the model's
- * three jobs, and `press` is the press itself — Jev's two rounds and whatever the model
- * did inside it — with `model` empty and no tokens. The day is UTC, `YYYY-MM-DD`, so a
+ * three jobs, and `press` is the press itself (Jev's two rounds and whatever the model
+ * did inside it) with `model` empty and no tokens. The day is UTC, `YYYY-MM-DD`, so a
  * year is a range on the primary key and the daily cap is one lookup on it. `model` is
  * in the key because a token's price is the model's: the counter keeps tokens and who
  * spent them, and anything that shows a price converts at display. An operator who
@@ -26,7 +26,7 @@
  * data table by rowid (`dumpSlice`).
  *
  * Not in the feed: no client holds it, and it is not the account's data the way a note
- * is — local to the object, as the feed's own cursor is local to a device. Dumped with
+ * is: local to the object, as the feed's own cursor is local to a device. Dumped with
  * the data tables, as of the account's last dump; see `DATA_TABLES` for why that can be
  * up to a week behind.
  */

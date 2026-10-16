@@ -116,7 +116,7 @@ export interface ListOptions {
   ids?: string[] | undefined;
   /**
    * Order by this field's value instead of `sort`. The resolved definition rather than
-   * an id, so the SQL is built knowing the type — the same reason `filterConditions`
+   * an id, so the SQL is built knowing the type, the same reason `filterConditions`
    * takes definitions. Ignored for the trash.
    */
   sortField?: FieldDef | undefined;
@@ -152,7 +152,7 @@ type Statement = [sql: string, binds: Bind[]];
 
 /**
  * A multi-select's stored value as its list of options, or null for a value that is one
- * option whole — a select's, or a multi-select value that is not a list. Both
+ * option whole: a select's, or a multi-select value that is not a list. Both
  * reading and writing back go by it, so a select whose option happens to look like a JSON
  * list is never parsed as one, and a value is written in the shape it was read in.
  */
@@ -176,13 +176,13 @@ function heldList(type: FieldType, text: string): string[] | null {
  * Everything is synchronous. `ctx.storage.sql` runs in-process, so a method that made
  * five round trips to D1 makes five local calls, and what D1 called a `batch` is a real
  * transaction: `tx()` at the boundary of every public method that writes, rolled back
- * whole if anything inside throws. Public methods call one another — `create` reads back
- * through `get`, `duplicate` writes through `create` — and the runtime nests those
+ * whole if anything inside throws. Public methods call one another (`create` reads back
+ * through `get`, `duplicate` writes through `create`), and the runtime nests those
  * transactions with savepoint semantics, so the outermost one commits once. Private
  * helpers never open one.
  *
  * Foreign keys are enforced, so a note's children go with it. The explicit deletes the
- * shared-database code wrote by hand — because D1 promised nothing about cascades — are
+ * shared-database code wrote by hand (because D1 promised nothing about cascades) are
  * kept where they carry meaning (a BEFORE DELETE trigger needs `note_tags` gone while the
  * note is readable; see the schema), and left out where the cascade is the whole story.
  *
@@ -221,7 +221,7 @@ export class NotesStore {
   }
 
   /**
-   * The list's rows for a handful of notes named by id, in the order named — the rows a
+   * The list's rows for a handful of notes named by id, in the order named: the rows a
    * search found, drawn as a table's. Live notes only; an id that is not one is left out.
    *
    * The same outer select as a page, so a row here is exactly the row the list would draw
@@ -246,7 +246,7 @@ export class NotesStore {
    * Whole notes by id, trashed ones included, in no particular order: what the change feed
    * and the snapshot carry. The body, the tags, the values and the notebook's name, as
    * `get` returns them, read in runs under the bind cap with the same correlated
-   * subqueries a list page uses — about eight rows per note with its tags, values and
+   * subqueries a list page uses: about eight rows per note with its tags, values and
    * files (measured 2026-10-02). An id that is not a note is left out; a trashed one
    * carries `deletedAt`, since the trash is part of the copy a client keeps.
    */
@@ -306,7 +306,7 @@ export class NotesStore {
 
   /**
    * The next `limit` note ids after `cursor` in id order, trashed included: the
-   * snapshot's walk. Ids are UUIDs, so the order means nothing and costs nothing — the
+   * snapshot's walk. Ids are UUIDs, so the order means nothing and costs nothing: the
    * primary key is the index, and a page deep into the walk seeks straight to it.
    */
   idsAfter(cursor: string | null, limit: number): string[] {
@@ -322,7 +322,7 @@ export class NotesStore {
   }
 
   /**
-   * A page of whole notes — the body rather than an excerpt — with the names of their
+   * A page of whole notes (the body rather than an excerpt) with the names of their
    * files, for the browser to write an export from. The same page `list` reads, in one
    * statement, so an export is the note list the person was looking at.
    */
@@ -348,7 +348,7 @@ export class NotesStore {
   private pageRows(opts: ListOptions): SummaryRow[] {
     const { limit, cursor, tags, notebook, fields, untagged, trashed, from, to, ids } = opts;
     const sort = opts.sort ?? DEFAULT_NOTE_SORT;
-    // Trash has one meaningful order — most recently deleted first — so it ignores both.
+    // Trash has one meaningful order (most recently deleted first), so it ignores both.
     const byField = !trashed && opts.sortField ? opts.sortField : undefined;
     const spec = trashed ? TRASH_SORT : byField ? fieldSort(byField) : SORTS[sort];
     const descending = trashed || (opts.order ?? 'desc') === 'desc';
@@ -370,7 +370,7 @@ export class NotesStore {
      *
      * With a plain range in front: SQLite cannot seek into an index through the OR when
      * the column carries a collation, so a page deep into the title sort walked every
-     * title before it — thousands of rows read for fifty. `key >= K` is one it can seek
+     * title before it: thousands of rows read for fifty. `key >= K` is one it can seek
      * on, and the OR behind it then only settles the ties.
      */
     const pastCursor = (column: string, idColumn: string): string => {
@@ -421,18 +421,18 @@ export class NotesStore {
        * holding a value, in value order, then the notes holding none, by id. That is the
        * order the old single query produced with `(value IS NULL)` leading its ORDER BY,
        * but no index can serve that ORDER BY, so it read every note in scope and every
-       * value, then sorted them all to keep fifty — about two rows per note in the
+       * value, then sorted them all to keep fifty, about two rows per note in the
        * notebook, on every page however deep: ~2.4k rows for a page of a 770-note notebook
        * where sorting it by date read ~840.
        *
-       * Split, the first run walks 0027's index for the one field — already in order, id
-       * tie-break and collation included — checking each value's note against the filters
+       * Split, the first run walks 0027's index for the one field (already in order, id
+       * tie-break and collation included), checking each value's note against the filters
        * as it goes, and stops at the page's end: ~100 rows at any depth. CROSS JOIN pins
        * that loop order; left to itself the planner could start from the notebook's notes
        * and sort again.
        *
-       * The second run is the expensive one — nothing indexes "notes with no value", so it
-       * reads the notes in scope — but UNION ALL under a LIMIT runs it only when the first
+       * The second run is the expensive one: nothing indexes "notes with no value", so it
+       * reads the notes in scope, but UNION ALL under a LIMIT runs it only when the first
        * run came up short, which is the last page or two of a long list.
        *
        * A cursor on a valued row pages the first run and starts the second from the top,
@@ -469,8 +469,8 @@ export class NotesStore {
     /*
        The page is chosen in a subquery, and the row's tags, fields and files are looked
        up for the rows chosen. In one query the planner evaluated those three subqueries,
-       and the notebook join, for every candidate row before it sorted — every note in a
-       tag, every note in a notebook sorted by a field — and rows read are what this store
+       and the notebook join, for every candidate row before it sorted (every note in a
+       tag, every note in a notebook sorted by a field), and rows read are what this store
        is metered on, as D1 was: a page of a 770-note notebook sorted by a field read 11k
        rows, a popular tag's page 4k. Chosen first, the page reads about 4.5k and 2.9k.
        Lists in index order lose nothing (a plain page reads 531 rows where it read 540),
@@ -497,7 +497,7 @@ export class NotesStore {
    * read for its ids, titles, notebooks and tags and nothing else. Such a page is allowed
    * to be five times the size of a full one, and that is what makes it matter here rather
    * than in whoever drops the columns afterwards: five hundred bodies are read into the
-   * object to be excerpted and discarded — a body may be 1.8 MB — and the two subqueries
+   * object to be excerpted and discarded (a body may be 1.8 MB), and the two subqueries
    * are a probe each per note for values nobody is shown. `compactFields` puts back the
    * values of the fields named, and only those; see `fieldsSubquery`.
    */
@@ -584,8 +584,8 @@ export class NotesStore {
    * The stored count for a filter that has one, or `undefined` when it has to be counted.
    *
    * Stored are exactly the filters a sidebar entry is: everything, one notebook, Unfiled,
-   * one tag, and the trash. Anything narrower — a date range, a field, a tag within a
-   * notebook, two tags — is counted, and those count only the notes that match, since the
+   * one tag, and the trash. Anything narrower (a date range, a field, a tag within a
+   * notebook, two tags) is counted, and those count only the notes that match, since the
    * tag and notebook clauses start from the tag or notebook rather than from every note.
    *
    * Names are matched the way `filterConditions` matches them, so a stored count and a
@@ -633,7 +633,7 @@ export class NotesStore {
    * wrong costs nothing to notice and a full recount to fix. One transaction, so the
    * counts are read and written together and a note saved meanwhile cannot land between.
    *
-   * It reads every note, twice over for the notebooks and tags — roughly what the sidebar
+   * It reads every note, twice over for the notebooks and tags, roughly what the sidebar
    * cost on every load before the counts were stored. Fine for a button; not for a loop.
    */
   recountNotes(): number {
@@ -685,7 +685,7 @@ export class NotesStore {
    * carries `deletedAt`. Missing is the right default: every caller inside this store
    * reads a note in order to change it, and a write must never reach the trash. Only
    * `GET /notes/:id` passes the flag, because the trash shows a deleted note before
-   * anyone decides whether to restore it — and without the flag that view could only
+   * anyone decides whether to restore it, and without the flag that view could only
    * ever say the note did not exist.
    */
   get(id: string, opts: { includeTrashed?: boolean | undefined } = {}): Note | null {
@@ -702,7 +702,7 @@ export class NotesStore {
     /*
      * CROSS JOIN is SQLite's way of fixing the join order, and the order is the point.
      * Written as a plain JOIN, the planner walked the whole tag list through the
-     * UNIQUE(name) index — it is already in name order, so the ORDER BY came free — and
+     * UNIQUE(name) index (it is already in name order, so the ORDER BY came free) and
      * probed note_tags once per tag. That is every tag the account owns, read to return
      * two or three: on an archive with three hundred tags, opening a note read three
      * hundred rows. Starting from note_tags reads this note's rows and sorts a handful
@@ -785,7 +785,7 @@ export class NotesStore {
 
   /**
    * Many notes in one transaction, for MCP's `create_notes` (MAK-214): an import through
-   * the assistant was one `create_note` call — one request, one object call — per note,
+   * the assistant was one `create_note` call (one request, one object call) per note,
    * three hundred of them for one list.
    *
    * All or nothing. Every value was checked at the edge before this was called, so what
@@ -794,8 +794,8 @@ export class NotesStore {
    * a duplicate of any. That is the reason for one transaction rather than a note at a
    * time: a batch half written is the one outcome a retry cannot repair.
    *
-   * With `skipExisting`, a note whose title a live note in the same notebook already has —
-   * without case, as the title index compares — is not made, and answers with the id of
+   * With `skipExisting`, a note whose title a live note in the same notebook already has
+   * (without case, as the title index compares) is not made, and answers with the id of
    * the one that is there; a title given twice in the batch is made once. An empty title
    * is never a match, since every untitled note would be a duplicate of every other. The
    * check is a probe of `idx_notes_notebook_title` per note, a row or two each.
@@ -875,8 +875,8 @@ export class NotesStore {
 
   /**
    * `create` for an id the client chose, which may be a replay's. Ids come from the
-   * client now as well as the server — a note made offline has its address before the
-   * server hears of it — and a request replayed after a dropped answer must find its
+   * client now as well as the server (a note made offline has its address before the
+   * server hears of it), and a request replayed after a dropped answer must find its
    * note rather than make a second one. An id already held answers with the note that
    * holds it, trashed or not, as `existing`, and writes nothing; the routes answer 200
    * for that and 201 for a note made here. The note itself stays a plain `Note`.
@@ -901,7 +901,7 @@ export class NotesStore {
    * Returns null when the note does not exist or is in the trash.
    *
    * A key whose value already equals what is stored is dropped before anything is
-   * written, and a patch with nothing left after that returns the note untouched — no
+   * written, and a patch with nothing left after that returns the note untouched: no
    * `UPDATE`, and no new `updated_at`.
    *
    * That guard lives here rather than in each client because `updated_at` is a date the
@@ -927,22 +927,22 @@ export class NotesStore {
    * no-op guard, even though a patch that would change nothing overwrites nothing. A 200
    * for it tells the writer its copy is current: the editor took the note that came back
    * as its new base, while its draft still held the old version of whatever else the other
-   * device had changed — and the next keystroke sent that old text with a precondition that
+   * device had changed, and the next keystroke sent that old text with a precondition that
    * passed. The writer is the one that can tell a stale no-op from a harmless one (the
    * editor's `holdsTheirChanges`), so it is the one that gets asked.
    *
    * A write may leave a copy of the note as it stood in the note's history, in this
    * transaction, so the copy exists exactly when the write does. Any write that lands:
    * the title and body, and since MAK-170 the field values, the tags and the notebook
-   * too, which a version holds and Restore puts back. `by` is who is writing — an
+   * too, which a version holds and Restore puts back. `by` is who is writing: an
    * assistant's write is not the person's, and is kept differently; see
    * `Revisions.keep`. It is not part of the HTTP patch: the route's schema has no such
    * key, so only the MCP tools, which call the repo, can say it.
    * With `updateMany` and `restoreRevision`, the only writes that leave copies. An
    * import writes a note that has nothing earlier, `appendToBody` only adds, and
    * `setBody` is the import's second step on a note it has just made. What a notebook's
-   * or a tag's own management does to the notes under it — a rename, a delete, a field
-   * converted — keeps nothing either: those are one act on hundreds of notes, a copy of
+   * or a tag's own management does to the notes under it (a rename, a delete, a field
+   * converted) keeps nothing either: those are one act on hundreds of notes, a copy of
    * every body for each would be the archive written again, and Restore does not try to
    * undo them (see `planRestore`).
    */
@@ -973,8 +973,8 @@ export class NotesStore {
          The new date, always past the old one. `ifUpdatedAt` is only as sound as "every
          write moves `updated_at`", and the clock alone does not promise that: inside a
          Workers invocation `Date.now()` stands still until there is I/O, so two writes
-         the object serves back to back can read the same millisecond — an assistant's
-         `edit_note` and an autosave arriving together, say — and the second would carry
+         the object serves back to back can read the same millisecond (an assistant's
+         `edit_note` and an autosave arriving together, say), and the second would carry
          the first one's date, letting a save made against the first copy through.
       */
       const stamp = Math.max(Date.now(), current.updatedAt + 1);
@@ -1083,12 +1083,12 @@ export class NotesStore {
   }
 
   /**
-   * Puts a copy from the note's history back: its title and body, and — when the copy
-   * holds them — its notebook, tags and field values. Null when the note is not live or
+   * Puts a copy from the note's history back: its title and body, and (when the copy
+   * holds them) its notebook, tags and field values. Null when the note is not live or
    * the copy is not one of its own.
    *
    * What it replaces is kept first, always and whatever the window says, so a restore is
-   * itself something the history can undo — including the one made by mistake, to the
+   * itself something the history can undo, including the one made by mistake, to the
    * wrong copy. One transaction for the copy and the write, here rather than as a patch
    * from the client carrying the old state: a patch is the person's own edit as far as
    * `update` can tell, and that keeps nothing inside the window.
@@ -1098,16 +1098,16 @@ export class NotesStore {
    * kept of what it replaced, the one an Undo restores, and null when there was nothing
    * to replace.
    *
-   * What the copy holds that no longer fits — a notebook deleted since, a field
-   * converted — is left as the note has it and named in `skipped`; see `planRestore`.
+   * What the copy holds that no longer fits (a notebook deleted since, a field
+   * converted) is left as the note has it and named in `skipped`; see `planRestore`.
    * The restore never fails over it: the text is nearly always what someone came for,
    * and refusing it because a field was deleted would hold the note hostage to a
    * settings page.
    *
    * `ifUpdatedAt` is `update`'s precondition, for the same reason and checked in the
    * same place: the caller is putting a copy back over a note it believes it has seen.
-   * The Undo on a restore sends it — "undo, if the note is still as the restore left
-   * it" — because that is a fact only this row knows; an edit saved since the restore
+   * The Undo on a restore sends it ("undo, if the note is still as the restore left
+   * it") because that is a fact only this row knows; an edit saved since the restore
    * leaves no copy inside the window, so nothing in the history says it happened.
    */
   restoreRevision(id: string, revisionId: number, ifUpdatedAt?: number): RestoredNote | StaleNote | null {
@@ -1161,7 +1161,7 @@ export class NotesStore {
    * What a copy holds besides the note's text, read when one is being kept: the
    * notebook and the tags with their ids, the field values as the note carries them.
    *
-   * One read, for the tags' ids — `get` answers with names, which is what every other
+   * One read, for the tags' ids: `get` answers with names, which is what every other
    * caller wants. The ids are what let a restore tell a tag renamed since from one
    * deleted since; see `NoteRevisionProps`.
    */
@@ -1186,7 +1186,7 @@ export class NotesStore {
    * the copy holds that no longer fits. Reads only, so `getRevision` can ask the same
    * question for the sheet.
    *
-   * A copy with no `props` — one kept before they were part of a version — plans
+   * A copy with no `props` (one kept before they were part of a version) plans
    * nothing: not recorded is not "had none", and a restore that cleared a note's fields
    * because an old copy never knew them would be the opposite of a safety net.
    *
@@ -1196,8 +1196,8 @@ export class NotesStore {
    *   where it is. Not made again under its old name, which `resolveNotebook` would do:
    *   deleting a notebook is a decision, and its fields would not come back with it.
    * - The tags that still exist, under whatever they are called now, and a tag the copy
-   *   names whose id is gone but whose name, in any case, a tag holds today — see the
-   *   loop. A tag deleted since, with no tag of its name, is skipped, for the same reason.
+   *   names whose id is gone but whose name, in any case, a tag holds today (see the
+   *   loop). A tag deleted since, with no tag of its name, is skipped, for the same reason.
    *   A tag the note has gained since comes off: the copy did not have it.
    * - Each value whose field is still defined and can still hold it. A field deleted
    *   since (gone, or a tombstone) is skipped; so is a value its field can no longer be
@@ -1205,7 +1205,7 @@ export class NotesStore {
    *   missing one of several choices is skipped whole rather than restored in part: half
    *   a value is not the value the copy held, and saying which half is more than a
    *   snackbar can carry.
-   * - A value the note has gained since is cleared, the copy not having had it — unless
+   * - A value the note has gained since is cleared, the copy not having had it, unless
    *   the notebook could not be put back and the value belongs to the notebook the note
    *   is staying in. Clearing those would leave the note filed where it is with that
    *   notebook's fields emptied, which is neither the copy nor the note.
@@ -1259,7 +1259,7 @@ export class NotesStore {
       for (const tag of props.tags) {
         // A tag whose id is gone but whose name a tag holds today, in any case, is that
         // tag. 0006-tags-nocase folded each set of names that differ only in case into
-        // one, so a copy kept before it can name the id of a spelling that went — and the
+        // one, so a copy kept before it can name the id of a spelling that went, and the
         // tag it went into is plainly the one the copy meant, not a deleted one. The same
         // goes for a tag merged onto the copy's name, or deleted and made again: a name in
         // use today is not a name the person has given up. One read per such tag, which
@@ -1338,8 +1338,8 @@ export class NotesStore {
    * The patch with every key that matches what is stored removed, or null if that leaves
    * nothing to do.
    *
-   * Only keys the caller actually sent are considered — a merge PATCH means an absent key
-   * is "leave alone", never "clear" — so this can only ever remove keys, and a patch it
+   * Only keys the caller actually sent are considered (a merge PATCH means an absent key
+   * is "leave alone", never "clear"), so this can only ever remove keys, and a patch it
    * returns unchanged behaves exactly as it did before this existed.
    *
    * `notebook` is compared by name, which is what the patch carries and what `get`
@@ -1401,11 +1401,11 @@ export class NotesStore {
    *
    * Exists for clients that upload an attachment but cannot edit the body themselves. The
    * browser editor inserts its own link at the cursor (see Editor.tsx), but a phone share
-   * sheet has no cursor and no copy of the body — without this, a shared photo would be
+   * sheet has no cursor and no copy of the body. Without this, a shared photo would be
    * stored as an attachment that the note never displays.
    *
-   * One statement, concatenating in SQL, so two files shared together — which upload
-   * concurrently and each append their link — both survive whichever lands first. The
+   * One statement, concatenating in SQL, so two files shared together (which upload
+   * concurrently and each append their link) both survive whichever lands first. The
    * object serialises the two requests anyway; the shape is kept because it is also the
    * simplest correct one.
    */
@@ -1429,12 +1429,12 @@ export class NotesStore {
 
   /*
      Whether a write touched a row comes from `RETURNING id`, never from a count of rows
-     written: a note's row has triggers on it — the FTS index's, the stored counts' — and
+     written: a note's row has triggers on it (the FTS index's, the stored counts'), and
      the engine counts what they write too, so trashing one note reports several rows
      written. The length of what RETURNING hands back is exact.
   */
 
-  /** Soft delete — trash, not destroy. Returns false when there is no such live note. */
+  /** Soft delete: trash, not destroy. Returns false when there is no such live note. */
   remove(id: string): boolean {
     return this.sql.tx(() => {
       const changed = this.sql.exec<{ id: string }>(
@@ -1442,8 +1442,8 @@ export class NotesStore {
         Date.now(),
         id,
       );
-      // The trash is an update to the feed — the note is still there, with `deletedAt`
-      // — and only a purge is a tombstone.
+      // The trash is an update to the feed (the note is still there, with `deletedAt`)
+      // and only a purge is a tombstone.
       this.feed.record(changed.map((r) => ({ entity: 'note', id: r.id })));
       return changed.length > 0;
     });
@@ -1470,7 +1470,7 @@ export class NotesStore {
   /**
    * Permanently deletes one trashed note. Its files' R2 keys are tombstoned
    * (`DeletedBlobs`) in the same transaction, for the hourly sweep to delete from R2 once
-   * the retention is out, and returned so the caller can say how many files went — not
+   * the retention is out, and returned so the caller can say how many files went, not
    * for the caller to delete, which would take back the thirty-five days a store restore
    * relies on.
    *
@@ -1502,12 +1502,12 @@ export class NotesStore {
   }
 
   /*
-     Several notes at once — the list's selection acting as one.
+     Several notes at once: the list's selection acting as one.
 
      Each of these is the singular method above applied to a set, with two differences the
      set forces. Ids that are on the wrong side of the trash, or that no longer exist, are
      skipped and counted out rather than failing the request: a selection is made from a
-     list that can go stale under it — a note trashed from another tab, restored over MCP —
+     list that can go stale under it (a note trashed from another tab, restored over MCP),
      and one such id must not stop the other forty-nine. And every statement names its notes
      in runs of `ID_RUN`, because the engine caps the binds a statement carries at a hundred.
 
@@ -1516,7 +1516,7 @@ export class NotesStore {
      the routes reduce the list to the number the web client wants.
   */
 
-  /** Trashes several notes. Returns the ids that were — ids already trashed are not among them. */
+  /** Trashes several notes. Returns the ids that were: ids already trashed are not among them. */
   removeMany(ids: string[]): string[] {
     const now = Date.now();
     return this.sql.tx(() => {
@@ -1562,13 +1562,13 @@ export class NotesStore {
    *
    * Keys are only those of notes this actually deleted. Inside one transaction the SELECT
    * and the DELETE see the same rows, but the DELETE still re-checks `deleted_at` and the
-   * keys are still matched against what it returned — the property is worth stating in
+   * keys are still matched against what it returned: the property is worth stating in
    * the code, not only in the isolation the transaction happens to give. It matters more
    * now that the keys become tombstones: one for a live note's file would have the sweep
    * delete that file in thirty-five days.
    *
-   * Sweeps what `purge` sweeps afterwards — tag rows nothing references any more, and
-   * field definitions these notes were the last to hold a value for — since a selection
+   * Sweeps what `purge` sweeps afterwards (tag rows nothing references any more, and
+   * field definitions these notes were the last to hold a value for), since a selection
    * can be most of the trash.
    */
   purgeMany(ids: string[]): { deleted: number; keys: string[] } {
@@ -1601,27 +1601,27 @@ export class NotesStore {
   }
 
   /**
-   * Refiles several notes at once — into a notebook or out of every one, with tags added
+   * Refiles several notes at once: into a notebook or out of every one, with tags added
    * or taken away.
    *
    * Reads first and writes only what differs, the way `update` does through
    * `changedKeysOnly`. The date is not bookkeeping: it is read, sorted by, and for an
-   * imported note it is a real modification date carried over from Evernote — so "tag
+   * imported note it is a real modification date carried over from Evernote, so "tag
    * these forty" must not re-date the thirty that already had the tag, and moving a
    * selection into the notebook half of it is already in must leave that half alone.
    * `matched` is which of the ids were live notes; `changed` which of those were actually
    * written.
    *
    * One transaction, so a failure part way leaves every note refiled or none of them.
-   * Tags are added and removed per note rather than set — the notes need not agree with
-   * each other — and a tag in both lists is added, the rule `update_note_tags` states
+   * Tags are added and removed per note rather than set (the notes need not agree with
+   * each other), and a tag in both lists is added, the rule `update_note_tags` states
    * over MCP. Tag rows are get-or-create as `setTags` has them; a tag removed from its
    * last note keeps its row, also as `setTags` leaves it, since `listTags` only counts
    * tags on live notes.
    *
-   * `fields` sets the same values on every note, by field id, with `update`'s rules —
-   * merge, null clears, and each value validated against its definition by
-   * `prepareFieldWrites`, the one validator — and a note already holding a value keeps its
+   * `fields` sets the same values on every note, by field id, with `update`'s rules
+   * (merge, null clears, and each value validated against its definition by
+   * `prepareFieldWrites`, the one validator), and a note already holding a value keeps its
    * date, as it does under `update`. What `update` leaves to its caller is made a rule
    * here: every field must be one of the notebook the note will be in once this call has
    * run. One note's editor offers only its own notebook's fields, so a value written by id
@@ -1636,7 +1636,7 @@ export class NotesStore {
    * for a person's selection, and `by: 'assistant'` for the MCP batch tools, whose
    * refiling of two hundred notes is the edit someone most wants to be able to look
    * back through. That is the newest copy asked for per changed note, and the note read
-   * whole only when a copy is going to be kept of it — a note per changed note, not per
+   * whole only when a copy is going to be kept of it: a note per changed note, not per
    * id sent, so the forty that already had the tag cost nothing here either. `by` is the caller's to say and is not in the HTTP
    * schema, as on `update`.
    */
@@ -1674,7 +1674,7 @@ export class NotesStore {
       const matched = rows.map((r) => r.id);
       if (rows.length === 0) return { matched, changed: [] };
 
-      // The destination, resolved once — created if it does not exist yet, as `update`
+      // The destination, resolved once: created if it does not exist yet, as `update`
       // would create it for one note. Only once something is going to be filed there.
       const notebookId =
         patch.notebook === undefined ? undefined : this.resolveNotebook(patch.notebook);
@@ -1813,7 +1813,7 @@ export class NotesStore {
        * Two ways a note can already be here, checked in order of confidence.
        *
        * By id first: an Unbent export names each note, and a live note with that id is
-       * this note whatever has happened to its text since — a restore must not lay a
+       * this note whatever has happened to its text since: a restore must not lay a
        * second copy beside a note the person edited after backing up. Then by content
        * hash, which is what an ENEX import has and what catches an archive whose ids were
        * stripped. The trash is not consulted by either: a note deleted on purpose stays
@@ -1828,7 +1828,7 @@ export class NotesStore {
       const idIsTaken = input.id ? this.idTaken(input.id) : false;
       const existingById = input.id ? this.liveNoteById(input.id) : null;
       // A free id is a different note however its text hashes, so there is nothing for a
-      // hash hit to swallow — don't even look.
+      // hash hit to swallow. Don't even look.
       const existingByHash =
         existingById || (input.id && !idIsTaken) ? null : this.liveNoteByHash(input.contentHash);
       const existing = existingById ?? existingByHash;
@@ -1838,7 +1838,7 @@ export class NotesStore {
          * Still ensure the notebook exists (and re-file if the note is unfiled).
          *
          * Deleting a notebook unfiles its notes but leaves them in place. A re-import then
-         * hits this skip path — without resolving the notebook here, the notebook would never
+         * hits this skip path: without resolving the notebook here, the notebook would never
          * come back and the notes would stay unfiled forever. Manual moves after import are
          * preserved: only unfiled notes are re-attached.
          */
@@ -1873,8 +1873,8 @@ export class NotesStore {
        * Keep the exported id when nothing holds it. The check covers the trash, because
        * the column is the table's primary key: a trashed note keeps its id so it can
        * still be restored, so a re-import of the same note lands under a fresh one.
-       * Another account importing the same archive is no longer a collision — it has a
-       * database of its own — which is why ids stay globally unique UUIDs even so: a
+       * Another account importing the same archive is no longer a collision (it has a
+       * database of its own), which is why ids stay globally unique UUIDs even so: a
        * reference of the form (owner, note id) has to stay unambiguous forever.
        */
       const id = input.id && !idIsTaken ? input.id : crypto.randomUUID();
@@ -1921,7 +1921,7 @@ export class NotesStore {
     );
   }
 
-  /** True when any row of this account's — trashed or not — already has this id. */
+  /** True when any row of this account's (trashed or not) already has this id. */
   private idTaken(id: string): boolean {
     return this.sql.first<{ hit: number }>(`SELECT 1 AS hit FROM notes WHERE id = ?1`, id) !== null;
   }
@@ -1938,7 +1938,7 @@ export class NotesStore {
    * Full-text search, newest-relevant first.
    *
    * `scopeDrivenSearchMax` is the threshold below which a notebook or tag filter is
-   * searched note by note rather than match by match — see `scopeDrivenSearchSql`. A
+   * searched note by note rather than match by match (see `scopeDrivenSearchSql`). A
    * parameter rather than a field, so the object holds no mutable state a request could
    * leave behind for the next; the facade passes the value the live suite may have set.
    */
@@ -1953,7 +1953,7 @@ export class NotesStore {
 
     /**
      * The filters bind after the two fixed parameters, and the same clauses are spliced
-     * into every tier — each joins `notes n` on its own, so a filter applied to only one
+     * into every tier: each joins `notes n` on its own, so a filter applied to only one
      * would let the other leak notes from outside the current scope.
      */
     const binds: Bind[] = [query, limit];
@@ -1972,10 +1972,10 @@ export class NotesStore {
      * Most notes in an imported Evernote corpus are a scanned PDF with an empty body, so
      * searching note text alone misses the majority of them. attachment_text_fts carries
      * the OCR text those files already contained; a match there surfaces the note and
-     * names the file it came from. note_fields_fts carries custom field values — a vendor,
-     * a policy number — which are in neither the body nor the file; a match there names
+     * names the file it came from. note_fields_fts carries custom field values (a vendor,
+     * a policy number), which are in neither the body nor the file; a match there names
      * the field. tags_fts carries tag names, so a note filed under "Acme Roadster 9000"
-     * is found by "roadster" even when the word appears nowhere in it — which is how an
+     * is found by "roadster" even when the word appears nowhere in it, which is how an
      * archive filed by tag is actually looked up, and what Evernote does; a match there
      * names the tag.
      *
@@ -1986,15 +1986,15 @@ export class NotesStore {
      * classification, and a search for a tag name is usually looking for the tag.
      *
      * One row per note, and it is the best-tier one. This was a GROUP BY with MIN(tier)
-     * and MIN(rank), which relied on SQLite's bare-column rule to pick the snippet — and
+     * and MIN(rank), which relied on SQLite's bare-column rule to pick the snippet, and
      * that rule follows the *last* aggregate, so a note matching in its body and in a
      * tag came back with the tag's snippet and "tagged X" under it whenever the tag's
      * bm25 happened to be the smaller number. The window function says which row is
      * meant.
      *
      * tag_hits carries two unary pluses, and both are load-bearing. Without the one on
-     * `n.deleted_at` the planner — which has no statistics and so takes the first column
-     * of an index to be selective — would join each matching tag to every live note
+     * `n.deleted_at` the planner (which has no statistics and so takes the first column
+     * of an index to be selective) would join each matching tag to every live note
      * through a `deleted_at` index and ask each one whether it carried the tag; on the
      * shared database, where the column was `user_id`, that read 12.7k rows per matching
      * tag at 13k notes. With it, the join runs tag → its note_tags → those notes by
@@ -2004,11 +2004,11 @@ export class NotesStore {
      *
      * Every tier stops after a page, because every row a query visits is metered and this
      * one used to visit every match. Each tier used to join all of its matches to notes,
-     * compute bm25 for each, and hand the lot to the window function to sort — a common
+     * compute bm25 for each, and hand the lot to the window function to sort: a common
      * word read 146k rows to show fifty. Now each tier orders by its FTS table's own
      * `rank` (the vtab streams in rank order, so the LIMIT stops the join early), a tier
-     * is skipped outright once the tiers above it have filled the page — no lower tier
-     * can outrank them — and each later tier leaves out notes an earlier one already
+     * is skipped outright once the tiers above it have filled the page (no lower tier
+     * can outrank them), and each later tier leaves out notes an earlier one already
      * holds, so its rows are all candidates. The same common word now reads about 10k.
      * `rank MATCH 'bm25(10.0, 1.0)'` keeps the title weighting the old `bm25()` call had.
      * The MATERIALIZED CTEs are each referenced several times and must run once.
@@ -2092,7 +2092,7 @@ export class NotesStore {
 
   /**
    * Whether a search's notebook or tag filter names few enough notes to search them one by
-   * one — see `scopeDrivenSearchSql`. Read from the stored counts, so it costs a row per
+   * one: see `scopeDrivenSearchSql`. Read from the stored counts, so it costs a row per
    * filter. A name that does not exist counts as empty, which the scope-driven query then
    * answers by reading nothing. Field and date filters have no stored size and leave the
    * search FTS-driven.
@@ -2120,11 +2120,11 @@ export class NotesStore {
   }
 
   /**
-   * Permanently removes notes, with their tags and attachment rows — up to `limit` of
-   * them, whichever the index yields first, and says how many the scope still holds.
+   * Permanently removes notes, with their tags and attachment rows (up to `limit` of
+   * them, whichever the index yields first), and says how many the scope still holds.
    *
    * Distinct from `remove`, which is a soft delete the user can undo. This is the
-   * irreversible one — for the person. For the operator it is not, for thirty-five days:
+   * irreversible one, for the person. For the operator it is not, for thirty-five days:
    * the files' keys are tombstoned here (`DeletedBlobs`) rather than handed to the caller
    * to delete, so a store wound back to before the purge finds its files still in the
    * bucket. The keys are still returned, for the count the route reports.
@@ -2140,7 +2140,7 @@ export class NotesStore {
    * restore between listing the trash and destroying it must leave the note, not take a
    * live note with it. `scope: 'all'` is a wipe, so it still deletes whatever it named.
    *
-   * The keys are read by id, in the same runs the deletes use, before them — since the
+   * The keys are read by id, in the same runs the deletes use, before them, since the
    * rows go with the cascade. That reads only the page's notes: a lookup by scope read
    * every attachment on the account, or every trashed note, on every page.
    */
@@ -2188,8 +2188,8 @@ export class NotesStore {
 
       // Whether the scope is exhausted comes from what this page saw, not from the stored
       // counts. A short page means the query ran out of notes; a full one means there may be
-      // more. The counts only supply the number the client shows, and they can drift —
-      // `recount-notes` exists for that — so trusting them to end the loop could stop it
+      // more. The counts only supply the number the client shows, and they can drift
+      // (`recount-notes` exists for that), so trusting them to end the loop could stop it
       // with notes left (counts low) or leave a last call that finds nothing and never
       // sweeps (counts high). A full page always reports at least one more, and the call
       // after it, finding nothing, answers zero and sweeps.
@@ -2207,7 +2207,7 @@ export class NotesStore {
   /**
    * What a purge leaves behind once its scope is empty: tags no note carries any more, and
    * tombstoned field definitions whose last values went with the notes. Run on the last
-   * page, and also on a call that found nothing — the page before it was full, so it did
+   * page, and also on a call that found nothing: the page before it was full, so it did
    * not know it was the last.
    */
   private sweepAfterPurge(): void {
@@ -2232,8 +2232,8 @@ export class NotesStore {
    * Ordered by count rather than by name because an imported archive's tag list is long
    * and desperately lopsided: this one has 326 tags, of which nearly half are on three
    * notes or fewer, and the ten most-used cover most of what anyone actually filters by.
-   * Alphabetically the first screen is whatever begins with a digit or a dot — the
-   * deadest tags in the account — and the useful ones are hundreds of rows down.
+   * Alphabetically the first screen is whatever begins with a digit or a dot (the
+   * deadest tags in the account), and the useful ones are hundreds of rows down.
    *
    * Name breaks ties, so the long tail of once-used tags is still ordered predictably
    * rather than by whatever the query planner returns.
@@ -2255,7 +2255,7 @@ export class NotesStore {
    * tagged Receipts also carry".
    *
    * The set is a notebook, a list of tags the note must carry all of, or both, with the
-   * semantics `list` gives them — the same `filterConditions`, so a count here is the
+   * semantics `list` gives them: the same `filterConditions`, so a count here is the
    * number of notes that list would return under that tag. The tags that define the set
    * are left out of the answer: every note in it carries them, so they would head the
    * list with a count that says nothing. Tags with no live note in the set are not in it
@@ -2263,7 +2263,7 @@ export class NotesStore {
    *
    * Unlike `listTags` this cannot read the triggers' counts, which are per tag and say
    * nothing about a notebook: it walks the set's notes and their tag links, so it costs
-   * about the size of the set — a notebook of six hundred reads on the order of a
+   * about the size of the set: a notebook of six hundred reads on the order of a
    * thousand and a small one reads dozens. Never periodic, and never the unfiltered
    * call, which stays `listTags` at one row per tag.
    *
@@ -2311,7 +2311,7 @@ export class NotesStore {
    *
    * A notebook called "Misc" or a tag called "2019" says nothing on its own; three titles
    * from it say what a person has been putting there. Untitled notes and the note being
-   * filed are left out — one has nothing to show and the other is the question.
+   * filed are left out: one has nothing to show and the other is the question.
    *
    * Each group reads its own few rows and stops. This was one window query per kind that
    * numbered every filed note and every tag link to keep three of each: 146k rows per
@@ -2319,13 +2319,13 @@ export class NotesStore {
    * `tagLimit` are ever asked about. In production that was 40% of a week's reads, and
    * on the day the quota ran out it was most of it. Now a notebook's examples walk
    * `idx_notes_notebook_updated` newest first and stop at `perGroup`, and a tag's walk
-   * `idx_note_tags_tag` to the notes by primary key — 3.3k rows per press.
+   * `idx_note_tags_tag` to the notes by primary key: 3.3k rows per press.
    *
    * Notebook examples are the most recent, which that index gives for free. Tag examples
    * are the first the tag's index reaches, which is note-id order: a stable sample rather
    * than the newest. The newest would mean reading every note of each of the tags to sort
    * them, 24k rows per press; three notes that carry a tag show what it means about as well
-   * as the three newest do. The CROSS JOIN pins the tag side's order — left to itself the
+   * as the three newest do. The CROSS JOIN pins the tag side's order: left to itself the
    * planner starts from the notes and reads 186k. The tags are limited before their
    * examples are built, so the subquery runs for the kept tags only, whatever order their
    * names sort in.
@@ -2382,17 +2382,17 @@ export class NotesStore {
    *
    * A tag is addressed by id here for the same reason a notebook is: the id is stable
    * across the rename that is the whole point of the call. Names stay the interchange
-   * format everywhere else — `?tag=` filters, frontmatter, the picker.
+   * format everywhere else: `?tag=` filters, frontmatter, the picker.
    *
    * When another tag already has the new name, the two are either kept apart (`conflict`,
    * the default) or merged: every note under this tag gains the other, duplicates
    * ignored, and this tag's row goes. Merging is what "rename Receipts to Receipt" means
    * when Receipt already exists, and it is the one operation an archive with hundreds of
-   * near-duplicate tags actually needs — but it is also irreversible, so the client asks
+   * near-duplicate tags actually needs, but it is also irreversible, so the client asks
    * before passing `merge`. The other tag is found without case, as the NOCASE index has
    * it (0006-tags-nocase), and keeps its own spelling: merging into "receipt" when Receipt
-   * exists leaves Receipt, and the answer says so. Changing only a tag's own case —
-   * Receipts to receipts — finds no other tag, so it is a plain rename, and the one way to
+   * exists leaves Receipt, and the answer says so. Changing only a tag's own case
+   * (Receipts to receipts) finds no other tag, so it is a plain rename, and the one way to
    * respell a tag now that a write naming it in another case attaches it as it is.
    *
    * Notes' `updated_at` is left alone, as `updateNotebook` leaves it: nothing about the
@@ -2429,7 +2429,7 @@ export class NotesStore {
 
       if (!opts?.merge) return 'conflict';
 
-      // A merge changes each note's tag ids — the old one goes, the other arrives — so
+      // A merge changes each note's tag ids (the old one goes, the other arrives), so
       // the notes are named here; bounded by the tag's note count, which the merge walks
       // anyway. Read before the join rows move.
       const carrying = this.notesCarrying(id);
@@ -2447,8 +2447,8 @@ export class NotesStore {
       this.sql.exec(`DELETE FROM tags WHERE id = ?1`, id);
       // Notes first, then the survivor, then the tombstone. A client following the feed
       // applies one page at a time (`limit` 200; cut also on bodies), and `tagNames`
-      // drops an id whose tag row is gone. Tombstone-first — the order 0006-tags-nocase
-      // still writes, and this method used to — meant a merge of a few hundred notes
+      // drops an id whose tag row is gone. Tombstone-first (the order 0006-tags-nocase
+      // still writes, and this method used to) meant a merge of a few hundred notes
       // delivered the delete before some of the retags: opening one of those notes
       // seeded the draft without the merged tag, and the next body save sent that set
       // and took the tag off the server. Notes first, the loser still resolves on every
@@ -2459,7 +2459,7 @@ export class NotesStore {
   }
 
   /**
-   * Deletes a tag, taking it off every note that carries it — trashed notes included, so
+   * Deletes a tag, taking it off every note that carries it, trashed notes included, so
    * a restore cannot bring a deleted tag back. The notes themselves are untouched; a tag
    * is a label, and removing a label must never remove what it labelled.
    */
@@ -2502,7 +2502,7 @@ export class NotesStore {
   listNotebooks(): NotebookSummary[] {
     /*
      * The note count is the triggers', kept on the notebook row as its notes come and go.
-     * It was counted here, which read every filed note on every sidebar load — and the
+     * It was counted here, which read every filed note on every sidebar load, and the
      * web editor reloaded the sidebar on every save.
      */
     return this.sql.exec<NotebookSummary>(
@@ -2516,7 +2516,7 @@ export class NotesStore {
 
   /**
    * Notebooks by id with their live field definitions, for the feed. Every notebook when
-   * `ids` is null — the snapshot's first page — since a library has a handful. The
+   * `ids` is null (the snapshot's first page), since a library has a handful. The
    * definitions come in one query over the ids rather than one per notebook, in display
    * order, and are dealt out after. No counts; see `FeedNotebook`.
    */
@@ -2611,7 +2611,7 @@ export class NotesStore {
    * Updates a notebook's name, purpose and/or emoji. Returns 'conflict' when a new name is
    * already taken by another notebook, case-insensitively.
    *
-   * When `name` is given, every note follows automatically because they reference the id —
+   * When `name` is given, every note follows automatically because they reference the id:
    * the rename is a single row update, which is the point of the notebook being an entity at
    * all. `purpose` or `emoji` given as `null` clears it. An omitted key is left untouched, so
    * the same method serves the rename-only path (route, MCP), the purpose editor and the
@@ -2672,7 +2672,7 @@ export class NotesStore {
    *
    * Default: notes survive, unfiled. With `trashNotes`, live notes in the notebook are
    * soft-deleted into the trash (already-trashed ones keep their `deleted_at`) and then
-   * unfiled — restoring later must not point at a notebook that no longer exists.
+   * unfiled: restoring later must not point at a notebook that no longer exists.
    *
    * Notes are unfiled explicitly rather than left to `ON DELETE SET NULL`, although the
    * cascade is real here: the trash branch has to touch the rows anyway, and one shape
@@ -2681,7 +2681,7 @@ export class NotesStore {
    *
    * No value is destroyed, whichever branch runs. The field definitions are tombstoned
    * rather than deleted, so every value keyed to them stays readable on the note that
-   * holds it — including on a note cascaded to the trash, which is what makes that
+   * holds it, including on a note cascaded to the trash, which is what makes that
    * cascade the recoverable operation its button claims. The definitions carry the
    * notebook's name with them so the values keep their "from Coupons" label after this
    * row is gone.
@@ -2732,7 +2732,7 @@ export class NotesStore {
   /**
    * Drops tombstoned definitions no value refers to any more.
    *
-   * A tombstone exists only to keep the values it keys readable — its name, its type, and
+   * A tombstone exists only to keep the values it keys readable: its name, its type, and
    * the notebook name they are labelled with. Once the last of those values is gone,
    * whether cleared from a note, purged with one, or never there at all, it is holding
    * nothing and goes. That is the whole lifecycle: no expiry, no UI, nothing for the
@@ -2757,13 +2757,13 @@ export class NotesStore {
    *
    * `counts` adds how many notes hold a value for each field, which the management page
    * shows and names before a delete. Only on request: it reads every stored value of every
-   * field — 6.3k rows for a 770-note notebook with nine fields, where the definitions
-   * alone are 13 — and every other caller wanted the definitions. The note editor, the
+   * field (6.3k rows for a 770-note notebook with nine fields, where the definitions
+   * alone are 13), and every other caller wanted the definitions. The note editor, the
    * list and MCP's writes all fetched it, so each note opened in such a notebook and each
    * card an assistant filled paid for counts nobody showed.
    *
-   * Tombstones cannot reach here — the notebook they belonged to is gone, so the guard
-   * above already answers null — but they are excluded explicitly so the query reads as
+   * Tombstones cannot reach here (the notebook they belonged to is gone, so the guard
+   * above already answers null), but they are excluded explicitly so the query reads as
    * what it means rather than relying on that.
    */
   listFields(notebookId: string, { counts = false }: { counts?: boolean | undefined } = {}): FieldDef[] | null {
@@ -2817,7 +2817,7 @@ export class NotesStore {
    * Adds a field to a notebook, at the end.
    *
    * Names are checked before the insert rather than caught on the unique constraint so
-   * the three outcomes stay distinct — a missing notebook, a taken name and a full
+   * the three outcomes stay distinct: a missing notebook, a taken name and a full
    * notebook each get their own status upstream.
    */
   createField(
@@ -3037,7 +3037,7 @@ export class NotesStore {
    *
    * A select stores the option as the whole `value_text`; a multi-select stores a JSON
    * list, so the option is a member of that list. This is the same distinction the note
-   * filter's `eq` op draws, and it is drawn the same way here — the plain compare first,
+   * filter's `eq` op draws, and it is drawn the same way here: the plain compare first,
    * then `json_each` guarded by `json_valid` so it never runs on a select's bare text.
    *
    * Null when the field is not one with options, so the caller can tell "no such field"
@@ -3063,13 +3063,13 @@ export class NotesStore {
    * Removes an option from a select or multi-select, optionally taking it off the notes
    * that hold it.
    *
-   * The default leaves those values in place — a select that no longer lists the option
+   * The default leaves those values in place: a select that no longer lists the option
    * still shows it as "(no longer an option)", and nothing about the note changes. That
    * is the whole point of keeping a stored value legible after its option is gone, and it
    * is what this method does when `clear` is false. Removing the option from the list is
    * done by rewriting the field's options, the same path the options editor takes.
    *
-   * With `clear`, the value is also removed from every note that held it — a deliberate
+   * With `clear`, the value is also removed from every note that held it: a deliberate
    * cleanup, confirmed by name and count in the UI, not a silent side effect of tidying
    * the list. A select's value is the option itself, so the whole row goes; a
    * multi-select's is one member of a list, so the member is dropped and the row deleted
@@ -3248,7 +3248,7 @@ export class NotesStore {
    * Rewrites a field's stored values for a new type.
    *
    * Done here rather than in SQL because SQLite cannot be trusted to say whether text is
-   * a number — `CAST('abc' AS REAL)` is 0.0, not an error. The rows are read, planned by
+   * a number: `CAST('abc' AS REAL)` is 0.0, not an error. The rows are read, planned by
    * the shared codec, and written back inside the caller's transaction, so a conversion
    * either lands whole or not at all.
    */
@@ -3292,7 +3292,7 @@ export class NotesStore {
    * cheaper order and because the error should be about the value, not about a rollback.)
    *
    * A field id from another account's notebook is reported exactly like one that does
-   * not exist — no such row is in this database — so an id from elsewhere confirms nothing.
+   * not exist (no such row is in this database), so an id from elsewhere confirms nothing.
    *
    * Merge semantics, unlike `setTags`: only the keys in the patch change. The editor sends
    * every field anyway, and a caller setting one value should not have to know the rest.
@@ -3301,7 +3301,7 @@ export class NotesStore {
    * reason `withHeldOptions` gives: the editor resends every field, and failing that
    * resend would refuse the title and body too. Looked up here so a new choice that is not
    * in the list is still a 400. A value that is exactly what is stored is not written at
-   * all — that resend is the common case, and a statement for it would only re-date the
+   * all: that resend is the common case, and a statement for it would only re-date the
    * note.
    *
    * Tombstoned definitions resolve here, deliberately, where every listing excludes them:
@@ -3311,7 +3311,7 @@ export class NotesStore {
    *
    * The ids go in as one JSON array rather than a placeholder each. The engine binds at
    * most a hundred values, and the shared-database version of this bound the note id
-   * beside a hundred field ids — a hundred-and-one, which the cap refuses; the limit on
+   * beside a hundred field ids: a hundred-and-one, which the cap refuses; the limit on
    * the patch is kept as a sanity bound on the size of one change.
    */
   private prepareFieldWrites(noteId: string, patch: NoteFieldsPatch): Statement[] {
@@ -3378,8 +3378,8 @@ export class NotesStore {
    * One notebook by the name a person or a model gives it, with its field definitions, or
    * null when there is none.
    *
-   * For a caller that has a name and needs the ids behind it — a filter on the fields of
-   * the notebook a list is scoped to — on every page of a walk. The overview answers the
+   * For a caller that has a name and needs the ids behind it (a filter on the fields of
+   * the notebook a list is scoped to) on every page of a walk. The overview answers the
    * same question and was what that caller used, but it reads every notebook, the count
    * of unfiled notes and every definition in the account to use one notebook's. Matched
    * as the list's own notebook filter matches, so a name that finds its fields here finds
@@ -3396,7 +3396,7 @@ export class NotesStore {
   /**
    * Where a set of notes is filed, for a caller about to write field values to them by
    * name: which of the ids are live notes, the notebooks they are in with a count and one
-   * note of each, and — when they are all in one — that notebook's field definitions.
+   * note of each, and (when they are all in one) that notebook's field definitions.
    *
    * It exists so the question is asked of every note rather than guessed from one. A name
    * means nothing until it is known which notebook's field it names, and a caller that
@@ -3446,7 +3446,7 @@ export class NotesStore {
    *
    * The membership check reads the definitions once for the set; the per-note read is
    * `prepareFieldWrites`' own, so the validation and encoding stay one piece of code. A
-   * tombstoned definition is not a member — its notebook is gone — so bulk writes can
+   * tombstoned definition is not a member (its notebook is gone), so bulk writes can
    * neither set nor clear values left over from a deleted notebook, which a note's own
    * editor can still do one at a time.
    */
@@ -3492,16 +3492,16 @@ export class NotesStore {
   }
 
   /**
-   * Applies imported values, which arrive by field *name* — the interchange form.
+   * Applies imported values, which arrive by field *name*, the interchange form.
    *
    * A name with no definition in the notebook creates one, typed from the value, so a
    * vault exported elsewhere lands with its properties intact; a list value makes a
    * multi-select with the list as its first options. An option a select or multi-select
-   * lacks is added rather than the value dropped — see `addImportedOptions`. Anything
+   * lacks is added rather than the value dropped: see `addImportedOptions`. Anything
    * that still cannot be stored (a reserved name, a value the field's type cannot read, a
    * notebook already at its limit) is skipped and named, rather than failing the note: an
    * import is judged by what it kept. With `onlyMissing`, a value a note already holds is
-   * left alone — the content-hash skip path restores what a deleted field lost without
+   * left alone: the content-hash skip path restores what a deleted field lost without
    * undoing an edit.
    */
   private applyImportedFields(
@@ -3581,7 +3581,7 @@ export class NotesStore {
   /**
    * Adds the options an imported value needs to a select or multi-select, when it can.
    *
-   * The rule `importNotebook` applies to a definitions file — add, never alter — applied
+   * The rule `importNotebook` applies to a definitions file (add, never alter) applied
    * to a value: an option the notebook lacks is created rather than the value dropped.
    * That is what lets a vault written by hand, with no `notebooks/` file to declare its
    * options, land with its values intact, and what puts back an option that was pruned
@@ -3605,7 +3605,7 @@ export class NotesStore {
    * the notes that will carry values for them.
    *
    * The rule is *add, never alter*. A field the notebook does not have is created as the
-   * file describes it — that is the whole point, and how a URL comes back a URL and a
+   * file describes it: that is the whole point, and how a URL comes back a URL and a
    * rating a rating. A field it already has keeps its type and its scale, because
    * changing either clears every value that cannot be read the new way, and an import is
    * not the place to decide that on someone's behalf; the mismatch is reported instead,
@@ -3774,8 +3774,8 @@ export class NotesStore {
    *
    * Found without case, on the NOCASE index (0006-tags-nocase), and answered with the
    * stored spelling, which is the one the note will show. A read and then an insert
-   * rather than an upsert: the read is what the caller needs anyway — the id to link and
-   * the name to answer with — and `ON CONFLICT … RETURNING` returns nothing for a row
+   * rather than an upsert: the read is what the caller needs anyway (the id to link and
+   * the name to answer with), and `ON CONFLICT … RETURNING` returns nothing for a row
    * that was already there. It is also one probe of the index where the upsert and the
    * `INSERT … SELECT` that linked it by name were two.
    */

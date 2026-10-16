@@ -282,7 +282,7 @@ describe('attachments', () => {
       summary: 'Acme Diner receipt — Receipt: lunch for two on 2026-09-21, $17.27 by card.',
     });
     // A text layer has no name or description, so its summary is its opening, cut, and
-    // the facts found in the text — here a total and a date two thousand characters in,
+    // the facts found in the text: here a total and a date two thousand characters in,
     // past the head a vision reading is cut from (MAK-177). Never the whole text.
     const layer = one!.files.find((f) => f.filename === 'bill.pdf')!;
     expect(layer.read).toBe('text');

@@ -7,7 +7,7 @@ import { feedRows, feedSeq, freshStore, listAllTags } from './helpers.js';
 
 /**
  * The object's lifecycle: what the constructor guarantees on every wake, and the operator
- * surface that everything else — the sweep, the dump, account deletion — is built on.
+ * surface that everything else (the sweep, the dump, account deletion) is built on.
  * Runs against the real runtime; see vitest.config.ts for why.
  */
 describe('UserStore lifecycle', () => {
@@ -283,8 +283,8 @@ describe('UserStore lifecycle', () => {
     expect(rebuilt).toMatchObject({ userId, wiped: false, migrations: ['0001-init', '0002-changes', '0003-revisions', '0004-revision-props', '0005-deleted-blobs', '0006-tags-nocase', '0007-llm-usage', '0008-attachment-bytes'] });
     expect(rebuilt.counts.notes).toBe(0);
 
-    // And after an eviction the object wakes as it was left — empty, no schema, and
-    // never to copy its account back from D1 — until something asks for its notes.
+    // And after an eviction the object wakes as it was left (empty, no schema, and
+    // never to copy its account back from D1) until something asks for its notes.
     await stub.wipe();
     await evictDurableObject(stub);
     const woke = env.USER_STORE.get(env.USER_STORE.idFromName(userId));
@@ -359,7 +359,7 @@ describe('UserStore lifecycle', () => {
     expect(third.next).toBeNull();
 
     // Each row read once across the three calls, but the row each cut stopped at, which
-    // the next call reads again — a row a call, at most; plus the schema's entries, the
+    // the next call reads again: a row a call, at most; plus the schema's entries, the
     // feed's two rows for the mark at each end, and one for each table SQLite probes and
     // finds empty. Exact, so a slice that re-read anything else fails here.
     // The rows-read test on the big store pins the same for one slice.
@@ -379,7 +379,7 @@ describe('UserStore lifecycle', () => {
   /*
    * The dump reads the tables `DUMP_TABLES` names, not the ones the schema has, so a
    * schema file that adds a table and forgets the list would ship a dump that rebuilds a
-   * store without it — silently, since a missing table is just one less `INSERT` run. Read
+   * store without it, silently, since a missing table is just one less `INSERT` run. Read
    * the schema the way the object holds it and hold the list to it. The search tables and
    * the shadows FTS5 keeps for each (`notes_fts_data`, `_idx`, …) are excluded by name
    * from what the schema says is virtual, not listed, so a new search table needs nothing
@@ -455,9 +455,9 @@ describe('UserStore lifecycle', () => {
 
 /**
  * Point-in-time restore, as far as it can be tested here: not at all. Miniflare exposes
- * the bookmark methods but refuses every one that reads history — `getBookmarkForTime`
+ * the bookmark methods but refuses every one that reads history: `getBookmarkForTime`
  * and `onNextSessionRestoreBookmark` both throw "does not implement point-in-time
- * recovery" (measured 2026-10-01, workerd under @cloudflare/vitest-plugin 1.3) — and
+ * recovery" (measured 2026-10-01, workerd under @cloudflare/vitest-plugin 1.3), and
  * `getCurrentBookmark` answers all zeros. So the round trip, restoring and then undoing
  * with the bookmark the restore hands back, is verified on a deployed instance instead:
  * a preview of a PR that touches `src/store/` has stores of its own on the real runtime.

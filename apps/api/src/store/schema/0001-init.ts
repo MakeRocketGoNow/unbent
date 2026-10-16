@@ -1,8 +1,8 @@
 /**
  * The per-user store's schema, as one file.
  *
- * This is the final state of D1 migrations 0003 through 0028 — the notes data plane as it
- * stood when it moved into one SQLite database per account — with three things taken out:
+ * This is the final state of D1 migrations 0003 through 0028 (the notes data plane as it
+ * stood when it moved into one SQLite database per account) with three things taken out:
  *
  *   - `user_id`, from every table and every index. The database *is* the user. Nothing in
  *     here can name another account's row, so nothing needs a column to say whose it is.
@@ -19,8 +19,8 @@
  * constraints that were per user (`tags.name`, `notebooks.name`) are simply unique, and
  * the account-wide `note_counts` row is a single row keyed `id = 1`.
  *
- * Foreign keys are enforced in this engine — `PRAGMA foreign_keys` is on by default for a
- * SQLite-backed Durable Object, and the object's constructor checks it — so the `ON DELETE`
+ * Foreign keys are enforced in this engine: `PRAGMA foreign_keys` is on by default for a
+ * SQLite-backed Durable Object, and the object's constructor checks it, so the `ON DELETE`
  * clauses are real here, where on D1 they were documentation. The repos still delete
  * children by hand where they always did; a cascade that also fires does nothing.
  *

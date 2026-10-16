@@ -32,8 +32,8 @@ export { DATA_TABLES, DUMP_TABLES, type DataTable, type DumpTable };
 /**
  * What the object is allowed to see of the Worker's environment: nothing. Naming `BLOBS`,
  * `AI`, `DB` or a secret here would be refused by review before it was refused by the
- * compiler, but the compiler refusing it is what makes rule 1 in AGENTS.md — the object
- * touches its SQLite and nothing else — a property of the code rather than a habit. It
+ * compiler, but the compiler refusing it is what makes rule 1 in AGENTS.md (the object
+ * touches its SQLite and nothing else) a property of the code rather than a habit. It
  * carried `DB` for the one-time copy out of the shared tables at the cutover; that went
  * with the tables (migration 0036).
  */
@@ -137,7 +137,7 @@ export interface StoreStats {
    * the newest change-feed row's time, or null for a store nothing has written yet. The
    * directory's `last_active_at` is this same value as of the last sweep, so on the
    * operator's account page it was up to an hour stale, or older for an account the
-   * sweep had not reached — "three days ago" under a store with five hundred writes
+   * sweep had not reached: "three days ago" under a store with five hundred writes
    * made that morning (MAK-190). The page shows this one; the list keeps the sweep's.
    */
   lastWriteAt: number | null;
@@ -189,7 +189,7 @@ export const DUMP_PAGE_BYTES = 8 * 1024 * 1024;
  * The object is the repository. Every route and MCP tool in the Worker reaches a user's
  * notes through a stub of this class, keyed by user id (`idFromName(userId)`), and every
  * statement then runs in-process against `ctx.storage.sql`. The Worker authenticates,
- * forwards, and does whatever leaves the building — R2 bytes, the language model, mail —
+ * forwards, and does whatever leaves the building (R2 bytes, the language model, mail)
  * before or after the call. Nothing in this module, or in anything it imports, makes an
  * outbound request; a static test asserts it.
  *
@@ -202,7 +202,7 @@ export const DUMP_PAGE_BYTES = 8 * 1024 * 1024;
  * Every public method is one billable request to the object, so the surface has two
  * layers: the repository methods one for one, for the facade that keeps `NotesRepo`'s
  * and `AttachmentsRepo`'s signatures, and composites that answer what a route asks in
- * one call where it used to make two or three — a list with its count, a note with its
+ * one call where it used to make two or three: a list with its count, a note with its
  * files, a notebook list with the unfiled count. Prefer adding to the second layer over
  * a second call in the same request.
  *
@@ -295,7 +295,7 @@ export class UserStore extends DurableObject<StoreEnv> {
 
   /**
    * Rebuilds the schema after a `wipe`, the first time anything asks for data again. A
-   * wiped object starts empty by design — the account was deleted, or a test fixture
+   * wiped object starts empty by design: the account was deleted, or a test fixture
    * purged.
    */
   private ready(): void {
@@ -372,8 +372,8 @@ export class UserStore extends DurableObject<StoreEnv> {
 
   /**
    * The sweep's one call on a live account: its usage, and the deleted files whose
-   * thirty-five days are up as of `now` — at most `EXPIRED_BLOBS_PER_VISIT`, one R2
-   * `delete()`'s worth. One call rather than two because every account is visited on
+   * thirty-five days are up as of `now` (at most `EXPIRED_BLOBS_PER_VISIT`, one R2
+   * `delete()`'s worth). One call rather than two because every account is visited on
    * every walk of the directory and each call is a billable request, and the sweep's
    * batch is sized against the Free plan's fifty subrequests an invocation
    * (`lib/sweep.ts`). `now` is the Worker's,
@@ -391,8 +391,8 @@ export class UserStore extends DurableObject<StoreEnv> {
 
   /**
    * The sweep's second call, after it has deleted `keys` from R2: drop their tombstones.
-   * Only those still due as of `now` go; see `DeletedBlobs.forget`. Not a feed write — a
-   * client holds no deleted files — so it does not go through `writing()`.
+   * Only those still due as of `now` go; see `DeletedBlobs.forget`. Not a feed write (a
+   * client holds no deleted files), so it does not go through `writing()`.
    */
   forgetBlobs(keys: string[], now: number): { forgotten: number } {
     this.ready();
@@ -406,7 +406,7 @@ export class UserStore extends DurableObject<StoreEnv> {
    * The instance stays alive and empty, and stays that way across an eviction: the
    * marker written here is read before the schema is touched on the next wake. `ready()`
    * rebuilds the schema if a data method is called afterwards, so a wiped object that is
-   * reached again — a deletion that failed further along and was retried, a test —
+   * reached again (a deletion that failed further along and was retried, a test)
    * behaves as a brand-new one that starts empty rather than throwing "no such table".
    */
   async wipe(): Promise<void> {
@@ -424,14 +424,14 @@ export class UserStore extends DurableObject<StoreEnv> {
   // backups bucket, the file `dumpBegin` and `dumpSlice` write: the way back from a fault
   // noticed after the thirty days of history, and the last step of the runbook for
   // losing the whole Cloudflare account. Three calls, because the dump is too big for
-  // one — an archive's is 31 MB of SQL and an RPC argument is capped at 32 MiB — and
+  // one (an archive's is 31 MB of SQL and an RPC argument is capped at 32 MiB), and
   // because nothing can hold a transaction open across two calls to the object. Each page
   // is one transaction; the marker in key-value storage (`LOADING_KEY`) is what keeps a
   // store between pages, or abandoned between them, from answering as if it were whole.
 
   /**
-   * Empties the object and marks it loading. Everything — tables, schema, `_meta`, the
-   * wiped mark — goes, so the dump's own `CREATE`s and `_migrations` rows land in a clean
+   * Empties the object and marks it loading. Everything (tables, schema, `_meta`, the
+   * wiped mark) goes, so the dump's own `CREATE`s and `_migrations` rows land in a clean
    * database, as they would under `sqlite3`.
    *
    * `undo` is the runtime's bookmark of the store as it was the instant before, for the
@@ -439,7 +439,7 @@ export class UserStore extends DurableObject<StoreEnv> {
    * no history (Miniflare), which is what the dump the route writes first is for. Taken
    * before anything is deleted, and a failure to take it stops the load before it starts.
    * `before` is that dump's key, kept here with the bookmark so a load started over on a
-   * store that is already loading — the way out of a failed one — keeps the real ways
+   * store that is already loading (the way out of a failed one) keeps the real ways
    * back: a bookmark taken now would be of the half-loaded store, and the route writes
    * no second dump of one (found in review).
    *
@@ -489,8 +489,8 @@ export class UserStore extends DurableObject<StoreEnv> {
    * `bootstrap` then refused the store), so the one place it can be set is before the
    * call writes anything. `loadFinish` sets it on the same way, first thing.
    *
-   * A page from any load but the one in flight is refused — after an eviction the
-   * remainder is gone, and the only honest answer is to start the load again — and the
+   * A page from any load but the one in flight is refused (after an eviction the
+   * remainder is gone, and the only honest answer is to start the load again), and the
    * store stays loading either way.
    */
   loadPage(loadId: string, bytes: Uint8Array): { statements: number } {
@@ -620,12 +620,12 @@ export class UserStore extends DurableObject<StoreEnv> {
   }
 
   /**
-   * Winds the whole database back to `target` — a time in the last thirty days, or a
-   * bookmark — and restarts the object so the restore happens. For a bad migration or a
+   * Winds the whole database back to `target` (a time in the last thirty days, or a
+   * bookmark) and restarts the object so the restore happens. For a bad migration or a
    * bad edit; restoring another account's notes into this one is the export and import.
    *
    * Never returns. The runtime applies a restore when a session starts, so the object
-   * aborts itself to start one, and the request in flight — this one — fails with the
+   * aborts itself to start one, and the request in flight (this one) fails with the
    * abort's reason. That reason carries the bookmark of the store as it was just before
    * the restore (`restoreAbortReason`), which is the undo: restoring to it puts everything
    * back, the same way, for thirty days. It is logged here too, in case the message does
@@ -633,8 +633,8 @@ export class UserStore extends DurableObject<StoreEnv> {
    *
    * One call that schedules and aborts, rather than one to schedule and a second to
    * restart. Between two calls the restore would be scheduled but not yet applied; if the
-   * second never arrived, it would fire whenever the object next restarted — an eviction,
-   * a deploy, days later — and wind back whatever had been written in between. Here
+   * second never arrived, it would fire whenever the object next restarted (an eviction,
+   * a deploy, days later) and wind back whatever had been written in between. Here
    * nothing awaits between scheduling and aborting, so no other request can land in the
    * gap either.
    *
@@ -667,7 +667,7 @@ export class UserStore extends DurableObject<StoreEnv> {
    * write reaching the disk.
    *
    * The guarantee is the transaction: the statement runs inside one that is always rolled
-   * back, so even a query that turned out to write — a CTE with a DML tail, a misread — is
+   * back, so even a query that turned out to write (a CTE with a DML tail, a misread) is
    * undone before this returns (rollback on throw is the runtime's, measured 2026-09-29).
    * The prefix check is belt and braces for the one thing a transaction cannot undo, a
    * PRAGMA that changes engine state, and for making the refusal an error the operator
@@ -719,9 +719,9 @@ export class UserStore extends DurableObject<StoreEnv> {
   }
 
   /**
-   * The start of a dump, in one call: the feed's counter as a `mark`, and — unless the
+   * The start of a dump, in one call: the feed's counter as a `mark`, and (unless the
    * mark is `unless`, which is how the daily backup asks "has anything changed since the
-   * dump I already have?" — the schema and the first slice of rows. An account that has
+   * dump I already have?") the schema and the first slice of rows. An account that has
    * not changed costs the backup this call and nothing else; a small one that has is
    * dumped whole by it, since a slice crosses tables. See `lib/dump.ts`.
    *
@@ -747,7 +747,7 @@ export class UserStore extends DurableObject<StoreEnv> {
    *
    * A slice is not a snapshot of the store with the one before it. Nothing can hold a
    * read open across two calls to the object, so a write between two slices lands in
-   * whichever tables have not been read yet — and the gaps include a multipart upload's
+   * whichever tables have not been read yet, and the gaps include a multipart upload's
    * parts, seconds rather than milliseconds. Such a file still loads, since it loads with
    * foreign keys off, which is why it must say so: the last slice carries the mark as it
    * is then (`endMark`), the file ends with both marks, and the backup records no mark
@@ -773,7 +773,7 @@ export class UserStore extends DurableObject<StoreEnv> {
 
   /**
    * Reads `table`'s rows after `after` by rowid onto `lines` as INSERT statements, and
-   * stops before the row that would take the text past `budget` characters — unless
+   * stops before the row that would take the text past `budget` characters, unless
    * `lines` is still empty, or a single row larger than the budget could never be dumped.
    * `last` is the rowid of the last row taken (`after` when none was), and `cut` whether
    * the budget, not the table, ended the read.
@@ -786,7 +786,7 @@ export class UserStore extends DurableObject<StoreEnv> {
    * linear in the slice, where a byte array crosses as a copy and is written out as it is.
    *
    * The cut is by the statements' own length as they are made, off the raw cursor, row
-   * by row, so it bounds the object's memory and not only the result — the result crosses
+   * by row, so it bounds the object's memory and not only the result: the result crosses
    * RPC, which is capped at 32 MiB. A character is at most three bytes of UTF-8 in a
    * statement, so eight million of them stay inside the cap. It is the one read here that
    * bypasses the `Sql` seam, for that row-by-row cut; its rows are added to the seam's
@@ -826,7 +826,7 @@ export class UserStore extends DurableObject<StoreEnv> {
    * the virtual table, which creates them itself and refuses to if they already exist.
    * So are `sqlite_*`, SQLite's own, and `_cf_*`, the runtime's: `_cf_KV` is where
    * `ctx.storage.kv` lives, and it appears in `sqlite_master` the first time that storage
-   * is written — the loading marker, the wiped mark — after which every dump of the
+   * is written (the loading marker, the wiped mark), after which every dump of the
    * account carried `CREATE TABLE _cf_KV`, which the object it was loaded into already
    * had, and the load died on its first statement (MAK-197, found in the restore
    * rehearsal: the day's dump of an account that had been loaded once could not be
@@ -860,7 +860,7 @@ export class UserStore extends DurableObject<StoreEnv> {
    * Every write passes through here: the store's method, then the push.
    *
    * The push is the feed's last seq, sent on every socket attached to this object, after
-   * the method — and so its transaction — has returned. A method that threw rolled its
+   * the method (and so its transaction) has returned. A method that threw rolled its
    * transaction back before its feed rows were written, so there is nothing to announce
    * and the throw passes straight through. The sockets are told nothing but the number;
    * they pull the page themselves, which keeps the push an optimisation the feed is
@@ -892,7 +892,7 @@ export class UserStore extends DurableObject<StoreEnv> {
 
   // --- Notes: the repository, one for one -----------------------------------------------
   //
-  // Each of these is `NotesStore`'s method of the same name, behind `ready()` — or, for a
+  // Each of these is `NotesStore`'s method of the same name, behind `ready()`, or, for a
   // write, behind `writing()`, which announces afterwards. They are spelled out rather
   // than proxied so the RPC surface is a list a reader can grep, the types cross the
   // boundary as written, and a method the object should not expose cannot leak through a
@@ -978,7 +978,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   recordAttachment(input: Parameters<AttachmentsStore['record']>[0], opts?: Parameters<AttachmentsStore['record']>[1]) { return this.writing(() => this.attachments.record(input, opts)); }
   removeAttachment(noteId: string, filename: string) { return this.writing(() => this.attachments.remove(noteId, filename)); }
   /**
-   * A file's text, and — when the language model read it — what the reading cost, in one
+   * A file's text, and (when the language model read it) what the reading cost, in one
    * transaction (MAK-180): a reading recorded is a reading counted.
    */
   recordText(input: Parameters<AttachmentsStore['recordText']>[0], usage?: UsageEntry) {
@@ -1013,7 +1013,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   /**
    * `GET /notes` and MCP's `list_notes`: the page and, on the first page, the total. With
    * `summaries`, also a line per file of each note on the page (`summariesForNotes`), keyed
-   * by note id, in the same call — `list_notes` asks for it when an assistant is filling
+   * by note id, in the same call: `list_notes` asks for it when an assistant is filling
    * fields from the files. `vision` is whether the instance has the vision model; see
    * `summarize`.
    */
@@ -1029,8 +1029,8 @@ export class UserStore extends DurableObject<StoreEnv> {
           ? items.map((n) => n.id)
           : items.filter((n) => n.attachments?.length).map((n) => n.id);
       // A first page that came up short has seen every match, so it is its own total.
-      // That saves the count where it costs most: a filter no stored number answers — a
-      // field value, a date range, notes with no tag — counts by walking every note in
+      // That saves the count where it costs most: a filter no stored number answers (a
+      // field value, a date range, notes with no tag) counts by walking every note in
       // scope, and when few match, the page has just walked the same notes to find them.
       // Both callers pass the count the page's own filters; one that counted something
       // else beside a page would have to stop taking this path.
@@ -1252,7 +1252,7 @@ export class UserStore extends DurableObject<StoreEnv> {
    *
    * The only thing ever sent is `{"seq": N}` after a write, from `announce`. Nothing is
    * read: the handler below ignores every message, so a client cannot ask the object
-   * for anything over the socket — the feed is a GET, session-checked in the Worker. A
+   * for anything over the socket: the feed is a GET, session-checked in the Worker. A
    * leaked socket therefore leaks that something changed, and nothing else.
    *
    * This is the one `fetch(` in `src/store/`: a handler, not a call. guards.test.ts
@@ -1291,8 +1291,8 @@ export class UserStore extends DurableObject<StoreEnv> {
   /**
    * `GET /changes`: everything that changed after `since`, whole, in one call.
    *
-   * The rows after the cursor are read off the primary key — only what the page returns
-   * — then collapsed to the last word per entity and loaded whole: notes with their
+   * The rows after the cursor are read off the primary key (only what the page returns)
+   * then collapsed to the last word per entity and loaded whole: notes with their
    * tags, values and files, notebooks with their definitions, tags, files. Cut short
    * when the bodies pass `FEED_PAGE_BYTES`, with `next` at the last row kept, so a page
    * never nears the RPC ceiling; a page of a hundred changed notes reads about 860 rows
@@ -1326,8 +1326,8 @@ export class UserStore extends DurableObject<StoreEnv> {
       );
       const full = rows.length === limit;
 
-      // The cut decides which rows stay, and it is made on the bodies' sizes alone —
-      // one small row per candidate — before any body is loaded. Loading every
+      // The cut decides which rows stay, and it is made on the bodies' sizes alone
+      // (one small row per candidate) before any body is loaded. Loading every
       // candidate whole and cutting afterwards would have held up to five hundred
       // bodies of up to 1.8 MB each in the object at once, past its memory, on a page
       // that one large import is enough to produce; and a page that fails never
@@ -1408,7 +1408,7 @@ export class UserStore extends DurableObject<StoreEnv> {
    * read what is written again on top of it as if it had seen it. The restore route
    * calls this once the store is back; every client then sees an epoch it does not hold
    * and starts over. The one write on the object the feed does not record, since it is
-   * the feed starting again — so the sockets are told by hand: most dropped on the
+   * the feed starting again, so the sockets are told by hand: most dropped on the
    * restore's restart, but one that reconnected first, and every one after the
    * hand-run `POST /admin/store/feed-epoch`, would otherwise keep the old history until
    * its next focus.

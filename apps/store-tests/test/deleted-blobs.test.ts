@@ -8,7 +8,7 @@ import { freshStore } from './helpers.js';
  * Deleted files follow the store (MAK-171, part 1): every method that deletes an
  * attachment row leaves the file's key in `deleted_blobs` with the time, the hourly sweep
  * takes the keys past thirty-five days and tells the store to forget them, and a key
- * recorded again loses its tombstone. Each rule here is one a store restore depends on —
+ * recorded again loses its tombstone. Each rule here is one a store restore depends on:
  * a tombstone that was missing, or one that outlived its row's return, is a file deleted
  * from under a restored note thirty-five days later.
  */
@@ -97,7 +97,7 @@ describe('deleted files', () => {
     expect((await stub.sweepVisit(now + DELETED_BLOB_RETENTION_MS - DAY)).expiredBlobs).toEqual(['k/oldest', 'k/old']);
     expect((await stub.sweepVisit(now + DELETED_BLOB_RETENTION_MS)).expiredBlobs).toEqual(['k/oldest', 'k/old', 'k/fresh']);
 
-    // Between the sweep asking and telling, the fresh key's file was deleted again — a
+    // Between the sweep asking and telling, the fresh key's file was deleted again: a
     // newer tombstone the forget must leave, or its object would never be asked about.
     await runInDurableObject(stub, (_i, state) => {
       state.storage.sql.exec(`UPDATE deleted_blobs SET deleted_at = ?1 WHERE r2_key = 'k/old'`, now);

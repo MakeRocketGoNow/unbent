@@ -14,7 +14,7 @@ import { describe, expect, it } from 'vitest';
 /**
  * The rules the per-account store lives by, held by reading the source rather than by
  * remembering them. Each is a line that is easy to cross by accident in a routine change
- * — a helper that fetches, a route that reaches for the database — and expensive to
+ * (a helper that fetches, a route that reaches for the database) and expensive to
  * discover afterwards, so each is a test that names the file that crossed it.
  */
 
@@ -32,8 +32,8 @@ function walk(dir: string, out: string[] = []): string[] {
 const rel = (path: string) => relative(SRC, path).split('\\').join('/');
 
 /**
- * The source with its comments removed, so a rule can be *explained* in a comment — this
- * file's own comments name every forbidden thing — without tripping itself. Naive about
+ * The source with its comments removed, so a rule can be *explained* in a comment (this
+ * file's own comments name every forbidden thing) without tripping itself. Naive about
  * strings (a `//` inside one ends the line early), which for these patterns only ever
  * makes a match less likely, never a false one.
  */
@@ -85,7 +85,7 @@ describe('the per-account store', () => {
   /**
    * `cloudflare:workers` exists only inside workerd. The unit tests run under Node, so a
    * value import of it anywhere in a module graph a unit test reaches breaks that test at
-   * import time — and `auth.ts` and the routes are reached by several. The class module
+   * import time, and `auth.ts` and the routes are reached by several. The class module
    * and the entry point are the two places allowed to import it as a value; everything
    * else reaches the object through the `USER_STORE` binding and `import type`.
    */
@@ -103,9 +103,9 @@ describe('the per-account store', () => {
   /**
    * Note data lives in the object, and a route that queried D1 for it would be reading a
    * frozen table. The routes that may still name `env.DB` are the ones whose data stays in
-   * D1 — the health check, the upload-grant claim, connected apps, the agreement to the
+   * D1: the health check, the upload-grant claim, connected apps, the agreement to the
    * terms, which is a column on Better Auth's `user` row, the plan, which is the account's
-   * standing with Paddle and not its notes (MAK-108) — and admin.ts, whose one use is
+   * standing with Paddle and not its notes (MAK-108), and admin.ts, whose one use is
    * the test-fixture purge, which lists the throwaway accounts by their `user` rows. A new
    * route that needs the database is either a control-plane route, added here
    * with a reason, or a mistake.

@@ -11,8 +11,8 @@ import { feedRows, feedSeq, freshStore } from './helpers.js';
  * Two things these exist to catch that no fake would. A bind-count mismatch: every `?N`
  * in the port was renumbered when `user_id` left, and the runtime throws on any statement
  * whose placeholders and values disagree, so calling each method once is the cheapest
- * net. And the schema's behaviour under the queries — the count triggers, the FTS
- * triggers, the cascades — which the port relies on and a fake cannot perform.
+ * net. And the schema's behaviour under the queries (the count triggers, the FTS
+ * triggers, the cascades), which the port relies on and a fake cannot perform.
  *
  * Every test takes a fresh object; see helpers.ts.
  */
@@ -658,8 +658,8 @@ describe('notes: import', () => {
     expect((await stub.importNote({ ...base, id: 'other', notebook: 'Imported' })).created).toBe(true);
     // No id, known hash: the note already here.
     expect(await stub.importNote({ ...base })).toMatchObject({ created: false });
-    // A trashed note keeps its id, so the same note imported again — its text since
-    // edited, so no live note shares the hash — lands under a fresh id.
+    // A trashed note keeps its id, so the same note imported again (its text since
+    // edited, so no live note shares the hash) lands under a fresh id.
     await stub.remove('keep-me');
     const again = await stub.importNote({ ...base, id: 'keep-me', body: 'edited', contentHash: 'h2' });
     expect(again.created).toBe(true);
@@ -809,7 +809,7 @@ describe('tags and notebooks', () => {
     expect((await stub.updateMany([a.id], { addTags: ['Receipts'], removeTags: ['receipts'] })).changed).toEqual([a.id]);
     expect((await stub.get(a.id))!.tags).toEqual(['CAFÉ', 'Receipts']);
 
-    // Changing only a tag's case is a plain rename — the one way to respell it now. A
+    // Changing only a tag's case is a plain rename: the one way to respell it now. A
     // merge into a name that exists in another case lands on the stored spelling.
     expect(await stub.renameTag(receipts.id, 'receipts')).toEqual({ id: receipts.id, name: 'receipts', merged: false });
     expect((await stub.get(b.id))!.tags).toEqual(['Café', 'receipts']);
@@ -1110,8 +1110,8 @@ describe('composites', () => {
 
 describe('rows read on an archive-sized store', () => {
   /**
-   * The planner hazard the shared database had on `user_id` — an equality on the first
-   * column of every index that matched nearly every row — is `deleted_at`'s here. These
+   * The planner hazard the shared database had on `user_id` (an equality on the first
+   * column of every index that matched nearly every row) is `deleted_at`'s here. These
    * bound the hot queries on a store big enough to show a plan that walks the table, so
    * a `+deleted_at` that stopped working, or a new index that tempted the planner away
    * from the tag, fails a test rather than a read budget.
@@ -1140,7 +1140,7 @@ describe('rows read on an archive-sized store', () => {
           );
           // Notebook 4 is the one that has nearly been tidied: all but three of its notes
           // carry a tag. Looking for what is left there is the untagged filter's worst case
-          // and its real one — nothing lets a page stop before the end of the notebook.
+          // and its real one: nothing lets a page stop before the end of the notebook.
           const tidied = nb === 'nb4' && i > 14;
           if (i % 2 === 0 || tidied) sql.exec(`INSERT INTO note_tags VALUES (?1, 'common')`, `n${String(i).padStart(5, '0')}`);
           if (i % 1000 === 0) sql.exec(`INSERT INTO note_tags VALUES (?1, 'rare')`, `n${String(i).padStart(5, '0')}`);
@@ -1151,7 +1151,7 @@ describe('rows read on an archive-sized store', () => {
           // Text for every file, so a read of files' text by id that walked the table would show.
           if (i % 3 === 0) sql.exec(`INSERT INTO attachment_text (attachment_id, note_id, filename, text, created_at) VALUES (?1, ?2, 'scan.pdf', 'scanned page', 1)`, `att-n${String(i).padStart(5, '0')}`, `n${String(i).padStart(5, '0')}`);
         }
-        // The feed as an import leaves it — one row per note — and then a thousand edits
+        // The feed as an import leaves it (one row per note) and then a thousand edits
         // over the first hundred notes, so a page can be dense with repeats.
         // Dated now: rows past the age window would be pruned by the first write below,
         // and the trash measurements would then be paying for the prune.
@@ -1210,20 +1210,20 @@ describe('rows read on an archive-sized store', () => {
       await measure('rare tag page', () => stub.list({ limit: 50, tags: ['rare'] })),
       await measure('rare tag count', () => stub.count({ tags: ['rare'], notebook: 'Notebook 0' })),
       // A selection's export: ninety notes named by id, spread over the archive, each a
-      // primary-key lookup — never a walk of the live notes to test each against the list.
+      // primary-key lookup, never a walk of the live notes to test each against the list.
       await measure('export page of named notes', () => {
         const ids = Array.from({ length: 90 }, (_, k) => `n${String(k * 33).padStart(5, '0')}`);
         return stub.exportPage({ limit: 100, sort: 'created', ids }, { sort: 'created', ids });
       }),
       await measure('field sort page', () => stub.list({ limit: 50, notebook: 'Notebook 0', sortField })),
       // The tags of a set, counted within it: the cost is the set's, so these are the
-      // three sizes it can be — a notebook of six hundred, one of thirty, and a tag on three.
+      // three sizes it can be: a notebook of six hundred, one of thirty, and a tag on three.
       await measure('tag counts in a big notebook', () => stub.tagCounts({ notebook: 'Notebook 3' })),
       await measure('tag counts in a small notebook', () => stub.tagCounts({ notebook: 'Notebook 5' })),
       await measure('tag counts under a rare tag', () => stub.tagCounts({ tags: ['rare'] })),
       await measure('tag counts under a rare tag in a notebook', () => stub.tagCounts({ tags: ['rare'], notebook: 'Notebook 0' })),
       // Notes without a tag: a page stops once it has fifty, a notebook's count reads each
-      // of its notes once, and the account's reads every note — the one that is dear.
+      // of its notes once, and the account's reads every note, the one that is dear.
       await measure('untagged page', () => stub.list({ limit: 50, untagged: true })),
       await measure('untagged page in a small notebook', () => stub.list({ limit: 50, untagged: true, notebook: 'Notebook 5' })),
       await measure('untagged count in a big notebook', () => stub.count({ untagged: true, notebook: 'Notebook 3' })),
@@ -1353,11 +1353,11 @@ describe('rows read on an archive-sized store', () => {
       'rare tag page': 60,
       'rare tag count': 20,
       // Whole notes with their files' text, so dearer a note than a list row: 1,478 for
-      // ninety (2026-10-09) — 180 of them the count, two a note. A plan that walked the
+      // ninety (2026-10-09), 180 of them the count, two a note. A plan that walked the
       // live notes would read three thousand before it started on the files.
       'export page of named notes': 1700,
       'field sort page': 600,
-      // A notebook's tags cost about two and a half rows a note — the note, its links —
+      // A notebook's tags cost about two and a half rows a note (the note, its links)
       // and no more: 1,489 for 594 notes, 77 for 30 (2026-10-04). A plan that started from
       // the links would read the account's 1,500 of them whatever the notebook, so the
       // small one is what shows it.
@@ -1378,7 +1378,7 @@ describe('rows read on an archive-sized store', () => {
       'untagged count in a small notebook': 80,
       'untagged count': 5200,
       // The page that cannot stop early: three untagged notes in a notebook of 597, so
-      // every note is read and asked for its links before the page comes back short —
+      // every note is read and asked for its links before the page comes back short,
       // two rows a note (1,193, measured 2026-10-04). This is what the filter costs when
       // it is used for what it is for.
       'untagged page where few are left': 1400,
@@ -1406,8 +1406,8 @@ describe('rows read on an archive-sized store', () => {
       'create fifty unfiled, skipping titles held': 200,
       // The notebook's row by name and its definitions: nothing that grows with the notes.
       'notebook by name': 12,
-      // Five hundred notes of one notebook by id, two rows a note — the key, then the
-      // row — and the notebook's name and definitions once (1,003, measured 2026-10-04).
+      // Five hundred notes of one notebook by id, two rows a note (the key, then the
+      // row), and the notebook's name and definitions once (1,003, measured 2026-10-04).
       // Joined to its notebook per note it was 1,502.
       'field targets for 500 notes': 1200,
       get: 10,
@@ -1459,7 +1459,7 @@ describe('rows read on an archive-sized store', () => {
       'trash many': 50,
       'get trashed': 10,
       // About thirteen rows per note: its size, read ahead of the cut, then the note
-      // whole — the row, its tags by id and name, values and files, each probed by id —
+      // whole (the row, its tags by id and name, values and files, each probed by id)
       // plus the hundred feed rows (measured 2026-10-02 at 1,336).
       'feed page': 1500,
       'feed page dense': 1500,
