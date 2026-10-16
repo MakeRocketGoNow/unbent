@@ -718,7 +718,7 @@ function payment(operator: Operator): LegalSection[] {
         `If Unbent is not for you, ask for a refund within ${REFUND_DAYS} days of any charge — ` +
           `the first year or a renewal, the plan or added storage — and you will get the whole ` +
           `of that charge back. No reason is needed. Write to ${operator.email} from the ` +
-          `address on the account, or ask Paddle directly with the link in your receipt.`,
+          `address the account used, or ask Paddle directly with the link in your receipt.`,
         'A refunded plan is cancelled, so it does not renew. After ' +
           `${REFUND_DAYS} days a charge is not refunded, though cancelling still stops the ` +
           'next one. Where the law where you live gives you a longer right to cancel or to a ' +
