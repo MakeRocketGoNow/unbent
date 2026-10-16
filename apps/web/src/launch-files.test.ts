@@ -53,6 +53,19 @@ describe('launchFiles', () => {
     expect(opened).toEqual(['n1']);
   });
 
+  /* Two jobs from a scanner close together: the second waits for the first, and both land. */
+  it('makes the notes of a second launch after the first, opening each', async () => {
+    let release!: () => void;
+    vi.mocked(actions.uploadFile).mockReturnValueOnce(new Promise((r) => (release = () => r({ filename: 'a.pdf', contentType: 'application/pdf', size: 1, path: 'files/a.pdf', indexing: 'server' as const }))));
+    const opened: string[] = [];
+    const handle = launchFiles(new QueryClient(), (id) => opened.push(id));
+    const first = handle([new File(['x'], 'a.pdf', { type: 'application/pdf' })]);
+    const second = handle([new File(['x'], 'b.pdf', { type: 'application/pdf' })]);
+    release();
+    await Promise.all([first, second]);
+    expect(opened).toEqual(['n1', 'n2']);
+  });
+
   it('opens nothing when no note could be made', async () => {
     vi.mocked(actions.createNote).mockRejectedValue(new Error('refused'));
     const opened: string[] = [];

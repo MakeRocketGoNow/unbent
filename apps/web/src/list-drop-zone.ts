@@ -17,9 +17,10 @@ import { carriesFiles } from './editor/drop-cursor.js';
  * until the drop; a browser that hides the count too gets the sentence without one.
  *
  * `accept` is asked on every dragover and answers the sentence, or null to refuse — the
- * plan has ended, or a batch is still running — in which case the pointer says no and
- * the drop does nothing. Plain DOM listeners rather than React's, so this is tested
- * beside the note's zone the same way. Returns the cleanup.
+ * plan has ended — in which case the pointer says no and the drop does nothing. A batch
+ * still landing is not a reason: a second drop waits its turn (`file-notes.ts`). Plain
+ * DOM listeners rather than React's, so this is tested beside the note's zone the same
+ * way. Returns the cleanup.
  */
 export interface ListDropTarget {
   /** The sentence to show for `count` files, or null to refuse the drag. */

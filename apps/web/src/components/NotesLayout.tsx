@@ -71,7 +71,7 @@ import { useMediaQuery, MOBILE_QUERY } from '../useMediaQuery.js';
 import { useSelection } from '../useSelection.js';
 import { SelectionBar } from './SelectionBar.js';
 import { listDropZone, dropSentence } from '../list-drop-zone.js';
-import { notesFromFiles, useFileNotes } from '../file-notes.js';
+import { notesFromFiles } from '../file-notes.js';
 import { Confirm } from './Confirm.js';
 import { MoveSheet } from './MoveSheet.js';
 import { TagsSheet } from './TagsSheet.js';
@@ -858,8 +858,8 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    * going to the browser instead would be the stray drop the window's guard exists for.
    * The sentence is drawn over the column while a drag is on it (`.list-drop-hint`), and
    * names the place as the heading does; nothing is named when the notes go nowhere.
-   * Refused, with the pointer, while the plan has ended — the server refuses every write
-   * — and while a batch is still landing, since the report is one card for one batch.
+   * Refused, with the pointer, while the plan has ended — the server refuses every write.
+   * A drop while an earlier batch is still landing is taken and waits its turn.
    *
    * The notes made are selected once they are in the list, so the bar offers Move, Tags
    * and Delete on exactly these: filing them somewhere else, or taking a wrong drop back,
@@ -867,12 +867,11 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    */
   const asideRef = useRef<HTMLElement>(null);
   const [dropHint, setDropHint] = useState<string | null>(null);
-  const batch = useFileNotes();
   const dropPlace = filing.notebook ?? (filing.tags.length > 0 ? filing.tags.join(', ') : null);
   // The listeners go on once; what they decide with is read fresh from here each time.
   const dropTarget = useRef({ accept: (n: number): string | null => null, onFiles: (_files: File[]) => {} });
   dropTarget.current = {
-    accept: (count) => (planInactive || batch.status === 'running' ? null : dropSentence(count, dropPlace)),
+    accept: (count) => (planInactive ? null : dropSentence(count, dropPlace)),
     onFiles: (files) => {
       void notesFromFiles(files, filing, dropPlace, queryClient).then((ids) => {
         if (ids.length > 0) selection.select(ids);

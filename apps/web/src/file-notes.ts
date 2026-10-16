@@ -27,7 +27,10 @@ import { invalidateNoteMembership } from './queries.js';
  * The batch's state is the module's, not a component's, for the reason the import run's
  * is (`import-run.ts`): the snackbar that reports it is drawn by the root layout, and the
  * person may well have left the list — or the Import page — before the last upload
- * lands. One batch at a time: a second drop while one runs is refused by the zone.
+ * lands. Batches run one after another: a second drop, a pick on the Import page or a
+ * launch that arrives while one runs waits its turn rather than being refused. Refusing
+ * was tried first, and the launch had no way to say so — a scanner's second job went to
+ * the console and nowhere else. The report shows the batch now running.
  */
 
 /** Where the notes go: the list's notebook and tags, by name, as `useCreateNote` takes them. */
@@ -129,14 +132,23 @@ export async function noteFromFile(file: File, filing: Filing): Promise<string> 
   return created.id;
 }
 
+/** The batches in order; each starts once the one before it has ended, however it ended. */
+let chain: Promise<unknown> = Promise.resolve();
+
 /**
- * Makes a note per file and reports as it goes. Resolves with the ids made — all of them,
- * or the ones made before a file failed, which the state then says. Refuses to start
- * while a batch is running, since the report is one card and one batch.
+ * Makes a note per file and reports as it goes, after any batch already running.
+ * Resolves with the ids made — all of them, or the ones made before a file failed, which
+ * the state then says.
  */
-export async function notesFromFiles(files: File[], filing: Filing, place: string | null, queryClient?: QueryClient): Promise<string[]> {
-  if (state.status === 'running') throw new Error('Files are already being added');
-  if (files.length === 0) return [];
+export function notesFromFiles(files: File[], filing: Filing, place: string | null, queryClient?: QueryClient): Promise<string[]> {
+  if (files.length === 0) return Promise.resolve([]);
+  const run = () => runBatch(files, filing, place, queryClient);
+  const next = chain.then(run, run);
+  chain = next;
+  return next;
+}
+
+async function runBatch(files: File[], filing: Filing, place: string | null, queryClient?: QueryClient): Promise<string[]> {
   set({ status: 'running', total: files.length, done: 0, ids: [], place, error: null, run: state.run + 1, undone: false });
   const ids: string[] = [];
   try {
@@ -170,8 +182,9 @@ export async function undoFileNotes(queryClient?: QueryClient): Promise<void> {
   }
 }
 
-/** For tests: back to nothing, whatever was running. */
+/** For tests: back to nothing, whatever was running; a batch still waiting is not. */
 export function resetFileNotesForTests(): void {
   state = initial;
+  chain = Promise.resolve();
   for (const fn of listeners) fn();
 }

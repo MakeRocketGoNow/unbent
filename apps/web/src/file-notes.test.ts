@@ -96,14 +96,25 @@ describe('notesFromFiles', () => {
     expect(actions.createNote).not.toHaveBeenCalled();
   });
 
-  it('refuses a second batch while one runs', async () => {
+  /* A scanner's second job, or a second drop, arrives while the first is landing. */
+  it('runs a second batch after the first, not refusing it and not interleaving them', async () => {
     let release!: () => void;
     vi.mocked(actions.uploadFile).mockReturnValueOnce(new Promise((r) => (release = () => r({ filename: 'a.pdf', contentType: 'application/pdf', size: 1, path: 'files/a.pdf', indexing: 'server' as const }))));
     const first = notesFromFiles([pdf('a.pdf')], { notebook: null, tags: [] }, null);
     await vi.waitFor(() => expect(getFileNotes().status).toBe('running'));
-    await expect(notesFromFiles([pdf('b.pdf')], { notebook: null, tags: [] }, null)).rejects.toThrow('already');
+    const second = notesFromFiles([pdf('b.pdf')], { notebook: null, tags: [] }, null);
+    await new Promise((r) => setTimeout(r, 10));
+    expect(actions.createNote).toHaveBeenCalledTimes(1);
     release();
-    await first;
+    expect(await first).toEqual(['n1']);
+    expect(await second).toEqual(['n2']);
+    expect(getFileNotes()).toMatchObject({ status: 'done', ids: ['n2'], run: 2 });
+  });
+
+  it('runs the batch after one that failed', async () => {
+    failOn = 'a.pdf';
+    await notesFromFiles([pdf('a.pdf')], { notebook: null, tags: [] }, null);
+    expect(await notesFromFiles([pdf('b.pdf')], { notebook: null, tags: [] }, null)).toEqual(['n2']);
   });
 });
 
