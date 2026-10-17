@@ -172,13 +172,16 @@ export function WhyPage() {
         </Chapter>
 
         <Chapter title="What I went looking for">
+          <p>I looked for somewhere to take it before deciding to build. The archive needed three things:</p>
+          <ul>
+            <li>A note that holds several files and tags.</li>
+            <li>Search that reads the text inside a scanned PDF.</li>
+            <li>A hosted service, so it is on the phone and the laptop without a server of my own.</li>
+          </ul>
           <p>
-            I looked for somewhere to take it before deciding to build. The archive needed
-            three things: a note that holds several files and tags, search that reads the text
-            inside a scanned PDF, and a hosted service, so it is on the phone and the laptop
-            without a server of my own. Notion has the note but, when I looked, did not search
-            inside an attached PDF. Obsidian lives on your own device and is not hosted. The
-            Evernote alternative I wanted was the one that had just doubled its price.
+            Notion has the note but, when I looked, did not search inside an attached PDF.
+            Obsidian lives on your own device and is not hosted. The Evernote alternative I
+            wanted was the one that had just doubled its price.
           </p>
         </Chapter>
 
