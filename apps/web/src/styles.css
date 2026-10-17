@@ -6914,6 +6914,11 @@ button.settings-nav-item {
 
 .drawer-item.current > svg { color: var(--fg); }
 
+/* A notebook's book sits beside emoji in the same column (`NotebookGlyph`), and the
+   muted stroke read a weight lighter than the pictures: the notebooks with an emoji
+   stood out and the ones without faded. In the label's colour the two sit at one weight. */
+.drawer-item > svg.notebook-book { color: var(--fg); }
+
 /*
    A notebook's emoji, in the box its book would take (`NotebookGlyph`), so a column that
    mixes the two keeps one edge for its labels and one height for its rows. The box is
