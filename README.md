@@ -25,7 +25,8 @@ receipt, scanned once and found again by what it said. Then its owner changed, t
 roughly doubled within a year, and the way out was an export only another notes app could
 read. Unbent is the app we wanted instead: the same job, done with files you own.
 
-Leaving should be easy, and staying should never depend on it being hard.
+Leaving should be easy, and staying should never depend on it being hard. The longer
+version, told as what happened to one archive, is [Why Unbent exists](https://unbent.app/why).
 
 ## What it does
 
