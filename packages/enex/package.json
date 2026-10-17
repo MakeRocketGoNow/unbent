@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@unbent/shared": "workspace:*",
-    "@zip.js/zip.js": "^2.23.0",
+    "@zip.js/zip.js": "^2.24.0",
     "hast-util-from-html": "^2.0.3",
     "hast-util-to-mdast": "^10.1.2",
     "mdast-util-gfm": "^3.1.0",

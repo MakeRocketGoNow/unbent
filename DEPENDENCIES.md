@@ -28,30 +28,40 @@ on. A major gets its changelog read, not just its tests run.
 
 ## The local library: TanStack DB and wa-sqlite
 
-**`@tanstack/db` 0.11.1 and `@tanstack/offline-transactions` 1.0.59, exactly.** The outbox
+**`@tanstack/db` 0.11.3 and `@tanstack/offline-transactions` 1.0.61, exactly.** The outbox
 reads two private fields: a collection's `_state.syncedData` (`syncedRow` in
 `store/actions.ts`, `feedControls` in `store/collections.ts`) and the IndexedDB adapter's
 `db`. `store/pins.test.ts` fails the day an upgrade moves either, and fails if the manifest
 loses the exact pin.
 
-**`@tanstack/react-db` and `@tanstack/browser-db-sqlite-persistence` move with them.** Each
-depends on one exact `@tanstack/db`, so moving any one of the four alone puts two copies of
-it in the graph. Pick the versions that agree: 0.11.1 is react-db 0.5.1, persistence-core
-0.4.1 (browser persistence 0.2.26), offline-transactions 1.0.59.
+**`@tanstack/browser-db-sqlite-persistence` moves with them, exactly too.** It depends on one
+exact `@tanstack/db` (through `db-sqlite-persistence-core`), so moving any one of the three
+alone puts two copies of it in the graph. A range does not stop that: on 0.x a caret and a
+tilde are the same range, and `^0.2.28` would take browser persistence 0.2.29, which is built
+on 0.12. `pins.test.ts` checks it is exact as well. Pick the versions that agree: 0.11.3 is
+persistence-core 0.4.3 (browser persistence 0.2.28) and offline-transactions 1.0.61.
+`npm view <pkg>@<v> dependencies` says which core each release is built on.
 
-**Not 0.12.** 0.12.0 removes `begin({ immediate })` from the sync API and queues sync
-writes behind any mutation in flight. `feedControls` begins every transaction immediate
-because, without it, a page of the feed waited on the outbox entry that was itself waiting
-for that page: a second queued write stuck until a reload (2026-10-08). Moving to 0.12
-means redesigning that, not bumping a version.
+**Not 0.12, and still not as of 0.15.1 (2026-10-16).** 0.12.0 removes `begin({ immediate })`
+from the sync API and queues sync writes behind any mutation in flight; nothing since brings
+either back. `feedControls` begins every transaction immediate because, without it, a page of
+the feed waited on the outbox entry that was itself waiting for that page: a second queued
+write stuck until a reload (2026-10-08). Moving to 0.12 or later means redesigning that, not
+bumping a version. Dependabot proposed 0.12.1 in #341, which was closed for this.
 
-**0.11.2 and 0.11.3 are not free either.** They are patches by number but rewrite how
-rows and updates are held internally (rows reused rather than copied, local-only
-collections skipping the optimistic stage) which is the layer the private fields above
-belong to. Take them in a change of their own, with `pnpm gate:offline`.
+0.11.2 and 0.11.3, the last of the 0.11 line, were taken on their own on 2026-10-16. They
+are patches by number but rewrite how rows and updates are held internally (rows reused
+rather than copied, local-only collections skipping the optimistic stage), which is the
+layer the private fields above belong to; `pins.test.ts`, the web suite and every check of
+`pnpm gate:offline` passed on them.
 
-**`@journeyapps/wa-sqlite` ^1.** The persistence adapter peers on `^1.4.1` (as of 0.2.32,
-2026-10). 2.0 updates PowerSync's own SQLite extension and their write-ahead VFS, neither
+`@tanstack/react-db` was a fourth member until the same day. Nothing ever imported it: the
+views read the collections through `queries.ts` and TanStack Query, never a live query, so
+it only made every move of the family one package wider. Adding it back for `useLiveQuery`
+puts it in this family, at the version built on the same core.
+
+**`@journeyapps/wa-sqlite` ^1.** The persistence adapter peers on `^1.4.1` (still so in
+0.2.35, 2026-10-16). 2.0 updates PowerSync's own SQLite extension and their write-ahead VFS, neither
 of which is used here. Released when the adapter's peer range takes 2; Dependabot ignores
 the major until then.
 
@@ -82,6 +92,16 @@ one; move pnpm on its own.
 **vitest is one major across the workspace (5).** The store tests used to be held on 4 by
 `@cloudflare/vitest-plugin`, which peers on one vitest major at a time; check its peer range
 before taking vitest 6.
+
+**vitest 5.0.3, exactly, in `apps/store-tests`, and the rest of the workspace on it too.**
+5.0.4 and 5.0.5 break `@cloudflare/vitest-plugin` though its peer range takes them (measured
+2026-10-16): under plugin 1.4.0 every store test file fails on a module-cache file the runtime
+cannot find in `node_modules/.vitest-cache`, and under 1.4.4 workerd exits partway through the
+run and takes six of the fifteen files with it ("Worker exited unexpectedly"). Plugin 1.4.4 on
+5.0.3 passes all fifteen. The other packages keep `^5.0.3` and resolve to the same 5.0.3, so
+the workspace holds one vitest; a `pnpm -r update vitest` would move them and leave two. Lift
+it when a plugin release passes `pnpm --filter @unbent/store-tests test` on the newer vitest,
+run from a cleared `node_modules/.vitest-cache`.
 
 ## The workflows' actions
 
