@@ -146,7 +146,7 @@ describe('Maintenance: Auto-fill this year', () => {
     harness({ accountDeletion: true, autofill: true });
     const line = await screen.findByText(/38 presses since 1 January/);
     expect(line.textContent).toBe(
-      '38 presses since 1 January, in which the model read 1.2 million tokens and wrote 84 thousand. This instance allows 50 presses a day, and 3 have been used today.',
+      '38 presses since 1 January, in which the model read 1.2 million tokens and wrote 84 thousand. This account can use Auto-fill 50 times a day, and 3 have been used today.',
     );
   });
 
@@ -160,7 +160,7 @@ describe('Maintenance: Auto-fill this year', () => {
     answering({ year: 2026, presses: 2, today: 0, dailyCap: 1, models: [model('title', 1412, 44)] });
     harness({ accountDeletion: true, autofill: true });
     expect((await screen.findByText(/2 presses since/)).textContent).toBe(
-      '2 presses since 1 January, in which the model read 1,412 tokens and wrote 44. This instance allows 1 press a day, and none have been used today.',
+      '2 presses since 1 January, in which the model read 1,412 tokens and wrote 44. This account can use Auto-fill once a day, and none have been used today.',
     );
   });
 

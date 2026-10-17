@@ -117,8 +117,12 @@ function forPlan(
   ordinary: (env: UsageEnv) => number | null,
   trial: (env: UsageEnv) => number | null,
 ): number | null {
-  if (!billingOn(env)) return ordinary(env);
-  return planStateOf(plan ?? null, now) === 'trial' ? trial(env) : ordinary(env);
+  return onTrial(env, plan, now) ? trial(env) : ordinary(env);
+}
+
+/** Whether this account gets the trial's numbers, and the trial's sentences: see `forPlan` for `plan`. */
+export function onTrial(env: UsageEnv, plan: PlanRow | null | undefined, now: number): boolean {
+  return billingOn(env) && planStateOf(plan ?? null, now) === 'trial';
 }
 
 /** The daily cap that applies to this account; see `forPlan`. */
@@ -148,21 +152,34 @@ export async function capForUser(env: UsageEnv & { DB: D1Database }, userId: str
   return capFor(env, await planFor(env.DB, userId, now), now);
 }
 
+/** A refused press's answer: the sentence the button shows, and the seconds until it may press again, where that is known. */
+export interface Refusal {
+  message: string;
+  /** For the Retry-After header; null where nothing but a change of plan lifts the refusal. */
+  retryAfter: number | null;
+}
+
 /**
- * What the button says when a press is refused, and how long until it may press again.
- * The day is UTC, which is nobody's midnight in particular, so the sentence names the
- * hours rather than "tomorrow": at seven in the evening in California, "tomorrow" would
- * be wrong by the evening.
+ * What the button says when the day's cap refuses a press, and how long until it may
+ * press again. The day is UTC, which is nobody's midnight in particular, so the sentence
+ * names the hours rather than "tomorrow": at seven in the evening in California,
+ * "tomorrow" would be wrong by the evening.
+ *
+ * "On this account", not "on this instance": the number is the account's since the trial
+ * got one of its own, and a trial told "this instance allows 50" would be told something
+ * false of the instance. A trial is told it is the trial's number, since that is the one
+ * thing about it a person can change.
  */
-export function capReached(cap: number, now: number): { message: string; retryAfter: number } {
+export function capReached(cap: number, now: number, trial = false): Refusal {
   const midnight = new Date(now);
   midnight.setUTCHours(24, 0, 0, 0);
   const seconds = Math.max(1, Math.ceil((midnight.getTime() - now) / 1000));
   const hours = Math.ceil(seconds / 3600);
   const when = hours <= 1 ? 'within the hour' : `in ${hours} hours`;
   const presses = cap === 1 ? 'once a day' : cap === 2 ? 'twice a day' : `${cap} times a day`;
+  const whose = trial ? 'during the trial' : 'on this account';
   return {
-    message: `Auto-fill can be used ${presses} on this instance, and today's are used up. It will work again ${when}.`,
+    message: `Auto-fill can be used ${presses} ${whose}, and today's are used up. It will work again ${when}.`,
     retryAfter: seconds,
   };
 }
@@ -170,14 +187,21 @@ export function capReached(cap: number, now: number): { message: string; retryAf
 /**
  * What the button says when the year's spend cap refuses a press. No dollars: the cap is
  * the instance's cost, which is not the person's business and would read as a bill, so
- * the sentence says what is included has been used. The year is UTC, like the day, and
- * the next one starts on 1 January whatever the hour here; `retryAfter` is the seconds
- * until it does, for anything that reads headers.
+ * the sentence says the year's Auto-fill has been used. The year is UTC, like the day,
+ * and the next one starts on 1 January whatever the hour here; `retryAfter` is the
+ * seconds until it does, for anything that reads headers.
+ *
+ * A trial is told something else, because "1 January" would be false for it: its trial
+ * ends within the fortnight, and subscribing gives it the paying number at once, with
+ * what it has spent counted against that. No Retry-After either, since no time lifts it.
+ * Nothing here says "included", which is plan language an instance with billing off has
+ * no plan for.
  */
-export function yearReached(now: number): { message: string; retryAfter: number } {
+export function yearReached(now: number, trial = false): Refusal {
+  if (trial) return { message: "The trial's Auto-fill has been used up. A subscription comes with more.", retryAfter: null };
   const next = Date.UTC(new Date(now).getUTCFullYear() + 1, 0, 1);
   return {
-    message: "This year's included Auto-fill has been used up on this account. It will work again on 1 January.",
+    message: "This account has used this year's Auto-fill. It will work again on 1 January.",
     retryAfter: Math.max(1, Math.ceil((next - now) / 1000)),
   };
 }

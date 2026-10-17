@@ -47,7 +47,7 @@ const photo = { id: 'a1', noteId: 'n1', filename: 'card.jpg', contentType: 'imag
  * at a cost of its own. `today` is the presses the day has had before this one.
  */
 function setup(
-  opts: { cap?: number | null; yearlyCents?: number | null; spentCents?: number; today?: number; jev?: Jev | null; title?: LanguageModel['title'] } = {},
+  opts: { cap?: number | null; yearlyCents?: number | null; spentCents?: number; trial?: boolean; today?: number; jev?: Jev | null; title?: LanguageModel['title'] } = {},
 ) {
   let today = opts.today ?? 0;
   const recordText = vi.fn(async () => {});
@@ -89,6 +89,7 @@ function setup(
       textFields: async () => ({ value: { field_0: 'Acme Hardware' }, usage: cost(450, 30) }),
     },
     limits: { cap: opts.cap ?? null, yearlyCents: opts.yearlyCents ?? null },
+    trial: opts.trial ?? false,
     operator: false,
     now: Date.UTC(2026, 9, 8, 18, 0),
   };
@@ -119,7 +120,7 @@ describe('one press, counted', () => {
     const outcome = await press(deps, 'n1');
     expect(outcome).toEqual({ kind: 'capped', ...capReached(3, deps.now!) });
     expect(outcome.kind === 'capped' && outcome.message).toBe(
-      "Auto-fill can be used 3 times a day on this instance, and today's are used up. It will work again in 6 hours.",
+      "Auto-fill can be used 3 times a day on this account, and today's are used up. It will work again in 6 hours.",
     );
     expect(recordText).not.toHaveBeenCalled();
     expect(recordLlmUsage).not.toHaveBeenCalled();
@@ -133,7 +134,7 @@ describe('one press, counted', () => {
     const outcome = await press(deps, 'n1');
     expect(outcome).toEqual({ kind: 'capped', ...yearReached(deps.now!) });
     expect(outcome.kind === 'capped' && outcome.message).toBe(
-      "This year's included Auto-fill has been used up on this account. It will work again on 1 January.",
+      "This account has used this year's Auto-fill. It will work again on 1 January.",
     );
     expect(outcome.kind === 'capped' && outcome.message).not.toMatch(/\$|cent|dollar/);
     expect(recordText).not.toHaveBeenCalled();
@@ -143,6 +144,19 @@ describe('one press, counted', () => {
     expect((await press(setup({ yearlyCents: 300, spentCents: 299.5 }).deps, 'n1')).kind).toBe('filed');
     const both = await press(setup({ cap: 1, today: 1, yearlyCents: 300, spentCents: 300 }).deps, 'n1');
     expect(both.kind === 'capped' && both.message).toMatch(/^Auto-fill can be used once a day/);
+  });
+
+  it('tells a trial that the numbers are the trial’s, and that a subscription lifts the year’s', async () => {
+    const day = await press(setup({ cap: 50, today: 50, trial: true }).deps, 'n1');
+    expect(day.kind === 'capped' && day.message).toBe(
+      "Auto-fill can be used 50 times a day during the trial, and today's are used up. It will work again in 6 hours.",
+    );
+    const year = await press(setup({ yearlyCents: 300, spentCents: 300, trial: true }).deps, 'n1');
+    expect(year).toEqual({
+      kind: 'capped',
+      message: "The trial's Auto-fill has been used up. A subscription comes with more.",
+      retryAfter: null,
+    });
   });
 
   it('counts nothing on an instance with no Jev, and answers 404 before 503', async () => {
@@ -295,7 +309,7 @@ describe('the cap', () => {
 
   it('says when the year’s Auto-fill returns, in seconds to 1 January UTC', () => {
     const { message, retryAfter } = yearReached(Date.UTC(2026, 11, 31, 23, 0));
-    expect(message).toBe("This year's included Auto-fill has been used up on this account. It will work again on 1 January.");
+    expect(message).toBe("This account has used this year's Auto-fill. It will work again on 1 January.");
     expect(retryAfter).toBe(3600);
     expect(yearReached(Date.UTC(2026, 0, 1, 0, 0)).retryAfter).toBe(365 * 86_400);
   });
@@ -303,7 +317,7 @@ describe('the cap', () => {
   it('says how long until the next UTC day, in hours', () => {
     const late = Date.UTC(2026, 9, 8, 23, 30);
     expect(capReached(1, late)).toEqual({
-      message: "Auto-fill can be used once a day on this instance, and today's are used up. It will work again within the hour.",
+      message: "Auto-fill can be used once a day on this account, and today's are used up. It will work again within the hour.",
       retryAfter: 1800,
     });
     expect(capReached(20, Date.UTC(2026, 9, 8, 0, 0)).message).toContain('in 24 hours');

@@ -284,7 +284,7 @@ describe('the Auto-fill control', () => {
   it('shows the server\u2019s sentence when the day\u2019s presses are used up', async () => {
     // MAK-180: past the instance's daily cap the press is a 429 whose sentence says when it
     // works again. It is shown as the server wrote it, like any other refusal.
-    const sentence = "Auto-fill can be used 50 times a day on this instance, and today's are used up. It will work again in 6 hours.";
+    const sentence = "Auto-fill can be used 50 times a day on this account, and today's are used up. It will work again in 6 hours.";
     vi.mocked(api.autofillNote).mockRejectedValue(new api.ApiError(429, `429: ${sentence}`));
     mount(fresh);
     fireEvent.click(await screen.findByRole('button', { name: 'Auto-fill' }));

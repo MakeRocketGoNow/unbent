@@ -55,9 +55,12 @@ same way. The counter keeps tokens, never money; each press sums the year's toke
 prices them with the table in `packages/shared/src/llm-prices.ts`, which goes stale when
 Anthropic changes a price and is a percent-level error on a guard, not a hole. A press on
 the decision model, which reports no tokens, counts as a fixed tenth of a cent. The
-refusal says this year's included Auto-fill is used up and that it returns on 1 January
+refusal says the account has used this year's Auto-fill and that it returns on 1 January
 (UTC, like the day), and names no amount: the cap is the instance's cost, not the
-person's bill.
+person's bill. A trial is told that the trial's Auto-fill is used up and that a
+subscription comes with more, since 1 January would be false for it: subscribing gives it
+the paying number at once, and both refusals and the Maintenance page say the numbers are
+the account's, never the instance's.
 
 unbent.app sets all four: 500 presses and 5000 cents (fifty dollars) a year for a paying
 account, 50 presses and 300 cents (three dollars) for a trial. Fifty dollars is more than

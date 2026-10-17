@@ -30,6 +30,8 @@ export interface PressDeps {
   llm?: Pick<LanguageModel, 'title' | 'textFields'> | undefined;
   /** The day's cap on presses and the year's on spend, each null for none (`limitsFor`). */
   limits: PressLimits;
+  /** Whether those are the trial's numbers (`onTrial`), which a refusal says. */
+  trial: boolean;
   /** Whether the person pressing runs the instance; see `autofill`. */
   operator: boolean;
   /**
@@ -43,7 +45,7 @@ export interface PressDeps {
 export type PressOutcome =
   | { kind: 'missing' }
   | { kind: 'unconfigured' }
-  | { kind: 'capped'; message: string; retryAfter: number }
+  | { kind: 'capped'; message: string; retryAfter: number | null }
   | { kind: 'filed'; suggestion: AutofillSuggestion };
 
 /**
@@ -69,7 +71,7 @@ export async function press(deps: PressDeps, id: string): Promise<PressOutcome> 
   if (!deps.jev) return { kind: 'unconfigured' };
   if (prelude.press && !prelude.press.allowed) {
     // The store says which limit refused; each has a sentence of its own.
-    const refusal = prelude.press.reason === 'year' ? yearReached(now) : capReached(deps.limits.cap!, now);
+    const refusal = prelude.press.reason === 'year' ? yearReached(now, deps.trial) : capReached(deps.limits.cap!, now, deps.trial);
     return { kind: 'capped', ...refusal };
   }
   const { note, forText, forVision } = prelude;

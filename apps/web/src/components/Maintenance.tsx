@@ -469,8 +469,9 @@ const tokenCount = (n: number) => (n < 10_000 ? exact.format(n) : compact.format
  * what was used. "Read" counts every kind of input (fresh, from the cache, into it)
  * since a person cannot act on that split; the server keeps it apart for the bill.
  *
- * The day's cap is said only where the instance sets one, with today's count beside it, so
- * the 429 a press can meet is never a surprise to someone who looked here first.
+ * The day's cap is said only where one applies, with today's count beside it, so the 429 a
+ * press can meet is never a surprise to someone who looked here first. "This account",
+ * since the number is the account's: a trial's is smaller than a paying account's.
  */
 function AutofillUsageSection() {
   const usage = useQuery(autofillUsageQuery());
@@ -518,8 +519,8 @@ function AutofillUsageSection() {
           {u.dailyCap !== null && (
             <>
               {' '}
-              This instance allows {u.dailyCap} {u.dailyCap === 1 ? 'press' : 'presses'} a day,
-              and {u.today === 0 ? 'none have' : u.today === 1 ? '1 has' : `${u.today} have`} been
+              This account can use Auto-fill {u.dailyCap === 1 ? 'once' : u.dailyCap === 2 ? 'twice' : `${u.dailyCap} times`} a
+              day, and {u.today === 0 ? 'none have' : u.today === 1 ? '1 has' : `${u.today} have`} been
               used today.
             </>
           )}

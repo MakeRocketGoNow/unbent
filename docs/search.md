@@ -228,7 +228,7 @@ send in a loop, so `AUTOFILL_DAILY_CAP` sets how many one account may make in a 
 past it, the button says how long until it works again. Unset, nothing is refused.
 `AUTOFILL_YEARLY_CENTS` bounds the year the same way, in cents of what the model's tokens
 cost at the prices kept in `packages/shared/src/llm-prices.ts`; past it the button says
-this year's included Auto-fill is used up, and never names money. An instance that sells
+this year's Auto-fill has been used, and never names money. An instance that sells
 the plan can give an account on its trial smaller numbers with `AUTOFILL_TRIAL_DAILY_CAP`
 and `AUTOFILL_TRIAL_YEARLY_CENTS`; [Selling the plan](billing.md#selling-the-plan) says why.
 

@@ -17,7 +17,7 @@ import { copyAttachments } from '../lib/copy-attachments.js';
 import { StorageFull, quotaOf, storageFullBody } from '../lib/quota.js';
 import { canAutofill, JevError, jevFrom } from '../lib/jev.js';
 import { canUseLlm, llmFrom } from '../lib/llm.js';
-import { capForUser, limitsFor } from '../lib/llm-usage.js';
+import { capForUser, limitsFor, onTrial } from '../lib/llm-usage.js';
 import { isOperator } from '../lib/instance.js';
 import { nextCursor } from '../lib/notes-repo.js';
 import { autofillReaders } from '../lib/read-attachment.js';
@@ -272,6 +272,7 @@ export const notes = new Hono<AppEnv>()
    * on an instance with no key too.
    */
   .post('/notes/:id/autofill', async (c) => {
+    const now = Date.now();
     try {
       const outcome = await press(
         {
@@ -281,7 +282,8 @@ export const notes = new Hono<AppEnv>()
           readers: autofillReaders(c.env),
           jev: canAutofill(c.env) ? jevFrom(c.env) : null,
           llm: canUseLlm(c.env) ? llmFrom(c.env) : undefined,
-          limits: limitsFor(c.env, c.get('plan'), Date.now()),
+          limits: limitsFor(c.env, c.get('plan'), now),
+          trial: onTrial(c.env, c.get('plan'), now),
           operator: isOperator(c.env, c.get('user')?.email),
           defer: (work) => c.executionCtx.waitUntil(work),
         },
@@ -293,8 +295,9 @@ export const notes = new Hono<AppEnv>()
         case 'unconfigured':
           return c.json({ error: 'Auto-fill is not set up on this instance' }, 503);
         case 'capped':
-          // The sentence is the button's; Retry-After is for anything that reads headers.
-          c.header('Retry-After', String(outcome.retryAfter));
+          // The sentence is the button's; Retry-After is for anything that reads headers,
+          // and is left off where no time lifts the refusal (a trial's year).
+          if (outcome.retryAfter !== null) c.header('Retry-After', String(outcome.retryAfter));
           return c.json({ error: outcome.message }, 429);
         case 'filed':
           return c.json(outcome.suggestion);
