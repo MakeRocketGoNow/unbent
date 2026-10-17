@@ -225,6 +225,9 @@ only when the document contains it. Without one, a line written as a label and a
 like "Order number: 112-0042", offers the value alone too. A value can still be wrong, but
 it is always something the document actually says, and anything the model is unsure of is
 left empty rather than guessed. Ratings are left alone: a document has no opinion to read.
+How Jev compares with SubQ Snap, the other decision model, and with one language-model
+call doing all of it, is measured in [Auto-fill's decision model, measured](autofill-benchmark.md),
+with the harness to run it on your own archive.
 
 **What it costs, and the ceiling.** Every press is counted per account, and so is every
 token the language model is paid for inside one: by day, by job (reading a file, the
