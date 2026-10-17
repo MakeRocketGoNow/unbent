@@ -3,10 +3,9 @@ import { attachmentTextFor, autofill, EXAMPLES_PER_OPTION, MAX_TAGS_ASKED } from
 import type { AttachmentsRepo } from './attachments-repo.js';
 import type { Jev } from './jev.js';
 import type { LanguageModel } from './llm.js';
-import { capReached, PressUsage, yearReached } from './llm-usage.js';
+import { capReached, PressUsage, yearReached, type TrialSentences } from './llm-usage.js';
 import type { NotesRepo } from './notes-repo.js';
 import type { PressLimits } from '../store/llm-usage.js';
-import type { TrialSentences } from './llm-usage.js';
 import { readPendingFiles, type BlobStore, type Readers } from './read-attachment.js';
 
 /**
