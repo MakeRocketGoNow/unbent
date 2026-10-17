@@ -2,7 +2,7 @@ import { describe, it } from 'vitest';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { encodeFieldValue, isRatingField, tokensCents, type AutofillSuggestion, type FieldDef, type FieldValue } from '@unbent/shared';
+import { encodeFieldValue, isRatingField, JEV_PER_MILLION, tokensCents, type AutofillSuggestion, type FieldDef, type FieldValue } from '@unbent/shared';
 import {
   autofill,
   dateCandidates,
@@ -172,8 +172,8 @@ function inputFor(note: SampleNote, sample: Sample): { input: AutofillInput; tit
 
 // --- Cost ---------------------------------------------------------------------------------
 
-/** Jev bills input only; TypeSafe reports no counts, so the request's bytes stand in at four to a token. */
-const JEV_PER_MILLION = 0.042;
+// Jev bills input only; TypeSafe reports no counts, so the request's bytes stand in at
+// four to a token, priced at `JEV_PER_MILLION` from the shared table.
 /** Snap bills input only, and reports it: `usage.input_tokens` on every answer. */
 const SNAP_PER_MILLION = 0.05;
 

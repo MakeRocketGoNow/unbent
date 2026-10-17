@@ -36,12 +36,20 @@ export const MODEL_PRICES: Readonly<Record<string, ModelPrice>> = {
 };
 
 /**
+ * What TypeSafe bills for Jev, in dollars per million input tokens (it bills input only).
+ * It reports no counts, so nothing in the app can convert with this; the Auto-fill
+ * harness estimates a press from the bytes it sends, at four to a token, and prices the
+ * estimate at this rate. Here beside `JEV_PRESS_CENTS` so the figure that rate justifies
+ * and the rate itself are read together.
+ */
+export const JEV_PER_MILLION = 0.042;
+
+/**
  * What one press costs on the decision model, in cents, as a fixed figure: Jev reports
- * no token counts, so there is nothing to convert. The Auto-fill harness estimates a
- * Jev press from the bytes it sends, at four to a token and TypeSafe's rate per million;
- * a tenth of a cent is a round figure above what that estimate gives (at that rate a
- * press would have to send about 24,000 tokens of state to cost this much), chosen high
- * so the guard errs towards refusing a little early rather than late.
+ * no token counts, so there is nothing to convert. A tenth of a cent is a round figure
+ * above what the harness's estimate gives (at `JEV_PER_MILLION` a press would have to
+ * send about 24,000 tokens of state to cost this much), chosen high so the guard errs
+ * towards refusing a little early rather than late.
  */
 export const JEV_PRESS_CENTS = 0.1;
 
