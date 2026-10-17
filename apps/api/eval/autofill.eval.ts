@@ -16,7 +16,7 @@ import {
   numberCandidates,
   type AutofillInput,
 } from '../src/lib/autofill.js';
-import { jevFrom } from '../src/lib/jev.js';
+import { jevFrom, type Jev, type JevQuestion } from '../src/lib/jev.js';
 import { ANTHROPIC_API_URL, LLM_MODEL_DEFAULT, llmFrom, type LlmEnv, type LlmUsage } from '../src/lib/llm.js';
 import { PressUsage } from '../src/lib/llm-usage.js';
 import { titleCase } from '../src/lib/title-case.js';
@@ -34,6 +34,14 @@ import { titleCase } from '../src/lib/title-case.js';
  * one call is as fast and as right as four, not which prompt is cleverer, so the two
  * arms get the same input and the same scorer.
  *
+ * Arm `snap` is the press as it ships with SubQ Snap in Jev's seat (MAK-233). Snap speaks
+ * TypeSafe's System One request and answer, so it is the same Jev client pointed at
+ * Snap's endpoint under Snap's model name, with one difference the press cannot avoid:
+ * Snap refuses a request of more than sixteen questions, and the press's first round asks
+ * one per tag, up to 150. The arm splits each round into requests of sixteen, sent at
+ * once, each carrying the note's text again, which is what any real swap would have to
+ * do and what its seconds and cents are measured with.
+ *
  * Not a test: nothing here asserts. It runs only when `AUTOFILL_EVAL_SAMPLE` names a
  * directory holding a sample pulled from a real account, which stays outside the
  * repository (the real corpus is private; see AGENTS.md), and it spends real money on
@@ -42,8 +50,12 @@ import { titleCase } from '../src/lib/title-case.js';
  *
  *   AUTOFILL_EVAL_SAMPLE=/path/to/sample pnpm --filter @unbent/api exec vitest run --project eval
  *
- * `AUTOFILL_EVAL_ARMS` picks arms (`jev`, `onecall`; both by default), and
- * `AUTOFILL_EVAL_LIMIT` caps the notes, for a dry run. The keys come from the
+ * `AUTOFILL_EVAL_ARMS` picks arms (`jev`, `onecall`, `snap`; the first two by default),
+ * and `AUTOFILL_EVAL_LIMIT` caps the notes, for a dry run. `AUTOFILL_EVAL_STATE_CHARS`
+ * raises how much of a note's text the `jev` and `snap` arms send (`MAX_STATE_CHARS` by
+ * default; Jev itself refuses much more), and `AUTOFILL_EVAL_LABEL` is added to the
+ * results' file names, so a repeat or a raised cap does not write over an earlier run.
+ * The keys (`TYPESAFE_API_KEY`, `ANTHROPIC_API_KEY`, `SUBQ_API_KEY`) come from the
  * environment or from `apps/api/.dev.vars`.
  *
  * The sample directory holds what the MCP tools answer, saved as they answer it:
@@ -164,6 +176,8 @@ function inputFor(note: SampleNote, sample: Sample): { input: AutofillInput; tit
 const HAIKU = { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 };
 /** Jev bills input only; TypeSafe reports no counts, so the request's bytes stand in at four to a token. */
 const JEV_PER_MILLION = 0.042;
+/** Snap bills input only, and reports it: `usage.input_tokens` on every answer. */
+const SNAP_PER_MILLION = 0.05;
 
 function llmCents(usage: LlmUsage[]): number {
   let dollars = 0;
@@ -178,33 +192,126 @@ function llmCents(usage: LlmUsage[]): number {
   return dollars * 100;
 }
 
-// --- Arm: Jev, as the press ships ----------------------------------------------------------
+// --- Arms: the press as it ships, with Jev or with Snap ------------------------------------
 
 interface Run {
   suggestion: AutofillSuggestion;
   seconds: number;
   cents: number;
   usage: LlmUsage[];
-  jevTokens: number;
+  /** Input tokens the decision model read: estimated for Jev, reported by Snap. */
+  decisionTokens: number;
+  /** Requests made to the decision model in the press. */
+  decisionRequests: number;
+  /**
+   * The decision model's own notebook answer, before the press's confidence floor drops
+   * it: whether a "none" was the model's choice or a right answer under the floor.
+   */
+  notebookAnswer?: { choice: string; confidence: number };
 }
 
-type Env = LlmEnv & { TYPESAFE_API_KEY?: string; TYPESAFE_API_URL?: string };
+type Env = LlmEnv & { TYPESAFE_API_KEY?: string; TYPESAFE_API_URL?: string; SUBQ_API_KEY?: string };
 
-async function runJev(env: Env, input: AutofillInput): Promise<Run> {
-  let jevBytes = 0;
-  const jev = jevFrom(env, (url, init) => {
-    jevBytes += typeof init?.body === 'string' ? init.body.length : 0;
-    return fetch(url, init);
-  });
+/** What a decision client spent in one press, counted from its requests and answers. */
+interface Meter {
+  bytes: number;
+  reportedTokens: number;
+  requests: number;
+}
+
+/** A fetch that counts what passes through it into `meter`, for the clients below. */
+function metered(meter: Meter): typeof fetch {
+  return async (url, init) => {
+    meter.requests++;
+    meter.bytes += typeof init?.body === 'string' ? init.body.length : 0;
+    const res = await fetch(url, init);
+    if (res.ok) {
+      const body = (await res.clone().json().catch(() => null)) as { usage?: { input_tokens?: number } } | null;
+      meter.reportedTokens += body?.usage?.input_tokens ?? 0;
+    }
+    return res;
+  };
+}
+
+/** A client that hands back what `inner` answers, and keeps its notebook answer in `seen`. */
+function recording(inner: Jev, seen: { notebook?: { choice: string; confidence: number } }): Jev {
+  return {
+    async ask(state, questions) {
+      const answers = await inner.ask(state, questions);
+      const nb = answers['notebook'];
+      if (nb?.type === 'choice') seen.notebook = { choice: nb.choice, confidence: nb.confidence };
+      return answers;
+    },
+  };
+}
+
+/** The press with `jev` choosing, and Haiku writing the title and text fields beside it. */
+async function runPress(
+  env: Env,
+  input: AutofillInput,
+  jev: Jev,
+  meter: Meter,
+  centsFor: (meter: Meter) => { tokens: number; cents: number },
+  stateChars: number,
+): Promise<Run> {
   const usage = new PressUsage();
   const llm = usage.metering(llmFrom(env));
   const started = performance.now();
-  const suggestion = await autofill(jev, input, llm);
+  const seen: { notebook?: { choice: string; confidence: number } } = {};
+  const suggestion = await autofill(recording(jev, seen), input, llm, false, stateChars);
   await usage.settled();
   const seconds = (performance.now() - started) / 1000;
-  const jevTokens = Math.round(jevBytes / 4);
   const used = usage.entries.map((e) => e as LlmUsage);
-  return { suggestion, seconds, cents: llmCents(used) + (jevTokens * JEV_PER_MILLION) / 1e4, usage: used, jevTokens };
+  const decision = centsFor(meter);
+  return {
+    suggestion,
+    seconds,
+    cents: llmCents(used) + decision.cents,
+    usage: used,
+    decisionTokens: decision.tokens,
+    decisionRequests: meter.requests,
+    notebookAnswer: seen.notebook,
+  };
+}
+
+function runJev(env: Env, input: AutofillInput, stateChars: number): Promise<Run> {
+  const meter: Meter = { bytes: 0, reportedTokens: 0, requests: 0 };
+  return runPress(env, input, jevFrom(env, metered(meter)), meter, (m) => {
+    const tokens = Math.round(m.bytes / 4);
+    return { tokens, cents: (tokens * JEV_PER_MILLION) / 1e4 };
+  }, stateChars);
+}
+
+const SNAP_API_URL = 'https://api.subq.ai/v1/systemone';
+const SNAP_MODEL = 'subq-snap-preview';
+/** Snap answers 422 to a request of more; measured 2026-10-16, and the docs say the same. */
+const SNAP_MAX_QUESTIONS = 16;
+
+/**
+ * A client that asks in requests of at most `size` questions, all at once, about the same
+ * state, and answers as one. Each request carries the state again and is billed for it.
+ */
+function inBatches(jev: Jev, size: number): Jev {
+  return {
+    async ask(state, questions) {
+      const entries = Object.entries(questions);
+      const batches: Array<Record<string, JevQuestion>> = [];
+      for (let i = 0; i < entries.length; i += size) batches.push(Object.fromEntries(entries.slice(i, i + size)));
+      const answers = await Promise.all(batches.map((batch) => jev.ask(state, batch)));
+      return Object.assign({}, ...answers);
+    },
+  };
+}
+
+function runSnap(env: Env, input: AutofillInput, stateChars: number): Promise<Run> {
+  const apiKey = env.SUBQ_API_KEY?.trim();
+  if (!apiKey) throw new Error('The snap arm needs SUBQ_API_KEY');
+  const meter: Meter = { bytes: 0, reportedTokens: 0, requests: 0 };
+  const snap = jevFrom({ TYPESAFE_API_KEY: apiKey, TYPESAFE_API_URL: SNAP_API_URL }, metered(meter), SNAP_MODEL);
+  return runPress(env, input, inBatches(snap, SNAP_MAX_QUESTIONS), meter, (m) => ({
+    tokens: m.reportedTokens,
+    cents: (m.reportedTokens * SNAP_PER_MILLION) / 1e4,
+  }), stateChars);
 }
 
 // --- Arm: one call ------------------------------------------------------------------------
@@ -430,7 +537,7 @@ async function runOneCall(env: Env, sample: Sample, input: AutofillInput): Promi
       }
     }
   }
-  return { suggestion, seconds, cents: llmCents([usage]), usage: [usage], jevTokens: 0 };
+  return { suggestion, seconds, cents: llmCents([usage]), usage: [usage], decisionTokens: 0, decisionRequests: 0 };
 }
 
 // --- Scoring --------------------------------------------------------------------------------
@@ -524,7 +631,7 @@ const median = (xs: number[]) => {
 };
 const mean = (xs: number[]) => (xs.length === 0 ? 0 : xs.reduce((a, b) => a + b, 0) / xs.length);
 
-type Arm = 'jev' | 'onecall';
+type Arm = 'jev' | 'onecall' | 'snap';
 
 const SAMPLE = process.env['AUTOFILL_EVAL_SAMPLE'];
 
@@ -539,18 +646,26 @@ describe('Auto-fill arms', () => {
       const limit = Number(process.env['AUTOFILL_EVAL_LIMIT'] ?? sample.notes.length);
       const arms = (process.env['AUTOFILL_EVAL_ARMS'] ?? 'jev,onecall').split(',').map((a) => a.trim() as Arm);
       const notes = sample.notes.slice(0, limit);
+      const stateChars = Number(process.env['AUTOFILL_EVAL_STATE_CHARS'] ?? MAX_STATE_CHARS);
+      const label = process.env['AUTOFILL_EVAL_LABEL']?.trim();
       mkdirSync(join(dir, 'results'), { recursive: true });
 
       for (const arm of arms) {
-        const runs: Array<{ id: string; score: Score; seconds: number; cents: number; usage: LlmUsage[]; jevTokens: number }> = [];
+        const runs: Array<{ id: string; score: Score } & Omit<Run, 'suggestion'>> = [];
         const detail: unknown[] = [];
         let failed = 0;
         for (const note of notes) {
           const { input, titleScored } = inputFor(note, sample);
           try {
-            const run = arm === 'jev' ? await runJev(env, input) : await runOneCall(env, sample, input);
+            const run =
+              arm === 'jev'
+                ? await runJev(env, input, stateChars)
+                : arm === 'snap'
+                  ? await runSnap(env, input, stateChars)
+                  : await runOneCall(env, sample, input);
             const s = score(note, sample, run.suggestion, titleScored);
-            runs.push({ id: note.id, score: s, seconds: run.seconds, cents: run.cents, usage: run.usage, jevTokens: run.jevTokens });
+            const { suggestion: _, ...measured } = run;
+            runs.push({ id: note.id, score: s, ...measured });
             detail.push({
               id: note.id,
               want: { notebook: note.notebook, tags: note.tags, fields: note.fields, title: titleScored ? note.title : undefined },
@@ -561,6 +676,7 @@ describe('Auto-fill arms', () => {
                 title: run.suggestion.title?.value,
               },
               score: s,
+              notebookAnswer: run.notebookAnswer,
               seconds: run.seconds,
               cents: run.cents,
             });
@@ -572,7 +688,8 @@ describe('Auto-fill arms', () => {
           }
         }
         // Per-note detail is private (it holds the sample's content) and stays beside the sample.
-        writeFileSync(join(dir, 'results', `${arm}.json`), JSON.stringify(detail, null, 2));
+        const name = label ? `${arm}.${label}` : arm;
+        writeFileSync(join(dir, 'results', `${name}.json`), JSON.stringify(detail, null, 2));
 
         const n = runs.length;
         const sum = (f: (r: (typeof runs)[number]) => number) => runs.reduce((a, r) => a + f(r), 0);
@@ -580,7 +697,7 @@ describe('Auto-fill arms', () => {
         const nbRight = runs.filter((r) => r.score.notebook === 'right');
         const tokens = (k: keyof LlmUsage) => sum((r) => r.usage.reduce((a, u) => a + Number(u[k]), 0));
         const lines = [
-          `== ${arm}: ${n} notes scored, ${failed} failed ==`,
+          `== ${name}: ${n} notes scored, ${failed} failed, state cap ${stateChars} chars ==`,
           `notebook right / wrong / none: ${nbRight.length} / ${sum((r) => (r.score.notebook === 'wrong' ? 1 : 0))} / ${sum((r) => (r.score.notebook === 'none' ? 1 : 0))}`,
           `tags matching / extra / missed: ${sum((r) => r.score.tags.matching)} / ${sum((r) => r.score.tags.extra)} / ${sum((r) => r.score.tags.missed)}`,
           `fields, notebook right (${nbRight.length} notes): expected ${nbRight.reduce((a, r) => a + r.score.fields.expected, 0)}, right / wrong / missed: ${nbRight.reduce((a, r) => a + r.score.fields.right, 0)} / ${nbRight.reduce((a, r) => a + r.score.fields.wrong, 0)} / ${nbRight.reduce((a, r) => a + r.score.fields.missed, 0)}, extra ${nbRight.reduce((a, r) => a + r.score.fields.extra, 0)}`,
@@ -588,10 +705,11 @@ describe('Auto-fill arms', () => {
           `title (${titled.length} scored): exact ${titled.filter((r) => r.score.title!.exact).length}, close ${titled.filter((r) => r.score.title!.close).length}`,
           `seconds per press: median ${median(runs.map((r) => r.seconds)).toFixed(2)}, mean ${mean(runs.map((r) => r.seconds)).toFixed(2)}, max ${Math.max(...runs.map((r) => r.seconds)).toFixed(2)}`,
           `cents per press: mean ${mean(runs.map((r) => r.cents)).toFixed(3)}`,
-          `model tokens per press: in ${Math.round(tokens('inputTokens') / n)}, cache read ${Math.round(tokens('cacheReadTokens') / n)}, cache write ${Math.round(tokens('cacheWriteTokens') / n)}, out ${Math.round(tokens('outputTokens') / n)}; jev est. in ${Math.round(sum((r) => r.jevTokens) / n)}`,
+          `model tokens per press: in ${Math.round(tokens('inputTokens') / n)}, cache read ${Math.round(tokens('cacheReadTokens') / n)}, cache write ${Math.round(tokens('cacheWriteTokens') / n)}, out ${Math.round(tokens('outputTokens') / n)}`,
+          `decision model per press: ${(sum((r) => r.decisionRequests) / n).toFixed(1)} requests, ${Math.round(sum((r) => r.decisionTokens) / n)} input tokens (${arm === 'jev' ? 'estimated from bytes' : 'as reported'})`,
         ];
         process.stdout.write(`${lines.join('\n')}\n\n`);
-        writeFileSync(join(dir, 'results', `${arm}.summary.txt`), `${lines.join('\n')}\n`);
+        writeFileSync(join(dir, 'results', `${name}.summary.txt`), `${lines.join('\n')}\n`);
       }
     },
   );

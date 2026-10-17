@@ -75,8 +75,8 @@ export const MAX_SUGGESTED_TAGS = 5;
 
 /** The most of the note's own text sent: the body first, then each file until it is spent. */
 export const MAX_STATE_CHARS = 40_000;
-/** The body's share of that, so one long body cannot crowd out the scan beside it. */
-const MAX_BODY_CHARS = MAX_STATE_CHARS / 4;
+/** The body's share of the budget, so one long body cannot crowd out the scan beside it. */
+const BODY_SHARE = 1 / 4;
 /** The most tags asked about, most used first. A tag on two notes is a weak habit to learn. */
 export const MAX_TAGS_ASKED = 150;
 /** The most candidates a free-form field or the title chooses from; the API allows 255. */
@@ -177,8 +177,8 @@ interface Corpus {
  * turn until the budget is spent. A file still unread is noted rather than waited for;
  * a file read and found empty is simply not there.
  */
-function gather(input: AutofillInput): Corpus {
-  let budget = MAX_STATE_CHARS;
+function gather(input: AutofillInput, stateChars: number): Corpus {
+  let budget = stateChars;
   const take = (text: string, max: number): string => {
     const taken = text.slice(0, Math.min(max, budget));
     budget -= taken.length;
@@ -186,7 +186,7 @@ function gather(input: AutofillInput): Corpus {
   };
 
   const title = input.note.title.trim();
-  const body = take(input.note.body, MAX_BODY_CHARS);
+  const body = take(input.note.body, stateChars * BODY_SHARE);
   const files: Array<{ filename: string; text: string }> = [];
   const pending: string[] = [];
   for (const file of input.attachments) {
@@ -725,14 +725,19 @@ function nameFromReading(input: AutofillInput): string | null {
  * is a lone picture, whose title comes from its reading with no call made (see
  * `nameFromReading`). Accepted: a picture's reading needs the same key, so a rejected key
  * shows on the next upload, and adding a second flag for this one case was not worth it.
+ *
+ * `stateChars` is how much of the note's text is sent, and only the Auto-fill harness
+ * changes it: Jev's context is what sets `MAX_STATE_CHARS`, and a decision model with a
+ * longer one is measured there with the cap raised before anything here would follow.
  */
 export async function autofill(
   jev: Jev,
   input: AutofillInput,
   llm?: Pick<LanguageModel, 'title' | 'textFields'>,
   operator = false,
+  stateChars = MAX_STATE_CHARS,
 ): Promise<AutofillSuggestion> {
-  const corpus = gather(input);
+  const corpus = gather(input, stateChars);
   const first = firstRound(input, corpus);
 
   // Set where the title call failed on a standing misconfiguration the operator must fix;
