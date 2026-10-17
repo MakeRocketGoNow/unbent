@@ -26,6 +26,7 @@ public struct SignInScreen: View {
     private let onDifferentAddress: () -> Void
     private let onChangeInstance: (() -> Void)?
     private let onRetry: () -> Void
+    private let challenge: AnyView?
 
     /// - Parameters:
     ///   - codeSentTo: the address a code has been sent to, once one has. The form shows
@@ -38,6 +39,10 @@ public struct SignInScreen: View {
     ///   - onPassword: name is nil to sign in and present (possibly blank) to create an
     ///     account.
     ///   - onChangeInstance: nil where the build is fixed to one instance.
+    ///   - challenge: the instance's Turnstile page while a code is being asked for, where
+    ///     the instance checks a token with that request: a web view the app loaded off
+    ///     screen, drawn under the methods and given height only while the widget in it
+    ///     wants a tap (`TurnstileChallenge` in the app). Nil the rest of the time.
     public init(
         instance: String,
         config: AppConfig?,
@@ -52,7 +57,8 @@ public struct SignInScreen: View {
         onPassword: @escaping (_ email: String, _ password: String, _ name: String?) -> Void,
         onDifferentAddress: @escaping () -> Void,
         onChangeInstance: (() -> Void)?,
-        onRetry: @escaping () -> Void
+        onRetry: @escaping () -> Void,
+        challenge: AnyView? = nil
     ) {
         self.instance = instance
         self.config = config
@@ -68,6 +74,7 @@ public struct SignInScreen: View {
         self.onDifferentAddress = onDifferentAddress
         self.onChangeInstance = onChangeInstance
         self.onRetry = onRetry
+        self.challenge = challenge
     }
 
     public var body: some View {
@@ -103,6 +110,10 @@ public struct SignInScreen: View {
                     } else {
                         ProgressView()
                             .frame(maxWidth: .infinity, minHeight: Metrics.control)
+                    }
+
+                    if let challenge {
+                        challenge
                     }
 
                     if let status {

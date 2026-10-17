@@ -42,6 +42,9 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import android.webkit.WebView
+import androidx.compose.runtime.key
 import com.makerocketgonow.unbent.R
 import com.makerocketgonow.unbent.api.AppConfig
 import com.makerocketgonow.unbent.ui.theme.Space
@@ -74,6 +77,13 @@ fun SignInScreen(
     onPassword: (email: String, password: String, name: String?) -> Unit,
     onInstanceChange: (String) -> Unit,
     onRetry: () -> Unit,
+    /**
+     * The instance's Turnstile page, while it wants a tap: the web view
+     * [TurnstileChallenge] loaded off screen, handed over for exactly as long as the
+     * widget in it needs someone, and null otherwise. Drawn under the methods at the
+     * widget's own height, so the box reads as part of the form it is checking for.
+     */
+    challenge: WebView? = null,
 ) {
     Scaffold { padding ->
         Column(
@@ -103,6 +113,19 @@ fun SignInScreen(
                 }
                 config == null -> CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
                 else -> Methods(config, busy, onGoogle, onBrowserSocial, onPasskey, onEmailOtp, onPassword)
+            }
+
+            if (challenge != null) {
+                Spacer(Modifier.height(Space.Large))
+                // Keyed on the instance: a later challenge is a new view, and a factory
+                // that answered with the old one would draw a page already torn down.
+                key(challenge) {
+                    AndroidView(
+                        factory = { challenge },
+                        // The Managed widget's own height, plus a little for its border.
+                        modifier = Modifier.fillMaxWidth().height(72.dp),
+                    )
+                }
             }
 
             if (status != null) {

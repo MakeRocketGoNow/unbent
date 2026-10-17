@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -57,6 +58,8 @@ class SignInActivity : ComponentActivity() {
     private var configError by mutableStateOf<String?>(null)
     private var status by mutableStateOf<String?>(null)
     private var busy by mutableStateOf(false)
+    /** The Turnstile page, while its widget wants a tap; see [TurnstileChallenge]. */
+    private var challenge by mutableStateOf<WebView?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -92,6 +95,7 @@ class SignInActivity : ComponentActivity() {
                     onPassword = ::signInWithPassword,
                     onInstanceChange = ::changeInstance,
                     onRetry = ::loadConfig,
+                    challenge = challenge,
                 )
             }
         }
@@ -200,17 +204,36 @@ class SignInActivity : ComponentActivity() {
      * means "send one to this address", and a present one means "this is what arrived".
      * Sending reports nothing on success: the screen has already moved to the code field,
      * and a confirmation the user did not ask for would only be one more thing to read.
+     *
+     * Where the instance checks a Turnstile token with the request for a code
+     * (`AppConfig.turnstile`), the token comes first, from the instance's own page in a
+     * web view nobody sees unless the widget wants a tap ([TurnstileChallenge]). A page
+     * that could not mint one ends the step with a sentence of its own: the server would
+     * only refuse a request without it, and the person is one press from trying again.
      */
     private fun signInWithEmailOtp(email: String, code: String?) {
         busy = true
         status = getString(R.string.sign_in_waiting)
         lifecycleScope.launch {
             val origin = prefs.instance
+            var captchaToken: String? = null
+            if (code == null && config?.turnstile != null) {
+                status = getString(R.string.sign_in_checking)
+                val outcome = TurnstileChallenge.token(this@SignInActivity, origin) { challenge = it }
+                if (outcome !is TurnstileChallenge.Outcome.Token) {
+                    Log.w("Unbent", "Turnstile gave no token: $outcome")
+                    busy = false
+                    status = getString(R.string.sign_in_challenge_failed)
+                    return@launch
+                }
+                captchaToken = outcome.token
+                status = getString(R.string.sign_in_waiting)
+            }
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     val auth = EmailOtpAuth(origin)
                     if (code == null) {
-                        auth.sendCode(email)
+                        auth.sendCode(email, captchaToken)
                         null
                     } else {
                         auth.signIn(email, code)

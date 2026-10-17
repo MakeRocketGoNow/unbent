@@ -27,6 +27,11 @@ final class SignInModel {
     /// above the reason it was not sent.
     private(set) var codeSentTo: String?
 
+    /// The instance's Turnstile page while a code is being asked for, where the instance
+    /// checks a token with that request; the screen draws it only if its widget wants a
+    /// tap. See `TurnstileChallenge`.
+    private(set) var challenge: TurnstileChallenge?
+
     private let onSignedIn: (SessionCookie) -> Bool
     private let sheets: SignInSheets
     private let connectScheme: String
@@ -61,16 +66,40 @@ final class SignInModel {
     /// means "send one to this address", and a present one means "this is what arrived".
     /// Sending reports nothing on success beyond moving the screen to the code field; a
     /// confirmation nobody asked for would only be one more thing to read.
+    ///
+    /// Where the instance checks a Turnstile token with the request for a code
+    /// (`AppConfig.turnstile`), the token comes first, from the instance's own page in a
+    /// web view nobody sees unless the widget wants a tap (`TurnstileChallenge`). A page
+    /// that could not mint one ends the step with a sentence of its own: the server would
+    /// only refuse a request without it, and the person is one press from trying again.
     func emailCode(email: String, code: String?) {
+        let turnstile = code == nil && config?.turnstile != nil
         run(
             // Asking for a code signs nobody in, and the line under the form should not
             // say it does.
-            progress: code == nil ? "Sending a code…" : "Signing in…",
+            progress: code == nil ? (turnstile ? "Checking this phone…" : "Sending a code…") : "Signing in…",
             failure: code == nil ? "Couldn’t send a code." : "That code did not work. Ask for a new one."
         ) {
             let auth = EmailOtpAuth(origin: self.origin)
             guard let code else {
-                try await auth.sendCode(email: email)
+                var token: String?
+                if turnstile {
+                    let challenge = TurnstileChallenge(origin: self.origin, bound: BuildInfo.appBoundHosts != nil)
+                    self.challenge = challenge
+                    defer { self.challenge = nil }
+                    do {
+                        token = try await challenge.token()
+                    } catch {
+                        self.log.warning("Turnstile gave no token: \(error.localizedDescription, privacy: .public)")
+                        throw ApiError(
+                            status: 0,
+                            message: "The check before a code is sent did not finish. Check your connection and try again.",
+                            body: ""
+                        )
+                    }
+                    self.status = "Sending a code…"
+                }
+                try await auth.sendCode(email: email, captchaToken: token)
                 self.codeSentTo = email
                 return nil
             }
@@ -193,7 +222,8 @@ struct SignInHost: View {
             onPassword: model.password,
             onDifferentAddress: model.differentAddress,
             onChangeInstance: onChangeInstance,
-            onRetry: model.loadConfig
+            onRetry: model.loadConfig,
+            challenge: model.challenge.map { AnyView(ChallengeHost(challenge: $0)) }
         )
         .task { if model.config == nil { model.loadConfig() } }
     }

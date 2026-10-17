@@ -75,6 +75,20 @@ final class SignInCallsTests: XCTestCase {
         XCTAssertEqual(#"{"email":"me@example.com","type":"sign-in"}"#, asked.body)
     }
 
+    /// Where the instance checks a Turnstile token with the request (MAK-243), the token
+    /// goes in the header the server's plugin reads; where it asks for none, none is sent.
+    func testAskingForACodeCarriesTheTurnstileTokenOnlyWhenGivenOne() async throws {
+        StubServer.enqueue(.init(body: #"{"success":true}"#))
+        try await code.sendCode(email: "me@example.com")
+        XCTAssertNil(try StubServer.takeRequest().headers["x-captcha-response"])
+
+        StubServer.enqueue(.init(body: #"{"success":true}"#))
+        try await code.sendCode(email: "me@example.com", captchaToken: "tok-1")
+        let asked = try StubServer.takeRequest()
+        XCTAssertEqual("tok-1", asked.headers["x-captcha-response"])
+        XCTAssertEqual(#"{"email":"me@example.com","type":"sign-in"}"#, asked.body)
+    }
+
     /// The session arrives beside other cookies, joined into one header the way
     /// `URLSession` hands them over.
     func testACodeIsTradedForTheSessionAmongEverythingElseTheResponseSets() async throws {

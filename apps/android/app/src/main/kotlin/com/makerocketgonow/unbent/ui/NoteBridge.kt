@@ -17,6 +17,10 @@ import kotlinx.serialization.Serializable
  * From the indexing page the capture job hosts: `ready`, then the counts with
  * `index-done` or `message` with `index-error`.
  *
+ * From the Turnstile page the sign-in screen hosts ([TurnstileChallenge]): `turnstile`
+ * with the `token`, `turnstile-error` with a `message`, and `turnstile-interactive` before
+ * either when the widget is about to want a tap.
+ *
  * Unknown types are ignored rather than failing, so a page from a newer deploy can say
  * something this build has never heard of without breaking the screen around it.
  */
@@ -28,6 +32,7 @@ data class BridgeMessage(
     val failed: Int? = null,
     val message: String? = null,
     val background: String? = null,
+    val token: String? = null,
 ) {
     val isReady get() = type == "ready"
     val isUnauthorized get() = type == "unauthorized"
@@ -36,6 +41,9 @@ data class BridgeMessage(
     val isSignedOut get() = type == "signed-out"
     val isAppSettings get() = type == "app-settings"
     val themeBackground get() = if (type == "theme") background else null
+    val isTurnstile get() = type == "turnstile"
+    val isTurnstileError get() = type == "turnstile-error"
+    val isTurnstileInteractive get() = type == "turnstile-interactive"
 }
 
 /**

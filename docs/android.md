@@ -25,8 +25,11 @@ sdk.dir=/Users/you/Library/Android/sdk
 
 **How it signs in.** By whatever the instance offers, read from `GET /api/config`: Google
 through Android's account sheet, GitHub through a Custom Tab to `/connect` that comes back
-with a one-time token, or email and password against Better Auth directly. Every path ends
-the same way: the session cookie the response set is stored per origin in app-private
+with a one-time token, or email and password against Better Auth directly. Where the
+instance checks a Turnstile token with the request for a sign-in code, the app first loads
+the instance's `/turnstile` page in a WebView it keeps off screen (`TurnstileChallenge.kt`),
+which mints the token through the bridge and is shown only if the widget wants a tap. Every
+path ends the same way: the session cookie the response set is stored per origin in app-private
 preferences. Its value goes out as `Authorization: Bearer` from the app's own client, and
 the same cookie is written into the WebView's jar before the site loads: one sign-in,
 one session, nothing exchanged between the two. A Trusted Web Activity could never do
