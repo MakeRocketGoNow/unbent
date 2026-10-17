@@ -37,17 +37,22 @@ import {
  * where they live: the pure helpers are in store/notes-shared.ts so the store builds its
  * queries from the same code, and nothing importing them had to move.
  */
+export { keysOfDeletedNotes, nextCursor, toFtsQuery, type ExportedNote };
+export type { CountOptions, FileSummary, ListOptions, SearchFilters };
+
 /**
- * Where a `NotesRepo` asks how much room the store may take: the limit in bytes, null
- * for none, or a promise of either. See the constructor.
+ * Where a repo asks how much room the account's store may take before a write
+ * (MAK-234): the limit in bytes, null for none, or a promise of either. See the
+ * constructor below.
  */
 export type StoreLimitSource = () => number | null | Promise<number | null>;
 
-/** For a caller that reads and never writes a note: a limit no write will ask for. */
+/**
+ * No limit, for a caller that only reads. A write made through a repo built with this
+ * is unbounded whatever the plan says, which is the one way to get round the bound by
+ * accident: a new `reposFor` call that passes it and then writes is a review finding.
+ */
 export const noStoreLimit: StoreLimitSource = () => null;
-
-export { keysOfDeletedNotes, nextCursor, toFtsQuery, type ExportedNote };
-export type { CountOptions, FileSummary, ListOptions, SearchFilters };
 
 /**
  * All note access for one user, answered by that user's store.
