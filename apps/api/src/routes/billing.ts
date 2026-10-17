@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { BASE_STORAGE_GB, GB, MAX_STORAGE_UNITS, STORAGE_ADDON_GB, storageQuotaBytes, storeLimitBytes } from '@unbent/shared';
-import { ADJUSTMENT_EVENTS, planPatchFor, refundEffectOf, refundPatchFor, type PaddleEvent } from '../lib/billing-events.js';
+import { ADJUSTMENT_EVENTS, planPatchFor, refundEffectOf, refundPatchFor, type PaddleEvent, type RefundEffect } from '../lib/billing-events.js';
 import { accountPlanOf, planFor, planRowByCustomer, planStateOf, updatePlan, updatePlanStatement } from '../lib/plan.js';
 import {
   PaddleError,
@@ -332,9 +332,10 @@ export const billing = new Hono<AppEnv>()
     const now = Date.now();
     const paddleEvent: PaddleEvent = { event_id, event_type, occurred_at, data: data as unknown as PaddleEvent['data'] };
     let patch = planPatchFor(paddle, paddleEvent, row);
+    let effect: RefundEffect | null = null;
     if (ADJUSTMENT_EVENTS.has(event_type)) {
       const adjustment = paddleEvent.data as PaddleAdjustment;
-      let effect = refundEffectOf(paddle, paddleEvent, row);
+      effect = refundEffectOf(paddle, paddleEvent, row);
       try {
         if (effect === 'needs-transaction') {
           const txn = await getTransaction(paddle, adjustment.transaction_id);
@@ -361,7 +362,8 @@ export const billing = new Hono<AppEnv>()
       console.log(`[billing] ${event_type} ${event_id} for user=${row.userId}: nothing to apply`);
       return c.json({ applied: false, reason: 'not followed' });
     }
-    const refundCancel = patch.paddleStatus === 'canceled' && ADJUSTMENT_EVENTS.has(event_type);
+    // `refundEffectOf` has checked that the row names the refunded subscription.
+    const refundCancel = effect === 'cancel';
     const writeOpts = refundCancel
       ? { onlyIfSubscription: row.paddleSubscriptionId!, advanceStamp: true }
       : { notBefore: occurred_at };
