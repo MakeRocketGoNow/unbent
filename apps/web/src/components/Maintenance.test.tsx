@@ -165,6 +165,11 @@ describe('Maintenance: Auto-fill this year', () => {
     answering({ year: 2026, presses: 2, today: 0, dailyCap: null, yearUsed: 1.3, models: [model('title', 1412, 44)] });
     harness({ accountDeletion: true, autofill: true });
     expect((await screen.findByText(/2 presses since/)).textContent).toContain('All of this account\'s Auto-fill for the year has been used.');
+    cleanup();
+    // Just under the cap rounds to 100, which the page does not say while presses go through.
+    answering({ year: 2026, presses: 2, today: 0, dailyCap: null, yearUsed: 0.998, models: [model('title', 1412, 44)] });
+    harness({ accountDeletion: true, autofill: true });
+    expect((await screen.findByText(/2 presses since/)).textContent).toContain('About 99% of this account\'s Auto-fill for the year has been used.');
   });
 
   it('writes a small count out, and says when none of the day\u2019s have been used', async () => {

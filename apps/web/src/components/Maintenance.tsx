@@ -459,10 +459,12 @@ const tokenCount = (n: number) => (n < 10_000 ? exact.format(n) : compact.format
 /**
  * The year's spend cap as a share, never an amount (see `AutofillUsage.yearUsed`), rounded
  * to whole percent and said in words at the ends, where "0%" would read as nothing used
- * and "100%" as a figure rather than a state.
+ * and "100%" as a figure rather than a state. The figure stops at 99: a share that rounds
+ * to 100 while presses still go through would say "About 100%", and "All" is kept for
+ * the state where they do not.
  */
 function yearUsedSentence(share: number): string {
-  const percent = Math.round(share * 100);
+  const percent = Math.min(99, Math.round(share * 100));
   const much = share >= 1 ? 'All' : percent < 1 ? 'Under 1%' : `About ${percent}%`;
   return `${much} of this account's Auto-fill for the year has been used.`;
 }
