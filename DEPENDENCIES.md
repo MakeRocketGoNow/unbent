@@ -83,6 +83,16 @@ one; move pnpm on its own.
 `@cloudflare/vitest-plugin`, which peers on one vitest major at a time; check its peer range
 before taking vitest 6.
 
+**vitest 5.0.3, exactly, in `apps/store-tests`, and the rest of the workspace on it too.**
+5.0.4 and 5.0.5 break `@cloudflare/vitest-plugin` though its peer range takes them (measured
+2026-10-16): under plugin 1.4.0 every store test file fails on a module-cache file the runtime
+cannot find in `node_modules/.vitest-cache`, and under 1.4.4 workerd exits partway through the
+run and takes six of the fifteen files with it ("Worker exited unexpectedly"). Plugin 1.4.4 on
+5.0.3 passes all fifteen. The other packages keep `^5.0.3` and resolve to the same 5.0.3, so
+the workspace holds one vitest; a `pnpm -r update vitest` would move them and leave two. Lift
+it when a plugin release passes `pnpm --filter @unbent/store-tests test` on the newer vitest,
+run from a cleared `node_modules/.vitest-cache`.
+
 ## The workflows' actions
 
 **Every `uses:` in `.github/workflows/` names a commit SHA, with the version beside it as
