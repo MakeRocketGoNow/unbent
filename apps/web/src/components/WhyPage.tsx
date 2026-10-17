@@ -4,7 +4,7 @@ import { PLAN_PRICE_USD, TRIAL_DAYS } from '@unbent/shared';
 import { useSession } from '../auth-client.js';
 import { HOME, LOGIN } from '../auth-gate.js';
 import { usePageMeta, type PageMeta } from '../page-meta.js';
-import { FrontShell } from './FrontPage.js';
+import { FrontShell, SOURCE_URL } from './FrontPage.js';
 
 /**
  * What the tab, a search result and a link's card say this page is. Exported for the
@@ -207,6 +207,14 @@ export function WhyPage() {
               browser: every note keeps its notebook, tags, dates and scans, and the text in
               every scan is searchable again. That is what export Evernote to Markdown should
               mean: Markdown, not another silo.
+            </li>
+            <li>
+              <strong>The code, if you ever need it.</strong> Unbent is{' '}
+              <a href={SOURCE_URL} rel="noopener noreferrer">
+                source-available
+              </a>{' '}
+              and runs on Cloudflare&apos;s free tier. If this service ever goes the way that
+              one did, run it yourself.
             </li>
           </ul>
         </Chapter>

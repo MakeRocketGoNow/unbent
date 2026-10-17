@@ -28,7 +28,7 @@ import {
  * Where the code is. A constant rather than configuration because this page is only ever
  * shown by the public instance (see `routes/index.tsx`), which is this repository's.
  */
-const SOURCE_URL = 'https://github.com/MakeRocketGoNow/unbent';
+export const SOURCE_URL = 'https://github.com/MakeRocketGoNow/unbent';
 /** The two places the page sends a reader who wants the detail behind a claim. */
 const ASSISTANTS_DOC_URL = `${SOURCE_URL}/blob/main/docs/assistants.md`;
 const FILES_README_URL = `${SOURCE_URL}#your-notes-are-files`;
