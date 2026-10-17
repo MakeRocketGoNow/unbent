@@ -1653,8 +1653,16 @@ function roundOrQueued(lib: WritableLibrary, ids: string[], purging = false): { 
  * `pins.test.ts`; without it, false, which keeps the delete in the queue as before.
  */
 function serverHolds(lib: WritableLibrary, noteId: string): boolean {
-  const state = (lib.notes as unknown as { _state?: { syncedData?: Map<string, LocalNote> } })._state;
-  return state?.syncedData?.has(noteId) ?? false;
+  return syncedRows(lib)?.has(noteId) ?? false;
+}
+
+/**
+ * The notes collection's synced rows: what the feed and the server's answers wrote,
+ * under any optimistic change made here. A private field of the collection, pinned by
+ * `pins.test.ts`, reached through here alone; undefined if a version moves it.
+ */
+function syncedRows(lib: WritableLibrary): Map<string, LocalNote> | undefined {
+  return (lib.notes as unknown as { _state?: { syncedData?: Map<string, LocalNote> } })._state?.syncedData;
 }
 
 export async function trashNote(noteId: string): Promise<void> {
@@ -1971,8 +1979,7 @@ export async function deleteOrCancelAttachment(noteId: string, filename: string)
  * manager; the version is pinned, and the fallback is the merged view.
  */
 function syncedRow(lib: WritableLibrary, noteId: string): LocalNote | undefined {
-  const state = (lib.notes as unknown as { _state?: { syncedData?: Map<string, LocalNote> } })._state;
-  return state?.syncedData?.get(noteId) ?? lib.notes.get(noteId);
+  return syncedRows(lib)?.get(noteId) ?? lib.notes.get(noteId);
 }
 
 /**
