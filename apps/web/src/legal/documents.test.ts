@@ -204,6 +204,8 @@ describe('legalDocuments and Auto-fill', () => {
   it('says deletion here does not reach what was sent', () => {
     expect(text(jevOnly.privacy)).toContain('does not reach it');
     expect(text(jevOnly.deletion)).toContain('deletion here does not reach it');
+    expect(text(jevOnly.deletion)).toContain('Nothing else of your account or its contents is kept by us.');
+    expect(text(without.deletion)).toContain('Nothing else of your account or its contents is kept.');
   });
 
   it('leaves the terms alone', () => {

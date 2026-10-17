@@ -742,7 +742,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
                   'account with our hosting provider, kept for up to 90 days. Every one of them is ' +
                   'gone within about three months of the deletion.',
               ]
-            : ['Nothing else of your account or its contents is kept.']),
+            : [`Nothing else of your account or its contents is kept${opts.autofill ? ' by us' : ''}.`]),
           ...(opts.autofill
             ? [
                 `What an Auto-fill press sent to ${opts.llm ? 'TypeSafe or Anthropic' : 'TypeSafe'} ` +
