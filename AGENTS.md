@@ -851,8 +851,9 @@ real device before tuning it.
 ## The local database is disposable, but ask
 
 Wiping local notes during development is fine and has been offered explicitly. **Ask first
-every time**, because the plan is one final import from the real Evernote corpus and the
-state may have changed since the last conversation. "The database" is D1 and the note
+every time**: a local database may hold a copy the user is in the middle of looking at, and
+the state may have changed since the last conversation. Production is never wiped or
+re-imported; the account on unbent.app is the user's real archive, and what is in it stays. "The database" is D1 and the note
 stores under `.wrangler/state/v3/do/` together; `db:reset` and `reset:local` clear both.
 
 That corpus is ~3 GB and ~13K notes, mostly PDFs: this is a paperless-office use case.
