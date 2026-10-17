@@ -67,6 +67,12 @@ describe('a lapsed account', () => {
     expect(plan.state).toBe('trial');
     expect(plan.until).toBeGreaterThan(Date.now());
     expect(plan.storageGb).toBe(10);
+    // The Plan page's read carries what the store holds against both bounds (MAK-234):
+    // the files' bytes against the quota, and the store's own size against its limit,
+    // which the page works out from the plan's storage itself.
+    const held = (await (await call('GET', '/api/me/plan?usage=1')).json()) as { usedBytes: number; storeBytes: number };
+    expect(held.usedBytes).toBe(0);
+    expect(held.storeBytes).toBeGreaterThan(0);
   });
 
   it('is refused every write but a delete once its plan has ended, and still reads', async (ctx) => {

@@ -4,6 +4,7 @@ import type { StoreLimitSource } from './notes-repo.js';
 import { StoreRepo } from './store-client.js';
 import type { AttachmentRow, AttachmentsStore, FileRead, PendingFile, AssistantWrite } from '../store/attachments.js';
 import type { UsageEntry } from '../store/llm-usage.js';
+import type { StoreUsage } from '../store/user-store.js';
 
 /**
  * Attachment metadata for one user, answered by that user's store.
@@ -55,6 +56,15 @@ export class AttachmentsRepo extends StoreRepo {
   /** The bytes of files the account holds, for the plan's quota; see `UserStore.attachmentBytes`. */
   storageUsed(): Promise<number> {
     return this.call((s) => s.attachmentBytes());
+  }
+
+  /**
+   * What the account holds against both of the plan's bounds, in one call: its files'
+   * bytes, which the quota bounds, and the store's own size, which the store limit
+   * bounds. For the Plan page and a storage block's removal; see `UserStore.usage`.
+   */
+  usage(): Promise<StoreUsage> {
+    return this.call((s) => s.usage());
   }
 
   /** True when the note exists and is not deleted. Ownership is the object's; see `reposFor`. */

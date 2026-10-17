@@ -1,8 +1,7 @@
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
-import { GB } from '@unbent/shared';
+import { GB, STORE_FLOOR_BYTES } from '@unbent/shared';
 import { onAppError } from '../app.js';
-import { STORE_FLOOR_BYTES } from '../lib/quota.js';
 import type { AppEnv } from '../types.js';
 import { attachments } from './attachments.js';
 

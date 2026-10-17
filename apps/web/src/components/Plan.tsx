@@ -7,6 +7,7 @@ import {
   STORAGE_ADDON_GB,
   STORAGE_ADDON_PRICE_USD,
   storageQuotaBytes,
+  storeLimitBytes,
   type AccountPlan,
 } from '@unbent/shared';
 import * as api from '../notes-api.js';
@@ -34,6 +35,9 @@ function unitsOf(plan: AccountPlan): number {
 }
 
 const dollars = (n: number) => `$${n}`;
+
+/** The share of a bound at which the meter turns the full colour: near enough that the next large file or import may be refused. */
+const FULL_SHARE = 0.95;
 
 /** How often, and how many times, the plan is read back from Paddle after a checkout; see `settleCheckout`. */
 const CHECKOUT_SETTLE_WAIT_MS = 1500;
@@ -127,9 +131,13 @@ export function Plan() {
   const chosenUnits = units ?? unitsOf(plan);
   const refresh = () => queryClient.invalidateQueries({ queryKey: keys.plan() });
   // Less storage than the account holds would refuse every upload after it; the server
-  // refuses the change, and the button says why before the press.
+  // refuses the change, and the button says why before the press. The store's limit
+  // follows the quota, so a block is store room too, and a store that would be over the
+  // smaller limit is the same refusal for notes (MAK-234): checked here for the same
+  // reason, with the figures the page already has.
   const smaller = storageQuotaBytes(plan.storageGb - STORAGE_ADDON_GB);
   const overSmaller = plan.usedBytes === undefined || plan.usedBytes > smaller;
+  const storeOverSmaller = plan.storeBytes !== undefined && plan.storeBytes > storeLimitBytes(smaller);
 
   async function subscribe() {
     setBusy('checkout');
@@ -295,7 +303,7 @@ export function Plan() {
               <Button
                 size="small"
                 variant="quiet"
-                disabled={busy !== null || overSmaller}
+                disabled={busy !== null || overSmaller || storeOverSmaller}
                 tip={
                   plan.usedBytes === undefined
                     ? usage.isPending
@@ -303,7 +311,9 @@ export function Plan() {
                       : 'What the account holds could not be read'
                     : overSmaller
                       ? `The account holds more than ${plan.storageGb - STORAGE_ADDON_GB} GB; delete some files first`
-                      : undefined
+                      : storeOverSmaller
+                        ? `The notes take more than the ${formatBytes(storeLimitBytes(smaller))} of room they would have; delete some notes or clear their history, and empty the trash, first`
+                        : undefined
                 }
                 onClick={() => void changeStorage(unitsOf(plan) - 1)}
               >
@@ -399,24 +409,54 @@ function PlanState({ plan }: { plan: AccountPlan }) {
   );
 }
 
-/** What the account holds against what it may: a bar and the numbers. `reading` while the store has not answered yet. */
+/**
+ * What the account holds against what it may: a bar and the numbers for its files, and
+ * a line for its store. `reading` while the store has not answered yet.
+ *
+ * Two bounds, because the plan sells room for files and the store has a bound of its
+ * own (MAK-234): a note write past it is refused with a sentence that sends people here.
+ * Before this the page showed files alone, so someone arriving after that refusal read
+ * "2 GB of 10 GB used" under a message that their notes were full. The files keep the
+ * bar, since they are what the blocks below buy; the store gets a line in the same
+ * rhythm, named for what counts in it rather than a label and a footnote, and its figure
+ * turns the bar's full colour at the same share the bar does, so a store that is the
+ * reason for the visit stands out without a second bar that would weigh it the same as
+ * the thing being sold. Both lines are the same shape (what, then the figure) so they
+ * read as a pair; the store's is drawn while the figure is still being read, as a
+ * placeholder, so the row of buttons under them does not move when it arrives.
+ */
 function StorageMeter({ plan, reading }: { plan: AccountPlan; reading: boolean }) {
   const quota = storageQuotaBytes(plan.storageGb);
   const used = plan.usedBytes;
   const share = used === undefined ? 0 : Math.min(1, used / quota);
+  const store = plan.storeBytes !== undefined ? { bytes: plan.storeBytes, limit: storeLimitBytes(quota) } : undefined;
   return (
     <>
       {/* No `aria-valuenow` while the figure is unknown: zero would be a figure. */}
-      <div className="progress-bar plan-meter" role="meter" aria-valuemin={0} aria-valuemax={quota} {...(used !== undefined ? { 'aria-valuenow': used } : {})} aria-label="Storage used">
-        <div className={`progress-fill${share >= 0.95 ? ' plan-meter-full' : ''}`} style={{ width: `${Math.round(share * 100)}%` }} />
+      <div className="progress-bar plan-meter" role="meter" aria-valuemin={0} aria-valuemax={quota} {...(used !== undefined ? { 'aria-valuenow': used } : {})} aria-label="Files stored">
+        <div className={`progress-fill${share >= FULL_SHARE ? ' plan-meter-full' : ''}`} style={{ width: `${Math.round(share * 100)}%` }} />
       </div>
-      <p className="muted small">
-        {used !== undefined
-          ? `${formatBytes(used)} used of ${plan.storageGb} GB.`
-          : reading
-            ? `Reading what is held, of ${plan.storageGb} GB…`
-            : `Usage could not be read right now; the plan allows ${plan.storageGb} GB.`}
-      </p>
+      <div className="plan-held">
+        <p className="muted small">
+          {used !== undefined
+            ? `Files: ${formatBytes(used)} of ${plan.storageGb} GB used.`
+            : reading
+              ? `Reading what is held, of ${plan.storageGb} GB…`
+              : `Usage could not be read right now; the plan allows ${plan.storageGb} GB of files.`}
+        </p>
+        {(store || reading) && (
+          <p className="muted small">
+            Notes, their history and the text read from files:{' '}
+            {store ? (
+              <span className={store.bytes / store.limit >= FULL_SHARE ? 'bad' : undefined}>
+                {formatBytes(store.bytes)} of {formatBytes(store.limit)} used.
+              </span>
+            ) : (
+              'reading…'
+            )}
+          </p>
+        )}
+      </div>
     </>
   );
 }

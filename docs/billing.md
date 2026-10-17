@@ -45,10 +45,12 @@ duplicated or changed, a body appended to, a copy put back, a bulk change) is th
 for indexing, since a text layer is as long as its sender makes it whatever the file's
 size. Deleting for good, emptying the trash and clearing a note's history still work,
 since they are the way back under; trashing works too, and frees nothing until the trash
-is emptied. The margin is wide on purpose: a real
+is emptied. The Plan page shows the store's size against its limit under the files'
+meter, since that refusal sends people there. The margin is wide on purpose: a real
 archive's text measured at a few percent of its files, and the limit exists for a loop
 writing maximum-size notes on a trial with no card, not for anyone who filed what they
-scanned (`storeLimitBytes` in `lib/quota.ts` has the numbers and the reasoning).
+scanned (`storeLimitBytes` in the shared package's `plan.ts` has the numbers and the
+reasoning).
 
 Auto-fill is the one thing an account can make the instance pay for per press, and its
 daily cap has two numbers for the same reason the trial asks for no card. `AUTOFILL_DAILY_CAP`

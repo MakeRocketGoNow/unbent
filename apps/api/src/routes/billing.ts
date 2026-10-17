@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
-import { BASE_STORAGE_GB, GB, MAX_STORAGE_UNITS, STORAGE_ADDON_GB, storageQuotaBytes } from '@unbent/shared';
+import { BASE_STORAGE_GB, GB, MAX_STORAGE_UNITS, STORAGE_ADDON_GB, storageQuotaBytes, storeLimitBytes } from '@unbent/shared';
 import { ADJUSTMENT_EVENTS, planPatchFor, refundEffectOf, refundPatchFor, type PaddleEvent } from '../lib/billing-events.js';
 import { accountPlanOf, planFor, planRowByCustomer, planStateOf, updatePlan, updatePlanStatement } from '../lib/plan.js';
 import {
@@ -22,6 +22,7 @@ import {
   type PaddleAdjustment,
 } from '../lib/paddle.js';
 import { noStoreLimit } from '../lib/notes-repo.js';
+import { roomOf } from '../lib/quota.js';
 import { reposFor } from '../lib/repos.js';
 import { requireAuth } from '../lib/session.js';
 import type { AppEnv } from '../types.js';
@@ -79,20 +80,28 @@ export const billing = new Hono<AppEnv>()
    * and the editor, which read this on every open and every focus in every tab,
    * cost a D1 row and nothing more. Left out rather than failed when the store cannot
    * say (reset by a deploy, or being loaded), since the plan is still the plan.
+   *
+   * Both figures come from the one call the sweep makes (`usage`): the bytes of the
+   * account's files, which the quota bounds, and the size of the store itself, which
+   * the store limit bounds (MAK-234). The page shows the two side by side, since a
+   * note write refused for the store's size sends people here, and a page that showed
+   * files alone then said "2 GB of 10 GB used" under a message that their notes were
+   * full.
    */
   .get('/me/plan', requireAuth, async (c) => {
     if (!billingOn(c.env)) return c.json({ error: 'This instance has no plan to report.' }, 404);
     const userId = c.get('userId')!;
     const row = await planFor(c.env.DB, userId);
-    let usedBytes: number | undefined;
+    let held: { usedBytes: number; storeBytes: number } | undefined;
     if (c.req.query('usage') === '1') {
       try {
-        usedBytes = await reposFor(c.env, userId, noStoreLimit).attachments.storageUsed();
+        const usage = await reposFor(c.env, userId, noStoreLimit).attachments.usage();
+        held = { usedBytes: usage.attachmentBytes, storeBytes: usage.databaseSize };
       } catch (err) {
         console.warn(`[billing] storage used for user=${userId} unavailable:`, (err as Error).message);
       }
     }
-    return c.json({ ...accountPlanOf(row, Date.now()), ...(usedBytes !== undefined ? { usedBytes } : {}) });
+    return c.json({ ...accountPlanOf(row, Date.now()), ...held });
   })
 
   /**
@@ -143,7 +152,10 @@ export const billing = new Hono<AppEnv>()
    * Less is refused while the account holds more than the smaller quota would allow:
    * the change would go through and every upload after it would be refused, for a
    * reason the person was not shown. The sentence names the numbers; deleting files
-   * first is the way.
+   * first is the way. The store's own limit follows the quota (`storeLimitBytes`: a
+   * block is a tenth of itself in store room), so the same check is made on the store's
+   * size against the smaller limit, or every note write after the change would be the
+   * 402 of MAK-234 for a press on this page. One read answers both figures (`usage`).
    */
   .post('/billing/storage', requireAuth, zValidator('json', storageBody), async (c) => {
     const paddle = paddleOf(c.env);
@@ -156,9 +168,16 @@ export const billing = new Hono<AppEnv>()
     const storage = c.req.valid('json').storage;
     const after = BASE_STORAGE_GB + STORAGE_ADDON_GB * storage;
     if (after < row.storageGb) {
-      const used = await reposFor(c.env, userId, noStoreLimit).attachments.storageUsed();
-      if (used > storageQuotaBytes(after)) {
-        return c.json({ error: `This account holds ${(used / GB).toFixed(1)} GB, more than the ${after} GB it would have. Delete some files first.` }, 409);
+      const held = await reposFor(c.env, userId, noStoreLimit).attachments.usage();
+      if (held.attachmentBytes > storageQuotaBytes(after)) {
+        return c.json({ error: `This account holds ${(held.attachmentBytes / GB).toFixed(1)} GB, more than the ${after} GB it would have. Delete some files first.` }, 409);
+      }
+      const storeLimit = storeLimitBytes(storageQuotaBytes(after));
+      if (held.databaseSize > storeLimit) {
+        return c.json(
+          { error: `This account's notes take ${roomOf(held.databaseSize)} of room, more than the ${roomOf(storeLimit)} they would have. Delete some notes or clear their history, and empty the trash, first.` },
+          409,
+        );
       }
     }
     try {
