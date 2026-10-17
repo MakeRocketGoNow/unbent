@@ -822,6 +822,12 @@ button.link {
   border: none;
   border-radius: 0.4rem;
   cursor: pointer;
+  /* The same bevel as `.btn-primary`, for the same reasons given there, and flat in dark
+     mode with it. */
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--accent), white 25%),
+    inset 0 -1px 0 color-mix(in srgb, var(--accent), black 25%),
+    0 1px 2px rgb(0 0 0 / 12%);
 }
 
 .primary:hover { opacity: 0.9; }
@@ -888,14 +894,60 @@ button.link {
   cursor: default;
 }
 
-/* Filled: the one thing a view is for. */
+/*
+   Filled: the one thing a view is for.
+
+   The fill carries a bevel: a one-pixel highlight along the top edge, a one-pixel shade
+   along the bottom, and a hairline of shadow under it, which is light from above on a
+   body that is a little proud of the page. It is the only button that gets one. The
+   outlined and quiet variants are the controls that repeat down a list, where a row of
+   lit edges would out-shout the notes they sit beside, and the filled one appears once
+   per view, so it is the one place a little weight is earned.
+
+   Each edge is mixed from the button's own fill (`--btn-fill`, which the danger and
+   neutral tones set) rather than from fixed white and black, so the danger and neutral
+   fills get an edge of their own colour rather than a grey one.
+
+   Light mode only. The metaphor needs a page that can carry a shadow and a body darker
+   than its highlight, and dark mode has neither: the page is near black, so the
+   hairline has nothing to fall on, and every filled button there is pale (mint, salmon,
+   the page's own near-white ink) and already the brightest thing on screen. A lighter
+   rim above and a darker rim below a pale fill turned it into a plastic key rather than
+   a lit surface, which is how it looked in the first version of this. The systems that
+   bevel their buttons (Primer, macOS) all go flat in dark mode for the same reason, and
+   so does this one, below. A fill-relative highlight and shade at low strength was tried
+   as a half-step and was either invisible or the plastic edge again.
+
+   Pressing swaps the bevel for a shallow inset, so the button reads as pushed in, and
+   moves nothing: `.btn` transitions colour only so that a row of controls stays still
+   under the cursor, and a one-pixel translate on press would be exactly the motion that
+   rule exists to prevent. The inset is kept in dark mode too: a darker dent reads as
+   pushed in on any fill. Disabled drops the bevel with the colour, since a faded button
+   should not look pressable.
+*/
 .btn-primary {
+  --btn-fill: var(--accent);
   color: var(--bg);
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--btn-fill);
+  border-color: var(--btn-fill);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--btn-fill), white 25%),
+    inset 0 -1px 0 color-mix(in srgb, var(--btn-fill), black 25%),
+    0 1px 2px rgb(0 0 0 / 12%);
 }
 
 .btn-primary:hover:not(:disabled) { opacity: 0.9; }
+
+.btn-primary:active:not(:disabled) {
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--btn-fill), black 30%);
+}
+
+.btn-primary:disabled { box-shadow: none; }
+
+@media (prefers-color-scheme: dark) {
+  /* Flat at rest: see above. The `:active` inset above still wins here on specificity. */
+  .btn-primary, .primary { box-shadow: none; }
+}
 
 /* Outlined: a real action that is not the main one. The default, and the common case. */
 .btn-secondary {
@@ -949,9 +1001,8 @@ button.link {
 }
 
 .btn-danger.btn-primary {
+  --btn-fill: var(--bad);
   color: #fff;
-  background: var(--bad);
-  border-color: var(--bad);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -970,9 +1021,8 @@ button.link {
    is inert there by design.
 */
 .btn-neutral.btn-primary {
+  --btn-fill: var(--fg);
   color: var(--bg);
-  background: var(--fg);
-  border-color: var(--fg);
 }
 
 .btn-neutral.btn-primary:hover:not(:disabled) { opacity: 0.9; }
