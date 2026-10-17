@@ -8,6 +8,7 @@ import {
   socialConfig,
   confirmDeletionUrl,
   turnstileOf,
+  warnIfHalfTurnstile,
   warnIfOpenToAnyone,
 } from './auth.js';
 import type { Env } from './types.js';
@@ -361,12 +362,20 @@ describe('turnstileOf', () => {
     expect(turnstileOf(env({ TURNSTILE_SECRET_KEY: 'sec', TURNSTILE_SITE_KEY: '1x00' }))).toEqual({ siteKey: '1x00' });
   });
 
-  it('is off without the pair, and says so for half of one', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  it('is off without the pair, and off for half of one', () => {
     expect(turnstileOf(env({}))).toBeUndefined();
-    expect(warn).not.toHaveBeenCalled();
     expect(turnstileOf(env({ TURNSTILE_SECRET_KEY: 'sec' }))).toBeUndefined();
     expect(turnstileOf(env({ TURNSTILE_SITE_KEY: '1x00', TURNSTILE_SECRET_KEY: ' ' }))).toBeUndefined();
+  });
+
+  /** Said from `createAuth`, once per isolate, never from the config read. */
+  it('warns about half a pair, and only half a pair', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    warnIfHalfTurnstile(env({}));
+    warnIfHalfTurnstile(env({ TURNSTILE_SECRET_KEY: 'sec', TURNSTILE_SITE_KEY: '1x00' }));
+    expect(warn).not.toHaveBeenCalled();
+    warnIfHalfTurnstile(env({ TURNSTILE_SECRET_KEY: 'sec' }));
+    warnIfHalfTurnstile(env({ TURNSTILE_SITE_KEY: '1x00', TURNSTILE_SECRET_KEY: ' ' }));
     expect(warn).toHaveBeenCalledTimes(2);
   });
 });

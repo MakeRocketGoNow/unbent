@@ -90,6 +90,39 @@ function codesDeliverable(env: Env): boolean {
 }
 
 /**
+ * Turnstile in front of the sign-in code endpoints, when the instance has both keys.
+ *
+ * Both or neither, as an OAuth pair is read: a secret with no site key would refuse every
+ * request for a code, since no page could mint a token, and a site key with no secret
+ * would draw a widget whose answer nobody checks. Half a pair is read as none, and
+ * `warnIfHalfTurnstile` says so once, rather than locking the code sign-in or quietly not
+ * protecting it.
+ *
+ * What `/api/config` reports is the site key alone (`AppConfig.turnstile`); the secret
+ * never leaves the Worker. Pure, because `/api/config` reads it on every page load.
+ */
+export function turnstileOf(env: Env): AppConfig['turnstile'] | undefined {
+  const secret = env.TURNSTILE_SECRET_KEY?.trim();
+  const siteKey = env.TURNSTILE_SITE_KEY?.trim();
+  return secret && siteKey ? { siteKey } : undefined;
+}
+
+/**
+ * Says once that half a Turnstile pair is set and the check is therefore off. From
+ * `createAuth`, which is made once per isolate, for the reason `warnIfOpenToAnyone` is
+ * called from there: on the request path the line would repeat on every page load, and
+ * a warning that repeats forever is one nobody reads.
+ */
+export function warnIfHalfTurnstile(env: Env): void {
+  const secret = Boolean(env.TURNSTILE_SECRET_KEY?.trim());
+  const siteKey = Boolean(env.TURNSTILE_SITE_KEY?.trim());
+  if (secret === siteKey) return;
+  console.warn(
+    `[auth] TURNSTILE_${secret ? 'SITE' : 'SECRET'}_KEY is not set beside TURNSTILE_${secret ? 'SECRET' : 'SITE'}_KEY, so Turnstile is off`,
+  );
+}
+
+/**
  * Whether this instance lets an account delete itself.
  *
  * The same test as codes by email, for the reason spelled out on `deleteUser` below: the
@@ -101,29 +134,6 @@ function codesDeliverable(env: Env): boolean {
  * Exported because `/api/config` reports it: a settings page that drew a Delete account
  * button on an instance where the endpoint 404s would be worse than not drawing one.
  */
-/**
- * Turnstile in front of the sign-in code endpoint, when the instance has both keys.
- *
- * Both or neither, as an OAuth pair is read: a secret with no site key would refuse every
- * request for a code, since no page could mint a token, and a site key with no secret
- * would draw a widget whose answer nobody checks. Half a pair is read as none and said
- * so once in the log, rather than locking the code sign-in or quietly not protecting it.
- *
- * What `/api/config` reports is the site key alone (`AppConfig.turnstile`); the secret
- * never leaves the Worker.
- */
-export function turnstileOf(env: Env): AppConfig['turnstile'] | undefined {
-  const secret = env.TURNSTILE_SECRET_KEY?.trim();
-  const siteKey = env.TURNSTILE_SITE_KEY?.trim();
-  if (secret && siteKey) return { siteKey };
-  if (secret || siteKey) {
-    console.warn(
-      `[auth] TURNSTILE_${secret ? 'SITE' : 'SECRET'}_KEY is not set beside TURNSTILE_${secret ? 'SECRET' : 'SITE'}_KEY, so Turnstile is off`,
-    );
-  }
-  return undefined;
-}
-
 export function accountDeletionOffered(env: Env): boolean {
   return codesDeliverable(env);
 }
@@ -510,6 +520,7 @@ export function confirmDeletionUrl(env: Env, token: string): string {
  */
 function createAuth(env: Env): AuthInstance {
   warnIfOpenToAnyone(env);
+  warnIfHalfTurnstile(env);
   return betterAuth({
     /**
      * Better Auth v1.5+ accepts a D1 binding directly and picks its own dialect. D1 has
@@ -930,33 +941,6 @@ function createAuth(env: Env): AuthInstance {
        */
       ...(passkeysEnabled(env) ? [passkey({ rpName: 'Unbent', ...relyingParty(env) })] : []),
       /**
-       * A six-digit code by email: the way in that needs no account anywhere else.
-       *
-       * This is what lets unbent.app drop GitHub without becoming Google-only. Passkeys
-       * cannot fill that role (one has to be added from an account you already have) so
-       * a code is the only method here that can *create* an account unaided.
-       *
-       * Chosen over a magic link because of the phone. A link tapped in a mail app opens
-       * in whatever browser that app prefers, which is frequently not the one holding the
-       * session, and on Android the app's Custom Tab is a third context again. A code is
-       * typed into whatever asked for it, so it cannot land in the wrong place.
-       *
-       * Sign-up and sign-in are deliberately the same flow: an address with no account
-       * gets one. `ALLOWED_EMAILS` still governs that, through the same creation hook as
-       * every other method, which is what keeps a public URL from becoming a free host.
-       *
-       * Registered only where codes are deliverable, the same way a social provider with
-       * no credentials is left out rather than mounted and left to fail: an endpoint that
-       * accepts a request, reports success and sends nothing is worse than one that is
-       * not there, because the caller has no way to tell the difference.
-       *
-       * Note this instance may run OTP and passwords together, the combination behind
-       * GHSA-qq9h-g4jm-xgf3, where an attacker pre-registered a password on a victim's
-       * address and kept access after the victim verified by code. Fixed in 1.6.22 and so
-       * in the 1.7.1 pinned here: the passwordless path now clears the password and
-       * revokes sessions before marking an account verified.
-       */
-      /**
        * Turnstile, in front of every endpoint that mails a sign-in code (MAK-243): the
        * request for one, and the two password-reset routes that send the same code to an
        * address with an account (`CODE_ROUTE_PATHS`, the list the day's bounds in
@@ -986,6 +970,33 @@ function createAuth(env: Env): AuthInstance {
         secretKey: env.TURNSTILE_SECRET_KEY!.trim(),
         endpoints: [...CODE_ROUTE_PATHS],
       })] : []),
+      /**
+       * A six-digit code by email: the way in that needs no account anywhere else.
+       *
+       * This is what lets unbent.app drop GitHub without becoming Google-only. Passkeys
+       * cannot fill that role (one has to be added from an account you already have) so
+       * a code is the only method here that can *create* an account unaided.
+       *
+       * Chosen over a magic link because of the phone. A link tapped in a mail app opens
+       * in whatever browser that app prefers, which is frequently not the one holding the
+       * session, and on Android the app's Custom Tab is a third context again. A code is
+       * typed into whatever asked for it, so it cannot land in the wrong place.
+       *
+       * Sign-up and sign-in are deliberately the same flow: an address with no account
+       * gets one. `ALLOWED_EMAILS` still governs that, through the same creation hook as
+       * every other method, which is what keeps a public URL from becoming a free host.
+       *
+       * Registered only where codes are deliverable, the same way a social provider with
+       * no credentials is left out rather than mounted and left to fail: an endpoint that
+       * accepts a request, reports success and sends nothing is worse than one that is
+       * not there, because the caller has no way to tell the difference.
+       *
+       * Note this instance may run OTP and passwords together, the combination behind
+       * GHSA-qq9h-g4jm-xgf3, where an attacker pre-registered a password on a victim's
+       * address and kept access after the victim verified by code. Fixed in 1.6.22 and so
+       * in the 1.7.1 pinned here: the passwordless path now clears the password and
+       * revokes sessions before marking an account verified.
+       */
       ...(codesDeliverable(env) ? [emailOTP({
         // Six digits for five minutes, both the plugin's defaults and right for a code
         // read off a phone. Three attempts before it is burned, also the default.
