@@ -6,8 +6,20 @@
     <!-- The stylesheet has a dark theme; this lets the browser's own controls follow it,
          and it is what a WebView reads to decide which scheme the page supports. -->
     <meta name="color-scheme" content="light dark" />
+    <!-- The front page's title and description, and what the whole app shows until a page
+         says otherwise: `src/page-meta.ts` rewrites these per route and `prerender.tsx`
+         writes a page's own into its static copy. The card's picture is a site-relative
+         path, which the Worker makes absolute for a prerendered page (`lib/front-pages.ts`)
+         and the page itself makes absolute once it runs; a crawler reading this shell
+         alone is one the Worker has already answered. -->
     <title>Unbent</title>
     <meta name="description" content="Notes, receipts and scans you can search, and take with you whenever you like." />
+    <meta property="og:site_name" content="Unbent" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Unbent" />
+    <meta property="og:description" content="Notes, receipts and scans you can search, and take with you whenever you like." />
+    <meta property="og:image" content="/front/desktop-light.webp" />
+    <meta name="twitter:card" content="summary_large_image" />
     <!-- Installable as an app. On desktop Chrome that also registers it as a handler for
          the file types in the manifest, which is what lets a scanner or Finder hand a
          file straight to it; see launch-files.ts for what happens when one arrives. -->
