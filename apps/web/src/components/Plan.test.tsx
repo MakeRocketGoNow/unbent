@@ -66,8 +66,33 @@ describe('Plan', () => {
     expect(screen.getByRole('button', { name: 'Manage subscription' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Add 25 GB' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Remove 25 GB' })).toBeTruthy();
-    expect(screen.getByText('3.00 GB used of 35 GB.')).toBeTruthy();
+    expect(screen.getByText('Files: 3.00 GB of 35 GB used.')).toBeTruthy();
     expect(screen.getByRole('meter', { name: 'Storage used' }).getAttribute('aria-valuemax')).toBe(String(35 * 1024 ** 3));
+  });
+
+  /**
+   * The store has a bound of its own (MAK-234), and a note write past it sends people
+   * here: the page says where the store stands beside the files, named for what counts
+   * in it, and marks a store that is all but full as the bar marks the files.
+   */
+  it('shows how much room the notes take against the store limit, beside the files', async () => {
+    const MB = 1024 ** 2;
+    harness({ state: 'active', source: 'paddle', until: NOW + 300 * DAY, storageGb: 10, usedBytes: 2 * 1024 ** 3, storeBytes: 180 * MB, storeLimitBytes: 1536 * MB, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
+    expect(await screen.findByText('Files: 2.00 GB of 10 GB used.')).toBeTruthy();
+    const store = screen.getByText(/Notes, their history and the text read from files:/);
+    expect(store.textContent).toBe('Notes, their history and the text read from files: 180.0 MB of 1.50 GB used.');
+    expect(store.querySelector('.bad')).toBeNull();
+    cleanup();
+    harness({ state: 'active', source: 'paddle', until: NOW + 300 * DAY, storageGb: 10, usedBytes: 2 * 1024 ** 3, storeBytes: 1500 * MB, storeLimitBytes: 1536 * MB, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
+    const full = await screen.findByText(/Notes, their history and the text read from files:/);
+    expect(full.querySelector('.bad')?.textContent).toBe('1.46 GB of 1.50 GB used.');
+    // While the store has not answered (the harness never answers the usage read), the
+    // line holds its place with no figure, so the buttons under it do not move when
+    // the figure arrives.
+    cleanup();
+    harness({ state: 'active', source: 'paddle', until: NOW + 300 * DAY, storageGb: 10, usedBytes: 2 * 1024 ** 3, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
+    expect(await screen.findByText('Files: 2.00 GB of 10 GB used.')).toBeTruthy();
+    expect(screen.getByText(/Notes, their history/).textContent).toBe('Notes, their history and the text read from files: reading…');
   });
 
   it('names a cancellation ahead and a failed payment, with the card form for the latter', async () => {

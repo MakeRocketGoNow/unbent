@@ -600,6 +600,11 @@ button.link {
 /* The Plan page: the storage meter and the choice of storage before a checkout. */
 .plan-meter { max-width: 24rem; margin: 0 0 0.5rem; }
 .plan-meter .plan-meter-full { background: var(--bad); }
+/* The two lines under the meter, files and the store, are one reading of what the
+   account holds: set a step apart rather than a paragraph apart, with the paragraph's
+   gap after the pair, so they read together and the buttons below keep their distance. */
+.plan-held { display: grid; gap: 0.2rem; margin: 0 0 0.7rem; }
+.settings-section .plan-held p { margin: 0; }
 .plan-storage-choice {
   display: flex;
   align-items: center;

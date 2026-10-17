@@ -35,6 +35,9 @@ function unitsOf(plan: AccountPlan): number {
 
 const dollars = (n: number) => `$${n}`;
 
+/** The share of a bound at which the meter turns the full colour: near enough that the next large file or import may be refused. */
+const FULL_SHARE = 0.95;
+
 /** How often, and how many times, the plan is read back from Paddle after a checkout; see `settleCheckout`. */
 const CHECKOUT_SETTLE_WAIT_MS = 1500;
 const CHECKOUT_SETTLE_TRIES = 6;
@@ -399,24 +402,54 @@ function PlanState({ plan }: { plan: AccountPlan }) {
   );
 }
 
-/** What the account holds against what it may: a bar and the numbers. `reading` while the store has not answered yet. */
+/**
+ * What the account holds against what it may: a bar and the numbers for its files, and
+ * a line for its store. `reading` while the store has not answered yet.
+ *
+ * Two bounds, because the plan sells room for files and the store has a bound of its
+ * own (MAK-234): a note write past it is refused with a sentence that sends people here.
+ * Before this the page showed files alone, so someone arriving after that refusal read
+ * "2 GB of 10 GB used" under a message that their notes were full. The files keep the
+ * bar, since they are what the blocks below buy; the store gets a line in the same
+ * rhythm, named for what counts in it rather than a label and a footnote, and its figure
+ * turns the bar's full colour at the same share the bar does, so a store that is the
+ * reason for the visit stands out without a second bar that would weigh it the same as
+ * the thing being sold. Both lines are the same shape (what, then the figure) so they
+ * read as a pair; the store's is drawn while the figure is still being read, as a
+ * placeholder, so the row of buttons under them does not move when it arrives.
+ */
 function StorageMeter({ plan, reading }: { plan: AccountPlan; reading: boolean }) {
   const quota = storageQuotaBytes(plan.storageGb);
   const used = plan.usedBytes;
   const share = used === undefined ? 0 : Math.min(1, used / quota);
+  const store = plan.storeBytes !== undefined && plan.storeLimitBytes !== undefined ? { bytes: plan.storeBytes, limit: plan.storeLimitBytes } : undefined;
   return (
     <>
       {/* No `aria-valuenow` while the figure is unknown: zero would be a figure. */}
       <div className="progress-bar plan-meter" role="meter" aria-valuemin={0} aria-valuemax={quota} {...(used !== undefined ? { 'aria-valuenow': used } : {})} aria-label="Storage used">
-        <div className={`progress-fill${share >= 0.95 ? ' plan-meter-full' : ''}`} style={{ width: `${Math.round(share * 100)}%` }} />
+        <div className={`progress-fill${share >= FULL_SHARE ? ' plan-meter-full' : ''}`} style={{ width: `${Math.round(share * 100)}%` }} />
       </div>
-      <p className="muted small">
-        {used !== undefined
-          ? `${formatBytes(used)} used of ${plan.storageGb} GB.`
-          : reading
-            ? `Reading what is held, of ${plan.storageGb} GB…`
-            : `Usage could not be read right now; the plan allows ${plan.storageGb} GB.`}
-      </p>
+      <div className="plan-held">
+        <p className="muted small">
+          {used !== undefined
+            ? `Files: ${formatBytes(used)} of ${plan.storageGb} GB used.`
+            : reading
+              ? `Reading what is held, of ${plan.storageGb} GB…`
+              : `Usage could not be read right now; the plan allows ${plan.storageGb} GB of files.`}
+        </p>
+        {(store || reading) && (
+          <p className="muted small">
+            Notes, their history and the text read from files:{' '}
+            {store ? (
+              <span className={store.bytes / store.limit >= FULL_SHARE ? 'bad' : undefined}>
+                {formatBytes(store.bytes)} of {formatBytes(store.limit)} used.
+              </span>
+            ) : (
+              'reading…'
+            )}
+          </p>
+        )}
+      </div>
     </>
   );
 }
