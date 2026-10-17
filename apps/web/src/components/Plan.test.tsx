@@ -95,6 +95,25 @@ describe('Plan', () => {
     expect(screen.getByText(/Notes, their history/).textContent).toBe('Notes, their history and the text read from files: reading…');
   });
 
+  /**
+   * A block is store room too (a tenth of itself, `storeLimitBytes`), so a store that
+   * would be over the smaller limit disables Remove as files over the smaller quota do,
+   * with the reason read out, before the server refuses the same.
+   */
+  it('refuses to remove a block while the notes would be over the smaller store limit', async () => {
+    const GB = 1024 ** 3;
+    harness({ state: 'active', source: 'paddle', until: NOW + 300 * DAY, storageGb: 35, usedBytes: 2 * GB, storeBytes: 3 * GB, storeLimitBytes: 4 * GB, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
+    const remove = await screen.findByRole('button', { name: 'Remove 25 GB' });
+    expect(remove.hasAttribute('disabled')).toBe(true);
+    expect(remove.getAttribute('aria-description')).toBe('The notes take more than the 1.50 GB of room they would have; delete some notes or clear their history first');
+    // Under the smaller limit, the block can go.
+    cleanup();
+    harness({ state: 'active', source: 'paddle', until: NOW + 300 * DAY, storageGb: 35, usedBytes: 2 * GB, storeBytes: GB, storeLimitBytes: 4 * GB, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
+    const ok = await screen.findByRole('button', { name: 'Remove 25 GB' });
+    expect(ok.hasAttribute('disabled')).toBe(false);
+    expect(ok.getAttribute('aria-description')).toBeNull();
+  });
+
   it('names a cancellation ahead and a failed payment, with the card form for the latter', async () => {
     harness({ state: 'active', source: 'paddle', until: NOW + 30 * DAY, subscription: { status: 'active', cancelsAt: NOW + 30 * DAY, pastDue: false } });
     expect(await screen.findByRole('heading', { name: 'Cancelling' })).toBeTruthy();

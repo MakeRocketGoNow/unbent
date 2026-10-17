@@ -7,6 +7,7 @@ import {
   STORAGE_ADDON_GB,
   STORAGE_ADDON_PRICE_USD,
   storageQuotaBytes,
+  storeLimitBytes,
   type AccountPlan,
 } from '@unbent/shared';
 import * as api from '../notes-api.js';
@@ -130,9 +131,13 @@ export function Plan() {
   const chosenUnits = units ?? unitsOf(plan);
   const refresh = () => queryClient.invalidateQueries({ queryKey: keys.plan() });
   // Less storage than the account holds would refuse every upload after it; the server
-  // refuses the change, and the button says why before the press.
+  // refuses the change, and the button says why before the press. The store's limit
+  // follows the quota, so a block is store room too, and a store that would be over the
+  // smaller limit is the same refusal for notes (MAK-234): checked here for the same
+  // reason, with the figures the page already has.
   const smaller = storageQuotaBytes(plan.storageGb - STORAGE_ADDON_GB);
   const overSmaller = plan.usedBytes === undefined || plan.usedBytes > smaller;
+  const storeOverSmaller = plan.storeBytes !== undefined && plan.storeBytes > storeLimitBytes(smaller);
 
   async function subscribe() {
     setBusy('checkout');
@@ -298,7 +303,7 @@ export function Plan() {
               <Button
                 size="small"
                 variant="quiet"
-                disabled={busy !== null || overSmaller}
+                disabled={busy !== null || overSmaller || storeOverSmaller}
                 tip={
                   plan.usedBytes === undefined
                     ? usage.isPending
@@ -306,7 +311,9 @@ export function Plan() {
                       : 'What the account holds could not be read'
                     : overSmaller
                       ? `The account holds more than ${plan.storageGb - STORAGE_ADDON_GB} GB; delete some files first`
-                      : undefined
+                      : storeOverSmaller
+                        ? `The notes take more than the ${formatBytes(storeLimitBytes(smaller))} of room they would have; delete some notes or clear their history first`
+                        : undefined
                 }
                 onClick={() => void changeStorage(unitsOf(plan) - 1)}
               >
