@@ -49,6 +49,15 @@ the feed waited on the outbox entry that was itself waiting for that page: a sec
 write stuck until a reload (2026-10-08). Moving to 0.12 or later means redesigning that, not
 bumping a version. Dependabot proposed 0.12.1 in #341, which was closed for this.
 
+The removal was deliberate (TanStack/db #2030, RFC #1625) and will not be reversed: a sync
+write that arrives while an optimistic write persists is *accepted* at `commit()` and
+becomes *visible* only when that write settles, so a handler that waits for its own echo to
+be visible waits for itself. The way off 0.11 is to wait for acceptance instead
+(`whenSyncAccepted` in 0.12+) in the feed engine's cursor wait and in the outbox's
+`settled()`, and to read the authoritative rows through `collection.base` rather than
+`_state.syncedData`. MAK-235 is that spike, with what decides it: pages held invisible
+while an entry waits offline.
+
 0.11.2 and 0.11.3, the last of the 0.11 line, were taken on their own on 2026-10-16. They
 are patches by number but rewrite how rows and updates are held internally (rows reused
 rather than copied, local-only collections skipping the optimistic stage), which is the
