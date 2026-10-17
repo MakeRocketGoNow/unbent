@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { emailOtp } from '../auth-client.js';
+import { keys } from '../queries.js';
 import { CAPTCHA_HEADER, loadTurnstile } from '../turnstile.js';
 
 /** What the sentence under a widget that could not run says; the one place it is worded. */
@@ -110,6 +112,7 @@ export function Turnstile({ siteKey, onToken, onFail, onInteractive }: Turnstile
  * none must be sent none, and a test that asserts the call's shape sees the same call.
  */
 export function useCodeRequest(siteKey: string | undefined) {
+  const queryClient = useQueryClient();
   const [token, setToken] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [generation, setGeneration] = useState(0);
@@ -137,6 +140,12 @@ export function useCodeRequest(siteKey: string | undefined) {
     if (siteKey) {
       setToken(null);
       setGeneration((g) => g + 1);
+    } else if (result?.error?.code === 'MISSING_RESPONSE') {
+      // The instance started asking for a token after this screen read its config, which
+      // is held for the life of the page. Read it again, so the next render draws the
+      // widget and the next press carries a token, rather than every press failing the
+      // same way until a reload.
+      void queryClient.invalidateQueries({ queryKey: keys.config() });
     }
     return result;
   }
