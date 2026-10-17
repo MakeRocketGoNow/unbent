@@ -23,8 +23,9 @@ export const DELETED_FILES_KEPT_DAYS = RESTORE_WINDOW_DAYS + 5;
 
 /**
  * How many days the backups bucket keeps a daily dump: its `expire-dumps` lifecycle
- * rule, set by hand on the bucket (README, "Where your notes live", under Daily dumps),
- * not by anything in the code. Stated here so the page and the Worker say one number.
+ * rule, set by hand on the bucket (docs/architecture.md, "Where your notes live", under
+ * Daily dumps), not by anything in the code. Stated here so the page and the Worker say one
+ * number.
  */
 export const DUMPS_KEPT_DAYS = 14;
 

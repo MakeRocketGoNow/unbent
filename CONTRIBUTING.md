@@ -10,5 +10,5 @@ Sign your commits off with `git commit -s` to record that agreement (the Develop
 Certificate of Origin, <https://developercertificate.org>). No separate contributor
 agreement is needed.
 
-For how the code is organized and the conventions it follows, see [AGENTS.md](AGENTS.md)
-and the [README](README.md).
+For how the code is organized and the conventions it follows, see [AGENTS.md](AGENTS.md),
+the [README](README.md) and [docs/](docs/README.md).

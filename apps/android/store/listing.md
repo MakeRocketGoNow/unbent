@@ -84,6 +84,6 @@ Sign in with Google, with a code sent to your email, or with a passkey.
 
 ## Notes
 
-Written against what the app actually does, per README "Android app". No claim of
+Written against what the app actually does, per docs/android.md. No claim of
 offline editing, reminders, sharing with other people, or web clipping: none of those
 ship today, and Play's metadata policy treats unshipped claims as a listing violation.

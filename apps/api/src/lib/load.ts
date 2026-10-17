@@ -17,7 +17,7 @@ import type { LoadResult, UserStore } from '../store/user-store.js';
  * page calls, and with the dump written first (about five store calls and the upload's
  * seven), the whole route is some twenty-five subrequests for the biggest account, inside
  * even the Free plan's fifty; the only thing that would not fit there is the CPU, which
- * the README's note on dumps already says.
+ * the note on dumps in docs/architecture.md already says.
  */
 
 /** Bytes per page sent to the object: the dump's own slice size, well under the 32 MiB an RPC argument may be. */

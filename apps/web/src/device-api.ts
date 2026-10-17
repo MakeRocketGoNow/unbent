@@ -93,7 +93,7 @@ export function mintConnectToken(): Promise<string> {
  * deletes it and silently signs the other out, and the preview's session expires when
  * dev's does rather than starting a fresh window. That is acceptable for a scratch
  * environment and is not worth a second session row to fix, but it reads as a bug the
- * first time it happens, so it is written down here and in the README.
+ * first time it happens, so it is written down here and in docs/self-hosting.md.
  *
  * Plain fetch rather than the client plugin for the same reason `mintConnectToken` is: the
  * one-time-token client methods only map paths to names and leave the call shape to

@@ -65,7 +65,7 @@ class UnbentApi(
 ) {
     /**
      * Better Auth rejects requests without a trusted `Origin` as CSRF, so every call sends
-     * one. See the note in the project README; the CLI hits the same requirement.
+     * one. See the note under Auth in docs/self-hosting.md; the CLI hits the same requirement.
      */
     private fun Request.Builder.auth() = apply {
         if (bearer != null) header("Authorization", "Bearer $bearer")

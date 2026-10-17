@@ -88,7 +88,7 @@ public struct AppSettingsScreen: View {
                     } header: {
                         Text("Unbent address")
                     } footer: {
-                        Text("This app opens this Unbent and no other. To use one you host yourself, build the app for its address; the project’s README says how.")
+                        Text("This app opens this Unbent and no other. To use one you host yourself, build the app for its address; the project’s docs/ios.md says how.")
                     }
                 }
 

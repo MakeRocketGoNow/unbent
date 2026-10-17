@@ -86,7 +86,7 @@ export interface LegalOptions {
   errorTracking: boolean;
   /**
    * Whether this instance keeps backups of its own: the daily dumps and, on unbent.app,
-   * the nightly copy to a second account (MAK-171; "Durability" in the README).
+   * the nightly copy to a second account (MAK-171; "Durability" in docs/architecture.md).
    *
    * `AppConfig.backups`, true where a backups bucket is bound. The policy and the deletion
    * page describe those copies and the three months a deletion takes to leave them only

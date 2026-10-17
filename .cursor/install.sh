@@ -8,14 +8,15 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# The lockfile is the source of truth; never let install rewrite it (README: the pinned
-# wrangler version is load-bearing, and a global/looser copy silently overrides the config).
+# The lockfile is the source of truth; never let install rewrite it (docs/self-hosting.md:
+# the pinned wrangler version is load-bearing, and a global/looser copy silently overrides
+# the config).
 corepack pnpm install --frozen-lockfile
 
 # Local dev needs exactly one secret, BETTER_AUTH_SECRET, and none of the OAuth pairs; a
-# social provider without credentials is simply not offered (README: Auth). Generate it once
-# and leave any existing .dev.vars untouched, so re-running install never rotates the secret
-# out from under a running Worker (which does not hot-reload .dev.vars).
+# social provider without credentials is simply not offered (docs/self-hosting.md: Auth).
+# Generate it once and leave any existing .dev.vars untouched, so re-running install never
+# rotates the secret out from under a running Worker (which does not hot-reload .dev.vars).
 if [ ! -f apps/api/.dev.vars ]; then
   cp apps/api/.dev.vars.example apps/api/.dev.vars
   secret="$(openssl rand -base64 32)"

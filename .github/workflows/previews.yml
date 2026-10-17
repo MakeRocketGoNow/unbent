@@ -7,8 +7,8 @@ name: Dev instance and previews
 # A fork inherits this file without harm. Every job here decides first whether the
 # repository has been given what it needs (the dev secrets, the workers.dev subdomain) and
 # skips itself with a note in the run summary when it has not, rather than failing halfway
-# through a deploy nobody asked for. The README's "The dev instance" section says what to
-# set to turn it on.
+# through a deploy nobody asked for. The "The dev instance" section of docs/self-hosting.md
+# says what to set to turn it on.
 #
 # Path-filtered the same way as web.yml, so an Android-only change deploys nothing here.
 on:

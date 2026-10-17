@@ -62,7 +62,7 @@ export const wellKnown = new Hono<AppEnv>()
    * So it is per deployment now, from `ANDROID_ASSET_LINKS`, the same way the operator's
    * name is: unset means this instance vouches for no app, and the response is a 404 that
    * Android treats as exactly that. The value is the document verbatim, a JSON array of
-   * statements; see the README's Android section for where the fingerprints come from.
+   * statements; see docs/android.md for where the fingerprints come from.
    */
   .get('/.well-known/assetlinks.json', (c) => {
     const raw = c.env.ANDROID_ASSET_LINKS?.trim();
@@ -94,7 +94,7 @@ export const wellKnown = new Hono<AppEnv>()
    * Apple's document is a JSON *object* where Android's is an array, so that is what is
    * checked. The path has no extension and Apple requires `application/json` regardless,
    * which `c.json` sets. Apple's CDN fetches it, not the phone, and caches it on its side;
-   * see the README's iOS section for the shape.
+   * see docs/ios.md for the shape.
    */
   .get('/.well-known/apple-app-site-association', (c) => {
     const raw = c.env.APPLE_APP_SITE_ASSOCIATION?.trim();

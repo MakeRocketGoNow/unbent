@@ -105,7 +105,7 @@ const DEFAULT_CURRENCY = 'USD';
  * Order is set with two buttons rather than drag, for the fields here and for a select's
  * options alike. A dozen fields is the realistic maximum, two buttons work with a keyboard
  * and on a phone, and drag-to-reorder is a component this codebase does not have yet. The
- * list items say the same (see README). The fields are a column and move up/down; a
+ * list items say the same (see docs/editor.md). The fields are a column and move up/down; a
  * select's options wrap as chips and move earlier/later, but it is the same one-step nudge.
  */
 export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEditorProps) {

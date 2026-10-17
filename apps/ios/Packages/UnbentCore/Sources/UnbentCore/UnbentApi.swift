@@ -108,7 +108,7 @@ public struct UnbentApi: Sendable {
     }
 
     /// Better Auth rejects requests without a trusted `Origin` as CSRF, so every call sends
-    /// one. See the note in the project README; the CLI hits the same requirement.
+    /// one. See the note under Auth in docs/self-hosting.md; the CLI hits the same requirement.
     private func authorized(_ url: URL) -> URLRequest {
         var request = URLRequest(url: url)
         if let bearer { request.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization") }

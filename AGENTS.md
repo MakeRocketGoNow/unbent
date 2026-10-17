@@ -1,9 +1,9 @@
 # Working on Unbent
 
-Guidance for agents working in this repo. The [README](README.md) explains what the app is
-and why the editor is built the way it is. Read it before touching the editor. This file
-is about *how to work here*: the standards this project holds, and the corrections that
-have come up often enough to be worth writing down.
+Guidance for agents working in this repo. The [README](README.md) explains what the app is,
+and [docs/editor.md](docs/editor.md) why the editor is built the way it is. Read that before
+touching the editor. This file is about *how to work here*: the standards this project
+holds, and the corrections that have come up often enough to be worth writing down.
 
 ## The bar for UI work
 
@@ -283,10 +283,10 @@ git fetch origin
 git worktree add -b <branch> <path> origin/main
 ```
 
-The README's Worktrees section has the rest of the mechanics. **Run `pnpm worktree:setup`
-once in a new worktree**, before anything else. `git worktree add` brings tracked files and
-nothing else, so until then the worktree has no `.dev.vars` (the Worker
-starts with no `BETTER_AUTH_SECRET` and no OAuth credentials), no dependencies, and no
+The Worktrees section of `docs/development.md` has the rest of the mechanics. **Run
+`pnpm worktree:setup` once in a new worktree**, before anything else. `git worktree add`
+brings tracked files and nothing else, so until then the worktree has no `.dev.vars` (the
+Worker starts with no `BETTER_AUTH_SECRET` and no OAuth credentials), no dependencies, and no
 local database. The setup script copies those across and seeds D1 and R2 from the main
 checkout, then prints the ports.
 
@@ -410,7 +410,7 @@ rather than treating the empty file as a missing element.
 
 ### The iOS simulator: ask before booting, and know which instance it is on
 
-`apps/ios` is the site in a `WKWebView`, the Android app's shape; the README's iOS section
+`apps/ios` is the site in a `WKWebView`, the Android app's shape; `docs/ios.md`
 says how it is built. `pnpm ios:build` builds, installs and launches the debug build and
 `pnpm ios` launches what is installed. Both boot a simulator only when none is running, and
 that fallback is for a person. If `xcrun simctl list devices booted` is empty, **ask
@@ -858,8 +858,8 @@ with no `user_id` anywhere, because the database is the user; `lib/notes-repo.ts
 `lib/attachments-repo.ts` are facades over the stub, one RPC call per method, keeping the
 signatures every route and tool was written against. The decision and its reasons are in
 MAK-128; the short version is that the sync change feed and note history are storage
-features, and building them on D1 and then porting would be paying twice. The README's
-"Where your notes live" is the user-facing account of the same thing.
+features, and building them on D1 and then porting would be paying twice. "Where your notes
+live" in `docs/architecture.md` is the user-facing account of the same thing.
 
 A change to the notes data plane is a change in `store/`, and usually nothing else: the
 facade is one line per method. A new query goes into the store with a rows-read bound in
@@ -960,8 +960,8 @@ Things about working on the store that are easy to get wrong:
 
 `note_revisions` (`0003-revisions`, `0004-revision-props`, `store/revisions.ts`) holds the
 note as it stood before a write changed it: its title and body, and since MAK-170 its
-notebook, tags and field values (`props`, one JSON column); the README's "Undoing an edit"
-is the user-facing account. What to know before changing it:
+notebook, tags and field values (`props`, one JSON column); "Undoing an edit" in
+`docs/history-and-trash.md` is the user-facing account. What to know before changing it:
 
 - **`NotesStore.update`, `updateMany` and `restoreRevision` are the only writes that keep
   a copy**, in the transaction that makes the change. A new method that changes a note's
@@ -1055,7 +1055,7 @@ Rules that hold it together, each with a test:
 ## The plan, and what a lapsed account may do
 
 An instance with the five `PADDLE_*` settings sells a plan (MAK-108; "Selling the plan" in
-the README), and every account on it is on its trial, paid for, comped, or lapsed. A
+`docs/billing.md`), and every account on it is on its trial, paid for, comped, or lapsed. A
 lapsed account is **read-only**: every write is refused with a 402 except a delete, and
 reads, search, export and an assistant's reads keep working. Three things hold that:
 

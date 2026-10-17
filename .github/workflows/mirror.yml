@@ -12,8 +12,8 @@ name: Nightly mirror
 #
 # A fork inherits this file without harm. The job decides first whether the repository has
 # the nine secrets and the `BACKUPS_BUCKET` variable it needs and skips itself with a note
-# in the run summary when it has not, as previews.yml does. The README's configuration
-# table has the row for them, and the block below says what each may do.
+# in the run summary when it has not, as previews.yml does. The configuration table in
+# docs/self-hosting.md has the row for them, and the block below says what each may do.
 #
 # What the credentials may do, and why each is scoped as it is:
 #   LIVE_R2_*     read the live bucket, nothing else. This workflow can never write to or
