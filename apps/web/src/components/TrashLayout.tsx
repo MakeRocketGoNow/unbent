@@ -16,6 +16,7 @@ import { useSelection } from '../useSelection.js';
 import { SelectionBar } from './SelectionBar.js';
 import { RestoreIcon, TrashIcon } from './icons.js';
 import { useListMotion } from '../list-motion.js';
+import { useTagColors } from './use-tag-colors.js';
 
 /**
  * The trash sidebar.
@@ -27,6 +28,7 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const list = useInfiniteQuery(trashQuery());
+  const tagColor = useTagColors();
   // `open` is undefined unless a trashed note is on screen; used both to leave the view
   // when that note disappears and, on mobile, to decide which pane is showing.
   const layout = useNotesLayout('/trash/$noteId');
@@ -248,6 +250,7 @@ export function TrashLayout({ children }: { children: React.ReactNode }) {
               key={n.id}
               note={n}
               to="/trash/$noteId"
+              tagColor={tagColor}
               selection={{
                 selected: selection.has(n.id),
                 active: selection.active,

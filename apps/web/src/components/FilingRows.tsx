@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { TagInput } from './TagInput.js';
 import { NotebookRowIcon, TagIcon } from './icons.js';
 import { filledStyle } from './filled.js';
+import type { TagColorOf } from './use-tag-colors.js';
 
 interface NotebookPickerProps {
   notebook: string | null;
@@ -58,6 +59,8 @@ interface FilingRowsProps {
   tags: string[];
   suggestions: string[];
   readOnly?: boolean;
+  /** Each tag's colour (`useTagColors`), for the chips. */
+  tagColor?: TagColorOf | undefined;
   onNotebook: (notebook: string | null) => void;
   onTags: (tags: string[]) => void;
   /**
@@ -87,6 +90,7 @@ export function FilingRows({
   tags,
   suggestions,
   readOnly = false,
+  tagColor,
   onNotebook,
   onTags,
   filled,
@@ -129,6 +133,7 @@ export function FilingRows({
           onChange={onTags}
           readOnly={readOnly}
           fresh={filled?.tags}
+          colorOf={tagColor}
         />
         <span className="note-field-side" />
       </div>

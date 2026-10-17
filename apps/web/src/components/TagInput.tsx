@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useCombobox } from 'downshift';
 import { MAX_FIELD_NAME_LENGTH, sameName } from '@unbent/shared';
-import { tintIndex } from '../tint.js';
 import { ChipPencilIcon, MoveEarlierIcon, MoveLaterIcon } from './icons.js';
 import { filledStyle } from './filled.js';
+import type { TagColorOf } from './use-tag-colors.js';
 
 interface Renaming {
   from: string;
@@ -79,6 +79,13 @@ interface TagInputProps {
    */
   caseless?: boolean;
   /**
+   * Each chip's colour, by its word: an index into the palette, or null for the neutral
+   * grey. A note's tags read the tag rows (`useTagColors`); a select's options read the
+   * field's own `optionColors`. Absent, every chip is grey, which is what a test or a
+   * caller with no rows to read gets.
+   */
+  colorOf?: TagColorOf | undefined;
+  /**
    * Shown, not edited: a note in the trash, or any note while offline. The chips stay as
    * words; the × on each and the "+ Add" entry go, since a control that is drawn but
    * cannot be used is the thing this app keeps removing. Nothing at all to show reads as
@@ -118,6 +125,7 @@ export function TagInput({
   fresh,
   onRename,
   trailing,
+  colorOf,
 }: TagInputProps) {
   const [draft, setDraft] = useState('');
   /**
@@ -288,13 +296,13 @@ export function TagInput({
 
   const open = isOpen && available.length > 0;
 
-  /** A chip: its own tint, and a ring for a moment if it is one of `fresh`. */
+  /** A chip: its stored colour, and a ring for a moment if it is one of `fresh`. */
   const chipProps = (t: string) => {
     const k = fresh?.names.findIndex((n) => sameName(n, t)) ?? -1;
     const at = fresh && k >= 0 ? fresh.at + k : undefined;
     return {
       className: at === undefined ? 'tag-chip' : 'tag-chip fresh',
-      'data-tint': tintIndex(t),
+      'data-color': colorOf?.(t) ?? undefined,
       style: filledStyle(at),
     };
   };
@@ -317,7 +325,7 @@ export function TagInput({
 
   return (
     <div className="tag-input" onClick={() => inputRef.current?.focus()}>
-      {/* Each chip's tint is the word's own (see `tintIndex`), so a tag keeps its colour everywhere. */}
+      {/* Each chip wears its tag's stored colour (`colorOf`), the same one the list rows draw. */}
       {tags.map((t, index) => {
         const chip = chipProps(t);
         return (

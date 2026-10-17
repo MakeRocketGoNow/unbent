@@ -82,6 +82,7 @@ import { sameNotebookName } from '../store/derive.js';
 import { ListRowsContext, showsWholeAccount, useLibraryTotal } from '../useLibraryTotal.js';
 import { useSignOut } from '../useSignOut.js';
 import { useListMotion } from '../list-motion.js';
+import { useTagColors } from './use-tag-colors.js';
 
 /** Sidebar plus the routed workspace. Filters come from the URL; nothing here is mirrored into state. */
 export function NotesLayout({ children }: { children: React.ReactNode }) {
@@ -165,6 +166,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
 
   const list = useInfiniteQuery(notesQuery(filter, ordering));
   const tags = useQuery(tagsQuery());
+  const tagColor = useTagColors();
   const notebooks = useQuery(notebooksQuery());
   /*
    * The selected notebook's field definitions, which name the field chips and are what
@@ -1059,6 +1061,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
           suggestions={tags.data?.map((t) => t.name) ?? []}
           busy={bulkBusy}
           onChange={(change) => void tagSelected(change)}
+          colorOf={tagColor}
         />
 
         {isMobile && (
@@ -1278,6 +1281,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             search={{ sort, order, sortField }}
             ranked={searching}
             hints={matchHints}
+            tagColor={tagColor}
             notebook={notebook ?? ''}
             total={results?.length ?? total}
             busy={searching ? searchStale : stale}
@@ -1342,6 +1346,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
                 to="/notes/$noteId"
                 sort={sort ?? DEFAULT_NOTE_SORT}
                 replacedByNote={isMobile}
+                tagColor={tagColor}
                 selection={{
                   selected: selection.has(n.id),
                   active: selection.active,
