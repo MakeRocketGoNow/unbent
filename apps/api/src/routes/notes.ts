@@ -18,7 +18,7 @@ import { copyAttachments } from '../lib/copy-attachments.js';
 import { StorageFull, quotaOf, storageFullBody } from '../lib/quota.js';
 import { canAutofill, JevError, jevFrom } from '../lib/jev.js';
 import { canUseLlm, llmFrom } from '../lib/llm.js';
-import { limitsFor, limitsForUser, onTrial } from '../lib/llm-usage.js';
+import { limitsFor, limitsForUser, trialSentences } from '../lib/llm-usage.js';
 import { isOperator } from '../lib/instance.js';
 import { nextCursor } from '../lib/notes-repo.js';
 import { autofillReaders } from '../lib/read-attachment.js';
@@ -284,7 +284,7 @@ export const notes = new Hono<AppEnv>()
           jev: canAutofill(c.env) ? jevFrom(c.env) : null,
           llm: canUseLlm(c.env) ? llmFrom(c.env) : undefined,
           limits: limitsFor(c.env, c.get('plan'), now),
-          trial: onTrial(c.env, c.get('plan'), now),
+          trial: trialSentences(c.env, c.get('plan'), now),
           operator: isOperator(c.env, c.get('user')?.email),
           defer: (work) => c.executionCtx.waitUntil(work),
         },

@@ -120,9 +120,34 @@ function forPlan(
   return onTrial(env, plan, now) ? trial(env) : ordinary(env);
 }
 
-/** Whether this account gets the trial's numbers, and the trial's sentences: see `forPlan` for `plan`. */
+/** Whether this account gets the trial's numbers: see `forPlan` for `plan`. */
 export function onTrial(env: UsageEnv, plan: PlanRow | null | undefined, now: number): boolean {
   return billingOn(env) && planStateOf(plan ?? null, now) === 'trial';
+}
+
+/** Which of a press's refusals speak as the trial's; see `trialSentences`. */
+export interface TrialSentences {
+  day: boolean;
+  year: boolean;
+}
+
+/**
+ * Which refusals should be worded as the trial's: those whose number is the trial's own.
+ * A trial on an instance that set only the ordinary settings falls back to them
+ * (`trialDailyCap`, `trialYearlyCents`), and is then on the same numbers as everyone
+ * else: told "during the trial" it would be told a number that is not the trial's, and
+ * told "a subscription comes with more" it would be told something false, since
+ * subscribing gives it the same cap and the year still ends on 1 January. The year's
+ * sentence also needs the paying number to be the larger, or more is not what comes.
+ */
+export function trialSentences(env: UsageEnv, plan: PlanRow | null | undefined, now: number): TrialSentences {
+  const trial = onTrial(env, plan, now);
+  const ownYear = parseCap(env, 'AUTOFILL_TRIAL_YEARLY_CENTS');
+  const paidYear = yearlyCents(env);
+  return {
+    day: trial && parseCap(env, 'AUTOFILL_TRIAL_DAILY_CAP') !== null,
+    year: trial && ownYear !== null && (paidYear === null || paidYear > ownYear),
+  };
 }
 
 /** The daily cap that applies to this account; see `forPlan`. */

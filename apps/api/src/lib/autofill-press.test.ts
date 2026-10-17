@@ -3,7 +3,7 @@ import type { FieldDef } from '@unbent/shared';
 import { press, type PressDeps } from './autofill-press.js';
 import type { Jev } from './jev.js';
 import { LlmError, type LanguageModel, type LlmUsage } from './llm.js';
-import { capFor, capReached, dailyCap, limitsFor, trialDailyCap, trialYearlyCents, yearlyCents, yearlyCentsFor, yearReached } from './llm-usage.js';
+import { capFor, capReached, dailyCap, limitsFor, trialDailyCap, trialSentences, trialYearlyCents, yearlyCents, yearlyCentsFor, yearReached } from './llm-usage.js';
 import type { PressLimits } from '../store/llm-usage.js';
 import type { PlanRow } from './plan.js';
 
@@ -47,7 +47,7 @@ const photo = { id: 'a1', noteId: 'n1', filename: 'card.jpg', contentType: 'imag
  * at a cost of its own. `today` is the presses the day has had before this one.
  */
 function setup(
-  opts: { cap?: number | null; yearlyCents?: number | null; spentCents?: number; trial?: boolean; today?: number; jev?: Jev | null; title?: LanguageModel['title'] } = {},
+  opts: { cap?: number | null; yearlyCents?: number | null; spentCents?: number; trial?: { day: boolean; year: boolean }; today?: number; jev?: Jev | null; title?: LanguageModel['title'] } = {},
 ) {
   let today = opts.today ?? 0;
   const recordText = vi.fn(async () => {});
@@ -89,7 +89,7 @@ function setup(
       textFields: async () => ({ value: { field_0: 'Acme Hardware' }, usage: cost(450, 30) }),
     },
     limits: { cap: opts.cap ?? null, yearlyCents: opts.yearlyCents ?? null },
-    trial: opts.trial ?? false,
+    trial: opts.trial ?? { day: false, year: false },
     operator: false,
     now: Date.UTC(2026, 9, 8, 18, 0),
   };
@@ -147,16 +147,22 @@ describe('one press, counted', () => {
   });
 
   it('tells a trial that the numbers are the trial’s, and that a subscription lifts the year’s', async () => {
-    const day = await press(setup({ cap: 50, today: 50, trial: true }).deps, 'n1');
+    const own = { day: true, year: true };
+    const day = await press(setup({ cap: 50, today: 50, trial: own }).deps, 'n1');
     expect(day.kind === 'capped' && day.message).toBe(
       "Auto-fill can be used 50 times a day during the trial, and today's are used up. It will work again in 6 hours.",
     );
-    const year = await press(setup({ yearlyCents: 300, spentCents: 300, trial: true }).deps, 'n1');
+    const year = await press(setup({ yearlyCents: 300, spentCents: 300, trial: own }).deps, 'n1');
     expect(year).toEqual({
       kind: 'capped',
       message: "The trial's Auto-fill has been used up. A subscription comes with more.",
       retryAfter: null,
     });
+    // A trial on the ordinary numbers (no trial setting) is told what everyone else is:
+    // subscribing would give it the same cap, and the year still ends on 1 January.
+    const same = await press(setup({ yearlyCents: 5000, spentCents: 5000, trial: { day: false, year: false } }).deps, 'n1');
+    expect(same.kind === 'capped' && same.message).toBe("This account has used this year's Auto-fill. It will work again on 1 January.");
+    expect(same.kind === 'capped' && same.retryAfter).toBeGreaterThan(0);
   });
 
   it('counts nothing on an instance with no Jev, and answers 404 before 503', async () => {
@@ -309,6 +315,30 @@ describe('the cap', () => {
       expect(limitsFor({}, undefined, now)).toEqual({ cap: null, yearlyCents: null });
       quiet.mockRestore();
     });
+  });
+
+  it('speaks as the trial only for a number that is the trial’s own', () => {
+    const paddle = {
+      PADDLE_API_KEY: 'pdl_sdbx_apikey_x',
+      PADDLE_WEBHOOK_SECRET: 's',
+      PADDLE_CLIENT_TOKEN: 't',
+      PADDLE_PLAN_PRICE_ID: 'p',
+      PADDLE_STORAGE_PRICE_ID: 'q',
+    };
+    const now = Date.UTC(2026, 9, 16, 12, 0);
+    const trial = { plan: 'trial', planUntil: now + 86_400_000, source: null, paddleStatus: null, paddleCancelsAt: null } as PlanRow;
+    const paying = { plan: 'active', planUntil: null, source: 'comp', paddleStatus: null, paddleCancelsAt: null } as PlanRow;
+    const all = { ...paddle, AUTOFILL_DAILY_CAP: '500', AUTOFILL_TRIAL_DAILY_CAP: '50', AUTOFILL_YEARLY_CENTS: '5000', AUTOFILL_TRIAL_YEARLY_CENTS: '300' };
+    expect(trialSentences(all, trial, now)).toEqual({ day: true, year: true });
+    expect(trialSentences(all, paying, now)).toEqual({ day: false, year: false });
+    // Only the ordinary settings: the trial is on them too, and is told what everyone is.
+    expect(trialSentences({ ...paddle, AUTOFILL_DAILY_CAP: '500', AUTOFILL_YEARLY_CENTS: '5000' }, trial, now)).toEqual({ day: false, year: false });
+    // A trial cap alone is the trial's own, whatever a paying account gets.
+    expect(trialSentences({ ...paddle, AUTOFILL_TRIAL_DAILY_CAP: '50', AUTOFILL_TRIAL_YEARLY_CENTS: '300' }, trial, now)).toEqual({ day: true, year: true });
+    // A trial year no smaller than the paying one: a subscription does not come with more.
+    expect(trialSentences({ ...paddle, AUTOFILL_YEARLY_CENTS: '300', AUTOFILL_TRIAL_YEARLY_CENTS: '300' }, trial, now)).toEqual({ day: false, year: false });
+    // Billing off: never the trial's.
+    expect(trialSentences({ AUTOFILL_TRIAL_DAILY_CAP: '50', AUTOFILL_TRIAL_YEARLY_CENTS: '300' }, trial, now)).toEqual({ day: false, year: false });
   });
 
   it('says when the year’s Auto-fill returns, in seconds to 1 January UTC', () => {

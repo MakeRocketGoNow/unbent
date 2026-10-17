@@ -6,6 +6,7 @@ import type { LanguageModel } from './llm.js';
 import { capReached, PressUsage, yearReached } from './llm-usage.js';
 import type { NotesRepo } from './notes-repo.js';
 import type { PressLimits } from '../store/llm-usage.js';
+import type { TrialSentences } from './llm-usage.js';
 import { readPendingFiles, type BlobStore, type Readers } from './read-attachment.js';
 
 /**
@@ -30,8 +31,8 @@ export interface PressDeps {
   llm?: Pick<LanguageModel, 'title' | 'textFields'> | undefined;
   /** The day's cap on presses and the year's on spend, each null for none (`limitsFor`). */
   limits: PressLimits;
-  /** Whether those are the trial's numbers (`onTrial`), which a refusal says. */
-  trial: boolean;
+  /** Which of those are the trial's own numbers (`trialSentences`), so the refusal says so. */
+  trial: TrialSentences;
   /** Whether the person pressing runs the instance; see `autofill`. */
   operator: boolean;
   /**
@@ -71,7 +72,7 @@ export async function press(deps: PressDeps, id: string): Promise<PressOutcome> 
   if (!deps.jev) return { kind: 'unconfigured' };
   if (prelude.press && !prelude.press.allowed) {
     // The store says which limit refused; each has a sentence of its own.
-    const refusal = prelude.press.reason === 'year' ? yearReached(now, deps.trial) : capReached(deps.limits.cap!, now, deps.trial);
+    const refusal = prelude.press.reason === 'year' ? yearReached(now, deps.trial.year) : capReached(deps.limits.cap!, now, deps.trial.day);
     return { kind: 'capped', ...refusal };
   }
   const { note, forText, forVision } = prelude;
