@@ -25,6 +25,14 @@ import { z } from 'zod';
  *   however bad the day. The share is sized to the free tier; an instance on a paid
  *   tier, with no daily cap, can raise it.
  *
+ * The day's bound holds for an address with an account too, and that is a cost accepted
+ * with open eyes: anyone who knows someone's address can spend its six codes in six
+ * minutes, and a person whose only way in is a code is then shut out until midnight UTC.
+ * Loosening it for accounts was the alternative, and it is worse: one known address
+ * asking once a minute would then spend the sixty kept for every account by mid-morning,
+ * shutting everyone out instead of one person. Someone with Google or a passkey on the
+ * account still gets in.
+ *
  * Not a per-IP rule, deliberately. Any per-IP bound either stops nothing (a thousand a
  * day from one address drains the allowance) or hurts the people behind one IP: a
  * carrier's NAT, an office, a room at a meetup trying the app together, which is the
