@@ -1792,7 +1792,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
           The first press's question (MAK-225), where the replace confirm appears so a
           second press lands its question in the same place as the first. Inline, as every
           confirm here is: it is about this note, and what it describes sending is on the
-          screen behind it. Green-bordered, since what it offers is safe, and worded as
+          screen behind it. Bordered in the accent, since what it offers is safe, and worded as
           what happens, not as a warning: the point is that the person knows, not that
           they are put off. It names each service that receives the note, as the privacy
           policy does, and only the ones this instance has keys for. The two are kept

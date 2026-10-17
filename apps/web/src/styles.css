@@ -34,11 +34,21 @@
   --border: #e3ded7;
   --good: #1a7f45;
   --bad: #b3261e;
-  --accent: #2f6f4f;
+  /*
+     The accent: what acts. A muted magenta, a stamp's ink on paper, and it was forest green
+     until 2026-10-17. Two things were wrong with the green. It is the colour this category
+     already belongs to, so the app read as a copy of the one people arrive from. And it
+     was --good's hue, so a primary button and a success said the same thing: a confirm
+     offering the safe choice and one reporting it had worked could not be told apart.
+     Magenta is nobody's here, sits with the warm paper tokens rather than against them,
+     and leaves green meaning only "good" and red only "bad". It is kept cool of red (hue
+     about 330) so a primary beside a danger button reads as two families, not two reds.
+  */
+  --accent: #9c3f6d;
   /* The marks of an instance that is not production: the favicon's badge, the account
      menu's dot, the drawer's ribbon (instance-marker.ts). One colour per kind, so a dev
      tab and a preview's differ at a glance. None is red, which would read as "this is the
-     dangerous one" when these are the safe ones, and none is the accent's green. Each
+     dangerous one" when these are the safe ones, and none is the accent's magenta. Each
      reads on light and dark alike, so the dark theme does not redefine them. The `-ink`
      is the ribbon's text on that colour: dark on amber, white on violet. */
   --instance-dev: #e8a33a;
@@ -106,7 +116,7 @@
 }
 
 /*
-   Every checkbox and radio is the app's green, not the browser's blue.
+   Every checkbox and radio is the app's accent, not the browser's blue.
 
    The editor's task boxes, the preview's, a field's, a settings row's: one control, one
    colour, everywhere it appears. `accent-color` is the whole mechanism; the platform keeps
@@ -125,7 +135,10 @@ input[type='radio'] {
     --border: #2e2c33;
     --good: #5fbf85;
     --bad: #f2857c;
-    --accent: #7fc3a0;
+    /* Lighter to read on the dark ground (5.5:1 as text), and held toward raspberry
+       rather than candy pink: lighter still, it sat beside the salmon --bad as one more
+       pastel, and a primary and a danger button looked like the same family. */
+    --accent: #c474a8;
     /* A deeper wash and a paler word: the same ten hues, read against a dark ground. */
     --tint-wash: 26%;
     --tint-ink: 50%;
@@ -443,7 +456,7 @@ h1 {
    Most `.link`s are anchors with a real URL, so they carry no chrome. The few that only
    act on the page in place (the picker's All/None) are buttons, and a button keeps the
    platform's border, background and padding unless they are turned off here. Without this
-   they render as grey boxes beside the green anchor-links, which is the one look that says
+   they render as grey boxes beside the accent-coloured anchor-links, which is the one look that says
    nobody checked. The inherited font and the accent colour come from `.link` above.
 */
 button.link {
@@ -1060,10 +1073,10 @@ button.link {
 }
 
 /*
-   Neutral, filled: a primary's weight in the page's own ink rather than the brand green.
+   Neutral, filled: a primary's weight in the page's own ink rather than the accent.
 
    For the reassuring choice that sits beside a danger one, where two saturated fills
-   (accent green and --bad red) read as rivals. Filling in --fg over --bg drops the hue but
+   (the accent's magenta and --bad red) read as rivals. Filling in --fg over --bg drops the hue but
    keeps the emphasis, and because both tokens flip with the theme it comes out dark-on-light
    in light mode and light-on-dark in dark, with no per-mode override. Only the filled
    variant carries it; on an outline or a quiet button there is nothing to fill, so the class
@@ -2422,7 +2435,7 @@ a.overflow-item { text-decoration: none; }
    title, take the accent as their colour, since a row here is cells in the list's grid
    with no box of its own to tint (`.note-field` is `display: contents`), and the title has
    no box at all. A tag the press added is ringed instead: a chip already has a colour of
-   its own, and washing it green would make it look like a different tag for a second.
+   its own, and washing it in the accent would make it look like a different tag for a second.
 
    A colour that fades rather than anything that moves, so it stays when reduced motion is
    asked for: it says something the sentence does not, and nothing on screen travels.
@@ -5189,7 +5202,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /*
-   A destructive control rings in its own red. The brand green around red text read as two
+   A destructive control rings in its own red. The accent around red text reads as two
    saturated hues fighting (festive, not careful) and the ring is where the eye lands as
    the question is asked, so it should repeat what the button does rather than contradict
    it. The bin earlier in the row takes the same ring for the same reason.
@@ -6410,9 +6423,9 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
  *
  * The border follows the tone of the first action offered (see `borderTone` in Confirm.tsx),
  * set by the modifier classes below. It used to be red for every confirm, including "keep
- * this on the device?", which put a warning colour around a safe green action. Red is for a
- * box whose offered action destroys something; green for one offering the primary; plain
- * otherwise. Red and green never share a box.
+ * this on the device?", which put a warning colour around a safe action. Red is for a
+ * box whose offered action destroys something; the accent for one offering the primary;
+ * plain otherwise. Red never shares a box with the accent or with --good.
  */
 .confirm {
   max-width: 40rem;

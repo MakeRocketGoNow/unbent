@@ -34,9 +34,14 @@ Some things that have been asked for repeatedly, so start from them:
   than once.
 - **Dark mode is a real target too.** Both themes are defined in `styles.css`. `--bad` is a
   light salmon in dark mode, so anything filled with it needs dark text, not white.
-- **Red and green do not share a box.** A red border around a green button reads as
-  Christmas, and as a warning about something safe. See
-  [Destructive actions](#destructive-actions).
+- **Each colour means one thing.** The accent (`--accent`, a muted magenta) is what acts:
+  a primary button, a link, a selection, a focus ring. `--good` green is only success and
+  `--bad` red only failure or destruction. The accent was green until 2026-10-17, when a
+  primary action and a success state looked the same; don't spend it on data (tags wear
+  their own stored colour) or on a state.
+- **Red does not share a box with the accent or with green.** A red border around a
+  primary button reads as a warning about something safe (and, when the accent was green,
+  as Christmas). See [Destructive actions](#destructive-actions).
 - **Density belongs to the content.** Controls that repeat on every row of a list should be
   quieter than controls that appear once per view.
 
@@ -142,9 +147,9 @@ to attachments. `Confirm` weights its actions by position, so a destructive acti
 after a safe one demotes itself automatically: pass them in the right order and don't
 override the classes.
 
-Red and green never share a box. A confirm's border takes the tone of the action it
-offers (the first one): red when that action destroys something, green when it is the
-primary, plain when it is neutral. So "Keep 9 KB on this device?" is bordered green, and
+Red never shares a box with the accent. A confirm's border takes the tone of the action it
+offers (the first one): red when that action destroys something, the accent when it is the
+primary, plain when it is neutral. So "Keep 9 KB on this device?" is bordered in the accent, and
 "Delete this notebook?" red. `Confirm` works this out itself (`borderTone`), which is why
 nothing is passed for it: don't override its classes, and don't hand-roll a confirm-shaped
 box with a border of your own. The border used to be red for every question, and a warning

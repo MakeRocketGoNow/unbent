@@ -13,7 +13,7 @@ export interface ConfirmAction {
    * don't).
    *
    * `neutral` is a reassuring outcome like `primary`, but filled in the page's ink rather
-   * than the brand green, for the keep-vs-clear pair, where a green fill beside the red
+   * than the accent, for the keep-vs-clear pair, where an accent fill beside the red
    * danger button reads as two colours fighting. It weighs exactly as `primary` does; only
    * its hue differs.
    */

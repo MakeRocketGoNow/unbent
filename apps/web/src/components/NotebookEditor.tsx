@@ -338,7 +338,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
    * field holds (`fitRatingScale`), so scores out of 10 become a rating out of 10 rather
    * than five stars that clear every 6 and up (MAK-80). Because the scale was chosen for
    * the person, a field with values always stops to say which one it is and what it
-   * keeps, even when nothing is cleared, where the confirmation is the green kind.
+   * keeps, even when nothing is cleared, where the confirmation is the primary kind.
    *
    * `currency` is the same for the "Currency" entry, with one difference: a currency is
    * display only, so a number gaining or losing one clears nothing, and when that is all
@@ -852,7 +852,7 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
                           {
                             label: 'Keep values',
                             busyLabel: 'Removing…',
-                            // Filled in ink, not the brand green, so it does not clash with the red clear.
+                            // Filled in ink, not the accent, so it does not clash with the red clear.
                             tone: 'neutral',
                             onConfirm: () => confirmRemoveOption(false),
                           },

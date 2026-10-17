@@ -126,8 +126,8 @@ export const PICKER_CSS = `
   border-radius: 2px;
 }
 .cm-table-picker-cell.on {
-  background: var(--accent, #2f6f4f);
-  border-color: var(--accent, #2f6f4f);
+  background: var(--accent, #9c3f6d);
+  border-color: var(--accent, #9c3f6d);
 }
 .cm-table-picker-cell.losing {
   border-color: #c0392b;
