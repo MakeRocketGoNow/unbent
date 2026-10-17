@@ -85,6 +85,13 @@ export const FRONT = '/';
 export const PRICING = '/pricing';
 
 /**
+ * Why Unbent exists, `/why`: the origin story, for someone deciding whether to leave the
+ * app they are in (MAK-240). The front page's shell and the pricing page's rules: public,
+ * shown to a signed-in person who asks for it, and only on an instance with a front page.
+ */
+export const WHY = '/why';
+
+/**
  * The pages that render without a session, listed rather than inferred.
  *
  * Two kinds, and both are here because gating them broke something specific. The sign-in
@@ -118,7 +125,7 @@ export function shellFor(pathname: string): Shell {
   // Tolerant of a trailing slash, which a hand-typed address or an external link may carry
   // and which never means a different page.
   const path = pathname.length > 1 ? pathname.replace(/\/$/, '') : pathname;
-  if (path === FRONT || path === PRICING) return 'front';
+  if (path === FRONT || path === PRICING || path === WHY) return 'front';
   if (PUBLIC.has(path)) return 'plain';
   return 'app';
 }

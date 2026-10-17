@@ -3,7 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { configQuery } from '../queries.js';
 import { useSession } from '../auth-client.js';
-import { HOME, LOGIN } from '../auth-gate.js';
+import { HOME, LOGIN, WHY } from '../auth-gate.js';
 import { EnexHelp, NotionHelp } from './ImportHelp.js';
 import { LegalLink } from './LegalLink.js';
 import { ProviderIcon } from './provider-icons.js';
@@ -259,9 +259,9 @@ export function FrontPage() {
 }
 
 /**
- * The header and footer of the public pages, around their content: the front page, and
- * the pricing page (`PricingPage`). One component so the two cannot drift apart, and so
- * the pricing page is recognisably the same site.
+ * The header and footer of the public pages, around their content: the front page, the
+ * pricing page (`PricingPage`) and the story (`WhyPage`). One component so they cannot
+ * drift apart, and so each is recognisably the same site.
  *
  * The header's one link is the way back for people who already have an account, drawn as
  * the link it is. On the front page that is always Sign in, since `/` sends anyone signed
@@ -298,6 +298,9 @@ export function FrontShell({ children }: { children: ReactNode }) {
 
       <footer className="front-footer front-width">
         <nav aria-label="About Unbent">
+          {/* The story first, since it is about the product and the rest is about the
+              operator; a router link, since it is a page of this site. */}
+          <Link to={WHY}>Why Unbent</Link>
           {legal && <LegalLink href={legal.privacy}>Privacy</LegalLink>}
           {legal && <LegalLink href={legal.terms}>Terms</LegalLink>}
           {operator && <a href={`mailto:${operator.email}`}>Contact</a>}

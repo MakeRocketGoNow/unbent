@@ -17,6 +17,7 @@ vi.mock('../notes-api.js', () => ({ getConfig: () => getConfig() }));
 
 const { Route } = await import('./index.js');
 const { Route: PricingRoute } = await import('./pricing.js');
+const { Route: WhyRoute } = await import('./why.js');
 
 /**
  * Where the bare root sends people, which is the whole of what decides whether a fork
@@ -42,6 +43,13 @@ function harness(at = '/') {
     beforeLoad: PricingRoute.options.beforeLoad as any,
     component: () => <p>Pricing</p>,
   });
+  const why = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/why',
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    beforeLoad: WhyRoute.options.beforeLoad as any,
+    component: () => <p>Why Unbent exists</p>,
+  });
   const login = createRoute({
     getParentRoute: () => rootRoute,
     path: '/login',
@@ -53,7 +61,7 @@ function harness(at = '/') {
     component: () => <p>Your notes</p>,
   });
   const router = createRouter({
-    routeTree: rootRoute.addChildren([front, pricing, login, notes]),
+    routeTree: rootRoute.addChildren([front, pricing, why, login, notes]),
     history: createMemoryHistory({ initialEntries: [at] }),
     context: { queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }) },
   });
@@ -124,6 +132,26 @@ describe('/', () => {
     ensureSession.mockResolvedValue(null);
     getConfig.mockResolvedValue({ providers: ['password'] });
     harness('/pricing');
+    expect(await screen.findByText('Sign in')).toBeTruthy();
+  });
+
+  /** The story follows the pricing page's rules: a page for anyone, on the public instance only. */
+  it('shows /why to anyone on the public instance, and sends it to sign in elsewhere', async () => {
+    getConfig.mockResolvedValue({ providers: [], frontPage: true });
+    ensureSession.mockResolvedValue(null);
+    const router = harness('/why');
+    expect(await screen.findByText('Why Unbent exists')).toBeTruthy();
+    expect(router.state.location.pathname).toBe('/why');
+    cleanup();
+
+    ensureSession.mockResolvedValue({ user: { id: 'u1' } });
+    harness('/why');
+    expect(await screen.findByText('Why Unbent exists')).toBeTruthy();
+    cleanup();
+
+    ensureSession.mockResolvedValue(null);
+    getConfig.mockResolvedValue({ providers: ['password'] });
+    harness('/why');
     expect(await screen.findByText('Sign in')).toBeTruthy();
   });
 });

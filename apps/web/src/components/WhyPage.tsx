@@ -1,0 +1,206 @@
+import type { ReactNode } from 'react';
+import { Link } from '@tanstack/react-router';
+import { PLAN_PRICE_USD, TRIAL_DAYS } from '@unbent/shared';
+import { useSession } from '../auth-client.js';
+import { HOME, LOGIN } from '../auth-gate.js';
+import { usePageMeta, type PageMeta } from '../page-meta.js';
+import { FrontShell } from './FrontPage.js';
+
+/**
+ * What the tab, a search result and a link's card say this page is. Exported for the
+ * build, which writes the same into the page's static copy (`prerender.tsx`).
+ */
+export const WHY_META: PageMeta = {
+  title: 'Why Unbent exists',
+  description:
+    'A long-time Evernote user, thirteen thousand scanned notes, and the price increases that followed Evernote’s sale: the story behind an Evernote alternative that keeps your notes in Markdown you can take with you.',
+  image: '/front/desktop-light.webp',
+};
+
+/**
+ * Why Unbent exists, `/why`: the origin story (MAK-240).
+ *
+ * Written for one reader: someone who still uses Evernote, has years of notes in it, and
+ * has just been told what the next year will cost. They are deciding whether to leave,
+ * and most of what they find when they search for an alternative is a comparison table
+ * written by nobody who was there. This page is what happened to one archive, in the
+ * first person, with the public facts dated and linked and nothing else about the owner
+ * said at all. No grievance and no villain, on purpose: the reader has their own, and a
+ * page that argued would be one more thing to be sold. The facts about the owner are the
+ * ones on the public record, each with its source; the facts about the archive are the
+ * author's own.
+ *
+ * It is also the page a search for "Evernote alternative" or "export Evernote to
+ * Markdown" should land on, so those words appear where they fall naturally and nowhere
+ * they do not.
+ *
+ * The register is the README's ("Evernote's owner gave a lot of people a reason to
+ * leave") and `docs/billing.md`'s. The one call to action is the trial, the page's only
+ * filled control; someone signed in gets their notes as the way out instead, as on the
+ * pricing page. The prices are the shared constants, as everywhere.
+ *
+ * Prose rather than the front page's grid, in a reading column narrower than the front
+ * page's band (`.front-story`), because it is read top to bottom once rather than
+ * scanned.
+ */
+export function WhyPage() {
+  const { data: session } = useSession();
+  usePageMeta(WHY_META);
+
+  return (
+    <FrontShell>
+      <section className="front-hero front-width">
+        <h1>Why Unbent exists</h1>
+        <p className="front-lead">
+          I kept thirteen thousand notes in Evernote, most of them scanned paper. This is
+          what happened to that archive, and the promise Unbent was built around because of
+          it.
+        </p>
+      </section>
+
+      <article className="front-story front-width">
+        <Chapter title="An archive, not a notebook">
+          <p>
+            By the time I left, my Evernote account held about thirteen thousand notes, and
+            most of them were not notes in the usual sense. They were paper: receipts, bills,
+            manuals, letters, the contents of filing cabinets fed through a document scanner
+            a sheet at a time. Evernote read the text in every scan, so a bill could be found
+            by what it said, and that was the whole point. The archive was where paper went to
+            become searchable, and then the paper went in the recycling.
+          </p>
+          <p>
+            That is a different relationship with an app than a to-do list has. Nothing in it
+            can be made again, most of it will never be opened, and one day one of them
+            matters. What I was paying for was that it would be there.
+          </p>
+        </Chapter>
+
+        <Chapter title="What changed">
+          <p>
+            In{' '}
+            <Source href="https://siliconangle.com/2022/11/16/22-years-founded-evernote-acquired-italian-technology-company/">
+              November 2022
+            </Source>{' '}
+            Evernote announced that it was being bought by Bending Spoons, an app company in
+            Milan. In{' '}
+            <Source href="https://techcrunch.com/2023/11/29/its-official-evernote-will-restrict-free-users-to-50-notes/">
+              February 2023
+            </Source>{' '}
+            the new owner laid off 129 people, saying the product had been unprofitable for
+            years, and that{' '}
+            <Source href="https://www.engadget.com/evernote-is-relocating-to-europe-after-laying-off-most-of-its-us-workforce-205012133.html">
+              July
+            </Source>{' '}
+            nearly everyone left in the United States and Chile, moving the product to a team
+            in Europe. From{' '}
+            <Source href="https://techcrunch.com/2023/11/29/its-official-evernote-will-restrict-free-users-to-50-notes/">
+              December 2023
+            </Source>{' '}
+            a free account could hold fifty notes in one notebook. In{' '}
+            <Source href="https://www.tamingthetrunk.com/p/evernote-increases-prices-and-adds">
+              November 2025
+            </Source>{' '}
+            the Personal and Professional plans were retired for two new ones: Starter, at $99
+            a year with a thousand-note cap, and Advanced, at $249.99 a year, the only plan
+            with no cap, which is the one existing subscribers were offered at renewal.
+          </p>
+          <p>
+            In between, the renewals came. The plan I was on went up by more than it had cost
+            the year before, with the same notes in it, and the people it landed on were the
+            ones who had been there longest, because an archive of thirteen thousand scans is
+            exactly the thing you cannot move on a whim. None of this is a secret plan against
+            anyone, and none of it is unusual. A company bought a product that was losing
+            money and set about making it pay. But it could set the price it did because
+            leaving was hard, and it was hard because the notes were in a format that only one
+            app could read.
+          </p>
+        </Chapter>
+
+        <Chapter title="What a note you pay to keep should be">
+          <p>
+            The conclusion I came to is short, and it is the whole design of Unbent. If you pay
+            someone to keep your notes, the notes have to be yours in a way that does not
+            depend on them.
+          </p>
+          <ul>
+            <li>
+              <strong>Markdown, byte for byte.</strong> A note is a Markdown file with
+              frontmatter, saved exactly as typed. No reflowed lists, no italics quietly
+              rewritten, no escaped characters appearing in your text overnight. A format the
+              app rewrites behind your back is a format you do not actually own.
+            </li>
+            <li>
+              <strong>An export that needs no Unbent.</strong> One folder per note, its Markdown
+              and its files beside it. Read it, grep it, back it up, open it in anything. You
+              can take it as often as you like, and nothing in it refers to us.
+            </li>
+            <li>
+              <strong>A way in from where you are.</strong> An Evernote export goes in whole,
+              from the browser: each notebook becomes a notebook, every note keeps its tags,
+              its dates and its scans, and the text in every scan is searchable again. That is
+              what it means to export Evernote to Markdown rather than to another silo.
+            </li>
+          </ul>
+          <p>
+            So Unbent is an Evernote alternative built by someone who was there, for the
+            archive I had, and the import exists so that leaving is easy. The name says where
+            it came from.
+          </p>
+        </Chapter>
+
+        <Chapter title="What that promise costs us">
+          <p>
+            A promise like that has a price, and it is ours rather than yours. If you stop
+            paying, nothing is held hostage: the account turns read-only, every note still
+            opens, searches and exports, and it stays that way for at least a year, with a
+            reminder to export before anything is removed. We cannot hold your archive as the
+            reason to renew, so Unbent has to be worth paying for on what it does this year.
+            That is the right way round, and it is the only way I would want to be on the
+            other side of it.
+          </p>
+        </Chapter>
+
+        <div className="front-cta">
+          {session ? (
+            <Link to={HOME} className="btn btn-secondary front-cta-button">
+              Open your notes
+            </Link>
+          ) : (
+            <>
+              {/* An anchor wearing the filled button's shape: the one thing this page is
+                  for, and a real link, as the front page's is. */}
+              <Link to={LOGIN} className="btn btn-primary front-cta-button">
+                Start your free trial
+              </Link>
+              <p className="muted">
+                {TRIAL_DAYS} days free, no card needed. Then ${PLAN_PRICE_USD} a year.
+              </p>
+            </>
+          )}
+        </div>
+      </article>
+    </FrontShell>
+  );
+}
+
+/** A heading and the paragraphs under it, on the story's rhythm. */
+function Chapter({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section>
+      <h2>{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+/**
+ * A dated fact's source: the date is the link, so the sentence reads as a sentence and
+ * the reader who wants the record can take it. Off-site, so a plain anchor.
+ */
+function Source({ href, children }: { href: string; children: ReactNode }) {
+  return (
+    <a href={href} rel="noopener noreferrer">
+      {children}
+    </a>
+  );
+}
