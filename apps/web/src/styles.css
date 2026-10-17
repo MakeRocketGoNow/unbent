@@ -10373,6 +10373,46 @@ button.settings-nav-item {
 
 .front-story li + li { margin-top: 0.6rem; }
 
+/* The renewals: a run of years, the price, and a word on the ones that need one. Rows
+   rather than a chart, because six numbers read faster as numbers. The years column is
+   a row heading and keeps its ink; the note is the quiet column. */
+.front-story table {
+  width: 100%;
+  margin: 1.25rem 0;
+  border-collapse: collapse;
+}
+
+.front-story th,
+.front-story td {
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: baseline;
+}
+
+.front-story th {
+  font-weight: 500;
+  white-space: nowrap;
+  padding-right: 1.5rem;
+}
+
+.front-story td:nth-child(2) {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  padding-right: 1.5rem;
+}
+
+.front-story td:last-child { width: 100%; }
+
+/* The renewal notice, quoted: set in from the margin under a rule in the accent, so it
+   reads as somebody else's words. */
+.front-story blockquote {
+  margin: 1.25rem 0;
+  padding-left: 1.25rem;
+  border-left: 3px solid var(--accent);
+  color: var(--muted);
+}
+
 .front-story .front-cta { margin-top: 3.5rem; }
 
 /* The pricing page (`PricingPage.tsx`): the offer under the hero's heading, then the way

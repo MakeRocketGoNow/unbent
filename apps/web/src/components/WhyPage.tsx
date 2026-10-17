@@ -13,9 +13,23 @@ import { FrontShell } from './FrontPage.js';
 export const WHY_META: PageMeta = {
   title: 'Why Unbent exists',
   description:
-    'A long-time Evernote user, thirteen thousand scanned notes, and the price increases that followed Evernote’s sale: the story behind an Evernote alternative that keeps your notes in Markdown you can take with you.',
+    'Fifteen years of Evernote renewals, thirteen thousand scanned notes, and the notice that doubled the price again: the story behind an Evernote alternative that keeps your notes in Markdown you can take with you.',
   image: '/front/desktop-light.webp',
 };
+
+/**
+ * What one account paid Evernote, a year at a time: the author's own renewals, from the
+ * first in September 2011 to the notice for the one that was not taken. Each row is a
+ * run of years at one price, and the last is what was asked, not paid.
+ */
+const RENEWALS: { years: string; price: string; note?: string }[] = [
+  { years: '2011 to 2015', price: '$45' },
+  { years: '2016', price: '$59.99' },
+  { years: '2017 to 2022', price: '$69.99' },
+  { years: '2023', price: '$77.99', note: 'the first renewal after the sale' },
+  { years: '2024 and 2025', price: '$129.99' },
+  { years: '2026', price: '$249.99', note: 'asked for, and the year I left' },
+];
 
 /**
  * Why Unbent exists, `/why`: the origin story (MAK-240).
@@ -28,7 +42,7 @@ export const WHY_META: PageMeta = {
  * said at all. No grievance and no villain, on purpose: the reader has their own, and a
  * page that argued would be one more thing to be sold. The facts about the owner are the
  * ones on the public record, each with its source; the facts about the archive are the
- * author's own.
+ * author's own, and the renewals are quoted from the account rather than described.
  *
  * It is also the page a search for "Evernote alternative" or "export Evernote to
  * Markdown" should land on, so those words appear where they fall naturally and nowhere
@@ -52,21 +66,22 @@ export function WhyPage() {
       <section className="front-hero front-width">
         <h1>Why Unbent exists</h1>
         <p className="front-lead">
-          I kept thirteen thousand notes in Evernote, most of them scanned paper. This is
-          what happened to that archive, and the promise Unbent was built around because of
-          it.
+          I paid for Evernote every September for fifteen years and kept thirteen thousand
+          notes in it, most of them scanned paper. This is what happened to that archive, and
+          the promise Unbent was built around because of it.
         </p>
       </section>
 
       <article className="front-story front-width">
         <Chapter title="An archive, not a notebook">
           <p>
-            By the time I left, my Evernote account held about thirteen thousand notes, and
-            most of them were not notes in the usual sense. They were paper: receipts, bills,
-            manuals, letters, the contents of filing cabinets fed through a document scanner
-            a sheet at a time. Evernote read the text in every scan, so a bill could be found
-            by what it said, and that was the whole point. The archive was where paper went to
-            become searchable, and then the paper went in the recycling.
+            I started with Evernote in 2011. By the time I left, the account held about
+            thirteen thousand notes, and most of them were not notes in the usual sense. They
+            were paper: receipts, bills, manuals, letters, the contents of filing cabinets fed
+            through a document scanner a sheet at a time. Evernote read the text in every
+            scan, so a bill could be found by what it said, and that was the whole point. The
+            archive was where paper went to become searchable, and then the paper went in the
+            recycling.
           </p>
           <p>
             That is a different relationship with an app than a to-do list has. Nothing in it
@@ -105,14 +120,59 @@ export function WhyPage() {
             with no cap, which is the one existing subscribers were offered at renewal.
           </p>
           <p>
-            In between, the renewals came. The plan I was on went up by more than it had cost
-            the year before, with the same notes in it, and the people it landed on were the
-            ones who had been there longest, because an archive of thirteen thousand scans is
-            exactly the thing you cannot move on a whim. None of this is a secret plan against
-            anyone, and none of it is unusual. A company bought a product that was losing
-            money and set about making it pay. But it could set the price it did because
-            leaving was hard, and it was hard because the notes were in a format that only one
+            None of this is a secret plan against anyone, and none of it is unusual. A company
+            bought a product that was losing money and set about making it pay. The part that
+            is easy to miss from the outside is who it landed on.
+          </p>
+        </Chapter>
+
+        <Chapter title="What one account paid">
+          <p>
+            The renewals tell it better than I can. This is what my account was charged every
+            September, from the first year to the notice for the one I did not take:
+          </p>
+          <table>
+            <tbody>
+              {RENEWALS.map((row) => (
+                <tr key={row.years}>
+                  <th scope="row">{row.years}</th>
+                  <td>{row.price}</td>
+                  <td className="muted">{row.note}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p>
+            Forty-five dollars a year for the first five years, seventy for the next six. The
+            sale closed in early 2023, and that September cost eight dollars more. The next
+            one nearly doubled. Then, in August 2026, the mail came that every long-time
+            subscriber was getting:
+          </p>
+          <blockquote>
+            <p>
+              Your yearly Evernote subscription will renew soon. We are sending you this email
+              to inform you that your yearly Evernote subscription will renew in 30 days for
+              249.99 USD.
+            </p>
+          </blockquote>
+          <p>
+            Two doublings in three years, with the same notes in it. The price could do that
+            because the people it landed on were the ones who had been there longest, and an
+            archive of thirteen thousand scans is exactly the thing you cannot move on a whim.
+            Leaving was hard, and it was hard because the notes were in a format that only one
             app could read.
+          </p>
+        </Chapter>
+
+        <Chapter title="What I went looking for">
+          <p>
+            I did look for somewhere to take it before deciding to build. What the archive
+            needed was short to say and hard to find: a note that can hold several files and
+            carry tags, search that reads the text inside a scanned PDF, and a hosted service,
+            so the archive is on the phone and the laptop without a server of my own to run.
+            Notion has the note, but did not, when I looked, search inside an attached PDF.
+            Obsidian keeps its notes on your own device and is not a hosted service. The
+            Evernote alternative I wanted was the one that had just doubled its price.
           </p>
         </Chapter>
 
@@ -141,11 +201,6 @@ export function WhyPage() {
               what it means to export Evernote to Markdown rather than to another silo.
             </li>
           </ul>
-          <p>
-            So Unbent is an Evernote alternative built by someone who was there, for the
-            archive I had, and the import exists so that leaving is easy. The name says where
-            it came from.
-          </p>
         </Chapter>
 
         <Chapter title="What that promise costs us">
@@ -155,8 +210,11 @@ export function WhyPage() {
             opens, searches and exports, and it stays that way for at least a year, with a
             reminder to export before anything is removed. We cannot hold your archive as the
             reason to renew, so Unbent has to be worth paying for on what it does this year.
-            That is the right way round, and it is the only way I would want to be on the
-            other side of it.
+            That is the right way round, and it is the only side of it I would want to be on.
+          </p>
+          <p>
+            Evernote&apos;s owner is called Bending Spoons. The name is the whole brief: your
+            notes, unbent.
           </p>
         </Chapter>
 
