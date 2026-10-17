@@ -18,6 +18,7 @@ import {
   PhoneAppsFeatureIcon,
   PlainFilesFeatureIcon,
   ReadOnlyFeatureIcon,
+  ScanInFeatureIcon,
   ScanTextFeatureIcon,
   SearchFilesFeatureIcon,
   SourceFeatureIcon,
@@ -107,19 +108,27 @@ export function FrontPage() {
         />
       </figure>
 
+      {/* The lead section is the paperless office, named as such, because it is the use
+          the app was built for and the one its buyer is searching for. Its four cards are
+          the workflow in order (a scan comes in, is filed, is found, is counted), two by
+          two rather than three and an orphan. */}
       <Section
-        title="Find it by what it says"
-        intro="Bills, receipts, manuals, letters: search reads the words inside them, so you file a thing once and find it by what is written on it."
+        title="Your paperless office"
+        intro="Scan the bills, receipts, manuals and letters once and recycle the paper. Unbent files them, tags them, and finds them by what is written on them."
       >
-        <div className="front-grid">
-          <Point icon={<SearchFilesFeatureIcon />} title="Search inside your files">
-            Search reaches the text in every PDF you attach, and pictures and scans are read
-            too, so a photo of a receipt turns up under the name of the shop.
+        <div className="front-grid front-grid-pairs">
+          <Point icon={<ScanInFeatureIcon />} title="Scan it, drop it in">
+            Drop a stack of PDFs or photos on the list and each becomes a note with the file
+            attached. Install the app and your scanner can send straight to it.
           </Point>
           <Point icon={<AutofillFeatureIcon />} title="One press files a scan">
             Press Auto-fill and an AI reads the scan and fills in its title, its notebook and
             any empty fields: the date, the total, who it was from. You check it instead of
             typing it, and it only runs when you press it.
+          </Point>
+          <Point icon={<SearchFilesFeatureIcon />} title="Search inside your files">
+            Search reaches the text in every PDF you attach, and pictures and scans are read
+            too, so a photo of a receipt turns up under the name of the shop.
           </Point>
           <Point icon={<FieldsFeatureIcon />} title="Notebooks that work like a spreadsheet">
             Give a notebook dates, amounts, ratings or choices, then see it as a table and

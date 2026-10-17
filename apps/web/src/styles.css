@@ -10272,6 +10272,13 @@ button.settings-nav-item {
   margin-top: 1.75rem;
 }
 
+/* Four cards two by two, for the section whose cards are a workflow in order: three
+   across would leave the fourth step alone on a row. On a phone it is one column like
+   the rest. */
+.front-grid-pairs {
+  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+}
+
 .front-point h3 {
   margin: 0;
   font-size: 1.05rem;

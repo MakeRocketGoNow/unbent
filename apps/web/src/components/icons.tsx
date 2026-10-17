@@ -41,6 +41,7 @@ import {
   Pencil,
   Phone,
   Plus,
+  ScanLine,
   ScanText,
   Search,
   Settings,
@@ -711,6 +712,10 @@ export function AssistantFeatureIcon() {
 }
 export function AutofillFeatureIcon() {
   return <FeatureIcon icon={Sparkles} />;
+}
+/** A scan arriving: dropped on the list, or sent by the scanner to the installed app. */
+export function ScanInFeatureIcon() {
+  return <FeatureIcon icon={ScanLine} />;
 }
 /** An assistant reading the text held for a scan. */
 export function ScanTextFeatureIcon() {
