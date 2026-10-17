@@ -1,5 +1,5 @@
 import type { LlmJob } from '@unbent/shared';
-import type { UsageEntry } from '../store/llm-usage.js';
+import type { PressLimits, UsageEntry } from '../store/llm-usage.js';
 import { LlmError, type LanguageModel, type LlmUsage, type Metered } from './llm.js';
 import { billingOn, type PaddleEnv } from './paddle.js';
 import { planFor, planStateOf, type PlanRow } from './plan.js';
@@ -33,17 +33,37 @@ export interface UsageEnv extends PaddleEnv {
    * trial, and this setting is never read.
    */
   AUTOFILL_TRIAL_DAILY_CAP?: string;
+  /**
+   * The most one account's Auto-fill may cost the instance in a calendar year, in
+   * cents, summed from the tokens the counter records and priced with the table in
+   * `@unbent/shared` (`usageCents`); a press past it is answered 429 until 1 January.
+   * The daily cap bounds a loop; this bounds the year a loop never quite trips it on,
+   * and what a press that reads a stack of scans on a dear model adds up to. Unset
+   * enforces nothing. unbent.app sets 5000 (fifty dollars): more than the plan costs,
+   * and well under what a hundred days at the daily cap could reach.
+   */
+  AUTOFILL_YEARLY_CENTS?: string;
+  /**
+   * The same for an account on its trial, for the reason `AUTOFILL_TRIAL_DAILY_CAP`
+   * gives: a trial is free to make, so its ceiling has to be one a loop of trials
+   * cannot multiply into a bill. Unset, a trial gets `AUTOFILL_YEARLY_CENTS`. unbent.app
+   * sets 300 (three dollars), about the cost of filing a fortnight's worth of scans.
+   */
+  AUTOFILL_TRIAL_YEARLY_CENTS?: string;
 }
 
+/** The four settings `parseCap` reads, each a whole number or nothing. */
+type CapSetting = 'AUTOFILL_DAILY_CAP' | 'AUTOFILL_TRIAL_DAILY_CAP' | 'AUTOFILL_YEARLY_CENTS' | 'AUTOFILL_TRIAL_YEARLY_CENTS';
+
 /** Each setting warned about once (see `parseCap`), by name. */
-const warned = new Set<keyof UsageEnv>();
+const warned = new Set<CapSetting>();
 
 /**
  * A cap setting's value, or null for none. Anything but a whole number of at least one
  * is none, and says so in the log: a typo in a variable must not turn into a cap of zero
  * that refuses every press on the instance.
  */
-function parseCap(env: UsageEnv, name: 'AUTOFILL_DAILY_CAP' | 'AUTOFILL_TRIAL_DAILY_CAP'): number | null {
+function parseCap(env: UsageEnv, name: CapSetting): number | null {
   const raw = env[name]?.trim();
   if (!raw) return null;
   if (!/^\d+$/.test(raw) || Number(raw) < 1) {
@@ -71,18 +91,49 @@ export function trialDailyCap(env: UsageEnv): number | null {
   return parseCap(env, 'AUTOFILL_TRIAL_DAILY_CAP') ?? dailyCap(env);
 }
 
+/** The year's spend cap, `AUTOFILL_YEARLY_CENTS`, or null for none. */
+export function yearlyCents(env: UsageEnv): number | null {
+  return parseCap(env, 'AUTOFILL_YEARLY_CENTS');
+}
+
+/** The trial's, `AUTOFILL_TRIAL_YEARLY_CENTS`, falling back to the ordinary one as `trialDailyCap` does. */
+export function trialYearlyCents(env: UsageEnv): number | null {
+  return parseCap(env, 'AUTOFILL_TRIAL_YEARLY_CENTS') ?? yearlyCents(env);
+}
+
 /**
- * The cap that applies to this account: the trial cap while its plan is a trial, the
- * ordinary cap otherwise. `plan` is the row `requireActivePlan` put on the context for
+ * The number that applies to this account: the trial's while its plan is a trial, the
+ * ordinary one otherwise. `plan` is the row `requireActivePlan` put on the context for
  * the press, or one read for the usage page, and is undefined where billing is off,
  * which is also when no account is on a trial; a missing row with billing on reads as
  * `planStateOf` reads it, a trial that starts now, since `planFor` would have written
  * one. Nothing but the state is read off the row: a comped account and a paying one get
  * the same number, since the question is only whether the account is free to make.
  */
+function forPlan(
+  env: UsageEnv,
+  plan: PlanRow | null | undefined,
+  now: number,
+  ordinary: (env: UsageEnv) => number | null,
+  trial: (env: UsageEnv) => number | null,
+): number | null {
+  if (!billingOn(env)) return ordinary(env);
+  return planStateOf(plan ?? null, now) === 'trial' ? trial(env) : ordinary(env);
+}
+
+/** The daily cap that applies to this account; see `forPlan`. */
 export function capFor(env: UsageEnv, plan: PlanRow | null | undefined, now: number): number | null {
-  if (!billingOn(env)) return dailyCap(env);
-  return planStateOf(plan ?? null, now) === 'trial' ? trialDailyCap(env) : dailyCap(env);
+  return forPlan(env, plan, now, dailyCap, trialDailyCap);
+}
+
+/** The yearly spend cap that applies to this account; see `forPlan`. */
+export function yearlyCentsFor(env: UsageEnv, plan: PlanRow | null | undefined, now: number): number | null {
+  return forPlan(env, plan, now, yearlyCents, trialYearlyCents);
+}
+
+/** Both limits a press is checked against, for this account. */
+export function limitsFor(env: UsageEnv, plan: PlanRow | null | undefined, now: number): PressLimits {
+  return { cap: capFor(env, plan, now), yearlyCents: yearlyCentsFor(env, plan, now) };
 }
 
 /**
@@ -113,6 +164,21 @@ export function capReached(cap: number, now: number): { message: string; retryAf
   return {
     message: `Auto-fill can be used ${presses} on this instance, and today's are used up. It will work again ${when}.`,
     retryAfter: seconds,
+  };
+}
+
+/**
+ * What the button says when the year's spend cap refuses a press. No dollars: the cap is
+ * the instance's cost, which is not the person's business and would read as a bill, so
+ * the sentence says what is included has been used. The year is UTC, like the day, and
+ * the next one starts on 1 January whatever the hour here; `retryAfter` is the seconds
+ * until it does, for anything that reads headers.
+ */
+export function yearReached(now: number): { message: string; retryAfter: number } {
+  const next = Date.UTC(new Date(now).getUTCFullYear() + 1, 0, 1);
+  return {
+    message: "This year's included Auto-fill has been used up on this account. It will work again on 1 January.",
+    retryAfter: Math.max(1, Math.ceil((next - now) / 1000)),
   };
 }
 

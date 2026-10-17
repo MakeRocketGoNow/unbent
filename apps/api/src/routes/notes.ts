@@ -17,7 +17,7 @@ import { copyAttachments } from '../lib/copy-attachments.js';
 import { StorageFull, quotaOf, storageFullBody } from '../lib/quota.js';
 import { canAutofill, JevError, jevFrom } from '../lib/jev.js';
 import { canUseLlm, llmFrom } from '../lib/llm.js';
-import { capFor, capForUser } from '../lib/llm-usage.js';
+import { capForUser, limitsFor } from '../lib/llm-usage.js';
 import { isOperator } from '../lib/instance.js';
 import { nextCursor } from '../lib/notes-repo.js';
 import { autofillReaders } from '../lib/read-attachment.js';
@@ -261,9 +261,9 @@ export const notes = new Hono<AppEnv>()
    * each with its confidence. Suggestions only: nothing in the note is written; see
    * `AutofillSuggestion` for why the client applies them. What is written is the press
    * itself and what the model cost, to the account's usage counter, and a press past the
-   * day's cap is a 429 with a sentence the button shows; see `press` in
-   * lib/autofill-press.ts. Which cap is the plan's (`capFor`): `AUTOFILL_TRIAL_DAILY_CAP`
-   * for an account on its trial, `AUTOFILL_DAILY_CAP` otherwise, read off the row
+   * day's cap or the year's spend is a 429 with a sentence the button shows; see `press`
+   * in lib/autofill-press.ts. Which numbers are the plan's (`limitsFor`): the trial's
+   * for an account on its trial, the ordinary ones otherwise, read off the row
    * `requireActivePlan` left on the context when it let this write through.
    *
    * A POST, because it is not free: every call is a round trip to a paid API, and nothing
@@ -281,7 +281,7 @@ export const notes = new Hono<AppEnv>()
           readers: autofillReaders(c.env),
           jev: canAutofill(c.env) ? jevFrom(c.env) : null,
           llm: canUseLlm(c.env) ? llmFrom(c.env) : undefined,
-          cap: capFor(c.env, c.get('plan'), Date.now()),
+          limits: limitsFor(c.env, c.get('plan'), Date.now()),
           operator: isOperator(c.env, c.get('user')?.email),
           defer: (work) => c.executionCtx.waitUntil(work),
         },

@@ -1291,7 +1291,7 @@ describe('rows read on an archive-sized store', () => {
       await measure('texts by id', () => stub.textsById(Array.from({ length: 25 }, (_, k) => `att-n${String(k * 3).padStart(5, '0')}`))),
       // An Auto-fill press: the note, its unread files, and the day's press row checked and
       // counted. Then the year read back for Maintenance.
-      await measure('autofill press', () => stub.autofillPrelude('n01500', 5, { cap: 1000 })),
+      await measure('autofill press', () => stub.autofillPrelude('n01500', 5, { cap: 1000, yearlyCents: null })),
       await measure('autofill usage', () => stub.autofillUsage()),
       // History. A save inside the window asks for the newest copy and keeps nothing;
       // one outside it keeps a copy and prunes the note's oldest. Then the sheet's

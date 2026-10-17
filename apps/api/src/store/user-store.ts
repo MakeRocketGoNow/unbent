@@ -16,7 +16,7 @@ import {
 } from '@unbent/shared';
 import { AttachmentsStore, type FileSummary } from './attachments.js';
 import { DeletedBlobs } from './deleted-blobs.js';
-import { LlmUsageCounter, type UsageEntry } from './llm-usage.js';
+import { LlmUsageCounter, type PressLimits, type UsageEntry } from './llm-usage.js';
 import { cutByBytes, Feed, FEED_META, FEED_PAGE_BYTES, lastWordPerEntity, type FeedRow } from './feed.js';
 import { classify, liftLiterals, scanStatements, statementKind, statementText, StoreLoading, tooLongToRun, type LoadMarker } from './load.js';
 import { appliedMigrations, migrate } from './migrate.js';
@@ -1182,12 +1182,12 @@ export class UserStore extends DurableObject<StoreEnv> {
    * answer is never counted; and only for a live note, since an id that names nothing
    * must not cost anyone a press.
    */
-  autofillPrelude(id: string, ownFilesToRead: number, press?: { cap: number | null }) {
+  autofillPrelude(id: string, ownFilesToRead: number, press?: PressLimits) {
     this.ready();
     return this.sql.tx(() => {
       const note = this.notes.get(id);
       if (!note) return null;
-      const counted = press ? this.llmUsage.press(press.cap, Date.now()) : null;
+      const counted = press ? this.llmUsage.press(press, Date.now()) : null;
       if (counted && !counted.allowed) return { note, forText: [], forVision: [], press: counted };
       return {
         note,

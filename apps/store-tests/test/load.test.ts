@@ -63,7 +63,7 @@ async function populate(stub: ReturnType<typeof freshStore>['stub']) {
   await stub.recordAttachment({ id: `${kept.id}-gone`, noteId: kept.id, filename: 'gone.pdf', contentType: 'application/pdf', size: 10, r2Key: `users/x/${kept.id}/gone.pdf` });
   await stub.removeAttachment(kept.id, 'gone.pdf');
   // An Auto-fill press and what its title cost, so `llm_usage` has rows to carry.
-  await stub.autofillPrelude(kept.id, 5, { cap: null });
+  await stub.autofillPrelude(kept.id, 5, { cap: null, yearlyCents: null });
   await stub.recordLlmUsage([{ job: 'title', model: 'claude-opus-5', inputTokens: 400, outputTokens: 20, cacheReadTokens: 0, cacheWriteTokens: 0 }]);
   return { kept, trashed, notebook };
 }

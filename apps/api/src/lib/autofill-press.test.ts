@@ -3,7 +3,8 @@ import type { FieldDef } from '@unbent/shared';
 import { press, type PressDeps } from './autofill-press.js';
 import type { Jev } from './jev.js';
 import { LlmError, type LanguageModel, type LlmUsage } from './llm.js';
-import { capFor, capReached, dailyCap, trialDailyCap } from './llm-usage.js';
+import { capFor, capReached, dailyCap, limitsFor, trialDailyCap, yearlyCentsFor, yearReached } from './llm-usage.js';
+import type { PressLimits } from '../store/llm-usage.js';
 import type { PlanRow } from './plan.js';
 
 /** A Jev with no opinion about anything: what is counted here is the model, not the filing. */
@@ -45,13 +46,19 @@ const photo = { id: 'a1', noteId: 'n1', filename: 'card.jpg', contentType: 'imag
  * picture to read and a notebook with one text field, and a model that answers each job
  * at a cost of its own. `today` is the presses the day has had before this one.
  */
-function setup(opts: { cap?: number | null; today?: number; jev?: Jev | null; title?: LanguageModel['title'] } = {}) {
+function setup(
+  opts: { cap?: number | null; yearlyCents?: number | null; spentCents?: number; today?: number; jev?: Jev | null; title?: LanguageModel['title'] } = {},
+) {
   let today = opts.today ?? 0;
   const recordText = vi.fn(async () => {});
   const recordLlmUsage = vi.fn(async () => {});
-  const autofillPrelude = vi.fn(async (_id: string, _n: number, counting?: { cap: number | null }) => {
+  // The store's check, as store/llm-usage.ts makes it: the day first, then the year's spend.
+  const autofillPrelude = vi.fn(async (_id: string, _n: number, counting?: PressLimits) => {
     if (!counting) return { note, forText: [], forVision: [photo], press: null };
-    if (counting.cap !== null && today >= counting.cap) return { note, forText: [], forVision: [], press: { allowed: false, today } };
+    if (counting.cap !== null && today >= counting.cap) return { note, forText: [], forVision: [], press: { allowed: false, today, reason: 'day' as const } };
+    if (counting.yearlyCents !== null && (opts.spentCents ?? 0) >= counting.yearlyCents) {
+      return { note, forText: [], forVision: [], press: { allowed: false, today, reason: 'year' as const } };
+    }
     today += 1;
     return { note, forText: [], forVision: [photo], press: { allowed: true, today } };
   });
@@ -81,7 +88,7 @@ function setup(opts: { cap?: number | null; today?: number; jev?: Jev | null; ti
       title: opts.title ?? (async () => ({ value: 'Acme Hardware Receipt', usage: cost(400, 20) })),
       textFields: async () => ({ value: { field_0: 'Acme Hardware' }, usage: cost(450, 30) }),
     },
-    cap: opts.cap ?? null,
+    limits: { cap: opts.cap ?? null, yearlyCents: opts.yearlyCents ?? null },
     operator: false,
     now: Date.UTC(2026, 9, 8, 18, 0),
   };
@@ -95,7 +102,7 @@ describe('one press, counted', () => {
     expect(outcome.kind).toBe('filed');
 
     // The press itself, counted in the call that read the note.
-    expect(autofillPrelude).toHaveBeenCalledWith('n1', 5, { cap: null });
+    expect(autofillPrelude).toHaveBeenCalledWith('n1', 5, { cap: null, yearlyCents: null });
     // The reading's cost rides with its text, in one write.
     expect(recordText).toHaveBeenCalledTimes(1);
     expect(recordText).toHaveBeenCalledWith(expect.objectContaining({ attachmentId: 'a1', readBy: 'vision' }), { job: 'read', ...cost(1500, 300) });
@@ -119,6 +126,23 @@ describe('one press, counted', () => {
 
     // The last one under the cap still goes through.
     expect((await press(setup({ cap: 3, today: 2 }).deps, 'n1')).kind).toBe('filed');
+  });
+
+  it('refuses a press past the year’s spend with a sentence that names no money, and reads nothing', async () => {
+    const { deps, recordText, recordLlmUsage } = setup({ yearlyCents: 300, spentCents: 300 });
+    const outcome = await press(deps, 'n1');
+    expect(outcome).toEqual({ kind: 'capped', ...yearReached(deps.now!) });
+    expect(outcome.kind === 'capped' && outcome.message).toBe(
+      "This year's included Auto-fill has been used up on this account. It will work again on 1 January.",
+    );
+    expect(outcome.kind === 'capped' && outcome.message).not.toMatch(/\$|cent|dollar/);
+    expect(recordText).not.toHaveBeenCalled();
+    expect(recordLlmUsage).not.toHaveBeenCalled();
+
+    // A cent under the cap still goes through, and the day's refusal comes first.
+    expect((await press(setup({ yearlyCents: 300, spentCents: 299.5 }).deps, 'n1')).kind).toBe('filed');
+    const both = await press(setup({ cap: 1, today: 1, yearlyCents: 300, spentCents: 300 }).deps, 'n1');
+    expect(both.kind === 'capped' && both.message).toMatch(/^Auto-fill can be used once a day/);
   });
 
   it('counts nothing on an instance with no Jev, and answers 404 before 503', async () => {
@@ -249,6 +273,31 @@ describe('the cap', () => {
       expect(capReached(capFor(both, trial, now)!, now).message).toMatch(/^Auto-fill can be used 100 times a day/);
       expect(capReached(capFor(both, paying, now)!, now).message).toMatch(/^Auto-fill can be used 1000 times a day/);
     });
+
+    it('chooses the year’s spend cap the same way, with the same fallback', () => {
+      const quiet = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const cents = { ...paddle, AUTOFILL_YEARLY_CENTS: '5000', AUTOFILL_TRIAL_YEARLY_CENTS: '300' };
+      expect(yearlyCentsFor(cents, trial, now)).toBe(300);
+      expect(yearlyCentsFor(cents, paying, now)).toBe(5000);
+      expect(yearlyCentsFor(cents, comped, now)).toBe(5000);
+      expect(yearlyCentsFor({ ...paddle, AUTOFILL_YEARLY_CENTS: '5000' }, trial, now)).toBe(5000);
+      expect(yearlyCentsFor({ ...paddle, AUTOFILL_YEARLY_CENTS: '5000', AUTOFILL_TRIAL_YEARLY_CENTS: 'three' }, trial, now)).toBe(5000);
+      expect(yearlyCentsFor({ ...paddle }, trial, now)).toBeNull();
+      // Billing off: the ordinary number for everyone, and the trial's never read.
+      expect(yearlyCentsFor({ AUTOFILL_YEARLY_CENTS: '5000', AUTOFILL_TRIAL_YEARLY_CENTS: '300' }, trial, now)).toBe(5000);
+      // Both limits at once, as the press is handed them.
+      expect(limitsFor({ ...both, ...cents }, trial, now)).toEqual({ cap: 100, yearlyCents: 300 });
+      expect(limitsFor({ ...both, ...cents }, paying, now)).toEqual({ cap: 1000, yearlyCents: 5000 });
+      expect(limitsFor({}, undefined, now)).toEqual({ cap: null, yearlyCents: null });
+      quiet.mockRestore();
+    });
+  });
+
+  it('says when the year’s Auto-fill returns, in seconds to 1 January UTC', () => {
+    const { message, retryAfter } = yearReached(Date.UTC(2026, 11, 31, 23, 0));
+    expect(message).toBe("This year's included Auto-fill has been used up on this account. It will work again on 1 January.");
+    expect(retryAfter).toBe(3600);
+    expect(yearReached(Date.UTC(2026, 0, 1, 0, 0)).retryAfter).toBe(365 * 86_400);
   });
 
   it('says how long until the next UTC day, in hours', () => {

@@ -1,5 +1,6 @@
 import { runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
+import { JEV_PRESS_CENTS } from '@unbent/shared';
 import { feedSeq, freshStore } from './helpers.js';
 
 /**
@@ -27,7 +28,7 @@ async function withNote(label: string) {
 describe('the usage counter', () => {
   it('holds the counts of one press: the press, its reading, its title and its fields', async () => {
     const { stub, noteId } = await withNote('usage-press');
-    const prelude = await stub.autofillPrelude(noteId, 5, { cap: null });
+    const prelude = await stub.autofillPrelude(noteId, 5, { cap: null, yearlyCents: null });
     expect(prelude?.press).toEqual({ allowed: true, today: 1 });
     expect(prelude?.forVision.map((f) => f.id)).toEqual(['a1']);
 
@@ -57,18 +58,62 @@ describe('the usage counter', () => {
 
   it('refuses a press past the cap without counting it or reading the files, and lets the last one under through', async () => {
     const { stub, noteId } = await withNote('usage-cap');
-    for (let i = 1; i <= 3; i++) expect((await stub.autofillPrelude(noteId, 5, { cap: 3 }))?.press).toEqual({ allowed: true, today: i });
-    const refused = await stub.autofillPrelude(noteId, 5, { cap: 3 });
-    expect(refused?.press).toEqual({ allowed: false, today: 3 });
+    for (let i = 1; i <= 3; i++) expect((await stub.autofillPrelude(noteId, 5, { cap: 3, yearlyCents: null }))?.press).toEqual({ allowed: true, today: i });
+    const refused = await stub.autofillPrelude(noteId, 5, { cap: 3, yearlyCents: null });
+    expect(refused?.press).toEqual({ allowed: false, today: 3, reason: 'day' });
     expect(refused?.forVision).toEqual([]);
     expect((await stub.autofillUsage()).presses).toBe(3);
     // A cap raised by a deploy lets the day go on.
-    expect((await stub.autofillPrelude(noteId, 5, { cap: 5 }))?.press).toEqual({ allowed: true, today: 4 });
+    expect((await stub.autofillPrelude(noteId, 5, { cap: 5, yearlyCents: null }))?.press).toEqual({ allowed: true, today: 4 });
+  });
+
+  it('refuses a press once the year’s spend reaches the cap, and the day’s refusal first', async () => {
+    const { stub, noteId } = await withNote('usage-year-cap');
+    // A million input tokens on Opus 5.5 is four dollars, by the table in @unbent/shared.
+    await stub.recordLlmUsage([{ ...opus('read', 1_000_000, 0), model: 'claude-opus-5-5' }]);
+    expect((await stub.autofillPrelude(noteId, 5, { cap: null, yearlyCents: 401 }))?.press).toEqual({ allowed: true, today: 1 });
+    // That press cost a tenth of a cent on the decision model, which the sum counts too.
+    const refused = await stub.autofillPrelude(noteId, 5, { cap: null, yearlyCents: 400 });
+    expect(refused?.press).toEqual({ allowed: false, today: 1, reason: 'year' });
+    expect(refused?.forVision).toEqual([]);
+    expect((await stub.autofillUsage()).presses).toBe(1);
+    // Under the cap by the press's own cost: 400 cents of tokens and one press.
+    expect((await stub.autofillPrelude(noteId, 5, { cap: null, yearlyCents: 400 + 2 * JEV_PRESS_CENTS }))?.press).toEqual({ allowed: true, today: 2 });
+    // Both limits reached: the day's is the one named.
+    expect((await stub.autofillPrelude(noteId, 5, { cap: 2, yearlyCents: 1 }))?.press).toEqual({ allowed: false, today: 2, reason: 'day' });
+  });
+
+  it('reads the year’s rows once for the spend, and none when no yearly cap is set', async () => {
+    const { stub, noteId } = await withNote('usage-year-rows');
+    const year = new Date().getUTCFullYear();
+    // A full year of presses and of two models' readings, a row a day each, and last
+    // year's rows beside them, which the range must not touch.
+    await runInDurableObject(stub, (_i, state) => {
+      const sql = state.storage.sql;
+      for (let d = 0; d < 365; d++) {
+        const day = new Date(Date.UTC(year, 0, 1 + d)).toISOString().slice(0, 10);
+        if (!day.startsWith(String(year))) break;
+        sql.exec(`INSERT INTO llm_usage (day, job, model, requests, input_tokens) VALUES (?1, 'press', '', 2, 0)`, day);
+        sql.exec(`INSERT INTO llm_usage (day, job, model, requests, input_tokens) VALUES (?1, 'read', 'claude-haiku-5-5', 2, 3000)`, day);
+        sql.exec(`INSERT INTO llm_usage (day, job, model, requests, input_tokens) VALUES (?1, 'title', 'claude-haiku-5-5', 2, 800)`, day);
+      }
+      sql.exec(`INSERT INTO llm_usage (day, job, model, requests, input_tokens) VALUES (?1, 'read', 'claude-haiku-5-5', 2, 3000)`, `${year - 1}-12-31`);
+    });
+    const before = (await stub.counters()).rowsRead;
+    await stub.autofillPrelude(noteId, 5, { cap: null, yearlyCents: null });
+    const dayOnly = (await stub.counters()).rowsRead - before;
+    await stub.autofillPrelude(noteId, 5, { cap: null, yearlyCents: 1_000_000 });
+    const withYear = (await stub.counters()).rowsRead - before - dayOnly;
+    // The note and the day's row, a handful; the year adds its rows, three a day at
+    // most here, and nothing of the year before or of any other table.
+    expect(dayOnly).toBeLessThanOrEqual(12);
+    expect(withYear - dayOnly).toBeLessThanOrEqual(3 * 365 + 4);
+    expect(withYear - dayOnly).toBeGreaterThan(3 * 300);
   });
 
   it('counts nothing for a note that is not there, or when not asked to', async () => {
     const { stub, noteId } = await withNote('usage-none');
-    expect(await stub.autofillPrelude(crypto.randomUUID(), 5, { cap: 1 })).toBeNull();
+    expect(await stub.autofillPrelude(crypto.randomUUID(), 5, { cap: 1, yearlyCents: null })).toBeNull();
     expect((await stub.autofillPrelude(noteId, 5))?.press).toBeNull();
     expect((await stub.autofillUsage()).presses).toBe(0);
   });
@@ -76,7 +121,7 @@ describe('the usage counter', () => {
   it('writes nothing to the feed, while the text a reading records still does', async () => {
     const { stub, noteId } = await withNote('usage-feed');
     const before = await feedSeq(stub);
-    await stub.autofillPrelude(noteId, 5, { cap: null });
+    await stub.autofillPrelude(noteId, 5, { cap: null, yearlyCents: null });
     await stub.recordLlmUsage([opus('title', 1, 1)]);
     expect(await feedSeq(stub)).toBe(before);
     await stub.recordText({ attachmentId: 'a1', noteId, filename: 'card.jpg', text: 'A card', readBy: 'vision' }, opus('read', 1, 1));

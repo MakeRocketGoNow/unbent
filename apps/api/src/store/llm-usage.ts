@@ -1,14 +1,24 @@
-import type { LlmJob, LlmJobUsage, LlmTokens } from '@unbent/shared';
+import { usageCents, type LlmJob, type LlmJobUsage, type LlmTokens } from '@unbent/shared';
 import type { Sql } from './sql.js';
 
 /** One answer the model was paid for: the job, the model, and the API's four counts. */
 export type UsageEntry = LlmTokens & { job: LlmJob };
+
+/** What a press is checked against: the day's presses and the year's spend, each null for none. */
+export interface PressLimits {
+  /** The most presses in a UTC day (`AUTOFILL_DAILY_CAP`, or the trial's). */
+  cap: number | null;
+  /** The most the calendar year's Auto-fill may have cost, in cents (`AUTOFILL_YEARLY_CENTS`, or the trial's). */
+  yearlyCents: number | null;
+}
 
 /** What a press was told: whether it may go ahead, and how many the day had before it. */
 export interface PressCheck {
   allowed: boolean;
   /** Presses counted today, this one included when it was allowed. */
   today: number;
+  /** Which limit refused it, when one did: the day's count or the year's spend. */
+  reason?: 'day' | 'year';
 }
 
 /** The UTC day of `at`, as the table keys it. */
@@ -42,19 +52,32 @@ export class LlmUsageCounter {
    * nothing to read) has still been counted. That is the guard working: it caps what can
    * be asked, and a failed press asked as much.
    *
-   * `cap` null counts and never refuses, which is every instance until it sets
-   * `AUTOFILL_DAILY_CAP`.
+   * A null limit counts and never refuses, which is every instance until it sets
+   * `AUTOFILL_DAILY_CAP` or `AUTOFILL_YEARLY_CENTS`.
+   *
+   * The year's spend is checked after the day's count and only when there is a yearly
+   * limit, since it reads the year's rows (`year`: at most one a day per job and model)
+   * where the day's check reads one. It is summed from tokens and converted here, at the
+   * check, with the price table in `@unbent/shared`; no cents are written to the store,
+   * so a price corrected in the table corrects the year's spend at the next press.
    */
-  press(cap: number | null, at: number): PressCheck {
+  press(limits: PressLimits, at: number): PressCheck {
     const day = usageDay(at);
     const before =
       this.sql.first<{ requests: number }>(
         `SELECT requests FROM llm_usage WHERE day = ?1 AND job = 'press' AND model = ''`,
         day,
       )?.requests ?? 0;
-    if (cap !== null && before >= cap) {
-      console.warn(`[llm] user=${this.userId} job=press refused today=${before} cap=${cap}`);
-      return { allowed: false, today: before };
+    if (limits.cap !== null && before >= limits.cap) {
+      console.warn(`[llm] user=${this.userId} job=press refused today=${before} cap=${limits.cap}`);
+      return { allowed: false, today: before, reason: 'day' };
+    }
+    if (limits.yearlyCents !== null) {
+      const spent = this.spentCents(at);
+      if (spent >= limits.yearlyCents) {
+        console.warn(`[llm] user=${this.userId} job=press refused year=${spent.toFixed(2)} cap=${limits.yearlyCents}`);
+        return { allowed: false, today: before, reason: 'year' };
+      }
     }
     this.sql.exec(
       `INSERT INTO llm_usage (day, job, model, requests) VALUES (?1, 'press', '', 1)
@@ -87,6 +110,12 @@ export class LlmUsageCounter {
     console.log(
       `[llm] user=${this.userId} job=${entry.job} model=${entry.model} in=${entry.inputTokens} out=${entry.outputTokens} cacheRead=${entry.cacheReadTokens} cacheWrite=${entry.cacheWriteTokens}`,
     );
+  }
+
+  /** What the calendar year of `at` has cost so far, in cents, by the price table. */
+  spentCents(at: number): number {
+    const { presses, models } = this.year(at);
+    return usageCents(presses, models);
   }
 
   /**
