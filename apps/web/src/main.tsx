@@ -209,10 +209,34 @@ declare module '@tanstack/react-router' {
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root element');
 
-createRoot(root).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
-  </StrictMode>,
-);
+/*
+ * A page the build wrote out whole (`prerender.tsx`: the story at `/why`) is already on
+ * screen when this runs. React's first commit replaces whatever the container holds, and
+ * the router's first render, before its loaders have answered, is nothing: the page would
+ * blink out and come back a round trip later. So on such a page the route is loaded
+ * first, and the first commit puts the same page back in one go. Every other load has an
+ * empty container and renders at once, as before.
+ *
+ * Replaced rather than hydrated: the static copy was rendered with no session and no
+ * operator, and the running app draws the footer's links and the way out from both, so
+ * the markup is not the same and hydration would have to repair it.
+ */
+async function mount() {
+  if (root!.hasChildNodes()) {
+    try {
+      await router.load();
+    } catch {
+      // A redirect or a failed loader: the router has handled it, and the render below
+      // draws whatever it decided.
+    }
+  }
+  createRoot(root!).render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </StrictMode>,
+  );
+}
+
+void mount();

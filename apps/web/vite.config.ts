@@ -1,8 +1,8 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
-import { defineConfig, type Plugin } from 'vite';
+import { createServer, defineConfig, type Plugin, type ResolvedConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { tanstackRouter } from '@tanstack/router-plugin/vite';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -107,6 +107,30 @@ function readBuildInfo() {
 
 const BUILD_INFO = readBuildInfo();
 
+/**
+ * better-auth/react is a linked workspace dependency with its own nested react symlink,
+ * which Vite would otherwise pre-bundle into a second React instance, producing "invalid
+ * hook call" at runtime. Force one copy. Shared with the prerender's server, which loads
+ * the same components.
+ */
+const RESOLVE_DEDUPE = ['react', 'react-dom'];
+
+const RESOLVE_ALIAS = {
+  /**
+   * Force the DOM-free build of decode-named-character-reference.
+   *
+   * The package's browser build decodes HTML entities with `document.createElement`.
+   * The markdown pipeline pulls it in, and the import runs in a Web Worker where
+   * there is no document: without this the worker dies on load with "document is
+   * not defined". The `worker` export condition would also select the right build,
+   * but Vite's dep optimizer pre-bundles for the browser before worker resolution
+   * applies, so the alias is what actually takes effect.
+   *
+   * The Node build uses a static character map and behaves identically.
+   */
+  'decode-named-character-reference': decodeEntitiesNodeBuild,
+};
+
 /** `<meta name="unbent-commit">`, so a deploy's commit can be read without signing in. */
 function buildMeta(): Plugin {
   return {
@@ -118,6 +142,91 @@ function buildMeta(): Plugin {
       ];
     },
   };
+}
+
+/**
+ * Writes the pages `src/prerender.tsx` lists out as static HTML, after the client build.
+ *
+ * A crawler and a link preview run no script, so what they read of a page is what the
+ * server sends, and for every route that is `index.html`: "Unbent", the front page's
+ * sentence, and an empty `#root`. The pages for people who are not signed in are the
+ * ones a search lands on, so each of those is rendered here, in Node, to a copy of the
+ * built `index.html` with its own head (`PageMeta`) and its markup inside `#root`. The
+ * Worker serves the copy for the page's address (`apps/api/src/lib/front-pages.ts`) and
+ * the app takes over in the browser (`main.tsx`).
+ *
+ * Rendered through a second, in-process Vite server in middleware mode rather than a
+ * separate SSR build, so the components are loaded exactly as the client build resolved
+ * them (the same aliases and dedupe below) and nothing else has to be kept in step. It is
+ * given only the plugins and resolution the components need, not this file's: the router
+ * plugin would generate the route tree again and the PWA plugin would try to build a
+ * worker. Off for a build that is not the client's (the PWA plugin builds the worker as
+ * a second build of its own, with no config file, so this never sees it; the guard is
+ * against anyone adding one).
+ *
+ * Addresses in the head stay site-relative: the build does not know the origin it will
+ * be served on, and the Worker completes them from the one it is.
+ */
+function prerender(): Plugin {
+  let config: ResolvedConfig;
+  return {
+    name: 'unbent:prerender',
+    apply: 'build',
+    configResolved(resolved) {
+      config = resolved;
+    },
+    async closeBundle() {
+      if (config.build.ssr || config.build.lib) return;
+      const server = await createServer({
+        configFile: false,
+        root: config.root,
+        mode: config.mode,
+        logLevel: 'warn',
+        appType: 'custom',
+        server: { middlewareMode: true, hmr: false, watch: null },
+        plugins: [react()],
+        resolve: { dedupe: RESOLVE_DEDUPE, alias: RESOLVE_ALIAS },
+        define: { __UNBENT_BUILD__: JSON.stringify(BUILD_INFO) },
+      });
+      try {
+        const { PAGES, render } = (await server.ssrLoadModule('/src/prerender.tsx')) as typeof import('./src/prerender.js');
+        const shell = readFileSync(join(config.build.outDir, 'index.html'), 'utf8');
+        for (const [path, page] of Object.entries(PAGES)) {
+          const file = join(config.build.outDir, page.file);
+          writeFileSync(file, prerenderedPage(shell, await render(path), page.meta, path));
+          config.logger.info(`prerendered ${path} -> ${page.file}`);
+        }
+      } finally {
+        await server.close();
+      }
+    },
+  };
+}
+
+/**
+ * The built shell with one page's head and markup in it. Each replacement insists on
+ * finding its target, so a change to `index.html` that moves one fails the build here
+ * rather than shipping a page with the wrong title.
+ */
+function prerenderedPage(shell: string, html: string, meta: { title: string; description: string; image: string }, path: string): string {
+  const escape = (text: string) =>
+    text.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const replace = (page: string, target: RegExp, replacement: string) => {
+    if (!target.test(page)) throw new Error(`prerender: index.html has no ${target}`);
+    return page.replace(target, replacement);
+  };
+  let page = shell;
+  page = replace(page, /<title>[^<]*<\/title>/, `<title>${escape(meta.title)}</title>`);
+  page = replace(page, /<meta name="description" content="[^"]*"\s*\/?>/, `<meta name="description" content="${escape(meta.description)}" />`);
+  page = replace(page, /<meta property="og:title" content="[^"]*"\s*\/?>/, `<meta property="og:title" content="${escape(meta.title)}" />`);
+  page = replace(page, /<meta property="og:description" content="[^"]*"\s*\/?>/, `<meta property="og:description" content="${escape(meta.description)}" />`);
+  page = replace(
+    page,
+    /<meta property="og:image" content="[^"]*"\s*\/?>/,
+    `<meta property="og:image" content="${escape(meta.image)}" />\n    <meta property="og:url" content="${escape(path)}" />\n    <link rel="canonical" href="${escape(path)}" />`,
+  );
+  page = replace(page, /<div id="root"><\/div>/, `<div id="root">${html}</div>`);
+  return page;
 }
 
 /**
@@ -139,6 +248,7 @@ export default defineConfig({
     react(),
     pdfjsWasm(),
     buildMeta(),
+    prerender(),
     /*
      * The service worker that lets the installed app open with no connection. See
      * `src/sw/sw.ts`.
@@ -178,30 +288,20 @@ export default defineConfig({
            * when an import starts, which the HTTP cache already covers.
            */
           '**/import-worker-*.js',
+          /*
+           * The story's static copy (`src/prerender.tsx`), a page for people who are not
+           * signed in. The shell draws the same page offline, and the asset layer answers
+           * `/why.html` with a redirect to `/why`, which a precache fill cannot store
+           * under the file's name.
+           */
+          'why.html',
         ],
       },
     }),
   ],
   resolve: {
-    // better-auth/react is a linked workspace dependency with its own nested react
-    // symlink, which Vite would otherwise pre-bundle into a second React instance,
-    // producing "invalid hook call" at runtime. Force one copy.
-    dedupe: ['react', 'react-dom'],
-    alias: {
-      /**
-       * Force the DOM-free build of decode-named-character-reference.
-       *
-       * The package's browser build decodes HTML entities with `document.createElement`.
-       * The markdown pipeline pulls it in, and the import runs in a Web Worker where
-       * there is no document: without this the worker dies on load with "document is
-       * not defined". The `worker` export condition would also select the right build,
-       * but Vite's dep optimizer pre-bundles for the browser before worker resolution
-       * applies, so the alias is what actually takes effect.
-       *
-       * The Node build uses a static character map and behaves identically.
-       */
-      'decode-named-character-reference': decodeEntitiesNodeBuild,
-    },
+    dedupe: RESOLVE_DEDUPE,
+    alias: RESOLVE_ALIAS,
   },
   optimizeDeps: {
     /**
