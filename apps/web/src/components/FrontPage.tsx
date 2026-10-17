@@ -229,9 +229,14 @@ export function Pricing() {
           <li>Unlimited notes</li>
           <li>{BASE_STORAGE_GB} GB of attachments, and {STORAGE_ADDON_GB} GB more for ${STORAGE_ADDON_PRICE_USD} a year</li>
           <li>The web app, the Android app and AI assistants</li>
+          <li>Auto-fill, which reads a scan and fills in its title, notebook and fields</li>
+          <li>Every note&apos;s history, and your library on each device, offline too</li>
           <li>Export everything, as often as you like</li>
         </ul>
-        <p className="muted">{TRIAL_DAYS} days free, with no card needed to start. Billed yearly.</p>
+        <p className="muted">
+          {TRIAL_DAYS} days free, with no card needed to start. Billed yearly, which is $
+          {PLAN_PRICE_USD / 12} a month.
+        </p>
       </div>
       <div className="front-lapse">
         <h3>If you stop paying</h3>
