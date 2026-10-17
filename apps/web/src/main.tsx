@@ -199,10 +199,11 @@ installLaunchQueue({
  * that a newer build is in charge; see `sw-register.ts`. After the router, so nothing it
  * does can delay the first render.
  *
- * Not from the page the apps load for a Turnstile token (`routes/turnstile.tsx`): that
- * page lives for one request and is loaded on every one, and a worker registered from
- * it would start filling a shell cache for a page that only needs the widget, on the
- * same slow radio the widget is waiting on.
+ * Not from the bare shell's pages, which the apps load off screen (`shellFor` says
+ * 'embed': the Turnstile page and the indexer's): each lives for one job and is loaded
+ * on every one, and a worker registered from them would start filling a shell cache for
+ * a page that needs none of it, on the same slow radio the job is waiting on. The app's
+ * own web view registers the worker from the site itself.
  */
 if (shellFor(window.location.pathname) !== 'embed') registerServiceWorker();
 
