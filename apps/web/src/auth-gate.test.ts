@@ -91,6 +91,7 @@ describe('shellFor', () => {
    */
   it('lets the apps\' Turnstile page render without a session, and bare', () => {
     expect(shellFor('/turnstile')).toBe('embed');
+    expect(shellFor('/turnstile/')).toBe('embed');
   });
 
   /** A hand-typed address may carry one, and it never means a different page. */

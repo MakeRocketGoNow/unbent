@@ -130,10 +130,11 @@ const PUBLIC: ReadonlySet<string> = new Set([
 ]);
 
 export function shellFor(pathname: string): Shell {
-  if (pathname.startsWith('/embed/') || pathname === TURNSTILE) return 'embed';
+  if (pathname.startsWith('/embed/')) return 'embed';
   // Tolerant of a trailing slash, which a hand-typed address or an external link may carry
   // and which never means a different page.
   const path = pathname.length > 1 ? pathname.replace(/\/$/, '') : pathname;
+  if (path === TURNSTILE) return 'embed';
   if (path === FRONT || path === PRICING || path === WHY) return 'front';
   if (PUBLIC.has(path)) return 'plain';
   return 'app';
