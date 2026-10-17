@@ -599,11 +599,10 @@ nearly everyone with no click, and the Android and iOS apps load `/turnstile` fr
 instance in a web view to get theirs. The two password-reset routes that mail the same code
 to an address with an account are behind it too, since the bounds above count them; nothing
 else is: not the code's own sign-in, which three wrong tries already burn, and not a passkey
-or a provider. Make the widget in
-the Cloudflare dashboard with the instance's hostname (the test pair in `.dev.vars.example`
-passes everything, for local development), put the site key on the Worker as a secret beside
-the secret key, and leave both unset to have the endpoint as it was. Half a pair is read as
-none and the Worker says so in its log.
+or a provider. Make the widget in the Cloudflare dashboard with the instance's hostname (the
+test pair in `.dev.vars.example` passes everything, for local development), put the site key
+on the Worker as a secret beside the secret key, and leave both unset to have the endpoint as
+it was. Half a pair is read as none and the Worker says so in its log.
 
 Set the pair only once the app builds that send a token are what people have installed. An
 Android or iOS build from before the check asks for a code with no token, and the moment the
