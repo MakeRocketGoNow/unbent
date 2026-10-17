@@ -1261,14 +1261,15 @@ export class UserStore extends DurableObject<StoreEnv> {
    */
   autofillPrelude(id: string, ownFilesToRead: number, press?: PressLimits, limit?: StoreLimit) {
     this.ready();
-    // Past the store's room (MAK-234) the press is refused before anything is read:
-    // the readings it would pay the model for could not be recorded, so the next press
-    // would pay for them again, and the suggestion it fed would be a save the outbox
-    // can only keep. The route answers the 402 the save would have got.
-    if (limit !== undefined && limit !== null) this.assertRoom(limit);
     return this.sql.tx(() => {
       const note = this.notes.get(id);
       if (!note) return null;
+      // Past the store's room (MAK-234) the press is refused before anything is read:
+      // the readings it would pay the model for could not be recorded, so the next
+      // press would pay for them again, and the suggestion it fed would be a save the
+      // outbox can only keep. The route answers the 402 the save would have got. After
+      // the note is looked up, so an id that names no note is still the 404.
+      if (limit !== undefined && limit !== null) this.assertRoom(limit);
       const counted = press ? this.llmUsage.press(press, Date.now()) : null;
       if (counted && !counted.allowed) return { note, forText: [], forVision: [], press: counted };
       return {

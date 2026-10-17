@@ -69,6 +69,8 @@ describe('the store limit', () => {
     // recorded, and the next press would pay for them again.
     await expect(stub.autofillPrelude(first.id, 5, undefined, limit)).rejects.toMatchObject(refused);
     expect((await stub.autofillPrelude(first.id, 5, undefined, null))!.note.id).toBe(first.id);
+    // A note that is not there is still not there, before the room is asked about.
+    expect(await stub.autofillPrelude('no-such-note', 5, undefined, limit)).toBeNull();
 
     // A replay of a create or a duplicate whose note is already here finds it, whatever
     // the size: the room is checked only on the path that creates.
