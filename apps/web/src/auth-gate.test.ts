@@ -60,6 +60,16 @@ describe('shellFor', () => {
   });
 
   /**
+   * The pricing address Paddle's review follows has no session either. It only redirects
+   * to the front page, but the root's gate runs first, and gated it would be a sign-in
+   * screen where the reviewer expected prices.
+   */
+  it('lets the pricing address through without a session', () => {
+    expect(shellFor('/pricing')).toBe('plain');
+    expect(shellFor('/pricing/')).toBe('plain');
+  });
+
+  /**
    * Pinned on its own rather than folded into the legal pages above, because the cost of
    * losing it is not a broken page: Play checks this URL from outside any session, and a
    * gated one answers 403 and fails review. That is the exact failure this route was added

@@ -22,6 +22,13 @@ import {
 const SOURCE_URL = 'https://github.com/MakeRocketGoNow/unbent';
 
 /**
+ * The pricing section's fragment, which `/pricing` redirects to (`routes/pricing.tsx`):
+ * the address handed to Paddle's website review, as `/terms#refunds` is for the refund
+ * policy. The router scrolls to it once the page has committed.
+ */
+export const PRICING_ANCHOR = 'pricing';
+
+/**
  * unbent.app's front page, for someone who is not signed in.
  *
  * Written for a person arriving from a link with no idea what this is: what it promises,
@@ -161,7 +168,7 @@ export function FrontPage() {
           </div>
         </Section>
 
-        <Section title="Pricing">
+        <Section title="Pricing" id={PRICING_ANCHOR}>
           <div className="front-pricing">
             <div className="front-plan">
               <p className="front-amount">
@@ -211,14 +218,17 @@ export function FrontPage() {
 function Section({
   title,
   intro,
+  id,
   children,
 }: {
   title: string;
   intro?: string;
+  /** A fragment for a section that is linked to from outside; only pricing has one. */
+  id?: string;
   children: ReactNode;
 }) {
   return (
-    <section className="front-section front-width">
+    <section className="front-section front-width" id={id}>
       <h2>{title}</h2>
       {intro && <p className="front-intro muted">{intro}</p>}
       {children}

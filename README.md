@@ -1470,7 +1470,9 @@ any future date succeeds.
 
 Going live is the same five settings from the live account, after its verification. The
 website review wants the pricing public, and terms, a privacy policy and a refund policy
-naming Paddle as the merchant of record. The built-in documents say all of it wherever
+naming Paddle as the merchant of record. Its form refuses a bare domain for the pricing
+page, so the addresses to give it are `/pricing` (the front page, scrolled to its prices),
+`/terms`, `/privacy` and `/terms#refunds`. The built-in documents say all of it wherever
 the instance sells a plan: billing on, or `FRONT_PAGE=1`, since the front page states the
 price and the review comes before the live keys that turn billing on. They are the terms'
 "Plans and payment" and "Refunds", and Paddle among the policy's services. The refund

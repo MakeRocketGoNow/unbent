@@ -73,6 +73,17 @@ export type Shell = 'app' | 'embed' | 'plain' | 'front';
 export const FRONT = '/';
 
 /**
+ * The front page's pricing section, as an address of its own.
+ *
+ * Paddle's website review asks for a pricing page and refuses a bare domain, and the
+ * prices live on the front page, which has no other address. So `/pricing` is a redirect
+ * to `FRONT` with the section's fragment (`routes/pricing.tsx`), and a reviewer following
+ * it lands on the prices. It is on `PUBLIC` because the reviewer has no session: the root's
+ * gate runs before the route's own redirect, and would send them to the sign-in screen.
+ */
+export const PRICING = '/pricing';
+
+/**
  * The pages that render without a session, listed rather than inferred.
  *
  * Two kinds, and both are here because gating them broke something specific. The sign-in
@@ -93,6 +104,7 @@ const PUBLIC: ReadonlySet<string> = new Set([
   GOODBYE,
   '/privacy',
   '/terms',
+  PRICING,
   HOW_TO_DELETE,
   // The preview sign-in relay's landing point. Public for the same reason as the sign-in
   // screen: it is reached with no session (a token from the dev instance is about to
