@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useOffline } from '../connectivity.js';
-import { useStoreFull, useSyncStatus } from '../store/use-outbox.js';
+import { useSyncStatus } from '../store/use-outbox.js';
 
 /** How long writes may wait, online, before the strip says so. A replay takes half a second. */
 export const SLOW_SYNC_MS = 3000;
@@ -17,13 +17,13 @@ export const SLOW_SYNC_MS = 3000;
  * write refused because the account's store is past the room its plan allows
  * (MAK-234). That is not the server having a bad minute but something the person has
  * to act on, so the strip carries the server's own sentence, which names the numbers
- * and the way out, and says that the changes are kept here meanwhile. Offline, the
+ * and the way out, and says that the changes are kept here meanwhile. It comes on the
+ * status, so a tab that only mirrors the holder's outbox says it too. Offline, the
  * banner still speaks instead: nothing can be sent either way.
  */
 export function SyncingLine({ delayMs = SLOW_SYNC_MS }: { delayMs?: number }) {
-  const { pending } = useSyncStatus();
+  const { pending, storeFull: full } = useSyncStatus();
   const offline = useOffline();
-  const full = useStoreFull();
   const waiting = !offline && pending > 0;
   const [slow, setSlow] = useState(false);
   useEffect(() => {
@@ -34,7 +34,9 @@ export function SyncingLine({ delayMs = SLOW_SYNC_MS }: { delayMs?: number }) {
     const timer = setTimeout(() => setSlow(true), delayMs);
     return () => clearTimeout(timer);
   }, [waiting, delayMs]);
-  if (full && !offline) {
+  // With something waiting: the sentence is about the kept changes, and a kept entry
+  // that left the queue another way (a conflict resolved, say) must not leave it behind.
+  if (full && waiting) {
     return (
       <p className="offline-banner library-status" role="status">
         <span>{`${full} Your changes are kept here until there is room.`}</span>

@@ -3,9 +3,8 @@ import { currentLibrary, libraryElsewhere, subscribeLibrary } from './library.js
 import type { SyncStatus } from './actions.js';
 import type { OutboxView } from './client-library.js';
 import type { KeepStatus, Keeper } from './keep.js';
-import { onStoreFull, storeFullMessage } from '../store-full.js';
 
-const nothing: SyncStatus = { pending: 0, durable: false, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map() };
+const nothing: SyncStatus = { pending: 0, durable: false, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map(), storeFull: null };
 
 /**
  * The open library's outbox, for a component that shows what the server has not taken
@@ -150,12 +149,4 @@ export function useKeeper(): { keeper: Keeper | null; status: KeepStatus } {
     return keeper.subscribe(setStatus);
   }, [keeper]);
   return { keeper, status: keeper ? status : keepingNothing };
-}
-
-/**
- * The server's sentence while a note write it refused for the store's size waits in
- * the outbox (MAK-234), or null; see `store-full.ts`. For the strip.
- */
-export function useStoreFull(): string | null {
-  return useSyncExternalStore(onStoreFull, storeFullMessage, () => null);
 }

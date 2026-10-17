@@ -63,7 +63,7 @@ function collection<T extends object>(id: string, seed: T[]): Collection<T, stri
 
 const note = (id: string, title = id): FeedNote => ({ id, title, body: `body of ${id}`, createdAt: 1, updatedAt: 1, tagIds: [], notebookId: null, fields: [], files: [] });
 const state = (over: Partial<FeedState> = {}): FeedState => ({ phase: 'current', cursor: { seq: 5, epoch: 'e' }, lastError: null, total: null, applied: 0, pulls: 1, resets: 0, ...over });
-const status = (over: Partial<SyncStatus> = {}): SyncStatus => ({ pending: 0, durable: true, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map(), ...over });
+const status = (over: Partial<SyncStatus> = {}): SyncStatus => ({ pending: 0, durable: true, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map(), storeFull: null, ...over });
 const keeping = (over: Partial<KeepStatus> = {}): KeepStatus => ({ supported: true, kept: new Set(['nb1']), counted: true, wanted: { files: 2, bytes: 20 }, have: { files: 1, bytes: 10 }, fetching: false, problem: null, ...over });
 
 /** A holder: collections in memory and stand-ins for the engine's state, the outbox and the keeper, each with a way to move. */
@@ -305,7 +305,9 @@ describe('a client of the holding tab', () => {
     expect(syncs).toHaveLength(1);
     expect(keeps).toHaveLength(1);
     h.moveFeed({ phase: 'hydrating', applied: 3 });
-    h.moveSync({ pending: 2, waiting: new Set(['n1']) });
+    // The store's refusal travels with the status, so this tab's strip says why
+    // writes wait as the holder's does (MAK-234).
+    h.moveSync({ pending: 2, waiting: new Set(['n1']), storeFull: 'No room.' });
     h.moveKeep({ fetching: true });
     h.acknowledge('n1', { id: 'n1' }, { title: 't' });
     h.server.indexed();
@@ -314,6 +316,7 @@ describe('a client of the holding tab', () => {
     expect(feeds.at(-1)?.applied).toBe(3);
     expect(lib.outbox.status().pending).toBe(2);
     expect(lib.outbox.status().waiting.has('n1')).toBe(true);
+    expect(lib.outbox.status().storeFull).toBe('No room.');
     expect(lib.keeper.status().fetching).toBe(true);
     expect(acked).toEqual([['n1', { id: 'n1' }, { title: 't' }]]);
     expect(hk.indexed).toBe(1);

@@ -12,7 +12,7 @@ import { FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE } from '../sw/routes.js';
 import { isWhole, refusedForGood, type FeedEngine } from './feed.js';
 import { CallUnsettledError, LibraryMovedError, SEND_ONCE } from './client-library.js';
 import { onPlanActive, planAccepted, planHeld, planLapsed, planRefused } from '../plan-refused.js';
-import { onStoreFreed, storeAccepted, storeFreed, storeFull, storeRefused } from '../store-full.js';
+import { onStoreFreed, onStoreFull, storeAccepted, storeFreed, storeFull, storeFullMessage, storeRefused } from '../store-full.js';
 import { outboxLeaderName, outboxName } from './names.js';
 import { OutboxLeader } from './leader.js';
 
@@ -105,6 +105,14 @@ export interface SyncStatus {
    * would be a photo lost without a word.
    */
   uploadNotices: ReadonlyMap<string, UploadNotice[]>;
+  /**
+   * The server's sentence while a note write it refused for the store's size waits at
+   * the head of the queue (MAK-234), or null. On the status rather than read from
+   * `store-full.ts` by the strip, because the status is what the other tabs are sent:
+   * the refusal happens in the tab that holds the outbox, and a client tab showing
+   * "Syncing 1 change…" for good with no reason would be the dropped message again.
+   */
+  storeFull: string | null;
 }
 
 export interface UploadNotice {
@@ -247,11 +255,15 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
   };
   const listeners = new Set<(s: SyncStatus) => void>();
   const acks = new Set<(id: string, note: Note, sent: NoteDraft) => void>();
-  const status = (): SyncStatus => ({ pending: storage.held(), durable: executor.isOfflineEnabled, waiting: waiting(), conflicts, uploadNotices: notices });
+  const status = (): SyncStatus => ({ pending: storage.held(), durable: executor.isOfflineEnabled, waiting: waiting(), conflicts, uploadNotices: notices, storeFull: storeFullMessage() });
   const touch = () => {
     const s = status();
     listeners.forEach((l) => l(s));
   };
+  // The refusal appearing, changing its words or going is a status change for every
+  // tab; see `SyncStatus.storeFull`. Let go of in `dispose`, as the connectivity
+  // subscription is, so an account's outbox does not leave a listener behind.
+  const offStoreFull = onStoreFull(() => touch());
 
   const defs = (): FieldDef[] => [...lookups(snapshot(lib)).fieldDefs.values()];
 
@@ -728,6 +740,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     },
     dispose: async () => {
       unsubscribeConnectivity();
+      offStoreFull();
       executor.dispose();
       /*
        * The adapter opens its database once and never closes it, and a `deleteDatabase`
@@ -1517,7 +1530,11 @@ export async function clearHistory(noteId: string): Promise<number> {
           : 'This note has changes that have not synced yet. Try again in a moment.',
     );
   }
-  return api.clearRevisions(noteId);
+  const cleared = await api.clearRevisions(noteId);
+  // Clearing history frees room, and the refusal's sentence names it as a way out: the
+  // kept write is sent again now rather than on the executor's clock; see `store-full.ts`.
+  storeFreed();
+  return cleared;
 }
 
 /**

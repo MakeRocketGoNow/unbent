@@ -15,7 +15,7 @@ import { useLibraryPresence, useSyncStatus } from '../store/use-outbox.js';
  * whose status is the holder's; a device with no library does not, and is told so in
  * one sentence; and a library still opening is about to keep the promise.
  */
-const status = (durable: boolean) => ({ pending: 0, durable, waiting: new Set<string>(), conflicts: new Map(), uploadNotices: new Map() });
+const status = (durable: boolean) => ({ pending: 0, durable, waiting: new Set<string>(), conflicts: new Map(), uploadNotices: new Map(), storeFull: null });
 const promise = /what you change will sync when you're back/;
 
 afterEach(() => {

@@ -25,7 +25,7 @@ const before: Note = { id: 'n1', title: 'Acme: sample card', body: 'Owner.', tag
 const edited: Note = { ...before, title: 'Acme: sample card 👾', body: 'Owner.\n\nA line typed today.', updatedAt: 200 };
 
 function outbox(): Outbox {
-  const status = (): SyncStatus => ({ pending: 0, durable: true, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map() });
+  const status = (): SyncStatus => ({ pending: 0, durable: true, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map(), storeFull: null });
   return {
     status,
     subscribe: (l: (s: SyncStatus) => void) => {
@@ -65,7 +65,7 @@ const title = () => screen.findByPlaceholderText<HTMLInputElement>('Untitled');
 beforeEach(() => {
   vi.stubGlobal('matchMedia', (query: string) => ({ matches: false, media: query, addEventListener: () => {}, removeEventListener: () => {} }));
   vi.mocked(useOutbox).mockReturnValue(outbox());
-  vi.mocked(useSyncStatus).mockReturnValue({ pending: 0, durable: true, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map() });
+  vi.mocked(useSyncStatus).mockReturnValue({ pending: 0, durable: true, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map(), storeFull: null });
 });
 
 afterEach(() => {
