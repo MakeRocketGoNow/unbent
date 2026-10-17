@@ -15,6 +15,7 @@ import { feedControls, type Collections, type LocalNote } from './collections.js
 import { FeedEngine, type Position } from './feed.js';
 import { installMemoryOpfs, type MemoryDirectory } from './test-opfs.js';
 import { planIs, planLapsed, resetPlanRefused } from '../plan-refused.js';
+import { resetStoreFull, storeFull, storeFullMessage } from '../store-full.js';
 
 /**
  * The rules the outbox holds, against a stand-in for the executor that keeps the real
@@ -367,6 +368,7 @@ const settles = <T,>(p: Promise<T>) => Promise.race([p, new Promise<'stuck'>((r)
 
 beforeEach(() => {
   resetPlanRefused();
+  resetStoreFull();
   resetConnectivity();
 });
 
@@ -477,10 +479,11 @@ describe('a replayed write', () => {
     }
     expect(fake.queue).toHaveLength(2);
 
-    // The plan's 402 is kept (it changes when the person subscribes) and the storage's
-    // is not: the account is full until something goes (MAK-108). While the kept one
-    // waits at the head of the queue, a delete goes to the server directly rather than
-    // behind it, since the queue would hold it there until the subscription.
+    // The plan's 402 is kept (it changes when the person subscribes) and the files'
+    // storage's is not: the account is full until something goes (MAK-108). While the
+    // kept one waits at the head of the queue, a delete goes to the server directly
+    // rather than behind it, since the queue would hold it there until the subscription.
+    // The store's own 402 on a note write is the kept kind; the test after next has it.
     vi.mocked(api.deleteNotes).mockRejectedValueOnce(new ApiError(402, '402: read-only', 'PLAN_INACTIVE'));
     expect(await fake.replayOne()).toBe('kept');
     expect(fake.queue).toHaveLength(2);
@@ -489,7 +492,7 @@ describe('a replayed write', () => {
     await actions.trashNotes(['n3']);
     expect(api.deleteNotes).toHaveBeenLastCalledWith(['n3']);
     expect(fake.queue).toHaveLength(2);
-    vi.mocked(api.deleteNotes).mockRejectedValueOnce(new ApiError(402, '402: full', 'STORAGE_FULL'));
+    vi.mocked(api.deleteNotes).mockRejectedValueOnce(new ApiError(402, '402: full', 'STORAGE_FULL', 'files'));
     expect(await fake.replayOne()).toBe('refused');
     expect(fake.queue).toHaveLength(1);
 
@@ -525,6 +528,38 @@ describe('a replayed write', () => {
     expect(planLapsed()).toBe(false);
     vi.mocked(api.updateNote).mockResolvedValueOnce({ ...base, title: 'typed as the trial ran out', updatedAt: 101 });
     expect(await fake.replayOne()).toBe('done');
+    expect(api.updateNote).toHaveBeenCalledTimes(2);
+  });
+
+  /**
+   * A note write refused because the account's store is past the room its plan allows
+   * (MAK-234) is kept like the plan's, with the server's sentence for the strip; a delete
+   * goes round it and nudges the executor, since it is what makes room; and the server
+   * taking the write clears the word.
+   */
+  it('keeps a save the store has no room for, says why, and sends it again once a delete has gone through', async () => {
+    const { fake, note } = library([row('n1', { title: 'old' }), row('n2')]);
+    const base = note('n1');
+    const replay = vi.fn();
+    fake.config.onlineDetector.subscribe(replay);
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'typed past the limit' }, base });
+    await tick();
+    vi.mocked(api.updateNote).mockRejectedValueOnce(new ApiError(402, "402: This account's notes take more room than its plan allows.", 'STORAGE_FULL', 'notes'));
+    expect(await fake.replayOne()).toBe('kept');
+    expect(fake.queue).toHaveLength(1);
+    expect(storeFull()).toBe(true);
+    expect(storeFullMessage()).toBe("This account's notes take more room than its plan allows.");
+    expect(planLapsed()).toBe(false);
+
+    vi.mocked(api.deleteNotes).mockResolvedValueOnce({ trashed: 1 });
+    await actions.trashNotes(['n2']);
+    expect(api.deleteNotes).toHaveBeenLastCalledWith(['n2']);
+    expect(fake.queue).toHaveLength(1);
+    expect(replay).toHaveBeenCalledTimes(1);
+
+    vi.mocked(api.updateNote).mockResolvedValueOnce({ ...base, title: 'typed past the limit', updatedAt: 101 });
+    expect(await fake.replayOne()).toBe('done');
+    expect(storeFull()).toBe(false);
     expect(api.updateNote).toHaveBeenCalledTimes(2);
   });
 

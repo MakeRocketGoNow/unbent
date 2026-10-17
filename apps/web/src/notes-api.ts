@@ -58,6 +58,12 @@ export class ApiError extends Error {
      * status apart without reading the sentence.
      */
     readonly code?: string,
+    /**
+     * With `STORAGE_FULL`, which bound refused: `files` for the quota on attachment
+     * bytes, `notes` for the limit on the account's own store (MAK-234). The outbox
+     * keeps a note write refused for the second and ends an upload refused for the first.
+     */
+    readonly of?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -169,8 +175,8 @@ export async function httpErrorMessage(res: Response): Promise<string> {
   return (await httpErrorDetail(res)).message;
 }
 
-/** The message, and the body's `code` when ours gave one; see `ApiError.code`. */
-export async function httpErrorDetail(res: Response): Promise<{ message: string; code?: string }> {
+/** The message, and the body's `code` and `of` when ours gave them; see `ApiError.code`. */
+export async function httpErrorDetail(res: Response): Promise<{ message: string; code?: string; of?: string }> {
   // HTTP/2 has no reason phrase, so `statusText` is routinely empty and must not be padded in.
   const status = `${res.status}${res.statusText ? ` ${res.statusText}` : ''}`;
   const body = (await res.text().catch(() => '')).trim();
@@ -180,9 +186,9 @@ export async function httpErrorDetail(res: Response): Promise<{ message: string;
   // body shaped some other way falls through and is quoted raw.
   if (res.headers.get('Content-Type')?.includes('json')) {
     try {
-      const { error, code } = JSON.parse(body) as { error?: unknown; code?: unknown };
+      const { error, code, of } = JSON.parse(body) as { error?: unknown; code?: unknown; of?: unknown };
       if (typeof error === 'string' && error) {
-        return { message: `${status}: ${error}`, ...(typeof code === 'string' && code ? { code } : {}) };
+        return { message: `${status}: ${error}`, ...(typeof code === 'string' && code ? { code } : {}), ...(typeof of === 'string' && of ? { of } : {}) };
       }
     } catch {
       // Mislabelled as JSON; treat it as text like anything else.
@@ -210,8 +216,8 @@ export function errorText(err: unknown): string {
 
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    const { message, code } = await httpErrorDetail(res);
-    throw new ApiError(res.status, message, code);
+    const { message, code, of } = await httpErrorDetail(res);
+    throw new ApiError(res.status, message, code, of);
   }
   return res.json() as Promise<T>;
 }
@@ -877,16 +883,18 @@ export async function uploadFile(
     const detail = await res.text().catch(() => '');
     let message = detail || `${res.status}`;
     let code: string | undefined;
+    let of: string | undefined;
     try {
-      const parsed = JSON.parse(detail) as { error?: string; code?: unknown };
+      const parsed = JSON.parse(detail) as { error?: string; code?: unknown; of?: unknown };
       message = parsed.error ?? message;
       if (typeof parsed.code === 'string') code = parsed.code;
+      if (typeof parsed.of === 'string') of = parsed.of;
     } catch {
       // Not JSON: the edge's own error page, say. The text is the message.
     }
     // With the status and the code, so the outbox can tell a refusal from a server that
     // is down, and the plan's refusal, which it keeps, from the storage's, which it does not.
-    throw new ApiError(res.status, message, code);
+    throw new ApiError(res.status, message, code, of);
   }
   return res.json() as Promise<UploadedFile>;
 }

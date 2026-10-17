@@ -1,8 +1,8 @@
 import { IndexedDBAdapter, NonRetriableError, startOfflineExecutor, type OfflineExecutor, type OnlineDetector, type StorageAdapter } from '@tanstack/offline-transactions';
 import type { Transaction } from '@tanstack/db';
-import { MAX_ATTACHMENT_BYTES, PLAN_INACTIVE_CODE, filenameSchema, foldNoCase, type FeedNote, type FieldDef, type FieldValue, type Note, type NoteFieldValue, type NotebookDefinition, type RestoredNote } from '@unbent/shared';
+import { MAX_ATTACHMENT_BYTES, PLAN_INACTIVE_CODE, STORAGE_FULL_CODE, filenameSchema, foldNoCase, type FeedNote, type FieldDef, type FieldValue, type Note, type NoteFieldValue, type NotebookDefinition, type RestoredNote } from '@unbent/shared';
 import * as api from '../notes-api.js';
-import { ApiError, isNoteChanged, isOfflineError, NoteChangedError } from '../notes-api.js';
+import { ApiError, errorText, isNoteChanged, isOfflineError, NoteChangedError } from '../notes-api.js';
 import { offlineNow, recheck, subscribeConnectivity } from '../connectivity.js';
 import { buildNotePatch, seedFrom, holdsTheirChanges, rebaseAfterAck, type NoteDraft } from '../note-patch.js';
 import { availableFilename, lookups, toNote, type Snapshot } from './derive.js';
@@ -12,6 +12,7 @@ import { FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE } from '../sw/routes.js';
 import { isWhole, refusedForGood, type FeedEngine } from './feed.js';
 import { CallUnsettledError, LibraryMovedError, SEND_ONCE } from './client-library.js';
 import { onPlanActive, planAccepted, planHeld, planLapsed, planRefused } from '../plan-refused.js';
+import { onStoreFreed, storeAccepted, storeFreed, storeFull, storeRefused } from '../store-full.js';
 import { outboxLeaderName, outboxName } from './names.js';
 import { OutboxLeader } from './leader.js';
 
@@ -281,14 +282,25 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
    * for a queued upload delete the one copy of the bytes. So it is kept, like a 401, and
    * replays after the checkout; and the plan is read again now (`planRefused`), so the
    * banner and the read-only editor say why nothing goes. The deletes made meanwhile go
-   * round the kept entry rather than behind it; see `planLapsed`. A 402 for the storage,
-   * the other code on that status, is for good as the server stands: the account is full
-   * until something is deleted, and the notice under the file says so.
+   * round the kept entry rather than behind it; see `planLapsed`.
+   *
+   * A 402 for the storage, the other code on that status, is two things by `of`. For
+   * an upload it is the quota on files, for good as the server stands: the account is
+   * full until something is deleted, and the notice under the file says so. For a
+   * note write it is the limit on the account's own store (MAK-234), and that one is
+   * kept like the plan's, for the plan's reason: ending it would roll the row back and
+   * lose what was typed, and the answer changes the moment something is deleted. The
+   * sentence goes to the strip (`storeRefused`), and the deletes go round the kept
+   * entry as a lapsed plan's do.
    */
   const refusal = (err: unknown): never => {
     if (isOfflineError(err)) throw err;
     if (err instanceof ApiError && err.code === PLAN_INACTIVE_CODE) {
       planRefused();
+      throw err;
+    }
+    if (err instanceof ApiError && err.code === STORAGE_FULL_CODE && err.of === 'notes') {
+      storeRefused(errorText(err));
       throw err;
     }
     if (err instanceof ApiError && refusedForGood(err.status)) {
@@ -320,14 +332,17 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
             // go the moment the plan reads otherwise; see `connectivityDetector`.
             if (planHeld()) throw new PlanHeld();
             const out = await fn(params);
-            // A write the server took is a plan that is active; see `planLapsed`.
+            // A write the server took is a plan that is active, and a store with room;
+            // see `planLapsed` and `storeFull`.
             planAccepted();
+            storeAccepted();
             return out;
           } catch (err) {
             // Ended for good, the head of the queue is gone either way, and the next
             // refusal sets the flag again; see `planLapsed`.
             if (err instanceof NonRetriableError) {
               planAccepted();
+              storeAccepted();
               throw err;
             }
             // The executor records the message and not the cause, so this is the one
@@ -341,6 +356,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
 
   // A fresh outbox has nothing refused waiting in it, whatever the last account's had.
   planAccepted();
+  storeAccepted();
   const adapter = new IndexedDBAdapter(outboxName(userId), OUTBOX_STORE);
   /** The adapter's connection: a private field, pinned by `pins.test.ts`; null until its first use. */
   const connection = () => (adapter as unknown as { db?: IDBDatabase | null }).db ?? null;
@@ -921,8 +937,9 @@ class PlanHeld extends Error {
 
 /**
  * `connectivity.ts` is the one thing that decides whether the app is offline; the
- * executor follows it. The plan reading as active again is the other word to replay
- * now, through the same door: a kept 402 waits on the checkout, not on the network.
+ * executor follows it. The plan reading as active again, and a delete going through
+ * while the store's refusal stands, are the other words to replay now, through the
+ * same door: a kept 402 waits on the checkout or on room, not on the network.
  */
 function connectivityDetector(): OnlineDetector {
   return {
@@ -933,9 +950,15 @@ function connectivityDetector(): OnlineDetector {
       const offPlan = onPlanActive(() => {
         if (!offlineNow()) cb();
       });
+      // A delete that went through while the store's refusal stands is the other: there
+      // may be room now, and the kept edit should not wait for the executor's clock.
+      const offFreed = onStoreFreed(() => {
+        if (!offlineNow()) cb();
+      });
       return () => {
         offConnectivity();
         offPlan();
+        offFreed();
       };
     },
     notifyOnline: () => recheck(),
@@ -1147,6 +1170,9 @@ const REFILING = new Set([
  */
 async function pulled<T>(write: Promise<T>, local: LocalWrite): Promise<T> {
   const out = await write;
+  // Made while a note write refused for the store's size waits: a delete or a purge,
+  // which is what makes room, so the kept entry is sent again now; see `store-full.ts`.
+  storeFreed();
   aboutToWrite(local);
   directListeners.forEach((l) => l());
   const lib = await resolve();
@@ -1486,7 +1512,9 @@ export async function clearHistory(noteId: string): Promise<number> {
     throw new Error(
       planLapsed()
         ? 'This note has an edit waiting for the plan to be active again; its history can be cleared once that has gone.'
-        : 'This note has changes that have not synced yet. Try again in a moment.',
+        : storeFull()
+          ? 'This note has an edit waiting for room in the account. Delete some notes, or clear another note\u2019s history, and it will go.'
+          : 'This note has changes that have not synced yet. Try again in a moment.',
     );
   }
   return api.clearRevisions(noteId);
@@ -1537,7 +1565,9 @@ export async function restoreRevision(noteId: string, revisionId: number, opts: 
  * write refused for the plan waits in the queue (`planLapsed`): the queue runs oldest
  * first and would hold them behind it until the person subscribed, and a lapsed account
  * is promised exactly these. Direct means a connection, which a lapsed account's delete
- * needs anyway, and the refusal of the one that could not wait is the ordinary one.
+ * needs anyway, and the refusal of the one that could not wait is the ordinary one. The
+ * same while a write refused for the store's size waits (`storeFull`): the deletes are
+ * the way back under the limit, and behind the kept entry they would never be sent.
  *
  * Only for a note the server holds, though. A note made here whose creation is the
  * write that was refused (the one written in the flight whose trial ran out) is not
@@ -1546,12 +1576,12 @@ export async function restoreRevision(noteId: string, revisionId: number, opts: 
  * own list of what is waiting is how the two are told apart.
  */
 function roundTheQueue(lib: WritableLibrary, noteId: string): boolean {
-  return planLapsed() && !lib.outbox.status().waiting.has(noteId);
+  return (planLapsed() || storeFull()) && !lib.outbox.status().waiting.has(noteId);
 }
 
 /** A bulk action's ids while a refusal waits: the ones that go to the server now, and the ones that queue. */
 function roundOrQueued(lib: WritableLibrary, ids: string[]): { direct: string[]; queued: string[] } {
-  if (!planLapsed()) return { direct: [], queued: ids };
+  if (!planLapsed() && !storeFull()) return { direct: [], queued: ids };
   const waiting = lib.outbox.status().waiting;
   return { direct: ids.filter((id) => !waiting.has(id)), queued: ids.filter((id) => waiting.has(id)) };
 }

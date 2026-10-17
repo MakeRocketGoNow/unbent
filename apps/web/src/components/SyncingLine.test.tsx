@@ -3,8 +3,8 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import { resetConnectivity, setReachableForTests } from '../connectivity.js';
 import { SyncingLine } from './SyncingLine.js';
 
-vi.mock('../store/use-outbox.js', () => ({ useSyncStatus: vi.fn() }));
-import { useSyncStatus } from '../store/use-outbox.js';
+vi.mock('../store/use-outbox.js', () => ({ useSyncStatus: vi.fn(), useStoreFull: vi.fn(() => null) }));
+import { useStoreFull, useSyncStatus } from '../store/use-outbox.js';
 
 /**
  * The strip says writes are waiting only once they have waited a while with a
@@ -35,5 +35,24 @@ describe('SyncingLine', () => {
     render(<SyncingLine delayMs={10} />);
     await wait(40);
     expect(screen.queryByText(/Syncing/)).toBeNull();
+  });
+
+  it('says at once why writes wait when the store has no room, and what becomes of them', async () => {
+    vi.mocked(useSyncStatus).mockReturnValue(status(1));
+    vi.mocked(useStoreFull).mockReturnValue("This account's notes take more room than its plan allows: 1.6 GB of 1.5 GB. Delete some notes.");
+    render(<SyncingLine delayMs={40} />);
+    expect(screen.getByRole('status').textContent).toBe(
+      "This account's notes take more room than its plan allows: 1.6 GB of 1.5 GB. Delete some notes. Your changes are kept here until there is room.",
+    );
+    expect(screen.queryByText(/Syncing/)).toBeNull();
+  });
+
+  it('leaves the store\u2019s refusal to the offline banner while offline', async () => {
+    vi.mocked(useSyncStatus).mockReturnValue(status(1));
+    vi.mocked(useStoreFull).mockReturnValue('No room.');
+    setReachableForTests(false);
+    render(<SyncingLine delayMs={10} />);
+    await wait(30);
+    expect(screen.queryByRole('status')).toBeNull();
   });
 });
