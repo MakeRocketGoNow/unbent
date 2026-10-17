@@ -51,9 +51,11 @@ The year has a cap of its own, in money rather than presses, because a day's cap
 loop and not a year of days just under it, and because what a press costs varies with
 the model and with how many scans it reads. `AUTOFILL_YEARLY_CENTS` and
 `AUTOFILL_TRIAL_YEARLY_CENTS` are chosen by plan state the same way and fall back the
-same way. The counter keeps tokens, never money; each press sums the year's tokens and
-prices them with the table in `packages/shared/src/llm-prices.ts`, which goes stale when
-Anthropic changes a price and is a percent-level error on a guard, not a hole. A press on
+same way. The counter keeps tokens, never money; the year's tokens are summed once per
+wake of the account's store, kept in step with each press after that, and priced with the
+table in `packages/shared/src/llm-prices.ts`, which goes stale when Anthropic changes a
+price and is a percent-level error on a guard, not a hole (a corrected price takes effect
+the next time a store wakes). A press on
 the decision model, which reports no tokens, counts as a fixed tenth of a cent. The
 refusal says the account has used this year's Auto-fill and that it returns on 1 January
 (UTC, like the day), and names no amount: the cap is the instance's cost, not the
