@@ -583,6 +583,13 @@ An instance that accepts a sign-up from anyone says so in its log: deployed with
 `PUBLIC_SIGNUPS=1` to say the open door is deliberate and stop the warning; who may sign up
 is unchanged either way.
 
+A code by email is sent to whatever address is typed in, so the instance bounds how many it
+sends: one a minute and six a day to any one address, and forty a day between all the
+addresses that have no account, which is the share a bot cycling invented addresses can
+spend before people who already have an account are affected. The numbers are sized to
+Resend's free tier of a hundred a day and live in `apps/api/src/lib/code-sends.ts`; an
+instance on a paid tier can raise the strangers' share there.
+
 The OAuth row means any of the thirty-five providers Better Auth ships (Apple, Discord,
 Microsoft, Slack, GitLab and the rest), not a list this repository maintains. Enabling one
 is two secrets and no code:
