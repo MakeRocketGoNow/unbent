@@ -24,9 +24,14 @@
          the file types in the manifest, which is what lets a scanner or Finder hand a
          file straight to it; see launch-files.ts for what happens when one arrives. -->
     <link rel="manifest" href="/manifest.webmanifest" />
-    <!-- The browser and installed app chrome take the page's paper (`--bg` in styles.css),
-         not the accent: a solid band of brand colour above the notes is the most
-         borrowed-looking thing an app like this can do. -->
+    <!-- The colour of the chrome around the page. Installed, the title bar is the accent
+         (the light theme's `--accent` in styles.css, in both themes), the way the app's
+         own window has always been branded; it is the manifest's `theme_color` too, so
+         the bar does not change colour as the page loads. In a browser tab the address
+         bar takes the page's paper instead, since there the bar belongs to the browser
+         and a band of brand colour above someone's tab is the app shouting. The first tag
+         whose media matches wins, so the installed one comes first. -->
+    <meta name="theme-color" content="#9c3f6d" media="(display-mode: standalone)" />
     <meta name="theme-color" content="#fbfaf8" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#16151a" media="(prefers-color-scheme: dark)" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
