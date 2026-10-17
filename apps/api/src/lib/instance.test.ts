@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LEGAL_CHANGE, LEGAL_VERSION } from '@unbent/shared';
+import { LEGAL_BASE_VERSION, LEGAL_CHANGES, LEGAL_VERSION } from '@unbent/shared';
 import {
   frontPageOf,
   isOperator,
@@ -85,14 +85,10 @@ const PADDLE = {
   PADDLE_STORAGE_PRICE_ID: 'pri_storage',
 };
 
-/**
- * The version an instance that sells nothing is on: the one before a billing-only change,
- * since for it the documents did not change, else the current one (`legalVersionOf`).
- */
-const PLAIN_VERSION = LEGAL_CHANGE?.billingOnly ? LEGAL_CHANGE.since : LEGAL_VERSION;
+/** What a plain instance (no sale, no Auto-fill) is asked: the first version, no sentence. */
+const PLAIN = { version: LEGAL_BASE_VERSION };
 
-/** What such an instance's config says of its documents: that version, and the sentence when it moved. */
-const PLAIN = legalVersionOf(env({}), 'built-in');
+const JEV = { TYPESAFE_API_KEY: 'jev-key' };
 
 describe('legalLinksOf', () => {
   const EXTERNAL = {
@@ -148,39 +144,30 @@ describe('legalLinksOf', () => {
  */
 describe('legalVersionOf', () => {
   it('asks for the built-in version, whatever the environment says', () => {
-    expect(legalVersionOf(env({}), 'built-in').version).toBe(PLAIN_VERSION);
-    expect(legalVersionOf(env({ LEGAL_VERSION: '2027-01-01' }), 'built-in').version).toBe(PLAIN_VERSION);
+    expect(legalVersionOf(env({}), 'built-in')).toEqual(PLAIN);
+    expect(legalVersionOf(env({ LEGAL_VERSION: '2027-01-01' }), 'built-in')).toEqual(PLAIN);
   });
 
   /*
-   * A change only to the payment terms is no change where there is no sale: those sections
-   * are not in that instance's terms (MAK-108), so it stays on the version before and its
-   * accounts are not asked again. Where there is one, the version moves and the sentence
-   * says what is new. Skipped while the current change is not one of those.
+   * A change only to text an instance publishes because it sells a plan (MAK-108), or
+   * because it offers Auto-fill (MAK-230), is no change where it does neither: that text
+   * is not in its documents, so it stays on the version before and its accounts are not
+   * asked again. Where it applies, the version moves and the sentence says what is new.
    */
-  it('moves the version for a billing-only change only where billing is on', () => {
-    if (!LEGAL_CHANGE?.billingOnly) return;
-    expect(LEGAL_CHANGE.since < LEGAL_VERSION).toBe(true);
-    expect(legalVersionOf(env(PADDLE), 'built-in')).toEqual({ version: LEGAL_VERSION, change: LEGAL_CHANGE.text });
-    expect(legalVersionOf(env({}), 'built-in')).toEqual({ version: LEGAL_CHANGE.since });
-  });
-
-  /*
-   * Any other change moves every instance that publishes the built-in documents, with the
-   * sentence, whether it sells a plan or not: MAK-230's is to the privacy policy every one
-   * of them publishes.
-   */
-  it('moves every instance for a change that is not billing-only', () => {
-    if (!LEGAL_CHANGE || LEGAL_CHANGE.billingOnly) return;
-    expect(legalVersionOf(env({}), 'built-in')).toEqual({ version: LEGAL_VERSION, change: LEGAL_CHANGE.text });
-    expect(legalVersionOf(env(PADDLE), 'built-in')).toEqual({ version: LEGAL_VERSION, change: LEGAL_CHANGE.text });
+  it('moves an instance only for the changes whose text it publishes', () => {
+    const sale = LEGAL_CHANGES.find((c) => c.onlyWhere === 'sellsPlan')!;
+    const autofill = LEGAL_CHANGES.find((c) => c.onlyWhere === 'autofill')!;
+    expect(legalVersionOf(env(PADDLE), 'built-in')).toEqual({ version: sale.version, change: sale.text });
+    expect(legalVersionOf(env(JEV), 'built-in')).toEqual({ version: autofill.version, change: autofill.text });
+    expect(legalVersionOf(env({ ...PADDLE, ...JEV }), 'built-in')).toEqual({ version: LEGAL_VERSION, change: autofill.text });
   });
 
   /* The front page states a price, so its instance publishes the payment terms before
      Paddle has issued the keys that turn billing on, which its review requires. */
-  it('says it where the front page is on, with or without billing', () => {
-    expect(legalVersionOf(env({ FRONT_PAGE: '1' }), 'built-in').change).toBe(LEGAL_CHANGE?.text);
-    expect(legalVersionOf(env({ FRONT_PAGE: '1', ...PADDLE }), 'built-in').change).toBe(LEGAL_CHANGE?.text);
+  it('counts the front page as a sale, with or without billing', () => {
+    const sale = LEGAL_CHANGES.find((c) => c.onlyWhere === 'sellsPlan')!;
+    expect(legalVersionOf(env({ FRONT_PAGE: '1' }), 'built-in').change).toBe(sale.text);
+    expect(legalVersionOf(env({ FRONT_PAGE: '1', ...PADDLE }), 'built-in').change).toBe(sale.text);
   });
 
   it('asks for the operator’s own version for their own documents', () => {

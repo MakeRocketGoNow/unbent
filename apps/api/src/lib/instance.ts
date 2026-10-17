@@ -1,4 +1,5 @@
-import { LEGAL_CHANGE, LEGAL_VERSION, type AppConfig } from '@unbent/shared';
+import { legalVersionFor, type AppConfig } from '@unbent/shared';
+import { canAutofill } from './jev.js';
 import type { Env } from '../types.js';
 import { billingOn, type PaddleEnv } from './paddle.js';
 
@@ -116,29 +117,29 @@ const OWN_DOCUMENTS_VERSION = '1';
 
 /**
  * Which version of the documents a signed-in account must have agreed to, and what is new
- * in it. See `LEGAL_VERSION`.
+ * in it. See `LEGAL_CHANGES`.
  *
- * For the built-in documents, the repository's version and its sentence on what changed.
+ * For the built-in documents, the newest change whose text this instance publishes
+ * (`legalVersionFor`): the terms of sale only where it sells a plan (`sellsPlanOf`), and
+ * what Auto-fill sends only where it has the key for it (`canAutofill`, the rule
+ * `/api/config`'s `autofill` reports and the policy is drawn from). An instance that
+ * publishes neither stays on the first version, and nobody there is asked again for text
+ * that reads word for word as it did. One that starts selling later, or turns Auto-fill
+ * on, moves then and its accounts are asked once, with the sentence; one that stops moves
+ * back, and `coversLegalVersion` keeps the accounts that agreed to the later version from
+ * being asked for the earlier one.
+ *
  * For an operator's own, `LEGAL_VERSION` from the environment: this repository cannot
  * know when those change, so the operator moves it, and everyone is asked again. Unset,
- * everyone is asked once. No sentence on what changed: the built-in one describes other
+ * everyone is asked once. No sentence on what changed: the built-in ones describe other
  * documents, and an operator who wants one can say it in their own.
- *
- * A change only to the sections an instance publishes because it sells a plan
- * (`billingOnly`) is no change at all where it sells none (`sellsPlanOf`): those terms
- * read word for word as they did, so that instance stays on the version the change moved
- * from (`since`) and nobody there is asked again. An instance that starts selling later
- * moves to the new version then, and its accounts are asked once, with the sentence; one
- * that stops selling moves back, and `coversLegalVersion` keeps the accounts that agreed
- * to the newer version from being asked for the older one.
  */
 export function legalVersionOf(
-  env: Pick<Env, 'LEGAL_VERSION' | 'FRONT_PAGE'> & PaddleEnv,
+  env: Pick<Env, 'LEGAL_VERSION' | 'FRONT_PAGE' | 'TYPESAFE_API_KEY'> & PaddleEnv,
   documents: 'built-in' | 'own',
 ): { version: string; change?: string } {
   if (documents === 'own') return { version: env.LEGAL_VERSION?.trim() || OWN_DOCUMENTS_VERSION };
-  if (LEGAL_CHANGE?.billingOnly && !sellsPlanOf(env)) return { version: LEGAL_CHANGE.since };
-  return { version: LEGAL_VERSION, ...(LEGAL_CHANGE ? { change: LEGAL_CHANGE.text } : {}) };
+  return legalVersionFor({ sellsPlan: Boolean(sellsPlanOf(env)), autofill: canAutofill(env) });
 }
 
 /**

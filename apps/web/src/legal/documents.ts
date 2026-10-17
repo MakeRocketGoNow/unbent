@@ -159,7 +159,7 @@ const COUNT = ['', '', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven'] as const;
  * the refund policy, and the policy Paddle (MAK-108). `LEGAL_VERSION` moved with them
  * only where the instance sells a plan: those sections are drawn only there
  * (`LegalOptions.sellsPlan`), and an instance that sells none stays on the version before
- * (`LEGAL_CHANGE.since`). The dates are one pair for every instance all the same, so on
+ * (`LEGAL_CHANGES` in `@unbent/shared`). The dates are one pair for every instance all the same, so on
  * such an instance the date above the unchanged text moves and the version does not:
  * the documents' rule that the dates move for every change and the version only for one
  * worth asking about, seen from the other side.
@@ -172,7 +172,8 @@ const COUNT = ['', '', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven'] as const;
  *
  * The same day it gained what Auto-fill sends, to TypeSafe and to Anthropic, and what each
  * keeps (MAK-230). That is how information is handled, and the policy people had agreed
- * to was silent on it, so `LEGAL_VERSION` moved with it, on every instance.
+ * to was silent on it, so the version moved with it, where the instance offers Auto-fill
+ * (`LegalOptions.autofill`): only there is the text drawn, as with the plan's.
  */
 const PRIVACY_EFFECTIVE = '2026-10-16';
 
@@ -717,7 +718,9 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
         ],
         list: [
           'Your notes, including everything in the trash, and their titles, tags and notebooks.',
-          'Every file you attached, and the text read from them for search.',
+          'Every file you attached, and the text ' +
+            (opts.autofill && opts.llm ? 'read from them' : 'extracted from PDFs') +
+            ' for search.',
           'Your account record and email address, any password hash, and your passkeys.',
           'Any linked sign-in account, such as Google, and any app you connected to Unbent.',
           'Your sessions, which signs the account out of every device it was signed in on.',
