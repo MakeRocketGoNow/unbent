@@ -128,10 +128,7 @@ export function WhyPage() {
         </Chapter>
 
         <Chapter title="What one account paid">
-          <p>
-            The renewals tell it better than I can. This is what my account was charged every
-            September, from the first year to the notice for the one I did not take:
-          </p>
+          <p>The renewals tell it better than I can. What my account paid each September:</p>
           <table>
             <tbody>
               {RENEWALS.map((row) => (
