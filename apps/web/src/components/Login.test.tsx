@@ -20,8 +20,7 @@ vi.mock('../notes-api.js', async (importOriginal) => ({
 }));
 
 // The auth client would otherwise reach for the real endpoints on module load.
-// `signIn.passkey` resolves to nothing: the conditional-UI call on mount is fire-and-forget,
-// and a rejection there must stay invisible, which one of the cases below asserts.
+// `signIn.passkey` resolves to nothing, so a press of the button lands without a redirect.
 vi.mock('../auth-client.js', () => ({
   signIn: {
     social: vi.fn(),
@@ -176,27 +175,24 @@ describe('Login', () => {
     expect(screen.queryByText('Sign in with a passkey')).toBeNull();
   });
 
-  it('asks the browser to offer a passkey from autofill, without being pressed', async () => {
+  /**
+   * The conditional-UI offer (`autoFill: true` on mount) is gone on purpose: with 1Password
+   * installed it was three dialogs on page load. Nothing may touch WebAuthn before the
+   * button is pressed, whether or not the instance has passkeys.
+   */
+  it('does not ask the browser for a passkey until the button is pressed', async () => {
     harness(['passkey', 'password']);
-    await waitFor(() => expect(signIn.passkey).toHaveBeenCalledWith({ autoFill: true }));
+    await waitFor(() => expect(screen.getByText('Sign in with a passkey')).toBeTruthy());
+    expect(signIn.passkey).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('Sign in with a passkey'));
+    await waitFor(() => expect(signIn.passkey).toHaveBeenCalledTimes(1));
+    expect(signIn.passkey).toHaveBeenCalledWith();
   });
 
-  it('does not ask for autofill on an instance without passkeys', async () => {
+  it('does not ask for a passkey on an instance without passkeys', async () => {
     harness(['password']);
     await waitFor(() => expect(screen.getByLabelText('Email')).toBeTruthy());
     expect(signIn.passkey).not.toHaveBeenCalled();
-  });
-
-  /**
-   * A browser with no passkey support rejects the conditional-UI call immediately. That is
-   * the ordinary case on a desktop with no authenticator, not a fault, and it must not put
-   * an error over a screen where every other way in still works.
-   */
-  it('stays quiet when the browser refuses the autofill offer', async () => {
-    vi.mocked(signIn.passkey).mockRejectedValueOnce(new Error('not supported'));
-    harness(['passkey', 'password']);
-    await waitFor(() => expect(screen.getByLabelText('Email')).toBeTruthy());
-    expect(screen.queryByText('not supported')).toBeNull();
   });
 
   /**
