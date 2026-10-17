@@ -105,7 +105,7 @@ describe('Plan', () => {
     harness({ state: 'active', source: 'paddle', until: NOW + 300 * DAY, storageGb: 35, usedBytes: 2 * GB, storeBytes: 3 * GB, storeLimitBytes: 4 * GB, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
     const remove = await screen.findByRole('button', { name: 'Remove 25 GB' });
     expect(remove.hasAttribute('disabled')).toBe(true);
-    expect(remove.getAttribute('aria-description')).toBe('The notes take more than the 1.50 GB of room they would have; delete some notes or clear their history first');
+    expect(remove.getAttribute('aria-description')).toBe('The notes take more than the 1.50 GB of room they would have; delete some notes or clear their history, and empty the trash, first');
     // Under the smaller limit, the block can go.
     cleanup();
     harness({ state: 'active', source: 'paddle', until: NOW + 300 * DAY, storageGb: 35, usedBytes: 2 * GB, storeBytes: GB, storeLimitBytes: 4 * GB, subscription: { status: 'active', cancelsAt: null, pastDue: false } });

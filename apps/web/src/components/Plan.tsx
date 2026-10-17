@@ -312,7 +312,7 @@ export function Plan() {
                     : overSmaller
                       ? `The account holds more than ${plan.storageGb - STORAGE_ADDON_GB} GB; delete some files first`
                       : storeOverSmaller
-                        ? `The notes take more than the ${formatBytes(storeLimitBytes(smaller))} of room they would have; delete some notes or clear their history first`
+                        ? `The notes take more than the ${formatBytes(storeLimitBytes(smaller))} of room they would have; delete some notes or clear their history, and empty the trash, first`
                         : undefined
                 }
                 onClick={() => void changeStorage(unitsOf(plan) - 1)}
