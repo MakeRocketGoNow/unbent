@@ -10377,6 +10377,26 @@ button.settings-nav-item {
 
 .front-story li + li { margin-top: 0.6rem; }
 
+/* The public record: the linked date down the left, the event beside it, each row ruled
+   like the renewals table below it so the two read as one kind of thing. A grid rather
+   than a table because an event is a sentence, which a table cell wraps badly against a
+   narrow date column; the date column is as wide as its longest date. */
+.front-story-record {
+  margin: 1.25rem 0;
+}
+
+.front-story-record > div {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0 1.5rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.front-story-record dt { white-space: nowrap; }
+
+.front-story-record dd { margin: 0; }
+
 /* The renewals: a run of years, the price, and a word on the ones that need one. Rows
    rather than a chart, because six numbers read faster as numbers. The years column is
    a row heading and keeps its ink; the note is the quiet column. */
@@ -10511,6 +10531,9 @@ button.settings-nav-item {
   .front-story section { padding-top: 2.25rem; }
 
   .front-story h2 { font-size: 1.25rem; }
+
+  /* The date above its event: a phone has no room for two columns of prose. */
+  .front-story-record > div { grid-template-columns: minmax(0, 1fr); gap: 0.15rem 0; }
 }
 
 /* ---------------------------------------------------------------------------------

@@ -32,6 +32,40 @@ const RENEWALS: { years: string; price: string; note?: string }[] = [
 ];
 
 /**
+ * The public record, dated, each date its source: what a reader who wants the facts
+ * checks, set as rows rather than a paragraph so the dates are a column to run down.
+ * The author's own numbers are in `RENEWALS`, never here.
+ */
+const RECORD: { date: string; href: string; event: string }[] = [
+  {
+    date: 'November 2022',
+    href: 'https://siliconangle.com/2022/11/16/22-years-founded-evernote-acquired-italian-technology-company/',
+    event: 'Evernote announces its sale to Bending Spoons, an app company in Milan.',
+  },
+  {
+    date: 'February 2023',
+    href: 'https://techcrunch.com/2023/02/27/bending-spoons-lays-off-129-evernote-staffers/',
+    event: 'The new owner lays off 129 people, saying the product had been unprofitable for years.',
+  },
+  {
+    date: 'July 2023',
+    href: 'https://www.engadget.com/evernote-is-relocating-to-europe-after-laying-off-most-of-its-us-workforce-205012133.html',
+    event: 'Nearly all of the remaining staff in the United States and Chile are laid off, and the product moves to a team in Europe.',
+  },
+  {
+    date: 'December 2023',
+    href: 'https://techcrunch.com/2023/11/29/its-official-evernote-will-restrict-free-users-to-50-notes/',
+    event: 'A free account is capped at fifty notes in one notebook.',
+  },
+  {
+    date: 'November 2025',
+    href: 'https://www.tamingthetrunk.com/p/evernote-increases-prices-and-adds',
+    event:
+      'The Personal and Professional plans are retired for Starter, $99 a year with a 1,000-note cap, and Advanced, $249.99 a year with no cap, which existing subscribers are offered at renewal.',
+  },
+];
+
+/**
  * Why Unbent exists, `/why`: the origin story (MAK-240).
  *
  * Written for one reader: someone who still uses Evernote, has years of notes in it, and
@@ -90,33 +124,16 @@ export function WhyPage() {
         </Chapter>
 
         <Chapter title="What changed">
-          <p>
-            In{' '}
-            <Source href="https://siliconangle.com/2022/11/16/22-years-founded-evernote-acquired-italian-technology-company/">
-              November 2022
-            </Source>{' '}
-            Evernote announced its sale to Bending Spoons, an app company in Milan. In{' '}
-            <Source href="https://techcrunch.com/2023/02/27/bending-spoons-lays-off-129-evernote-staffers/">
-              February 2023
-            </Source>{' '}
-            the new owner laid off 129 people, saying the product had been unprofitable for
-            years. That{' '}
-            <Source href="https://www.engadget.com/evernote-is-relocating-to-europe-after-laying-off-most-of-its-us-workforce-205012133.html">
-              July
-            </Source>{' '}
-            it laid off nearly all of the remaining staff in the United States and Chile and
-            moved the product to a team in Europe. From{' '}
-            <Source href="https://techcrunch.com/2023/11/29/its-official-evernote-will-restrict-free-users-to-50-notes/">
-              December 2023
-            </Source>{' '}
-            a free account could hold fifty notes in one notebook. In{' '}
-            <Source href="https://www.tamingthetrunk.com/p/evernote-increases-prices-and-adds">
-              November 2025
-            </Source>{' '}
-            the Personal and Professional plans were retired for Starter, $99 a year with a
-            1,000-note cap, and Advanced, $249.99 a year with no cap, which existing
-            subscribers were offered at renewal.
-          </p>
+          <dl className="front-story-record">
+            {RECORD.map((row) => (
+              <div key={row.date}>
+                <dt>
+                  <Source href={row.href}>{row.date}</Source>
+                </dt>
+                <dd>{row.event}</dd>
+              </div>
+            ))}
+          </dl>
           <p>
             None of this is unusual. A company bought a product that was losing money and set
             about making it pay. What is easy to miss from the outside is who paid.
