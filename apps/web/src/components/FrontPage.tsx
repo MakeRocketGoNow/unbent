@@ -1,8 +1,9 @@
-import { useEffect, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { configQuery } from '../queries.js';
-import { LOGIN } from '../auth-gate.js';
+import { useSession } from '../auth-client.js';
+import { HOME, LOGIN } from '../auth-gate.js';
 import { EnexHelp, NotionHelp } from './ImportHelp.js';
 import { LegalLink } from './LegalLink.js';
 import { ProviderIcon } from './provider-icons.js';
@@ -20,12 +21,6 @@ import {
  * shown by the public instance (see `routes/index.tsx`), which is this repository's.
  */
 const SOURCE_URL = 'https://github.com/MakeRocketGoNow/unbent';
-
-/**
- * The pricing section's id, which `/pricing` opens the page at (`routes/pricing.tsx`): the
- * address handed to Paddle's website review, as `/terms#refunds` is for the refund policy.
- */
-export const PRICING_ANCHOR = 'pricing';
 
 /**
  * unbent.app's front page, for someone who is not signed in.
@@ -50,23 +45,132 @@ export const PRICING_ANCHOR = 'pricing';
  * in `public/front/`, which keeps them out of the service worker's precache (it takes PNGs,
  * for the app icons): every visit to the app would otherwise download pictures of the app.
  */
-export function FrontPage({ scrollTo }: { scrollTo?: string } = {}) {
+export function FrontPage() {
+  return (
+    <FrontShell>
+      <section className="front-hero front-width">
+        <h1>Notes in Markdown that you can always take with you.</h1>
+        <p className="front-lead">
+          Unbent keeps your writing, your receipts and your scans in plain Markdown. A note you
+          save is byte-identical to what you typed, and an export is an ordinary folder you
+          can open without us.
+        </p>
+        <div className="front-cta">
+          {/* An anchor wearing the filled button's shape, which the stylesheet allows for
+              exactly this: it goes somewhere (it can be opened in a new tab and copied),
+              so it is a link, and it is the one thing this page is for, so it is filled.
+              `Button` deliberately renders no anchors; see its header. */}
+          <Link to={LOGIN} className="btn btn-primary front-cta-button">
+            Start your free trial
+          </Link>
+          <p className="muted">{TRIAL_DAYS} days free, no card needed. Then ${PLAN_PRICE_USD} a year.</p>
+        </div>
+      </section>
+
+      <figure className="front-shots front-width">
+        <Shot
+          name="desktop"
+          width={1280}
+          height={800}
+          alt="Unbent in a desktop browser: notebooks in a sidebar, a list of notes, and a note open beside them."
+        />
+        <Shot
+          name="phone"
+          width={390}
+          height={844}
+          alt="Unbent on a phone: the list of notes."
+        />
+      </figure>
+
+      <Section title="Yours to take with you">
+        <div className="front-grid">
+          <Point title="Byte for byte">
+            The Markdown is the note, not a copy of one. No reflowed lists, no italics quietly
+            rewritten, no escaped characters appearing in your text overnight.
+          </Point>
+          <Point title="A plain folder tree">
+            Export is one folder per note: its Markdown, and its files beside it. Read it, grep
+            it, back it up: nothing from this app is needed to open it.
+          </Point>
+          <Point title="Still feels like a notes app">
+            A formatting toolbar, headings, checklists, tables and code, styled as you type.
+            The Markdown is underneath, where you can always get at it.
+          </Point>
+        </div>
+      </Section>
+
+      <Section
+        title="Three ways in"
+        intro="Leaving should be easy, and staying should never depend on it being hard: that goes for the app you are leaving, too."
+      >
+        <div className="front-grid">
+          <Point title="From Evernote" help={<EnexHelp />}>
+            Import an .enex export. Each file becomes a notebook, and every note keeps its
+            tags, dates and attachments.
+          </Point>
+          <Point title="From Notion" help={<NotionHelp />}>
+            Import a Markdown &amp; CSV export. Each database becomes a notebook, with its
+            columns as the notebook&apos;s fields.
+          </Point>
+          <Point title="Start empty">
+            Nothing to bring? Sign in and write. Notebooks, tags and fields can come later, or
+            not at all.
+          </Point>
+        </div>
+      </Section>
+
+      <Section title="What else is in it">
+        <div className="front-grid">
+          <Point icon={<SearchFilesFeatureIcon />} title="Search inside your files">
+            Search reaches the text in the PDFs you attach, and pictures and scans are read
+            too, so a photo of a receipt turns up under the name of the shop.
+          </Point>
+          <Point icon={<FieldsFeatureIcon />} title="Fields on a notebook">
+            Give a notebook dates, amounts, ratings or choices, then see it as a table and
+            filter by any of them.
+          </Point>
+          <Point icon={<AssistantFeatureIcon />} title="Your AI assistant, if you want one">
+            An MCP server lets Claude and other assistants search, read and file your notes,
+            once you connect them, and only until you disconnect them.
+          </Point>
+          <Point icon={<AndroidFeatureIcon />} title="An Android app">
+            The same notes on your phone, and a share sheet that files a page, a photo or a
+            stack of scans as a note.
+          </Point>
+          <Point icon={<SourceFeatureIcon />} title="Run it yourself">
+            The source is public, and Unbent runs on Cloudflare&apos;s free tier.{' '}
+            <a href={SOURCE_URL} rel="noopener noreferrer">
+              Read the code
+            </a>
+            .
+          </Point>
+        </div>
+      </Section>
+
+      <Section title="Pricing">
+        <Pricing />
+      </Section>
+    </FrontShell>
+  );
+}
+
+/**
+ * The header and footer of the public pages, around their content: the front page, and
+ * the pricing page (`PricingPage`). One component so the two cannot drift apart, and so
+ * the pricing page is recognisably the same site.
+ *
+ * The header's one link is the way back for people who already have an account, drawn as
+ * the link it is. On the front page that is always Sign in, since `/` sends anyone signed
+ * in to their notes before this renders; the pricing page is shown to signed-in people
+ * too, and offering them a sign-in they do not need would be the kind of control that
+ * teaches people the page does not know who they are. The route has asked for the session
+ * before rendering, so the link does not flip after the page has drawn.
+ */
+export function FrontShell({ children }: { children: ReactNode }) {
   const config = useQuery(configQuery());
   const legal = config.data?.legal;
   const operator = config.data?.operator;
-
-  // `/pricing` opens the page at its prices. The section is in the DOM on the first render
-  // (the route waits for the config before rendering), so once is enough. Deferred a frame
-  // because the router scrolls the window to the top of every new page whose address has
-  // no fragment, from an effect in an ancestor, and a parent's effects run after its
-  // children's: scrolled here directly, the section was in view for one effect and the
-  // top of the page was what drew. Guarded because jsdom has no `scrollIntoView`, as
-  // `LegalDoc` guards it.
-  useEffect(() => {
-    if (!scrollTo) return;
-    const frame = requestAnimationFrame(() => document.getElementById(scrollTo)?.scrollIntoView?.());
-    return () => cancelAnimationFrame(frame);
-  }, [scrollTo]);
+  const { data: session } = useSession();
 
   return (
     <div className="front">
@@ -75,137 +179,18 @@ export function FrontPage({ scrollTo }: { scrollTo?: string } = {}) {
           <img src="/icons/icon-192.png" alt="" width={28} height={28} />
           Unbent
         </span>
-        <Link to={LOGIN} className="front-signin">
-          Sign in
-        </Link>
+        {session ? (
+          <Link to={HOME} className="front-signin">
+            Your notes
+          </Link>
+        ) : (
+          <Link to={LOGIN} className="front-signin">
+            Sign in
+          </Link>
+        )}
       </header>
 
-      <main>
-        <section className="front-hero front-width">
-          <h1>Notes in Markdown that you can always take with you.</h1>
-          <p className="front-lead">
-            Unbent keeps your writing, your receipts and your scans in plain Markdown. A note you
-            save is byte-identical to what you typed, and an export is an ordinary folder you
-            can open without us.
-          </p>
-          <div className="front-cta">
-            {/* An anchor wearing the filled button's shape, which the stylesheet allows for
-                exactly this: it goes somewhere (it can be opened in a new tab and copied),
-                so it is a link, and it is the one thing this page is for, so it is filled.
-                `Button` deliberately renders no anchors; see its header. */}
-            <Link to={LOGIN} className="btn btn-primary front-cta-button">
-              Start your free trial
-            </Link>
-            <p className="muted">{TRIAL_DAYS} days free, no card needed. Then ${PLAN_PRICE_USD} a year.</p>
-          </div>
-        </section>
-
-        <figure className="front-shots front-width">
-          <Shot
-            name="desktop"
-            width={1280}
-            height={800}
-            alt="Unbent in a desktop browser: notebooks in a sidebar, a list of notes, and a note open beside them."
-          />
-          <Shot
-            name="phone"
-            width={390}
-            height={844}
-            alt="Unbent on a phone: the list of notes."
-          />
-        </figure>
-
-        <Section title="Yours to take with you">
-          <div className="front-grid">
-            <Point title="Byte for byte">
-              The Markdown is the note, not a copy of one. No reflowed lists, no italics quietly
-              rewritten, no escaped characters appearing in your text overnight.
-            </Point>
-            <Point title="A plain folder tree">
-              Export is one folder per note: its Markdown, and its files beside it. Read it, grep
-              it, back it up: nothing from this app is needed to open it.
-            </Point>
-            <Point title="Still feels like a notes app">
-              A formatting toolbar, headings, checklists, tables and code, styled as you type.
-              The Markdown is underneath, where you can always get at it.
-            </Point>
-          </div>
-        </Section>
-
-        <Section
-          title="Three ways in"
-          intro="Leaving should be easy, and staying should never depend on it being hard: that goes for the app you are leaving, too."
-        >
-          <div className="front-grid">
-            <Point title="From Evernote" help={<EnexHelp />}>
-              Import an .enex export. Each file becomes a notebook, and every note keeps its
-              tags, dates and attachments.
-            </Point>
-            <Point title="From Notion" help={<NotionHelp />}>
-              Import a Markdown &amp; CSV export. Each database becomes a notebook, with its
-              columns as the notebook&apos;s fields.
-            </Point>
-            <Point title="Start empty">
-              Nothing to bring? Sign in and write. Notebooks, tags and fields can come later, or
-              not at all.
-            </Point>
-          </div>
-        </Section>
-
-        <Section title="What else is in it">
-          <div className="front-grid">
-            <Point icon={<SearchFilesFeatureIcon />} title="Search inside your files">
-              Search reaches the text in the PDFs you attach, and pictures and scans are read
-              too, so a photo of a receipt turns up under the name of the shop.
-            </Point>
-            <Point icon={<FieldsFeatureIcon />} title="Fields on a notebook">
-              Give a notebook dates, amounts, ratings or choices, then see it as a table and
-              filter by any of them.
-            </Point>
-            <Point icon={<AssistantFeatureIcon />} title="Your AI assistant, if you want one">
-              An MCP server lets Claude and other assistants search, read and file your notes,
-              once you connect them, and only until you disconnect them.
-            </Point>
-            <Point icon={<AndroidFeatureIcon />} title="An Android app">
-              The same notes on your phone, and a share sheet that files a page, a photo or a
-              stack of scans as a note.
-            </Point>
-            <Point icon={<SourceFeatureIcon />} title="Run it yourself">
-              The source is public, and Unbent runs on Cloudflare&apos;s free tier.{' '}
-              <a href={SOURCE_URL} rel="noopener noreferrer">
-                Read the code
-              </a>
-              .
-            </Point>
-          </div>
-        </Section>
-
-        <Section title="Pricing" id={PRICING_ANCHOR}>
-          <div className="front-pricing">
-            <div className="front-plan">
-              <p className="front-amount">
-                <strong>${PLAN_PRICE_USD}</strong> a year
-              </p>
-              <ul>
-                <li>Unlimited notes</li>
-                <li>{BASE_STORAGE_GB} GB of attachments, and {STORAGE_ADDON_GB} GB more for ${STORAGE_ADDON_PRICE_USD} a year</li>
-                <li>The web app, the Android app and AI assistants</li>
-                <li>Export everything, as often as you like</li>
-              </ul>
-              <p className="muted">{TRIAL_DAYS} days free, with no card needed to start. Billed yearly.</p>
-            </div>
-            <div className="front-lapse">
-              <h3>If you stop paying</h3>
-              <p>
-                Nothing is held hostage. When a trial ends or a plan lapses, the account turns
-                read-only: every note still opens, searches and exports, and you can still
-                delete. It is kept that way for at least a year, and you will be reminded to
-                export before anything is removed.
-              </p>
-            </div>
-          </div>
-        </Section>
-      </main>
+      <main>{children}</main>
 
       <footer className="front-footer front-width">
         <nav aria-label="About Unbent">
@@ -226,21 +211,53 @@ export function FrontPage({ scrollTo }: { scrollTo?: string } = {}) {
   );
 }
 
+/**
+ * The plan, its price and what happens when it lapses: the one statement of the offer,
+ * which the front page draws under its Pricing heading and the pricing page draws as the
+ * page. Paddle's review reads the pricing page and a visitor reads the front page, and
+ * the two must say the same thing; the numbers are the shared constants, so they also
+ * agree with the Plan page and the checkout.
+ */
+export function Pricing() {
+  return (
+    <div className="front-pricing">
+      <div className="front-plan">
+        <p className="front-amount">
+          <strong>${PLAN_PRICE_USD}</strong> a year
+        </p>
+        <ul>
+          <li>Unlimited notes</li>
+          <li>{BASE_STORAGE_GB} GB of attachments, and {STORAGE_ADDON_GB} GB more for ${STORAGE_ADDON_PRICE_USD} a year</li>
+          <li>The web app, the Android app and AI assistants</li>
+          <li>Export everything, as often as you like</li>
+        </ul>
+        <p className="muted">{TRIAL_DAYS} days free, with no card needed to start. Billed yearly.</p>
+      </div>
+      <div className="front-lapse">
+        <h3>If you stop paying</h3>
+        <p>
+          Nothing is held hostage. When a trial ends or a plan lapses, the account turns
+          read-only: every note still opens, searches and exports, and you can still
+          delete. It is kept that way for at least a year, and you will be reminded to
+          export before anything is removed.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 /** A heading and what it introduces, on the page's one vertical rhythm. */
 function Section({
   title,
   intro,
-  id,
   children,
 }: {
   title: string;
   intro?: string;
-  /** A fragment for a section that is linked to from outside; only pricing has one. */
-  id?: string;
   children: ReactNode;
 }) {
   return (
-    <section className="front-section front-width" id={id}>
+    <section className="front-section front-width">
       <h2>{title}</h2>
       {intro && <p className="front-intro muted">{intro}</p>}
       {children}

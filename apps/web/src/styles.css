@@ -10061,6 +10061,16 @@ button.settings-nav-item {
   color: var(--muted);
 }
 
+/* The pricing page (`PricingPage.tsx`): the offer under the hero's heading, then the way
+   out. The grid's own top margin is sized to sit under a section's h2; under the hero's
+   lead it gets the hero's distance instead, and the way out is centred beneath it as the
+   hero's own is. */
+.front-pricing-page { padding-top: 3rem; }
+
+.front-pricing-page .front-pricing { margin-top: 0; }
+
+.front-pricing-page .front-cta { margin-top: 2.5rem; }
+
 .front-footer {
   display: flex;
   flex-wrap: wrap;
@@ -10135,6 +10145,8 @@ button.settings-nav-item {
   .front-pricing { grid-template-columns: minmax(0, 1fr); gap: 2rem; }
 
   .front-plan { padding: 1.25rem; }
+
+  .front-pricing-page { padding-top: 2rem; }
 }
 
 /* ---------------------------------------------------------------------------------
