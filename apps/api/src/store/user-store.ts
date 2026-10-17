@@ -177,6 +177,10 @@ export interface StoreStats {
  * an hourly pass calling it on an archive-sized account would have read every row of the
  * account twenty-four times a day (found in review), against the same daily row budget
  * the shared database ran out of twice.
+ *
+ * The Plan page's usage read and a storage block's removal (routes/billing.ts) read it
+ * too, through `AttachmentsRepo.usage`, for the files' bytes and the store's size from
+ * one call: its shape is a user-facing route's as well as the sweep's.
  */
 export interface StoreUsage {
   databaseSize: number;
@@ -360,7 +364,7 @@ export class UserStore extends DurableObject<StoreEnv> {
     };
   }
 
-  /** What the sweep records: a few rows per account, never a table scan. See `StoreUsage`. */
+  /** What the sweep records, and what the Plan page shows: a few rows per account, never a table scan. See `StoreUsage`. */
   usage(): StoreUsage {
     const databaseSize = this.ctx.storage.sql.databaseSize;
     // Unavailable rather than empty: the sweep defers on it and records nothing.
@@ -380,9 +384,9 @@ export class UserStore extends DurableObject<StoreEnv> {
 
   /**
    * The bytes of files the account holds, for the quota check before an upload
-   * (lib/quota.ts) and the Plan page. One column of the one `note_counts` row, so an
-   * upload pays a row for it; through `ready()`, since a store being loaded has no
-   * answer and must not give zero.
+   * (lib/quota.ts); the Plan page reads them with the store's size from `usage`. One
+   * column of the one `note_counts` row, so an upload pays a row for it; through
+   * `ready()`, since a store being loaded has no answer and must not give zero.
    */
   attachmentBytes(): number {
     this.ready();
