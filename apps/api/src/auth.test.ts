@@ -7,6 +7,7 @@ import {
   providerOrigins,
   socialConfig,
   confirmDeletionUrl,
+  turnstileOf,
   warnIfOpenToAnyone,
 } from './auth.js';
 import type { Env } from './types.js';
@@ -346,6 +347,119 @@ describe('accountDeletionOffered', () => {
   /** Locally `sendEmail` prints the link, which is how the flow is worked on offline. */
   it('offers it in local development, where the link goes to the console', () => {
     expect(accountDeletionOffered(env({ APP_URL: 'http://localhost:5173' }))).toBe(true);
+  });
+});
+
+/**
+ * Turnstile is on with both keys and off with either missing: a secret alone would refuse
+ * every request for a code, a site key alone would draw a widget nobody checks.
+ */
+describe('turnstileOf', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('reports the site key, and only the site key, when both are set', () => {
+    expect(turnstileOf(env({ TURNSTILE_SECRET_KEY: 'sec', TURNSTILE_SITE_KEY: '1x00' }))).toEqual({ siteKey: '1x00' });
+  });
+
+  it('is off without the pair, and says so for half of one', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(turnstileOf(env({}))).toBeUndefined();
+    expect(warn).not.toHaveBeenCalled();
+    expect(turnstileOf(env({ TURNSTILE_SECRET_KEY: 'sec' }))).toBeUndefined();
+    expect(turnstileOf(env({ TURNSTILE_SITE_KEY: '1x00', TURNSTILE_SECRET_KEY: ' ' }))).toBeUndefined();
+    expect(warn).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * The check is in front of the request for a code and nothing else. A fake D1 that answers
+ * every query with nothing stands in for the database: the refusals below are made before
+ * any query, and the case that gets past the check only has to show it did.
+ */
+describe('Turnstile in front of the sign-in code endpoint', () => {
+  const statement = () => {
+    const self = {
+      bind: () => self,
+      all: async () => ({ results: [], meta: {} }),
+      first: async () => null,
+      run: async () => ({ results: [], meta: {} }),
+      raw: async () => [],
+    };
+    return self;
+  };
+  const DB = { prepare: statement, batch: async () => [], exec: async () => ({}), withSession: () => DB, dump: async () => new ArrayBuffer(0) };
+  // Deployed shape, with mail, so the code endpoint is mounted (`codesDeliverable`).
+  const withTurnstile = () =>
+    getAuth(
+      env({
+        BETTER_AUTH_SECRET: 'test-secret',
+        RESEND_API_KEY: 'key',
+        EMAIL_FROM: 'Unbent <noreply@example.com>',
+        TURNSTILE_SECRET_KEY: 'turnstile-secret',
+        TURNSTILE_SITE_KEY: '1x00',
+        DB,
+      } as unknown as Record<string, string>),
+    );
+  const post = (path: string, body: unknown, headers: Record<string, string> = {}) =>
+    new Request(`https://example.com/api/auth${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: 'https://example.com', ...headers },
+      body: JSON.stringify(body),
+    });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('refuses a request for a code that carries no token', async () => {
+    const res = await withTurnstile().handler(post('/email-otp/send-verification-otp', { email: 'a@example.com', type: 'sign-in' }));
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { code: string }).code).toBe('MISSING_RESPONSE');
+  });
+
+  it('leaves the code\'s own sign-in alone, since the code already bounds it', async () => {
+    const res = await withTurnstile().handler(post('/sign-in/email-otp', { email: 'a@example.com', otp: '123456' }));
+    expect(((await res.json()) as { code?: string }).code).not.toBe('MISSING_RESPONSE');
+  });
+
+  it('asks Cloudflare about the token and refuses one it rejects', async () => {
+    const fetchMock = vi.fn(async () => Response.json({ success: false, 'error-codes': ['invalid-input-response'] }));
+    vi.stubGlobal('fetch', fetchMock);
+    const res = await withTurnstile().handler(
+      post('/email-otp/send-verification-otp', { email: 'a@example.com', type: 'sign-in' }, { 'x-captcha-response': 'tok' }),
+    );
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { code: string }).code).toBe('VERIFICATION_FAILED');
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [URL | string, RequestInit];
+    expect(String(url)).toBe('https://challenges.cloudflare.com/turnstile/v0/siteverify');
+    expect(JSON.parse(init.body as string)).toMatchObject({ secret: 'turnstile-secret', response: 'tok' });
+  });
+
+  /**
+   * Past the check, the request meets the day's bounds (`lib/code-sends.ts`), whose fake
+   * rows read as a day already spent: that 429 is the hook's, and proof the captcha let
+   * the request reach it. The two refusals above come back as 400 and 403 from the
+   * plugin before any query is made.
+   */
+  const CAPTCHA_CODES = ['MISSING_RESPONSE', 'VERIFICATION_FAILED', 'UNKNOWN_ERROR'];
+
+  it('lets a request through once the token is confirmed', async () => {
+    const fetchMock = vi.fn(async () => Response.json({ success: true }));
+    vi.stubGlobal('fetch', fetchMock);
+    const res = await withTurnstile().handler(
+      post('/email-otp/send-verification-otp', { email: 'a@example.com', type: 'sign-in' }, { 'x-captcha-response': 'tok' }),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(CAPTCHA_CODES).not.toContain(((await res.json()) as { code?: string }).code);
+  });
+
+  it('takes a request with no token where the instance has no keys', async () => {
+    const fetchMock = vi.fn(async () => Response.json({ id: 'mail' }));
+    vi.stubGlobal('fetch', fetchMock);
+    const auth = getAuth(
+      env({ BETTER_AUTH_SECRET: 'test-secret', RESEND_API_KEY: 'key', EMAIL_FROM: 'Unbent <noreply@example.com>', DB } as unknown as Record<string, string>),
+    );
+    const res = await auth.handler(post('/email-otp/send-verification-otp', { email: 'a@example.com', type: 'sign-in' }));
+    expect(CAPTCHA_CODES).not.toContain(((await res.json()) as { code?: string }).code);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

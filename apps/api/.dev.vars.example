@@ -137,6 +137,23 @@ ALLOWED_EMAILS=
 # the address that does read mail. Unset means Reply goes to EMAIL_FROM.
 # EMAIL_REPLY_TO=hello@example.com
 
+# Cloudflare Turnstile, in front of the request for a sign-in code. The code endpoint mails
+# whatever address is typed into it, and the day's bounds (see the sign-in section of
+# docs/self-hosting.md) only cap what a script can spend; with this set, a request for a
+# code has to carry a token the browser earned from Turnstile first, and the sign-in
+# screen draws the widget that mints one. Managed Turnstile passes nearly everyone with
+# no click. Both or neither: a secret alone would refuse every request, a site key alone
+# would draw a widget nobody checks, and half a pair is read as none. Unset, the default,
+# means no widget and no check.
+#
+#   https://dash.cloudflare.com/?to=/:account/turnstile, a Managed widget with your
+#   hostname; the site key is public and ships in the page, the secret stays here.
+#   For local development Cloudflare's test pair always passes:
+#   TURNSTILE_SITE_KEY=1x00000000000000000000AA
+#   TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
+# TURNSTILE_SITE_KEY=
+# TURNSTILE_SECRET_KEY=
+
 # Who runs this instance.
 #
 # The built-in privacy policy, terms and "how to delete your account" page name a legal

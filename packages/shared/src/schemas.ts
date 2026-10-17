@@ -234,6 +234,15 @@ export const SIGNUPS_CLOSED_MESSAGE = 'This Unbent instance is not open for sign
 export interface AppConfig {
   providers: AuthProvider[];
   /**
+   * Cloudflare Turnstile's site key, where the instance has put Turnstile in front of
+   * the sign-in code endpoint. The sign-in screen draws the widget from it and sends the
+   * token it mints as `x-captcha-response` with the request for a code; the native apps
+   * load `/turnstile`, which does the same, to get theirs. Absent means the endpoint
+   * takes a request without one, which is every instance that has not set the pair.
+   * Public by design: a site key only says where a widget may be drawn.
+   */
+  turnstile?: { siteKey: string };
+  /**
    * Whether an account can delete itself here.
    *
    * Deletion is confirmed by a link in the mail, so an instance with no mail configured

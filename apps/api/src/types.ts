@@ -174,6 +174,16 @@ export interface Env {
    */
   EMAIL_REPLY_TO?: string;
   /**
+   * Cloudflare Turnstile, in front of the sign-in code endpoint (MAK-243). Both or
+   * neither, the shape of an OAuth pair: the secret is what the Worker checks a token
+   * with, the site key is what the page draws the widget from, and one without the other
+   * is a form nobody can submit or a check nobody makes. Unset, the endpoint is as it was,
+   * bounded by `lib/code-sends.ts` alone. See `turnstileOf` in auth.ts, and the comment
+   * on the plugin there for what it protects and what it does not.
+   */
+  TURNSTILE_SECRET_KEY?: string;
+  TURNSTILE_SITE_KEY?: string;
+  /**
    * Who runs this instance: the legal entity the built-in privacy policy and terms name,
    * and the address they tell people to write to.
    *

@@ -1,10 +1,10 @@
 import { betterAuth } from 'better-auth';
 import { APIError, createAuthMiddleware } from 'better-auth/api';
-import { bearer, deviceAuthorization, emailOTP, jwt, oneTimeToken } from 'better-auth/plugins';
+import { bearer, captcha, deviceAuthorization, emailOTP, jwt, oneTimeToken } from 'better-auth/plugins';
 import { mcp } from '@better-auth/mcp';
 import { passkey } from '@better-auth/passkey';
 import { socialProviderList } from 'better-auth/social-providers';
-import { SIGNUPS_CLOSED_MESSAGE, type AuthProvider } from '@unbent/shared';
+import { SIGNUPS_CLOSED_MESSAGE, type AppConfig, type AuthProvider } from '@unbent/shared';
 import type { Env } from './types.js';
 import { canSendEmail, sendEmail } from './lib/email.js';
 import { CODE_REFUSAL_MESSAGES, codeRequestOf, recordCodeRequest } from './lib/code-sends.js';
@@ -101,6 +101,29 @@ function codesDeliverable(env: Env): boolean {
  * Exported because `/api/config` reports it: a settings page that drew a Delete account
  * button on an instance where the endpoint 404s would be worse than not drawing one.
  */
+/**
+ * Turnstile in front of the sign-in code endpoint, when the instance has both keys.
+ *
+ * Both or neither, as an OAuth pair is read: a secret with no site key would refuse every
+ * request for a code, since no page could mint a token, and a site key with no secret
+ * would draw a widget whose answer nobody checks. Half a pair is read as none and said
+ * so once in the log, rather than locking the code sign-in or quietly not protecting it.
+ *
+ * What `/api/config` reports is the site key alone (`AppConfig.turnstile`); the secret
+ * never leaves the Worker.
+ */
+export function turnstileOf(env: Env): AppConfig['turnstile'] | undefined {
+  const secret = env.TURNSTILE_SECRET_KEY?.trim();
+  const siteKey = env.TURNSTILE_SITE_KEY?.trim();
+  if (secret && siteKey) return { siteKey };
+  if (secret || siteKey) {
+    console.warn(
+      `[auth] TURNSTILE_${secret ? 'SITE' : 'SECRET'}_KEY is not set beside TURNSTILE_${secret ? 'SECRET' : 'SITE'}_KEY, so Turnstile is off`,
+    );
+  }
+  return undefined;
+}
+
 export function accountDeletionOffered(env: Env): boolean {
   return codesDeliverable(env);
 }
@@ -933,6 +956,32 @@ function createAuth(env: Env): AuthInstance {
        * in the 1.7.1 pinned here: the passwordless path now clears the password and
        * revokes sessions before marking an account verified.
        */
+      /**
+       * Turnstile, in front of the one endpoint that mails a stranger something: the
+       * request for a sign-in code (MAK-243). The bounds in `lib/code-sends.ts` cap what a
+       * day of abuse costs; this is what keeps a script from spending the cap at all, by
+       * asking the browser to prove it is one before a code is made. Managed Turnstile
+       * passes nearly everyone without a click, so the price to a person is a widget
+       * that resolves itself under the address field.
+       *
+       * Scoped to that endpoint and no other, deliberately. The plugin's default set is
+       * the password routes, which this instance does not offer the public, and the
+       * code's own sign-in (`/sign-in/email-otp`) is already bounded by the code: three
+       * tries and it is burned. Widening it would put a widget in front of a passkey or
+       * a provider that needs none. The native apps have no widget of their own, so
+       * they load `/turnstile` from this instance in a web view and send the token it
+       * mints with the same header (`x-captcha-response`).
+       *
+       * Off entirely without the pair (`turnstileOf`): a fork that has not set it is as
+       * it was, and the endpoint takes a request with no header. A siteverify that cannot
+       * be reached is a 500 from the plugin, not a pass: a check that fails open is no
+       * check, and the person is one press away from trying again.
+       */
+      ...(turnstileOf(env) ? [captcha({
+        provider: 'cloudflare-turnstile',
+        secretKey: env.TURNSTILE_SECRET_KEY!.trim(),
+        endpoints: ['/email-otp/send-verification-otp'],
+      })] : []),
       ...(codesDeliverable(env) ? [emailOTP({
         // Six digits for five minutes, both the plugin's defaults and right for a code
         // read off a phone. Three attempts before it is burned, also the default.
