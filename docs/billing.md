@@ -41,9 +41,10 @@ the history keeps of them, the text extracted from files, the search index) is t
 kind of storage, about thirteen times the bucket's price per gigabyte-month. Once a store
 is past half a gigabyte plus a tenth of the quota, a note write (a note made, imported,
 duplicated or changed, a body appended to, a copy put back, a bulk change) is the same
-402, with a sentence that says notes rather than files. Deleting, trashing and emptying
-the trash still work, since they are the way back under, and a file's text is still
-recorded, since the quota on files bounds it. The margin is wide on purpose: a real
+402, with a sentence that says notes rather than files, and so is a file's text sent
+for indexing, since a text layer is as long as its sender makes it whatever the file's
+size. Deleting, trashing and emptying the trash still work, since they are the way back
+under. The margin is wide on purpose: a real
 archive's text measured at a few percent of its files, and the limit exists for a loop
 writing maximum-size notes on a trial with no card, not for anyone who filed what they
 scanned (`storeLimitBytes` in `lib/quota.ts` has the numbers and the reasoning).

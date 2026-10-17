@@ -953,11 +953,12 @@ export class UserStore extends DurableObject<StoreEnv> {
   // The writes that take a `limit` are the ones that add to the store on a person's or
   // an assistant's say-so: a note made, duplicated, imported or changed, a body appended
   // to, a copy put back, and a bulk change, which keeps a copy of every note it touches
-  // (MAK-234). A delete, a trashing and a purge take none: they are the way back under
-  // the limit. Neither do a notebook's, a tag's or a field's management, which write
-  // rows of their own size and not the person's text, nor a file's row or its text,
-  // which the quota on files bounds. A new write that takes text from outside has to
-  // decide which it is, and say so here.
+  // (MAK-234), and so do the writes of a file's text below, which is as long as the
+  // sender makes it whatever the file's size. A delete, a trashing and a purge take
+  // none: they are the way back under the limit. Neither do a notebook's, a tag's or a
+  // field's management, which write rows of their own size and not the person's text,
+  // nor a file's row, which the quota on files bounds. A new write that takes text from
+  // outside has to decide which it is, and say so here.
 
   list(opts: ListOptions) { this.ready(); return this.notes.list(opts); }
   listFull(opts: ListOptions) { this.ready(); return this.notes.listFull(opts); }
@@ -1042,19 +1043,23 @@ export class UserStore extends DurableObject<StoreEnv> {
    * A file's text, and (when the language model read it) what the reading cost, in one
    * transaction (MAK-180): a reading recorded is a reading counted.
    */
-  recordText(input: Parameters<AttachmentsStore['recordText']>[0], usage?: UsageEntry) {
-    return this.writing(() =>
-      this.sql.tx(() => {
-        this.attachments.recordText(input);
-        if (usage) this.llmUsage.add(usage, Date.now());
-      }),
+  recordText(input: Parameters<AttachmentsStore['recordText']>[0], usage?: UsageEntry, limit?: StoreLimit) {
+    return this.writing(
+      () =>
+        this.sql.tx(() => {
+          this.attachments.recordText(input);
+          if (usage) this.llmUsage.add(usage, Date.now());
+        }),
+      // An empty text (`unusable`, or a scan the model found nothing on) is a row that
+      // stops the next pass retrying, and takes no room worth refusing.
+      input.text ? limit : undefined,
     );
   }
-  copyText(fromAttachmentId: string, to: { attachmentId: string; noteId: string; filename: string }) {
-    return this.writing(() => this.attachments.copyText(fromAttachmentId, to));
+  copyText(fromAttachmentId: string, to: { attachmentId: string; noteId: string; filename: string }, limit?: StoreLimit) {
+    return this.writing(() => this.attachments.copyText(fromAttachmentId, to), limit);
   }
-  writeAssistantText(noteId: string, filename: string, text: string) {
-    return this.writing(() => this.attachments.writeAssistantText(noteId, filename, text));
+  writeAssistantText(noteId: string, filename: string, text: string, limit?: StoreLimit) {
+    return this.writing(() => this.attachments.writeAssistantText(noteId, filename, text), limit);
   }
   needingText(limit: number, noteId?: string) { this.ready(); return this.attachments.needingText(limit, noteId); }
   pendingTextCount(noteId?: string) { this.ready(); return this.attachments.pendingTextCount(noteId); }

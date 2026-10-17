@@ -128,7 +128,15 @@ export async function copyAttachments(
       await blobs.delete(key);
       continue;
     }
-    await attachments.copyText(source.id, { attachmentId: id, noteId: input.to, filename });
+    // The text goes with the file, unless the store has no room for it (MAK-234): then
+    // the copy is a file with no text row yet, which is what a fresh upload is, and the
+    // browser's next pass indexes it once there is room. Not a refusal of the copy: the
+    // row and the object are already there, and the quota on files admitted them.
+    try {
+      await attachments.copyText(source.id, { attachmentId: id, noteId: input.to, filename });
+    } catch (err) {
+      if (!(err instanceof StorageFull)) throw err;
+    }
 
     let moved = false;
     if (input.move && !(await sourceStillLinks(requested))) {

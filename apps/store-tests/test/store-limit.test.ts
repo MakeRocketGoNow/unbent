@@ -52,9 +52,18 @@ describe('the store limit', () => {
     expect((await stub.get(first.id))!.title).toBe('Renamed');
     expect(await stub.count()).toBe(2);
 
-    // A file's row and its text are not held up: the quota on files bounds those.
+    // A file's row is not held up (the quota on files bounds it), but its text is: a
+    // text layer is as long as its sender makes it, whatever the file's size. An empty
+    // row, which only stops the next pass retrying, goes through.
     await stub.recordAttachment({ id: 'a1', noteId: first.id, filename: 'scan.pdf', contentType: 'application/pdf', size: 3, r2Key: 'k1' });
-    await stub.recordText({ attachmentId: 'a1', noteId: first.id, filename: 'scan.pdf', text: 'scanned page' });
+    await stub.recordAttachment({ id: 'a2', noteId: first.id, filename: 'copy.pdf', contentType: 'application/pdf', size: 3, r2Key: 'k2' });
+    const text = { attachmentId: 'a1', noteId: first.id, filename: 'scan.pdf' };
+    await expect(stub.recordText({ ...text, text: 'scanned page' }, undefined, limit)).rejects.toMatchObject(refused);
+    await stub.recordText({ ...text, text: '' }, undefined, limit);
+    await stub.recordText({ ...text, text: 'scanned page' }, undefined, null);
+    await expect(stub.copyText('a1', { attachmentId: 'a2', noteId: first.id, filename: 'copy.pdf' }, limit)).rejects.toMatchObject(refused);
+    await expect(stub.writeAssistantText(first.id, 'copy.pdf', 'what the assistant read', limit)).rejects.toMatchObject(refused);
+    expect(await stub.textFor(first.id, 'copy.pdf')).toBe('');
 
     // Under the limit, and with none, every one of them goes through.
     for (const l of [100 * MB, null, undefined]) {

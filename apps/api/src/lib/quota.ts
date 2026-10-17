@@ -87,9 +87,10 @@ function roomOf(bytes: number): string {
  * account that only filed what it scanned. One number for every plan rather than a
  * setting, as the quota's blocks are: an operator who finds it wrong changes it here.
  *
- * Only note writes are held to it (`NotesRepo`): deleting, trashing and emptying the
- * trash are the way back under, and a file's text is derived data the quota on files
- * already bounds.
+ * Note writes and a file's text are held to it (`NotesRepo`, `AttachmentsRepo`):
+ * deleting, trashing and emptying the trash are the way back under. The text is
+ * bounded too because the quota on files counts bytes in the bucket, and a text layer
+ * sent for a file is as long as the sender makes it, whatever the file's size.
  */
 export const STORE_FLOOR_BYTES = 512 * MB;
 

@@ -16,9 +16,10 @@ import type { Env } from '../types.js';
  * holds one connection to the object. Cheap and side-effect free: the notes router runs
  * it twice per request, once from its own `use` and once from a sub-route's.
  *
- * `storeLimit` is where the notes facade asks how much room the account's store may
- * take before it writes a note (MAK-234): the plan's, from the context or the database,
- * or `noStoreLimit` for a caller that only reads. Required, so the caller says which.
+ * `storeLimit` is where both facades ask how much room the account's store may take
+ * before they write a note or a file's text (MAK-234): the plan's, from the context or
+ * the database, or `noStoreLimit` for a caller that only reads. Required, so the caller
+ * says which.
  */
 export function reposFor(
   env: Pick<Env, 'USER_STORE' | 'STORE_JURISDICTION'>,
@@ -26,5 +27,5 @@ export function reposFor(
   storeLimit: StoreLimitSource,
 ): { notes: NotesRepo; attachments: AttachmentsRepo } {
   const store = storeFor(env, userId);
-  return { notes: new NotesRepo(store, userId, storeLimit), attachments: new AttachmentsRepo(store, userId) };
+  return { notes: new NotesRepo(store, userId, storeLimit), attachments: new AttachmentsRepo(store, userId, storeLimit) };
 }
