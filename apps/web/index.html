@@ -24,7 +24,11 @@
          the file types in the manifest, which is what lets a scanner or Finder hand a
          file straight to it; see launch-files.ts for what happens when one arrives. -->
     <link rel="manifest" href="/manifest.webmanifest" />
-    <meta name="theme-color" content="#2F6B4F" />
+    <!-- The browser and installed app chrome take the page's paper (`--bg` in styles.css),
+         not the accent: a solid band of brand colour above the notes is the most
+         borrowed-looking thing an app like this can do. -->
+    <meta name="theme-color" content="#fbfaf8" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#16151a" media="(prefers-color-scheme: dark)" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <!-- The tab's icon. There was none, so a browser asked for /favicon.ico, which the
          SPA fallback answers with this page, and drew a blank. The PWA's own icon, which
