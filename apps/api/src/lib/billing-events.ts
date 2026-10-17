@@ -12,7 +12,9 @@ import type { PlanPatch, PlanRow } from './plan.js';
  * delivery, not order, and retries anything not answered in five seconds; the route
  * refuses an event it has seen by id and `updatePlanStatement`'s `notBefore` keeps an
  * older event from writing over a newer one, so between the two a delivery can be late
- * or repeated and the row still ends where the newest event put it.
+ * or repeated and the row still ends where the newest event put it. The one exception
+ * is a refund's cancel, which ends the period even under the newer stamp its own
+ * `subscription.canceled` left (`refundPatchFor`, and the webhook's comment).
  */
 
 export interface PaddleEvent {
