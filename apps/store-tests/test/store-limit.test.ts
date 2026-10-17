@@ -65,6 +65,11 @@ describe('the store limit', () => {
     await expect(stub.writeAssistantText(first.id, 'copy.pdf', 'what the assistant read', limit)).rejects.toMatchObject(refused);
     expect(await stub.textFor(first.id, 'copy.pdf')).toBe('');
 
+    // An Auto-fill press is refused before it reads anything: its readings could not be
+    // recorded, and the next press would pay for them again.
+    await expect(stub.autofillPrelude(first.id, 5, undefined, limit)).rejects.toMatchObject(refused);
+    expect((await stub.autofillPrelude(first.id, 5, undefined, null))!.note.id).toBe(first.id);
+
     // A replay of a create or a duplicate whose note is already here finds it, whatever
     // the size: the room is checked only on the path that creates.
     expect((await stub.createOrFind({ ...note({ id: first.id }), title: 'Replayed' }, limit)).existing).toBe(true);

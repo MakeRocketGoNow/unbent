@@ -1259,8 +1259,13 @@ export class UserStore extends DurableObject<StoreEnv> {
    * answer is never counted; and only for a live note, since an id that names nothing
    * must not cost anyone a press.
    */
-  autofillPrelude(id: string, ownFilesToRead: number, press?: PressLimits) {
+  autofillPrelude(id: string, ownFilesToRead: number, press?: PressLimits, limit?: StoreLimit) {
     this.ready();
+    // Past the store's room (MAK-234) the press is refused before anything is read:
+    // the readings it would pay the model for could not be recorded, so the next press
+    // would pay for them again, and the suggestion it fed would be a save the outbox
+    // can only keep. The route answers the 402 the save would have got.
+    if (limit !== undefined && limit !== null) this.assertRoom(limit);
     return this.sql.tx(() => {
       const note = this.notes.get(id);
       if (!note) return null;

@@ -503,7 +503,7 @@ export class NotesRepo extends StoreRepo {
    * press counted against the day's cap. Null when there is no such live note.
    */
   autofillPrelude(id: string, ownFilesToRead: number, press?: PressLimits) {
-    return this.call((s) => s.autofillPrelude(id, ownFilesToRead, press));
+    return this.call(async (s) => s.autofillPrelude(id, ownFilesToRead, press, await this.storeLimit()));
   }
 
   /** What a press cost beyond its files' readings; see `UserStore.recordLlmUsage`. */
