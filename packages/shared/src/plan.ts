@@ -29,7 +29,7 @@ export const STORAGE_ADDON_GB = 25;
  * web app's `legal/documents.ts`). Nothing sends that mail: it is written by hand, or built
  * first. Changing the price in Paddle's catalog without it breaks the terms.
  */
-export const PLAN_PRICE_USD = 36;
+export const PLAN_PRICE_USD = 60;
 
 /** One storage block's price, a year at a time. The same 30 days' notice applies. */
 export const STORAGE_ADDON_PRICE_USD = 12;

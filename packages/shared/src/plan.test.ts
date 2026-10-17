@@ -20,7 +20,7 @@ describe('the plan’s prices', () => {
     'this number together. See "Changing the price" in docs/billing.md.';
 
   it('stay what the subscribers were told, until they are told otherwise', () => {
-    expect(PLAN_PRICE_USD, promise).toBe(36);
+    expect(PLAN_PRICE_USD, promise).toBe(60);
     expect(STORAGE_ADDON_PRICE_USD, promise).toBe(12);
   });
 });

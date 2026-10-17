@@ -44,10 +44,10 @@ describe('Plan', () => {
   it('offers a trial the one thing to do, with the storage chosen first', async () => {
     harness({});
     expect(await screen.findByRole('heading', { name: 'Free trial' })).toBeTruthy();
-    const subscribe = screen.getByRole('button', { name: 'Subscribe for $36 a year' });
+    const subscribe = screen.getByRole('button', { name: 'Subscribe for $60 a year' });
     expect(subscribe.className).toContain('btn-primary');
     fireEvent.change(screen.getByRole('combobox'), { target: { value: '2' } });
-    expect(screen.getByRole('button', { name: 'Subscribe for $60 a year' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Subscribe for $84 a year' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Manage subscription' })).toBeNull();
   });
 
@@ -131,7 +131,7 @@ describe('Plan', () => {
     vi.mocked(openCheckout).mockResolvedValue('completed');
     harness({});
     fireEvent.change(await screen.findByRole('combobox'), { target: { value: '1' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Subscribe for $48 a year' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Subscribe for $72 a year' }));
     // The second read comes after `settleCheckout`'s wait, past the finder's default second.
     expect(await screen.findByRole('heading', { name: 'Subscribed' }, { timeout: 4000 })).toBeTruthy();
     expect(calls).toContain('POST /api/billing/checkout');
@@ -173,7 +173,7 @@ describe('Plan', () => {
     );
     vi.mocked(openCheckout).mockResolvedValue('completed');
     harness({ state: 'inactive', until: NOW - DAY, source: 'paddle', subscription: { status: 'canceled', cancelsAt: null, pastDue: false } });
-    fireEvent.click(await screen.findByRole('button', { name: 'Subscribe for $36 a year' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Subscribe for $60 a year' }));
     expect(await screen.findByRole('heading', { name: 'Subscribed' }, { timeout: 4000 })).toBeTruthy();
     expect(refreshes).toHaveLength(2);
   });
