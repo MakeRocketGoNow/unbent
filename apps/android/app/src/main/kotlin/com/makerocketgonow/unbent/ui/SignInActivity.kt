@@ -60,6 +60,8 @@ class SignInActivity : ComponentActivity() {
     private var busy by mutableStateOf(false)
     /** The Turnstile page, while its widget wants a tap; see [TurnstileChallenge]. */
     private var challenge by mutableStateOf<WebView?>(null)
+    /** The address a code went to, once the server took the request; see [SignInScreen]. */
+    private var codeSentTo by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -95,6 +97,8 @@ class SignInActivity : ComponentActivity() {
                     onPassword = ::signInWithPassword,
                     onInstanceChange = ::changeInstance,
                     onRetry = ::loadConfig,
+                    codeSentTo = codeSentTo,
+                    onDifferentAddress = { codeSentTo = null },
                     challenge = challenge,
                 )
             }
@@ -210,6 +214,9 @@ class SignInActivity : ComponentActivity() {
      * web view nobody sees unless the widget wants a tap ([TurnstileChallenge]). A page
      * that could not mint one ends the step with a sentence of its own: the server would
      * only refuse a request without it, and the person is one press from trying again.
+     * A page that says the instance asks for no token sends none: the check was turned
+     * off after this screen read its config. The reverse, a refusal for a missing token,
+     * means it was turned on since, so the config is read again for the next press.
      */
     private fun signInWithEmailOtp(email: String, code: String?) {
         busy = true
@@ -219,14 +226,16 @@ class SignInActivity : ComponentActivity() {
             var captchaToken: String? = null
             if (code == null && config?.turnstile != null) {
                 status = getString(R.string.sign_in_checking)
-                val outcome = TurnstileChallenge.token(this@SignInActivity, origin) { challenge = it }
-                if (outcome !is TurnstileChallenge.Outcome.Token) {
-                    Log.w("Unbent", "Turnstile gave no token: $outcome")
-                    busy = false
-                    status = getString(R.string.sign_in_challenge_failed)
-                    return@launch
+                when (val outcome = TurnstileChallenge.token(this@SignInActivity, origin) { challenge = it }) {
+                    is TurnstileChallenge.Outcome.Token -> captchaToken = outcome.token
+                    TurnstileChallenge.Outcome.None -> {}
+                    else -> {
+                        Log.w("Unbent", "Turnstile gave no token: $outcome")
+                        busy = false
+                        status = getString(R.string.sign_in_challenge_failed)
+                        return@launch
+                    }
                 }
-                captchaToken = outcome.token
                 status = getString(R.string.sign_in_waiting)
             }
             val result = withContext(Dispatchers.IO) {
@@ -242,11 +251,17 @@ class SignInActivity : ComponentActivity() {
             }
             busy = false
             result.onSuccess { session ->
-                if (session == null) status = null else finishSignIn(session)
+                if (session == null) {
+                    status = null
+                    codeSentTo = email
+                } else {
+                    finishSignIn(session)
+                }
             }.onFailure { e ->
                 Log.w("Unbent", "Email code sign-in failed", e)
                 status = (e as? ApiException)?.serverMessage()
                     ?: getString(if (code == null) R.string.sign_in_failed else R.string.sign_in_otp_failed)
+                if ((e as? ApiException)?.isMissingCaptcha == true) loadConfig()
             }
         }
     }

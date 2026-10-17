@@ -43,6 +43,8 @@ object TurnstileChallenge {
 
     sealed interface Outcome {
         data class Token(val token: String) : Outcome
+        /** The instance asks for no token: the check was turned off since the config was read. */
+        data object None : Outcome
         data class Failed(val reason: String) : Outcome
         data object TimedOut : Outcome
     }
@@ -68,6 +70,7 @@ object TurnstileChallenge {
                             if (token.isNullOrEmpty()) outcome.complete(Outcome.Failed("empty token"))
                             else outcome.complete(Outcome.Token(token))
                         }
+                        message.isTurnstileNone -> outcome.complete(Outcome.None)
                         message.isTurnstileError -> outcome.complete(Outcome.Failed(message.message ?: "turnstile-error"))
                         message.isTurnstileInteractive -> onChallenge(this@apply)
                     }

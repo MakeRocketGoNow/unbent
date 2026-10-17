@@ -47,6 +47,16 @@ class ApiException(
         val obj = ApiJson.parseToJsonElement(body).jsonObject
         (obj["message"] ?: obj["error"])?.jsonPrimitive?.contentOrNull?.ifEmpty { null }
     }.getOrNull()
+
+    /**
+     * A request for a code refused because it carried no Turnstile token, which means the
+     * instance turned the check on after this app read its config (`AppConfig.turnstile`).
+     * The code the server's plugin answers with, beside its message.
+     */
+    val isMissingCaptcha: Boolean
+        get() = status == 400 && runCatching {
+            ApiJson.parseToJsonElement(body).jsonObject["code"]?.jsonPrimitive?.contentOrNull == "MISSING_RESPONSE"
+        }.getOrDefault(false)
 }
 
 /**

@@ -1,5 +1,6 @@
 package com.makerocketgonow.unbent.ui
 
+import android.webkit.WebView
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,7 +29,9 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -43,8 +46,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import android.webkit.WebView
-import androidx.compose.runtime.key
 import com.makerocketgonow.unbent.R
 import com.makerocketgonow.unbent.api.AppConfig
 import com.makerocketgonow.unbent.ui.theme.Space
@@ -73,6 +74,15 @@ fun SignInScreen(
     onPasskey: () -> Unit,
     /** Sends a code, then signs in with it. Null code means "send one to this address". */
     onEmailOtp: (email: String, code: String?) -> Unit,
+    /**
+     * The address a code went to, once the server has taken the request, and null before
+     * and after. The form moves to the code step on this rather than on the press, so a
+     * refused request (a bad address, a Turnstile check that did not finish, a widget
+     * wanting a tap) leaves the person at the address beside the reason, and never under
+     * "We sent a code". [onDifferentAddress] is the way back, which clears it.
+     */
+    codeSentTo: String? = null,
+    onDifferentAddress: () -> Unit = {},
     /** Name is null to sign in and present (possibly blank) to create an account. */
     onPassword: (email: String, password: String, name: String?) -> Unit,
     onInstanceChange: (String) -> Unit,
@@ -112,13 +122,16 @@ fun SignInScreen(
                     OutlinedButton(onClick = onRetry) { Text(stringResource(R.string.retry)) }
                 }
                 config == null -> CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
-                else -> Methods(config, busy, onGoogle, onBrowserSocial, onPasskey, onEmailOtp, onPassword)
+                else -> Methods(
+                    config, busy, onGoogle, onBrowserSocial, onPasskey, onEmailOtp, onPassword,
+                    codeSentTo, onDifferentAddress,
+                )
             }
 
             if (challenge != null) {
                 Spacer(Modifier.height(Space.Large))
-                // Keyed on the instance: a later challenge is a new view, and a factory
-                // that answered with the old one would draw a page already torn down.
+                // Keyed on the view: a later challenge is a new WebView, and a factory that
+                // answered with the old one would draw a page already torn down.
                 key(challenge) {
                     AndroidView(
                         factory = { challenge },
@@ -152,6 +165,8 @@ private fun Methods(
     onPasskey: () -> Unit,
     onEmailOtp: (String, String?) -> Unit,
     onPassword: (String, String, String?) -> Unit,
+    codeSentTo: String?,
+    onDifferentAddress: () -> Unit,
 ) {
     // 48dp is Material's minimum touch target, not a spacing step: it stays a literal
     // rather than coming from Space, which measures gaps between things.
@@ -213,6 +228,8 @@ private fun Methods(
                 busy = busy,
                 onEmailOtp = onEmailOtp,
                 onPassword = onPassword,
+                codeSentTo = codeSentTo,
+                onDifferentAddress = onDifferentAddress,
             )
         }
     }
@@ -274,23 +291,30 @@ private fun EmailForm(
     busy: Boolean,
     onEmailOtp: (String, String?) -> Unit,
     onPassword: (String, String, String?) -> Unit,
+    codeSentTo: String?,
+    onDifferentAddress: () -> Unit,
 ) {
     var creating by rememberSaveable { mutableStateOf(false) }
     var email by rememberSaveable { mutableStateOf("") }
     var secret by rememberSaveable { mutableStateOf("") }
     var name by rememberSaveable { mutableStateOf("") }
+    /*
+     * The step, kept here so that turning the phone does not lose it (the activity's state
+     * does not survive that; see `SignInActivity`), and set from `codeSentTo` so that it
+     * moves only once the server has taken the request, as the iOS screen's does. It used
+     * to be set on the press, which left a refused request, and a Turnstile widget wanting
+     * a tap, under a line that said the code was already sent.
+     */
     var codeSent by rememberSaveable { mutableStateOf(false) }
     var code by rememberSaveable { mutableStateOf("") }
+    LaunchedEffect(codeSentTo) { if (codeSentTo != null) codeSent = true }
 
     val button = Modifier.fillMaxWidth().heightIn(min = 48.dp)
     val canSignIn = !busy && email.isNotBlank() && secret.length >= 8
     val canSendCode = !busy && email.isNotBlank()
 
     fun submitPassword() = onPassword(email.trim(), secret, if (creating) name.trim() else null)
-    fun sendCode() {
-        onEmailOtp(email.trim(), null)
-        codeSent = true
-    }
+    fun sendCode() = onEmailOtp(email.trim(), null)
 
     /* The code step replaces the form: there is nothing else to do until it is entered. */
     if (codeSent) {
@@ -329,6 +353,7 @@ private fun EmailForm(
                     // Back to the address, so a typo is fixable without starting over.
                     codeSent = false
                     code = ""
+                    onDifferentAddress()
                 },
                 enabled = !busy,
                 modifier = Modifier.align(Alignment.CenterHorizontally),

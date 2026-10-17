@@ -1,5 +1,6 @@
 package com.makerocketgonow.unbent
 
+import com.makerocketgonow.unbent.api.ApiException
 import com.makerocketgonow.unbent.api.ApiJson
 import com.makerocketgonow.unbent.api.AppConfig
 import com.makerocketgonow.unbent.api.EmailOtpAuth
@@ -75,5 +76,17 @@ class EmailOtpAuthTest {
         assertEquals("The widget could not run.", error.message)
         val tap = ApiJson.decodeFromString<BridgeMessage>("""{"type":"turnstile-interactive"}""")
         assertEquals(true, tap.isTurnstileInteractive)
+        val none = ApiJson.decodeFromString<BridgeMessage>("""{"type":"turnstile-none"}""")
+        assertEquals(true, none.isTurnstileNone)
+    }
+
+    /** The refusal that means the instance turned the check on after the config was read. */
+    @Test
+    fun `a refusal for a missing token is told apart from every other 400`() {
+        val missing = ApiException(400, "Could not send a code: 400", """{"message":"Missing CAPTCHA response","code":"MISSING_RESPONSE"}""")
+        assertEquals(true, missing.isMissingCaptcha)
+        val other = ApiException(400, "Could not send a code: 400", """{"message":"Invalid email","code":"INVALID_EMAIL"}""")
+        assertEquals(false, other.isMissingCaptcha)
+        assertEquals(false, ApiException(403, "refused", """{"code":"MISSING_RESPONSE"}""").isMissingCaptcha)
     }
 }
