@@ -67,7 +67,7 @@ describe('Plan', () => {
     expect(screen.getByRole('button', { name: 'Add 25 GB' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Remove 25 GB' })).toBeTruthy();
     expect(screen.getByText('Files: 3.00 GB of 35 GB used.')).toBeTruthy();
-    expect(screen.getByRole('meter', { name: 'Storage used' }).getAttribute('aria-valuemax')).toBe(String(35 * 1024 ** 3));
+    expect(screen.getByRole('meter', { name: 'Files stored' }).getAttribute('aria-valuemax')).toBe(String(35 * 1024 ** 3));
   });
 
   /**

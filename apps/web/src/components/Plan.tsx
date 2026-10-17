@@ -433,7 +433,7 @@ function StorageMeter({ plan, reading }: { plan: AccountPlan; reading: boolean }
   return (
     <>
       {/* No `aria-valuenow` while the figure is unknown: zero would be a figure. */}
-      <div className="progress-bar plan-meter" role="meter" aria-valuemin={0} aria-valuemax={quota} {...(used !== undefined ? { 'aria-valuenow': used } : {})} aria-label="Storage used">
+      <div className="progress-bar plan-meter" role="meter" aria-valuemin={0} aria-valuemax={quota} {...(used !== undefined ? { 'aria-valuenow': used } : {})} aria-label="Files stored">
         <div className={`progress-fill${share >= FULL_SHARE ? ' plan-meter-full' : ''}`} style={{ width: `${Math.round(share * 100)}%` }} />
       </div>
       <div className="plan-held">
