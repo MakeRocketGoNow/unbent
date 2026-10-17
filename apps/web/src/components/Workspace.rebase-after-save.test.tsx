@@ -59,7 +59,7 @@ const elsewhere = { tags: ['receipts'], notebook: 'Coupons' };
 type Ack = (id: string, updated: Note, sent: NoteDraft) => void;
 
 function outbox(onAck: (l: Ack) => void) {
-  const status = () => ({ pending: 0, durable: true, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map() });
+  const status = () => ({ pending: 0, durable: true, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map(), storeFull: null });
   return {
     status,
     subscribe: (l: (s: ReturnType<typeof status>) => void) => {
@@ -108,7 +108,7 @@ let lib: ReturnType<typeof installTestLibrary>;
 
 beforeEach(() => {
   vi.stubGlobal('matchMedia', (query: string) => ({ matches: false, media: query, addEventListener: () => {}, removeEventListener: () => {} }));
-  vi.mocked(useSyncStatus).mockReturnValue({ pending: 0, durable: true, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map() });
+  vi.mocked(useSyncStatus).mockReturnValue({ pending: 0, durable: true, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map(), storeFull: null });
   const { tags: _t, notebook: _n, ...row } = server;
   lib = installTestLibrary({ notes: [{ ...row, tagIds: [], files: [] }] });
 });

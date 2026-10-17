@@ -206,7 +206,7 @@ type Maps = { note: Mirror<LocalNote>; notebook: Mirror<FeedNotebook>; tag: Mirr
 const freshMaps = (): Maps => ({ note: new Mirror(), notebook: new Mirror(), tag: new Mirror(), attachment: new Mirror() });
 
 const starting: FeedState = { phase: 'starting', cursor: null, lastError: null, total: null, applied: 0, pulls: 0, resets: 0 };
-const nothingWaiting: SyncStatus = { pending: 0, durable: false, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map() };
+const nothingWaiting: SyncStatus = { pending: 0, durable: false, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map(), storeFull: null };
 const keepingNothing: KeepStatus = { supported: false, kept: new Set(), counted: false, wanted: { files: 0, bytes: 0 }, have: { files: 0, bytes: 0 }, fetching: false, problem: null };
 
 /** A call in hand: what it asks, and which holder it has been sent to, so a holder that attaches this client twice is not asked twice. */

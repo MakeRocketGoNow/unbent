@@ -1,7 +1,8 @@
-import { Hono } from 'hono';
+import { Hono, type ErrorHandler } from 'hono';
 import { logger } from 'hono/logger';
 import type { AppEnv } from './types.js';
 import { StoreUnavailable } from './lib/store-client.js';
+import { StorageFull, storageFullBody } from './lib/quota.js';
 import { sessionMiddleware } from './lib/session.js';
 import { requireActivePlan } from './lib/plan-middleware.js';
 import { health } from './routes/health.js';
@@ -54,7 +55,12 @@ app.use('*', sessionMiddleware);
 // lapsed account unless someone says otherwise; see lib/plan-middleware.ts.
 app.use('/api/*', requireActivePlan);
 
-app.onError((err, c) => {
+/**
+ * The app's answer to an error no route caught. Exported so a route test can mount it
+ * in front of a router and see the status a client gets, which the routers themselves
+ * cannot show: a mounted router's errors reach this handler and no other.
+ */
+export const onAppError: ErrorHandler<AppEnv> = (err, c) => {
   // The note store could not answer and will shortly: the object was reset by a deploy,
   // or is overloaded. A 503 with Retry-After, the same shape `requireAuth` answers when
   // the session cannot be checked, so every client already handles it: the web app
@@ -64,9 +70,17 @@ app.onError((err, c) => {
     c.header('Retry-After', String(err.retryAfterSeconds));
     return c.json({ error: 'Your notes could not be reached right now. Try again shortly.' }, 503);
   }
+  // A note write the store refused for its size (MAK-234): the 402 an over-quota upload
+  // answers, with the sentence for the store's bound. Answered here rather than in each
+  // route that writes a note, since the limit travels with the repo (`withRepos`) and
+  // the routes do not know they carry it; the upload routes still catch their own,
+  // because they have an object to delete first.
+  if (err instanceof StorageFull) return c.json(storageFullBody(err), 402);
   console.error('Unhandled error:', err);
   return c.json({ error: 'Internal error' }, 500);
-});
+};
+
+app.onError(onAppError);
 
 app.notFound((c) => c.json({ error: 'Not found' }, 404));
 

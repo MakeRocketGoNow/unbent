@@ -128,7 +128,7 @@ function page(opts: { ready?: Promise<void>; pending?: number; notes?: Collectio
       listeners.add(l);
       return () => void listeners.delete(l);
     },
-    status: () => ({ pending, durable: true, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map() }),
+    status: () => ({ pending, durable: true, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map(), storeFull: null }),
     onAcknowledged: () => () => {},
     /** The writes went: what a drained outbox tells its subscribers. */
     drain: () => {
@@ -450,7 +450,7 @@ describe('acquireLibrary', () => {
       const id = crypto.randomUUID();
       const port: Port = channel.port(id);
       const collection = () => ({ subscribeChanges: () => ({ unsubscribe() {} }), values: () => [{ id: 'n1', title: 'theirs' }], preload: async () => {}, get: () => undefined, has: () => false });
-      const outbox = { status: () => ({ pending: 3, durable: true, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map() }), subscribe: () => () => {}, onAcknowledged: () => () => {} };
+      const outbox = { status: () => ({ pending: 3, durable: true, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map(), storeFull: null }), subscribe: () => () => {}, onAcknowledged: () => () => {} };
       const keeper = { status: () => ({ supported: true, kept: new Set(['nb1']) }), subscribe: () => () => {} };
       const server = serveLibrary(port, {
         collections: { notes: collection(), notebooks: collection(), tags: collection(), attachments: collection(), syncState: collection() } as never,

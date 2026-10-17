@@ -21,6 +21,7 @@ import {
   webhookSourceOf,
   type PaddleAdjustment,
 } from '../lib/paddle.js';
+import { noStoreLimit } from '../lib/notes-repo.js';
 import { reposFor } from '../lib/repos.js';
 import { requireAuth } from '../lib/session.js';
 import type { AppEnv } from '../types.js';
@@ -86,7 +87,7 @@ export const billing = new Hono<AppEnv>()
     let usedBytes: number | undefined;
     if (c.req.query('usage') === '1') {
       try {
-        usedBytes = await reposFor(c.env, userId).attachments.storageUsed();
+        usedBytes = await reposFor(c.env, userId, noStoreLimit).attachments.storageUsed();
       } catch (err) {
         console.warn(`[billing] storage used for user=${userId} unavailable:`, (err as Error).message);
       }
@@ -155,7 +156,7 @@ export const billing = new Hono<AppEnv>()
     const storage = c.req.valid('json').storage;
     const after = BASE_STORAGE_GB + STORAGE_ADDON_GB * storage;
     if (after < row.storageGb) {
-      const used = await reposFor(c.env, userId).attachments.storageUsed();
+      const used = await reposFor(c.env, userId, noStoreLimit).attachments.storageUsed();
       if (used > storageQuotaBytes(after)) {
         return c.json({ error: `This account holds ${(used / GB).toFixed(1)} GB, more than the ${after} GB it would have. Delete some files first.` }, 409);
       }

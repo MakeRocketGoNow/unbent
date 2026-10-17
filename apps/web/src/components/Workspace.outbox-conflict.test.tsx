@@ -43,7 +43,7 @@ const typed = { title: 'Trip notes, typed on the plane', body: `${server.body}\n
 /** A stand-in outbox: what the workspace subscribes to, with a conflict to hand it. */
 function outbox(conflicts: Map<string, { current: Note; draft: typeof typed; base: Note }>) {
   const listeners = new Set<(s: SyncStatus) => void>();
-  const status = (): SyncStatus => ({ pending: 0, durable: true, waiting: new Set(), conflicts, uploadNotices: new Map() });
+  const status = (): SyncStatus => ({ pending: 0, durable: true, waiting: new Set(), conflicts, uploadNotices: new Map(), storeFull: null });
   const o = {
     status,
     subscribe: (l: (s: SyncStatus) => void) => {
@@ -86,7 +86,7 @@ const title = () => screen.findByPlaceholderText<HTMLInputElement>('Untitled');
 
 beforeEach(() => {
   vi.stubGlobal('matchMedia', (query: string) => ({ matches: false, media: query, addEventListener: () => {}, removeEventListener: () => {} }));
-  vi.mocked(useSyncStatus).mockReturnValue({ pending: 0, durable: true, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map() });
+  vi.mocked(useSyncStatus).mockReturnValue({ pending: 0, durable: true, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map(), storeFull: null });
 });
 
 afterEach(() => {

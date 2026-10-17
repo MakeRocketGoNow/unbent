@@ -15,6 +15,7 @@ import { feedControls, type Collections, type LocalNote } from './collections.js
 import { FeedEngine, type Position } from './feed.js';
 import { installMemoryOpfs, type MemoryDirectory } from './test-opfs.js';
 import { planIs, planLapsed, resetPlanRefused } from '../plan-refused.js';
+import { resetStoreFull, storeFull, storeFullMessage } from '../store-full.js';
 
 /**
  * The rules the outbox holds, against a stand-in for the executor that keeps the real
@@ -367,6 +368,7 @@ const settles = <T,>(p: Promise<T>) => Promise.race([p, new Promise<'stuck'>((r)
 
 beforeEach(() => {
   resetPlanRefused();
+  resetStoreFull();
   resetConnectivity();
 });
 
@@ -477,10 +479,11 @@ describe('a replayed write', () => {
     }
     expect(fake.queue).toHaveLength(2);
 
-    // The plan's 402 is kept (it changes when the person subscribes) and the storage's
-    // is not: the account is full until something goes (MAK-108). While the kept one
-    // waits at the head of the queue, a delete goes to the server directly rather than
-    // behind it, since the queue would hold it there until the subscription.
+    // The plan's 402 is kept (it changes when the person subscribes) and the files'
+    // storage's is not: the account is full until something goes (MAK-108). While the
+    // kept one waits at the head of the queue, a delete goes to the server directly
+    // rather than behind it, since the queue would hold it there until the subscription.
+    // The store's own 402 on a note write is the kept kind; the test after next has it.
     vi.mocked(api.deleteNotes).mockRejectedValueOnce(new ApiError(402, '402: read-only', 'PLAN_INACTIVE'));
     expect(await fake.replayOne()).toBe('kept');
     expect(fake.queue).toHaveLength(2);
@@ -489,7 +492,7 @@ describe('a replayed write', () => {
     await actions.trashNotes(['n3']);
     expect(api.deleteNotes).toHaveBeenLastCalledWith(['n3']);
     expect(fake.queue).toHaveLength(2);
-    vi.mocked(api.deleteNotes).mockRejectedValueOnce(new ApiError(402, '402: full', 'STORAGE_FULL'));
+    vi.mocked(api.deleteNotes).mockRejectedValueOnce(new ApiError(402, '402: full', 'STORAGE_FULL', 'files'));
     expect(await fake.replayOne()).toBe('refused');
     expect(fake.queue).toHaveLength(1);
 
@@ -526,6 +529,148 @@ describe('a replayed write', () => {
     vi.mocked(api.updateNote).mockResolvedValueOnce({ ...base, title: 'typed as the trial ran out', updatedAt: 101 });
     expect(await fake.replayOne()).toBe('done');
     expect(api.updateNote).toHaveBeenCalledTimes(2);
+  });
+
+  /**
+   * A note write refused because the account's store is past the room its plan allows
+   * (MAK-234) is kept like the plan's, with the server's sentence for the strip; a delete
+   * goes round it and nudges the executor, since it is what makes room; and the server
+   * taking the write clears the word.
+   */
+  it('keeps a save the store has no room for, says why, and sends it again once a delete has gone through', async () => {
+    const { fake, note } = library([row('n1', { title: 'old' }), row('n2')]);
+    const base = note('n1');
+    const replay = vi.fn();
+    fake.config.onlineDetector.subscribe(replay);
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'typed past the limit' }, base });
+    await tick();
+    vi.mocked(api.updateNote).mockRejectedValueOnce(new ApiError(402, "402: This account's notes take more room than its plan allows.", 'STORAGE_FULL', 'notes'));
+    expect(await fake.replayOne()).toBe('kept');
+    expect(fake.queue).toHaveLength(1);
+    expect(storeFull()).toBe(true);
+    expect(storeFullMessage()).toBe("This account's notes take more room than its plan allows.");
+    expect(planLapsed()).toBe(false);
+
+    // A trash of another note frees nothing and nudges nothing; a purge makes room.
+    vi.mocked(api.deleteNotes).mockResolvedValueOnce({ trashed: 1 });
+    await actions.trashNotes(['n2']);
+    expect(api.deleteNotes).toHaveBeenLastCalledWith(['n2']);
+    expect(replay).not.toHaveBeenCalled();
+    vi.mocked(api.deleteNotesPermanently).mockResolvedValueOnce({ deleted: 1 });
+    await actions.purgeNotes(['n2']);
+    expect(api.deleteNotesPermanently).toHaveBeenLastCalledWith(['n2']);
+    expect(fake.queue).toHaveLength(1);
+    expect(replay).toHaveBeenCalledTimes(1);
+
+    vi.mocked(api.updateNote).mockResolvedValueOnce({ ...base, title: 'typed past the limit', updatedAt: 101 });
+    expect(await fake.replayOne()).toBe('done');
+    expect(storeFull()).toBe(false);
+    expect(api.updateNote).toHaveBeenCalledTimes(2);
+  });
+
+  /**
+   * The store's refusal is kept beside the outbox, so a reload starts out knowing it
+   * (MAK-234): a purge made before the kept save is sent again goes round it rather than
+   * behind it. And an outbox opened while the last account's refusal is still in memory
+   * starts, rather than calling its listener before its storage exists.
+   */
+  it('keeps the store\u2019s refusal across a reload, and forgets it once the save has gone', async () => {
+    const { lib, fake, note } = library([row('n1', { title: 'old' })]);
+    const base = note('n1');
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'typed past the limit' }, base });
+    await tick();
+    vi.mocked(api.updateNote).mockRejectedValueOnce(new ApiError(402, '402: no room here', 'STORAGE_FULL', 'notes'));
+    expect(await fake.replayOne()).toBe('kept');
+    await tick();
+
+    // The tab closed and opened again: the memory is gone, the outbox's storage is not.
+    await lib.outbox.dispose();
+    resetStoreFull();
+    const reopened = createOutbox('u1', lib);
+    await reopened.ready;
+    expect(reopened.status().storeFull).toBe('no room here');
+    expect(storeFull()).toBe(true);
+
+    // Opened again with a refusal still in memory, as after an account switch: the reset
+    // at its start runs before its storage exists, and must not reach its listener.
+    await reopened.dispose();
+    const again = createOutbox('u1', lib);
+    await again.ready;
+    expect(again.status().storeFull).toBe('no room here');
+
+    // The save goes: the refusal is forgotten, here and in storage.
+    vi.mocked(api.updateNote).mockResolvedValueOnce({ ...base, title: 'typed past the limit', updatedAt: 101 });
+    expect(await fake.replayOne()).toBe('done');
+    await tick();
+    expect(again.status().storeFull).toBeNull();
+    await again.dispose();
+    resetStoreFull();
+    const after = createOutbox('u1', lib);
+    await after.ready;
+    expect(after.status().storeFull).toBeNull();
+  });
+
+  /**
+   * The note whose own save the store refused may be what filled it, so a purge of it
+   * goes to the server round that save rather than behind it, and the save then ends on
+   * the note being gone (MAK-234). Behind it, the purge would never be sent.
+   */
+  it('sends a purge of a note whose own save the store refused, round that save', async () => {
+    const { fake, note } = library([row('n1', { title: 'old' })]);
+    const base = note('n1');
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'typed past the limit' }, base });
+    await tick();
+    vi.mocked(api.updateNote).mockRejectedValueOnce(new ApiError(402, '402: no room', 'STORAGE_FULL', 'notes'));
+    expect(await fake.replayOne()).toBe('kept');
+    expect(storeFull()).toBe(true);
+
+    const replay = vi.fn();
+    fake.config.onlineDetector.subscribe(replay);
+    vi.mocked(api.deleteNotePermanently).mockResolvedValueOnce(undefined as never);
+    await actions.purgeNote('n1');
+    expect(api.deleteNotePermanently).toHaveBeenCalledWith('n1');
+    expect(fake.queue).toHaveLength(1);
+    expect(replay).toHaveBeenCalledTimes(1);
+
+    // The kept save replays against a note that is gone, and ends there.
+    vi.mocked(api.updateNote).mockRejectedValueOnce(new ApiError(404, '404: Not found'));
+    expect(await fake.replayOne()).toBe('refused');
+    expect(fake.queue).toHaveLength(0);
+  });
+
+  /**
+   * A trash and a restore of that note queue behind its save as before: a trash sent
+   * ahead would end the save and drop the edit a restore promises to give back, and a
+   * restore sent ahead of a queued trash would be undone by it. Emptying the trash is
+   * where such a note goes, purged by id, since the server never heard of its trash.
+   */
+  it('queues a trash and a restore of that note, and purges it by id when the trash is emptied', async () => {
+    const { fake, note } = library([row('n1', { title: 'old' })]);
+    const base = note('n1');
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'typed past the limit' }, base });
+    await tick();
+    vi.mocked(api.updateNote).mockRejectedValueOnce(new ApiError(402, '402: no room', 'STORAGE_FULL', 'notes'));
+    expect(await fake.replayOne()).toBe('kept');
+
+    await actions.trashNote('n1');
+    await tick();
+    expect(api.deleteNote).not.toHaveBeenCalled();
+    expect(fake.queue).toHaveLength(2);
+    await actions.restoreNote('n1');
+    await tick();
+    expect(api.restoreNote).not.toHaveBeenCalled();
+    await actions.trashNote('n1');
+    await tick();
+
+    const replay = vi.fn();
+    fake.config.onlineDetector.subscribe(replay);
+    vi.mocked(api.deleteNotesPermanently).mockResolvedValueOnce({ deleted: 1 });
+    vi.mocked(api.purgeNotes).mockResolvedValueOnce({ scope: 'trashed', notesDeleted: 2, filesDeleted: 0 });
+    const out = await actions.emptyTrash(['n1', 'n9']);
+    expect(api.deleteNotesPermanently).toHaveBeenCalledWith(['n1']);
+    expect(api.purgeNotes).toHaveBeenCalledWith('trashed');
+    expect(out.notesDeleted).toBe(3);
+    expect(replay).toHaveBeenCalledTimes(1);
   });
 
   it('takes a note the server no longer has as done', async () => {

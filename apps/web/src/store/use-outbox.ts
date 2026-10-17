@@ -4,7 +4,7 @@ import type { SyncStatus } from './actions.js';
 import type { OutboxView } from './client-library.js';
 import type { KeepStatus, Keeper } from './keep.js';
 
-const nothing: SyncStatus = { pending: 0, durable: false, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map() };
+const nothing: SyncStatus = { pending: 0, durable: false, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map(), storeFull: null };
 
 /**
  * The open library's outbox, for a component that shows what the server has not taken

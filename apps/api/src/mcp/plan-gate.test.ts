@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { McpServer } from '@modelcontextprotocol/server';
+import { StorageFull } from '../lib/quota.js';
 import { ALLOWED_INACTIVE, gatedRegistrar } from './plan-gate.js';
 
 /**
@@ -40,6 +41,21 @@ describe('gatedRegistrar', () => {
     refusal = null;
     await tools.get('create_note')!();
     expect(calls).toEqual(['get_note', 'delete_note', 'create_note']);
+  });
+
+  it('answers a write the store refused for its size as a tool error, and rethrows anything else', async () => {
+    const { server, tools } = fakeServer();
+    const gated = gatedRegistrar(server, async () => null);
+    gated.registerTool('create_note', { annotations: { readOnlyHint: false } } as never, (async () => {
+      throw new StorageFull(2000, 1000, 0, 'notes');
+    }) as never);
+    gated.registerTool('edit_note', { annotations: { readOnlyHint: false } } as never, (async () => {
+      throw new Error('no such table');
+    }) as never);
+    const refused = (await tools.get('create_note')!()) as { isError: boolean; content: Array<{ text: string }> };
+    expect(refused.isError).toBe(true);
+    expect(refused.content[0]!.text).toContain('notes take more room');
+    await expect(tools.get('edit_note')!()).rejects.toThrow('no such table');
   });
 
   it('allows exactly the deletes and their undo', () => {

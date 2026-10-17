@@ -1,5 +1,6 @@
 import { PLAN_INACTIVE_MESSAGE } from '@unbent/shared';
 import type { McpServer } from '@modelcontextprotocol/server';
+import { StorageFull } from '../lib/quota.js';
 import { toolError } from './tools/result.js';
 
 /**
@@ -42,9 +43,10 @@ type RegisterTool = McpServer['registerTool'];
 export type Registrar = { registerTool: RegisterTool };
 
 /**
- * A `registerTool` that puts `gate` in front of every write tool's handler. The write
- * modules take this in place of the server, so the choice of what is gated is made here
- * and not in twenty handlers. `registerTool` is overloaded on the schema library in use,
+ * A `registerTool` that puts `gate` in front of every write tool's handler, and the
+ * store's own refusal of a write (`StorageFull`) behind it. The write modules take this
+ * in place of the server, so the choice of what is gated is made here and not in
+ * twenty handlers. `registerTool` is overloaded on the schema library in use,
  * which is why the wrapper is written untyped and cast: it changes nothing about the
  * arguments, and the test calls the handlers it registers.
  */
@@ -55,7 +57,16 @@ export function gatedRegistrar(server: McpServer, gate: PlanGate): Registrar {
     const guarded = async (...args: unknown[]) => {
       const refused = await gate();
       if (refused) return toolError(refused);
-      return cb(...args);
+      try {
+        return await cb(...args);
+      } catch (err) {
+        // The store's refusal of a write for its size (MAK-234), as the gate's own
+        // refusal is given: a sentence the model can relay, which names the way out,
+        // rather than an exception that ends the conversation. Here, behind every
+        // write tool at once, rather than in each handler's own catch.
+        if (err instanceof StorageFull) return toolError(err.message);
+        throw err;
+      }
     };
     return server.registerTool(name, config as never, guarded as never);
   };

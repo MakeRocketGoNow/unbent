@@ -13,6 +13,7 @@ import {
   type NotebookDefinition,
   type OptionEdit,
   type SnapshotPage,
+  STORAGE_FULL_CODE,
 } from '@unbent/shared';
 import { AttachmentsStore, type FileSummary } from './attachments.js';
 import { DeletedBlobs } from './deleted-blobs.js';
@@ -120,6 +121,33 @@ export interface DumpSlice {
  * already has a dump of, or the schema's CREATE statements and the first slice.
  */
 export type DumpStart = { mark: string; unchanged: true } | ({ mark: string; unchanged: false; schema: string[] } & DumpSlice);
+
+/**
+ * The room the store itself may take, in bytes, or null for none (MAK-234). What the
+ * Worker passes with a note write where billing is on (`storeLimitOf` in lib/quota.ts),
+ * as `recordAttachment` is passed the quota on files; the object holds no plan of its
+ * own, so a method given nothing checks nothing.
+ */
+export type StoreLimit = number | null | undefined;
+
+/**
+ * A note write refused because the store is past the room its plan allows (MAK-234).
+ * The same shape as `StorageExceeded` (store/attachments.ts), own properties and all,
+ * since a class does not cross RPC: the Worker reads `code` and `of` off what arrived
+ * and rebuilds `StorageFull` with the numbers. `quotaBytes` is the limit, under the name
+ * the upload's refusal gives its own bound, so one translation serves both.
+ */
+export class StoreFull extends Error {
+  readonly code = STORAGE_FULL_CODE;
+  readonly of = 'notes' as const;
+  constructor(
+    readonly usedBytes: number,
+    readonly quotaBytes: number,
+  ) {
+    super(`the store holds ${usedBytes} bytes, past the ${quotaBytes} its plan allows`);
+    this.name = 'StoreFull';
+  }
+}
 
 /** What `stats` reports: the shape the ops route and the sweep read. */
 export interface StoreStats {
@@ -870,11 +898,36 @@ export class UserStore extends DurableObject<StoreEnv> {
    * they pull the page themselves, which keeps the push an optimisation the feed is
    * complete without.
    */
-  private writing<T>(fn: () => T): T {
+  private writing<T>(fn: () => T, limit?: StoreLimit): T {
     this.ready();
+    if (limit !== undefined && limit !== null) this.assertRoom(limit);
     const result = fn();
     this.announce();
     return result;
+  }
+
+  /**
+   * Refuses the write when the store is already past `limit` (MAK-234). The size is the
+   * runtime's own figure for the database, read without a row; nothing of the method
+   * that follows can read it any cheaper, which is why this is the one place the limit
+   * is checked rather than a read inside each method's transaction. It is as good as
+   * one inside it: the method, its transaction and this check run in one synchronous
+   * call on an object the runtime gives to one request at a time, so no other write
+   * lands between the check and the commit. "Already past" rather than "would be past":
+   * what a write will cost is not known until it is written, and the limit is wide
+   * enough that one more note on top of it is not the problem. The size does fall when
+   * notes are purged (measured 2026-10-16: twenty megabyte-sized notes purged took the
+   * store from 20.5 MB back to 0.5 MB), so deleting and emptying the trash, which pass
+   * no limit, are the way back under.
+   */
+  private assertRoom(limit: number): void {
+    const size = this.ctx.storage.sql.databaseSize;
+    if (size > limit) throw new StoreFull(size, limit);
+  }
+
+  /** The same check as a step a method runs itself, on the path that writes; nothing when there is no limit. */
+  private room(limit: StoreLimit): (() => void) | undefined {
+    return limit === undefined || limit === null ? undefined : () => this.assertRoom(limit);
   }
 
   private announce(): void {
@@ -901,32 +954,63 @@ export class UserStore extends DurableObject<StoreEnv> {
   // than proxied so the RPC surface is a list a reader can grep, the types cross the
   // boundary as written, and a method the object should not expose cannot leak through a
   // wildcard.
+  //
+  // The writes that take a `limit` are the ones that add to the store on a person's or
+  // an assistant's say-so: a note made, duplicated, imported or changed, a body appended
+  // to, a copy put back, and a bulk change, which keeps a copy of every note it touches
+  // (MAK-234), and so do the writes of a file's text below, which is as long as the
+  // sender makes it whatever the file's size. A delete, a purge and a cleared history
+  // take none: they are the way back under the limit. A trashing takes none either,
+  // and frees nothing until the trash is emptied. Neither do a notebook's, a tag's or a
+  // field's management, which write rows of their own size and not the person's text,
+  // nor a file's row, which the quota on files bounds. A new write that takes text from
+  // outside has to decide which it is, and say so here.
+  //
+  // Most check the room before they run. A save, a create and a duplicate with an id
+  // the client chose check it only once they know they will write, so a replay finds
+  // its note and a save of a trashed note is its 404 at any size; see each below.
+  // `createMany` with `skipExisting` and an import that finds its note already here are
+  // checked up front, so a resumed import on a full store is refused even for a note
+  // it would skip. Left so on purpose: nothing is lost (the notes are there), the run
+  // would be refused at its first new note anyway, and the check inside each would be
+  // more surface for a case that ends the same.
 
   list(opts: ListOptions) { this.ready(); return this.notes.list(opts); }
   listFull(opts: ListOptions) { this.ready(); return this.notes.listFull(opts); }
   count(opts: CountOptions = {}) { this.ready(); return this.notes.count(opts); }
   recountNotes() { return this.writing(() => this.notes.recountNotes()); }
   get(id: string, opts?: { includeTrashed?: boolean | undefined }) { this.ready(); return this.notes.get(id, opts); }
-  create(input: Parameters<NotesStore['create']>[0]) { return this.writing(() => this.notes.create(input)); }
-  duplicate(id: string, newId: string) { return this.writing(() => this.notes.duplicate(id, newId)); }
-  createOrFind(input: Parameters<NotesStore['createOrFind']>[0]) { return this.writing(() => this.notes.createOrFind(input)); }
-  createMany(inputs: Parameters<NotesStore['createMany']>[0], opts?: Parameters<NotesStore['createMany']>[1]) { return this.writing(() => this.notes.createMany(inputs, opts)); }
-  duplicateOrFind(id: string, newId: string) { return this.writing(() => this.notes.duplicateOrFind(id, newId)); }
-  update(id: string, patch: Parameters<NotesStore['update']>[1]) { return this.writing(() => this.notes.update(id, patch)); }
-  appendToBody(id: string, markdown: string) { return this.writing(() => this.notes.appendToBody(id, markdown)); }
+  create(input: Parameters<NotesStore['create']>[0], limit?: StoreLimit) { return this.writing(() => this.notes.create(input), limit); }
+  duplicate(id: string, newId: string, limit?: StoreLimit) { return this.writing(() => this.notes.duplicate(id, newId), limit); }
+  /**
+   * The two replay-safe writes check the room only on the path that creates: a replay
+   * of a request whose answer was lost must find the note its first attempt made
+   * (AGENTS.md, "Ids may come from the client"), and a 402 for a note the server holds
+   * would have the client roll back a row the next pull brings back.
+   */
+  createOrFind(input: Parameters<NotesStore['createOrFind']>[0], limit?: StoreLimit) { return this.writing(() => this.notes.createOrFind(input, this.room(limit))); }
+  createMany(inputs: Parameters<NotesStore['createMany']>[0], opts?: Parameters<NotesStore['createMany']>[1], limit?: StoreLimit) { return this.writing(() => this.notes.createMany(inputs, opts), limit); }
+  duplicateOrFind(id: string, newId: string, limit?: StoreLimit) { return this.writing(() => this.notes.duplicateOrFind(id, newId, this.room(limit))); }
+  /**
+   * A save checks the room inside, once it knows the save will write, for the replay's
+   * reason above: the web outbox keeps a save the store refused, and a note trashed
+   * meanwhile (the way out the person is told to take) must end that save with a 404.
+   */
+  update(id: string, patch: Parameters<NotesStore['update']>[1], limit?: StoreLimit) { return this.writing(() => this.notes.update(id, patch, this.room(limit))); }
+  appendToBody(id: string, markdown: string, limit?: StoreLimit) { return this.writing(() => this.notes.appendToBody(id, markdown), limit); }
   listRevisions(id: string) { this.ready(); return this.notes.listRevisions(id); }
   getRevision(id: string, revisionId: number) { this.ready(); return this.notes.getRevision(id, revisionId); }
   clearRevisions(id: string) { this.ready(); return this.notes.clearRevisions(id); }
-  restoreRevision(id: string, revisionId: number, ifUpdatedAt?: number) { return this.writing(() => this.notes.restoreRevision(id, revisionId, ifUpdatedAt)); }
+  restoreRevision(id: string, revisionId: number, ifUpdatedAt?: number, limit?: StoreLimit) { return this.writing(() => this.notes.restoreRevision(id, revisionId, ifUpdatedAt), limit); }
   remove(id: string) { return this.writing(() => this.notes.remove(id)); }
   restore(id: string) { return this.writing(() => this.notes.restore(id)); }
   purgeOne(id: string) { return this.writing(() => this.notes.purgeOne(id)); }
   removeMany(ids: string[]) { return this.writing(() => this.notes.removeMany(ids)); }
   restoreMany(ids: string[]) { return this.writing(() => this.notes.restoreMany(ids)); }
   purgeMany(ids: string[]) { return this.writing(() => this.notes.purgeMany(ids)); }
-  updateMany(ids: string[], patch: Parameters<NotesStore['updateMany']>[1]) { return this.writing(() => this.notes.updateMany(ids, patch)); }
-  importNote(input: Parameters<NotesStore['importNote']>[0]) { return this.writing(() => this.notes.importNote(input)); }
-  setBody(id: string, body: string) { return this.writing(() => this.notes.setBody(id, body)); }
+  updateMany(ids: string[], patch: Parameters<NotesStore['updateMany']>[1], limit?: StoreLimit) { return this.writing(() => this.notes.updateMany(ids, patch), limit); }
+  importNote(input: Parameters<NotesStore['importNote']>[0], limit?: StoreLimit) { return this.writing(() => this.notes.importNote(input), limit); }
+  setBody(id: string, body: string, limit?: StoreLimit) { return this.writing(() => this.notes.setBody(id, body), limit); }
   search(rawQuery: string, limit: number, filters: SearchFilters = {}, scopeDrivenSearchMax?: number) {
     this.ready();
     return this.notes.search(rawQuery, limit, filters, scopeDrivenSearchMax);
@@ -985,19 +1069,23 @@ export class UserStore extends DurableObject<StoreEnv> {
    * A file's text, and (when the language model read it) what the reading cost, in one
    * transaction (MAK-180): a reading recorded is a reading counted.
    */
-  recordText(input: Parameters<AttachmentsStore['recordText']>[0], usage?: UsageEntry) {
-    return this.writing(() =>
-      this.sql.tx(() => {
-        this.attachments.recordText(input);
-        if (usage) this.llmUsage.add(usage, Date.now());
-      }),
+  recordText(input: Parameters<AttachmentsStore['recordText']>[0], usage?: UsageEntry, limit?: StoreLimit) {
+    return this.writing(
+      () =>
+        this.sql.tx(() => {
+          this.attachments.recordText(input);
+          if (usage) this.llmUsage.add(usage, Date.now());
+        }),
+      // An empty text (`unusable`, or a scan the model found nothing on) is a row that
+      // stops the next pass retrying, and takes no room worth refusing.
+      input.text ? limit : undefined,
     );
   }
-  copyText(fromAttachmentId: string, to: { attachmentId: string; noteId: string; filename: string }) {
-    return this.writing(() => this.attachments.copyText(fromAttachmentId, to));
+  copyText(fromAttachmentId: string, to: { attachmentId: string; noteId: string; filename: string }, limit?: StoreLimit) {
+    return this.writing(() => this.attachments.copyText(fromAttachmentId, to), limit);
   }
-  writeAssistantText(noteId: string, filename: string, text: string) {
-    return this.writing(() => this.attachments.writeAssistantText(noteId, filename, text));
+  writeAssistantText(noteId: string, filename: string, text: string, limit?: StoreLimit) {
+    return this.writing(() => this.attachments.writeAssistantText(noteId, filename, text), limit);
   }
   needingText(limit: number, noteId?: string) { this.ready(); return this.attachments.needingText(limit, noteId); }
   pendingTextCount(noteId?: string) { this.ready(); return this.attachments.pendingTextCount(noteId); }
@@ -1186,11 +1274,25 @@ export class UserStore extends DurableObject<StoreEnv> {
    * answer is never counted; and only for a live note, since an id that names nothing
    * must not cost anyone a press.
    */
-  autofillPrelude(id: string, ownFilesToRead: number, press?: PressLimits) {
+  autofillPrelude(id: string, ownFilesToRead: number, press?: PressLimits, limit?: StoreLimit) {
     this.ready();
     return this.sql.tx(() => {
       const note = this.notes.get(id);
       if (!note) return null;
+      // Past the store's room (MAK-234) the press is refused before anything is read:
+      // the readings it would pay the model for could not be recorded, so every press
+      // would pay for them again, and the suggestion it fed would be a save the outbox
+      // can only keep. The route answers the 402 the save would have got. After the
+      // note is looked up, so an id that names no note is still the 404.
+      //
+      // What this guarantees is that a store already full pays for nothing. A press
+      // that starts just under the limit can still cross it with its first reading and
+      // have a later one refused: that reading is counted against the caps all the
+      // same (`readWithLlm` moves it onto the press's own record), it is at most the
+      // rest of one press's files, once, and the next press is refused here. Letting
+      // a press's readings past the limit instead was weighed and left: it is a way
+      // round the bound, priced by the model, for a waste of a few readings.
+      if (limit !== undefined && limit !== null) this.assertRoom(limit);
       const counted = press ? this.llmUsage.press(press, Date.now()) : null;
       if (counted && !counted.allowed) return { note, forText: [], forVision: [], press: counted };
       return {

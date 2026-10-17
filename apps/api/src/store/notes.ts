@@ -881,17 +881,21 @@ export class NotesStore {
    * holds it, trashed or not, as `existing`, and writes nothing; the routes answer 200
    * for that and 201 for a note made here. The note itself stays a plain `Note`.
    */
-  createOrFind(input: Parameters<NotesStore['create']>[0]): { note: Note; existing: boolean } {
+  createOrFind(input: Parameters<NotesStore['create']>[0], room?: () => void): { note: Note; existing: boolean } {
     return this.sql.tx(() => {
       if (this.idTaken(input.id)) return { note: this.get(input.id, { includeTrashed: true })!, existing: true };
+      // The store's room (MAK-234) is asked for here and not before the lookup, so a
+      // replay finds its note whatever the store's size; see `UserStore.createOrFind`.
+      room?.();
       return { note: this.create(input), existing: false };
     });
   }
 
-  /** `duplicate` with the same replay rule as `createOrFind` for the copy's id. */
-  duplicateOrFind(id: string, newId: string): { note: Note; existing: boolean } | null {
+  /** `duplicate` with the same replay rule as `createOrFind` for the copy's id, and the same place for `room`. */
+  duplicateOrFind(id: string, newId: string, room?: () => void): { note: Note; existing: boolean } | null {
     return this.sql.tx(() => {
       if (this.idTaken(newId)) return { note: this.get(newId, { includeTrashed: true })!, existing: true };
+      room?.();
       const note = this.duplicate(id, newId);
       return note ? { note, existing: false } : null;
     });
@@ -957,6 +961,7 @@ export class NotesStore {
       ifUpdatedAt?: number | undefined;
       by?: 'assistant' | undefined;
     },
+    room?: () => void,
   ): Note | StaleNote | null {
     const { ifUpdatedAt, by, ...changes } = patch;
     return this.sql.tx(() => {
@@ -968,6 +973,12 @@ export class NotesStore {
       const effective = this.changedKeysOnly(changes, current);
       // Nothing in the patch differs from what is stored, so the note keeps its date.
       if (effective === null) return current;
+      // The store's room (MAK-234), asked for only by a save that will write. A save of
+      // a note that is gone or trashed is its 404, a stale one its conflict and a no-op
+      // its note, whatever the store's size: a client's queued save of a note the person
+      // has since trashed must end there, not be kept behind a 402 for good. See
+      // `UserStore.update`.
+      room?.();
 
       /*
          The new date, always past the old one. `ifUpdatedAt` is only as sound as "every

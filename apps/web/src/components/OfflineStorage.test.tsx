@@ -12,7 +12,7 @@ vi.mock('../store/use-outbox.js', () => ({
   useKeeper: vi.fn(() => ({ keeper: null, status: { supported: false, kept: new Set(), counted: false, wanted: { files: 0, bytes: 0 }, have: { files: 0, bytes: 0 }, fetching: false, problem: null } })),
   useLibraryElsewhere: vi.fn(() => null),
   useLibraryPresence: vi.fn(() => 'open'),
-  useSyncStatus: vi.fn(() => ({ pending: 0, durable: true, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map() })),
+  useSyncStatus: vi.fn(() => ({ pending: 0, durable: true, waiting: new Set(), conflicts: new Map(), uploadNotices: new Map(), storeFull: null })),
 }));
 vi.mock('../store/library.js', () => ({ currentLibraryUser: () => null, takeOverLibrary: vi.fn(() => Promise.resolve()) }));
 vi.mock('../store/files.js', () => ({ listShelf: async () => [], storagePersisted: async () => null }));

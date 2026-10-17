@@ -1284,6 +1284,10 @@ describe('rows read on an archive-sized store', () => {
       // the feed cannot serve costs.
       await measure('feed page', () => stub.changesSince(0, 100)),
       await measure('feed page dense', () => stub.changesSince(3000, 100)),
+      // A save the store's limit refuses (MAK-234) reads the note and nothing more: the
+      // size is the runtime's figure, read once the save is known to write, so a save
+      // of a trashed note is still its 404 (3 read, measured 2026-10-17).
+      await measure('save refused by the store limit', () => stub.update('n00001', { title: 'Refused' }, 1).catch(() => undefined)),
       await measure('feed nothing new', async () => stub.changesSince((await stub.changesSince(99_999_999, 1)).seq, 100)),
       await measure('feed reset', () => stub.changesSince(99_999, 100)),
       await measure('snapshot page', () => stub.snapshotPage(null, 100)),
@@ -1347,6 +1351,12 @@ describe('rows read on an archive-sized store', () => {
       await measure('option rename', () => stub.editFieldOptions('nb0', 'kind', { rename: [{ from: 'Fuel', to: 'Petrol' }] })),
     ];
     console.log(results.map((r) => `${r.label}: ${r.rowsRead} read, ${r.rowsWritten} written`).join('\n'));
+    // The store's limit must not fire for an archive that only filed what it scanned:
+    // three thousand notes with a thousand files' text are a fraction of the floor alone
+    // (`STORE_FLOOR_BYTES`, 512 MB; measured 2026-10-16 at about 24 MB here).
+    const { databaseSize } = await stub.usage();
+    console.log(`store size: ${databaseSize}`);
+    expect(databaseSize).toBeLessThan(64 * 1024 * 1024);
     const bounds: Record<string, number> = {
       'first page': 400,
       'first page by title': 400,
@@ -1502,6 +1512,7 @@ describe('rows read on an archive-sized store', () => {
       'history restore': 200,
       // The note's live row, then its fifty copies and their index entries (152).
       'history clear': 180,
+      'save refused by the store limit': 10,
     };
     for (const r of results) {
       if (r.label === 'dump') continue;

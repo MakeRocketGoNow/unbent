@@ -1,5 +1,6 @@
 import { extractPdfText } from '@unbent/enex';
-import { ApiError, httpErrorMessage } from './notes-api.js';
+import { STORAGE_FULL_CODE } from '@unbent/shared';
+import { ApiError, httpErrorDetail } from './notes-api.js';
 
 /**
  * Extracting attachment text for search, wherever that happens to run.
@@ -47,12 +48,28 @@ export const AUTO_INDEX_LIMIT = 25;
  *
  * `credentials: 'include'` because a worker shares the document's cookie jar but does not
  * send from it by default. The failure carries the status as a number so a host can tell
- * a lost session from a lost file.
+ * a lost session from a lost file, and the body's `code` and `of`, so the pass can tell
+ * the store's refusal (below) from a file it could not read.
  */
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const res = await fetch(path, { ...init, credentials: 'include' });
-  if (!res.ok) throw new ApiError(res.status, await httpErrorMessage(res));
+  if (!res.ok) {
+    const { message, code, of } = await httpErrorDetail(res);
+    throw new ApiError(res.status, message, code, of);
+  }
   return res;
+}
+
+/**
+ * The store refused a file's text because it is past the room its plan allows
+ * (MAK-234). Not one unreadable file but every file after it too, until something is
+ * deleted, so the pass stops there rather than downloading and extracting each pending
+ * scan only to have it refused: on a phone, tens of megabytes and the PDF reader's CPU
+ * on every open. The files stay pending, and a later pass picks them up once there is
+ * room; until then each open costs the one file it takes to hear the answer.
+ */
+function storeFull(err: unknown): boolean {
+  return err instanceof ApiError && err.code === STORAGE_FULL_CODE && err.of === 'notes';
 }
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
@@ -147,8 +164,14 @@ export async function indexPendingFiles(opts: IndexOptions = {}): Promise<IndexR
         );
         const bytes = new Uint8Array(await blob.arrayBuffer());
         progress[await indexFileBytes(item.noteId, item.filename, bytes)] += 1;
-      } catch {
+      } catch (err) {
         if (signal?.aborted) break;
+        if (storeFull(err)) {
+          progress.failed += 1;
+          progress.done += 1;
+          opts.onProgress?.({ ...progress });
+          return { ...progress };
+        }
         // A single unreadable file must not stop the pass.
         failed.add(key);
         progress.failed += 1;

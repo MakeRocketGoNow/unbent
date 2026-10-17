@@ -64,14 +64,16 @@ const TRANSIENT = /overloaded|reset because its code was updated|transient|netwo
  */
 export function translateStoreError(err: unknown): unknown {
   if (err && typeof err === 'object') {
-    const e = err as { name?: unknown; message?: unknown; fieldName?: unknown; retryable?: unknown; overloaded?: unknown; code?: unknown; usedBytes?: unknown; quotaBytes?: unknown; addingBytes?: unknown };
+    const e = err as { name?: unknown; message?: unknown; fieldName?: unknown; retryable?: unknown; overloaded?: unknown; code?: unknown; usedBytes?: unknown; quotaBytes?: unknown; addingBytes?: unknown; of?: unknown };
     if (e.name === 'InvalidFieldValue' && typeof e.fieldName === 'string') {
       return new InvalidFieldValue(e.fieldName, typeof e.message === 'string' ? e.message : '');
     }
     // The store's refusal of a file past the plan's storage (`StorageExceeded` in
-    // store/attachments.ts), rebuilt as the Worker's own so a route keeps `instanceof`.
+    // store/attachments.ts), or of a note write past the store's own room (`StoreFull`
+    // in store/user-store.ts, which says `of: 'notes'`), rebuilt as the Worker's own so
+    // a route keeps `instanceof` and the sentence is the right bound's.
     if (e.code === STORAGE_FULL_CODE && typeof e.usedBytes === 'number' && typeof e.quotaBytes === 'number') {
-      return new StorageFull(e.usedBytes, e.quotaBytes, typeof e.addingBytes === 'number' ? e.addingBytes : 0);
+      return new StorageFull(e.usedBytes, e.quotaBytes, typeof e.addingBytes === 'number' ? e.addingBytes : 0, e.of === 'notes' ? 'notes' : 'files');
     }
     if (e.retryable === true || e.overloaded === true) return new StoreUnavailable(err);
     if (typeof e.message === 'string' && TRANSIENT.test(e.message)) return new StoreUnavailable(err);

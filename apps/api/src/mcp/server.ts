@@ -2,8 +2,8 @@ import { McpServer, createMcpHandler } from '@modelcontextprotocol/server';
 import { appLinks } from '../lib/app-links.js';
 import { canUseLlm } from '../lib/llm.js';
 import { billingOn } from '../lib/paddle.js';
-import { planFor, planStateOf } from '../lib/plan.js';
-import { quotaFor } from '../lib/quota.js';
+import { planFor, planStateOf, type PlanRow } from '../lib/plan.js';
+import { quotaOf, storeLimitOf } from '../lib/quota.js';
 import { reposFor } from '../lib/repos.js';
 import { UploadGrantsRepo } from '../lib/upload-grants.js';
 import type { Env } from '../types.js';
@@ -36,18 +36,29 @@ export function createUnbentMcpHandler(
   const links = appLinks(env.APP_URL);
   return createMcpHandler(() => {
     const server = new McpServer({ name: 'unbent', version: '1.0.0' });
-    const { notes, attachments } = reposFor(env, userId);
+    // The plan row, read once per request and only where billing is on: this endpoint
+    // has no row on a context (every tool is one POST), and the gate, the store's room
+    // (MAK-234) and the quota on files all come off the same row. A read that fails is
+    // not kept, so the next asker reads again rather than inheriting the failure.
+    let row: Promise<PlanRow | undefined> | undefined;
+    const plan = () => (row ??= (billingOn(env) ? planFor(env.DB, userId) : Promise.resolve(undefined)).catch((err: unknown) => {
+      row = undefined;
+      throw err;
+    }));
+    const { notes, attachments } = reposFor(env, userId, async () => storeLimitOf(env, await plan()));
     registerReadTools(server, notes, attachments, links, { vision: canUseLlm(env) });
     // The write tools go through the plan's gate (mcp/plan-gate.ts): a lapsed account's
     // assistant reads and deletes, and is told why it can do no more. Nothing is asked
     // where billing is off.
-    const gate: PlanGate = async () =>
-      billingOn(env) && planStateOf(await planFor(env.DB, userId), Date.now()) === 'inactive' ? INACTIVE_TOOL_MESSAGE : null;
+    const gate: PlanGate = async () => {
+      const current = await plan();
+      return current && planStateOf(current, Date.now()) === 'inactive' ? INACTIVE_TOOL_MESSAGE : null;
+    };
     const gated = gatedRegistrar(server, gate);
     registerWriteTools(gated, notes, links);
     // Upload links stay in D1: the token is looked up before anyone knows whose it is.
     const uploads = new UploadGrantsRepo(env.DB, userId);
-    registerAttachmentTools(gated, env, ctx, { notes, attachments, uploads }, links, () => quotaFor(env, env.DB, userId));
+    registerAttachmentTools(gated, env, ctx, { notes, attachments, uploads }, links, async () => quotaOf(env, await plan()));
     return server;
   });
 }
