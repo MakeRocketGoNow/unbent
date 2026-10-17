@@ -457,6 +457,17 @@ const exact = new Intl.NumberFormat('en');
 const tokenCount = (n: number) => (n < 10_000 ? exact.format(n) : compact.format(n));
 
 /**
+ * The year's spend cap as a share, never an amount (see `AutofillUsage.yearUsed`), rounded
+ * to whole percent and said in words at the ends, where "0%" would read as nothing used
+ * and "100%" as a figure rather than a state.
+ */
+function yearUsedSentence(share: number): string {
+  const percent = Math.round(share * 100);
+  const much = share >= 1 ? 'All' : percent < 1 ? 'Under 1%' : `About ${percent}%`;
+  return `${much} of this account's Auto-fill for the year has been used.`;
+}
+
+/**
  * What Auto-fill has cost this account this calendar year (MAK-180): the presses, and the
  * tokens the language model read and wrote inside them. Here because Maintenance is where
  * the account's other whole-account figures are, until the plans decide where usage lives
@@ -474,17 +485,6 @@ const tokenCount = (n: number) => (n < 10_000 ? exact.format(n) : compact.format
  * surprise to someone who looked here first. "This account", since the numbers are the
  * account's: a trial's are smaller than a paying account's.
  */
-/**
- * The year's spend cap as a share, never an amount (see `AutofillUsage.yearUsed`), rounded
- * to whole percent and said in words at the ends, where "0%" would read as nothing used
- * and "100%" as a figure rather than a state.
- */
-function yearUsedSentence(share: number): string {
-  const percent = Math.round(share * 100);
-  const much = share >= 1 ? 'All' : percent < 1 ? 'Under 1%' : `About ${percent}%`;
-  return `${much} of this account's Auto-fill for the year has been used.`;
-}
-
 function AutofillUsageSection() {
   const usage = useQuery(autofillUsageQuery());
   const u = usage.data;
