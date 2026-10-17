@@ -35,6 +35,18 @@ duplicate past the plan's quota is a 402 that names the numbers, and the Plan pa
 what the account holds against it. The sum is kept on each account's store by triggers
 (schema 0008), never by reading the files table.
 
+Auto-fill is the one thing an account can make the instance pay for per press, and its
+daily cap has two numbers for the same reason the trial asks for no card. `AUTOFILL_DAILY_CAP`
+bounds one account's day, which is enough against a paying customer's loop: there is a
+customer behind the account, and a day of presses costs less than the plan. A trial is
+free, needs no card, and email sign-in accepts any address, so a cap per account does
+nothing against someone making accounts in a loop: a hundred trials get a hundred days'
+worth. `AUTOFILL_TRIAL_DAILY_CAP` is the number a trial gets instead, sized for what a
+fortnight's free account should be able to spend before it is a customer; unset, a trial
+gets the ordinary number, so an instance that sets one setting behaves as it did. The
+account's Maintenance page and the button's refusal both quote the number that applies
+to it. Where billing is off nobody is on a trial, and only the ordinary cap is read.
+
 ### Changing the price
 
 The terms promise every subscriber an email at least 30 days before the renewal a price
