@@ -7178,8 +7178,9 @@ button.settings-nav-item {
 
    The surface is a mix over `--fg`, the idiom every second surface here uses, so it
    inverts with the theme; the border on its right is the divider, as the resize handle
-   is between the list and the note. No width transition: nothing should slide when a
-   window is resized across 1200px, and the toggle is a choice, not an animation.
+   is between the list and the note. No width transition by default: nothing should
+   slide when a window is resized across 1200px. The toggle slides, below 1200px only,
+   through `data-sliding` (see "The slide", after the strip's rules).
    --------------------------------------------------------------------------------- */
 .rail { display: none; }
 
@@ -7324,9 +7325,15 @@ button.settings-nav-item {
   .shell.wide.rail-auto > .rail { border-right: 1px solid var(--border); }
 }
 
+/*
+   The strip's rules hold only while the rail is not sliding: mid-slide it is the open
+   rail being revealed or put away, and these would flip it back to the strip the moment
+   its width crossed 8rem. The ribbon is the exception, since a band with words in it
+   cannot fit under the toggle at any width below that.
+*/
 @container rail (width < 8rem) {
-  .rail-inner { --rail-inset: 0.25rem; }
-  .rail-head {
+  .rail:not([data-sliding]) .rail-inner { --rail-inset: 0.25rem; }
+  .rail:not([data-sliding]) .rail-head {
     justify-content: center;
     padding-left: 0;
   }
@@ -7340,15 +7347,20 @@ button.settings-nav-item {
   .rail .instance-ribbon span { display: none; }
   .rail .instance-ribbon.instance-dev { background: linear-gradient(135deg, var(--instance-dev) 50%, transparent 50%); }
   .rail .instance-ribbon.instance-preview { background: linear-gradient(135deg, var(--instance-preview) 50%, transparent 50%); }
-  .rail .drawer-item {
+  /*
+     Centred, and padded by what centring leaves either side of a row's glyph: the same
+     place either way, but the padding is a length the slide can animate from, where
+     centring would snap the glyph sideways the moment the row became a left-aligned one.
+  */
+  .rail:not([data-sliding]) .drawer-item {
     justify-content: center;
     gap: 0;
-    padding-inline: 0;
+    padding-inline: var(--rail-strip-pad);
     min-height: 2.75rem;
   }
   /* Clipped, not removed: the label is still the row's name to a screen reader. */
-  .rail .drawer-item-label,
-  .rail .drawer-item > .tag-count {
+  .rail:not([data-sliding]) .drawer-item-label,
+  .rail:not([data-sliding]) .drawer-item > .tag-count {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -7356,12 +7368,81 @@ button.settings-nav-item {
     clip-path: inset(50%);
     white-space: nowrap;
   }
-  .rail .drawer-section,
-  .rail .drawer-place-notebook,
-  .rail .drawer-new,
-  .rail .drawer-tags,
-  .rail .drawer-list > .drawer-rule,
-  .rail-wordmark { display: none; }
+  .rail:not([data-sliding]) :is(
+    .drawer-section,
+    .drawer-place-notebook,
+    .drawer-new,
+    .drawer-tags,
+    .drawer-list > .drawer-rule,
+    .rail-wordmark
+  ) { display: none; }
+}
+
+/*
+   The slide: the toggle below 1200px, where the rail opens over a column the window
+   cannot spare, so opening and closing it is a change of layout the person should be
+   able to follow, as the phone's drawer is. Above 1200px the toggle still snaps: the
+   rail there is the desktop's resting state, opened or closed once, and its width is
+   dragged, which is motion enough.
+
+   The rail's width transitions and the content beside it is pushed, rather than the
+   open rail sliding over it as the drawer does: an overlay would be a second way for
+   the same rail to behave at one width, and closing on every pick. The cost is a layout
+   of the content column per frame for a quarter of a second.
+
+   What slides is the open rail, clipped by the rail's edge, not the strip stretching:
+   every row is held at the open width (so labels are uncovered, never squeezed into an
+   ellipsis), and the toggle rides the edge because the wordmark beside it yields its
+   width first. Everything that differs between the two shapes in place (the inset, the
+   rows' height and padding, the head's padding) is a length, and transitions with the
+   width, so the strip's glyphs land exactly where the strip draws them and nothing
+   snaps when `data-sliding` comes off. Closing slides to the strip's geometry with the
+   open rail's content, which the strip's rules then replace at rest.
+
+   The timings are the drawer's (Material's emphasized pair, 250ms in and 200ms out), so
+   the two read as the same gesture at two widths. `Rail.tsx` sets and clears the
+   attribute, and sets it only when this band and no reduced-motion request apply, so
+   the strip's rules are never held off with no slide running.
+*/
+.rail { --rail-strip-pad: calc((2.75rem - 1.15em) / 2); }
+
+@media (860px < width < 1200px) and (prefers-reduced-motion: no-preference) {
+  .rail[data-sliding] {
+    --rail-slide: 0.25s cubic-bezier(0.05, 0.7, 0.1, 1);
+    overflow: hidden;
+    transition:
+      flex-basis var(--rail-slide),
+      width var(--rail-slide);
+  }
+  .rail[data-sliding='close'] { --rail-slide: 0.2s cubic-bezier(0.3, 0, 0.8, 0.15); }
+
+  .rail[data-sliding] .rail-inner { transition: padding var(--rail-slide); }
+  .rail[data-sliding='close'] .rail-inner { --rail-inset: 0.25rem; }
+
+  .rail[data-sliding] .rail-head { transition: padding var(--rail-slide); }
+  .rail[data-sliding='close'] .rail-head { padding-left: 0; }
+  .rail[data-sliding] .rail-wordmark {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .rail[data-sliding] .rail-toggle { flex: none; }
+
+  .rail[data-sliding] :is(.drawer-list, .drawer-foot) { overflow-x: hidden; }
+  .rail[data-sliding] :is(.drawer-list, .drawer-foot) > * {
+    min-width: calc(var(--rail-open-width, 15rem) - 2 * var(--rail-inset));
+  }
+
+  .rail[data-sliding] .drawer-item {
+    transition:
+      min-height var(--rail-slide),
+      padding var(--rail-slide),
+      gap var(--rail-slide);
+  }
+  .rail[data-sliding='close'] .drawer-item {
+    min-height: 2.75rem;
+    padding-inline: var(--rail-strip-pad);
+  }
 }
 
 /* ---------------------------------------------------------------------------------
