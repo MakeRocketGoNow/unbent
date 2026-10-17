@@ -29,14 +29,22 @@ Leaving should be easy, and staying should never depend on it being hard.
 
 ## What it does
 
+The first four are the paperless office, in order: scan the bills, receipts, manuals and
+letters once and recycle the paper.
+
+- **Scan it, drop it in.** Drop a stack of PDFs or photos on the list and each becomes a
+  note with the file attached. Install the app and it registers as a handler for PDFs and
+  images, so a scanner's "send to application" step lands straight in it.
+- **Files a scan with one press.** Press Auto-fill and an AI reads the scan and fills in
+  its title, its notebook and any empty fields: the date, the total, who it was from. You
+  check it instead of typing it, and it only runs when you press it.
+  [Auto-fill](docs/search.md#filing-a-note-from-what-it-says).
 - **Finds things by what they say.** Search reaches the text of every PDF you attach, and
   pictures and scans are read too, so a photo of a receipt turns up under the name of the
   shop. [Search](docs/search.md).
-- **Files a scan with one press.** Auto-fill reads a note's files and fills in its title,
-  its notebook and any empty fields: the date, the total, who it was from. You check it
-  instead of typing it. [Auto-fill](docs/search.md#filing-a-note-from-what-it-says).
 - **Notebooks that work like a spreadsheet.** A notebook can carry typed fields (dates,
-  amounts, selects, ratings), be seen as a table and filtered by any of them.
+  amounts, selects, ratings), be seen as a table and filtered by any of them. Receipts by
+  month, warranties by when they run out.
 - **Works with your AI assistant, and is off until you say so.** Unbent is a full MCP
   server, and never sends your notes to a model on its own. [Below](#works-with-your-ai-assistant).
 - **Imports from Evernote and Notion.** An ENEX export goes in whole, from the browser, and
@@ -51,8 +59,9 @@ Leaving should be easy, and staying should never depend on it being hard.
 - **Works offline, on every device.** The app opens with no connection: notes, notebooks
   and tags live in a [local copy](docs/sync-and-offline.md) kept current by a change feed,
   and edits made offline sync when it returns.
-- **Android and iOS apps.** The site in a web view, with native sign-in, the share sheet
-  and files: [Android](docs/android.md), [iOS](docs/ios.md).
+- **Android and iOS apps, coming soon.** The site in a web view, with native sign-in, the
+  share sheet and files: [Android](docs/android.md), [iOS](docs/ios.md). Neither is in a
+  store yet; until then, Unbent works in a phone's browser.
 
 A note's [history](docs/history-and-trash.md) keeps what an edit replaced, and the trash
 keeps what was deleted.
