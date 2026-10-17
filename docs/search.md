@@ -135,7 +135,8 @@ the server's conversion found nothing or the browser's did), up to five at a pre
 the rest reported as still waiting, and then suggests from what they say. That is the one
 place the instance calls the model to read a file, and the press is the person asking for
 it. Never for a PDF that has a text layer: the free reader goes first, and the paid one only
-gets what it leaves. The bytes go to Anthropic and are not kept there; each file is read
+gets what it leaves. The bytes go to Anthropic, which does not train on them and deletes them
+within thirty days under its terms for businesses; each file is read
 once, and a decline is recorded so it is not asked again.
 
 A picture nobody presses Auto-fill for stays unsearchable, and that is the trade, made in
@@ -203,7 +204,12 @@ yet is reported as such rather than guessed at, and a photograph's text is what 
 itself reads first, where the instance [reads images](#reading-images)), and
 the names of your notebooks, tags and fields, with a few recent titles from each notebook and
 tag as examples of what belongs there. Nothing else in the archive. Nothing is sent until the
-button is pressed.
+button is pressed. TypeSafe does not train on what it is sent, and keeps it under its own
+privacy policy, which names no fixed period.
+
+The built-in privacy policy says all of this where the instance has the keys for it, and
+names Anthropic only where there is a key for it too (`autofill` and `llm` in
+`/api/config`). An operator who publishes their own documents has to say it themselves.
 
 **Why Jev.** It chooses rather than writes: the notebook, the tags and every select or
 checkbox are choices among things that already exist, so it cannot invent a notebook or
