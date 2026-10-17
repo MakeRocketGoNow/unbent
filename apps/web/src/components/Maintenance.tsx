@@ -458,10 +458,13 @@ const tokenCount = (n: number) => (n < 10_000 ? exact.format(n) : compact.format
 
 /**
  * The year's spend cap as a share, never an amount (see `AutofillUsage.yearUsed`), rounded
- * to whole percent and said in words at the ends, where "0%" would read as nothing used
- * and "100%" as a figure rather than a state. The figure stops at 99: a share that rounds
- * to 100 while presses still go through would say "About 100%", and "All" is kept for
- * the state where they do not.
+ * to whole percent and said in words at the top end, where "100%" would read as a figure
+ * rather than a state. The figure stops at 99: a share that rounds to 100 while presses
+ * still go through would say "About 100%", and "All" is kept for the state where they do
+ * not. Not called at exactly zero: the caller leaves the line out then, since "No presses
+ * yet this year" has just been said and "Under 1% has been used" beside it read as a
+ * contradiction (seen on dev the day the cap shipped). A share that is small but not zero
+ * is "Under 1%", which is the one press that has been made.
  */
 function yearUsedSentence(share: number): string {
   const percent = Math.min(99, Math.round(share * 100));
@@ -538,7 +541,7 @@ function AutofillUsageSection() {
               used today.
             </>
           )}
-          {u.yearUsed !== null && <> {yearUsedSentence(u.yearUsed)}</>}
+          {u.yearUsed !== null && u.yearUsed > 0 && <> {yearUsedSentence(u.yearUsed)}</>}
         </p>
       )}
     </section>

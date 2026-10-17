@@ -157,6 +157,14 @@ describe('Maintenance: Auto-fill this year', () => {
     expect((await screen.findByText(/No presses yet this year/)).textContent).toBe('No presses yet this year.');
   });
 
+  it('leaves the year’s share out while nothing has been used, beside "No presses yet"', async () => {
+    answering({ year: 2026, presses: 0, today: 0, dailyCap: 50, yearUsed: 0, models: [] });
+    harness({ accountDeletion: true, autofill: true });
+    expect((await screen.findByText(/No presses yet this year/)).textContent).toBe(
+      'No presses yet this year. This account can use Auto-fill 50 times a day, and none have been used today.',
+    );
+  });
+
   it('says the year\u2019s share in words at its ends', async () => {
     answering({ year: 2026, presses: 2, today: 0, dailyCap: null, yearUsed: 0.002, models: [model('title', 1412, 44)] });
     harness({ accountDeletion: true, autofill: true });
