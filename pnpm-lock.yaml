@@ -129,9 +129,6 @@ importers:
       '@tanstack/offline-transactions':
         specifier: 1.0.61
         version: 1.0.61(typescript@7.0.2)
-      '@tanstack/react-db':
-        specifier: 0.5.3
-        version: 0.5.3(react@19.3.1)(typescript@7.0.2)
       '@tanstack/react-query':
         specifier: ^5.104.3
         version: 5.104.3(react@19.3.1)
@@ -2088,11 +2085,6 @@ packages:
 
   '@tanstack/query-core@5.104.3':
     resolution: {integrity: sha512-DZY9TuJAOgU3UyHUhXb4CcTYEHNZszlwkPg4VViIwTxOKzLprPUU+rbaPZQd3srqkGOtpaDdKpW972UV/LKlcg==}
-
-  '@tanstack/react-db@0.5.3':
-    resolution: {integrity: sha512-UVR/gsm5Q4uGi6mrLXVsu7ZgNh9MokZNd9ZBAzg286P2TaBNZvnPUA6K09FydPlIRz+M1gC7f/5o1FHCwPLrFw==}
-    peerDependencies:
-      react: '>=18.0.0'
 
   '@tanstack/react-query@5.104.3':
     resolution: {integrity: sha512-5Ts1ImwJKqoJgPkLxl9WrPQy1JEoEmti3MaaODCfBamHUGFk57IFrc+AIksPq+BAm10EsroX56qm398Z42LG7w==}
@@ -6162,13 +6154,6 @@ snapshots:
   '@tanstack/pacer-lite@0.2.2': {}
 
   '@tanstack/query-core@5.104.3': {}
-
-  '@tanstack/react-db@0.5.3(react@19.3.1)(typescript@7.0.2)':
-    dependencies:
-      '@tanstack/db': 0.11.3(typescript@7.0.2)
-      react: 19.3.1
-    transitivePeerDependencies:
-      - typescript
 
   '@tanstack/react-query@5.104.3(react@19.3.1)':
     dependencies:

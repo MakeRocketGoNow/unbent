@@ -18,11 +18,10 @@ describe('the pinned library internals', () => {
     expect(pkg.dependencies['@tanstack/offline-transactions']).toMatch(/^\d/);
   });
 
-  // Each of these depends on one exact `@tanstack/db`, so a range on either lets an update
-  // take a release built on a newer core and put a second copy of it in the graph. On 0.x
-  // a caret and a tilde are the same range, which is how 0.2.29 (on 0.12) would get in.
-  it('move with it, pinned exactly too', () => {
-    expect(pkg.dependencies['@tanstack/react-db']).toMatch(/^\d/);
+  // The persistence adapter depends on one exact `@tanstack/db`, so a range on it lets an
+  // update take a release built on a newer core and put a second copy of it in the graph.
+  // On 0.x a caret and a tilde are the same range, which is how 0.2.29 (on 0.12) would get in.
+  it('the persistence adapter moves with it, pinned exactly too', () => {
     expect(pkg.dependencies['@tanstack/browser-db-sqlite-persistence']).toMatch(/^\d/);
   });
 

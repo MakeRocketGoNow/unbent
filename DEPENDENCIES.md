@@ -34,13 +34,13 @@ reads two private fields: a collection's `_state.syncedData` (`syncedRow` in
 `db`. `store/pins.test.ts` fails the day an upgrade moves either, and fails if the manifest
 loses the exact pin.
 
-**`@tanstack/react-db` and `@tanstack/browser-db-sqlite-persistence` move with them, exactly
-too.** Each depends on one exact `@tanstack/db`, so moving any one of the four alone puts two
-copies of it in the graph. A range does not stop that: on 0.x a caret and a tilde are the same
-range, and `^0.2.28` would take browser persistence 0.2.29, which is built on 0.12.
-`pins.test.ts` checks these two are exact as well. Pick the versions that agree: 0.11.3 is
-react-db 0.5.3, persistence-core 0.4.3 (browser persistence 0.2.28), offline-transactions
-1.0.61. `npm view <pkg>@<v> dependencies` says which core each release is built on.
+**`@tanstack/browser-db-sqlite-persistence` moves with them, exactly too.** It depends on one
+exact `@tanstack/db` (through `db-sqlite-persistence-core`), so moving any one of the three
+alone puts two copies of it in the graph. A range does not stop that: on 0.x a caret and a
+tilde are the same range, and `^0.2.28` would take browser persistence 0.2.29, which is built
+on 0.12. `pins.test.ts` checks it is exact as well. Pick the versions that agree: 0.11.3 is
+persistence-core 0.4.3 (browser persistence 0.2.28) and offline-transactions 1.0.61.
+`npm view <pkg>@<v> dependencies` says which core each release is built on.
 
 **Not 0.12, and still not as of 0.15.1 (2026-10-16).** 0.12.0 removes `begin({ immediate })`
 from the sync API and queues sync writes behind any mutation in flight; nothing since brings
@@ -53,10 +53,12 @@ bumping a version. Dependabot proposed 0.12.1 in #341, which was closed for this
 are patches by number but rewrite how rows and updates are held internally (rows reused
 rather than copied, local-only collections skipping the optimistic stage), which is the
 layer the private fields above belong to; `pins.test.ts`, the web suite and every check of
-`pnpm gate:offline` passed on them. react-db 0.5.2 also hands pooled live queries the source
-collection's row objects rather than copies, which reaches nothing here: no source file
-imports `@tanstack/react-db` (the views read the collections through `queries.ts` and
-TanStack Query), so it is in the manifest only as a member of the family.
+`pnpm gate:offline` passed on them.
+
+`@tanstack/react-db` was a fourth member until the same day. Nothing ever imported it: the
+views read the collections through `queries.ts` and TanStack Query, never a live query, so
+it only made every move of the family one package wider. Adding it back for `useLiveQuery`
+puts it in this family, at the version built on the same core.
 
 **`@journeyapps/wa-sqlite` ^1.** The persistence adapter peers on `^1.4.1` (still so in
 0.2.35, 2026-10-16). 2.0 updates PowerSync's own SQLite extension and their write-ahead VFS, neither
