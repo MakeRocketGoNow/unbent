@@ -68,6 +68,7 @@ import { NoteFields } from './NoteFields.js';
 import { Confirm } from './Confirm.js';
 import { Snackbar } from './Snackbar.js';
 import { AutofillIcon } from './icons.js';
+import { LegalLink } from './LegalLink.js';
 import { formatFieldValue } from './format-field.js';
 import { applySaveToLists } from '../list-cache.js';
 import { onBackArrowClick } from '../note-nav.js';
@@ -79,6 +80,7 @@ import {
   planAutofill,
   type AutofillChanges,
 } from '../autofill.js';
+import { autofillExplained, markAutofillExplained } from '../autofill-notice.js';
 import { usePlan } from '../use-plan.js';
 
 /** The editor's share of the pane row when split evenly, and the limits a drag respects. */
@@ -1257,6 +1259,12 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   /** Changes that would replace something already set, waiting to be confirmed. */
   const [autofillReplace, setAutofillReplace] = useState<AutofillChanges | null>(null);
   /**
+   * The first press on this device asks before it sends (MAK-225): see `autofill-notice.ts`
+   * for why, and `AutofillNotice` below for what it says. True while the question is up;
+   * the press it holds runs from its confirm.
+   */
+  const [autofillNotice, setAutofillNotice] = useState(false);
+  /**
    * Set when the last Auto-fill told us (and it tells only an operator) that the title
    * model rejected its key. A standing fault, not a passing one, so it holds as a
    * dismissible notice rather than a status that fades, until the operator dismisses it or
@@ -1274,6 +1282,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   useEffect(() => {
     setAutofilling(false);
     setAutofillReplace(null);
+    setAutofillNotice(false);
     setSnackbar(null);
     setTitleModelFault(false);
     setWebImagesStatus(null);
@@ -1301,6 +1310,20 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
    * this session has not loaded yet, the same gap `rememberFieldDefs` closes for a
    * typed value.
    */
+  /**
+   * The button's handler. The first press on this device stops at the notice and sends
+   * nothing; its confirm marks the device told and runs the press proper. A press that
+   * cancels there is not remembered, so the next one asks again: the notice is the
+   * question, and declining it is not the answer.
+   */
+  function pressAutofill() {
+    if (!autofillExplained()) {
+      setAutofillNotice(true);
+      return;
+    }
+    void runAutofill();
+  }
+
   async function runAutofill() {
     const startedFor = noteId;
     setAutofilling(true);
@@ -1606,12 +1629,14 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
               // widen when the connection drops and narrow when it returns.
               disabled={autofilling || frozen || offline}
               aria-label={autofilling ? 'Reading…' : 'Auto-fill'}
+              // The tip leads with the model, so that a press is never the first word of
+              // it: the notice below says it once, the tip says it every time.
               tip={
                 offline
                   ? 'Auto-fill needs a connection'
-                  : 'Fill in the title, notebook, tags and fields from what the note and its files say'
+                  : 'Use AI to fill in the title, notebook, tags and fields from what the note and its files say'
               }
-              onClick={() => void runAutofill()}
+              onClick={pressAutofill}
             >
               <AutofillIcon />
               {/* The press carries its own progress: the sparkle spins and the label says
@@ -1758,6 +1783,61 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
             Dismiss
           </Button>
         </div>
+      )}
+
+      {/*
+          The first press's question (MAK-225), where the replace confirm appears so a
+          second press lands its question in the same place as the first. Inline, as every
+          confirm here is: it is about this note, and what it describes sending is on the
+          screen behind it. Green-bordered, since what it offers is safe, and worded as
+          what happens, not as a warning: the point is that the person knows, not that
+          they are put off. It names each service that receives the note, as the privacy
+          policy does, and only the ones this instance has keys for. The two are kept
+          apart because they receive different things: TypeSafe only ever gets text, and
+          Anthropic gets the files themselves (a picture, a scan whose text layer came up
+          empty), which "the text of its files" would have hidden.
+      */}
+      {autofillNotice && (
+        <Confirm
+          label="Confirm sending the note to an AI model"
+          question={<>Send this note to an AI model to fill it in?</>}
+          detail={
+            <>
+              Auto-fill sends the note&apos;s title and text, the text of its files, and your
+              notebook, tag and field names with a few titles from each to TypeSafe, whose model
+              picks where the note belongs and what its fields say.
+              {config.data?.llm && (
+                <>
+                  {' '}
+                  Pictures and scans with no text yet go to Anthropic as files for its model to
+                  read.
+                </>
+              )}{' '}
+              {config.data?.llm ? 'Neither trains' : 'It does not train'} on what it receives, and
+              nothing is sent until you press Auto-fill.
+              {config.data?.legal && (
+                <>
+                  {' '}
+                  <LegalLink href={config.data.legal.privacy}>The privacy policy</LegalLink> has the
+                  details.
+                </>
+              )}{' '}
+              You won&apos;t be asked again on this device.
+            </>
+          }
+          actions={[
+            {
+              label: 'Fill in',
+              tone: 'primary',
+              onConfirm: () => {
+                markAutofillExplained();
+                setAutofillNotice(false);
+                void runAutofill();
+              },
+            },
+          ]}
+          onCancel={() => setAutofillNotice(false)}
+        />
       )}
 
       {/*

@@ -12,6 +12,7 @@ import {
 import type { AttachmentInfo, AutofillSuggestion, FieldDef, Note } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { keys } from '../queries.js';
+import { markAutofillExplained } from '../autofill-notice.js';
 import { Workspace } from './Workspace.js';
 
 vi.mock('../notes-api.js', async (importOriginal) => ({
@@ -51,7 +52,7 @@ function seedNote(client: QueryClient, note: Note, files: AttachmentInfo[] = [])
 
 function mount(
   note: Note,
-  config: { autofill?: boolean } = { autofill: true },
+  config: { autofill?: boolean; llm?: true } = { autofill: true },
   others: Note[] = [],
   files: AttachmentInfo[] = [],
 ) {
@@ -154,9 +155,84 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
+  localStorage.clear();
+});
+
+/**
+ * The first press on a device asks before it sends (MAK-225). Every test below this block
+ * is about what a press does once it is let through, so each marks the device told first;
+ * what the question itself does is here.
+ */
+describe('the first press on a device', () => {
+  const question = () => screen.queryByRole('group', { name: 'Confirm sending the note to an AI model' });
+
+  it('asks before it sends, and sends nothing until answered', async () => {
+    vi.mocked(api.autofillNote).mockResolvedValue(suggestion);
+    mount(fresh);
+    fireEvent.click(await screen.findByRole('button', { name: 'Auto-fill' }));
+
+    const confirm = question();
+    expect(confirm).toBeTruthy();
+    expect(confirm?.textContent).toContain('Send this note to an AI model to fill it in?');
+    expect(confirm?.textContent).toContain('to TypeSafe, whose model picks');
+    expect(confirm?.textContent).toContain('It does not train on what it receives');
+    expect(confirm?.textContent).not.toContain('Anthropic');
+    expect(api.autofillNote).not.toHaveBeenCalled();
+    expect((screen.getByPlaceholderText('Untitled') as HTMLInputElement).value).toBe('');
+  });
+
+  it('names Anthropic too where the instance reads pictures', async () => {
+    mount(fresh, { autofill: true, llm: true });
+    fireEvent.click(await screen.findByRole('button', { name: 'Auto-fill' }));
+    expect(question()?.textContent).toContain(
+      'Pictures and scans with no text yet go to Anthropic as files for its model to read.',
+    );
+    expect(question()?.textContent).toContain('Neither trains on what it receives');
+  });
+
+  it('runs the press once confirmed, and does not ask again on this device', async () => {
+    vi.mocked(api.autofillNote).mockResolvedValue(suggestion);
+    mount(fresh);
+    fireEvent.click(await screen.findByRole('button', { name: 'Auto-fill' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Fill in' }));
+
+    expect(question()).toBeNull();
+    await waitFor(() => expect(api.autofillNote).toHaveBeenCalledWith('n1'));
+    await waitFor(() =>
+      expect((screen.getByPlaceholderText('Untitled') as HTMLInputElement).value).toBe('Acme Hardware'),
+    );
+    cleanup();
+
+    mount(fresh);
+    fireEvent.click(await screen.findByRole('button', { name: 'Auto-fill' }));
+    expect(question()).toBeNull();
+    await waitFor(() => expect(api.autofillNote).toHaveBeenCalledTimes(2));
+  });
+
+  it('sends nothing when cancelled, and asks again next time', async () => {
+    mount(fresh);
+    fireEvent.click(await screen.findByRole('button', { name: 'Auto-fill' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(question()).toBeNull();
+    expect(api.autofillNote).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Auto-fill' }));
+    expect(question()).toBeTruthy();
+    expect(api.autofillNote).not.toHaveBeenCalled();
+  });
+
+  it('drops the question when the note is left', async () => {
+    mount(fresh, { autofill: true }, [other]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Auto-fill' }));
+    expect(question()).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Open n2' }));
+    await waitFor(() => expect(question()).toBeNull());
+  });
 });
 
 describe('the Auto-fill control', () => {
+  beforeEach(() => markAutofillExplained());
+
   it('is drawn only where the instance can answer', async () => {
     mount(fresh, {});
     await screen.findByPlaceholderText('Untitled');

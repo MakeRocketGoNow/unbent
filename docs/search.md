@@ -211,6 +211,15 @@ The built-in privacy policy says all of this where the instance has the keys for
 names Anthropic only where there is a key for it too (`autofill` and `llm` in
 `/api/config`). An operator who publishes their own documents has to say it themselves.
 
+**The first press asks.** The button says "Auto-fill" with a sparkle, which is the
+convention and not the fact, and nobody reads a privacy policy before pressing a button,
+so the first press on a device sends nothing: it asks, in the place the replace question
+appears, whether to send the note to an AI model, says what goes and to whom (naming
+Anthropic only where the instance reads images), links the privacy policy, and runs the
+press from its Fill in. Cancelling sends nothing and asks again next time. The
+acknowledgement is kept on the device, per account, so a new browser is told once more;
+it is not a setting on the account. The tip on the button names the model every time.
+
 **Why Jev.** It chooses rather than writes: the notebook, the tags and every select or
 checkbox are choices among things that already exist, so it cannot invent a notebook or
 misspell a tag, and each answer comes with a confidence. For free-form fields the code finds the
