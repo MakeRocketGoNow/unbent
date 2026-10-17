@@ -959,8 +959,9 @@ export class UserStore extends DurableObject<StoreEnv> {
   // an assistant's say-so: a note made, duplicated, imported or changed, a body appended
   // to, a copy put back, and a bulk change, which keeps a copy of every note it touches
   // (MAK-234), and so do the writes of a file's text below, which is as long as the
-  // sender makes it whatever the file's size. A delete, a trashing and a purge take
-  // none: they are the way back under the limit. Neither do a notebook's, a tag's or a
+  // sender makes it whatever the file's size. A delete, a purge and a cleared history
+  // take none: they are the way back under the limit. A trashing takes none either,
+  // and frees nothing until the trash is emptied. Neither do a notebook's, a tag's or a
   // field's management, which write rows of their own size and not the person's text,
   // nor a file's row, which the quota on files bounds. A new write that takes text from
   // outside has to decide which it is, and say so here.
