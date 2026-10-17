@@ -208,10 +208,9 @@ export function WhyPage() {
             removed. We cannot hold your archive as the reason to renew. Unbent has to earn
             each year on what it does.
           </p>
-          <p>
-            Evernote&apos;s owner is called Bending Spoons. The name is the whole brief: your
-            notes, unbent.
-          </p>
+          {/* The owner was named in "What changed"; the line trusts the reader to have
+              read it rather than explaining the name. */}
+          <p>Your notes, unbent.</p>
         </Chapter>
 
         <div className="front-cta">
