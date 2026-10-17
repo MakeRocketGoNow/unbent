@@ -174,11 +174,11 @@ export function WhyPage() {
           </p>
         </Chapter>
 
-        <Chapter title="What a note you pay to keep should be">
+        <Chapter title="What Unbent promises instead">
           <p>
-            The conclusion I came to is short, and it is the whole design of Unbent. If you pay
-            someone to keep your notes, the notes have to be yours in a way that does not
-            depend on them.
+            The conclusion I came to is short, and it is the whole design of Unbent: if you
+            pay someone to keep your notes, the notes still have to be yours, in a way that
+            does not depend on them.
           </p>
           <ul>
             <li>
