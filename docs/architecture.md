@@ -20,17 +20,22 @@ The free tier is enough, including for the initial migration. Measured against a
 | Limit | Full import | Free tier |
 | --- | --- | --- |
 | Worker requests | ~17,200 | 100,000/day |
-| D1 rows written | ~43,400 | 100,000/day |
+| Rows written to the account's store | ~43,400 (measured on D1, before the cutover) | 100,000/day |
 | R2 storage | 2.6 GB | 10 GB |
 
 Import posts one note per request, plus one per attachment. That is deliberate rather than
 unoptimized: per-note requests are what let an interrupted import resume without any
-server-side progress tracking, and a re-run costs one request and *zero* D1 writes per note
+server-side progress tracking, and a re-run costs one request and *zero* writes per note
 that already landed, because the content-hash lookup short-circuits before any insert.
 
-The tightest of these is D1 rows written per day, at roughly 2.3x headroom, so the thing
-to avoid is importing a whole account twice in the same day. Nothing here needs Workers
-Paid; take it for the higher ceilings if the instance grows, not to get started.
+The tightest of these is rows written per day. The count in the table was measured when
+notes were rows in the shared D1 database; since the September 2026 cutover (see [Where
+your notes live](#where-your-notes-live)) they are rows in each account's own SQLite
+object, metered the same way under the same daily number, and the store writes a little
+more per note than D1 did (a change-feed row beside each note, and the note counts), so
+the headroom is somewhat under the roughly 2.3x the table suggests. The thing to avoid is
+still importing a whole account twice in the same day. Nothing here needs Workers Paid;
+take it for the higher ceilings if the instance grows, not to get started.
 
 CPU is not a constraint at either end: ENEX parsing runs in a browser Web Worker rather
 than on Workers, and the export zip is assembled in the browser from pages of notes.
