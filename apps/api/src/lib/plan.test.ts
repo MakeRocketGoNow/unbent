@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BASE_STORAGE_GB, TRIAL_DAYS } from '@unbent/shared';
-import { RENEWAL_GRACE_MS, accountPlanOf, planStateOf, trialEnd, type PlanRow } from './plan.js';
+import { RENEWAL_GRACE_MS, accountPlanOf, planStateOf, planUpdateSql, trialEnd, type PlanRow } from './plan.js';
 import { billingOf, paddleOf } from './paddle.js';
 
 const NOW = Date.UTC(2026, 9, 10, 12);
@@ -88,6 +88,38 @@ describe('accountPlanOf', () => {
   it('flags a renewal Paddle could not collect', () => {
     const due = row({ plan: 'active', source: 'paddle', paddleStatus: 'past_due', planUntil: NOW + 5 * DAY });
     expect(accountPlanOf(due, NOW).subscription?.pastDue).toBe(true);
+  });
+});
+
+describe('planUpdateSql', () => {
+  const patch = {
+    plan: 'active' as const,
+    source: 'paddle' as const,
+    planUntil: NOW,
+    paddleStatus: 'canceled',
+    paddleCancelsAt: null,
+    paddleEventAt: '2026-10-10T12:00:05.000Z',
+  };
+
+  it('keeps an older event from writing over a newer one', () => {
+    const { sql, binds } = planUpdateSql('u1', { plan: 'active' }, NOW, { notBefore: '2026-10-11T00:00:00.000Z' });
+    expect(sql).toContain('WHERE user_id = ?1 AND (paddle_event_at IS NULL OR paddle_event_at <= ?4)');
+    expect(binds).toEqual(['u1', NOW, 'active', '2026-10-11T00:00:00.000Z']);
+  });
+
+  /**
+   * A refund cancel must still end the paid period when `subscription.canceled` landed
+   * first and stamped the row later than the adjustment. The stamp only moves forward,
+   * and a different subscription on the row is left alone.
+   */
+  it('ends a refunded subscription even when a newer stamp is already on the row', () => {
+    const { sql, binds } = planUpdateSql('u1', patch, NOW, { onlyIfSubscription: 'sub_1', advanceStamp: true });
+    expect(sql).toContain(
+      'paddle_event_at = CASE WHEN paddle_event_at IS NULL OR paddle_event_at <= ?8 THEN ?8 ELSE paddle_event_at END',
+    );
+    expect(sql).toContain('WHERE user_id = ?1 AND paddle_subscription_id = ?9');
+    expect(sql).not.toMatch(/paddle_event_at <= \?9/);
+    expect(binds).toEqual(['u1', NOW, 'active', 'paddle', NOW, 'canceled', null, '2026-10-10T12:00:05.000Z', 'sub_1']);
   });
 });
 

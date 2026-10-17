@@ -210,9 +210,11 @@ export function refundEffectOf(paddle: PaddleConfig, event: PaddleEvent, row: Pl
  * `subscription.canceled` that follows, which carries no period, keeps that date rather
  * than the year's end the row held. Stamped with the adjustment's time: the cancel it
  * caused happened after it, so the confirming event still applies, and an older
- * subscription snapshot delivered late cannot put the period back. The storage goes
- * back to the base for the same reason, ahead of the `subscription.updated` that will
- * say the same.
+ * subscription snapshot delivered late cannot put the period back. The confirming
+ * event can also land first (Paddle fires it as the cancel call returns); the webhook
+ * still writes this patch in that case, without rolling the stamp back, because a
+ * canceled snapshot on its own keeps the year's end. The storage goes back to the
+ * base for the same reason, ahead of the `subscription.updated` that will say the same.
  */
 export function refundPatchFor(effect: Exclude<RefundEffect, 'needs-transaction'>, event: PaddleEvent): PlanPatch {
   const at = ms(event.occurred_at) ?? Date.now();

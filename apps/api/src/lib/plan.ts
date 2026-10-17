@@ -226,6 +226,30 @@ const COLUMN_OF: Record<keyof PlanPatch, string> = {
   lapseNotifiedAt: 'lapse_notified_at',
 };
 
+/** How a plan row is written, besides the patch itself. */
+export interface PlanUpdateOpts {
+  /**
+   * Apply only while the row's newest event is not after this stamp. The webhook's
+   * guard against an event delivered late: a newer snapshot already on the row stands,
+   * and the late one writes nothing.
+   */
+  notBefore?: string;
+  /**
+   * Apply only while the row still names this Paddle subscription. A refund cancel
+   * uses it so a checkout that lands in the same moment is not written back to the
+   * subscription we just ended.
+   */
+  onlyIfSubscription?: string;
+  /**
+   * Write `paddle_event_at` only when the row's stamp is not already later. A refund
+   * cancel is stamped with the adjustment, which is earlier than the
+   * `subscription.canceled` our cancel call causes; rolling the stamp back to the
+   * refund would then let a late snapshot from before the cancel put the paid period
+   * back.
+   */
+  advanceStamp?: boolean;
+}
+
 /**
  * The update as a statement, for a caller that batches it with something else: the
  * webhook, with the event's own row. `notBefore` is the webhook's guard against an event
@@ -237,22 +261,41 @@ export function updatePlanStatement(
   userId: string,
   patch: PlanPatch,
   now: number,
-  opts: { notBefore?: string } = {},
+  opts: PlanUpdateOpts = {},
 ): D1PreparedStatement {
+  const { sql, binds } = planUpdateSql(userId, patch, now, opts);
+  return db.prepare(sql).bind(...binds);
+}
+
+/**
+ * The SQL `updatePlanStatement` prepares. Exported so the refund-cancel write can be
+ * checked without a D1: the CASE and the subscription guard are the whole fix, and a
+ * placeholder off by one would apply the cancel to the wrong row or regress the stamp.
+ */
+export function planUpdateSql(userId: string, patch: PlanPatch, now: number, opts: PlanUpdateOpts = {}): { sql: string; binds: unknown[] } {
   const sets: string[] = ['updated_at = ?2'];
   const binds: unknown[] = [userId, now];
   for (const key of Object.keys(patch) as Array<keyof PlanPatch>) {
     const value = patch[key];
     if (value === undefined) continue;
     binds.push(value);
-    sets.push(`${COLUMN_OF[key]} = ?${binds.length}`);
+    const i = binds.length;
+    if (key === 'paddleEventAt' && opts.advanceStamp) {
+      sets.push(`paddle_event_at = CASE WHEN paddle_event_at IS NULL OR paddle_event_at <= ?${i} THEN ?${i} ELSE paddle_event_at END`);
+      continue;
+    }
+    sets.push(`${COLUMN_OF[key]} = ?${i}`);
   }
   let where = 'user_id = ?1';
+  if (opts.onlyIfSubscription !== undefined) {
+    binds.push(opts.onlyIfSubscription);
+    where += ` AND paddle_subscription_id = ?${binds.length}`;
+  }
   if (opts.notBefore !== undefined) {
     binds.push(opts.notBefore);
     where += ` AND (paddle_event_at IS NULL OR paddle_event_at <= ?${binds.length})`;
   }
-  return db.prepare(`UPDATE account_plan SET ${sets.join(', ')} WHERE ${where}`).bind(...binds);
+  return { sql: `UPDATE account_plan SET ${sets.join(', ')} WHERE ${where}`, binds };
 }
 
 export async function updatePlan(db: D1Database, userId: string, patch: PlanPatch, now = Date.now()): Promise<void> {
