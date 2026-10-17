@@ -1181,11 +1181,14 @@ const REFILING = new Set([
  * a pull away rather than a request and a pull: emptying a large trash outlasted the
  * list's wait for its redraw. A refused request is not a write at all, and is not told.
  */
-async function pulled<T>(write: Promise<T>, local: LocalWrite): Promise<T> {
+async function pulled<T>(write: Promise<T>, local: LocalWrite, frees = false): Promise<T> {
   const out = await write;
-  // Made while a note write refused for the store's size waits: a delete or a purge,
-  // which is what makes room, so the kept entry is sent again now; see `store-full.ts`.
-  storeFreed();
+  // `frees`: a write that may let a save the store refused go now (MAK-234), so the
+  // kept entry is sent again at once rather than on the executor's clock; see
+  // `store-full.ts`. A purge or an emptied trash makes room; a trash makes none, but a
+  // trash of the very note whose save is kept ends that save. Nothing else nudges: a
+  // replay refused again is a wasted request, and most direct writes free nothing.
+  if (frees) storeFreed();
   aboutToWrite(local);
   directListeners.forEach((l) => l());
   const lib = await resolve();
@@ -1613,6 +1616,13 @@ function roundOrQueued(lib: WritableLibrary, ids: string[]): { direct: string[];
   return { direct, queued: ids.filter((id) => !direct.includes(id)) };
 }
 
+/** Whether any of these notes has an entry waiting here: a direct trash of one ends that entry, so it is worth a nudge. */
+function keptFor(lib: WritableLibrary | null, ids: string[]): boolean {
+  if (!lib) return false;
+  const waiting = lib.outbox.status().waiting;
+  return ids.some((id) => waiting.has(id));
+}
+
 /**
  * Whether the server holds this note: the row is among the collection's synced rows,
  * which only the feed and the server's answers write, rather than only an optimistic
@@ -1628,7 +1638,7 @@ export async function trashNote(noteId: string): Promise<void> {
   const far = await away();
   if (far) return far('trashNote', [noteId], { ids: [noteId], refiles: true });
   const lib = await queueable();
-  if (!lib || notCopiedYet(lib, noteId) || roundTheQueue(lib, noteId)) return pulled(api.deleteNote(noteId), { ids: [noteId], refiles: true });
+  if (!lib || notCopiedYet(lib, noteId) || roundTheQueue(lib, noteId)) return pulled(api.deleteNote(noteId), { ids: [noteId], refiles: true }, keptFor(lib, [noteId]));
   queue(lib, 'trashNote', { noteId }, () => {
     lib.notes.update(noteId, (row) => {
       row.deletedAt = Date.now();
@@ -1652,7 +1662,7 @@ export async function purgeNote(noteId: string): Promise<void> {
   const far = await away();
   if (far) return far('purgeNote', [noteId], { ids: [noteId], refiles: true });
   const lib = await queueable();
-  if (!lib || notCopiedYet(lib, noteId) || roundTheQueue(lib, noteId)) return pulled(api.deleteNotePermanently(noteId), { ids: [noteId], refiles: true });
+  if (!lib || notCopiedYet(lib, noteId) || roundTheQueue(lib, noteId)) return pulled(api.deleteNotePermanently(noteId), { ids: [noteId], refiles: true }, true);
   queue(lib, 'purgeNote', { noteId }, () => {
     lib.notes.delete(noteId);
   });
@@ -1674,7 +1684,7 @@ export async function emptyTrash(ids: readonly string[]): Promise<api.PurgeResul
     aboutToWrite({ ids, refiles: true });
     return out;
   }
-  return pulled(api.purgeNotes('trashed'), { ids, refiles: true });
+  return pulled(api.purgeNotes('trashed'), { ids, refiles: true }, true);
 }
 
 /*
@@ -1691,7 +1701,7 @@ export async function trashNotes(ids: string[]): Promise<number> {
   const { here: held, there } = split(lib, ids);
   const { direct, queued: here } = roundOrQueued(lib, held);
   const sent = [...there, ...direct];
-  const remote = sent.length > 0 ? await pulled(api.deleteNotes(sent).then((r) => r.trashed), { ids: sent, refiles: true }) : 0;
+  const remote = sent.length > 0 ? await pulled(api.deleteNotes(sent).then((r) => r.trashed), { ids: sent, refiles: true }, keptFor(lib, direct)) : 0;
   if (here.length > 0) {
     queue(lib, 'trashNotes', { ids: here }, () => {
       const now = Date.now();
@@ -1722,11 +1732,11 @@ export async function purgeNotes(ids: string[]): Promise<number> {
   const far = await away();
   if (far) return far('purgeNotes', [ids], { ids, refiles: true });
   const lib = await queueable();
-  if (!lib) return pulled(api.deleteNotesPermanently(ids).then((r) => r.deleted), { ids, refiles: true });
+  if (!lib) return pulled(api.deleteNotesPermanently(ids).then((r) => r.deleted), { ids, refiles: true }, true);
   const { here: held, there } = split(lib, ids);
   const { direct, queued: here } = roundOrQueued(lib, held);
   const sent = [...there, ...direct];
-  const remote = sent.length > 0 ? await pulled(api.deleteNotesPermanently(sent).then((r) => r.deleted), { ids: sent, refiles: true }) : 0;
+  const remote = sent.length > 0 ? await pulled(api.deleteNotesPermanently(sent).then((r) => r.deleted), { ids: sent, refiles: true }, true) : 0;
   if (here.length > 0) {
     queue(lib, 'purgeNotes', { ids: here }, () => {
       for (const id of here) lib.notes.delete(id);

@@ -551,9 +551,14 @@ describe('a replayed write', () => {
     expect(storeFullMessage()).toBe("This account's notes take more room than its plan allows.");
     expect(planLapsed()).toBe(false);
 
+    // A trash of another note frees nothing and nudges nothing; a purge makes room.
     vi.mocked(api.deleteNotes).mockResolvedValueOnce({ trashed: 1 });
     await actions.trashNotes(['n2']);
     expect(api.deleteNotes).toHaveBeenLastCalledWith(['n2']);
+    expect(replay).not.toHaveBeenCalled();
+    vi.mocked(api.deleteNotesPermanently).mockResolvedValueOnce({ deleted: 1 });
+    await actions.purgeNotes(['n2']);
+    expect(api.deleteNotesPermanently).toHaveBeenLastCalledWith(['n2']);
     expect(fake.queue).toHaveLength(1);
     expect(replay).toHaveBeenCalledTimes(1);
 
@@ -577,10 +582,14 @@ describe('a replayed write', () => {
     expect(await fake.replayOne()).toBe('kept');
     expect(storeFull()).toBe(true);
 
+    const replay = vi.fn();
+    fake.config.onlineDetector.subscribe(replay);
     vi.mocked(api.deleteNote).mockResolvedValueOnce(undefined as never);
     await actions.trashNote('n1');
     expect(api.deleteNote).toHaveBeenCalledWith('n1');
     expect(fake.queue).toHaveLength(1);
+    // The kept save is this note's, so the trash ends it: sent again at once.
+    expect(replay).toHaveBeenCalledTimes(1);
 
     // The kept save replays against a trashed note, and ends there.
     vi.mocked(api.updateNote).mockRejectedValueOnce(new ApiError(404, '404: Not found'));
