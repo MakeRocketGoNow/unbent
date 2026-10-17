@@ -73,6 +73,18 @@ export type Shell = 'app' | 'embed' | 'plain' | 'front';
 export const FRONT = '/';
 
 /**
+ * The front page's pricing section, as an address of its own.
+ *
+ * Paddle's website review asks for a pricing page and refuses a bare domain. `/pricing`
+ * is a page of only the offer (`routes/pricing.tsx`), in the front page's shell and
+ * ungated for the same reason the front page is: the reviewer following it has no
+ * session. Unlike the bare root it is not a doorway: someone signed in who asks for the
+ * pricing page gets the pricing page, not their notes. It was a redirect to `FRONT` at
+ * first, and a signed-in person landing in their notes read it as a bug.
+ */
+export const PRICING = '/pricing';
+
+/**
  * The pages that render without a session, listed rather than inferred.
  *
  * Two kinds, and both are here because gating them broke something specific. The sign-in
@@ -106,7 +118,7 @@ export function shellFor(pathname: string): Shell {
   // Tolerant of a trailing slash, which a hand-typed address or an external link may carry
   // and which never means a different page.
   const path = pathname.length > 1 ? pathname.replace(/\/$/, '') : pathname;
-  if (path === FRONT) return 'front';
+  if (path === FRONT || path === PRICING) return 'front';
   if (PUBLIC.has(path)) return 'plain';
   return 'app';
 }

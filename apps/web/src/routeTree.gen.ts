@@ -21,6 +21,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as NotesRouteImport } from './routes/notes'
 import { Route as PreviewRelayRouteImport } from './routes/preview-relay'
 import { Route as PreviewSigninRouteImport } from './routes/preview-signin'
+import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SettingsRouteImport } from './routes/settings'
@@ -104,6 +105,11 @@ const PreviewRelayRoute = PreviewRelayRouteImport.update({
 const PreviewSigninRoute = PreviewSigninRouteImport.update({
   id: '/preview-signin',
   path: '/preview-signin',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PricingRoute = PricingRouteImport.update({
+  id: '/pricing',
+  path: '/pricing',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PrivacyRoute = PrivacyRouteImport.update({
@@ -241,6 +247,7 @@ export interface FileRoutesByFullPath {
   '/notes': typeof NotesRouteWithChildren
   '/preview-relay': typeof PreviewRelayRoute
   '/preview-signin': typeof PreviewSigninRoute
+  '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRouteWithChildren
@@ -278,6 +285,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/preview-relay': typeof PreviewRelayRoute
   '/preview-signin': typeof PreviewSigninRoute
+  '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
   '/terms': typeof TermsRoute
@@ -315,6 +323,7 @@ export interface FileRoutesById {
   '/notes': typeof NotesRouteWithChildren
   '/preview-relay': typeof PreviewRelayRoute
   '/preview-signin': typeof PreviewSigninRoute
+  '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRouteWithChildren
@@ -355,6 +364,7 @@ export interface FileRouteTypes {
     | '/notes'
     | '/preview-relay'
     | '/preview-signin'
+    | '/pricing'
     | '/privacy'
     | '/reset-password'
     | '/settings'
@@ -392,6 +402,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/preview-relay'
     | '/preview-signin'
+    | '/pricing'
     | '/privacy'
     | '/reset-password'
     | '/terms'
@@ -428,6 +439,7 @@ export interface FileRouteTypes {
     | '/notes'
     | '/preview-relay'
     | '/preview-signin'
+    | '/pricing'
     | '/privacy'
     | '/reset-password'
     | '/settings'
@@ -467,6 +479,7 @@ export interface RootRouteChildren {
   NotesRoute: typeof NotesRouteWithChildren
   PreviewRelayRoute: typeof PreviewRelayRoute
   PreviewSigninRoute: typeof PreviewSigninRoute
+  PricingRoute: typeof PricingRoute
   PrivacyRoute: typeof PrivacyRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SettingsRoute: typeof SettingsRouteWithChildren
@@ -559,6 +572,13 @@ declare module '@tanstack/react-router' {
       path: '/preview-signin'
       fullPath: '/preview-signin'
       preLoaderRoute: typeof PreviewSigninRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pricing': {
+      id: '/pricing'
+      path: '/pricing'
+      fullPath: '/pricing'
+      preLoaderRoute: typeof PricingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/privacy': {
@@ -807,6 +827,7 @@ const rootRouteChildren: RootRouteChildren = {
   NotesRoute: NotesRouteWithChildren,
   PreviewRelayRoute: PreviewRelayRoute,
   PreviewSigninRoute: PreviewSigninRoute,
+  PricingRoute: PricingRoute,
   PrivacyRoute: PrivacyRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SettingsRoute: SettingsRouteWithChildren,
