@@ -133,7 +133,7 @@ describe('Maintenance: Auto-fill this year', () => {
 
   /**
    * Presses and tokens for the year, read as magnitudes, with every kind of input summed
-   * into what the model read; and the day's cap only where the instance sets one.
+   * into what the model read; the day's cap and the year's share only where one applies.
    */
   it('says the presses and the tokens read and written, and the cap with today\u2019s count', async () => {
     answering({
@@ -141,23 +141,34 @@ describe('Maintenance: Auto-fill this year', () => {
       presses: 38,
       today: 3,
       dailyCap: 50,
+      yearUsed: 0.4,
       models: [model('read', 1_000_000, 60_000, 150_000), model('title', 40_000, 9_000), model('fields', 10_000, 15_000)],
     });
     harness({ accountDeletion: true, autofill: true });
     const line = await screen.findByText(/38 presses since 1 January/);
     expect(line.textContent).toBe(
-      '38 presses since 1 January, in which the model read 1.2 million tokens and wrote 84 thousand. This account can use Auto-fill 50 times a day, and 3 have been used today.',
+      '38 presses since 1 January, in which the model read 1.2 million tokens and wrote 84 thousand. This account can use Auto-fill 50 times a day, and 3 have been used today. About 40% of this account\'s Auto-fill for the year has been used.',
     );
   });
 
   it('says there has been none, and nothing of a cap the instance does not set', async () => {
-    answering({ year: 2026, presses: 0, today: 0, dailyCap: null, models: [] });
+    answering({ year: 2026, presses: 0, today: 0, dailyCap: null, yearUsed: null, models: [] });
     harness({ accountDeletion: true, autofill: true });
     expect((await screen.findByText(/No presses yet this year/)).textContent).toBe('No presses yet this year.');
   });
 
+  it('says the year\u2019s share in words at its ends', async () => {
+    answering({ year: 2026, presses: 2, today: 0, dailyCap: null, yearUsed: 0.002, models: [model('title', 1412, 44)] });
+    harness({ accountDeletion: true, autofill: true });
+    expect((await screen.findByText(/2 presses since/)).textContent).toContain('Under 1% of this account\'s Auto-fill for the year has been used.');
+    cleanup();
+    answering({ year: 2026, presses: 2, today: 0, dailyCap: null, yearUsed: 1.3, models: [model('title', 1412, 44)] });
+    harness({ accountDeletion: true, autofill: true });
+    expect((await screen.findByText(/2 presses since/)).textContent).toContain('All of this account\'s Auto-fill for the year has been used.');
+  });
+
   it('writes a small count out, and says when none of the day\u2019s have been used', async () => {
-    answering({ year: 2026, presses: 2, today: 0, dailyCap: 1, models: [model('title', 1412, 44)] });
+    answering({ year: 2026, presses: 2, today: 0, dailyCap: 1, yearUsed: null, models: [model('title', 1412, 44)] });
     harness({ accountDeletion: true, autofill: true });
     expect((await screen.findByText(/2 presses since/)).textContent).toBe(
       '2 presses since 1 January, in which the model read 1,412 tokens and wrote 44. This account can use Auto-fill once a day, and none have been used today.',

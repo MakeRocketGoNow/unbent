@@ -469,10 +469,22 @@ const tokenCount = (n: number) => (n < 10_000 ? exact.format(n) : compact.format
  * what was used. "Read" counts every kind of input (fresh, from the cache, into it)
  * since a person cannot act on that split; the server keeps it apart for the bill.
  *
- * The day's cap is said only where one applies, with today's count beside it, so the 429 a
- * press can meet is never a surprise to someone who looked here first. "This account",
- * since the number is the account's: a trial's is smaller than a paying account's.
+ * The day's cap is said only where one applies, with today's count beside it, and the
+ * year's as a share of what the account gets, so neither 429 a press can meet is a
+ * surprise to someone who looked here first. "This account", since the numbers are the
+ * account's: a trial's are smaller than a paying account's.
  */
+/**
+ * The year's spend cap as a share, never an amount (see `AutofillUsage.yearUsed`), rounded
+ * to whole percent and said in words at the ends, where "0%" would read as nothing used
+ * and "100%" as a figure rather than a state.
+ */
+function yearUsedSentence(share: number): string {
+  const percent = Math.round(share * 100);
+  const much = share >= 1 ? 'All' : percent < 1 ? 'Under 1%' : `About ${percent}%`;
+  return `${much} of this account's Auto-fill for the year has been used.`;
+}
+
 function AutofillUsageSection() {
   const usage = useQuery(autofillUsageQuery());
   const u = usage.data;
@@ -524,6 +536,7 @@ function AutofillUsageSection() {
               used today.
             </>
           )}
+          {u.yearUsed !== null && <> {yearUsedSentence(u.yearUsed)}</>}
         </p>
       )}
     </section>

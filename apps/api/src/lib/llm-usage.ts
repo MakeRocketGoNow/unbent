@@ -148,9 +148,9 @@ export function limitsFor(env: UsageEnv, plan: PlanRow | null | undefined, now: 
  * `quotaFor` lives beside `quotaOf`: the note routes read notes from the account's object
  * and nothing from D1, and that stays true.
  */
-export async function capForUser(env: UsageEnv & { DB: D1Database }, userId: string, now: number): Promise<number | null> {
-  if (!billingOn(env)) return dailyCap(env);
-  return capFor(env, await planFor(env.DB, userId, now), now);
+export async function limitsForUser(env: UsageEnv & { DB: D1Database }, userId: string, now: number): Promise<PressLimits> {
+  const plan = billingOn(env) ? await planFor(env.DB, userId, now) : undefined;
+  return limitsFor(env, plan, now);
 }
 
 /** A refused press's answer: the sentence the button shows, and the seconds until it may press again, where that is known. */

@@ -10,6 +10,7 @@ import {
   restoreRevisionSchema,
   updateNoteSchema,
   updateNotesSchema,
+  usageCents,
 } from '@unbent/shared';
 import { NothingToRead } from '../lib/autofill.js';
 import { press } from '../lib/autofill-press.js';
@@ -17,7 +18,7 @@ import { copyAttachments } from '../lib/copy-attachments.js';
 import { StorageFull, quotaOf, storageFullBody } from '../lib/quota.js';
 import { canAutofill, JevError, jevFrom } from '../lib/jev.js';
 import { canUseLlm, llmFrom } from '../lib/llm.js';
-import { capForUser, limitsFor, onTrial } from '../lib/llm-usage.js';
+import { limitsFor, limitsForUser, onTrial } from '../lib/llm-usage.js';
 import { isOperator } from '../lib/instance.js';
 import { nextCursor } from '../lib/notes-repo.js';
 import { autofillReaders } from '../lib/read-attachment.js';
@@ -317,15 +318,20 @@ export const notes = new Hono<AppEnv>()
   /**
    * The account's Auto-fill this calendar year: presses, today's, the cap, and the
    * model's tokens by job and model (`AutofillUsage`). One store call, and one read of
-   * the plan row where billing is on, since the cap shown has to be the one that applies
-   * to this account (`capForUser`). Shown on Maintenance until the plans decide where it
-   * lives (MAK-108).
+   * the plan row where billing is on, since the caps shown have to be the ones that apply
+   * to this account (`limitsForUser`). The year's share is worked out here from the
+   * tokens the store answered with, priced as the press prices them (`usageCents`), so
+   * the page and the refusal agree and the store is not asked twice. Shown on Maintenance
+   * until the plans decide where it lives (MAK-108).
    */
   .get('/autofill/usage', requireAuth, withRepos, async (c) => {
     const now = Date.now();
+    const year = await c.get('notes').autofillUsage();
+    const limits = await limitsForUser(c.env, c.get('userId')!, now);
     const usage: AutofillUsage = {
-      ...(await c.get('notes').autofillUsage()),
-      dailyCap: await capForUser(c.env, c.get('userId')!, now),
+      ...year,
+      dailyCap: limits.cap,
+      yearUsed: limits.yearlyCents === null ? null : usageCents(year.presses, year.models) / limits.yearlyCents,
     };
     return c.json(usage);
   })
