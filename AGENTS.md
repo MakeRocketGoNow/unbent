@@ -5,6 +5,11 @@ and [docs/editor.md](docs/editor.md) why the editor is built the way it is. Read
 touching the editor. This file is about *how to work here*: the standards this project
 holds, and the corrections that have come up often enough to be worth writing down.
 
+References like MAK-123 point at the maintainer's private Linear tracker, which nobody
+outside can read. Where a decision matters, its reason is carried inline (in the comment,
+the commit or the README) and the reference is only where the discussion happened; a bare
+one is a pointer for the maintainer, not something you are expected to look up.
+
 ## The bar for UI work
 
 **This project is held to a high UX standard. Assume the UI matters more than the
@@ -169,7 +174,7 @@ them where a lawyer would have used one, since that register is the point.
 
 ## Real notes stay out of the repo
 
-**This repository is open source; the notes it is built against are private.** The real
+**This repository is source-available; the notes it is built against are private.** The real
 corpus (the Evernote export, the notes on unbent.app, anything read through the MCP tools,
 a screenshot or a pasted bug report) is someone's personal archive. Nothing from it goes
 into anything that gets pushed: code, tests, fixtures, comments, docs, commit messages, PR

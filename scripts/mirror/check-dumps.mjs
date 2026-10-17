@@ -11,7 +11,7 @@
 // Writes the result to `out.json` (ok, what was read, and the reasons when not ok) for
 // `status/mirror.json`, logs the counts, and exits 1 when the run should fail. The reasons
 // name accounts and quote the Worker's error text, so they go to the file and not to the
-// log: the run log of an open-source repository is public, and a dump's error can carry
+// log: the run log of a public repository is open to anyone, and a dump's error can carry
 // anything. A missing file is a reason too (the Worker has never run with a backups bucket
 // bound, or the bucket is the wrong one), so the caller fetches the file without failing
 // on absence and lets this say so.

@@ -18,7 +18,7 @@
  * starting point. Neither imports from the other, even where a template and a seed
  * notebook share a shape, so changing one never changes the other by accident.
  *
- * This file ships in the open-source repo and every self-hosted instance offers it, so
+ * This file ships in the public repo and every self-hosted instance offers it, so
  * everything in it is invented and generic. Option lists name no people, no places and no
  * services anyone might be subscribed to: the streaming service a watch list would name is
  * exactly the kind of detail that says something about whoever wrote it. "Where to watch"

@@ -1,105 +1,107 @@
-# Functional Source License, Version 1.1, Apache 2.0 Future License
-
-## Abbreviation
-
-FSL-1.1-Apache-2.0
-
-## Notice
-
 Copyright 2026 MakeRocketGoNow LLC
 
-## Terms and Conditions
+SPDX-License-Identifier: Elastic-2.0
 
-### Licensor ("We")
+## Notice about earlier license text in this repository's history
 
-The party offering the Software under these Terms and Conditions.
+Commits in this repository's history before this change carry the text of the
+Functional Source License, Version 1.1, Apache 2.0 Future License. The
+repository was private for that whole period, and no version of it was
+distributed to anyone under that license. Every version of this repository, at
+every commit, is licensed under the Elastic License 2.0 below and nothing else.
+No earlier license text in the history grants any rights, and in particular
+none of it starts a conversion to Apache 2.0 or any other license.
 
-### The Software
+# Elastic License 2.0
 
-The "Software" is each version of the software that we make available under
-these Terms and Conditions, as indicated by our inclusion of these Terms and
-Conditions with the Software.
+URL: https://www.elastic.co/licensing/elastic-license
 
-### License Grant
+## Acceptance
 
-Subject to your compliance with this License Grant and the Patents,
-Redistribution and Trademark clauses below, we hereby grant you the right to
-use, copy, modify, create derivative works, publicly perform, publicly display
-and redistribute the Software for any Permitted Purpose identified below.
+By using the software, you agree to all of the terms and conditions below.
 
-### Permitted Purpose
+## Copyright License
 
-A Permitted Purpose is any purpose other than a Competing Use. A Competing Use
-means making the Software available to others in a commercial product or
-service that:
+The licensor grants you a non-exclusive, royalty-free, worldwide,
+non-sublicensable, non-transferable license to use, copy, distribute, make
+available, and prepare derivative works of the software, in each case subject to
+the limitations and conditions below.
 
-1. substitutes for the Software;
+## Limitations
 
-2. substitutes for any other product or service we offer using the Software
-   that exists as of the date we make the Software available; or
+You may not provide the software to third parties as a hosted or managed
+service, where the service provides users with access to any substantial set of
+the features or functionality of the software.
 
-3. offers the same or substantially similar functionality as the Software.
+You may not move, change, disable, or circumvent the license key functionality
+in the software, and you may not remove or obscure any functionality in the
+software that is protected by the license key.
 
-Permitted Purposes specifically include using the Software:
+You may not alter, remove, or obscure any licensing, copyright, or other notices
+of the licensor in the software. Any use of the licensor’s trademarks is subject
+to applicable law.
 
-1. for your internal use and access;
+## Patents
 
-2. for non-commercial education;
+The licensor grants you a license, under any patent claims the licensor can
+license, or becomes able to license, to make, have made, use, sell, offer for
+sale, import and have imported the software, in each case subject to the
+limitations and conditions in this license. This license does not cover any
+patent claims that you cause to be infringed by modifications or additions to
+the software. If you or your company make any written claim that the software
+infringes or contributes to infringement of any patent, your patent license for
+the software granted under these terms ends immediately. If your company makes
+such a claim, your patent license ends immediately for work on behalf of your
+company.
 
-3. for non-commercial research; and
+## Notices
 
-4. in connection with professional services that you provide to a licensee
-   using the Software in accordance with these Terms and Conditions.
+You must ensure that anyone who gets a copy of any part of the software from you
+also gets a copy of these terms.
 
-### Patents
+If you modify the software, you must include in any modified copies of the
+software prominent notices stating that you have modified the software.
 
-To the extent your use for a Permitted Purpose would necessarily infringe our
-patents, the license grant above includes a license under our patents. If you
-make a claim against any party that the Software infringes or contributes to
-the infringement of any patent, then your patent license to the Software ends
-immediately.
+## No Other Rights
 
-### Redistribution
+These terms do not imply any licenses other than those expressly granted in
+these terms.
 
-The Terms and Conditions apply to all copies, modifications and derivatives of
-the Software.
+## Termination
 
-If you redistribute any copies, modifications or derivatives of the Software,
-you must include a copy of or a link to these Terms and Conditions and not
-remove any copyright notices provided in or with the Software.
+If you use the software in violation of these terms, such use is not licensed,
+and your licenses will automatically terminate. If the licensor provides you
+with a notice of your violation, and you cease all violation of this license no
+later than 30 days after you receive that notice, your licenses will be
+reinstated retroactively. However, if you violate these terms after such
+reinstatement, any additional violation of these terms will cause your licenses
+to terminate automatically and permanently.
 
-### Disclaimer
+## No Liability
 
-THE SOFTWARE IS PROVIDED "AS IS" AND WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING WITHOUT LIMITATION WARRANTIES OF FITNESS FOR A PARTICULAR
-PURPOSE, MERCHANTABILITY, TITLE OR NON-INFRINGEMENT.
+*As far as the law allows, the software comes as is, without any warranty or
+condition, and the licensor will not be liable to you for any damages arising
+out of these terms or the use or nature of the software, under any kind of
+legal claim.*
 
-IN NO EVENT WILL WE HAVE ANY LIABILITY TO YOU ARISING OUT OF OR RELATED TO THE
-SOFTWARE, INCLUDING INDIRECT, SPECIAL, INCIDENTAL OR CONSEQUENTIAL DAMAGES,
-EVEN IF WE HAVE BEEN INFORMED OF THEIR POSSIBILITY IN ADVANCE.
+## Definitions
 
-### Trademarks
+The **licensor** is the entity offering these terms, and the **software** is the
+software the licensor makes available under these terms, including any portion
+of it.
 
-Except for displaying the License Details and identifying us as the origin of
-the Software, you have no right under these Terms and Conditions to use our
-trademarks, trade names, service marks or product names.
+**you** refers to the individual or entity agreeing to these terms.
 
-## Grant of Future License
+**your company** is any legal entity, sole proprietorship, or other kind of
+organization that you work for, plus all organizations that have control over,
+are under the control of, or are under common control with that
+organization. **control** means ownership of substantially all the assets of an
+entity, or the power to direct its management and policies by vote, contract, or
+otherwise. Control can be direct or indirect.
 
-We hereby irrevocably grant you an additional license to use the Software under
-the Apache License, Version 2.0 that is effective on the second anniversary of
-the date we make the Software available. On or after that date, you may use the
-Software under the Apache License, Version 2.0, in which case the following
-will apply:
+**your licenses** are all the licenses granted to you for the software under
+these terms.
 
-Licensed under the Apache License, Version 2.0 (the "License"); you may not use
-this file except in compliance with the License.
+**use** means anything you do with the software requiring one of your licenses.
 
-You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software distributed
-under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
-CONDITIONS OF ANY KIND, either express or implied. See the License for the
-specific language governing permissions and limitations under the License.
+**trademark** means trademarks, service marks, and similar rights.

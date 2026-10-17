@@ -63,8 +63,8 @@ folder beside it. You can read it, grep it, and back it up without this app exis
 no export tier and no unlock: it is the point of the app, not a feature of it.
 
 RUN IT YOURSELF
-Unbent is open source. Point the app at unbent.app or at your own instance from the sign-in
-screen; the app is the same either way.
+Unbent's source is public and you can run your own instance. Point the app at unbent.app or
+at your own instance from the sign-in screen; the app is the same either way.
 
 Sign in with Google, with a code sent to your email, or with a passkey.
 ```

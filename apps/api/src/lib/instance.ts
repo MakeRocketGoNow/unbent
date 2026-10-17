@@ -10,7 +10,7 @@ import { billingOn, type PaddleEnv } from './paddle.js';
  * are, and where their legal documents live.
  *
  * Every function here returns `undefined` rather than a default. That is the whole point:
- * the repository is open source, so a value nobody configured has no honest fallback, and
+ * the repository is public, so a value nobody configured has no honest fallback, and
  * inventing one publishes a claim the operator never made. `/api/config` drops undefined
  * fields on the way out, which the client reads as "not offered", the same convention
  * `accountDeletion` already uses.

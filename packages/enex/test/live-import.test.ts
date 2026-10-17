@@ -14,6 +14,16 @@ const DIR = process.env['ENEX_DIR'];
  * this was measured against is a real one, and its name does not belong in the repo.
  */
 const PDF_FILE = process.env['ENEX_PDF_FILE'] ?? 'Scans.enex';
+/**
+ * A small notebook that imports in seconds, and how many notes it holds: the import's
+ * counts are checked against it exactly. The notebook's name is the file's, as import
+ * derives it.
+ */
+const SMALL_FILE = process.env['ENEX_SMALL_FILE'] ?? 'Recipes.enex';
+const SMALL_COUNT = Number(process.env['ENEX_SMALL_COUNT'] ?? '12');
+const SMALL_NOTEBOOK = SMALL_FILE.replace(/\.enex$/i, '');
+/** A word that appears in one of its notes' bodies, to prove the text was indexed. */
+const SMALL_QUERY = process.env['ENEX_SMALL_QUERY'] ?? 'butter';
 const BASE = process.env['API_URL'] ?? 'http://localhost:8787';
 const ORIGIN = process.env['APP_URL'] ?? 'http://localhost:5173';
 const enabled = process.env['LIVE_IMPORT'] === '1' && DIR !== undefined && existsSync(DIR);
@@ -96,21 +106,21 @@ describe.skipIf(!enabled)('live import', () => {
     const cookie = await signUp();
     const client = liveClient(cookie);
 
-    const progress = await importEnex(fileHandle('Quotes.enex'), client);
+    const progress = await importEnex(fileHandle(SMALL_FILE), client);
 
-    expect(progress.created).toBe(16);
+    expect(progress.created).toBe(SMALL_COUNT);
     expect(progress.failed).toBe(0);
 
     const { items } = await fetch(`${BASE}/api/notes?limit=100`, {
       headers: { Cookie: cookie, Origin: ORIGIN },
     }).then((r) => r.json());
-    expect(items).toHaveLength(16);
+    expect(items).toHaveLength(SMALL_COUNT);
 
     // The notebook name is stored on every note.
-    expect(items.every((n: { notebook: string }) => n.notebook === 'Quotes')).toBe(true);
+    expect(items.every((n: { notebook: string }) => n.notebook === SMALL_NOTEBOOK)).toBe(true);
 
     // Imported text is in the search index, which the triggers had to pick up.
-    const { results } = await fetch(`${BASE}/api/search?q=happiness`, {
+    const { results } = await fetch(`${BASE}/api/search?q=${encodeURIComponent(SMALL_QUERY)}`, {
       headers: { Cookie: cookie, Origin: ORIGIN },
     }).then((r) => r.json());
     expect(results.length).toBeGreaterThan(0);
@@ -180,16 +190,16 @@ describe.skipIf(!enabled)('live import', () => {
     const cookie = await signUp();
     const client = liveClient(cookie);
 
-    const first = await importEnex(fileHandle('Quotes.enex'), client);
-    const second = await importEnex(fileHandle('Quotes.enex'), client);
+    const first = await importEnex(fileHandle(SMALL_FILE), client);
+    const second = await importEnex(fileHandle(SMALL_FILE), client);
 
-    expect(first.created).toBe(16);
+    expect(first.created).toBe(SMALL_COUNT);
     expect(second.created).toBe(0);
-    expect(second.skipped).toBe(16);
+    expect(second.skipped).toBe(SMALL_COUNT);
 
     const { items } = await fetch(`${BASE}/api/notes?limit=100`, {
       headers: { Cookie: cookie, Origin: ORIGIN },
     }).then((r) => r.json());
-    expect(items).toHaveLength(16);
+    expect(items).toHaveLength(SMALL_COUNT);
   }, 180_000);
 });

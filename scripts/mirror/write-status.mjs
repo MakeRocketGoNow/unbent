@@ -23,8 +23,8 @@
 // MIRROR_RUN_URL.
 //
 // The summary is the counts alone, for the run page. The file has the account ids and
-// error text the operator page needs; the run page of an open-source repository is
-// public, so those stay in the bucket.
+// error text the operator page needs; the run page of a public repository is open to
+// anyone, so those stay in the bucket.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';

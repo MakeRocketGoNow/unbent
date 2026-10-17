@@ -179,7 +179,7 @@ export interface Env {
    *
    * Both or neither, the same shape as an OAuth credential pair: a policy naming a company
    * with no way to reach it is worse than one that admits it does not exist. Unset is the
-   * deliberate default for a fresh checkout: this repository is open source, and an
+   * deliberate default for a fresh checkout: this repository is public, and an
    * instance that has not said who runs it must not publish somebody else's name. See
    * `operatorOf` in lib/instance.ts.
    */
