@@ -13,7 +13,7 @@ import { FrontShell } from './FrontPage.js';
 export const WHY_META: PageMeta = {
   title: 'Why Unbent exists',
   description:
-    'Fifteen years of Evernote renewals, thirteen thousand scanned notes, and the notice that doubled the price again: the story behind an Evernote alternative that keeps your notes in Markdown you can take with you.',
+    '15 years of Evernote renewals, 13,000 scanned notes, and the notice that doubled the price again: the story behind an Evernote alternative that keeps your notes in Markdown you can take with you.',
   image: '/front/desktop-light.webp',
 };
 
@@ -68,8 +68,8 @@ export function WhyPage() {
         {/* Short enough to balance into even lines, and the numbers held together: a lead
             that broke after "thirteen" and left two words on its last line read badly. */}
         <p className="front-lead front-story-lead">
-          Fifteen&nbsp;years of Evernote renewals and thirteen&nbsp;thousand scanned notes.
-          This is what happened to that archive, and the promise Unbent was built on.
+          15&nbsp;years of Evernote renewals and 13,000 scanned notes. This is what happened
+          to that archive, and the promise Unbent was built on.
         </p>
       </section>
 
@@ -77,7 +77,7 @@ export function WhyPage() {
         <Chapter title="An archive, not a notebook">
           <p>
             I started with Evernote in 2011. By the time I left, the account held about
-            thirteen thousand notes, most of them paper: receipts, bills, manuals, letters,
+            13,000 notes, most of them paper: receipts, bills, manuals, letters,
             whole filing cabinets fed through a scanner. Evernote read the text in every scan,
             so a bill could be found by what it said. Paper went in, became searchable, and
             went in the recycling.
@@ -114,7 +114,7 @@ export function WhyPage() {
               November 2025
             </Source>{' '}
             the Personal and Professional plans were retired for Starter, $99 a year with a
-            thousand-note cap, and Advanced, $249.99 a year with no cap, which existing
+            1,000-note cap, and Advanced, $249.99 a year with no cap, which existing
             subscribers were offered at renewal.
           </p>
           <p>
@@ -137,8 +137,8 @@ export function WhyPage() {
             </tbody>
           </table>
           <p>
-            Forty-five dollars a year for five years, seventy for six. The first renewal after
-            the sale cost eight dollars more; the next nearly doubled. Then, in August 2026,
+            $45 a year for five years, $70 for six. The first renewal after the sale cost $8
+            more; the next nearly doubled. Then, in August 2026,
             the mail came:
           </p>
           <blockquote>
@@ -149,7 +149,7 @@ export function WhyPage() {
           </blockquote>
           <p>
             Two doublings in three years, for the same notes. The price could do that because
-            an archive of thirteen thousand scans is the thing you cannot move on a whim, and
+            an archive of 13,000 scans is the thing you cannot move on a whim, and
             it was hard to move because only one app could read it.
           </p>
         </Chapter>
