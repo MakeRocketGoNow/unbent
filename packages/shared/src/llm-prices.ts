@@ -45,28 +45,26 @@ export const MODEL_PRICES: Readonly<Record<string, ModelPrice>> = {
  */
 export const JEV_PRESS_CENTS = 0.1;
 
-/** The ids priced at the dearest rate and warned about, once each per isolate. */
-const unpriced = new Set<string>();
+/**
+ * The table's price for a model id, or undefined for one it does not know. An exact id,
+ * or a dated form of one (`claude-haiku-5-5-20270101` is Haiku 5.5 pinned to a snapshot,
+ * at Haiku 5.5's price). Not by family: an older Opus or Sonnet costs several times the
+ * current one, and a guard that priced `claude-opus-4-7` at Opus 5.5's rate would
+ * under-protect by that much and say nothing.
+ */
+export function knownPrice(model: string): ModelPrice | undefined {
+  return MODEL_PRICES[model] ?? Object.entries(MODEL_PRICES).find(([id]) => model.startsWith(`${id}-`))?.[1];
+}
 
 /**
- * The price of a model id. An exact id, or a dated form of one (`claude-haiku-5-5-20270101`
- * is Haiku 5.5 pinned to a snapshot, at Haiku 5.5's price); anything else is priced at
- * the dearest rate in the table, with one warning naming the id so the operator adds a
- * line. Not by family: an older Opus or Sonnet costs several times the current one, and
- * a guard that priced `claude-opus-4-7` at Opus 5.5's rate would under-protect by that
- * much and say nothing. The dearest known price is a floor, not a ceiling, for an id
- * dearer than anything here; the warning is what closes that gap.
+ * The price of a model id: `knownPrice`, or for an id the table does not know, the
+ * dearest rate in it, since a guard that cannot price something should assume the worst
+ * rather than count it as free. That is a floor, not a ceiling, for a model dearer than
+ * anything here, so the caller that sums (`LlmUsageCounter.spentCents`) warns once per
+ * such id, naming it, so the operator adds a line; this package has no console to do so.
  */
 export function priceOf(model: string): ModelPrice {
-  const exact = MODEL_PRICES[model];
-  if (exact) return exact;
-  const dated = Object.entries(MODEL_PRICES).find(([id]) => model.startsWith(`${id}-`));
-  if (dated) return dated[1];
-  if (!unpriced.has(model)) {
-    unpriced.add(model);
-    console.warn(`llm-prices: no price for model "${model}"; priced at the dearest known rate until one is added`);
-  }
-  return Object.values(MODEL_PRICES).reduce((dearest, p) => (p.output > dearest.output ? p : dearest));
+  return knownPrice(model) ?? Object.values(MODEL_PRICES).reduce((dearest, p) => (p.output > dearest.output ? p : dearest));
 }
 
 /** What one usage row's tokens cost, in cents, by its model's price. */

@@ -1,4 +1,4 @@
-import { usageCents, type LlmJob, type LlmJobUsage, type LlmTokens } from '@unbent/shared';
+import { knownPrice, usageCents, type LlmJob, type LlmJobUsage, type LlmTokens } from '@unbent/shared';
 import type { Sql } from './sql.js';
 
 /** One answer the model was paid for: the job, the model, and the API's four counts. */
@@ -112,9 +112,22 @@ export class LlmUsageCounter {
     );
   }
 
-  /** What the calendar year of `at` has cost so far, in cents, by the price table. */
+  /** The model ids this object has warned have no price, so each is said once per isolate. */
+  private readonly unpriced = new Set<string>();
+
+  /**
+   * What the calendar year of `at` has cost so far, in cents, by the price table. A model
+   * the table does not know is priced at its dearest rate (`priceOf`) and said once here,
+   * by id, so the operator sees in the log which line to add.
+   */
   spentCents(at: number): number {
     const { presses, models } = this.year(at);
+    for (const { model } of models) {
+      if (!knownPrice(model) && !this.unpriced.has(model)) {
+        this.unpriced.add(model);
+        console.warn(`[llm] user=${this.userId} no price for model=${model}; priced at the dearest known rate until one is added`);
+      }
+    }
     return usageCents(presses, models);
   }
 
