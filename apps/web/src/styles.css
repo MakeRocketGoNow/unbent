@@ -10256,6 +10256,11 @@ button.settings-nav-item {
   margin: 0.5rem 0 0;
 }
 
+/* An intro of several paragraphs (the assistant section's) keeps the one-paragraph
+   intro's width and top margin, and spaces its paragraphs as the page's prose does. */
+.front-intro p { margin: 0; }
+.front-intro p + p { margin-top: 0.75rem; }
+
 /* Three across on a desktop, as many as fit below that; each a short paragraph. */
 .front-grid {
   display: grid;

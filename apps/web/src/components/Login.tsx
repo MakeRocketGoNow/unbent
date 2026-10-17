@@ -336,7 +336,7 @@ export function Login({ redirectTo, refusal }: LoginProps) {
   return (
     <div className="login">
       <h1>Unbent</h1>
-      <p className="tagline">Notes in Markdown that you can always take with you.</p>
+      <p className="tagline">Notes, receipts and scans you can search, and take with you whenever you like.</p>
 
       {config.isError && (
         <p className="bad">Couldn't load the sign-in options. {(config.error as Error).message}</p>

@@ -9,9 +9,16 @@ import { LegalLink } from './LegalLink.js';
 import { ProviderIcon } from './provider-icons.js';
 import { BASE_STORAGE_GB, PLAN_PRICE_USD, STORAGE_ADDON_GB, STORAGE_ADDON_PRICE_USD, TRIAL_DAYS } from '@unbent/shared';
 import {
-  AssistantFeatureIcon,
+  AutofillFeatureIcon,
+  DisconnectFeatureIcon,
+  ExportFeatureIcon,
   FieldsFeatureIcon,
+  FilingFeatureIcon,
+  OfflineFeatureIcon,
   PhoneAppsFeatureIcon,
+  PlainFilesFeatureIcon,
+  ReadOnlyFeatureIcon,
+  ScanTextFeatureIcon,
   SearchFilesFeatureIcon,
   SourceFeatureIcon,
 } from './icons.js';
@@ -21,15 +28,26 @@ import {
  * shown by the public instance (see `routes/index.tsx`), which is this repository's.
  */
 const SOURCE_URL = 'https://github.com/MakeRocketGoNow/unbent';
+/** The two places the page sends a reader who wants the detail behind a claim. */
+const ASSISTANTS_DOC_URL = `${SOURCE_URL}/blob/main/docs/assistants.md`;
+const FILES_README_URL = `${SOURCE_URL}#your-notes-are-files`;
 
 /**
  * unbent.app's front page, for someone who is not signed in.
  *
- * Written for a person arriving from a link with no idea what this is: what it promises,
- * what it looks like, how their notes get in, what it costs and what happens if they stop
- * paying, in that order, because each answers the question the one before it raises. The
- * promise and its wording are the README's, so the page and the repository make the same
- * claim.
+ * Written for a person arriving from a link with no idea what this is, and who is not a
+ * developer: someone leaving Evernote with years of scans, or dreading its next price.
+ * The order answers their questions as they come up: what this is for, what it looks
+ * like, whether it will find their paperwork, what it does with AI (both the reader who
+ * wants an assistant in it and the one who wants none near their notes), how their notes
+ * get in, what they keep if they leave, what else is in it, and what it costs.
+ *
+ * The words are the buyer's, not the code's. "Markdown", "byte-identical" and the rest
+ * are true and are kept, one click away in the README and the docs, where the reader who
+ * wants proof goes looking; here a note is "a plain text file, saved exactly as you typed
+ * it". The first version of this page led with the Markdown promise, and read as a page
+ * for developers (2026-10-17). The one-line description is shared with the README, the
+ * page's metadata, the sign-in screen and the Play listing, so the five say one thing.
  *
  * One action, Start your free trial, and it is the only filled control on the page. The
  * header's Sign in is for people who already have an account and is drawn as the link it
@@ -49,11 +67,11 @@ export function FrontPage() {
   return (
     <FrontShell>
       <section className="front-hero front-width">
-        <h1>Notes in Markdown that you can always take with you.</h1>
+        <h1>Everything you&apos;d rather not lose, in one place you can always leave.</h1>
         <p className="front-lead">
-          Unbent keeps your writing, your receipts and your scans in plain Markdown. A note you
-          save is byte-identical to what you typed, and an export is an ordinary folder you
-          can open without us.
+          Unbent keeps your notes, receipts and scanned paperwork together and finds them by
+          what they say, even a photo of a receipt. Everything is an ordinary file you can
+          download whenever you like, and if you ever stop paying, nothing is held hostage.
         </p>
         <div className="front-cta">
           {/* An anchor wearing the filled button's shape, which the stylesheet allows for
@@ -82,25 +100,71 @@ export function FrontPage() {
         />
       </figure>
 
-      <Section title="Yours to take with you">
+      <Section
+        title="Find it by what it says"
+        intro="Bills, receipts, manuals, letters: search reads the words inside them, so you file a thing once and find it by what is written on it."
+      >
         <div className="front-grid">
-          <Point title="Byte for byte">
-            The Markdown is the note, not a copy of one. No reflowed lists, no italics quietly
-            rewritten, no escaped characters appearing in your text overnight.
+          <Point icon={<SearchFilesFeatureIcon />} title="Search inside your files">
+            Search reaches the text in every PDF you attach, and pictures and scans are read
+            too, so a photo of a receipt turns up under the name of the shop.
           </Point>
-          <Point title="A plain folder tree">
-            Export is one folder per note: its Markdown, and its files beside it. Read it, grep
-            it, back it up: nothing from this app is needed to open it.
+          <Point icon={<AutofillFeatureIcon />} title="One press files a scan">
+            Auto-fill reads a scan and fills in its title, its notebook and any empty fields:
+            the date, the total, who it was from. You check it instead of typing it.
           </Point>
-          <Point title="Still feels like a notes app">
-            A formatting toolbar, headings, checklists, tables and code, styled as you type.
-            The Markdown is underneath, where you can always get at it.
+          <Point icon={<FieldsFeatureIcon />} title="Notebooks that work like a spreadsheet">
+            Give a notebook dates, amounts, ratings or choices, then see it as a table and
+            filter by any of them. Receipts by month, warranties by when they run out.
           </Point>
         </div>
       </Section>
 
       <Section
-        title="Three ways in"
+        title="Works with your AI assistant. Off until you say so."
+        intro={
+          <div className="front-intro">
+            <p className="muted">
+              Unbent is a full MCP server, so Claude, ChatGPT, Cursor or any assistant you
+              already use can work in your notes the moment you connect it. Not a toy: it can
+              search, read the text of a scanned bill or look at the picture itself, write and
+              edit notes, file a batch into a notebook, fill in fields across a hundred
+              receipts, and manage notebooks and tags. About thirty tools, under the same
+              rules the app has.
+            </p>
+            <p className="muted">
+              And it is yours to switch on. Unbent never sends your notes to a model on its
+              own: the one feature that uses AI, Auto-fill, runs only when you press it, and
+              your assistant runs on your own account, not ours. Connected apps shows
+              everything you have let in, and disconnecting it ends its access that second.{' '}
+              <a href={ASSISTANTS_DOC_URL} rel="noopener noreferrer">
+                Connecting an assistant
+              </a>
+              .
+            </p>
+          </div>
+        }
+      >
+        <div className="front-grid">
+          <Point icon={<ScanTextFeatureIcon />} title="Reads your scans">
+            The text inside every PDF, and the picture itself when there is none, so
+            &ldquo;what did I pay the plumber in March&rdquo; is a question it can answer.
+          </Point>
+          <Point icon={<FilingFeatureIcon />} title="Does the filing">
+            Imported a thousand receipts into a notebook with new fields? Ask your assistant
+            to fill them in. It reads a page of summaries at a time and writes the values,
+            and a value you set yourself is never touched.
+          </Point>
+          <Point icon={<DisconnectFeatureIcon />} title="On a leash">
+            Access you grant once and take back in one click. No assistant can delete
+            anything for good, and every edit one makes is kept in the note&apos;s history,
+            so you can see what it did and put it back.
+          </Point>
+        </div>
+      </Section>
+
+      <Section
+        title="Bring what you have"
         intro="Leaving should be easy, and staying should never depend on it being hard: that goes for the app you are leaving, too."
       >
         <div className="front-grid">
@@ -119,20 +183,33 @@ export function FrontPage() {
         </div>
       </Section>
 
-      <Section title="What else is in it">
+      <Section
+        title="Yours, not ours"
+        intro="Your notes are ordinary files, kept the way you wrote them, and the way out is always open."
+      >
         <div className="front-grid">
-          <Point icon={<SearchFilesFeatureIcon />} title="Search inside your files">
-            Search reaches the text in the PDFs you attach, and pictures and scans are read
-            too, so a photo of a receipt turns up under the name of the shop.
+          <Point icon={<PlainFilesFeatureIcon />} title="Plain files, never rewritten">
+            Every note is a plain text file, saved exactly as you typed it. Unbent never
+            reformats your writing behind your back.{' '}
+            <a href={FILES_README_URL} rel="noopener noreferrer">
+              How the files are kept
+            </a>
+            .
           </Point>
-          <Point icon={<FieldsFeatureIcon />} title="Fields on a notebook">
-            Give a notebook dates, amounts, ratings or choices, then see it as a table and
-            filter by any of them.
+          <Point icon={<ExportFeatureIcon />} title="Export everything, any time">
+            Download your whole library as a folder: one folder per note, with its files
+            beside it. Open it on any computer with nothing from us installed, or import it
+            back into any Unbent.
           </Point>
-          <Point icon={<AssistantFeatureIcon />} title="Your AI assistant, if you want one">
-            An MCP server lets Claude and other assistants search, read and file your notes,
-            once you connect them, and only until you disconnect them.
+          <Point icon={<ReadOnlyFeatureIcon />} title="Read-only, not gone">
+            If a trial ends or you stop paying, your account turns read-only. Every note
+            still opens, searches and exports, for at least a year. Nothing is held hostage.
           </Point>
+        </div>
+      </Section>
+
+      <Section title="Also in it">
+        <div className="front-grid">
           {/* Coming soon because neither app is in a store yet, and a visitor who goes
               looking for one should not come back empty-handed after reading that it
               exists. Said in the title rather than as a badge beside it: a pill here
@@ -141,6 +218,11 @@ export function FrontPage() {
           <Point icon={<PhoneAppsFeatureIcon />} title="Android and iOS apps, coming soon">
             The same notes on your phone, and a share sheet that files a page, a photo or a
             stack of scans as a note. Until then, Unbent works in your phone&apos;s browser.
+          </Point>
+          <Point icon={<OfflineFeatureIcon />} title="Offline, with history">
+            Your library lives on each device too, so the app opens with no connection and
+            syncs when it is back. Every note keeps what an edit replaced, so you can put it
+            back.
           </Point>
           <Point icon={<SourceFeatureIcon />} title="Run it yourself">
             The source is public, and Unbent runs on Cloudflare&apos;s free tier.{' '}
@@ -256,20 +338,24 @@ export function Pricing() {
   );
 }
 
-/** A heading and what it introduces, on the page's one vertical rhythm. */
+/**
+ * A heading and what it introduces, on the page's one vertical rhythm. An intro is usually
+ * one sentence; the assistant section's is two paragraphs with a link, so a node is taken
+ * too and drawn as given, inside its own `.front-intro`.
+ */
 function Section({
   title,
   intro,
   children,
 }: {
   title: string;
-  intro?: string;
+  intro?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <section className="front-section front-width">
       <h2>{title}</h2>
-      {intro && <p className="front-intro muted">{intro}</p>}
+      {typeof intro === 'string' ? <p className="front-intro muted">{intro}</p> : intro}
       {children}
     </section>
   );
