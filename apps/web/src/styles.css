@@ -7179,8 +7179,8 @@ button.settings-nav-item {
    The surface is a mix over `--fg`, the idiom every second surface here uses, so it
    inverts with the theme; the border on its right is the divider, as the resize handle
    is between the list and the note. No width transition by default: nothing should
-   slide when a window is resized across 1200px. The toggle slides, below 1200px only,
-   through `data-sliding` (see "The slide", after the strip's rules).
+   slide when a window is resized across 1200px. The toggle slides, through
+   `data-sliding` (see "The slide", after the strip's rules).
    --------------------------------------------------------------------------------- */
 .rail { display: none; }
 
@@ -7379,11 +7379,12 @@ button.settings-nav-item {
 }
 
 /*
-   The slide: the toggle below 1200px, where the rail opens over a column the window
-   cannot spare, so opening and closing it is a change of layout the person should be
-   able to follow, as the phone's drawer is. Above 1200px the toggle still snaps: the
-   rail there is the desktop's resting state, opened or closed once, and its width is
-   dragged, which is motion enough.
+   The slide: the toggle, at every width the rail exists. Opening and closing it is a
+   change of layout the person should be able to follow, as the phone's drawer is. It
+   was first only below 1200px, on the reasoning that a wide window's rail is opened or
+   closed once and left; the same button snapping on one window and sliding on another
+   read as two controls, so it is one motion everywhere. A drag still sizes the rail
+   directly, with no transition: the pointer is the motion there.
 
    The rail's width transitions and the content beside it is pushed, rather than the
    open rail sliding over it as the drawer does: an overlay would be a second way for
@@ -7406,7 +7407,7 @@ button.settings-nav-item {
 */
 .rail { --rail-strip-pad: calc((2.75rem - 1.15em) / 2); }
 
-@media (860px < width < 1200px) and (prefers-reduced-motion: no-preference) {
+@media (width > 860px) and (prefers-reduced-motion: no-preference) {
   .rail[data-sliding] {
     --rail-slide: 0.25s cubic-bezier(0.05, 0.7, 0.1, 1);
     overflow: hidden;

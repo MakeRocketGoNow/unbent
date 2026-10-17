@@ -51,12 +51,12 @@ export function prefersReducedMotion(): boolean {
 export const RAIL_WIDE_QUERY = '(width >= 1200px)';
 
 /**
- * Where the rail's toggle slides rather than snaps: from the phone breakpoint, below which
- * there is no rail, to `RAIL_WIDE_QUERY`. The stylesheet's slide block is written against
- * the same range; the rail sets its `data-sliding` only when this matches, because the
+ * Where the rail's toggle slides rather than snaps: everywhere above the phone breakpoint,
+ * below which there is no rail. The stylesheet's slide block is written against the same
+ * range; the rail sets its `data-sliding` only when this matches, because the
  * attribute holds the strip's own rules off and nothing outside the range would end it.
  */
-export const RAIL_SLIDE_QUERY = '(860px < width < 1200px)';
+export const RAIL_SLIDE_QUERY = '(width > 860px)';
 
 /**
  * Whether this is a touch device, which is to say: whether focusing something raises a
