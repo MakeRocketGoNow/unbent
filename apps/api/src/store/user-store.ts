@@ -965,6 +965,15 @@ export class UserStore extends DurableObject<StoreEnv> {
   // field's management, which write rows of their own size and not the person's text,
   // nor a file's row, which the quota on files bounds. A new write that takes text from
   // outside has to decide which it is, and say so here.
+  //
+  // Most check the room before they run. A save, a create and a duplicate with an id
+  // the client chose check it only once they know they will write, so a replay finds
+  // its note and a save of a trashed note is its 404 at any size; see each below.
+  // `createMany` with `skipExisting` and an import that finds its note already here are
+  // checked up front, so a resumed import on a full store is refused even for a note
+  // it would skip. Left so on purpose: nothing is lost (the notes are there), the run
+  // would be refused at its first new note anyway, and the check inside each would be
+  // more surface for a case that ends the same.
 
   list(opts: ListOptions) { this.ready(); return this.notes.list(opts); }
   listFull(opts: ListOptions) { this.ready(); return this.notes.listFull(opts); }
