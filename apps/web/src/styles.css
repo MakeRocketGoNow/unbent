@@ -822,6 +822,11 @@ button.link {
   border: none;
   border-radius: 0.4rem;
   cursor: pointer;
+  /* The same bevel as `.btn-primary`, for the same reasons given there. */
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--accent), white 25%),
+    inset 0 -1px 0 color-mix(in srgb, var(--accent), black 25%),
+    0 1px 2px rgb(0 0 0 / 12%);
 }
 
 .primary:hover { opacity: 0.9; }
@@ -888,14 +893,53 @@ button.link {
   cursor: default;
 }
 
-/* Filled: the one thing a view is for. */
+/*
+   Filled: the one thing a view is for.
+
+   The fill carries a bevel: a one-pixel highlight along the top edge, a one-pixel shade
+   along the bottom, and a hairline of shadow under it, which is light from above on a
+   body that is a little proud of the page. It is the only button that gets one. The
+   outlined and quiet variants are the controls that repeat down a list, where a row of
+   lit edges would out-shout the notes they sit beside, and the filled one appears once
+   per view, so it is the one place a little weight is earned.
+
+   Each edge is mixed from the button's own fill (`--btn-fill`, which the danger and
+   neutral tones set) rather than from fixed white and black. The obvious recipe, a
+   white highlight and a black shade, is tuned for a saturated fill on a dark page and
+   fails here in dark mode, where every filled button is pale (mint, salmon, the page's
+   own near-white ink): a white highlight on mint is invisible, and a black shade reads
+   as a dirty rim. A lighter and a darker step of the fill itself gives an edge on any
+   colour in either theme.
+
+   The hairline under the button is plain black and so disappears on the dark page.
+   That is intended: in dark mode the fills are light and the page is dark, so a drop
+   shadow has nothing to fall on, and a light-coloured one would be a glow, which is the
+   popover's vocabulary (every other shadow in this file is on something that floats).
+
+   Pressing swaps the bevel for a shallow inset, so the button reads as pushed in, and
+   moves nothing: `.btn` transitions colour only so that a row of controls stays still
+   under the cursor, and a one-pixel translate on press would be exactly the motion that
+   rule exists to prevent. Disabled drops the bevel with the colour, since a faded button
+   should not look pressable.
+*/
 .btn-primary {
+  --btn-fill: var(--accent);
   color: var(--bg);
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--btn-fill);
+  border-color: var(--btn-fill);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--btn-fill), white 25%),
+    inset 0 -1px 0 color-mix(in srgb, var(--btn-fill), black 25%),
+    0 1px 2px rgb(0 0 0 / 12%);
 }
 
 .btn-primary:hover:not(:disabled) { opacity: 0.9; }
+
+.btn-primary:active:not(:disabled) {
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--btn-fill), black 30%);
+}
+
+.btn-primary:disabled { box-shadow: none; }
 
 /* Outlined: a real action that is not the main one. The default, and the common case. */
 .btn-secondary {
@@ -949,9 +993,8 @@ button.link {
 }
 
 .btn-danger.btn-primary {
+  --btn-fill: var(--bad);
   color: #fff;
-  background: var(--bad);
-  border-color: var(--bad);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -970,9 +1013,8 @@ button.link {
    is inert there by design.
 */
 .btn-neutral.btn-primary {
+  --btn-fill: var(--fg);
   color: var(--bg);
-  background: var(--fg);
-  border-color: var(--fg);
 }
 
 .btn-neutral.btn-primary:hover:not(:disabled) { opacity: 0.9; }
