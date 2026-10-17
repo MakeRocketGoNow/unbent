@@ -143,9 +143,10 @@ export function limitsFor(env: UsageEnv, plan: PlanRow | null | undefined, now: 
 /**
  * The same, for a caller without the row on its context: the usage read, a GET, which
  * `requireActivePlan` lets through without reading anything. One D1 read by key where
- * billing is on, and none where it is off. The read is of the plan row, the account's
- * standing and not its notes, which is why it is made here and not in the route
- * (`guards.test.ts` keeps D1 out of the note routes).
+ * billing is on, and none where it is off. The plan row is the control plane's, the same
+ * read `requireActivePlan` and `quotaFor` make, and it lives here beside `capFor` as
+ * `quotaFor` lives beside `quotaOf`: the note routes read notes from the account's object
+ * and nothing from D1, and that stays true.
  */
 export async function capForUser(env: UsageEnv & { DB: D1Database }, userId: string, now: number): Promise<number | null> {
   if (!billingOn(env)) return dailyCap(env);
