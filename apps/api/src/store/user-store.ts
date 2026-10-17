@@ -1270,10 +1270,18 @@ export class UserStore extends DurableObject<StoreEnv> {
       const note = this.notes.get(id);
       if (!note) return null;
       // Past the store's room (MAK-234) the press is refused before anything is read:
-      // the readings it would pay the model for could not be recorded, so the next
-      // press would pay for them again, and the suggestion it fed would be a save the
-      // outbox can only keep. The route answers the 402 the save would have got. After
-      // the note is looked up, so an id that names no note is still the 404.
+      // the readings it would pay the model for could not be recorded, so every press
+      // would pay for them again, and the suggestion it fed would be a save the outbox
+      // can only keep. The route answers the 402 the save would have got. After the
+      // note is looked up, so an id that names no note is still the 404.
+      //
+      // What this guarantees is that a store already full pays for nothing. A press
+      // that starts just under the limit can still cross it with its first reading and
+      // have a later one refused: that reading is counted against the caps all the
+      // same (`readWithLlm` moves it onto the press's own record), it is at most the
+      // rest of one press's files, once, and the next press is refused here. Letting
+      // a press's readings past the limit instead was weighed and left: it is a way
+      // round the bound, priced by the model, for a waste of a few readings.
       if (limit !== undefined && limit !== null) this.assertRoom(limit);
       const counted = press ? this.llmUsage.press(press, Date.now()) : null;
       if (counted && !counted.allowed) return { note, forText: [], forVision: [], press: counted };
