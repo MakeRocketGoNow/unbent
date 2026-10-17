@@ -73,6 +73,35 @@ export interface CodeSendsDb {
 
 const STRANGERS = 'strangers';
 
+/**
+ * The routes that send a code by email, each with whether it sends one to an address no
+ * account has. Every route of Better Auth's email-code plugin that mails a code calls the
+ * same `sendVerificationOTP`, so on this instance every one of them is the sign-in code
+ * email and spends the same allowance; a route left off this list is a way round every
+ * bound here. The two password-reset routes send only to an address an account has, and
+ * stay mounted with passwords off, since the plugin does not ask. `/email-otp/request-email-change`
+ * sends too (to the new address), but only with the plugin's `changeEmail` on, which this
+ * instance does not turn on; turning it on means adding it here.
+ */
+const CODE_ROUTES: Record<string, { toStrangers: boolean }> = {
+  '/email-otp/send-verification-otp': { toStrangers: true },
+  '/email-otp/request-password-reset': { toStrangers: false },
+  '/forget-password/email-otp': { toStrangers: false },
+};
+
+/** The address a request to Better Auth would mail a code to, or null when it mails none. */
+export function codeRequestOf(
+  path: string | undefined,
+  body: unknown,
+): { email: string; toStrangers: boolean } | null {
+  const route = path ? CODE_ROUTES[path] : undefined;
+  if (!route) return null;
+  const email = (body as { email?: unknown } | undefined)?.email;
+  if (typeof email !== 'string' || !email) return null;
+  return { email: email.toLowerCase(), toStrangers: route.toStrangers };
+}
+
+
 export function codeSendsDay(now: number): string {
   return new Date(now).toISOString().slice(0, 10);
 }

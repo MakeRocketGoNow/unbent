@@ -7,7 +7,7 @@ import { socialProviderList } from 'better-auth/social-providers';
 import { SIGNUPS_CLOSED_MESSAGE, type AuthProvider } from '@unbent/shared';
 import type { Env } from './types.js';
 import { canSendEmail, sendEmail } from './lib/email.js';
-import { CODE_REFUSAL_MESSAGES, recordCodeRequest } from './lib/code-sends.js';
+import { CODE_REFUSAL_MESSAGES, codeRequestOf, recordCodeRequest } from './lib/code-sends.js';
 import { signInCodeEmail } from './lib/sign-in-code-email.js';
 import { deleteKeys } from './lib/blobs.js';
 import { ensureDirectoryRow } from './lib/directory.js';
@@ -691,19 +691,20 @@ function createAuth(env: Env): AuthInstance {
     hooks: {
       /**
        * Bounds the sign-in codes sent in a day, by address and for addresses with no
-       * account, before the code is made (`lib/code-sends.ts` has the numbers and why).
-       * A hook rather than a wrapper round `sendVerificationOTP` because the route
-       * awaits that send inside `runInBackgroundOrAwait`, which logs a throw and
-       * answers success all the same; thrown here, the refusal reaches the screen as the
-       * 429 and sentence it is. The address is looked up with Better Auth's own adapter,
+       * account, before the code is made, on every route that mails one
+       * (`codeRequestOf`; `lib/code-sends.ts` has the numbers and why). A hook rather
+       * than a wrapper round `sendVerificationOTP` because the route awaits that send
+       * inside `runInBackgroundOrAwait`, which logs a throw and answers success all the
+       * same; thrown here, the refusal reaches the screen as the 429 and sentence it is. The address is looked up with Better Auth's own adapter,
        * the reader of its `user` table; the route looks it up again, one row.
        */
       before: createAuthMiddleware(async (ctx) => {
-        if (ctx.path !== '/email-otp/send-verification-otp') return;
-        const email = (ctx.body as { email?: unknown } | undefined)?.email;
-        if (typeof email !== 'string' || !email) return;
-        const known = Boolean(await ctx.context.internalAdapter.findUserByEmail(email.toLowerCase()));
-        const refusal = await recordCodeRequest(env.DB, email, known);
+        const request = codeRequestOf(ctx.path, ctx.body);
+        if (!request) return;
+        const known = Boolean(await ctx.context.internalAdapter.findUserByEmail(request.email));
+        // The route answers success and sends nothing, so there is nothing to count.
+        if (!known && !request.toStrangers) return;
+        const refusal = await recordCodeRequest(env.DB, request.email, known);
         if (!refusal) return;
         console.warn(`[auth] sign-in code refused (${refusal}) for an address${known ? ' with' : ' without'} an account`);
         throw new APIError('TOO_MANY_REQUESTS', {

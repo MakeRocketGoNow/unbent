@@ -3,6 +3,7 @@ import {
   ADDRESS_CODES_PER_DAY,
   ADDRESS_CODE_INTERVAL_MS,
   STRANGER_CODES_PER_DAY,
+  codeRequestOf,
   codeSendsDay,
   recordCodeRequest,
   type CodeSendsDb,
@@ -113,5 +114,25 @@ describe('recordCodeRequest', () => {
     expect(codeSendsDay(justAfterMidnight)).toBe('2026-10-17');
     expect(await recordCodeRequest(db, 'me@example.com', true, justAfterMidnight)).toBeNull();
     expect([...rows.values()].map((r) => r.day)).toEqual(['2026-10-17']);
+  });
+});
+
+describe('codeRequestOf', () => {
+  it('counts every route that mails a code, not only the sign-in one', () => {
+    const body = { email: 'Me@Example.com', type: 'sign-in' };
+    expect(codeRequestOf('/email-otp/send-verification-otp', body)).toEqual({
+      email: 'me@example.com',
+      toStrangers: true,
+    });
+    for (const path of ['/email-otp/request-password-reset', '/forget-password/email-otp']) {
+      expect(codeRequestOf(path, { email: 'me@example.com' })).toEqual({ email: 'me@example.com', toStrangers: false });
+    }
+  });
+
+  it('ignores routes that send nothing, and bodies with no address', () => {
+    expect(codeRequestOf('/sign-in/email-otp', { email: 'me@example.com', otp: '123456' })).toBeNull();
+    expect(codeRequestOf(undefined, { email: 'me@example.com' })).toBeNull();
+    expect(codeRequestOf('/email-otp/send-verification-otp', {})).toBeNull();
+    expect(codeRequestOf('/email-otp/send-verification-otp', undefined)).toBeNull();
   });
 });
