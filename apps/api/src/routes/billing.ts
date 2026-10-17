@@ -97,7 +97,8 @@ export const billing = new Hono<AppEnv>()
   /**
    * A checkout for the page to open: the plan, with `storage` add-ons beside it. The
    * answer is the transaction's id, which Paddle.js opens as an overlay with the
-   * client-side token from `/api/config`; the page never learns a price id, and the
+   * client-side token from `/api/config`, and the account's Paddle customer id, which
+   * Paddle.js is initialised with for Retain (`pwCustomer`); the page never learns a price id, and the
    * customer is ours before the checkout opens, so the plan row holds Paddle's id for
    * the account by the time the first event names it.
    *
@@ -126,7 +127,7 @@ export const billing = new Hono<AppEnv>()
       const customerId = row.paddleCustomerId ?? (await findOrCreateCustomer(paddle, c.get('user')!.email, userId)).id;
       if (customerId !== row.paddleCustomerId) await updatePlan(c.env.DB, userId, { paddleCustomerId: customerId }, now);
       const txn = await createCheckoutTransaction(paddle, customerId, userId, c.req.valid('json').storage);
-      return c.json({ transactionId: txn.id });
+      return c.json({ transactionId: txn.id, customerId });
     } catch (err) {
       return paddleRefused(err, 'start the checkout', userId);
     }

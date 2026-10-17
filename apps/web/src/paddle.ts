@@ -15,6 +15,14 @@ import type { BillingConfig } from '@unbent/shared';
  *
  * One load and one `Initialize` per page (Paddle.js refuses a second), with the
  * checkout's events fanned out to whoever is waiting on them.
+ *
+ * `pwCustomer` is the account's Paddle customer id (`ctm_…`), never this app's user id
+ * or the email: it is how Paddle Retain ties what Paddle.js sees on the page to the
+ * customer it recovers payments and cancellations for. The checkout route answers it,
+ * since the customer is made there on a first checkout and the page has no id before.
+ * A page that has already initialised (a second checkout after a closed overlay) is
+ * told it again through `Update`, which is Paddle.js's way to change what `Initialize`
+ * was given.
  */
 
 const SCRIPT_URL = 'https://cdn.paddle.com/paddle/v2/paddle.js';
@@ -26,7 +34,8 @@ interface CheckoutEvent {
 
 interface PaddleJs {
   Environment: { set(env: 'sandbox' | 'production'): void };
-  Initialize(options: { token: string; eventCallback?: (event: CheckoutEvent) => void }): void;
+  Initialize(options: { token: string; pwCustomer?: { id: string }; eventCallback?: (event: CheckoutEvent) => void }): void;
+  Update(options: { pwCustomer: { id: string } }): void;
   Checkout: { open(options: { transactionId: string }): void; close(): void };
 }
 
@@ -51,13 +60,20 @@ function loadScript(): Promise<PaddleJs> {
   });
 }
 
-/** Paddle.js, loaded and initialised for this instance's environment. Idempotent. */
-export function loadPaddle(billing: BillingConfig): Promise<PaddleJs> {
+let initialisedFor: string | undefined;
+
+/** Paddle.js, loaded and initialised for this instance's environment and the account's Paddle customer. Idempotent. */
+export function loadPaddle(billing: BillingConfig, customerId?: string): Promise<PaddleJs> {
   if (!loading) {
     loading = loadScript().then((paddle) => {
+      // Live is Paddle.js's default; only the sandbox is named. Which one this instance
+      // is comes from the server, which reads it off the API key (`paddleOf`), so a
+      // build pointed at live keys never sets the sandbox.
       if (billing.environment === 'sandbox') paddle.Environment.set('sandbox');
+      initialisedFor = customerId;
       paddle.Initialize({
         token: billing.clientToken,
+        ...(customerId ? { pwCustomer: { id: customerId } } : {}),
         eventCallback: (event) => {
           for (const listener of listeners) listener(event);
         },
@@ -68,8 +84,15 @@ export function loadPaddle(billing: BillingConfig): Promise<PaddleJs> {
     loading.catch(() => {
       loading = null;
     });
+    return loading;
   }
-  return loading;
+  return loading.then((paddle) => {
+    if (customerId && customerId !== initialisedFor) {
+      paddle.Update({ pwCustomer: { id: customerId } });
+      initialisedFor = customerId;
+    }
+    return paddle;
+  });
 }
 
 export type CheckoutOutcome = 'completed' | 'closed';
@@ -80,8 +103,8 @@ export type CheckoutOutcome = 'completed' | 'closed';
  * the overlay first. Paddle sends `checkout.closed` after `checkout.completed` too, so
  * the first of the two to arrive is the answer.
  */
-export function openCheckout(billing: BillingConfig, transactionId: string): Promise<CheckoutOutcome> {
-  return loadPaddle(billing).then(
+export function openCheckout(billing: BillingConfig, transactionId: string, customerId?: string): Promise<CheckoutOutcome> {
+  return loadPaddle(billing, customerId).then(
     (paddle) =>
       new Promise<CheckoutOutcome>((resolve) => {
         const listener = (event: CheckoutEvent) => {
