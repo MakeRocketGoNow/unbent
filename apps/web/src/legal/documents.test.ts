@@ -161,7 +161,8 @@ describe('legalDocuments and Auto-fill', () => {
     const body = text(jevOnly.privacy);
     expect(body).toContain('TypeSafe');
     expect(body).toContain('when you press Auto-fill on it, and at no other time');
-    expect(body).toContain('the names of your notebooks, tags and fields');
+    expect(body).toContain('the names and text of its files');
+    expect(body).toContain('the names of your notebooks, tags');
     expect(body).toContain('does not use what it receives to train any model');
     expect(body).toContain('never when you upload or in the background');
     expect(body).toContain('Three other kinds of service');
@@ -179,6 +180,8 @@ describe('legalDocuments and Auto-fill', () => {
     const body = text(both.privacy);
     expect(body).toContain('Anthropic');
     expect(body).toContain('pictures and text-less scans');
+    expect(body).toContain('title and text with the names and text of its files');
+    expect(body).toContain('names of the fields it is asked to fill');
     expect(body).toContain('deletes it within thirty days');
     expect(body).toContain('what Auto-fill reads off a picture or a scan');
     expect(body).toContain('Four other kinds of service');

@@ -327,21 +327,21 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
             ? [
                 'TypeSafe, whose model chooses a notebook, tags and field values for a note when you ' +
                   'press Auto-fill on it, and at no other time. It receives that note’s title, its ' +
-                  'text and the text of its files, and the names of your notebooks, tags and fields, ' +
-                  'with a notebook’s purpose if you wrote one, a field’s options, and a few titles of ' +
-                  'notes already filed under each. It does not use what it receives to train any ' +
-                  'model, and keeps it ' +
-                  'under its own privacy policy, in the United States.',
+                  'text, and the names and text of its files, and the names of your notebooks, tags ' +
+                  'and fields, with a notebook’s purpose if you wrote one, a field’s options, and a ' +
+                  'few titles of notes already filed under each. It does not use what it receives to ' +
+                  'train any model, and keeps it under its own privacy policy, in the United States.',
               ]
             : []),
           ...(opts.autofill && opts.llm
             ? [
                 'Anthropic, whose model reads the pictures and text-less scans in a note when you ' +
                   'press Auto-fill on it, and writes a title and text field values from what the ' +
-                  'note says, and at no other time. It receives up to five of that note’s files and ' +
-                  'its text. It does not use what it receives to train its models, and deletes it ' +
-                  'within thirty days, except where its own terms require keeping something longer, ' +
-                  'such as to investigate misuse.',
+                  'note says, and at no other time. It receives up to five of that note’s files to ' +
+                  'read, the note’s title and text with the names and text of its files, and the ' +
+                  'names of the fields it is asked to fill. It does not use what it receives to ' +
+                  'train its models, and deletes it within thirty days, except where its own terms ' +
+                  'require keeping something longer, such as to investigate misuse.',
               ]
             : []),
         ],
