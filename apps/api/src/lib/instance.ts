@@ -1,5 +1,6 @@
 import { legalVersionFor, type AppConfig } from '@unbent/shared';
 import { canAutofill } from './jev.js';
+import { canUseLlm } from './llm.js';
 import type { Env } from '../types.js';
 import { billingOn, type PaddleEnv } from './paddle.js';
 
@@ -174,6 +175,16 @@ export function posthogAssetsHost(env: Env): string {
     /^(https:\/\/[a-z0-9-]+)\.i\.posthog\.com$/i,
     '$1-assets.i.posthog.com',
   );
+}
+
+/**
+ * Whether an Auto-fill press here also calls the language model (`AppConfig.llm`): only
+ * where Auto-fill is on at all, which the Jev key alone decides, and an Anthropic key is
+ * set. It is what decides whether the privacy policy names Anthropic (MAK-230), so an
+ * Anthropic key on an instance with no Jev key, which no press can reach, names nobody.
+ */
+export function llmOf(env: Env): true | undefined {
+  return canAutofill(env) && canUseLlm(env) ? true : undefined;
 }
 
 /**

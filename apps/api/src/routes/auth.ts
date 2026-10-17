@@ -1,12 +1,11 @@
 import { Hono } from 'hono';
 import { INSTANCE_KINDS, type AppConfig, type InstanceKind } from '@unbent/shared';
 import { accountDeletionOffered, getAuth, offeredProviders } from '../auth.js';
-import { frontPageOf, legalLinksOf, operatorOf, posthogOf } from '../lib/instance.js';
+import { frontPageOf, legalLinksOf, llmOf, operatorOf, posthogOf } from '../lib/instance.js';
 import { whoAmI } from '../lib/session.js';
 import { refuseGrantsWithoutAgreement } from './legal.js';
 import { previewRelayOrigin } from '../lib/preview-relay.js';
 import { canAutofill } from '../lib/jev.js';
-import { canUseLlm } from '../lib/llm.js';
 import { billingOf } from '../lib/paddle.js';
 import { registerClient } from '../lib/oauth-registration.js';
 import type { AppEnv, Env } from '../types.js';
@@ -73,7 +72,7 @@ export const authRoutes = new Hono<AppEnv>()
       posthog: posthogOf(c.env),
       previewRelay: relayOrigin ? { origin: relayOrigin } : undefined,
       autofill: canAutofill(c.env),
-      llm: canAutofill(c.env) && canUseLlm(c.env) ? true : undefined,
+      llm: llmOf(c.env),
       ownStores: c.env.PREVIEW_OWN_STORES === '1' || undefined,
       instanceLabel: instanceLabelOf(c.env),
       instanceKind: instanceKindOf(c.env),

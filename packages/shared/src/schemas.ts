@@ -314,7 +314,7 @@ export interface AppConfig {
   /**
    * Whether an Auto-fill press also asks the language model: reading the note's pictures
    * and text-less scans, and writing its title and text fields. True where `autofill` is
-   * and an Anthropic key is set (`canUseLlm` in the API); absent otherwise.
+   * and an Anthropic key is set (`llmOf` in the API); absent otherwise.
    *
    * Only the privacy policy reads it (MAK-230). Auto-fill turns on with the Jev key alone,
    * so an instance can send a note's text to TypeSafe without ever calling Anthropic, and

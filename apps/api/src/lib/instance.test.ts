@@ -5,6 +5,7 @@ import {
   isOperator,
   legalLinksOf,
   legalVersionOf,
+  llmOf,
   operatorEmails,
   operatorOf,
   posthogAssetsHost,
@@ -190,6 +191,22 @@ describe('legalVersionOf', () => {
  * fork opts into rather than inherits. The two host derivations exist so that an operator
  * sets one variable instead of three that differ by a few characters each.
  */
+/*
+ * Whether the privacy policy names Anthropic (MAK-230). Auto-fill turns on with the Jev
+ * key alone, so a policy that took the Anthropic key by itself would name a company no
+ * press can reach, and one that took Auto-fill by itself would name one an instance
+ * without the key never contacts.
+ */
+describe('llmOf', () => {
+  it('is on only where Auto-fill is on and there is an Anthropic key', () => {
+    expect(llmOf(env({ TYPESAFE_API_KEY: 'jev', ANTHROPIC_API_KEY: 'sk' }))).toBe(true);
+    expect(llmOf(env({ TYPESAFE_API_KEY: 'jev' }))).toBeUndefined();
+    expect(llmOf(env({ ANTHROPIC_API_KEY: 'sk' }))).toBeUndefined();
+    expect(llmOf(env({}))).toBeUndefined();
+    expect(llmOf(env({ TYPESAFE_API_KEY: 'jev', ANTHROPIC_API_KEY: '  ' }))).toBeUndefined();
+  });
+});
+
 describe('posthogOf', () => {
   it('is off without a key, which is what a self-hosted instance gets', () => {
     expect(posthogOf(env({}))).toBeUndefined();
