@@ -69,9 +69,11 @@ export const authRoutes = new Hono<AppEnv>()
    */
   .get('/config', (c) => {
     const relayOrigin = previewRelayOrigin(c.env);
+    const offered = offeredProviders(c.env);
     return c.json({
-      providers: offeredProviders(c.env),
-      turnstile: turnstileOf(c.env),
+      providers: offered,
+      // Only where a code can be asked for at all: the key alone says nothing a screen can use.
+      turnstile: offered.includes('email-otp') ? turnstileOf(c.env) : undefined,
       accountDeletion: accountDeletionOffered(c.env),
       operator: operatorOf(c.env),
       legal: legalLinksOf(c.env),
