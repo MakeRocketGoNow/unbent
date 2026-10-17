@@ -695,8 +695,9 @@ function createAuth(env: Env): AuthInstance {
        * (`codeRequestOf`; `lib/code-sends.ts` has the numbers and why). A hook rather
        * than a wrapper round `sendVerificationOTP` because the route awaits that send
        * inside `runInBackgroundOrAwait`, which logs a throw and answers success all the
-       * same; thrown here, the refusal reaches the screen as the 429 and sentence it is. The address is looked up with Better Auth's own adapter,
-       * the reader of its `user` table; the route looks it up again, one row.
+       * same; thrown here, the refusal reaches the screen as the 429 and sentence it is.
+       * The address is looked up with Better Auth's own adapter, the reader of its `user`
+       * table; the route looks it up again, one row.
        */
       before: createAuthMiddleware(async (ctx) => {
         const request = codeRequestOf(ctx.path, ctx.body);
