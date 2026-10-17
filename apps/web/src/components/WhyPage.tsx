@@ -77,17 +77,15 @@ export function WhyPage() {
         <Chapter title="An archive, not a notebook">
           <p>
             I started with Evernote in 2011. By the time I left, the account held about
-            thirteen thousand notes, and most of them were not notes in the usual sense. They
-            were paper: receipts, bills, manuals, letters, the contents of filing cabinets fed
-            through a document scanner a sheet at a time. Evernote read the text in every
-            scan, so a bill could be found by what it said, and that was the whole point. The
-            archive was where paper went to become searchable, and then the paper went in the
-            recycling.
+            thirteen thousand notes, most of them paper: receipts, bills, manuals, letters,
+            whole filing cabinets fed through a scanner. Evernote read the text in every scan,
+            so a bill could be found by what it said. Paper went in, became searchable, and
+            went in the recycling.
           </p>
           <p>
-            That is a different relationship with an app than a to-do list has. Nothing in it
-            can be made again, most of it will never be opened, and one day one of them
-            matters. What I was paying for was that it would be there.
+            Nothing in an archive like that can be made again, most of it will never be
+            opened, and one day one of them matters. What I was paying for was that it would
+            be there.
           </p>
         </Chapter>
 
@@ -97,8 +95,7 @@ export function WhyPage() {
             <Source href="https://siliconangle.com/2022/11/16/22-years-founded-evernote-acquired-italian-technology-company/">
               November 2022
             </Source>{' '}
-            Evernote announced that it was being bought by Bending Spoons, an app company in
-            Milan. In{' '}
+            Evernote announced its sale to Bending Spoons, an app company in Milan. In{' '}
             <Source href="https://techcrunch.com/2023/02/27/bending-spoons-lays-off-129-evernote-staffers/">
               February 2023
             </Source>{' '}
@@ -116,19 +113,18 @@ export function WhyPage() {
             <Source href="https://www.tamingthetrunk.com/p/evernote-increases-prices-and-adds">
               November 2025
             </Source>{' '}
-            the Personal and Professional plans were retired for two new ones: Starter, at $99
-            a year with a thousand-note cap, and Advanced, at $249.99 a year, the only plan
-            with no cap, which is the one existing subscribers were offered at renewal.
+            the Personal and Professional plans were retired for Starter, $99 a year with a
+            thousand-note cap, and Advanced, $249.99 a year with no cap, which existing
+            subscribers were offered at renewal.
           </p>
           <p>
-            None of this is a secret plan against anyone, and none of it is unusual. A company
-            bought a product that was losing money and set about making it pay. The part that
-            is easy to miss from the outside is who it landed on.
+            None of this is unusual. A company bought a product that was losing money and set
+            about making it pay. What is easy to miss from the outside is who paid.
           </p>
         </Chapter>
 
         <Chapter title="What one account paid">
-          <p>The renewals tell it better than I can. What my account paid each September:</p>
+          <p>What my account paid each September:</p>
           <table>
             <tbody>
               {RENEWALS.map((row) => (
@@ -141,72 +137,66 @@ export function WhyPage() {
             </tbody>
           </table>
           <p>
-            Forty-five dollars a year for the first five years, seventy for the next six. The
-            sale closed in early 2023, and that September cost eight dollars more. The next
-            one nearly doubled. Then, in August 2026, the mail came that every long-time
-            subscriber was getting:
+            Forty-five dollars a year for five years, seventy for six. The first renewal after
+            the sale cost eight dollars more; the next nearly doubled. Then, in August 2026,
+            the mail came:
           </p>
           <blockquote>
             <p>
-              Your yearly Evernote subscription will renew soon. We are sending you this email
-              to inform you that your yearly Evernote subscription will renew in 30 days for
-              249.99 USD.
+              We are sending you this email to inform you that your yearly Evernote
+              subscription will renew in 30 days for 249.99 USD.
             </p>
           </blockquote>
           <p>
-            Two doublings in three years, with the same notes in it. The price could do that
-            because the people it landed on were the ones who had been there longest, and an
-            archive of thirteen thousand scans is exactly the thing you cannot move on a whim.
-            Leaving was hard, and it was hard because the notes were in a format that only one
-            app could read.
+            Two doublings in three years, for the same notes. The price could do that because
+            an archive of thirteen thousand scans is the thing you cannot move on a whim, and
+            it was hard to move because only one app could read it.
           </p>
         </Chapter>
 
         <Chapter title="What I went looking for">
           <p>
-            I did look for somewhere to take it before deciding to build. What the archive
-            needed was short to say and hard to find: a note that can hold several files and
-            carry tags, search that reads the text inside a scanned PDF, and a hosted service,
-            so the archive is on the phone and the laptop without a server of my own to run.
-            Notion has the note, but did not, when I looked, search inside an attached PDF.
-            Obsidian keeps its notes on your own device and is not a hosted service. The
+            I looked for somewhere to take it before deciding to build. The archive needed
+            three things: a note that holds several files and tags, search that reads the text
+            inside a scanned PDF, and a hosted service, so it is on the phone and the laptop
+            without a server of my own. Notion has the note but, when I looked, did not search
+            inside an attached PDF. Obsidian lives on your own device and is not hosted. The
             Evernote alternative I wanted was the one that had just doubled its price.
           </p>
         </Chapter>
 
         <Chapter title="What Unbent promises instead">
           <p>
-            The conclusion was short, and it is the whole design of Unbent: if you pay someone
-            to keep your notes, they still have to be yours, with or without them.
+            The conclusion is the whole design of Unbent: if you pay someone to keep your
+            notes, they still have to be yours, with or without them.
           </p>
           <ul>
             <li>
-              <strong>Markdown, byte for byte.</strong> A note is a Markdown file with
-              frontmatter, saved exactly as typed. No reflowed lists, no italics quietly
-              rewritten, no escaped characters appearing in your text overnight. A format the
-              app rewrites behind your back is a format you do not actually own.
+              <strong>Markdown, byte for byte.</strong> A note is a Markdown file, saved exactly
+              as typed: no reflowed lists, no italics quietly rewritten, no escaped characters
+              appearing overnight. A format the app rewrites behind your back is one you do
+              not own.
             </li>
             <li>
               <strong>An export that needs no Unbent.</strong> One folder per note, its Markdown
-              and its files beside it. Read it, grep it, back it up, open it in anything. You
-              can take it as often as you like, and nothing in it refers to us.
+              and files beside it. Read it, grep it, back it up, open it in anything, as often
+              as you like.
             </li>
             <li>
-              <strong>A way in from where you are.</strong> An Evernote export goes in whole,
-              from the browser: each notebook becomes a notebook, every note keeps its tags,
-              its dates and its scans, and the text in every scan is searchable again. That is
-              what it means to export Evernote to Markdown rather than to another silo.
+              <strong>A way in from Evernote.</strong> An export goes in whole, from the
+              browser: every note keeps its notebook, tags, dates and scans, and the text in
+              every scan is searchable again. That is what export Evernote to Markdown should
+              mean: Markdown, not another silo.
             </li>
           </ul>
         </Chapter>
 
         <Chapter title="What that promise costs us">
           <p>
-            That promise costs us, not you. If you stop paying, nothing is held hostage: the
-            account turns read-only, every note still opens, searches and exports, and it
-            stays that way for at least a year, with a reminder to export before anything is
-            removed. We cannot hold your archive as the reason to renew. Unbent has to earn
-            each year on what it does.
+            If you stop paying, nothing is held hostage: the account turns read-only, every
+            note still opens, searches and exports, and stays that way for at least a year,
+            with a reminder to export before anything is removed. We cannot hold your archive
+            as the reason to renew. Unbent has to earn each year on what it does.
           </p>
           {/* The owner was named in "What changed"; the line trusts the reader to have
               read it rather than explaining the name. */}
