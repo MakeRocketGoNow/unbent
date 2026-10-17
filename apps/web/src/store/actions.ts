@@ -1591,16 +1591,37 @@ export async function restoreRevision(noteId: string, revisionId: number, opts: 
  * on the server to delete; its delete queues behind the creation as before, and the two
  * replay in order once the person subscribes, or the trash is emptied here. The queue's
  * own list of what is waiting is how the two are told apart.
+ *
+ * The store's refusal goes one step further, for a note the server holds whose own save
+ * is the one kept (MAK-234). That note, or its history, may be what filled the store,
+ * and queued behind its own refused save its delete would never be sent: the way out
+ * closed by the very thing it is the way out of. So its delete goes too, and the kept
+ * save then replays against a note that is trashed or gone and ends as the 404 it is
+ * (`NotesStore.update` asks for room only once it knows it will write). Not for the
+ * plan's refusal, where the kept save is the person's last edit and replays as it was
+ * once they subscribe. A note made here, which the server does not hold, still queues.
  */
 function roundTheQueue(lib: WritableLibrary, noteId: string): boolean {
-  return (planLapsed() || storeFull()) && !lib.outbox.status().waiting.has(noteId);
+  if (!planLapsed() && !storeFull()) return false;
+  return !lib.outbox.status().waiting.has(noteId) || (storeFull() && serverHolds(lib, noteId));
 }
 
 /** A bulk action's ids while a refusal waits: the ones that go to the server now, and the ones that queue. */
 function roundOrQueued(lib: WritableLibrary, ids: string[]): { direct: string[]; queued: string[] } {
   if (!planLapsed() && !storeFull()) return { direct: [], queued: ids };
-  const waiting = lib.outbox.status().waiting;
-  return { direct: ids.filter((id) => !waiting.has(id)), queued: ids.filter((id) => waiting.has(id)) };
+  const direct = ids.filter((id) => roundTheQueue(lib, id));
+  return { direct, queued: ids.filter((id) => !direct.includes(id)) };
+}
+
+/**
+ * Whether the server holds this note: the row is among the collection's synced rows,
+ * which only the feed and the server's answers write, rather than only an optimistic
+ * one made here. Through the private field `syncedRow` reads too, pinned by
+ * `pins.test.ts`; without it, false, which keeps the delete in the queue as before.
+ */
+function serverHolds(lib: WritableLibrary, noteId: string): boolean {
+  const state = (lib.notes as unknown as { _state?: { syncedData?: Map<string, LocalNote> } })._state;
+  return state?.syncedData?.has(noteId) ?? false;
 }
 
 export async function trashNote(noteId: string): Promise<void> {

@@ -563,6 +563,31 @@ describe('a replayed write', () => {
     expect(api.updateNote).toHaveBeenCalledTimes(2);
   });
 
+  /**
+   * The note whose own save the store refused may be what filled it, so its delete goes
+   * to the server round that save rather than behind it, and the save then ends on the
+   * note being gone (MAK-234). Behind it, the delete would never be sent.
+   */
+  it('sends the delete of a note whose own save the store refused, round that save', async () => {
+    const { fake, note } = library([row('n1', { title: 'old' })]);
+    const base = note('n1');
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'typed past the limit' }, base });
+    await tick();
+    vi.mocked(api.updateNote).mockRejectedValueOnce(new ApiError(402, '402: no room', 'STORAGE_FULL', 'notes'));
+    expect(await fake.replayOne()).toBe('kept');
+    expect(storeFull()).toBe(true);
+
+    vi.mocked(api.deleteNote).mockResolvedValueOnce(undefined as never);
+    await actions.trashNote('n1');
+    expect(api.deleteNote).toHaveBeenCalledWith('n1');
+    expect(fake.queue).toHaveLength(1);
+
+    // The kept save replays against a trashed note, and ends there.
+    vi.mocked(api.updateNote).mockRejectedValueOnce(new ApiError(404, '404: Not found'));
+    expect(await fake.replayOne()).toBe('refused');
+    expect(fake.queue).toHaveLength(0);
+  });
+
   it('takes a note the server no longer has as done', async () => {
     const { fake, lib, landPull } = library([row('n1', { deletedAt: 5 })]);
     await actions.purgeNote('n1');
