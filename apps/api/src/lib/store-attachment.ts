@@ -171,6 +171,10 @@ export async function storeAttachment(
         size: object.size,
         r2Key: key,
       }).catch((err: unknown) => {
+        // A store with no room for the text (MAK-234) is not an error: the file was
+        // admitted by the quota on files, and its text waits for room like any pending
+        // file's. Logged as one, an import into a full store wrote a line per file.
+        if (err instanceof StorageFull) return;
         // Left pending for the passes, and said so, because a request the API refused
         // (a bad key, a shape it will not take) would otherwise look exactly like a file
         // nobody has got to yet. The id rather than the name: names come from the archive.
