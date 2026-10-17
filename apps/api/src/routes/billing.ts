@@ -280,9 +280,10 @@ export const billing = new Hono<AppEnv>()
    * A refund is the one event that acts on Paddle rather than only on the row
    * (`refundEffectOf`): the subscription is cancelled, or its add-on removed, before
    * anything is recorded, so a call Paddle refuses or does not answer is a 502 and the
-   * event is delivered again: the row still names the subscription as live, and the
-   * retry asks again. Once the call is through, the row is written as the cancel will
-   * leave it, in the same batch as the event's row.
+   * event is delivered again: the row does not yet hold the refund's end, and the retry
+   * asks again, even when a cancel that went through unanswered has since made the row
+   * canceled. Once the call is through, the row is written as the cancel will leave it,
+   * in the same batch as the event's row.
    *
    * That cancel is stamped after the adjustment, and its `subscription.canceled` often
    * lands first: Paddle fires it as the cancel call returns, and the Worker can apply

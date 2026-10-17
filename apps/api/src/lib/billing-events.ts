@@ -181,11 +181,20 @@ export function planPatchFor(paddle: PaddleConfig, event: PaddleEvent, row: Plan
  * nothing here: a person whose chargeback Paddle won can subscribe again.
  *
  * Nothing for a refund with no subscription (a one-off charge), for one naming a
- * subscription that is not the row's live one (a former subscription's late refund, or
- * one the row already holds as canceled, which is also how a second delivery of the
- * same refund, or `adjustment.updated` after a `created` that was already approved,
- * finds nothing left to do), or while the account is comped, for `planPatchFor`'s
- * reasons.
+ * subscription that is not the row's (a former subscription's late refund), for one
+ * whose subscription the row holds as canceled with its period already ended by the
+ * refund (which is how a second delivery of the same refund, or `adjustment.updated`
+ * after a `created` that was already approved, finds nothing left to do), or while the
+ * account is comped, for `planPatchFor`'s reasons.
+ *
+ * Canceled alone is not enough to call a refund done. The cancel can go through at
+ * Paddle and its answer be lost (a timeout, a request cut off at Paddle's five
+ * seconds), so nothing is written here; `subscription.canceled` then lands and leaves
+ * the year's end on the row, and the refund's redelivery is what has to end it. Only a
+ * period that already ends by the refund says the patch is on the row. The cancel is
+ * asked for again in that case, which `ensureSubscriptionCanceled` reads as done; an
+ * add-on refund on a canceled subscription is nothing, since Paddle refuses to change
+ * one and every retry would fail the same way.
  */
 export type RefundEffect = 'cancel' | 'remove-storage' | 'needs-transaction';
 
@@ -194,14 +203,18 @@ export function refundEffectOf(paddle: PaddleConfig, event: PaddleEvent, row: Pl
   const adj = event.data as PaddleAdjustment;
   if (adj.action !== 'refund' && adj.action !== 'chargeback') return null;
   if (adj.status !== 'approved') return null;
-  if (!adj.subscription_id || adj.subscription_id !== row.paddleSubscriptionId || row.paddleStatus === 'canceled') return null;
-  if (compRunning(row, ms(event.occurred_at) ?? Date.now())) return null;
+  if (!adj.subscription_id || adj.subscription_id !== row.paddleSubscriptionId) return null;
+  const at = ms(event.occurred_at) ?? Date.now();
+  const canceled = row.paddleStatus === 'canceled';
+  if (canceled && (row.planUntil === null || row.planUntil <= at)) return null;
+  if (compRunning(row, at)) return null;
   if (adj.type === 'full') return 'cancel';
   if (!lineItems) return 'needs-transaction';
   const priceOf = new Map(lineItems.map((l) => [l.id, l.price_id]));
   const refundedPrices = adj.items.map((i) => priceOf.get(i.item_id));
   const onlyStorage = refundedPrices.length > 0 && refundedPrices.every((p) => p === paddle.storagePriceId);
-  return onlyStorage ? 'remove-storage' : 'cancel';
+  if (onlyStorage) return canceled ? null : 'remove-storage';
+  return 'cancel';
 }
 
 /**
