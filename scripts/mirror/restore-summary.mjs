@@ -3,7 +3,7 @@
 // The step summary of a restore-files run (.github/workflows/restore-files.yml): what
 // `rclone copy` from the mirror back to the live bucket did, read from its JSON log the
 // way write-status.mjs reads the mirror's. Counts only: a file's key is a customer's
-// filename, and the run page of an open-source repository is public.
+// filename, and the run page of a public repository is open to anyone.
 //
 //   node scripts/mirror/restore-summary.mjs <copy.log> <summary.md>
 //

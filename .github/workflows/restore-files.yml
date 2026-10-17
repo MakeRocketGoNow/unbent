@@ -28,7 +28,7 @@ name: Restore an account's files
 #            key that is already there as it is. So a run can only add files that are
 #            missing, and running it twice is the same as once.
 # The step summary carries counts and never a key, since a key is a customer's filename
-# and the run page of an open-source repository is public. The copy's log is thrown away
+# and the run page of a public repository is open to anyone. The copy's log is thrown away
 # with the runner for the same reason.
 on:
   workflow_dispatch:

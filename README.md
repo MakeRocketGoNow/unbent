@@ -97,18 +97,19 @@ code is held to.
 ## License
 
 Unbent is source-available, not open source: the whole repository, mobile apps included,
-is under the [Functional Source License, Version 1.1, Apache 2.0 Future
-License](LICENSE.md) (`FSL-1.1-Apache-2.0`), and each release becomes Apache 2.0 two
-years after it ships.
+is under the [Elastic License 2.0](LICENSE.md) (`Elastic-2.0`).
 
-What it permits: run Unbent for yourself, your family, or your own company; read, modify,
-and redistribute the source; build the apps from it. What it forbids: offering Unbent, or
-something substantially like it, to others as a commercial product or service that competes
-with the software or with unbent.app. That is the one restriction, and it is what keeps the
-hosted service viable while the code stays public.
+What it permits: use Unbent and modify it; run it for yourself, your family, or your own
+company; redistribute the source; build the apps from it. What it forbids: offering it to
+others as a hosted or managed service. That is the one restriction, and it is what keeps
+the hosted service viable while the code stays public.
 
-The conversion to Apache 2.0 is irrevocable and written into the license text, so the code
-cannot be locked up for good and the [export guarantee](docs/backups.md) does not depend
-on trusting anyone.
+The [export guarantee](docs/backups.md) does not rest on the license. It rests on the
+export itself: a plain folder of Markdown and files that needs no Unbent to read, which the
+license does not touch.
+
+Older commits carry the text of an earlier license from before the repository was public.
+Nothing was ever distributed under it, and it grants no rights; [LICENSE.md](LICENSE.md)
+says so at the top.
 
 Contributions are accepted under the same terms; see [CONTRIBUTING.md](CONTRIBUTING.md).
