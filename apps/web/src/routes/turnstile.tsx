@@ -23,8 +23,11 @@ import { configQuery } from '../queries.js';
  * when its own read of the config says to, so that is a deploy in between, not a path.
  *
  * What the page shows is for the developer who opens it in a browser; the app reads only
- * the bridge.
+ * the bridge. The widget sits at the very top of the page (`.turnstile-page`), because the
+ * apps draw the page in a box exactly the widget's height.
  */
+const WIDGET_FAILED = 'The widget could not run.';
+
 export const Route = createFileRoute('/turnstile')({
   component: TurnstilePage,
 });
@@ -53,8 +56,8 @@ export function TurnstilePage() {
             postToApp({ type: 'turnstile', token });
           }}
           onFail={() => {
-            setLine('The widget could not run.');
-            postToApp({ type: 'turnstile-error', message: 'The widget could not run.' });
+            setLine(WIDGET_FAILED);
+            postToApp({ type: 'turnstile-error', message: WIDGET_FAILED });
           }}
           onInteractive={() => postToApp({ type: 'turnstile-interactive' })}
         />
