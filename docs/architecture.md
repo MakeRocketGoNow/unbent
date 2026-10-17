@@ -8,7 +8,9 @@
   and FTS5 full-text search; see [Where your notes live](#where-your-notes-live)
 - **Cloudflare D1** (SQLite): accounts, sessions, OAuth clients, and the account directory
 - **Cloudflare R2**: attachment blobs
-- **Better Auth**: OAuth (Google, GitHub)
+- **Better Auth**: any of its OAuth providers by convention, passkeys, codes by email, and a
+  password where nothing else can create an account; see [Choosing sign-in
+  methods](self-hosting.md#choosing-sign-in-methods)
 - **Vite + React + CodeMirror 6**: Markdown editor, styled in place (see [Editing](editor.md#editing))
 
 One Worker serves both the built SPA and `/api`, so the two are genuinely same-origin and
