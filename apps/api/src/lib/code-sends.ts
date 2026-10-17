@@ -109,12 +109,16 @@ const CODE_ROUTES: Record<string, { toStrangers: boolean }> = {
  * The address a request to Better Auth would mail a code to, or null when it mails none.
  *
  * The hook runs before the route checks its input, so this repeats the checks that decide
- * whether anything is sent: an address the route refuses as malformed, and the
- * `change-email` type it refuses on this route, send nothing and must count nothing. Of
+ * whether anything is sent: an address the route refuses as malformed, a `type` it does
+ * not know or none, and the `change-email` type it refuses on this route, send nothing
+ * and must count nothing. Of
  * the types it accepts, only `sign-in` mails an address no account has; the others answer
  * success and send nothing. Counting those would spend the strangers' share on requests
  * that cost no allowance, and then tell a real newcomer their code is paused.
  */
+/** The types the send route mails a code for; it refuses any other, `change-email` included. */
+const SENT_TYPES = new Set<unknown>(['sign-in', 'email-verification', 'forget-password']);
+
 export function codeRequestOf(
   path: string | undefined,
   body: unknown,
@@ -125,10 +129,9 @@ export function codeRequestOf(
   if (typeof raw !== 'string') return null;
   const email = raw.toLowerCase();
   if (!z.email().safeParse(email).success) return null;
-  if (path === SEND_ROUTE && type === 'change-email') return null;
+  if (path === SEND_ROUTE && !SENT_TYPES.has(type)) return null;
   return { email, toStrangers: route.toStrangers && (path !== SEND_ROUTE || type === 'sign-in') };
 }
-
 
 export function codeSendsDay(now: number): string {
   return new Date(now).toISOString().slice(0, 10);
