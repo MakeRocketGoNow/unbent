@@ -9,8 +9,9 @@ archive, scored against how the owner had filed them.
 **Snap was not the drop-in upgrade.** On this task it:
 
 - **filed fewer notes right and more wrong**: 15 right and 11 wrong, against Jev's 22 and 6;
-- **cost half again as much per press** once the press was split to fit its 16-question
-  request limit, which sends the note's text ten times a round;
+- **cost about 50% more per press** (0.15¢ against 0.10¢) despite a lower price per
+  token, because its 16-question request limit splits the press into about ten requests
+  that each resend the note's text;
 - **was no faster**, since the press waits on the title call either way;
 - **gained nothing from its 384k context**: on two documents of 56k and 108k characters,
   every choice was the same with the text cut at 40k.
@@ -27,8 +28,8 @@ archive, scored against how the owner had filed them.
 | Decision requests | 1.5 | 10.5 | 1 |
 
 The third column is the alternative we were really weighing: one plain language-model call
-doing all of it. It files about as well as either decision model and costs half, and its
-one cost is a second and a half on every press. The decision models' edge on this task is
+doing all of it. It files about as well as either decision model at half Jev's price per
+press (0.05¢ against 0.10¢), and its one cost is a second and a half on every press. The decision models' edge on this task is
 speed, and only speed. We kept Jev.
 
 **Read this as one data point.** One task, 46 notes, one person's filing as the answer key,
