@@ -293,6 +293,46 @@ describe('refundEffectOf', () => {
     expect(planPatchFor(paddle, event('subscription.canceled', canceled, NEXT_YEAR), after)?.planUntil).toBe(Date.parse(T1));
   });
 
+  /**
+   * The cancel went through at Paddle but its answer was lost, so the first delivery
+   * wrote nothing, and `subscription.canceled` left the year's end on the row. The
+   * redelivery still has the period to end, and only an add-on refund has nothing left
+   * to change on a subscription that is already canceled.
+   */
+  it('still ends the period on redelivery when the cancel landed and the refund was never written', () => {
+    const first = event('adjustment.created', refund(), T1);
+    const canceled = event('subscription.canceled', sub({ status: 'canceled', current_billing_period: null, canceled_at: NEXT_YEAR }), NEXT_YEAR);
+    const afterCanceled = { ...paid, ...planPatchFor(paddle, canceled, paid) } as PlanRow;
+    expect(afterCanceled.planUntil).toBe(paid.planUntil);
+    expect(refundEffectOf(paddle, first, afterCanceled)).toBe('cancel');
+    const ofStorage = refund({ type: 'partial', items: [{ id: 'adjitm_1', item_id: 'txnitm_storage', type: 'partial', amount: '600' }] });
+    expect(refundEffectOf(paddle, event('adjustment.created', ofStorage, T1), afterCanceled, lines)).toBeNull();
+  });
+
+  /**
+   * `planPatchFor` on a canceled snapshot keeps `planUntil` as the last paid period,
+   * which is right for a cancel at the period's end. The refund's patch is what ends
+   * it now. If that cancel lands first (the race the webhook used to lose), the
+   * refund must still overwrite the date without needing a newer stamp.
+   */
+  it('still ends the paid period when subscription.canceled lands before the refund patch', () => {
+    const refundAt = event('adjustment.created', refund(), T1);
+    const canceledAt = event(
+      'subscription.canceled',
+      sub({ status: 'canceled', current_billing_period: null, canceled_at: NEXT_YEAR }),
+      NEXT_YEAR,
+    );
+    const afterCanceled = { ...paid, ...planPatchFor(paddle, canceledAt, paid) } as PlanRow;
+    expect(afterCanceled.planUntil).toBe(paid.planUntil);
+    expect(afterCanceled.paddleEventAt).toBe(NEXT_YEAR);
+    const refunded = refundPatchFor('cancel', refundAt);
+    // The write keeps the later stamp (`advanceStamp`, run on real rows in migrations.test.ts).
+    const afterRefund = { ...afterCanceled, ...refunded, paddleEventAt: afterCanceled.paddleEventAt };
+    expect(afterRefund.planUntil).toBe(Date.parse(T1));
+    expect(afterRefund.paddleStatus).toBe('canceled');
+    expect(planPatchFor(paddle, canceledAt, afterRefund)?.planUntil).toBe(Date.parse(T1));
+  });
+
   it('writes the row as the refund leaves the subscription', () => {
     expect(refundPatchFor('cancel', event('adjustment.created', refund(), T1))).toEqual({
       plan: 'active',

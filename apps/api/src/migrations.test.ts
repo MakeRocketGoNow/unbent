@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { DUMP_SQL, OPERATOR_PAGE_SQL } from './lib/directory.js';
-import { LAPSE_DUE_SQL } from './lib/plan.js';
+import { LAPSE_DUE_SQL, planUpdateSql } from './lib/plan.js';
 import { RESTORES_SQL } from './lib/restores.js';
 
 /**
@@ -206,6 +206,48 @@ describe.skipIf(!sqlite3)('the directory\'s query plans', () => {
       .split('\n')
       .map((line) => line.split('|')[0]);
     expect(due).toEqual(['long-gone', 'trial', 'comp', 'cancelling']);
+    query(`DELETE FROM account_plan; DELETE FROM user;`);
+  });
+
+  /**
+   * The webhook's plan write on real rows, since `plan.test.ts` only reads the text. A
+   * refund cancel writes without `notBefore`: it must end the period on a row that the
+   * cancel's own `subscription.canceled` already stamped later, keep that later stamp,
+   * advance an earlier one, and leave a row that has moved to another subscription alone.
+   * Bound inline, as the CLI takes no parameters.
+   */
+  it('end a refunded subscription whatever stamp is on the row, and only that subscription', () => {
+    const inline = ({ sql, binds }: { sql: string; binds: unknown[] }) =>
+      sql.replace(/\?(\d+)/g, (_, n: string) => {
+        const v = binds[Number(n) - 1];
+        return v === null ? 'NULL' : typeof v === 'string' ? `'${v}'` : String(v);
+      });
+    const yearEnd = 2_000_000;
+    const refundAt = 1_000_000;
+    const refundStamp = '2026-10-10T12:00:05.000Z';
+    const later = '2026-10-10T12:00:09.000Z';
+    const earlier = '2026-09-01T00:00:00.000Z';
+    query(`
+      INSERT INTO user (id, name, email, emailVerified, createdAt, updatedAt) VALUES
+        ('raced', 'R', 'r@example.com', 0, 'n', 'n'), ('first', 'F', 'f@example.com', 0, 'n', 'n'), ('moved', 'M', 'm@example.com', 0, 'n', 'n');
+      INSERT INTO account_plan (user_id, plan, plan_until, source, paddle_subscription_id, paddle_status, paddle_event_at, created_at, updated_at) VALUES
+        ('raced', 'active', ${yearEnd}, 'paddle', 'sub_1', 'canceled', '${later}', 1, 1),
+        ('first', 'active', ${yearEnd}, 'paddle', 'sub_1', 'active', '${earlier}', 1, 1),
+        ('moved', 'active', ${yearEnd}, 'paddle', 'sub_2', 'active', '${earlier}', 1, 1);
+    `);
+    const patch = { plan: 'active' as const, source: 'paddle' as const, planUntil: refundAt, paddleStatus: 'canceled', paddleCancelsAt: null, paddleEventAt: refundStamp };
+    const refundCancel = (user: string) =>
+      query(`${inline(planUpdateSql(user, patch, 5, { onlyIfSubscription: 'sub_1', advanceStamp: true }))}; SELECT changes();`);
+    const row = (user: string) => query(`SELECT plan_until, paddle_status, paddle_event_at FROM account_plan WHERE user_id = '${user}'`);
+
+    expect(refundCancel('raced')).toBe('1');
+    expect(row('raced')).toBe(`${refundAt}|canceled|${later}`);
+    expect(refundCancel('first')).toBe('1');
+    expect(row('first')).toBe(`${refundAt}|canceled|${refundStamp}`);
+    expect(refundCancel('moved')).toBe('0');
+    expect(row('moved')).toBe(`${yearEnd}|active|${earlier}`);
+    // Any other event still yields to a newer stamp on the row.
+    expect(query(`${inline(planUpdateSql('raced', { planUntil: yearEnd, paddleEventAt: refundStamp }, 6, { notBefore: refundStamp }))}; SELECT changes();`)).toBe('0');
     query(`DELETE FROM account_plan; DELETE FROM user;`);
   });
 

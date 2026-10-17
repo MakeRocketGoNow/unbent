@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { BASE_STORAGE_GB, GB, MAX_STORAGE_UNITS, STORAGE_ADDON_GB, storageQuotaBytes, storeLimitBytes } from '@unbent/shared';
-import { ADJUSTMENT_EVENTS, planPatchFor, refundEffectOf, refundPatchFor, type PaddleEvent } from '../lib/billing-events.js';
+import { ADJUSTMENT_EVENTS, planPatchFor, refundEffectOf, refundPatchFor, type PaddleEvent, type RefundEffect } from '../lib/billing-events.js';
 import { accountPlanOf, planFor, planRowByCustomer, planStateOf, updatePlan, updatePlanStatement } from '../lib/plan.js';
 import {
   PaddleError,
@@ -272,16 +272,27 @@ export const billing = new Hono<AppEnv>()
    * fail.
    *
    * The event's row and the plan's change go in one batch, so a row here with no change
-   * behind it cannot happen; and the change applies only while the row's newest event is
-   * not after this one (`notBefore`), so two deliveries racing both write the same thing
-   * and a late one writes nothing.
+   * behind it cannot happen. Subscription and transaction events apply only while the
+   * row's newest event is not after this one (`notBefore`), so two deliveries racing
+   * both write the same thing and a late one writes nothing. A refund cancel is the
+   * exception below.
    *
    * A refund is the one event that acts on Paddle rather than only on the row
    * (`refundEffectOf`): the subscription is cancelled, or its add-on removed, before
    * anything is recorded, so a call Paddle refuses or does not answer is a 502 and the
-   * event is delivered again: the row still names the subscription as live, and the
-   * retry asks again. Once the call is through, the row is written as the cancel will
-   * leave it, in the same batch as the event's row.
+   * event is delivered again: the row does not yet hold the refund's end, and the retry
+   * asks again, even when a cancel that went through unanswered has since made the row
+   * canceled. Once the call is through, the row is written as the cancel will leave it,
+   * in the same batch as the event's row.
+   *
+   * That cancel is stamped after the adjustment, and its `subscription.canceled` often
+   * lands first: Paddle fires it as the cancel call returns, and the Worker can apply
+   * it before this request writes. `planPatchFor` keeps `planUntil` as the year's end
+   * on a canceled snapshot (a scheduled cancel at period end must), so `notBefore`
+   * would then skip the refund's patch and leave a refunded account writable until
+   * that date. A refund cancel therefore writes without `notBefore`, scoped to the
+   * subscription it named, and only advances the stamp: the paid period ends, a
+   * confirming cancel keeps that date, and a checkout in the same moment is left alone.
    */
   .post('/billing/webhook', async (c) => {
     const paddle = paddleOf(c.env);
@@ -321,9 +332,10 @@ export const billing = new Hono<AppEnv>()
     const now = Date.now();
     const paddleEvent: PaddleEvent = { event_id, event_type, occurred_at, data: data as unknown as PaddleEvent['data'] };
     let patch = planPatchFor(paddle, paddleEvent, row);
+    let effect: RefundEffect | null = null;
     if (ADJUSTMENT_EVENTS.has(event_type)) {
       const adjustment = paddleEvent.data as PaddleAdjustment;
-      let effect = refundEffectOf(paddle, paddleEvent, row);
+      effect = refundEffectOf(paddle, paddleEvent, row);
       try {
         if (effect === 'needs-transaction') {
           const txn = await getTransaction(paddle, adjustment.transaction_id);
@@ -350,13 +362,23 @@ export const billing = new Hono<AppEnv>()
       console.log(`[billing] ${event_type} ${event_id} for user=${row.userId}: nothing to apply`);
       return c.json({ applied: false, reason: 'not followed' });
     }
-    const [, written] = await c.env.DB.batch([record, updatePlanStatement(c.env.DB, row.userId, patch, now, { notBefore: occurred_at })]);
+    // `refundEffectOf` has checked that the row names the refunded subscription.
+    const refundCancel = effect === 'cancel';
+    const writeOpts = refundCancel
+      ? { onlyIfSubscription: row.paddleSubscriptionId!, advanceStamp: true }
+      : { notBefore: occurred_at };
+    const [, written] = await c.env.DB.batch([record, updatePlanStatement(c.env.DB, row.userId, patch, now, writeOpts)]);
     // The guard can let the batch succeed and change nothing: an event older than the
-    // row's newest, delivered late. Said as such, since that is the case to see in the
-    // log when a row is not where an event should have put it.
+    // row's newest, delivered late, or a refund cancel whose subscription the row no
+    // longer names (a checkout that landed while we were cancelling). Said as such,
+    // since that is the case to see in the log when a row is not where an event should
+    // have put it.
     if (!written?.meta.changes) {
-      console.log(`[billing] ${event_type} ${event_id} for user=${row.userId}: skipped, older than the row's newest event`);
-      return c.json({ applied: false, reason: 'older' });
+      const [reason, why] = refundCancel
+        ? ['other subscription', 'row no longer names the refunded subscription']
+        : ['older', "older than the row's newest event"];
+      console.log(`[billing] ${event_type} ${event_id} for user=${row.userId}: skipped, ${why}`);
+      return c.json({ applied: false, reason });
     }
     console.log(`[billing] ${event_type} ${event_id} for user=${row.userId}: ${patch.paddleStatus ?? 'transaction'} until ${patch.planUntil ?? 'as before'}`);
     return c.json({ applied: true });
