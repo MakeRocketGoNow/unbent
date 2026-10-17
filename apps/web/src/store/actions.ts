@@ -1891,7 +1891,13 @@ export async function cancelUpload(noteId: string, filename: string): Promise<bo
  * added offline could be deleted from the panel and not from the picture.
  */
 export async function deleteOrCancelAttachment(noteId: string, filename: string): Promise<void> {
-  if (!(await cancelUpload(noteId, filename))) await api.deleteAttachment(noteId, filename);
+  if (await cancelUpload(noteId, filename)) return;
+  await api.deleteAttachment(noteId, filename);
+  // A file's text rows go with it, which is room in the store: the kept write is sent
+  // again now rather than on the executor's clock; see `store-full.ts`. Heard only in
+  // the tab that holds the outbox, since this is a request made from whichever tab it is
+  // called in; another tab's delete releases the kept write when the clock comes round.
+  storeFreed();
 }
 
 /**
