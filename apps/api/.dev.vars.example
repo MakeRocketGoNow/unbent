@@ -299,7 +299,7 @@ ALLOWED_EMAILS=
 #   API key:       Paddle > Developer tools > Authentication > API keys (customer,
 #                  transaction and subscription read and write, customer_portal_session write)
 #   Client token:  the Client-side tokens tab beside it; public, ships in the page
-#   Prices:        Paddle > Catalog > Products: the plan at $36 a year, and the storage
+#   Prices:        Paddle > Catalog > Products: the plan at $60 a year, and the storage
 #                  add-on at $12 a year with quantity on
 #   Webhook:       Paddle > Developer tools > Notifications > New destination, pointed at
 #                  https://<host>/api/billing/webhook; its secret is pdl_ntfset_…
