@@ -326,10 +326,10 @@ describe('refundEffectOf', () => {
     expect(afterCanceled.planUntil).toBe(paid.planUntil);
     expect(afterCanceled.paddleEventAt).toBe(NEXT_YEAR);
     const refunded = refundPatchFor('cancel', refundAt);
+    // The write keeps the later stamp (`advanceStamp`, run on real rows in migrations.test.ts).
     const afterRefund = { ...afterCanceled, ...refunded, paddleEventAt: afterCanceled.paddleEventAt };
     expect(afterRefund.planUntil).toBe(Date.parse(T1));
     expect(afterRefund.paddleStatus).toBe('canceled');
-    expect(afterRefund.paddleEventAt).toBe(NEXT_YEAR);
     expect(planPatchFor(paddle, canceledAt, afterRefund)?.planUntil).toBe(Date.parse(T1));
   });
 
