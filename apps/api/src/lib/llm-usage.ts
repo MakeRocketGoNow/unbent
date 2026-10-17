@@ -1,4 +1,4 @@
-import type { LlmJob } from '@unbent/shared';
+import { usageCents, type LlmJob, type LlmTokens } from '@unbent/shared';
 import type { PressLimits, UsageEntry } from '../store/llm-usage.js';
 import { LlmError, type LanguageModel, type LlmUsage, type Metered } from './llm.js';
 import { billingOn, type PaddleEnv } from './paddle.js';
@@ -158,6 +158,16 @@ export function capFor(env: UsageEnv, plan: PlanRow | null | undefined, now: num
 /** The yearly spend cap that applies to this account; see `forPlan`. */
 export function yearlyCentsFor(env: UsageEnv, plan: PlanRow | null | undefined, now: number): number | null {
   return forPlan(env, plan, now, yearlyCents, trialYearlyCents);
+}
+
+/**
+ * How much of the year's spend cap the account has used, as a share of one, for
+ * `AutofillUsage.yearUsed`: null where no yearly cap applies. Priced as the press is
+ * checked (`usageCents`), from the year the store answered with, so the page and the
+ * refusal agree; past the cap the share passes one, and the page says "All".
+ */
+export function yearShare(year: { presses: number; models: readonly LlmTokens[] }, limits: PressLimits): number | null {
+  return limits.yearlyCents === null ? null : usageCents(year.presses, year.models) / limits.yearlyCents;
 }
 
 /** Both limits a press is checked against, for this account. */

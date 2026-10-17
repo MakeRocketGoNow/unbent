@@ -3,7 +3,7 @@ import type { FieldDef } from '@unbent/shared';
 import { press, type PressDeps } from './autofill-press.js';
 import type { Jev } from './jev.js';
 import { LlmError, type LanguageModel, type LlmUsage } from './llm.js';
-import { capFor, capReached, dailyCap, limitsFor, trialDailyCap, trialSentences, trialYearlyCents, yearlyCents, yearlyCentsFor, yearReached } from './llm-usage.js';
+import { capFor, capReached, dailyCap, limitsFor, trialDailyCap, trialSentences, trialYearlyCents, yearlyCents, yearlyCentsFor, yearReached, yearShare } from './llm-usage.js';
 import type { PressLimits } from '../store/llm-usage.js';
 import type { PlanRow } from './plan.js';
 
@@ -339,6 +339,17 @@ describe('the cap', () => {
     expect(trialSentences({ ...paddle, AUTOFILL_YEARLY_CENTS: '300', AUTOFILL_TRIAL_YEARLY_CENTS: '300' }, trial, now)).toEqual({ day: false, year: false });
     // Billing off: never the trial's.
     expect(trialSentences({ AUTOFILL_TRIAL_DAILY_CAP: '50', AUTOFILL_TRIAL_YEARLY_CENTS: '300' }, trial, now)).toEqual({ day: false, year: false });
+  });
+
+  it('gives the year’s share against the cap that applies, priced as the press is checked', () => {
+    const opus = { model: 'claude-opus-5-5', inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+    // Four dollars of Opus and ten presses at a tenth of a cent: 401 cents.
+    const year = { presses: 10, models: [opus] };
+    expect(yearShare(year, { cap: null, yearlyCents: null })).toBeNull();
+    expect(yearShare(year, { cap: 500, yearlyCents: 5000 })).toBeCloseTo(0.0802, 6);
+    // A trial's cap is the smaller one, and the share passes one once it is spent.
+    expect(yearShare(year, { cap: 50, yearlyCents: 300 })).toBeCloseTo(401 / 300, 6);
+    expect(yearShare({ presses: 0, models: [] }, { cap: null, yearlyCents: 300 })).toBe(0);
   });
 
   it('says when the year’s Auto-fill returns, in seconds to 1 January UTC', () => {
