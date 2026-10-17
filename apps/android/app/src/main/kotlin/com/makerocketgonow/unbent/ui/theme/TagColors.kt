@@ -23,7 +23,7 @@ object TagColors {
     val hues: List<Color> = listOf(
         Color(0xFFC94F58), // red
         Color(0xFFD2742F), // orange
-        Color(0xFFB9960F), // yellow
+        Color(0xFFC9A227), // yellow
         Color(0xFF5F9A48), // green
         Color(0xFF3B9A8F), // teal
         Color(0xFF4A7FC7), // blue
