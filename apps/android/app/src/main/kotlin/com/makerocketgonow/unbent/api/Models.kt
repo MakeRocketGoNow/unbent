@@ -100,8 +100,12 @@ data class Notebook(val id: String, val name: String, val count: Int = 0)
 @Serializable
 data class NotebookList(val notebooks: List<Notebook> = emptyList(), val unfiled: Int = 0)
 
+/**
+ * A tag as `GET /api/tags` lists it. `color` is an index into the site's palette, which
+ * `TagColors` holds a copy of; null from a server older than the colours.
+ */
 @Serializable
-data class Tag(val name: String, val count: Int = 0)
+data class Tag(val name: String, val count: Int = 0, val color: Int? = null)
 
 @Serializable
 internal data class TagList(val tags: List<Tag> = emptyList())
