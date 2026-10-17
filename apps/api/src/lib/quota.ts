@@ -50,12 +50,13 @@ export function storageFullMessage(usedBytes: number, quotaBytes: number): strin
 
 /**
  * The sentence a note write refused for the store's size is answered with. The way out
- * is named: notes and their history are what the store holds, and a trashed note still
- * holds its room, so the trash has to be emptied too. Adding storage helps as well, since
- * the limit grows with the quota.
+ * is named: notes and their history are what the store holds (clearing a note's history
+ * frees room without deleting anything), and a trashed note still holds its room, so
+ * the trash has to be emptied too. Adding storage helps as well, since the limit grows
+ * with the quota.
  */
 export function storeFullMessage(usedBytes: number, limitBytes: number): string {
-  return `This account's notes take more room than its plan allows: ${roomOf(usedBytes)} of ${roomOf(limitBytes)}. Delete some notes and empty the trash, or add storage under Settings → Plan.`;
+  return `This account's notes take more room than its plan allows: ${roomOf(usedBytes)} of ${roomOf(limitBytes)}. Delete some notes or clear their history, empty the trash, or add storage under Settings → Plan.`;
 }
 
 const MB = 1024 * 1024;

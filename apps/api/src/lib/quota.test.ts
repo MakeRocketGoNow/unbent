@@ -53,7 +53,7 @@ describe('the storage quota', () => {
 
   it('says the notes are what to delete when it is the store that is full', () => {
     expect(storeFullMessage(1.6 * GB, STORE_FLOOR_BYTES + GB)).toBe(
-      "This account's notes take more room than its plan allows: 1.6 GB of 1.5 GB. Delete some notes and empty the trash, or add storage under Settings → Plan.",
+      "This account's notes take more room than its plan allows: 1.6 GB of 1.5 GB. Delete some notes or clear their history, empty the trash, or add storage under Settings → Plan.",
     );
     expect(storeFullMessage(600 * 1024 * 1024, STORE_FLOOR_BYTES)).toContain('600 MB of 512 MB');
     const err = new StorageFull(1.6 * GB, STORE_FLOOR_BYTES + GB, 0, 'notes');
