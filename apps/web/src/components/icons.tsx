@@ -122,8 +122,10 @@ function HeaderIcon({ icon: Icon }: { icon: LucideIcon }) {
  * is the target, so the glyph only has to match the words. Muted by the row it is in, since
  * it names the row rather than competing with it.
  */
-export function RowIcon({ icon: Icon }: { icon: LucideIcon }) {
-  return <Icon size="1.15em" strokeWidth={2} aria-hidden="true" focusable="false" />;
+export function RowIcon({ icon: Icon, className }: { icon: LucideIcon; className?: string }) {
+  return (
+    <Icon size="1.15em" strokeWidth={2} className={className} aria-hidden="true" focusable="false" />
+  );
 }
 
 /*
@@ -158,9 +160,15 @@ export function NotebookRowIcon() {
  * left edge for the labels and one height for the rows (`.notebook-emoji`). It ignores the
  * row's muted colour, which is the point of it: a picture in colour is what lets the eye
  * find one notebook among a dozen without reading.
+ *
+ * The book beside it is marked (`.notebook-book`) so a row can draw it in the label's own
+ * colour rather than the muted one the other row glyphs get: a grey two-pixel stroke next
+ * to a full-colour emoji read as a lighter weight, and the eye went to the pictures and
+ * past the books. A column of books alone was fine at either colour; it is the mix that
+ * needed them to match.
  */
 export function NotebookGlyph({ emoji }: { emoji: string | null | undefined }) {
-  if (!emoji) return <NotebookRowIcon />;
+  if (!emoji) return <RowIcon icon={Book} className="notebook-book" />;
   return (
     <span className="notebook-emoji" aria-hidden="true">
       {emoji}
