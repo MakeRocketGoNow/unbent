@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 /**
  * Bounding the sign-in codes an instance sends in a day (MAK-206).
  *
@@ -83,22 +85,35 @@ const STRANGERS = 'strangers';
  * sends too (to the new address), but only with the plugin's `changeEmail` on, which this
  * instance does not turn on; turning it on means adding it here.
  */
+const SEND_ROUTE = '/email-otp/send-verification-otp';
 const CODE_ROUTES: Record<string, { toStrangers: boolean }> = {
-  '/email-otp/send-verification-otp': { toStrangers: true },
+  [SEND_ROUTE]: { toStrangers: true },
   '/email-otp/request-password-reset': { toStrangers: false },
   '/forget-password/email-otp': { toStrangers: false },
 };
 
-/** The address a request to Better Auth would mail a code to, or null when it mails none. */
+/**
+ * The address a request to Better Auth would mail a code to, or null when it mails none.
+ *
+ * The hook runs before the route checks its input, so this repeats the checks that decide
+ * whether anything is sent: an address the route refuses as malformed, and the
+ * `change-email` type it refuses on this route, send nothing and must count nothing. Of
+ * the types it accepts, only `sign-in` mails an address no account has; the others answer
+ * success and send nothing. Counting those would spend the strangers' share on requests
+ * that cost no allowance, and then tell a real newcomer their code is paused.
+ */
 export function codeRequestOf(
   path: string | undefined,
   body: unknown,
 ): { email: string; toStrangers: boolean } | null {
   const route = path ? CODE_ROUTES[path] : undefined;
   if (!route) return null;
-  const email = (body as { email?: unknown } | undefined)?.email;
-  if (typeof email !== 'string' || !email) return null;
-  return { email: email.toLowerCase(), toStrangers: route.toStrangers };
+  const { email: raw, type } = (body ?? {}) as { email?: unknown; type?: unknown };
+  if (typeof raw !== 'string') return null;
+  const email = raw.toLowerCase();
+  if (!z.email().safeParse(email).success) return null;
+  if (path === SEND_ROUTE && type === 'change-email') return null;
+  return { email, toStrangers: route.toStrangers && (path !== SEND_ROUTE || type === 'sign-in') };
 }
 
 

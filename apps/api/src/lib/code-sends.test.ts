@@ -135,4 +135,18 @@ describe('codeRequestOf', () => {
     expect(codeRequestOf('/email-otp/send-verification-otp', {})).toBeNull();
     expect(codeRequestOf('/email-otp/send-verification-otp', undefined)).toBeNull();
   });
+
+  it('ignores what the route refuses before sending: a malformed address, a change-email code', () => {
+    const send = '/email-otp/send-verification-otp';
+    expect(codeRequestOf(send, { email: 'not an address', type: 'sign-in' })).toBeNull();
+    expect(codeRequestOf(send, { email: 'me@example.com', type: 'change-email' })).toBeNull();
+  });
+
+  it('reaches a stranger only for a sign-in code', () => {
+    const send = '/email-otp/send-verification-otp';
+    expect(codeRequestOf(send, { email: 'me@example.com', type: 'sign-in' })?.toStrangers).toBe(true);
+    for (const type of ['email-verification', 'forget-password']) {
+      expect(codeRequestOf(send, { email: 'me@example.com', type })?.toStrangers).toBe(false);
+    }
+  });
 });
