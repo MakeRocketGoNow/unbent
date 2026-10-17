@@ -116,9 +116,9 @@ export interface AccountPlan {
   storeBytes?: number;
   /**
    * The most the store may take on this plan: a floor plus a tenth of the quota on files
-   * (`storeLimitBytes` in the API's `lib/quota.ts`, which is the one place the number is
-   * decided). Sent beside `storeBytes` so the page states the bound a refused note write
-   * named without working it out for itself.
+   * (`storeLimitBytes` below). Sent beside `storeBytes` so the page states the bound a
+   * refused note write named, from the same read, rather than a figure it worked out
+   * from a plan row that may be older.
    */
   storeLimitBytes?: number;
   /**
@@ -142,4 +142,46 @@ export interface BillingConfig {
 /** The bytes an account on `storageGb` may hold. */
 export function storageQuotaBytes(storageGb: number): number {
   return storageGb * GB;
+}
+
+const MB = 1024 * 1024;
+
+/**
+ * How much room the account's own store may take (MAK-234): a floor, plus a tenth of
+ * the quota on files.
+ *
+ * The quota bounds the bytes in R2 and nothing else; what the store holds (note bodies,
+ * the copies the history keeps of them, the text extracted from files, the search
+ * index) had no bound at all, and a loop writing maximum-size notes held tens of
+ * gigabytes on a trial with no card (measured 2026-10-16: a maximum note costs about
+ * 2.2 MB of store, so ten thousand of them are 22 GB). Store bytes are also the dearer
+ * kind, about thirteen times R2's price per gigabyte-month, so a tenth of the quota in
+ * the store costs what the whole quota does in the bucket: within what the plan is
+ * priced for, and no more.
+ *
+ * The floor is for the archive this app is for, whose store is mostly its files' text.
+ * A real one measured at a few percent of its files (21.8 MB of text in a 46 MB store
+ * for 2,415 files, 2026-09-29), so a tenth of the quota is a wide margin for text
+ * that comes with files; the floor is the margin for an account whose files are
+ * small and whose notes are not, and for the history of a long-kept archive. Nothing
+ * this app does on purpose comes near the sum, and the refusal must never fire for an
+ * account that only filed what it scanned. One number for every plan rather than a
+ * setting, as the quota's blocks are: an operator who finds it wrong changes it here.
+ *
+ * Note writes and a file's text are held to it in the API (`NotesRepo`,
+ * `AttachmentsRepo`): deleting for good, emptying the trash and clearing a note's
+ * history are the way back under. Trashing is allowed too, and frees nothing until the
+ * trash is emptied. The text is bounded too because the quota on files counts bytes in
+ * the bucket, and a text layer sent for a file is as long as the sender makes it,
+ * whatever the file's size.
+ *
+ * Here rather than in the API because the limit follows the quota: the Plan page works
+ * out what a smaller plan would allow before offering to remove a storage block, as it
+ * does for the quota itself with `storageQuotaBytes`, and two copies of the number
+ * would drift.
+ */
+export const STORE_FLOOR_BYTES = 512 * MB;
+
+export function storeLimitBytes(quotaBytes: number): number {
+  return STORE_FLOOR_BYTES + Math.floor(quotaBytes / 10);
 }

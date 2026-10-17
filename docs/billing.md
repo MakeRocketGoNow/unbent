@@ -49,7 +49,8 @@ is emptied. The Plan page shows the store's size against its limit under the fil
 meter, since that refusal sends people there. The margin is wide on purpose: a real
 archive's text measured at a few percent of its files, and the limit exists for a loop
 writing maximum-size notes on a trial with no card, not for anyone who filed what they
-scanned (`storeLimitBytes` in `lib/quota.ts` has the numbers and the reasoning).
+scanned (`storeLimitBytes` in the shared package's `plan.ts` has the numbers and the
+reasoning).
 
 Auto-fill is the one thing an account can make the instance pay for per press, and its
 daily cap has two numbers for the same reason the trial asks for no card. `AUTOFILL_DAILY_CAP`

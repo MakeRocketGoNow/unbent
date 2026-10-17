@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
-import { BASE_STORAGE_GB, GB, MAX_STORAGE_UNITS, STORAGE_ADDON_GB, storageQuotaBytes } from '@unbent/shared';
+import { BASE_STORAGE_GB, GB, MAX_STORAGE_UNITS, STORAGE_ADDON_GB, storageQuotaBytes, storeLimitBytes } from '@unbent/shared';
 import { ADJUSTMENT_EVENTS, planPatchFor, refundEffectOf, refundPatchFor, type PaddleEvent } from '../lib/billing-events.js';
 import { accountPlanOf, planFor, planRowByCustomer, planStateOf, updatePlan, updatePlanStatement } from '../lib/plan.js';
 import {
@@ -22,7 +22,6 @@ import {
   type PaddleAdjustment,
 } from '../lib/paddle.js';
 import { noStoreLimit } from '../lib/notes-repo.js';
-import { storeLimitBytes } from '../lib/quota.js';
 import { reposFor } from '../lib/repos.js';
 import { requireAuth } from '../lib/session.js';
 import { storeFor } from '../lib/store-client.js';

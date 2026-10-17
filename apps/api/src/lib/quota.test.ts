@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { GB } from '@unbent/shared';
+import { GB, STORE_FLOOR_BYTES, storeLimitBytes } from '@unbent/shared';
 import type { AttachmentsRepo } from './attachments-repo.js';
-import { STORE_FLOOR_BYTES, StorageFull, assertRoom, quotaOf, storageFullMessage, storeFullMessage, storeLimitBytes, storeLimitOf } from './quota.js';
+import { StorageFull, assertRoom, quotaOf, storageFullMessage, storeFullMessage, storeLimitOf } from './quota.js';
 import type { PlanRow } from './plan.js';
 
 const paddle = {
