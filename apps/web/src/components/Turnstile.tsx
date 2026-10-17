@@ -100,7 +100,8 @@ export function Turnstile({ siteKey, onToken, onFail, onInteractive }: Turnstile
  * passkey is added) and the instance's check is the same in front of both, so what it
  * costs a screen is in one place: the widget to draw (`widget`, null where the instance
  * asks for no token), whether the press may go yet (`ready`: a token in hand, or none
- * needed), the sentence to show when the widget could not run (`failed`), and `send`,
+ * needed, with `waiting` as the reason for the faded button while it is not), the
+ * sentence to show when the widget could not run (`failed`), and `send`,
  * which makes the request with the token in `CAPTCHA_HEADER` and spends it. Spent
  * whatever the answer: Cloudflare takes a token once, and one the server refused is no
  * use a second time, so the widget is drawn again (a new `key`) for the next press.
@@ -140,5 +141,13 @@ export function useCodeRequest(siteKey: string | undefined) {
     return result;
   }
 
-  return { widget, ready: !siteKey || token !== null, failed, send };
+  const ready = !siteKey || token !== null;
+  return {
+    widget,
+    ready,
+    /** Why the button is faded, for its `tip`, since a disabled button cannot say so itself. */
+    waiting: ready || failed ? undefined : 'Waiting for the check above to finish',
+    failed,
+    send,
+  };
 }

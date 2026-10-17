@@ -602,6 +602,7 @@ function EmailForm({ otp, password, turnstile, busy, onBusy, onError, onSignedIn
           variant={password ? 'quiet' : 'primary'}
           type="button"
           disabled={busy || !codeRequest.ready}
+          tip={codeRequest.waiting}
           onClick={() => void sendCode()}
         >
           {busy && !password ? 'Sending…' : 'Email me a code'}

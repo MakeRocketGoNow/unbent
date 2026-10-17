@@ -316,13 +316,18 @@ function Reverify({ onVerified, onCancel }: ReverifyProps) {
       <div className="login-form reverify-form">
         {intro}
         {codeRequest.widget}
-        <Button variant="primary" disabled={busy || !codeRequest.ready} onClick={() => void sendCode()}>
+        <Button
+          variant="primary"
+          disabled={busy || !codeRequest.ready}
+          tip={codeRequest.waiting}
+          onClick={() => void sendCode()}
+        >
           {busy ? 'Sending…' : `Email me a code`}
         </Button>
+        {codeRequest.failed && <p className="bad small">{TURNSTILE_FAILED_MESSAGE}</p>}
         <Button variant="quiet" size="small" disabled={busy} onClick={onCancel}>
           Cancel
         </Button>
-        {codeRequest.failed && <p className="bad small">{TURNSTILE_FAILED_MESSAGE}</p>}
         {error && <p className="bad small">{error}</p>}
       </div>
     );
