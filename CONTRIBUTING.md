@@ -6,7 +6,7 @@ the right to relicense it. That grant is what keeps a future change of terms pos
 without tracking down every past contributor.
 
 Opening a pull request is how that agreement is recorded. No sign-off, contributor
-licence agreement or other paperwork is needed.
+license agreement or other paperwork is needed.
 
 For how the code is organized and the conventions it follows, see [AGENTS.md](AGENTS.md),
 the [README](README.md) and [docs/](docs/README.md).
