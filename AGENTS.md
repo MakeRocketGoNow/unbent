@@ -303,6 +303,31 @@ empty database, not a copy of the user's notes; copying the real corpus stays a 
 person runs on purpose. Its output is in the session's context, so check it for the ports
 rather than assuming the setup still needs doing.
 
+The desktop app runs that hook in the main checkout, not the worktree. It starts a
+worktree's session with `--project-config-root` naming the main checkout, so what runs is
+the main checkout's `.claude/settings.json` and its copy of the script, with the main
+checkout as the working directory and as `CLAUDE_PROJECT_DIR`; the session's own folder
+reaches a hook only as `cwd` in the JSON on its stdin. Two things follow for any hook here.
+It takes its folder from that `cwd`, never from `pwd`, `git rev-parse` or
+`CLAUDE_PROJECT_DIR`: reading its working directory is how the autosetup saw the main
+checkout and did nothing for every new worktree from 2026-09-30 to 2026-10-17. And a
+change to a hook or to the settings reaches desktop sessions only once the main checkout
+has it, so try one by handing the script the input it will get, from the main checkout:
+
+```bash
+cd <main checkout> && echo '{"cwd":"<worktree>"}' | WORKTREE_AUTOSETUP_DRY_RUN=1 <worktree>/scripts/worktree-autosetup.sh
+```
+
+The app also clones the main checkout's root `node_modules` into a new worktree within a
+few seconds of the session starting, but no workspace's: it looks for workspaces in
+`package.json`, and pnpm keeps them in `pnpm-workspace.yaml`. A root `node_modules` is no
+sign of an install; `apps/*/node_modules` is. A session that finds `wrangler` or `vitest`
+missing all the same can read what the hook did in its own transcript
+(`~/.claude/projects/<folder>/<session>.jsonl`): a `SessionStart` entry of type
+`hook_success` or `hook_non_blocking_error`, or none at all when the script left without a
+word. What the app copied and seeded is in its own log, `~/Library/Logs/Claude/main.log`,
+under `worktreeDepSeed`.
+
 `pnpm dev` in a worktree runs *both* halves on that worktree's own pair, so the branch's
 API code is what answers and its notes and auth config are the worktree's own, not the
 main checkout's Worker on :8787. That is a change from how this used to work; there is no
