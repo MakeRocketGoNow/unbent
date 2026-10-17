@@ -47,7 +47,11 @@ import { z } from 'zod';
  * comes.
  */
 
-/** The least time between two codes to the same address. */
+/**
+ * The least time between two codes to the same address. Kept on the day's row, so it
+ * starts again at midnight UTC: a code at 23:59:50 and another ten seconds later both go.
+ * One extra code a day to one address is not worth a second row.
+ */
 export const ADDRESS_CODE_INTERVAL_MS = 60_000;
 
 /** Codes one address may be sent in a UTC day. */
