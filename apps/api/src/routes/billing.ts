@@ -21,9 +21,10 @@ import {
   webhookSourceOf,
   type PaddleAdjustment,
 } from '../lib/paddle.js';
+import { noStoreLimit } from '../lib/notes-repo.js';
 import { roomOf } from '../lib/quota.js';
+import { reposFor } from '../lib/repos.js';
 import { requireAuth } from '../lib/session.js';
-import { storeFor } from '../lib/store-client.js';
 import type { AppEnv } from '../types.js';
 
 /**
@@ -85,8 +86,7 @@ export const billing = new Hono<AppEnv>()
    * the store limit bounds (MAK-234). The page shows the two side by side, since a
    * note write refused for the store's size sends people here, and a page that showed
    * files alone then said "2 GB of 10 GB used" under a message that their notes were
-   * full. The stub is read directly, as the sweep reads it: the facades wrap what a
-   * route does to notes and files, and this is a reading of the store about itself.
+   * full.
    */
   .get('/me/plan', requireAuth, async (c) => {
     if (!billingOn(c.env)) return c.json({ error: 'This instance has no plan to report.' }, 404);
@@ -95,7 +95,7 @@ export const billing = new Hono<AppEnv>()
     let held: { usedBytes: number; storeBytes: number; storeLimitBytes: number } | undefined;
     if (c.req.query('usage') === '1') {
       try {
-        const usage = await storeFor(c.env, userId).usage();
+        const usage = await reposFor(c.env, userId, noStoreLimit).attachments.usage();
         held = { usedBytes: usage.attachmentBytes, storeBytes: usage.databaseSize, storeLimitBytes: storeLimitBytes(storageQuotaBytes(row.storageGb)) };
       } catch (err) {
         console.warn(`[billing] storage used for user=${userId} unavailable:`, (err as Error).message);
@@ -168,7 +168,7 @@ export const billing = new Hono<AppEnv>()
     const storage = c.req.valid('json').storage;
     const after = BASE_STORAGE_GB + STORAGE_ADDON_GB * storage;
     if (after < row.storageGb) {
-      const held = await storeFor(c.env, userId).usage();
+      const held = await reposFor(c.env, userId, noStoreLimit).attachments.usage();
       if (held.attachmentBytes > storageQuotaBytes(after)) {
         return c.json({ error: `This account holds ${(held.attachmentBytes / GB).toFixed(1)} GB, more than the ${after} GB it would have. Delete some files first.` }, 409);
       }
