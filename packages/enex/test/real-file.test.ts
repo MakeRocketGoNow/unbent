@@ -16,6 +16,16 @@ const DIR = process.env['ENEX_DIR'];
  * this was measured against is a real one, and its name does not belong in the repo.
  */
 const PDF_FILE = process.env['ENEX_PDF_FILE'] ?? 'Scans.enex';
+/**
+ * The other files the suite reads, for the same reason: a small notebook that parses in
+ * seconds, a notebook of web clippings whose notes carry a source URL, and the whole
+ * export in one file for the memory benchmark. `ENEX_SMALL_COUNT` is how many notes the
+ * small one holds, when known; without it the test only checks that every note came out.
+ */
+const SMALL_FILE = process.env['ENEX_SMALL_FILE'] ?? 'Recipes.enex';
+const SMALL_COUNT = process.env['ENEX_SMALL_COUNT'];
+const BOOKMARKS_FILE = process.env['ENEX_BOOKMARKS_FILE'] ?? 'Bookmarks.enex';
+const BENCH_FILE = process.env['ENEX_BENCH_FILE'] ?? 'Archive.enex';
 const available = DIR !== undefined && existsSync(DIR);
 
 function streamOf(path: string): ReadableStream<Uint8Array> {
@@ -24,20 +34,23 @@ function streamOf(path: string): ReadableStream<Uint8Array> {
 
 describe.skipIf(!available)('real export files', () => {
   it('parses a small notebook completely', async () => {
-    const path = `${DIR}/Quotes.enex`;
+    const path = `${DIR}/${SMALL_FILE}`;
     const notes: EnexNote[] = [];
     const result = await parseEnexStream(streamOf(path), { onNote: (n) => void notes.push(n) });
 
     expect(result.errors).toBe(0);
-    expect(result.notes).toBe(16);
+    if (SMALL_COUNT !== undefined) expect(result.notes).toBe(Number(SMALL_COUNT));
+    else expect(result.notes).toBeGreaterThan(0);
+    expect(notes).toHaveLength(result.notes);
     expect(notes.every((n) => n.title.length > 0)).toBe(true);
     expect(notes.every((n) => n.created instanceof Date)).toBe(true);
-    expect(notes.some((n) => n.tags.includes('Quotes'))).toBe(true);
+    // Evernote's own tags survive the parse alongside the notebook.
+    expect(notes.some((n) => n.tags.length > 0)).toBe(true);
   }, 60_000);
 
   it('extracts source-url from bookmark notes', async () => {
     const notes: EnexNote[] = [];
-    await parseEnexStream(streamOf(`${DIR}/Raindrop.io.enex`), {
+    await parseEnexStream(streamOf(`${DIR}/${BOOKMARKS_FILE}`), {
       onNote: (n) => {
         if (notes.length < 50) notes.push(n);
       },
@@ -82,7 +95,7 @@ describe.skipIf(!available)('real export files', () => {
   it.skipIf(process.env['ENEX_BENCH'] !== '1')(
     'streams a multi-gigabyte file with bounded memory',
     async () => {
-      const path = `${DIR}/Archive.enex`;
+      const path = `${DIR}/${BENCH_FILE}`;
       if (!existsSync(path)) return;
       expect(statSync(path).size / 1e9).toBeGreaterThan(1);
 
