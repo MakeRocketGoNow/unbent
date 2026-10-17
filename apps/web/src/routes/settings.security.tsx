@@ -275,7 +275,11 @@ function Reverify({ onVerified, onCancel }: ReverifyProps) {
       return (
         <form className="login-form reverify-form" onSubmit={(e) => void verifyCode(e)}>
           {intro}
-          <p className="muted small">We sent a code to {email}. It expires in five minutes.</p>
+          <p className="muted small code-sent">
+            We sent a code to
+            <strong>{email}</strong>
+            It expires in five minutes.
+          </p>
           <label>
             Code
             <input

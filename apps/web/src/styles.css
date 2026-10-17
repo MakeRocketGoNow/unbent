@@ -311,6 +311,20 @@ h1 {
 .login-input:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
 .login-input:focus { outline: none; border-color: var(--accent); }
 
+/*
+ * "We sent a code to" with the address on a line of its own, in the body colour, and the
+ * expiry on the next. Run together as one sentence, a long address wrapped wherever it
+ * fell and the expiry trailed off the end of it. The address is the one thing to check
+ * for a typo, so it stands apart; `anywhere` because an address has no spaces to break at.
+ */
+.code-sent strong {
+  display: block;
+  margin: 0.1rem 0 0.35rem;
+  font-weight: 600;
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+
 /* The submit gets a touch more room than the fields above it, so it reads as the end. */
 .login-form .btn-primary { margin-top: 0.25rem; }
 

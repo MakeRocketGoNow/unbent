@@ -497,7 +497,11 @@ function EmailForm({ otp, password, busy, onBusy, onError, onSignedIn }: EmailFo
   if (codeSent) {
     return (
       <form className="login-form" onSubmit={(e) => void verifyCode(e)}>
-        <p className="muted">We sent a code to {email}. It expires in five minutes.</p>
+        <p className="muted code-sent">
+          We sent a code to
+          <strong>{email}</strong>
+          It expires in five minutes.
+        </p>
         <label>
           Code
           <input
