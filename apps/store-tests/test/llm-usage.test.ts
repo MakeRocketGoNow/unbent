@@ -83,7 +83,7 @@ describe('the usage counter', () => {
     expect((await stub.autofillPrelude(noteId, 5, { cap: 2, yearlyCents: 1 }))?.press).toEqual({ allowed: false, today: 2, reason: 'day' });
   });
 
-  it('reads the year’s rows once for the spend, and none when no yearly cap is set', async () => {
+  it('reads the year’s rows once per wake for the spend, and none when no yearly cap is set', async () => {
     const { stub, noteId } = await withNote('usage-year-rows');
     const year = new Date().getUTCFullYear();
     // A full year of presses and of two models' readings, a row a day each, and last
@@ -99,16 +99,34 @@ describe('the usage counter', () => {
       }
       sql.exec(`INSERT INTO llm_usage (day, job, model, requests, input_tokens) VALUES (?1, 'read', 'claude-haiku-5-5', 2, 3000)`, `${year - 1}-12-31`);
     });
-    const before = (await stub.counters()).rowsRead;
-    await stub.autofillPrelude(noteId, 5, { cap: null, yearlyCents: null });
-    const dayOnly = (await stub.counters()).rowsRead - before;
-    await stub.autofillPrelude(noteId, 5, { cap: null, yearlyCents: 1_000_000 });
-    const withYear = (await stub.counters()).rowsRead - before - dayOnly;
-    // The note and the day's row, a handful; the year adds its rows, three a day at
-    // most here, and nothing of the year before or of any other table.
+    const rows = async (run: () => Promise<unknown>) => {
+      const before = (await stub.counters()).rowsRead;
+      await run();
+      return (await stub.counters()).rowsRead - before;
+    };
+    const dayOnly = await rows(() => stub.autofillPrelude(noteId, 5, { cap: null, yearlyCents: null }));
+    const firstYear = await rows(() => stub.autofillPrelude(noteId, 5, { cap: null, yearlyCents: 1_000_000 }));
+    const nextYear = await rows(() => stub.autofillPrelude(noteId, 5, { cap: null, yearlyCents: 1_000_000 }));
+    // The note and the day's row, a handful; the first check of the year adds its rows,
+    // three a day at most here, and nothing of the year before or of any other table.
     expect(dayOnly).toBeLessThanOrEqual(12);
-    expect(withYear - dayOnly).toBeLessThanOrEqual(3 * 365 + 4);
-    expect(withYear - dayOnly).toBeGreaterThan(3 * 300);
+    expect(firstYear - dayOnly).toBeLessThanOrEqual(3 * 365 + 4);
+    expect(firstYear - dayOnly).toBeGreaterThan(3 * 300);
+    // The sum is kept while the object is awake: the next press reads none of them.
+    expect(nextYear).toBeLessThanOrEqual(dayOnly + 2);
+  });
+
+  it('keeps the year’s sum in step with what it records, without reading the year again', async () => {
+    const { stub, noteId } = await withNote('usage-year-kept');
+    // A cent and a half of Opus, then the sum is first taken.
+    await stub.recordLlmUsage([{ ...opus('title', 3750, 0), model: 'claude-opus-5-5' }]);
+    expect((await stub.autofillPrelude(noteId, 5, { cap: null, yearlyCents: 2 }))?.press?.allowed).toBe(true);
+    // Another two cents recorded after it, and the sum knows without the rows: 1.5 + 0.1 + 2 is past 3.
+    const before = (await stub.counters()).rowsRead;
+    await stub.recordLlmUsage([{ ...opus('fields', 5000, 0), model: 'claude-opus-5-5' }]);
+    const refused = await stub.autofillPrelude(noteId, 5, { cap: null, yearlyCents: 3 });
+    expect(refused?.press).toEqual({ allowed: false, today: 1, reason: 'year' });
+    expect((await stub.counters()).rowsRead - before).toBeLessThanOrEqual(12);
   });
 
   it('counts nothing for a note that is not there, or when not asked to', async () => {

@@ -410,6 +410,7 @@ export class UserStore extends DurableObject<StoreEnv> {
    * behaves as a brand-new one that starts empty rather than throwing "no such table".
    */
   async wipe(): Promise<void> {
+    this.llmUsage.forget();
     await this.ctx.storage.deleteAll();
     // After `deleteAll`, so it is the one thing left; see `WIPED_KEY`.
     this.ctx.storage.kv.put(WIPED_KEY, true);
@@ -466,6 +467,7 @@ export class UserStore extends DurableObject<StoreEnv> {
       // nothing can be restored to it, so the answer must not offer it.
       if (undo !== null && /^[0-]+$/.test(undo)) undo = null;
     }
+    this.llmUsage.forget();
     await this.ctx.storage.deleteAll();
     const marker: LoadMarker = { id: crypto.randomUUID(), key: dump.key, startedAt: Date.now(), pages: 0, statements: 0, undo, before };
     this.ctx.storage.kv.put(LOADING_KEY, marker);
@@ -527,6 +529,8 @@ export class UserStore extends DurableObject<StoreEnv> {
    * `LoadResult`.
    */
   loadFinish(loadId: string): LoadResult {
+    // The loaded `llm_usage` rows did not go through the counter; see `LlmUsageCounter.forget`.
+    this.llmUsage.forget();
     const load = this.inFlightLoad(loadId);
     // Before any write of this call; see `loadPage`. What is left to run is the last
     // statement a page boundary cut, which the file's order puts after every data row
