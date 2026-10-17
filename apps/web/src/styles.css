@@ -1168,8 +1168,53 @@ button.link {
   outline-offset: 1px;
 }
 
-.note-item:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }
-.note-item.active { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+/*
+   The hover is a layer over the row's colour (`background-image`) rather than the colour
+   itself, so that the transition below, which is on the colour, fades the open note's
+   tint and never the hover. See "Opening a note fills its row in" just after.
+*/
+.note-item:hover {
+  background-image: linear-gradient(
+    color-mix(in srgb, var(--fg) 5%, transparent),
+    color-mix(in srgb, var(--fg) 5%, transparent)
+  );
+}
+.note-item.active { background-color: color-mix(in srgb, var(--accent) 14%, transparent); }
+
+/*
+   Opening a note fills its row in, and the row that was open lets its tint go: the
+   sidebar's click answer (see "Picking a row fills the pill"), on its curve and timing,
+   because it is the same tint saying the same thing, and a notebook that faded in beside
+   a note that snapped on read as two hands at work. Selecting a row for a batch action
+   fades its wash and ring the same way, as do the table's rows and the trash's cards.
+
+   The sidebar's hover glide is not carried over, deliberately. The list scrolls, and
+   scrolling moves rows under a pointer that is not moving, so a gliding hover would trail
+   behind every scroll; and a row here is a card several lines tall, so a 0.4s glide would
+   lag a whole row behind a pointer moving down the list. The hover in a list says which
+   note a click will open, and it has to be right the instant the pointer arrives.
+
+   Only the colour and the ring move. The hover is drawn as an image (above, and on the
+   table's and the trash's rows), which does not transition, so it still comes and goes
+   at once. The open row's tint is set as a colour alone, not with the `background`
+   shorthand, so it keeps the hover while the pointer is on it, as the sidebar's pill
+   shows through its current row: a click adds the tint under the hover rather than
+   swapping one for the other, which left a frame with neither. A row drawn already
+   open has nothing to fade from.
+
+   Not inside `(hover: hover)` as the sidebar's is: there the fade belongs to the pill and
+   goes where the pill goes. Here it answers a tap on a tablet just as well, and on a
+   phone the list is behind the note by the time the row would change.
+*/
+@media (prefers-reduced-motion: no-preference) {
+  .note-item,
+  .note-entry.with-actions,
+  .note-table td {
+    transition:
+      background-color 0.15s cubic-bezier(0.05, 0.7, 0.1, 1),
+      box-shadow 0.15s cubic-bezier(0.05, 0.7, 0.1, 1);
+  }
+}
 
 .note-title {
   font-weight: 500;
@@ -1604,9 +1649,15 @@ th[aria-sort] .note-th-sort { color: var(--fg); }
 }
 
 .note-row { cursor: pointer; }
-.note-row:hover td { background: color-mix(in srgb, var(--fg) 5%, var(--bg)); }
+.note-row:hover td {
+  /* A layer over the cell's `--bg`, not the colour: see "Opening a note fills its row in". */
+  background-image: linear-gradient(
+    color-mix(in srgb, var(--fg) 5%, transparent),
+    color-mix(in srgb, var(--fg) 5%, transparent)
+  );
+}
 .note-row:has(.note-row-link.active) td {
-  background: color-mix(in srgb, var(--accent) 14%, var(--bg));
+  background-color: color-mix(in srgb, var(--accent) 14%, var(--bg));
 }
 
 .note-row-link {
@@ -9663,7 +9714,12 @@ button.settings-nav-item {
   box-shadow: none;
 }
 
-.note-entry.with-actions:hover { background: color-mix(in srgb, var(--fg) 5%, transparent); }
+.note-entry.with-actions:hover {
+  background-image: linear-gradient(
+    color-mix(in srgb, var(--fg) 5%, transparent),
+    color-mix(in srgb, var(--fg) 5%, transparent)
+  );
+}
 
 .note-entry.with-actions:has(> .note-item.selected) {
   background: color-mix(in srgb, var(--accent) 8%, transparent);
@@ -9671,7 +9727,7 @@ button.settings-nav-item {
 }
 
 .note-entry.with-actions:has(> .note-item.active) {
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  background-color: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
 /*
