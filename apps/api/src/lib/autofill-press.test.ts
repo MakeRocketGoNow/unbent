@@ -3,7 +3,7 @@ import type { FieldDef } from '@unbent/shared';
 import { press, type PressDeps } from './autofill-press.js';
 import type { Jev } from './jev.js';
 import { LlmError, type LanguageModel, type LlmUsage } from './llm.js';
-import { capFor, capReached, dailyCap, limitsFor, trialDailyCap, yearlyCentsFor, yearReached } from './llm-usage.js';
+import { capFor, capReached, dailyCap, limitsFor, trialDailyCap, trialYearlyCents, yearlyCents, yearlyCentsFor, yearReached } from './llm-usage.js';
 import type { PressLimits } from '../store/llm-usage.js';
 import type { PlanRow } from './plan.js';
 
@@ -226,14 +226,18 @@ describe('the cap', () => {
     quiet.mockRestore();
   });
 
-  it('names the setting it warns about', () => {
+  it('names the setting it warns about, once each', () => {
     const quiet = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    // Each setting is warned about once per isolate, so the count depends on what ran
-    // before this; the line's shape does not.
-    dailyCap({ AUTOFILL_DAILY_CAP: 'x' });
-    trialDailyCap({ AUTOFILL_TRIAL_DAILY_CAP: 'y' });
+    // Each setting is warned about once per isolate, so this uses the two no test above
+    // has warned about yet: a test that read `every` over an empty list would pass on nothing.
+    yearlyCents({ AUTOFILL_YEARLY_CENTS: 'x' });
+    trialYearlyCents({ AUTOFILL_TRIAL_YEARLY_CENTS: 'y' });
+    yearlyCents({ AUTOFILL_YEARLY_CENTS: 'x' });
     const lines = quiet.mock.calls.map((c) => String(c[0]));
-    expect(lines.every((l) => /^AUTOFILL_(TRIAL_)?DAILY_CAP is not a whole number above zero/.test(l))).toBe(true);
+    expect(lines).toEqual([
+      'AUTOFILL_YEARLY_CENTS is not a whole number above zero ("x"); no cap is enforced',
+      'AUTOFILL_TRIAL_YEARLY_CENTS is not a whole number above zero ("y"); no cap is enforced',
+    ]);
     quiet.mockRestore();
   });
 
