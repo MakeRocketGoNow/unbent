@@ -76,10 +76,12 @@ export const FRONT = '/';
  * The front page's pricing section, as an address of its own.
  *
  * Paddle's website review asks for a pricing page and refuses a bare domain, and the
- * prices live on the front page, which has no other address. So `/pricing` is a redirect
- * to `FRONT` with the section's fragment (`routes/pricing.tsx`), and a reviewer following
- * it lands on the prices. It is on `PUBLIC` because the reviewer has no session: the root's
- * gate runs before the route's own redirect, and would send them to the sign-in screen.
+ * prices live on the front page, which has no other address. So `/pricing` is the front
+ * page scrolled to that section (`routes/pricing.tsx`), in the same shell and ungated for
+ * the same reason: the reviewer following it has no session. Unlike the bare root it is
+ * not a doorway: someone signed in who asks for the pricing page gets the pricing page,
+ * not their notes. It was a redirect to `FRONT` at first, and a signed-in person landing
+ * in their notes read it as a bug.
  */
 export const PRICING = '/pricing';
 
@@ -104,7 +106,6 @@ const PUBLIC: ReadonlySet<string> = new Set([
   GOODBYE,
   '/privacy',
   '/terms',
-  PRICING,
   HOW_TO_DELETE,
   // The preview sign-in relay's landing point. Public for the same reason as the sign-in
   // screen: it is reached with no session (a token from the dev instance is about to
@@ -118,7 +119,7 @@ export function shellFor(pathname: string): Shell {
   // Tolerant of a trailing slash, which a hand-typed address or an external link may carry
   // and which never means a different page.
   const path = pathname.length > 1 ? pathname.replace(/\/$/, '') : pathname;
-  if (path === FRONT) return 'front';
+  if (path === FRONT || path === PRICING) return 'front';
   if (PUBLIC.has(path)) return 'plain';
   return 'app';
 }

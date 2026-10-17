@@ -60,13 +60,13 @@ describe('shellFor', () => {
   });
 
   /**
-   * The pricing address Paddle's review follows has no session either. It only redirects
-   * to the front page, but the root's gate runs first, and gated it would be a sign-in
-   * screen where the reviewer expected prices.
+   * The pricing address Paddle's review follows is the front page in its own shell, and
+   * ungated: the reviewer has no session, and gated it would be a sign-in screen where
+   * they expected prices.
    */
-  it('lets the pricing address through without a session', () => {
-    expect(shellFor('/pricing')).toBe('plain');
-    expect(shellFor('/pricing/')).toBe('plain');
+  it('draws the pricing address as the front page, without a session', () => {
+    expect(shellFor('/pricing')).toBe('front');
+    expect(shellFor('/pricing/')).toBe('front');
   });
 
   /**

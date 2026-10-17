@@ -40,6 +40,7 @@ function harness(at = '/') {
     path: '/pricing',
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     beforeLoad: PricingRoute.options.beforeLoad as any,
+    component: () => <p>Pricing</p>,
   });
   const login = createRoute({
     getParentRoute: () => rootRoute,
@@ -99,16 +100,24 @@ describe('/', () => {
   });
 
   /**
-   * The pricing address Paddle's review follows: the front page at its prices, and the
-   * same three answers as the bare root, so a fork advertises nothing here either.
+   * The pricing address Paddle's review follows: the front page at its prices, under its
+   * own address, and shown to anyone. Only the instance rule carries over from the bare
+   * root, so a fork advertises nothing here either.
    */
-  it('sends /pricing to the front page, at the pricing section', async () => {
+  it('shows /pricing to someone signed out on the public instance', async () => {
     ensureSession.mockResolvedValue(null);
     getConfig.mockResolvedValue({ providers: [], frontPage: true });
     const router = harness('/pricing');
-    expect(await screen.findByText('Front page')).toBeTruthy();
-    expect(router.state.location.pathname).toBe('/');
-    expect(router.state.location.hash).toBe('pricing');
+    expect(await screen.findByText('Pricing')).toBeTruthy();
+    expect(router.state.location.pathname).toBe('/pricing');
+  });
+
+  /** Unlike the bare root: a signed-in person asked for a page and gets it, not their notes. */
+  it('shows /pricing to someone signed in too', async () => {
+    ensureSession.mockResolvedValue({ user: { id: 'u1' } });
+    getConfig.mockResolvedValue({ providers: [], frontPage: true });
+    harness('/pricing');
+    expect(await screen.findByText('Pricing')).toBeTruthy();
   });
 
   it('sends /pricing to sign in on an instance with no front page', async () => {

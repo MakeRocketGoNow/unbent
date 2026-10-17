@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { configQuery } from '../queries.js';
@@ -22,9 +22,8 @@ import {
 const SOURCE_URL = 'https://github.com/MakeRocketGoNow/unbent';
 
 /**
- * The pricing section's fragment, which `/pricing` redirects to (`routes/pricing.tsx`):
- * the address handed to Paddle's website review, as `/terms#refunds` is for the refund
- * policy. The router scrolls to it once the page has committed.
+ * The pricing section's id, which `/pricing` opens the page at (`routes/pricing.tsx`): the
+ * address handed to Paddle's website review, as `/terms#refunds` is for the refund policy.
  */
 export const PRICING_ANCHOR = 'pricing';
 
@@ -51,10 +50,23 @@ export const PRICING_ANCHOR = 'pricing';
  * in `public/front/`, which keeps them out of the service worker's precache (it takes PNGs,
  * for the app icons): every visit to the app would otherwise download pictures of the app.
  */
-export function FrontPage() {
+export function FrontPage({ scrollTo }: { scrollTo?: string } = {}) {
   const config = useQuery(configQuery());
   const legal = config.data?.legal;
   const operator = config.data?.operator;
+
+  // `/pricing` opens the page at its prices. The section is in the DOM on the first render
+  // (the route waits for the config before rendering), so once is enough. Deferred a frame
+  // because the router scrolls the window to the top of every new page whose address has
+  // no fragment, from an effect in an ancestor, and a parent's effects run after its
+  // children's: scrolled here directly, the section was in view for one effect and the
+  // top of the page was what drew. Guarded because jsdom has no `scrollIntoView`, as
+  // `LegalDoc` guards it.
+  useEffect(() => {
+    if (!scrollTo) return;
+    const frame = requestAnimationFrame(() => document.getElementById(scrollTo)?.scrollIntoView?.());
+    return () => cancelAnimationFrame(frame);
+  }, [scrollTo]);
 
   return (
     <div className="front">
