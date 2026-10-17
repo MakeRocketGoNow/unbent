@@ -2,7 +2,7 @@
 
 ## Selling the plan
 
-unbent.app sells one plan, $36 a year, with 10 GB of attachments and 25 GB more for $12 a
+unbent.app sells one plan, $60 a year, with 10 GB of attachments and 25 GB more for $12 a
 year: about a third of Evernote's cheapest plan with no cap on notes, in the range of Bear
 and Obsidian Sync, and well above the few dollars a year an account costs to serve, since
 the price is positioning rather than cost recovery (the comparison is in MAK-47). Paddle is
@@ -101,7 +101,7 @@ is the real one, and its verification (the website review, the business and the
 identity checks) takes days, so start it early. Everything below is done in both, the
 sandbox first.
 
-1. **Catalog → Products.** Two products: the plan, with one price of $36 a year, and
+1. **Catalog → Products.** Two products: the plan, with one price of $60 a year, and
    the storage add-on, with one price of $12 a year and quantity turned on. The tax
    category is Standard Digital Goods, which needs no approval. Copy both price ids,
    `pri_…`.

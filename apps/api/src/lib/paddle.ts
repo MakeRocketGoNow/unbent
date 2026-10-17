@@ -4,7 +4,7 @@ import type { BillingConfig } from '@unbent/shared';
  * Paddle, the merchant of record for unbent.app's plan (MAK-108, decided in MAK-47): the
  * configuration that turns billing on, and the handful of calls the Worker makes to it.
  *
- * Paddle rather than Stripe because at $36 a year sold anywhere, being the seller means
+ * Paddle rather than Stripe because at $60 a year sold anywhere, being the seller means
  * registering for VAT from the first European sale; a merchant of record is the seller,
  * and takes that with it. No SDK: Paddle's is a Node package wrapping a dozen `fetch`
  * calls, and the Worker needs six of them.
@@ -37,7 +37,7 @@ export interface PaddleEnv {
    * `/api/config` for that reason; it can open a checkout and nothing else.
    */
   PADDLE_CLIENT_TOKEN?: string;
-  /** The plan's price, `pri_…`, as made in Paddle > Catalog: $36 a year. */
+  /** The plan's price, `pri_…`, as made in Paddle > Catalog: $60 a year. */
   PADDLE_PLAN_PRICE_ID?: string;
   /** The storage add-on's price, `pri_…`: $12 a year, sold by quantity. */
   PADDLE_STORAGE_PRICE_ID?: string;
