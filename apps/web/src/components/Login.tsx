@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, type FormEvent, type JSX } from 'react';
+import { Fragment, useState, type FormEvent, type JSX } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { SIGNUPS_CLOSED_MESSAGE, isLocalMethod, type AuthProvider } from '@unbent/shared';
@@ -97,8 +97,8 @@ export function refusalMessage(code: string): string {
  * one that offers both shows both with a divider between them.
  *
  * Passkeys sit above the rest, because for anyone who has one they are the whole screen:
- * the browser offers the credential from the email field before a key is pressed, and a
- * touch of a sensor is the entire interaction. Everyone else sees what they saw before.
+ * one press of the button, a touch of a sensor, and they are in. Everyone else sees what
+ * they saw before.
  */
 export function Login({ redirectTo, refusal }: LoginProps) {
   const config = useQuery(configQuery());
@@ -211,9 +211,8 @@ export function Login({ redirectTo, refusal }: LoginProps) {
   /**
    * Sign in with a passkey the user picks from the browser's own dialog.
    *
-   * Separate from the autofill path below, which offers a credential before anything is
-   * typed. This is the explicit press, for when the dialog was dismissed or the browser
-   * never offered one.
+   * Only ever started by the button. Nothing on this screen touches WebAuthn before a
+   * press: see the note where the autofill offer used to be, below.
    */
   async function startPasskey() {
     setPending('passkey');
@@ -233,22 +232,18 @@ export function Login({ redirectTo, refusal }: LoginProps) {
     }
   }
 
-  /**
-   * Offer a passkey from the email field's autofill, before anything is typed.
-   *
-   * This is WebAuthn conditional UI: the browser quietly checks whether it holds a
-   * credential for this origin and, if it does, puts it in the dropdown alongside saved
-   * addresses. Nothing is shown if there is none, which is why it can run unconditionally
-   * on mount: for a first-time visitor it is invisible.
-   *
-   * Deliberately unawaited and its failures swallowed: the call sits open waiting for a
-   * choice that may never come, and a browser without support rejects immediately. Either
-   * way it is not something to report: every other way in is still on screen.
+  /*
+   * There is deliberately no WebAuthn conditional-UI call here (`signIn.passkey({ autoFill:
+   * true })` on mount, with `webauthn` in the email field's autocomplete). It was here from
+   * the start, on the promise that the browser would quietly list a passkey in the email
+   * field's dropdown and show nothing otherwise. The browser's own password manager keeps
+   * that promise. 1Password does not: its extension intercepts every WebAuthn request,
+   * conditional or not, and puts up its bubble the moment the page loads; cancelling that
+   * brings its own sheet, and cancelling that hands the request back to the browser, which
+   * draws its native picker. Three dialogs to dismiss before reading the page, for exactly
+   * the people who have a passkey at all (2026-10-17). The one press this costs a passkey
+   * user is cheaper than that.
    */
-  useEffect(() => {
-    if (!passkeys) return;
-    void signIn.passkey({ autoFill: true }).catch(() => {});
-  }, [passkeys]);
 
   /**
    * The methods on offer, in the order they are shown, with the dividers left to the
@@ -550,13 +545,9 @@ function EmailForm({ otp, password, busy, onBusy, onError, onSignedIn }: EmailFo
         <input
           className="login-input"
           type="email"
-          /**
-           * `webauthn` alongside the usual token is what lets the browser offer a passkey
-           * from this field's autofill, next to saved addresses. Harmless where there is
-           * no passkey, and the reason `signIn.passkey({ autoFill: true })` has somewhere
-           * to attach.
-           */
-          autoComplete="username webauthn"
+          // No `webauthn` token: it only gives a conditional-UI call somewhere to attach,
+          // and there is none (see the note above the method list).
+          autoComplete="username"
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
