@@ -60,6 +60,16 @@ describe('shellFor', () => {
   });
 
   /**
+   * The pricing address Paddle's review follows is the front page in its own shell, and
+   * ungated: the reviewer has no session, and gated it would be a sign-in screen where
+   * they expected prices.
+   */
+  it('draws the pricing address as the front page, without a session', () => {
+    expect(shellFor('/pricing')).toBe('front');
+    expect(shellFor('/pricing/')).toBe('front');
+  });
+
+  /**
    * Pinned on its own rather than folded into the legal pages above, because the cost of
    * losing it is not a broken page: Play checks this URL from outside any session, and a
    * gated one answers 403 and fails review. That is the exact failure this route was added
