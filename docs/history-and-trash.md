@@ -47,9 +47,9 @@ account, until the version ages out. **Clear history**, at the foot of the sheet
 every version of that note for good and leaves the note as it is; it asks first, since it
 is the one thing in the sheet that cannot be undone. What it cannot reach is the thirty
 days of point-in-time recovery every store keeps (see [Where your notes
-live](#where-your-notes-live)): an operator winding the whole account back to before the
+live](architecture.md#where-your-notes-live)): an operator winding the whole account back to before the
 clear would bring the versions back with everything else; nor the daily dumps, which hold
-the store whole and age out within about three months (see [Durability](#durability)).
+the store whole and age out within about three months (see [Durability](architecture.md#durability)).
 Emptying
 the trash takes a note's history with it, and deleting the account takes all of it.
 
@@ -69,7 +69,7 @@ Maintenance page:
   unlinked from a note still have a row; delete those from the note’s Attachments list.
 - **Delete all notes**: wipes every note and attachment in the account. Requires typing
   `DELETE`, since nothing in your own hands reverses it: an export is the only way back
-  you hold, and an operator's wind-back or dump load (see [Durability](#durability)) is
+  you hold, and an operator's wind-back or dump load (see [Durability](architecture.md#durability)) is
   theirs to offer, not a control of yours.
 
 The API equivalents are `POST /api/admin/purge-notes?scope=trashed|all&confirm=DELETE` and
@@ -81,7 +81,7 @@ objects: the store writes each file's key to a table of deleted files (`deleted_
 schema 0005) in the transaction that removes the row, and the hourly sweep deletes from R2
 only what has sat there for thirty-five days, then has the store forget it. Nothing a
 person can do brings a purged note back: this is for the operator. A store keeps thirty
-days of history, and [winding one back](#where-your-notes-live) winds the table of deleted
+days of history, and [winding one back](architecture.md#where-your-notes-live) winds the table of deleted
 files back with the rows, so a restored note finds its files still in the bucket; the five
 days on top are so a restore to the far end of the window still finds them. The account's
 own file sweep counts a file awaiting deletion as referenced for the same reason, and

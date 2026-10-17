@@ -61,10 +61,10 @@ carries the scope, since several slices land in one downloads folder on the same
 
 This is the backup in your own hands, not a convenience feature. It used to be the only
 copy anywhere that held both the notes and their files; since October 2026 unbent.app's
-daily dumps and nightly mirror hold both as well (see [Durability](#durability)), but
+daily dumps and nightly mirror hold both as well (see [Durability](architecture.md#durability)), but
 those are the operator's, for a fault on the service's side, and they age out, so the
 export is still the only copy a person holds and the only one that works on any
-instance. An account's store dump (see [Where your notes live](#where-your-notes-live))
+instance. An account's store dump (see [Where your notes live](architecture.md#where-your-notes-live))
 has no files in it, and D1 has held no notes since the cutover. `wrangler d1 export`
 works on D1 again, but what it exports is
 sign-in, connected apps, upload links and the account directory. It used to refuse the

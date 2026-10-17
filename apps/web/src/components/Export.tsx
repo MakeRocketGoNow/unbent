@@ -11,8 +11,8 @@ import { isHosted, savesTo } from '../app-bridge.js';
  * Export used to be a bare topbar link, so a click started a possibly multi-gigabyte
  * download with no warning and no account of what was in it. It is the only copy of the
  * library the person holds themselves: the instance's own backups (MAK-171, "Durability"
- * in the README) are the operator's, for a fault on the service's side, and age out, which
- * makes it worth a page that says so.
+ * in docs/architecture.md) are the operator's, for a fault on the service's side, and age
+ * out, which makes it worth a page that says so.
  *
  * A button rather than a link now: the archive is built here in the browser, a page of
  * notes per request, because one request to the Worker may make only so many calls to

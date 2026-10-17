@@ -103,7 +103,7 @@ export async function notifyLapsedPlans(
   const none = { told: 0, subrequests: 0 };
   if (!billingOn(env) || !canSendEmail(env)) return none;
   // The cron has no request to settle the address from (lib/app-url.ts); a deployed
-  // instance with billing on has set it, as the README says, and one that has not is
+  // instance with billing on has set it, as docs/billing.md says, and one that has not is
   // told rather than mailed a link to nowhere.
   const appUrl = env.APP_URL?.trim();
   if (!appUrl) {

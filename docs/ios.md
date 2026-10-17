@@ -94,7 +94,7 @@ the transcoding the Android app does by hand is not needed for those. A HEIC pic
 Choose Files is handed over as it is.
 
 **Why a build opens one instance.** WebKit gives an app's web view a service worker (and
-so the offline shell, see [Your library on the device](#your-library-on-the-device)) only
+so the offline shell, see [Your library on the device](sync-and-offline.md#your-library-on-the-device)) only
 for the domains the app binds itself to, in `WKAppBoundDomains`, and a web view bound that
 way can open nothing else. So a release build opens the instance it was built for and App
 settings shows the address without a field; a self-hoster builds the app for their own
@@ -252,6 +252,6 @@ echo "com.example.notes,com.example.notes.debug" | pnpm exec wrangler secret put
 ```
 
 It is read only while Apple is configured for the web too (see [Sign in with
-Apple](#sign-in-with-apple)): the Services ID is still accepted beside it, and an instance
+Apple](self-hosting.md#sign-in-with-apple)): the Services ID is still accepted beside it, and an instance
 without `APPLE_CLIENT_ID` offers Apple to nobody. Both App IDs need the Sign in with Apple
 capability on the portal.

@@ -68,11 +68,11 @@ bucket_name = "unbent-blobs"
 binding = "AI"
 
 # One SQLite-backed Durable Object per account, holding that account's notes; see
-# src/store/user-store.ts and the README's "Where your notes live". Nothing to provision:
-# the class is exported from the Worker and the runtime creates each object the first time
-# a user id names it. Unlike the bindings above this one is *not* copied into the named
-# environments by wrangler, so each of them repeats it below, the same way they repeat D1
-# and R2. The migration block is inherited, so it appears once.
+# src/store/user-store.ts and "Where your notes live" in docs/architecture.md. Nothing to
+# provision: the class is exported from the Worker and the runtime creates each object the
+# first time a user id names it. Unlike the bindings above this one is *not* copied into the
+# named environments by wrangler, so each of them repeats it below, the same way they repeat
+# D1 and R2. The migration block is inherited, so it appears once.
 [[durable_objects.bindings]]
 name = "USER_STORE"
 class_name = "UserStore"

@@ -18,8 +18,9 @@ export type { DumpStatus };
  *
  * Opt-in, by the binding. With no `BACKUPS` bound, which is every instance but
  * unbent.app's production and dev, the run returns before it makes a single call, so the
- * cron at :47 costs a fork nothing. A self-hoster arranges their own backups, and the
- * README says that on Workers Free a large account may not fit one invocation's dump.
+ * cron at :47 costs a fork nothing. A self-hoster arranges their own backups, and
+ * docs/architecture.md says that on Workers Free a large account may not fit one
+ * invocation's dump.
  *
  * What is due, and why it is tried at most once a day. The directory records each
  * account's last dump (migration 0037), and the run takes the accounts not yet tried

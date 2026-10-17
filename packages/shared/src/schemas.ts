@@ -346,7 +346,7 @@ export interface AppConfig {
   /**
    * This instance keeps backups of its own: a daily dump of every changed account's store
    * into a backups bucket, which unbent.app's nightly mirror then copies to a second
-   * Cloudflare account (MAK-171; "Durability" in the README).
+   * Cloudflare account (MAK-171; "Durability" in docs/architecture.md).
    *
    * True exactly where a `BACKUPS` bucket is bound, and read by the built-in privacy policy
    * and deletion page, which describe those copies and how long a deletion takes to leave

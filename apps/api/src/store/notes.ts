@@ -1073,7 +1073,7 @@ export class NotesStore {
    *
    * What this does not reach is the store's own thirty days of point-in-time recovery,
    * which an operator can wind an account back through. That is the platform's, and
-   * the README says so where it describes this.
+   * docs/history-and-trash.md says so where it describes this.
    */
   clearRevisions(id: string): number | null {
     return this.sql.tx(() => {

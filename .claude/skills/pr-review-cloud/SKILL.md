@@ -52,7 +52,8 @@ forming opinions about consistency:
   going through `components/icons.tsx` rather than `lucide-react`, `Confirm` for every
   destructive action, the comment style, and "real notes stay out of the repo". A finding
   that cites a rule there carries far more weight than a stylistic preference.
-- **README.md** explains why the editor and the storage model are built the way they are.
+- **docs/editor.md** and **docs/architecture.md** explain why the editor and the storage
+  model are built the way they are.
   Check it before calling a design choice wrong.
 - **Grep for the sibling pattern.** "This file forgot to do X" is usually best fixed by
   giving it whatever every sibling already has. Confirm the sibling exists before saying so.

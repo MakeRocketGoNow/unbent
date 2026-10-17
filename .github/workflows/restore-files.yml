@@ -3,7 +3,7 @@ name: Restore an account's files
 # Puts one account's files back into the live bucket from the mirror (MAK-171, part 4):
 # the other half of loading a dump, for a restore that reaches further back than the
 # thirty-five days a deleted file stays in the live bucket, and the per-account step of
-# the runbook for losing the whole Cloudflare account (README, "Losing the whole
+# the runbook for losing the whole Cloudflare account (docs/architecture.md, "Losing the whole
 # Cloudflare account"). The nightly mirror (mirror.yml) can only read the live bucket; this
 # is the one workflow that can write to it, and it does so with a credential of its own,
 # `RESTORE_R2_*`, held in the `restore` GitHub environment where no other workflow can

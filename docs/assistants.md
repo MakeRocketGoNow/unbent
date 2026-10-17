@@ -25,7 +25,7 @@ Three are worth knowing about:
   read, marked `assistant`, so search and the summaries have it. It may fill a file that
   has no text, an empty row or its own earlier words, and never a text layer or the model's
   reading; the next Auto-fill press on the note has the model read the file itself and
-  replaces it. See [Searching inside PDFs](#searching-inside-pdfs). Before any of that, `get_note`
+  replaces it. See [Searching inside PDFs](search.md#searching-inside-pdfs). Before any of that, `get_note`
   (and `list_notes` or `search_notes` with `attachmentSummaries`) already give each file a
   line of what it is: the vision model's name and description for a picture or a text-less
   scan; for a text layer, its opening and then the total, dates, order number and amounts
@@ -87,7 +87,7 @@ Settings › Connected apps lists what is connected and disconnects any of it; d
 deletes the app's tokens, and the endpoint checks the grant on every call, so access ends
 rather than lingering until a token expires. There is deliberately no tool that deletes
 permanently: the trash is as far as an assistant can go. And what an assistant's edit
-replaces is kept: see [Undoing an edit](#undoing-an-edit).
+replaces is kept: see [Undoing an edit](history-and-trash.md#undoing-an-edit).
 
 Client registration is open, because clients register themselves at connect time and there
 is no way to pre-provision credentials for software you have never heard of. A registered

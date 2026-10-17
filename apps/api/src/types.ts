@@ -226,15 +226,14 @@ export interface Env {
    *
    * Per deployment because it names an app. Unset (every fresh instance) means the origin
    * vouches for none, which is right until an operator has an app of their own; see
-   * routes/well-known.ts and the README's Android section.
+   * routes/well-known.ts and docs/android.md.
    */
   ANDROID_ASSET_LINKS?: string;
   /**
    * The Apple App Site Association document this origin serves at
    * /.well-known/apple-app-site-association: which iOS apps, by team and bundle id, it
    * vouches for, for universal links and passkeys. Verbatim JSON, an object. Per
-   * deployment and unset by default, like `ANDROID_ASSET_LINKS`; see the README's iOS
-   * section.
+   * deployment and unset by default, like `ANDROID_ASSET_LINKS`; see docs/ios.md.
    */
   APPLE_APP_SITE_ASSOCIATION?: string;
   /**

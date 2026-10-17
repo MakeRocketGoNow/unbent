@@ -133,7 +133,7 @@ Pressing it sweeps `users/{id}/` out of R2, wipes the account's note store (the 
 holding every note, tag, notebook, field and attachment record) and then removes the user
 row, whose cascade takes the sessions. It does not touch the backups: the account's
 dumps, its mirrored files and the D1 exports that name it age out on their own, every one
-within about three months (see [Durability](#durability)), and neither the wind-back nor
+within about three months (see [Durability](architecture.md#durability)), and neither the wind-back nor
 the load route will put a deleted account back from them. Then it signs the browser out and lands on
 `/goodbye`. The account's row in the directory is tombstoned last, and the sweep drops it
 once the object reports itself empty and the user row is gone, retrying the wipe if it was

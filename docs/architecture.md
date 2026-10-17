@@ -9,7 +9,7 @@
 - **Cloudflare D1** (SQLite): accounts, sessions, OAuth clients, and the account directory
 - **Cloudflare R2**: attachment blobs
 - **Better Auth**: OAuth (Google, GitHub)
-- **Vite + React + CodeMirror 6**: Markdown editor, styled in place (see [Editing](#editing))
+- **Vite + React + CodeMirror 6**: Markdown editor, styled in place (see [Editing](editor.md#editing))
 
 One Worker serves both the built SPA and `/api`, so the two are genuinely same-origin and
 the session cookie needs no CORS or `SameSite` workarounds.
@@ -119,7 +119,7 @@ no dump found current in forty-eight hours, or the status is older than that, so
 Worker's half of the backup fails loudly too; and it writes `status/mirror.json` back to
 the dumps bucket (when it ran, what it copied and pruned, the export's size) for the
 operator's page. It runs only where the repository has the nine secrets in the
-[configuration table](#everything-you-can-set) and the `BACKUPS_BUCKET` variable, read-only on the
+[configuration table](self-hosting.md#everything-you-can-set) and the `BACKUPS_BUCKET` variable, read-only on the
 live bucket, and skips itself otherwise; a fork names its live and mirror buckets at the top
 of the file. The first copy, and any rerun, is
 started by hand from the Actions tab.
@@ -190,7 +190,7 @@ on after every write, held through the platform's hibernation so an idle device 
 nothing; the feed is complete without it. The feed keeps ninety days or fifty thousand
 rows; a cursor older than that, or from before a restore, is answered with `reset` and
 the device starts over from a snapshot. This is what the local copy of the library in the
-browser syncs from; see [Your library on the device](#your-library-on-the-device).
+browser syncs from; see [Your library on the device](sync-and-offline.md#your-library-on-the-device).
 
 **What the operator can see.** An object has no console, so the Worker has one, under
 `/api/admin/store` for a session in `OPERATOR_EMAILS`:
@@ -239,11 +239,11 @@ The whole database goes back together, schema version included, so a restore to 
 schema file is migrated again on the next wake. Files are in R2, not the store, and are
 not wound back, but they follow it: a file deleted since the restored moment is still in
 the bucket, because a deleted file's object stays for thirty-five days under a tombstone
-the store keeps (see [Deleting notes](#deleting-notes)), and the restore winds that
+the store keeps (see [Deleting notes](history-and-trash.md#deleting-notes)), and the restore winds that
 tombstone back with the row, so the file is simply the note's again. The five days past the
 thirty of history are the margin for a restore to the oldest moment it can reach. One
 uploaded since the restored moment is an orphan, which the account's own
-[file sweep](#deleting-an-account) reclaims. Local development has no
+[file sweep](billing.md#deleting-an-account) reclaims. Local development has no
 history to restore from (Miniflare refuses, and the route answers 501) so a restore is
 tried on a preview of a PR that touches `src/store/`, which has stores of its own.
 
@@ -280,7 +280,7 @@ the dump and are not touched: a file the dump's rows name is still in the bucket
 was deleted less than thirty-five days before, since the dump carries the store's
 tombstones for it; one deleted longer ago is gone from the live bucket, and comes back
 from the mirror (below). A file uploaded after the dump was taken is an orphan the
-account's own [file sweep](#deleting-an-account) reclaims. The answer counts rows whose
+account's own [file sweep](billing.md#deleting-an-account) reclaims. The answer counts rows whose
 parent the dump does not hold, which a dump read mid-write can have.
 
 **Where an object lives.** The platform creates each account's object near the first
@@ -290,7 +290,7 @@ account, and never changed: the jurisdiction is part of how a store is found, so
 account names a different, empty object with it set than without, and changing it on a
 running instance would make every account's notes vanish from view.
 
-**Deleting an account** wipes its object; see [Deleting an account](#deleting-an-account).
+**Deleting an account** wipes its object; see [Deleting an account](billing.md#deleting-an-account).
 Locally, the objects are files under `.wrangler/state/v3/do/`, which `sqlite3` opens, and
 the reset scripts clear them with the database they belong to.
 
@@ -386,7 +386,7 @@ was at some moment and loses what came after.
   before should come back as orphans the sweep reclaims; that part was not rehearsed.
 
 None of these is a way to bring one note back. That is the trash, History in a note's
-⋯ menu, and the [export](#backups-and-export) in your own hands.
+⋯ menu, and the [export](backups.md#backups-and-export) in your own hands.
 
 **What has been rehearsed, and what has only been dry-run.** On the dev instance on
 7 October 2026, with counts checked before and after: notes purged and a file deleted,

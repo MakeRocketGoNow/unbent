@@ -14,7 +14,8 @@ import type { AppEnv } from '../types.js';
  *
  * Deliberately not a third-party crash reporter. Both Crashlytics and Sentry would answer
  * this better, and both would put another company in the privacy policy for a problem this
- * endpoint covers with logging we already pay for. See the README.
+ * endpoint covers with logging we already pay for. See "Errors in the browser" in
+ * docs/self-hosting.md.
  *
  * Unauthenticated on purpose. The errors most worth seeing are the ones that stop a page
  * working, and a page that fails on load has no session to send: gating this would lose

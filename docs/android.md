@@ -49,7 +49,7 @@ icon's long-press reaches it too.
 
 Links off the site, `target=_blank` included, open in a Custom Tab. Attachment downloads
 go to DownloadManager with the session added by hand, since it cannot see the WebView's
-cookies. An export is built in the page (see [Backups and export](#backups-and-export))
+cookies. An export is built in the page (see [Backups and export](backups.md#backups-and-export))
 and streamed to the app through the bridge's synchronous save calls, which write it into
 Downloads as it arrives. A `blob:` download would reach the download manager as an address
 only the page can read, and the export would silently save nothing. Links to the
