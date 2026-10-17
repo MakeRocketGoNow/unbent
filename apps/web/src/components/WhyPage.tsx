@@ -176,9 +176,8 @@ export function WhyPage() {
 
         <Chapter title="What Unbent promises instead">
           <p>
-            The conclusion I came to is short, and it is the whole design of Unbent: if you
-            pay someone to keep your notes, the notes still have to be yours, in a way that
-            does not depend on them.
+            The conclusion was short, and it is the whole design of Unbent: if you pay someone
+            to keep your notes, they still have to be yours, with or without them.
           </p>
           <ul>
             <li>
@@ -203,12 +202,11 @@ export function WhyPage() {
 
         <Chapter title="What that promise costs us">
           <p>
-            A promise like that has a price, and it is ours rather than yours. If you stop
-            paying, nothing is held hostage: the account turns read-only, every note still
-            opens, searches and exports, and it stays that way for at least a year, with a
-            reminder to export before anything is removed. We cannot hold your archive as the
-            reason to renew, so Unbent has to be worth paying for on what it does this year.
-            That is the right way round, and it is the only side of it I would want to be on.
+            That promise costs us, not you. If you stop paying, nothing is held hostage: the
+            account turns read-only, every note still opens, searches and exports, and it
+            stays that way for at least a year, with a reminder to export before anything is
+            removed. We cannot hold your archive as the reason to renew. Unbent has to earn
+            each year on what it does.
           </p>
           <p>
             Evernote&apos;s owner is called Bending Spoons. The name is the whole brief: your
