@@ -22,8 +22,10 @@ import {
   type PaddleAdjustment,
 } from '../lib/paddle.js';
 import { noStoreLimit } from '../lib/notes-repo.js';
+import { storeLimitBytes } from '../lib/quota.js';
 import { reposFor } from '../lib/repos.js';
 import { requireAuth } from '../lib/session.js';
+import { storeFor } from '../lib/store-client.js';
 import type { AppEnv } from '../types.js';
 
 /**
@@ -79,20 +81,29 @@ export const billing = new Hono<AppEnv>()
    * and the editor, which read this on every open and every focus in every tab,
    * cost a D1 row and nothing more. Left out rather than failed when the store cannot
    * say (reset by a deploy, or being loaded), since the plan is still the plan.
+   *
+   * Both figures come from the one call the sweep makes (`usage`): the bytes of the
+   * account's files, which the quota bounds, and the size of the store itself, which
+   * the store limit bounds (MAK-234). The page shows the two side by side, since a
+   * note write refused for the store's size sends people here, and a page that showed
+   * files alone then said "2 GB of 10 GB used" under a message that their notes were
+   * full. The stub is read directly, as the sweep reads it: the facades wrap what a
+   * route does to notes and files, and this is a reading of the store about itself.
    */
   .get('/me/plan', requireAuth, async (c) => {
     if (!billingOn(c.env)) return c.json({ error: 'This instance has no plan to report.' }, 404);
     const userId = c.get('userId')!;
     const row = await planFor(c.env.DB, userId);
-    let usedBytes: number | undefined;
+    let held: { usedBytes: number; storeBytes: number; storeLimitBytes: number } | undefined;
     if (c.req.query('usage') === '1') {
       try {
-        usedBytes = await reposFor(c.env, userId, noStoreLimit).attachments.storageUsed();
+        const usage = await storeFor(c.env, userId).usage();
+        held = { usedBytes: usage.attachmentBytes, storeBytes: usage.databaseSize, storeLimitBytes: storeLimitBytes(storageQuotaBytes(row.storageGb)) };
       } catch (err) {
         console.warn(`[billing] storage used for user=${userId} unavailable:`, (err as Error).message);
       }
     }
-    return c.json({ ...accountPlanOf(row, Date.now()), ...(usedBytes !== undefined ? { usedBytes } : {}) });
+    return c.json({ ...accountPlanOf(row, Date.now()), ...held });
   })
 
   /**

@@ -109,6 +109,19 @@ export interface AccountPlan {
   /** What it holds now, as the account's store counts it. Absent when the store could not say. */
   usedBytes?: number;
   /**
+   * How much room the account's own store takes: its notes, the copies their history
+   * keeps, the text read from its files, and the search index over them (MAK-234). Read
+   * with `usedBytes`, from the same call, and absent with it.
+   */
+  storeBytes?: number;
+  /**
+   * The most the store may take on this plan: a floor plus a tenth of the quota on files
+   * (`storeLimitBytes` in the API's `lib/quota.ts`, which is the one place the number is
+   * decided). Sent beside `storeBytes` so the page states the bound a refused note write
+   * named without working it out for itself.
+   */
+  storeLimitBytes?: number;
+  /**
    * The subscription's own state, for the sentence under the plan name: `cancelsAt` is a
    * cancellation already asked for and still ahead, and `pastDue` a renewal Paddle could
    * not collect and is retrying. Null for a trial or a comp, which have none.
