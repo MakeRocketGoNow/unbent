@@ -268,7 +268,7 @@ export interface AppConfig {
    *
    * `version` is what a signed-in account must have agreed to before the app opens, and
    * `change` what is new in it for someone who agreed to an earlier one. See
-   * `LEGAL_VERSION`. Optional only so a client stays compatible with an instance older
+   * `LEGAL_CHANGES` and `legalVersionFor`. Optional only so a client stays compatible with an instance older
    * than the agreement step, which it reads as one that asks for none.
    *
    * `sellsPlan` is set when the built-in terms carry the sections on payment, renewal and
@@ -311,6 +311,17 @@ export interface AppConfig {
    * reads as not offered.
    */
   autofill?: boolean;
+  /**
+   * Whether an Auto-fill press also asks the language model: reading the note's pictures
+   * and text-less scans, and writing its title and text fields. True where `autofill` is
+   * and an Anthropic key is set (`llmOf` in the API); absent otherwise.
+   *
+   * Only the privacy policy reads it (MAK-230). Auto-fill turns on with the Jev key alone,
+   * so an instance can send a note's text to TypeSafe without ever calling Anthropic, and
+   * its policy must not name a company it never contacts, for the reason `posthog` gates
+   * the error-tracking paragraph.
+   */
+  llm?: true;
   /**
    * This instance is a pull-request preview with note stores of its own, because its PR
    * changes the store and only its own stores run that code. They start empty, so the
@@ -371,6 +382,18 @@ export interface AppConfig {
 
 export const INSTANCE_KINDS = ['dev', 'preview', 'local'] as const;
 export type InstanceKind = (typeof INSTANCE_KINDS)[number];
+
+/**
+ * How many of the note's unread files one Auto-fill press will read. A card and its back
+ * fit; a note with a stack of twenty scans is read five at a press, with the rest reported
+ * as still waiting, since a press that silently paid for the whole stack would be the
+ * surprise this cap exists to prevent. Maintenance offered the rest as a pass of its own
+ * until MAK-179; the press is the only reader now.
+ *
+ * Here rather than in the API because the privacy policy states it (MAK-230), and the
+ * number a policy promises must be the one the code keeps, as `REFUND_DAYS` is.
+ */
+export const OWN_FILES_TO_READ = 5;
 
 /**
  * What auto-fill proposes for a note, as `POST /notes/:id/autofill` answers.

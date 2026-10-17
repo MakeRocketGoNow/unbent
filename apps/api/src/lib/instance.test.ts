@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { LEGAL_CHANGE, LEGAL_VERSION } from '@unbent/shared';
+import { LEGAL_BASE_VERSION, LEGAL_CHANGES, LEGAL_VERSION } from '@unbent/shared';
 import {
   frontPageOf,
   isOperator,
   legalLinksOf,
   legalVersionOf,
+  llmOf,
   operatorEmails,
   operatorOf,
   posthogAssetsHost,
@@ -85,11 +86,10 @@ const PADDLE = {
   PADDLE_STORAGE_PRICE_ID: 'pri_storage',
 };
 
-/**
- * The version an instance that sells nothing is on: the one before a billing-only change,
- * since for it the documents did not change, else the current one (`legalVersionOf`).
- */
-const PLAIN_VERSION = LEGAL_CHANGE?.billingOnly ? LEGAL_CHANGE.since : LEGAL_VERSION;
+/** What a plain instance (no sale, no Auto-fill) is asked: the first version, no sentence. */
+const PLAIN = { version: LEGAL_BASE_VERSION };
+
+const JEV = { TYPESAFE_API_KEY: 'jev-key' };
 
 describe('legalLinksOf', () => {
   const EXTERNAL = {
@@ -98,7 +98,7 @@ describe('legalLinksOf', () => {
   };
 
   it('points at the built-in documents when an operator is named', () => {
-    expect(legalLinksOf(env(OPERATOR))).toEqual({ privacy: '/privacy', terms: '/terms', version: PLAIN_VERSION });
+    expect(legalLinksOf(env(OPERATOR))).toEqual({ privacy: '/privacy', terms: '/terms', ...PLAIN });
   });
 
   /** Someone who published their own documents went to the trouble; believe them. */
@@ -117,7 +117,7 @@ describe('legalLinksOf', () => {
    */
   it('ignores half a pair of external URLs', () => {
     const half = { ...OPERATOR, LEGAL_PRIVACY_URL: 'https://example.com/privacy' };
-    expect(legalLinksOf(env(half))).toEqual({ privacy: '/privacy', terms: '/terms', version: PLAIN_VERSION });
+    expect(legalLinksOf(env(half))).toEqual({ privacy: '/privacy', terms: '/terms', ...PLAIN });
     expect(legalLinksOf(env({ LEGAL_TERMS_URL: 'https://example.com/terms' }))).toBeUndefined();
   });
 
@@ -145,29 +145,30 @@ describe('legalLinksOf', () => {
  */
 describe('legalVersionOf', () => {
   it('asks for the built-in version, whatever the environment says', () => {
-    expect(legalVersionOf(env({}), 'built-in').version).toBe(PLAIN_VERSION);
-    expect(legalVersionOf(env({ LEGAL_VERSION: '2027-01-01' }), 'built-in').version).toBe(PLAIN_VERSION);
+    expect(legalVersionOf(env({}), 'built-in')).toEqual(PLAIN);
+    expect(legalVersionOf(env({ LEGAL_VERSION: '2027-01-01' }), 'built-in')).toEqual(PLAIN);
   });
 
   /*
-   * A change only to the payment terms is no change where there is no sale: those sections
-   * are not in that instance's terms (MAK-108), so it stays on the version before and its
-   * accounts are not asked again. Where there is one, the version moves and the sentence
-   * says what is new.
+   * A change only to text an instance publishes because it sells a plan (MAK-108), or
+   * because it offers Auto-fill (MAK-230), is no change where it does neither: that text
+   * is not in its documents, so it stays on the version before and its accounts are not
+   * asked again. Where it applies, the version moves and the sentence says what is new.
    */
-  it('moves the version for a billing-only change only where billing is on', () => {
-    expect(LEGAL_CHANGE?.billingOnly).toBe(true);
-    if (!LEGAL_CHANGE?.billingOnly) return;
-    expect(LEGAL_CHANGE.since < LEGAL_VERSION).toBe(true);
-    expect(legalVersionOf(env(PADDLE), 'built-in')).toEqual({ version: LEGAL_VERSION, change: LEGAL_CHANGE.text });
-    expect(legalVersionOf(env({}), 'built-in')).toEqual({ version: LEGAL_CHANGE.since });
+  it('moves an instance only for the changes whose text it publishes', () => {
+    const sale = LEGAL_CHANGES.find((c) => c.onlyWhere === 'sellsPlan')!;
+    const autofill = LEGAL_CHANGES.find((c) => c.onlyWhere === 'autofill')!;
+    expect(legalVersionOf(env(PADDLE), 'built-in')).toEqual({ version: sale.version, change: sale.text });
+    expect(legalVersionOf(env(JEV), 'built-in')).toEqual({ version: autofill.version, change: autofill.text });
+    expect(legalVersionOf(env({ ...PADDLE, ...JEV }), 'built-in')).toEqual({ version: LEGAL_VERSION, change: autofill.text });
   });
 
   /* The front page states a price, so its instance publishes the payment terms before
      Paddle has issued the keys that turn billing on, which its review requires. */
-  it('says it where the front page is on, with or without billing', () => {
-    expect(legalVersionOf(env({ FRONT_PAGE: '1' }), 'built-in').change).toBe(LEGAL_CHANGE?.text);
-    expect(legalVersionOf(env({ FRONT_PAGE: '1', ...PADDLE }), 'built-in').change).toBe(LEGAL_CHANGE?.text);
+  it('counts the front page as a sale, with or without billing', () => {
+    const sale = LEGAL_CHANGES.find((c) => c.onlyWhere === 'sellsPlan')!;
+    expect(legalVersionOf(env({ FRONT_PAGE: '1' }), 'built-in').change).toBe(sale.text);
+    expect(legalVersionOf(env({ FRONT_PAGE: '1', ...PADDLE }), 'built-in').change).toBe(sale.text);
   });
 
   it('asks for the operator’s own version for their own documents', () => {
@@ -190,6 +191,22 @@ describe('legalVersionOf', () => {
  * fork opts into rather than inherits. The two host derivations exist so that an operator
  * sets one variable instead of three that differ by a few characters each.
  */
+/*
+ * Whether the privacy policy names Anthropic (MAK-230). Auto-fill turns on with the Jev
+ * key alone, so a policy that took the Anthropic key by itself would name a company no
+ * press can reach, and one that took Auto-fill by itself would name one an instance
+ * without the key never contacts.
+ */
+describe('llmOf', () => {
+  it('is on only where Auto-fill is on and there is an Anthropic key', () => {
+    expect(llmOf(env({ TYPESAFE_API_KEY: 'jev', ANTHROPIC_API_KEY: 'sk' }))).toBe(true);
+    expect(llmOf(env({ TYPESAFE_API_KEY: 'jev' }))).toBeUndefined();
+    expect(llmOf(env({ ANTHROPIC_API_KEY: 'sk' }))).toBeUndefined();
+    expect(llmOf(env({}))).toBeUndefined();
+    expect(llmOf(env({ TYPESAFE_API_KEY: 'jev', ANTHROPIC_API_KEY: '  ' }))).toBeUndefined();
+  });
+});
+
 describe('posthogOf', () => {
   it('is off without a key, which is what a self-hosted instance gets', () => {
     expect(posthogOf(env({}))).toBeUndefined();

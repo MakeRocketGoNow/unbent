@@ -1,4 +1,4 @@
-import type { AutofillSuggestion } from '@unbent/shared';
+import { OWN_FILES_TO_READ, type AutofillSuggestion } from '@unbent/shared';
 import { attachmentTextFor, autofill, EXAMPLES_PER_OPTION, MAX_TAGS_ASKED } from './autofill.js';
 import type { AttachmentsRepo } from './attachments-repo.js';
 import type { Jev } from './jev.js';
@@ -7,15 +7,6 @@ import { capReached, PressUsage, yearReached, type TrialSentences } from './llm-
 import type { NotesRepo } from './notes-repo.js';
 import type { PressLimits } from '../store/llm-usage.js';
 import { readPendingFiles, type BlobStore, type Readers } from './read-attachment.js';
-
-/**
- * How many of the note's unread files one press will read. A card and its back fit; a
- * note with a stack of twenty scans is read five at a press, with the rest reported as
- * still waiting, since a press that silently paid for the whole stack would be the
- * surprise this cap exists to prevent. Maintenance offered the rest as a pass of its own
- * until MAK-179; the press is the only reader now.
- */
-export const OWN_FILES_TO_READ = 5;
 
 /** What a press needs, handed in so a test can stand in for every part of it. */
 export interface PressDeps {

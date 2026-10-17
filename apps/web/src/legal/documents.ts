@@ -33,7 +33,7 @@
  * email delivery service", and the operator's postal address is not here at all.
  */
 
-import { INACTIVE_KEPT_DAYS, REFUND_DAYS, type AppConfig } from '@unbent/shared';
+import { INACTIVE_KEPT_DAYS, OWN_FILES_TO_READ, REFUND_DAYS, type AppConfig } from '@unbent/shared';
 
 export interface LegalSection {
   heading?: string;
@@ -109,6 +109,22 @@ export interface LegalOptions {
    * promise about a sale that cannot happen.
    */
   sellsPlan: boolean;
+  /**
+   * Whether this instance offers Auto-fill (`AppConfig.autofill`), which sends the note it
+   * is pressed on to TypeSafe for Jev to choose its notebook, tags and field values.
+   *
+   * Named, unlike the hosting provider or the email service, because what goes is the note
+   * itself, and someone deciding whether to press the button needs to know who reads it.
+   * Off for an instance with no Jev key, which sends nothing anywhere (MAK-230).
+   */
+  autofill: boolean;
+  /**
+   * Whether an Auto-fill press also asks Anthropic's model to read the note's pictures and
+   * text-less scans and to write its title and text fields (`AppConfig.llm`). Only ever
+   * true beside `autofill`: an instance can have the Jev key and no Anthropic key, and its
+   * policy must not name a company it never contacts.
+   */
+  llm: boolean;
 }
 
 /** The refund policy's anchor in the terms: `/terms#refunds`. See `LegalSection.id`. */
@@ -117,13 +133,19 @@ export const REFUNDS_ID = 'refunds';
 /** How long a lapsed account is kept, as the sentence says it. */
 const KEPT = INACTIVE_KEPT_DAYS === 365 ? 'a year' : `${INACTIVE_KEPT_DAYS} days`;
 
+/** How many files an Auto-fill press reads, as the sentence says it. */
+const READ_AT_A_PRESS =
+  ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'][OWN_FILES_TO_READ] ??
+  String(OWN_FILES_TO_READ);
+
 const EFFECTIVE = '2026-10-16';
 
 /**
  * How many "other kinds of service" the policy lists, as the word the sentence needs. Two
- * always (sign-in, email); error tracking and the backups' GitHub job each add one.
+ * always (sign-in, email); error tracking, the backups' GitHub job, Paddle, and Auto-fill's
+ * TypeSafe and Anthropic each add one.
  */
-const COUNT = ['', '', 'Two', 'Three', 'Four', 'Five'] as const;
+const COUNT = ['', '', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven'] as const;
 
 /**
  * The privacy policy's own date, moved when its terms change: "How long it is kept"
@@ -142,7 +164,7 @@ const COUNT = ['', '', 'Two', 'Three', 'Four', 'Five'] as const;
  * the refund policy, and the policy Paddle (MAK-108). `LEGAL_VERSION` moved with them
  * only where the instance sells a plan: those sections are drawn only there
  * (`LegalOptions.sellsPlan`), and an instance that sells none stays on the version before
- * (`LEGAL_CHANGE.since`). The dates are one pair for every instance all the same, so on
+ * (`LEGAL_CHANGES` in `@unbent/shared`). The dates are one pair for every instance all the same, so on
  * such an instance the date above the unchanged text moves and the version does not:
  * the documents' rule that the dates move for every change and the version only for one
  * worth asking about, seen from the other side.
@@ -152,6 +174,11 @@ const COUNT = ['', '', 'Two', 'Three', 'Four', 'Five'] as const;
  * app connected to the account reads and writes notes as its owner does. Neither changed
  * how information is handled, so `LEGAL_VERSION` stayed; the terms' date moved the same
  * day for the venue clause, which is not a reason to ask anyone again either.
+ *
+ * The same day it gained what Auto-fill sends, to TypeSafe and to Anthropic, and what each
+ * keeps (MAK-230). That is how information is handled, and the policy people had agreed
+ * to was silent on it, so the version moved with it, where the instance offers Auto-fill
+ * (`LegalOptions.autofill`): only there is the text drawn, as with the plan's.
  */
 const PRIVACY_EFFECTIVE = '2026-10-16';
 
@@ -214,7 +241,16 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
             'user agent alongside the session, so that a session can be identified and revoked. ' +
             'Sessions expire after thirty days of disuse.',
           'Your content — the notes you write, their titles, tags and notebooks, and any files you ' +
-            'attach. Text extracted from PDFs you upload, so that searching finds words inside them.',
+            'attach. Text extracted from PDFs you upload, so that searching finds words inside them' +
+            (opts.autofill && opts.llm
+              ? ', and what Auto-fill reads off a picture or a scan when you press it.'
+              : '.'),
+          ...(opts.autofill
+            ? [
+                'Your use of Auto-fill — how many times you have pressed it, and how much work each ' +
+                  'press took, so that its limits can be applied.',
+              ]
+            : []),
           ...(opts.sellsPlan
             ? [
                 'Your plan — whether the account is on a trial or a plan, when that ends, how much ' +
@@ -235,6 +271,14 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
             'account: a sign-in code, a password reset, a verification link' +
             (opts.sellsPlan ? ', and word that a trial or a plan has ended' : '') +
             '. There is no marketing mail, and no newsletter to unsubscribe from.',
+          ...(opts.autofill
+            ? [
+                'Auto-fill suggests where a note belongs and what its fields say. It is the one ' +
+                  'thing that sends what a note says to another company for it to read, and it does ' +
+                  'so only when you press it, for that note alone, never when you upload or in the ' +
+                  'background. The services that answer it are named below, with what each receives.',
+              ]
+            : []),
           'We do not sell personal information, and we do not share it for advertising or for ' +
             'anyone else to build a profile from.',
           'If you connect another app to your account, such as an assistant, it can read and ' +
@@ -249,8 +293,10 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
           'Unbent is hosted in the United States. Your notes, files and account records are ' +
             'stored with our hosting provider there, which also keeps ordinary request logs, as ' +
             'any web host does. Text inside PDFs you upload is extracted on those same systems ' +
-            'so that search can find it; the file is used for that and nothing else.',
-          `${COUNT[2 + Number(opts.errorTracking) + Number(opts.backups) + Number(opts.sellsPlan)]} other kinds of service ` +
+            (opts.autofill
+              ? 'so that search can find it, and so that Auto-fill can read it when you press it.'
+              : 'so that search can find it; the file is used for that and nothing else.'),
+          `${COUNT[2 + Number(opts.errorTracking) + Number(opts.backups) + Number(opts.sellsPlan) + Number(opts.autofill) + Number(opts.autofill && opts.llm)]} other kinds of service ` +
             `are involved, each for one narrow job:`,
         ],
         list: [
@@ -282,6 +328,27 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
                   'payment details, under its own privacy policy, and tells us only whether the ' +
                   'account is paid for, until when, and how much storage it includes. It never ' +
                   'sees your notes.',
+              ]
+            : []),
+          ...(opts.autofill
+            ? [
+                'TypeSafe, whose model chooses a notebook, tags and field values for a note when you ' +
+                  'press Auto-fill on it, and at no other time. It receives that note’s title, its ' +
+                  'text, and the names and text of its files, and the names of your notebooks, tags ' +
+                  'and fields, with a notebook’s purpose if you wrote one, a field’s options, and a ' +
+                  'few titles of notes already filed under each. It does not use what it receives to ' +
+                  'train any model, and keeps it under its own privacy policy, in the United States.',
+              ]
+            : []),
+          ...(opts.autofill && opts.llm
+            ? [
+                'Anthropic, whose model reads the pictures and text-less scans in a note when you ' +
+                  'press Auto-fill on it, and writes a title and text field values from what the ' +
+                  `note says, and at no other time. It receives up to ${READ_AT_A_PRESS} of that note’s files to ` +
+                  'read, the note’s title and text with the names and text of its files, and the ' +
+                  'names of the fields it is asked to fill. It does not use what it receives to ' +
+                  'train its models, and deletes it within thirty days, except where its own terms ' +
+                  'require keeping something longer, such as to investigate misuse.',
               ]
             : []),
         ],
@@ -354,6 +421,12 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
                   'account you delete leaves every one of them within about three months. They are ' +
                   'for restoring the service after a fault, not a way to bring one note back; keep ' +
                   'an export for that.',
+              ]
+            : []),
+          ...(opts.autofill
+            ? [
+                'What an Auto-fill press sends is kept by the service that receives it as described ' +
+                  'above, not by us, and deleting the note or the account here does not reach it.',
               ]
             : []),
           ...(opts.sellsPlan
@@ -652,7 +725,9 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
         ],
         list: [
           'Your notes, including everything in the trash, and their titles, tags and notebooks.',
-          'Every file you attached, and the text extracted from PDFs for search.',
+          'Every file you attached, and the text ' +
+            (opts.autofill && opts.llm ? 'read from them' : 'extracted from PDFs') +
+            ' for search.',
           'Your account record and email address, any password hash, and your passkeys.',
           'Any linked sign-in account, such as Google, and any app you connected to Unbent.',
           'Your sessions, which signs the account out of every device it was signed in on.',
@@ -672,7 +747,14 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
                   'account with our hosting provider, kept for up to 90 days. Every one of them is ' +
                   'gone within about three months of the deletion.',
               ]
-            : ['Nothing else of your account or its contents is kept.']),
+            : [`Nothing else of your account or its contents is kept${opts.autofill ? ' by us' : ''}.`]),
+          ...(opts.autofill
+            ? [
+                `What an Auto-fill press sent to ${opts.llm ? 'TypeSafe or Anthropic' : 'TypeSafe'} ` +
+                  'is kept by them as the Privacy Policy describes, not by us, and deletion here ' +
+                  'does not reach it.',
+              ]
+            : []),
           'Two other things outlive it, neither of which is your notes, and both are ordinary ' +
             'infrastructure rather than anything we keep on purpose. Our hosting provider ' +
             'retains routine server request logs, as any web host does. Mail we have already ' +

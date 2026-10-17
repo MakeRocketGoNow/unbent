@@ -125,8 +125,8 @@ says otherwise; `pnpm exec wrangler secret put NAME` from `apps/api`, or the das
 | `<PROVIDER>_CLIENT_ID`, `<PROVIDER>_CLIENT_SECRET` | any of Better Auth's OAuth providers | both or neither; the callback is `/api/auth/callback/<provider>` on your origin |
 | `AUTH_PASSWORD`, `AUTH_PASSKEY` | forcing a method on or off | rarely needed; the defaults are explained in the sign-in section |
 | `POSTHOG_KEY`, `POSTHOG_HOST` | error tracking | see [Errors in the browser](#errors-in-the-browser) |
-| `TYPESAFE_API_KEY` | filing a note from what it says | see [Filing a note from what it says](search.md#filing-a-note-from-what-it-says); `DEV_TYPESAFE_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
-| `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | Auto-fill's language model: reading a note's pictures and text-less scans on a press, and writing its title and text fields | see [Reading images](search.md#reading-images); `DEV_ANTHROPIC_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
+| `TYPESAFE_API_KEY` | filing a note from what it says | names TypeSafe in the built-in privacy policy, with what a press sends it, and asks every account to agree to that; see [Filing a note from what it says](search.md#filing-a-note-from-what-it-says); `DEV_TYPESAFE_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
+| `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | Auto-fill's language model: reading a note's pictures and text-less scans on a press, and writing its title and text fields | names Anthropic in the built-in privacy policy too, where `TYPESAFE_API_KEY` is also set (without it no press runs); see [Reading images](search.md#reading-images); `DEV_ANTHROPIC_API_KEY` as a GitHub secret carries a separate key to the dev instance and previews |
 | `ANTHROPIC_READ_MODEL`, `ANTHROPIC_TITLE_MODEL`, `ANTHROPIC_FIELDS_MODEL`, `ANTHROPIC_READ_EFFORT` | a model per job, and the reading's effort | each unset falls back to `ANTHROPIC_MODEL`; see [Reading images](search.md#reading-images) |
 | `AUTOFILL_DAILY_CAP` | a ceiling on Auto-fill presses per account per UTC day | a whole number; unset means none. Every press and the model's tokens are counted either way, and Maintenance shows the year's; see [Filing a note from what it says](search.md#filing-a-note-from-what-it-says) |
 | `AUTOFILL_TRIAL_DAILY_CAP` | the same ceiling for an account on its trial | a whole number; unset means the trial gets `AUTOFILL_DAILY_CAP`. Only read where the plan is sold; set it smaller, since a trial is free to make; see [Selling the plan](billing.md#selling-the-plan) |
@@ -185,12 +185,13 @@ approving an OAuth client and approving a CLI's device code, which are refused t
 account that has not agreed, however they are called. Connections that already exist keep
 working.
 
-Moving `LEGAL_VERSION` in `packages/shared/src/legal.ts` asks everyone again, worded as an
-update, with `LEGAL_CHANGE` beside it to say what changed. Move it for a change worth
-interrupting people for, not for every correction: the documents' effective dates move for
-those on their own. A change only to the payment terms (`billingOnly`) moves it only where
-the instance sells a plan; everywhere else those sections are not published, so nothing
-changed and nobody is asked. An operator with their own documents sets `LEGAL_VERSION` in the
+Adding an entry to `LEGAL_CHANGES` in `packages/shared/src/legal.ts` asks people again,
+worded as an update, with the entry's sentence to say what changed. Add one for a change
+worth interrupting people for, not for every correction: the documents' effective dates move
+for those on their own. A change only to text an instance publishes because it sells a plan,
+or because it offers Auto-fill, names that condition (`onlyWhere`) and moves only those
+instances; everywhere else the text is not published, so nothing changed and nobody is
+asked. An operator with their own documents sets `LEGAL_VERSION` in the
 environment instead, since only they know when those change; unset, everyone is asked once,
 and a change to the built-in documents never asks them again.
 

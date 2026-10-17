@@ -22,7 +22,7 @@ function text(doc: LegalDocument): string {
  * what appears, and the previous operator's must not survive anywhere in any of the three.
  */
 describe('legalDocuments', () => {
-  const docs = legalDocuments(OPERATOR, { errorTracking: false, backups: false, sellsPlan: false });
+  const docs = legalDocuments(OPERATOR, { errorTracking: false, backups: false, sellsPlan: false, autofill: false, llm: false });
   const all: [string, LegalDocument][] = [
     ['privacy', docs.privacy],
     ['terms', docs.terms],
@@ -62,8 +62,8 @@ describe('legalDocuments', () => {
  * never contacts is as wrong as one that hides a third party it does.
  */
 describe('legalDocuments and error tracking', () => {
-  const without = legalDocuments(OPERATOR, { errorTracking: false, backups: false, sellsPlan: false });
-  const with_ = legalDocuments(OPERATOR, { errorTracking: true, backups: false, sellsPlan: false });
+  const without = legalDocuments(OPERATOR, { errorTracking: false, backups: false, sellsPlan: false, autofill: false, llm: false });
+  const with_ = legalDocuments(OPERATOR, { errorTracking: true, backups: false, sellsPlan: false, autofill: false, llm: false });
 
   it('says nothing about it on an instance that does not do it', () => {
     expect(text(without.privacy)).not.toContain('error-tracking');
@@ -95,8 +95,8 @@ describe('legalDocuments and error tracking', () => {
  * with no backups bucket says none of it, and its deletion page keeps the shorter promise.
  */
 describe('legalDocuments and backups', () => {
-  const without = legalDocuments(OPERATOR, { errorTracking: false, backups: false, sellsPlan: false });
-  const with_ = legalDocuments(OPERATOR, { errorTracking: false, backups: true, sellsPlan: false });
+  const without = legalDocuments(OPERATOR, { errorTracking: false, backups: false, sellsPlan: false, autofill: false, llm: false });
+  const with_ = legalDocuments(OPERATOR, { errorTracking: false, backups: true, sellsPlan: false, autofill: false, llm: false });
 
   it('says nothing about them on an instance that keeps none', () => {
     for (const doc of [without.privacy, without.deletion]) {
@@ -119,7 +119,7 @@ describe('legalDocuments and backups', () => {
     const body = text(with_.privacy);
     expect(body).toContain('GitHub');
     expect(body).toContain('Three other kinds of service');
-    expect(text(legalDocuments(OPERATOR, { errorTracking: true, backups: true, sellsPlan: false }).privacy)).toContain(
+    expect(text(legalDocuments(OPERATOR, { errorTracking: true, backups: true, sellsPlan: false, autofill: false, llm: false }).privacy)).toContain(
       'Four other kinds of service',
     );
   });
@@ -137,14 +137,91 @@ describe('legalDocuments and backups', () => {
 });
 
 /**
+ * Auto-fill (MAK-230) sends the note it is pressed on to TypeSafe, and to Anthropic where
+ * the instance also has a key for it. Each is named exactly where a press can reach it,
+ * with when it runs, what it receives and what it keeps pinned by phrase, since those are
+ * what someone deciding whether to press the button would hold us to.
+ */
+describe('legalDocuments and Auto-fill', () => {
+  const off = { errorTracking: false, backups: false, sellsPlan: false };
+  const without = legalDocuments(OPERATOR, { ...off, autofill: false, llm: false });
+  const jevOnly = legalDocuments(OPERATOR, { ...off, autofill: true, llm: false });
+  const both = legalDocuments(OPERATOR, { ...off, autofill: true, llm: true });
+
+  it('names neither service on an instance without it', () => {
+    for (const doc of [without.privacy, without.deletion]) {
+      expect(text(doc)).not.toContain('Auto-fill');
+      expect(text(doc)).not.toContain('TypeSafe');
+      expect(text(doc)).not.toContain('Anthropic');
+    }
+    expect(text(without.privacy)).toContain('Two other kinds of service');
+  });
+
+  it('names TypeSafe with what it receives, when, and what it keeps', () => {
+    const body = text(jevOnly.privacy);
+    expect(body).toContain('TypeSafe');
+    expect(body).toContain('when you press Auto-fill on it, and at no other time');
+    expect(body).toContain('the names and text of its files');
+    expect(body).toContain('the names of your notebooks, tags');
+    expect(body).toContain('does not use what it receives to train any model');
+    expect(body).toContain('never when you upload or in the background');
+    expect(body).toContain('Three other kinds of service');
+  });
+
+  /* The Jev key alone turns Auto-fill on; a policy naming a company the instance never
+     contacts is as wrong as one hiding a company it does. */
+  it('leaves Anthropic out where the instance has no key for it', () => {
+    expect(text(jevOnly.privacy)).not.toContain('Anthropic');
+    expect(text(jevOnly.deletion)).not.toContain('Anthropic');
+    expect(text(jevOnly.privacy)).not.toContain('reads off a picture');
+  });
+
+  it('names Anthropic beside it where it has one, and its thirty days', () => {
+    const body = text(both.privacy);
+    expect(body).toContain('Anthropic');
+    expect(body).toContain('pictures and text-less scans');
+    expect(body).toContain('title and text with the names and text of its files');
+    expect(body).toContain('names of the fields it is asked to fill');
+    expect(body).toContain('deletes it within thirty days');
+    expect(body).toContain('what Auto-fill reads off a picture or a scan');
+    expect(body).toContain('Four other kinds of service');
+    expect(text(both.deletion)).toContain('TypeSafe or Anthropic');
+  });
+
+  it('counts both among every other service', () => {
+    const all = legalDocuments(OPERATOR, { errorTracking: true, backups: true, sellsPlan: true, autofill: true, llm: true });
+    expect(text(all.privacy)).toContain('Seven other kinds of service');
+  });
+
+  /* The sentence before the list used to promise an uploaded file was used for search and
+     nothing else, which a press then contradicted a few lines down. */
+  it('does not promise a file is used for search alone', () => {
+    expect(text(without.privacy)).toContain('the file is used for that and nothing else');
+    expect(text(jevOnly.privacy)).not.toContain('the file is used for that and nothing else');
+    expect(text(jevOnly.privacy)).toContain('so that Auto-fill can read it when you press it');
+  });
+
+  it('says deletion here does not reach what was sent', () => {
+    expect(text(jevOnly.privacy)).toContain('does not reach it');
+    expect(text(jevOnly.deletion)).toContain('deletion here does not reach it');
+    expect(text(jevOnly.deletion)).toContain('Nothing else of your account or its contents is kept by us.');
+    expect(text(without.deletion)).toContain('Nothing else of your account or its contents is kept.');
+  });
+
+  it('leaves the terms alone', () => {
+    expect(text(both.terms)).toBe(text(without.terms));
+  });
+});
+
+/**
  * The plan, its renewal and the refund policy (MAK-108) are in the terms exactly where the
  * instance sells one, and Paddle is in the policy exactly then. What Paddle's website review
  * reads for is pinned by phrase (the price, Paddle as merchant of record, how to cancel,
  * the refund window) and the refund section keeps the anchor that is handed to the review.
  */
 describe('legalDocuments and billing', () => {
-  const without = legalDocuments(OPERATOR, { errorTracking: false, backups: false, sellsPlan: false });
-  const with_ = legalDocuments(OPERATOR, { errorTracking: false, backups: false, sellsPlan: true });
+  const without = legalDocuments(OPERATOR, { errorTracking: false, backups: false, sellsPlan: false, autofill: false, llm: false });
+  const with_ = legalDocuments(OPERATOR, { errorTracking: false, backups: false, sellsPlan: true, autofill: false, llm: false });
 
   it('says nothing about a price, a refund or Paddle on an instance that sells nothing', () => {
     for (const doc of [without.terms, without.privacy, without.deletion]) {
@@ -189,7 +266,7 @@ describe('legalDocuments and billing', () => {
     expect(body).toContain('Paddle, which sells the plan as merchant of record');
     expect(body).toContain('Three other kinds of service');
     expect(
-      text(legalDocuments(OPERATOR, { errorTracking: true, backups: true, sellsPlan: true }).privacy),
+      text(legalDocuments(OPERATOR, { errorTracking: true, backups: true, sellsPlan: true, autofill: false, llm: false }).privacy),
     ).toContain('Five other kinds of service');
   });
 
@@ -205,7 +282,7 @@ describe('legalDocuments and billing', () => {
  * to agree again to text dated before the change they were told about.
  */
 describe('the agreement version', () => {
-  const docs = legalDocuments(OPERATOR, { errorTracking: false, backups: false, sellsPlan: false });
+  const docs = legalDocuments(OPERATOR, { errorTracking: false, backups: false, sellsPlan: false, autofill: false, llm: false });
 
   it('is not newer than either document', () => {
     expect(docs.terms.effective >= LEGAL_VERSION).toBe(true);

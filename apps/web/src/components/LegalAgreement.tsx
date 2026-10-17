@@ -106,7 +106,7 @@ export function AgreementPending() {
  * were shown.
  *
  * The same screen says when the documents have changed since someone agreed, with what
- * changed if the instance says (`LEGAL_CHANGE`). It always offers a way out (signing out,
+ * changed if the instance says (`LEGAL_CHANGES`). It always offers a way out (signing out,
  * or taking an export and deleting the account), because asking someone to agree with no
  * alternative is not asking.
  */

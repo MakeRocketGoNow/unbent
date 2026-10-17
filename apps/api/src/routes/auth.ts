@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { INSTANCE_KINDS, type AppConfig, type InstanceKind } from '@unbent/shared';
 import { accountDeletionOffered, getAuth, offeredProviders } from '../auth.js';
-import { frontPageOf, legalLinksOf, operatorOf, posthogOf } from '../lib/instance.js';
+import { frontPageOf, legalLinksOf, llmOf, operatorOf, posthogOf } from '../lib/instance.js';
 import { whoAmI } from '../lib/session.js';
 import { refuseGrantsWithoutAgreement } from './legal.js';
 import { previewRelayOrigin } from '../lib/preview-relay.js';
@@ -45,6 +45,8 @@ export const authRoutes = new Hono<AppEnv>()
    *
    * `autofill` is `accountDeletion`'s shape once more: true only where the instance has a
    * key for the model, so the editor draws the control only where the route would answer.
+   * `llm` says whether that press also calls the language model, so the privacy policy
+   * names Anthropic only where a press can reach it.
    *
    * `frontPage` is the operator's again: on only where the instance says it is the public
    * one, since the page it turns on states that instance's prices. See `frontPageOf`.
@@ -70,6 +72,7 @@ export const authRoutes = new Hono<AppEnv>()
       posthog: posthogOf(c.env),
       previewRelay: relayOrigin ? { origin: relayOrigin } : undefined,
       autofill: canAutofill(c.env),
+      llm: llmOf(c.env),
       ownStores: c.env.PREVIEW_OWN_STORES === '1' || undefined,
       instanceLabel: instanceLabelOf(c.env),
       instanceKind: instanceKindOf(c.env),
