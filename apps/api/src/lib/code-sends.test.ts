@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
 import {
   ADDRESS_CODES_PER_DAY,
@@ -7,43 +10,45 @@ import {
   codeSendsDay,
   recordCodeRequest,
   type CodeSendsDb,
+  type CodeSendsStatement,
 } from './code-sends.js';
 
 /**
- * A D1 that keeps `code_sends` in a map and answers the two statements the library
- * sends, so the rules are checked against the rows a real table would hold. The SQL
- * itself is applied to a real SQLite by migrations.test.ts.
+ * A D1 over a real SQLite with migration 0046 applied, so the bounds that live in the
+ * statements' own conditions are checked as SQLite runs them. A batch is one
+ * transaction, as D1 makes it.
  */
 function fakeDb() {
-  const rows = new Map<string, { day: string; scope: string; count: number; last_at: number }>();
-  const key = (day: string, scope: string) => `${day}\0${scope}`;
-  const statement = (sql: string, binds: unknown[]) => ({
-    all: async <T>() => {
-      const [day, a, b] = binds as [string, string, string];
-      const results = [...rows.values()].filter((r) => r.day === day && (r.scope === a || r.scope === b));
-      return { results: results as T[] };
-    },
-    run: async () => {
-      if (sql.startsWith('DELETE')) {
-        const [day] = binds as [string];
-        for (const [k, r] of rows) if (r.day < day) rows.delete(k);
-      } else {
-        const [day, scope, now] = binds as [string, string, number];
-        const existing = rows.get(key(day, scope));
-        if (existing) {
-          existing.count += 1;
-          existing.last_at = now;
-        } else rows.set(key(day, scope), { day, scope, count: 1, last_at: now });
-      }
-      return {};
-    },
+  const sqlite = new DatabaseSync(':memory:');
+  sqlite.exec(readFileSync(join(import.meta.dirname, '../../migrations/0046_code_sends.sql'), 'utf8'));
+  const statement = (sql: string, binds: unknown[]): CodeSendsStatement => ({
+    all: async <T>() => ({ results: sqlite.prepare(sql).all(...(binds as SQLInputValue[])) as T[] }),
   });
   const db: CodeSendsDb = {
     prepare: (sql) => ({ bind: (...binds) => statement(sql, binds) }),
+    // Each statement's SQL runs when `all` is called, so the whole transaction happens
+    // before the first await and two batches in flight never interleave inside one.
     batch: async (statements) => {
-      for (const s of statements) await s.run();
-      return [];
+      sqlite.exec('BEGIN');
+      let pending;
+      try {
+        pending = statements.map((s) => s.all());
+        sqlite.exec('COMMIT');
+      } catch (e) {
+        sqlite.exec('ROLLBACK');
+        throw e;
+      }
+      return Promise.all(pending);
     },
+  };
+  const rows = {
+    values: () => sqlite.prepare('SELECT day, scope, count, last_at FROM code_sends ORDER BY day, scope').all() as Array<{
+      day: string;
+      scope: string;
+      count: number;
+      last_at: number;
+    }>,
+    keys: () => rows.values().map((r) => `${r.day}\0${r.scope}`),
   };
   return { db, rows };
 }
@@ -55,7 +60,7 @@ describe('recordCodeRequest', () => {
   it('allows a first code and counts it against the address, and the strangers when unknown', async () => {
     const { db, rows } = fakeDb();
     expect(await recordCodeRequest(db, 'New@Example.com', false, T0)).toBeNull();
-    expect([...rows.values()].map((r) => [r.scope, r.count])).toEqual([
+    expect(rows.values().map((r) => [r.scope, r.count])).toEqual([
       ['address:new@example.com', 1],
       ['strangers', 1],
     ]);
@@ -64,7 +69,7 @@ describe('recordCodeRequest', () => {
   it('does not count an account holder against the strangers', async () => {
     const { db, rows } = fakeDb();
     expect(await recordCodeRequest(db, 'me@example.com', true, T0)).toBeNull();
-    expect([...rows.keys()].some((k) => k.endsWith('strangers'))).toBe(false);
+    expect(rows.keys().some((k) => k.endsWith('strangers'))).toBe(false);
   });
 
   it('refuses a second code to the same address within the interval, and allows it after', async () => {
@@ -94,12 +99,22 @@ describe('recordCodeRequest', () => {
     expect(await recordCodeRequest(db, 'me@example.com', true, T0 + MINUTE)).toBeNull();
   });
 
+  it('holds every bound against a burst in flight at once', async () => {
+    const { db } = fakeDb();
+    const strangers = await Promise.all(
+      Array.from({ length: 50 }, (_, i) => recordCodeRequest(db, `bot${i}@example.com`, false, T0)),
+    );
+    expect(strangers.filter((r) => r === null)).toHaveLength(STRANGER_CODES_PER_DAY);
+    const one = await Promise.all(Array.from({ length: 5 }, () => recordCodeRequest(db, 'me@example.com', true, T0)));
+    expect(one.filter((r) => r === null)).toHaveLength(1);
+  });
+
   it('a refusal writes nothing', async () => {
     const { db, rows } = fakeDb();
     await recordCodeRequest(db, 'me@example.com', true, T0);
-    const before = JSON.stringify([...rows.values()]);
+    const before = JSON.stringify(rows.values());
     await recordCodeRequest(db, 'me@example.com', true, T0 + 1);
-    expect(JSON.stringify([...rows.values()])).toBe(before);
+    expect(JSON.stringify(rows.values())).toBe(before);
   });
 
   it('starts afresh at midnight UTC and prunes the day before', async () => {
@@ -113,7 +128,7 @@ describe('recordCodeRequest', () => {
     const justAfterMidnight = Date.UTC(2026, 9, 17, 0, 0, 10);
     expect(codeSendsDay(justAfterMidnight)).toBe('2026-10-17');
     expect(await recordCodeRequest(db, 'me@example.com', true, justAfterMidnight)).toBeNull();
-    expect([...rows.values()].map((r) => r.day)).toEqual(['2026-10-17']);
+    expect(rows.values().map((r) => r.day)).toEqual(['2026-10-17']);
   });
 });
 

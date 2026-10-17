@@ -65,12 +65,13 @@ export const CODE_REFUSAL_MESSAGES: Record<CodeRefusal, string> = {
 /** The slice of D1 this reads and writes. */
 export interface CodeSendsDb {
   prepare(sql: string): {
-    bind(...values: unknown[]): {
-      all<T>(): Promise<{ results: T[] }>;
-      run(): Promise<unknown>;
-    };
+    bind(...values: unknown[]): CodeSendsStatement;
   };
-  batch(statements: Array<{ run(): Promise<unknown> }>): Promise<unknown>;
+  batch(statements: CodeSendsStatement[]): Promise<Array<{ results?: unknown[] }>>;
+}
+
+export interface CodeSendsStatement {
+  all<T>(): Promise<{ results: T[] }>;
 }
 
 const STRANGERS = 'strangers';
@@ -128,12 +129,42 @@ interface Row {
 }
 
 /**
+ * Counts a code to the address, if every bound allows it. The bounds are the upsert's own
+ * conditions rather than a read before it: separate round trips let a parallel burst all
+ * read the same count and all pass, which is the shape of the very traffic this is for.
+ * Each statement is atomic in SQLite, so a burst is counted one at a time and the last
+ * code under each bound is the last one allowed. A strangers' count past its share makes
+ * the SELECT empty, so a new address row is never written; an existing one is updated
+ * only inside its own day's count and interval. `RETURNING` says which happened.
+ */
+const COUNT_ADDRESS =
+  'INSERT INTO code_sends (day, scope, count, last_at) ' +
+  'SELECT ?1, ?2, 1, ?3 ' +
+  "WHERE ?4 OR COALESCE((SELECT count FROM code_sends WHERE day = ?1 AND scope = 'strangers'), 0) < ?5 " +
+  'ON CONFLICT (day, scope) DO UPDATE SET count = count + 1, last_at = excluded.last_at ' +
+  'WHERE count < ?6 AND excluded.last_at - last_at >= ?7 ' +
+  'RETURNING count';
+
+/**
+ * Counts the code against the strangers' share, only if the statement before it counted
+ * it against the address: in the same batch, that is the address row carrying this
+ * request's time. Two requests to one address in the same millisecond, the second refused
+ * by the interval, would count one stranger too many; that errs towards refusing.
+ */
+const COUNT_STRANGER =
+  'INSERT INTO code_sends (day, scope, count, last_at) ' +
+  "SELECT ?1, 'strangers', 1, ?3 " +
+  'WHERE EXISTS (SELECT 1 FROM code_sends WHERE day = ?1 AND scope = ?2 AND last_at = ?3) ' +
+  'ON CONFLICT (day, scope) DO UPDATE SET count = count + 1, last_at = excluded.last_at';
+
+/**
  * Counts a request for a code to `email`, or says why it must not be sent.
  *
  * `known` is whether an account has the address; the caller looks it up, since Better
  * Auth's own adapter is the right reader of its `user` table. Counted before the send
- * and only when allowed, in one read and one batched write, so a refusal costs one
- * query and an allowed request two.
+ * and only when allowed, in one batch, which a D1 batch runs as one transaction. An
+ * allowed request costs that batch; a refusal costs one more read, to say which bound
+ * refused it.
  */
 export async function recordCodeRequest(
   db: CodeSendsDb,
@@ -143,31 +174,25 @@ export async function recordCodeRequest(
 ): Promise<CodeRefusal | null> {
   const day = codeSendsDay(now);
   const address = `address:${email.toLowerCase()}`;
+  const [, counted] = await db.batch([
+    // Yesterday and before, by the key's prefix: nothing to read when there is nothing to delete.
+    db.prepare('DELETE FROM code_sends WHERE day < ?1').bind(day),
+    db
+      .prepare(COUNT_ADDRESS)
+      .bind(day, address, now, known ? 1 : 0, STRANGER_CODES_PER_DAY, ADDRESS_CODES_PER_DAY, ADDRESS_CODE_INTERVAL_MS),
+    ...(known ? [] : [db.prepare(COUNT_STRANGER).bind(day, address, now)]),
+  ]);
+  if (counted?.results?.length) return null;
+
   const { results } = await db
-    .prepare('SELECT scope, count, last_at FROM code_sends WHERE day = ? AND scope IN (?, ?)')
+    .prepare('SELECT scope, count, last_at FROM code_sends WHERE day = ?1 AND scope IN (?2, ?3)')
     .bind(day, address, STRANGERS)
     .all<Row>();
   const byScope = new Map(results.map((r) => [r.scope, r]));
-
   const own = byScope.get(address);
-  if (own) {
-    if (own.count >= ADDRESS_CODES_PER_DAY) return 'address';
-    if (now - own.last_at < ADDRESS_CODE_INTERVAL_MS) return 'interval';
-  }
+  if (own && own.count >= ADDRESS_CODES_PER_DAY) return 'address';
+  if (own && now - own.last_at < ADDRESS_CODE_INTERVAL_MS) return 'interval';
   if (!known && (byScope.get(STRANGERS)?.count ?? 0) >= STRANGER_CODES_PER_DAY) return 'strangers';
-
-  const count = (scope: string) =>
-    db
-      .prepare(
-        'INSERT INTO code_sends (day, scope, count, last_at) VALUES (?, ?, 1, ?) ' +
-          'ON CONFLICT (day, scope) DO UPDATE SET count = count + 1, last_at = excluded.last_at',
-      )
-      .bind(day, scope, now);
-  await db.batch([
-    // Yesterday and before, by the key's prefix: nothing to read when there is nothing to delete.
-    db.prepare('DELETE FROM code_sends WHERE day < ?').bind(day),
-    count(address),
-    ...(known ? [] : [count(STRANGERS)]),
-  ]);
-  return null;
+  // Not reached within a day, since a row's count and time only grow; the interval is the nearest sentence.
+  return 'interval';
 }
