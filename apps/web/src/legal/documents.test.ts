@@ -193,6 +193,14 @@ describe('legalDocuments and Auto-fill', () => {
     expect(text(all.privacy)).toContain('Seven other kinds of service');
   });
 
+  /* The sentence before the list used to promise an uploaded file was used for search and
+     nothing else, which a press then contradicted a few lines down. */
+  it('does not promise a file is used for search alone', () => {
+    expect(text(without.privacy)).toContain('the file is used for that and nothing else');
+    expect(text(jevOnly.privacy)).not.toContain('the file is used for that and nothing else');
+    expect(text(jevOnly.privacy)).toContain('so that Auto-fill can read it when you press it');
+  });
+
   it('says deletion here does not reach what was sent', () => {
     expect(text(jevOnly.privacy)).toContain('does not reach it');
     expect(text(jevOnly.deletion)).toContain('deletion here does not reach it');

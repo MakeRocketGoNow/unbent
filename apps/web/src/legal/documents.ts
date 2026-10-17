@@ -288,7 +288,9 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
           'Unbent is hosted in the United States. Your notes, files and account records are ' +
             'stored with our hosting provider there, which also keeps ordinary request logs, as ' +
             'any web host does. Text inside PDFs you upload is extracted on those same systems ' +
-            'so that search can find it; the file is used for that and nothing else.',
+            (opts.autofill
+              ? 'so that search can find it, and so that Auto-fill can read it when you press it.'
+              : 'so that search can find it; the file is used for that and nothing else.'),
           `${COUNT[2 + Number(opts.errorTracking) + Number(opts.backups) + Number(opts.sellsPlan) + Number(opts.autofill) + Number(opts.autofill && opts.llm)]} other kinds of service ` +
             `are involved, each for one narrow job:`,
         ],
