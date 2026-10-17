@@ -47,6 +47,23 @@ gets the ordinary number, so an instance that sets one setting behaves as it did
 account's Maintenance page and the button's refusal both quote the number that applies
 to it. Where billing is off nobody is on a trial, and only the ordinary cap is read.
 
+The year has a cap of its own, in money rather than presses, because a day's cap bounds a
+loop and not a year of days just under it, and because what a press costs varies with
+the model and with how many scans it reads. `AUTOFILL_YEARLY_CENTS` and
+`AUTOFILL_TRIAL_YEARLY_CENTS` are chosen by plan state the same way and fall back the
+same way. The counter keeps tokens, never money; each press sums the year's tokens and
+prices them with the table in `packages/shared/src/llm-prices.ts`, which goes stale when
+Anthropic changes a price and is a percent-level error on a guard, not a hole. A press on
+the decision model, which reports no tokens, counts as a fixed tenth of a cent. The
+refusal says this year's included Auto-fill is used up and that it returns on 1 January
+(UTC, like the day), and names no amount: the cap is the instance's cost, not the
+person's bill.
+
+unbent.app sets all four: 500 presses and 5000 cents (fifty dollars) a year for a paying
+account, 50 presses and 300 cents (three dollars) for a trial. Fifty dollars is more than
+the plan costs and still a ceiling on a loop that never trips the day's cap; three dollars
+files a fortnight's worth of scans and bounds what a trial made in bulk can spend.
+
 ### Changing the price
 
 The terms promise every subscriber an email at least 30 days before the renewal a price

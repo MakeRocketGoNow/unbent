@@ -225,9 +225,12 @@ token the language model is paid for inside one: by day, by job (reading a file,
 title, the fields) and by model, since a token's price is the model's. Maintenance shows
 the account's presses and tokens for the year. A press is one request anyone signed in can
 send in a loop, so `AUTOFILL_DAILY_CAP` sets how many one account may make in a UTC day;
-past it, the button says how long until it works again. Unset, nothing is refused. An
-instance that sells the plan can give an account on its trial a smaller number with
-`AUTOFILL_TRIAL_DAILY_CAP`; [Selling the plan](billing.md#selling-the-plan) says why.
+past it, the button says how long until it works again. Unset, nothing is refused.
+`AUTOFILL_YEARLY_CENTS` bounds the year the same way, in cents of what the model's tokens
+cost at the prices kept in `packages/shared/src/llm-prices.ts`; past it the button says
+this year's included Auto-fill is used up, and never names money. An instance that sells
+the plan can give an account on its trial smaller numbers with `AUTOFILL_TRIAL_DAILY_CAP`
+and `AUTOFILL_TRIAL_YEARLY_CENTS`; [Selling the plan](billing.md#selling-the-plan) says why.
 
 `POST /api/notes/:id/autofill` answers with the suggestions and applies nothing; the client
 does. The Android app is the site in a WebView, so it has the same control.
