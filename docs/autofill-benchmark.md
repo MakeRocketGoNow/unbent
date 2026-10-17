@@ -1,51 +1,63 @@
 # Auto-fill's decision model, measured
 
-[Auto-fill](search.md#filing-a-note-from-what-it-says) is one press that files a note: it
-reads what the note and its files say and chooses a notebook, tags and field values from
-the ones that exist. The choosing is done by a decision model, [Jev](https://docs.typesafe.ai)
-from TypeSafe, which answers typed questions with a probability over the options rather than
-with text. On 2026-10-16 we put [SubQ Snap](https://subq.ai/introducing-subq-snap), a newer
-model of the same kind, in Jev's seat and measured both on the same notes. This page is the
-result, the method, and how to run it on your own archive.
+SubQ Snap was pitched as the model that would replace TypeSafe's Jev: a decision model of
+the same kind, with twelve times the context at a similar price. We put it in Jev's seat in
+[Auto-fill](search.md#filing-a-note-from-what-it-says), the press that files a scan into a
+notebook, tags it and fills its fields, and ran both on the same 46 notes from one real
+archive, scored against how the owner had filed them.
 
-The short version: on this task Snap filed notebooks worse than Jev, cost half again as
-much per press once the press was split to fit its request limit, and was no faster. Its
-384k-token context changed no answer on the two long documents tried. We kept Jev.
+**Snap was not the drop-in upgrade.** On this task it:
 
-**What this is not.** It is one task (filing a note into an archive), 46 notes from one
-person's archive, scored against how that person filed them. It is not a general
-benchmark of either model, and a different task or a press designed around Snap's limits
-could come out differently. The limits are listed below with the counts, because a reader
-should be able to decide how much of this carries over to their own problem.
+- **filed fewer notes right and more wrong**: 15 right and 11 wrong, against Jev's 22 and 6;
+- **cost half again as much per press** once the press was split to fit its 16-question
+  request limit, which sends the note's text ten times a round;
+- **was no faster**, since the press waits on the title call either way;
+- **gained nothing from its 384k context**: on two documents of 56k and 108k characters,
+  every choice was the same with the text cut at 40k.
 
-## The task
+![Notebook chosen for 46 notes: Jev 22 right, 6 wrong, 18 left for you; SubQ Snap 15, 11, 20; one Haiku 5.5 call 21, 7, 18](images/autofill-notebooks.svg)
 
-A note goes in with its notebook, tags and field values removed (and its title too when it
-has a file with text, since a scan's title is the model's to write). The press asks the
-decision model to choose a notebook, to say yes or no to each tag, and to pick each field's
-value from candidates the code finds in the text (every date for a date field, every
-amount for a number, the document's own lines for a text field). A language model
-(`claude-haiku-5-5`) writes the title and any free-text field beside it, in both arms; only
-the chooser changed. The answers are scored against what the owner had filed.
+| Per press, median of 46 | Jev | SubQ Snap | One Haiku 5.5 call |
+|---|---|---|---|
+| Notebook right / wrong / none | 22 / 6 / 18 | 15 / 11 / 20 | 21 / 7 / 18 |
+| Field values right / wrong, where the notebook was right | 37 / 17 | 25 / 6 | 43 / 7 |
+| Tags matching the owner's / extra | 9 / 21 | 11 / 25 | 16 / 36 |
+| Seconds | 1.36 | 1.38 | 3.00 |
+| Cents | 0.10 | 0.15 | 0.05 |
+| Decision requests | 1.5 | 10.5 | 1 |
 
-The sample was 46 notes across 15 notebooks, 13 of them with file text, one notebook left
-out for privacy. It stayed on the owner's machine; nothing from it is in this repository or
-in the results below except counts.
+The third column is the alternative we were really weighing: one plain language-model call
+doing all of it. It files about as well as either decision model and costs half, and its
+one cost is a second and a half on every press. The decision models' edge on this task is
+speed, and only speed. We kept Jev.
 
-## Snap in Jev's seat
+**Read this as one data point.** One task, 46 notes, one person's filing as the answer key,
+and a model five days past launch. A press designed around Snap's limits could come out
+differently; we did not build one. The rest of this page is what was measured, what was
+not, and how to run it on your own notes.
 
-Snap speaks the same request and answer shape as Jev, so the client in `lib/jev.ts` was
-pointed at Snap's endpoint under Snap's model name and nothing else in the press changed.
-One difference could not be avoided. Snap refuses a request of more than 16 questions (a
-422, as its documentation says), and the press's first round asks one yes-or-no question
-per tag, up to 150 of them. Pointed at Snap as-is, every press fails. So the Snap arm
-splits each round into requests of 16, sent at once, each carrying the note's text again.
-That is what a real swap would have to do, and its seconds and cents are measured with it.
+## Why Snap came out behind
 
-### Counts
+- **Its request limit shapes the cost.** Snap refuses more than 16 questions per request (a
+  422, as documented). The press's first round asks one yes-or-no per tag, up to 150, so a
+  plain URL swap fails every press. The Snap arm splits each round into requests of 16 sent
+  at once, each carrying the note's text again: 27k input tokens a press by Snap's own
+  count, against about 20k for Jev, at a higher price per token. Any real swap would pay
+  the same.
+- **The notebook gap is not the confidence floor.** The press drops a notebook answered
+  below 0.5 confidence, a number tuned on Jev. At every floor tried Snap stays behind: 14
+  right and 7 wrong at 0.6, 19 and 14 at 0.4, against Jev's 22 and 6 at 0.5. Its top choice
+  is right about as often (24 of 46 against 26), but it answered "none" once where Jev did
+  seven times, it put five notes in the archive's catch-all notebook, and its confidence
+  does not separate its right picks from its wrong ones the way Jev's does.
+- **Per field it is about as accurate** (25 of 57 right where the notebook was right,
+  against about 36 of 105). It gets fewer notebooks right, so it has fewer fields to fill.
+- **Tags are slightly better**: two more matching, four more extra.
+- **It is deterministic.** Three runs, identical answers. Jev's three runs moved one or two
+  notes each, so differences of that size anywhere on this page are noise.
 
-Jev was run three times to see how much its answers move between runs; Snap gave the same
-answers on all three of its.
+<details>
+<summary>All three Jev runs beside Snap's</summary>
 
 | | Jev, run 1 | Jev, run 2 | Jev, run 3 | Snap (3 runs, identical) |
 |---|---|---|---|---|
@@ -57,37 +69,30 @@ answers on all three of its.
 | Cents per press | 0.102 | 0.102 | | 0.152 |
 | Decision requests per press | 1.5 | 1.5 | | 10.5 |
 
-### How to read it
+Jev's cost is estimated from request bytes at four to a token at $0.042 per million, since
+TypeSafe reports no counts; Snap reports its usage and is billed at $0.05 per million. Both
+bill output at nothing.
 
-- **Jev's repeat runs move one or two notes.** Differences of that size between any two
-  columns are noise. Snap's determinism is a real property, and a pleasant one.
-- **The notebook gap is not the confidence floor.** The press drops a notebook answered
-  below 0.5 confidence, a number tuned on Jev, so run 3 kept each model's answer from before
-  the floor and tried others. At its best floor Snap is still behind Jev at today's: 14
-  right and 7 wrong at 0.6, 19 and 14 at 0.4, against Jev's 21 and 6 at 0.5. Its top choice
-  is right about as often as Jev's (24 of 46 against 26), but it answered "none" once where
-  Jev did seven times, it put five notes in the archive's catch-all notebook, and its
-  confidence does not separate its right picks from its wrong ones the way Jev's does. No
-  threshold closes the gap.
-- **Per field it is about as accurate.** 25 of 57 right where the notebook was right,
-  against about 36 of 105 for Jev. It gets fewer notebooks right, so it has fewer fields to
-  fill.
-- **Tags are slightly better.** Two more matching, four more extra.
-- **Speed is a tie.** Snap answers each request in 0.3 to 0.5 seconds, the ten requests run
-  at once, and either way the press waits on the language model's title call.
-- **Cost is higher despite the lower price.** Snap is $0.05 per million input tokens against
-  Jev's $0.042, and both bill output at nothing. But the note's text goes out ten times a
-  round instead of once. Snap reports its usage, 27k input tokens a press; Jev reports none,
-  so its 20k is estimated from request bytes at four to a token.
+</details>
 
-### The long-context question
+## The long-context question
 
 Jev takes 32k tokens, so the press cuts a note's text at 40,000 characters
-(`MAX_STATE_CHARS` in `lib/autofill.ts`), and a note with many long files loses most of
-them. Snap takes 384k. That was the reason to try it. No note in the 46 came near the cap,
-so two long notes were pulled from outside the sample: a contract of about 56,000
-characters across two files, and a set of agreements of about 108,000 across four. A third
-was dropped when copying its text was stopped partway.
+(`MAX_STATE_CHARS` in `lib/autofill.ts`). Snap takes 384k, and that was the reason to try
+it. No note in the 46 came near the cap, so two long notes were pulled from outside the
+sample: a contract of about 56,000 characters across two files, and a set of agreements of
+about 108,000 across four.
+
+- Every choice was the same at both caps. Both documents say what they are on their first
+  pages, so the cut never reaches the text that decides, and that is likely true of most of
+  a paperless archive.
+- Raising the cap also sends the extra text to the title call, which is most of the cost
+  rise.
+- Two notes cannot prove a negative. But nothing here argues for raising the cap, and
+  nothing argues that Jev's 32k is costing filings.
+
+<details>
+<summary>The two long notes, by cap</summary>
 
 | | Jev, 40k cap | Snap, 40k cap | Snap, 300k cap |
 |---|---|---|---|
@@ -97,41 +102,47 @@ was dropped when copying its text was stopped partway.
 | Seconds per press, median | 1.92 | 3.35 | 2.28 |
 | Cents per press | 0.28 | 0.76 | 1.42 |
 
-Every choice was the same at both caps. Both documents say what they are on their first
-pages, so the cut never reaches the text that decides, and that is likely true of most of a
-paperless archive. Raising the cap also sends the extra text to the title call, which is
-most of the cost rise. Two notes cannot prove a negative, but nothing here argues for
-raising the cap, and nothing argues that Jev's 32k is costing filings.
+A third long note was dropped when copying its text was stopped partway.
 
-### What was not tested
+</details>
 
-- **A press designed for Snap.** Asking tags as a few multiple-choice questions instead of
-  150 yes-or-nos would fit in one request and would be billed once. It is a different
-  press, and it would have to be measured against Jev on its own. We did not build it.
-- **A confidence floor tuned for Snap.** The per-note detail showed no floor that brought
-  it level with Jev, so none went into the press.
-- **OpenAI's Decisions API**, the third model of this kind. Its shape (an input, an array
-  of named questions, up to 200) needs an adapter rather than a URL switch, and we had no
-  key. The harness has a place for it.
-- **A third long document.** The long-context check ran on two notes, not three.
+## What was not tested
+
+- **A press designed for Snap.** Tags as a few multiple-choice questions instead of 150
+  yes-or-nos would fit one request and be billed once. It is a different press, and it
+  would have to be measured against Jev on its own.
+- **A confidence floor tuned for Snap.** The per-note detail showed none that brought it
+  level with Jev, so none went into the press.
+- **OpenAI's Decisions API**, the third model of this kind. Its shape (an input, up to 200
+  named questions) needs an adapter rather than a URL switch, and we had no key. The
+  harness has a place for it.
 - **Snap's own benchmarks.** It launched on 2026-10-12 with a lead on 13 of 16 of them. None
   is this task, and we did not run them.
 
-Snap was five days old when this was measured, and its launch post carried a capacity
-warning. The three things that would reopen the question are: Snap taking a press's
-questions in one request, its notebook choice catching up to within noise of Jev at a floor
-where its wrong answers are no more than Jev's, and the archive turning out to hold
-documents that say what they are past their first 40,000 characters.
+What would reopen the question: Snap taking a press's questions in one request; its
+notebook choice catching up to within noise of Jev at a floor where its wrong answers are
+no more than Jev's; or the archive turning out to hold documents that say what they are
+past their first 40,000 characters.
 
-## For comparison: one language-model call
+## The one-call alternative
 
-The same harness holds a third arm, measured the same day and reported in full in its own
-right, because it is the alternative that would retire the second vendor: one structured
-`claude-haiku-5-5` call that answers notebook, tags, title and fields at once, with the
-archive's notebooks and tags in a cached prefix and the code holding each value to the rule
-Jev's candidates hold it to (a date is one the text writes, a select is one of its options,
-a text value is something the note contains). Its Jev column is a separate run from the
-three above, which is why its numbers differ by a note or two.
+The same harness holds a third arm, because it is the change that would retire the second
+vendor: one structured `claude-haiku-5-5` call that answers notebook, tags, title and
+fields at once, with the archive's notebooks and tags in a cached prefix and the code
+holding each value to the rule Jev's candidates hold it to (a date is one the text writes,
+a select is one of its options, a text value is something the note contains).
+
+- **Files about as well.** 21 right and 7 wrong against Jev's 20 and 6 on the same run; the
+  wrong field values drop by half and the tag suggestions double, both the owner's and not.
+- **Costs half.** 0.052¢ a press against 0.10¢, with its prefix read from cache; a cold press
+  writes it at about 0.3¢.
+- **Is a second and a half slower, structurally.** A generative model writes about 400
+  tokens of answer, where a decision model answers each round in under half a second and
+  the press's four calls overlap. The press is what a person waits on, so the second
+  vendor stays for now.
+
+<details>
+<summary>The one-call run in full</summary>
 
 | | Jev press, as shipped | One Haiku call |
 |---|---|---|
@@ -142,12 +153,33 @@ three above, which is why its numbers differ by a note or two.
 | Seconds per press, median | 1.41 | 3.00 |
 | Cents per press | 0.10 | 0.052 |
 
-One call files about as well as the decision model, puts fewer wrong values in, suggests
-more tags (ones the owner used and ones they did not), and costs half. It is a second and a
-half slower on every press, and that is structural: a generative model has to write about
-400 tokens of answer, where a decision model answers each round in under half a second and
-the press's calls overlap. The press is the thing a person waits on, so the second vendor
-stays for now. Both decision models' advantage on this task is speed, and only speed.
+This Jev column is a separate run from the three above, which is why it differs by a note
+or two. Most "missed" values in every arm are owner conventions no document states.
+
+</details>
+
+## How it was measured
+
+<details>
+<summary>The task and the sample</summary>
+
+A note goes in with its notebook, tags and field values removed (and its title too when it
+has a file with text, since a scan's title is the model's to write). The press asks the
+decision model to choose a notebook, to say yes or no to each tag, and to pick each field's
+value from candidates the code finds in the text (every date for a date field, every
+amount for a number, the document's own lines for a text field). A language model
+(`claude-haiku-5-5`) writes the title and any free-text field beside it, in both decision
+arms; only the chooser changed. The answers are scored against what the owner had filed.
+
+The sample was 46 notes across 15 notebooks, 13 of them with file text, one notebook left
+out for privacy. It stayed on the owner's machine; nothing from it is in this repository or
+on this page except counts.
+
+Snap speaks the same request and answer shape as Jev, so the client in `lib/jev.ts` was
+pointed at Snap's endpoint under Snap's model name, and nothing else in the press changed
+but the split described above.
+
+</details>
 
 ## Running it yourself
 
@@ -167,6 +199,9 @@ AUTOFILL_EVAL_SAMPLE=/path/to/sample pnpm --filter @unbent/api exec vitest run -
 | `AUTOFILL_EVAL_STATE_CHARS` | Raises how much of a note's text the `jev` and `snap` arms send. `MAX_STATE_CHARS` by default; Jev itself refuses much more. |
 | `AUTOFILL_EVAL_LABEL` | Added to the results' file names, so a repeat or a raised cap does not write over an earlier run. |
 | `TYPESAFE_API_KEY`, `ANTHROPIC_API_KEY`, `SUBQ_API_KEY` | The keys, from the environment or from `apps/api/.dev.vars`. Only the arms you run need theirs. |
+
+<details>
+<summary>Building a sample from your own account</summary>
 
 The sample directory holds what the [MCP tools](assistants.md) answer for an account, saved
 as they answer it:
@@ -188,6 +223,8 @@ notebook's name would be the answer. The harness writes the per-note detail besi
 sample, in `results/`, for you to read and then delete. The sample is your notes: keep it
 out of any repository.
 
-The counts above came from this harness on 2026-10-16. The decision to keep Jev, and the
-reasoning behind the one-call arm, are recorded in the maintainer's tracker (MAK-231 and
-MAK-233); the numbers here are the whole of what those records hold.
+</details>
+
+The counts on this page came from this harness on 2026-10-16. The decision to keep Jev, and
+the reasoning behind the one-call arm, are recorded in the maintainer's tracker (MAK-231
+and MAK-233); the numbers here are the whole of what those records hold.
