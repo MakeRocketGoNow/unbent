@@ -23,7 +23,17 @@
  * there and not here would have every device with the worker answer its page loads with
  * the app, and only another deploy could take that back.
  */
-export const WORKER_PREFIXES = ['/api/', '/.well-known/', '/ingest/', '/manifest.webmanifest'];
+export const WORKER_PREFIXES = ['/api/', '/.well-known/', '/ingest/', '/manifest.webmanifest', '/robots.txt', '/sitemap.xml'];
+
+/**
+ * The paths the Worker answers itself that *are* routes of the app: the pages the build
+ * wrote out as static HTML (`src/prerender.tsx`), which the Worker hands over with their
+ * addresses completed (`apps/api/src/lib/front-pages.ts`). Also in `run_worker_first`,
+ * and deliberately not above: the Worker's answer is the same page the shell draws, so
+ * the shell is the right answer when the network does not give one, and a page load
+ * here takes the navigation route like any other.
+ */
+export const WORKER_PAGES = ['/why'];
 
 /**
  * Whether a page load at this address should be answered with the app itself.

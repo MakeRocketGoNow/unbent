@@ -2,6 +2,7 @@ import type { RawEnv } from './types.js';
 import { app } from './app.js';
 import { withAppUrl } from './lib/app-url.js';
 import { MANIFEST_PATH, serveManifest } from './lib/manifest.js';
+import { serveFrontPage } from './lib/front-pages.js';
 import { dumpStores } from './lib/backups.js';
 import { cronJob } from './lib/cron.js';
 import { sweepStores } from './lib/sweep.js';
@@ -33,7 +34,9 @@ export default {
     // Ahead of Hono, so the manifest costs an asset read and not a session lookup; see
     // lib/manifest.ts.
     if (new URL(request.url).pathname === MANIFEST_PATH) return serveManifest(request, env);
-    return app.fetch(request, withAppUrl(env, request), ctx);
+    // The same for the story's static copy, robots.txt and the sitemap; see
+    // lib/front-pages.ts.
+    return serveFrontPage(request, env) ?? app.fetch(request, withAppUrl(env, request), ctx);
   },
   /**
    * Two jobs on one trigger, `17,47 * * * *` in wrangler.toml: at :17 the walk over every
