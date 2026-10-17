@@ -10354,6 +10354,10 @@ button.settings-nav-item {
   line-height: 1.65;
 }
 
+/* Balanced rather than the front page's `pretty`: the lead is two short sentences, and
+   even lines read better than a full first line and a short last one. */
+.front-story-lead { text-wrap: balance; }
+
 .front-story section { padding-top: 3rem; }
 
 .front-story h2 {

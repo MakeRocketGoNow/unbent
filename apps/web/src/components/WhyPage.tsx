@@ -65,10 +65,11 @@ export function WhyPage() {
     <FrontShell>
       <section className="front-hero front-width">
         <h1>Why Unbent exists</h1>
-        <p className="front-lead">
-          I paid for Evernote every September for fifteen years and kept thirteen thousand
-          notes in it, most of them scanned paper. This is what happened to that archive, and
-          the promise Unbent was built around because of it.
+        {/* Short enough to balance into even lines, and the numbers held together: a lead
+            that broke after "thirteen" and left two words on its last line read badly. */}
+        <p className="front-lead front-story-lead">
+          Fifteen&nbsp;years of Evernote renewals and thirteen&nbsp;thousand scanned notes.
+          This is what happened to that archive, and the promise Unbent was built on.
         </p>
       </section>
 
