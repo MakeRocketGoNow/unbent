@@ -65,6 +65,13 @@ describe('the store limit', () => {
     await expect(stub.writeAssistantText(first.id, 'copy.pdf', 'what the assistant read', limit)).rejects.toMatchObject(refused);
     expect(await stub.textFor(first.id, 'copy.pdf')).toBe('');
 
+    // A replay of a create or a duplicate whose note is already here finds it, whatever
+    // the size: the room is checked only on the path that creates.
+    expect((await stub.createOrFind({ ...note({ id: first.id }), title: 'Replayed' }, limit)).existing).toBe(true);
+    const copy = await stub.duplicate(first.id, crypto.randomUUID(), null);
+    expect((await stub.duplicateOrFind(first.id, copy!.id, limit))!.existing).toBe(true);
+    await expect(stub.duplicateOrFind(first.id, crypto.randomUUID(), limit)).rejects.toMatchObject(refused);
+
     // Under the limit, and with none, every one of them goes through.
     for (const l of [100 * MB, null, undefined]) {
       for (const [name, write] of writes) {

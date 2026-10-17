@@ -925,6 +925,11 @@ export class UserStore extends DurableObject<StoreEnv> {
     if (size > limit) throw new StoreFull(size, limit);
   }
 
+  /** The same check as a step a method runs itself, on the path that writes; nothing when there is no limit. */
+  private room(limit: StoreLimit): (() => void) | undefined {
+    return limit === undefined || limit === null ? undefined : () => this.assertRoom(limit);
+  }
+
   private announce(): void {
     const seq = this.feed.takeAnnouncement();
     if (seq !== null) this.tell(seq);
@@ -967,9 +972,15 @@ export class UserStore extends DurableObject<StoreEnv> {
   get(id: string, opts?: { includeTrashed?: boolean | undefined }) { this.ready(); return this.notes.get(id, opts); }
   create(input: Parameters<NotesStore['create']>[0], limit?: StoreLimit) { return this.writing(() => this.notes.create(input), limit); }
   duplicate(id: string, newId: string, limit?: StoreLimit) { return this.writing(() => this.notes.duplicate(id, newId), limit); }
-  createOrFind(input: Parameters<NotesStore['createOrFind']>[0], limit?: StoreLimit) { return this.writing(() => this.notes.createOrFind(input), limit); }
+  /**
+   * The two replay-safe writes check the room only on the path that creates: a replay
+   * of a request whose answer was lost must find the note its first attempt made
+   * (AGENTS.md, "Ids may come from the client"), and a 402 for a note the server holds
+   * would have the client roll back a row the next pull brings back.
+   */
+  createOrFind(input: Parameters<NotesStore['createOrFind']>[0], limit?: StoreLimit) { return this.writing(() => this.notes.createOrFind(input, this.room(limit))); }
   createMany(inputs: Parameters<NotesStore['createMany']>[0], opts?: Parameters<NotesStore['createMany']>[1], limit?: StoreLimit) { return this.writing(() => this.notes.createMany(inputs, opts), limit); }
-  duplicateOrFind(id: string, newId: string, limit?: StoreLimit) { return this.writing(() => this.notes.duplicateOrFind(id, newId), limit); }
+  duplicateOrFind(id: string, newId: string, limit?: StoreLimit) { return this.writing(() => this.notes.duplicateOrFind(id, newId, this.room(limit))); }
   update(id: string, patch: Parameters<NotesStore['update']>[1], limit?: StoreLimit) { return this.writing(() => this.notes.update(id, patch), limit); }
   appendToBody(id: string, markdown: string, limit?: StoreLimit) { return this.writing(() => this.notes.appendToBody(id, markdown), limit); }
   listRevisions(id: string) { this.ready(); return this.notes.listRevisions(id); }
