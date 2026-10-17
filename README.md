@@ -1,19 +1,11 @@
 # Unbent
 
-A personal note app that keeps your notes in Markdown and hands them back whenever you ask.
+Notes, receipts and scans you can search, and take with you whenever you like.
 
-Notes are Markdown with YAML frontmatter. Attachments are ordinary files. Export produces a
-plain folder tree (one directory per note, containing the note's markdown and a `files/`
-subdirectory) that you can read, grep, and back up without this app existing, and import
-back into any Unbent.
-
-The Markdown is the note, not a serialization of one. A note you save is byte-identical to
-what you typed: no reflowed lists, no `_italic_` quietly rewritten to `*italic*`, no escaped
-underscores in a filename. That is the whole promise, and it is what makes the export
-guarantee worth anything: a format the app rewrites behind your back is a format you do not
-actually own.
-
-Editing it should still feel like a word processor. See [Editing](docs/editor.md).
+Unbent keeps your notes, receipts and scanned paperwork together and finds them by what they
+say, even a photo of a receipt. Everything in it is an ordinary file you can download
+whenever you like, and if you ever stop paying, nothing is held hostage: the account turns
+read-only, and every note still opens, searches and exports.
 
 <p>
   <picture>
@@ -28,33 +20,97 @@ Editing it should still feel like a word processor. See [Editing](docs/editor.md
 
 ## Why
 
-Evernote's owner gave a lot of people a reason to leave. Leaving should be easy, and staying
-should never depend on it being hard.
+A lot of people kept years of their lives in Evernote: every bill, warranty, manual and
+receipt, scanned once and found again by what it said. Then its owner changed, the price
+roughly doubled within a year, and the way out was an export only another notes app could
+read. Unbent is the app we wanted instead: the same job, done with files you own.
+
+Leaving should be easy, and staying should never depend on it being hard.
 
 ## What it does
 
-- **Markdown is the stored truth.** Every note is a Markdown file with frontmatter, saved
-  exactly as typed, and edited in place by a [word-processor-like editor](docs/editor.md)
-  that never rewrites it.
-- **Evernote import.** An ENEX export goes in whole, from the browser, and an interrupted
-  import picks up where it stopped. Notion's export goes in the same way.
-- **Folder export.** A zip of one directory per note, with the files beside it, that any
-  Unbent reads back in. It is [your own backup](docs/backups.md), and the way out.
-- **Search inside PDFs.** The text layer of every scanned PDF is indexed, so a scanned bill
-  is [found by what it says](docs/search.md).
-- **Notebook fields and Auto-fill.** A notebook can carry typed fields (dates, amounts,
-  selects, ratings), and one press reads a note's files and [fills in whatever is
-  empty](docs/search.md#filing-a-note-from-what-it-says).
-- **An MCP server for assistants.** Claude, Cursor or anything that speaks the protocol can
-  [search, read and write your notes](docs/assistants.md), with an approval you can revoke.
-- **A library on the device.** The app opens with no connection and works: notes, notebooks
+The first four are the paperless office, in order: scan the bills, receipts, manuals and
+letters once and recycle the paper.
+
+- **Scan it, drop it in.** Drop a stack of PDFs or photos on the list and each becomes a
+  note with the file attached. Install the app and it registers as a handler for PDFs and
+  images, so a scanner's "send to application" step lands straight in it.
+- **Files a scan with one press.** Press Auto-fill and an AI reads the scan and fills in
+  its title, its notebook and any empty fields: the date, the total, who it was from. You
+  check it instead of typing it, and it only runs when you press it.
+  [Auto-fill](docs/search.md#filing-a-note-from-what-it-says).
+- **Finds things by what they say.** Search reaches the text of every PDF you attach, and
+  pictures and scans are read too, so a photo of a receipt turns up under the name of the
+  shop. [Search](docs/search.md).
+- **Notebooks that work like a spreadsheet.** A notebook can carry typed fields (dates,
+  amounts, selects, ratings), be seen as a table and filtered by any of them. Receipts by
+  month, warranties by when they run out.
+- **Works with your AI assistant, and is off until you say so.** Unbent is a full MCP
+  server, and never sends your notes to a model on its own. [Below](#works-with-your-ai-assistant).
+- **Imports from Evernote and Notion.** An ENEX export goes in whole, from the browser, and
+  an interrupted import picks up where it stopped. Notion's Markdown and CSV export goes in
+  the same way, each database becoming a notebook with its columns as fields.
+- **Exports everything, any time.** A zip of one folder per note, with its files beside it,
+  that any computer opens with nothing from us installed and any Unbent reads back in. It is
+  [your own backup](docs/backups.md), and the way out.
+- **Keeps your notes as plain files, never rewritten.** Every note is a Markdown file saved
+  exactly as you typed it, edited by a [word-processor-like editor](docs/editor.md) that
+  never reformats it. [Below](#your-notes-are-files).
+- **Works offline, on every device.** The app opens with no connection: notes, notebooks
   and tags live in a [local copy](docs/sync-and-offline.md) kept current by a change feed,
   and edits made offline sync when it returns.
-- **Android and iOS apps.** The site in a web view, with native sign-in, the share sheet
-  and files: [Android](docs/android.md), [iOS](docs/ios.md).
+- **Android and iOS apps, coming soon.** The site in a web view, with native sign-in, the
+  share sheet and files: [Android](docs/android.md), [iOS](docs/ios.md). Neither is in a
+  store yet; until then, Unbent works in a phone's browser.
 
 A note's [history](docs/history-and-trash.md) keeps what an edit replaced, and the trash
 keeps what was deleted.
+
+## Works with your AI assistant
+
+Unbent is an [MCP](https://modelcontextprotocol.io) server, so Claude, ChatGPT, Cursor or
+anything else that speaks the protocol can work in your notes the moment you connect it.
+Connecting is an ordinary OAuth consent; Settings › Connected apps lists what you have let
+in and disconnects any of it, and access ends on the next call rather than when a token
+expires. About thirty tools, under the same rules the app has:
+
+- **Read:** search notes (full text, inside files too, with filters on notebook, tag, date
+  and field), list notes a page at a time with a one-line summary of each file (a receipt's
+  total, dates and order number found in its text), get a note, list notebooks and tags.
+- **Write:** create one note or several, edit part of a note by exact match or append to
+  it without resending the rest, add or remove tags, set field values on many notes at
+  once, move notes to a notebook, trash and restore, one or many.
+- **Files:** read the text held for a file, see a picture (so the assistant reads a scan
+  nothing has read yet with its own model, on its own bill), record what it read so search
+  has it, attach a file from a URL, or upload one from the assistant's own machine through
+  a one-time link.
+- **Notebooks:** create, update and delete notebooks; add a field, rename or retype it,
+  edit its options; rename, merge and delete tags.
+
+Two rules hold the other half of the promise. Unbent itself never sends your notes to a
+model: the one feature that uses AI, Auto-fill, runs only when someone presses it, on one
+note, and there is deliberately no tool and no button that runs it across a notebook.
+Filling a thousand imported receipts' fields is the assistant's job, on the assistant's
+model, and [the recipe](docs/assistants.md) needs nothing beyond the tools above. And an
+assistant is kept on a leash: no tool deletes anything for good (the trash is as far as it
+can go), and every edit it makes is kept in the note's history, marked as the assistant's,
+so you can see what it did and put it back. [Connecting an assistant](docs/assistants.md)
+has the details.
+
+## Your notes are files
+
+Notes are Markdown with YAML frontmatter. Attachments are ordinary files. Export produces a
+plain folder tree (one directory per note, containing the note's markdown and a `files/`
+subdirectory) that you can read, grep, and back up without this app existing, and import
+back into any Unbent.
+
+The Markdown is the note, not a serialization of one. A note you save is byte-identical to
+what you typed: no reflowed lists, no `_italic_` quietly rewritten to `*italic*`, no escaped
+underscores in a filename. That is the whole promise, and it is what makes the export
+guarantee worth anything: a format the app rewrites behind your back is a format you do not
+actually own.
+
+Editing it should still feel like a word processor. See [Editing](docs/editor.md).
 
 ## Use it or run your own
 

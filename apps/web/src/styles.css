@@ -10180,6 +10180,9 @@ button.settings-nav-item {
   text-wrap: balance;
 }
 
+/* A sentence of the headline, unbreakable, so lines break only between sentences. */
+.front-beat { display: inline-block; }
+
 .front-lead {
   max-width: 36rem;
   margin: 1.25rem auto 0;
@@ -10256,12 +10259,24 @@ button.settings-nav-item {
   margin: 0.5rem 0 0;
 }
 
+/* An intro of several paragraphs (the assistant section's) keeps the one-paragraph
+   intro's width and top margin, and spaces its paragraphs as the page's prose does. */
+.front-intro p { margin: 0; }
+.front-intro p + p { margin-top: 0.75rem; }
+
 /* Three across on a desktop, as many as fit below that; each a short paragraph. */
 .front-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
   gap: 2rem 2.5rem;
   margin-top: 1.75rem;
+}
+
+/* Four cards two by two, for the section whose cards are a workflow in order: three
+   across would leave the fourth step alone on a row. On a phone it is one column like
+   the rest. */
+.front-grid-pairs {
+  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
 }
 
 .front-point h3 {

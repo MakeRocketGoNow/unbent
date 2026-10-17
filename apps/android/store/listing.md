@@ -13,10 +13,10 @@ Unbent
 ## Short description (80)
 
 ```
-Markdown notes that stay yours. Export everything as plain files, anytime.
+Notes, receipts and scans you can search, and take with you whenever you like.
 ```
 
-`73 / 80`
+`78 / 80`
 
 ### Alternates
 
@@ -33,7 +33,7 @@ A notes app you can walk away from. Markdown in, plain folders out.
 ## Full description (4000)
 
 ```
-Unbent keeps your notes in Markdown and hands them back whenever you ask.
+Notes, receipts and scans you can search, and take with you whenever you like.
 
 A note you save is byte-identical to what you typed. No reflowed lists, no italics quietly
 rewritten, no escaped characters appearing in your text overnight. The Markdown is the note

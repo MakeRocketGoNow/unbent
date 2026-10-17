@@ -22,6 +22,7 @@ import {
   FileSearch,
   FileText,
   Film,
+  FolderDown,
   Funnel,
   Hash,
   Image,
@@ -40,8 +41,11 @@ import {
   Pencil,
   Phone,
   Plus,
+  ScanLine,
+  ScanText,
   Search,
   Settings,
+  ShieldCheck,
   SlidersHorizontal,
   Smartphone,
   Sparkles,
@@ -52,6 +56,7 @@ import {
   Tag,
   Trash2,
   Type,
+  Unplug,
   X,
   ArchiveRestore,
 } from 'lucide-react';
@@ -704,6 +709,38 @@ export function FieldsFeatureIcon() {
 
 export function AssistantFeatureIcon() {
   return <FeatureIcon icon={Bot} />;
+}
+export function AutofillFeatureIcon() {
+  return <FeatureIcon icon={Sparkles} />;
+}
+/** A scan arriving: dropped on the list, or sent by the scanner to the installed app. */
+export function ScanInFeatureIcon() {
+  return <FeatureIcon icon={ScanLine} />;
+}
+/** An assistant reading the text held for a scan. */
+export function ScanTextFeatureIcon() {
+  return <FeatureIcon icon={ScanText} />;
+}
+/** An assistant filling a notebook's fields, a page of notes at a time. */
+export function FilingFeatureIcon() {
+  return <FeatureIcon icon={ListChecks} />;
+}
+/** Access an assistant was given and can be taken back: Connected apps' disconnect. */
+export function DisconnectFeatureIcon() {
+  return <FeatureIcon icon={Unplug} />;
+}
+export function PlainFilesFeatureIcon() {
+  return <FeatureIcon icon={FileText} />;
+}
+export function ExportFeatureIcon() {
+  return <FeatureIcon icon={FolderDown} />;
+}
+/** The read-only state a lapsed account keeps: nothing taken, nothing lost. */
+export function ReadOnlyFeatureIcon() {
+  return <FeatureIcon icon={ShieldCheck} />;
+}
+export function OfflineFeatureIcon() {
+  return <FeatureIcon icon={CloudOff} />;
 }
 
 export function PhoneAppsFeatureIcon() {
