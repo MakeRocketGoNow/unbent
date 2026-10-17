@@ -35,6 +35,41 @@ duplicate past the plan's quota is a 402 that names the numbers, and the Plan pa
 what the account holds against it. The sum is kept on each account's store by triggers
 (schema 0008), never by reading the files table.
 
+Auto-fill is the one thing an account can make the instance pay for per press, and its
+daily cap has two numbers for the same reason the trial asks for no card. `AUTOFILL_DAILY_CAP`
+bounds one account's day, which is enough against a paying customer's loop: there is a
+customer behind the account, and a day of presses costs less than the plan. A trial is
+free, needs no card, and email sign-in accepts any address, so a cap per account does
+nothing against someone making accounts in a loop: a hundred trials get a hundred days'
+worth. `AUTOFILL_TRIAL_DAILY_CAP` is the number a trial gets instead, sized for what a
+fortnight's free account should be able to spend before it is a customer; unset, a trial
+gets the ordinary number, so an instance that sets one setting behaves as it did. The
+account's Maintenance page and the button's refusal both quote the number that applies
+to it. Where billing is off nobody is on a trial, and only the ordinary cap is read.
+
+The year has a cap of its own, in money rather than presses, because a day's cap bounds a
+loop and not a year of days just under it, and because what a press costs varies with
+the model and with how many scans it reads. `AUTOFILL_YEARLY_CENTS` and
+`AUTOFILL_TRIAL_YEARLY_CENTS` are chosen by plan state the same way and fall back the
+same way. The counter keeps tokens, never money; the year's tokens are summed once per
+wake of the account's store, kept in step with each press after that, and priced with the
+table in `packages/shared/src/llm-prices.ts`, which goes stale when Anthropic changes a
+price and is a percent-level error on a guard, not a hole (a corrected price takes effect
+the next time a store wakes). A press on
+the decision model, which reports no tokens, counts as a fixed tenth of a cent. The
+refusal says the account has used this year's Auto-fill and that it returns on 1 January
+(UTC, like the day), and names no amount: the cap is the instance's cost, not the
+person's bill. A trial on a number of its own is told that the trial's Auto-fill is used
+up and that a subscription comes with more, since 1 January would be false for it:
+subscribing gives it the paying number at once. A trial that fell back to the ordinary
+number is told what everyone else is, because for it that is the truth. Both refusals
+and the Maintenance page say the numbers are the account's, never the instance's.
+
+unbent.app sets all four: 500 presses and 5000 cents (fifty dollars) a year for a paying
+account, 50 presses and 300 cents (three dollars) for a trial. Fifty dollars is more than
+the plan costs and still a ceiling on a loop that never trips the day's cap; three dollars
+files a fortnight's worth of scans and bounds what a trial made in bulk can spend.
+
 ### Changing the price
 
 The terms promise every subscriber an email at least 30 days before the renewal a price

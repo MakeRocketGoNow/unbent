@@ -1,14 +1,24 @@
-import type { LlmJob, LlmJobUsage, LlmTokens } from '@unbent/shared';
+import { JEV_PRESS_CENTS, knownPrice, tokensCents, usageCents, type LlmJob, type LlmJobUsage, type LlmTokens } from '@unbent/shared';
 import type { Sql } from './sql.js';
 
 /** One answer the model was paid for: the job, the model, and the API's four counts. */
 export type UsageEntry = LlmTokens & { job: LlmJob };
+
+/** What a press is checked against: the day's presses and the year's spend, each null for none. */
+export interface PressLimits {
+  /** The most presses in a UTC day (`AUTOFILL_DAILY_CAP`, or the trial's). */
+  cap: number | null;
+  /** The most the calendar year's Auto-fill may have cost, in cents (`AUTOFILL_YEARLY_CENTS`, or the trial's). */
+  yearlyCents: number | null;
+}
 
 /** What a press was told: whether it may go ahead, and how many the day had before it. */
 export interface PressCheck {
   allowed: boolean;
   /** Presses counted today, this one included when it was allowed. */
   today: number;
+  /** Which limit refused it, when one did: the day's count or the year's spend. */
+  reason?: 'day' | 'year';
 }
 
 /** The UTC day of `at`, as the table keys it. */
@@ -42,25 +52,46 @@ export class LlmUsageCounter {
    * nothing to read) has still been counted. That is the guard working: it caps what can
    * be asked, and a failed press asked as much.
    *
-   * `cap` null counts and never refuses, which is every instance until it sets
-   * `AUTOFILL_DAILY_CAP`.
+   * A null limit counts and never refuses, which is every instance until it sets
+   * `AUTOFILL_DAILY_CAP` or `AUTOFILL_YEARLY_CENTS`.
+   *
+   * The year's spend is checked after the day's count and only when there is a yearly
+   * limit. It is summed from tokens and converted here, at the check, with the price
+   * table in `@unbent/shared`; no cents are written to the store, so a price corrected in
+   * the table corrects the year's spend the next time it is summed. That sum reads the
+   * year's rows (`year`: at most one a day per job and model, about 1,500 by December),
+   * so it is kept once summed (`spentCents`) and only read again after a wake.
+   *
+   * The check is against what has been recorded, and a press records its cost as it
+   * goes and at its end, some of it after the answer has gone (`waitUntil`), so presses
+   * in flight together each pass a check none of them has paid into yet. The day's cap
+   * bounds how many that can be, and at Haiku's prices the overshoot is a fraction of a
+   * cent each; the cap is a ceiling on the year, not an exact one.
    */
-  press(cap: number | null, at: number): PressCheck {
+  press(limits: PressLimits, at: number): PressCheck {
     const day = usageDay(at);
     const before =
       this.sql.first<{ requests: number }>(
         `SELECT requests FROM llm_usage WHERE day = ?1 AND job = 'press' AND model = ''`,
         day,
       )?.requests ?? 0;
-    if (cap !== null && before >= cap) {
-      console.warn(`[llm] user=${this.userId} job=press refused today=${before} cap=${cap}`);
-      return { allowed: false, today: before };
+    if (limits.cap !== null && before >= limits.cap) {
+      console.warn(`[llm] user=${this.userId} job=press refused today=${before} cap=${limits.cap}`);
+      return { allowed: false, today: before, reason: 'day' };
+    }
+    if (limits.yearlyCents !== null) {
+      const spent = this.spentCents(at);
+      if (spent >= limits.yearlyCents) {
+        console.warn(`[llm] user=${this.userId} job=press refused year=${spent.toFixed(2)} cap=${limits.yearlyCents}`);
+        return { allowed: false, today: before, reason: 'year' };
+      }
     }
     this.sql.exec(
       `INSERT INTO llm_usage (day, job, model, requests) VALUES (?1, 'press', '', 1)
        ON CONFLICT(day, job, model) DO UPDATE SET requests = requests + 1`,
       day,
     );
+    this.spend(at, JEV_PRESS_CENTS);
     console.log(`[llm] user=${this.userId} job=press today=${before + 1}`);
     return { allowed: true, today: before + 1 };
   }
@@ -84,9 +115,54 @@ export class LlmUsageCounter {
       entry.cacheReadTokens,
       entry.cacheWriteTokens,
     );
+    this.spend(at, tokensCents(entry));
     console.log(
       `[llm] user=${this.userId} job=${entry.job} model=${entry.model} in=${entry.inputTokens} out=${entry.outputTokens} cacheRead=${entry.cacheReadTokens} cacheWrite=${entry.cacheWriteTokens}`,
     );
+  }
+
+  /** The model ids this object has warned have no price, so each is said once per isolate. */
+  private readonly unpriced = new Set<string>();
+
+  /**
+   * The year's spend as last summed, and the year it is of. Kept while the object is
+   * awake and bumped by every write this counter makes (`spend`), so a year of presses
+   * costs one read of the year's rows per wake rather than one per press. A write that
+   * rolls back after bumping it leaves it ahead by that write, which refuses a little
+   * early rather than late and is put right at the next wake; a write to the table that
+   * does not go through this counter (a load, a restore) has to `forget` it.
+   */
+  private spent: { year: number; cents: number } | null = null;
+
+  /**
+   * What the calendar year of `at` has cost so far, in cents, by the price table: the
+   * kept sum, or the year's rows summed and kept. A model the table does not know is
+   * priced at its dearest rate (`priceOf`) and said once here, by id, so the operator
+   * sees in the log which line to add.
+   */
+  spentCents(at: number): number {
+    const year = new Date(at).getUTCFullYear();
+    if (this.spent?.year !== year) {
+      const { presses, models } = this.year(at);
+      for (const { model } of models) {
+        if (!knownPrice(model) && !this.unpriced.has(model)) {
+          this.unpriced.add(model);
+          console.warn(`[llm] user=${this.userId} no price for model=${model}; priced at the dearest known rate until one is added`);
+        }
+      }
+      this.spent = { year, cents: usageCents(presses, models) };
+    }
+    return this.spent.cents;
+  }
+
+  /** Adds a write's cost to the kept sum, when there is one and the write is of its year. */
+  private spend(at: number, cents: number): void {
+    if (this.spent && this.spent.year === new Date(at).getUTCFullYear()) this.spent.cents += cents;
+  }
+
+  /** Drops the kept sum: the table has changed under it (a wipe, a load), so the next check sums again. */
+  forget(): void {
+    this.spent = null;
   }
 
   /**

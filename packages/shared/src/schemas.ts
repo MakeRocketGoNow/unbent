@@ -459,13 +459,18 @@ export interface LlmJobUsage extends LlmTokens {
  * `GET /api/autofill/usage`: the account's Auto-fill this calendar year, UTC (MAK-180). Presses,
  * and the model's tokens by job and model, so a price can be put on them at display when
  * one is wanted: the counter itself keeps no money. `today` and `dailyCap` are what the
- * press route refuses on; `dailyCap` is null where the instance sets none.
+ * press route refuses on for the day; `dailyCap` is the cap that applies to this account
+ * (the trial's while it is on one), null where none is set. `yearUsed` is how much of
+ * the year's spend cap the account has used, as a share of one, and null where none is
+ * set: a share rather than cents, since the cap is the instance's cost and not the
+ * person's bill, and the page must not read as one.
  */
 export interface AutofillUsage {
   year: number;
   presses: number;
   today: number;
   dailyCap: number | null;
+  yearUsed: number | null;
   models: LlmJobUsage[];
 }
 

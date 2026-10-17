@@ -457,6 +457,19 @@ const exact = new Intl.NumberFormat('en');
 const tokenCount = (n: number) => (n < 10_000 ? exact.format(n) : compact.format(n));
 
 /**
+ * The year's spend cap as a share, never an amount (see `AutofillUsage.yearUsed`), rounded
+ * to whole percent and said in words at the ends, where "0%" would read as nothing used
+ * and "100%" as a figure rather than a state. The figure stops at 99: a share that rounds
+ * to 100 while presses still go through would say "About 100%", and "All" is kept for
+ * the state where they do not.
+ */
+function yearUsedSentence(share: number): string {
+  const percent = Math.min(99, Math.round(share * 100));
+  const much = share >= 1 ? 'All' : percent < 1 ? 'Under 1%' : `About ${percent}%`;
+  return `${much} of this account's Auto-fill for the year has been used.`;
+}
+
+/**
  * What Auto-fill has cost this account this calendar year (MAK-180): the presses, and the
  * tokens the language model read and wrote inside them. Here because Maintenance is where
  * the account's other whole-account figures are, until the plans decide where usage lives
@@ -469,8 +482,10 @@ const tokenCount = (n: number) => (n < 10_000 ? exact.format(n) : compact.format
  * what was used. "Read" counts every kind of input (fresh, from the cache, into it)
  * since a person cannot act on that split; the server keeps it apart for the bill.
  *
- * The day's cap is said only where the instance sets one, with today's count beside it, so
- * the 429 a press can meet is never a surprise to someone who looked here first.
+ * The day's cap is said only where one applies, with today's count beside it, and the
+ * year's as a share of what the account gets, so neither 429 a press can meet is a
+ * surprise to someone who looked here first. "This account", since the numbers are the
+ * account's: a trial's are smaller than a paying account's.
  */
 function AutofillUsageSection() {
   const usage = useQuery(autofillUsageQuery());
@@ -518,11 +533,12 @@ function AutofillUsageSection() {
           {u.dailyCap !== null && (
             <>
               {' '}
-              This instance allows {u.dailyCap} {u.dailyCap === 1 ? 'press' : 'presses'} a day,
-              and {u.today === 0 ? 'none have' : u.today === 1 ? '1 has' : `${u.today} have`} been
+              This account can use Auto-fill {u.dailyCap === 1 ? 'once' : u.dailyCap === 2 ? 'twice' : `${u.dailyCap} times`} a
+              day, and {u.today === 0 ? 'none have' : u.today === 1 ? '1 has' : `${u.today} have`} been
               used today.
             </>
           )}
+          {u.yearUsed !== null && <> {yearUsedSentence(u.yearUsed)}</>}
         </p>
       )}
     </section>

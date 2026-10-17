@@ -3,8 +3,9 @@ import { attachmentTextFor, autofill, EXAMPLES_PER_OPTION, MAX_TAGS_ASKED } from
 import type { AttachmentsRepo } from './attachments-repo.js';
 import type { Jev } from './jev.js';
 import type { LanguageModel } from './llm.js';
-import { capReached, PressUsage } from './llm-usage.js';
+import { capReached, PressUsage, yearReached, type TrialSentences } from './llm-usage.js';
 import type { NotesRepo } from './notes-repo.js';
+import type { PressLimits } from '../store/llm-usage.js';
 import { readPendingFiles, type BlobStore, type Readers } from './read-attachment.js';
 
 /**
@@ -27,8 +28,10 @@ export interface PressDeps {
   jev: Jev | null;
   /** The language model for the title and the text fields, where the instance has one. */
   llm?: Pick<LanguageModel, 'title' | 'textFields'> | undefined;
-  /** The day's cap on presses, or null for none (`dailyCap`). */
-  cap: number | null;
+  /** The day's cap on presses and the year's on spend, each null for none (`limitsFor`). */
+  limits: PressLimits;
+  /** Which of those are the trial's own numbers (`trialSentences`), so the refusal says so. */
+  trial: TrialSentences;
   /** Whether the person pressing runs the instance; see `autofill`. */
   operator: boolean;
   /**
@@ -42,7 +45,7 @@ export interface PressDeps {
 export type PressOutcome =
   | { kind: 'missing' }
   | { kind: 'unconfigured' }
-  | { kind: 'capped'; message: string; retryAfter: number }
+  | { kind: 'capped'; message: string; retryAfter: number | null }
   | { kind: 'filed'; suggestion: AutofillSuggestion };
 
 /**
@@ -50,10 +53,10 @@ export type PressOutcome =
  * own so a test can run a whole press against stand-ins and count what it cost (MAK-180).
  *
  * Ownership is checked before configuration, so the 404 for another user's note holds on
- * an instance with no key too; then the press is counted against the day's cap, in the
- * call that reads the note, and refused past it. Every press of a live note on an
- * instance that can answer is counted, failed ones included, which is what makes the cap
- * a ceiling on what can be asked rather than on what went well.
+ * an instance with no key too; then the press is counted against the day's cap and the
+ * year's spend, in the call that reads the note, and refused past either. Every press of
+ * a live note on an instance that can answer is counted, failed ones included, which is
+ * what makes the cap a ceiling on what can be asked rather than on what went well.
  *
  * What the model cost is recorded as it goes: each reading with its text, and the rest
  * (the title, the fields, any reading paid for and thrown away) in one call at the end,
@@ -63,10 +66,14 @@ export type PressOutcome =
 export async function press(deps: PressDeps, id: string): Promise<PressOutcome> {
   const now = deps.now ?? Date.now();
   // The note and its own unread files, in one call; the read below wants both.
-  const prelude = await deps.notes.autofillPrelude(id, OWN_FILES_TO_READ, deps.jev ? { cap: deps.cap } : undefined);
+  const prelude = await deps.notes.autofillPrelude(id, OWN_FILES_TO_READ, deps.jev ? deps.limits : undefined);
   if (!prelude) return { kind: 'missing' };
   if (!deps.jev) return { kind: 'unconfigured' };
-  if (prelude.press && !prelude.press.allowed) return { kind: 'capped', ...capReached(deps.cap!, now) };
+  if (prelude.press && !prelude.press.allowed) {
+    // The store says which limit refused; each has a sentence of its own.
+    const refusal = prelude.press.reason === 'year' ? yearReached(now, deps.trial.year) : capReached(deps.limits.cap!, now, deps.trial.day);
+    return { kind: 'capped', ...refusal };
+  }
   const { note, forText, forVision } = prelude;
   const usage = new PressUsage();
   /*

@@ -1290,8 +1290,11 @@ describe('rows read on an archive-sized store', () => {
       await measure('snapshot page deep', () => stub.snapshotPage('n02000', 100)),
       await measure('texts by id', () => stub.textsById(Array.from({ length: 25 }, (_, k) => `att-n${String(k * 3).padStart(5, '0')}`))),
       // An Auto-fill press: the note, its unread files, and the day's press row checked and
-      // counted. Then the year read back for Maintenance.
-      await measure('autofill press', () => stub.autofillPrelude('n01500', 5, { cap: 1000 })),
+      // counted. With a yearly cap the first press of a wake sums the year's rows and
+      // keeps the sum, so the one after it reads what a press without the cap does. Then
+      // the year read back for Maintenance.
+      await measure('autofill press, year first summed', () => stub.autofillPrelude('n01500', 5, { cap: 1000, yearlyCents: 5000 })),
+      await measure('autofill press', () => stub.autofillPrelude('n01500', 5, { cap: 1000, yearlyCents: 5000 })),
       await measure('autofill usage', () => stub.autofillUsage()),
       // History. A save inside the window asks for the newest copy and keeps nothing;
       // one outside it keeps a copy and prunes the note's oldest. Then the sheet's
@@ -1421,7 +1424,10 @@ describe('rows read on an archive-sized store', () => {
       'page of 100 with file summaries': 950,
       'stored counts': 10,
       // The press row by its key and its upsert, on top of the note and its files (21,
-      // measured 2026-10-08).
+      // measured 2026-10-08). The year's rows on top of that once per wake, the same read
+      // as Maintenance's below (a year used every day is 1,460 rows); kept after, so the
+      // press after it is the plain number.
+      'autofill press, year first summed': 1600,
       'autofill press': 30,
       // A year used every day is 1,460 rows, and that is what it reads: this year's, off
       // the primary key, and none of last year's 1,460 (1,460, measured 2026-10-08).

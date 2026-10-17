@@ -268,6 +268,18 @@ ALLOWED_EMAILS=
 # with a sentence the button shows. Unset enforces nothing, though every press and what the
 # model cost is still counted (src/lib/llm-usage.ts). Set a small number to try the refusal.
 # AUTOFILL_DAILY_CAP=
+#
+# The same ceiling for an account on its trial, where the PADDLE_* settings below are set.
+# Unset, a trial gets AUTOFILL_DAILY_CAP. A trial is free and needs no card, so this is the
+# number that bounds what a throwaway account can spend; set it smaller than the one above.
+# AUTOFILL_TRIAL_DAILY_CAP=
+#
+# The most one account's Auto-fill may cost in a calendar year, in cents, worked out from
+# the tokens the counter records at the prices in packages/shared/src/llm-prices.ts; past
+# it a press is refused until 1 January. Unset enforces nothing. The trial's, where the
+# PADDLE_* settings are set, falls back to the first. unbent.app sets 5000 and 300.
+# AUTOFILL_YEARLY_CENTS=
+# AUTOFILL_TRIAL_YEARLY_CENTS=
 
 # The User-Agent add_attachment sends when it fetches a file for an assistant. Unset, it is
 # a current desktop Chrome (DEFAULT_FETCH_USER_AGENT in src/lib/fetch-attachment.ts); set

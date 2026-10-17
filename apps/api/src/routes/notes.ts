@@ -17,7 +17,7 @@ import { copyAttachments } from '../lib/copy-attachments.js';
 import { StorageFull, quotaOf, storageFullBody } from '../lib/quota.js';
 import { canAutofill, JevError, jevFrom } from '../lib/jev.js';
 import { canUseLlm, llmFrom } from '../lib/llm.js';
-import { dailyCap } from '../lib/llm-usage.js';
+import { limitsFor, limitsForUser, trialSentences, yearShare } from '../lib/llm-usage.js';
 import { isOperator } from '../lib/instance.js';
 import { nextCursor } from '../lib/notes-repo.js';
 import { autofillReaders } from '../lib/read-attachment.js';
@@ -261,8 +261,10 @@ export const notes = new Hono<AppEnv>()
    * each with its confidence. Suggestions only: nothing in the note is written; see
    * `AutofillSuggestion` for why the client applies them. What is written is the press
    * itself and what the model cost, to the account's usage counter, and a press past the
-   * day's cap (`AUTOFILL_DAILY_CAP`) is a 429 with a sentence the button shows; see
-   * `press` in lib/autofill-press.ts.
+   * day's cap or the year's spend is a 429 with a sentence the button shows; see `press`
+   * in lib/autofill-press.ts. Which numbers are the plan's (`limitsFor`): the trial's
+   * for an account on its trial, the ordinary ones otherwise, read off the row
+   * `requireActivePlan` left on the context when it let this write through.
    *
    * A POST, because it is not free: every call is a round trip to a paid API, and nothing
    * that treats GET as safe (a prefetch, a cache, a retry) may make one on its own.
@@ -270,6 +272,7 @@ export const notes = new Hono<AppEnv>()
    * on an instance with no key too.
    */
   .post('/notes/:id/autofill', async (c) => {
+    const now = Date.now();
     try {
       const outcome = await press(
         {
@@ -279,7 +282,8 @@ export const notes = new Hono<AppEnv>()
           readers: autofillReaders(c.env),
           jev: canAutofill(c.env) ? jevFrom(c.env) : null,
           llm: canUseLlm(c.env) ? llmFrom(c.env) : undefined,
-          cap: dailyCap(c.env),
+          limits: limitsFor(c.env, c.get('plan'), now),
+          trial: trialSentences(c.env, c.get('plan'), now),
           operator: isOperator(c.env, c.get('user')?.email),
           defer: (work) => c.executionCtx.waitUntil(work),
         },
@@ -291,8 +295,9 @@ export const notes = new Hono<AppEnv>()
         case 'unconfigured':
           return c.json({ error: 'Auto-fill is not set up on this instance' }, 503);
         case 'capped':
-          // The sentence is the button's; Retry-After is for anything that reads headers.
-          c.header('Retry-After', String(outcome.retryAfter));
+          // The sentence is the button's; Retry-After is for anything that reads headers,
+          // and is left off where no time lifts the refusal (a trial's year).
+          if (outcome.retryAfter !== null) c.header('Retry-After', String(outcome.retryAfter));
           return c.json({ error: outcome.message }, 429);
         case 'filed':
           return c.json(outcome.suggestion);
@@ -311,11 +316,17 @@ export const notes = new Hono<AppEnv>()
 
   /**
    * The account's Auto-fill this calendar year: presses, today's, the cap, and the
-   * model's tokens by job and model (`AutofillUsage`). One store call. Shown on
-   * Maintenance until the plans decide where it lives (MAK-108).
+   * model's tokens by job and model (`AutofillUsage`). One store call, and one read of
+   * the plan row where billing is on, since the caps shown have to be the ones that apply
+   * to this account (`limitsForUser`). The year's share is worked out from the tokens the
+   * store answered with (`yearShare`), so the store is not asked twice. Shown on Maintenance
+   * until the plans decide where it lives (MAK-108).
    */
   .get('/autofill/usage', requireAuth, withRepos, async (c) => {
-    const usage: AutofillUsage = { ...(await c.get('notes').autofillUsage()), dailyCap: dailyCap(c.env) };
+    const now = Date.now();
+    const year = await c.get('notes').autofillUsage();
+    const limits = await limitsForUser(c.env, c.get('userId')!, now);
+    const usage: AutofillUsage = { ...year, dailyCap: limits.cap, yearUsed: yearShare(year, limits) };
     return c.json(usage);
   })
 

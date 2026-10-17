@@ -22,7 +22,7 @@ import type {
 } from '@unbent/shared';
 import { StoreRepo } from './store-client.js';
 import type { FileSummary } from '../store/attachments.js';
-import type { UsageEntry } from '../store/llm-usage.js';
+import type { PressLimits, UsageEntry } from '../store/llm-usage.js';
 import type { CountOptions, ListOptions, SearchFilters } from '../store/notes.js';
 import {
   keysOfDeletedNotes,
@@ -460,7 +460,7 @@ export class NotesRepo extends StoreRepo {
    * The first half of auto-fill: the note and its own unread files, and with `press` the
    * press counted against the day's cap. Null when there is no such live note.
    */
-  autofillPrelude(id: string, ownFilesToRead: number, press?: { cap: number | null }) {
+  autofillPrelude(id: string, ownFilesToRead: number, press?: PressLimits) {
     return this.call((s) => s.autofillPrelude(id, ownFilesToRead, press));
   }
 
