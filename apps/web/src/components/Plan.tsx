@@ -429,7 +429,7 @@ function StorageMeter({ plan, reading }: { plan: AccountPlan; reading: boolean }
   const quota = storageQuotaBytes(plan.storageGb);
   const used = plan.usedBytes;
   const share = used === undefined ? 0 : Math.min(1, used / quota);
-  const store = plan.storeBytes !== undefined && plan.storeLimitBytes !== undefined ? { bytes: plan.storeBytes, limit: plan.storeLimitBytes } : undefined;
+  const store = plan.storeBytes !== undefined ? { bytes: plan.storeBytes, limit: storeLimitBytes(quota) } : undefined;
   return (
     <>
       {/* No `aria-valuenow` while the figure is unknown: zero would be a figure. */}

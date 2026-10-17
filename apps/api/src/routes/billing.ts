@@ -92,11 +92,11 @@ export const billing = new Hono<AppEnv>()
     if (!billingOn(c.env)) return c.json({ error: 'This instance has no plan to report.' }, 404);
     const userId = c.get('userId')!;
     const row = await planFor(c.env.DB, userId);
-    let held: { usedBytes: number; storeBytes: number; storeLimitBytes: number } | undefined;
+    let held: { usedBytes: number; storeBytes: number } | undefined;
     if (c.req.query('usage') === '1') {
       try {
         const usage = await reposFor(c.env, userId, noStoreLimit).attachments.usage();
-        held = { usedBytes: usage.attachmentBytes, storeBytes: usage.databaseSize, storeLimitBytes: storeLimitBytes(storageQuotaBytes(row.storageGb)) };
+        held = { usedBytes: usage.attachmentBytes, storeBytes: usage.databaseSize };
       } catch (err) {
         console.warn(`[billing] storage used for user=${userId} unavailable:`, (err as Error).message);
       }

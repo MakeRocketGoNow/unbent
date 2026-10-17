@@ -77,13 +77,13 @@ describe('Plan', () => {
    */
   it('shows how much room the notes take against the store limit, beside the files', async () => {
     const MB = 1024 ** 2;
-    harness({ state: 'active', source: 'paddle', until: NOW + 300 * DAY, storageGb: 10, usedBytes: 2 * 1024 ** 3, storeBytes: 180 * MB, storeLimitBytes: 1536 * MB, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
+    harness({ state: 'active', source: 'paddle', until: NOW + 300 * DAY, storageGb: 10, usedBytes: 2 * 1024 ** 3, storeBytes: 180 * MB, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
     expect(await screen.findByText('Files: 2.00 GB of 10 GB used.')).toBeTruthy();
     const store = screen.getByText(/Notes, their history and the text read from files:/);
     expect(store.textContent).toBe('Notes, their history and the text read from files: 180.0 MB of 1.50 GB used.');
     expect(store.querySelector('.bad')).toBeNull();
     cleanup();
-    harness({ state: 'active', source: 'paddle', until: NOW + 300 * DAY, storageGb: 10, usedBytes: 2 * 1024 ** 3, storeBytes: 1500 * MB, storeLimitBytes: 1536 * MB, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
+    harness({ state: 'active', source: 'paddle', until: NOW + 300 * DAY, storageGb: 10, usedBytes: 2 * 1024 ** 3, storeBytes: 1500 * MB, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
     const full = await screen.findByText(/Notes, their history and the text read from files:/);
     expect(full.querySelector('.bad')?.textContent).toBe('1.46 GB of 1.50 GB used.');
     // While the store has not answered (the harness never answers the usage read), the
@@ -102,13 +102,13 @@ describe('Plan', () => {
    */
   it('refuses to remove a block while the notes would be over the smaller store limit', async () => {
     const GB = 1024 ** 3;
-    harness({ state: 'active', source: 'paddle', until: NOW + 300 * DAY, storageGb: 35, usedBytes: 2 * GB, storeBytes: 3 * GB, storeLimitBytes: 4 * GB, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
+    harness({ state: 'active', source: 'paddle', until: NOW + 300 * DAY, storageGb: 35, usedBytes: 2 * GB, storeBytes: 3 * GB, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
     const remove = await screen.findByRole('button', { name: 'Remove 25 GB' });
     expect(remove.hasAttribute('disabled')).toBe(true);
     expect(remove.getAttribute('aria-description')).toBe('The notes take more than the 1.50 GB of room they would have; delete some notes or clear their history, and empty the trash, first');
     // Under the smaller limit, the block can go.
     cleanup();
-    harness({ state: 'active', source: 'paddle', until: NOW + 300 * DAY, storageGb: 35, usedBytes: 2 * GB, storeBytes: GB, storeLimitBytes: 4 * GB, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
+    harness({ state: 'active', source: 'paddle', until: NOW + 300 * DAY, storageGb: 35, usedBytes: 2 * GB, storeBytes: GB, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
     const ok = await screen.findByRole('button', { name: 'Remove 25 GB' });
     expect(ok.hasAttribute('disabled')).toBe(false);
     expect(ok.getAttribute('aria-description')).toBeNull();

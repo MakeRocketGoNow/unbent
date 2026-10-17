@@ -111,16 +111,10 @@ export interface AccountPlan {
   /**
    * How much room the account's own store takes: its notes, the copies their history
    * keeps, the text read from its files, and the search index over them (MAK-234). Read
-   * with `usedBytes`, from the same call, and absent with it.
+   * with `usedBytes`, from the same call, and absent with it. Its bound is not sent: the
+   * page works it out from `storageGb` with `storeLimitBytes`, as it does the quota.
    */
   storeBytes?: number;
-  /**
-   * The most the store may take on this plan: a floor plus a tenth of the quota on files
-   * (`storeLimitBytes` below). Sent beside `storeBytes` so the page states the bound a
-   * refused note write named, from the same read, rather than a figure it worked out
-   * from a plan row that may be older.
-   */
-  storeLimitBytes?: number;
   /**
    * The subscription's own state, for the sentence under the plan name: `cancelsAt` is a
    * cancellation already asked for and still ahead, and `pastDue` a renewal Paddle could
