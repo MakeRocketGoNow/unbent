@@ -129,7 +129,7 @@ export async function copyAttachments(
       continue;
     }
     // Decided before the text is copied, because it decides how the text is copied.
-    const moving = input.move && !(await sourceStillLinks(requested));
+    const moving = input.move === true && !(await sourceStillLinks(requested));
     // The text goes with the file. A move takes it whatever the store's size (MAK-234):
     // the source's row goes next, so nothing grows, and a refusal would delete the only
     // copy of the text with it (a model's reading, an assistant's, one restored from an
