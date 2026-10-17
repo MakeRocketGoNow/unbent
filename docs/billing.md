@@ -68,8 +68,9 @@ sandbox first.
 
 1. **Catalog → Products.** Two products: the plan, with one price of $36 a year, and
    the storage add-on, with one price of $12 a year and quantity turned on. The tax
-   category is Standard Digital Goods, which needs no approval. Copy both price ids,
-   `pri_…`.
+   category is Software as a Service, which is what the app is and which both the
+   sandbox and the live account accepted without asking for approval (2026-10-16).
+   Copy both price ids, `pri_…`.
 2. **Developer tools → Authentication.** An API key with `customer`, `transaction` and
    `subscription` read and write and `customer_portal_session` write, which is shown
    once; and a client-side token, which is public and ships in the page.
