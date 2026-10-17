@@ -374,12 +374,10 @@ export const billing = new Hono<AppEnv>()
     // since that is the case to see in the log when a row is not where an event should
     // have put it.
     if (!written?.meta.changes) {
-      const reason = refundCancel ? 'other subscription' : 'older';
-      console.log(
-        `[billing] ${event_type} ${event_id} for user=${row.userId}: skipped, ${
-          refundCancel ? "row no longer names the refunded subscription" : "older than the row's newest event"
-        }`,
-      );
+      const [reason, why] = refundCancel
+        ? ['other subscription', 'row no longer names the refunded subscription']
+        : ['older', "older than the row's newest event"];
+      console.log(`[billing] ${event_type} ${event_id} for user=${row.userId}: skipped, ${why}`);
       return c.json({ applied: false, reason });
     }
     console.log(`[billing] ${event_type} ${event_id} for user=${row.userId}: ${patch.paddleStatus ?? 'transaction'} until ${patch.planUntil ?? 'as before'}`);
