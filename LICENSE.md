@@ -4,8 +4,9 @@ SPDX-License-Identifier: Elastic-2.0
 
 ## Notice about earlier license text in this repository's history
 
-Commits in this repository's history before this change carry the text of the
-Functional Source License, Version 1.1, Apache 2.0 Future License. The
+Commits in this repository's history from before this notice was added, on
+16 October 2026, carry the text of the Functional Source License, Version 1.1,
+Apache 2.0 Future License. The
 repository was private for that whole period, and no version of it was
 distributed to anyone under that license. Every version of this repository, at
 every commit, is licensed under the Elastic License 2.0 below and nothing else.

@@ -101,8 +101,11 @@ is under the [Elastic License 2.0](LICENSE.md) (`Elastic-2.0`).
 
 What it permits: use Unbent and modify it; run it for yourself, your family, or your own
 company; redistribute the source; build the apps from it. What it forbids: offering it to
-others as a hosted or managed service. That is the one restriction, and it is what keeps
-the hosted service viable while the code stays public.
+others as a hosted or managed service. That is the restriction that matters here, and it is
+what keeps the hosted service viable while the code stays public. The license has two
+more, which cost nothing in practice: its license-key clause, which Unbent has no license
+keys for it to apply to, and its notices clause, which means keeping the copyright and
+license text in any copy you pass on.
 
 The [export guarantee](docs/backups.md) does not rest on the license. It rests on the
 export itself: a plain folder of Markdown and files that needs no Unbent to read, which the
