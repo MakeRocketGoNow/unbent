@@ -44,8 +44,10 @@
  * The Turnstile page (`/turnstile`), which the apps load before asking for a sign-in code
  * where the instance checks a token with that request, says `turnstile-interactive` if
  * the widget is about to want a tap (the app brings the view on screen for it), then
- * exactly one of `turnstile` with the token or `turnstile-error`. The token is spent by
- * one request; the app loads the page again for the next.
+ * exactly one of `turnstile` with the token, `turnstile-none` when the instance asks for
+ * no token after all (the check was turned off since the app read its config, so the app
+ * sends without one), or `turnstile-error`. The token is spent by one request; the app
+ * loads the page again for the next.
  */
 export type AppMessage =
   | { type: 'ready' }
@@ -59,6 +61,7 @@ export type AppMessage =
   | { type: 'index-error'; message: string }
   | { type: 'turnstile-interactive' }
   | { type: 'turnstile'; token: string }
+  | { type: 'turnstile-none' }
   | { type: 'turnstile-error'; message: string };
 
 export interface AppHandlers {

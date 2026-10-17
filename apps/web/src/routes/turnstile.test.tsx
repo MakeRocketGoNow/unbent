@@ -73,10 +73,23 @@ describe('the Turnstile page', () => {
     expect(heard).toEqual([{ type: 'turnstile-error', message: 'The widget could not run.' }]);
   });
 
+  /** Not an error: the check was turned off since the app read its config, and the app sends without a token. */
   it('tells the app when the instance asks for no token', async () => {
     const heard = listen();
     harness({});
-    await waitFor(() => expect(heard).toEqual([{ type: 'turnstile-error', message: 'This instance asks for no token.' }]));
+    await waitFor(() => expect(heard).toEqual([{ type: 'turnstile-none' }]));
     expect(widgets).toHaveLength(0);
+  });
+
+  it('tells the app when the config could not be read', async () => {
+    const heard = listen();
+    vi.mocked(api.getConfig).mockRejectedValue(new Error('offline'));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <TurnstilePage />
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(heard).toEqual([{ type: 'turnstile-error', message: "Could not read the instance's settings." }]));
   });
 });
