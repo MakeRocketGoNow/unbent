@@ -118,8 +118,9 @@ const BUILT_IN_VERSIONS = new Set([LEGAL_BASE_VERSION, ...LEGAL_CHANGES.map((c) 
  *
  * The one case it lets through that it should not: an instance that turns a condition on
  * after its accounts agreed to a later change under another (Auto-fill's version agreed
- * on an instance that then starts selling a plan) asks for that same version, so those
- * accounts are not asked about the terms of sale. Selling is switched on once, by the
+ * on an instance that then starts selling a plan) asks for that same version, or an
+ * earlier one where Auto-fill is turned off as selling is turned on, so those accounts
+ * are not asked about the terms of sale. Selling is switched on once, by the
  * operator, before anyone could buy; a version per combination of conditions was the
  * alternative, and would ask everyone again for each.
  *
