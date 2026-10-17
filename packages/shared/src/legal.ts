@@ -17,7 +17,7 @@
  * `/api/config` and refuses an agreement to any other, while the web app's tests check
  * the documents' dates are not older than it.
  */
-export const LEGAL_VERSION = '2026-10-14';
+export const LEGAL_VERSION = '2026-10-16';
 
 /**
  * How long after a charge it can be refunded in full, for any reason.
@@ -55,10 +55,8 @@ type LegalChange = { text: string; billingOnly: true; since: string } | { text: 
  */
 export const LEGAL_CHANGE: LegalChange | undefined = {
   text:
-    'The terms now say how a plan is billed, how it renews and how to cancel it, and that ' +
-    `any charge is refunded in full if you ask within ${REFUND_DAYS} days.`,
-  billingOnly: true,
-  since: '2026-10-09',
+    'The privacy policy now says what Auto-fill sends when you press it, to which outside ' +
+    'services, and what they keep.',
 };
 
 /**

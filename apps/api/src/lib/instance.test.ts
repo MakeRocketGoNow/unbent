@@ -91,6 +91,9 @@ const PADDLE = {
  */
 const PLAIN_VERSION = LEGAL_CHANGE?.billingOnly ? LEGAL_CHANGE.since : LEGAL_VERSION;
 
+/** What such an instance's config says of its documents: that version, and the sentence when it moved. */
+const PLAIN = legalVersionOf(env({}), 'built-in');
+
 describe('legalLinksOf', () => {
   const EXTERNAL = {
     LEGAL_PRIVACY_URL: 'https://example.com/privacy',
@@ -98,7 +101,7 @@ describe('legalLinksOf', () => {
   };
 
   it('points at the built-in documents when an operator is named', () => {
-    expect(legalLinksOf(env(OPERATOR))).toEqual({ privacy: '/privacy', terms: '/terms', version: PLAIN_VERSION });
+    expect(legalLinksOf(env(OPERATOR))).toEqual({ privacy: '/privacy', terms: '/terms', ...PLAIN });
   });
 
   /** Someone who published their own documents went to the trouble; believe them. */
@@ -117,7 +120,7 @@ describe('legalLinksOf', () => {
    */
   it('ignores half a pair of external URLs', () => {
     const half = { ...OPERATOR, LEGAL_PRIVACY_URL: 'https://example.com/privacy' };
-    expect(legalLinksOf(env(half))).toEqual({ privacy: '/privacy', terms: '/terms', version: PLAIN_VERSION });
+    expect(legalLinksOf(env(half))).toEqual({ privacy: '/privacy', terms: '/terms', ...PLAIN });
     expect(legalLinksOf(env({ LEGAL_TERMS_URL: 'https://example.com/terms' }))).toBeUndefined();
   });
 
@@ -153,14 +156,24 @@ describe('legalVersionOf', () => {
    * A change only to the payment terms is no change where there is no sale: those sections
    * are not in that instance's terms (MAK-108), so it stays on the version before and its
    * accounts are not asked again. Where there is one, the version moves and the sentence
-   * says what is new.
+   * says what is new. Skipped while the current change is not one of those.
    */
   it('moves the version for a billing-only change only where billing is on', () => {
-    expect(LEGAL_CHANGE?.billingOnly).toBe(true);
     if (!LEGAL_CHANGE?.billingOnly) return;
     expect(LEGAL_CHANGE.since < LEGAL_VERSION).toBe(true);
     expect(legalVersionOf(env(PADDLE), 'built-in')).toEqual({ version: LEGAL_VERSION, change: LEGAL_CHANGE.text });
     expect(legalVersionOf(env({}), 'built-in')).toEqual({ version: LEGAL_CHANGE.since });
+  });
+
+  /*
+   * Any other change moves every instance that publishes the built-in documents, with the
+   * sentence, whether it sells a plan or not: MAK-230's is to the privacy policy every one
+   * of them publishes.
+   */
+  it('moves every instance for a change that is not billing-only', () => {
+    if (!LEGAL_CHANGE || LEGAL_CHANGE.billingOnly) return;
+    expect(legalVersionOf(env({}), 'built-in')).toEqual({ version: LEGAL_VERSION, change: LEGAL_CHANGE.text });
+    expect(legalVersionOf(env(PADDLE), 'built-in')).toEqual({ version: LEGAL_VERSION, change: LEGAL_CHANGE.text });
   });
 
   /* The front page states a price, so its instance publishes the payment terms before

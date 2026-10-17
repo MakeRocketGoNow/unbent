@@ -78,11 +78,14 @@ export function LegalPage({ which }: { which: LegalWhich }) {
     // and a price, its renewal and the refund policy only where the server says it sells a
     // plan: read from the link, like `builtIn` above, rather than worked out again from
     // `billing` and `frontPage`, so the terms drawn here and the server's sentence about a
-    // change to them answer the same rule. See `LegalOptions.sellsPlan`.
+    // change to them answer the same rule. See `LegalOptions.sellsPlan`. TypeSafe and
+    // Anthropic, which an Auto-fill press sends a note to, only where a press can reach each.
     const docs = legalDocuments(operator, {
       errorTracking: Boolean(config.data?.posthog),
       backups: Boolean(config.data?.backups),
       sellsPlan: Boolean(legal?.sellsPlan),
+      autofill: Boolean(config.data?.autofill),
+      llm: Boolean(config.data?.llm),
     });
     return <LegalDoc doc={docs[which]} />;
   }
