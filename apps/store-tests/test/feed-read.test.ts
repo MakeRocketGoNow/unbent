@@ -57,8 +57,8 @@ describe('changesSince', () => {
     // sweep to the bulk purges, so it is a tag row here, not a tombstone. No counts: a
     // client derives them from the notes it holds.
     expect(p.tags).toEqual([
-      { id: expect.any(String), name: 'gone' },
-      { id: expect.any(String), name: 'home' },
+      { id: expect.any(String), name: 'gone', color: expect.any(Number) },
+      { id: expect.any(String), name: 'home', color: expect.any(Number) },
     ]);
     expect(p.attachments).toEqual([expect.objectContaining({ id: 'f1', noteId: b.id, hasText: true })]);
     // c was created, tagged, trashed and purged within the page: one tombstone, no note.
@@ -195,7 +195,7 @@ describe('snapshotPage', () => {
     const first = await stub.snapshotPage(null, 2);
     expect(first.seq).toBe(seq);
     expect(first.notebooks).toEqual([{ id: nb.id, name: 'Coupons', purpose: null, emoji: null, fieldDefs: [expect.objectContaining({ name: 'Amount' })] }]);
-    expect(first.tags).toEqual([{ id: expect.any(String), name: 't' }]);
+    expect(first.tags).toEqual([{ id: expect.any(String), name: 't', color: expect.any(Number) }]);
     expect(first.total).toBe(5);
     expect(first.notes).toHaveLength(2);
     expect(first.next).toBe(first.notes[1]!.id);

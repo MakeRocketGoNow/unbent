@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { sameName } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { Confirm } from './Confirm.js';
-import { LabelEditor } from './LabelEditor.js';
+import { LabelEditor, type LabelItem } from './LabelEditor.js';
 import { useExactCount } from './use-exact-count.js';
 
 interface TagsProps {
@@ -63,7 +63,9 @@ export function Tags({ onChanged }: TagsProps) {
     }
   }
 
-  const rename = async (tag: api.TagSummary, name: string): Promise<boolean> => {
+  const rename = async (item: LabelItem, name: string): Promise<boolean> => {
+    const tag = tags?.find((t) => t.id === item.id);
+    if (!tag) return false;
     setBusy(true);
     setError(null);
     try {
@@ -115,12 +117,13 @@ export function Tags({ onChanged }: TagsProps) {
         editingId={pendingDelete?.id ?? pendingMerge?.tag.id ?? null}
         findable
         onRename={rename}
+        onRecolor={(item, color) => void run(() => api.recolorTag(item.id, color))}
         onDelete={(item) => {
           const tag = tags?.find((t) => t.id === item.id);
           if (tag) setPendingDelete(tag);
         }}
         emptyText="No tags yet. A tag is added on a note."
-        hint="Renaming a tag updates every note that carries it. Renaming one to a name that already exists offers to merge the two."
+        hint="Renaming a tag updates every note that carries it. Renaming one to a name that already exists offers to merge the two. A tag's colour is given when it is made and can be changed from its row."
       />
 
       {pendingMerge && (

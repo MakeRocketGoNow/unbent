@@ -210,7 +210,7 @@ describe('files dropped on the note list', () => {
   });
 
   it('files the notes with the list’s tag, and nowhere, on a tag', async () => {
-    lib = installTestLibrary({ notes: [note('a', { title: 'Alpha', tagIds: ['t1'] })], tags: [{ id: 't1', name: 'urgent' }] });
+    lib = installTestLibrary({ notes: [note('a', { title: 'Alpha', tagIds: ['t1'] })], tags: [{ id: 't1', name: 'urgent', color: 0 }] });
     mount('/notes?tag=urgent');
     await screen.findByText('Alpha');
     drag('dragover', column(), [pdf('a.pdf')]);

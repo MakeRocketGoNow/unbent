@@ -4,6 +4,7 @@ import type { NoteSort, NoteSummary } from '@unbent/shared';
 import { formatWhen } from './format-when.js';
 import { formatFieldValue } from './format-field.js';
 import { AttachmentKindIcon } from './icons.js';
+import type { TagColorOf } from './use-tag-colors.js';
 
 /**
  * How long a finger rests on a row before it selects rather than opens.
@@ -42,6 +43,8 @@ interface NoteListItemProps {
    */
   replacedByNote?: boolean;
   selection?: RowSelection | undefined;
+  /** Each tag's colour, so the row's tags agree with the chips in the note's head. */
+  tagColor?: TagColorOf | undefined;
 }
 
 /**
@@ -85,6 +88,7 @@ export function NoteListItem({
   sort,
   replacedByNote = false,
   selection,
+  tagColor,
 }: NoteListItemProps) {
   const when = sort === 'created' ? note.createdAt : note.updatedAt;
   const title = note.title || 'Untitled';
@@ -211,8 +215,16 @@ export function NoteListItem({
             {note.fields.map((f) => `${f.name}: ${formatFieldValue(f.type, f.value, f.scale, f.currency)}`).join(' · ')}
           </span>
         )}
+        {/* As text with the hash, which is how a tag reads in a line of them, each in
+            its own stored colour so the row agrees with the chips in the note's head. */}
         {note.tags.length > 0 && (
-          <span className="note-tags">{note.tags.map((t) => `#${t}`).join(' ')}</span>
+          <span className="note-tags">
+            {note.tags.map((t) => (
+              <span key={t} className="note-tag" data-color={tagColor?.(t) ?? undefined}>
+                #{t}
+              </span>
+            ))}
+          </span>
         )}
       </Link>
       {selection?.active && (

@@ -50,10 +50,15 @@ export interface FeedNotebook extends Pick<NotebookSummary, 'id' | 'name' | 'pur
   fieldDefs: FieldDef[];
 }
 
-/** A tag, by id and name. No count, for the reason `FeedNotebook` gives. */
+/**
+ * A tag, by id and name, with the colour it wears (an index into the palette; see
+ * `colors.ts`). Null only on a row read before its store has coloured it. No count, for
+ * the reason `FeedNotebook` gives.
+ */
 export interface FeedTag {
   id: string;
   name: string;
+  color: number | null;
 }
 
 /** A file's row: what changes when its text arrives (`hasText`) or it is copied. */

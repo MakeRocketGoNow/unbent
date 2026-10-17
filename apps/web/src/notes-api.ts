@@ -561,11 +561,16 @@ export async function agreeToLegal(version: string): Promise<void> {
   );
 }
 
-/** A tag as the list reports it: its id, which a rename addresses, and how many live notes carry it. */
+/**
+ * A tag as the list reports it: its id, which a rename addresses, how many live notes
+ * carry it, and the colour it wears (an index into the palette; see `colors.ts` in
+ * `@unbent/shared`). Null from a server that has not coloured it yet.
+ */
 export interface TagSummary {
   id: string;
   name: string;
   count: number;
+  color: number | null;
 }
 
 export async function listTags(): Promise<TagSummary[]> {
@@ -603,6 +608,16 @@ export async function renameTag(
   });
   if (res.status === 409) throw new ConflictError('A tag with that name already exists.');
   return json(res);
+}
+
+/** Gives a tag another colour from the palette, by index. */
+export async function recolorTag(id: string, color: number): Promise<void> {
+  const res = await request(`/api/tags/${id}`, {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    body: JSON.stringify({ color }),
+  });
+  if (!res.ok) throw new Error(await httpErrorMessage(res));
 }
 
 /** Takes the tag off every note that carries it. The notes stay. */
@@ -736,6 +751,8 @@ export async function updateNotebookField(
     name?: string;
     type?: FieldType;
     options?: string[];
+    /** Colours by option name, over the ones the field keeps: a recolour of one option. */
+    optionColors?: Record<string, number>;
     scale?: FieldScale | null;
     currency?: string | null;
   },

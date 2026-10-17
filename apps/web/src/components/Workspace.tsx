@@ -82,6 +82,7 @@ import {
 } from '../autofill.js';
 import { autofillExplained, markAutofillExplained } from '../autofill-notice.js';
 import { usePlan } from '../use-plan.js';
+import { useTagColors } from './use-tag-colors.js';
 
 /** The editor's share of the pane row when split evenly, and the limits a drag respects. */
 const EDITOR_DEFAULT = 0.5;
@@ -153,6 +154,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
   const offline = useOffline();
   const notebooks = useQuery(notebooksQuery());
   const tags = useQuery(tagsQuery());
+  const tagColor = useTagColors();
   const config = useQuery(configQuery());
 
   const [draft, setDraft] = useState<{
@@ -916,6 +918,7 @@ export function Workspace({ noteId, readOnly: inTrashView = false, backTo = '/no
       tags={draft.tags}
       suggestions={tags.data?.map((t) => t.name) ?? []}
       readOnly={readOnly || frozen}
+      tagColor={tagColor}
       onNotebook={(next) => setDraft((d) => ({ ...d, notebook: next }))}
       onTags={(next) => setDraft((d) => ({ ...d, tags: next }))}
       filled={marks ? { notebook: marks.notebook, tags: marks.tags } : undefined}

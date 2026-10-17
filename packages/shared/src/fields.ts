@@ -9,6 +9,7 @@
  */
 import { z } from 'zod';
 import { dateOnlySchema, startOfDay, endOfDay } from './dates.js';
+import { tagColorSchema } from './colors.js';
 
 export const FIELD_TYPES = [
   'text',
@@ -257,11 +258,16 @@ export const fieldOptionsSchema = z
 
 const NOT_BOTH = { message: 'A rating cannot also be a currency', path: ['currency'] };
 
+/** Colours by option name; see `assignOptionColors` for how they are applied to a list. */
+export const optionColorsSchema = z.record(z.string().min(1).max(MAX_FIELD_NAME_LENGTH), tagColorSchema);
+
 export const createFieldSchema = z
   .object({
     name: fieldNameSchema,
     type: fieldTypeSchema,
     options: fieldOptionsSchema.default([]),
+    /** Colours for the options, by name; the rest are assigned. An import's, mostly. */
+    optionColors: optionColorsSchema.optional(),
     scale: fieldScaleSchema.nullish(),
     currency: currencySchema.nullish(),
   })
@@ -277,6 +283,13 @@ export const updateFieldSchema = z
     name: fieldNameSchema.optional(),
     type: fieldTypeSchema.optional(),
     options: fieldOptionsSchema.optional(),
+    /**
+     * Colours for options by name, on top of the ones the field keeps: a recolour names
+     * the one option and its new index, and leaves the rest as they were. One the list
+     * does not hold is ignored, not refused, so a stale client's recolour of an option
+     * just removed is a no-op rather than an error.
+     */
+    optionColors: optionColorsSchema.optional(),
     scale: fieldScaleSchema.nullish(),
     currency: currencySchema.nullish(),
   })
@@ -321,6 +334,12 @@ export interface FieldDef {
   type: FieldType;
   /** Empty for every type but `select` and `multiselect`; see `fieldHasOptions`. */
   options: string[];
+  /**
+   * Each option's colour, an index into the palette (`colors.ts`), keyed by the option.
+   * Present on a select or multi-select; a server from before the colours sends none,
+   * and an option the object does not name is drawn in the neutral grey.
+   */
+  optionColors?: Record<string, number>;
   /** Set only on a `number` that is a rating; null on every other field. */
   scale: FieldScale | null;
   /** Set only on a `number` drawn as money; null on every other field. See `isCurrencyField`. */

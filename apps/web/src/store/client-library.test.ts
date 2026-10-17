@@ -175,7 +175,7 @@ describe('a client of the holding tab', () => {
   }
 
   it('mirrors the holder’s rows, state and statuses on attach, and derives from the rows', async () => {
-    const h = holder(channel, { notes: [note('n1'), note('n2')], tags: [{ id: 't1', name: 'tax' }] });
+    const h = holder(channel, { notes: [note('n1'), note('n2')], tags: [{ id: 't1', name: 'tax', color: 0 }] });
     h.moveFeed({ applied: 7 });
     const hk = hooks();
     const lib = await client(hk);
@@ -226,7 +226,7 @@ describe('a client of the holding tab', () => {
 
   it('keeps only the latest of two sends to one client, so the mirror is never part of each', async () => {
     const many = Array.from({ length: ROWS_PER_MESSAGE * 2 + 5 }, (_, i) => note(`n${i}`));
-    holder(channel, { notes: many, tags: [{ id: 't1', name: 'tax' }] });
+    holder(channel, { notes: many, tags: [{ id: 't1', name: 'tax', color: 0 }] });
     const hk = hooks();
     const attaching = attach(hk);
     const hellos = () => channel.posted.filter((m): m is Extract<Message, { type: 'hello' }> => m.type === 'hello');
@@ -278,7 +278,7 @@ describe('a client of the holding tab', () => {
     // A row arriving reaches everything; a row going too. Three changes in one task
     // cross as one message, and the client derives once for them.
     h.notes.upsert(note('n2'));
-    h.tags.upsert({ id: 't1', name: 'tax' });
+    h.tags.upsert({ id: 't1', name: 'tax', color: 0 });
     h.notes.remove('n1');
     await settle();
     expect([...lib.notes.values()].map((n) => n.id)).toEqual(['n2']);

@@ -11,10 +11,14 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.InputChip
+import androidx.compose.material3.InputChipDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.SuggestionChipDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -24,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import com.makerocketgonow.unbent.R
 import com.makerocketgonow.unbent.api.Tag
 import com.makerocketgonow.unbent.ui.theme.Space
+import com.makerocketgonow.unbent.ui.theme.TagColors
 
 /**
  * The note's tags: the ones it has as chips, a field to add one, and the account's other
@@ -36,6 +41,11 @@ import com.makerocketgonow.unbent.ui.theme.Space
  * The field's text belongs to the caller, not to this editor, because the caller is the
  * one with a Save or Done button: a tag still being typed when that button is tapped has
  * to go with it. See [tagsWithDraft].
+ *
+ * Each chip wears the colour the server stored on its tag ([Tag.color], through
+ * [TagColors]), found by name without case as the server finds a tag, so a chip here is
+ * the chip the site draws for the same tag. A tag typed here that the account does not
+ * have yet has no row and no colour, and is drawn neutral until the server gives it one.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -52,6 +62,13 @@ fun TagEditor(
         onDraftChange("")
     }
 
+    val colorOf = suggestions.associate { it.name.lowercase() to it.color }
+    val dark = isSystemInDarkTheme()
+    val surface = MaterialTheme.colorScheme.surface
+    val onSurface = MaterialTheme.colorScheme.onSurface
+    fun fill(tag: String) = TagColors.fill(colorOf[tag.lowercase()], surface, onSurface, dark)
+    fun ink(tag: String) = TagColors.ink(colorOf[tag.lowercase()], onSurface, dark)
+
     Column {
         if (tags.isNotEmpty()) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(Space.Small)) {
@@ -63,6 +80,13 @@ fun TagEditor(
                         trailingIcon = {
                             Icon(Icons.Default.Close, contentDescription = stringResource(R.string.remove_tag, tag))
                         },
+                        // The wash is the chip's edge, as on the site: no outline on top of it.
+                        border = null,
+                        colors = InputChipDefaults.inputChipColors(
+                            containerColor = fill(tag),
+                            labelColor = ink(tag),
+                            trailingIconColor = ink(tag),
+                        ),
                     )
                 }
             }
@@ -84,7 +108,15 @@ fun TagEditor(
             Spacer(Modifier.height(Space.Small))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(Space.Small)) {
                 for (s in offered) {
-                    SuggestionChip(onClick = { add(s.name) }, label = { Text(s.name) })
+                    SuggestionChip(
+                        onClick = { add(s.name) },
+                        label = { Text(s.name) },
+                        border = null,
+                        colors = SuggestionChipDefaults.suggestionChipColors(
+                            containerColor = fill(s.name),
+                            labelColor = ink(s.name),
+                        ),
+                    )
                 }
             }
         }

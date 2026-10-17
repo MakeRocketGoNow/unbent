@@ -27,7 +27,7 @@ async function setup(onExecute?: (sql: string) => void) {
   const db = await openTestSearchDb();
   // A seam on the statements, for a test that has to act at a known point in a pass.
   const index = new SearchIndex(onExecute ? { ...db, execute: (sql, params) => (onExecute(sql), db.execute(sql, params)) } : db);
-  const lib = { notes: [] as LocalNote[], attachments: [] as FeedAttachment[], tags: [{ id: 't1', name: 'garden' }] };
+  const lib = { notes: [] as LocalNote[], attachments: [] as FeedAttachment[], tags: [{ id: 't1', name: 'garden', color: 0 }] };
   const world = { settled: true, leading: true, offline: false, kept: ['nb-kept'] as string[] | Error, texts: {} as Record<string, string>, asked: [] as string[][] };
   const snapshot = (): Snapshot => ({ notes: lib.notes, notebooks: [], tags: lib.tags, attachments: lib.attachments });
   const make = (over: Partial<SearchSyncOptions> = {}) =>

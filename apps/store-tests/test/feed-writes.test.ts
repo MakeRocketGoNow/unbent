@@ -193,6 +193,56 @@ describe('the feed records tag, notebook and field writes', () => {
     expect(await feedRows(stub, seq3)).toEqual([{ entity: 'tag', id: receipt.id, deleted: true }]);
   });
 
+  it('a tag is coloured when made, least-used first; a recolour is one row, the same colour again none', async () => {
+    const { stub } = freshStore('feed-tag-colours');
+    await stub.create(note({ tags: ['a', 'b', 'c'] }));
+    const tags = await stub.listTags();
+    // Three tags made in one write walk the palette in order, and the feed carries each.
+    expect(tags.map((t) => t.color).sort()).toEqual([0, 1, 2]);
+    // The feed's tag rows carry it too, which is how a device learns a colour.
+    const page = await stub.snapshotPage(null, 10);
+    expect(page.tags!.map((t) => t.color).sort()).toEqual([0, 1, 2]);
+    const a = tags.find((t) => t.name === 'a')!;
+    const seq = await feedSeq(stub);
+    expect(await stub.recolorTag(a.id, 7)).toBe(true);
+    expect(await feedRows(stub, seq)).toEqual([{ entity: 'tag', id: a.id }]);
+    expect((await stub.listTags()).find((t) => t.name === 'a')!.color).toBe(7);
+    const seq2 = await feedSeq(stub);
+    expect(await stub.recolorTag(a.id, 7)).toBe(true);
+    expect(await feedRows(stub, seq2)).toEqual([]);
+    expect(await stub.recolorTag('no-such-tag', 1)).toBe(false);
+    // The next tag takes the colour the recolour freed: index 0 is worn by nobody now.
+    await stub.create(note({ tags: ['d'] }));
+    expect((await stub.listTags()).find((t) => t.name === 'd')!.color).toBe(0);
+  });
+
+  it('a select option is coloured when made and keeps its colour through a rename, a reorder and a removal', async () => {
+    const { stub } = freshStore('feed-option-colours');
+    const nb = (await stub.createNotebook('Coupons'))!;
+    const kind = (await stub.createField(nb.id, { name: 'Kind', type: 'select', options: ['food', 'fuel'] })) as { id: string; optionColors: Record<string, number> };
+    expect(kind.optionColors).toEqual({ food: 0, fuel: 1 });
+    // A plain text field carries no colours at all.
+    const amount = (await stub.createField(nb.id, { name: 'Amount', type: 'text', options: [] })) as unknown as Record<string, unknown>;
+    expect(amount).not.toHaveProperty('optionColors');
+    // Renamed through the edit, the colour moves with the word; a new option takes the least-used.
+    const edited = (await stub.editFieldOptions(nb.id, kind.id, { rename: [{ from: 'fuel', to: 'petrol' }], add: ['other'] })) as { field: { optionColors: Record<string, number> } };
+    expect(edited.field.optionColors).toEqual({ food: 0, petrol: 1, other: 2 });
+    // The whole list rewritten, reordered: colours follow the words, not the positions.
+    const sorted = (await stub.updateField(nb.id, kind.id, { options: ['petrol', 'other', 'food'] })) as { field: { optionColors: Record<string, number> } };
+    expect(sorted.field.optionColors).toEqual({ petrol: 1, other: 2, food: 0 });
+    // A recolour by name, alone.
+    const recoloured = (await stub.updateField(nb.id, kind.id, { optionColors: { food: 9 } })) as { field: { optionColors: Record<string, number> } };
+    expect(recoloured.field.optionColors).toEqual({ petrol: 1, other: 2, food: 9 });
+    // Removing one takes its colour; the next new option fills the lowest gap.
+    const removed = (await stub.removeFieldOption(nb.id, kind.id, 'petrol', false))!;
+    expect(removed.field.optionColors).toEqual({ other: 2, food: 9 });
+    const added = (await stub.editFieldOptions(nb.id, kind.id, { add: ['gas'] })) as { field: { optionColors: Record<string, number> } };
+    expect(added.field.optionColors).toEqual({ other: 2, food: 9, gas: 0 });
+    // Leaving the select type drops the colours with the options.
+    const text = (await stub.updateField(nb.id, kind.id, { type: 'text' })) as { field: Record<string, unknown> };
+    expect(text.field).not.toHaveProperty('optionColors');
+  });
+
   it('a notebook: created, renamed, and deleted with the notes it unfiled', async () => {
     const { stub } = freshStore('feed-notebooks');
     const nb = (await stub.createNotebook('Taxes'))!;

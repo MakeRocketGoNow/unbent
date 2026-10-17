@@ -72,6 +72,35 @@ describe('LabelEditor', () => {
     await waitFor(() => expect(queryByLabelText('Save')).toBeNull());
   });
 
+  it('shows the palette under an editing row when it can recolour, names each swatch, and keeps the row open', () => {
+    const onRecolor = vi.fn();
+    const { getByText, getByRole, getAllByRole, queryByRole, getByLabelText } = harness({
+      kind: 'tag',
+      items: [{ id: '1', name: 'garden', count: 3, color: 3 }],
+      onRecolor,
+    });
+    // Nothing at rest but a coloured glyph; the swatches come with the field.
+    expect(queryByRole('radiogroup')).toBeNull();
+    fireEvent.click(getByText('garden'));
+    const group = getByRole('radiogroup', { name: 'Colour of the tag garden' });
+    const swatches = getAllByRole('radio');
+    expect(swatches).toHaveLength(10);
+    expect(swatches.map((s) => s.getAttribute('aria-label'))).toEqual([
+      'Red', 'Orange', 'Yellow', 'Green', 'Teal', 'Blue', 'Purple', 'Pink', 'Brown', 'Grey',
+    ]);
+    expect(getByRole('radio', { name: 'Green' }).getAttribute('aria-checked')).toBe('true');
+    fireEvent.click(getByRole('radio', { name: 'Blue' }));
+    expect(onRecolor).toHaveBeenCalledWith(expect.objectContaining({ id: '1' }), 5);
+    expect(group.isConnected).toBe(true);
+    expect(getByLabelText('Rename garden')).toBeTruthy();
+  });
+
+  it('offers no palette to a kind without colours', () => {
+    const { getByText, queryByRole } = harness();
+    fireEvent.click(getByText('Coupons'));
+    expect(queryByRole('radiogroup')).toBeNull();
+  });
+
   it('keeps the row open when the rename was refused', async () => {
     const { getByText, getByLabelText, onRename } = harness();
     onRename.mockResolvedValueOnce(false);

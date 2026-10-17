@@ -10,6 +10,7 @@ import {
   MAX_RATING_MAX,
   MIN_RATING_MAX,
   notebookNameSchema,
+  assignOptionColors,
   compareOptions,
   fieldHasOptions,
   fieldNameSchema,
@@ -778,8 +779,12 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
                     tags={field.options}
                     suggestions={[]}
                     reorderable
+                    colorOf={(o) => field.optionColors?.[o] ?? null}
                     onChange={(options) => editOptions(field, options)}
                     onRename={(from, to) => renameOption(field, from, to)}
+                    onRecolor={(option, color) =>
+                      void run(() => api.updateNotebookField(notebookId, field.id, { optionColors: { [option]: color } }))
+                    }
                     trailing={
                       // Faded rather than gone once the list is in order, so the row does
                       // not change shape after a press.
@@ -1002,6 +1007,9 @@ export function NotebookEditor({ notebookId, onChanged, onDeleted }: NotebookEdi
               tags={newOptions}
               suggestions={[]}
               reorderable
+              // The colours the server will give them, by its own rule, so the chips
+              // here are the chips the field will have.
+              colorOf={(o) => assignOptionColors(newOptions, null)[o] ?? null}
               onChange={setNewOptions}
             />
           )}

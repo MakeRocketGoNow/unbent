@@ -85,6 +85,18 @@ class UnbentApiTest {
     }
 
     @Test
+    fun `listTags reads each tag's stored colour, and tolerates a server without one`() {
+        server.enqueue(
+            MockResponse().setResponseCode(200)
+                .setBody("""{"tags":[{"id":"t1","name":"garden","count":3,"color":3},{"id":"t2","name":"old","count":1}]}"""),
+        )
+        val tags = api.listTags()
+        assertEquals(listOf("garden", "old"), tags.map { it.name })
+        assertEquals(3, tags[0].color)
+        assertNull(tags[1].color)
+    }
+
+    @Test
     fun `me reports no user rather than failing when the session is gone`() {
         server.enqueue(MockResponse().setResponseCode(200).setBody("""{"user":null}"""))
         assertNull(api.me())

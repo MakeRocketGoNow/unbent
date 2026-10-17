@@ -2,7 +2,7 @@ import type { NoteSummary } from '@unbent/shared';
 import { Sheet } from './Sheet.js';
 import { TagInput } from './TagInput.js';
 import { Button } from './Button';
-import { tintIndex } from '../tint.js';
+import type { TagColorOf } from './use-tag-colors.js';
 
 interface TagsSheetProps {
   open: boolean;
@@ -14,6 +14,8 @@ interface TagsSheetProps {
   busy: boolean;
   /** Applies a change to every selected note at once. */
   onChange: (change: { add?: string[]; remove?: string[] }) => void;
+  /** Each tag's colour, as the note's own chips have it. */
+  colorOf?: TagColorOf | undefined;
 }
 
 /**
@@ -32,7 +34,7 @@ interface TagsSheetProps {
  * every selected note and shows up in the rows below, which is where the chips would have
  * gone. One control for typing a tag, wherever a tag is typed.
  */
-export function TagsSheet({ open, onClose, notes, suggestions, busy, onChange }: TagsSheetProps) {
+export function TagsSheet({ open, onClose, notes, suggestions, busy, onChange, colorOf }: TagsSheetProps) {
   const total = notes.length;
   const counts = new Map<string, number>();
   for (const note of notes) {
@@ -81,7 +83,7 @@ export function TagsSheet({ open, onClose, notes, suggestions, busy, onChange }:
                       }
                       onChange={() => onChange(all ? { remove: [name] } : { add: [name] })}
                     />
-                    <span className="tag-chip" data-tint={tintIndex(name)}>
+                    <span className="tag-chip" data-color={colorOf?.(name) ?? undefined}>
                       {name}
                     </span>
                     {!all && (

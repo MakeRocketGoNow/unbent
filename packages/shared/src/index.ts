@@ -17,3 +17,4 @@ export * from './legal.js';
 export * from './plan.js';
 export * from './cursor.js';
 export * from './llm-prices.js';
+export * from './colors.js';

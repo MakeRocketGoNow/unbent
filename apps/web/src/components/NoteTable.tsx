@@ -9,6 +9,7 @@ import { formatWhen } from './format-when.js';
 import { SortDirectionIcon } from './icons.js';
 import { loadMoreLabel } from './load-more.js';
 import { useAutoLoad } from './useAutoLoad.js';
+import type { TagColorOf } from './use-tag-colors.js';
 
 interface NoteTableProps {
   notes: NoteSummary[];
@@ -26,6 +27,8 @@ interface NoteTableProps {
    * that found the word in one of the note's files. Keyed by note id.
    */
   hints?: ReadonlyMap<string, string> | undefined;
+  /** Each tag's colour, so the tags column agrees with the list rows and the note's head. */
+  tagColor?: TagColorOf | undefined;
   /** The notebook the rows belong to, which names the table. */
   notebook: string;
   /** Live notes in the notebook, for the table's row count; null until known. */
@@ -94,6 +97,7 @@ export function NoteTable({
   search,
   ranked = false,
   hints,
+  tagColor,
   notebook,
   total,
   busy,
@@ -215,7 +219,7 @@ export function NoteTable({
               )}
               {columns.map((col) => (
                 <td key={col.id} data-align={col.align}>
-                  {cell(col, note, onEdit, selection, hints?.get(note.id))}
+                  {cell(col, note, onEdit, selection, hints?.get(note.id), tagColor)}
                 </td>
               ))}
             </tr>
@@ -256,6 +260,7 @@ function cell(
   onEdit: NoteTableProps['onEdit'],
   selection: TableSelection | undefined,
   hint: string | undefined,
+  tagColor: TagColorOf | undefined,
 ): ReactNode {
   switch (col.kind) {
     case 'name':
@@ -310,7 +315,16 @@ function cell(
       return held ? formatFieldValue(def.type, held.value, def.scale, def.currency) : '';
     }
     case 'tags':
-      return note.tags.map((t) => `#${t}`).join(' ');
+      // The list row's line of tags, each in its stored colour.
+      return (
+        <span className="note-tags">
+          {note.tags.map((t) => (
+            <span key={t} className="note-tag" data-color={tagColor?.(t) ?? undefined}>
+              #{t}
+            </span>
+          ))}
+        </span>
+      );
     case 'updated':
       return formatWhen(note.updatedAt);
     case 'created':

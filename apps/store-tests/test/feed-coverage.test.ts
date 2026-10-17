@@ -83,6 +83,7 @@ const WRITES: Record<string, (s: Seeded) => Promise<unknown>> = {
   purge: (s) => s.stub.purge('trashed'),
   renameTag: (s) => s.stub.renameTag(s.tagId, 'house'),
   deleteTag: (s) => s.stub.deleteTag(s.otherTagId),
+  recolorTag: (s) => s.stub.recolorTag(s.tagId, 7),
   createNotebook: (s) => s.stub.createNotebook('Taxes'),
   updateNotebook: (s) => s.stub.updateNotebook(s.notebookId, { emoji: '🧾' }),
   deleteNotebook: (s) => s.stub.deleteNotebook(s.notebookId),

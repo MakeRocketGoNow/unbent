@@ -1,7 +1,6 @@
 import { isRatingField, type FieldDef, type FieldValue } from '@unbent/shared';
 import { RatingInput } from './RatingInput.js';
 import { TagInput } from './TagInput.js';
-import { tintIndex } from '../tint.js';
 
 interface FieldCellInputProps {
   def: FieldDef;
@@ -23,8 +22,9 @@ interface FieldCellInputProps {
  * same way and the select has a rule worth keeping in one place: a value that is no
  * longer among the options stays selectable rather than being blanked. The note said it,
  * and the option list changing is not the note's edit. The stylesheet draws a chosen
- * option as a chip in the option's own tint (the tint the tag editor gives the word),
- * and an unchosen one as "Empty", which is Notion's word for it.
+ * option as a chip in the colour the field's settings gave the option (`optionColors`,
+ * the neutral grey for one it no longer lists), and an unchosen one as "Empty", which
+ * is Notion's word for it.
  *
  * A multi-select is the tag editor over the field's options: chips for what is chosen,
  * and a restricted entry that offers the rest. The same rule about retired options
@@ -81,7 +81,7 @@ export function FieldCellInput({
         className="note-field-input"
         disabled={readOnly}
         data-filled={text !== '' || undefined}
-        data-tint={text !== '' ? tintIndex(text) : undefined}
+        data-color={text !== '' ? def.optionColors?.[text] : undefined}
         value={text}
         aria-label={label}
         onChange={(e) => onChange(e.target.value === '' ? null : e.target.value)}
@@ -107,7 +107,7 @@ export function FieldCellInput({
         <span id={id} className="note-field-multi tag-input" aria-label={label}>
           {chosen.length === 0 && <span className="note-field-empty">Empty</span>}
           {chosen.map((o) => (
-            <span key={o} className="tag-chip" data-tint={tintIndex(o)}>
+            <span key={o} className="tag-chip" data-color={def.optionColors?.[o]}>
               {o}
             </span>
           ))}
@@ -122,6 +122,7 @@ export function FieldCellInput({
           tags={chosen}
           suggestions={def.options}
           restrict
+          colorOf={(o) => def.optionColors?.[o] ?? null}
           onChange={(next) => onChange(next.length === 0 ? null : next)}
         />
       </div>

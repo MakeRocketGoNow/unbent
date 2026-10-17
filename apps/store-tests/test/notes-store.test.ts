@@ -48,8 +48,8 @@ describe('notes: create, read, update', () => {
     expect(await stub.count({ tags: ['home'] })).toBe(1);
     expect(await stub.countUnfiledNotes()).toBe(0);
     expect(await stub.listTags()).toEqual([
-      { id: expect.any(String), name: 'acme', count: 1 },
-      { id: expect.any(String), name: 'home', count: 1 },
+      { id: expect.any(String), name: 'acme', count: 1, color: expect.any(Number) },
+      { id: expect.any(String), name: 'home', count: 1, color: expect.any(Number) },
     ]);
     expect(await stub.listNotebooks()).toEqual([
       { id: nb!.id, name: 'Receipts', purpose: null, emoji: null, count: 1, fields: 1 },
@@ -84,7 +84,7 @@ describe('notes: create, read, update', () => {
     expect(changed).toMatchObject({ title: 'Beta', notebook: 'Taxes', tags: ['c'] });
     expect((changed as { updatedAt: number }).updatedAt).toBeGreaterThan(created.updatedAt);
     // The old tags lost their live note; the new notebook was created on the way.
-    expect(await stub.listTags()).toEqual([{ id: expect.any(String), name: 'c', count: 1 }]);
+    expect(await stub.listTags()).toEqual([{ id: expect.any(String), name: 'c', count: 1, color: expect.any(Number) }]);
     expect((await stub.listNotebooks()).map((n) => [n.name, n.count])).toEqual([['Taxes', 1]]);
     expect(await stub.update('nope', { title: 'x' })).toBeNull();
   });
@@ -758,7 +758,7 @@ describe('tags and notebooks', () => {
     expect(await stub.renameTag(receipts.id, 'Receipt', { merge: true })).toEqual({ id: receipt.id, name: 'Receipt', merged: true });
     expect((await stub.get(a.id))!.tags).toEqual(['Receipt']);
     expect((await stub.get(b.id))!.tags).toEqual(['Receipt']);
-    expect(await stub.listTags()).toEqual([{ id: receipt.id, name: 'Receipt', count: 2 }]);
+    expect(await stub.listTags()).toEqual([{ id: receipt.id, name: 'Receipt', count: 2, color: expect.any(Number) }]);
     expect(await stub.renameTag(receipt.id, 'Bills')).toEqual({ id: receipt.id, name: 'Bills', merged: false });
     expect((await stub.search('bills', 5)).map((r) => r.id).sort()).toEqual([a.id, b.id].sort());
 
@@ -779,8 +779,8 @@ describe('tags and notebooks', () => {
     expect(b.tags).toEqual(['Café', 'Receipts']);
     const receipts = (await stub.listTags()).find((t) => t.name === 'Receipts')!;
     expect(await stub.listTags()).toEqual([
-      { id: receipts.id, name: 'Receipts', count: 2 },
-      { id: expect.any(String), name: 'Café', count: 1 },
+      { id: receipts.id, name: 'Receipts', count: 2, color: expect.any(Number) },
+      { id: expect.any(String), name: 'Café', count: 1, color: expect.any(Number) },
     ]);
     // NOCASE folds ASCII only, as it does for notebooks: CAFÉ is a tag of its own.
     await stub.update(a.id, { tags: ['Receipts', 'CAFÉ'] });
@@ -1347,6 +1347,9 @@ describe('rows read on an archive-sized store', () => {
       await measure('history restore', async () => stub.restoreRevision('n00021', (await stub.listRevisions('n00021'))![5]!.id)),
       // A note with a full history, untouched above.
       await measure('history clear', () => stub.clearRevisions('n00022')),
+      // A tag made on a save reads the tags table once, grouped by colour, for the colour
+      // it is given: the account's tags, never its notes.
+      await measure('save that makes a tag', () => stub.update('n00024', { tags: ['brand new'] })),
       await measure('option sort', () => stub.editFieldOptions('nb0', 'kind', { sort: 'alpha', pinLast: ['Other'] })),
       await measure('option rename', () => stub.editFieldOptions('nb0', 'kind', { rename: [{ from: 'Fuel', to: 'Petrol' }] })),
     ];
@@ -1452,6 +1455,10 @@ describe('rows read on an archive-sized store', () => {
       // that grows with the notes (8, measured 2026-10-15). A rename reads the field's
       // values once and touches each holder, three rows a value with its search entry
       // (908 for three hundred values, measured 2026-10-15): the price of moving them.
+      // A save inside its window plus the tags table read once, grouped, for the new
+      // tag's colour: a handful of tags here, a few hundred on an archive, and nothing
+      // that grows with the notes (143, measured 2026-10-17).
+      'save that makes a tag': 200,
       'option sort': 20,
       'option rename': 1100,
       // The counts row and the five due keys off the retention index; the five hundred

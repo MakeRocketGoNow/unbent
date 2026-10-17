@@ -359,8 +359,8 @@ export function count(s: Snapshot, filter: ListFilter, l = lookups(s)): number {
   return n;
 }
 
-/** `GET /tags`: tags with a live note, most-used first then by name. */
-export function tagSummaries(s: Snapshot): Array<{ id: string; name: string; count: number }> {
+/** `GET /tags`: tags with a live note, most-used first then by name, each with its colour. */
+export function tagSummaries(s: Snapshot): Array<{ id: string; name: string; count: number; color: number | null }> {
   const counts = new Map<string, number>();
   const byName = new Map<string, string>();
   for (const t of s.tags) byName.set(foldNoCase(t.name), t.id);
@@ -371,10 +371,10 @@ export function tagSummaries(s: Snapshot): Array<{ id: string; name: string; cou
       : n.tagIds;
     for (const id of ids) counts.set(id, (counts.get(id) ?? 0) + 1);
   }
-  const out: Array<{ id: string; name: string; count: number }> = [];
+  const out: Array<{ id: string; name: string; count: number; color: number | null }> = [];
   for (const t of s.tags) {
     const c = counts.get(t.id) ?? 0;
-    if (c > 0) out.push({ id: t.id, name: t.name, count: c });
+    if (c > 0) out.push({ id: t.id, name: t.name, count: c, color: t.color ?? null });
   }
   return out.sort((a, b) => b.count - a.count || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }

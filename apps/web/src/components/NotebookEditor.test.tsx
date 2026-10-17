@@ -382,7 +382,7 @@ describe('NotebookEditor', () => {
     });
     mount();
     await screen.findByText('Category');
-    fireEvent.click(screen.getByRole('button', { name: 'Rename option Food' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Rename or recolour option Food' }));
     const input = screen.getByRole('textbox', { name: 'Rename option Food' });
     fireEvent.change(input, { target: { value: 'Meals' } });
     fireEvent.keyDown(input, { key: 'Enter' });
@@ -393,6 +393,19 @@ describe('NotebookEditor', () => {
     );
     expect(api.updateNotebookField).not.toHaveBeenCalled();
     expect(api.removeNotebookFieldOption).not.toHaveBeenCalled();
+  });
+
+  it('recolours an option from the swatches beside its rename, by name, leaving the list alone', async () => {
+    const updateField = vi.spyOn(api, 'updateNotebookField').mockResolvedValue({ field: fields[1]!, cleared: 0 });
+    mount();
+    await screen.findByText('Category');
+    fireEvent.click(screen.getByRole('button', { name: 'Rename or recolour option Food' }));
+    const swatches = screen.getByRole('radiogroup', { name: 'Colour of the option Food' });
+    expect(within(swatches).getAllByRole('radio')).toHaveLength(10);
+    fireEvent.click(within(swatches).getByRole('radio', { name: 'Green' }));
+    await waitFor(() => expect(updateField).toHaveBeenCalledWith('nb1', 'f2', { optionColors: { Food: 3 } }));
+    // The word stays a field: a pick is not the end of the rename.
+    expect(screen.getByRole('textbox', { name: 'Rename option Food' })).toBeTruthy();
   });
 
   /*
@@ -410,7 +423,7 @@ describe('NotebookEditor', () => {
     });
     mount();
     await screen.findByText('Category');
-    fireEvent.click(screen.getByRole('button', { name: 'Rename option Food' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Rename or recolour option Food' }));
     const input = screen.getByRole('textbox', { name: 'Rename option Food' });
     fireEvent.change(input, { target: { value: 'Travel' } });
     fireEvent.keyDown(input, { key: 'Enter' });
@@ -420,7 +433,7 @@ describe('NotebookEditor', () => {
     expect(ask.textContent).toContain('2 notes with Food will show Travel instead');
     expect(api.editNotebookFieldOptions).not.toHaveBeenCalled();
     // The old name is back on its chip: nothing has changed until the answer.
-    expect(screen.getByRole('button', { name: 'Rename option Food' }).textContent).toBe('Food');
+    expect(screen.getByRole('button', { name: 'Rename or recolour option Food' }).textContent).toBe('Food');
 
     fireEvent.click(within(ask).getByText('Merge'));
     await waitFor(() =>

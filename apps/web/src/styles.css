@@ -54,21 +54,34 @@
   --chip-bg: color-mix(in srgb, var(--accent) 12%, transparent);
   --chip-fg: var(--accent);
   /*
-     Six soft tints, for the tags and the select options on a note's property list.
+     The palette: ten tints for the tags and the select options, nine hues and a grey.
 
-     A word gets one of these from its own letters (see `tintIndex`) so the list reads
-     the way Notion's properties do, each option its own colour, without a colour being
-     stored anywhere. Mid-tone hues rather than pastels: the chip's wash and its ink are
-     both mixed from the hue here, at the two ratios below, and one hue then gives a pale
-     ground and a legible dark word on the light theme, and a deeper ground and a pale
-     word on the dark one. The ratios change per theme; the hues do not.
+     Each tag and each option wears one of these, by an index stored on its row (see
+     `colors.ts` in `@unbent/shared`, and `TAG_COLOR_NAMES` there for the order), so a
+     chip is the same colour in the note's head, in the list rows, in the Tags sheet and
+     on the phone. The index used to be a hash of the word (six hues, nothing stored),
+     which collided constantly over dozens of tags, let nothing mean anything, and left
+     the head's chips disagreeing with the list's plain green text; the stored colour is
+     assigned least-used-first when a tag is made, so ten tags are ten colours.
+
+     Mid-tone hues rather than pastels: the chip's wash and its ink are both mixed from
+     the hue here, at the two ratios below, and one hue then gives a pale ground and a
+     legible dark word on the light theme, and a deeper ground and a pale word on the
+     dark one. The ratios change per theme; the hues do not. The grey is a real tint
+     rather than the absence of one, so "no colour" is a choice a person can make and
+     see in the swatches, and it mixes to the same neutral chip an option with no
+     stored colour yet is drawn in.
   */
-  --tint-0: #c9566e;
-  --tint-1: #c98a2c;
-  --tint-2: #5f9a48;
-  --tint-3: #3b9a8f;
-  --tint-4: #4a7fc7;
-  --tint-5: #8b63c7;
+  --tint-0: #c94f58;
+  --tint-1: #d2742f;
+  --tint-2: #c9a227;
+  --tint-3: #5f9a48;
+  --tint-4: #3b9a8f;
+  --tint-5: #4a7fc7;
+  --tint-6: #8b63c7;
+  --tint-7: #c9568f;
+  --tint-8: #9a6b4a;
+  --tint-9: #8c8781;
   --tint-wash: 16%;
   --tint-ink: 70%;
   /*
@@ -113,7 +126,7 @@ input[type='radio'] {
     --good: #5fbf85;
     --bad: #f2857c;
     --accent: #7fc3a0;
-    /* A deeper wash and a paler word: the same six hues, read against a dark ground. */
+    /* A deeper wash and a paler word: the same ten hues, read against a dark ground. */
     --tint-wash: 26%;
     --tint-ink: 50%;
     /* Deeper washes for a dark ground; --bad is a light salmon here, under pale ink. */
@@ -1309,12 +1322,26 @@ button.link {
   white-space: nowrap;
 }
 
+/*
+   The row's tags: the text form, hash and all, each in its stored colour (the chip's
+   ink, see "A token's colour") so the row agrees with the chips in the note's head. They
+   were the accent, one green for every tag, which was the "green pills" problem in text
+   form and said nothing a chip could not contradict. One line, cut with an ellipsis, so
+   a note with many tags takes no more height than one with one.
+*/
 .note-tags {
   font-size: 0.72rem;
-  color: var(--accent);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.note-tag {
+  color: var(--chip-ink);
+}
+
+.note-tag + .note-tag {
+  margin-left: 0.4em;
 }
 
 /*
@@ -3106,10 +3133,10 @@ select.note-field-input {
    wash (the notebook picker's) so it never reads as an option called "Empty".
 */
 select.note-field-input:not([data-filled]) {
-  min-height: 1.75rem;
-  padding: 0.15rem 0.5rem;
+  min-height: 1.4rem;
+  padding: 0 0.4rem;
   margin-left: 0;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   color: var(--muted);
   background: color-mix(in srgb, var(--fg) calc(var(--tint-wash) / 3), transparent);
 }
@@ -3131,13 +3158,13 @@ select.note-field-input[data-filled] {
      alignment, where "Other" and the sentence beneath it begin on one line. Pulling the
      chip out to align its letters instead left every chip a step left of every word.
   */
-  min-height: 1.75rem;
-  padding: 0.15rem 0.5rem;
+  min-height: 1.4rem;
+  padding: 0 0.4rem;
   margin-left: 0;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   color: var(--chip-ink);
   background: var(--chip-wash);
-  border-radius: 0.3rem;
+  border-radius: 0.2rem;
 }
 
 select.note-field-input[data-filled]:hover:not(:disabled) {
@@ -3860,7 +3887,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    the notebook's name starts in the row above.
 */
 .tag-input.read-only {
-  min-height: 1.65rem;
+  min-height: 1.4rem;
   cursor: default;
 }
 
@@ -3871,60 +3898,121 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 }
 
 /*
-   A token's colour: the word's own tint, or a neutral wash when it has none.
+   A token's colour: the stored tint its row names, or a neutral wash when it has none.
 
    Tags and chosen select options are the same kind of thing on a property list (a word
-   from a set) and they share this. Each carries `data-tint` from `tintIndex`, which maps
-   the six hues below onto it; the wash and the ink are both mixed from that one hue at the
-   ratios the theme sets, so one hue reads on both grounds. With no tint the hue is the
-   ink itself, which mixes to a plain grey wash and plain ink: Notion's default chip.
+   from a set) and they share this, with the list rows' tag text (`.note-tag`), which is
+   the same word drawn without its box. Each carries `data-color`, the index its row
+   stores (a tag's from `useTagColors`, an option's from its field's `optionColors`),
+   which the rules below map onto the palette; the wash and the ink are both mixed from
+   that one hue at the ratios the theme sets, so one hue reads on both grounds. With no
+   colour the hue is the ink itself, which mixes to a plain grey wash and plain ink:
+   Notion's default chip, and what a tag whose row has not arrived yet is drawn in.
 
    Every token used to be the accent on the accent's tint (one green for tags, chosen
    options and the notebook alike) which made the list a form of green pills and spent
    the brand colour on data. The accent goes back to meaning "act".
 */
-/* `:where`, so these defaults have no specificity and the `[data-tint]` rules below win on
+/* `:where`, so these defaults have no specificity and the `[data-color]` rules below win on
    the select too, whose own selector would otherwise outrank a bare attribute. */
-:where(.tag-chip, select.note-field-input[data-filled]) {
+:where(.tag-chip, .note-tag, .color-swatch, .label-slot[data-color], select.note-field-input[data-filled]) {
   --chip-hue: var(--fg);
   --chip-wash: color-mix(in srgb, var(--chip-hue) var(--tint-wash), transparent);
   --chip-wash-hover: color-mix(in srgb, var(--chip-hue) calc(var(--tint-wash) + 8%), transparent);
   --chip-ink: color-mix(in srgb, var(--chip-hue) var(--tint-ink), var(--fg));
 }
 
-[data-tint='0'] { --chip-hue: var(--tint-0); }
-[data-tint='1'] { --chip-hue: var(--tint-1); }
-[data-tint='2'] { --chip-hue: var(--tint-2); }
-[data-tint='3'] { --chip-hue: var(--tint-3); }
-[data-tint='4'] { --chip-hue: var(--tint-4); }
-[data-tint='5'] { --chip-hue: var(--tint-5); }
+[data-color='0'] { --chip-hue: var(--tint-0); }
+[data-color='1'] { --chip-hue: var(--tint-1); }
+[data-color='2'] { --chip-hue: var(--tint-2); }
+[data-color='3'] { --chip-hue: var(--tint-3); }
+[data-color='4'] { --chip-hue: var(--tint-4); }
+[data-color='5'] { --chip-hue: var(--tint-5); }
+[data-color='6'] { --chip-hue: var(--tint-6); }
+[data-color='7'] { --chip-hue: var(--tint-7); }
+[data-color='8'] { --chip-hue: var(--tint-8); }
+[data-color='9'] { --chip-hue: var(--tint-9); }
 
 /*
-   A tag: a rounded rectangle, not a pill. The pills were part of what read as bubbly;
-   a small radius is what a token looks like in every property list people arrive from.
+   A tag: a rounded rectangle, not a pill, at Notion's density. 1.4rem tall, a few pixels
+   either side of the word, the row's own text size and a small radius: a token sits in
+   the line of text it belongs to rather than standing up out of it, and a row of six
+   still reads as words. The earlier chips (1.75rem, 0.85rem text, a wider pad) were
+   closer to buttons, and a note with a dozen tags was a wall of them. No hash inside the
+   chip either: the box and the colour already say "tag", and the hash is the text form,
+   which the list rows keep.
 */
 .tag-chip {
   display: inline-flex;
   align-items: center;
-  /* No gap: the hash below is a flex item too, and a gap would part it from its word.
-     The × keeps its distance through its own padding. */
+  /* No gap: the × keeps its distance through its own padding. */
   gap: 0;
-  min-height: 1.75rem;
-  padding: 0.15rem 0.2rem 0.15rem 0.5rem;
-  font-size: 0.85rem;
+  min-height: 1.4rem;
+  /* Tighter on the right, where the × carries its own padding. */
+  padding: 0 0.15rem 0 0.4rem;
+  font-size: 0.9rem;
+  line-height: 1.2;
   color: var(--chip-ink);
   background: var(--chip-wash);
-  border-radius: 0.3rem;
+  border-radius: 0.2rem;
+}
+
+/* A chip with nothing after its word (shown, not edited) is padded evenly. */
+.tag-chip:not(:has(.tag-remove)) {
+  padding-right: 0.4rem;
 }
 
 /*
-   The hash, on the note's own tags only. It is how the list rows already write a tag,
-   and it is what tells the tags row from the notebook row at a glance. Not on the same chips in the notebook settings, where the editor holds a select
-   field's options: those are not tags. In the chip's own ink, a step back.
+   The palette as swatches (`ColorSwatches`): a dot of each tint's wash ringed in its
+   ink, and the chosen one filled, drawn through the same variables the chips use so a
+   swatch is a preview of the chip it would make, on either theme. Each dot sits in a
+   2.25rem button so a thumb can hit one, and the row takes a line of its own under
+   whatever it colours (a flex item at full width), rather than squeezing between a name
+   and its buttons.
 */
-.filing-prop .tag-chip::before {
-  content: '#';
-  opacity: 0.65;
+.color-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  flex-basis: 100%;
+  gap: 0.1rem;
+  /* Pulled left by the button's own padding, so the first dot sits on the text edge. */
+  margin-left: -0.425rem;
+}
+
+.color-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.color-swatch::before {
+  content: '';
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 50%;
+  background: var(--chip-wash);
+  box-shadow: inset 0 0 0 1.5px var(--chip-ink);
+}
+
+.color-swatch[aria-checked='true']::before {
+  box-shadow: inset 0 0 0 0.45rem var(--chip-ink);
+}
+
+.color-swatch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.color-swatch:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 
 /* × on pointing, so a row of tags reads as words rather than as words with buttons. */
@@ -5417,7 +5505,20 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   border-bottom: 1px solid transparent;
 }
 
-.label-row.editing { border-color: var(--border); }
+.label-row.editing {
+  /* So the colour row, when a tag's row has one, takes a line under the name. */
+  flex-wrap: wrap;
+  border-color: var(--border);
+}
+
+/* A tag's glyph in its colour: the one place the list says which colour a tag wears. */
+.label-slot[data-color] { color: var(--chip-ink); }
+
+/* Under the name, inset to its text edge: the slot's width, less the pull above. */
+.label-row.editing > .color-swatches {
+  margin-left: calc(2.75rem - 0.75rem + 0.5rem - 0.425rem);
+  padding-bottom: 0.35rem;
+}
 
 /* The leading slot: a 44px box, whether it holds a glyph or a button, so the glyph and
    the trash can centre on the same line. Pulled left by the box's own padding so the
