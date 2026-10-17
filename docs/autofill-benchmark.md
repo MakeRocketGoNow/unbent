@@ -57,8 +57,7 @@ not, and how to run it on your own notes.
 - **It is deterministic.** Three runs, identical answers. Jev's three runs moved one or two
   notes each, so differences of that size anywhere on this page are noise.
 
-<details>
-<summary>All three Jev runs beside Snap's</summary>
+**All three Jev runs beside Snap's.**
 
 | | Jev, run 1 | Jev, run 2 | Jev, run 3 | Snap (3 runs, identical) |
 |---|---|---|---|---|
@@ -73,8 +72,6 @@ not, and how to run it on your own notes.
 Jev's cost is estimated from request bytes at four to a token at $0.042 per million, since
 TypeSafe reports no counts; Snap reports its usage and is billed at $0.05 per million. Both
 bill output at nothing.
-
-</details>
 
 ## The long-context question
 
@@ -92,8 +89,7 @@ about 108,000 across four.
 - Two notes cannot prove a negative. But nothing here argues for raising the cap, and
   nothing argues that Jev's 32k is costing filings.
 
-<details>
-<summary>The two long notes, by cap</summary>
+**The two long notes, by cap.**
 
 | | Jev, 40k cap | Snap, 40k cap | Snap, 300k cap |
 |---|---|---|---|
@@ -104,8 +100,6 @@ about 108,000 across four.
 | Cents per press | 0.28 | 0.76 | 1.42 |
 
 A third long note was dropped when copying its text was stopped partway.
-
-</details>
 
 ## What was not tested
 
@@ -142,8 +136,7 @@ a select is one of its options, a text value is something the note contains).
   the press's four calls overlap. The press is what a person waits on, so the second
   vendor stays for now.
 
-<details>
-<summary>The one-call run in full</summary>
+**The one-call run in full.**
 
 | | Jev press, as shipped | One Haiku call |
 |---|---|---|
@@ -156,8 +149,6 @@ a select is one of its options, a text value is something the note contains).
 
 This Jev column is a separate run from the three above, which is why it differs by a note
 or two. Most "missed" values in every arm are owner conventions no document states.
-
-</details>
 
 ## How it was measured
 
