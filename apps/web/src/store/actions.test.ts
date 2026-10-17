@@ -633,6 +633,11 @@ describe('a replayed write', () => {
     // The kept save is this note's, so the trash ends it: sent again at once.
     expect(replay).toHaveBeenCalledTimes(1);
 
+    // A restore of it is not a way out: it does not go round what is waiting.
+    await actions.restoreNote('n1');
+    await tick();
+    expect(api.restoreNote).not.toHaveBeenCalled();
+
     // The kept save replays against a trashed note, and ends there.
     vi.mocked(api.updateNote).mockRejectedValueOnce(new ApiError(404, '404: Not found'));
     expect(await fake.replayOne()).toBe('refused');

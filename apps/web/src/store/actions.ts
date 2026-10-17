@@ -1625,16 +1625,20 @@ export async function restoreRevision(noteId: string, revisionId: number, opts: 
  * (`NotesStore.update` asks for room only once it knows it will write). Not for the
  * plan's refusal, where the kept save is the person's last edit and replays as it was
  * once they subscribe. A note made here, which the server does not hold, still queues.
+ * And only for a delete (`deleting`): a restore frees nothing and is not the way out,
+ * and sent ahead of a trash queued earlier it would reach the server first and leave
+ * the note trashed against the person's last action (found in review).
  */
-function roundTheQueue(lib: WritableLibrary, noteId: string): boolean {
+function roundTheQueue(lib: WritableLibrary, noteId: string, deleting = false): boolean {
   if (!planLapsed() && !storeFull()) return false;
-  return !lib.outbox.status().waiting.has(noteId) || (storeFull() && serverHolds(lib, noteId));
+  if (!lib.outbox.status().waiting.has(noteId)) return true;
+  return deleting && storeFull() && serverHolds(lib, noteId);
 }
 
 /** A bulk action's ids while a refusal waits: the ones that go to the server now, and the ones that queue. */
-function roundOrQueued(lib: WritableLibrary, ids: string[]): { direct: string[]; queued: string[] } {
+function roundOrQueued(lib: WritableLibrary, ids: string[], deleting = false): { direct: string[]; queued: string[] } {
   if (!planLapsed() && !storeFull()) return { direct: [], queued: ids };
-  const direct = ids.filter((id) => roundTheQueue(lib, id));
+  const direct = ids.filter((id) => roundTheQueue(lib, id, deleting));
   return { direct, queued: ids.filter((id) => !direct.includes(id)) };
 }
 
@@ -1660,7 +1664,7 @@ export async function trashNote(noteId: string): Promise<void> {
   const far = await away();
   if (far) return far('trashNote', [noteId], { ids: [noteId], refiles: true });
   const lib = await queueable();
-  if (!lib || notCopiedYet(lib, noteId) || roundTheQueue(lib, noteId)) return pulled(api.deleteNote(noteId), { ids: [noteId], refiles: true }, keptFor(lib, [noteId]));
+  if (!lib || notCopiedYet(lib, noteId) || roundTheQueue(lib, noteId, true)) return pulled(api.deleteNote(noteId), { ids: [noteId], refiles: true }, keptFor(lib, [noteId]));
   queue(lib, 'trashNote', { noteId }, () => {
     lib.notes.update(noteId, (row) => {
       row.deletedAt = Date.now();
@@ -1684,7 +1688,7 @@ export async function purgeNote(noteId: string): Promise<void> {
   const far = await away();
   if (far) return far('purgeNote', [noteId], { ids: [noteId], refiles: true });
   const lib = await queueable();
-  if (!lib || notCopiedYet(lib, noteId) || roundTheQueue(lib, noteId)) return pulled(api.deleteNotePermanently(noteId), { ids: [noteId], refiles: true }, true);
+  if (!lib || notCopiedYet(lib, noteId) || roundTheQueue(lib, noteId, true)) return pulled(api.deleteNotePermanently(noteId), { ids: [noteId], refiles: true }, true);
   queue(lib, 'purgeNote', { noteId }, () => {
     lib.notes.delete(noteId);
   });
@@ -1721,7 +1725,7 @@ export async function trashNotes(ids: string[]): Promise<number> {
   const lib = await queueable();
   if (!lib) return pulled(api.deleteNotes(ids).then((r) => r.trashed), { ids, refiles: true });
   const { here: held, there } = split(lib, ids);
-  const { direct, queued: here } = roundOrQueued(lib, held);
+  const { direct, queued: here } = roundOrQueued(lib, held, true);
   const sent = [...there, ...direct];
   const remote = sent.length > 0 ? await pulled(api.deleteNotes(sent).then((r) => r.trashed), { ids: sent, refiles: true }, keptFor(lib, direct)) : 0;
   if (here.length > 0) {
@@ -1756,7 +1760,7 @@ export async function purgeNotes(ids: string[]): Promise<number> {
   const lib = await queueable();
   if (!lib) return pulled(api.deleteNotesPermanently(ids).then((r) => r.deleted), { ids, refiles: true }, true);
   const { here: held, there } = split(lib, ids);
-  const { direct, queued: here } = roundOrQueued(lib, held);
+  const { direct, queued: here } = roundOrQueued(lib, held, true);
   const sent = [...there, ...direct];
   const remote = sent.length > 0 ? await pulled(api.deleteNotesPermanently(sent).then((r) => r.deleted), { ids: sent, refiles: true }, true) : 0;
   if (here.length > 0) {
