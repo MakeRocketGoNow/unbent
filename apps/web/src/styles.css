@@ -1119,6 +1119,16 @@ button.link {
   */
   flex-basis: 12rem;
   min-height: 0;
+  /*
+     Never scrolled by the browser on its own, for the sidebar's reason (see
+     `.drawer-list`): the gliding hover card (`.note-list::before`) is a box in this
+     scroller that moves between rows and drops out when the pointer leaves them, and
+     scroll anchoring in Chromium took it as its reference and moved the list to follow
+     it. Off for the list rather than the card alone: the person's place is what should
+     stay still here, and a row closing up above it (`list-motion.ts`) is as much a
+     reason to leave the scroll position alone as a row appearing in the sidebar.
+  */
+  overflow-anchor: none;
 }
 
 /*
@@ -1193,15 +1203,11 @@ button.link {
    a note that snapped on read as two hands at work. Selecting a row for a batch action
    fades its wash and ring the same way, as do the table's rows and the trash's cards.
 
-   The sidebar's hover glide is not carried over, deliberately. The list scrolls, and
-   scrolling moves rows under a pointer that is not moving, so a gliding hover would trail
-   behind every scroll; and a row here is a card several lines tall, so a 0.4s glide would
-   lag a whole row behind a pointer moving down the list. The hover in a list says which
-   note a click will open, and it has to be right the instant the pointer arrives.
-
    Only the colour and the ring move. The hover is drawn as an image (above, and on the
    table's and the trash's rows), which does not transition, so it still comes and goes
-   at once. The open row's tint is set as a colour alone, not with the `background`
+   at once where it is drawn; where the pointer can hover, the list lifts it off the rows
+   and draws it as one gliding card instead ("The hover glides from card to card", with
+   the selection rules near the end of the file). The open row's tint is set as a colour alone, not with the `background`
    shorthand, so it keeps the hover while the pointer is on it, as the sidebar's pill
    shows through its current row: a click adds the tint under the hover rather than
    swapping one for the other, which left a frame with neither. A row drawn already
@@ -9733,6 +9739,73 @@ button.settings-nav-item {
 
 .note-entry.with-actions:has(> .note-item.active) {
   background-color: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+/*
+   The hover glides from card to card, as the sidebar's pill does between its rows.
+
+   The mechanics are the sidebar's ("The hover tint glides from row to row"): one box in
+   the list (`.note-list::before`) takes its four edges from whichever entry is under the
+   pointer, by anchor positioning, and a transition on `inset` is the glide. Nothing is
+   measured by script. What differs is what the list is made of. The box is a card at the
+   rows' own radius, not a pill, and at the list's 5% rather than the sidebar's 8%: these
+   rows repeat on every note and stay the quieter of the two columns. The anchor is the
+   entry, not the link, so a trash row, whose hover belongs to the whole card with its
+   buttons under the title, is one more row rather than a second rule. And the rows are
+   cards of different heights, so the box stretches and shrinks as it travels; the curve
+   is the sidebar's, most of the way there in its first 100ms, so it reads as following
+   the pointer rather than chasing it.
+
+   The hit area reaches up over the 0.15rem gap to the row above (`::after` on the link,
+   upward only), so a slow pointer crossing the gap glides rather than blinks; the gap
+   below a row is covered by the next row's reach. Upward only because the row's checkbox
+   and a trash row's buttons come after the link in the tree and paint over it, and a
+   reach downward from a trash row's link would lie across the top of its buttons.
+
+   This reverses the choice "Opening a note fills its row in" recorded earlier on
+   2026-10-17, which kept the glide out because the list scrolls under a still pointer
+   and its rows are tall. Looked at side by side, the sidebar's notebook list scrolls
+   under the pointer too and the glide was kept there, so the two columns had the same
+   grey hover with one that glided and one that blinked, and the blink read as the list
+   being the older of the two. The lag is in time, not rows: the card is at 80% of the
+   distance after 100ms whatever the distance is.
+
+   Under these conditions the rows' own hover layer is lifted (`background-image: none`,
+   never `background`, which would take the open or selected row's colour with it). A
+   browser without anchor positioning, a touch screen, the search results and the table
+   keep the plain hover.
+*/
+@media (hover: hover) {
+  @supports (anchor-name: --a) {
+    .note-list::before {
+      content: '';
+      position: absolute;
+      position-anchor: --note-hover;
+      inset: anchor(top) anchor(right) anchor(bottom) anchor(left);
+      border-radius: 0.45rem;
+      background: color-mix(in srgb, var(--fg) 5%, transparent);
+      pointer-events: none;
+    }
+
+    .note-list > .note-entry:hover { anchor-name: --note-hover; }
+
+    .note-list .note-item { position: relative; }
+
+    .note-list .note-item::after {
+      content: '';
+      position: absolute;
+      inset: -0.15rem 0 0;
+    }
+
+    .note-list .note-item:hover,
+    .note-list .note-entry.with-actions:hover { background-image: none; }
+  }
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  @supports (anchor-name: --a) {
+    .note-list::before { transition: inset 0.4s cubic-bezier(0.05, 0.7, 0.1, 1); }
+  }
 }
 
 /*
