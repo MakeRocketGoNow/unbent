@@ -39,6 +39,7 @@ import {
   type StaleNote,
   DEFAULT_NOTE_SORT,
   foldNoCase,
+  leastUsedColor,
 } from '@unbent/shared';
 import type { DeletedBlobs } from './deleted-blobs.js';
 import type { Change, Feed } from './feed.js';
@@ -63,6 +64,7 @@ import {
   keysOfDeletedNotes,
   liveCondition,
   optionsColumn,
+  optionColorsColumn,
   placeholders,
   rowToField,
   runs,
@@ -1296,7 +1298,7 @@ export class NotesStore {
     const defs = new Map(
       this.sql
         .exec<FieldRow & { deleted_at: number | null }>(
-          `SELECT id, notebook_id, name, type, options, scale_max, scale_step, currency, position, deleted_at
+          `SELECT id, notebook_id, name, type, options, option_colors, scale_max, scale_step, currency, position, deleted_at
              FROM notebook_fields
             WHERE id IN (SELECT value FROM json_each(?1))`,
           // The copy's fields and the note's own: the second loop asks about those too.
@@ -2249,11 +2251,11 @@ export class NotesStore {
    * Name breaks ties, so the long tail of once-used tags is still ordered predictably
    * rather than by whatever the query planner returns.
    */
-  listTags(): Array<{ id: string; name: string; count: number }> {
+  listTags(): Array<{ id: string; name: string; count: number; color: number | null }> {
     // The count is the triggers', one row per tag. A tag whose notes are all in the trash
     // has a count of zero and is left out, as it was when this joined the notes to count.
-    return this.sql.exec<{ id: string; name: string; count: number }>(
-      `SELECT id, name, note_count AS count
+    return this.sql.exec<{ id: string; name: string; count: number; color: number | null }>(
+      `SELECT id, name, note_count AS count, color
          FROM tags
         WHERE note_count > 0
         ORDER BY note_count DESC, name COLLATE NOCASE`,
@@ -2487,6 +2489,23 @@ export class NotesStore {
     });
   }
 
+  /**
+   * Gives a tag another colour from the palette, by index. One feed row: the notes carry
+   * the tag by id and a client draws every chip from the tag's row, so nothing about them
+   * changes. The same index again writes nothing and records nothing, as a rename to the
+   * same name does.
+   */
+  recolorTag(id: string, color: number): boolean {
+    return this.sql.tx(() => {
+      const own = this.sql.first<{ color: number | null }>(`SELECT color FROM tags WHERE id = ?1`, id);
+      if (!own) return false;
+      if (own.color === color) return true;
+      this.sql.exec(`UPDATE tags SET color = ?1 WHERE id = ?2`, color, id);
+      this.feed.record([{ entity: 'tag', id }]);
+      return true;
+    });
+  }
+
   /** The feed rows for every note carrying a tag, trashed ones included: what a merge changes. */
   private notesCarrying(tagId: string): Change[] {
     return this.sql
@@ -2545,7 +2564,7 @@ export class NotesStore {
       const byId = new Map(notebooks.map((nb) => [nb.id, { ...nb, fieldDefs: [] as FieldDef[] }]));
       const fieldWhere = run ? `AND f.notebook_id IN (${placeholders(1, run.length)})` : '';
       for (const row of this.sql.exec<FieldRow>(
-        `SELECT f.id, f.notebook_id, f.name, f.type, f.options, f.scale_max, f.scale_step, f.currency, f.position
+        `SELECT f.id, f.notebook_id, f.name, f.type, f.options, f.option_colors, f.scale_max, f.scale_step, f.currency, f.position
            FROM notebook_fields f
           WHERE f.deleted_at IS NULL ${fieldWhere}
           ORDER BY f.notebook_id, f.position`,
@@ -2565,7 +2584,7 @@ export class NotesStore {
     for (const run of runsOf) {
       out.push(
         ...this.sql.exec<FeedTag>(
-          `SELECT id, name FROM tags ${run ? `WHERE id IN (${placeholders(1, run.length)})` : ''} ORDER BY name`,
+          `SELECT id, name, color FROM tags ${run ? `WHERE id IN (${placeholders(1, run.length)})` : ''} ORDER BY name`,
           ...(run ?? []),
         ),
       );
@@ -2783,7 +2802,7 @@ export class NotesStore {
 
     return this.sql
       .exec<FieldRow>(
-        `SELECT f.id, f.notebook_id, f.name, f.type, f.options, f.scale_max, f.scale_step, f.currency, f.position
+        `SELECT f.id, f.notebook_id, f.name, f.type, f.options, f.option_colors, f.scale_max, f.scale_step, f.currency, f.position
                 ${counts ? ', (SELECT COUNT(*) FROM note_fields nf WHERE nf.field_id = f.id) AS value_count' : ''}
            FROM notebook_fields f
           WHERE f.notebook_id = ?1 AND f.deleted_at IS NULL
@@ -2803,7 +2822,7 @@ export class NotesStore {
    */
   fieldById(id: string): FieldDef | null {
     const row = this.sql.first<FieldRow>(
-      `SELECT id, notebook_id, name, type, options, scale_max, scale_step, currency, position
+      `SELECT id, notebook_id, name, type, options, option_colors, scale_max, scale_step, currency, position
          FROM notebook_fields WHERE id = ?1 AND deleted_at IS NULL`,
       id,
     );
@@ -2817,7 +2836,7 @@ export class NotesStore {
   listAllFields(): FieldDef[] {
     return this.sql
       .exec<FieldRow>(
-        `SELECT id, notebook_id, name, type, options, scale_max, scale_step, currency, position
+        `SELECT id, notebook_id, name, type, options, option_colors, scale_max, scale_step, currency, position
            FROM notebook_fields WHERE deleted_at IS NULL
           ORDER BY notebook_id, position`,
       )
@@ -2837,6 +2856,8 @@ export class NotesStore {
       name: string;
       type: FieldType;
       options: string[];
+      /** Colours for options by name; the rest take the least-used (`assignOptionColors`). */
+      optionColors?: Record<string, number> | null | undefined;
       scale?: FieldScale | null | undefined;
       currency?: string | null | undefined;
     },
@@ -2863,8 +2884,8 @@ export class NotesStore {
       const scale = scaleColumns(input.type, input.scale);
       this.sql.exec(
         `INSERT INTO notebook_fields
-           (id, notebook_id, name, type, options, scale_max, scale_step, currency, position, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,
+           (id, notebook_id, name, type, options, option_colors, scale_max, scale_step, currency, position, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?10, ?6, ?7, ?8,
                  (SELECT COALESCE(MAX(position) + 1, 0) FROM notebook_fields
                    WHERE notebook_id = ?2 AND deleted_at IS NULL),
                  ?9)`,
@@ -2877,6 +2898,7 @@ export class NotesStore {
         scale.step,
         currencyColumn(input.type, input.scale, input.currency),
         Date.now(),
+        optionColorsColumn(input.type, input.options, null, input.optionColors),
       );
 
       // A notebook row covers its definitions, so a field change is a notebook change.
@@ -2906,6 +2928,12 @@ export class NotesStore {
       name?: string | undefined;
       type?: FieldType | undefined;
       options?: string[] | undefined;
+      /**
+       * Colours by option name, on top of the ones the field keeps: a recolour of one
+       * option, or the colours a rename carries from the old name to the new. Every
+       * option the list ends up with has one after this; see `optionColorsColumn`.
+       */
+      optionColors?: Record<string, number> | null | undefined;
       scale?: FieldScale | null | undefined;
       currency?: string | null | undefined;
     },
@@ -2948,7 +2976,7 @@ export class NotesStore {
 
       this.sql.exec(
         `UPDATE notebook_fields
-            SET name = ?1, type = ?2, options = ?3, scale_max = ?4, scale_step = ?5, currency = ?6
+            SET name = ?1, type = ?2, options = ?3, option_colors = ?9, scale_max = ?4, scale_step = ?5, currency = ?6
           WHERE id = ?7 AND notebook_id = ?8`,
         patch.name ?? current.name,
         type,
@@ -2958,6 +2986,7 @@ export class NotesStore {
         currency,
         fieldId,
         notebookId,
+        optionColorsColumn(type, options, current.optionColors, patch.optionColors),
       );
 
       // The definition's notebook, and every note whose stored value the conversion
@@ -3189,11 +3218,20 @@ export class NotesStore {
       const applied = applyOptionEdit(field.options, edit);
       if ('error' in applied) return { refused: applied.error, ...(applied.merge ? { merge: true as const } : {}) };
 
+      // A renamed option keeps its colour under its new name, unless the new name already
+      // stood (a merge), which keeps the colour it had. The list write below would
+      // otherwise read the rename as a removal and an addition and colour the word anew.
+      const carried: Record<string, number> = {};
+      for (const { from, to } of applied.renamed) {
+        const was = field.optionColors?.[from];
+        if (was !== undefined && !field.options.includes(to)) carried[to] = was;
+      }
+
       // First, because it is the one that can refuse (a name another field has), and it
       // refuses before writing anything: returning from `tx` commits, so a refusal after
       // the notes below had moved would leave them moved. It records the notebook, and
       // the notes follow it in the feed.
-      const updated = this.updateField(notebookId, fieldId, { ...patch, options: applied.options });
+      const updated = this.updateField(notebookId, fieldId, { ...patch, options: applied.options, optionColors: carried });
       if (typeof updated === 'string') return updated;
 
       const moves = new Map(applied.renamed.map((r) => [r.from, r.to]));
@@ -3237,7 +3275,7 @@ export class NotesStore {
 
   private getField(notebookId: string, fieldId: string): FieldDef | null {
     const row = this.sql.first<FieldRow>(
-      `SELECT id, notebook_id, name, type, options, scale_max, scale_step, currency, position
+      `SELECT id, notebook_id, name, type, options, option_colors, scale_max, scale_step, currency, position
          FROM notebook_fields
         WHERE id = ?1 AND notebook_id = ?2 AND deleted_at IS NULL`,
       fieldId,
@@ -3333,7 +3371,7 @@ export class NotesStore {
     const defs = new Map(
       this.sql
         .exec<FieldRow>(
-          `SELECT id, notebook_id, name, type, options, scale_max, scale_step, currency, position
+          `SELECT id, notebook_id, name, type, options, option_colors, scale_max, scale_step, currency, position
              FROM notebook_fields
             WHERE id IN (SELECT value FROM json_each(?1))`,
           JSON.stringify(ids),
@@ -3531,7 +3569,7 @@ export class NotesStore {
       }
 
       const row = this.sql.first<FieldRow>(
-        `SELECT id, notebook_id, name, type, options, scale_max, scale_step, currency, position
+        `SELECT id, notebook_id, name, type, options, option_colors, scale_max, scale_step, currency, position
            FROM notebook_fields
           WHERE notebook_id = ?1 AND name = ?2 COLLATE NOCASE AND deleted_at IS NULL`,
         notebookId,
@@ -3699,6 +3737,7 @@ export class NotesStore {
             name: field.name,
             type: field.type,
             options: field.options ?? [],
+            optionColors: field.optionColors ?? null,
             scale: field.scale ?? null,
             currency: field.currency ?? null,
           });
@@ -3744,7 +3783,12 @@ export class NotesStore {
           const added = (field.options ?? []).filter((o) => !have.has(o.toLowerCase()));
           if (added.length > 0) {
             const options = [...current.options, ...added].slice(0, MAX_SELECT_OPTIONS);
-            const result = this.updateField(notebookId, current.id, { options });
+            // The file's colours for the options it adds, and only those: an option the
+            // notebook already had keeps the colour it has here, as it keeps its type.
+            const optionColors = Object.fromEntries(
+              added.flatMap((o) => (field.optionColors?.[o] === undefined ? [] : [[o, field.optionColors[o]!]])),
+            );
+            const result = this.updateField(notebookId, current.id, { options, optionColors });
             if (typeof result === 'string') {
               skipped.push({ name: field.name, reason: 'Options could not be added' });
             }
@@ -3797,9 +3841,24 @@ export class NotesStore {
     );
     if (held) return held;
     const id = crypto.randomUUID();
-    this.sql.exec(`INSERT INTO tags (id, name) VALUES (?1, ?2)`, id, name);
+    this.sql.exec(`INSERT INTO tags (id, name, color) VALUES (?1, ?2, ?3)`, id, name, this.nextTagColor());
     this.feed.record([{ entity: 'tag', id }]);
     return { id, name };
+  }
+
+  /**
+   * The colour for a tag about to be made: the one fewest tags wear (`leastUsedColor`).
+   *
+   * One read of the tags table per new tag, grouped, which is a few hundred rows on an
+   * archive: a tag is made rarely, and an import that makes hundreds reads the table
+   * once for each, which is a bounded one-off. A tag with no live note still counts, as
+   * it keeps its row and its colour, and comes back wearing it.
+   */
+  private nextTagColor(): number {
+    const rows = this.sql.exec<{ color: number | null; n: number }>(
+      `SELECT color, COUNT(*) AS n FROM tags GROUP BY color`,
+    );
+    return leastUsedColor(rows.flatMap((r) => (r.color === null ? [] : Array<number>(r.n).fill(r.color))));
   }
 }
 

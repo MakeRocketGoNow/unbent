@@ -33,6 +33,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod';
 import {
   MAX_FIELDS_PER_NOTEBOOK,
+  MAX_FIELD_NAME_LENGTH,
   currencySchema,
   fieldHasOptions,
   fieldNameSchema,
@@ -44,6 +45,7 @@ import {
   type FieldType,
 } from './fields.js';
 import { notebookEmojiSchema, notebookNameSchema, notebookPurposeSchema } from './schemas.js';
+import { colorName, parseColorName } from './colors.js';
 
 /** One field as the file describes it. No id: ids never leave the database's world. */
 export interface NotebookFileField {
@@ -51,6 +53,13 @@ export interface NotebookFileField {
   type: FieldType;
   /** Present only on a `select` or a `multiselect`. */
   options?: string[];
+  /**
+   * Each option's colour, by name, as an index into the palette. Written beside the
+   * options rather than inside them, so `options` stays the list of words every other
+   * reader of this file expects; in the file the value is the colour's name (`green`),
+   * which a person can read and write, and the index is accepted too.
+   */
+  optionColors?: Record<string, number>;
   /** Present only on a rating. */
   scale?: FieldScale;
   /** Present only on a number drawn as money. */
@@ -76,6 +85,24 @@ export interface NotebookDefinition {
  * the same schemas the notebook's settings page saves through, so a file cannot put an icon
  * or a sentence on a notebook that the picker or the purpose editor would have refused.
  */
+/**
+ * `colors:` in the file: option to colour name or index. A name the palette does not have
+ * is refused by name, as any other hand-written mistake in the file is.
+ */
+const optionColorFileSchema = z
+  .record(
+    z.string().min(1).max(MAX_FIELD_NAME_LENGTH),
+    z.union([z.string(), z.number()]).transform((v, ctx) => {
+      const index = parseColorName(v);
+      if (index === undefined) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Not a colour: ${String(v)}` });
+        return z.NEVER;
+      }
+      return index;
+    }),
+  )
+  .transform((colors) => colors as Record<string, number>);
+
 export const notebookDefinitionSchema = z.object({
   name: notebookNameSchema,
   emoji: notebookEmojiSchema.optional(),
@@ -86,6 +113,7 @@ export const notebookDefinitionSchema = z.object({
         name: fieldNameSchema,
         type: fieldTypeSchema,
         options: fieldOptionsSchema.optional(),
+        colors: optionColorFileSchema.optional(),
         scale: fieldScaleSchema.optional(),
         currency: currencySchema.optional(),
       }),
@@ -115,6 +143,12 @@ export function serializeNotebook(
       // scale. An empty `options: []` on every text field would be noise a reader has to
       // learn to skip.
       ...(fieldHasOptions(f.type) ? { options: f.options } : {}),
+      // By name, one per option the field has (a colour for an option that is gone would
+      // be noise), and only when the server sent any, so a file from an older server is
+      // unchanged.
+      ...(fieldHasOptions(f.type) && f.optionColors
+        ? { colors: Object.fromEntries(f.options.filter((o) => f.optionColors![o] !== undefined).map((o) => [o, colorName(f.optionColors![o]!)])) }
+        : {}),
       ...(f.type === 'number' && f.scale ? { scale: f.scale } : {}),
       ...(f.type === 'number' && !f.scale && f.currency ? { currency: f.currency } : {}),
     })),
@@ -148,7 +182,13 @@ export function parseNotebook(text: string): NotebookDefinition {
     const where = issue?.path.length ? ` at ${issue.path.map(String).join('.')}` : '';
     throw new NotebookFileError(`${issue?.message ?? 'Not a notebook definition'}${where}`);
   }
-  return result.data;
+  return {
+    ...result.data,
+    fields: result.data.fields.map(({ colors, ...field }) => ({
+      ...field,
+      ...(colors ? { optionColors: colors } : {}),
+    })),
+  };
 }
 
 /**

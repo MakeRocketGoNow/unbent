@@ -1027,6 +1027,7 @@ export class UserStore extends DurableObject<StoreEnv> {
   sampleTitles(exclude: string, perGroup: number, tagLimit: number) { this.ready(); return this.notes.sampleTitles(exclude, perGroup, tagLimit); }
   renameTag(id: string, name: string, opts?: { merge?: boolean | undefined }) { return this.writing(() => this.notes.renameTag(id, name, opts)); }
   deleteTag(id: string) { return this.writing(() => this.notes.deleteTag(id)); }
+  recolorTag(id: string, color: number) { return this.writing(() => this.notes.recolorTag(id, color)); }
   countUnfiledNotes() { this.ready(); return this.notes.countUnfiledNotes(); }
   listNotebooks() { this.ready(); return this.notes.listNotebooks(); }
   createNotebook(name: string) { return this.writing(() => this.notes.createNotebook(name)); }

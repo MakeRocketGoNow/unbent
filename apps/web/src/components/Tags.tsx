@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { sameName } from '@unbent/shared';
 import * as api from '../notes-api.js';
 import { Confirm } from './Confirm.js';
-import { LabelEditor } from './LabelEditor.js';
+import { LabelEditor, type LabelItem } from './LabelEditor.js';
 import { useExactCount } from './use-exact-count.js';
 
 interface TagsProps {
@@ -63,7 +63,9 @@ export function Tags({ onChanged }: TagsProps) {
     }
   }
 
-  const rename = async (tag: api.TagSummary, name: string): Promise<boolean> => {
+  const rename = async (item: LabelItem, name: string): Promise<boolean> => {
+    const tag = tags?.find((t) => t.id === item.id);
+    if (!tag) return false;
     setBusy(true);
     setError(null);
     try {

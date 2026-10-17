@@ -561,11 +561,16 @@ export async function agreeToLegal(version: string): Promise<void> {
   );
 }
 
-/** A tag as the list reports it: its id, which a rename addresses, and how many live notes carry it. */
+/**
+ * A tag as the list reports it: its id, which a rename addresses, how many live notes
+ * carry it, and the colour it wears (an index into the palette; see `colors.ts` in
+ * `@unbent/shared`). Null from a server that has not coloured it yet.
+ */
 export interface TagSummary {
   id: string;
   name: string;
   count: number;
+  color: number | null;
 }
 
 export async function listTags(): Promise<TagSummary[]> {

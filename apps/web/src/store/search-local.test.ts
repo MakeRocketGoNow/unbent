@@ -25,8 +25,8 @@ const notebooks: FeedNotebook[] = [
   { id: 'nb-manuals', name: 'Manuals', purpose: null, emoji: null, fieldDefs: [] },
 ];
 const tags: FeedTag[] = [
-  { id: 't-garden', name: 'garden' },
-  { id: 't-tax', name: 'tax 2025' },
+  { id: 't-garden', name: 'garden', color: 0 },
+  { id: 't-tax', name: 'tax 2025', color: 1 },
 ];
 
 /** Indexes a snapshot the way a pass does, with the given files' text. */

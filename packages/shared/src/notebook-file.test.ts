@@ -104,3 +104,34 @@ describe('the notebook definitions file', () => {
     expect(() => parseNotebook('name: [unterminated\n')).toThrow(/Malformed YAML/);
   });
 });
+
+describe('option colours in the definitions file', () => {
+  it('writes each option colour by name and reads it back as the index', () => {
+    const text = serializeNotebook({ name: 'Coupons' }, [
+      def({ name: 'Category', type: 'select', options: ['Bike', 'Toys'], optionColors: { Bike: 3, Toys: 5, Gone: 0 } }),
+    ]);
+    expect(text).toContain('colors:');
+    expect(text).toContain('Bike: green');
+    expect(text).not.toContain('Gone');
+    expect(parseNotebook(text).fields[0]).toEqual({
+      name: 'Category',
+      type: 'select',
+      options: ['Bike', 'Toys'],
+      optionColors: { Bike: 3, Toys: 5 },
+    });
+  });
+
+  it('writes no colours for a field the server sent none for, and reads a file without them', () => {
+    const text = serializeNotebook({ name: 'Coupons' }, [def({ name: 'Category', type: 'select', options: ['Bike'] })]);
+    expect(text).not.toContain('colors');
+    expect(parseNotebook(text).fields[0]).not.toHaveProperty('optionColors');
+  });
+
+  it('accepts an index for a colour and refuses a name the palette does not have', () => {
+    const parsed = parseNotebook('name: Coupons\nfields:\n  - name: Category\n    type: select\n    options: [Bike]\n    colors: {Bike: 7}\n');
+    expect(parsed.fields[0]?.optionColors).toEqual({ Bike: 7 });
+    expect(() =>
+      parseNotebook('name: Coupons\nfields:\n  - name: Category\n    type: select\n    options: [Bike]\n    colors: {Bike: mauve}\n'),
+    ).toThrow(/Not a colour: mauve/);
+  });
+});

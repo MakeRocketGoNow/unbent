@@ -284,7 +284,7 @@ export class NotesRepo extends StoreRepo {
     return this.call((s) => s.purge(scope, limit));
   }
 
-  listTags(): Promise<Array<{ id: string; name: string; count: number }>> {
+  listTags(): Promise<Array<{ id: string; name: string; count: number; color: number | null }>> {
     return this.call((s) => s.listTags());
   }
 
@@ -328,6 +328,10 @@ export class NotesRepo extends StoreRepo {
 
   deleteTag(id: string): Promise<boolean> {
     return this.call((s) => s.deleteTag(id));
+  }
+
+  recolorTag(id: string, color: number): Promise<boolean> {
+    return this.call((s) => s.recolorTag(id, color));
   }
 
   countUnfiledNotes(): Promise<number> {

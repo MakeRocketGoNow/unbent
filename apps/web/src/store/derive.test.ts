@@ -3,7 +3,7 @@ import type { FeedAttachment, FeedNote, FeedNotebook, FeedTag } from '@unbent/sh
 import { count, list, lookups, notebookFields, notebookFiles, notebookList, sameNotebookName, summaries, tagSummaries, toNote, toSummary, type Snapshot } from './derive.js';
 
 const nb = (id: string, name: string, fieldDefs: FeedNotebook['fieldDefs'] = []): FeedNotebook => ({ id, name, purpose: null, emoji: null, fieldDefs });
-const tag = (id: string, name: string): FeedTag => ({ id, name });
+const tag = (id: string, name: string, color: number | null = null): FeedTag => ({ id, name, color });
 const note = (id: string, over: Partial<FeedNote> = {}): FeedNote => ({ id, title: id, body: '', createdAt: 1, updatedAt: 1, tagIds: [], notebookId: null, files: [], ...over });
 const file = (id: string, noteId: string, createdAt = 1): FeedAttachment => ({ id, noteId, filename: `${id}.pdf`, contentType: 'application/pdf', size: 1, hasText: false, createdAt });
 
@@ -85,8 +85,8 @@ describe('derive', () => {
 
   it('derives tag and notebook counts from live notes, in the server\'s orders', () => {
     expect(tagSummaries(s)).toEqual([
-      { id: 't1', name: 'home', count: 2 },
-      { id: 't2', name: 'acme', count: 1 },
+      { id: 't1', name: 'home', count: 2, color: null },
+      { id: 't2', name: 'acme', count: 1, color: null },
     ]);
     expect(notebookList(s)).toEqual({
       notebooks: [

@@ -17,6 +17,8 @@ export interface LabelItem {
   count: number;
   /** A notebook's own emoji, drawn in place of the book. Tags have none. */
   emoji?: string | null;
+  /** A tag's colour, an index into the palette. Notebooks have none. */
+  color?: number | null;
 }
 
 interface LabelEditorProps {

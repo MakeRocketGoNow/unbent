@@ -111,7 +111,7 @@ function harness(answers: Record<string, unknown[] | unknown>) {
   return { engine, c, requests, cursorWrites, seq, cursor: () => cursor, setCursor: (p: Position | null) => void (cursor = p) };
 }
 
-const snapshotFirst = (notes: FeedNote[], next: string | null, seq = 10): SnapshotPage => ({ seq, epoch: 'e1', notes, next, notebooks: [{ id: 'nb1', name: 'Receipts', purpose: null, emoji: null, fieldDefs: [] }], tags: [{ id: 't1', name: 'home' }], total: 3 });
+const snapshotFirst = (notes: FeedNote[], next: string | null, seq = 10): SnapshotPage => ({ seq, epoch: 'e1', notes, next, notebooks: [{ id: 'nb1', name: 'Receipts', purpose: null, emoji: null, fieldDefs: [] }], tags: [{ id: 't1', name: 'home', color: 0 }], total: 3 });
 const feedPage = (over: Partial<FeedPage>): FeedPage => ({ reset: false, seq: 10, epoch: 'e1', next: 10, more: false, notes: [], notebooks: [], tags: [], attachments: [], tombstones: [], ...over });
 
 describe('FeedEngine', () => {
@@ -234,7 +234,7 @@ describe('FeedEngine', () => {
   it('follows the feed from the cursor, page after page while more, and moves the cursor after each', async () => {
     const h = harness({
       '/api/changes?since=10&epoch=e1&limit=2': feedPage({ next: 12, more: true, notes: [note('a', { title: 'A2' }), note('d')] }),
-      '/api/changes?since=12&epoch=e1&limit=2': feedPage({ next: 13, more: false, tombstones: [{ entity: 'note', id: 'd' }], tags: [{ id: 't2', name: 'new' }] }),
+      '/api/changes?since=12&epoch=e1&limit=2': feedPage({ next: 13, more: false, tombstones: [{ entity: 'note', id: 'd' }], tags: [{ id: 't2', name: 'new', color: 1 }] }),
     });
     await h.engine['options'].writeCursor({ seq: 10, epoch: 'e1' });
     h.c.note.rows.set('a', note('a'));

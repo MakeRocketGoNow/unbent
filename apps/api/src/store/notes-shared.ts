@@ -4,6 +4,7 @@ import {
   endOfDay,
   fieldRangeBound,
   fieldHasOptions,
+  assignOptionColors,
   startOfDay,
   UNFILED,
   type FieldDef,
@@ -78,6 +79,8 @@ export interface FieldRow {
   name: string;
   type: string;
   options: string | null;
+  /** JSON object, option to palette index (0009); NULL wherever `options` is. */
+  option_colors: string | null;
   scale_max: number | null;
   scale_step: number | null;
   currency: string | null;
@@ -106,6 +109,9 @@ export function rowToField(row: FieldRow): FieldDef {
     name: row.name,
     type: row.type as FieldType,
     options: row.options ? (JSON.parse(row.options) as string[]) : [],
+    // Only where the type has options: a text field carries no key at all, rather than
+    // an empty object, so the API's shape for it is byte for byte what it was.
+    ...(row.options ? { optionColors: row.option_colors ? (JSON.parse(row.option_colors) as Record<string, number>) : {} } : {}),
     // Both columns or neither: a half-written scale would make the star control guess.
     scale:
       row.scale_max !== null && row.scale_step !== null
@@ -120,6 +126,22 @@ export function rowToField(row: FieldRow): FieldDef {
 /** Options are only stored for the types that carry them; every other type gets NULL, whatever was sent. */
 export function optionsColumn(type: FieldType, options: string[]): string | null {
   return fieldHasOptions(type) ? JSON.stringify(options) : null;
+}
+
+/**
+ * The colours column for a list of options: the ones kept from before, the ones asked
+ * for by name, and the least-used colour for each option that has neither (see
+ * `assignOptionColors`). NULL wherever `optionsColumn` is, for the same reason: a
+ * field that stops being a select drops its colours with its options, so neither lies
+ * in wait for a type it may become again.
+ */
+export function optionColorsColumn(
+  type: FieldType,
+  options: string[],
+  prior: Record<string, number> | null | undefined,
+  wanted?: Record<string, number> | null | undefined,
+): string | null {
+  return fieldHasOptions(type) ? JSON.stringify(assignOptionColors(options, prior, wanted)) : null;
 }
 
 /**
