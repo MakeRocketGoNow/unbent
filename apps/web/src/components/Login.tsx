@@ -3,7 +3,6 @@ import { useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { SIGNUPS_CLOSED_MESSAGE, isLocalMethod, type AuthProvider } from '@unbent/shared';
 import {
-  emailOtp,
   refreshSession,
   requestPasswordReset,
   signIn,
@@ -14,6 +13,7 @@ import { HOME, LOGIN, rememberRelayRedirect } from '../auth-gate.js';
 import { Button } from './Button.js';
 import { LegalLink } from './LegalLink.js';
 import { ProviderIcon } from './provider-icons.js';
+import { TURNSTILE_FAILED_MESSAGE, useCodeRequest } from './Turnstile.js';
 
 /**
  * Names for providers whose own spelling is not what title-casing the id would produce.
@@ -137,6 +137,8 @@ export function Login({ redirectTo, refusal }: LoginProps) {
   const password = providers.includes('password');
   const passkeys = providers.includes('passkey');
   const otp = providers.includes('email-otp');
+  // Where the instance puts a Turnstile check in front of the request for a code (MAK-243).
+  const turnstile = config.data?.turnstile?.siteKey;
   // Set only on a preview, where it names the dev instance that can sign in with Google on
   // this preview's behalf. See the relay button below and routes/preview-signin.tsx.
   const relayOrigin = config.data?.previewRelay?.origin;
@@ -324,6 +326,7 @@ export function Login({ redirectTo, refusal }: LoginProps) {
         <EmailForm
           otp={otp}
           password={password}
+          turnstile={turnstile}
           busy={pending !== null}
           onBusy={(b) => setPending(b ? (password ? 'password' : 'email-otp') : null)}
           onError={setError}
@@ -378,6 +381,8 @@ interface EmailFormProps {
   /** Whether this instance offers a code by email, a password, or both. */
   otp: boolean;
   password: boolean;
+  /** Turnstile's site key, where the instance asks for a token with the request for a code. */
+  turnstile?: string;
   busy: boolean;
   onBusy: (busy: boolean) => void;
   onError: (message: string | null) => void;
@@ -403,8 +408,16 @@ interface EmailFormProps {
  * No `callbackURL` on any of these: nothing here leaves the page, so the cookie lands in
  * the response and `onSignedIn` navigates. The social buttons redirect because a provider
  * round trip leaves them no choice.
+ *
+ * Where the instance has put Turnstile in front of the request for a code, its widget sits
+ * above that button and the button waits for the token (`useCodeRequest`). The widget is
+ * drawn whenever a code is offered, before anyone has chosen it: it usually marks itself
+ * done before the address is typed, and a widget that appeared on the press would move the
+ * button under the pointer. Offline the script never arrives, and the sentence under the
+ * button says so rather than leaving a button that cannot be pressed.
  */
-function EmailForm({ otp, password, busy, onBusy, onError, onSignedIn }: EmailFormProps) {
+function EmailForm({ otp, password, turnstile, busy, onBusy, onError, onSignedIn }: EmailFormProps) {
+  const codeRequest = useCodeRequest(otp ? turnstile : undefined);
   const [mode, setMode] = useState<'in' | 'up'>('in');
   const [email, setEmail] = useState('');
   const [secret, setSecret] = useState('');
@@ -466,7 +479,7 @@ function EmailForm({ otp, password, busy, onBusy, onError, onSignedIn }: EmailFo
     onBusy(true);
     onError(null);
     try {
-      const result = await emailOtp.sendVerificationOtp({ email, type: 'sign-in' });
+      const result = await codeRequest.send(email);
       if (result?.error) onError(result.error.message || 'Could not send a code.');
       else setCodeSent(true);
     } catch (err) {
@@ -580,18 +593,22 @@ function EmailForm({ otp, password, busy, onBusy, onError, onSignedIn }: EmailFo
         </Button>
       )}
 
+      {codeRequest.widget}
+
       {otp && (
         <Button
           // Primary only when it is the only way forward; beside a password it is the
           // alternative, and two filled buttons would be a choice with no default.
           variant={password ? 'quiet' : 'primary'}
           type="button"
-          disabled={busy}
+          disabled={busy || !codeRequest.ready}
           onClick={() => void sendCode()}
         >
           {busy && !password ? 'Sending…' : 'Email me a code'}
         </Button>
       )}
+
+      {codeRequest.failed && <p className="bad small">{TURNSTILE_FAILED_MESSAGE}</p>}
 
       {password && (
         <Button

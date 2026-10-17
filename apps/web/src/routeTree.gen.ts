@@ -27,6 +27,7 @@ import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as TrashRouteImport } from './routes/trash'
+import { Route as TurnstileRouteImport } from './routes/turnstile'
 import { Route as WhyRouteImport } from './routes/why'
 import { Route as EmbedIndexFilesRouteImport } from './routes/embed.index-files'
 import { Route as NotesIndexRouteImport } from './routes/notes.index'
@@ -136,6 +137,11 @@ const TermsRoute = TermsRouteImport.update({
 const TrashRoute = TrashRouteImport.update({
   id: '/trash',
   path: '/trash',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TurnstileRoute = TurnstileRouteImport.update({
+  id: '/turnstile',
+  path: '/turnstile',
   getParentRoute: () => rootRouteImport,
 } as any)
 const WhyRoute = WhyRouteImport.update({
@@ -259,6 +265,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRouteWithChildren
   '/terms': typeof TermsRoute
   '/trash': typeof TrashRouteWithChildren
+  '/turnstile': typeof TurnstileRoute
   '/why': typeof WhyRoute
   '/embed/index-files': typeof EmbedIndexFilesRoute
   '/notes/$noteId': typeof NotesNoteIdRoute
@@ -296,6 +303,7 @@ export interface FileRoutesByTo {
   '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
   '/terms': typeof TermsRoute
+  '/turnstile': typeof TurnstileRoute
   '/why': typeof WhyRoute
   '/embed/index-files': typeof EmbedIndexFilesRoute
   '/notes/$noteId': typeof NotesNoteIdRoute
@@ -337,6 +345,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRouteWithChildren
   '/terms': typeof TermsRoute
   '/trash': typeof TrashRouteWithChildren
+  '/turnstile': typeof TurnstileRoute
   '/why': typeof WhyRoute
   '/embed/index-files': typeof EmbedIndexFilesRoute
   '/notes/$noteId': typeof NotesNoteIdRoute
@@ -379,6 +388,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/terms'
     | '/trash'
+    | '/turnstile'
     | '/why'
     | '/embed/index-files'
     | '/notes/$noteId'
@@ -416,6 +426,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/reset-password'
     | '/terms'
+    | '/turnstile'
     | '/why'
     | '/embed/index-files'
     | '/notes/$noteId'
@@ -456,6 +467,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/terms'
     | '/trash'
+    | '/turnstile'
     | '/why'
     | '/embed/index-files'
     | '/notes/$noteId'
@@ -497,6 +509,7 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRouteWithChildren
   TermsRoute: typeof TermsRoute
   TrashRoute: typeof TrashRouteWithChildren
+  TurnstileRoute: typeof TurnstileRoute
   WhyRoute: typeof WhyRoute
   EmbedIndexFilesRoute: typeof EmbedIndexFilesRoute
 }
@@ -627,6 +640,13 @@ declare module '@tanstack/react-router' {
       path: '/trash'
       fullPath: '/trash'
       preLoaderRoute: typeof TrashRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/turnstile': {
+      id: '/turnstile'
+      path: '/turnstile'
+      fullPath: '/turnstile'
+      preLoaderRoute: typeof TurnstileRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/why': {
@@ -853,6 +873,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRouteWithChildren,
   TermsRoute: TermsRoute,
   TrashRoute: TrashRouteWithChildren,
+  TurnstileRoute: TurnstileRoute,
   WhyRoute: WhyRoute,
   EmbedIndexFilesRoute: EmbedIndexFilesRoute,
 }

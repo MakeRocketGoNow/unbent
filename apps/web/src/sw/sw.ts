@@ -263,7 +263,11 @@ const NAVIGATION_TIMEOUT_MS = 3000;
  * shell is, and its absence means a fill is owed (seen on 2026-10-09).
  */
 registerRoute(
-  ({ request, url }) => request.mode === 'navigate' && servesShell(url),
+  // This origin's only. A frame on another origin (Turnstile's challenge, from
+  // challenges.cloudflare.com) is never dispatched to this worker to begin with, since a
+  // worker's scope is its own origin, and the test is here so that reading this route
+  // does not leave the question open.
+  ({ request, url }) => request.mode === 'navigate' && url.origin === self.location.origin && servesShell(url),
   async ({ event, request }) => {
     const cached = shell.matchPrecache('/index.html');
     // The browser's preloaded request where there is one, the worker's own otherwise;

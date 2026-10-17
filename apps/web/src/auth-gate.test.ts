@@ -84,6 +84,15 @@ describe('shellFor', () => {
     expect(shellFor('/embed/index-files')).toBe('embed');
   });
 
+  /**
+   * The token page the apps load before asking for a sign-in code: nobody is signed in
+   * when it loads, and a redirect to the sign-in screen would be a web view nobody sees
+   * waiting on a screen nobody can press.
+   */
+  it('lets the apps\' Turnstile page render without a session, and bare', () => {
+    expect(shellFor('/turnstile')).toBe('embed');
+  });
+
   /** A hand-typed address may carry one, and it never means a different page. */
   it('ignores a trailing slash', () => {
     expect(shellFor('/login/')).toBe('plain');

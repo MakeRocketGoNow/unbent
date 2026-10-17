@@ -1,5 +1,5 @@
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   createMemoryHistory,
@@ -9,6 +9,8 @@ import {
 } from '@tanstack/react-router';
 import type { AppConfig, AuthProvider } from '@unbent/shared';
 import { Login, refusalMessage } from './Login.js';
+import { TURNSTILE_FAILED_MESSAGE } from './Turnstile.js';
+import type { TurnstileOptions } from '../turnstile.js';
 import { emailOtp, signIn } from '../auth-client.js';
 import * as api from '../notes-api.js';
 import { takeRelayRedirect } from '../auth-gate.js';
@@ -233,6 +235,93 @@ describe('Login', () => {
     expect(emailOtp.sendVerificationOtp).toHaveBeenCalledWith({
       email: 'a@example.com',
       type: 'sign-in',
+    });
+  });
+
+  /**
+   * Where the instance checks a Turnstile token with the request for a code (MAK-243),
+   * the widget is drawn above the button, the button waits for its token, and the token
+   * goes with the request. The script is Cloudflare's and never loads in a test, so
+   * `window.turnstile` is a stand-in for what it leaves on the page.
+   */
+  describe('with a Turnstile check in front of the code', () => {
+    const TURNSTILE = { legal: BUILT_IN, turnstile: { siteKey: '1x00' } };
+    let widgets: Array<{ options: TurnstileOptions; removed: boolean }>;
+
+    beforeEach(() => {
+      widgets = [];
+      window.turnstile = {
+        render: (_el, options) => {
+          widgets.push({ options, removed: false });
+          return String(widgets.length - 1);
+        },
+        reset: () => {},
+        remove: (id) => {
+          widgets[Number(id)]!.removed = true;
+        },
+      };
+    });
+    afterEach(() => {
+      delete window.turnstile;
+    });
+
+    const pass = (token: string) => act(() => widgets.at(-1)!.options.callback(token));
+
+    it('waits for the token, then sends it with the request', async () => {
+      harness(['email-otp'], TURNSTILE);
+      await waitFor(() => expect(screen.getByText('Email me a code')).toBeTruthy());
+      await waitFor(() => expect(widgets).toHaveLength(1));
+      expect(widgets[0]!.options.sitekey).toBe('1x00');
+      // Nothing to send yet: the server would refuse a request with no token.
+      expect((screen.getByText('Email me a code') as HTMLButtonElement).disabled).toBe(true);
+
+      pass('tok-1');
+      await waitFor(() => expect((screen.getByText('Email me a code') as HTMLButtonElement).disabled).toBe(false));
+      fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'a@example.com' } });
+      fireEvent.click(screen.getByText('Email me a code'));
+
+      await waitFor(() => expect(screen.getByLabelText('Code')).toBeTruthy());
+      expect(emailOtp.sendVerificationOtp).toHaveBeenCalledWith({
+        email: 'a@example.com',
+        type: 'sign-in',
+        fetchOptions: { headers: { 'x-captcha-response': 'tok-1' } },
+      });
+    });
+
+    /** A token is spent by one request, whatever the answer; the next press needs a new one. */
+    it('draws the widget again after a refused request, for a fresh token', async () => {
+      vi.mocked(emailOtp.sendVerificationOtp).mockResolvedValueOnce({
+        error: { message: 'Verification failed', status: 403, statusText: 'Forbidden' },
+      } as never);
+      harness(['email-otp'], TURNSTILE);
+      await waitFor(() => expect(widgets).toHaveLength(1));
+      pass('tok-1');
+      fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'a@example.com' } });
+      await waitFor(() => expect((screen.getByText('Email me a code') as HTMLButtonElement).disabled).toBe(false));
+      fireEvent.click(screen.getByText('Email me a code'));
+
+      await waitFor(() => expect(screen.getByText('Verification failed')).toBeTruthy());
+      await waitFor(() => expect(widgets).toHaveLength(2));
+      expect(widgets[0]!.removed).toBe(true);
+      expect((screen.getByText('Email me a code') as HTMLButtonElement).disabled).toBe(true);
+      pass('tok-2');
+      await waitFor(() => expect((screen.getByText('Email me a code') as HTMLButtonElement).disabled).toBe(false));
+    });
+
+    /** Offline, or behind a blocker, the script never runs: said under the button, not spun on. */
+    it('says so when the widget cannot run', async () => {
+      harness(['email-otp'], TURNSTILE);
+      await waitFor(() => expect(widgets).toHaveLength(1));
+      act(() => widgets[0]!.options['error-callback']?.('300030'));
+      await waitFor(() => expect(screen.getByText(TURNSTILE_FAILED_MESSAGE)).toBeTruthy());
+      expect((screen.getByText('Email me a code') as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('draws no widget, and sends no header, where the instance asks for no token', async () => {
+      harness(['email-otp']);
+      await waitFor(() => expect(screen.getByText('Email me a code')).toBeTruthy());
+      expect(widgets).toHaveLength(0);
+      expect(document.querySelector('.turnstile')).toBeNull();
     });
   });
 

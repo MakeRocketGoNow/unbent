@@ -317,6 +317,15 @@ h1 {
 /* The mode toggle is an action on the form, not a field in it, so it sits centred below. */
 .login-switch { align-self: center; }
 
+/*
+ * Turnstile's widget, above "Email me a code" where the instance checks a token with
+ * that request. The widget is 65px tall at its `flexible` size and arrives a moment after
+ * the form, so the box holds that height from the start: the button under it must not
+ * drop when the script lands. The widget draws its own border and ground, so there is
+ * nothing of the form's to give it.
+ */
+.turnstile { min-height: 65px; }
+
 /* "or" between the providers and the form, so the two do not read as one list. */
 .login-or {
   display: flex;

@@ -41,6 +41,11 @@
  * The indexing page says `ready`, then `index-progress` as it goes, and ends with exactly
  * one of `index-done`, `unauthorized` or `index-error`. The app has nothing to ask it.
  *
+ * The Turnstile page (`/turnstile`), which the apps load before asking for a sign-in code
+ * where the instance checks a token with that request, says `turnstile-interactive` if
+ * the widget is about to want a tap (the app brings the view on screen for it), then
+ * exactly one of `turnstile` with the token or `turnstile-error`. The token is spent by
+ * one request; the app loads the page again for the next.
  */
 export type AppMessage =
   | { type: 'ready' }
@@ -51,7 +56,10 @@ export type AppMessage =
   | { type: 'theme'; background: string }
   | { type: 'index-progress'; done: number; total: number }
   | { type: 'index-done'; indexed: number; unusable: number; failed: number }
-  | { type: 'index-error'; message: string };
+  | { type: 'index-error'; message: string }
+  | { type: 'turnstile-interactive' }
+  | { type: 'turnstile'; token: string }
+  | { type: 'turnstile-error'; message: string };
 
 export interface AppHandlers {
   /** Handled Back: true when the page closed or moved something, false to leave it to the app. */

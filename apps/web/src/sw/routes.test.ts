@@ -110,6 +110,20 @@ describe('classify', () => {
       classify(facts('https://images.example/receipt.png', { destination: 'image' })),
     ).toBeUndefined();
   });
+
+  /**
+   * Turnstile's script and challenge, which the sign-in screen loads from Cloudflare where
+   * the instance asks for a token (MAK-243). Never kept: a challenge answered from a cache
+   * is not a challenge, and the shell loads without it, as the sign-in screen's own sentence
+   * for a widget that could not run assumes.
+   */
+  it('never keeps Turnstile’s script or its challenge', () => {
+    const script = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+    const frame = 'https://challenges.cloudflare.com/cdn-cgi/challenge-platform/h/b/turnstile/if/ov2/av0/rcv/abc/1x00/auto/fbE/new/normal/auto/';
+    expect(classify(facts(script, { destination: 'script' }))).toBeUndefined();
+    expect(classify(facts(frame, { destination: 'iframe' }))).toBeUndefined();
+    expect(isAsset(new URL(script), ORIGIN)).toBe(false);
+  });
 });
 
 /*
