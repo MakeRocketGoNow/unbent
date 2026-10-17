@@ -269,8 +269,8 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
           ...(opts.autofill
             ? [
                 'Auto-fill suggests where a note belongs and what its fields say. It is the one ' +
-                  'thing that sends what a note says to a service outside our own, and it does so ' +
-                  'only when you press it, for that note alone, never when you upload or in the ' +
+                  'thing that sends what a note says to another company for it to read, and it does ' +
+                  'so only when you press it, for that note alone, never when you upload or in the ' +
                   'background. The services that answer it are named below, with what each receives.',
               ]
             : []),
