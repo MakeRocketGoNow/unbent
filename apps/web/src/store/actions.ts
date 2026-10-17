@@ -215,6 +215,9 @@ type Upload = { noteId: string; attachmentId: string; filename: string; contentT
 /** The key an upload's notice is kept under, beside the conflicts, for the same reason they are kept. */
 const noticeKey = (attachmentId: string) => `upload-notice:${attachmentId}`;
 
+/** The key the store's refusal is kept under, beside them; see `createOutbox`. */
+const STORE_FULL_KEY = 'store-full';
+
 /** What an outbox entry runs; the library does not export the name. */
 type MutationFn = Parameters<typeof startOfflineExecutor>[0]['mutationFns'][string];
 
@@ -260,10 +263,6 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     const s = status();
     listeners.forEach((l) => l(s));
   };
-  // The refusal appearing, changing its words or going is a status change for every
-  // tab; see `SyncStatus.storeFull`. Let go of in `dispose`, as the connectivity
-  // subscription is, so an account's outbox does not leave a listener behind.
-  const offStoreFull = onStoreFull(() => touch());
 
   const defs = (): FieldDef[] => [...lookups(snapshot(lib)).fieldDefs.values()];
 
@@ -373,6 +372,22 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
   /** The adapter's connection: a private field, pinned by `pins.test.ts`; null until its first use. */
   const connection = () => (adapter as unknown as { db?: IDBDatabase | null }).db ?? null;
   const storage = watched(adapter, () => touch());
+  /*
+   * The store's refusal (MAK-234), kept beside the outbox's conflicts and notices and
+   * restored with them, so a reload starts out knowing it. Held only in memory, it was
+   * unknown after a reload until the kept save had been sent and refused again, and a
+   * purge made in between queued behind that save, where it could never make the room
+   * the strip was asking for (found in review). Its appearing, changing or going is a
+   * status change for every tab too; see `SyncStatus.storeFull`. After `storage`, which
+   * the listener writes and `touch` reads: registered before it, the reset above found
+   * the last account's refusal and called it before `storage` existed, and the outbox
+   * failed to start. Let go of in `dispose`, as the connectivity subscription is.
+   */
+  const offStoreFull = onStoreFull(() => {
+    const said = storeFullMessage();
+    void (said ? storage.set(STORE_FULL_KEY, said) : storage.delete(STORE_FULL_KEY)).catch(() => {});
+    touch();
+  });
   const executor = startOfflineExecutor({
     // Both, so a reload restores an upload's row as it restores a save's text.
     collections: { notes: lib.notes, attachments: lib.attachments },
@@ -654,6 +669,13 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
         if (m && !waitingSaves.has(m.noteId)) waitingSaves.set(m.noteId, { id: t.id, value: m.value, base: m.base, against: m.against, origin: m.origin, retire: () => cleanup?.call(executor, t.id, true) });
       }
       for (const key of keys) {
+        if (key === STORE_FULL_KEY) {
+          // Only while something is waiting: a refusal whose entry has gone is over.
+          const raw = await storage.get(key);
+          if (raw && storage.held() > 0) storeRefused(raw);
+          else void storage.delete(key).catch(() => {});
+          continue;
+        }
         if (key.startsWith('upload-notice:')) {
           const raw = await storage.get(key);
           if (!raw) continue;

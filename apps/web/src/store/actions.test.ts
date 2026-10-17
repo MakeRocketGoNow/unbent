@@ -573,6 +573,48 @@ describe('a replayed write', () => {
    * to the server round that save rather than behind it, and the save then ends on the
    * note being gone (MAK-234). Behind it, the delete would never be sent.
    */
+  /**
+   * The store's refusal is kept beside the outbox, so a reload starts out knowing it
+   * (MAK-234): a purge made before the kept save is sent again goes round it rather than
+   * behind it. And an outbox opened while the last account's refusal is still in memory
+   * starts, rather than calling its listener before its storage exists.
+   */
+  it('keeps the store\u2019s refusal across a reload, and forgets it once the save has gone', async () => {
+    const { lib, fake, note } = library([row('n1', { title: 'old' })]);
+    const base = note('n1');
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'typed past the limit' }, base });
+    await tick();
+    vi.mocked(api.updateNote).mockRejectedValueOnce(new ApiError(402, '402: no room here', 'STORAGE_FULL', 'notes'));
+    expect(await fake.replayOne()).toBe('kept');
+    await tick();
+
+    // The tab closed and opened again: the memory is gone, the outbox's storage is not.
+    await lib.outbox.dispose();
+    resetStoreFull();
+    const reopened = createOutbox('u1', lib);
+    await reopened.ready;
+    expect(reopened.status().storeFull).toBe('no room here');
+    expect(storeFull()).toBe(true);
+
+    // Opened again with a refusal still in memory, as after an account switch: the reset
+    // at its start runs before its storage exists, and must not reach its listener.
+    await reopened.dispose();
+    const again = createOutbox('u1', lib);
+    await again.ready;
+    expect(again.status().storeFull).toBe('no room here');
+
+    // The save goes: the refusal is forgotten, here and in storage.
+    vi.mocked(api.updateNote).mockResolvedValueOnce({ ...base, title: 'typed past the limit', updatedAt: 101 });
+    expect(await fake.replayOne()).toBe('done');
+    await tick();
+    expect(again.status().storeFull).toBeNull();
+    await again.dispose();
+    resetStoreFull();
+    const after = createOutbox('u1', lib);
+    await after.ready;
+    expect(after.status().storeFull).toBeNull();
+  });
+
   it('sends the delete of a note whose own save the store refused, round that save', async () => {
     const { fake, note } = library([row('n1', { title: 'old' })]);
     const base = note('n1');
