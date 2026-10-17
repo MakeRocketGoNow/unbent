@@ -104,8 +104,13 @@ export class AttachmentsRepo extends StoreRepo {
     return this.call(async (s) => s.recordText(input, usage, await this.storeLimit()));
   }
 
-  copyText(fromAttachmentId: string, to: { attachmentId: string; noteId: string; filename: string }): Promise<void> {
-    return this.call(async (s) => s.copyText(fromAttachmentId, to, await this.storeLimit()));
+  /**
+   * `move` for a copy whose source row goes right after: the store does not grow, and a
+   * refusal here would delete the only copy of the text with the source. A copy is held
+   * to the limit like any other text write.
+   */
+  copyText(fromAttachmentId: string, to: { attachmentId: string; noteId: string; filename: string }, opts: { move?: boolean } = {}): Promise<void> {
+    return this.call(async (s) => s.copyText(fromAttachmentId, to, opts.move ? null : await this.storeLimit()));
   }
 
   /** An assistant's reading of a file, over MCP; see `AttachmentsStore.writeAssistantText` for what yields to it. */

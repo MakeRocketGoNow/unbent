@@ -128,18 +128,23 @@ export async function copyAttachments(
       await blobs.delete(key);
       continue;
     }
-    // The text goes with the file, unless the store has no room for it (MAK-234): then
-    // the copy is a file with no text row yet, which is what a fresh upload is, and the
-    // browser's next pass indexes it once there is room. Not a refusal of the copy: the
-    // row and the object are already there, and the quota on files admitted them.
+    // Decided before the text is copied, because it decides how the text is copied.
+    const moving = input.move && !(await sourceStillLinks(requested));
+    // The text goes with the file. A move takes it whatever the store's size (MAK-234):
+    // the source's row goes next, so nothing grows, and a refusal would delete the only
+    // copy of the text with it (a model's reading, an assistant's, one restored from an
+    // archive). A copy whose text the store has no room for is a file with no text row
+    // yet, which is what a fresh upload is, and the browser's next pass indexes it once
+    // there is room: not a refusal of the copy, since the row and the object are already
+    // there and the quota on files admitted them.
     try {
-      await attachments.copyText(source.id, { attachmentId: id, noteId: input.to, filename });
+      await attachments.copyText(source.id, { attachmentId: id, noteId: input.to, filename }, { move: moving });
     } catch (err) {
-      if (!(err instanceof StorageFull)) throw err;
+      if (moving || !(err instanceof StorageFull)) throw err;
     }
 
     let moved = false;
-    if (input.move && !(await sourceStillLinks(requested))) {
+    if (moving) {
       moved = (await attachments.remove(input.from, requested)) !== null;
     }
 
