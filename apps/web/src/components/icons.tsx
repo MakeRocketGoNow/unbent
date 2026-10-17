@@ -706,7 +706,7 @@ export function AssistantFeatureIcon() {
   return <FeatureIcon icon={Bot} />;
 }
 
-export function AndroidFeatureIcon() {
+export function PhoneAppsFeatureIcon() {
   return <FeatureIcon icon={Smartphone} />;
 }
 

@@ -9,9 +9,9 @@ import { LegalLink } from './LegalLink.js';
 import { ProviderIcon } from './provider-icons.js';
 import { BASE_STORAGE_GB, PLAN_PRICE_USD, STORAGE_ADDON_GB, STORAGE_ADDON_PRICE_USD, TRIAL_DAYS } from '@unbent/shared';
 import {
-  AndroidFeatureIcon,
   AssistantFeatureIcon,
   FieldsFeatureIcon,
+  PhoneAppsFeatureIcon,
   SearchFilesFeatureIcon,
   SourceFeatureIcon,
 } from './icons.js';
@@ -133,9 +133,14 @@ export function FrontPage() {
             An MCP server lets Claude and other assistants search, read and file your notes,
             once you connect them, and only until you disconnect them.
           </Point>
-          <Point icon={<AndroidFeatureIcon />} title="An Android app">
+          {/* Coming soon because neither app is in a store yet, and a visitor who goes
+              looking for one should not come back empty-handed after reading that it
+              exists. Said in the title rather than as a badge beside it: a pill here
+              would be the only one on the page, and would look like a control. Once an
+              app ships, this says so and links its store page. */}
+          <Point icon={<PhoneAppsFeatureIcon />} title="Android and iOS apps, coming soon">
             The same notes on your phone, and a share sheet that files a page, a photo or a
-            stack of scans as a note.
+            stack of scans as a note. Until then, Unbent works in your phone&apos;s browser.
           </Point>
           <Point icon={<SourceFeatureIcon />} title="Run it yourself">
             The source is public, and Unbent runs on Cloudflare&apos;s free tier.{' '}
@@ -228,7 +233,7 @@ export function Pricing() {
         <ul>
           <li>Unlimited notes</li>
           <li>{BASE_STORAGE_GB} GB of attachments, and {STORAGE_ADDON_GB} GB more for ${STORAGE_ADDON_PRICE_USD} a year</li>
-          <li>The web app, the Android app and AI assistants</li>
+          <li>The web app and AI assistants, with Android and iOS apps coming soon</li>
           <li>Auto-fill, which reads a scan and fills in its title, notebook and fields</li>
           <li>Every note&apos;s history, and your library on each device, offline too</li>
           <li>Export everything, as often as you like</li>
