@@ -35,6 +35,19 @@ duplicate past the plan's quota is a 402 that names the numbers, and the Plan pa
 what the account holds against it. The sum is kept on each account's store by triggers
 (schema 0008), never by reading the files table.
 
+The store itself has a bound of its own (MAK-234), because the quota counts the bytes in
+the bucket and nothing else, and what the account's SQLite holds (note bodies, the copies
+the history keeps of them, the text extracted from files, the search index) is the dearer
+kind of storage, about thirteen times the bucket's price per gigabyte-month. Once a store
+is past half a gigabyte plus a tenth of the quota, a note write (a note made, imported,
+duplicated or changed, a body appended to, a copy put back, a bulk change) is the same
+402, with a sentence that says notes rather than files. Deleting, trashing and emptying
+the trash still work, since they are the way back under, and a file's text is still
+recorded, since the quota on files bounds it. The margin is wide on purpose: a real
+archive's text measured at a few percent of its files, and the limit exists for a loop
+writing maximum-size notes on a trial with no card, not for anyone who filed what they
+scanned (`storeLimitBytes` in `lib/quota.ts` has the numbers and the reasoning).
+
 Auto-fill is the one thing an account can make the instance pay for per press, and its
 daily cap has two numbers for the same reason the trial asks for no card. `AUTOFILL_DAILY_CAP`
 bounds one account's day, which is enough against a paying customer's loop: there is a
