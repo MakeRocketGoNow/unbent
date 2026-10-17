@@ -98,13 +98,17 @@ function codesDeliverable(env: Env): boolean {
  * `warnIfHalfTurnstile` says so once, rather than locking the code sign-in or quietly not
  * protecting it.
  *
+ * Off, too, where no code can be sent (`codesDeliverable`): the endpoints it stands in
+ * front of are not mounted then, and a site key in the config would describe a widget
+ * for a request nobody can make.
+ *
  * What `/api/config` reports is the site key alone (`AppConfig.turnstile`); the secret
  * never leaves the Worker. Pure, because `/api/config` reads it on every page load.
  */
 export function turnstileOf(env: Env): AppConfig['turnstile'] | undefined {
   const secret = env.TURNSTILE_SECRET_KEY?.trim();
   const siteKey = env.TURNSTILE_SITE_KEY?.trim();
-  return secret && siteKey ? { siteKey } : undefined;
+  return secret && siteKey && codesDeliverable(env) ? { siteKey } : undefined;
 }
 
 /**

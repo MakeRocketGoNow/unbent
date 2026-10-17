@@ -358,14 +358,22 @@ describe('accountDeletionOffered', () => {
 describe('turnstileOf', () => {
   afterEach(() => vi.restoreAllMocks());
 
+  const MAIL = { RESEND_API_KEY: 'key', EMAIL_FROM: 'a@example.com' };
+
   it('reports the site key, and only the site key, when both are set', () => {
-    expect(turnstileOf(env({ TURNSTILE_SECRET_KEY: 'sec', TURNSTILE_SITE_KEY: '1x00' }))).toEqual({ siteKey: '1x00' });
+    expect(turnstileOf(env({ ...MAIL, TURNSTILE_SECRET_KEY: 'sec', TURNSTILE_SITE_KEY: '1x00' }))).toEqual({ siteKey: '1x00' });
+  });
+
+  /** The endpoints it guards are not mounted without mail, so a key there means nothing. */
+  it('is off where no code can be sent, whatever the keys say', () => {
+    expect(turnstileOf(env({ TURNSTILE_SECRET_KEY: 'sec', TURNSTILE_SITE_KEY: '1x00' }))).toBeUndefined();
+    expect(turnstileOf(env({ APP_URL: 'http://localhost:5173', TURNSTILE_SECRET_KEY: 'sec', TURNSTILE_SITE_KEY: '1x00' }))).toEqual({ siteKey: '1x00' });
   });
 
   it('is off without the pair, and off for half of one', () => {
-    expect(turnstileOf(env({}))).toBeUndefined();
-    expect(turnstileOf(env({ TURNSTILE_SECRET_KEY: 'sec' }))).toBeUndefined();
-    expect(turnstileOf(env({ TURNSTILE_SITE_KEY: '1x00', TURNSTILE_SECRET_KEY: ' ' }))).toBeUndefined();
+    expect(turnstileOf(env(MAIL))).toBeUndefined();
+    expect(turnstileOf(env({ ...MAIL, TURNSTILE_SECRET_KEY: 'sec' }))).toBeUndefined();
+    expect(turnstileOf(env({ ...MAIL, TURNSTILE_SITE_KEY: '1x00', TURNSTILE_SECRET_KEY: ' ' }))).toBeUndefined();
   });
 
   /** Said from `createAuth`, once per isolate, never from the config read. */
