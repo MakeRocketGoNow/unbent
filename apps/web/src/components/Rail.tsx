@@ -4,7 +4,7 @@ import { Link, useRouterState, useSearch } from '@tanstack/react-router';
 import { AccountMenu } from './AccountMenu.js';
 import { InstanceRibbon } from './InstanceRibbon.js';
 import { notebooksQuery, tagsQuery, trashCountQuery } from '../queries.js';
-import { useMediaQuery, RAIL_WIDE_QUERY } from '../useMediaQuery.js';
+import { useMediaQuery, prefersReducedMotion, RAIL_SLIDE_QUERY, RAIL_WIDE_QUERY } from '../useMediaQuery.js';
 import { NotebookNav, type NavPlace } from './NotebookNav.js';
 import { ResizeHandle } from './ResizeHandle.js';
 import { usePersistentState, clamp } from '../usePersistentState.js';
@@ -113,8 +113,37 @@ export function Rail({ pref, onPref, email, onSignOut }: RailProps) {
   const wide = useMediaQuery(RAIL_WIDE_QUERY);
   const open = pref === 'auto' ? wide : pref === 'open';
 
+  /*
+   * Which way the rail is sliding, while it is: the stylesheet holds the strip's rules off
+   * and transitions the width only under this (see "The slide" in styles.css). Set only
+   * where that block applies, so the strip is never left drawn as the open rail with no
+   * transition to end it, and cleared by the rail's own width transition ending, with a
+   * timer behind it for a transition that never starts (a tab hidden mid-click).
+   */
+  const [sliding, setSliding] = useState<'open' | 'close' | null>(null);
+  useEffect(() => {
+    if (!sliding) return;
+    const t = window.setTimeout(() => setSliding(null), 400);
+    return () => window.clearTimeout(t);
+  }, [sliding]);
+
+  const toggle = () => {
+    const next = open ? 'collapsed' : 'open';
+    if (window.matchMedia(RAIL_SLIDE_QUERY).matches && !prefersReducedMotion()) {
+      setSliding(next === 'open' ? 'open' : 'close');
+    }
+    onPref(next);
+  };
+
   return (
-    <aside className="rail" aria-label="Navigation">
+    <aside
+      className="rail"
+      aria-label="Navigation"
+      data-sliding={sliding ?? undefined}
+      onTransitionEnd={(e) => {
+        if (e.target === e.currentTarget && e.propertyName === 'width') setSliding(null);
+      }}
+    >
       <InstanceRibbon placement="rail" />
       <div className="rail-inner">
         <div className="rail-head">
@@ -131,7 +160,7 @@ export function Rail({ pref, onPref, email, onSignOut }: RailProps) {
             aria-expanded={open}
             aria-label={open ? 'Collapse sidebar' : 'Expand sidebar'}
             data-tip={open ? 'Collapse sidebar' : 'Expand sidebar'}
-            onClick={() => onPref(open ? 'collapsed' : 'open')}
+            onClick={toggle}
           >
             <RailToggleIcon open={open} />
           </button>
