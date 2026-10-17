@@ -121,17 +121,17 @@ importers:
         specifier: ^1.8.0
         version: 1.8.0
       '@tanstack/browser-db-sqlite-persistence':
-        specifier: ^0.2.26
-        version: 0.2.26(@journeyapps/wa-sqlite@1.7.2)(typescript@7.0.2)
+        specifier: 0.2.28
+        version: 0.2.28(@journeyapps/wa-sqlite@1.7.2)(typescript@7.0.2)
       '@tanstack/db':
-        specifier: 0.11.1
-        version: 0.11.1(typescript@7.0.2)
+        specifier: 0.11.3
+        version: 0.11.3(typescript@7.0.2)
       '@tanstack/offline-transactions':
-        specifier: 1.0.59
-        version: 1.0.59(typescript@7.0.2)
+        specifier: 1.0.61
+        version: 1.0.61(typescript@7.0.2)
       '@tanstack/react-db':
-        specifier: ^0.5.1
-        version: 0.5.1(react@19.3.1)(typescript@7.0.2)
+        specifier: 0.5.3
+        version: 0.5.3(react@19.3.1)(typescript@7.0.2)
       '@tanstack/react-query':
         specifier: ^5.104.3
         version: 5.104.3(react@19.3.1)
@@ -2046,8 +2046,8 @@ packages:
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
-  '@tanstack/browser-db-sqlite-persistence@0.2.26':
-    resolution: {integrity: sha512-vPVgYGSmOX2tR/iq6hMV82O+yyowqmj7yshsP8d63T4ATpWOce7NALzxW6j8XRZAxoQ4LNwpL3wFZJubsEJcFg==}
+  '@tanstack/browser-db-sqlite-persistence@0.2.28':
+    resolution: {integrity: sha512-DorazD8ogsl5I1drASiqanoNJHtRGYzQHHth1ZKncxm2LqzsbzHJNZwSM+4FRE+eTJDtEI9UNx4SKzWHXXewXg==}
     peerDependencies:
       '@journeyapps/wa-sqlite': ^1.4.1
       typescript: '>=4.7'
@@ -2057,13 +2057,13 @@ packages:
     peerDependencies:
       typescript: '>=4.7'
 
-  '@tanstack/db-sqlite-persistence-core@0.4.1':
-    resolution: {integrity: sha512-90tnhkCvtR+pcQjL4MmEZGVJc2T3BNfDjGgEQqoi1xF70BTMQsF3AUa8TPXnMBg9LeaZ3ni2hoRu8rurfHVrow==}
+  '@tanstack/db-sqlite-persistence-core@0.4.3':
+    resolution: {integrity: sha512-bDI/3BGGfyUWQTMOdTCHAeoVWGqwYNQs3zr5PP6rNePu6sjAG+bKPBEToNWehIVjzY4mPlDX5fK2Z0H0bOitZg==}
     peerDependencies:
       typescript: '>=4.7'
 
-  '@tanstack/db@0.11.1':
-    resolution: {integrity: sha512-miiKn0dG5Td9KkMnNmxYLcE9BvoPlvbUxeNNcNySzxwWDlQd72zv9juMTfvzuQEiANts89nXYeNY79B6Gq9/bQ==}
+  '@tanstack/db@0.11.3':
+    resolution: {integrity: sha512-xrBwD+mIm0BU4zYm0jrhQcWorhZGwSysjCXTB+7i9B9m2LsbTSdqYRT9RhvB0D51cbteX6p959LCbyIyeZ3XUg==}
     peerDependencies:
       typescript: '>=4.7'
 
@@ -2071,8 +2071,8 @@ packages:
     resolution: {integrity: sha512-w1+YvwmTkwt5n8yUqEH3IWZ9DsmorCZW/EQ3KYHnqEgIkOZpH54NvW6/Epq3Dzb8H0ifIeYX8PExvrNLIH5FIA==}
     engines: {node: '>=20.19'}
 
-  '@tanstack/offline-transactions@1.0.59':
-    resolution: {integrity: sha512-rqjfQvbJBJpLAkA5CWNZvaiS925aaiQ4yu1fVsP5F4xKg1WKyK44o/ZdMzvX0GJ3gs7PQLRhCylrj8bSwh5YOw==}
+  '@tanstack/offline-transactions@1.0.61':
+    resolution: {integrity: sha512-kWee3R5mPg+JPjG5bHgDFiCURn8o99tx11A+ieP3vXP2NtcTwXFZQthgJwgHFOFQmSO1IOQOiE+cV2hrtQ5Uiw==}
     peerDependencies:
       '@react-native-community/netinfo': '>=11.0.0'
       react-native: '>=0.70.0'
@@ -2089,8 +2089,8 @@ packages:
   '@tanstack/query-core@5.104.3':
     resolution: {integrity: sha512-DZY9TuJAOgU3UyHUhXb4CcTYEHNZszlwkPg4VViIwTxOKzLprPUU+rbaPZQd3srqkGOtpaDdKpW972UV/LKlcg==}
 
-  '@tanstack/react-db@0.5.1':
-    resolution: {integrity: sha512-Nq0WydQ84KpOlBNH9uOtBQKs1o2iQBtZpilGPhEmGmkoNcz0Dabw4LmvADj+agA4zIHFLHCrlFRCxzeBQM0nYA==}
+  '@tanstack/react-db@0.5.3':
+    resolution: {integrity: sha512-UVR/gsm5Q4uGi6mrLXVsu7ZgNh9MokZNd9ZBAzg286P2TaBNZvnPUA6K09FydPlIRz+M1gC7f/5o1FHCwPLrFw==}
     peerDependencies:
       react: '>=18.0.0'
 
@@ -6126,10 +6126,10 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
-  '@tanstack/browser-db-sqlite-persistence@0.2.26(@journeyapps/wa-sqlite@1.7.2)(typescript@7.0.2)':
+  '@tanstack/browser-db-sqlite-persistence@0.2.28(@journeyapps/wa-sqlite@1.7.2)(typescript@7.0.2)':
     dependencies:
       '@journeyapps/wa-sqlite': 1.7.2
-      '@tanstack/db-sqlite-persistence-core': 0.4.1(typescript@7.0.2)
+      '@tanstack/db-sqlite-persistence-core': 0.4.3(typescript@7.0.2)
       typescript: 7.0.2
 
   '@tanstack/db-ivm@0.1.25(typescript@7.0.2)':
@@ -6138,13 +6138,13 @@ snapshots:
       sorted-btree: 1.8.1
       typescript: 7.0.2
 
-  '@tanstack/db-sqlite-persistence-core@0.4.1(typescript@7.0.2)':
+  '@tanstack/db-sqlite-persistence-core@0.4.3(typescript@7.0.2)':
     dependencies:
       '@standard-schema/spec': 1.1.0
-      '@tanstack/db': 0.11.1(typescript@7.0.2)
+      '@tanstack/db': 0.11.3(typescript@7.0.2)
       typescript: 7.0.2
 
-  '@tanstack/db@0.11.1(typescript@7.0.2)':
+  '@tanstack/db@0.11.3(typescript@7.0.2)':
     dependencies:
       '@standard-schema/spec': 1.1.0
       '@tanstack/db-ivm': 0.1.25(typescript@7.0.2)
@@ -6153,9 +6153,9 @@ snapshots:
 
   '@tanstack/history@1.162.5': {}
 
-  '@tanstack/offline-transactions@1.0.59(typescript@7.0.2)':
+  '@tanstack/offline-transactions@1.0.61(typescript@7.0.2)':
     dependencies:
-      '@tanstack/db': 0.11.1(typescript@7.0.2)
+      '@tanstack/db': 0.11.3(typescript@7.0.2)
     transitivePeerDependencies:
       - typescript
 
@@ -6163,9 +6163,9 @@ snapshots:
 
   '@tanstack/query-core@5.104.3': {}
 
-  '@tanstack/react-db@0.5.1(react@19.3.1)(typescript@7.0.2)':
+  '@tanstack/react-db@0.5.3(react@19.3.1)(typescript@7.0.2)':
     dependencies:
-      '@tanstack/db': 0.11.1(typescript@7.0.2)
+      '@tanstack/db': 0.11.3(typescript@7.0.2)
       react: 19.3.1
     transitivePeerDependencies:
       - typescript

@@ -89,7 +89,7 @@ updates:
     open-pull-requests-limit: 0
     # Not `@journeyapps/wa-sqlite` 2, until `@tanstack/browser-db-sqlite-persistence` peers
     # on it. The local library and the outbox open their SQLite file through that adapter,
-    # which peers on ^1.4.1 (as of 0.2.32, 2026-10); pnpm installs a 2.x beside it with
+    # which peers on ^1.4.1 (still so in 0.2.35, 2026-10-16); pnpm installs a 2.x beside it with
     # only a peer warning, and what breaks is the persistence worker on every device, where
     # no unit test reaches. The bump was merged once (#336) and reverted. Lift this when the
     # adapter's peer range takes the new major, and run `pnpm gate:offline` on the bump.

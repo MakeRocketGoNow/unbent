@@ -28,30 +28,38 @@ on. A major gets its changelog read, not just its tests run.
 
 ## The local library: TanStack DB and wa-sqlite
 
-**`@tanstack/db` 0.11.1 and `@tanstack/offline-transactions` 1.0.59, exactly.** The outbox
+**`@tanstack/db` 0.11.3 and `@tanstack/offline-transactions` 1.0.61, exactly.** The outbox
 reads two private fields: a collection's `_state.syncedData` (`syncedRow` in
 `store/actions.ts`, `feedControls` in `store/collections.ts`) and the IndexedDB adapter's
 `db`. `store/pins.test.ts` fails the day an upgrade moves either, and fails if the manifest
 loses the exact pin.
 
-**`@tanstack/react-db` and `@tanstack/browser-db-sqlite-persistence` move with them.** Each
-depends on one exact `@tanstack/db`, so moving any one of the four alone puts two copies of
-it in the graph. Pick the versions that agree: 0.11.1 is react-db 0.5.1, persistence-core
-0.4.1 (browser persistence 0.2.26), offline-transactions 1.0.59.
+**`@tanstack/react-db` and `@tanstack/browser-db-sqlite-persistence` move with them, exactly
+too.** Each depends on one exact `@tanstack/db`, so moving any one of the four alone puts two
+copies of it in the graph. A range does not stop that: on 0.x a caret and a tilde are the same
+range, and `^0.2.28` would take browser persistence 0.2.29, which is built on 0.12.
+`pins.test.ts` checks these two are exact as well. Pick the versions that agree: 0.11.3 is
+react-db 0.5.3, persistence-core 0.4.3 (browser persistence 0.2.28), offline-transactions
+1.0.61. `npm view <pkg>@<v> dependencies` says which core each release is built on.
 
-**Not 0.12.** 0.12.0 removes `begin({ immediate })` from the sync API and queues sync
-writes behind any mutation in flight. `feedControls` begins every transaction immediate
-because, without it, a page of the feed waited on the outbox entry that was itself waiting
-for that page: a second queued write stuck until a reload (2026-10-08). Moving to 0.12
-means redesigning that, not bumping a version.
+**Not 0.12, and still not as of 0.15.1 (2026-10-16).** 0.12.0 removes `begin({ immediate })`
+from the sync API and queues sync writes behind any mutation in flight; nothing since brings
+either back. `feedControls` begins every transaction immediate because, without it, a page of
+the feed waited on the outbox entry that was itself waiting for that page: a second queued
+write stuck until a reload (2026-10-08). Moving to 0.12 or later means redesigning that, not
+bumping a version. Dependabot proposed 0.12.1 in #341, which was closed for this.
 
-**0.11.2 and 0.11.3 are not free either.** They are patches by number but rewrite how
-rows and updates are held internally (rows reused rather than copied, local-only
-collections skipping the optimistic stage) which is the layer the private fields above
-belong to. Take them in a change of their own, with `pnpm gate:offline`.
+0.11.2 and 0.11.3, the last of the 0.11 line, were taken on their own on 2026-10-16. They
+are patches by number but rewrite how rows and updates are held internally (rows reused
+rather than copied, local-only collections skipping the optimistic stage), which is the
+layer the private fields above belong to; `pins.test.ts`, the web suite and every check of
+`pnpm gate:offline` passed on them. react-db 0.5.2 also hands pooled live queries the source
+collection's row objects rather than copies, which reaches nothing here: no source file
+imports `@tanstack/react-db` (the views read the collections through `queries.ts` and
+TanStack Query), so it is in the manifest only as a member of the family.
 
-**`@journeyapps/wa-sqlite` ^1.** The persistence adapter peers on `^1.4.1` (as of 0.2.32,
-2026-10). 2.0 updates PowerSync's own SQLite extension and their write-ahead VFS, neither
+**`@journeyapps/wa-sqlite` ^1.** The persistence adapter peers on `^1.4.1` (still so in
+0.2.35, 2026-10-16). 2.0 updates PowerSync's own SQLite extension and their write-ahead VFS, neither
 of which is used here. Released when the adapter's peer range takes 2; Dependabot ignores
 the major until then.
 
