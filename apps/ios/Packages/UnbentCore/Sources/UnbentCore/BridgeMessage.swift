@@ -13,8 +13,9 @@ import Foundation
 /// `message` with `index-error`.
 ///
 /// From the Turnstile page the sign-in screen hosts (`TurnstileChallenge`): `turnstile`
-/// with the `token`, `turnstile-error` with a `message`, and `turnstile-interactive` before
-/// either when the widget is about to want a tap.
+/// with the `token`, `turnstile-none` when the instance asks for no token, `turnstile-error`
+/// with a `message`, and `turnstile-interactive` before any of them when the widget is
+/// about to want a tap.
 ///
 /// Unknown types are ignored rather than failing, so a page from a newer deploy can say
 /// something this build has never heard of without breaking the screen around it.
@@ -38,6 +39,7 @@ public struct BridgeMessage: Decodable, Equatable, Sendable {
     public var isEdgeToEdge: Bool { type == "edge-to-edge" }
     public var themeBackground: String? { type == "theme" ? background : nil }
     public var isTurnstile: Bool { type == "turnstile" }
+    public var isTurnstileNone: Bool { type == "turnstile-none" }
     public var isTurnstileError: Bool { type == "turnstile-error" }
     public var isTurnstileInteractive: Bool { type == "turnstile-interactive" }
 

@@ -38,6 +38,14 @@ public struct ApiError: Error, Equatable, LocalizedError {
         else { return nil }
         return text
     }
+
+    /// A request for a code refused because it carried no Turnstile token, which means the
+    /// instance turned the check on after this app read its config (`AppConfig.turnstile`).
+    /// The code the server's plugin answers with, beside its message.
+    public var isMissingCaptcha: Bool {
+        guard status == 400, let object = try? JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any] else { return false }
+        return object["code"] as? String == "MISSING_RESPONSE"
+    }
 }
 
 /// The API, as the native screens and the share extension use it.

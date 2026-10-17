@@ -33,6 +33,7 @@ final class BridgeMessageTests: XCTestCase {
         XCTAssertEqual(true, error?.isTurnstileError)
         XCTAssertEqual("The widget could not run.", error?.message)
         XCTAssertEqual(true, BridgeMessage.parse(#"{"type":"turnstile-interactive"}"#)?.isTurnstileInteractive)
+        XCTAssertEqual(true, BridgeMessage.parse(#"{"type":"turnstile-none"}"#)?.isTurnstileNone)
     }
 
     func testAnIndexErrorMessageCarriesWhatWentWrong() {

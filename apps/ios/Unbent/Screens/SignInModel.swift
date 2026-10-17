@@ -72,6 +72,9 @@ final class SignInModel {
     /// web view nobody sees unless the widget wants a tap (`TurnstileChallenge`). A page
     /// that could not mint one ends the step with a sentence of its own: the server would
     /// only refuse a request without it, and the person is one press from trying again.
+    /// A page that says the instance asks for no token sends none: the check was turned
+    /// off after this screen read its config. The reverse, a refusal for a missing token,
+    /// means it was turned on since, so the config is read again for the next press.
     func emailCode(email: String, code: String?) {
         let turnstile = code == nil && config?.turnstile != nil
         run(
@@ -99,7 +102,12 @@ final class SignInModel {
                     }
                     self.status = "Sending a code…"
                 }
-                try await auth.sendCode(email: email, captchaToken: token)
+                do {
+                    try await auth.sendCode(email: email, captchaToken: token)
+                } catch let error as ApiError where error.isMissingCaptcha {
+                    self.loadConfig()
+                    throw error
+                }
                 self.codeSentTo = email
                 return nil
             }
@@ -195,8 +203,11 @@ final class SignInModel {
                 log.warning("Sign-in failed: \(error.localizedDescription, privacy: .public)")
                 // The server's own words when it has some ("this instance is not open
                 // for sign-ups") since a generic message sends the person to retry a
-                // button that will refuse them again for the same reason.
-                status = (error as? ApiError)?.serverMessage() ?? failure
+                // button that will refuse them again for the same reason. An error made
+                // here rather than from an answer (status 0: the browser came back empty,
+                // the Turnstile check did not finish) has no body, and its own sentence
+                // is the one to show.
+                status = (error as? ApiError).flatMap { $0.serverMessage() ?? ($0.status == 0 ? $0.message : nil) } ?? failure
             }
         }
     }

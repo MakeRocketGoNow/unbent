@@ -36,7 +36,7 @@ final class TurnstileChallenge: NSObject, WKScriptMessageHandler, WKNavigationDe
     private(set) var interactive = false
 
     private let origin: String
-    private var waiting: CheckedContinuation<String, Error>?
+    private var waiting: CheckedContinuation<String?, Error>?
     private var deadline: Task<Void, Never>?
 
     struct Failed: Error, LocalizedError {
@@ -47,8 +47,11 @@ final class TurnstileChallenge: NSObject, WKScriptMessageHandler, WKNavigationDe
     init(origin: String, bound: Bool) {
         self.origin = origin
         let config = WKWebViewConfiguration()
-        // Nothing of this page is worth keeping, and a sign-in's web data must not outlive it.
-        config.websiteDataStore = .nonPersistent()
+        // The app's own store, so the page's shell comes from the cache the site's own
+        // web view keeps rather than cold off the radio on every press: the page is the
+        // whole site, and in a store of its own each press downloaded the build again.
+        // Nothing of this page is worth keeping or hiding, and it registers no worker.
+        config.websiteDataStore = .default()
         config.limitsNavigationsToAppBoundDomains = bound
         config.applicationNameForUserAgent = "UnbentiOS/\(BuildInfo.version)"
         webView = WKWebView(frame: .zero, configuration: config)
@@ -63,9 +66,11 @@ final class TurnstileChallenge: NSObject, WKScriptMessageHandler, WKNavigationDe
         webView.navigationDelegate = self
     }
 
-    /// Loads the page and waits for its one word. Throws `Failed` when the page could not
+    /// Loads the page and waits for its one word: the token, or nil when the instance asks
+    /// for none after all (`turnstile-none`: the check was turned off since the config was
+    /// read, and the request goes without one). Throws `Failed` when the page could not
     /// mint a token, the load failed, or `timeout` passed.
-    func token() async throws -> String {
+    func token() async throws -> String? {
         guard let url = URL(string: origin + "/turnstile") else { throw Failed(reason: "bad origin") }
         return try await withCheckedThrowingContinuation { continuation in
             waiting = continuation
@@ -78,7 +83,7 @@ final class TurnstileChallenge: NSObject, WKScriptMessageHandler, WKNavigationDe
         }
     }
 
-    private func finish(_ result: Result<String, Error>) {
+    private func finish(_ result: Result<String?, Error>) {
         deadline?.cancel()
         deadline = nil
         guard let waiting else { return }
@@ -99,6 +104,8 @@ final class TurnstileChallenge: NSObject, WKScriptMessageHandler, WKNavigationDe
             } else {
                 finish(.failure(Failed(reason: "empty token")))
             }
+        } else if message.isTurnstileNone {
+            finish(.success(nil))
         } else if message.isTurnstileError {
             finish(.failure(Failed(reason: message.message ?? "turnstile-error")))
         } else if message.isTurnstileInteractive {
