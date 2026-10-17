@@ -1,4 +1,8 @@
 import type { AppConfig } from '@unbent/shared';
+import { instanceTitle, markInstance } from './page-meta.js';
+
+/** Kept here for the tests and callers that found it here first; it lives with the page's title now. */
+export { instanceTitle };
 
 /**
  * Marks a tab of an instance that is not production: its label in front of the title,
@@ -18,7 +22,9 @@ import type { AppConfig } from '@unbent/shared';
 export function applyInstanceMarker(config: Pick<AppConfig, 'instanceLabel' | 'instanceKind'>): void {
   const label = config.instanceLabel;
   if (!label) return;
-  document.title = instanceTitle(label, document.title);
+  // Through `page-meta.ts`, which also holds the page's own title, so neither wipes the
+  // other's part off the tab.
+  markInstance(label);
   void badgeFavicon(config.instanceKind);
   recolourTouchIcon(config.instanceKind);
 }
@@ -70,12 +76,6 @@ export function ribbonOf(
     return { kind: 'preview', text: label, short: number ? `#${number}` : label };
   }
   return null;
-}
-
-/** `PR 222 · Unbent`. Not doubled if the title already carries it. */
-export function instanceTitle(label: string, title: string): string {
-  const prefix = `${label} · `;
-  return title.startsWith(prefix) ? title : `${prefix}${title}`;
 }
 
 /**

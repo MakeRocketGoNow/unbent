@@ -137,6 +137,13 @@ run_worker_first = [
   # an instance that is not production, so its icon on a home screen is not mistaken for
   # the real one, and passed through untouched on production. See src/lib/manifest.ts.
   "/manifest.webmanifest",
+  # The story's static copy, which the build writes as why.html and the Worker hands over
+  # with its addresses completed, only on an instance with a front page; and what a
+  # crawler may read here, which an instance with no front page answers with nothing.
+  # See src/lib/front-pages.ts.
+  "/why",
+  "/robots.txt",
+  "/sitemap.xml",
 ]
 
 # Local development: what `pnpm dev` and `migrate:local` run.
@@ -201,6 +208,9 @@ run_worker_first = [
   "/.well-known/*",
   "/ingest/*",
   "/manifest.webmanifest",
+  "/why",
+  "/robots.txt",
+  "/sitemap.xml",
 ]
 
 # Preview instances, one per pull request. unbent.app's own; see the header.
@@ -321,6 +331,9 @@ run_worker_first = [
   "/.well-known/*",
   "/ingest/*",
   "/manifest.webmanifest",
+  "/why",
+  "/robots.txt",
+  "/sitemap.xml",
 ]
 
 [env.preview.observability]
@@ -406,6 +419,9 @@ run_worker_first = [
   "/.well-known/*",
   "/ingest/*",
   "/manifest.webmanifest",
+  "/why",
+  "/robots.txt",
+  "/sitemap.xml",
 ]
 
 [env.dev.observability]

@@ -1,0 +1,68 @@
+import type { FunctionComponent } from 'react';
+import { renderToString } from 'react-dom/server';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router';
+import { keys } from './queries.js';
+import { WhyPage, WHY_META } from './components/WhyPage.js';
+import type { PageMeta } from './page-meta.js';
+
+/**
+ * The pages the build writes out as static HTML, so that a crawler and a link preview,
+ * which run no script, read the page and not the empty shell (MAK-240).
+ *
+ * Run by the `prerender` plugin in `vite.config.ts`, in Node, after the client build:
+ * the plugin loads this module through Vite, renders each page here to a string, and
+ * writes it into a copy of the built `index.html` under `file`, with `meta` in the head.
+ * The Worker hands that file over for the page's address and completes the addresses in
+ * its head (`apps/api/src/lib/front-pages.ts`); the app then takes over in the browser,
+ * as `main.tsx` describes.
+ *
+ * Only the pages for people who are not signed in belong here, and not all of those:
+ * `/` is served as `index.html`, which is the shell for every route of the app, so a
+ * copy of the front page written there would be drawn for a moment on every page load
+ * of the notes. The pricing page could join the list; the story is the one a search
+ * lands on, so it goes first.
+ *
+ * What the page is rendered with is the least the shell needs: a config that says there
+ * is a front page, and nothing of the operator (`legal`, `operator`), which the build
+ * cannot know. The footer's Privacy, Terms and Contact links are therefore missing from
+ * the static copy and arrive when the app runs. No session either, so the way out is the
+ * trial, which is what a visitor who has never signed in should read.
+ */
+export interface PrerenderedPage {
+  component: FunctionComponent;
+  meta: PageMeta;
+  /** The file under `dist/`, which the asset layer serves for the page's address. */
+  file: string;
+}
+
+export const PAGES: Record<string, PrerenderedPage> = {
+  '/why': { component: WhyPage, meta: WHY_META, file: 'why.html' },
+};
+
+/** The page at `path`, as HTML for the inside of `#root`. */
+export async function render(path: string): Promise<string> {
+  const page = PAGES[path];
+  if (!page) throw new Error(`No page to prerender at ${path}`);
+  const rootRoute = createRootRoute();
+  const route = createRoute({ getParentRoute: () => rootRoute, path, component: page.component });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([route]),
+    history: createMemoryHistory({ initialEntries: [path] }),
+  });
+  await router.load();
+  const client = new QueryClient();
+  client.setQueryData(keys.config(), { providers: [], frontPage: true });
+  return renderToString(
+    <QueryClientProvider client={client}>
+      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+      <RouterProvider router={router as any} />
+    </QueryClientProvider>,
+  );
+}

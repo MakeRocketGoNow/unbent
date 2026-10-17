@@ -10347,6 +10347,103 @@ button.settings-nav-item {
   color: var(--muted);
 }
 
+/* The story (`WhyPage.tsx`): prose, read once from the top. A reading column rather than
+   the band the screenshots need, centred in it, and on the front page's rhythm: each
+   chapter the distance from the next that the front page's sections are, with the way out
+   at the end as the hero's own. The paragraphs are the page's text, not a caption under a
+   heading, so they keep the ink rather than the muted grey the front page's points use. */
+.front-story {
+  max-width: 40rem;
+  padding-top: 1rem;
+  font-size: 1.05rem;
+  line-height: 1.65;
+}
+
+/* Balanced rather than the front page's `pretty`: the lead is two short sentences, and
+   even lines read better than a full first line and a short last one. */
+.front-story-lead { text-wrap: balance; }
+
+.front-story section { padding-top: 3rem; }
+
+.front-story h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.4rem;
+  letter-spacing: -0.015em;
+}
+
+.front-story p { margin: 0; }
+
+.front-story p + p { margin-top: 1rem; }
+
+.front-story ul {
+  margin: 1rem 0;
+  padding-left: 1.2rem;
+}
+
+.front-story li + li { margin-top: 0.6rem; }
+
+/* The public record: the linked date down the left, the event beside it, each row ruled
+   like the renewals table below it so the two read as one kind of thing. A grid rather
+   than a table because an event is a sentence, which a table cell wraps badly against a
+   narrow date column; the date column is as wide as its longest date. */
+.front-story-record {
+  margin: 1.25rem 0;
+}
+
+.front-story-record > div {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0 1.5rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.front-story-record dt { white-space: nowrap; }
+
+.front-story-record dd { margin: 0; }
+
+/* The renewals: a run of years, the price, and a word on the ones that need one. Rows
+   rather than a chart, because six numbers read faster as numbers. The years column is
+   a row heading and keeps its ink; the note is the quiet column. */
+.front-story table {
+  width: 100%;
+  margin: 1.25rem 0;
+  border-collapse: collapse;
+}
+
+.front-story th,
+.front-story td {
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: baseline;
+}
+
+.front-story th {
+  font-weight: 500;
+  white-space: nowrap;
+  padding-right: 1.5rem;
+}
+
+.front-story td:nth-child(2) {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  padding-right: 1.5rem;
+}
+
+.front-story td:last-child { width: 100%; }
+
+/* The renewal notice, quoted: set in from the margin under a rule in the accent, so it
+   reads as somebody else's words. */
+.front-story blockquote {
+  margin: 1.25rem 0;
+  padding-left: 1.25rem;
+  border-left: 3px solid var(--accent);
+  color: var(--muted);
+}
+
+.front-story .front-cta { margin-top: 3.5rem; }
+
 /* The pricing page (`PricingPage.tsx`): the offer under the hero's heading, then the way
    out. The grid's own top margin is sized to sit under a section's h2; under the hero's
    lead it gets the hero's distance instead, and the way out is centred beneath it as the
@@ -10433,6 +10530,15 @@ button.settings-nav-item {
   .front-plan { padding: 1.25rem; }
 
   .front-pricing-page { padding-top: 2rem; }
+
+  .front-story { font-size: 1rem; }
+
+  .front-story section { padding-top: 2.25rem; }
+
+  .front-story h2 { font-size: 1.25rem; }
+
+  /* The date above its event: a phone has no room for two columns of prose. */
+  .front-story-record > div { grid-template-columns: minmax(0, 1fr); gap: 0.15rem 0; }
 }
 
 /* ---------------------------------------------------------------------------------

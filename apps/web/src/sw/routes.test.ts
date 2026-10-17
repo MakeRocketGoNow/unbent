@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { WORKER_PREFIXES, classify, fileAddress, isAsset, isShellFallback, servesShell, shelved, within, type RequestFacts } from './routes.js';
+import { WORKER_PAGES, WORKER_PREFIXES, classify, fileAddress, isAsset, isShellFallback, servesShell, shelved, within, type RequestFacts } from './routes.js';
 
 const at = (path: string) => new URL(path, 'https://unbent.example');
 
@@ -16,6 +16,8 @@ describe('servesShell', () => {
     '/login',
     '/privacy',
     '/notes?notebook=Coupons&tag=a&tag=b',
+    // The Worker's static copy of the page online; the shell draws the same page offline.
+    '/why',
   ])('gives %s the app', (path) => {
     expect(servesShell(at(path))).toBe(true);
   });
@@ -117,14 +119,14 @@ describe('classify', () => {
  * device that has it, until another deploy.
  */
 describe('WORKER_PREFIXES', () => {
-  it('is the Worker’s own run_worker_first, in every environment', () => {
+  it('is the Worker’s own run_worker_first, in every environment, less the pages it hands over whole', () => {
     const here = dirname(fileURLToPath(import.meta.url));
     const toml = readFileSync(resolve(here, '../../../api/wrangler.toml'), 'utf8');
     const blocks = [...toml.matchAll(/^\s*run_worker_first\s*=\s*\[([\s\S]*?)\]/gm)];
     expect(blocks.length).toBeGreaterThan(0);
     for (const [, body] of blocks) {
       const entries = [...body!.matchAll(/^\s*"([^"]+)"/gm)].map(([, path]) => path!.replace(/\*$/, ''));
-      expect(new Set(entries)).toEqual(new Set(WORKER_PREFIXES));
+      expect(new Set(entries)).toEqual(new Set([...WORKER_PREFIXES, ...WORKER_PAGES]));
     }
   });
 });
