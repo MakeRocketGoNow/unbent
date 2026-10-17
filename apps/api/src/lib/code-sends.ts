@@ -97,6 +97,12 @@ const STRANGERS = 'strangers';
  * stay mounted with passwords off, since the plugin does not ask. `/email-otp/request-email-change`
  * sends too (to the new address), but only with the plugin's `changeEmail` on, which this
  * instance does not turn on; turning it on means adding it here.
+ *
+ * Left out on purpose: the link mails of password sign-in (`/request-password-reset`,
+ * `/send-verification-email`). They spend the same allowance, and someone who knows an
+ * address can loop either up to Better Auth's per-IP limit, but they exist only on an
+ * instance that turns passwords on, they never reach an address with no account, and a
+ * refusal there needs sentences about links, not codes. Bounding them is its own change.
  */
 const SEND_ROUTE = '/email-otp/send-verification-otp';
 const CODE_ROUTES: Record<string, { toStrangers: boolean }> = {
