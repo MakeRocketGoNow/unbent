@@ -77,6 +77,9 @@ export function Turnstile({ siteKey, onToken, onFail, onInteractive }: Turnstile
     );
     return () => {
       gone = true;
+      // A token the widget minted dies with it: nothing can hear it expire once the
+      // widget is gone, and a screen that kept it would send a dead token minutes later.
+      handlers.current.onToken(null);
       if (widgetId !== undefined) {
         try {
           window.turnstile?.remove(widgetId);
@@ -111,7 +114,17 @@ export function useCodeRequest(siteKey: string | undefined) {
   const [generation, setGeneration] = useState(0);
 
   const widget = siteKey ? (
-    <Turnstile key={generation} siteKey={siteKey} onToken={setToken} onFail={() => setFailed(true)} />
+    <Turnstile
+      key={generation}
+      siteKey={siteKey}
+      onToken={(t) => {
+        setToken(t);
+        // Turnstile retries most of its own errors (`retry: 'auto'`), so a token after a
+        // failure means the failure is over, and the sentence for it comes down.
+        if (t) setFailed(false);
+      }}
+      onFail={() => setFailed(true)}
+    />
   ) : null;
 
   async function send(email: string) {
