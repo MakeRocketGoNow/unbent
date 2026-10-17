@@ -100,12 +100,12 @@ export function WhyPage() {
               February 2023
             </Source>{' '}
             the new owner laid off 129 people, saying the product had been unprofitable for
-            years, and that{' '}
+            years. That{' '}
             <Source href="https://www.engadget.com/evernote-is-relocating-to-europe-after-laying-off-most-of-its-us-workforce-205012133.html">
               July
             </Source>{' '}
-            nearly everyone left in the United States and Chile, moving the product to a team
-            in Europe. From{' '}
+            it laid off nearly all of the remaining staff in the United States and Chile and
+            moved the product to a team in Europe. From{' '}
             <Source href="https://techcrunch.com/2023/11/29/its-official-evernote-will-restrict-free-users-to-50-notes/">
               December 2023
             </Source>{' '}
