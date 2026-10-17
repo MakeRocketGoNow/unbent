@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { describe, expect, it, vi } from 'vitest';
 import { GB } from '@unbent/shared';
 import type { PlanRow } from '../lib/plan.js';
+import { StoreUnavailable } from '../lib/store-client.js';
 import type { AppEnv } from '../types.js';
 
 /**
@@ -41,9 +42,17 @@ vi.mock('../lib/paddle.js', async (importOriginal) => ({
 
 const { billing } = await import('./billing.js');
 
-/** An instance that sells a plan, over a store holding `attachmentBytes` of files and `databaseSize` of itself. */
-function env(held: { attachmentBytes: number; databaseSize: number }) {
-  const store = { usage: async () => ({ ...held, notes: 1, lastWriteAt: null, wiped: false }) };
+/**
+ * An instance that sells a plan, over a store holding `attachmentBytes` of files and
+ * `databaseSize` of itself, or over one whose read fails with `held` when it is an error.
+ */
+function env(held: { attachmentBytes: number; databaseSize: number } | Error) {
+  const store = {
+    usage: async () => {
+      if (held instanceof Error) throw held;
+      return { ...held, notes: 1, lastWriteAt: null, wiped: false };
+    },
+  };
   return {
     PADDLE_API_KEY: 'pdl_sdbx_apikey_test',
     PADDLE_WEBHOOK_SECRET: 'pdl_ntfset_test',
@@ -54,8 +63,10 @@ function env(held: { attachmentBytes: number; databaseSize: number }) {
   } as unknown as AppEnv['Bindings'];
 }
 
+/** Answers an error as `onAppError` would for the one class these tests look for: a 503 for a store that is briefly unavailable. */
 function app() {
   return new Hono<AppEnv>()
+    .onError((err, c) => c.json({ error: err.message }, err instanceof StoreUnavailable ? 503 : 500))
     .use(async (c, next) => {
       c.set('userId', 'u1');
       await next();
@@ -87,5 +98,23 @@ describe('removing a storage block', () => {
     const res = await remove(env({ attachmentBytes: 2 * GB, databaseSize: GB }));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ status: 'active', storageGb: 10 });
+  });
+
+  it('is a retryable 503 while the store is briefly unavailable, not an internal error', async () => {
+    // What a store reset by a deploy, or being loaded, throws across RPC: the facade
+    // turns it into `StoreUnavailable`, which the app answers with `Retry-After`.
+    const res = await remove(env(Object.assign(new Error('Durable Object reset because its code was updated.'), { retryable: true })));
+    expect(res.status).toBe(503);
+  });
+});
+
+describe('the Plan page usage read', () => {
+  it('leaves both figures out, rather than failing, when the store cannot say', async () => {
+    const res = await app().request('/api/me/plan?usage=1', {}, env(Object.assign(new Error('loading'), { retryable: true })));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.storageGb).toBe(35);
+    expect('usedBytes' in body).toBe(false);
+    expect('storeBytes' in body).toBe(false);
   });
 });
