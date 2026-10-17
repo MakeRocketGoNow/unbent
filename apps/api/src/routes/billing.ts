@@ -21,8 +21,7 @@ import {
   webhookSourceOf,
   type PaddleAdjustment,
 } from '../lib/paddle.js';
-import { noStoreLimit } from '../lib/notes-repo.js';
-import { reposFor } from '../lib/repos.js';
+import { roomOf } from '../lib/quota.js';
 import { requireAuth } from '../lib/session.js';
 import { storeFor } from '../lib/store-client.js';
 import type { AppEnv } from '../types.js';
@@ -153,7 +152,10 @@ export const billing = new Hono<AppEnv>()
    * Less is refused while the account holds more than the smaller quota would allow:
    * the change would go through and every upload after it would be refused, for a
    * reason the person was not shown. The sentence names the numbers; deleting files
-   * first is the way.
+   * first is the way. The store's own limit follows the quota (`storeLimitBytes`: a
+   * block is a tenth of itself in store room), so the same check is made on the store's
+   * size against the smaller limit, or every note write after the change would be the
+   * 402 of MAK-234 for a press on this page. One read answers both figures (`usage`).
    */
   .post('/billing/storage', requireAuth, zValidator('json', storageBody), async (c) => {
     const paddle = paddleOf(c.env);
@@ -166,9 +168,16 @@ export const billing = new Hono<AppEnv>()
     const storage = c.req.valid('json').storage;
     const after = BASE_STORAGE_GB + STORAGE_ADDON_GB * storage;
     if (after < row.storageGb) {
-      const used = await reposFor(c.env, userId, noStoreLimit).attachments.storageUsed();
-      if (used > storageQuotaBytes(after)) {
-        return c.json({ error: `This account holds ${(used / GB).toFixed(1)} GB, more than the ${after} GB it would have. Delete some files first.` }, 409);
+      const held = await storeFor(c.env, userId).usage();
+      if (held.attachmentBytes > storageQuotaBytes(after)) {
+        return c.json({ error: `This account holds ${(held.attachmentBytes / GB).toFixed(1)} GB, more than the ${after} GB it would have. Delete some files first.` }, 409);
+      }
+      const storeLimit = storeLimitBytes(storageQuotaBytes(after));
+      if (held.databaseSize > storeLimit) {
+        return c.json(
+          { error: `This account's notes take ${roomOf(held.databaseSize)} of room, more than the ${roomOf(storeLimit)} they would have. Delete some notes or clear their history, or empty the trash, first.` },
+          409,
+        );
       }
     }
     try {
