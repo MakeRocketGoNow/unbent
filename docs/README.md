@@ -12,6 +12,8 @@ alternative that was rejected, which is the house style ([AGENTS.md](../AGENTS.m
 - [The editor](editor.md): Editing, and why it has no document model.
 - [Search and Auto-fill](search.md): Search, Searching inside PDFs (and reading images),
   and Filing a note from what it says.
+- [Auto-fill's decision model, measured](autofill-benchmark.md): Jev against SubQ Snap and
+  against one language-model call, on 46 notes, with the harness to run it yourself.
 - [Sync and offline](sync-and-offline.md): Your library on the device, and the Local
   database.
 - [History and trash](history-and-trash.md): Undoing an edit, and Deleting notes.
