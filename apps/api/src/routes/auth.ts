@@ -6,6 +6,7 @@ import { whoAmI } from '../lib/session.js';
 import { refuseGrantsWithoutAgreement } from './legal.js';
 import { previewRelayOrigin } from '../lib/preview-relay.js';
 import { canAutofill } from '../lib/jev.js';
+import { canUseLlm } from '../lib/llm.js';
 import { billingOf } from '../lib/paddle.js';
 import { registerClient } from '../lib/oauth-registration.js';
 import type { AppEnv, Env } from '../types.js';
@@ -45,6 +46,8 @@ export const authRoutes = new Hono<AppEnv>()
    *
    * `autofill` is `accountDeletion`'s shape once more: true only where the instance has a
    * key for the model, so the editor draws the control only where the route would answer.
+   * `llm` says whether that press also calls the language model, so the privacy policy
+   * names Anthropic only where a press can reach it.
    *
    * `frontPage` is the operator's again: on only where the instance says it is the public
    * one, since the page it turns on states that instance's prices. See `frontPageOf`.
@@ -70,6 +73,7 @@ export const authRoutes = new Hono<AppEnv>()
       posthog: posthogOf(c.env),
       previewRelay: relayOrigin ? { origin: relayOrigin } : undefined,
       autofill: canAutofill(c.env),
+      llm: canAutofill(c.env) && canUseLlm(c.env) ? true : undefined,
       ownStores: c.env.PREVIEW_OWN_STORES === '1' || undefined,
       instanceLabel: instanceLabelOf(c.env),
       instanceKind: instanceKindOf(c.env),

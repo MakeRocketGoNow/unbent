@@ -312,6 +312,17 @@ export interface AppConfig {
    */
   autofill?: boolean;
   /**
+   * Whether an Auto-fill press also asks the language model: reading the note's pictures
+   * and text-less scans, and writing its title and text fields. True where `autofill` is
+   * and an Anthropic key is set (`canUseLlm` in the API); absent otherwise.
+   *
+   * Only the privacy policy reads it (MAK-230). Auto-fill turns on with the Jev key alone,
+   * so an instance can send a note's text to TypeSafe without ever calling Anthropic, and
+   * its policy must not name a company it never contacts, for the reason `posthog` gates
+   * the error-tracking paragraph.
+   */
+  llm?: true;
+  /**
    * This instance is a pull-request preview with note stores of its own, because its PR
    * changes the store and only its own stores run that code. They start empty, so the
    * page offers to fill them with sample notes; and the files bucket is shared with the
