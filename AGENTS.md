@@ -565,6 +565,12 @@ growing wait. Two rules keep the queue from sticking, each with a test: every an
 server would give again (a 4xx other than a lapsed session, a timeout or a rate limit, a
 refused precondition) is a `NonRetriableError` that ends its entry, and a `saveNote` whose
 note has a later entry in the queue does nothing, since each save carries the whole draft.
+Two 402s are kept rather than ended, because the answer changes when the person acts and
+ending the entry would roll back what they typed: a lapsed plan's (`plan-refused.ts`) and
+a store past its room's (`STORAGE_FULL` with `of: 'notes'`, `store-full.ts`). While
+either waits at the head of the queue the deletes go to the server round it
+(`roundTheQueue`), and the one that ends a refusal (a checkout, a purge) sends the kept
+entry again at once.
 Only the tab holding the account's leader lock replays (`store/leader.ts`); another tab
 waits in the lock's queue and leads the moment the holder goes, rather than staying a
 follower until it reloads, as the outbox library's own one-shot election left it. A tab that does
@@ -1081,6 +1087,13 @@ reads, search, export and an assistant's reads keep working. Three things hold t
 - **Bytes are checked where they come in.** Every path that stores or copies a file
   passes a `quota` to `storeAttachment` or `copyAttachments` (lib/quota.ts); the sum it
   is checked against is the store's own (schema 0008), never a read of the files table.
+- **The store itself is bounded too** (MAK-234): half a gigabyte plus a tenth of the
+  quota, since note bodies, their history and files' text live in the object's SQLite
+  and nothing in the quota counts them. The limit travels with the repos (`reposFor`
+  requires a source for it), and `UserStore` checks it against `databaseSize`, which
+  reads no row, on every write that adds the person's or an assistant's text; deletes
+  and purges take none. A new write of outside text takes the limit, and a new
+  `reposFor` caller that writes must not pass `noStoreLimit`.
 
 Where billing is off (every fresh checkout, every fork) none of this exists: every
 account is active for good, the Plan tab is not drawn, and nothing reads a plan row.
