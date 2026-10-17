@@ -3,7 +3,8 @@ import type { FieldDef } from '@unbent/shared';
 import { press, type PressDeps } from './autofill-press.js';
 import type { Jev } from './jev.js';
 import { LlmError, type LanguageModel, type LlmUsage } from './llm.js';
-import { capReached, dailyCap } from './llm-usage.js';
+import { capFor, capReached, dailyCap, trialDailyCap } from './llm-usage.js';
+import type { PlanRow } from './plan.js';
 
 /** A Jev with no opinion about anything: what is counted here is the model, not the filing. */
 const jev: Jev = {
@@ -185,6 +186,69 @@ describe('the cap', () => {
     // A typo is no cap, never a cap of zero that refuses every press.
     for (const typo of ['0', '-5', '5.5', 'fifty', '50x']) expect(dailyCap({ AUTOFILL_DAILY_CAP: typo })).toBeNull();
     quiet.mockRestore();
+  });
+
+  it('names the setting it warns about', () => {
+    const quiet = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // Each setting is warned about once per isolate, so the count depends on what ran
+    // before this; the line's shape does not.
+    dailyCap({ AUTOFILL_DAILY_CAP: 'x' });
+    trialDailyCap({ AUTOFILL_TRIAL_DAILY_CAP: 'y' });
+    const lines = quiet.mock.calls.map((c) => String(c[0]));
+    expect(lines.every((l) => /^AUTOFILL_(TRIAL_)?DAILY_CAP is not a whole number above zero/.test(l))).toBe(true);
+    quiet.mockRestore();
+  });
+
+  describe('by plan', () => {
+    const paddle = {
+      PADDLE_API_KEY: 'pdl_sdbx_apikey_x',
+      PADDLE_WEBHOOK_SECRET: 's',
+      PADDLE_CLIENT_TOKEN: 't',
+      PADDLE_PLAN_PRICE_ID: 'p',
+      PADDLE_STORAGE_PRICE_ID: 'q',
+    };
+    const now = Date.UTC(2026, 9, 16, 12, 0);
+    const day = 24 * 60 * 60 * 1000;
+    const trial = { plan: 'trial', planUntil: now + 10 * day, source: null, paddleStatus: null, paddleCancelsAt: null } as PlanRow;
+    const paying = { plan: 'active', planUntil: now + 300 * day, source: 'paddle', paddleStatus: 'active', paddleCancelsAt: null } as PlanRow;
+    const comped = { plan: 'active', planUntil: null, source: 'comp', paddleStatus: null, paddleCancelsAt: null } as PlanRow;
+    const both = { ...paddle, AUTOFILL_DAILY_CAP: '1000', AUTOFILL_TRIAL_DAILY_CAP: '100' };
+
+    it('gives a trial the trial cap and everyone else the ordinary one', () => {
+      expect(capFor(both, trial, now)).toBe(100);
+      expect(capFor(both, paying, now)).toBe(1000);
+      expect(capFor(both, comped, now)).toBe(1000);
+      // A trial that has run out is inactive, which the plan gate refuses before the
+      // press is counted; the cap it would get is the ordinary one all the same.
+      expect(capFor(both, { ...trial, planUntil: now - day }, now)).toBe(1000);
+    });
+
+    it('reads a missing row as the trial it is about to become', () => {
+      expect(capFor(both, undefined, now)).toBe(100);
+      expect(capFor(both, null, now)).toBe(100);
+    });
+
+    it('falls back to the ordinary cap where the trial cap is unset or mistyped', () => {
+      const quiet = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      expect(capFor({ ...paddle, AUTOFILL_DAILY_CAP: '1000' }, trial, now)).toBe(1000);
+      expect(capFor({ ...paddle, AUTOFILL_DAILY_CAP: '1000', AUTOFILL_TRIAL_DAILY_CAP: 'lots' }, trial, now)).toBe(1000);
+      expect(capFor({ ...paddle, AUTOFILL_DAILY_CAP: '1000', AUTOFILL_TRIAL_DAILY_CAP: '0' }, trial, now)).toBe(1000);
+      // A trial cap on its own caps the trial and nobody else.
+      expect(capFor({ ...paddle, AUTOFILL_TRIAL_DAILY_CAP: '100' }, trial, now)).toBe(100);
+      expect(capFor({ ...paddle, AUTOFILL_TRIAL_DAILY_CAP: '100' }, paying, now)).toBeNull();
+      quiet.mockRestore();
+    });
+
+    it('is the ordinary cap for every account where billing is off', () => {
+      expect(capFor({ AUTOFILL_DAILY_CAP: '1000', AUTOFILL_TRIAL_DAILY_CAP: '100' }, undefined, now)).toBe(1000);
+      expect(capFor({ AUTOFILL_DAILY_CAP: '1000', AUTOFILL_TRIAL_DAILY_CAP: '100' }, trial, now)).toBe(1000);
+      expect(capFor({ AUTOFILL_TRIAL_DAILY_CAP: '100' }, trial, now)).toBeNull();
+    });
+
+    it('refuses at the number the account was given', () => {
+      expect(capReached(capFor(both, trial, now)!, now).message).toMatch(/^Auto-fill can be used 100 times a day/);
+      expect(capReached(capFor(both, paying, now)!, now).message).toMatch(/^Auto-fill can be used 1000 times a day/);
+    });
   });
 
   it('says how long until the next UTC day, in hours', () => {

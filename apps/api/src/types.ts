@@ -321,6 +321,12 @@ export interface Env {
    */
   AUTOFILL_DAILY_CAP?: string;
   /**
+   * The same for an account on its trial, where the instance sells a plan; unset, a trial
+   * gets `AUTOFILL_DAILY_CAP`. Smaller, because a trial is free to make; see `UsageEnv`
+   * in lib/llm-usage.ts for why.
+   */
+  AUTOFILL_TRIAL_DAILY_CAP?: string;
+  /**
    * Paddle, which sells the plan (MAK-108). All five or none: with all of them set the
    * instance has a plan to sell, every account is on its trial, paid or lapsed, and a
    * lapsed one is refused writes; with any missing, nothing here is read and every

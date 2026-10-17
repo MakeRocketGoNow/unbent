@@ -17,7 +17,7 @@ import { copyAttachments } from '../lib/copy-attachments.js';
 import { StorageFull, quotaOf, storageFullBody } from '../lib/quota.js';
 import { canAutofill, JevError, jevFrom } from '../lib/jev.js';
 import { canUseLlm, llmFrom } from '../lib/llm.js';
-import { dailyCap } from '../lib/llm-usage.js';
+import { capFor, capForUser } from '../lib/llm-usage.js';
 import { isOperator } from '../lib/instance.js';
 import { nextCursor } from '../lib/notes-repo.js';
 import { autofillReaders } from '../lib/read-attachment.js';
@@ -261,8 +261,10 @@ export const notes = new Hono<AppEnv>()
    * each with its confidence. Suggestions only: nothing in the note is written; see
    * `AutofillSuggestion` for why the client applies them. What is written is the press
    * itself and what the model cost, to the account's usage counter, and a press past the
-   * day's cap (`AUTOFILL_DAILY_CAP`) is a 429 with a sentence the button shows; see
-   * `press` in lib/autofill-press.ts.
+   * day's cap is a 429 with a sentence the button shows; see `press` in
+   * lib/autofill-press.ts. Which cap is the plan's (`capFor`): `AUTOFILL_TRIAL_DAILY_CAP`
+   * for an account on its trial, `AUTOFILL_DAILY_CAP` otherwise, read off the row
+   * `requireActivePlan` left on the context when it let this write through.
    *
    * A POST, because it is not free: every call is a round trip to a paid API, and nothing
    * that treats GET as safe (a prefetch, a cache, a retry) may make one on its own.
@@ -279,7 +281,7 @@ export const notes = new Hono<AppEnv>()
           readers: autofillReaders(c.env),
           jev: canAutofill(c.env) ? jevFrom(c.env) : null,
           llm: canUseLlm(c.env) ? llmFrom(c.env) : undefined,
-          cap: dailyCap(c.env),
+          cap: capFor(c.env, c.get('plan'), Date.now()),
           operator: isOperator(c.env, c.get('user')?.email),
           defer: (work) => c.executionCtx.waitUntil(work),
         },
@@ -311,11 +313,17 @@ export const notes = new Hono<AppEnv>()
 
   /**
    * The account's Auto-fill this calendar year: presses, today's, the cap, and the
-   * model's tokens by job and model (`AutofillUsage`). One store call. Shown on
-   * Maintenance until the plans decide where it lives (MAK-108).
+   * model's tokens by job and model (`AutofillUsage`). One store call, and one read of
+   * the plan row where billing is on, since the cap shown has to be the one that applies
+   * to this account (`capForUser`). Shown on Maintenance until the plans decide where it
+   * lives (MAK-108).
    */
   .get('/autofill/usage', requireAuth, withRepos, async (c) => {
-    const usage: AutofillUsage = { ...(await c.get('notes').autofillUsage()), dailyCap: dailyCap(c.env) };
+    const now = Date.now();
+    const usage: AutofillUsage = {
+      ...(await c.get('notes').autofillUsage()),
+      dailyCap: await capForUser(c.env, c.get('userId')!, now),
+    };
     return c.json(usage);
   })
 

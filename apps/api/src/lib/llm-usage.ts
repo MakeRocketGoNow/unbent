@@ -1,6 +1,8 @@
 import type { LlmJob } from '@unbent/shared';
 import type { UsageEntry } from '../store/llm-usage.js';
 import { LlmError, type LanguageModel, type LlmUsage, type Metered } from './llm.js';
+import { billingOn, type PaddleEnv } from './paddle.js';
+import { planFor, planStateOf, type PlanRow } from './plan.js';
 
 /**
  * The Worker's half of the usage counter (MAK-180): the cap an instance sets, the
@@ -8,7 +10,7 @@ import { LlmError, type LanguageModel, type LlmUsage, type Metered } from './llm
  * cost it. The store's half (the table, the check and the count) is store/llm-usage.ts.
  */
 
-export interface UsageEnv {
+export interface UsageEnv extends PaddleEnv {
   /**
    * The most Auto-fill presses one account may make in a UTC day; a press past it is
    * answered 429. Unset, every instance until a number is chosen with the plans' pricing
@@ -17,26 +19,82 @@ export interface UsageEnv {
    * press sent in a loop, which a price cannot absorb, and holds whatever the plan.
    */
   AUTOFILL_DAILY_CAP?: string;
+  /**
+   * The same ceiling for an account on its trial, where the instance sells a plan. Unset,
+   * a trial account gets `AUTOFILL_DAILY_CAP` like everyone else.
+   *
+   * A per-account cap alone does nothing against throwaway accounts: a trial is free and
+   * asks for no card, and email sign-in accepts any address, so the ordinary cap bounds
+   * one account's day and nothing bounds how many accounts a day someone makes. The
+   * ordinary number is sized for a person with an archive to file and a Paddle customer
+   * record behind them; this one is sized for what a fortnight's free account may spend
+   * before it is a customer, so a hundred of them made in a loop cost a hundred times
+   * this number and not a hundred times the paying one. Where billing is off there is no
+   * trial, and this setting is never read.
+   */
+  AUTOFILL_TRIAL_DAILY_CAP?: string;
 }
 
-let warnedAboutCap = false;
+/** Each setting warned about once (see `parseCap`), by name. */
+const warned = new Set<keyof UsageEnv>();
 
 /**
- * The cap, or null for none. Anything but a whole number of at least one is none, and
- * says so in the log: a typo in a variable must not turn into a cap of zero that refuses
- * every press on the instance.
+ * A cap setting's value, or null for none. Anything but a whole number of at least one
+ * is none, and says so in the log: a typo in a variable must not turn into a cap of zero
+ * that refuses every press on the instance.
  */
-export function dailyCap(env: UsageEnv): number | null {
-  const raw = env.AUTOFILL_DAILY_CAP?.trim();
+function parseCap(env: UsageEnv, name: 'AUTOFILL_DAILY_CAP' | 'AUTOFILL_TRIAL_DAILY_CAP'): number | null {
+  const raw = env[name]?.trim();
   if (!raw) return null;
   if (!/^\d+$/.test(raw) || Number(raw) < 1) {
     // Once an isolate: this runs on every press and every usage read, and the same line
     // a hundred times buries it rather than surfacing it.
-    if (!warnedAboutCap) console.warn(`AUTOFILL_DAILY_CAP is not a whole number above zero ("${raw}"); no cap is enforced`);
-    warnedAboutCap = true;
+    if (!warned.has(name)) console.warn(`${name} is not a whole number above zero ("${raw}"); no cap is enforced`);
+    warned.add(name);
     return null;
   }
   return Number(raw);
+}
+
+/** The ordinary cap, `AUTOFILL_DAILY_CAP`, or null for none. */
+export function dailyCap(env: UsageEnv): number | null {
+  return parseCap(env, 'AUTOFILL_DAILY_CAP');
+}
+
+/**
+ * The cap for an account on its trial: `AUTOFILL_TRIAL_DAILY_CAP`, or the ordinary cap
+ * where that is unset, so an instance that sets one number behaves as it did before
+ * there were two. A trial setting that fails to parse falls back the same way rather
+ * than to no cap at all: it is the setting a typo in should fail safe.
+ */
+export function trialDailyCap(env: UsageEnv): number | null {
+  return parseCap(env, 'AUTOFILL_TRIAL_DAILY_CAP') ?? dailyCap(env);
+}
+
+/**
+ * The cap that applies to this account: the trial cap while its plan is a trial, the
+ * ordinary cap otherwise. `plan` is the row `requireActivePlan` put on the context for
+ * the press, or one read for the usage page, and is undefined where billing is off,
+ * which is also when no account is on a trial; a missing row with billing on reads as
+ * `planStateOf` reads it, a trial that starts now, since `planFor` would have written
+ * one. Nothing but the state is read off the row: a comped account and a paying one get
+ * the same number, since the question is only whether the account is free to make.
+ */
+export function capFor(env: UsageEnv, plan: PlanRow | null | undefined, now: number): number | null {
+  if (!billingOn(env)) return dailyCap(env);
+  return planStateOf(plan ?? null, now) === 'trial' ? trialDailyCap(env) : dailyCap(env);
+}
+
+/**
+ * The same, for a caller without the row on its context: the usage read, a GET, which
+ * `requireActivePlan` lets through without reading anything. One D1 read by key where
+ * billing is on, and none where it is off. The read is of the plan row, the account's
+ * standing and not its notes, which is why it is made here and not in the route
+ * (`guards.test.ts` keeps D1 out of the note routes).
+ */
+export async function capForUser(env: UsageEnv & { DB: D1Database }, userId: string, now: number): Promise<number | null> {
+  if (!billingOn(env)) return dailyCap(env);
+  return capFor(env, await planFor(env.DB, userId, now), now);
 }
 
 /**
