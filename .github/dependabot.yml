@@ -7,12 +7,19 @@
 # grouping is the part that decides whether an advisory bump installs. Keeping ordinary
 # versions current is what makes that bump a one-line diff instead of a migration.
 #
-# Version updates are off: every `open-pull-requests-limit` below is 0, which stops the
-# weekly and monthly pull requests and leaves security updates alone (they are not counted
-# against it). Dependabot proposes a version without knowing why one was chosen: it
-# merged wa-sqlite 2 under an adapter that peers on 1 (#336), so routine updates are done
-# by hand, against DEPENDENCIES.md, which says which versions are held and why. The groups
-# stay, because security pull requests are grouped by them.
+# Version updates are off for npm and gradle: their `open-pull-requests-limit` is 0, which
+# stops the weekly and monthly pull requests and leaves security updates alone (they are
+# not counted against it). Dependabot proposes a version without knowing why one was
+# chosen: it merged wa-sqlite 2 under an adapter that peers on 1 (#336), so routine updates
+# are done by hand, against DEPENDENCIES.md, which says which versions are held and why.
+# The groups stay, because security pull requests are grouped by them.
+#
+# The github-actions ecosystem is the exception, with a limit of 1. The workflows' actions
+# are pinned to commit SHAs (DEPENDENCIES.md, The workflows' actions), and a SHA stays
+# where it is until something proposes a new one; Dependabot's Actions updater is what
+# moves the SHA and rewrites the version comment beside it, and nothing an action depends
+# on is a version this repository chose for a reason. One grouped monthly pull request is
+# the cost.
 
 version: 2
 updates:
@@ -120,7 +127,11 @@ updates:
           - '*'
     open-pull-requests-limit: 0
 
-  # The actions in .github/workflows, which are pinned by tag and otherwise never revisited.
+  # The actions in .github/workflows, pinned to commit SHAs since the repository went public
+  # (2026-10-16). Nothing bumps a pin unless something proposes it, and this is the thing
+  # that proposes: one grouped pull request a month moving each SHA to the one its tag
+  # points at now, with the `# vX.Y.Z` comment beside it rewritten to match. The limit is 1,
+  # not 0, for that reason; the by-hand round only has to merge it.
   - package-ecosystem: github-actions
     directory: '/'
     schedule:
@@ -133,4 +144,4 @@ updates:
         applies-to: security-updates
         patterns:
           - '*'
-    open-pull-requests-limit: 0
+    open-pull-requests-limit: 1

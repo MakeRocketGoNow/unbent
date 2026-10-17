@@ -8,7 +8,8 @@ next person or bot to see it.
 
 Dependabot's version updates are off for this reason (`.github/dependabot.yml`). It merged
 wa-sqlite 2 under an adapter that peers on 1 (#336), because nothing in the manifest said
-not to. Security updates still open.
+not to. Security updates still open. The one exception is the workflows' actions, whose
+SHA pins Dependabot keeps fresh (below).
 
 ## Doing an update round
 
@@ -81,6 +82,40 @@ one; move pnpm on its own.
 **vitest is one major across the workspace (5).** The store tests used to be held on 4 by
 `@cloudflare/vitest-plugin`, which peers on one vitest major at a time; check its peer range
 before taking vitest 6.
+
+## The workflows' actions
+
+**Every `uses:` in `.github/workflows/` names a commit SHA, with the version beside it as
+a comment.** A tag is a pointer the action's publisher can move, and a publisher whose
+account is taken over can point `v7` at anything; `tj-actions/changed-files` was moved
+that way in March 2025 and leaked the secrets of every workflow that trusted the tag. The
+workflows here run on every push to `main` with the Play keystore, the Cloudflare deploy
+token and the backup mirror's R2 and D1 credentials, so a moved tag is code running with
+those. A SHA cannot be moved. The repository setting `sha_pinning_required` refuses a
+workflow that names a tag, so a bare `@v7` fails before it runs.
+
+A SHA stays where it is until something proposes a new one, so this is the one ecosystem
+where Dependabot's version updates are on (`.github/dependabot.yml`, limit 1): its Actions
+updater opens one grouped pull request a month that moves each SHA to the commit its tag
+points at now and rewrites the `# vX.Y.Z` comment beside it. The by-hand round only has to
+merge it, once CI on it is green; a major in it gets its release notes read like any other.
+
+Pinning one by hand (a new action, or a bump that cannot wait for the month) resolves the
+tag through the API rather than copying a SHA from a release page, dereferences an
+annotated tag to its commit, and checks the commit is in the action's own repository:
+
+```bash
+gh api repos/actions/checkout/git/ref/tags/v7 --jq '.object | .type + " " + .sha'
+gh api repos/actions/checkout/git/tags/<sha> --jq .object.sha   # only when the type is "tag"
+gh api repos/actions/checkout/commits/<sha> --jq .sha
+```
+
+Each action has one SHA across every workflow, and the comment is the exact version the
+tag resolved to (`# v7.0.1`, not `# v7`), which is the shape Dependabot keeps up. The
+allowed list in the repository's Actions settings names the three actions outside
+`actions/*` (`pnpm/action-setup`, `gradle/actions`, `r0adkll/upload-google-play`); a new
+action from another publisher has to be added there as well as pinned, or the run is
+refused.
 
 ## The apps
 

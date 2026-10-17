@@ -62,6 +62,30 @@ change to DEPENDENCIES.md that isn't already part of those. Each commit says wha
 for anything that was read, why it is safe; the tree must install with
 `--frozen-lockfile` and typecheck at every commit.
 
+### The workflows' actions
+
+The `uses:` lines in `.github/workflows/` are pinned to commit SHAs with the version beside
+them (DEPENDENCIES.md, The workflows' actions), and the repository refuses a workflow that
+names a tag. Dependabot keeps them fresh: the github-actions ecosystem is the one with a
+pull-request limit above 0, and it opens one grouped pull request a month that moves each
+SHA and rewrites the version comment. The round's job is to merge that pull request on
+green CI, after reading the release notes of any major in it, not to move the SHAs by
+hand.
+
+Pin one by hand only for a new action or a bump that cannot wait for the month: resolve
+the tag through the API, dereference an annotated tag to its commit, confirm the commit is
+in the action's repository, and replace every occurrence of the old SHA so the action
+keeps one SHA across the workflows:
+
+```bash
+gh api repos/<owner>/<repo>/git/ref/tags/<tag> --jq '.object | .type + " " + .sha'
+gh api repos/<owner>/<repo>/git/tags/<sha> --jq .object.sha   # only when the type is "tag"
+gh api repos/<owner>/<repo>/commits/<sha> --jq .sha
+```
+
+An action from a publisher not yet in the repository's allowed list is a settings change
+as well as a pin; say so in the PR rather than making it quietly.
+
 ## 4. Verify
 
 What CI runs, all of it, before the push, plus the ENEX parser's tests, which CI does not run
