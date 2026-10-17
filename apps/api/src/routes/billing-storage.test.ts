@@ -90,7 +90,7 @@ describe('removing a storage block', () => {
     const res = await remove(env({ attachmentBytes: 2 * GB, databaseSize: 3 * GB }));
     expect(res.status).toBe(409);
     expect(((await res.json()) as { error: string }).error).toBe(
-      "This account's notes take 3.0 GB of room, more than the 1.5 GB they would have. Delete some notes or clear their history, or empty the trash, first.",
+      "This account's notes take 3.0 GB of room, more than the 1.5 GB they would have. Delete some notes or clear their history, and empty the trash, first.",
     );
   });
 

@@ -175,7 +175,7 @@ export const billing = new Hono<AppEnv>()
       const storeLimit = storeLimitBytes(storageQuotaBytes(after));
       if (held.databaseSize > storeLimit) {
         return c.json(
-          { error: `This account's notes take ${roomOf(held.databaseSize)} of room, more than the ${roomOf(storeLimit)} they would have. Delete some notes or clear their history, or empty the trash, first.` },
+          { error: `This account's notes take ${roomOf(held.databaseSize)} of room, more than the ${roomOf(storeLimit)} they would have. Delete some notes or clear their history, and empty the trash, first.` },
           409,
         );
       }
