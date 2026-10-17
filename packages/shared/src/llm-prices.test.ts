@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { JEV_PRESS_CENTS, MODEL_PRICES, priceOf, tokensCents, usageCents } from './llm-prices.js';
 
 const tokens = (model: string, inputTokens: number, outputTokens: number, cacheReadTokens = 0, cacheWriteTokens = 0) => ({
@@ -18,10 +18,16 @@ describe('the price table', () => {
     expect(tokensCents(tokens('claude-opus-5-5', 1e6, 0))).toBe(400);
   });
 
-  it('prices a dated or newer id by its family, and an unknown one as the dearest', () => {
+  it('prices a dated id as the one it pins, and anything else at the dearest rate, with one warning', () => {
+    const quiet = vi.spyOn(console, 'warn').mockImplementation(() => {});
     expect(priceOf('claude-sonnet-5-5-20270101')).toBe(MODEL_PRICES['claude-sonnet-5-5']);
-    expect(priceOf('claude-haiku-6')).toBe(MODEL_PRICES['claude-haiku-5-5']);
-    expect(priceOf('some-other-model')).toBe(MODEL_PRICES['claude-opus-5-5']);
+    // A newer Haiku has no published price here, and an older Opus costs more than the
+    // current one: neither is guessed from its family.
+    expect(priceOf('claude-haiku-6')).toBe(MODEL_PRICES['claude-opus-5-5']);
+    expect(priceOf('claude-opus-4-7')).toBe(MODEL_PRICES['claude-opus-5-5']);
+    expect(priceOf('claude-opus-4-7')).toBe(MODEL_PRICES['claude-opus-5-5']);
+    expect(quiet.mock.calls.filter((c) => String(c[0]).includes('claude-opus-4-7'))).toHaveLength(1);
+    quiet.mockRestore();
   });
 
   it('sums presses at the fixed Jev figure beside the models’ tokens', () => {
