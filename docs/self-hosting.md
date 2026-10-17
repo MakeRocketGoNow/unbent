@@ -596,8 +596,10 @@ keep a script from spending it at all. With both set, a request for a code has t
 token the browser earned from [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/)
 first: the sign-in screen draws a Managed widget under the address field, which passes
 nearly everyone with no click, and the Android and iOS apps load `/turnstile` from the
-instance in a web view to get theirs. Nothing else is behind it: not the code's own sign-in,
-which three wrong tries already burn, and not a passkey or a provider. Make the widget in
+instance in a web view to get theirs. The two password-reset routes that mail the same code
+to an address with an account are behind it too, since the bounds above count them; nothing
+else is: not the code's own sign-in, which three wrong tries already burn, and not a passkey
+or a provider. Make the widget in
 the Cloudflare dashboard with the instance's hostname (the test pair in `.dev.vars.example`
 passes everything, for local development), put the site key on the Worker as a secret beside
 the secret key, and leave both unset to have the endpoint as it was. Half a pair is read as

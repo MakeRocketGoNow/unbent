@@ -415,6 +415,15 @@ describe('Turnstile in front of the sign-in code endpoint', () => {
     expect(((await res.json()) as { code: string }).code).toBe('MISSING_RESPONSE');
   });
 
+  /** The reset routes mail the same code to any address with an account; see `CODE_ROUTE_PATHS`. */
+  it('stands in front of every route that mails a code', async () => {
+    for (const path of ['/email-otp/request-password-reset', '/forget-password/email-otp']) {
+      const res = await withTurnstile().handler(post(path, { email: 'a@example.com' }));
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as { code: string }).code).toBe('MISSING_RESPONSE');
+    }
+  });
+
   it('leaves the code\'s own sign-in alone, since the code already bounds it', async () => {
     const res = await withTurnstile().handler(post('/sign-in/email-otp', { email: 'a@example.com', otp: '123456' }));
     expect(((await res.json()) as { code?: string }).code).not.toBe('MISSING_RESPONSE');

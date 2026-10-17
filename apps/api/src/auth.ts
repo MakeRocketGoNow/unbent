@@ -7,7 +7,7 @@ import { socialProviderList } from 'better-auth/social-providers';
 import { SIGNUPS_CLOSED_MESSAGE, type AppConfig, type AuthProvider } from '@unbent/shared';
 import type { Env } from './types.js';
 import { canSendEmail, sendEmail } from './lib/email.js';
-import { CODE_REFUSAL_MESSAGES, codeRequestOf, recordCodeRequest } from './lib/code-sends.js';
+import { CODE_REFUSAL_MESSAGES, CODE_ROUTE_PATHS, codeRequestOf, recordCodeRequest } from './lib/code-sends.js';
 import { signInCodeEmail } from './lib/sign-in-code-email.js';
 import { deleteKeys } from './lib/blobs.js';
 import { ensureDirectoryRow } from './lib/directory.js';
@@ -957,20 +957,24 @@ function createAuth(env: Env): AuthInstance {
        * revokes sessions before marking an account verified.
        */
       /**
-       * Turnstile, in front of the one endpoint that mails a stranger something: the
-       * request for a sign-in code (MAK-243). The bounds in `lib/code-sends.ts` cap what a
-       * day of abuse costs; this is what keeps a script from spending the cap at all, by
-       * asking the browser to prove it is one before a code is made. Managed Turnstile
-       * passes nearly everyone without a click, so the price to a person is a widget
-       * that resolves itself under the address field.
+       * Turnstile, in front of every endpoint that mails a sign-in code (MAK-243): the
+       * request for one, and the two password-reset routes that send the same code to an
+       * address with an account (`CODE_ROUTE_PATHS`, the list the day's bounds in
+       * `lib/code-sends.ts` are kept on). Those bounds cap what a day of abuse costs; this
+       * is what keeps a script from spending the cap at all, by asking the browser to
+       * prove it is one before a code is made. Managed Turnstile passes nearly everyone
+       * without a click, so the price to a person is a widget that resolves itself under
+       * the address field. No screen here calls the two reset routes, so a token costs
+       * nobody anything there; left out, they were a way round the check for every
+       * address with an account.
        *
-       * Scoped to that endpoint and no other, deliberately. The plugin's default set is
-       * the password routes, which this instance does not offer the public, and the
-       * code's own sign-in (`/sign-in/email-otp`) is already bounded by the code: three
-       * tries and it is burned. Widening it would put a widget in front of a passkey or
-       * a provider that needs none. The native apps have no widget of their own, so
-       * they load `/turnstile` from this instance in a web view and send the token it
-       * mints with the same header (`x-captcha-response`).
+       * Scoped to those and no other, deliberately. The plugin's default set is the
+       * password routes, which this instance does not offer the public, and the code's
+       * own sign-in (`/sign-in/email-otp`) is already bounded by the code: three tries
+       * and it is burned. Widening it would put a widget in front of a passkey or a
+       * provider that needs none. The native apps have no widget of their own, so they
+       * load `/turnstile` from this instance in a web view and send the token it mints
+       * with the same header (`x-captcha-response`).
        *
        * Off entirely without the pair (`turnstileOf`): a fork that has not set it is as
        * it was, and the endpoint takes a request with no header. A siteverify that cannot
@@ -980,7 +984,7 @@ function createAuth(env: Env): AuthInstance {
       ...(turnstileOf(env) ? [captcha({
         provider: 'cloudflare-turnstile',
         secretKey: env.TURNSTILE_SECRET_KEY!.trim(),
-        endpoints: ['/email-otp/send-verification-otp'],
+        endpoints: [...CODE_ROUTE_PATHS],
       })] : []),
       ...(codesDeliverable(env) ? [emailOTP({
         // Six digits for five minutes, both the plugin's defaults and right for a code
