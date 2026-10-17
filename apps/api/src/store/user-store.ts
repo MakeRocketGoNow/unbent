@@ -981,7 +981,12 @@ export class UserStore extends DurableObject<StoreEnv> {
   createOrFind(input: Parameters<NotesStore['createOrFind']>[0], limit?: StoreLimit) { return this.writing(() => this.notes.createOrFind(input, this.room(limit))); }
   createMany(inputs: Parameters<NotesStore['createMany']>[0], opts?: Parameters<NotesStore['createMany']>[1], limit?: StoreLimit) { return this.writing(() => this.notes.createMany(inputs, opts), limit); }
   duplicateOrFind(id: string, newId: string, limit?: StoreLimit) { return this.writing(() => this.notes.duplicateOrFind(id, newId, this.room(limit))); }
-  update(id: string, patch: Parameters<NotesStore['update']>[1], limit?: StoreLimit) { return this.writing(() => this.notes.update(id, patch), limit); }
+  /**
+   * A save checks the room inside, once it knows the save will write, for the replay's
+   * reason above: the web outbox keeps a save the store refused, and a note trashed
+   * meanwhile (the way out the person is told to take) must end that save with a 404.
+   */
+  update(id: string, patch: Parameters<NotesStore['update']>[1], limit?: StoreLimit) { return this.writing(() => this.notes.update(id, patch, this.room(limit))); }
   appendToBody(id: string, markdown: string, limit?: StoreLimit) { return this.writing(() => this.notes.appendToBody(id, markdown), limit); }
   listRevisions(id: string) { this.ready(); return this.notes.listRevisions(id); }
   getRevision(id: string, revisionId: number) { this.ready(); return this.notes.getRevision(id, revisionId); }

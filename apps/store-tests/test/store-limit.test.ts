@@ -65,6 +65,11 @@ describe('the store limit', () => {
     await expect(stub.writeAssistantText(first.id, 'copy.pdf', 'what the assistant read', limit)).rejects.toMatchObject(refused);
     expect(await stub.textFor(first.id, 'copy.pdf')).toBe('');
 
+    // A save that would write nothing, or of a note that is gone, is answered as it
+    // always was: the room is asked for only by a save that writes.
+    expect((await stub.update(first.id, { title: 'Renamed' }, limit))!).toMatchObject({ title: 'Renamed' });
+    expect(await stub.update('no-such-note', { title: 'x' }, limit)).toBeNull();
+
     // An Auto-fill press is refused before it reads anything: its readings could not be
     // recorded, and the next press would pay for them again.
     await expect(stub.autofillPrelude(first.id, 5, undefined, limit)).rejects.toMatchObject(refused);

@@ -1284,8 +1284,9 @@ describe('rows read on an archive-sized store', () => {
       // the feed cannot serve costs.
       await measure('feed page', () => stub.changesSince(0, 100)),
       await measure('feed page dense', () => stub.changesSince(3000, 100)),
-      // A save the store's limit refuses (MAK-234) reads nothing: the size is the
-      // runtime's figure, and the refusal comes before the method's own reads.
+      // A save the store's limit refuses (MAK-234) reads the note and nothing more: the
+      // size is the runtime's figure, read once the save is known to write, so a save
+      // of a trashed note is still its 404 (3 read, measured 2026-10-17).
       await measure('save refused by the store limit', () => stub.update('n00001', { title: 'Refused' }, 1).catch(() => undefined)),
       await measure('feed nothing new', async () => stub.changesSince((await stub.changesSince(99_999_999, 1)).seq, 100)),
       await measure('feed reset', () => stub.changesSince(99_999, 100)),
@@ -1511,7 +1512,7 @@ describe('rows read on an archive-sized store', () => {
       'history restore': 200,
       // The note's live row, then its fifty copies and their index entries (152).
       'history clear': 180,
-      'save refused by the store limit': 0,
+      'save refused by the store limit': 10,
     };
     for (const r of results) {
       if (r.label === 'dump') continue;
