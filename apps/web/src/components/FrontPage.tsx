@@ -67,7 +67,14 @@ export function FrontPage() {
   return (
     <FrontShell>
       <section className="front-hero front-width">
-        <h1>Everything you&apos;d rather not lose, in one place you can always leave.</h1>
+        {/* Three beats, each kept whole: a line may break between sentences, never inside
+            one, so a width that fits two beats shows "Keep everything. Find anything." over
+            "Take it all with you." and never "Find" over "anything." */}
+        <h1>
+          <span className="front-beat">Keep everything.</span>{' '}
+          <span className="front-beat">Find anything.</span>{' '}
+          <span className="front-beat">Take it all with you.</span>
+        </h1>
         <p className="front-lead">
           Unbent keeps your notes, receipts and scanned paperwork together and finds them by
           what they say, even a photo of a receipt. Everything is an ordinary file you can

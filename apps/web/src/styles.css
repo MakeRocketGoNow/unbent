@@ -10180,6 +10180,9 @@ button.settings-nav-item {
   text-wrap: balance;
 }
 
+/* A sentence of the headline, unbreakable, so lines break only between sentences. */
+.front-beat { display: inline-block; }
+
 .front-lead {
   max-width: 36rem;
   margin: 1.25rem auto 0;
