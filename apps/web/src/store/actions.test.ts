@@ -569,11 +569,6 @@ describe('a replayed write', () => {
   });
 
   /**
-   * The note whose own save the store refused may be what filled it, so its delete goes
-   * to the server round that save rather than behind it, and the save then ends on the
-   * note being gone (MAK-234). Behind it, the delete would never be sent.
-   */
-  /**
    * The store's refusal is kept beside the outbox, so a reload starts out knowing it
    * (MAK-234): a purge made before the kept save is sent again goes round it rather than
    * behind it. And an outbox opened while the last account's refusal is still in memory
@@ -615,7 +610,12 @@ describe('a replayed write', () => {
     expect(after.status().storeFull).toBeNull();
   });
 
-  it('sends the delete of a note whose own save the store refused, round that save', async () => {
+  /**
+   * The note whose own save the store refused may be what filled it, so a purge of it
+   * goes to the server round that save rather than behind it, and the save then ends on
+   * the note being gone (MAK-234). Behind it, the purge would never be sent.
+   */
+  it('sends a purge of a note whose own save the store refused, round that save', async () => {
     const { fake, note } = library([row('n1', { title: 'old' })]);
     const base = note('n1');
     await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'typed past the limit' }, base });
@@ -626,22 +626,51 @@ describe('a replayed write', () => {
 
     const replay = vi.fn();
     fake.config.onlineDetector.subscribe(replay);
-    vi.mocked(api.deleteNote).mockResolvedValueOnce(undefined as never);
-    await actions.trashNote('n1');
-    expect(api.deleteNote).toHaveBeenCalledWith('n1');
+    vi.mocked(api.deleteNotePermanently).mockResolvedValueOnce(undefined as never);
+    await actions.purgeNote('n1');
+    expect(api.deleteNotePermanently).toHaveBeenCalledWith('n1');
     expect(fake.queue).toHaveLength(1);
-    // The kept save is this note's, so the trash ends it: sent again at once.
     expect(replay).toHaveBeenCalledTimes(1);
 
-    // A restore of it is not a way out: it does not go round what is waiting.
-    await actions.restoreNote('n1');
-    await tick();
-    expect(api.restoreNote).not.toHaveBeenCalled();
-
-    // The kept save replays against a trashed note, and ends there.
+    // The kept save replays against a note that is gone, and ends there.
     vi.mocked(api.updateNote).mockRejectedValueOnce(new ApiError(404, '404: Not found'));
     expect(await fake.replayOne()).toBe('refused');
     expect(fake.queue).toHaveLength(0);
+  });
+
+  /**
+   * A trash and a restore of that note queue behind its save as before: a trash sent
+   * ahead would end the save and drop the edit a restore promises to give back, and a
+   * restore sent ahead of a queued trash would be undone by it. Emptying the trash is
+   * where such a note goes, purged by id, since the server never heard of its trash.
+   */
+  it('queues a trash and a restore of that note, and purges it by id when the trash is emptied', async () => {
+    const { fake, note } = library([row('n1', { title: 'old' })]);
+    const base = note('n1');
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'typed past the limit' }, base });
+    await tick();
+    vi.mocked(api.updateNote).mockRejectedValueOnce(new ApiError(402, '402: no room', 'STORAGE_FULL', 'notes'));
+    expect(await fake.replayOne()).toBe('kept');
+
+    await actions.trashNote('n1');
+    await tick();
+    expect(api.deleteNote).not.toHaveBeenCalled();
+    expect(fake.queue).toHaveLength(2);
+    await actions.restoreNote('n1');
+    await tick();
+    expect(api.restoreNote).not.toHaveBeenCalled();
+    await actions.trashNote('n1');
+    await tick();
+
+    const replay = vi.fn();
+    fake.config.onlineDetector.subscribe(replay);
+    vi.mocked(api.deleteNotesPermanently).mockResolvedValueOnce({ deleted: 1 });
+    vi.mocked(api.purgeNotes).mockResolvedValueOnce({ scope: 'trashed', notesDeleted: 2, filesDeleted: 0 });
+    const out = await actions.emptyTrash(['n1', 'n9']);
+    expect(api.deleteNotesPermanently).toHaveBeenCalledWith(['n1']);
+    expect(api.purgeNotes).toHaveBeenCalledWith('trashed');
+    expect(out.notesDeleted).toBe(3);
+    expect(replay).toHaveBeenCalledTimes(1);
   });
 
   it('takes a note the server no longer has as done', async () => {

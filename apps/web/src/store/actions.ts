@@ -1207,8 +1207,7 @@ async function pulled<T>(write: Promise<T>, local: LocalWrite, frees = false): P
   const out = await write;
   // `frees`: a write that may let a save the store refused go now (MAK-234), so the
   // kept entry is sent again at once rather than on the executor's clock; see
-  // `store-full.ts`. A purge or an emptied trash makes room; a trash makes none, but a
-  // trash of the very note whose save is kept ends that save. Nothing else nudges: a
+  // `store-full.ts`. A purge or an emptied trash makes room. Nothing else nudges: a
   // replay refused again is a wasted request, and most direct writes free nothing.
   if (frees) storeFreed();
   aboutToWrite(local);
@@ -1617,36 +1616,34 @@ export async function restoreRevision(noteId: string, revisionId: number, opts: 
  * replay in order once the person subscribes, or the trash is emptied here. The queue's
  * own list of what is waiting is how the two are told apart.
  *
- * The store's refusal goes one step further, for a note the server holds whose own save
- * is the one kept (MAK-234). That note, or its history, may be what filled the store,
- * and queued behind its own refused save its delete would never be sent: the way out
- * closed by the very thing it is the way out of. So its delete goes too, and the kept
- * save then replays against a note that is trashed or gone and ends as the 404 it is
- * (`NotesStore.update` asks for room only once it knows it will write). Not for the
- * plan's refusal, where the kept save is the person's last edit and replays as it was
- * once they subscribe. A note made here, which the server does not hold, still queues.
- * And only for a delete (`deleting`): a restore frees nothing and is not the way out,
- * and sent ahead of a trash queued earlier it would reach the server first and leave
- * the note trashed against the person's last action (found in review).
+ * The store's refusal goes one step further, for a purge of a note the server holds
+ * whose own save is the one kept (MAK-234). That note, or its history, may be what
+ * filled the store, and queued behind its own refused save its purge would never be
+ * sent: the way out closed by the very thing it is the way out of. So its purge goes
+ * too, and the kept save then replays against a note that is gone and ends as the 404
+ * it is (`NotesStore.update` asks for room only once it knows it will write). Not for
+ * the plan's refusal, where the kept save is the person's last edit and replays as it
+ * was once they subscribe. A note made here, which the server does not hold, still
+ * queues.
+ *
+ * Only a purge (`purging`). A trash frees nothing, and sent ahead it would end the
+ * kept save with that 404, which rolls the row back and drops the edit the trash
+ * promises to give back on a restore; a restore frees nothing either, and sent ahead
+ * of a trash queued earlier it would leave the note trashed against the person's last
+ * action (both found in review). Both queue as before, and emptying the trash is
+ * where such a note is purged (`emptyTrash`).
  */
-function roundTheQueue(lib: WritableLibrary, noteId: string, deleting = false): boolean {
+function roundTheQueue(lib: WritableLibrary, noteId: string, purging = false): boolean {
   if (!planLapsed() && !storeFull()) return false;
   if (!lib.outbox.status().waiting.has(noteId)) return true;
-  return deleting && storeFull() && serverHolds(lib, noteId);
+  return purging && storeFull() && serverHolds(lib, noteId);
 }
 
 /** A bulk action's ids while a refusal waits: the ones that go to the server now, and the ones that queue. */
-function roundOrQueued(lib: WritableLibrary, ids: string[], deleting = false): { direct: string[]; queued: string[] } {
+function roundOrQueued(lib: WritableLibrary, ids: string[], purging = false): { direct: string[]; queued: string[] } {
   if (!planLapsed() && !storeFull()) return { direct: [], queued: ids };
-  const direct = ids.filter((id) => roundTheQueue(lib, id, deleting));
+  const direct = ids.filter((id) => roundTheQueue(lib, id, purging));
   return { direct, queued: ids.filter((id) => !direct.includes(id)) };
-}
-
-/** Whether any of these notes has an entry waiting here: a direct trash of one ends that entry, so it is worth a nudge. */
-function keptFor(lib: WritableLibrary | null, ids: string[]): boolean {
-  if (!lib) return false;
-  const waiting = lib.outbox.status().waiting;
-  return ids.some((id) => waiting.has(id));
 }
 
 /**
@@ -1664,7 +1661,7 @@ export async function trashNote(noteId: string): Promise<void> {
   const far = await away();
   if (far) return far('trashNote', [noteId], { ids: [noteId], refiles: true });
   const lib = await queueable();
-  if (!lib || notCopiedYet(lib, noteId) || roundTheQueue(lib, noteId, true)) return pulled(api.deleteNote(noteId), { ids: [noteId], refiles: true }, keptFor(lib, [noteId]));
+  if (!lib || notCopiedYet(lib, noteId) || roundTheQueue(lib, noteId)) return pulled(api.deleteNote(noteId), { ids: [noteId], refiles: true });
   queue(lib, 'trashNote', { noteId }, () => {
     lib.notes.update(noteId, (row) => {
       row.deletedAt = Date.now();
@@ -1710,7 +1707,16 @@ export async function emptyTrash(ids: readonly string[]): Promise<api.PurgeResul
     aboutToWrite({ ids, refiles: true });
     return out;
   }
-  return pulled(api.purgeNotes('trashed'), { ids, refiles: true }, true);
+  // A note whose trash waits behind a save the store refused (MAK-234) is in the trash
+  // here and not on the server, so the server's own purge would leave it, and the room
+  // with it. Those the server holds are purged by id, round the queue, as a purge of
+  // one would be (`roundTheQueue`); their queued entries then end on the note being
+  // gone. Emptying the trash is the person giving up those edits, as purging is.
+  const lib = await queueable();
+  const held = lib && storeFull() ? ids.filter((id) => lib.outbox.status().waiting.has(id) && serverHolds(lib, id)) : [];
+  const first = held.length > 0 ? await api.deleteNotesPermanently(held) : { deleted: 0 };
+  const out = await pulled(api.purgeNotes('trashed'), { ids, refiles: true }, true);
+  return { ...out, notesDeleted: out.notesDeleted + first.deleted };
 }
 
 /*
@@ -1725,9 +1731,9 @@ export async function trashNotes(ids: string[]): Promise<number> {
   const lib = await queueable();
   if (!lib) return pulled(api.deleteNotes(ids).then((r) => r.trashed), { ids, refiles: true });
   const { here: held, there } = split(lib, ids);
-  const { direct, queued: here } = roundOrQueued(lib, held, true);
+  const { direct, queued: here } = roundOrQueued(lib, held);
   const sent = [...there, ...direct];
-  const remote = sent.length > 0 ? await pulled(api.deleteNotes(sent).then((r) => r.trashed), { ids: sent, refiles: true }, keptFor(lib, direct)) : 0;
+  const remote = sent.length > 0 ? await pulled(api.deleteNotes(sent).then((r) => r.trashed), { ids: sent, refiles: true }) : 0;
   if (here.length > 0) {
     queue(lib, 'trashNotes', { ids: here }, () => {
       const now = Date.now();
