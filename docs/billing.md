@@ -3,10 +3,13 @@
 ## Selling the plan
 
 unbent.app sells one plan, $36 a year, with 10 GB of attachments and 25 GB more for $12 a
-year (the reasoning is in MAK-47). Paddle is the merchant of record: it takes the payment,
-handles VAT and sales tax, and tells the Worker what happened over a webhook. Nothing about
-it exists on an instance that has not set the five `PADDLE_*` settings (every account is
-active for good there, and no Plan tab is drawn) so a fork never has to think about it.
+year: about a third of Evernote's cheapest plan with no cap on notes, in the range of Bear
+and Obsidian Sync, and well above the few dollars a year an account costs to serve, since
+the price is positioning rather than cost recovery (the comparison is in MAK-47). Paddle is
+the merchant of record: it takes the payment, handles VAT and sales tax, and tells the
+Worker what happened over a webhook. Nothing about it exists on an instance that has not
+set the five `PADDLE_*` settings (every account is active for good there, and no Plan tab
+is drawn) so a fork never has to think about it.
 The numbers the pages quote are in `packages/shared/src/plan.ts`; the prices Paddle charges
 are in its catalog, and the two are changed together.
 
@@ -18,7 +21,9 @@ exports, and every write but a delete is refused with a 402 that the app shows a
 read-only banner. The same state, and the same code path, for an expired trial, a lapsed
 subscription and a comp that ended (`requireActivePlan` in the API). After a year inactive
 the account *may* be deleted, after a reminder to export first (a right the terms reserve,
-not a job): nothing deletes on a timer, by decision (MAK-47, and `INACTIVE_KEPT_DAYS`).
+not a job): nothing deletes on a timer, by decision, since deleting a paperless archive
+because someone missed a year of mail would be holding it hostage after all, and a
+read-only account costs almost nothing to keep (MAK-47, and `INACTIVE_KEPT_DAYS`).
 
 Comps do not go through Paddle. A 100% discount there still asks for a card and charges it
 when the discount ends, so an account that should not pay (the owner, a gifted friend) is
