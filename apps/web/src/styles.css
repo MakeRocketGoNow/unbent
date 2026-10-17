@@ -3901,7 +3901,7 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 */
 /* `:where`, so these defaults have no specificity and the `[data-color]` rules below win on
    the select too, whose own selector would otherwise outrank a bare attribute. */
-:where(.tag-chip, .note-tag, select.note-field-input[data-filled]) {
+:where(.tag-chip, .note-tag, .color-swatch, .label-slot[data-color], select.note-field-input[data-filled]) {
   --chip-hue: var(--fg);
   --chip-wash: color-mix(in srgb, var(--chip-hue) var(--tint-wash), transparent);
   --chip-wash-hover: color-mix(in srgb, var(--chip-hue) calc(var(--tint-wash) + 8%), transparent);
@@ -3946,6 +3946,59 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
 /* A chip with nothing after its word (shown, not edited) is padded evenly. */
 .tag-chip:not(:has(.tag-remove)) {
   padding-right: 0.4rem;
+}
+
+/*
+   The palette as swatches (`ColorSwatches`): a dot of each tint's wash ringed in its
+   ink, and the chosen one filled, drawn through the same variables the chips use so a
+   swatch is a preview of the chip it would make, on either theme. Each dot sits in a
+   2.25rem button so a thumb can hit one, and the row takes a line of its own under
+   whatever it colours (a flex item at full width), rather than squeezing between a name
+   and its buttons.
+*/
+.color-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  flex-basis: 100%;
+  gap: 0.1rem;
+  /* Pulled left by the button's own padding, so the first dot sits on the text edge. */
+  margin-left: -0.425rem;
+}
+
+.color-swatch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.color-swatch::before {
+  content: '';
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 50%;
+  background: var(--chip-wash);
+  box-shadow: inset 0 0 0 1.5px var(--chip-ink);
+}
+
+.color-swatch[aria-checked='true']::before {
+  box-shadow: inset 0 0 0 0.45rem var(--chip-ink);
+}
+
+.color-swatch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.color-swatch:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 
 /* × on pointing, so a row of tags reads as words rather than as words with buttons. */
@@ -5438,7 +5491,20 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   border-bottom: 1px solid transparent;
 }
 
-.label-row.editing { border-color: var(--border); }
+.label-row.editing {
+  /* So the colour row, when a tag's row has one, takes a line under the name. */
+  flex-wrap: wrap;
+  border-color: var(--border);
+}
+
+/* A tag's glyph in its colour: the one place the list says which colour a tag wears. */
+.label-slot[data-color] { color: var(--chip-ink); }
+
+/* Under the name, inset to its text edge: the slot's width, less the pull above. */
+.label-row.editing > .color-swatches {
+  margin-left: calc(2.75rem - 0.75rem + 0.5rem - 0.425rem);
+  padding-bottom: 0.35rem;
+}
 
 /* The leading slot: a 44px box, whether it holds a glyph or a button, so the glyph and
    the trash can centre on the same line. Pulled left by the box's own padding so the

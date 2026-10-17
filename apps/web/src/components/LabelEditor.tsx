@@ -9,6 +9,7 @@ import {
   CancelIcon,
   TrashIcon,
 } from './icons.js';
+import { ColorSwatches } from './ColorSwatches.js';
 
 export interface LabelItem {
   id: string;
@@ -58,6 +59,12 @@ interface LabelEditorProps {
    * trailing number, which is the information a tag row is mostly for.
    */
   renderNameCount?: (item: LabelItem) => ReactNode;
+  /**
+   * Recolours an item, from the swatches the editing row shows under the name. Tags
+   * set this; a notebook has no colour. The row's glyph wears the colour at rest, which
+   * is what says there is one to change.
+   */
+  onRecolor?: ((item: LabelItem, color: number) => void) | undefined;
   /** The item, if any, whose row should be in its editing state: the caller keeps it there under a confirm. */
   editingId?: string | null;
   /** The find field, offered once a list is long enough to need one. */
@@ -112,6 +119,7 @@ export function LabelEditor({
   onCreate,
   onRename,
   onDelete,
+  onRecolor,
   rowHref,
   renderExtra,
   renderNameCount,
@@ -132,6 +140,8 @@ export function LabelEditor({
   const noun = kind === 'notebook' ? 'notebook' : 'tag';
   const glyph = (item: LabelItem) =>
     kind === 'notebook' ? <NotebookGlyph emoji={item.emoji} /> : <TagIcon />;
+  /* A tag's slot wears its colour, so the list shows what the swatches change. */
+  const slotColor = (item: LabelItem) => (onRecolor ? (item.color ?? undefined) : undefined);
 
   const startRename = (item: LabelItem) => {
     setCreating(null);
@@ -351,10 +361,23 @@ export function LabelEditor({
               >
                 <CheckIcon />
               </button>
+              {/* The colour row, under the name, inside the same fence: the other thing
+                  a tag's row is for. Each pick writes at once and the row stays open. Not
+                  disabled while the write is in flight, as the other controls are: a
+                  disabled button drops focus, which left a keyboard at the top of the
+                  page after every pick, and a second pick before the first lands only
+                  sends the newer colour. */}
+              {onRecolor && (
+                <ColorSwatches
+                  of={`the ${noun} ${item.name}`}
+                  value={item.color}
+                  onPick={(color) => onRecolor(item, color)}
+                />
+              )}
             </li>
           ) : (
             <li key={item.id} className="label-row">
-              <span className="label-slot" aria-hidden="true">
+              <span className="label-slot" aria-hidden="true" data-color={slotColor(item)}>
                 {glyph(item)}
               </span>
               {/* The name is the row's target, since renaming is what the row is mostly

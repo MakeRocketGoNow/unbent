@@ -4,6 +4,7 @@ import { MAX_FIELD_NAME_LENGTH, sameName } from '@unbent/shared';
 import { ChipPencilIcon, MoveEarlierIcon, MoveLaterIcon } from './icons.js';
 import { filledStyle } from './filled.js';
 import type { TagColorOf } from './use-tag-colors.js';
+import { ColorSwatches } from './ColorSwatches.js';
 
 interface Renaming {
   from: string;
@@ -54,6 +55,14 @@ interface TagInputProps {
    * old name at once, since nothing has changed yet.
    */
   onRename?: ((from: string, to: string) => Promise<boolean>) | undefined;
+  /**
+   * Recolours a token: a select field's option, from its settings. Shown with the
+   * rename, as a row of swatches under the chips while a word is a field, since the
+   * press that opens the word is the one place a chip already has an editing state, and
+   * a palette on every chip at rest would be ten dots a word. The pick writes at once
+   * and the field stays open (`ColorSwatches` keeps focus where it was).
+   */
+  onRecolor?: ((name: string, color: number) => void) | undefined;
   /**
    * An action for the whole list, drawn at the far end of the row's last line, after the
    * "+ Add" entry: a select's "Sort A–Z". In the row rather than beside it, so it takes no
@@ -124,6 +133,7 @@ export function TagInput({
   readOnly = false,
   fresh,
   onRename,
+  onRecolor,
   trailing,
   colorOf,
 }: TagInputProps) {
@@ -365,8 +375,8 @@ export function TagInput({
                   if (el) labelRefs.current.set(t, el);
                   else labelRefs.current.delete(t);
                 }}
-                aria-label={`Rename ${label} ${t}`}
-                data-tip="Rename"
+                aria-label={onRecolor ? `Rename or recolour ${label} ${t}` : `Rename ${label} ${t}`}
+                data-tip={onRecolor ? 'Rename or recolour' : 'Rename'}
                 onClick={(e) => {
                   e.stopPropagation();
                   startRename(t, e.currentTarget.getBoundingClientRect().width);
@@ -500,6 +510,14 @@ export function TagInput({
         <span className="tag-input-trailing" onClick={(e) => e.stopPropagation()}>
           {trailing}
         </span>
+      )}
+      {/* A line of its own under the row, for the word being renamed. */}
+      {onRecolor && renaming && (
+        <ColorSwatches
+          of={`the ${label} ${renaming.from}`}
+          value={colorOf?.(renaming.from)}
+          onPick={(color) => onRecolor(renaming.from, color)}
+        />
       )}
     </div>
   );

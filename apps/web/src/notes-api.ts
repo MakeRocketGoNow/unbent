@@ -610,6 +610,16 @@ export async function renameTag(
   return json(res);
 }
 
+/** Gives a tag another colour from the palette, by index. */
+export async function recolorTag(id: string, color: number): Promise<void> {
+  const res = await request(`/api/tags/${id}`, {
+    method: 'PATCH',
+    headers: jsonHeaders,
+    body: JSON.stringify({ color }),
+  });
+  if (!res.ok) throw new Error(await httpErrorMessage(res));
+}
+
 /** Takes the tag off every note that carries it. The notes stay. */
 export async function deleteTag(id: string): Promise<void> {
   const res = await request(`/api/tags/${id}`, { method: 'DELETE' });
@@ -741,6 +751,8 @@ export async function updateNotebookField(
     name?: string;
     type?: FieldType;
     options?: string[];
+    /** Colours by option name, over the ones the field keeps: a recolour of one option. */
+    optionColors?: Record<string, number>;
     scale?: FieldScale | null;
     currency?: string | null;
   },

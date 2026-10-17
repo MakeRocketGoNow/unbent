@@ -117,12 +117,13 @@ export function Tags({ onChanged }: TagsProps) {
         editingId={pendingDelete?.id ?? pendingMerge?.tag.id ?? null}
         findable
         onRename={rename}
+        onRecolor={(item, color) => void run(() => api.recolorTag(item.id, color))}
         onDelete={(item) => {
           const tag = tags?.find((t) => t.id === item.id);
           if (tag) setPendingDelete(tag);
         }}
         emptyText="No tags yet. A tag is added on a note."
-        hint="Renaming a tag updates every note that carries it. Renaming one to a name that already exists offers to merge the two."
+        hint="Renaming a tag updates every note that carries it. Renaming one to a name that already exists offers to merge the two. A tag's colour is given when it is made and can be changed from its row."
       />
 
       {pendingMerge && (
