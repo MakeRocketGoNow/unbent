@@ -2,7 +2,7 @@ import { describe, it } from 'vitest';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { encodeFieldValue, isRatingField, type AutofillSuggestion, type FieldDef, type FieldValue } from '@unbent/shared';
+import { encodeFieldValue, isRatingField, tokensCents, type AutofillSuggestion, type FieldDef, type FieldValue } from '@unbent/shared';
 import {
   autofill,
   dateCandidates,
@@ -172,24 +172,14 @@ function inputFor(note: SampleNote, sample: Sample): { input: AutofillInput; tit
 
 // --- Cost ---------------------------------------------------------------------------------
 
-/** Dollars per million tokens for the default model (claude-haiku-5-5), 2026-10. */
-const HAIKU = { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 };
 /** Jev bills input only; TypeSafe reports no counts, so the request's bytes stand in at four to a token. */
 const JEV_PER_MILLION = 0.042;
 /** Snap bills input only, and reports it: `usage.input_tokens` on every answer. */
 const SNAP_PER_MILLION = 0.05;
 
+/** Each answer at its own model's price, from the table the yearly spend cap uses too. */
 function llmCents(usage: LlmUsage[]): number {
-  let dollars = 0;
-  for (const u of usage) {
-    dollars +=
-      (u.inputTokens * HAIKU.input +
-        u.outputTokens * HAIKU.output +
-        u.cacheReadTokens * HAIKU.cacheRead +
-        u.cacheWriteTokens * HAIKU.cacheWrite) /
-      1e6;
-  }
-  return dollars * 100;
+  return usage.reduce((cents, u) => cents + tokensCents(u), 0);
 }
 
 // --- Arms: the press as it ships, with Jev or with Snap ------------------------------------
