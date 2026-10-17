@@ -117,8 +117,9 @@ export function FrontPage() {
             too, so a photo of a receipt turns up under the name of the shop.
           </Point>
           <Point icon={<AutofillFeatureIcon />} title="One press files a scan">
-            Auto-fill reads a scan and fills in its title, its notebook and any empty fields:
-            the date, the total, who it was from. You check it instead of typing it.
+            Press Auto-fill and an AI reads the scan and fills in its title, its notebook and
+            any empty fields: the date, the total, who it was from. You check it instead of
+            typing it, and it only runs when you press it.
           </Point>
           <Point icon={<FieldsFeatureIcon />} title="Notebooks that work like a spreadsheet">
             Give a notebook dates, amounts, ratings or choices, then see it as a table and
