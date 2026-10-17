@@ -409,6 +409,118 @@ export async function verifyWebhookSignature(
   return false;
 }
 
+/**
+ * How long a fetched list of Paddle's sending addresses is used before it is asked for
+ * again, and how soon an address that is not on it may send it to be asked for early.
+ * The second is what lets a change Paddle makes to its addresses reach this isolate in
+ * minutes rather than the hour, without letting a stranger knocking on the webhook turn
+ * every knock into a fetch.
+ */
+export const PADDLE_IPS_TTL_MS = 60 * 60 * 1000;
+export const PADDLE_IPS_RECHECK_MS = 5 * 60 * 1000;
+
+const ipsCache = new Map<PaddleConfig['environment'], { cidrs: string[]; at: number }>();
+
+/** For the tests: forget what has been fetched. */
+export function forgetPaddleIps(): void {
+  ipsCache.clear();
+}
+
+/**
+ * The addresses Paddle sends webhooks from, as Paddle publishes them at `/ips`: a list of
+ * IPv4 CIDRs, each a `/32` today. Asked of Paddle rather than written down here, because
+ * the endpoint is the source of truth and Paddle changes the list with notice, not with a
+ * release of this app. Always the environment's own origin, never `PADDLE_API_URL`: a
+ * stand-in API sends no webhooks, and the sandbox's addresses differ from live's.
+ *
+ * Kept in the isolate for `PADDLE_IPS_TTL_MS`. A fetch that fails keeps the list it had,
+ * however old, since Paddle's addresses change far less often than its API has a bad
+ * minute; with nothing kept it answers null, and the webhook is refused as unavailable
+ * so Paddle delivers it again.
+ */
+export async function paddleWebhookCidrs(
+  environment: PaddleConfig['environment'],
+  now = Date.now(),
+  refresh = false,
+): Promise<string[] | null> {
+  const kept = ipsCache.get(environment);
+  if (kept && now - kept.at < (refresh ? PADDLE_IPS_RECHECK_MS : PADDLE_IPS_TTL_MS)) return kept.cidrs;
+  try {
+    const res = await fetch(`${environment === 'sandbox' ? SANDBOX_API : LIVE_API}/ips`, {
+      signal: AbortSignal.timeout(PADDLE_TIMEOUT_MS),
+    });
+    if (!res.ok) throw new Error(`answered ${res.status}`);
+    const cidrs = ((await res.json()) as { data?: { ipv4_cidrs?: unknown } }).data?.ipv4_cidrs;
+    if (!Array.isArray(cidrs) || cidrs.length === 0 || !cidrs.every((c) => typeof c === 'string' && ipv4CidrOf(c))) {
+      throw new Error('answered with no addresses');
+    }
+    ipsCache.set(environment, { cidrs, at: now });
+    return cidrs;
+  } catch (err) {
+    console.warn(`[billing] Paddle's ${environment} webhook addresses could not be read:`, (err as Error).message);
+    return kept?.cidrs ?? null;
+  }
+}
+
+function ipv4Of(address: string): number | null {
+  const parts = address.split('.');
+  if (parts.length !== 4 || !parts.every((p) => /^\d{1,3}$/.test(p) && Number(p) <= 255)) return null;
+  return parts.reduce((n, p) => n * 256 + Number(p), 0);
+}
+
+function ipv4CidrOf(cidr: string): { base: number; bits: number } | null {
+  const [address, length = '32'] = cidr.split('/');
+  const base = ipv4Of(address ?? '');
+  const bits = Number(length);
+  if (base === null || !/^\d{1,2}$/.test(length) || bits > 32) return null;
+  return { base, bits };
+}
+
+/** Whether `address` is inside one of `cidrs`. IPv4 only, since that is all Paddle lists. */
+export function inCidrs(address: string, cidrs: readonly string[]): boolean {
+  const ip = ipv4Of(address);
+  if (ip === null) return false;
+  return cidrs.some((cidr) => {
+    const range = ipv4CidrOf(cidr);
+    if (!range) return false;
+    // 2 ** (32 - bits) rather than a shift: a JavaScript shift is 32-bit signed, and the
+    // top half of the address space would come out negative.
+    const size = 2 ** (32 - range.bits);
+    return Math.floor(ip / size) === Math.floor(range.base / size);
+  });
+}
+
+/**
+ * Whether a webhook came from one of Paddle's addresses, before its signature is read:
+ * `allowed`, `refused`, or `unknown` when Paddle's list could not be had at all.
+ *
+ * The signature is the authority and stays so; this is the second lock Paddle asks for,
+ * and it keeps a stranger's request from costing an HMAC and a D1 read. The address is
+ * `CF-Connecting-IP`, which Cloudflare sets on every request it delivers and overwrites
+ * when a client sends its own. An address not on the list asks for the list again (at
+ * most every `PADDLE_IPS_RECHECK_MS`) before it is refused, so a newly added Paddle
+ * address is a few refused deliveries, retried, rather than an hour of them.
+ *
+ * `local` is the test switch (`ALLOW_TEST_CREDENTIALS`), and lets a loopback address
+ * through, or none: the live suite signs its own deliveries from this machine, and a
+ * tunnel's are the only real ones a local Worker ever sees. Never set on a deployed
+ * instance, which is the line every other local-only path here draws.
+ */
+export async function webhookSourceOf(
+  paddle: PaddleConfig,
+  address: string | undefined,
+  local: boolean,
+  now = Date.now(),
+): Promise<'allowed' | 'refused' | 'unknown'> {
+  if (local && (!address || address === '127.0.0.1' || address === '::1')) return 'allowed';
+  if (!address) return 'refused';
+  const cidrs = await paddleWebhookCidrs(paddle.environment, now);
+  if (!cidrs) return 'unknown';
+  if (inCidrs(address, cidrs)) return 'allowed';
+  const fresh = await paddleWebhookCidrs(paddle.environment, now, true);
+  return fresh && inCidrs(address, fresh) ? 'allowed' : 'refused';
+}
+
 /** The signature Paddle would send for `rawBody` at `ts`, for the tests and the simulator script. */
 export async function signWebhook(secret: string, rawBody: string, ts: number): Promise<string> {
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);

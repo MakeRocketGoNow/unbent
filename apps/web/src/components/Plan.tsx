@@ -135,8 +135,8 @@ export function Plan() {
     setBusy('checkout');
     setError(null);
     try {
-      const { transactionId } = await api.startCheckout(chosenUnits);
-      const outcome = await openCheckout(billing!, transactionId);
+      const { transactionId, customerId } = await api.startCheckout(chosenUnits);
+      const outcome = await openCheckout(billing!, transactionId, customerId);
       if (outcome === 'completed') {
         await settleCheckout();
         await refresh();

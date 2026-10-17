@@ -18,6 +18,7 @@ import {
   removeSubscriptionStorage,
   setSubscriptionStorage,
   verifyWebhookSignature,
+  webhookSourceOf,
   type PaddleAdjustment,
 } from '../lib/paddle.js';
 import { reposFor } from '../lib/repos.js';
@@ -96,7 +97,8 @@ export const billing = new Hono<AppEnv>()
   /**
    * A checkout for the page to open: the plan, with `storage` add-ons beside it. The
    * answer is the transaction's id, which Paddle.js opens as an overlay with the
-   * client-side token from `/api/config`; the page never learns a price id, and the
+   * client-side token from `/api/config`, and the account's Paddle customer id, which
+   * Paddle.js is initialised with for Retain (`pwCustomer`); the page never learns a price id, and the
    * customer is ours before the checkout opens, so the plan row holds Paddle's id for
    * the account by the time the first event names it.
    *
@@ -125,7 +127,7 @@ export const billing = new Hono<AppEnv>()
       const customerId = row.paddleCustomerId ?? (await findOrCreateCustomer(paddle, c.get('user')!.email, userId)).id;
       if (customerId !== row.paddleCustomerId) await updatePlan(c.env.DB, userId, { paddleCustomerId: customerId }, now);
       const txn = await createCheckoutTransaction(paddle, customerId, userId, c.req.valid('json').storage);
-      return c.json({ transactionId: txn.id });
+      return c.json({ transactionId: txn.id, customerId });
     } catch (err) {
       return paddleRefused(err, 'start the checkout', userId);
     }
@@ -235,8 +237,10 @@ export const billing = new Hono<AppEnv>()
 
   /**
    * Paddle's webhook: what happened to a subscription, signed with the destination's
-   * secret. No session (Paddle sends none), so the signature is the whole of the
-   * authority, and the raw body is what it signs, read before anything parses it.
+   * secret. No session (Paddle sends none), so the signature is the authority, and the
+   * raw body is what it signs, read before anything parses it. Before either, the
+   * sender's address must be one Paddle publishes (`webhookSourceOf`): a 403 for any
+   * other, and a 503 when Paddle's list cannot be read, which Paddle retries.
    *
    * Two answers for a sound event: 200 having applied it, or 200 having found nothing to
    * apply: an event already applied by id (Paddle retries anything not answered inside
@@ -262,6 +266,13 @@ export const billing = new Hono<AppEnv>()
   .post('/billing/webhook', async (c) => {
     const paddle = paddleOf(c.env);
     if (!paddle) return c.json({ error: 'Not found' }, 404);
+    const address = c.req.header('cf-connecting-ip');
+    const source = await webhookSourceOf(paddle, address, c.env.ALLOW_TEST_CREDENTIALS === '1');
+    if (source === 'unknown') return c.json({ error: 'Paddle addresses unavailable; deliver again' }, 503);
+    if (source === 'refused') {
+      console.warn(`[billing] webhook from ${address ?? 'no address'} refused: not one of Paddle's`);
+      return c.json({ error: 'Not from Paddle' }, 403);
+    }
     const raw = await c.req.text();
     if (!(await verifyWebhookSignature(paddle.webhookSecret, c.req.header('paddle-signature'), raw))) {
       return c.json({ error: 'Bad signature' }, 401);

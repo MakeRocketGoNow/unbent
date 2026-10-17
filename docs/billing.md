@@ -87,7 +87,11 @@ sandbox first.
    refunded subscription renewing, and the terms say it does not, so an approved refund
    of the plan cancels the subscription at once and a refund of only the storage add-on
    takes the add-on off. A destination made before those two were listed has to be
-   edited to send them, or a refund is money back and nothing else.
+   edited to send them, or a refund is money back and nothing else. A delivery is
+   accepted only from an address Paddle publishes at `/ips` (the live API's or the
+   sandbox's, by the key), which the Worker reads and keeps for an hour rather than
+   writing down, so nothing needs allowlisting by hand: any other sender gets a 403
+   before its signature is read.
 5. **The five settings** on the Worker, as secrets: `PADDLE_API_KEY`,
    `PADDLE_WEBHOOK_SECRET`, `PADDLE_CLIENT_TOKEN`, `PADDLE_PLAN_PRICE_ID` and
    `PADDLE_STORAGE_PRICE_ID`. Which environment they belong to is read off the key:

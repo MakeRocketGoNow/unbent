@@ -121,7 +121,7 @@ describe('Plan', () => {
       'fetch',
       vi.fn(async (url: string, init?: RequestInit) => {
         calls.push(`${init?.method ?? 'GET'} ${url}`);
-        if (url === '/api/billing/checkout') return Response.json({ transactionId: 'txn_1' });
+        if (url === '/api/billing/checkout') return Response.json({ transactionId: 'txn_1', customerId: 'ctm_1' });
         // The first read is a moment too early for the subscription; the second has it.
         if (url === '/api/billing/refresh') return Response.json(calls.filter((c) => c.endsWith('/refresh')).length > 1 ? { state: 'active', subscription: { status: 'active', cancelsAt: null, pastDue: false } } : { state: 'trial', subscription: null });
         if (url === '/api/me/plan') return Response.json({ state: 'active', until: NOW + 365 * DAY, readOnlyAt: NOW + 366 * DAY, source: 'paddle', storageGb: 35, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
@@ -136,7 +136,7 @@ describe('Plan', () => {
     expect(await screen.findByRole('heading', { name: 'Subscribed' }, { timeout: 4000 })).toBeTruthy();
     expect(calls).toContain('POST /api/billing/checkout');
     expect(calls.filter((c) => c === 'POST /api/billing/refresh')).toHaveLength(2);
-    expect(vi.mocked(openCheckout)).toHaveBeenCalledWith({ environment: 'sandbox', clientToken: 'test_x' }, 'txn_1');
+    expect(vi.mocked(openCheckout)).toHaveBeenCalledWith({ environment: 'sandbox', clientToken: 'test_x' }, 'txn_1', 'ctm_1');
     expect(screen.getByText('You’re subscribed. Thank you.')).toBeTruthy();
   });
 

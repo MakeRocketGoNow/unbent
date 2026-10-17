@@ -509,8 +509,8 @@ export async function getPlan(opts: { usage?: boolean } = {}): Promise<AccountPl
   return json<AccountPlan>(await request(opts.usage ? '/api/me/plan?usage=1' : '/api/me/plan'));
 }
 
-/** A checkout for `storage` add-ons beside the plan: the transaction Paddle.js opens. */
-export async function startCheckout(storage: number): Promise<{ transactionId: string }> {
+/** A checkout for `storage` add-ons beside the plan: the transaction Paddle.js opens, and whose it is in Paddle. */
+export async function startCheckout(storage: number): Promise<{ transactionId: string; customerId: string }> {
   return json(await request('/api/billing/checkout', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ storage }) }));
 }
 
