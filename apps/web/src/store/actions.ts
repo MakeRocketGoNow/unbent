@@ -1551,7 +1551,7 @@ export async function clearHistory(noteId: string): Promise<number> {
       planLapsed()
         ? 'This note has an edit waiting for the plan to be active again; its history can be cleared once that has gone.'
         : storeFull()
-          ? 'This note has an edit waiting for room in the account. Delete some notes, or clear another note\u2019s history, and it will go.'
+          ? 'This note has an edit waiting for room in the account. Delete some notes and empty the trash, or clear another note’s history, and it will go.'
           : 'This note has changes that have not synced yet. Try again in a moment.',
     );
   }
