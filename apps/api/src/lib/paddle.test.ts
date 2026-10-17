@@ -1,13 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  PADDLE_IPS_RECHECK_MS,
+  PADDLE_IPS_TTL_MS,
   PaddleError,
   WEBHOOK_TOLERANCE_SECONDS,
   findOrCreateCustomer,
+  forgetPaddleIps,
+  inCidrs,
   newestSubscription,
   paddleCall,
   setSubscriptionStorage,
   signWebhook,
   verifyWebhookSignature,
+  webhookSourceOf,
   type PaddleConfig,
 } from './paddle.js';
 
@@ -113,5 +118,83 @@ describe('the Paddle calls', () => {
     answer([[200, { data: { id: 'sub_1' } }]]);
     await setSubscriptionStorage(paddle, 'sub_1', 0);
     expect(JSON.parse(calls[0]!.init.body as string).items).toEqual([{ price_id: 'pri_plan', quantity: 1 }]);
+  });
+});
+
+describe('where a webhook may come from', () => {
+  const LIVE = ['34.237.3.244/32', '52.11.166.252/32'];
+  const urls: string[] = [];
+  function publish(...lists: Array<string[] | number>) {
+    urls.length = 0;
+    let i = 0;
+    vi.stubGlobal('fetch', async (url: string) => {
+      urls.push(url);
+      const next = lists[Math.min(i++, lists.length - 1)]!;
+      return typeof next === 'number'
+        ? new Response('down', { status: next })
+        : Response.json({ data: { ipv4_cidrs: next } });
+    });
+  }
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    forgetPaddleIps();
+  });
+
+  it('matches an address against CIDRs, including ranges wider than one address', () => {
+    expect(inCidrs('34.237.3.244', LIVE)).toBe(true);
+    expect(inCidrs('34.237.3.245', LIVE)).toBe(false);
+    expect(inCidrs('203.0.113.77', ['203.0.113.0/24'])).toBe(true);
+    expect(inCidrs('203.0.114.1', ['203.0.113.0/24'])).toBe(false);
+    // The top half of the address space, where a 32-bit shift would go negative.
+    expect(inCidrs('200.1.2.3', ['200.0.0.0/8'])).toBe(true);
+    expect(inCidrs('2600::1', LIVE)).toBe(false);
+    expect(inCidrs('34.237.3', LIVE)).toBe(false);
+  });
+
+  it("asks the environment's own origin, never the stand-in, and keeps the answer", async () => {
+    publish(LIVE);
+    const live = { ...paddle, environment: 'live' as const, apiUrl: 'http://localhost:9999' };
+    expect(await webhookSourceOf(live, '34.237.3.244', false, NOW)).toBe('allowed');
+    expect(await webhookSourceOf(live, '52.11.166.252', false, NOW + 1000)).toBe('allowed');
+    expect(urls).toEqual(['https://api.paddle.com/ips']);
+
+    forgetPaddleIps();
+    publish(['44.241.183.62/32']);
+    expect(await webhookSourceOf(paddle, '44.241.183.62', false, NOW)).toBe('allowed');
+    expect(urls).toEqual(['https://sandbox-api.paddle.com/ips']);
+  });
+
+  it('refuses any other address, asking again for the list at most every few minutes', async () => {
+    publish(LIVE);
+    expect(await webhookSourceOf(paddle, '198.51.100.7', false, NOW)).toBe('refused');
+    expect(urls).toHaveLength(1);
+    expect(await webhookSourceOf(paddle, '198.51.100.7', false, NOW + PADDLE_IPS_RECHECK_MS - 1)).toBe('refused');
+    expect(urls).toHaveLength(1);
+    expect(await webhookSourceOf(paddle, undefined, false, NOW)).toBe('refused');
+  });
+
+  it('lets in an address Paddle added since the list was read, once the recheck is due', async () => {
+    publish(LIVE, [...LIVE, '35.155.119.135/32']);
+    expect(await webhookSourceOf(paddle, '34.237.3.244', false, NOW)).toBe('allowed');
+    expect(await webhookSourceOf(paddle, '35.155.119.135', false, NOW + PADDLE_IPS_RECHECK_MS)).toBe('allowed');
+    expect(urls).toHaveLength(2);
+  });
+
+  it('keeps an old list when Paddle cannot be read, and says unknown with none', async () => {
+    publish(503);
+    expect(await webhookSourceOf(paddle, '34.237.3.244', false, NOW)).toBe('unknown');
+
+    publish(LIVE, 503);
+    expect(await webhookSourceOf(paddle, '34.237.3.244', false, NOW)).toBe('allowed');
+    expect(await webhookSourceOf(paddle, '34.237.3.244', false, NOW + PADDLE_IPS_TTL_MS)).toBe('allowed');
+    expect(urls).toHaveLength(2);
+  });
+
+  it('lets loopback through only where the test switch is on', async () => {
+    publish(LIVE);
+    expect(await webhookSourceOf(paddle, '127.0.0.1', true, NOW)).toBe('allowed');
+    expect(await webhookSourceOf(paddle, undefined, true, NOW)).toBe('allowed');
+    expect(urls).toHaveLength(0);
+    expect(await webhookSourceOf(paddle, '127.0.0.1', false, NOW)).toBe('refused');
   });
 });
