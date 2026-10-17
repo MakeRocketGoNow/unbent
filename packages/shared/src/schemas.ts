@@ -268,7 +268,7 @@ export interface AppConfig {
    *
    * `version` is what a signed-in account must have agreed to before the app opens, and
    * `change` what is new in it for someone who agreed to an earlier one. See
-   * `LEGAL_VERSION`. Optional only so a client stays compatible with an instance older
+   * `LEGAL_CHANGES` and `legalVersionFor`. Optional only so a client stays compatible with an instance older
    * than the agreement step, which it reads as one that asks for none.
    *
    * `sellsPlan` is set when the built-in terms carry the sections on payment, renewal and

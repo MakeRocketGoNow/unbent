@@ -185,12 +185,13 @@ approving an OAuth client and approving a CLI's device code, which are refused t
 account that has not agreed, however they are called. Connections that already exist keep
 working.
 
-Moving `LEGAL_VERSION` in `packages/shared/src/legal.ts` asks everyone again, worded as an
-update, with `LEGAL_CHANGE` beside it to say what changed. Move it for a change worth
-interrupting people for, not for every correction: the documents' effective dates move for
-those on their own. A change only to the payment terms (`billingOnly`) moves it only where
-the instance sells a plan; everywhere else those sections are not published, so nothing
-changed and nobody is asked. An operator with their own documents sets `LEGAL_VERSION` in the
+Adding an entry to `LEGAL_CHANGES` in `packages/shared/src/legal.ts` asks people again,
+worded as an update, with the entry's sentence to say what changed. Add one for a change
+worth interrupting people for, not for every correction: the documents' effective dates move
+for those on their own. A change only to text an instance publishes because it sells a plan,
+or because it offers Auto-fill, names that condition (`onlyWhere`) and moves only those
+instances; everywhere else the text is not published, so nothing changed and nobody is
+asked. An operator with their own documents sets `LEGAL_VERSION` in the
 environment instead, since only they know when those change; unset, everyone is asked once,
 and a change to the built-in documents never asks them again.
 
