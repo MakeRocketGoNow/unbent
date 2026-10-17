@@ -83,7 +83,7 @@ export function WhyPage() {
             </Source>{' '}
             Evernote announced that it was being bought by Bending Spoons, an app company in
             Milan. In{' '}
-            <Source href="https://techcrunch.com/2023/11/29/its-official-evernote-will-restrict-free-users-to-50-notes/">
+            <Source href="https://techcrunch.com/2023/02/27/bending-spoons-lays-off-129-evernote-staffers/">
               February 2023
             </Source>{' '}
             the new owner laid off 129 people, saying the product had been unprofitable for
