@@ -122,6 +122,20 @@ class SignInActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Reads the config again behind the screen: the form stays as it is, what was typed
+     * with it, and a read that fails keeps the old one. For when the server says the
+     * instance now asks for a Turnstile token, so the next press carries one.
+     */
+    private fun refreshConfig() {
+        lifecycleScope.launch {
+            val origin = prefs.instance
+            withContext(Dispatchers.IO) { runCatching { UnbentApi(origin, null).config() } }
+                .onSuccess { config = it }
+                .onFailure { e -> Log.w("Unbent", "Could not reload /api/config from $origin", e) }
+        }
+    }
+
     private fun changeInstance(raw: String) {
         val normalized = Prefs.normalizeOrigin(raw)
         if (normalized.isEmpty()) return
@@ -259,9 +273,13 @@ class SignInActivity : ComponentActivity() {
                 }
             }.onFailure { e ->
                 Log.w("Unbent", "Email code sign-in failed", e)
-                status = (e as? ApiException)?.serverMessage()
-                    ?: getString(if (code == null) R.string.sign_in_failed else R.string.sign_in_otp_failed)
-                if ((e as? ApiException)?.isMissingCaptcha == true) loadConfig()
+                if ((e as? ApiException)?.isMissingCaptcha == true) {
+                    status = getString(R.string.sign_in_check_turned_on)
+                    refreshConfig()
+                } else {
+                    status = (e as? ApiException)?.serverMessage()
+                        ?: getString(if (code == null) R.string.sign_in_failed else R.string.sign_in_otp_failed)
+                }
             }
         }
     }

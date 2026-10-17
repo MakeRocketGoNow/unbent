@@ -60,6 +60,15 @@ final class SignInModel {
         }
     }
 
+    /// Reads the config again behind the screen: the form stays as it is, what was typed
+    /// with it, and a read that fails keeps the old one. For when the server says the
+    /// instance now asks for a Turnstile token, so the next press carries one.
+    func refreshConfig() {
+        Task {
+            if let fresh = try? await UnbentApi(origin: origin, bearer: nil).config() { config = fresh }
+        }
+    }
+
     /// Sends a code, or trades one for a session.
     ///
     /// One entry point for both steps because the screen drives the sequence: a nil code
@@ -105,8 +114,12 @@ final class SignInModel {
                 do {
                     try await auth.sendCode(email: email, captchaToken: token)
                 } catch let error as ApiError where error.isMissingCaptcha {
-                    self.loadConfig()
-                    throw error
+                    self.refreshConfig()
+                    throw ApiError(
+                        status: 0,
+                        message: "This instance now checks this phone before sending a code. Press Email me a code again.",
+                        body: ""
+                    )
                 }
                 self.codeSentTo = email
                 return nil

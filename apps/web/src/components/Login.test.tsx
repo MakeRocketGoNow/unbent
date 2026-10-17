@@ -9,7 +9,7 @@ import {
 } from '@tanstack/react-router';
 import type { AppConfig, AuthProvider } from '@unbent/shared';
 import { Login, refusalMessage } from './Login.js';
-import { TURNSTILE_FAILED_MESSAGE } from './Turnstile.js';
+import { CHECK_TURNED_ON_MESSAGE, TURNSTILE_FAILED_MESSAGE } from './Turnstile.js';
 import type { TurnstileOptions } from '../turnstile.js';
 import { emailOtp, signIn } from '../auth-client.js';
 import * as api from '../notes-api.js';
@@ -315,6 +315,20 @@ describe('Login', () => {
       act(() => widgets[0]!.options['error-callback']?.('300030'));
       await waitFor(() => expect(screen.getByText(TURNSTILE_FAILED_MESSAGE)).toBeTruthy());
       expect((screen.getByText('Email me a code') as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    /** The instance turned the check on after this screen read its config: say so, and read it again. */
+    it('says the check is new and reads the config again when a request is refused for a missing token', async () => {
+      vi.mocked(emailOtp.sendVerificationOtp).mockResolvedValueOnce({
+        error: { code: 'MISSING_RESPONSE', message: 'Missing CAPTCHA response', status: 400, statusText: 'Bad Request' },
+      } as never);
+      harness(['email-otp']);
+      await waitFor(() => expect(screen.getByText('Email me a code')).toBeTruthy());
+      expect(api.getConfig).toHaveBeenCalledTimes(1);
+      fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'a@example.com' } });
+      fireEvent.click(screen.getByText('Email me a code'));
+      await waitFor(() => expect(screen.getByText(CHECK_TURNED_ON_MESSAGE)).toBeTruthy());
+      await waitFor(() => expect(api.getConfig).toHaveBeenCalledTimes(2));
     });
 
     it('draws no widget, and sends no header, where the instance asks for no token', async () => {

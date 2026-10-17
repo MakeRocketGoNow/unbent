@@ -8,6 +8,15 @@ import { CAPTCHA_HEADER, loadTurnstile } from '../turnstile.js';
 export const TURNSTILE_FAILED_MESSAGE =
   'The check before a code is sent could not load. Check your connection, then reload this page.';
 
+/**
+ * What a request refused for carrying no token says, in place of the plugin's own
+ * "Missing CAPTCHA response": the instance turned the check on after this screen read
+ * its config, the widget is being drawn now, and the next press carries a token. The
+ * apps say the same in their own words.
+ */
+export const CHECK_TURNED_ON_MESSAGE =
+  'This instance now checks your browser before sending a code. Press Email me a code again.';
+
 export interface TurnstileProps {
   siteKey: string;
   /**
@@ -144,8 +153,9 @@ export function useCodeRequest(siteKey: string | undefined) {
       // The instance started asking for a token after this screen read its config, which
       // is held for the life of the page. Read it again, so the next render draws the
       // widget and the next press carries a token, rather than every press failing the
-      // same way until a reload.
+      // same way until a reload. The old config stays drawn while the new one arrives.
       void queryClient.invalidateQueries({ queryKey: keys.config() });
+      return { ...result, error: { ...result.error, message: CHECK_TURNED_ON_MESSAGE } };
     }
     return result;
   }
