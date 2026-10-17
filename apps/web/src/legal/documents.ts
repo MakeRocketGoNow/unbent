@@ -33,7 +33,7 @@
  * email delivery service", and the operator's postal address is not here at all.
  */
 
-import { INACTIVE_KEPT_DAYS, REFUND_DAYS, type AppConfig } from '@unbent/shared';
+import { INACTIVE_KEPT_DAYS, OWN_FILES_TO_READ, REFUND_DAYS, type AppConfig } from '@unbent/shared';
 
 export interface LegalSection {
   heading?: string;
@@ -132,6 +132,11 @@ export const REFUNDS_ID = 'refunds';
 
 /** How long a lapsed account is kept, as the sentence says it. */
 const KEPT = INACTIVE_KEPT_DAYS === 365 ? 'a year' : `${INACTIVE_KEPT_DAYS} days`;
+
+/** How many files an Auto-fill press reads, as the sentence says it. */
+const READ_AT_A_PRESS =
+  ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'][OWN_FILES_TO_READ] ??
+  String(OWN_FILES_TO_READ);
 
 const EFFECTIVE = '2026-10-16';
 
@@ -339,7 +344,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
             ? [
                 'Anthropic, whose model reads the pictures and text-less scans in a note when you ' +
                   'press Auto-fill on it, and writes a title and text field values from what the ' +
-                  'note says, and at no other time. It receives up to five of that note’s files to ' +
+                  `note says, and at no other time. It receives up to ${READ_AT_A_PRESS} of that note’s files to ` +
                   'read, the note’s title and text with the names and text of its files, and the ' +
                   'names of the fields it is asked to fill. It does not use what it receives to ' +
                   'train its models, and deletes it within thirty days, except where its own terms ' +

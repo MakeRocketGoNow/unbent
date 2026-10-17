@@ -384,6 +384,18 @@ export const INSTANCE_KINDS = ['dev', 'preview', 'local'] as const;
 export type InstanceKind = (typeof INSTANCE_KINDS)[number];
 
 /**
+ * How many of the note's unread files one Auto-fill press will read. A card and its back
+ * fit; a note with a stack of twenty scans is read five at a press, with the rest reported
+ * as still waiting, since a press that silently paid for the whole stack would be the
+ * surprise this cap exists to prevent. Maintenance offered the rest as a pass of its own
+ * until MAK-179; the press is the only reader now.
+ *
+ * Here rather than in the API because the privacy policy states it (MAK-230), and the
+ * number a policy promises must be the one the code keeps, as `REFUND_DAYS` is.
+ */
+export const OWN_FILES_TO_READ = 5;
+
+/**
  * What auto-fill proposes for a note, as `POST /notes/:id/autofill` answers.
  *
  * Suggestions, never writes. The editor holds a draft and an autosave, and a server that
