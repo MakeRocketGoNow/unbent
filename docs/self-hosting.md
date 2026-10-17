@@ -605,6 +605,12 @@ passes everything, for local development), put the site key on the Worker as a s
 the secret key, and leave both unset to have the endpoint as it was. Half a pair is read as
 none and the Worker says so in its log.
 
+Set the pair only once the app builds that send a token are what people have installed. An
+Android or iOS build from before the check asks for a code with no token, and the moment the
+pair is set every such request is refused: someone whose only way into the app is a code is
+then locked out until they update, and a store build takes days to reach them. The web app
+is never behind, since it reads the site key on each load.
+
 The OAuth row means any of the thirty-five providers Better Auth ships (Apple, Discord,
 Microsoft, Slack, GitLab and the rest), not a list this repository maintains. Enabling one
 is two secrets and no code:
