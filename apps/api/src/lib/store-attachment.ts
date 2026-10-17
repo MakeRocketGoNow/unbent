@@ -186,7 +186,7 @@ export async function storeAttachment(
   const markdown = formatAttachmentMarkdown(filename, path, {
     image: contentType.startsWith('image/'),
   });
-  if (input.link) await notes.appendToBody(noteId, markdown);
+  if (input.link) await notes.appendFileLink(noteId, markdown);
 
   return { ...info, path, markdown, indexing };
 }

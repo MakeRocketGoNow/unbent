@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { logger } from 'hono/logger';
 import type { AppEnv } from './types.js';
 import { StoreUnavailable } from './lib/store-client.js';
+import { StorageFull, storageFullBody } from './lib/quota.js';
 import { sessionMiddleware } from './lib/session.js';
 import { requireActivePlan } from './lib/plan-middleware.js';
 import { health } from './routes/health.js';
@@ -64,6 +65,12 @@ app.onError((err, c) => {
     c.header('Retry-After', String(err.retryAfterSeconds));
     return c.json({ error: 'Your notes could not be reached right now. Try again shortly.' }, 503);
   }
+  // A note write the store refused for its size (MAK-234): the 402 an over-quota upload
+  // answers, with the sentence for the store's bound. Answered here rather than in each
+  // route that writes a note, since the limit travels with the repo (`withRepos`) and
+  // the routes do not know they carry it; the upload routes still catch their own,
+  // because they have an object to delete first.
+  if (err instanceof StorageFull) return c.json(storageFullBody(err), 402);
   console.error('Unhandled error:', err);
   return c.json({ error: 'Internal error' }, 500);
 });

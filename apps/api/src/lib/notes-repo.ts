@@ -37,6 +37,15 @@ import {
  * where they live: the pure helpers are in store/notes-shared.ts so the store builds its
  * queries from the same code, and nothing importing them had to move.
  */
+/**
+ * Where a `NotesRepo` asks how much room the store may take: the limit in bytes, null
+ * for none, or a promise of either. See the constructor.
+ */
+export type StoreLimitSource = () => number | null | Promise<number | null>;
+
+/** For a caller that reads and never writes a note: a limit no write will ask for. */
+export const noStoreLimit: StoreLimitSource = () => null;
+
 export { keysOfDeletedNotes, nextCursor, toFtsQuery, type ExportedNote };
 export type { CountOptions, FileSummary, ListOptions, SearchFilters };
 
@@ -56,6 +65,24 @@ export type { CountOptions, FileSummary, ListOptions, SearchFilters };
  * used to make two or three; see `UserStore`.
  */
 export class NotesRepo extends StoreRepo {
+  /**
+   * The room the account's store may take, asked for with each write that adds to it
+   * (MAK-234), as `AttachmentsRepo.record` is given the quota on files. A source rather
+   * than a number because the plan row is on the request's context where there is one
+   * (`withRepos`) and a database read where there is not (the MCP endpoint), and the
+   * repo is built before either has been read. Carried here so every route that writes
+   * a note is bounded without saying so, and a new one cannot forget: the methods below
+   * that pass it are the ones `UserStore` takes a limit on, and the two that do not,
+   * `appendFileLink` and the deletes, say why.
+   */
+  constructor(
+    store: ConstructorParameters<typeof StoreRepo>[0],
+    userId: string,
+    private readonly storeLimit: StoreLimitSource,
+  ) {
+    super(store, userId);
+  }
+
   /**
    * The search threshold, `SCOPE_DRIVEN_SEARCH_MAX`, on the instance so the live suite can
    * move it. Every notebook and tag the suite creates is under a hundred notes, so left
@@ -95,16 +122,16 @@ export class NotesRepo extends StoreRepo {
     notebook?: string | null | undefined;
     fields?: NoteFieldsPatch | undefined;
   }): Promise<Note> {
-    return this.call((s) => s.create(input));
+    return this.call(async (s) => s.create(input, await this.storeLimit()));
   }
 
   duplicate(id: string, newId: string): Promise<Note | null> {
-    return this.call((s) => s.duplicate(id, newId));
+    return this.call(async (s) => s.duplicate(id, newId, await this.storeLimit()));
   }
 
   /** `create` for an id the client chose, which may be a replay's; see `NotesStore.createOrFind`. */
   createOrFind(input: Parameters<NotesRepo['create']>[0]): Promise<{ note: Note; existing: boolean }> {
-    return this.call((s) => s.createOrFind(input));
+    return this.call(async (s) => s.createOrFind(input, await this.storeLimit()));
   }
 
   /** Many notes in one transaction, all or none; see `NotesStore.createMany`. */
@@ -112,12 +139,12 @@ export class NotesRepo extends StoreRepo {
     inputs: Array<Parameters<NotesRepo['create']>[0]>,
     opts: { skipExisting?: boolean | undefined } = {},
   ): Promise<Array<{ id: string; title: string; skipped: boolean }>> {
-    return this.call((s) => s.createMany(inputs, opts));
+    return this.call(async (s) => s.createMany(inputs, opts, await this.storeLimit()));
   }
 
   /** `duplicate` with the same replay rule for the copy's id. */
   duplicateOrFind(id: string, newId: string): Promise<{ note: Note; existing: boolean } | null> {
-    return this.call((s) => s.duplicateOrFind(id, newId));
+    return this.call(async (s) => s.duplicateOrFind(id, newId, await this.storeLimit()));
   }
 
   update(
@@ -133,7 +160,7 @@ export class NotesRepo extends StoreRepo {
       by?: 'assistant' | undefined;
     },
   ): Promise<Note | StaleNote | null> {
-    return this.call(async (s) => s.update(id, patch));
+    return this.call(async (s) => s.update(id, patch, await this.storeLimit()));
   }
 
   /** A live note's history, newest first, without bodies; null when there is no such note. */
@@ -152,10 +179,20 @@ export class NotesRepo extends StoreRepo {
 
   /** Puts a copy back, keeping what it replaces; see `NotesStore.restoreRevision`. */
   restoreRevision(id: string, revisionId: number, ifUpdatedAt?: number): Promise<RestoredNote | StaleNote | null> {
-    return this.call(async (s) => s.restoreRevision(id, revisionId, ifUpdatedAt));
+    return this.call(async (s) => s.restoreRevision(id, revisionId, ifUpdatedAt, await this.storeLimit()));
   }
 
   appendToBody(id: string, markdown: string): Promise<boolean> {
+    return this.call(async (s) => s.appendToBody(id, markdown, await this.storeLimit()));
+  }
+
+  /**
+   * `appendToBody` for the link to a file that was just stored, which the store's limit
+   * does not hold up: the file itself passed the quota a moment ago, the link is a line,
+   * and a refusal here would leave the file recorded and the note not saying so. The
+   * MCP `append` tool, which takes any text, goes through `appendToBody`.
+   */
+  appendFileLink(id: string, markdown: string): Promise<boolean> {
     return this.call((s) => s.appendToBody(id, markdown));
   }
 
@@ -194,7 +231,7 @@ export class NotesRepo extends StoreRepo {
       by?: 'assistant' | undefined;
     },
   ): Promise<{ matched: string[]; changed: string[] }> {
-    return this.call((s) => s.updateMany(ids, patch));
+    return this.call(async (s) => s.updateMany(ids, patch, await this.storeLimit()));
   }
 
   importNote(input: {
@@ -209,11 +246,11 @@ export class NotesRepo extends StoreRepo {
     sourceEnex?: string | undefined;
     fields?: Record<string, FieldValue> | undefined;
   }): Promise<{ id: string; created: boolean; skippedFields: string[] }> {
-    return this.call((s) => s.importNote(input));
+    return this.call(async (s) => s.importNote(input, await this.storeLimit()));
   }
 
   setBody(id: string, body: string): Promise<void> {
-    return this.call((s) => s.setBody(id, body));
+    return this.call(async (s) => s.setBody(id, body, await this.storeLimit()));
   }
 
   search(rawQuery: string, limit: number, filters: SearchFilters = {}): Promise<SearchResult[]> {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { GB } from '@unbent/shared';
 import type { AttachmentsRepo } from './attachments-repo.js';
-import { StorageFull, assertRoom, quotaOf, storageFullMessage } from './quota.js';
+import { STORE_FLOOR_BYTES, StorageFull, assertRoom, quotaOf, storageFullMessage, storeFullMessage, storeLimitBytes, storeLimitOf } from './quota.js';
 import type { PlanRow } from './plan.js';
 
 const paddle = {
@@ -36,5 +36,31 @@ describe('the storage quota', () => {
     const err = new StorageFull(5 * GB, 10 * GB, 6 * GB);
     expect(err.code).toBe('STORAGE_FULL');
     expect(err.message).toContain('5.0 GB of 10 GB');
+  });
+
+  /**
+   * The store's own bound (MAK-234): a floor plus a tenth of the quota, none where
+   * billing is off, and a sentence that names the way out for notes rather than files.
+   */
+  it('bounds the store at a floor plus a tenth of the quota, and not at all where billing is off', () => {
+    expect(storeLimitBytes(10 * GB)).toBe(STORE_FLOOR_BYTES + GB);
+    expect(storeLimitBytes(35 * GB)).toBe(STORE_FLOOR_BYTES + 3.5 * GB);
+    const row = { storageGb: 10 } as PlanRow;
+    expect(storeLimitOf({}, row)).toBeNull();
+    expect(storeLimitOf(paddle, undefined)).toBeNull();
+    expect(storeLimitOf(paddle, row)).toBe(STORE_FLOOR_BYTES + GB);
+  });
+
+  it('says the notes are what to delete when it is the store that is full', () => {
+    expect(storeFullMessage(1.6 * GB, STORE_FLOOR_BYTES + GB)).toBe(
+      "This account's notes take more room than its plan allows: 1.6 GB of 1.5 GB. Delete some notes and empty the trash, or add storage under Settings → Plan.",
+    );
+    expect(storeFullMessage(600 * 1024 * 1024, STORE_FLOOR_BYTES)).toContain('600 MB of 512 MB');
+    const err = new StorageFull(1.6 * GB, STORE_FLOOR_BYTES + GB, 0, 'notes');
+    expect(err.code).toBe('STORAGE_FULL');
+    expect(err.of).toBe('notes');
+    expect(err.message).toContain('notes take more room');
+    // The upload's refusal is unchanged, and is the default.
+    expect(new StorageFull(5 * GB, 10 * GB, 6 * GB).of).toBe('files');
   });
 });

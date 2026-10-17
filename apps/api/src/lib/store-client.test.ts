@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { InvalidFieldValue } from '@unbent/shared';
+import { StorageFull } from './quota.js';
 import { StoreUnavailable, translateStoreError } from './store-client.js';
 
 /**
@@ -29,6 +30,17 @@ describe('translateStoreError', () => {
     }
     expect(translateStoreError(Object.assign(new Error('x'), { retryable: true }))).toBeInstanceOf(StoreUnavailable);
     expect(translateStoreError(Object.assign(new Error('x'), { overloaded: true }))).toBeInstanceOf(StoreUnavailable);
+  });
+
+  it('rebuilds a StorageFull for the bound that refused: the files, or the store itself', () => {
+    const files = translateStoreError(Object.assign(new Error('x'), { name: 'StorageExceeded', code: 'STORAGE_FULL', usedBytes: 900, quotaBytes: 1000, addingBytes: 101 }));
+    expect(files).toBeInstanceOf(StorageFull);
+    expect(files).toMatchObject({ of: 'files', usedBytes: 900, quotaBytes: 1000, addingBytes: 101 });
+    expect((files as StorageFull).message).toContain('storage is full');
+    const notes = translateStoreError(Object.assign(new Error('x'), { name: 'StoreFull', code: 'STORAGE_FULL', of: 'notes', usedBytes: 2000, quotaBytes: 1000 }));
+    expect(notes).toBeInstanceOf(StorageFull);
+    expect(notes).toMatchObject({ of: 'notes', usedBytes: 2000, quotaBytes: 1000, addingBytes: 0 });
+    expect((notes as StorageFull).message).toContain('notes take more room');
   });
 
   it('passes every other error through untouched', () => {

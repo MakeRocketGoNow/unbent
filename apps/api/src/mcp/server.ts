@@ -3,7 +3,7 @@ import { appLinks } from '../lib/app-links.js';
 import { canUseLlm } from '../lib/llm.js';
 import { billingOn } from '../lib/paddle.js';
 import { planFor, planStateOf } from '../lib/plan.js';
-import { quotaFor } from '../lib/quota.js';
+import { quotaFor, storeLimitFor } from '../lib/quota.js';
 import { reposFor } from '../lib/repos.js';
 import { UploadGrantsRepo } from '../lib/upload-grants.js';
 import type { Env } from '../types.js';
@@ -36,7 +36,11 @@ export function createUnbentMcpHandler(
   const links = appLinks(env.APP_URL);
   return createMcpHandler(() => {
     const server = new McpServer({ name: 'unbent', version: '1.0.0' });
-    const { notes, attachments } = reposFor(env, userId);
+    // The store's room (MAK-234) is the plan's, read from the database once per
+    // connection the first time a write tool asks, since this endpoint has no plan row
+    // on a context: every tool is one POST, and the gate below reads the row for itself.
+    let storeLimit: Promise<number | null> | undefined;
+    const { notes, attachments } = reposFor(env, userId, () => (storeLimit ??= storeLimitFor(env, env.DB, userId)));
     registerReadTools(server, notes, attachments, links, { vision: canUseLlm(env) });
     // The write tools go through the plan's gate (mcp/plan-gate.ts): a lapsed account's
     // assistant reads and deletes, and is told why it can do no more. Nothing is asked

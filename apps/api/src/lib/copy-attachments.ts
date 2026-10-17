@@ -138,7 +138,7 @@ export async function copyAttachments(
     const path = `files/${filename}`;
     // `filename`, not `requested`: a suffixed name is the one the link must point at.
     if (input.link) {
-      await repos.notes.appendToBody(
+      await repos.notes.appendFileLink(
         input.to,
         formatAttachmentMarkdown(filename, path, {
           image: source.content_type.startsWith('image/'),

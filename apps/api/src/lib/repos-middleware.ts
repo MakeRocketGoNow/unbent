@@ -1,4 +1,5 @@
 import { createMiddleware } from 'hono/factory';
+import { storeLimitOf } from './quota.js';
 import { reposFor } from './repos.js';
 import type { AppEnv } from '../types.js';
 
@@ -15,7 +16,10 @@ export const withRepos = createMiddleware<AppEnv>(async (c, next) => {
   const userId = c.get('userId');
   if (!userId) throw new Error('withRepos requires an authenticated session');
 
-  const { notes, attachments } = reposFor(c.env, userId);
+  // The store's room from the plan row `requireActivePlan` left on the context, read
+  // when a write asks rather than now: the row is there before the route runs, and a
+  // route the plan check exempts (a delete, an admin route) has no row and no limit.
+  const { notes, attachments } = reposFor(c.env, userId, () => storeLimitOf(c.env, c.get('plan')));
   c.set('notes', notes);
   c.set('attachments', attachments);
   await next();
