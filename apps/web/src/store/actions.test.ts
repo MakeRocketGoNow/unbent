@@ -740,14 +740,14 @@ describe('a replayed write', () => {
     await tick();
 
     const live = new Set(['n1']);
-    vi.mocked(api.deleteNotes).mockImplementation(async (ids) => {
+    vi.mocked(api.deleteNotes).mockImplementationOnce(async (ids) => {
       let trashed = 0;
       for (const id of ids) {
         if (live.delete(id)) trashed += 1;
       }
       return { trashed };
     });
-    vi.mocked(api.deleteNotesPermanently).mockImplementation(async (ids) => {
+    vi.mocked(api.deleteNotesPermanently).mockImplementationOnce(async (ids) => {
       let deleted = 0;
       for (const id of ids) {
         if (!live.has(id)) deleted += 1;
