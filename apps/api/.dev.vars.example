@@ -143,9 +143,9 @@ ALLOWED_EMAILS=
 # can spend; a provider sign-in is a sign-up, which a script with throwaway accounts can
 # repeat for nothing. With this set, both have to carry a token the browser earned from
 # Turnstile first, and the sign-in screen draws the widget that mints one. Managed
-# Turnstile passes nearly everyone with no click. Both or neither: a secret alone would refuse every request, a site key alone
-# would draw a widget nobody checks, and half a pair is read as none. Unset, the default,
-# means no widget and no check.
+# Turnstile passes nearly everyone with no click. Both or neither: a secret alone would
+# refuse every request, a site key alone would draw a widget nobody checks, and half a
+# pair is read as none. Unset, the default, means no widget and no check.
 #
 #   https://dash.cloudflare.com/?to=/:account/turnstile, a Managed widget with your
 #   hostname; the site key is public and ships in the page, the secret stays here.

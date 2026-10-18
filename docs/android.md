@@ -30,16 +30,16 @@ instance checks a Turnstile token with the request for a sign-in code and with t
 of a Google ID token, the app first loads the instance's `/turnstile` page in a WebView it
 keeps off screen (`TurnstileChallenge.kt`), which mints the token through the bridge and is
 shown only if the widget wants a tap; before the account sheet, since a challenge drawn
-under it could not be given its tap. Every
-path ends the same way: the session cookie the response set is stored per origin in app-private
-preferences. Its value goes out as `Authorization: Bearer` from the app's own client, and
-the same cookie is written into the WebView's jar before the site loads: one sign-in,
-one session, nothing exchanged between the two. A Trusted Web Activity could never do
-this, because Chrome's cookie jar is Chrome's; that is why the previous shell needed a
-handoff on every launch. Signing out on the page tells the app, which forgets its copy and
-shows its own sign-in. A page that believes the session has ended says so too, and the app
-asks `/api/me` before believing it, because a phone with no signal looks the same to the
-page; that case gets a native "couldn't reach" panel and keeps the session.
+under it could not be given its tap. Every path ends the same way: the session cookie the
+response set is stored per origin in app-private preferences. Its value goes out as
+`Authorization: Bearer` from the app's own client, and the same cookie is written into the
+WebView's jar before the site loads: one sign-in, one session, nothing exchanged between
+the two. A Trusted Web Activity could never do this, because Chrome's cookie jar is
+Chrome's; that is why the previous shell needed a handoff on every launch. Signing out on
+the page tells the app, which forgets its copy and shows its own sign-in. A page that
+believes the session has ended says so too, and the app asks `/api/me` before believing
+it, because a phone with no signal looks the same to the page; that case gets a native
+"couldn't reach" panel and keeps the session.
 
 **How the site is hosted.** `MainActivity` is one WebView of the instance. The page sits
 between the system bars, and the app paints the strips behind them in the page's own
