@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { emailOtp } from '../auth-client.js';
+import { emailOtp, signIn } from '../auth-client.js';
 import { keys } from '../queries.js';
 import { CAPTCHA_HEADER, loadTurnstile } from '../turnstile.js';
 
@@ -199,11 +199,11 @@ export function requestCode(gate: TurnstileGate, email: string) {
 }
 
 /**
- * The gate with the code request on it, for a screen that asks for a code and nothing
- * else the instance gates: Security's re-verification before a passkey is added. The
- * sign-in screen holds the gate itself, since its provider buttons go through it too.
+ * The start of a provider sign-in, through the gate. The server checks a token on this
+ * route as it does on the request for a code, so every screen that offers a provider
+ * (the sign-in screen, Security's re-verification) goes through here rather than calling
+ * `signIn.social` itself, and the call without a check stays the call as it was.
  */
-export function useCodeRequest(siteKey: string | undefined) {
-  const gate = useTurnstileGate(siteKey);
-  return { ...gate, send: (email: string) => requestCode(gate, email) };
+export function startSocial(gate: TurnstileGate, options: Parameters<typeof signIn.social>[0]) {
+  return gate.through((fetchOptions) => signIn.social(fetchOptions ? { ...options, fetchOptions } : options));
 }

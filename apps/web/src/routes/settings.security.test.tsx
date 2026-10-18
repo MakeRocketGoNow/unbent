@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   createMemoryHistory,
@@ -11,6 +11,7 @@ import type { AppConfig, AuthProvider } from '@unbent/shared';
 import { Route } from './settings.security.js';
 import { emailOtp, passkey, signIn, signOut } from '../auth-client.js';
 import * as api from '../notes-api.js';
+import type { TurnstileOptions } from '../turnstile.js';
 
 // The route reads the instance's methods from `/api/config`; no network in a unit test.
 vi.mock('../notes-api.js', async (importOriginal) => ({
@@ -151,6 +152,63 @@ describe('SecurityPage passkey re-verification', () => {
     await waitFor(() =>
       expect(signIn.social).toHaveBeenCalledWith({ provider: 'google', callbackURL: '/settings/security' }),
     );
+  });
+
+  /** A refused start used to leave the button saying "Redirecting…" for good. */
+  it('shows a refused provider start rather than waiting on a redirect', async () => {
+    vi.mocked(passkey.addPasskey).mockResolvedValue(notFresh);
+    vi.mocked(signIn.social).mockResolvedValueOnce({
+      error: { message: 'Verification failed', status: 403, statusText: 'Forbidden' },
+    } as never);
+    harness(['google', 'passkey']);
+
+    await waitFor(() => expect(screen.getByText('Add a passkey')).toBeTruthy());
+    fireEvent.click(screen.getByText('Add a passkey'));
+    fireEvent.click(await screen.findByText('Continue with Google'));
+
+    await waitFor(() => expect(screen.getByText('Verification failed')).toBeTruthy());
+    expect(screen.getByText('Continue with Google')).toBeTruthy();
+  });
+
+  /**
+   * The server checks a token before a provider sign-in starts, and an instance with a
+   * provider and no mail keeps the check, so the redirect here waits for one and carries it.
+   */
+  it('waits for a Turnstile token before the social redirect, and sends it', async () => {
+    const widgets: TurnstileOptions[] = [];
+    window.turnstile = {
+      render: (_el, options) => {
+        widgets.push(options);
+        return String(widgets.length - 1);
+      },
+      reset: () => {},
+      remove: () => {},
+    };
+    try {
+      vi.mocked(passkey.addPasskey).mockResolvedValue(notFresh);
+      harness(['google', 'passkey'], { turnstile: { siteKey: '1x00' } });
+
+      await waitFor(() => expect(screen.getByText('Add a passkey')).toBeTruthy());
+      fireEvent.click(screen.getByText('Add a passkey'));
+      const google = () => screen.getByText('Continue with Google').closest('button') as HTMLButtonElement;
+      await waitFor(() => expect(google()).toBeTruthy());
+      await waitFor(() => expect(widgets).toHaveLength(1));
+      expect(google().disabled).toBe(true);
+      expect(google().getAttribute('aria-description')).toBe('Waiting for the check above to finish');
+
+      act(() => widgets[0]!.callback('tok-1'));
+      await waitFor(() => expect(google().disabled).toBe(false));
+      fireEvent.click(google());
+      await waitFor(() =>
+        expect(signIn.social).toHaveBeenCalledWith({
+          provider: 'google',
+          callbackURL: '/settings/security',
+          fetchOptions: { headers: { 'x-captcha-response': 'tok-1' } },
+        }),
+      );
+    } finally {
+      delete window.turnstile;
+    }
   });
 
   /**
