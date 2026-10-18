@@ -639,6 +639,8 @@ describe('a replayed write', () => {
     await actions.purgeNote('n1');
     expect(api.deleteNotes).toHaveBeenCalledWith(['n1']);
     expect(api.deleteNotePermanently).toHaveBeenCalledWith('n1');
+    // The trash has to land first: the server will not purge a live note.
+    expect(vi.mocked(api.deleteNotes).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(api.deleteNotePermanently).mock.invocationCallOrder[0]);
     expect(fake.queue).toHaveLength(2);
     expect(replay).toHaveBeenCalledTimes(1);
 
@@ -684,6 +686,7 @@ describe('a replayed write', () => {
     expect(await actions.purgeNotes(['n1'])).toBe(1);
     expect(api.deleteNotes).toHaveBeenCalledWith(['n1']);
     expect(api.deleteNotesPermanently).toHaveBeenCalledWith(['n1']);
+    expect(vi.mocked(api.deleteNotes).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(api.deleteNotesPermanently).mock.invocationCallOrder[0]);
   });
 
   /**
