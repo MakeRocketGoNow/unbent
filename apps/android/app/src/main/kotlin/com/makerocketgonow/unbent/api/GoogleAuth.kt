@@ -9,11 +9,13 @@ import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONObject
 
 /**
  * Signing in with Google through Android's own account sheet.
@@ -36,8 +38,15 @@ class GoogleAuth(
      *
      * `filterByAuthorizedAccounts = false` so an account that has never used this app still
      * appears; with it true, a first run shows an empty sheet and looks broken.
+     *
+     * [captchaToken] is the Turnstile token the instance asks for with the exchange where
+     * it has the check on (`AppConfig.turnstile`): a provider sign-in is a sign-up, and the
+     * server refuses one without the token however it is asked for, since an ID token on
+     * its own proves a Google account and not a person. Minted before the sheet, by the
+     * instance's `/turnstile` page ([com.makerocketgonow.unbent.ui.TurnstileChallenge]), as
+     * before a code. Null where the instance asks for none.
      */
-    suspend fun signIn(context: Context, webClientId: String): SessionCookie {
+    suspend fun signIn(context: Context, webClientId: String, captchaToken: String? = null): SessionCookie {
         val option = GetGoogleIdOption.Builder()
             .setServerClientId(webClientId)
             .setFilterByAuthorizedAccounts(false)
@@ -85,23 +94,30 @@ class GoogleAuth(
          * The account sheet has to run on the main thread (it is UI) but the exchange is
          * a blocking HTTP call, which Android refuses there. Only this half moves off.
          */
-        return withContext(Dispatchers.IO) { exchange(idToken) }
+        return withContext(Dispatchers.IO) { exchange(idToken, captchaToken) }
     }
 
     /**
      * Hands the Google ID token to Better Auth, which verifies its signature and audience
-     * and signs the app in. The same endpoint the web app's Google button uses.
+     * and signs the app in. The same endpoint the web app's Google button uses, and the
+     * same Turnstile header where the instance asks for one (`EmailOtpAuth.CAPTCHA_HEADER`).
+     *
+     * Internal rather than private so its test can make the exchange without the sheet,
+     * which only a device can draw.
      */
-    private fun exchange(idToken: String): SessionCookie {
-        val payload = JSONObject()
-            .put("provider", "google")
-            .put("idToken", JSONObject().put("token", idToken))
-            .toString()
+    internal fun exchange(idToken: String, captchaToken: String? = null): SessionCookie {
+        // kotlinx rather than `org.json`, as `EmailOtpAuth` builds its body: the Android
+        // SDK's `JSONObject` is a stub in JVM unit tests, which is where this is exercised.
+        val payload = buildJsonObject {
+            put("provider", "google")
+            putJsonObject("idToken") { put("token", idToken) }
+        }.toString()
 
         val req = Request.Builder()
             .url("$origin/api/auth/sign-in/social")
             // Better Auth enforces CSRF by requiring a trusted Origin.
             .header("Origin", origin)
+            .apply { if (captchaToken != null) header(EmailOtpAuth.CAPTCHA_HEADER, captchaToken) }
             .post(payload.toRequestBody(JSON))
             .build()
 

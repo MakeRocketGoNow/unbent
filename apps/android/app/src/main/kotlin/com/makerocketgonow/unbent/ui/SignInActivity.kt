@@ -146,10 +146,46 @@ class SignInActivity : ComponentActivity() {
     }
 
     /**
+     * The Turnstile token a gated request carries, where the instance checks one
+     * (`AppConfig.turnstile`): the request for a code, and the exchange of a Google ID
+     * token, which is a sign-up and refused without one however it is asked for.
+     *
+     * The token comes from the instance's own page in a web view nobody sees unless the
+     * widget wants a tap ([TurnstileChallenge]). Null where the instance asks for none,
+     * which is also what the page answers when the check was turned off after this
+     * screen read its config. A page that could not mint one throws [ChallengeFailed],
+     * so the step that asked ends with the sentence for it: the server would only refuse
+     * a request without it, and the person is one press from trying again. The reverse,
+     * a refusal for a missing token, is told by [ApiException.isMissingCaptcha] where the
+     * request is made, and means the check was turned on since: the config is read again
+     * for the next press.
+     */
+    private suspend fun turnstileToken(): String? {
+        if (config?.turnstile == null) return null
+        status = getString(R.string.sign_in_checking)
+        return when (val outcome = TurnstileChallenge.token(this, prefs.instance) { challenge = it }) {
+            is TurnstileChallenge.Outcome.Token -> outcome.token
+            TurnstileChallenge.Outcome.None -> null
+            else -> {
+                Log.w("Unbent", "Turnstile gave no token: $outcome")
+                throw ChallengeFailed()
+            }
+        }
+    }
+
+    /** The instance's page could not mint a token; see [turnstileToken]. */
+    private class ChallengeFailed : Exception()
+
+    /**
      * Android's own account sheet: no web page, one tap.
      *
      * A build without a Google client id cannot ask for the sheet, so it falls back to the
      * browser, where the site's own Google button works, the same path GitHub takes.
+     *
+     * The Turnstile token, where the instance asks for one, is minted before the sheet
+     * rather than beside it: the page may want a tap, and a challenge drawn under
+     * Android's account sheet is one nobody can give. A second or so of "Checking this
+     * phone…" before the sheet is the price.
      */
     private fun signInWithGoogle() {
         if (!GoogleAuth.isConfigured(BuildConfig.GOOGLE_WEB_CLIENT_ID)) {
@@ -160,7 +196,9 @@ class SignInActivity : ComponentActivity() {
         status = getString(R.string.sign_in_waiting)
         lifecycleScope.launch {
             val result = runCatching {
-                GoogleAuth(prefs.instance).signIn(this@SignInActivity, BuildConfig.GOOGLE_WEB_CLIENT_ID)
+                val captchaToken = turnstileToken()
+                status = getString(R.string.sign_in_waiting)
+                GoogleAuth(prefs.instance).signIn(this@SignInActivity, BuildConfig.GOOGLE_WEB_CLIENT_ID, captchaToken)
             }
             busy = false
             result.onSuccess(::finishSignIn).onFailure { e ->
@@ -173,9 +211,14 @@ class SignInActivity : ComponentActivity() {
                  */
                 Log.w("Unbent", "Google sign-in failed", e)
                 status = when {
+                    e is ChallengeFailed -> getString(R.string.sign_in_challenge_failed)
                     // Dismissing the sheet is a choice, so say nothing and leave the other
                     // methods where they were.
                     GoogleAuth.wasCancelled(e) -> null
+                    (e as? ApiException)?.isMissingCaptcha == true -> {
+                        refreshConfig()
+                        getString(R.string.sign_in_check_turned_on)
+                    }
                     // The cause most likely to have a fix the user can carry out, so it gets
                     // its own words, which suggest rather than assert, since NO_CREDENTIAL
                     // also covers failures that are ours. See GoogleAuth.hasNoAccount.
@@ -223,37 +266,19 @@ class SignInActivity : ComponentActivity() {
      * Sending reports nothing on success: the screen has already moved to the code field,
      * and a confirmation the user did not ask for would only be one more thing to read.
      *
-     * Where the instance checks a Turnstile token with the request for a code
-     * (`AppConfig.turnstile`), the token comes first, from the instance's own page in a
-     * web view nobody sees unless the widget wants a tap ([TurnstileChallenge]). A page
-     * that could not mint one ends the step with a sentence of its own: the server would
-     * only refuse a request without it, and the person is one press from trying again.
-     * A page that says the instance asks for no token sends none: the check was turned
-     * off after this screen read its config. The reverse, a refusal for a missing token,
-     * means it was turned on since, so the config is read again for the next press.
+     * Where the instance checks a Turnstile token with the request for a code, the token
+     * comes first ([turnstileToken]); the code's own sign-in needs none, since three
+     * wrong tries already burn it.
      */
     private fun signInWithEmailOtp(email: String, code: String?) {
         busy = true
         status = getString(R.string.sign_in_waiting)
         lifecycleScope.launch {
             val origin = prefs.instance
-            var captchaToken: String? = null
-            if (code == null && config?.turnstile != null) {
-                status = getString(R.string.sign_in_checking)
-                when (val outcome = TurnstileChallenge.token(this@SignInActivity, origin) { challenge = it }) {
-                    is TurnstileChallenge.Outcome.Token -> captchaToken = outcome.token
-                    TurnstileChallenge.Outcome.None -> {}
-                    else -> {
-                        Log.w("Unbent", "Turnstile gave no token: $outcome")
-                        busy = false
-                        status = getString(R.string.sign_in_challenge_failed)
-                        return@launch
-                    }
-                }
+            val result = runCatching {
+                val captchaToken = if (code == null) turnstileToken() else null
                 status = getString(R.string.sign_in_waiting)
-            }
-            val result = withContext(Dispatchers.IO) {
-                runCatching {
+                withContext(Dispatchers.IO) {
                     val auth = EmailOtpAuth(origin)
                     if (code == null) {
                         auth.sendCode(email, captchaToken)
@@ -273,7 +298,9 @@ class SignInActivity : ComponentActivity() {
                 }
             }.onFailure { e ->
                 Log.w("Unbent", "Email code sign-in failed", e)
-                if ((e as? ApiException)?.isMissingCaptcha == true) {
+                if (e is ChallengeFailed) {
+                    status = getString(R.string.sign_in_challenge_failed)
+                } else if ((e as? ApiException)?.isMissingCaptcha == true) {
                     status = getString(R.string.sign_in_check_turned_on)
                     refreshConfig()
                 } else {

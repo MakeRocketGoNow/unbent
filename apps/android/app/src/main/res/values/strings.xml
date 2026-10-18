@@ -16,14 +16,14 @@
     <string name="sign_in_otp_other_address">Use a different address</string>
     <string name="sign_in_otp_failed">That code did not work. Ask for a new one.</string>
     <!--
-      The instance's Turnstile check before a code is sent (MAK-243): the moment the
-      page is being asked, and the one failure of its own, which is nearly always no
-      connection to Cloudflare from this phone. The server's own words cover a token it
-      refused, as for every other refusal here.
+      The instance's Turnstile check before a code is sent or a Google sign-in is
+      exchanged (MAK-243): the moment the page is being asked, and the one failure of its
+      own, which is nearly always no connection to Cloudflare from this phone. The
+      server's own words cover a token it refused, as for every other refusal here.
     -->
     <string name="sign_in_checking">Checking this phone…</string>
-    <string name="sign_in_challenge_failed">The check before a code is sent did not finish. Check your connection and try again.</string>
-    <string name="sign_in_check_turned_on">This instance now checks this phone before sending a code. Press Email me a code again.</string>
+    <string name="sign_in_challenge_failed">The check before signing in did not finish. Check your connection and try again.</string>
+    <string name="sign_in_check_turned_on">This instance now checks this phone before signing in. Press the button again.</string>
     <string name="sign_in_passkey">Sign in with a passkey</string>
     <string name="sign_in_passkey_failed">That passkey did not work. Try another way in.</string>
     <string name="sign_in_google">Continue with Google</string>
