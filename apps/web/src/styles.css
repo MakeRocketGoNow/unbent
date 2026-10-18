@@ -344,6 +344,28 @@ h1 {
 /* The mode toggle is an action on the form, not a field in it, so it sits centred below. */
 .login-switch { align-self: center; }
 
+/*
+ * Turnstile's widget, above "Email me a code" where the instance checks a token with
+ * that request. The widget is 65px tall at its `flexible` size and arrives a moment after
+ * the form, so the box holds that height from the start: the button under it must not
+ * drop when the script lands. The widget draws its own border and ground, so there is
+ * nothing of the form's to give it.
+ */
+.turnstile { min-height: 65px; }
+
+/*
+ * The page the apps load for a token (`routes/turnstile.tsx`), which they draw in a box
+ * the widget's own height (72dp on Android, 72pt on iOS) and only while the widget wants
+ * a tap. Pinned to the top of its viewport with none of `.shell`'s padding above it, or
+ * the box showed the padding and the widget sat below it, out of reach; the line under
+ * the widget is for a developer in a browser and may fall outside the box.
+ */
+.turnstile-page {
+  position: fixed;
+  inset: 0;
+  padding: 0;
+}
+
 /* "or" between the providers and the form, so the two do not read as one list. */
 .login-or {
   display: flex;

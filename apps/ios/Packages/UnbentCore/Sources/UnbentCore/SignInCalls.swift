@@ -57,11 +57,21 @@ public struct EmailOtpAuth: Sendable {
         self.session = session
     }
 
+    /// The header a Turnstile token travels in; the same one the web app sends (`turnstile.ts`).
+    public static let captchaHeader = "x-captcha-response"
+
     /// Asks for a code. Succeeds whether or not the address has an account, which is
     /// deliberate upstream: answering differently would make this a way to ask whether a
     /// given person uses this instance.
-    public func sendCode(email: String) async throws {
-        let request = try post(origin, "/api/auth/email-otp/send-verification-otp", ["email": email, "type": "sign-in"])
+    ///
+    /// `captchaToken` is the Turnstile token the instance asks for with this request where
+    /// it has the check on (`AppConfig.turnstile`), minted by its `/turnstile` page in a web
+    /// view (`TurnstileChallenge` in the app) and sent in the header the server's plugin
+    /// reads. Nil where the instance asks for none: a server that asks for no token must
+    /// be sent none.
+    public func sendCode(email: String, captchaToken: String? = nil) async throws {
+        var request = try post(origin, "/api/auth/email-otp/send-verification-otp", ["email": email, "type": "sign-in"])
+        if let captchaToken { request.setValue(captchaToken, forHTTPHeaderField: Self.captchaHeader) }
         let (data, response) = try await session.data(for: request)
         _ = try UnbentApi.checked(data, response, "Could not send a code")
     }

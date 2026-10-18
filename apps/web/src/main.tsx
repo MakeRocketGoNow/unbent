@@ -12,6 +12,7 @@ import { applyInstanceMarker } from './instance-marker.js';
 import { adoptHostLayout } from './app-bridge.js';
 import { openSitePath } from './useHostApp.js';
 import { registerServiceWorker } from './sw-register.js';
+import { shellFor } from './auth-gate.js';
 import { installConnectivity } from './connectivity.js';
 import { installSessionRecheck, refreshSession } from './auth-client.js';
 import { isOfflineError } from './notes-api.js';
@@ -197,8 +198,14 @@ installLaunchQueue({
  * The service worker, which lets the installed app open with no connection, and the word
  * that a newer build is in charge; see `sw-register.ts`. After the router, so nothing it
  * does can delay the first render.
+ *
+ * Not from the bare shell's pages, which the apps load off screen (`shellFor` says
+ * 'embed': the Turnstile page and the indexer's): each lives for one job and is loaded
+ * on every one, and a worker registered from them would start filling a shell cache for
+ * a page that needs none of it, on the same slow radio the job is waiting on. The app's
+ * own web view registers the worker from the site itself.
  */
-registerServiceWorker();
+if (shellFor(window.location.pathname) !== 'embed') registerServiceWorker();
 
 declare module '@tanstack/react-router' {
   interface Register {

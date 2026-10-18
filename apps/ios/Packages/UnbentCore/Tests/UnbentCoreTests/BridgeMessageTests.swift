@@ -24,6 +24,18 @@ final class BridgeMessageTests: XCTestCase {
         XCTAssertNil(message?.message)
     }
 
+    /// The Turnstile page's three words (MAK-243).
+    func testTheTurnstilePagesMessagesCarryTheTokenTheFailureAndTheAskForATap() {
+        let token = BridgeMessage.parse(#"{"type":"turnstile","token":"tok-1"}"#)
+        XCTAssertEqual(true, token?.isTurnstile)
+        XCTAssertEqual("tok-1", token?.token)
+        let error = BridgeMessage.parse(#"{"type":"turnstile-error","message":"The widget could not run."}"#)
+        XCTAssertEqual(true, error?.isTurnstileError)
+        XCTAssertEqual("The widget could not run.", error?.message)
+        XCTAssertEqual(true, BridgeMessage.parse(#"{"type":"turnstile-interactive"}"#)?.isTurnstileInteractive)
+        XCTAssertEqual(true, BridgeMessage.parse(#"{"type":"turnstile-none"}"#)?.isTurnstileNone)
+    }
+
     func testAnIndexErrorMessageCarriesWhatWentWrong() {
         let message = BridgeMessage.parse(#"{"type":"index-error","message":"R2 is on fire"}"#)
         XCTAssertEqual(true, message?.isIndexError)

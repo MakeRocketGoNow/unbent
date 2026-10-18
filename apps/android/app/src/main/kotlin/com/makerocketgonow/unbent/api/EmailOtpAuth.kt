@@ -29,12 +29,19 @@ class EmailOtpAuth(
      * Asks for a code. Succeeds whether or not the address has an account, which is
      * deliberate upstream: answering differently would make this a way to ask whether a
      * given person uses this instance.
+     *
+     * [captchaToken] is the Turnstile token the instance asks for with this request where
+     * it has the check on (`AppConfig.turnstile`), minted by its `/turnstile` page in a
+     * web view ([com.makerocketgonow.unbent.ui.TurnstileChallenge]) and sent in the header
+     * the server's plugin reads. Null where the instance asks for none: a server that
+     * asks for no token must be sent none.
      */
-    fun sendCode(email: String) {
+    fun sendCode(email: String, captchaToken: String? = null) {
         val req = Request.Builder()
             .url("$origin/api/auth/email-otp/send-verification-otp")
             // Better Auth enforces CSRF by requiring a trusted Origin.
             .header("Origin", origin)
+            .apply { if (captchaToken != null) header(CAPTCHA_HEADER, captchaToken) }
             .post(
                 buildJsonObject {
                     put("email", email)
@@ -75,7 +82,10 @@ class EmailOtpAuth(
         }
     }
 
-    private companion object {
-        val JSON = "application/json; charset=utf-8".toMediaTypeOrNull()
+    companion object {
+        private val JSON = "application/json; charset=utf-8".toMediaTypeOrNull()
+
+        /** The header the token travels in; the same one the web app sends (`turnstile.ts`). */
+        const val CAPTCHA_HEADER = "x-captcha-response"
     }
 }

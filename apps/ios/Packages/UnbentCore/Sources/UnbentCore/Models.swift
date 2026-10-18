@@ -14,20 +14,26 @@ import Foundation
 /// distinct; the same string as `UNFILED` in schemas.ts.
 public let unfiled = "[unfiled]"
 
-/// `GET /api/config`: the sign-in methods an instance offers, in display order.
+/// `GET /api/config`: the sign-in methods an instance offers, in display order, and
+/// `turnstile` where the instance checks a Turnstile token with the request for a sign-in
+/// code (MAK-243). With it set, the app loads the instance's `/turnstile` page for a token
+/// before `EmailOtpAuth.sendCode` (`TurnstileChallenge` in the app).
 public struct AppConfig: Decodable, Equatable, Sendable {
     public var providers: [String]
+    public var turnstile: TurnstileConfig?
 
-    public init(providers: [String] = []) {
+    public init(providers: [String] = [], turnstile: TurnstileConfig? = nil) {
         self.providers = providers
+        self.turnstile = turnstile
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         providers = try c.decodeIfPresent([String].self, forKey: .providers) ?? []
+        turnstile = try c.decodeIfPresent(TurnstileConfig.self, forKey: .turnstile)
     }
 
-    private enum CodingKeys: String, CodingKey { case providers }
+    private enum CodingKeys: String, CodingKey { case providers, turnstile }
 
     public var password: Bool { providers.contains("password") }
     public var passkey: Bool { providers.contains("passkey") }
@@ -50,6 +56,15 @@ public struct AppConfig: Decodable, Equatable, Sendable {
 
     /// The methods the apps implement themselves; everything else reported is OAuth.
     private static let localMethods: Set<String> = ["password", "passkey", "email-otp"]
+}
+
+/// Turnstile's site key: public, and only what the page draws the widget from.
+public struct TurnstileConfig: Decodable, Equatable, Sendable {
+    public var siteKey: String
+
+    public init(siteKey: String) {
+        self.siteKey = siteKey
+    }
 }
 
 /// `GET /api/me`. The user is nil rather than the call failing when there is no session; when

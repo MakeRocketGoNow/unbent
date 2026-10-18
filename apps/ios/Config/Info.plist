@@ -42,6 +42,11 @@
 	  the web view opens nothing else, which is why a release build cannot be pointed at
 	  another instance from App settings. The debug build adds the dev instance, and this
 	  Mac for a dev server run from a checkout.
+
+	  The sign-in screen's hidden web view (TurnstileChallenge) is bound the same way and
+	  loads the instance's /turnstile page, which is why the instance's host has to be
+	  here before a code can be asked for on an instance with the check on. Turnstile's
+	  own frame is a subframe on Cloudflare's host, which the list does not restrict.
 	-->
 	<key>WKAppBoundDomains</key>
 	<array>

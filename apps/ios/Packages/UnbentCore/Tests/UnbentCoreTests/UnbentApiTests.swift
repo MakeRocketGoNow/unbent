@@ -22,6 +22,15 @@ final class UnbentApiTests: XCTestCase {
         XCTAssertNil(try StubServer.takeRequest().headers["Authorization"])
     }
 
+    /// The site key is there only where the instance has the check on; an older instance
+    /// sends nothing and decodes as none.
+    func testTheConfigNamesTheTurnstileSiteKeyOnlyWhereTheCheckIsOn() throws {
+        let on = try JSONDecoder().decode(AppConfig.self, from: Data(#"{"providers":["email-otp"],"turnstile":{"siteKey":"1x00"}}"#.utf8))
+        XCTAssertEqual(TurnstileConfig(siteKey: "1x00"), on.turnstile)
+        let off = try JSONDecoder().decode(AppConfig.self, from: Data(#"{"providers":["email-otp"]}"#.utf8))
+        XCTAssertNil(off.turnstile)
+    }
+
     /// Google and Apple have sheets of their own on a phone; every other provider shares
     /// the browser, however many the instance turned on.
     func testOnlyProvidersWithNoSheetOfTheirOwnCountAsBrowserSocials() {

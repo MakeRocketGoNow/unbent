@@ -34,7 +34,11 @@ The debug build is a second app, as on Android: bundle id `.debug`, the name "Un
 (debug)", an amber icon, and its own session and web data, so the two sit side by side.
 
 **How it signs in.** By what the instance offers, read from `GET /api/config`. Two methods
-are only requests: a code by email and a password, against Better Auth directly. Three put
+are only requests: a code by email and a password, against Better Auth directly; where the
+instance checks a Turnstile token with the request for a code, the app first loads the
+instance's `/turnstile` page in a web view the screen holds at no height
+(`TurnstileChallenge.swift`), which mints the token through the bridge and is given its
+height only if the widget wants a tap. Three put
 one of the system's sheets first. Apple's, which returns an identity token bound to a
 nonce: Apple is given the nonce's SHA-256 and the server the nonce itself, and the name
 Apple sends on a first authorization is set on the account afterwards. The passkey sheet,

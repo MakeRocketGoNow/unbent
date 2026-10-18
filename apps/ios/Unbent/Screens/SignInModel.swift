@@ -27,6 +27,11 @@ final class SignInModel {
     /// above the reason it was not sent.
     private(set) var codeSentTo: String?
 
+    /// The instance's Turnstile page while a code is being asked for, where the instance
+    /// checks a token with that request; the screen draws it only if its widget wants a
+    /// tap. See `TurnstileChallenge`.
+    private(set) var challenge: TurnstileChallenge?
+
     private let onSignedIn: (SessionCookie) -> Bool
     private let sheets: SignInSheets
     private let connectScheme: String
@@ -55,22 +60,67 @@ final class SignInModel {
         }
     }
 
+    /// Reads the config again behind the screen: the form stays as it is, what was typed
+    /// with it, and a read that fails keeps the old one. For when the server says the
+    /// instance now asks for a Turnstile token, so the next press carries one.
+    func refreshConfig() {
+        Task {
+            if let fresh = try? await UnbentApi(origin: origin, bearer: nil).config() { config = fresh }
+        }
+    }
+
     /// Sends a code, or trades one for a session.
     ///
     /// One entry point for both steps because the screen drives the sequence: a nil code
     /// means "send one to this address", and a present one means "this is what arrived".
     /// Sending reports nothing on success beyond moving the screen to the code field; a
     /// confirmation nobody asked for would only be one more thing to read.
+    ///
+    /// Where the instance checks a Turnstile token with the request for a code
+    /// (`AppConfig.turnstile`), the token comes first, from the instance's own page in a
+    /// web view nobody sees unless the widget wants a tap (`TurnstileChallenge`). A page
+    /// that could not mint one ends the step with a sentence of its own: the server would
+    /// only refuse a request without it, and the person is one press from trying again.
+    /// A page that says the instance asks for no token sends none: the check was turned
+    /// off after this screen read its config. The reverse, a refusal for a missing token,
+    /// means it was turned on since, so the config is read again for the next press.
     func emailCode(email: String, code: String?) {
+        let turnstile = code == nil && config?.turnstile != nil
         run(
             // Asking for a code signs nobody in, and the line under the form should not
             // say it does.
-            progress: code == nil ? "Sending a code…" : "Signing in…",
+            progress: code == nil ? (turnstile ? "Checking this phone…" : "Sending a code…") : "Signing in…",
             failure: code == nil ? "Couldn’t send a code." : "That code did not work. Ask for a new one."
         ) {
             let auth = EmailOtpAuth(origin: self.origin)
             guard let code else {
-                try await auth.sendCode(email: email)
+                var token: String?
+                if turnstile {
+                    let challenge = TurnstileChallenge(origin: self.origin, bound: BuildInfo.appBoundHosts != nil)
+                    self.challenge = challenge
+                    defer { self.challenge = nil }
+                    do {
+                        token = try await challenge.token()
+                    } catch {
+                        self.log.warning("Turnstile gave no token: \(error.localizedDescription, privacy: .public)")
+                        throw ApiError(
+                            status: 0,
+                            message: "The check before a code is sent did not finish. Check your connection and try again.",
+                            body: ""
+                        )
+                    }
+                    self.status = "Sending a code…"
+                }
+                do {
+                    try await auth.sendCode(email: email, captchaToken: token)
+                } catch let error as ApiError where error.isMissingCaptcha {
+                    self.refreshConfig()
+                    throw ApiError(
+                        status: 0,
+                        message: "This instance now checks this phone before sending a code. Press Email me a code again.",
+                        body: ""
+                    )
+                }
                 self.codeSentTo = email
                 return nil
             }
@@ -166,8 +216,11 @@ final class SignInModel {
                 log.warning("Sign-in failed: \(error.localizedDescription, privacy: .public)")
                 // The server's own words when it has some ("this instance is not open
                 // for sign-ups") since a generic message sends the person to retry a
-                // button that will refuse them again for the same reason.
-                status = (error as? ApiError)?.serverMessage() ?? failure
+                // button that will refuse them again for the same reason. An error made
+                // here rather than from an answer (status 0: the browser came back empty,
+                // the Turnstile check did not finish) has no body, and its own sentence
+                // is the one to show.
+                status = (error as? ApiError).flatMap { $0.serverMessage() ?? ($0.status == 0 ? $0.message : nil) } ?? failure
             }
         }
     }
@@ -193,7 +246,8 @@ struct SignInHost: View {
             onPassword: model.password,
             onDifferentAddress: model.differentAddress,
             onChangeInstance: onChangeInstance,
-            onRetry: model.loadConfig
+            onRetry: model.loadConfig,
+            challenge: model.challenge.map { AnyView(ChallengeHost(challenge: $0)) }
         )
         .task { if model.config == nil { model.loadConfig() } }
     }

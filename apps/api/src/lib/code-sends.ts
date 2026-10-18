@@ -112,6 +112,13 @@ const CODE_ROUTES: Record<string, { toStrangers: boolean }> = {
 };
 
 /**
+ * Every route above, for the Turnstile check in `auth.ts` to stand in front of: the same
+ * list, so a route that spends the allowance is also one a script has to earn a token
+ * for. One list read twice rather than two that could drift.
+ */
+export const CODE_ROUTE_PATHS: readonly string[] = Object.keys(CODE_ROUTES);
+
+/**
  * The address a request to Better Auth would mail a code to, or null when it mails none.
  *
  * The hook runs before the route checks its input, so this repeats the checks that decide

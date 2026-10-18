@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { INSTANCE_KINDS, type AppConfig, type InstanceKind } from '@unbent/shared';
-import { accountDeletionOffered, getAuth, offeredProviders } from '../auth.js';
+import { accountDeletionOffered, getAuth, offeredProviders, turnstileOf } from '../auth.js';
 import { frontPageOf, legalLinksOf, llmOf, operatorOf, posthogOf } from '../lib/instance.js';
 import { whoAmI } from '../lib/session.js';
 import { refuseGrantsWithoutAgreement } from './legal.js';
@@ -58,6 +58,11 @@ export const authRoutes = new Hono<AppEnv>()
    * the Paddle secrets, and the Plan tab and the trial banner are drawn on its presence
    * alone. It carries the client-side token, which is public by design (see `billingOf`).
    *
+   * `turnstile` carries the site key where the instance has put Turnstile in front of the
+   * sign-in code endpoint (MAK-243): the sign-in screen draws the widget from it and sends
+   * the token with its request for a code. Absent, no widget is drawn and no token is
+   * asked for. The secret stays in the Worker; see `turnstileOf`.
+   *
    * `satisfies` rather than a return annotation: the fields whose value is `undefined` are
    * dropped by `JSON.stringify` on the way out, which is exactly the "absent means not
    * offered" reading the client already applies to `accountDeletion`.
@@ -66,6 +71,7 @@ export const authRoutes = new Hono<AppEnv>()
     const relayOrigin = previewRelayOrigin(c.env);
     return c.json({
       providers: offeredProviders(c.env),
+      turnstile: turnstileOf(c.env),
       accountDeletion: accountDeletionOffered(c.env),
       operator: operatorOf(c.env),
       legal: legalLinksOf(c.env),

@@ -33,13 +33,22 @@ export const GOODBYE = '/goodbye';
 export const HOW_TO_DELETE = '/delete-my-account';
 
 /**
+ * The page the native apps load, off screen, for a Turnstile token before they ask for a
+ * sign-in code (MAK-243; `routes/turnstile.tsx`). Named here because it is a shell
+ * decision as much as a route: nobody is signed in when it loads.
+ */
+export const TURNSTILE = '/turnstile';
+
+/**
  * Which of the three shells a path belongs to, and, because the same answer decides both,
  * whether it needs a session.
  *
  * `embed` is the page the Android app loads off screen to index a capture's PDFs. The app
  * has already put a session cookie in place before loading it, so an unauthenticated load
  * is reported to the app through the bridge rather than redirected to a sign-in screen
- * nobody would see.
+ * nobody would see. `/turnstile` is the other page the apps load off screen, to get the
+ * token the instance asks for with a request for a sign-in code: there is no session yet
+ * by definition, and it has nothing to draw around it either.
  *
  * `plain` is the pages that have to render for someone with no session, enumerated in
  * `PUBLIC` below. Two kinds. Some exist precisely because there is no session: the sign-in
@@ -125,6 +134,7 @@ export function shellFor(pathname: string): Shell {
   // Tolerant of a trailing slash, which a hand-typed address or an external link may carry
   // and which never means a different page.
   const path = pathname.length > 1 ? pathname.replace(/\/$/, '') : pathname;
+  if (path === TURNSTILE) return 'embed';
   if (path === FRONT || path === PRICING || path === WHY) return 'front';
   if (PUBLIC.has(path)) return 'plain';
   return 'app';

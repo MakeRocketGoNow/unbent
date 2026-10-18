@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -57,6 +58,10 @@ class SignInActivity : ComponentActivity() {
     private var configError by mutableStateOf<String?>(null)
     private var status by mutableStateOf<String?>(null)
     private var busy by mutableStateOf(false)
+    /** The Turnstile page, while its widget wants a tap; see [TurnstileChallenge]. */
+    private var challenge by mutableStateOf<WebView?>(null)
+    /** The address a code went to, once the server took the request; see [SignInScreen]. */
+    private var codeSentTo by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -92,6 +97,9 @@ class SignInActivity : ComponentActivity() {
                     onPassword = ::signInWithPassword,
                     onInstanceChange = ::changeInstance,
                     onRetry = ::loadConfig,
+                    codeSentTo = codeSentTo,
+                    onDifferentAddress = { codeSentTo = null },
+                    challenge = challenge,
                 )
             }
         }
@@ -111,6 +119,20 @@ class SignInActivity : ComponentActivity() {
                 Log.w("Unbent", "Could not load /api/config from $origin", e)
                 configError = getString(R.string.sign_in_unreachable, origin.removePrefix("https://"))
             }
+        }
+    }
+
+    /**
+     * Reads the config again behind the screen: the form stays as it is, what was typed
+     * with it, and a read that fails keeps the old one. For when the server says the
+     * instance now asks for a Turnstile token, so the next press carries one.
+     */
+    private fun refreshConfig() {
+        lifecycleScope.launch {
+            val origin = prefs.instance
+            withContext(Dispatchers.IO) { runCatching { UnbentApi(origin, null).config() } }
+                .onSuccess { config = it }
+                .onFailure { e -> Log.w("Unbent", "Could not reload /api/config from $origin", e) }
         }
     }
 
@@ -200,17 +222,41 @@ class SignInActivity : ComponentActivity() {
      * means "send one to this address", and a present one means "this is what arrived".
      * Sending reports nothing on success: the screen has already moved to the code field,
      * and a confirmation the user did not ask for would only be one more thing to read.
+     *
+     * Where the instance checks a Turnstile token with the request for a code
+     * (`AppConfig.turnstile`), the token comes first, from the instance's own page in a
+     * web view nobody sees unless the widget wants a tap ([TurnstileChallenge]). A page
+     * that could not mint one ends the step with a sentence of its own: the server would
+     * only refuse a request without it, and the person is one press from trying again.
+     * A page that says the instance asks for no token sends none: the check was turned
+     * off after this screen read its config. The reverse, a refusal for a missing token,
+     * means it was turned on since, so the config is read again for the next press.
      */
     private fun signInWithEmailOtp(email: String, code: String?) {
         busy = true
         status = getString(R.string.sign_in_waiting)
         lifecycleScope.launch {
             val origin = prefs.instance
+            var captchaToken: String? = null
+            if (code == null && config?.turnstile != null) {
+                status = getString(R.string.sign_in_checking)
+                when (val outcome = TurnstileChallenge.token(this@SignInActivity, origin) { challenge = it }) {
+                    is TurnstileChallenge.Outcome.Token -> captchaToken = outcome.token
+                    TurnstileChallenge.Outcome.None -> {}
+                    else -> {
+                        Log.w("Unbent", "Turnstile gave no token: $outcome")
+                        busy = false
+                        status = getString(R.string.sign_in_challenge_failed)
+                        return@launch
+                    }
+                }
+                status = getString(R.string.sign_in_waiting)
+            }
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     val auth = EmailOtpAuth(origin)
                     if (code == null) {
-                        auth.sendCode(email)
+                        auth.sendCode(email, captchaToken)
                         null
                     } else {
                         auth.signIn(email, code)
@@ -219,11 +265,21 @@ class SignInActivity : ComponentActivity() {
             }
             busy = false
             result.onSuccess { session ->
-                if (session == null) status = null else finishSignIn(session)
+                if (session == null) {
+                    status = null
+                    codeSentTo = email
+                } else {
+                    finishSignIn(session)
+                }
             }.onFailure { e ->
                 Log.w("Unbent", "Email code sign-in failed", e)
-                status = (e as? ApiException)?.serverMessage()
-                    ?: getString(if (code == null) R.string.sign_in_failed else R.string.sign_in_otp_failed)
+                if ((e as? ApiException)?.isMissingCaptcha == true) {
+                    status = getString(R.string.sign_in_check_turned_on)
+                    refreshConfig()
+                } else {
+                    status = (e as? ApiException)?.serverMessage()
+                        ?: getString(if (code == null) R.string.sign_in_failed else R.string.sign_in_otp_failed)
+                }
             }
         }
     }

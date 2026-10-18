@@ -25,9 +25,17 @@ internal val ApiJson = Json {
  */
 const val UNFILED = "[unfiled]"
 
-/** `GET /api/config`: the sign-in methods an instance offers, in display order. */
+/**
+ * `GET /api/config`: the sign-in methods an instance offers, in display order, and
+ * [turnstile] where the instance checks a Turnstile token with the request for a sign-in
+ * code (MAK-243). With it set, [com.makerocketgonow.unbent.ui.TurnstileChallenge] loads the
+ * instance's `/turnstile` page for a token before [EmailOtpAuth.sendCode] is called.
+ */
 @Serializable
-data class AppConfig(val providers: List<String> = emptyList()) {
+data class AppConfig(
+    val providers: List<String> = emptyList(),
+    val turnstile: TurnstileConfig? = null,
+) {
     val password: Boolean get() = "password" in providers
     val passkey: Boolean get() = "passkey" in providers
     val emailOtp: Boolean get() = "email-otp" in providers
@@ -53,6 +61,10 @@ data class AppConfig(val providers: List<String> = emptyList()) {
 
 /** The methods the apps implement themselves; everything else reported is OAuth. */
 private val LOCAL_METHODS = setOf("password", "passkey", "email-otp")
+
+/** Turnstile's site key: public, and only what the page draws the widget from. */
+@Serializable
+data class TurnstileConfig(val siteKey: String)
 
 /**
  * `GET /api/me`. The user is null rather than the call failing when there is no session; when
