@@ -640,7 +640,7 @@ describe('a replayed write', () => {
     expect(api.deleteNotes).toHaveBeenCalledWith(['n1']);
     expect(api.deleteNotePermanently).toHaveBeenCalledWith('n1');
     // The trash has to land first: the server will not purge a live note.
-    expect(vi.mocked(api.deleteNotes).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(api.deleteNotePermanently).mock.invocationCallOrder[0]);
+    expect(vi.mocked(api.deleteNotes).mock.invocationCallOrder[0]!).toBeLessThan(vi.mocked(api.deleteNotePermanently).mock.invocationCallOrder[0]!);
     expect(fake.queue).toHaveLength(2);
     expect(replay).toHaveBeenCalledTimes(1);
 
@@ -686,7 +686,7 @@ describe('a replayed write', () => {
     expect(await actions.purgeNotes(['n1'])).toBe(1);
     expect(api.deleteNotes).toHaveBeenCalledWith(['n1']);
     expect(api.deleteNotesPermanently).toHaveBeenCalledWith(['n1']);
-    expect(vi.mocked(api.deleteNotes).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(api.deleteNotesPermanently).mock.invocationCallOrder[0]);
+    expect(vi.mocked(api.deleteNotes).mock.invocationCallOrder[0]!).toBeLessThan(vi.mocked(api.deleteNotesPermanently).mock.invocationCallOrder[0]!);
   });
 
   /**
@@ -1148,7 +1148,7 @@ describe('a copy put back from a note’s history', () => {
     vi.mocked(api.updateNote).mockResolvedValueOnce({ ...base, title: 'typed', updatedAt: 200 });
     expect(await fake.replayOne()).toBe('done');
     expect(await restoring).toMatchObject({ note: { title: 'restored' } });
-    expect(vi.mocked(api.updateNote).mock.invocationCallOrder[0]).toBeLessThan(
+    expect(vi.mocked(api.updateNote).mock.invocationCallOrder[0]!).toBeLessThan(
       vi.mocked(api.restoreRevision).mock.invocationCallOrder[0]!,
     );
   });
@@ -1190,7 +1190,7 @@ describe('a copy put back from a note’s history', () => {
     vi.mocked(api.updateNote).mockResolvedValueOnce({ ...base, body: 'the code is in the safe', updatedAt: 200 });
     expect(await fake.replayOne()).toBe('done');
     expect(await clearing).toBe(1);
-    expect(vi.mocked(api.updateNote).mock.invocationCallOrder[0]).toBeLessThan(
+    expect(vi.mocked(api.updateNote).mock.invocationCallOrder[0]!).toBeLessThan(
       vi.mocked(api.clearRevisions).mock.invocationCallOrder[0]!,
     );
   });
