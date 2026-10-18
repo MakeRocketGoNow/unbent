@@ -627,6 +627,10 @@ describe('a replayed write', () => {
     vi.mocked(api.updateNote).mockRejectedValueOnce(new ApiError(402, '402: no room', 'STORAGE_FULL', 'notes'));
     expect(await fake.replayOne()).toBe('kept');
     expect(storeFull()).toBe(true);
+    // Purged from the trash, where the person put it: that trash queues behind the save.
+    await actions.trashNote('n1');
+    await tick();
+    expect(fake.queue).toHaveLength(2);
 
     const replay = vi.fn();
     fake.config.onlineDetector.subscribe(replay);
@@ -635,13 +639,34 @@ describe('a replayed write', () => {
     await actions.purgeNote('n1');
     expect(api.deleteNotes).toHaveBeenCalledWith(['n1']);
     expect(api.deleteNotePermanently).toHaveBeenCalledWith('n1');
-    expect(fake.queue).toHaveLength(1);
+    expect(fake.queue).toHaveLength(2);
     expect(replay).toHaveBeenCalledTimes(1);
 
     // The kept save replays against a note that is gone, and ends there.
     vi.mocked(api.updateNote).mockRejectedValueOnce(new ApiError(404, '404: Not found'));
     expect(await fake.replayOne()).toBe('refused');
-    expect(fake.queue).toHaveLength(0);
+    expect(fake.queue).toHaveLength(1);
+  });
+
+  /**
+   * Trashing first goes round the server's refusal to purge a live note, so it is only
+   * for a note in the trash here. One that is live here (a selection gone stale) is not
+   * trashed on its way to a permanent delete: the purge goes as it is and the server
+   * leaves the note alone.
+   */
+  it('does not trash a note that is live here on its way to a round-the-queue purge', async () => {
+    const { fake, note } = library([row('n1', { title: 'old' })]);
+    const base = note('n1');
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'typed past the limit' }, base });
+    await tick();
+    vi.mocked(api.updateNote).mockRejectedValueOnce(new ApiError(402, '402: no room', 'STORAGE_FULL', 'notes'));
+    expect(await fake.replayOne()).toBe('kept');
+
+    vi.mocked(api.deleteNotePermanently).mockResolvedValueOnce(undefined as never);
+    await actions.purgeNote('n1');
+    vi.mocked(api.deleteNotesPermanently).mockResolvedValueOnce({ deleted: 0 });
+    await actions.purgeNotes(['n1']);
+    expect(api.deleteNotes).not.toHaveBeenCalled();
   });
 
   it('trashes a selected note whose own save the store refused before permanently deleting it', async () => {
@@ -651,6 +676,8 @@ describe('a replayed write', () => {
     await tick();
     vi.mocked(api.updateNote).mockRejectedValueOnce(new ApiError(402, '402: no room', 'STORAGE_FULL', 'notes'));
     expect(await fake.replayOne()).toBe('kept');
+    await actions.trashNote('n1');
+    await tick();
 
     vi.mocked(api.deleteNotes).mockResolvedValueOnce({ trashed: 1 });
     vi.mocked(api.deleteNotesPermanently).mockResolvedValueOnce({ deleted: 1 });

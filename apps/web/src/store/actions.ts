@@ -1653,9 +1653,16 @@ function roundTheQueue(lib: WritableLibrary, noteId: string, purging = false): b
  * permanent delete leaves a live note alone. One place for the purge of one, the bulk
  * purge and emptying the trash, so the three cannot drift on which notes it reaches.
  * Each caller sends its own purge after.
+ *
+ * Only a note that is in the trash here. The server refuses to purge a live note so a
+ * stray call cannot destroy live work, and this step goes round that refusal, so it
+ * keeps its meaning: the person trashed the note on this device and its trash is what
+ * waits. A purge of a note that is live here (a selection gone stale, a restore that
+ * reached this copy after the list was drawn) is sent as it is, and the server leaves
+ * the note alone.
  */
 async function trashRoundTheQueue(lib: WritableLibrary, ids: readonly string[]): Promise<void> {
-  const live = ids.filter((id) => lib.outbox.status().waiting.has(id));
+  const live = ids.filter((id) => lib.outbox.status().waiting.has(id) && lib.notes.get(id)?.deletedAt != null);
   if (live.length > 0) await api.deleteNotes(live);
 }
 
