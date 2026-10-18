@@ -1,6 +1,6 @@
 /**
  * Cloudflare Turnstile's script, loaded where the instance has put a check in front of
- * the request for a sign-in code (MAK-243).
+ * the request for a sign-in code and the start of a provider sign-in (MAK-243).
  *
  * The script is Cloudflare's own, from its CDN, and it is what draws the widget: the
  * challenge runs in an iframe on challenges.cloudflare.com, which is the point of it, and
@@ -26,8 +26,9 @@ export const TURNSTILE_SCRIPT = 'https://challenges.cloudflare.com/turnstile/v0/
 
 /**
  * The header the token travels in, which is the one the server's plugin reads. The
- * native apps send the same header from their own requests (`EmailOtpAuth.kt`,
- * `SignInCalls.swift`) with a token the `/turnstile` page minted for them.
+ * native apps send the same header from their own requests (`EmailOtpAuth.kt` and
+ * `GoogleAuth.kt`, `SignInCalls.swift` and `NativeSignIn.swift`) with a token the
+ * `/turnstile` page minted for them.
  */
 export const CAPTCHA_HEADER = 'x-captcha-response';
 

@@ -6,7 +6,7 @@ import { CAPTCHA_HEADER, loadTurnstile } from '../turnstile.js';
 
 /** What the sentence under a widget that could not run says; the one place it is worded. */
 export const TURNSTILE_FAILED_MESSAGE =
-  'The check before a code is sent could not load. Check your connection, then reload this page.';
+  'The check before signing in could not load. Check your connection, then reload this page.';
 
 /**
  * What a request refused for carrying no token says, in place of the plugin's own
@@ -15,7 +15,7 @@ export const TURNSTILE_FAILED_MESSAGE =
  * apps say the same in their own words.
  */
 export const CHECK_TURNED_ON_MESSAGE =
-  'This instance now checks your browser before sending a code. Press Email me a code again.';
+  'This instance now checks your browser before signing in. Press the button again.';
 
 export interface TurnstileProps {
   siteKey: string;
@@ -36,7 +36,8 @@ export interface TurnstileProps {
 
 /**
  * Cloudflare's Managed widget, drawn where the instance asks for a token with the request
- * for a sign-in code (MAK-243; `turnstile.ts` says why the script and not a package).
+ * for a sign-in code or the start of a provider sign-in (MAK-243; `turnstile.ts` says why
+ * the script and not a package).
  *
  * Managed, which decides for itself whether to ask for a click: nearly everyone sees a
  * box that marks itself done in a second, and a browser Cloudflare is unsure of is asked
@@ -104,23 +105,30 @@ export function Turnstile({ siteKey, onToken, onFail, onInteractive }: Turnstile
   return <div className="turnstile" ref={container} />;
 }
 
+/** The shape every Better Auth client call answers with, as far as the gate reads it. */
+type Answer = { error?: { code?: string; message?: string } | null } | null | undefined;
+
 /**
- * A request for a sign-in code, with the token the instance asks for it, where it asks.
+ * The instance's check, where it has one, in front of the requests a screen makes that
+ * the server gates (MAK-243): a request for a sign-in code, and the start of a provider
+ * sign-in, which is a sign-up where the allowlist is empty and the door a script with
+ * throwaway Google accounts walks in by.
  *
- * Two screens request a code (the sign-in screen, and Security's re-verification before a
- * passkey is added) and the instance's check is the same in front of both, so what it
- * costs a screen is in one place: the widget to draw (`widget`, null where the instance
- * asks for no token), whether the press may go yet (`ready`: a token in hand, or none
- * needed, with `waiting` as the reason for the faded button while it is not), the
- * sentence to show when the widget could not run (`failed`), and `send`,
- * which makes the request with the token in `CAPTCHA_HEADER` and spends it. Spent
- * whatever the answer: Cloudflare takes a token once, and one the server refused is no
- * use a second time, so the widget is drawn again (a new `key`) for the next press.
+ * One widget per screen, whatever it offers: the token is the browser's, not the
+ * button's, so the sign-in screen draws one widget above its first gated button and
+ * every gated press waits on it. What it costs a screen is in one place: the widget to
+ * draw (`widget`, null where the instance asks for no token), whether a press may go yet
+ * (`ready`: a token in hand, or none needed, with `waiting` as the reason for the faded
+ * button while it is not), the sentence to show when the widget could not run
+ * (`failed`), and `through`, which makes a request with the token in `CAPTCHA_HEADER`
+ * and spends it. Spent whatever the answer: Cloudflare takes a token once, and one the
+ * server refused is no use a second time, so the widget is drawn again (a new `key`)
+ * for the next press.
  *
  * Without a site key the request is what it was, with no header: a server that asks for
  * none must be sent none, and a test that asserts the call's shape sees the same call.
  */
-export function useCodeRequest(siteKey: string | undefined) {
+export function useTurnstileGate(siteKey: string | undefined) {
   const queryClient = useQueryClient();
   const [token, setToken] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -140,16 +148,24 @@ export function useCodeRequest(siteKey: string | undefined) {
     />
   ) : null;
 
-  async function send(email: string) {
-    const result = await emailOtp.sendVerificationOtp(
-      siteKey
-        ? { email, type: 'sign-in', fetchOptions: { headers: { [CAPTCHA_HEADER]: token ?? '' } } }
-        : { email, type: 'sign-in' },
-    );
+  /**
+   * Makes the request, with the token where the instance asks for one. The request is
+   * given the `fetchOptions` to send, or nothing where there is no check, so the call's
+   * shape without a check is the call as it was.
+   */
+  async function through<T extends Answer>(
+    request: (fetchOptions?: { headers: Record<string, string> }) => Promise<T>,
+  ): Promise<T> {
     if (siteKey) {
-      setToken(null);
-      setGeneration((g) => g + 1);
-    } else if (result?.error?.code === 'MISSING_RESPONSE') {
+      try {
+        return await request({ headers: { [CAPTCHA_HEADER]: token ?? '' } });
+      } finally {
+        setToken(null);
+        setGeneration((g) => g + 1);
+      }
+    }
+    const result = await request();
+    if (result?.error?.code === 'MISSING_RESPONSE') {
       // The instance started asking for a token after this screen read its config, which
       // is held for the life of the page. Read it again, so the next render draws the
       // widget and the next press carries a token, rather than every press failing the
@@ -167,6 +183,27 @@ export function useCodeRequest(siteKey: string | undefined) {
     /** Why the button is faded, for its `tip`, since a disabled button cannot say so itself. */
     waiting: ready || failed ? undefined : 'Waiting for the check above to finish',
     failed,
-    send,
+    through,
   };
+}
+
+export type TurnstileGate = ReturnType<typeof useTurnstileGate>;
+
+/** A request for a sign-in code, through the gate. */
+export function requestCode(gate: TurnstileGate, email: string) {
+  return gate.through((fetchOptions) =>
+    emailOtp.sendVerificationOtp(
+      fetchOptions ? { email, type: 'sign-in', fetchOptions } : { email, type: 'sign-in' },
+    ),
+  );
+}
+
+/**
+ * The gate with the code request on it, for a screen that asks for a code and nothing
+ * else the instance gates: Security's re-verification before a passkey is added. The
+ * sign-in screen holds the gate itself, since its provider buttons go through it too.
+ */
+export function useCodeRequest(siteKey: string | undefined) {
+  const gate = useTurnstileGate(siteKey);
+  return { ...gate, send: (email: string) => requestCode(gate, email) };
 }

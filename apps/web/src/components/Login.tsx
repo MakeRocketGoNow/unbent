@@ -13,7 +13,7 @@ import { HOME, LOGIN, rememberRelayRedirect } from '../auth-gate.js';
 import { Button } from './Button.js';
 import { LegalLink } from './LegalLink.js';
 import { ProviderIcon } from './provider-icons.js';
-import { TURNSTILE_FAILED_MESSAGE, useCodeRequest } from './Turnstile.js';
+import { TURNSTILE_FAILED_MESSAGE, requestCode, useTurnstileGate, type TurnstileGate } from './Turnstile.js';
 
 /**
  * Names for providers whose own spelling is not what title-casing the id would produce.
@@ -137,8 +137,16 @@ export function Login({ redirectTo, refusal }: LoginProps) {
   const password = providers.includes('password');
   const passkeys = providers.includes('passkey');
   const otp = providers.includes('email-otp');
-  // Where the instance puts a Turnstile check in front of the request for a code (MAK-243).
-  const turnstile = config.data?.turnstile?.siteKey;
+  /**
+   * Where the instance puts a Turnstile check in front of the request for a code and the
+   * start of a provider sign-in (MAK-243). One gate for the screen: the token is the
+   * browser's, and whichever gated button is pressed spends it. The widget is drawn
+   * above the first gated button, so "the check above" is where a faded button points.
+   * A passkey is not gated (it opens no door a stranger can use), so a screen offering
+   * only passkeys draws none.
+   */
+  const gate = useTurnstileGate(social.length > 0 || otp ? config.data?.turnstile?.siteKey : undefined);
+  const widgetAmongProviders = social.length > 0;
   // Set only on a preview, where it names the dev instance that can sign in with Google on
   // this preview's behalf. See the relay button below and routes/preview-signin.tsx.
   const relayOrigin = config.data?.previewRelay?.origin;
@@ -203,7 +211,23 @@ export function Login({ redirectTo, refusal }: LoginProps) {
        * for its reason.
        */
       const back = redirectTo === HOME ? LOGIN : `${LOGIN}?redirect=${encodeURIComponent(redirectTo)}`;
-      await signIn.social({ provider, callbackURL: redirectTo, errorCallbackURL: back });
+      /**
+       * Through the gate: where the instance checks a token, the press carries one, and
+       * the server refuses the start of a provider sign-in without it. The client
+       * reports a refusal in `error` rather than throwing, and the press used to read
+       * neither, so a refused start left the button saying "Redirecting…" for good.
+       */
+      const result = await gate.through((fetchOptions) =>
+        signIn.social(
+          fetchOptions
+            ? { provider, callbackURL: redirectTo, errorCallbackURL: back, fetchOptions }
+            : { provider, callbackURL: redirectTo, errorCallbackURL: back },
+        ),
+      );
+      if (result?.error) {
+        setError(result.error.message || 'Sign-in failed');
+        setPending(null);
+      }
     } catch (err) {
       setError((err as Error).message || 'Sign-in failed');
       setPending(null);
@@ -283,12 +307,18 @@ export function Login({ redirectTo, refusal }: LoginProps) {
       key: 'social',
       node: (
         <div className="login-actions">
+          {widgetAmongProviders && gate.widget}
+          {widgetAmongProviders && gate.failed && <p className="bad small">{TURNSTILE_FAILED_MESSAGE}</p>}
           {social.map((p) => (
             <button
               key={p}
               type="button"
               className="provider"
-              disabled={pending !== null}
+              disabled={pending !== null || !gate.ready}
+              // Both, as `Button`'s `tip` writes them: the tip is drawn, and the reason
+              // for a faded button has to be read out too, since it cannot be focused.
+              data-tip={gate.waiting}
+              aria-description={gate.waiting}
               onClick={() => void startSocial(p)}
             >
               <ProviderIcon provider={p} />
@@ -321,7 +351,8 @@ export function Login({ redirectTo, refusal }: LoginProps) {
         <EmailForm
           otp={otp}
           password={password}
-          turnstile={turnstile}
+          gate={gate}
+          widget={otp && !widgetAmongProviders}
           busy={pending !== null}
           onBusy={(b) => setPending(b ? (password ? 'password' : 'email-otp') : null)}
           onError={setError}
@@ -376,8 +407,10 @@ interface EmailFormProps {
   /** Whether this instance offers a code by email, a password, or both. */
   otp: boolean;
   password: boolean;
-  /** Turnstile's site key, where the instance asks for a token with the request for a code. */
-  turnstile?: string;
+  /** The screen's Turnstile gate, which the request for a code goes through. */
+  gate: TurnstileGate;
+  /** Whether the widget is drawn here, above the code button, rather than among the providers above. */
+  widget: boolean;
   busy: boolean;
   onBusy: (busy: boolean) => void;
   onError: (message: string | null) => void;
@@ -404,15 +437,15 @@ interface EmailFormProps {
  * the response and `onSignedIn` navigates. The social buttons redirect because a provider
  * round trip leaves them no choice.
  *
- * Where the instance has put Turnstile in front of the request for a code, its widget sits
- * above that button and the button waits for the token (`useCodeRequest`). The widget is
- * drawn whenever a code is offered, before anyone has chosen it: it usually marks itself
- * done before the address is typed, and a widget that appeared on the press would move the
- * button under the pointer. Offline the script never arrives, and the sentence under the
- * button says so rather than leaving a button that cannot be pressed.
+ * Where the instance has put Turnstile in front of the request for a code, the code
+ * button waits for the screen's token (`useTurnstileGate`), and the widget sits above
+ * this button only when no provider button sits above the form to draw it over. The
+ * widget is drawn from the start, before anyone has chosen a method: it usually marks
+ * itself done before the address is typed, and a widget that appeared on the press would
+ * move the button under the pointer. Offline the script never arrives, and the sentence
+ * under the button says so rather than leaving a button that cannot be pressed.
  */
-function EmailForm({ otp, password, turnstile, busy, onBusy, onError, onSignedIn }: EmailFormProps) {
-  const codeRequest = useCodeRequest(otp ? turnstile : undefined);
+function EmailForm({ otp, password, gate, widget, busy, onBusy, onError, onSignedIn }: EmailFormProps) {
   const [mode, setMode] = useState<'in' | 'up'>('in');
   const [email, setEmail] = useState('');
   const [secret, setSecret] = useState('');
@@ -474,7 +507,7 @@ function EmailForm({ otp, password, turnstile, busy, onBusy, onError, onSignedIn
     onBusy(true);
     onError(null);
     try {
-      const result = await codeRequest.send(email);
+      const result = await requestCode(gate, email);
       if (result?.error) onError(result.error.message || 'Could not send a code.');
       else setCodeSent(true);
     } catch (err) {
@@ -588,7 +621,7 @@ function EmailForm({ otp, password, turnstile, busy, onBusy, onError, onSignedIn
         </Button>
       )}
 
-      {codeRequest.widget}
+      {widget && gate.widget}
 
       {otp && (
         <Button
@@ -596,15 +629,15 @@ function EmailForm({ otp, password, turnstile, busy, onBusy, onError, onSignedIn
           // alternative, and two filled buttons would be a choice with no default.
           variant={password ? 'quiet' : 'primary'}
           type="button"
-          disabled={busy || !codeRequest.ready}
-          tip={codeRequest.waiting}
+          disabled={busy || !gate.ready}
+          tip={gate.waiting}
           onClick={() => void sendCode()}
         >
           {busy && !password ? 'Sending…' : 'Email me a code'}
         </Button>
       )}
 
-      {codeRequest.failed && <p className="bad small">{TURNSTILE_FAILED_MESSAGE}</p>}
+      {widget && gate.failed && <p className="bad small">{TURNSTILE_FAILED_MESSAGE}</p>}
 
       {password && (
         <Button
