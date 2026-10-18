@@ -504,7 +504,14 @@ function EmailForm({ otp, password, turnstile, busy, onBusy, onError, onSignedIn
   /** The code step replaces the form: there is nothing else to do until it is entered. */
   if (codeSent) {
     return (
-      <form className="login-form" onSubmit={(e) => void verifyCode(e)}>
+      /**
+       * Keyed apart from the address form, so this one is mounted rather than patched over
+       * it. Both are a `<form>` in the same place, and without the keys React kept the
+       * address form's elements by position: on an instance with passwords too, the
+       * password field's `<input>` became the code field, carrying its history with it,
+       * and an input that is reused is never mounted, so `autoFocus` below did nothing.
+       */
+      <form key="code" className="login-form" onSubmit={(e) => void verifyCode(e)}>
         <p className="muted code-sent">
           We sent a code to
           <strong>{email}</strong>
@@ -519,7 +526,13 @@ function EmailForm({ otp, password, turnstile, busy, onBusy, onError, onSignedIn
              * meaningless here. `inputMode` gets the numeric keypad on a phone, and
              * `one-time-code` is what makes iOS and Android offer the code straight from
              * the notification, which is the whole reason this beats a link.
+             *
+             * `autoFocus` because this step only ever mounts in answer to the press of
+             * "Email me a code": the button that had focus is gone, and focus would
+             * otherwise fall to the page, leaving a tap or a click between the person and
+             * typing the code. It is not stealing focus from anything they chose.
              */
+            autoFocus
             type="text"
             inputMode="numeric"
             autoComplete="one-time-code"
@@ -552,7 +565,11 @@ function EmailForm({ otp, password, turnstile, busy, onBusy, onError, onSignedIn
   }
 
   return (
-    <form className="login-form" onSubmit={(e) => void (password ? submitPassword(e) : e.preventDefault())}>
+    <form
+      key="address"
+      className="login-form"
+      onSubmit={(e) => void (password ? submitPassword(e) : e.preventDefault())}
+    >
       <label>
         Email
         <input
