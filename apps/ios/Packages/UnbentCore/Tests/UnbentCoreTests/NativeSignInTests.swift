@@ -119,6 +119,20 @@ final class NativeSignInTests: XCTestCase {
         XCTAssertFalse(asked.body.contains(nonce.hashed))
     }
 
+    /// The exchange is a sign-up where the allowlist is empty, so the instance's Turnstile
+    /// check stands in front of it as in front of a code (MAK-243).
+    func testTheExchangeCarriesTheTurnstileTokenOnlyWhenGivenOne() async throws {
+        StubServer.enqueue(.init(headers: ["Set-Cookie": sessionLine]))
+        _ = try await apple.signIn(identityToken: "apple.jwt.token", nonce: .init(raw: "n"))
+        XCTAssertNil(try StubServer.takeRequest().headers["x-captcha-response"])
+
+        StubServer.enqueue(.init(headers: ["Set-Cookie": sessionLine]))
+        _ = try await apple.signIn(identityToken: "apple.jwt.token", nonce: .init(raw: "n"), captchaToken: "tok-1")
+        let asked = try StubServer.takeRequest()
+        XCTAssertEqual("tok-1", asked.headers["x-captcha-response"])
+        XCTAssertEqual("/api/auth/sign-in/social", asked.path)
+    }
+
     func testAnInstanceThatDoesNotAcceptThisAppsTokensSaysSo() async throws {
         StubServer.enqueue(.init(status: 401, body: #"{"message":"Invalid id token"}"#))
 

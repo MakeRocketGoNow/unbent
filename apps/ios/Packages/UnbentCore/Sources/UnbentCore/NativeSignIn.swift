@@ -104,13 +104,21 @@ public struct AppleAuth: Sendable {
 
     /// Hands Apple's identity token to Better Auth, which checks its signature, its
     /// audience and the nonce, and signs the person in.
-    public func signIn(identityToken: String, nonce: Nonce) async throws -> SessionCookie {
+    ///
+    /// `captchaToken` is the Turnstile token the instance asks for with the exchange where
+    /// it has the check on (`AppConfig.turnstile`): a provider sign-in is a sign-up, and
+    /// the server refuses one without the token however it is asked for, since an
+    /// identity token on its own proves an Apple ID and not a person. Minted before the
+    /// sheet, by the instance's `/turnstile` page (`TurnstileChallenge` in the app), as
+    /// before a code. Nil where the instance asks for none.
+    public func signIn(identityToken: String, nonce: Nonce, captchaToken: String? = nil) async throws -> SessionCookie {
         try await signInCall(
             origin,
             "/api/auth/sign-in/social",
             ["provider": "apple", "idToken": ["token": identityToken, "nonce": nonce.raw]],
             "Sign in with Apple",
-            session
+            session,
+            captchaToken: captchaToken
         )
     }
 

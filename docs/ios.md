@@ -35,13 +35,15 @@ The debug build is a second app, as on Android: bundle id `.debug`, the name "Un
 
 **How it signs in.** By what the instance offers, read from `GET /api/config`. Two methods
 are only requests: a code by email and a password, against Better Auth directly; where the
-instance checks a Turnstile token with the request for a code, the app first loads the
-instance's `/turnstile` page in a web view the screen holds at no height
-(`TurnstileChallenge.swift`), which mints the token through the bridge and is given its
-height only if the widget wants a tap. Three put
+instance checks a Turnstile token with the request for a code, and with the exchange of
+an Apple identity token, the app first loads the instance's `/turnstile` page in a web
+view the screen holds at no height (`TurnstileChallenge.swift`), which mints the token
+through the bridge and is given its height only if the widget wants a tap. Three put
 one of the system's sheets first. Apple's, which returns an identity token bound to a
 nonce: Apple is given the nonce's SHA-256 and the server the nonce itself, and the name
-Apple sends on a first authorization is set on the account afterwards. The passkey sheet,
+Apple sends on a first authorization is set on the account afterwards; the Turnstile
+token, where one is asked for, is minted before the sheet, since a challenge drawn under
+it could not be given its tap. The passkey sheet,
 which signs the challenge from `/api/auth/passkey/generate-authenticate-options`; the
 cookie that response sets names the challenge and is sent back with the answer by hand,
 since the app's client keeps no cookie jar. And a browser at `/connect`

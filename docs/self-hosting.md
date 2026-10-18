@@ -122,7 +122,7 @@ says otherwise; `pnpm exec wrangler secret put NAME` from `apps/api`, or the das
 | `LEGAL_PRIVACY_URL`, `LEGAL_TERMS_URL` | legal pages hosted elsewhere | both or neither; win over the built-in ones |
 | `LEGAL_VERSION` | asking everyone to agree again | only with your own documents; see [Who runs this instance](#who-runs-this-instance) |
 | `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_REPLY_TO` | codes by email, password reset | the first two or neither; see [Choosing sign-in methods](#choosing-sign-in-methods) |
-| `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | a Turnstile check before a sign-in code is sent | both or neither; see [Choosing sign-in methods](#choosing-sign-in-methods) |
+| `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY` | a Turnstile check before a sign-in code is sent or a provider sign-in starts | both or neither; see [Choosing sign-in methods](#choosing-sign-in-methods) |
 | `<PROVIDER>_CLIENT_ID`, `<PROVIDER>_CLIENT_SECRET` | any of Better Auth's OAuth providers | both or neither; the callback is `/api/auth/callback/<provider>` on your origin |
 | `AUTH_PASSWORD`, `AUTH_PASSKEY` | forcing a method on or off | rarely needed; the defaults are explained in the sign-in section |
 | `POSTHOG_KEY`, `POSTHOG_HOST` | error tracking | see [Errors in the browser](#errors-in-the-browser) |
@@ -594,21 +594,28 @@ instance on a paid tier can raise the strangers' share there.
 Those bounds cap what a day of abuse costs; `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY`
 keep a script from spending it at all. With both set, a request for a code has to carry a
 token the browser earned from [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/)
-first: the sign-in screen draws a Managed widget under the address field, which passes
-nearly everyone with no click, and the Android and iOS apps load `/turnstile` from the
-instance in a web view to get theirs. The two password-reset routes that mail the same code
-to an address with an account are behind it too, since the bounds above count them; nothing
-else is: not the code's own sign-in, which three wrong tries already burn, and not a passkey
-or a provider. Make the widget in the Cloudflare dashboard with the instance's hostname (the
-test pair in `.dev.vars.example` passes everything, for local development), put the site key
-on the Worker as a secret beside the secret key, and leave both unset to have the endpoint as
-it was. Half a pair is read as none and the Worker says so in its log.
+first, and so does the start of a sign-in with Google, Apple or any other provider: a
+provider sign-in is a sign-up where the allowlist is empty, and the provider only checks
+that the account is the script's own. The sign-in screen draws one Managed widget above
+its first gated button, which passes nearly everyone with no click, and the Android and
+iOS apps load `/turnstile` from the instance in a web view to get theirs, before the
+phone's own account sheet as before a code. The two password-reset routes that mail the
+same code to an address with an account are behind it too, since the bounds above count
+them; nothing else is: not the code's own sign-in, which three wrong tries already burn,
+and not a passkey, which can only be made from an account that already exists. Make the
+widget in the Cloudflare dashboard with the instance's hostname (the test pair in
+`.dev.vars.example` passes everything, for local development), put the site key on the
+Worker as a secret beside the secret key, and leave both unset to have the endpoints as
+they were. Half a pair is read as none and the Worker says so in its log. An instance
+with a provider and no mail keeps the check: its provider sign-in is the door it is for.
 
 Set the pair only once the app builds that send a token are what people have installed. An
-Android or iOS build from before the check asks for a code with no token, and the moment the
-pair is set every such request is refused: someone whose only way into the app is a code is
-then locked out until they update, and a store build takes days to reach them. The web app
-is never behind, since it reads the site key on each load.
+Android or iOS build from before the check asks for a code, or exchanges a Google or Apple
+sign-in, with no token, and the moment the pair is set every such request is refused: the
+app's own sign-in is then locked until they update, and a store build takes days to reach
+them. Builds that send a token with a code but not with the provider sign-in (the first
+cut of the check) are in the same place for Google and Apple. The web app is never behind,
+since it reads the site key on each load.
 
 The OAuth row means any of the thirty-five providers Better Auth ships (Apple, Discord,
 Microsoft, Slack, GitLab and the rest), not a list this repository maintains. Enabling one

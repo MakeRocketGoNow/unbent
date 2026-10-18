@@ -103,10 +103,13 @@ func signInCall(
     _ payload: [String: Any],
     _ what: String,
     _ session: URLSession,
-    cookie: String? = nil
+    cookie: String? = nil,
+    captchaToken: String? = nil
 ) async throws -> SessionCookie {
     var request = try post(origin, path, payload)
     if let cookie { request.setValue(cookie, forHTTPHeaderField: "Cookie") }
+    // The Turnstile token, where the instance asks for one with this call; see `EmailOtpAuth.sendCode`.
+    if let captchaToken { request.setValue(captchaToken, forHTTPHeaderField: EmailOtpAuth.captchaHeader) }
     let (data, response) = try await session.data(for: request)
     let body = try UnbentApi.checked(data, response, what)
     guard
