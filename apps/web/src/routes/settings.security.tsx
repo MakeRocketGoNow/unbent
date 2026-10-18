@@ -5,7 +5,7 @@ import { isLocalMethod } from '@unbent/shared';
 import { Button } from '../components/Button.js';
 import type { Passkey } from '@better-auth/passkey';
 import { passkey, signIn, useSession } from '../auth-client.js';
-import { TURNSTILE_FAILED_MESSAGE, requestCode, startSocial, useTurnstileGate } from '../components/Turnstile.js';
+import { TURNSTILE_FAILED_MESSAGE, requestCode, startProviderSignIn, useTurnstileGate } from '../components/Turnstile.js';
 import { configQuery } from '../queries.js';
 import { isHosted } from '../app-bridge.js';
 import { useSignOut } from '../useSignOut.js';
@@ -263,7 +263,7 @@ function Reverify({ onVerified, onCancel }: ReverifyProps) {
     setBusy(true);
     setError(null);
     try {
-      const result = await startSocial(gate, { provider, callbackURL: '/settings/security' });
+      const result = await startProviderSignIn(gate, { provider, callbackURL: '/settings/security' });
       if (result?.error) {
         setError(result.error.message || 'Sign-in failed.');
         setBusy(false);

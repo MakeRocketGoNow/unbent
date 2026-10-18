@@ -13,7 +13,13 @@ import { HOME, LOGIN, rememberRelayRedirect } from '../auth-gate.js';
 import { Button } from './Button.js';
 import { LegalLink } from './LegalLink.js';
 import { ProviderIcon } from './provider-icons.js';
-import { TURNSTILE_FAILED_MESSAGE, requestCode, useTurnstileGate, type TurnstileGate } from './Turnstile.js';
+import {
+  TURNSTILE_FAILED_MESSAGE,
+  requestCode,
+  startProviderSignIn,
+  useTurnstileGate,
+  type TurnstileGate,
+} from './Turnstile.js';
 
 /**
  * Names for providers whose own spelling is not what title-casing the id would produce.
@@ -217,13 +223,7 @@ export function Login({ redirectTo, refusal }: LoginProps) {
        * reports a refusal in `error` rather than throwing, and the press used to read
        * neither, so a refused start left the button saying "Redirecting…" for good.
        */
-      const result = await gate.through((fetchOptions) =>
-        signIn.social(
-          fetchOptions
-            ? { provider, callbackURL: redirectTo, errorCallbackURL: back, fetchOptions }
-            : { provider, callbackURL: redirectTo, errorCallbackURL: back },
-        ),
-      );
+      const result = await startProviderSignIn(gate, { provider, callbackURL: redirectTo, errorCallbackURL: back });
       if (result?.error) {
         setError(result.error.message || 'Sign-in failed');
         setPending(null);

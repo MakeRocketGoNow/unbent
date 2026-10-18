@@ -204,6 +204,6 @@ export function requestCode(gate: TurnstileGate, email: string) {
  * (the sign-in screen, Security's re-verification) goes through here rather than calling
  * `signIn.social` itself, and the call without a check stays the call as it was.
  */
-export function startSocial(gate: TurnstileGate, options: Parameters<typeof signIn.social>[0]) {
+export function startProviderSignIn(gate: TurnstileGate, options: Parameters<typeof signIn.social>[0]) {
   return gate.through((fetchOptions) => signIn.social(fetchOptions ? { ...options, fetchOptions } : options));
 }
