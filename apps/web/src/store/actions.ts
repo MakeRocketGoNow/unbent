@@ -1638,7 +1638,8 @@ export async function restoreRevision(noteId: string, revisionId: number, opts: 
  * confirm), and this note's trash is the entry queued behind the kept save, so a
  * purge sent round the queue with no trash of its own is a no-op: the note stays
  * live, the save stays kept, and the way out of the limit never opens. The person
- * has already confirmed the purge; `trashThenPurge` is both steps in one go.
+ * has already confirmed the purge, so every purge sent round the queue trashes those
+ * notes first (`trashRoundTheQueue`).
  */
 function roundTheQueue(lib: WritableLibrary, noteId: string, purging = false): boolean {
   if (!planLapsed() && !storeFull()) return false;
@@ -1647,15 +1648,15 @@ function roundTheQueue(lib: WritableLibrary, noteId: string, purging = false): b
 }
 
 /**
- * The server's permanent delete leaves a live note alone, so a purge sent round a
- * kept save has to trash those notes first. Already-trashed ids are skipped by the
- * batch trash and then deleted, which is the ordinary path.
+ * Trashes on the server the notes about to be purged round a kept save, which it still
+ * holds live: their trash is the entry queued behind that save, and the server's
+ * permanent delete leaves a live note alone. One place for the purge of one, the bulk
+ * purge and emptying the trash, so the three cannot drift on which notes it reaches.
+ * Each caller sends its own purge after.
  */
-async function trashThenPurge(ids: readonly string[]): Promise<{ deleted: number }> {
-  if (ids.length === 0) return { deleted: 0 };
-  const list = [...ids];
-  await api.deleteNotes(list);
-  return api.deleteNotesPermanently(list);
+async function trashRoundTheQueue(lib: WritableLibrary, ids: readonly string[]): Promise<void> {
+  const live = ids.filter((id) => lib.outbox.status().waiting.has(id));
+  if (live.length > 0) await api.deleteNotes(live);
 }
 
 /** A bulk action's ids while a refusal waits: the ones that go to the server now, and the ones that queue. */
@@ -1714,8 +1715,7 @@ export async function purgeNote(noteId: string): Promise<void> {
   const lib = await queueable();
   if (!lib || notCopiedYet(lib, noteId)) return pulled(api.deleteNotePermanently(noteId), { ids: [noteId], refiles: true }, true);
   if (roundTheQueue(lib, noteId, true)) {
-    // Still live on the server when this note's own save is the one kept: trash first.
-    if (lib.outbox.status().waiting.has(noteId)) await api.deleteNotes([noteId]);
+    await trashRoundTheQueue(lib, [noteId]);
     return pulled(api.deleteNotePermanently(noteId), { ids: [noteId], refiles: true }, true);
   }
   queue(lib, 'purgeNote', { noteId }, () => {
@@ -1742,12 +1742,13 @@ export async function emptyTrash(ids: readonly string[]): Promise<api.PurgeResul
   // A note whose trash waits behind a save the store refused (MAK-234) is in the trash
   // here and not on the server, so the server's own purge would leave it, and the room
   // with it. Those the server holds are trashed and then purged by id, round the queue,
-  // as a purge of one would be (`roundTheQueue` / `trashThenPurge`); their queued
+  // as a purge of one would be (`roundTheQueue`, `trashRoundTheQueue`); their queued
   // entries then end on the note being gone. Emptying the trash is the person giving
   // up those edits, as purging is.
   const lib = await queueable();
   const held = lib && storeFull() ? ids.filter((id) => lib.outbox.status().waiting.has(id) && serverHolds(lib, id)) : [];
-  const first = held.length > 0 ? await trashThenPurge(held) : { deleted: 0 };
+  if (lib) await trashRoundTheQueue(lib, held);
+  const first = held.length > 0 ? await api.deleteNotesPermanently(held) : { deleted: 0 };
   const out = await pulled(api.purgeNotes('trashed'), { ids, refiles: true }, true);
   return { ...out, notesDeleted: out.notesDeleted + first.deleted };
 }
@@ -1800,9 +1801,7 @@ export async function purgeNotes(ids: string[]): Promise<number> {
   if (!lib) return pulled(api.deleteNotesPermanently(ids).then((r) => r.deleted), { ids, refiles: true }, true);
   const { here: held, there } = split(lib, ids);
   const { direct, queued: here } = roundOrQueued(lib, held, true);
-  // Ids whose own save is kept are still live on the server; trash those first.
-  const stillLive = direct.filter((id) => lib.outbox.status().waiting.has(id));
-  if (stillLive.length > 0) await api.deleteNotes(stillLive);
+  await trashRoundTheQueue(lib, direct);
   const sent = [...there, ...direct];
   const remote = sent.length > 0 ? await pulled(api.deleteNotesPermanently(sent).then((r) => r.deleted), { ids: sent, refiles: true }, true) : 0;
   if (here.length > 0) {
