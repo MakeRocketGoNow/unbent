@@ -8,8 +8,9 @@ import { configQuery } from '../queries.js';
 /**
  * Mints a Turnstile token for the native apps, which have no widget of their own.
  *
- * Where the instance checks a token with every request for a sign-in code (MAK-243), the
- * Android and iOS sign-in screens, which make that request themselves, need one too.
+ * Where the instance checks a token with every request for a sign-in code and every
+ * exchange of a provider's ID token (MAK-243), the Android and iOS sign-in screens, which
+ * make those requests themselves, need one too.
  * Turnstile runs in a browser and nowhere else, so each app loads this page in a web view
  * it keeps off screen, and the page says what the widget concluded through the bridge:
  * `turnstile` with the token, or `turnstile-error`. If the widget is about to want a tap,

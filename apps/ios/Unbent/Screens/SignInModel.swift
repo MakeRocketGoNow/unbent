@@ -27,9 +27,9 @@ final class SignInModel {
     /// above the reason it was not sent.
     private(set) var codeSentTo: String?
 
-    /// The instance's Turnstile page while a code is being asked for, where the instance
-    /// checks a token with that request; the screen draws it only if its widget wants a
-    /// tap. See `TurnstileChallenge`.
+    /// The instance's Turnstile page while a token is being minted for a request the
+    /// instance checks (a code asked for, an Apple sign-in exchanged); the screen draws it
+    /// only if its widget wants a tap. See `TurnstileChallenge`.
     private(set) var challenge: TurnstileChallenge?
 
     private let onSignedIn: (SessionCookie) -> Bool
@@ -69,6 +69,48 @@ final class SignInModel {
         }
     }
 
+    /// Whether the instance checks a Turnstile token with the requests it gates: the
+    /// request for a code, and the exchange of an Apple identity token.
+    private var turnstile: Bool { config?.turnstile != nil }
+
+    /// The Turnstile token a gated request carries, where the instance asks for one.
+    ///
+    /// From the instance's own page in a web view nobody sees unless the widget wants a
+    /// tap (`TurnstileChallenge`). Nil where the instance asks for none, which is also
+    /// what the page answers when the check was turned off after this screen read its
+    /// config. A page that could not mint one ends the step with a sentence of its own:
+    /// the server would only refuse a request without it, and the person is one press
+    /// from trying again. The reverse, a refusal for a missing token, is told where the
+    /// request is made (`ApiError.isMissingCaptcha`) and means the check was turned on
+    /// since, so the config is read again for the next press.
+    private func turnstileToken() async throws -> String? {
+        guard turnstile else { return nil }
+        status = "Checking this phone…"
+        let challenge = TurnstileChallenge(origin: origin, bound: BuildInfo.appBoundHosts != nil)
+        self.challenge = challenge
+        defer { self.challenge = nil }
+        do {
+            return try await challenge.token()
+        } catch {
+            log.warning("Turnstile gave no token: \(error.localizedDescription, privacy: .public)")
+            throw ApiError(
+                status: 0,
+                message: "The check before signing in did not finish. Check your connection and try again.",
+                body: ""
+            )
+        }
+    }
+
+    /// What a request refused for carrying no token is reported as; see `turnstileToken`.
+    private func checkTurnedOn() -> ApiError {
+        refreshConfig()
+        return ApiError(
+            status: 0,
+            message: "This instance now checks this phone before signing in. Press the button again.",
+            body: ""
+        )
+    }
+
     /// Sends a code, or trades one for a session.
     ///
     /// One entry point for both steps because the screen drives the sequence: a nil code
@@ -76,16 +118,10 @@ final class SignInModel {
     /// Sending reports nothing on success beyond moving the screen to the code field; a
     /// confirmation nobody asked for would only be one more thing to read.
     ///
-    /// Where the instance checks a Turnstile token with the request for a code
-    /// (`AppConfig.turnstile`), the token comes first, from the instance's own page in a
-    /// web view nobody sees unless the widget wants a tap (`TurnstileChallenge`). A page
-    /// that could not mint one ends the step with a sentence of its own: the server would
-    /// only refuse a request without it, and the person is one press from trying again.
-    /// A page that says the instance asks for no token sends none: the check was turned
-    /// off after this screen read its config. The reverse, a refusal for a missing token,
-    /// means it was turned on since, so the config is read again for the next press.
+    /// Where the instance checks a Turnstile token with the request for a code, the token
+    /// comes first (`turnstileToken`); the code's own sign-in needs none, since three
+    /// wrong tries already burn it.
     func emailCode(email: String, code: String?) {
-        let turnstile = code == nil && config?.turnstile != nil
         run(
             // Asking for a code signs nobody in, and the line under the form should not
             // say it does.
@@ -94,32 +130,12 @@ final class SignInModel {
         ) {
             let auth = EmailOtpAuth(origin: self.origin)
             guard let code else {
-                var token: String?
-                if turnstile {
-                    let challenge = TurnstileChallenge(origin: self.origin, bound: BuildInfo.appBoundHosts != nil)
-                    self.challenge = challenge
-                    defer { self.challenge = nil }
-                    do {
-                        token = try await challenge.token()
-                    } catch {
-                        self.log.warning("Turnstile gave no token: \(error.localizedDescription, privacy: .public)")
-                        throw ApiError(
-                            status: 0,
-                            message: "The check before a code is sent did not finish. Check your connection and try again.",
-                            body: ""
-                        )
-                    }
-                    self.status = "Sending a code…"
-                }
+                let token = try await self.turnstileToken()
+                self.status = "Sending a code…"
                 do {
                     try await auth.sendCode(email: email, captchaToken: token)
                 } catch let error as ApiError where error.isMissingCaptcha {
-                    self.refreshConfig()
-                    throw ApiError(
-                        status: 0,
-                        message: "This instance now checks this phone before sending a code. Press Email me a code again.",
-                        body: ""
-                    )
+                    throw self.checkTurnedOn()
                 }
                 self.codeSentTo = email
                 return nil
@@ -146,15 +162,27 @@ final class SignInModel {
 
     /// Apple's sheet, then the token to the server.
     ///
+    /// The Turnstile token, where the instance asks for one, is minted before the sheet
+    /// rather than beside it: the page may want a tap, and a challenge drawn under
+    /// Apple's sheet is one nobody can give. A second or so of "Checking this phone…"
+    /// before the sheet is the price.
+    ///
     /// The name is set afterwards and its failure is let go: Apple gives it once, the
     /// account exists either way, and holding a good sign-in back over a display name
     /// would be the wrong way round.
     func apple() {
-        run(progress: "Signing in…", failure: "Sign in with Apple did not work.") {
+        run(progress: turnstile ? "Checking this phone…" : "Signing in…", failure: "Sign in with Apple did not work.") {
             let auth = AppleAuth(origin: self.origin)
+            let captchaToken = try await self.turnstileToken()
+            self.status = "Signing in…"
             let nonce = AppleAuth.Nonce.random()
             let answer = try await self.sheets.apple(nonce: nonce)
-            let session = try await auth.signIn(identityToken: answer.identityToken, nonce: nonce)
+            let session: SessionCookie
+            do {
+                session = try await auth.signIn(identityToken: answer.identityToken, nonce: nonce, captchaToken: captchaToken)
+            } catch let error as ApiError where error.isMissingCaptcha {
+                throw self.checkTurnedOn()
+            }
             if let name = answer.name {
                 do {
                     try await auth.setName(name, session: session)

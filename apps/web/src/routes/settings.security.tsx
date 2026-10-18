@@ -5,7 +5,7 @@ import { isLocalMethod } from '@unbent/shared';
 import { Button } from '../components/Button.js';
 import type { Passkey } from '@better-auth/passkey';
 import { passkey, signIn, useSession } from '../auth-client.js';
-import { TURNSTILE_FAILED_MESSAGE, useCodeRequest } from '../components/Turnstile.js';
+import { TURNSTILE_FAILED_MESSAGE, requestCode, startProviderSignIn, useTurnstileGate } from '../components/Turnstile.js';
 import { configQuery } from '../queries.js';
 import { isHosted } from '../app-bridge.js';
 import { useSignOut } from '../useSignOut.js';
@@ -195,8 +195,9 @@ function Reverify({ onVerified, onCancel }: ReverifyProps) {
   const otp = providers.includes('email-otp');
   const password = providers.includes('password');
   const social = providers.filter((p) => !isLocalMethod(p));
-  // The instance's check in front of the request for a code is in front of this one too.
-  const codeRequest = useCodeRequest(otp ? config.data?.turnstile?.siteKey : undefined);
+  // The instance's check in front of the request for a code and the start of a provider
+  // sign-in is in front of both here too, as on the sign-in screen.
+  const gate = useTurnstileGate(otp || social.length > 0 ? config.data?.turnstile?.siteKey : undefined);
 
   const email = session?.user.email ?? '';
   const signOutAndLeave = useSignOut();
@@ -210,7 +211,7 @@ function Reverify({ onVerified, onCancel }: ReverifyProps) {
     setBusy(true);
     setError(null);
     try {
-      const result = await codeRequest.send(email);
+      const result = await requestCode(gate, email);
       if (result?.error) setError(result.error.message || 'Could not send a code.');
       else setCodeSent(true);
     } catch (err) {
@@ -254,12 +255,19 @@ function Reverify({ onVerified, onCancel }: ReverifyProps) {
    * Re-sign in through the provider and come back here. `callbackURL` is this page, so the
    * redirect that a social sign-in cannot avoid at least lands where the action was: the
    * new session it brings back is fresh, and the Add button works on the next press.
+   *
+   * A refusal (no token where the instance checks one) comes back in `error` rather than
+   * thrown, and is read, or the button would say "Redirecting…" for good.
    */
   async function reSocial(provider: string) {
     setBusy(true);
     setError(null);
     try {
-      await signIn.social({ provider, callbackURL: '/settings/security' });
+      const result = await startProviderSignIn(gate, { provider, callbackURL: '/settings/security' });
+      if (result?.error) {
+        setError(result.error.message || 'Sign-in failed.');
+        setBusy(false);
+      }
     } catch (err) {
       setError((err as Error).message || 'Sign-in failed.');
       setBusy(false);
@@ -319,16 +327,16 @@ function Reverify({ onVerified, onCancel }: ReverifyProps) {
     return (
       <div className="login-form reverify-form">
         {intro}
-        {codeRequest.widget}
+        {gate.widget}
         <Button
           variant="primary"
-          disabled={busy || !codeRequest.ready}
-          tip={codeRequest.waiting}
+          disabled={busy || !gate.ready}
+          tip={gate.waiting}
           onClick={() => void sendCode()}
         >
           {busy ? 'Sending…' : `Email me a code`}
         </Button>
-        {codeRequest.failed && <p className="bad small">{TURNSTILE_FAILED_MESSAGE}</p>}
+        {gate.failed && <p className="bad small">{TURNSTILE_FAILED_MESSAGE}</p>}
         <Button variant="quiet" size="small" disabled={busy} onClick={onCancel}>
           Cancel
         </Button>
@@ -399,13 +407,17 @@ function Reverify({ onVerified, onCancel }: ReverifyProps) {
           Sign in again to continue. You will come back to this page, and the passkey can be
           added then.
         </p>
+        {gate.widget}
+        {gate.failed && <p className="bad small">{TURNSTILE_FAILED_MESSAGE}</p>}
         <div className="login-actions">
           {social.map((p) => (
             <button
               key={p}
               type="button"
               className="provider"
-              disabled={busy}
+              disabled={busy || !gate.ready}
+              data-tip={gate.waiting}
+              aria-description={gate.waiting}
               onClick={() => void reSocial(p)}
             >
               {busy ? 'Redirecting…' : `Continue with ${socialLabel(p)}`}

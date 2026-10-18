@@ -348,6 +348,62 @@ describe('Login', () => {
       await waitFor(() => expect(api.getConfig).toHaveBeenCalledTimes(2));
     });
 
+    /**
+     * The provider press is gated too: a provider sign-in is a sign-up, and the door a
+     * script with throwaway Google accounts walks in by. One widget serves the screen,
+     * drawn above the providers, and both kinds of button wait on it.
+     */
+    it('draws one widget above the providers, and the provider press carries its token', async () => {
+      harness(['google', 'email-otp'], TURNSTILE);
+      await waitFor(() => expect(screen.getByText('Continue with Google')).toBeTruthy());
+      await waitFor(() => expect(widgets).toHaveLength(1));
+      const google = () => screen.getByText('Continue with Google').closest('button') as HTMLButtonElement;
+      expect(google().disabled).toBe(true);
+      expect(google().getAttribute('aria-description')).toBe('Waiting for the check above to finish');
+      expect((screen.getByText('Email me a code') as HTMLButtonElement).disabled).toBe(true);
+      // Above the buttons, so "the check above" is where the faded button points.
+      const widget = document.querySelector('.turnstile')!;
+      expect(widget.compareDocumentPosition(google()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+      pass('tok-1');
+      await waitFor(() => expect(google().disabled).toBe(false));
+      expect((screen.getByText('Email me a code') as HTMLButtonElement).disabled).toBe(false);
+      fireEvent.click(google());
+      await waitFor(() =>
+        expect(signIn.social).toHaveBeenCalledWith({
+          provider: 'google',
+          callbackURL: '/notes',
+          errorCallbackURL: '/login',
+          fetchOptions: { headers: { 'x-captcha-response': 'tok-1' } },
+        }),
+      );
+      // Spent by the press, whatever came of it: the next press needs a token of its own.
+      await waitFor(() => expect(widgets).toHaveLength(2));
+      expect(widgets[0]!.removed).toBe(true);
+    });
+
+    /** A refused start used to leave the button saying "Redirecting…" for good. */
+    it('shows a refused provider start, and says the check is new when it was refused for a missing token', async () => {
+      vi.mocked(signIn.social).mockResolvedValueOnce({
+        error: { code: 'MISSING_RESPONSE', message: 'Missing CAPTCHA response', status: 400, statusText: 'Bad Request' },
+      } as never);
+      harness(['google']);
+      await waitFor(() => expect(screen.getByText('Continue with Google')).toBeTruthy());
+      expect(api.getConfig).toHaveBeenCalledTimes(1);
+      fireEvent.click(screen.getByText('Continue with Google'));
+      await waitFor(() => expect(screen.getByText(CHECK_TURNED_ON_MESSAGE)).toBeTruthy());
+      await waitFor(() => expect(api.getConfig).toHaveBeenCalledTimes(2));
+      expect(screen.getByText('Continue with Google')).toBeTruthy();
+    });
+
+    /** A passkey opens no door a stranger can use, so a screen of only passkeys draws no widget. */
+    it('draws no widget for a screen that offers only passkeys', async () => {
+      harness(['passkey'], TURNSTILE);
+      await waitFor(() => expect(screen.getByText('Sign in with a passkey')).toBeTruthy());
+      expect(widgets).toHaveLength(0);
+      expect((screen.getByText('Sign in with a passkey') as HTMLButtonElement).disabled).toBe(false);
+    });
+
     it('draws no widget, and sends no header, where the instance asks for no token', async () => {
       harness(['email-otp']);
       await waitFor(() => expect(screen.getByText('Email me a code')).toBeTruthy());

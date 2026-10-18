@@ -121,7 +121,7 @@ android {
         versionCode = secret("unbent.versionCode", "UNBENT_VERSION_CODE")?.toIntOrNull() ?: 1
         // What a person sees, in Settings and on the store listing. Bumped by hand, because
         // it means something, unlike the code above, which is bookkeeping.
-        versionName = "0.2.0"
+        versionName = "0.2.1"
 
         buildConfigField("String", "DEFAULT_INSTANCE", "\"$defaultInstance\"")
         manifestPlaceholders["instanceHost"] = URI(defaultInstance).host

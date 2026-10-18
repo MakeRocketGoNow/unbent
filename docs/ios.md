@@ -35,31 +35,33 @@ The debug build is a second app, as on Android: bundle id `.debug`, the name "Un
 
 **How it signs in.** By what the instance offers, read from `GET /api/config`. Two methods
 are only requests: a code by email and a password, against Better Auth directly; where the
-instance checks a Turnstile token with the request for a code, the app first loads the
-instance's `/turnstile` page in a web view the screen holds at no height
-(`TurnstileChallenge.swift`), which mints the token through the bridge and is given its
-height only if the widget wants a tap. Three put
-one of the system's sheets first. Apple's, which returns an identity token bound to a
+instance checks a Turnstile token with the request for a code, and with the exchange of
+an Apple identity token, the app first loads the instance's `/turnstile` page in a web
+view the screen holds at no height (`TurnstileChallenge.swift`), which mints the token
+through the bridge and is given its height only if the widget wants a tap. Three put one
+of the system's sheets first. Apple's, which returns an identity token bound to a
 nonce: Apple is given the nonce's SHA-256 and the server the nonce itself, and the name
-Apple sends on a first authorization is set on the account afterwards. The passkey sheet,
-which signs the challenge from `/api/auth/passkey/generate-authenticate-options`; the
-cookie that response sets names the challenge and is sent back with the answer by hand,
-since the app's client keeps no cookie jar. And a browser at `/connect`
-(`ASWebAuthenticationSession`, sharing Safari's cookies) for Google and for any other
-provider the instance has, which comes back on `unbent://connect` with a one-time token,
-the Android app's flow, and the same two redirect schemes, since a scheme belongs to one
-platform's install. Google has no sheet of its own here: Google's SDK would be a
-dependency that ends in a web sheet anyway. Passkeys need the app to claim the instance's
-host (`webcredentials:` in `Config/Unbent.entitlements`) and the instance to vouch for the
-app, below; the debug build claims `dev.unbent.app` too, in developer mode, and a dev
-server on localhost cannot be claimed at all. Every path ends the same way as on Android:
-the session cookie the response set is kept per origin, here in the Keychain under the App
-Group so the share extension can read it, and is `AfterFirstUnlockThisDeviceOnly`: usable
-while the phone is locked in a pocket, and never restored onto another phone. Its value
-goes out as `Authorization: Bearer` from the app's own client, and the same cookie is put
-into the web view's store before every load. `URLSession` hands a response's `Set-Cookie`
-headers over joined into one, so they are split apart again before the session is looked
-for; `SessionCookie.splitSetCookie` says why `HTTPCookie` is not used for that.
+Apple sends on a first authorization is set on the account afterwards; the Turnstile
+token, where one is asked for, is minted before the sheet, since a challenge drawn under
+it could not be given its tap. The passkey sheet, which signs the challenge from
+`/api/auth/passkey/generate-authenticate-options`; the cookie that response sets names the
+challenge and is sent back with the answer by hand, since the app's client keeps no cookie
+jar. And a browser at `/connect` (`ASWebAuthenticationSession`, sharing Safari's cookies)
+for Google and for any other provider the instance has, which comes back on
+`unbent://connect` with a one-time token, the Android app's flow, and the same two
+redirect schemes, since a scheme belongs to one platform's install. Google has no sheet of
+its own here: Google's SDK would be a dependency that ends in a web sheet anyway. Passkeys
+need the app to claim the instance's host (`webcredentials:` in
+`Config/Unbent.entitlements`) and the instance to vouch for the app, below; the debug
+build claims `dev.unbent.app` too, in developer mode, and a dev server on localhost cannot
+be claimed at all. Every path ends the same way as on Android: the session cookie the
+response set is kept per origin, here in the Keychain under the App Group so the share
+extension can read it, and is `AfterFirstUnlockThisDeviceOnly`: usable while the phone is
+locked in a pocket, and never restored onto another phone. Its value goes out as
+`Authorization: Bearer` from the app's own client, and the same cookie is put into the web
+view's store before every load. `URLSession` hands a response's `Set-Cookie` headers over
+joined into one, so they are split apart again before the session is looked for;
+`SessionCookie.splitSetCookie` says why `HTTPCookie` is not used for that.
 
 Signing out on the page tells the app, which forgets its copy and shows its own sign-in. A
 page that believes the session has ended says so too, and the app asks `/api/me` before

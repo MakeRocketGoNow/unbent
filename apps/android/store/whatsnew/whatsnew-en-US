@@ -1,5 +1,3 @@
-Unbent on your phone is now the whole Unbent site, so everything the website does works here too: selecting several notes at once, auto-fill, custom fields, import and export, and every setting.
+Signing in now checks that a phone is asking, not a script, before a code is emailed or a Google account is used. It passes almost everyone without a tap; if it needs one, it appears on the sign-in screen.
 
-Attach a photo straight from the camera. Links to your notes open in the app, and exports save to Downloads.
-
-Back closes whatever is open first. Losing signal no longer signs you out. The Unbent address and version are now under Settings, App settings.
+A refused sign-in says why. Tags in the share sheet wear their colours. An import no longer stops at a row it skipped, and a link to your Unbent opens in the app instead of replacing it.
