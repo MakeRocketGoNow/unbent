@@ -232,6 +232,27 @@ describe('Login', () => {
       email: 'a@example.com',
       type: 'sign-in',
     });
+    // The button that had focus is gone with the form, so the code field takes it.
+    expect(document.activeElement).toBe(screen.getByLabelText('Code'));
+  });
+
+  /**
+   * With passwords on too, the address form has a password field where the code field
+   * goes, and React once reused that `<input>` for the code: never mounted, so never
+   * focused, and still a password field's element underneath.
+   */
+  it('focuses a fresh code field where a password field was', async () => {
+    harness(['email-otp', 'password']);
+    await waitFor(() => expect(screen.getByText('Email me a code')).toBeTruthy());
+    const passwordField = screen.getByLabelText('Password');
+
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'a@example.com' } });
+    fireEvent.click(screen.getByText('Email me a code'));
+
+    await waitFor(() => expect(screen.getByLabelText('Code')).toBeTruthy());
+    const codeField = screen.getByLabelText('Code');
+    expect(codeField).not.toBe(passwordField);
+    expect(document.activeElement).toBe(codeField);
   });
 
   /**
