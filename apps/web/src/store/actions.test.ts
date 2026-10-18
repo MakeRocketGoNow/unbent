@@ -614,6 +614,10 @@ describe('a replayed write', () => {
    * The note whose own save the store refused may be what filled it, so a purge of it
    * goes to the server round that save rather than behind it, and the save then ends on
    * the note being gone (MAK-234). Behind it, the purge would never be sent.
+   *
+   * Permanent delete only acts on a note already in the trash, and this note's trash is
+   * still queued, so the round-the-queue purge has to trash it first or the server
+   * leaves it live and the kept save never ends.
    */
   it('sends a purge of a note whose own save the store refused, round that save', async () => {
     const { fake, note } = library([row('n1', { title: 'old' })]);
@@ -626,8 +630,10 @@ describe('a replayed write', () => {
 
     const replay = vi.fn();
     fake.config.onlineDetector.subscribe(replay);
+    vi.mocked(api.deleteNotes).mockResolvedValueOnce({ trashed: 1 });
     vi.mocked(api.deleteNotePermanently).mockResolvedValueOnce(undefined as never);
     await actions.purgeNote('n1');
+    expect(api.deleteNotes).toHaveBeenCalledWith(['n1']);
     expect(api.deleteNotePermanently).toHaveBeenCalledWith('n1');
     expect(fake.queue).toHaveLength(1);
     expect(replay).toHaveBeenCalledTimes(1);
@@ -636,6 +642,21 @@ describe('a replayed write', () => {
     vi.mocked(api.updateNote).mockRejectedValueOnce(new ApiError(404, '404: Not found'));
     expect(await fake.replayOne()).toBe('refused');
     expect(fake.queue).toHaveLength(0);
+  });
+
+  it('trashes a selected note whose own save the store refused before permanently deleting it', async () => {
+    const { fake, note } = library([row('n1', { title: 'old' })]);
+    const base = note('n1');
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'typed past the limit' }, base });
+    await tick();
+    vi.mocked(api.updateNote).mockRejectedValueOnce(new ApiError(402, '402: no room', 'STORAGE_FULL', 'notes'));
+    expect(await fake.replayOne()).toBe('kept');
+
+    vi.mocked(api.deleteNotes).mockResolvedValueOnce({ trashed: 1 });
+    vi.mocked(api.deleteNotesPermanently).mockResolvedValueOnce({ deleted: 1 });
+    expect(await actions.purgeNotes(['n1'])).toBe(1);
+    expect(api.deleteNotes).toHaveBeenCalledWith(['n1']);
+    expect(api.deleteNotesPermanently).toHaveBeenCalledWith(['n1']);
   });
 
   /**
@@ -664,13 +685,53 @@ describe('a replayed write', () => {
 
     const replay = vi.fn();
     fake.config.onlineDetector.subscribe(replay);
+    vi.mocked(api.deleteNotes).mockResolvedValueOnce({ trashed: 1 });
     vi.mocked(api.deleteNotesPermanently).mockResolvedValueOnce({ deleted: 1 });
     vi.mocked(api.purgeNotes).mockResolvedValueOnce({ scope: 'trashed', notesDeleted: 2, filesDeleted: 0 });
     const out = await actions.emptyTrash(['n1', 'n9']);
+    expect(api.deleteNotes).toHaveBeenCalledWith(['n1']);
     expect(api.deleteNotesPermanently).toHaveBeenCalledWith(['n1']);
     expect(api.purgeNotes).toHaveBeenCalledWith('trashed');
     expect(out.notesDeleted).toBe(3);
     expect(replay).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * The server's permanent delete is a no-op on a live note (the two-step safety
+   * property). Without trashing first, emptying the trash of a note whose save is kept
+   * would report success, free nothing, and leave the account stuck over the limit.
+   */
+  it('does not permanently delete a live note whose save the store refused until it has trashed it', async () => {
+    const { fake, note } = library([row('n1', { title: 'old' })]);
+    const base = note('n1');
+    await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'typed past the limit' }, base });
+    await tick();
+    vi.mocked(api.updateNote).mockRejectedValueOnce(new ApiError(402, '402: no room', 'STORAGE_FULL', 'notes'));
+    expect(await fake.replayOne()).toBe('kept');
+
+    await actions.trashNote('n1');
+    await tick();
+
+    const live = new Set(['n1']);
+    vi.mocked(api.deleteNotes).mockImplementation(async (ids) => {
+      let trashed = 0;
+      for (const id of ids) {
+        if (live.delete(id)) trashed += 1;
+      }
+      return { trashed };
+    });
+    vi.mocked(api.deleteNotesPermanently).mockImplementation(async (ids) => {
+      let deleted = 0;
+      for (const id of ids) {
+        if (!live.has(id)) deleted += 1;
+      }
+      return { deleted };
+    });
+    vi.mocked(api.purgeNotes).mockResolvedValueOnce({ scope: 'trashed', notesDeleted: 0, filesDeleted: 0 });
+
+    const out = await actions.emptyTrash(['n1']);
+    expect(live.has('n1')).toBe(false);
+    expect(out.notesDeleted).toBe(1);
   });
 
   it('takes a note the server no longer has as done', async () => {
