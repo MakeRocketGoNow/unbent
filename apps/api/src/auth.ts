@@ -90,7 +90,15 @@ function codesDeliverable(env: Env): boolean {
 }
 
 /**
- * Turnstile in front of the sign-in code endpoints, when the instance has both keys.
+ * The route a provider sign-in starts on, whichever way: the web screen asks it for the
+ * provider's URL, and the native apps hand it the ID token the phone's sheet produced.
+ * Named because the Turnstile check stands in front of it and its test calls it by name.
+ */
+export const SOCIAL_SIGN_IN_PATH = '/sign-in/social';
+
+/**
+ * Turnstile in front of the sign-in code endpoints and the provider sign-in, when the
+ * instance has both keys.
  *
  * Both or neither, as an OAuth pair is read: a secret with no site key would refuse every
  * request for a code, since no page could mint a token, and a site key with no secret
@@ -98,9 +106,11 @@ function codesDeliverable(env: Env): boolean {
  * `warnIfHalfTurnstile` says so once, rather than locking the code sign-in or quietly not
  * protecting it.
  *
- * Off, too, where no code can be sent (`codesDeliverable`): the endpoints it stands in
- * front of are not mounted then, and a site key in the config would describe a widget
- * for a request nobody can make.
+ * Off, too, where nothing it stands in front of is offered: no code can be sent
+ * (`codesDeliverable`) and no provider is configured. The endpoints are not mounted
+ * then, and a site key in the config would describe a widget for a request nobody can
+ * make. An instance with a provider and no mail (the dev instance is one) keeps the
+ * check: its provider sign-in is the door the check is for.
  *
  * What `/api/config` reports is the site key alone (`AppConfig.turnstile`); the secret
  * never leaves the Worker. Pure, because `/api/config` reads it on every page load.
@@ -108,7 +118,8 @@ function codesDeliverable(env: Env): boolean {
 export function turnstileOf(env: Env): AppConfig['turnstile'] | undefined {
   const secret = env.TURNSTILE_SECRET_KEY?.trim();
   const siteKey = env.TURNSTILE_SITE_KEY?.trim();
-  return secret && siteKey && codesDeliverable(env) ? { siteKey } : undefined;
+  const guarded = codesDeliverable(env) || configuredSocials(env).length > 0;
+  return secret && siteKey && guarded ? { siteKey } : undefined;
 }
 
 /**
@@ -945,34 +956,51 @@ function createAuth(env: Env): AuthInstance {
        */
       ...(passkeysEnabled(env) ? [passkey({ rpName: 'Unbent', ...relyingParty(env) })] : []),
       /**
-       * Turnstile, in front of every endpoint that mails a sign-in code (MAK-243): the
-       * request for one, and the two password-reset routes that send the same code to an
-       * address with an account (`CODE_ROUTE_PATHS`, the list the day's bounds in
-       * `lib/code-sends.ts` are kept on). Those bounds cap what a day of abuse costs; this
-       * is what keeps a script from spending the cap at all, by asking the browser to
-       * prove it is one before a code is made. Managed Turnstile passes nearly everyone
-       * without a click, so the price to a person is a widget that resolves itself under
-       * the address field. No screen here calls the two reset routes, so a token costs
-       * nobody anything there; left out, they were a way round the check for every
-       * address with an account.
+       * Turnstile, in front of every endpoint that mails a sign-in code (MAK-243) and in
+       * front of the one that starts a provider sign-in.
+       *
+       * The code routes are the request for one, and the two password-reset routes that
+       * send the same code to an address with an account (`CODE_ROUTE_PATHS`, the list
+       * the day's bounds in `lib/code-sends.ts` are kept on). Those bounds cap what a day
+       * of abuse costs; this is what keeps a script from spending the cap at all, by asking
+       * the browser to prove it is one before a code is made. Managed Turnstile passes
+       * nearly everyone without a click, so the price to a person is a widget that
+       * resolves itself on the sign-in screen. No screen here calls the two reset routes,
+       * so a token costs nobody anything there; left out, they were a way round the check
+       * for every address with an account.
+       *
+       * `/sign-in/social` is the other door a stranger can walk in by. A provider sign-in
+       * is sign-up too (an unknown Google or Apple account gets an account here, where
+       * the allowlist is empty), and a farm of throwaway Google accounts driven through a
+       * headless browser was signing up in numbers on unbent.app within days of the code
+       * routes being gated (2026-10-18). The provider checks that the person owns the
+       * Google account; nothing checked that a browser, not a script, was asking us.
+       * Gated as one route, whichever way it is called: the web screen's press, which
+       * asks for the provider's URL and leaves, and the native apps' exchange of an ID
+       * token the phone's own sheet produced. An exemption for the ID-token shape was
+       * considered and refused: an ID token for this instance's web client can be had
+       * from Google's implicit flow in any browser the script controls, with no secret
+       * and no request to this server, so a route that took one unchecked would be the
+       * same open door with one more step. The apps mint their token from `/turnstile`
+       * before the exchange, as they do before a code.
        *
        * Scoped to those and no other, deliberately. The plugin's default set is the
        * password routes, which this instance does not offer the public, and the code's
        * own sign-in (`/sign-in/email-otp`) is already bounded by the code: three tries
-       * and it is burned. Widening it would put a widget in front of a passkey or a
-       * provider that needs none. The native apps have no widget of their own, so they
-       * load `/turnstile` from this instance in a web view and send the token it mints
-       * with the same header (`x-captcha-response`).
+       * and it is burned. A passkey needs none: one can only be made from an account
+       * that already exists, so it opens no door a stranger can use. The native apps
+       * have no widget of their own, so they load `/turnstile` from this instance in a
+       * web view and send the token it mints with the same header (`x-captcha-response`).
        *
        * Off entirely without the pair (`turnstileOf`): a fork that has not set it is as
-       * it was, and the endpoint takes a request with no header. A siteverify that cannot
+       * it was, and the endpoints take a request with no header. A siteverify that cannot
        * be reached is a 500 from the plugin, not a pass: a check that fails open is no
        * check, and the person is one press away from trying again.
        */
       ...(turnstileOf(env) ? [captcha({
         provider: 'cloudflare-turnstile',
         secretKey: env.TURNSTILE_SECRET_KEY!.trim(),
-        endpoints: [...CODE_ROUTE_PATHS],
+        endpoints: [...CODE_ROUTE_PATHS, SOCIAL_SIGN_IN_PATH],
       })] : []),
       /**
        * A six-digit code by email: the way in that needs no account anywhere else.

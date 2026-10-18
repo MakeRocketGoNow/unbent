@@ -7,6 +7,7 @@ import {
   providerOrigins,
   socialConfig,
   confirmDeletionUrl,
+  SOCIAL_SIGN_IN_PATH,
   turnstileOf,
   warnIfHalfTurnstile,
   warnIfOpenToAnyone,
@@ -364,10 +365,17 @@ describe('turnstileOf', () => {
     expect(turnstileOf(env({ ...MAIL, TURNSTILE_SECRET_KEY: 'sec', TURNSTILE_SITE_KEY: '1x00' }))).toEqual({ siteKey: '1x00' });
   });
 
-  /** The endpoints it guards are not mounted without mail, so a key there means nothing. */
-  it('is off where no code can be sent, whatever the keys say', () => {
+  /** The endpoints it guards are not mounted without mail or a provider, so a key there means nothing. */
+  it('is off where no code can be sent and no provider is configured, whatever the keys say', () => {
     expect(turnstileOf(env({ TURNSTILE_SECRET_KEY: 'sec', TURNSTILE_SITE_KEY: '1x00' }))).toBeUndefined();
     expect(turnstileOf(env({ APP_URL: 'http://localhost:5173', TURNSTILE_SECRET_KEY: 'sec', TURNSTILE_SITE_KEY: '1x00' }))).toEqual({ siteKey: '1x00' });
+  });
+
+  /** The dev instance's shape: Google and no mail. Its provider sign-in is the door the check is for. */
+  it('stays on for an instance with a provider and no mail', () => {
+    expect(
+      turnstileOf(env({ GOOGLE_CLIENT_ID: 'id', GOOGLE_CLIENT_SECRET: 'sec', TURNSTILE_SECRET_KEY: 'sec', TURNSTILE_SITE_KEY: '1x00' })),
+    ).toEqual({ siteKey: '1x00' });
   });
 
   it('is off without the pair, and off for half of one', () => {
@@ -439,6 +447,38 @@ describe('Turnstile in front of the sign-in code endpoint', () => {
       expect(res.status).toBe(400);
       expect(((await res.json()) as { code: string }).code).toBe('MISSING_RESPONSE');
     }
+  });
+
+  /**
+   * A provider sign-in is a sign-up where the allowlist is empty, and the one door a
+   * script with throwaway Google accounts can walk in by. Both ways of asking are the one
+   * route: the web screen's press, which asks for the provider's URL, and the native
+   * apps' exchange of an ID token. The second is refused too, deliberately: see the
+   * plugin's comment in `auth.ts` for the implicit-flow bypass an exemption would open.
+   */
+  it('stands in front of a provider sign-in, however it is asked for', async () => {
+    const auth = getAuth(
+      env({
+        BETTER_AUTH_SECRET: 'test-secret',
+        GOOGLE_CLIENT_ID: 'id',
+        GOOGLE_CLIENT_SECRET: 'sec',
+        TURNSTILE_SECRET_KEY: 'turnstile-secret',
+        TURNSTILE_SITE_KEY: '1x00',
+        DB,
+      } as unknown as Record<string, string>),
+    );
+    const pressed = await auth.handler(post(SOCIAL_SIGN_IN_PATH, { provider: 'google', callbackURL: '/notes' }));
+    expect(pressed.status).toBe(400);
+    expect(((await pressed.json()) as { code: string }).code).toBe('MISSING_RESPONSE');
+    const exchanged = await auth.handler(post(SOCIAL_SIGN_IN_PATH, { provider: 'google', idToken: { token: 'eyJ' } }));
+    expect(exchanged.status).toBe(400);
+    expect(((await exchanged.json()) as { code: string }).code).toBe('MISSING_RESPONSE');
+  });
+
+  /** A passkey can only be made from an account that exists, so it opens no door a stranger can use. */
+  it('leaves a passkey sign-in alone', async () => {
+    const res = await withTurnstile().handler(post('/passkey/verify-authentication', { response: {} }));
+    expect(((await res.json()) as { code?: string }).code).not.toBe('MISSING_RESPONSE');
   });
 
   it('leaves the code\'s own sign-in alone, since the code already bounds it', async () => {
