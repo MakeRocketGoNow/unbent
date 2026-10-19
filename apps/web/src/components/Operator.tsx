@@ -1,29 +1,51 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { OPERATOR_SEARCH_MAX, type BackupsStatus, type DumpStatus, type MirrorStatus, type OperatorAccount } from '@unbent/shared';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  FEEDBACK_CATEGORIES,
+  OPERATOR_SEARCH_MAX,
+  type AssistantFeedback,
+  type AssistantFeedbackPage,
+  type BackupsStatus,
+  type DumpStatus,
+  type MirrorStatus,
+  type OperatorAccount,
+} from '@unbent/shared';
 import { HEALTH_WORD, dumpsHealth, mirrorHealth, type Health } from '../backup-health.js';
-import { errorText } from '../notes-api.js';
+import { errorText, setFeedbackRead } from '../notes-api.js';
 import { formatBytes } from '../format-bytes.js';
 import { formatMoment, timeAgo } from './format-when.js';
 import { Button } from './Button.js';
 import { RowChevronIcon } from './icons.js';
-import { operatorAccountsQuery, operatorBackupsQuery } from '../queries.js';
+import { keys, operatorAccountsQuery, operatorBackupsQuery, operatorFeedbackQuery } from '../queries.js';
 
 /**
- * The operator's page (MAK-171, part 5): the backup's health, then every account on the
- * instance. Operator only: the tab is drawn for a session the backups route answers
+ * The operator's page (MAK-171, part 5): the backup's health, what connected
+ * assistants have said about the tools (MAK-212), then every account on the instance.
+ * Operator only: the tab is drawn for a session the backups route answers
  * (`use-operator.ts`), and every route it reads answers anyone else 404.
  *
  * Health first, because it is the question the page exists to answer at a glance:
- * two cards, one per half of the backup, each leading with one word. The accounts are
- * a table of what the directory knows; each row is a link to the account's own page,
- * where the actions live. The actions are not on the rows: each needs a confirm
- * that names the account and what it loses, and a confirm unfolding inside a table row
- * is the layout the issue's "quiet row actions" was warning against, not asking for.
+ * two cards, one per half of the backup, each leading with one word. Feedback next,
+ * because it is the other thing here that waits on the operator, and below a list of
+ * accounts that pages it would be found only by scrolling past all of them. The
+ * accounts are a table of what the directory knows; each row is a link to the account's
+ * own page, where the actions live. The actions are not on the rows: each needs a
+ * confirm that names the account and what it loses, and a confirm unfolding inside a
+ * table row is the layout the issue's "quiet row actions" was warning against, not
+ * asking for.
  */
 export function Operator({ search = '', onSearch }: { search?: string; onSearch: (q: string) => void }) {
   const backups = useQuery(operatorBackupsQuery());
+  const feedback = useQuery(operatorFeedbackQuery());
+  const queryClient = useQueryClient();
+  // Read the list again after each dismiss or Undo, so a full page fills from the older
+  // rows behind it. Safe because the list keeps every row it has touched (`FeedbackList`):
+  // what the refetch brings arrives below, and nothing above it moves.
+  const setRead = async (id: number, read: boolean) => {
+    await setFeedbackRead(id, read);
+    void queryClient.invalidateQueries({ queryKey: keys.operatorFeedback() });
+  };
   // The search as asked of the server: trimmed, and once typing settles, as the notes
   // page's is. The address holds every keystroke, so the field stays a plain controlled
   // input; a name typed at speed is still one request, not one a letter.
@@ -64,6 +86,21 @@ export function Operator({ search = '', onSearch }: { search?: string; onSearch:
           <p className="bad small">{errorText(backups.error)}</p>
         ) : (
           <p className="muted small">Reading the status files…</p>
+        )}
+      </section>
+
+      <section className="settings-section">
+        <h3>Assistant feedback</h3>
+        <p className="muted small">
+          What assistants connected to an account said about the tools, unread, newest first. Each was told to leave the
+          person&apos;s notes out of it. Dismissed or not, it goes after ninety days.
+        </p>
+        {feedback.data ? (
+          <FeedbackList page={feedback.data} setRead={setRead} />
+        ) : feedback.error ? (
+          <p className="bad small">{errorText(feedback.error)}</p>
+        ) : (
+          <p className="muted small">Reading the feedback…</p>
         )}
       </section>
 
@@ -240,6 +277,134 @@ function Fact({ term, children }: { term: string; children: ReactNode }) {
 }
 
 const n = (v: number | null) => (v === null ? '?' : v.toLocaleString());
+
+/**
+ * The assistants' unread feedback, one row each: what it is about, what the assistant
+ * said, and when, from which app, for which account. The account is a link to its page,
+ * as in the table below, since "who was this" is where an operator goes next.
+ *
+ * Dismiss is the row's one action, quiet as a dense list's actions are, and it deletes
+ * nothing (the row is marked read and ages out with the rest), which is why it needs no
+ * confirm. The row stays where it was as one line with Undo, rather than leaving the list:
+ * a dismiss pressed on the wrong row is then undone where the eye already is, and the
+ * rows below do not jump up under the pointer. Every row this list has dismissed or
+ * brought back is kept here with what was last done to it, beside what the query holds,
+ * so a refetch (on focus, on the interval) neither takes an Undo away mid-thought nor,
+ * once the server has stopped listing the row, loses the row an Undo brings back. They
+ * leave when the page does. Rows nobody touched are the query's alone, so an Undo on a
+ * full page can send the newest of the older rows back behind the page at the bottom:
+ * that is paging, far from the pointer, and keeping every row ever shown to stop it would
+ * keep the list from ever shrinking back to twenty.
+ *
+ * The body keeps its line breaks: an assistant writing a bug report writes steps.
+ */
+export function FeedbackList({
+  page,
+  setRead,
+  now = Date.now(),
+}: {
+  page: AssistantFeedbackPage;
+  setRead: (id: number, read: boolean) => Promise<void>;
+  now?: number;
+}) {
+  const [touched, setTouched] = useState<ReadonlyMap<number, { row: AssistantFeedback; read: boolean }>>(new Map());
+  // Every request in flight, so a second dismiss before the first answers keeps both disabled.
+  const [busy, setBusy] = useState<ReadonlySet<number>>(new Set());
+  const [failed, setFailed] = useState<{ id: number; message: string } | null>(null);
+  const byId = new Map(page.feedback.map((f) => [f.id, f] as const));
+  for (const [id, { row }] of touched) if (!byId.has(id)) byId.set(id, row);
+  const rows = [...byId.values()].sort((a, b) => b.createdAt - a.createdAt || b.id - a.id);
+  const isDismissed = (id: number) => touched.get(id)?.read === true;
+
+  async function toggle(row: AssistantFeedback, read: boolean) {
+    setBusy((b) => new Set(b).add(row.id));
+    setFailed(null);
+    try {
+      await setRead(row.id, read);
+      setTouched((t) => new Map(t).set(row.id, { row, read }));
+    } catch (err) {
+      setFailed({ id: row.id, message: errorText(err) });
+    } finally {
+      setBusy((b) => {
+        const next = new Set(b);
+        next.delete(row.id);
+        return next;
+      });
+    }
+  }
+
+  if (rows.length === 0) {
+    return <p className="muted small">Nothing unread. When an assistant reports a problem with the tools, it is listed here.</p>;
+  }
+  return (
+    <>
+      <ul className="dump-list feedback-list">
+        {rows.map((f) => {
+          const label = FEEDBACK_CATEGORIES[f.category] ?? f.category;
+          // Capitalised where it starts the row's last line, and not inside the sentence a dismissed row is.
+          const app = f.clientName || 'An app with no name';
+          const appInSentence = f.clientName || 'an app with no name';
+          // Which report a button acts on, for a screen reader's list of buttons, where twenty
+          // that are all called Dismiss say nothing. It starts with the visible word, so a
+          // person who says "click Dismiss" still reaches it.
+          const what = `${label.toLowerCase()} from ${appInSentence}`;
+          if (isDismissed(f.id)) {
+            return (
+              <li key={f.id} className="dump-row feedback-row">
+                <span className="dump-name">
+                  <span className="muted">
+                    Dismissed: {what}.
+                  </span>
+                  {failed?.id === f.id && <span className="bad small">{failed.message}</span>}
+                </span>
+                <span className="dump-actions">
+                  <Button
+                    variant="quiet"
+                    size="small"
+                    aria-label={`Undo dismissing ${what}`}
+                    disabled={busy.has(f.id)}
+                    onClick={() => void toggle(f, false)}
+                  >
+                    Undo
+                  </Button>
+                </span>
+              </li>
+            );
+          }
+          return (
+            <li key={f.id} className="dump-row feedback-row">
+              <span className="dump-name feedback-text">
+                <span className="feedback-about">
+                  <strong>{label}</strong>
+                  {f.tool && (
+                    <>
+                      {' '}
+                      <span className="muted">in</span> <code className="wrap-anywhere">{f.tool}</code>
+                    </>
+                  )}
+                </span>
+                <span className="feedback-body">{f.body}</span>
+                <span className="muted small">
+                  <span title={formatMoment(f.createdAt)}>{timeAgo(f.createdAt, now)}</span> · {app} for{' '}
+                  <Link to="/settings/operator/$userId" params={{ userId: f.userId }}>
+                    {f.email ?? f.userId}
+                  </Link>
+                </span>
+                {failed?.id === f.id && <span className="bad small">{failed.message}</span>}
+              </span>
+              <span className="dump-actions">
+                <Button variant="quiet" size="small" aria-label={`Dismiss ${what}`} disabled={busy.has(f.id)} onClick={() => void toggle(f, true)}>
+                  Dismiss
+                </Button>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {page.more && <p className="muted small">These are the newest {page.feedback.length}; dismissing them brings older ones into the list.</p>}
+    </>
+  );
+}
 
 /**
  * The accounts search: a piece of an email or a name, answered by the server, since the

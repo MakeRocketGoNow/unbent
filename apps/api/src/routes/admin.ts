@@ -13,6 +13,7 @@ import { beginDump } from '../lib/dump.js';
 import { MIRROR_STATUS_KEY, STATUS_KEY, dumpPrefix } from '../lib/backups.js';
 import { beforeLoadKey, describeDump, dumpBeforeLoad, loadReserve, resolveDumpDownload, resolveDumpKey, streamDump } from '../lib/load.js';
 import { isOperator } from '../lib/instance.js';
+import { listFeedback, markFeedbackRead } from '../lib/assistant-feedback.js';
 import { userPrefix } from '../lib/repo.js';
 import { clearAccount, deleteAccount } from '../lib/account-deletion.js';
 import { accountDeletionOffered } from '../auth.js';
@@ -820,6 +821,31 @@ export const admin = new Hono<AppEnv>()
     // read and the client has no business asking for more than the list draws.
     const limit = Math.min(OPERATOR_PAGE_MAX, Math.max(1, Math.trunc(Number(c.req.query('limit'))) || OPERATOR_PAGE_SIZE));
     return c.json(await listOperatorAccounts(c.env.DB, c.req.query('after') ?? '', limit, q));
+  })
+
+  /**
+   * The assistants' unread feedback on the tools, newest first, with each account's
+   * address (MAK-212, `lib/assistant-feedback.ts`). Across accounts, so logged as every
+   * read of other people's accounts here is.
+   */
+  .get('/admin/feedback', requireAuth, async (c) => {
+    const email = c.get('user')?.email;
+    if (!isOperator(c.env, email)) return c.json({ error: 'Not found' }, 404);
+    console.log(`[store] operator=${email} feedback`);
+    return c.json(await listFeedback(c.env.DB));
+  })
+
+  /**
+   * Dismisses one piece of feedback from the list, or with `read: false` brings it back:
+   * the page's Undo. Nothing is deleted; the row ages out with the rest.
+   */
+  .post('/admin/feedback/:id/read', requireAuth, zValidator('json', z.object({ read: z.boolean() })), async (c) => {
+    const email = c.get('user')?.email;
+    if (!isOperator(c.env, email)) return c.json({ error: 'Not found' }, 404);
+    const id = Number(c.req.param('id'));
+    if (!Number.isSafeInteger(id)) return c.json({ error: 'No such feedback' }, 404);
+    if (!(await markFeedbackRead(c.env.DB, id, c.req.valid('json').read))) return c.json({ error: 'No such feedback' }, 404);
+    return c.body(null, 204);
   })
 
   /**

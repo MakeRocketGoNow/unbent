@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { protectMcp, userIdFrom } from '../mcp/auth.js';
+import { clientIdFrom, protectMcp, userIdFrom } from '../mcp/auth.js';
 import { createUnbentMcpHandler } from '../mcp/server.js';
 import type { AppEnv } from '../types.js';
 
@@ -17,6 +17,6 @@ import type { AppEnv } from '../types.js';
  */
 export const mcpRoutes = new Hono<AppEnv>().all('/mcp', (c) =>
   protectMcp(c.env, async (request, claims) =>
-    createUnbentMcpHandler(c.env, userIdFrom(claims), c.executionCtx).fetch(request),
+    createUnbentMcpHandler(c.env, userIdFrom(claims), clientIdFrom(claims), c.executionCtx).fetch(request),
   )(c.req.raw),
 );

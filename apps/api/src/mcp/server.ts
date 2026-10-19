@@ -9,6 +9,7 @@ import { UploadGrantsRepo } from '../lib/upload-grants.js';
 import type { Env } from '../types.js';
 import { INACTIVE_TOOL_MESSAGE, gatedRegistrar, type PlanGate } from './plan-gate.js';
 import { registerAttachmentTools } from './tools/attachments.js';
+import { registerFeedbackTool } from './tools/feedback.js';
 import { registerReadTools } from './tools/read.js';
 import { registerWriteTools } from './tools/write.js';
 
@@ -27,6 +28,8 @@ import { registerWriteTools } from './tools/write.js';
 export function createUnbentMcpHandler(
   env: Env,
   userId: string,
+  /** The OAuth client calling, which only the feedback tool reads (to say which assistant wrote). */
+  clientId: string,
   // Structural rather than the platform's ExecutionContext: Hono hands the route a
   // narrower type, and waitUntil is the only member anything here calls.
   ctx: { waitUntil(promise: Promise<unknown>): void },
@@ -59,6 +62,8 @@ export function createUnbentMcpHandler(
     // Upload links stay in D1: the token is looked up before anyone knows whose it is.
     const uploads = new UploadGrantsRepo(env.DB, userId);
     registerAttachmentTools(gated, env, ctx, { notes, attachments, uploads }, links, async () => quotaOf(env, await plan()));
+    // Feedback on the tools goes to the operator, in D1 (MAK-212).
+    registerFeedbackTool(gated, env.DB, { userId, clientId });
     return server;
   });
 }

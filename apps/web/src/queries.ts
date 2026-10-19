@@ -236,6 +236,7 @@ export const keys = {
   /** The operator page's reads, under one root so an action can invalidate all of them at once. */
   operatorBackups: () => ['operator', 'backups'] as const,
   operatorAccounts: () => ['operator', 'accounts'] as const,
+  operatorFeedback: () => ['operator', 'feedback'] as const,
   /** One search's pages of the list, under its key; an object, so no account id can be mistaken for it. */
   operatorAccountsList: (q: string) => ['operator', 'accounts', { q }] as const,
   /** Under the list's key, so one invalidation refreshes the list and every account page. */
@@ -782,6 +783,20 @@ export const operatorAccountsQuery = (q = '') =>
     refetchInterval: 5 * 60 * 1000,
     refetchOnWindowFocus: true,
     placeholderData: keepPreviousData,
+  });
+
+/**
+ * The assistants' unread feedback (MAK-212). Refetched as the page's other reads are, so
+ * a page left open picks up what came in, and after each dismiss or Undo, so a full page
+ * fills from behind; the list keeps the rows it has touched (`FeedbackList`).
+ */
+export const operatorFeedbackQuery = () =>
+  queryOptions({
+    queryKey: keys.operatorFeedback(),
+    queryFn: () => api.operatorFeedback(),
+    staleTime: 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
+    refetchOnWindowFocus: true,
   });
 
 /** One account's row, for its page; null is the route's 404, an id the directory does not hold live. */
