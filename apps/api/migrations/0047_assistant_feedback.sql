@@ -17,10 +17,13 @@
 -- With the account by foreign key, so a deleted account's feedback goes with its `user`
 -- row and nothing in `lib/account-deletion.ts` has to remember it.
 --
--- Two indexes, both for statements on this table alone (a new table, so no other
--- statement's plan moves, AGENTS.md): the account's recent rows, which the daily bound
--- counts on every write, and the age, which the newest-first list walks and the prune
--- deletes by range.
+-- Three indexes, all for statements on this table alone (a new table, so no other
+-- statement's plan moves, AGENTS.md): the account's recent rows, which the day's bound
+-- counts on every write; the age, which the prune deletes by range; and the unread rows
+-- by age, which the operator's newest-first list walks. That last one is partial, so the
+-- list never reads a dismissed row: without it the list went in by the age index and
+-- stepped past every row dismissed in the last ninety days, which is most of the table
+-- once the operator keeps up, on every refetch of a page left open.
 CREATE TABLE assistant_feedback (
   id          INTEGER PRIMARY KEY,
   user_id     TEXT    NOT NULL REFERENCES user(id) ON DELETE CASCADE,
@@ -35,3 +38,4 @@ CREATE TABLE assistant_feedback (
 
 CREATE INDEX idx_assistant_feedback_user ON assistant_feedback(user_id, created_at);
 CREATE INDEX idx_assistant_feedback_created ON assistant_feedback(created_at);
+CREATE INDEX idx_assistant_feedback_unread ON assistant_feedback(created_at) WHERE read_at IS NULL;
