@@ -495,6 +495,30 @@ registerRoute(
 );
 
 /**
+ * Every other page load of this origin: the browser's preloaded request, so the server
+ * is asked once.
+ *
+ * Navigation preload (above) starts a request for *every* page load this worker
+ * controls, not only the ones a route here answers. A page load no route took (the
+ * Worker's own addresses under `/api/`, above all) used to fall through to the browser,
+ * which threw the preload away and asked the server a second time. For most addresses
+ * that is a wasted request. For `/api/auth/callback/<provider>` it was a broken sign-in:
+ * the first request used up the sign-in's one-time state, so the second, the one the
+ * browser drew, found none and ended on Better Auth's `state_mismatch` page, with the
+ * winner of the race, and so whether the person was signed in after all, down to timing
+ * (2026-10-13 to 10-19). Any one-time link under `/api/` would fail the same way.
+ *
+ * Registered last, so it takes only what every route above declined. A redirect comes
+ * back as the opaque redirect a page load expects, and its cookies are set either way.
+ * Only GET, as every route here: a POST page load (Apple's sign-in returns as one) is
+ * never preloaded and still goes to the network once, as it always did.
+ */
+registerRoute(
+  ({ request, url }) => request.mode === 'navigate' && url.origin === self.location.origin,
+  async ({ event, request }) => ((await (event as FetchEvent).preloadResponse) as Response | undefined) ?? fetch(request),
+);
+
+/**
  * Messages from the page.
  *
  * `BUILD`: which deploy this worker is. Answered on the port the page sent, with the
