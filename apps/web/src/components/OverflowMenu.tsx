@@ -30,6 +30,12 @@ export interface OverflowItem {
    * (see `LegalLink.tsx`, which draws the same distinction outside a menu).
    */
   external?: string;
+  /**
+   * Opens `external` in a new tab. For a page used beside this one rather than instead of
+   * it: a feedback form describes what is on screen here, and the app should still be
+   * there to look at. Documents to read stay in the same tab, as `LegalLink` says.
+   */
+  newTab?: boolean;
   /** Destructive items are tinted and sorted to the bottom by the caller. */
   tone?: 'default' | 'danger';
   /** Extra class, for an item needing placement or emphasis beyond `tone`. */
@@ -203,6 +209,7 @@ export function OverflowMenu({
                   key={i}
                   className={className}
                   href={item.external}
+                  target={item.newTab ? '_blank' : undefined}
                   rel="noopener noreferrer"
                   title={item.title}
                   onClick={() => {

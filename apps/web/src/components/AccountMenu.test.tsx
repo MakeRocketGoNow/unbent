@@ -11,6 +11,7 @@ import type { AppConfig } from '@unbent/shared';
 import { keys } from '../queries.js';
 import { AccountMenu } from './AccountMenu.js';
 import { setReachableForTests } from '../connectivity.js';
+import type { BuildInfo } from '../build-info.js';
 
 const BUILT_IN = { privacy: '/privacy', terms: '/terms' };
 
@@ -27,9 +28,12 @@ function harness(
   onSignOut = () => {},
   config: Partial<AppConfig> = { legal: BUILT_IN },
   withAddress = false,
+  build: BuildInfo | null = null,
 ) {
   const rootRoute = createRootRoute({
-    component: () => <AccountMenu email={email} onSignOut={onSignOut} withAddress={withAddress} />,
+    component: () => (
+      <AccountMenu email={email} onSignOut={onSignOut} withAddress={withAddress} build={build} />
+    ),
   });
   const history = createMemoryHistory({ initialEntries: ['/notes'] });
   const router = createRouter({ routeTree: rootRoute, history });
@@ -90,6 +94,34 @@ describe('AccountMenu', () => {
     fireEvent.click(out);
     expect(onSignOut).toHaveBeenCalledTimes(1);
   });
+  it('offers feedback in a new tab, on the forms of the repository the build came from', async () => {
+    const build: BuildInfo = {
+      commit: '3d544d9e0b7f4a1c2d3e4f5a6b7c8d9e0f1a2b3c',
+      date: null,
+      url: null,
+      repo: 'https://github.com/example/unbent',
+      dirty: false,
+    };
+    const { findByLabelText, getByText } = harness(
+      'someone@example.com',
+      () => {},
+      { legal: BUILT_IN },
+      false,
+      build,
+    );
+    fireEvent.click(await findByLabelText('Account: someone@example.com'));
+    const link = getByText('Send feedback');
+    expect(link.tagName).toBe('A');
+    expect(link.getAttribute('href')).toBe('https://github.com/example/unbent/issues/new/choose');
+    expect(link.getAttribute('target')).toBe('_blank');
+  });
+
+  it('offers no feedback link from a build that names no repository', async () => {
+    const { findByLabelText, queryByText } = harness();
+    fireEvent.click(await findByLabelText('Account: someone@example.com'));
+    expect(queryByText('Send feedback')).toBeNull();
+  });
+
   /*
    * An instance that publishes neither document offers no way to them, rather than a menu
    * item leading to a page that says there is nothing there.

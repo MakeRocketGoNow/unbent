@@ -48,8 +48,9 @@ describe('About', () => {
     await harness({}, { ...ci, url: null, repo: null, dirty: true, date: null });
     expect(screen.getByText('3d544d9').tagName).toBe('SPAN');
     expect(screen.getByText('Built with uncommitted changes')).toBeTruthy();
-    // No repository to point at outside CI.
+    // No repository to point at outside CI, for the source or for feedback.
     expect(screen.queryByText('Source code')).toBeNull();
+    expect(screen.queryByText('Feedback')).toBeNull();
   });
 
   it('says so rather than leaving a gap when the build recorded nothing', async () => {
@@ -76,5 +77,18 @@ describe('About', () => {
     cleanup();
     await harness({}, ci);
     expect(screen.queryByText('Legal')).toBeNull();
+  });
+
+  it('links both feedback forms in a new tab, the bug report with the version filled in', async () => {
+    await harness({}, ci);
+    const bug = screen.getByText('Report a bug');
+    expect(bug.getAttribute('href')).toBe(
+      'https://github.com/example/unbent/issues/new?template=bug.yml&version=3d544d9',
+    );
+    expect(bug.getAttribute('target')).toBe('_blank');
+    expect(screen.getByText('Suggest a feature').getAttribute('href')).toBe(
+      'https://github.com/example/unbent/issues/new?template=feature.yml',
+    );
+    expect(screen.getByText('On GitHub, where reports are public')).toBeTruthy();
   });
 });

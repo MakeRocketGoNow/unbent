@@ -1,0 +1,8 @@
+# Every report goes through one of the two forms, so a bug and a request arrive already
+# told apart and labelled, and each reader has seen the line about keeping notes out of a
+# public issue. A blank issue skips both.
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security problem
+    url: https://github.com/MakeRocketGoNow/unbent/security/policy
+    about: Privately, so it can be fixed before it is described in public.

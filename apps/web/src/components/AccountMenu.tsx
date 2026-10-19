@@ -3,7 +3,7 @@ import { configQuery } from '../queries.js';
 import { instanceLine } from '../instance-marker.js';
 import { useOffline } from '../connectivity.js';
 import { isHosted } from '../app-bridge.js';
-import { buildInfo, shortCommit } from '../build-info.js';
+import { buildInfo, feedbackUrl, shortCommit, type BuildInfo } from '../build-info.js';
 import { OverflowMenu, type OverflowItem } from './OverflowMenu.js';
 
 interface AccountMenuProps {
@@ -16,6 +16,8 @@ interface AccountMenuProps {
    * avatar alone; there the row has other things in it.
    */
   withAddress?: boolean | undefined;
+  /** Which build this page is, for its instance line and feedback link. Tests pass their own. */
+  build?: BuildInfo | null;
 }
 
 /** A legal document as a menu item: a route for the built-in ones, an anchor for the rest. */
@@ -29,7 +31,7 @@ function initialOf(email: string): string {
 }
 
 /**
- * Who you are signed in as, and how to leave.
+ * Who you are signed in as, where to report a problem, and how to leave.
  *
  * One coherent menu behind one avatar, which is why it collapses at every width rather than
  * only on a phone: what it holds is account chrome, not navigation. Trash used to sit here
@@ -38,6 +40,11 @@ function initialOf(email: string): string {
  * place of its own at both widths, a row on the floor of the rail and of the drawer,
  * which is where Keep puts it. Leaving it here as well would have been two routes to one
  * page a thumb's width apart.
+ *
+ * Feedback is the one item about the app that stays, against that rule on purpose: "where
+ * do I report this?" is asked from the view that broke, and this menu is the one thing
+ * reachable from every view. Settings has a row of its own at both widths; feedback would
+ * have none, and a row of its own on every view is more chrome than it earns.
  *
  * Lifted out of `Topbar` because the phone no longer shows a topbar over the note list: the
  * list has a heading of its own now, and this menu is reached from the drawer's head
@@ -48,13 +55,19 @@ function initialOf(email: string): string {
  * is otherwise entirely self-hosted, and an avatar is not worth announcing a stable hash of
  * the user's email to a third party on every page load.
  */
-export function AccountMenu({ email, onSignOut, withAddress = false }: AccountMenuProps) {
+export function AccountMenu({
+  email,
+  onSignOut,
+  withAddress = false,
+  build = buildInfo,
+}: AccountMenuProps) {
   const config = useQuery(configQuery());
   const legal = config.data?.legal;
   const instance = config.data
-    ? instanceLine(config.data, buildInfo ? shortCommit(buildInfo) : null)
+    ? instanceLine(config.data, build ? shortCommit(build) : null)
     : null;
   const signOutNeedsConnection = useOffline() && !isHosted();
+  const feedback = build ? feedbackUrl(build) : null;
 
   return (
     <OverflowMenu
@@ -95,6 +108,12 @@ export function AccountMenu({ email, onSignOut, withAddress = false }: AccountMe
             ]
           : []),
         { label: null, separator: true },
+        // Here as well as in Settings › About because this menu is a click from every
+        // view, and "where do I report this?" is asked from the view that broke, not from
+        // Settings. GitHub's chooser rather than one form: the person picks bug or
+        // request there, with each described. About links the two forms directly, the
+        // bug report with the version already filled in.
+        ...(feedback ? [{ label: 'Send feedback', external: feedback, newTab: true }] : []),
         // Findable once signed in, which is the half the sign-in screen's own links cannot
         // cover. They are reference, not something to act on, and they sit above Sign out
         // so the destructive item stays last.

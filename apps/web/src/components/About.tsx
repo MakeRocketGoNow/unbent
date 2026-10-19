@@ -1,6 +1,14 @@
 import type { ReactNode } from 'react';
 import type { AppConfig } from '@unbent/shared';
-import { buildInfo, commitDate, repoName, shortCommit, type BuildInfo } from '../build-info.js';
+import {
+  buildInfo,
+  bugReportUrl,
+  commitDate,
+  featureRequestUrl,
+  repoName,
+  shortCommit,
+  type BuildInfo,
+} from '../build-info.js';
 import { instanceNotes } from '../instance-marker.js';
 import { LegalLink } from './LegalLink.js';
 
@@ -13,8 +21,8 @@ interface AboutProps {
 }
 
 /**
- * What this app is and where it is running: the build, the instance, the source, and the
- * legal documents.
+ * What this app is and where it is running: the build, the instance, where to send
+ * feedback, the source, and the legal documents.
  *
  * Made for the build. It was a line in the account menu first: under the address it read
  * as a third grey line of identity, and under Sign out as an afterthought. Settings is
@@ -33,6 +41,8 @@ export function About({ config, host, build = buildInfo }: AboutProps) {
   const notes = config ? instanceNotes(config) : null;
   const legal = config?.legal;
   const source = build ? repoName(build) : null;
+  const bug = build ? bugReportUrl(build) : null;
+  const feature = build ? featureRequestUrl(build) : null;
 
   return (
     <section className="panel">
@@ -53,6 +63,28 @@ export function About({ config, host, build = buildInfo }: AboutProps) {
             <span className="muted small">{notes ? `${label} · ${notes}` : label}</span>
           )}
         </Fact>
+
+        {/* Ahead of the source, since it is the row a person rather than a developer
+            comes here for. Both forms open in a new tab, unlike every other link here:
+            a report is written while looking at the thing it describes. The line under
+            them is said before the click rather than only on GitHub's form, because
+            what is in these notes is the thing a report must not quote. */}
+        {bug && feature && (
+          <Fact term="Feedback">
+            <span className="about-value">
+              <a href={bug} target="_blank" rel="noopener noreferrer">
+                Report a bug
+              </a>
+              <span className="muted" aria-hidden="true">
+                {' · '}
+              </span>
+              <a href={feature} target="_blank" rel="noopener noreferrer">
+                Suggest a feature
+              </a>
+            </span>
+            <span className="muted small">On GitHub, where reports are public</span>
+          </Fact>
+        )}
 
         {build?.repo && source && (
           <Fact term="Source code">

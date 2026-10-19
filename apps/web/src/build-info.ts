@@ -72,3 +72,33 @@ export function commitDate(info: BuildInfo): string | null {
 export function repoName(info: BuildInfo): string | null {
   return info.repo ? info.repo.replace(/^https?:\/\//, '') : null;
 }
+
+/**
+ * Where to send feedback: the repository's issue forms, a bug report and a feature request
+ * (`.github/ISSUE_TEMPLATE/`). Null where the build has no repository, as for the source
+ * link.
+ *
+ * The repository CI built from rather than a setting, for the reason the source link is: a
+ * fork's instance sends its people to the fork, whose operator is the one who can fix what
+ * they report, and unbent.app needs nothing configured. A build made outside CI has no
+ * repository to name, so it offers no feedback link, which on a local build is no loss.
+ */
+export function feedbackUrl(info: BuildInfo): string | null {
+  return info.repo ? `${info.repo}/issues/new/choose` : null;
+}
+
+/**
+ * The bug report form itself, with the version filled in: the one fact every report needs
+ * and that nobody knows where to find. GitHub fills a form's field from the query parameter
+ * named for its `id`, so `version` here and in `bug.yml` must stay the same word.
+ */
+export function bugReportUrl(info: BuildInfo): string | null {
+  // Written out rather than built, since `url-boundary.test.ts` keeps query building to
+  // the router: a short commit is hex and needs no encoding.
+  return info.repo ? `${info.repo}/issues/new?template=bug.yml&version=${shortCommit(info)}` : null;
+}
+
+/** The feature request form. */
+export function featureRequestUrl(info: BuildInfo): string | null {
+  return info.repo ? `${info.repo}/issues/new?template=feature.yml` : null;
+}
