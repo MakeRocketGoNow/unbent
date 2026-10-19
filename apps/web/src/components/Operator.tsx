@@ -4,19 +4,23 @@ import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-quer
 import {
   FEEDBACK_CATEGORIES,
   OPERATOR_SEARCH_MAX,
+  OPERATOR_SORT_FIRST,
   type AssistantFeedback,
   type AssistantFeedbackPage,
   type BackupsStatus,
   type DumpStatus,
   type MirrorStatus,
   type OperatorAccount,
+  type OperatorOrder,
+  type OperatorSort,
+  type OperatorSortDir,
 } from '@unbent/shared';
 import { HEALTH_WORD, dumpsHealth, mirrorHealth, type Health } from '../backup-health.js';
 import { errorText, setFeedbackRead } from '../notes-api.js';
 import { formatBytes } from '../format-bytes.js';
-import { formatMoment, timeAgo } from './format-when.js';
+import { formatDay, formatMoment, timeAgo } from './format-when.js';
 import { Button } from './Button.js';
-import { RowChevronIcon } from './icons.js';
+import { RowChevronIcon, SortDirectionIcon } from './icons.js';
 import { keys, operatorAccountsQuery, operatorBackupsQuery, operatorFeedbackQuery } from '../queries.js';
 
 /**
@@ -35,7 +39,18 @@ import { keys, operatorAccountsQuery, operatorBackupsQuery, operatorFeedbackQuer
  * table row is the layout the issue's "quiet row actions" was warning against, not
  * asking for.
  */
-export function Operator({ search = '', onSearch }: { search?: string; onSearch: (q: string) => void }) {
+export function Operator({
+  search = '',
+  onSearch,
+  order = {},
+  onOrder,
+}: {
+  search?: string;
+  onSearch: (q: string) => void;
+  /** The accounts' order, as the address holds it: what is left out is the default. */
+  order?: OperatorOrder;
+  onOrder: (order: OperatorOrder) => void;
+}) {
   const backups = useQuery(operatorBackupsQuery());
   const feedback = useQuery(operatorFeedbackQuery());
   const queryClient = useQueryClient();
@@ -54,7 +69,7 @@ export function Operator({ search = '', onSearch }: { search?: string; onSearch:
     const t = setTimeout(() => setTerm(search.trim()), 250);
     return () => clearTimeout(t);
   }, [search]);
-  const accounts = useInfiniteQuery(operatorAccountsQuery(term));
+  const accounts = useInfiniteQuery(operatorAccountsQuery(term, order));
   // By id, keeping the first copy: a row whose email changed between pages can come back
   // on a later one (`listOperatorAccounts`), and the copy that stays is the one in the
   // slot it was drawn in, so the column keeps reading in order until the refetch.
@@ -107,11 +122,16 @@ export function Operator({ search = '', onSearch }: { search?: string; onSearch:
       <section className="settings-section">
         <h3>Accounts</h3>
         <p className="muted small">Notes, size and last change are as of the hourly sweep; an account&apos;s own page reads its store.</p>
-        <AccountSearch search={search} onSearch={onSearch} />
+        <div className="operator-list-controls">
+          <AccountSearch search={search} onSearch={onSearch} />
+          <AccountSortPicker order={order} onOrder={onOrder} />
+        </div>
         {rows ? (
           <AccountsTable
             accounts={rows}
             search={term}
+            order={order}
+            onOrder={onOrder}
             stale={accounts.isPlaceholderData}
             // Not while the rows are the last search's: the button would read the new
             // search's first page, not continue the rows on screen.
@@ -434,11 +454,79 @@ export function AccountSearch({ search, onSearch }: { search: string; onSearch: 
   );
 }
 
+/** The order asked for, with the defaults filled in: by email, and each sort's first direction. */
+export function effectiveOrder(order: OperatorOrder): { sort: OperatorSort; dir: OperatorSortDir } {
+  const sort = order.sort ?? 'email';
+  return { sort, dir: order.dir ?? OPERATOR_SORT_FIRST[sort] };
+}
+
 /**
- * The directory's view of the live accounts, by email, a page at a time. The order is
+ * The order for the address, with the defaults left out, so the page as it opens has a
+ * plain address and one query key, whichever way it was reached.
+ */
+export function canonicalOrder(sort: OperatorSort, dir: OperatorSortDir): OperatorOrder {
+  return { ...(sort !== 'email' ? { sort } : {}), ...(dir !== OPERATOR_SORT_FIRST[sort] ? { dir } : {}) };
+}
+
+/** Pressing a heading: the column it names, or the other way if it is already the one. */
+export function nextOrder(current: OperatorOrder, sort: OperatorSort): OperatorOrder {
+  const now = effectiveOrder(current);
+  if (now.sort !== sort) return canonicalOrder(sort, OPERATOR_SORT_FIRST[sort]);
+  return canonicalOrder(sort, now.dir === 'asc' ? 'desc' : 'asc');
+}
+
+/** The table's sortable columns, in their order, with how each says its two directions. */
+const SORT_COLUMNS: { sort: OperatorSort; label: string; asc: string; desc: string }[] = [
+  { sort: 'email', label: 'Account', asc: 'Email, A to Z', desc: 'Email, Z to A' },
+  { sort: 'created', label: 'Created', asc: 'Oldest account first', desc: 'Newest account first' },
+  { sort: 'notes', label: 'Notes', asc: 'Fewest notes first', desc: 'Most notes first' },
+  { sort: 'size', label: 'Size', asc: 'Smallest first', desc: 'Largest first' },
+  { sort: 'active', label: 'Last change', asc: 'Changed longest ago first', desc: 'Changed most recently first' },
+  { sort: 'dump', label: 'Last dump', asc: 'Oldest dump first', desc: 'Newest dump first' },
+];
+
+/**
+ * The order as a picker, for a phone, where the table is a column of cards and has no
+ * heading row to press. Every column both ways, each said as what comes first, since
+ * "Notes, descending" is a spreadsheet's word for "most notes first". Drawn only at the
+ * width the headings go (the stylesheet hides it otherwise): on a desktop the headings
+ * are the control, and a second one beside them would be two ways to say one thing.
+ */
+export function AccountSortPicker({ order, onOrder }: { order: OperatorOrder; onOrder: (order: OperatorOrder) => void }) {
+  const { sort, dir } = effectiveOrder(order);
+  return (
+    <label className="operator-sort">
+      <span className="muted small">Sort</span>
+      <select
+        className="search-field"
+        value={`${sort}:${dir}`}
+        onChange={(e) => {
+          const [s, d] = e.target.value.split(':') as [OperatorSort, OperatorSortDir];
+          onOrder(canonicalOrder(s, d));
+        }}
+      >
+        {SORT_COLUMNS.flatMap((c) =>
+          (c.sort === 'email' ? (['asc', 'desc'] as const) : (['desc', 'asc'] as const)).map((d) => (
+            <option key={`${c.sort}:${d}`} value={`${c.sort}:${d}`}>
+              {c[d]}
+            </option>
+          )),
+        )}
+      </select>
+    </label>
+  );
+}
+
+/**
+ * The directory's view of the live accounts, by email unless a heading says otherwise, a
+ * page at a time. The order is
  * the address because the address is how an operator finds an account, and it stays put
- * where activity moved every hour. The server orders, searches and pages
- * (`listOperatorAccounts`); the table draws what has been
+ * where activity moved every hour. Every heading sorts, by the server, which also
+ * searches and pages (`listOperatorAccounts`): a list read a page at a time cannot be
+ * sorted by the rows it happens to hold, so a heading that sorted only those would put
+ * the largest of the first fifty at the top and call it the largest. Pressed once, a
+ * column goes the way its question is usually asked (newest, largest, most first);
+ * again, the other way. The table draws what has been
  * read and offers the next page as one button, so an instance with thousands of
  * accounts opens as fast as one with seven. The counts are the last sweep's, which is
  * right across accounts and said in the line under the heading; the account's own page
@@ -452,8 +540,10 @@ export function AccountSearch({ search, onSearch }: { search: string; onSearch: 
  * top right. The first version had the email alone, in the page's ink, and nothing told a
  * reader it went anywhere (found in the part 6 rehearsal). The name is drawn only when it
  * says more than the email does; an account whose name is its address showed it twice.
- * An account with no write recorded shows when it was made, muted, so it does not read
- * as a write.
+ * Created is the day the account was made, a date rather than "41 days ago", since when
+ * someone joined is read as a date. An account with no write recorded says "Never" under
+ * Last change, as one never dumped does under Last dump: it used to show when it was made
+ * there, muted, which the Created column now says on its own.
  *
  * While a new search is being answered the last answer stays and dims (`stale`), as the
  * note list does between notebooks: emptying to a loading line on every pause in the
@@ -468,10 +558,14 @@ export function AccountsTable({
   accounts,
   more,
   search = '',
+  order = {},
+  onOrder,
   stale = false,
   now = Date.now(),
 }: {
   accounts: OperatorAccount[];
+  order?: OperatorOrder;
+  onOrder: (order: OperatorOrder) => void;
   /** The next page, while there is one: whether it is being read, and how to ask for it. */
   more: { fetching: boolean; fetch: () => void } | null;
   /** The search these accounts answer, or `''` for every account. */
@@ -489,16 +583,29 @@ export function AccountsTable({
       </p>
     );
   }
+  const current = effectiveOrder(order);
   return (
     <div className="operator-table-wrap" aria-busy={stale}>
       <table className="operator-table">
         <thead>
           <tr>
-            <th scope="col">Account</th>
-            <th scope="col">Notes</th>
-            <th scope="col">Size</th>
-            <th scope="col">Last change</th>
-            <th scope="col">Last dump</th>
+            {SORT_COLUMNS.map((c) => {
+              const state = current.sort === c.sort ? current.dir : null;
+              return (
+                <th key={c.sort} scope="col" aria-sort={state === 'asc' ? 'ascending' : state === 'desc' ? 'descending' : undefined}>
+                  <button
+                    type="button"
+                    className="note-th-sort"
+                    // The direction is in the name, as the notes table's are: the arrow is not read aloud.
+                    aria-label={`Sort by ${c.label}${state ? `, ${state === 'asc' ? 'ascending' : 'descending'}` : ''}`}
+                    onClick={() => onOrder(nextOrder(order, c.sort))}
+                  >
+                    {c.label}
+                    {state && <SortDirectionIcon direction={state} />}
+                  </button>
+                </th>
+              );
+            })}
             <th scope="col" aria-hidden="true" />
           </tr>
         </thead>
@@ -511,15 +618,16 @@ export function AccountsTable({
                   {a.name && a.name.trim().toLowerCase() !== a.email.trim().toLowerCase() && <span className="muted small"> · {a.name}</span>}
                 </Link>
               </td>
+              <td data-label="Created">
+                <span title={formatMoment(a.createdAt)}>{formatDay(a.createdAt)}</span>
+              </td>
               <td data-label="Notes">{a.noteCount.toLocaleString()}</td>
               <td data-label="Size">{formatBytes(a.storageBytes)}</td>
               <td data-label="Last change">
                 {a.lastActiveAt ? (
                   <span title={formatMoment(a.lastActiveAt)}>{timeAgo(a.lastActiveAt, now)}</span>
                 ) : (
-                  <span className="muted" title={formatMoment(a.createdAt)}>
-                    Made {timeAgo(a.createdAt, now)}
-                  </span>
+                  <span className="muted">Never</span>
                 )}
               </td>
               <td data-label="Last dump">

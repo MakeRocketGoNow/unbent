@@ -13,7 +13,7 @@ vi.mock('@tanstack/react-router', () => ({
 /** The settings nav asks whether an import is running; none is. */
 vi.mock('../import-run.js', () => ({ useImportRunning: () => false }));
 
-const { AccountSearch, AccountsTable, BackupHealth, FeedbackList, LastDump } = await import('./Operator.js');
+const { AccountSearch, AccountSortPicker, AccountsTable, BackupHealth, FeedbackList, LastDump, nextOrder } = await import('./Operator.js');
 
 const now = Date.parse('2026-10-06T12:00:00Z');
 
@@ -174,6 +174,7 @@ describe('AccountsTable', () => {
     const fetch = vi.fn();
     render(
       <AccountsTable
+        onOrder={() => {}}
         accounts={[account({ userId: 'u1', email: 'one@example.com', name: 'one@example.com' }), account({ userId: 'u2', email: 'two@example.com', name: 'Two' })]}
         more={{ fetching: false, fetch }}
         now={now}
@@ -194,33 +195,76 @@ describe('AccountsTable', () => {
     expect(screen.getByText('2 shown')).toBeTruthy();
   });
 
-  it('shows when an account with no recorded write was made', () => {
-    render(<AccountsTable accounts={[account({ lastActiveAt: null, createdAt: now - 3_600_000 })]} more={null} now={now} />);
-    const cell = screen.getByText(/^Made /);
-    expect(cell.textContent).toBe('Made 1 hour ago');
-    expect(cell.getAttribute('title')).toBeTruthy();
+  it('shows the day an account was made, and Never for one with no recorded write', () => {
+    const createdAt = Date.parse('2026-09-03T12:00:00Z');
+    render(<AccountsTable onOrder={() => {}} accounts={[account({ lastActiveAt: null, createdAt })]} more={null} now={now} />);
+    const created = document.querySelector('td[data-label="Created"] span')!;
+    expect(created.textContent).toBe(new Date(createdAt).toLocaleDateString(undefined, { dateStyle: 'medium' }));
+    expect(created.getAttribute('title')).toBeTruthy();
+    expect(document.querySelector('td[data-label="Last change"]')!.textContent).toBe('Never');
+  });
+
+  it('sorts by a pressed heading, says which in the heading, and turns it round when pressed again', () => {
+    const onOrder = vi.fn();
+    const { rerender } = render(<AccountsTable onOrder={onOrder} accounts={[account()]} more={null} now={now} />);
+    // The default is by email, A to Z, and the heading says so to a reader.
+    expect(screen.getByRole('columnheader', { name: /Account/ }).getAttribute('aria-sort')).toBe('ascending');
+    fireEvent.click(screen.getByRole('button', { name: 'Sort by Created' }));
+    expect(onOrder).toHaveBeenLastCalledWith({ sort: 'created' });
+    rerender(<AccountsTable onOrder={onOrder} order={{ sort: 'created' }} accounts={[account()]} more={null} now={now} />);
+    expect(screen.getByRole('columnheader', { name: /Created/ }).getAttribute('aria-sort')).toBe('descending');
+    expect(screen.getByRole('columnheader', { name: /Account/ }).getAttribute('aria-sort')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Sort by Created, descending' }));
+    expect(onOrder).toHaveBeenLastCalledWith({ sort: 'created', dir: 'asc' });
   });
 
   it('offers no next page when there is none', () => {
-    render(<AccountsTable accounts={[account()]} more={null} now={now} />);
+    render(<AccountsTable onOrder={() => {}} accounts={[account()]} more={null} now={now} />);
     expect(screen.queryByRole('button', { name: 'Show more accounts' })).toBeNull();
   });
 
   it('says a search found nothing, naming it, rather than that there are no accounts', () => {
-    render(<AccountsTable accounts={[]} more={null} search="acme" now={now} />);
+    render(<AccountsTable onOrder={() => {}} accounts={[]} more={null} search="acme" now={now} />);
     expect(screen.getByText(/No account's email or name has “acme” in it/)).toBeTruthy();
     expect(screen.queryByText('No accounts yet.')).toBeNull();
   });
 
   it('says it is searching, not that the new search found nothing, while the last empty answer is on screen', () => {
-    render(<AccountsTable accounts={[]} more={null} search="acme" stale now={now} />);
+    render(<AccountsTable onOrder={() => {}} accounts={[]} more={null} search="acme" stale now={now} />);
     expect(screen.getByText('Searching…')).toBeTruthy();
     expect(screen.queryByText(/“acme”/)).toBeNull();
   });
 
   it('marks the last search\'s accounts as busy while the next is answered', () => {
-    render(<AccountsTable accounts={[account()]} more={null} stale now={now} />);
+    render(<AccountsTable onOrder={() => {}} accounts={[account()]} more={null} stale now={now} />);
     expect(document.querySelector('.operator-table-wrap')!.getAttribute('aria-busy')).toBe('true');
+  });
+});
+
+/** Each column's first press goes the way its question is asked, and the defaults stay out of the address. */
+describe('nextOrder', () => {
+  it('starts an address A to Z and a figure or a date largest or newest first, and flips on a second press', () => {
+    expect(nextOrder({ sort: 'size' }, 'email')).toEqual({});
+    expect(nextOrder({}, 'email')).toEqual({ dir: 'desc' });
+    expect(nextOrder({ dir: 'desc' }, 'email')).toEqual({});
+    expect(nextOrder({}, 'notes')).toEqual({ sort: 'notes' });
+    expect(nextOrder({ sort: 'notes' }, 'notes')).toEqual({ sort: 'notes', dir: 'asc' });
+    expect(nextOrder({ sort: 'notes', dir: 'asc' }, 'notes')).toEqual({ sort: 'notes' });
+  });
+});
+
+describe('AccountSortPicker', () => {
+  afterEach(cleanup);
+
+  it('shows the order as what comes first, and hands on a choice without the defaults', () => {
+    const onOrder = vi.fn();
+    render(<AccountSortPicker order={{ sort: 'dump', dir: 'asc' }} onOrder={onOrder} />);
+    const select = screen.getByRole('combobox', { name: 'Sort' });
+    expect((screen.getByRole('option', { name: 'Oldest dump first' }) as HTMLOptionElement).selected).toBe(true);
+    fireEvent.change(select, { target: { value: 'size:desc' } });
+    expect(onOrder).toHaveBeenLastCalledWith({ sort: 'size' });
+    fireEvent.change(select, { target: { value: 'email:asc' } });
+    expect(onOrder).toHaveBeenLastCalledWith({});
   });
 });
 

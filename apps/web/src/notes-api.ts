@@ -26,6 +26,7 @@ import type {
   BackupsStatus,
   OperatorAccount,
   OperatorAccountsPage,
+  OperatorOrder,
   StoreRestores,
   AssistantFeedbackPage,
 } from '@unbent/shared';
@@ -1169,8 +1170,14 @@ export async function operatorBackups(): Promise<BackupsStatus> {
 }
 
 /** One page of live accounts by email, narrowed to `q` when given; `after` is the previous page's `next`. */
-export async function operatorAccountsPage(after = '', q = ''): Promise<OperatorAccountsPage> {
-  const qs = new URLSearchParams({ limit: String(OPERATOR_PAGE_SIZE), ...(after ? { after } : {}), ...(q ? { q } : {}) });
+export async function operatorAccountsPage(after = '', q = '', order: OperatorOrder = {}): Promise<OperatorAccountsPage> {
+  const qs = new URLSearchParams({
+    limit: String(OPERATOR_PAGE_SIZE),
+    ...(after ? { after } : {}),
+    ...(q ? { q } : {}),
+    ...(order.sort ? { sort: order.sort } : {}),
+    ...(order.dir ? { dir: order.dir } : {}),
+  });
   return json<OperatorAccountsPage>(await request(`/api/admin/accounts?${qs}`));
 }
 

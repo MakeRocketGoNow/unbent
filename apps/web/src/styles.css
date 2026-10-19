@@ -10943,7 +10943,13 @@ html.host-ios .viewer {
   transition: opacity 0.15s ease 0.15s;
 }
 /* Wide enough for a long address, and no wider: the field belongs to the table under it. */
-.operator-search { max-width: 22rem; margin: 0.2rem 0 0.4rem; }
+.operator-list-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; margin: 0.2rem 0 0.4rem; }
+.operator-search { flex: 1 1 14rem; max-width: 22rem; }
+/* The order, for a phone, where there is no heading row to press: hidden while there is one. */
+.operator-sort { display: none; align-items: center; gap: 0.45rem; }
+.operator-sort select { width: auto; }
+/* Numbers' headings sit over their right-aligned figures, so the arrow follows the label there too. */
+.operator-table th .note-th-sort { text-align: inherit; }
 .operator-table {
   width: 100%;
   border-collapse: collapse;
@@ -10958,10 +10964,10 @@ html.host-ios .viewer {
 .operator-table th { font-weight: 500; color: var(--muted); }
 .operator-table th:last-child,
 .operator-table td:last-child { padding-right: 0; }
-.operator-table th:nth-child(2),
-.operator-table td:nth-child(2),
 .operator-table th:nth-child(3),
-.operator-table td:nth-child(3) {
+.operator-table td:nth-child(3),
+.operator-table th:nth-child(4),
+.operator-table td:nth-child(4) {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -10995,6 +11001,7 @@ html.host-ios .viewer {
 .operator-more { display: flex; align-items: center; gap: 0.6rem; margin: 0.8rem 0 0; }
 @media (width <= 860px) {
   .operator-table thead { display: none; }
+  .operator-sort { display: flex; }
   .operator-table,
   .operator-table tbody,
   .operator-table tr,
@@ -11017,8 +11024,8 @@ html.host-ios .viewer {
     content: attr(data-label);
     color: var(--muted);
   }
-  .operator-table td:nth-child(2),
-  .operator-table td:nth-child(3) { text-align: left; }
+  .operator-table td:nth-child(3),
+  .operator-table td:nth-child(4) { text-align: left; }
   .operator-table td:not(:first-child) { white-space: normal; }
 }
 

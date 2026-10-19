@@ -7,7 +7,7 @@ import { billingOn } from '../lib/paddle.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import { deleteKeys } from '../lib/blobs.js';
-import { directoryRow, dropDirectoryRow, listOperatorAccounts, operatorAccountRow } from '../lib/directory.js';
+import { OperatorCursorError, directoryRow, dropDirectoryRow, listOperatorAccounts, operatorAccountRow } from '../lib/directory.js';
 import { dropRestore, listRestores, settleRestore, startRestore, undoneRow } from '../lib/restores.js';
 import { beginDump } from '../lib/dump.js';
 import { MIRROR_STATUS_KEY, STATUS_KEY, dumpPrefix } from '../lib/backups.js';
@@ -22,8 +22,8 @@ import { sweepStores } from '../lib/sweep.js';
 import { SWEEP_TOKEN_HEADER, sweepTokenMatches } from '../lib/sweep-token.js';
 import { BOOKMARK_PATTERN, RESTORE_WINDOW_MS, isRestoreUnsupported, readRestoreAbort, readRestoreRefusal } from '../store/restore.js';
 import type { StoreStats } from '../store/user-store.js';
-import type { AccountDumps, BackupsStatus, DumpStatus, MirrorStatus } from '@unbent/shared';
-import { OPERATOR_PAGE_MAX, OPERATOR_PAGE_SIZE, OPERATOR_SEARCH_MAX } from '@unbent/shared';
+import type { AccountDumps, BackupsStatus, DumpStatus, MirrorStatus, OperatorSort, OperatorSortDir } from '@unbent/shared';
+import { OPERATOR_PAGE_MAX, OPERATOR_PAGE_SIZE, OPERATOR_SEARCH_MAX, OPERATOR_SORTS, OPERATOR_SORT_FIRST } from '@unbent/shared';
 import type { AppEnv } from '../types.js';
 
 /**
@@ -806,8 +806,8 @@ export const admin = new Hono<AppEnv>()
   /**
    * A page of live accounts as the directory knows them, with the email from `user` and
    * the daily backup's record of each one's newest dump. One D1 query a page, by email
-   * with the last one as the cursor, narrowed to a search when `q` is given
-   * (`listOperatorAccounts`); the counts are the last sweep's, which is right for a view
+   * unless `sort` and `dir` name another order, with where the last page ended as the
+   * cursor, narrowed to a search when `q` is given (`listOperatorAccounts`); the counts are the last sweep's, which is right for a view
    * across accounts (`lib/directory.ts`). Logged, as any read of other people's
    * accounts here is, with the search, since what was looked for is part of the read.
    */
@@ -820,7 +820,17 @@ export const admin = new Hono<AppEnv>()
     // `after` is the previous page's `next`; `limit` is clamped, since a page is a D1
     // read and the client has no business asking for more than the list draws.
     const limit = Math.min(OPERATOR_PAGE_MAX, Math.max(1, Math.trunc(Number(c.req.query('limit'))) || OPERATOR_PAGE_SIZE));
-    return c.json(await listOperatorAccounts(c.env.DB, c.req.query('after') ?? '', limit, q));
+    // An order the list does not know is the default rather than a 400, as a bad `limit`
+    // is; a cursor it did not write is refused, since starting over would repeat a page.
+    const sortParam = c.req.query('sort');
+    const sort: OperatorSort = OPERATOR_SORTS.find((s) => s === sortParam) ?? 'email';
+    const dir: OperatorSortDir = c.req.query('dir') === 'desc' ? 'desc' : c.req.query('dir') === 'asc' ? 'asc' : OPERATOR_SORT_FIRST[sort];
+    try {
+      return c.json(await listOperatorAccounts(c.env.DB, c.req.query('after') ?? '', limit, q, sort, dir));
+    } catch (err) {
+      if (err instanceof OperatorCursorError) return c.json({ error: err.message }, 400);
+      throw err;
+    }
   })
 
   /**
