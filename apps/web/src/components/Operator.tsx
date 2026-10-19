@@ -291,7 +291,10 @@ const n = (v: number | null) => (v === null ? '?' : v.toLocaleString());
  * brought back is kept here with what was last done to it, beside what the query holds,
  * so a refetch (on focus, on the interval) neither takes an Undo away mid-thought nor,
  * once the server has stopped listing the row, loses the row an Undo brings back. They
- * leave when the page does.
+ * leave when the page does. Rows nobody touched are the query's alone, so an Undo on a
+ * full page can send the newest of the older rows back behind the page at the bottom:
+ * that is paging, far from the pointer, and keeping every row ever shown to stop it would
+ * keep the list from ever shrinking back to twenty.
  *
  * The body keeps its line breaks: an assistant writing a bug report writes steps.
  */
