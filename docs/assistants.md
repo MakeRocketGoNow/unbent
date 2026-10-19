@@ -89,8 +89,9 @@ app that sent them. The idea is [Axiom's](https://axiom.co/blog/the-agents-would
 the assistant is the only one who sees a tool fail it, and the person it is working for
 is not going to write in about a tool description. Its description tells the model when to
 call it and never to quote the person's notes, since the operator reads it with the
-account named. An account's assistants may send twenty a day, and the same words once, the rows go after
-ninety days or with the account, and the privacy policy says all of this.
+account named. An account's assistants may send twenty a day and the same words only once,
+the whole instance keeps five hundred a day, and the rows go after ninety days or with the
+account. The privacy policy says all of this.
 
 **Approving a client gives it standing access to everything.** It can read every note,
 create and change notes, and move them to the trash, from then on and without asking again.
