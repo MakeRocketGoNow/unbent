@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   FEEDBACK_KEPT_MS,
   FEEDBACK_PER_DAY,
+  FEEDBACK_PER_DAY_INSTANCE,
   listFeedback,
   markFeedbackRead,
   recordFeedback,
@@ -105,6 +106,18 @@ describe('recordFeedback', () => {
     expect(await recordFeedback(db, sample({ userId: 'u2' }), T0 + HOUR)).toBe('kept');
     expect(await recordFeedback(db, sample(), T0 + 24 * HOUR + 1)).toBe('kept');
     expect(count()).toBe(3);
+  });
+
+  it("refuses every account once the instance has taken its day's worth, and says it was the instance", async () => {
+    const { db, sqlite } = fakeDb();
+    // The day's worth from accounts other than u1, written straight in: the bound being
+    // tested is the instance's, which no one account's twenty can reach.
+    sqlite.exec(`INSERT INTO user VALUES ('others', 'others@example.com')`);
+    const insert = sqlite.prepare(`INSERT INTO assistant_feedback (user_id, client_id, category, body, created_at) VALUES ('others', 'c', 'other', ?, ?)`);
+    for (let i = 0; i < FEEDBACK_PER_DAY_INSTANCE; i++) insert.run(`report ${i}`, T0 + i);
+    expect(await recordFeedback(db, sample(), T0 + HOUR)).toBe('full');
+    // A rolling day: once the first of them is past it, there is room again.
+    expect(await recordFeedback(db, sample(), T0 + 24 * HOUR + 1)).toBe('kept');
   });
 
   it('prunes what is past its age on the next write, read or not', async () => {

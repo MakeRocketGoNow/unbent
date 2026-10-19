@@ -16,14 +16,15 @@ import type { AssistantFeedback, AssistantFeedbackPage, FeedbackCategory } from 
  * allowance is the sign-in codes' (`code-sends.ts`), and a talkative assistant must not
  * be able to spend it.
  *
- * Bounded three ways, since anything an account can write in a loop has to be: a day's
- * worth per account (`FEEDBACK_PER_DAY`); no repeat of what the account's assistants
- * already sent that day, word for word; and an age (`FEEDBACK_KEPT_MS`), pruned on the
- * write that adds a row, as note history prunes, with no cron. The first two are checked
- * in the insert's own condition, so two calls at once cannot both pass. The repeat is
- * there because a model that has lost track of having sent something sends it again,
- * and twenty copies of one report (what a stuck loop sends before the day's bound stops
- * it) buried everything else on the operator's list when the first version was tried.
+ * Bounded four ways, since anything an account can write in a loop has to be: a day's
+ * worth per account (`FEEDBACK_PER_DAY`); a day's worth for the whole instance
+ * (`FEEDBACK_PER_DAY_INSTANCE`); no repeat of what the account's assistants already sent
+ * that day, word for word; and an age (`FEEDBACK_KEPT_MS`), pruned on the write that adds
+ * a row, as note history prunes, with no cron. The first three are checked in the
+ * insert's own condition, so two calls at once cannot both pass. The repeat is there
+ * because a model that has lost track of having sent something sends it again, and
+ * twenty copies of one report (what a stuck loop sends before the day's bound stops it)
+ * buried everything else on the operator's list when the first version was tried.
  */
 
 /**
@@ -33,6 +34,17 @@ import type { AssistantFeedback, AssistantFeedbackPage, FeedbackCategory } from 
  * twenty rows, not a thousand.
  */
 export const FEEDBACK_PER_DAY = 20;
+
+/**
+ * Feedback the whole instance keeps in a rolling day. The account's bound alone lets
+ * many accounts write without end, into the D1 database that also holds every sign-in,
+ * and a fork on Workers Free has half a gigabyte of it: a few dozen throwaway accounts
+ * with a connected client, at twenty reports of two thousand characters a day kept for
+ * ninety days, would fill it. Five hundred a day is more than any operator reads, and at
+ * most about a hundred megabytes over the ninety days. Spending it costs a day of
+ * feedback, never a sign-in.
+ */
+export const FEEDBACK_PER_DAY_INSTANCE = 500;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -68,19 +80,23 @@ export interface NewFeedback {
   body: string;
 }
 
-/** What became of a piece of feedback: kept, refused as a repeat of the day's, or past the day's bound. */
-export type FeedbackOutcome = 'kept' | 'repeat' | 'limit';
+/**
+ * What became of a piece of feedback: kept, or refused as a repeat of the day's, past the
+ * account's day's bound (`limit`), or past the instance's (`full`).
+ */
+export type FeedbackOutcome = 'kept' | 'repeat' | 'limit' | 'full';
 
 /**
  * Keeps one piece of feedback, unless the account has sent the same words or its day's
- * worth in the last day.
+ * worth in the last day, or the instance has taken its day's worth.
  *
  * One batch, so one round trip and one transaction: the prune, then an insert whose
- * `WHERE` is both bounds. Checked in the statement rather than read first, so two calls
+ * `WHERE` is every bound. Checked in the statement rather than read first, so two calls
  * in flight cannot both find nineteen and both write. The client's name is copied in the
  * same statement from the row it registered, since a deleted client takes that row with
- * it and the page would be left with an opaque id. A refusal reads once more to say which
- * bound it was, so the model is told the right thing; only a refusal pays for that.
+ * it and the page would be left with an opaque id. The instance's count reads at most its
+ * bound's rows, on the age index. A refusal reads once more to say which bound it was,
+ * so the model is told the right thing; only a refusal pays for that.
  */
 export async function recordFeedback(db: FeedbackDb, feedback: NewFeedback, now = Date.now()): Promise<FeedbackOutcome> {
   const since = now - DAY_MS;
@@ -91,16 +107,32 @@ export async function recordFeedback(db: FeedbackDb, feedback: NewFeedback, now 
         `INSERT INTO assistant_feedback (user_id, client_id, client_name, category, tool, body, created_at)
          SELECT ?1, ?2, (SELECT name FROM oauthClient WHERE clientId = ?2), ?3, ?4, ?5, ?6
          WHERE (SELECT COUNT(*) FROM assistant_feedback WHERE user_id = ?1 AND created_at > ?7) < ?8
-           AND NOT EXISTS (SELECT 1 FROM assistant_feedback WHERE user_id = ?1 AND created_at > ?7 AND body = ?5)`,
+           AND NOT EXISTS (SELECT 1 FROM assistant_feedback WHERE user_id = ?1 AND created_at > ?7 AND body = ?5)
+           AND (SELECT COUNT(*) FROM (SELECT 1 FROM assistant_feedback WHERE created_at > ?7 LIMIT ?9)) < ?9`,
       )
-      .bind(feedback.userId, feedback.clientId, feedback.category, feedback.tool, feedback.body, now, since, FEEDBACK_PER_DAY),
+      .bind(
+        feedback.userId,
+        feedback.clientId,
+        feedback.category,
+        feedback.tool,
+        feedback.body,
+        now,
+        since,
+        FEEDBACK_PER_DAY,
+        FEEDBACK_PER_DAY_INSTANCE,
+      ),
   ]);
   if ((inserted?.meta.changes ?? 0) > 0) return 'kept';
   const { results } = await db
-    .prepare(`SELECT 1 AS hit FROM assistant_feedback WHERE user_id = ?1 AND created_at > ?2 AND body = ?3 LIMIT 1`)
+    .prepare(
+      `SELECT EXISTS (SELECT 1 FROM assistant_feedback WHERE user_id = ?1 AND created_at > ?2 AND body = ?3) AS repeat,
+              (SELECT COUNT(*) FROM assistant_feedback WHERE user_id = ?1 AND created_at > ?2) AS sent`,
+    )
     .bind(feedback.userId, since, feedback.body)
-    .all<{ hit: number }>();
-  return results.length > 0 ? 'repeat' : 'limit';
+    .all<{ repeat: number; sent: number }>();
+  const [why] = results;
+  if (why?.repeat) return 'repeat';
+  return (why?.sent ?? 0) >= FEEDBACK_PER_DAY ? 'limit' : 'full';
 }
 
 interface FeedbackRow {

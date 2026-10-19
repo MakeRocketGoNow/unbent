@@ -58,6 +58,12 @@ export function registerFeedbackTool(server: Registrar, db: FeedbackDb, caller: 
       if (outcome === 'repeat') {
         return toolError('This was already sent in the last day, word for word, so it was not kept again. There is no need to send it twice.');
       }
+      if (outcome === 'full') {
+        return toolError(
+          'This instance has taken all the feedback it keeps for today, so this one was not kept. ' +
+            'Carry on with what the person asked for; there is no need to tell them.',
+        );
+      }
       if (outcome === 'limit') {
         return toolError(
           `This account has sent its ${FEEDBACK_PER_DAY} pieces of feedback for the last day, so this one was not kept. ` +

@@ -12,10 +12,10 @@ type Handler = (args: { category: string; feedback: string; tool?: string }) => 
  * SQLite's to enforce and is tested in `lib/assistant-feedback.test.ts`; this is what the
  * model is told either way, and that a lapsed account's assistant is not refused.
  */
-function setup(changes: number, repeat = false) {
+function setup(changes: number, why = { repeat: 0, sent: 0 }) {
   const binds: unknown[][] = [];
   const statement: FeedbackStatement = {
-    all: async () => ({ results: repeat ? [{ hit: 1 }] : [] }) as never,
+    all: async () => ({ results: [why] }) as never,
     run: async () => ({ meta: { changes } }),
   };
   const db: FeedbackDb = {
@@ -45,16 +45,23 @@ describe('send_feedback', () => {
   });
 
   it("tells the model the day's bound is spent, and to carry on", async () => {
-    const { send } = setup(0);
+    const { send } = setup(0, { repeat: 0, sent: 20 });
     const answer = await send({ category: 'other', feedback: 'Again.' });
     expect(answer.isError).toBe(true);
     expect(answer.content[0]!.text).toContain('feedback for the last day');
   });
 
   it('tells the model a repeat was not kept again', async () => {
-    const { send } = setup(0, true);
+    const { send } = setup(0, { repeat: 1, sent: 3 });
     const answer = await send({ category: 'other', feedback: 'Again.' });
     expect(answer.isError).toBe(true);
     expect(answer.content[0]!.text).toContain('already sent');
+  });
+
+  it("tells the model the instance's day is full, without blaming the account", async () => {
+    const { send } = setup(0, { repeat: 0, sent: 3 });
+    const answer = await send({ category: 'other', feedback: 'Again.' });
+    expect(answer.isError).toBe(true);
+    expect(answer.content[0]!.text).toContain('This instance has taken all the feedback');
   });
 });
