@@ -20,18 +20,20 @@ import { RowChevronIcon } from './icons.js';
 import { keys, operatorAccountsQuery, operatorBackupsQuery, operatorFeedbackQuery } from '../queries.js';
 
 /**
- * The operator's page (MAK-171, part 5): the backup's health, what connected assistants
- * have said about the tools (MAK-212), then every account on the instance. Operator only: the tab is drawn for a session the backups route answers
+ * The operator's page (MAK-171, part 5): the backup's health, what connected
+ * assistants have said about the tools (MAK-212), then every account on the instance.
+ * Operator only: the tab is drawn for a session the backups route answers
  * (`use-operator.ts`), and every route it reads answers anyone else 404.
  *
  * Health first, because it is the question the page exists to answer at a glance:
  * two cards, one per half of the backup, each leading with one word. Feedback next,
  * because it is the other thing here that waits on the operator, and below a list of
- * accounts that pages it would be found only by scrolling past all of them. The accounts are
- * a table of what the directory knows; each row is a link to the account's own page,
- * where the actions live. The actions are not on the rows: each needs a confirm
- * that names the account and what it loses, and a confirm unfolding inside a table row
- * is the layout the issue's "quiet row actions" was warning against, not asking for.
+ * accounts that pages it would be found only by scrolling past all of them. The
+ * accounts are a table of what the directory knows; each row is a link to the account's
+ * own page, where the actions live. The actions are not on the rows: each needs a
+ * confirm that names the account and what it loses, and a confirm unfolding inside a
+ * table row is the layout the issue's "quiet row actions" was warning against, not
+ * asking for.
  */
 export function Operator({ search = '', onSearch }: { search?: string; onSearch: (q: string) => void }) {
   const backups = useQuery(operatorBackupsQuery());
