@@ -339,17 +339,27 @@ export function FeedbackList({
           // Capitalised where it starts the row's last line, and not inside the sentence a dismissed row is.
           const app = f.clientName || 'An app with no name';
           const appInSentence = f.clientName || 'an app with no name';
+          // Which report a button acts on, for a screen reader's list of buttons, where twenty
+          // that are all called Dismiss say nothing. It starts with the visible word, so a
+          // person who says "click Dismiss" still reaches it.
+          const what = `${label.toLowerCase()} from ${appInSentence}`;
           if (isDismissed(f.id)) {
             return (
               <li key={f.id} className="dump-row feedback-row">
                 <span className="dump-name">
                   <span className="muted">
-                    Dismissed: {label.toLowerCase()} from {appInSentence}.
+                    Dismissed: {what}.
                   </span>
                   {failed?.id === f.id && <span className="bad small">{failed.message}</span>}
                 </span>
                 <span className="dump-actions">
-                  <Button variant="quiet" size="small" disabled={busy.has(f.id)} onClick={() => void toggle(f, false)}>
+                  <Button
+                    variant="quiet"
+                    size="small"
+                    aria-label={`Undo dismissing ${what}`}
+                    disabled={busy.has(f.id)}
+                    onClick={() => void toggle(f, false)}
+                  >
                     Undo
                   </Button>
                 </span>
@@ -378,7 +388,7 @@ export function FeedbackList({
                 {failed?.id === f.id && <span className="bad small">{failed.message}</span>}
               </span>
               <span className="dump-actions">
-                <Button variant="quiet" size="small" disabled={busy.has(f.id)} onClick={() => void toggle(f, true)}>
+                <Button variant="quiet" size="small" aria-label={`Dismiss ${what}`} disabled={busy.has(f.id)} onClick={() => void toggle(f, true)}>
                   Dismiss
                 </Button>
               </span>

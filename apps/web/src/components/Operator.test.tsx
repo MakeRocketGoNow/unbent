@@ -268,6 +268,7 @@ describe('FeedbackList', () => {
     expect(screen.getByText('edit_note')).toBeTruthy();
     expect(screen.getByText(/matched twice/)).toBeTruthy();
     expect(screen.getByText(/Example Assistant for/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Dismiss error message from Example Assistant' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'someone@example.com' }).getAttribute('href')).toBe('/settings/operator/$userId');
   });
 
@@ -276,20 +277,20 @@ describe('FeedbackList', () => {
     expect(screen.getByText(/An app with no name for/)).toBeTruthy();
     expect(screen.queryByText('in')).toBeNull();
     expect(screen.queryByText('edit_note')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Dismiss / }));
     await screen.findByText('Dismissed: praise from an app with no name.');
   });
 
   it('dismisses a row into an Undo in its place, and Undo brings it back', async () => {
     const setRead = vi.fn(async () => {});
     render(<FeedbackList page={{ feedback: [feedback(), feedback({ id: 2, createdAt: now - 3_600_000, body: 'Another.' })], more: false }} setRead={setRead} now={now} />);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Dismiss' })[1]!);
+    fireEvent.click(screen.getAllByRole('button', { name: /^Dismiss / })[1]!);
     await screen.findByText(/Dismissed: error message from Example Assistant/);
     expect(setRead).toHaveBeenLastCalledWith(1, true);
     // Still second, under the newer row: nothing moved.
     expect(screen.getAllByRole('listitem')[1]!.textContent).toContain('Dismissed');
-    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Dismiss' })).toHaveLength(2));
+    fireEvent.click(screen.getByRole('button', { name: /^Undo / }));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /^Dismiss / })).toHaveLength(2));
     expect(setRead).toHaveBeenLastCalledWith(1, false);
   });
 
@@ -297,13 +298,13 @@ describe('FeedbackList', () => {
     const setRead = vi.fn(async () => {});
     const row = feedback();
     const { rerender } = render(<FeedbackList page={{ feedback: [row], more: false }} setRead={setRead} now={now} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Dismiss / }));
     await screen.findByText(/Dismissed: error message/);
     // The refetch: the server lists only unread rows, so the dismissed one is gone from the page.
     rerender(<FeedbackList page={{ feedback: [], more: false }} setRead={setRead} now={now} />);
     expect(screen.getByText(/Dismissed: error message/)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
-    await screen.findByRole('button', { name: 'Dismiss' });
+    fireEvent.click(screen.getByRole('button', { name: /^Undo / }));
+    await screen.findByRole('button', { name: /^Dismiss / });
     expect(screen.getByText(/matched twice/)).toBeTruthy();
   });
 
@@ -317,9 +318,9 @@ describe('FeedbackList', () => {
         now={now}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Dismiss / }));
     await screen.findByText('No such feedback');
-    expect(screen.getByRole('button', { name: 'Dismiss' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Dismiss / })).toBeTruthy();
   });
 
   it('says there is nothing unread, and that more wait behind a full page', () => {
