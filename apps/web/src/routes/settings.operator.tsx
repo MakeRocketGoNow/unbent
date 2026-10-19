@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { createFileRoute } from '@tanstack/react-router';
 import { z } from 'zod';
-import { OPERATOR_SEARCH_MAX } from '@unbent/shared';
+import { OPERATOR_SEARCH_MAX, OPERATOR_SORTS, type OperatorOrder } from '@unbent/shared';
 import { Operator } from '../components/Operator.js';
 import { operatorAccountsQuery, operatorBackupsQuery } from '../queries.js';
 
@@ -20,33 +20,53 @@ import { operatorAccountsQuery, operatorBackupsQuery } from '../queries.js';
  * loader again for that. The loader parses the location with the route's own schema,
  * because the router hands it the search before `validateSearch` has run: read raw,
  * `?q=123` arrived as a number the page's schema discards.
+ *
+ * `?sort=` and `?dir=` are the accounts' order, in the address for the same reasons, and
+ * read by the loader the same way. Each is left out when it is the default
+ * (`canonicalOrder`), so the page as it opens has a plain address.
  */
 // Not trimmed here: the field is controlled by `q`, and a trim would eat the space
 // between two words as it was typed. The page and the loader trim what they ask for.
 // Cut rather than refused past `OPERATOR_SEARCH_MAX`, as the server cuts it, so a long
 // hand-made link searches for its start instead of opening on every account.
-const search = z.object({ q: z.string().transform((q) => q.slice(0, OPERATOR_SEARCH_MAX)).optional().catch(undefined) });
+const search = z.object({
+  q: z.string().transform((q) => q.slice(0, OPERATOR_SEARCH_MAX)).optional().catch(undefined),
+  sort: z.enum(OPERATOR_SORTS).optional().catch(undefined),
+  dir: z.enum(['asc', 'desc']).optional().catch(undefined),
+});
+
+/** The order in a parsed search, with nothing for what it leaves out, so the query key is the page's. */
+const orderOf = ({ sort, dir }: z.infer<typeof search>): OperatorOrder => ({ ...(sort ? { sort } : {}), ...(dir ? { dir } : {}) });
 
 export const Route = createFileRoute('/settings/operator')({
   validateSearch: search,
   loader: ({ context: { queryClient }, location }) =>
     Promise.all([
       queryClient.ensureQueryData(operatorBackupsQuery()),
-      queryClient.ensureInfiniteQueryData(operatorAccountsQuery((search.parse(location.search).q ?? '').trim())),
+      queryClient.ensureInfiniteQueryData(
+        operatorAccountsQuery((search.parse(location.search).q ?? '').trim(), orderOf(search.parse(location.search))),
+      ),
     ]),
   component: OperatorRoute,
 });
 
 function OperatorRoute() {
-  const { q = '' } = Route.useSearch();
+  const params = Route.useSearch();
+  const { q = '' } = params;
   const navigate = Route.useNavigate();
   // `replace`: each keystroke in the field is not a page of its own to go Back through.
   // `resetScroll: false`: the router scrolls `.settings` to its top after every navigation
   // otherwise (`scrollToTopSelectors` in main.tsx), and the field sits below the health
   // cards, so each letter typed threw the page, and the field, back up out of view.
   const onSearch = useCallback(
-    (next: string) => void navigate({ search: next ? { q: next } : {}, replace: true, resetScroll: false }),
+    (next: string) => void navigate({ search: (prev) => ({ ...prev, q: next || undefined }), replace: true, resetScroll: false }),
     [navigate],
   );
-  return <Operator search={q} onSearch={onSearch} />;
+  // `replace` as well: a sort is a view of the same list, and Back from it should leave
+  // the page rather than step back through every heading pressed.
+  const onOrder = useCallback(
+    (next: OperatorOrder) => void navigate({ search: (prev) => ({ q: prev.q, ...next }), replace: true, resetScroll: false }),
+    [navigate],
+  );
+  return <Operator search={q} onSearch={onSearch} order={orderOf(params)} onOrder={onOrder} />;
 }

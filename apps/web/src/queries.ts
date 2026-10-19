@@ -4,7 +4,7 @@ import {
   keepPreviousData,
   type QueryClient,
 } from '@tanstack/react-query';
-import type { AttachmentInfo, BackupsStatus, FieldDef, Note, NoteSort, NoteSummary, NotebookSummary } from '@unbent/shared';
+import type { AttachmentInfo, BackupsStatus, OperatorOrder, FieldDef, Note, NoteSort, NoteSummary, NotebookSummary } from '@unbent/shared';
 import * as api from './notes-api.js';
 import { ApiError, OfflineError } from './notes-api.js';
 import { offlineNow } from './connectivity.js';
@@ -238,7 +238,7 @@ export const keys = {
   operatorAccounts: () => ['operator', 'accounts'] as const,
   operatorFeedback: () => ['operator', 'feedback'] as const,
   /** One search's pages of the list, under its key; an object, so no account id can be mistaken for it. */
-  operatorAccountsList: (q: string) => ['operator', 'accounts', { q }] as const,
+  operatorAccountsList: (q: string, order: OperatorOrder = {}) => ['operator', 'accounts', { q, ...order }] as const,
   /** Under the list's key, so one invalidation refreshes the list and every account page. */
   operatorAccount: (userId: string) => ['operator', 'accounts', userId] as const,
   storeStats: (userId: string) => ['operator', 'stats', userId] as const,
@@ -771,10 +771,10 @@ export const operatorBackupsQuery = () =>
  * `notesQuery` has it: each settled pause in the search field is a new key, and without
  * it the table emptied to "Reading the directory…" and refilled on every one.
  */
-export const operatorAccountsQuery = (q = '') =>
+export const operatorAccountsQuery = (q = '', order: OperatorOrder = {}) =>
   infiniteQueryOptions({
-    queryKey: keys.operatorAccountsList(q),
-    queryFn: ({ pageParam }) => api.operatorAccountsPage(pageParam, q),
+    queryKey: keys.operatorAccountsList(q, order),
+    queryFn: ({ pageParam }) => api.operatorAccountsPage(pageParam, q, order),
     initialPageParam: '' as string,
     getNextPageParam: (last) => last.next ?? undefined,
     staleTime: 60 * 1000,
