@@ -188,3 +188,17 @@ export function userIdFrom(claims: AccessTokenClaims): string {
   }
   return sub;
 }
+
+/**
+ * The OAuth client a verified token was issued to: which assistant is calling. Only the
+ * feedback tool reads it, to say which assistant a report came from. A token without one
+ * never gets this far (`grantStillStands` refuses it), so the throw is the same loud
+ * failure as `userIdFrom`'s rather than a case to handle.
+ */
+export function clientIdFrom(claims: AccessTokenClaims): string {
+  const clientId = claims.client_id;
+  if (typeof clientId !== 'string' || !clientId) {
+    throw new Error('access token has no client id');
+  }
+  return clientId;
+}

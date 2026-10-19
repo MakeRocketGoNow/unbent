@@ -1,0 +1,147 @@
+import type { AssistantFeedback, AssistantFeedbackPage, FeedbackCategory } from '@unbent/shared';
+
+/**
+ * An assistant's feedback on the tools, kept for the operator (MAK-212; migration 0047).
+ *
+ * After Axiom's `sendFeedback`: an assistant working through the MCP tools is the only
+ * one who sees a tool answer the wrong thing, an error that gives no way forward, or a
+ * capability that is not there. The person sees only that it struggled, and is not going
+ * to write in about a tool description. So the assistant is given a tool to say so, and
+ * what it says lands on the operator page, unread until someone reads it.
+ *
+ * In D1 rather than the account's note store, because it is the operator's to read across
+ * accounts, which the stores are deliberately not built for; and rather than the Worker
+ * log, which `client-errors` uses, because a log line is kept a week at most and is read
+ * only by someone who goes looking. Rather than mail, because the instance's mail
+ * allowance is the sign-in codes' (`code-sends.ts`), and a talkative assistant must not
+ * be able to spend it.
+ *
+ * Bounded twice, since anything an account can write in a loop has to be: a day's worth
+ * per account (`FEEDBACK_PER_DAY`), checked in the insert's own condition so two calls at
+ * once cannot both pass, and an age (`FEEDBACK_KEPT_MS`), pruned on the write that adds a
+ * row, as note history prunes, with no cron.
+ */
+
+/**
+ * Feedback one account's assistants may send in a rolling day. Far past what an
+ * assistant reporting real problems sends (a session that hits five distinct problems is
+ * a bad session) and far short of a loop: a model stuck retrying the call is stopped at
+ * twenty rows, not a thousand.
+ */
+export const FEEDBACK_PER_DAY = 20;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * How long a row is kept, read or not: long enough that an operator back from a few
+ * weeks away has not missed anything, and short enough that the table never holds an
+ * account's history of what it was doing. The privacy policy states the same number.
+ */
+export const FEEDBACK_KEPT_MS = 90 * DAY_MS;
+
+/** How many unread rows the operator page lists at once. */
+export const FEEDBACK_LISTED = 50;
+
+/** The slice of D1 this reads and writes, so the test can run it over node's SQLite. */
+export interface FeedbackDb {
+  prepare(sql: string): { bind(...values: unknown[]): FeedbackStatement };
+  batch(statements: FeedbackStatement[]): Promise<Array<{ meta: { changes: number } }>>;
+}
+
+export interface FeedbackStatement {
+  all<T>(): Promise<{ results: T[] }>;
+  run(): Promise<{ meta: { changes: number } }>;
+}
+
+export interface NewFeedback {
+  userId: string;
+  clientId: string;
+  category: FeedbackCategory;
+  tool: string | null;
+  body: string;
+}
+
+/**
+ * Keeps one piece of feedback, or answers `false` when the account has sent its day's.
+ *
+ * One batch, so one round trip and one transaction: the prune, then an insert whose
+ * `WHERE` is the day's count. Counted in the statement rather than read first, so two
+ * calls in flight cannot both find nineteen and both write. The client's name is copied
+ * in the same statement from the row it registered, since a deleted client takes that
+ * row with it and the page would be left with an opaque id.
+ */
+export async function recordFeedback(db: FeedbackDb, feedback: NewFeedback, now = Date.now()): Promise<boolean> {
+  const [, inserted] = await db.batch([
+    db.prepare(`DELETE FROM assistant_feedback WHERE created_at < ?1`).bind(now - FEEDBACK_KEPT_MS),
+    db
+      .prepare(
+        `INSERT INTO assistant_feedback (user_id, client_id, client_name, category, tool, body, created_at)
+         SELECT ?1, ?2, (SELECT name FROM oauthClient WHERE clientId = ?2), ?3, ?4, ?5, ?6
+         WHERE (SELECT COUNT(*) FROM assistant_feedback WHERE user_id = ?1 AND created_at > ?7) < ?8`,
+      )
+      .bind(feedback.userId, feedback.clientId, feedback.category, feedback.tool, feedback.body, now, now - DAY_MS, FEEDBACK_PER_DAY),
+  ]);
+  return (inserted?.meta.changes ?? 0) > 0;
+}
+
+interface FeedbackRow {
+  id: number;
+  user_id: string;
+  email: string | null;
+  client_id: string;
+  client_name: string | null;
+  category: FeedbackCategory;
+  tool: string | null;
+  body: string;
+  created_at: number;
+}
+
+/**
+ * The unread rows, newest first, with each account's address. One more than the page is
+ * read to say whether there are more, rather than a count, which would read every unread
+ * row to answer a question the page asks only as "is there more".
+ *
+ * A left join, so a row is never hidden because its account is gone: the cascade should
+ * have taken it, and a row that survived it is worth seeing rather than counting
+ * silently against nothing.
+ */
+export async function listFeedback(db: FeedbackDb, limit = FEEDBACK_LISTED): Promise<AssistantFeedbackPage> {
+  const { results } = await db
+    .prepare(
+      `SELECT f.id, f.user_id, u.email, f.client_id, f.client_name, f.category, f.tool, f.body, f.created_at
+       FROM assistant_feedback f LEFT JOIN user u ON u.id = f.user_id
+       WHERE f.read_at IS NULL
+       ORDER BY f.created_at DESC, f.id DESC
+       LIMIT ?1`,
+    )
+    .bind(limit + 1)
+    .all<FeedbackRow>();
+  return {
+    feedback: results.slice(0, limit).map(
+      (r): AssistantFeedback => ({
+        id: r.id,
+        userId: r.user_id,
+        email: r.email,
+        clientId: r.client_id,
+        clientName: r.client_name,
+        category: r.category,
+        tool: r.tool,
+        body: r.body,
+        createdAt: r.created_at,
+      }),
+    ),
+    more: results.length > limit,
+  };
+}
+
+/**
+ * Dismisses a row from the page, or brings it back (`read: false`, the page's Undo).
+ * Answers whether the row exists.
+ */
+export async function markFeedbackRead(db: FeedbackDb, id: number, read: boolean, now = Date.now()): Promise<boolean> {
+  const { meta } = await db
+    .prepare(`UPDATE assistant_feedback SET read_at = ?2 WHERE id = ?1`)
+    .bind(id, read ? now : null)
+    .run();
+  return meta.changes > 0;
+}

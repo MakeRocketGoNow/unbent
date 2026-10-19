@@ -179,8 +179,13 @@ const COUNT = ['', '', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven'] as const;
  * keeps (MAK-230). That is how information is handled, and the policy people had agreed
  * to was silent on it, so the version moved with it, where the instance offers Auto-fill
  * (`LegalOptions.autofill`): only there is the text drawn, as with the plan's.
+ *
+ * It moved on 19 October 2026 for the feedback a connected assistant can send about the
+ * tools (MAK-212). The version did not: it is a note an app the person chose to connect
+ * writes about our tools, told to leave their notes out of it, which is closer to the
+ * connected-app disclosure of the 16th than to Auto-fill sending a note to someone else.
  */
-const PRIVACY_EFFECTIVE = '2026-10-16';
+const PRIVACY_EFFECTIVE = '2026-10-19';
 
 export interface LegalDocuments {
   privacy: LegalDocument;
@@ -251,6 +256,10 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
                   'press took, so that its limits can be applied.',
               ]
             : []),
+          'Feedback from your assistant — if an app you have connected uses its feedback tool to ' +
+            'tell us about a problem with our tools, what it wrote, which app sent it and from which ' +
+            'account, so that we can improve them. The app is told never to include anything from ' +
+            'your notes. Feedback is kept for ninety days, and goes sooner if the account is deleted.',
           ...(opts.sellsPlan
             ? [
                 'Your plan — whether the account is on a trial or a plan, when that ends, how much ' +

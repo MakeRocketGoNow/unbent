@@ -58,7 +58,16 @@ describe('gatedRegistrar', () => {
     await expect(tools.get('edit_note')!()).rejects.toThrow('no such table');
   });
 
-  it('allows exactly the deletes and their undo', () => {
-    expect([...ALLOWED_INACTIVE].sort()).toEqual(['delete_note', 'delete_notebook', 'delete_notes', 'delete_tag', 'restore_note', 'restore_notes', 'set_attachment_text']);
+  it('allows exactly the deletes and their undo, the recorded reading, and feedback', () => {
+    expect([...ALLOWED_INACTIVE].sort()).toEqual([
+      'delete_note',
+      'delete_notebook',
+      'delete_notes',
+      'delete_tag',
+      'restore_note',
+      'restore_notes',
+      'send_feedback',
+      'set_attachment_text',
+    ]);
   });
 });

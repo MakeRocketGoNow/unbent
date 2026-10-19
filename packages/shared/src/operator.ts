@@ -207,3 +207,47 @@ export interface AccountDump {
 export interface AccountDumps {
   dumps: AccountDump[];
 }
+
+/**
+ * What an assistant's feedback is about (MAK-212), the `send_feedback` tool's
+ * `category`. The set Axiom's own tool settled on, since the point of a category is that
+ * the operator can tell a wrong answer from a missing feature at a glance, and theirs was
+ * drawn from what agents actually reported. Each has its label on the operator page.
+ */
+export const FEEDBACK_CATEGORIES = {
+  'tool-result': 'Tool result',
+  'error-message': 'Error message',
+  'missing-capability': 'Missing capability',
+  'tool-description': 'Tool description',
+  performance: 'Performance',
+  praise: 'Praise',
+  other: 'Other',
+} as const;
+
+export type FeedbackCategory = keyof typeof FEEDBACK_CATEGORIES;
+
+/** The longest feedback the tool takes: a bug report's length, not an essay's. */
+export const FEEDBACK_MAX_CHARS = 2000;
+
+/** One piece of an assistant's feedback, as the operator page lists it. */
+export interface AssistantFeedback {
+  id: number;
+  userId: string;
+  /** The account's address; null only when the row outlived a `user` row it should have gone with. */
+  email: string | null;
+  /** The OAuth client that sent it, and the name it registered under then. */
+  clientId: string;
+  clientName: string | null;
+  category: FeedbackCategory;
+  /** The tool it is about, as the assistant named it. */
+  tool: string | null;
+  body: string;
+  createdAt: number;
+}
+
+export interface AssistantFeedbackPage {
+  /** Unread, newest first. */
+  feedback: AssistantFeedback[];
+  /** Whether more unread rows exist beyond these. */
+  more: boolean;
+}
