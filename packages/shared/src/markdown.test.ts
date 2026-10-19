@@ -624,6 +624,7 @@ describe('snippetParts', () => {
 
   it('drops a mark the window cut from its partner', () => {
     expect(shown('…mid **bold <<word>> rest…')).toBe('…mid bold [word] rest…');
+    expect(shown('code `a**b` and <<x>>')).toBe('code a**b and [x]');
   });
 
   it('leaves a parenthesis in prose alone', () => {

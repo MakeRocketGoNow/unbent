@@ -570,6 +570,9 @@ function* blockTexts(node: MdNode, mode: FlattenMode): Generator<string> {
 function inlineText(node: MdNode, mode: FlattenMode): string {
   switch (node.type) {
     case 'text':
+      // A `**` or `~~` the snippet's window cut from its partner is left as text by the
+      // parse. Only text: in code the characters are the content.
+      return mode === 'snippet' ? (node.value ?? '').replace(/\*\*|~~/g, '') : (node.value ?? '');
     case 'inlineCode':
       return node.value ?? '';
     case 'break':
@@ -625,14 +628,14 @@ export interface SnippetPart {
  *
  * A snippet is a window of about two dozen tokens, so it often opens or closes inside a
  * link. Those edges are mended before the parse (`mendEdges`); a stray `**` the window cut
- * from its partner is dropped after it. If flattening leaves nothing (a window that was
+ * from its partner is dropped from the text the parse leaves (`inlineText`). If flattening leaves nothing (a window that was
  * all destination), the snippet is shown as it came rather than as an empty line.
  */
 export function snippetParts(snippet: string): SnippetPart[] {
   const marked = snippet.replace(/<<([^>]*)>>/g, `${HIT_OPEN}$1${HIT_CLOSE}`);
   const blocks = parseBlocks(mendEdges(marked)).flatMap((b) => [...blockTexts(b, 'snippet')]);
   const text = blocks
-    .map((t) => t.replace(/\*\*|~~/g, '').replace(/\s+/g, ' ').trim())
+    .map((t) => t.replace(/\s+/g, ' ').trim())
     .filter((t) => t.replace(HIT_MARKS, '').trim() !== '')
     .join(' · ');
   return splitHits(text.replace(HIT_MARKS, '').trim() ? text : marked);
