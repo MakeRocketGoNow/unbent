@@ -12,10 +12,10 @@ type Handler = (args: { category: string; feedback: string; tool?: string }) => 
  * SQLite's to enforce and is tested in `lib/assistant-feedback.test.ts`; this is what the
  * model is told either way, and that a lapsed account's assistant is not refused.
  */
-function setup(changes: number) {
+function setup(changes: number, repeat = false) {
   const binds: unknown[][] = [];
   const statement: FeedbackStatement = {
-    all: async () => ({ results: [] }),
+    all: async () => ({ results: repeat ? [{ hit: 1 }] : [] }) as never,
     run: async () => ({ meta: { changes } }),
   };
   const db: FeedbackDb = {
@@ -48,6 +48,13 @@ describe('send_feedback', () => {
     const { send } = setup(0);
     const answer = await send({ category: 'other', feedback: 'Again.' });
     expect(answer.isError).toBe(true);
-    expect(answer.content[0]!.text).toContain('was not kept');
+    expect(answer.content[0]!.text).toContain('feedback for the last day');
+  });
+
+  it('tells the model a repeat was not kept again', async () => {
+    const { send } = setup(0, true);
+    const answer = await send({ category: 'other', feedback: 'Again.' });
+    expect(answer.isError).toBe(true);
+    expect(answer.content[0]!.text).toContain('already sent');
   });
 });

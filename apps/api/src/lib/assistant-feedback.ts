@@ -16,10 +16,14 @@ import type { AssistantFeedback, AssistantFeedbackPage, FeedbackCategory } from 
  * allowance is the sign-in codes' (`code-sends.ts`), and a talkative assistant must not
  * be able to spend it.
  *
- * Bounded twice, since anything an account can write in a loop has to be: a day's worth
- * per account (`FEEDBACK_PER_DAY`), checked in the insert's own condition so two calls at
- * once cannot both pass, and an age (`FEEDBACK_KEPT_MS`), pruned on the write that adds a
- * row, as note history prunes, with no cron.
+ * Bounded three ways, since anything an account can write in a loop has to be: a day's
+ * worth per account (`FEEDBACK_PER_DAY`); no repeat of what the account's assistants
+ * already sent that day, word for word; and an age (`FEEDBACK_KEPT_MS`), pruned on the
+ * write that adds a row, as note history prunes, with no cron. The first two are checked
+ * in the insert's own condition, so two calls at once cannot both pass. The repeat is
+ * there because a model that has lost track of having sent something sends it again,
+ * and twenty copies of one report (what a stuck loop sends before the day's bound stops
+ * it) buried everything else on the operator's list when the first version was tried.
  */
 
 /**
@@ -61,27 +65,39 @@ export interface NewFeedback {
   body: string;
 }
 
+/** What became of a piece of feedback: kept, refused as a repeat of the day's, or past the day's bound. */
+export type FeedbackOutcome = 'kept' | 'repeat' | 'limit';
+
 /**
- * Keeps one piece of feedback, or answers `false` when the account has sent its day's.
+ * Keeps one piece of feedback, unless the account has sent the same words or its day's
+ * worth in the last day.
  *
  * One batch, so one round trip and one transaction: the prune, then an insert whose
- * `WHERE` is the day's count. Counted in the statement rather than read first, so two
- * calls in flight cannot both find nineteen and both write. The client's name is copied
- * in the same statement from the row it registered, since a deleted client takes that
- * row with it and the page would be left with an opaque id.
+ * `WHERE` is both bounds. Checked in the statement rather than read first, so two calls
+ * in flight cannot both find nineteen and both write. The client's name is copied in the
+ * same statement from the row it registered, since a deleted client takes that row with
+ * it and the page would be left with an opaque id. A refusal reads once more to say which
+ * bound it was, so the model is told the right thing; only a refusal pays for that.
  */
-export async function recordFeedback(db: FeedbackDb, feedback: NewFeedback, now = Date.now()): Promise<boolean> {
+export async function recordFeedback(db: FeedbackDb, feedback: NewFeedback, now = Date.now()): Promise<FeedbackOutcome> {
+  const since = now - DAY_MS;
   const [, inserted] = await db.batch([
     db.prepare(`DELETE FROM assistant_feedback WHERE created_at < ?1`).bind(now - FEEDBACK_KEPT_MS),
     db
       .prepare(
         `INSERT INTO assistant_feedback (user_id, client_id, client_name, category, tool, body, created_at)
          SELECT ?1, ?2, (SELECT name FROM oauthClient WHERE clientId = ?2), ?3, ?4, ?5, ?6
-         WHERE (SELECT COUNT(*) FROM assistant_feedback WHERE user_id = ?1 AND created_at > ?7) < ?8`,
+         WHERE (SELECT COUNT(*) FROM assistant_feedback WHERE user_id = ?1 AND created_at > ?7) < ?8
+           AND NOT EXISTS (SELECT 1 FROM assistant_feedback WHERE user_id = ?1 AND created_at > ?7 AND body = ?5)`,
       )
-      .bind(feedback.userId, feedback.clientId, feedback.category, feedback.tool, feedback.body, now, now - DAY_MS, FEEDBACK_PER_DAY),
+      .bind(feedback.userId, feedback.clientId, feedback.category, feedback.tool, feedback.body, now, since, FEEDBACK_PER_DAY),
   ]);
-  return (inserted?.meta.changes ?? 0) > 0;
+  if ((inserted?.meta.changes ?? 0) > 0) return 'kept';
+  const { results } = await db
+    .prepare(`SELECT 1 AS hit FROM assistant_feedback WHERE user_id = ?1 AND created_at > ?2 AND body = ?3 LIMIT 1`)
+    .bind(feedback.userId, since, feedback.body)
+    .all<{ hit: number }>();
+  return results.length > 0 ? 'repeat' : 'limit';
 }
 
 interface FeedbackRow {

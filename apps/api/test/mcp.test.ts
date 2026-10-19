@@ -297,6 +297,7 @@ describe('mcp endpoint', () => {
     expect(names).toContain('create_note');
     expect(names).toContain('edit_note');
     expect(names).toContain('update_notebook');
+    expect(names).toContain('send_feedback');
   });
 
   it('sets a notebook purpose through update_notebook and reads it back from list_notebooks', async () => {
@@ -383,6 +384,24 @@ describe('mcp endpoint', () => {
  * MAK-119's "done when": an assistant can replace any note's text without asking, so what
  * it replaced has to be there afterwards, however recently the note was last saved.
  */
+describe('send_feedback', () => {
+  it("keeps an assistant's feedback, refuses the same words twice, and stops at the day's bound", async () => {
+    // Bob's own account, so the day's bound spent here is spent for no other test.
+    const send = (feedback: string) =>
+      mcp(bob.token, 'tools/call', { name: 'send_feedback', arguments: { category: 'tool-description', tool: 'list_notes', feedback } });
+    const first = await send('compact was not clear about which fields it drops (report 0).');
+    expect(first.body.result?.isError).toBeFalsy();
+    expect(toolText(first.body)).toMatch(/^Sent\./);
+    const again = await send('compact was not clear about which fields it drops (report 0).');
+    expect(again.body.result?.isError).toBe(true);
+    expect(toolText(again.body)).toContain('already sent');
+    for (let i = 1; i < 20; i++) expect(toolText((await send(`report ${i}`)).body)).toMatch(/^Sent\./);
+    const over = await send('report 20');
+    expect(over.body.result?.isError).toBe(true);
+    expect(toolText(over.body)).toContain('feedback for the last day');
+  }, 30_000);
+});
+
 describe('mcp edits and the note history', () => {
   const asAlice = () => ({ Cookie: alice.cookie, Origin: ORIGIN, 'Content-Type': 'application/json' });
 

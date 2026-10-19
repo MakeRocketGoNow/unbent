@@ -63,7 +63,7 @@ const sample = (over: Partial<NewFeedback> = {}): NewFeedback => ({
 describe('recordFeedback', () => {
   it('keeps the feedback with the client name it registered under, and lists it with the address', async () => {
     const { db } = fakeDb();
-    expect(await recordFeedback(db, sample(), T0)).toBe(true);
+    expect(await recordFeedback(db, sample(), T0)).toBe('kept');
     const page = await listFeedback(db);
     expect(page.more).toBe(false);
     expect(page.feedback).toEqual([
@@ -89,18 +89,28 @@ describe('recordFeedback', () => {
 
   it("refuses an account's feedback past the day's bound, for that account alone, and again once the day has rolled", async () => {
     const { db, count } = fakeDb();
-    for (let i = 0; i < FEEDBACK_PER_DAY; i++) expect(await recordFeedback(db, sample(), T0 + i)).toBe(true);
-    expect(await recordFeedback(db, sample(), T0 + HOUR)).toBe(false);
-    expect(await recordFeedback(db, sample({ userId: 'u2' }), T0 + HOUR)).toBe(true);
+    for (let i = 0; i < FEEDBACK_PER_DAY; i++) expect(await recordFeedback(db, sample({ body: `report ${i}` }), T0 + i)).toBe('kept');
+    expect(await recordFeedback(db, sample({ body: 'one more' }), T0 + HOUR)).toBe('limit');
+    expect(await recordFeedback(db, sample({ userId: 'u2', body: 'one more' }), T0 + HOUR)).toBe('kept');
     expect(count()).toBe(FEEDBACK_PER_DAY + 1);
     // A rolling day: the first of the twenty is past it a millisecond after its 24 hours.
-    expect(await recordFeedback(db, sample(), T0 + 24 * HOUR + 1)).toBe(true);
+    expect(await recordFeedback(db, sample({ body: 'one more' }), T0 + 24 * HOUR + 1)).toBe('kept');
+  });
+
+  it("refuses the account's own words a second time in a day, whatever else differs, and takes them again after", async () => {
+    const { db, count } = fakeDb();
+    expect(await recordFeedback(db, sample(), T0)).toBe('kept');
+    expect(await recordFeedback(db, sample({ category: 'other', tool: null, clientId: 'gone' }), T0 + HOUR)).toBe('repeat');
+    // Another account saying the same thing is a second report, not a repeat.
+    expect(await recordFeedback(db, sample({ userId: 'u2' }), T0 + HOUR)).toBe('kept');
+    expect(await recordFeedback(db, sample(), T0 + 24 * HOUR + 1)).toBe('kept');
+    expect(count()).toBe(3);
   });
 
   it('prunes what is past its age on the next write, read or not', async () => {
     const { db, count } = fakeDb();
-    await recordFeedback(db, sample(), T0);
-    await recordFeedback(db, sample(), T0 + HOUR);
+    await recordFeedback(db, sample({ body: 'first' }), T0);
+    await recordFeedback(db, sample({ body: 'second' }), T0 + HOUR);
     const [first] = (await listFeedback(db)).feedback.slice(-1);
     await markFeedbackRead(db, first!.id, true, T0 + 2 * HOUR);
     await recordFeedback(db, sample({ userId: 'u2' }), T0 + FEEDBACK_KEPT_MS + HOUR / 2);

@@ -54,8 +54,11 @@ export function registerFeedbackTool(server: Registrar, db: FeedbackDb, caller: 
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
     async ({ category, feedback, tool }) => {
-      const kept = await recordFeedback(db, { ...caller, category, tool: tool || null, body: feedback });
-      if (!kept) {
+      const outcome = await recordFeedback(db, { ...caller, category, tool: tool || null, body: feedback });
+      if (outcome === 'repeat') {
+        return toolError('This was already sent in the last day, word for word, so it was not kept again. There is no need to send it twice.');
+      }
+      if (outcome === 'limit') {
         return toolError(
           `This account has sent its ${FEEDBACK_PER_DAY} pieces of feedback for the last day, so this one was not kept. ` +
             'Carry on with what the person asked for; there is no need to tell them.',
