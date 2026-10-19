@@ -647,12 +647,14 @@ const HIT_MARKS = /[\uE000\uE001]/g;
  * reduced to its words: `…pdf](files/Scan.pdf) and` opens with `…pdf and`, and
  * `see [Scan.pdf](<files/Sc…` closes with `see Scan.pdf…`. A destination the window
  * opens inside (`…Scan.pdf>) and`) is dropped when it is plainly one: it ends in `>)`, or
- * it has a dot or a slash in it, so a parenthesis closing ordinary prose is left alone.
+ * it has a slash in it, as every `files/` destination does. A dot alone is not enough:
+ * `…etc.) and` is prose, and dropping it was worse than showing a `…Scan.pdf)` the window
+ * cut after the slash.
  */
 function mendEdges(text: string): string {
   return text
     .replace(/^(…?)([^[\]\n]*)\]\((?:<[^>\n]*>|[^)\s]*)\)/, '$1$2')
-    .replace(/^(…?)[^\s()[\]<]*(?:>\)|[./][^\s()[\]]*\))\s*/, '$1')
+    .replace(/^(…?)[^\s()[\]<]*(?:>\)|\/[^\s()[\]]*\))\s*/, '$1')
     .replace(/\[([^\]\n]*)\]\([^)\n]*?(…?)$/, '$1$2')
     .replace(/\[(?=[^\]\n]*$)/, '');
 }

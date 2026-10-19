@@ -609,7 +609,7 @@ describe('snippetParts', () => {
     expect(shown('…pdf](files/<<Scan>>.pdf) and more')).toBe('…pdf and more');
     expect(shown('…<<Scan>>.pdf](<files/Scan.pdf>) and more')).toBe('…[Scan].pdf and more');
     expect(shown('…<<Scan>>.pdf>) and more')).toBe('…and more');
-    expect(shown('…<<Scan>>.pdf) and more')).toBe('…and more');
+    expect(shown('…files/<<Scan>>.pdf) and more')).toBe('…and more');
   });
 
   it('mends a link the window closed inside', () => {
@@ -629,6 +629,7 @@ describe('snippetParts', () => {
   it('leaves a parenthesis in prose alone', () => {
     expect(shown('…call (555) 123 or <<x>>')).toBe('…call (555) 123 or [x]');
     expect(shown('…tea) and <<x>>')).toBe('…tea) and [x]');
+    expect(shown('…etc.) and <<x>>')).toBe('…etc.) and [x]');
   });
 
   it('shows the snippet as it came when flattening leaves nothing', () => {
