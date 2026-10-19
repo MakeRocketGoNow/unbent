@@ -617,6 +617,11 @@ describe('snippetParts', () => {
     expect(shown('see [<<Scan>> 2…')).toBe('see [Scan] 2…');
   });
 
+  /** A phrase typed with punctuation in it, `pdf](files`, is one FTS5 phrase and one mark. */
+  it('closes a hit that opened in a label and closed in its destination', () => {
+    expect(shown('see [Scan.<<pdf](files>>/Scan.pdf) and more')).toBe('see Scan.[pdf] and more');
+  });
+
   it('drops a mark the window cut from its partner', () => {
     expect(shown('…mid **bold <<word>> rest…')).toBe('…mid bold [word] rest…');
   });

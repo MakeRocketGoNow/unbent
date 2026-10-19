@@ -581,10 +581,16 @@ function inlineText(node: MdNode, mode: FlattenMode): string {
     case 'imageReference':
     case 'footnoteReference':
       return '';
-    case 'link':
+    case 'link': {
       // A same-note attachment is shown by the row's file line, not repeated as its label.
       if (mode === 'excerpt' && typeof node.url === 'string' && node.url.startsWith(ATTACHMENT_PREFIX)) return '';
-      return (node.children ?? []).map((c) => inlineText(c, mode)).join('');
+      const label = (node.children ?? []).map((c) => inlineText(c, mode)).join('');
+      // FTS5 marks a matched phrase as one run, so a phrase across `](` opens its mark in
+      // the label and closes it in the destination, which is dropped. Closed here, or the
+      // mark would run to the end of the snippet.
+      const unclosed = label.lastIndexOf(HIT_OPEN) > label.lastIndexOf(HIT_CLOSE);
+      return unclosed && node.url?.includes(HIT_CLOSE) ? label + HIT_CLOSE : label;
+    }
     default:
       return (node.children ?? []).map((c) => inlineText(c, mode)).join('');
   }
