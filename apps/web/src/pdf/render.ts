@@ -50,6 +50,15 @@ export interface LoadedPdf {
   pageCount: number;
   /** Draws one 1-based page onto a canvas, sized for the given CSS width. */
   renderPage: (pageNumber: number, canvas: HTMLCanvasElement, cssWidth: number) => Promise<void>;
+  /**
+   * Lays one page's text over its drawing, invisible and selectable, measured for the
+   * given CSS width. Resolves to the page's width at scale 1 as drawn, after any
+   * `/Rotate`, which the caller divides the page's displayed width by to get the
+   * container's `--total-scale-factor` (see `.textLayer` in `styles.css`). Not
+   * `rawDims.pageWidth`: that is the unturned box pdf.js sizes the layer from, and on a
+   * page stored turned a quarter it is the drawing's height.
+   */
+  renderText: (pageNumber: number, container: HTMLElement, cssWidth: number) => Promise<number>;
   /** Releases the worker's copy of the document. */
   destroy: () => void;
 }
@@ -151,6 +160,27 @@ export async function loadPdf(url: string, signal?: AbortSignal): Promise<Loaded
         // itself, and its published type does not admit null from a caller.
         transform: dpr === 1 ? undefined : [dpr, 0, 0, dpr, 0, 0],
       }).promise;
+    },
+
+    /**
+     * pdf.js's own `TextLayer`: a transparent span per run of text, placed and stretched
+     * to sit over the glyphs the canvas drew, so a drag selects what it appears to.
+     *
+     * The text is what the file carries, so a scan selects its OCR layer (invisible text,
+     * which `getTextContent` returns like any other) and a scan without one has nothing
+     * to select. Marked content is kept so a tagged PDF's artifacts (running headers, page
+     * numbers) are hidden from a screen reader the way the file asks.
+     */
+    async renderText(pageNumber, container, cssWidth) {
+      const page = await doc.getPage(pageNumber);
+      const base = page.getViewport({ scale: 1 });
+      const viewport = page.getViewport({ scale: cssWidth / base.width });
+      await new lib.TextLayer({
+        textContentSource: page.streamTextContent({ includeMarkedContent: true }),
+        container,
+        viewport,
+      }).render();
+      return base.width;
     },
 
     destroy() {

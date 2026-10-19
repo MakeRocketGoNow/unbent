@@ -7,10 +7,31 @@ import { describe, expect, it, vi } from 'vitest';
  */
 type RenderParams = Record<string, unknown>;
 const render = vi.fn((_params: RenderParams) => ({ promise: Promise.resolve() }));
+const streamTextContent = vi.fn((_params: Record<string, unknown>) => 'text stream');
+/** Whether the mocked page is stored turned a quarter, as a landscape scan often is. */
+let turned = false;
 const getPage = vi.fn(async () => ({
-  getViewport: ({ scale }: { scale: number }) => ({ width: 600 * scale, height: 800 * scale }),
+  // pdf.js applies the page's `/Rotate` to a viewport by default; `rawDims` stay unturned.
+  getViewport: ({ scale }: { scale: number }) => ({
+    scale,
+    width: (turned ? 800 : 600) * scale,
+    height: (turned ? 600 : 800) * scale,
+    rawDims: { pageWidth: 600, pageHeight: 800 },
+  }),
   render,
+  streamTextContent,
 }));
+
+/** What each `TextLayer` was built with; rendering it is pdf.js's, and a no-op here. */
+const textLayers: Record<string, unknown>[] = [];
+class TextLayer {
+  constructor(params: Record<string, unknown>) {
+    textLayers.push(params);
+  }
+  render() {
+    return Promise.resolve();
+  }
+}
 
 const getDocument = vi.fn((_params: Record<string, unknown>) => ({
   promise: Promise.resolve({ numPages: 1, getPage }),
@@ -20,6 +41,7 @@ const getDocument = vi.fn((_params: Record<string, unknown>) => ({
 vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => ({
   GlobalWorkerOptions: { workerSrc: 'stub' },
   getDocument,
+  TextLayer,
 }));
 
 const { loadPdf } = await import('./render.js');
@@ -67,6 +89,51 @@ describe('renderPage parameters', () => {
   it('caps the scale at 2x', async () => {
     const params = await renderOnce(3);
     expect(params['transform']).toEqual([2, 0, 0, 2, 0, 0]);
+  });
+});
+
+describe('renderText', () => {
+  async function layOut(cssWidth: number) {
+    await renderOnce(1);
+    textLayers.length = 0;
+    const doc = await loadPdf('/api/notes/n1/files/scan.pdf');
+    const container = document.createElement('div');
+    const width = await doc.renderText(1, container, cssWidth);
+    return { width, container, params: textLayers[0]! };
+  }
+
+  /**
+   * The viewer divides a page's displayed width by this to get `--total-scale-factor`,
+   * so it has to be the page's width at scale 1 as drawn, not the width it was laid
+   * out at.
+   */
+  it("resolves to the page's width at scale 1", async () => {
+    const { width } = await layOut(1200);
+    expect(width).toBe(600);
+  });
+
+  /** As drawn, after the turn: the unturned width would scale a landscape page's text wrong. */
+  it("resolves to a turned page's width as drawn", async () => {
+    turned = true;
+    try {
+      const { width } = await layOut(1200);
+      expect(width).toBe(800);
+    } finally {
+      turned = false;
+    }
+  });
+
+  it('lays the text out for the width the page is drawn at', async () => {
+    const { params, container } = await layOut(1200);
+    expect((params['viewport'] as { scale: number }).scale).toBe(2);
+    expect(params['container']).toBe(container);
+    expect(params['textContentSource']).toBe('text stream');
+  });
+
+  /** So a tagged PDF's running headers and page numbers stay hidden from a screen reader. */
+  it('keeps marked content', async () => {
+    await layOut(600);
+    expect(streamTextContent.mock.lastCall![0]).toEqual({ includeMarkedContent: true });
   });
 });
 

@@ -275,8 +275,16 @@ export function openAttachmentViewer(
   // The empty space around the content is the backdrop here, since the dialog itself
   // fills the screen: a click on it closes, the way a lightbox's scrim does. A click on
   // the content does not: for an image, that is the zoom toggle.
+  //
+  // Only when the press began there too. A click lands on the nearest element the press
+  // and the release share, so a drag that selects a PDF's text and lets go in the margin
+  // is a click on the backdrop, and it closed the viewer on what had just been selected.
+  let pressedOnBackdrop = false;
+  body.addEventListener('pointerdown', (event) => {
+    pressedOnBackdrop = event.target === body;
+  });
   body.addEventListener('click', (event) => {
-    if (event.target === body && !stillOpening()) dialog.close();
+    if (event.target === body && pressedOnBackdrop && !stillOpening()) dialog.close();
   });
   close.addEventListener('click', () => dialog.close());
 
@@ -490,6 +498,46 @@ function mountPdf(
 
   let released = false;
   let observer: IntersectionObserver | null = null;
+  let resizer: ResizeObserver | null = null;
+  const selection = new AbortController();
+
+  const setScale = (page: HTMLElement) => {
+    const baseWidth = Number(page.dataset['baseWidth']);
+    if (!baseWidth) return;
+    page.style.setProperty('--total-scale-factor', String(page.clientWidth / baseWidth));
+  };
+
+  /**
+   * What pdf.js's own viewer does to keep a drag from selecting the whole page.
+   *
+   * Between the spans of a text layer there is nothing to select, and a browser that
+   * finds the pointer over nothing extends the selection to wherever the document's
+   * next text is: in a column of pages, to the end of the document. The layer ends with
+   * an empty block that, while a selection is being made, covers the page
+   * (`.textLayer.selecting .endOfContent`), so the gaps land on it and the selection
+   * stays where the pointer is. pdf.js's viewer also moves that block next to the
+   * selection's end on every change, for Safari and Chromium before 148. Current Chrome
+   * and Firefox do not need that, so it is left out; in Safari a drag across a gap can
+   * still jump further than it should.
+   *
+   * Raised on `mousedown`, as pdf.js does, not on any pointer. A touch selection is a
+   * long-press and then handles, which the platform keeps on text by itself, and a block
+   * raised on every touch would sit under each scroll of the page for nothing.
+   */
+  const trackSelection = (layer: HTMLElement) => {
+    const end = el('div', 'endOfContent');
+    layer.appendChild(end);
+    layer.addEventListener('mousedown', () => layer.classList.add('selecting'), {
+      signal: selection.signal,
+    });
+  };
+  const doneSelecting = () => {
+    for (const layer of pages.querySelectorAll('.textLayer.selecting')) {
+      layer.classList.remove('selecting');
+    }
+  };
+  document.addEventListener('pointerup', doneSelecting, { signal: selection.signal });
+  window.addEventListener('blur', doneSelecting, { signal: selection.signal });
 
   acquirePdf(target.src)
     .then((doc) => {
@@ -502,14 +550,45 @@ function mountPdf(
       // it has rather than redrawing all of them for the extra inches.
       const width = Math.max(1, Math.min(pages.clientWidth, MAX_PAGE_WIDTH));
 
-      const draw = (canvas: HTMLCanvasElement) => {
-        const n = Number(canvas.dataset['page']);
+      /**
+       * Keeps each page's text the size of its drawing.
+       *
+       * The layer's box and its font sizes are both `--total-scale-factor` times the
+       * page's own units, and a page drawn for this width is scaled down by CSS when the
+       * window narrows. Set from the page's displayed width, not the width it was drawn
+       * at, so the text stays over the glyphs it belongs to after that.
+       */
+      resizer =
+        typeof ResizeObserver === 'undefined'
+          ? null
+          : new ResizeObserver((entries) => {
+              for (const entry of entries) setScale(entry.target as HTMLElement);
+            });
+
+      const draw = (page: HTMLElement) => {
+        const n = Number(page.dataset['page']);
+        const canvas = page.querySelector('canvas')!;
         doc.renderPage(n, canvas, width).then(
-          () => canvas.classList.add('viewer-page-drawn'),
+          () => {
+            page.classList.add('viewer-page-drawn');
+            // After the drawing rather than beside it: the canvas is what the reader is
+            // waiting for, and text with nothing under it yet is nothing to select.
+            if (released) return;
+            const text = el('div', 'textLayer');
+            page.appendChild(text);
+            return doc.renderText(n, text, width).then((baseWidth) => {
+              page.dataset['baseWidth'] = String(baseWidth);
+              setScale(page);
+              resizer?.observe(page);
+              trackSelection(text);
+            });
+          },
           () => {
             // One unrenderable page keeps its placeholder rather than blanking the column.
           },
-        );
+        ).catch(() => {
+          // A page whose text will not lay out still reads; it just cannot be selected.
+        });
       };
 
       // Without an observer to wait on (jsdom, an old WebView) every page is drawn at once.
@@ -521,7 +600,7 @@ function mountPdf(
                 for (const entry of entries) {
                   if (!entry.isIntersecting) continue;
                   observer?.unobserve(entry.target);
-                  draw(entry.target as HTMLCanvasElement);
+                  draw(entry.target as HTMLElement);
                 }
               },
               // A screen's worth of margin either way, so the next page is drawn while the
@@ -530,12 +609,14 @@ function mountPdf(
             );
 
       for (let n = 1; n <= doc.pageCount; n += 1) {
-        const canvas = el('canvas', 'viewer-page');
-        canvas.dataset['page'] = String(n);
-        canvas.style.width = `${width}px`;
-        pages.appendChild(canvas);
-        if (observer) observer.observe(canvas);
-        else draw(canvas);
+        // The box a page and its text share; the canvas fills it and the text lies on top.
+        const page = el('div', 'viewer-page');
+        page.dataset['page'] = String(n);
+        page.style.width = `${width}px`;
+        page.appendChild(el('canvas', 'viewer-page-canvas'));
+        pages.appendChild(page);
+        if (observer) observer.observe(page);
+        else draw(page);
       }
     })
     .catch((err: Error) => {
@@ -546,6 +627,8 @@ function mountPdf(
   return () => {
     released = true;
     observer?.disconnect();
+    resizer?.disconnect();
+    selection.abort();
     releasePdf(target.src);
   };
 }
