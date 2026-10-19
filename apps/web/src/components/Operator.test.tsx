@@ -293,6 +293,20 @@ describe('FeedbackList', () => {
     expect(setRead).toHaveBeenLastCalledWith(1, false);
   });
 
+  it('brings a row back with Undo after a refetch has stopped listing it', async () => {
+    const setRead = vi.fn(async () => {});
+    const row = feedback();
+    const { rerender } = render(<FeedbackList page={{ feedback: [row], more: false }} setRead={setRead} now={now} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    await screen.findByText(/Dismissed: error message/);
+    // The refetch: the server lists only unread rows, so the dismissed one is gone from the page.
+    rerender(<FeedbackList page={{ feedback: [], more: false }} setRead={setRead} now={now} />);
+    expect(screen.getByText(/Dismissed: error message/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await screen.findByRole('button', { name: 'Dismiss' });
+    expect(screen.getByText(/matched twice/)).toBeTruthy();
+  });
+
   it('keeps the row and says why when the dismiss is refused', async () => {
     render(
       <FeedbackList

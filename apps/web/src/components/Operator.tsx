@@ -277,8 +277,10 @@ const n = (v: number | null) => (v === null ? '?' : v.toLocaleString());
  * nothing (the row is marked read and ages out with the rest), which is why it needs no
  * confirm. The row stays where it was as one line with Undo, rather than leaving the list:
  * a dismiss pressed on the wrong row is then undone where the eye already is, and the
- * rows below do not jump up under the pointer. Dismissed rows are kept here, beside what
- * the query holds, so the refetch on focus does not take an Undo away mid-thought; they
+ * rows below do not jump up under the pointer. Every row this list has dismissed or
+ * brought back is kept here with what was last done to it, beside what the query holds,
+ * so a refetch (on focus, on the interval) neither takes an Undo away mid-thought nor,
+ * once the server has stopped listing the row, loses the row an Undo brings back. They
  * leave when the page does.
  *
  * The body keeps its line breaks: an assistant writing a bug report writes steps.
@@ -292,28 +294,29 @@ export function FeedbackList({
   setRead: (id: number, read: boolean) => Promise<void>;
   now?: number;
 }) {
-  const [dismissed, setDismissed] = useState<ReadonlyMap<number, AssistantFeedback>>(new Map());
-  const [busy, setBusy] = useState<number | null>(null);
+  const [touched, setTouched] = useState<ReadonlyMap<number, { row: AssistantFeedback; read: boolean }>>(new Map());
+  // Every request in flight, so a second dismiss before the first answers keeps both disabled.
+  const [busy, setBusy] = useState<ReadonlySet<number>>(new Set());
   const [failed, setFailed] = useState<{ id: number; message: string } | null>(null);
-  const rows = [...page.feedback.filter((f) => !dismissed.has(f.id)), ...dismissed.values()].sort(
-    (a, b) => b.createdAt - a.createdAt || b.id - a.id,
-  );
+  const byId = new Map(page.feedback.map((f) => [f.id, f] as const));
+  for (const [id, { row }] of touched) if (!byId.has(id)) byId.set(id, row);
+  const rows = [...byId.values()].sort((a, b) => b.createdAt - a.createdAt || b.id - a.id);
+  const isDismissed = (id: number) => touched.get(id)?.read === true;
 
   async function toggle(row: AssistantFeedback, read: boolean) {
-    setBusy(row.id);
+    setBusy((b) => new Set(b).add(row.id));
     setFailed(null);
     try {
       await setRead(row.id, read);
-      setDismissed((d) => {
-        const next = new Map(d);
-        if (read) next.set(row.id, row);
-        else next.delete(row.id);
-        return next;
-      });
+      setTouched((t) => new Map(t).set(row.id, { row, read }));
     } catch (err) {
       setFailed({ id: row.id, message: errorText(err) });
     } finally {
-      setBusy(null);
+      setBusy((b) => {
+        const next = new Set(b);
+        next.delete(row.id);
+        return next;
+      });
     }
   }
 
@@ -328,7 +331,7 @@ export function FeedbackList({
           // Capitalised where it starts the row's last line, and not inside the sentence a dismissed row is.
           const app = f.clientName || 'An app with no name';
           const appInSentence = f.clientName || 'an app with no name';
-          if (dismissed.has(f.id)) {
+          if (isDismissed(f.id)) {
             return (
               <li key={f.id} className="dump-row feedback-row">
                 <span className="dump-name">
@@ -338,7 +341,7 @@ export function FeedbackList({
                   {failed?.id === f.id && <span className="bad small">{failed.message}</span>}
                 </span>
                 <span className="dump-actions">
-                  <Button variant="quiet" size="small" disabled={busy === f.id} onClick={() => void toggle(f, false)}>
+                  <Button variant="quiet" size="small" disabled={busy.has(f.id)} onClick={() => void toggle(f, false)}>
                     Undo
                   </Button>
                 </span>
@@ -367,7 +370,7 @@ export function FeedbackList({
                 {failed?.id === f.id && <span className="bad small">{failed.message}</span>}
               </span>
               <span className="dump-actions">
-                <Button variant="quiet" size="small" disabled={busy === f.id} onClick={() => void toggle(f, true)}>
+                <Button variant="quiet" size="small" disabled={busy.has(f.id)} onClick={() => void toggle(f, true)}>
                   Dismiss
                 </Button>
               </span>
