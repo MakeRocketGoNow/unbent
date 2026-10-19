@@ -31,7 +31,7 @@ function initialOf(email: string): string {
 }
 
 /**
- * Who you are signed in as, and how to leave.
+ * Who you are signed in as, where to report a problem, and how to leave.
  *
  * One coherent menu behind one avatar, which is why it collapses at every width rather than
  * only on a phone: what it holds is account chrome, not navigation. Trash used to sit here
@@ -40,6 +40,11 @@ function initialOf(email: string): string {
  * place of its own at both widths, a row on the floor of the rail and of the drawer,
  * which is where Keep puts it. Leaving it here as well would have been two routes to one
  * page a thumb's width apart.
+ *
+ * Feedback is the one item about the app that stays, against that rule on purpose: "where
+ * do I report this?" is asked from the view that broke, and this menu is the one thing
+ * reachable from every view. Settings has a row of its own at both widths; feedback would
+ * have none, and a row of its own on every view is more chrome than it earns.
  *
  * Lifted out of `Topbar` because the phone no longer shows a topbar over the note list: the
  * list has a heading of its own now, and this menu is reached from the drawer's head
