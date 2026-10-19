@@ -4,7 +4,8 @@ import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { DUMP_SQL, OPERATOR_PAGE_SQL } from './lib/directory.js';
+import { OPERATOR_SORTS } from '@unbent/shared';
+import { DUMP_SQL, OPERATOR_PAGE_SQL, operatorPageSql } from './lib/directory.js';
 import { LAPSE_DUE_SQL, planUpdateSql } from './lib/plan.js';
 import { RESTORES_SQL } from './lib/restores.js';
 
@@ -153,6 +154,24 @@ describe.skipIf(!sqlite3)('the directory\'s query plans', () => {
       expect(p).toContain('SEARCH d USING INDEX sqlite_autoindex_account_directory_1 (user_id=?)');
       // In the index's order, so a page is `LIMIT` rows read and not the table sorted.
       expect(p).not.toContain('TEMP B-TREE');
+    }
+  });
+
+  it('walk the email index backwards for Z to A, and read each row by its key for every other order', () => {
+    for (const cursor of [false, true]) {
+      const p = plan(operatorPageSql('email', 'desc', cursor).replace('?1', "'m@example.com'").replace(/\?2/g, 'NULL').replace('?3', '50'));
+      expect(p).toContain('sqlite_autoindex_user_2');
+      expect(p).not.toContain('TEMP B-TREE');
+    }
+    // No index serves a sort by a column (`listOperatorAccounts` says why): each is a
+    // sort of the live rows, and finds each one's user by id, not by walking emails.
+    for (const sort of OPERATOR_SORTS.filter((s) => s !== 'email')) {
+      for (const dir of ['asc', 'desc'] as const) {
+        for (const cursor of [false, true]) {
+          const sql = operatorPageSql(sort, dir, cursor).replace(/\?1/g, "'m@example.com'").replace(/\?2/g, 'NULL').replace('?3', '50').replace(/\?4/g, '7');
+          expect(plan(sql), `${sort} ${dir}`).toContain('TEMP B-TREE');
+        }
+      }
     }
   });
 

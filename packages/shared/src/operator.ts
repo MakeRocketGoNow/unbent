@@ -188,10 +188,39 @@ export const OPERATOR_PAGE_MAX = 200;
 /** The longest search the accounts list takes: an address's own limit, 64 + 1 + 255. */
 export const OPERATOR_SEARCH_MAX = 320;
 
+/**
+ * The columns the accounts list sorts by, as the route's `sort` takes them. `email` is
+ * the default and the only one an index serves; see `listOperatorAccounts`.
+ */
+export const OPERATOR_SORTS = ['email', 'created', 'notes', 'size', 'active', 'dump'] as const;
+export type OperatorSort = (typeof OPERATOR_SORTS)[number];
+export type OperatorSortDir = 'asc' | 'desc';
+/** An order the list was asked for; what is left out is the default (`email`, and the sort's first direction). */
+export interface OperatorOrder {
+  sort?: OperatorSort;
+  dir?: OperatorSortDir;
+}
+
+/**
+ * Which way a column sorts when it is first chosen: an address A to Z, everything else
+ * newest or largest first, since that end of a date or a size is the one looked for.
+ */
+export const OPERATOR_SORT_FIRST: Record<OperatorSort, OperatorSortDir> = {
+  email: 'asc',
+  created: 'desc',
+  notes: 'desc',
+  size: 'desc',
+  active: 'desc',
+  dump: 'desc',
+};
+
 export interface OperatorAccountsPage {
-  /** By email, A to Z; only those whose email or name holds the search, when there is one. */
+  /**
+   * In the order asked for (by email, A to Z, unless told otherwise); only those whose
+   * email or name holds the search, when there is one.
+   */
   accounts: OperatorAccount[];
-  /** The last email on this page, to pass back as `after` for the next; null when this was the last page. */
+  /** Where this page ended, to pass back as `after` for the next; null when this was the last page. Opaque. */
   next: string | null;
 }
 

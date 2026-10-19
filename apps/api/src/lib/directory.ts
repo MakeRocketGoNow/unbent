@@ -1,4 +1,4 @@
-import type { OperatorAccount, OperatorAccountsPage } from '@unbent/shared';
+import type { OperatorAccount, OperatorAccountsPage, OperatorSort, OperatorSortDir } from '@unbent/shared';
 import { OPERATOR_PAGE_SIZE } from '@unbent/shared';
 import { dropRestoresStatement } from './restores.js';
 
@@ -179,6 +179,56 @@ export const OPERATOR_PAGE_SQL = `${OPERATOR_SELECT}
         ORDER BY u.email LIMIT ?3`;
 
 /**
+ * Each sort but the address's, as the expression the rows are ordered by. Never null, so
+ * a page's last value can be the next page's cursor and compared with `<` and `=`: the
+ * two that can be null (an account that has never written, or never been dumped) take a
+ * value past every real one in whichever direction is asked for, so they are last both
+ * ways. Last, not first, because a column of "Never" at the top of "newest first" would
+ * push every answer to the question below the fold.
+ */
+const SORT_KEY: Record<Exclude<OperatorSort, 'email'>, Record<OperatorSortDir, string>> = {
+  created: { asc: 'd.created_at', desc: 'd.created_at' },
+  notes: { asc: 'd.note_count', desc: 'd.note_count' },
+  size: { asc: 'd.storage_bytes', desc: 'd.storage_bytes' },
+  active: { asc: `COALESCE(d.last_active_at, ${Number.MAX_SAFE_INTEGER})`, desc: 'COALESCE(d.last_active_at, -1)' },
+  dump: { asc: `COALESCE(d.dump_at, ${Number.MAX_SAFE_INTEGER})`, desc: 'COALESCE(d.dump_at, -1)' },
+};
+
+/**
+ * The list's statement in any other order than the default, as text for the same reason
+ * `OPERATOR_PAGE_SQL` is. Built from the fixed pieces above and nothing the request
+ * says. Binds as that statement's: the cursor's email (`''` when there is none), the
+ * search or null, the limit; and, after the first page of a sort by a column, the
+ * cursor's value as `?4`.
+ *
+ * Ties go by email A to Z in either direction, so the many accounts with no notes read as
+ * an address book, not one backwards; that is why the cursor is the value and the email,
+ * and the comparison is spelt out rather than a row value's `<`.
+ */
+export function operatorPageSql(sort: OperatorSort, dir: OperatorSortDir, cursor: boolean): string {
+  const filter = `d.deleted_at IS NULL
+          AND (?2 IS NULL OR instr(lower(u.email), ?2) > 0 OR instr(lower(u.name), ?2) > 0)`;
+  if (sort === 'email') {
+    if (dir === 'asc') return OPERATOR_PAGE_SQL;
+    // The first page names no `?1` and is bound `''` all the same: a parameter is in range
+    // up to the highest one named, so every first page binds the same three.
+    return `${OPERATOR_SELECT}
+        WHERE ${filter}${cursor ? '\n          AND u.email < ?1' : ''}
+        ORDER BY u.email DESC LIMIT ?3`;
+  }
+  const key = SORT_KEY[sort][dir];
+  const op = dir === 'asc' ? '>' : '<';
+  return `SELECT d.*, u.email, u.name, ${key} AS sort_key
+         FROM user u JOIN account_directory d ON d.user_id = u.id
+        WHERE ${filter}${cursor ? `
+          AND (${key} ${op} ?4 OR (${key} = ?4 AND u.email > ?1))` : ''}
+        ORDER BY ${key} ${dir.toUpperCase()}, u.email LIMIT ?3`;
+}
+
+/** A cursor `listOperatorAccounts` did not write, which the route answers 400. */
+export class OperatorCursorError extends Error {}
+
+/**
  * The dump run's two statements (`dumpStores` in lib/backups.ts), as text, beside the
  * list's for the same reason: `migrations.test.ts` plans them against a database built
  * from the migrations and pins that they drive from the directory and find each user by
@@ -211,19 +261,29 @@ export const DUMP_SQL = {
  * `user` and the daily backup's record of each (migration 0037). Live only: a
  * tombstoned row is the sweep's.
  *
- * By email, A to Z, and only those whose email or name holds `search` when there is one.
- * The list used to be ordered by activity, newest first, with an account that had never
- * written standing in by its creation: an order that moved every hour as the sweep
- * rewrote activity, read as two orders spliced together (a column of "3 hours ago" that
- * became "Made 18 hours ago" partway down), and gave an operator looking for one account
- * nowhere to look but the whole list. An address is where they look, and it stays put.
+ * By email, A to Z, unless `sort` says otherwise, and only those whose email or name
+ * holds `search` when there is one. The default was once the only order, ordered by
+ * activity before that: an order that moved every hour as the sweep rewrote activity,
+ * and read as two orders spliced together (a column of "3 hours ago" that became "Made
+ * 18 hours ago" partway down). An address is where an operator looks for one account,
+ * and it stays put, so it is still what the page opens on; the other columns sort when
+ * their header is pressed, for the questions an address cannot answer (who joined this
+ * week, whose store is largest, whose dump is oldest).
  *
- * Email is unique in `user`, so it is the cursor on its own: a page starts after the
- * last email the previous one ended on. The walk is `user`'s unique email index from that
- * email, with each account's directory row found by its key, and `LIMIT` stops it: a
- * page reads about fifty rows of each table however many accounts the instance holds.
+ * By email, the email is the cursor on its own (unique in `user`): a page starts after
+ * the last email the previous one ended on. The walk is `user`'s unique email index from
+ * that email, with each account's directory row found by its key, and `LIMIT` stops it:
+ * a page reads about fifty rows of each table however many accounts the instance holds.
  * Emails sort as stored, byte for byte; Better Auth lowercases an address when it makes
- * an account, so that is alphabetical.
+ * an account, so that is alphabetical. Backwards, the same index is walked from its end.
+ *
+ * By any other column, the cursor is the last row's value and email (`value:email`; the
+ * value is an integer, so the first colon is the one between them), and no index serves
+ * the order: every live row is read and sorted for each page. That is a row per account
+ * of each table, the same as a search that matches little already costs, for a page an
+ * operator opens a few times a day. An index per column was the alternative, and each
+ * one on this table changes the plans of the sweep's and the dump run's statements too
+ * (see `migrations.test.ts`); worth it when an instance has enough accounts to notice.
  *
  * A search is a substring of the email or the name, because the part of an address an
  * operator remembers is as often the domain as the start. It is `instr` over `lower`, not
@@ -233,25 +293,40 @@ export const DUMP_SQL = {
  * folds no others: "é" does not find "É", and the search is lowered the same way so that
  * an "É" typed still finds itself. No index serves a substring, so a search walks the same
  * index and tests each row until it has a page: a search that matches little reads every
- * `user` row, and the directory only for the rows that match. That is accepted: a row per
- * account, for a page an operator opens a few times a day.
+ * `user` row, and the directory only for the rows that match.
  *
- * A row whose email changed between pages can appear twice or not at all, which the
- * page dedupes by id and the five-minute refetch corrects. One statement for the first
- * page and the next, since `email > ''` is a seek from the start of the index.
+ * A row whose email or sorted value changed between pages can appear twice or not at
+ * all, which the page dedupes by id and the five-minute refetch corrects.
  */
 export async function listOperatorAccounts(
   db: D1Database,
   after = '',
   limit: number = OPERATOR_PAGE_SIZE,
   search = '',
+  sort: OperatorSort = 'email',
+  dir: OperatorSortDir = 'asc',
 ): Promise<OperatorAccountsPage> {
   const term = search.trim();
   // ASCII letters only, as SQLite's `lower` does to the columns it is compared with.
   const needle = term ? term.replace(/[A-Z]/g, (c) => c.toLowerCase()) : null;
-  const { results } = await db.prepare(OPERATOR_PAGE_SQL).bind(after, needle, limit).all<OperatorRow>();
+  if (sort === 'email') {
+    const { results } = await db.prepare(operatorPageSql(sort, dir, after !== '')).bind(after, needle, limit).all<OperatorRow>();
+    const last = results[results.length - 1];
+    return { accounts: results.map(toAccount), next: results.length === limit && last ? last.email : null };
+  }
+  let binds: unknown[] = ['', needle, limit];
+  if (after) {
+    const colon = after.indexOf(':');
+    const value = Number(after.slice(0, colon));
+    if (colon < 1 || !Number.isSafeInteger(value)) throw new OperatorCursorError('Not a cursor this list wrote');
+    binds = [after.slice(colon + 1), needle, limit, value];
+  }
+  const { results } = await db
+    .prepare(operatorPageSql(sort, dir, after !== ''))
+    .bind(...binds)
+    .all<OperatorRow & { sort_key: number }>();
   const last = results[results.length - 1];
-  return { accounts: results.map(toAccount), next: results.length === limit && last ? last.email : null };
+  return { accounts: results.map(toAccount), next: results.length === limit && last ? `${last.sort_key}:${last.email}` : null };
 }
 
 /** One live account's row as the operator's list shows it, or null for an id the directory does not hold live. */

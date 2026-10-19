@@ -1,7 +1,8 @@
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { env, runInDurableObject } from 'cloudflare:test';
 import { dumpKey, dumpStores, REFRESH_MS, STATUS_KEY, type DumpStatus } from '@unbent/api/lib/backups';
-import { listOperatorAccounts, operatorAccountRow } from '@unbent/api/lib/directory';
+import { OperatorCursorError, listOperatorAccounts, operatorAccountRow } from '@unbent/api/lib/directory';
+import type { OperatorSort, OperatorSortDir } from '@unbent/shared';
 
 /**
  * The daily dumps (MAK-171, part 2), against real objects, a local D1 carrying the two
@@ -355,17 +356,18 @@ describe('the daily dumps', () => {
 });
 
 /**
- * The operator's list pages by email, A to Z, with the last email as the cursor, and
- * narrows to a search of the email and the name; the account page reads one row by id.
+ * The operator's list pages by email, A to Z, with the last email as the cursor, or by
+ * any other column with the last value and email, and narrows to a search of the email
+ * and the name; the account page reads one row by id.
  * Pinned here, where the directory is built by hand: the order is the server's, since a
  * list that pages cannot be sorted on the client.
  */
 describe('the operator\'s accounts', () => {
   /** Every page of the list, as emails, the way the page's "Show more accounts" reads it. */
-  async function walk(search = '') {
+  async function walk(search = '', sort: OperatorSort = 'email', dir: OperatorSortDir = 'asc') {
     const seen: string[] = [];
     for (let after = ''; ; ) {
-      const page = await listOperatorAccounts(env.DB, after, 1, search);
+      const page = await listOperatorAccounts(env.DB, after, 1, search, sort, dir);
       seen.push(...page.accounts.map((x) => x.email));
       if (page.next === null) break;
       after = page.next;
@@ -387,6 +389,40 @@ describe('the operator\'s accounts', () => {
     expect(second.next).toBeNull();
     expect((await operatorAccountRow(env.DB, c.id))?.userId).toBe(c.id);
     expect(await operatorAccountRow(env.DB, 'nobody')).toBeNull();
+  });
+
+  it('sort by any column either way, a page at a time, ties by email and the never-set last', async () => {
+    // Made in this order, so a sort that fell back to insertion order would show it.
+    await account('o-dan', { email: 'dan@example.test', createdAt: NOON - 1 * DAY });
+    await account('o-amy', { email: 'amy@example.test', createdAt: NOON - 3 * DAY });
+    await account('o-cy', { email: 'cy@example.test', createdAt: NOON - 2 * DAY });
+    await account('o-bea', { email: 'bea@example.test', createdAt: NOON - 4 * DAY });
+    const set = (email: string, sql: string, ...v: unknown[]) =>
+      env.DB.prepare(`UPDATE account_directory SET ${sql} WHERE user_id = (SELECT id FROM user WHERE email = ?1)`).bind(email, ...v).run();
+    // Notes: two tie at 5, and the tie reads A to Z in both directions.
+    await set('dan@example.test', 'note_count = 5, storage_bytes = 10');
+    await set('amy@example.test', 'note_count = 1, storage_bytes = 40');
+    await set('cy@example.test', 'note_count = 5, storage_bytes = 20');
+    // Activity and dumps: two accounts have neither, and they come last either way.
+    await set('amy@example.test', 'last_active_at = ?2, dump_at = ?2', NOON - 100);
+    await set('cy@example.test', 'last_active_at = ?2, dump_at = ?2', NOON - 50);
+
+    expect(await walk('', 'email', 'desc')).toEqual(['dan@example.test', 'cy@example.test', 'bea@example.test', 'amy@example.test']);
+    expect(await walk('', 'created', 'desc')).toEqual(['dan@example.test', 'cy@example.test', 'amy@example.test', 'bea@example.test']);
+    expect(await walk('', 'created', 'asc')).toEqual(['bea@example.test', 'amy@example.test', 'cy@example.test', 'dan@example.test']);
+    expect(await walk('', 'notes', 'desc')).toEqual(['cy@example.test', 'dan@example.test', 'amy@example.test', 'bea@example.test']);
+    expect(await walk('', 'notes', 'asc')).toEqual(['bea@example.test', 'amy@example.test', 'cy@example.test', 'dan@example.test']);
+    expect(await walk('', 'size', 'desc')).toEqual(['amy@example.test', 'cy@example.test', 'dan@example.test', 'bea@example.test']);
+    expect(await walk('', 'active', 'desc')).toEqual(['cy@example.test', 'amy@example.test', 'bea@example.test', 'dan@example.test']);
+    expect(await walk('', 'active', 'asc')).toEqual(['amy@example.test', 'cy@example.test', 'bea@example.test', 'dan@example.test']);
+    expect(await walk('', 'dump', 'desc')).toEqual(['cy@example.test', 'amy@example.test', 'bea@example.test', 'dan@example.test']);
+    // A search narrows a sorted walk as it narrows the default one.
+    expect(await walk('y', 'created', 'desc')).toEqual(['cy@example.test', 'amy@example.test']);
+  });
+
+  it('refuse a cursor it did not write, rather than start the list again', async () => {
+    await account('bad-cursor', { email: 'x@example.test' });
+    await expect(listOperatorAccounts(env.DB, 'x@example.test', 1, '', 'created', 'desc')).rejects.toThrow(OperatorCursorError);
   });
 
   it('leave a deleted account out of every page', async () => {
