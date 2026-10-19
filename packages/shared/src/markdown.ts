@@ -632,7 +632,8 @@ export interface SnippetPart {
  * all destination), the snippet is shown as it came rather than as an empty line.
  */
 export function snippetParts(snippet: string): SnippetPart[] {
-  const marked = snippet.replace(/<<([^>]*)>>/g, `${HIT_OPEN}$1${HIT_CLOSE}`);
+  // A matched term never holds `<` or `>`, so a literal `<<` in the prose before one does not swallow it.
+  const marked = snippet.replace(/<<([^<>]*)>>/g, `${HIT_OPEN}$1${HIT_CLOSE}`);
   const blocks = parseBlocks(mendEdges(marked)).flatMap((b) => [...blockTexts(b, 'snippet')]);
   const text = blocks
     .map((t) => t.replace(/\s+/g, ' ').trim())

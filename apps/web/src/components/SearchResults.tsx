@@ -32,7 +32,7 @@ function Snippet({ text, markdown }: { text: string; markdown: boolean }) {
 
 function markedParts(text: string) {
   return text
-    .split(/(<<[^>]*>>)/g)
+    .split(/(<<[^<>]*>>)/g)
     .filter(Boolean)
     .map((part) =>
       part.startsWith('<<') && part.endsWith('>>') ? { text: part.slice(2, -2), hit: true } : { text: part, hit: false },

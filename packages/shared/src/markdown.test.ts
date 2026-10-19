@@ -586,6 +586,7 @@ describe('snippetParts', () => {
 
   it('leaves plain text and its ellipses as they came', () => {
     expect(shown('…please <<check>> the address on…')).toBe('…please [check] the address on…');
+    expect(shown('a << b and <<x>>')).toBe('a << b and [x]');
   });
 
   it('drops the marks of headings, lists, emphasis and code, and joins blocks with a dot', () => {

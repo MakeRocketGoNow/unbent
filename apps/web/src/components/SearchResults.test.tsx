@@ -35,10 +35,11 @@ describe('search result snippets', () => {
     mount([
       result({ id: 'n1', snippet: '#<<urgent>>', matchedTag: '#urgent' }),
       result({ id: 'n2', snippet: '**<<5>>** stars', matchedField: 'Rating' }),
+      result({ id: 'n3', snippet: 'x << y <<z>>', matchedField: 'Formula' }),
     ]);
     const excerpts = [...(await screen.findAllByText('A note'))].map(
       (title) => title.parentElement?.querySelector('.note-excerpt')?.textContent,
     );
-    expect(excerpts).toEqual(['#urgent', '**5** stars']);
+    expect(excerpts).toEqual(['#urgent', '**5** stars', 'x << y z']);
   });
 });
