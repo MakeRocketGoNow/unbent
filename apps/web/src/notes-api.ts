@@ -27,6 +27,7 @@ import type {
   OperatorAccount,
   OperatorAccountsPage,
   StoreRestores,
+  AssistantFeedbackPage,
 } from '@unbent/shared';
 import { OPERATOR_PAGE_SIZE } from '@unbent/shared';
 import { confirmReachable, offlineNow, recheck } from './connectivity.js';
@@ -1191,6 +1192,17 @@ export async function accountDumps(userId: string): Promise<AccountDumps> {
 /** One account's restores and loads, newest first. */
 export async function accountRestores(userId: string): Promise<StoreRestores> {
   return json<StoreRestores>(await request(`/api/admin/accounts/${encodeURIComponent(userId)}/restores`));
+}
+
+/** The assistants' unread feedback on the tools, newest first (MAK-212). */
+export async function operatorFeedback(): Promise<AssistantFeedbackPage> {
+  return json<AssistantFeedbackPage>(await request('/api/admin/feedback'));
+}
+
+/** Dismisses one piece of feedback from the list, or brings it back with `read: false`. */
+export async function setFeedbackRead(id: number, read: boolean): Promise<void> {
+  const res = await request(`/api/admin/feedback/${id}/read`, { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ read }) });
+  if (!res.ok) await json(res);
 }
 
 /** Where a dump in the bucket downloads from; a link, since a download is a navigation. */

@@ -43,8 +43,11 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  */
 export const FEEDBACK_KEPT_MS = 90 * DAY_MS;
 
-/** How many unread rows the operator page lists at once. */
-export const FEEDBACK_LISTED = 50;
+/**
+ * How many unread rows the operator page lists at once: a few screens of reports above
+ * the accounts, where fifty, the first number tried, would put them a long way down.
+ */
+export const FEEDBACK_LISTED = 20;
 
 /** The slice of D1 this reads and writes, so the test can run it over node's SQLite. */
 export interface FeedbackDb {

@@ -10983,6 +10983,17 @@ html.host-ios .viewer {
 }
 .dump-row > .confirm { flex: 1 0 100%; margin: 0.25rem 0 0.4rem; }
 
+/*
+   The assistants' feedback: the dumps' rows, since it is the same shape (what, then a
+   muted line of when and whose, and one quiet action at the end). Dismiss sits level with
+   the row's first line rather than centred on it, since a report runs to several lines
+   and a button floating halfway down one reads as belonging to its middle. The body
+   keeps the line breaks the assistant wrote.
+*/
+.feedback-row { align-items: flex-start; }
+.feedback-text { gap: 0.2rem; }
+.feedback-body { white-space: pre-wrap; }
+
 /* A command to copy, scrolling sideways rather than wrapping: an id in the middle of it must not break. */
 .operator-command {
   width: 100%;

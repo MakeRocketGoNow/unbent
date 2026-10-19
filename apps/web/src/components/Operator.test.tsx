@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import type { BackupsStatus, DumpStatus, MirrorStatus, OperatorAccount } from '@unbent/shared';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { AssistantFeedback, BackupsStatus, DumpStatus, MirrorStatus, OperatorAccount } from '@unbent/shared';
 
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children, to, params: _params, ...rest }: { children: React.ReactNode; to: string; params?: unknown; className?: string; 'aria-label'?: string }) => (
@@ -13,7 +13,7 @@ vi.mock('@tanstack/react-router', () => ({
 /** The settings nav asks whether an import is running; none is. */
 vi.mock('../import-run.js', () => ({ useImportRunning: () => false }));
 
-const { AccountSearch, AccountsTable, BackupHealth, LastDump } = await import('./Operator.js');
+const { AccountSearch, AccountsTable, BackupHealth, FeedbackList, LastDump } = await import('./Operator.js');
 
 const now = Date.parse('2026-10-06T12:00:00Z');
 
@@ -238,5 +238,81 @@ describe('AccountSearch', () => {
     expect(onSearch).toHaveBeenLastCalledWith('acme c');
     fireEvent.keyDown(field(), { key: 'Escape' });
     expect(onSearch).toHaveBeenLastCalledWith('');
+  });
+});
+
+const feedback = (over: Partial<AssistantFeedback> = {}): AssistantFeedback => ({
+  id: 1,
+  userId: 'u1',
+  email: 'someone@example.com',
+  clientId: 'client-1',
+  clientName: 'Example Assistant',
+  category: 'error-message',
+  tool: 'edit_note',
+  body: 'Called edit_note with a find that matched twice.\nThe refusal gave the count but not the lines.',
+  createdAt: now - 2 * 3_600_000,
+  ...over,
+});
+
+/**
+ * The feedback list: what each row says, and that Dismiss leaves an Undo where the row
+ * was rather than taking the row away. The routes' own answers are pinned in
+ * `apps/api/src/routes/admin-feedback.test.ts`.
+ */
+describe('FeedbackList', () => {
+  afterEach(cleanup);
+
+  it('says what it is about, what was said, and from which app for which account', () => {
+    render(<FeedbackList page={{ feedback: [feedback()], more: false }} setRead={async () => {}} now={now} />);
+    expect(screen.getByText('Error message')).toBeTruthy();
+    expect(screen.getByText('edit_note')).toBeTruthy();
+    expect(screen.getByText(/matched twice/)).toBeTruthy();
+    expect(screen.getByText(/Example Assistant for/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'someone@example.com' }).getAttribute('href')).toBe('/settings/operator/$userId');
+  });
+
+  it('names an app that registered no name as such, in a sentence too, and leaves out a tool that was not given', async () => {
+    render(<FeedbackList page={{ feedback: [feedback({ clientName: null, tool: null, category: 'praise' })], more: false }} setRead={async () => {}} now={now} />);
+    expect(screen.getByText(/An app with no name for/)).toBeTruthy();
+    expect(screen.queryByText('in')).toBeNull();
+    expect(screen.queryByText('edit_note')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    await screen.findByText('Dismissed: praise from an app with no name.');
+  });
+
+  it('dismisses a row into an Undo in its place, and Undo brings it back', async () => {
+    const setRead = vi.fn(async () => {});
+    render(<FeedbackList page={{ feedback: [feedback(), feedback({ id: 2, createdAt: now - 3_600_000, body: 'Another.' })], more: false }} setRead={setRead} now={now} />);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Dismiss' })[1]!);
+    await screen.findByText(/Dismissed: error message from Example Assistant/);
+    expect(setRead).toHaveBeenLastCalledWith(1, true);
+    // Still second, under the newer row: nothing moved.
+    expect(screen.getAllByRole('listitem')[1]!.textContent).toContain('Dismissed');
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Dismiss' })).toHaveLength(2));
+    expect(setRead).toHaveBeenLastCalledWith(1, false);
+  });
+
+  it('keeps the row and says why when the dismiss is refused', async () => {
+    render(
+      <FeedbackList
+        page={{ feedback: [feedback()], more: false }}
+        setRead={async () => {
+          throw new Error('404 Not Found: No such feedback');
+        }}
+        now={now}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    await screen.findByText('No such feedback');
+    expect(screen.getByRole('button', { name: 'Dismiss' })).toBeTruthy();
+  });
+
+  it('says there is nothing unread, and that more wait behind a full page', () => {
+    render(<FeedbackList page={{ feedback: [], more: false }} setRead={async () => {}} now={now} />);
+    expect(screen.getByText(/Nothing unread/)).toBeTruthy();
+    cleanup();
+    render(<FeedbackList page={{ feedback: [feedback()], more: true }} setRead={async () => {}} now={now} />);
+    expect(screen.getByText(/These are the newest 1/)).toBeTruthy();
   });
 });
