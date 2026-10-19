@@ -13,8 +13,11 @@ interface SearchResultsProps {
  * markup: the note body is user content, and a snippet carrying real tags would be an
  * injection route straight into the results list.
  *
- * A body's or a file's snippet is cut from markdown, and is read as the words it shows
- * (`snippetParts`), the way the list's excerpt is. A tag's or a field's is the name or
+ * A body's snippet is cut from markdown, and is read as the words it shows
+ * (`snippetParts`), the way the list's excerpt is. A file's is cut from its extracted
+ * text, which is markdown when the server read it and plain when the browser's PDF reader
+ * did; plain text read as markdown loses little (an `<Acme Ltd>` in angle brackets reads
+ * as a tag and goes), so it is read the same way. A tag's or a field's is the name or
  * value itself, where a leading `#` or a `*` is the text and not a mark, so it is shown as
  * it came.
  */
