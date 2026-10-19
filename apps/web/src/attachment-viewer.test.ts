@@ -8,8 +8,14 @@ import { downloadUrl, labelFor, openAttachmentViewer } from './attachment-viewer
  * is acquired on open and released on close.
  */
 const renderPage = vi.fn(async () => {});
+const renderText = vi.fn(async () => 612);
 let pageCount = 1;
-const acquirePdf = vi.fn(async (_url: string) => ({ pageCount, renderPage, destroy: () => {} }));
+const acquirePdf = vi.fn(async (_url: string) => ({
+  pageCount,
+  renderPage,
+  renderText,
+  destroy: () => {},
+}));
 const releasePdf = vi.fn((_url: string) => {});
 
 vi.mock('./pdf/render.js', () => ({
@@ -32,6 +38,12 @@ function stubDialog() {
   };
 }
 
+/** A whole click: the press, then the click a release makes on the same element. */
+function press(target: HTMLElement) {
+  target.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+  target.click();
+}
+
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 const dialogs = () => document.querySelectorAll('dialog.viewer');
 
@@ -51,6 +63,7 @@ describe('openAttachmentViewer', () => {
     acquirePdf.mockClear();
     releasePdf.mockClear();
     renderPage.mockClear();
+    renderText.mockClear();
     pageCount = 1;
   });
 
@@ -111,8 +124,21 @@ describe('openAttachmentViewer', () => {
     afterOpening();
     dialog.querySelector<HTMLImageElement>('.viewer-image')?.click();
     expect(dialog.open).toBe(true);
-    dialog.querySelector<HTMLElement>('.viewer-body')?.click();
+    press(dialog.querySelector<HTMLElement>('.viewer-body')!);
     expect(dialog.open).toBe(false);
+  });
+
+  /**
+   * A drag that selects a PDF's text and lets go in the margin ends in a click on the
+   * backdrop, since that is the nearest element the press and the release share.
+   */
+  it('stays open when a press on the content is released beside it', async () => {
+    const dialog = openAttachmentViewer({ kind: 'pdf', src: '/api/x/scan.pdf', label: 'Scan' });
+    await settle();
+    afterOpening();
+    dialog.querySelector('.viewer-page')!.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    dialog.querySelector<HTMLElement>('.viewer-body')!.click();
+    expect(dialog.open).toBe(true);
   });
 
   /**
@@ -131,7 +157,7 @@ describe('openAttachmentViewer', () => {
 
     img.click();
     expect(img.classList.contains('viewer-actual')).toBe(false);
-    body.click();
+    press(body);
     expect(dialog.open).toBe(true);
 
     afterOpening();
@@ -152,10 +178,20 @@ describe('openAttachmentViewer', () => {
     const dialog = openAttachmentViewer({ kind: 'pdf', src: '/api/x/scan.pdf', label: 'Scan' });
     expect(acquirePdf).toHaveBeenCalledWith('/api/x/scan.pdf');
     await settle();
-    expect(dialog.querySelectorAll('canvas.viewer-page')).toHaveLength(3);
+    expect(dialog.querySelectorAll('.viewer-page > canvas')).toHaveLength(3);
     expect(dialog.querySelector('.viewer-meta')?.textContent).toBe('3 pages');
     // No IntersectionObserver in jsdom, so every page draws at once.
     expect(renderPage).toHaveBeenCalledTimes(3);
+  });
+
+  it('lays each drawn page\'s text over it, to be selected', async () => {
+    pageCount = 2;
+    const dialog = openAttachmentViewer({ kind: 'pdf', src: '/api/x/scan.pdf', label: 'Scan' });
+    await settle();
+    await settle();
+    expect(renderText).toHaveBeenCalledTimes(2);
+    expect(dialog.querySelectorAll('.viewer-page > .textLayer')).toHaveLength(2);
+    expect(dialog.querySelectorAll('.textLayer > .endOfContent')).toHaveLength(2);
   });
 
   it('releases the PDF when closed', async () => {

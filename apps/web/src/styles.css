@@ -5418,19 +5418,97 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    A page not yet drawn holds a letter-sized placeholder (see the viewer) so the column
    has its full height before anything is rasterized. The ratio comes off once the page is
    drawn, and the canvas's own proportions take over: a landscape page forced into a
-   portrait box would be squashed. The `!important` on the height is what lets a drawn
-   page scale on a pane narrower than the width it was rasterized at, since `renderPage`
-   sets its height inline.
+   portrait box would be squashed. The canvas fills the page's box, and the `!important`
+   on its size is what lets a drawn page scale on a pane narrower than the width it was
+   rasterized at, since `renderPage` sets both inline.
 */
 .viewer-page {
-  display: block;
+  position: relative;
   max-width: 100%;
-  height: auto !important;
   background: #fff;
   box-shadow: 0 2px 12px rgb(0 0 0 / 0.5);
 }
 
 .viewer-page:not(.viewer-page-drawn) { aspect-ratio: 8.5 / 11; }
+
+.viewer-page-canvas {
+  display: block;
+  width: 100% !important;
+  height: auto !important;
+}
+
+/*
+   A page's text, laid over its drawing so it can be selected (`renderText` in
+   `pdf/render.ts`).
+
+   pdf.js's own rules for its `TextLayer`, cut to what this viewer uses: no search
+   highlights, no images, no annotation editing. Not an import of `pdf_viewer.css`, which is
+   the whole of Firefox's viewer. pdf.js sizes the layer and each span from
+   `--total-scale-factor`, which the viewer keeps at the page's displayed width over its own
+   (`setScale`), and `--min-font-size`, which pdf.js sets itself. Each span is the run's
+   real text in transparent ink, so all that shows is the selection's tint.
+*/
+.viewer-page .textLayer {
+  --scale-round-x: 1px;
+  --scale-round-y: 1px;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+
+  color-scheme: only light;
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  text-align: initial;
+  line-height: 1;
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+  z-index: 0;
+}
+
+.viewer-page .textLayer :is(span, br) {
+  position: absolute;
+  color: transparent;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  user-select: text;
+}
+
+.viewer-page .textLayer > :not(.markedContent),
+.viewer-page .textLayer .markedContent span:not(.markedContent) {
+  --font-height: 0;
+  --scale-x: 1;
+  --rotate: 0deg;
+  z-index: 1;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+
+.viewer-page .textLayer .markedContent { display: contents; }
+
+.viewer-page .textLayer ::selection {
+  background: color-mix(in srgb, AccentColor, transparent 50%);
+  color: transparent;
+}
+
+.viewer-page .textLayer br::selection { background: transparent; }
+
+/* See `trackSelection` in the viewer: what keeps a drag across a gap from running on. */
+.viewer-page .textLayer .endOfContent {
+  display: block;
+  position: absolute;
+  inset: 100% 0 0;
+  z-index: 0;
+  cursor: default;
+  user-select: none;
+}
+
+.viewer-page .textLayer.selecting .endOfContent { top: 0; }
 
 @media (prefers-reduced-motion: no-preference) {
   .viewer {
