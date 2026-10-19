@@ -477,7 +477,7 @@ export function excerptMarkdown(markdown: string, max = 140): string {
   const separator = ' · ';
 
   for (const block of parseHead(markdown)) {
-    for (const text of blockTexts(block)) {
+    for (const text of blockTexts(block, 'excerpt')) {
       const cleaned = text.replace(/\s+/g, ' ').trim();
       if (!cleaned) continue;
       parts.push(cleaned);
@@ -499,18 +499,27 @@ interface MdNode {
   type: string;
   value?: string;
   url?: string;
+  alt?: string | null;
   checked?: boolean | null;
   children?: MdNode[];
 }
 
 function parseHead(markdown: string): MdNode[] {
-  const tree = unified()
-    .use(remarkParse)
-    .use(remarkDisableSetext)
-    .use(remarkGfm)
-    .parse(markdown.slice(0, EXCERPT_HEAD_CHARS)) as MdNode;
+  return parseBlocks(markdown.slice(0, EXCERPT_HEAD_CHARS));
+}
+
+function parseBlocks(markdown: string): MdNode[] {
+  const tree = unified().use(remarkParse).use(remarkDisableSetext).use(remarkGfm).parse(markdown) as MdNode;
   return tree.children ?? [];
 }
+
+/**
+ * What the flattening is for. An excerpt sits under a row that already lists the note's
+ * files, so it drops their links, images and raw HTML. A search snippet is there to show
+ * where the term was, and the term is as often a file's name as anything: there a link
+ * keeps its label, an image its alt and raw HTML its words, and only the markup goes.
+ */
+type FlattenMode = 'excerpt' | 'snippet';
 
 /**
  * One block's text, as the segments the excerpt joins.
@@ -519,43 +528,46 @@ function parseHead(markdown: string): MdNode[] {
  * row of a table is its own segment, so a to-do list reads item by item rather than as
  * one run-on. A blockquote's own blocks are yielded as they are.
  */
-function* blockTexts(node: MdNode): Generator<string> {
+function* blockTexts(node: MdNode, mode: FlattenMode): Generator<string> {
   switch (node.type) {
     case 'paragraph':
     case 'heading':
-      yield inlineText(node);
+      yield inlineText(node, mode);
       return;
     case 'code':
       yield node.value ?? '';
       return;
+    case 'html':
+      if (mode === 'snippet') yield withoutTags(node.value ?? '');
+      return;
     case 'blockquote':
     case 'footnoteDefinition':
-      for (const child of node.children ?? []) yield* blockTexts(child);
+      for (const child of node.children ?? []) yield* blockTexts(child, mode);
       return;
     case 'list':
       for (const item of node.children ?? []) {
         // Nested lists sit inside the item; their items come out as segments of their own.
         const own = (item.children ?? []).filter((c) => c.type !== 'list');
         const nested = (item.children ?? []).filter((c) => c.type === 'list');
-        const text = own.map((c) => [...blockTexts(c)].join(' ')).join(' ');
+        const text = own.map((c) => [...blockTexts(c, mode)].join(' ')).join(' ');
         const box = item.checked === true ? '☑ ' : item.checked === false ? '☐ ' : '';
         yield `${box}${text}`;
-        for (const list of nested) yield* blockTexts(list);
+        for (const list of nested) yield* blockTexts(list, mode);
       }
       return;
     case 'table':
       for (const row of node.children ?? []) {
-        yield (row.children ?? []).map(inlineText).join(' ');
+        yield (row.children ?? []).map((cell) => inlineText(cell, mode)).join(' ');
       }
       return;
     default:
-      // thematicBreak, html, definition, yaml: nothing to read.
+      // thematicBreak, definition, yaml: nothing to read.
       return;
   }
 }
 
-/** The words of an inline run, marks removed and the two non-prose kinds dropped. */
-function inlineText(node: MdNode): string {
+/** The words of an inline run, marks removed and, for an excerpt, the two non-prose kinds dropped. */
+function inlineText(node: MdNode, mode: FlattenMode): string {
   switch (node.type) {
     case 'text':
     case 'inlineCode':
@@ -563,17 +575,95 @@ function inlineText(node: MdNode): string {
     case 'break':
       return ' ';
     case 'image':
-    case 'imageReference':
+      return mode === 'snippet' ? (node.alt ?? '') : '';
     case 'html':
+      return mode === 'snippet' ? withoutTags(node.value ?? '') : '';
+    case 'imageReference':
     case 'footnoteReference':
       return '';
     case 'link':
       // A same-note attachment is shown by the row's file line, not repeated as its label.
-      if (typeof node.url === 'string' && node.url.startsWith(ATTACHMENT_PREFIX)) return '';
-      return (node.children ?? []).map(inlineText).join('');
+      if (mode === 'excerpt' && typeof node.url === 'string' && node.url.startsWith(ATTACHMENT_PREFIX)) return '';
+      return (node.children ?? []).map((c) => inlineText(c, mode)).join('');
     default:
-      return (node.children ?? []).map(inlineText).join('');
+      return (node.children ?? []).map((c) => inlineText(c, mode)).join('');
   }
+}
+
+/** Raw HTML's words. The result is drawn as text, never as markup, so this only has to read well. */
+function withoutTags(html: string): string {
+  return html.replace(/<[^>]*>/g, ' ');
+}
+
+/** A run of a search snippet, and whether it is the matched term. */
+export interface SnippetPart {
+  text: string;
+  hit: boolean;
+}
+
+/**
+ * A search snippet as the words it shows, with the matched terms marked.
+ *
+ * FTS5 cuts snippets from the body as stored, which is markdown, so a hit on an attached
+ * file came back as `[Scan.pdf](<files/Scan.pdf>)` with the name highlighted twice. This
+ * flattens it the way the list's excerpt is flattened (`excerptMarkdown`, with the
+ * snippet's differences in `FlattenMode`), and both search engines' snippets come
+ * through it, since they are cut alike.
+ *
+ * The `<<` and `>>` markers are swapped for private-use characters before the parse, so
+ * the grammar sees a word where the term was, and they come out of the text nodes
+ * wherever the parse put them. A marker inside a link's destination goes with the
+ * destination: the label beside it still shows the term. Cutting the markers out first
+ * and mapping offsets back through the parse was the other way, and remark does not keep
+ * the offsets of text it unescapes.
+ *
+ * A snippet is a window of about two dozen tokens, so it often opens or closes inside a
+ * link. Those edges are mended before the parse (`mendEdges`); a stray `**` the window cut
+ * from its partner is dropped after it. If flattening leaves nothing (a window that was
+ * all destination), the snippet is shown as it came rather than as an empty line.
+ */
+export function snippetParts(snippet: string): SnippetPart[] {
+  const marked = snippet.replace(/<<([^>]*)>>/g, `${HIT_OPEN}$1${HIT_CLOSE}`);
+  const blocks = parseBlocks(mendEdges(marked)).flatMap((b) => [...blockTexts(b, 'snippet')]);
+  const text = blocks
+    .map((t) => t.replace(/\*\*|~~/g, '').replace(/\s+/g, ' ').trim())
+    .filter((t) => t.replace(HIT_MARKS, '').trim() !== '')
+    .join(' · ');
+  return splitHits(text.replace(HIT_MARKS, '').trim() ? text : marked);
+}
+
+const HIT_OPEN = '\uE000';
+const HIT_CLOSE = '\uE001';
+const HIT_MARKS = /[\uE000\uE001]/g;
+
+/**
+ * A snippet's first and last few characters, with the half of a link the window cut
+ * reduced to its words: `…pdf](files/Scan.pdf) and` opens with `…pdf and`, and
+ * `see [Scan.pdf](<files/Sc…` closes with `see Scan.pdf…`. A destination the window
+ * opens inside (`…Scan.pdf>) and`) is dropped when it is plainly one: it ends in `>)`, or
+ * it has a dot or a slash in it, so a parenthesis closing ordinary prose is left alone.
+ */
+function mendEdges(text: string): string {
+  return text
+    .replace(/^(…?)([^[\]\n]*)\]\((?:<[^>\n]*>|[^)\s]*)\)/, '$1$2')
+    .replace(/^(…?)[^\s()[\]<]*(?:>\)|[./][^\s()[\]]*\))\s*/, '$1')
+    .replace(/\[([^\]\n]*)\]\([^)\n]*?(…?)$/, '$1$2')
+    .replace(/\[(?=[^\]\n]*$)/, '');
+}
+
+function splitHits(text: string): SnippetPart[] {
+  const parts: SnippetPart[] = [];
+  let hit = false;
+  for (const piece of text.split(/([\uE000\uE001])/)) {
+    if (piece === HIT_OPEN) hit = true;
+    else if (piece === HIT_CLOSE) hit = false;
+    else if (piece) {
+      const last = parts[parts.length - 1];
+      if (last && last.hit === hit) last.text += piece;
+      else parts.push({ text: piece, hit });
+    }
+  }
+  return parts;
 }
 
 export function renderMarkdown(markdown: string, opts: RenderOptions): string {

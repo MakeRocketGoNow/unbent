@@ -1,5 +1,6 @@
+import { useMemo } from 'react';
 import { Link } from '@tanstack/react-router';
-import type { SearchResult } from '@unbent/shared';
+import { snippetParts, type SearchResult } from '@unbent/shared';
 
 interface SearchResultsProps {
   results: SearchResult[];
@@ -11,20 +12,28 @@ interface SearchResultsProps {
  * The server emits `<<` and `>>` rather than HTML so the snippet is never interpolated as
  * markup: the note body is user content, and a snippet carrying real tags would be an
  * injection route straight into the results list.
+ *
+ * A body's or a file's snippet is cut from markdown, and is read as the words it shows
+ * (`snippetParts`), the way the list's excerpt is. A tag's or a field's is the name or
+ * value itself, where a leading `#` or a `*` is the text and not a mark, so it is shown as
+ * it came.
  */
-function Snippet({ text }: { text: string }) {
-  const parts = text.split(/(<<[^>]*>>)/g);
+function Snippet({ text, markdown }: { text: string; markdown: boolean }) {
+  const parts = useMemo(() => (markdown ? snippetParts(text) : markedParts(text)), [text, markdown]);
   return (
     <span className="note-excerpt">
-      {parts.map((part, i) =>
-        part.startsWith('<<') && part.endsWith('>>') ? (
-          <mark key={i}>{part.slice(2, -2)}</mark>
-        ) : (
-          <span key={i}>{part}</span>
-        ),
-      )}
+      {parts.map((part, i) => (part.hit ? <mark key={i}>{part.text}</mark> : <span key={i}>{part.text}</span>))}
     </span>
   );
+}
+
+function markedParts(text: string) {
+  return text
+    .split(/(<<[^>]*>>)/g)
+    .filter(Boolean)
+    .map((part) =>
+      part.startsWith('<<') && part.endsWith('>>') ? { text: part.slice(2, -2), hit: true } : { text: part, hit: false },
+    );
 }
 
 export function SearchResults({ results }: SearchResultsProps) {
@@ -54,7 +63,7 @@ export function SearchResults({ results }: SearchResultsProps) {
             {/* And in a tag, where the snippet is the tag's name and would otherwise read
                 as a body that happens to contain it. */}
             {r.matchedTag && <span className="matched-file">tagged {r.matchedTag}</span>}
-            <Snippet text={r.snippet} />
+            <Snippet text={r.snippet} markdown={!r.matchedTag && !r.matchedField} />
           </Link>
         </li>
       ))}
