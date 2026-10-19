@@ -515,9 +515,14 @@ function mountPdf(
    * next text is: in a column of pages, to the end of the document. The layer ends with
    * an empty block that, while a selection is being made, covers the page
    * (`.textLayer.selecting .endOfContent`), so the gaps land on it and the selection
-   * stays where the pointer is. The viewer also moves that block next to the selection's
-   * end on every change, for Safari and Chromium before 148; current Chrome and Firefox
-   * do not need it, and the selection is no worse than before there without it.
+   * stays where the pointer is. pdf.js's viewer also moves that block next to the
+   * selection's end on every change, for Safari and Chromium before 148. Current Chrome
+   * and Firefox do not need that, so it is left out; in Safari a drag across a gap can
+   * still jump further than it should.
+   *
+   * Raised on `mousedown`, as pdf.js does, not on any pointer. A touch selection is a
+   * long-press and then handles, which the platform keeps on text by itself, and a block
+   * raised on every touch would sit under each scroll of the page for nothing.
    */
   const trackSelection = (layer: HTMLElement) => {
     const end = el('div', 'endOfContent');
