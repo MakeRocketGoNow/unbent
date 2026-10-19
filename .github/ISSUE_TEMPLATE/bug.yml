@@ -52,7 +52,7 @@ body:
       label: Which instance?
       options:
         - unbent.app
-        - One I or someone else runs
+        - Another instance (my own or someone else's)
   - type: input
     id: version
     attributes:
