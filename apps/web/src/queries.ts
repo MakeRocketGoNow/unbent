@@ -787,8 +787,8 @@ export const operatorAccountsQuery = (q = '') =>
 
 /**
  * The assistants' unread feedback (MAK-212). Refetched as the page's other reads are, so
- * a page left open picks up what came in; a dismiss does not refetch it, since the row
- * stays on screen as its Undo (`FeedbackList`).
+ * a page left open picks up what came in, and after each dismiss or Undo, so a full page
+ * fills from behind; the list keeps the rows it has touched (`FeedbackList`).
  */
 export const operatorFeedbackQuery = () =>
   queryOptions({

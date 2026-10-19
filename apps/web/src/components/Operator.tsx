@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from '@tanstack/react-router';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   FEEDBACK_CATEGORIES,
   OPERATOR_SEARCH_MAX,
@@ -17,7 +17,7 @@ import { formatBytes } from '../format-bytes.js';
 import { formatMoment, timeAgo } from './format-when.js';
 import { Button } from './Button.js';
 import { RowChevronIcon } from './icons.js';
-import { operatorAccountsQuery, operatorBackupsQuery, operatorFeedbackQuery } from '../queries.js';
+import { keys, operatorAccountsQuery, operatorBackupsQuery, operatorFeedbackQuery } from '../queries.js';
 
 /**
  * The operator's page (MAK-171, part 5): the backup's health, what connected assistants
@@ -36,6 +36,14 @@ import { operatorAccountsQuery, operatorBackupsQuery, operatorFeedbackQuery } fr
 export function Operator({ search = '', onSearch }: { search?: string; onSearch: (q: string) => void }) {
   const backups = useQuery(operatorBackupsQuery());
   const feedback = useQuery(operatorFeedbackQuery());
+  const queryClient = useQueryClient();
+  // Read the list again after each dismiss or Undo, so a full page fills from the older
+  // rows behind it. Safe because the list keeps every row it has touched (`FeedbackList`):
+  // what the refetch brings arrives below, and nothing above it moves.
+  const setRead = async (id: number, read: boolean) => {
+    await setFeedbackRead(id, read);
+    void queryClient.invalidateQueries({ queryKey: keys.operatorFeedback() });
+  };
   // The search as asked of the server: trimmed, and once typing settles, as the notes
   // page's is. The address holds every keystroke, so the field stays a plain controlled
   // input; a name typed at speed is still one request, not one a letter.
@@ -86,7 +94,7 @@ export function Operator({ search = '', onSearch }: { search?: string; onSearch:
           person&apos;s notes out of it. Dismissed or not, it goes after ninety days.
         </p>
         {feedback.data ? (
-          <FeedbackList page={feedback.data} setRead={setFeedbackRead} />
+          <FeedbackList page={feedback.data} setRead={setRead} />
         ) : feedback.error ? (
           <p className="bad small">{errorText(feedback.error)}</p>
         ) : (
