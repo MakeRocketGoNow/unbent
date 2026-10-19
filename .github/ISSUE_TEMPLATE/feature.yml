@@ -1,0 +1,25 @@
+name: Feature request
+description: Something Unbent could do, or do better.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Issues here are public.** Please don't paste what is in your notes: describe the kind of note or file instead, like "scanned receipts" or "recipes with a photo each".
+  - type: textarea
+    id: goal
+    attributes:
+      label: What are you trying to do?
+      description: The thing you want to get done, rather than the feature you imagine for it. That is often what decides how it gets built.
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: How do you do it today?
+      description: In Unbent, in another app, or not at all.
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+      description: If you have a picture of it, describe it here.

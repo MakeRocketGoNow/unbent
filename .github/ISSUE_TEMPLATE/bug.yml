@@ -1,0 +1,61 @@
+# The app's "Report a bug" link (Settings › About) opens this form with `version` filled
+# in, by its id: rename that field and the link stops prefilling it. See `bugReportUrl` in
+# apps/web/src/build-info.ts.
+name: Bug report
+description: Something in Unbent does not work the way it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Issues here are public.** Please don't paste what is in your notes: no titles, file names, text or screenshots that show them. Describe the shape instead, like "a PDF whose name has brackets in it" or "a note with a very long table".
+
+        Found a security problem? Please report it privately instead, as [SECURITY.md](https://github.com/MakeRocketGoNow/unbent/blob/main/SECURITY.md) says.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, and what you saw.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect instead?
+  - type: textarea
+    id: steps
+    attributes:
+      label: How can we see it happen?
+      description: The steps, if you know them. "It happens sometimes" helps too.
+      placeholder: |
+        1. Open a notebook
+        2. ...
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where were you using Unbent?
+      multiple: true
+      options:
+        - A browser on a computer
+        - A browser on a phone or tablet
+        - The Android app
+        - The iOS app
+        - An assistant connected to Unbent
+  - type: input
+    id: device
+    attributes:
+      label: Browser and device
+      placeholder: Chrome on a Mac, Safari on an iPhone, a Pixel 9 ...
+  - type: dropdown
+    id: instance
+    attributes:
+      label: Which instance?
+      options:
+        - unbent.app
+        - One I or someone else runs
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Settings › About › Version. Already filled in when you came from the app.
+      placeholder: 3d544d9
