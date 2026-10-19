@@ -380,10 +380,6 @@ describe('mcp endpoint', () => {
   });
 });
 
-/*
- * MAK-119's "done when": an assistant can replace any note's text without asking, so what
- * it replaced has to be there afterwards, however recently the note was last saved.
- */
 describe('send_feedback', () => {
   it("keeps an assistant's feedback, refuses the same words twice, and stops at the day's bound", async () => {
     // Bob's own account, so the day's bound spent here is spent for no other test.
@@ -402,6 +398,10 @@ describe('send_feedback', () => {
   }, 30_000);
 });
 
+/*
+ * MAK-119's "done when": an assistant can replace any note's text without asking, so what
+ * it replaced has to be there afterwards, however recently the note was last saved.
+ */
 describe('mcp edits and the note history', () => {
   const asAlice = () => ({ Cookie: alice.cookie, Origin: ORIGIN, 'Content-Type': 'application/json' });
 
