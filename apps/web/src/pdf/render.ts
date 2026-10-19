@@ -52,8 +52,11 @@ export interface LoadedPdf {
   renderPage: (pageNumber: number, canvas: HTMLCanvasElement, cssWidth: number) => Promise<void>;
   /**
    * Lays one page's text over its drawing, invisible and selectable, measured for the
-   * given CSS width. Resolves to the page's own width in PDF units, which the container's
-   * `--total-scale-factor` multiplies (see `.textLayer` in `styles.css`).
+   * given CSS width. Resolves to the page's width at scale 1 as drawn, after any
+   * `/Rotate`, which the caller divides the page's displayed width by to get the
+   * container's `--total-scale-factor` (see `.textLayer` in `styles.css`). Not
+   * `rawDims.pageWidth`: that is the unturned box pdf.js sizes the layer from, and on a
+   * page stored turned a quarter it is the drawing's height.
    */
   renderText: (pageNumber: number, container: HTMLElement, cssWidth: number) => Promise<number>;
   /** Releases the worker's copy of the document. */

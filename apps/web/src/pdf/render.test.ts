@@ -8,8 +8,16 @@ import { describe, expect, it, vi } from 'vitest';
 type RenderParams = Record<string, unknown>;
 const render = vi.fn((_params: RenderParams) => ({ promise: Promise.resolve() }));
 const streamTextContent = vi.fn((_params: Record<string, unknown>) => 'text stream');
+/** Whether the mocked page is stored turned a quarter, as a landscape scan often is. */
+let turned = false;
 const getPage = vi.fn(async () => ({
-  getViewport: ({ scale }: { scale: number }) => ({ scale, width: 600 * scale, height: 800 * scale }),
+  // pdf.js applies the page's `/Rotate` to a viewport by default; `rawDims` stay unturned.
+  getViewport: ({ scale }: { scale: number }) => ({
+    scale,
+    width: (turned ? 800 : 600) * scale,
+    height: (turned ? 600 : 800) * scale,
+    rawDims: { pageWidth: 600, pageHeight: 800 },
+  }),
   render,
   streamTextContent,
 }));
@@ -96,11 +104,23 @@ describe('renderText', () => {
 
   /**
    * The viewer divides a page's displayed width by this to get `--total-scale-factor`,
-   * so it has to be the page's own width, not the width it was laid out at.
+   * so it has to be the page's width at scale 1 as drawn, not the width it was laid
+   * out at.
    */
   it("resolves to the page's width at scale 1", async () => {
     const { width } = await layOut(1200);
     expect(width).toBe(600);
+  });
+
+  /** As drawn, after the turn: the unturned width would scale a landscape page's text wrong. */
+  it("resolves to a turned page's width as drawn", async () => {
+    turned = true;
+    try {
+      const { width } = await layOut(1200);
+      expect(width).toBe(800);
+    } finally {
+      turned = false;
+    }
   });
 
   it('lays the text out for the width the page is drawn at', async () => {
