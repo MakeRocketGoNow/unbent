@@ -5442,8 +5442,9 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
    `pdf/render.ts`).
 
    pdf.js's own rules for its `TextLayer`, cut to what this viewer uses: no search
-   highlights, no images, no annotation editing. Not an import of `pdf_viewer.css`, which is
-   the whole of Firefox's viewer. pdf.js sizes the layer and each span from
+   highlights, no images, no annotation editing, but the page's rotation kept. Not an
+   import of `pdf_viewer.css`, which is the whole of Firefox's viewer. pdf.js sizes the
+   layer and each span from
    `--total-scale-factor`, which the viewer keeps at the page's displayed width over its own
    (`setScale`), and `--min-font-size`, which pdf.js sets itself. Each span is the run's
    real text in transparent ink, so all that shows is the selection's tint.
@@ -5469,6 +5470,16 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   caret-color: CanvasText;
   z-index: 0;
 }
+
+/*
+   A page stored turned (`/Rotate`, as a landscape scan often is) draws turned on the
+   canvas, but pdf.js lays its text out in the page's own unturned box and marks the
+   layer with the turn, leaving it to CSS. Without these the text sat portrait over a
+   landscape drawing and a drag selected words that were not under the pointer.
+*/
+.viewer-page .textLayer[data-main-rotation="90"] { transform: rotate(90deg) translateY(-100%); }
+.viewer-page .textLayer[data-main-rotation="180"] { transform: rotate(180deg) translate(-100%, -100%); }
+.viewer-page .textLayer[data-main-rotation="270"] { transform: rotate(270deg) translateX(-100%); }
 
 .viewer-page .textLayer :is(span, br) {
   position: absolute;
