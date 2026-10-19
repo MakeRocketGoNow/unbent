@@ -12,6 +12,7 @@ import {
   remoteImageUrls,
   removeAttachmentLinks,
   renderMarkdown,
+  snippetParts,
 } from './markdown.js';
 
 const NOTE = 'note-123';
@@ -564,5 +565,76 @@ describe('excerptMarkdown', () => {
   it('is empty for an empty body', () => {
     expect(excerptMarkdown('')).toBe('');
     expect(excerptMarkdown('\n\n   \n')).toBe('');
+  });
+});
+
+describe('snippetParts', () => {
+  /** The parts as one string, each hit in brackets, so a case reads as what the row shows. */
+  const shown = (snippet: string) =>
+    snippetParts(snippet)
+      .map((p) => (p.hit ? `[${p.text}]` : p.text))
+      .join('');
+
+  it('shows an attachment link as its label, with the hit marked once', () => {
+    expect(shown('**43-1234567** [<<SAMPLE_INVOICE>>.pdf](files/<<SAMPLE_INVOICE>>.pdf)')).toBe(
+      '43-1234567 [SAMPLE_INVOICE].pdf',
+    );
+    expect(shown('see [<<Report>> (final).pdf](<files/<<Report>> (final).pdf>) here')).toBe(
+      'see [Report] (final).pdf here',
+    );
+  });
+
+  it('leaves plain text and its ellipses as they came', () => {
+    expect(shown('…please <<check>> the address on…')).toBe('…please [check] the address on…');
+    expect(shown('a << b and <<x>>')).toBe('a << b and [x]');
+  });
+
+  it('drops the marks of headings, lists, emphasis and code, and joins blocks with a dot', () => {
+    expect(shown('# Heading <<word>>\n\n- one\n- [x] done <<word>>\n\nplain')).toBe(
+      'Heading [word] · one · ☑ done [word] · plain',
+    );
+    expect(shown('a **<<bold>>** and _em_ and ~~gone~~ and `<<code>>`')).toBe('a [bold] and em and gone and [code]');
+  });
+
+  /** FTS5 marks a run of matched tokens as one, so a hit can open outside a mark and close inside it. */
+  it('keeps a hit whose markers straddle emphasis', () => {
+    expect(shown('<<foo **bar>>** after')).toBe('[foo bar] after');
+  });
+
+  it('shows an image by its alt and raw HTML by its words', () => {
+    expect(shown('an ![<<photo>>.jpg](files/<<photo>>.jpg) here')).toBe('an [photo].jpg here');
+    expect(shown('<div><<hello>> there</div>')).toBe('[hello] there');
+  });
+
+  it('mends a link the window opened inside', () => {
+    expect(shown('…pdf](files/<<Scan>>.pdf) and more')).toBe('…pdf and more');
+    expect(shown('…<<Scan>>.pdf](<files/Scan.pdf>) and more')).toBe('…[Scan].pdf and more');
+    expect(shown('…<<Scan>>.pdf>) and more')).toBe('…and more');
+    expect(shown('…files/<<Scan>>.pdf) and more')).toBe('…and more');
+  });
+
+  it('mends a link the window closed inside', () => {
+    expect(shown('see [<<Scan>>.pdf](<files/<<Scan>> 2…')).toBe('see [Scan].pdf…');
+    expect(shown('see [<<Scan>> 2…')).toBe('see [Scan] 2…');
+  });
+
+  /** A phrase typed with punctuation in it, `pdf](files`, is one FTS5 phrase and one mark. */
+  it('closes a hit that opened in a label and closed in its destination', () => {
+    expect(shown('see [Scan.<<pdf](files>>/Scan.pdf) and more')).toBe('see Scan.[pdf] and more');
+  });
+
+  it('drops a mark the window cut from its partner', () => {
+    expect(shown('…mid **bold <<word>> rest…')).toBe('…mid bold [word] rest…');
+    expect(shown('code `a**b` and <<x>>')).toBe('code a**b and [x]');
+  });
+
+  it('leaves a parenthesis in prose alone', () => {
+    expect(shown('…call (555) 123 or <<x>>')).toBe('…call (555) 123 or [x]');
+    expect(shown('…tea) and <<x>>')).toBe('…tea) and [x]');
+    expect(shown('…etc.) and <<x>>')).toBe('…etc.) and [x]');
+  });
+
+  it('shows the snippet as it came when flattening leaves nothing', () => {
+    expect(shown('(files/<<onlyurl>>.pdf)')).toBe('(files/[onlyurl].pdf)');
   });
 });
