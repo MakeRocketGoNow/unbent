@@ -3,7 +3,7 @@ import { configQuery } from '../queries.js';
 import { instanceLine } from '../instance-marker.js';
 import { useOffline } from '../connectivity.js';
 import { isHosted } from '../app-bridge.js';
-import { buildInfo, shortCommit } from '../build-info.js';
+import { buildInfo, feedbackUrl, shortCommit, type BuildInfo } from '../build-info.js';
 import { OverflowMenu, type OverflowItem } from './OverflowMenu.js';
 
 interface AccountMenuProps {
@@ -16,6 +16,8 @@ interface AccountMenuProps {
    * avatar alone; there the row has other things in it.
    */
   withAddress?: boolean | undefined;
+  /** Which build this page is, for its instance line and feedback link. Tests pass their own. */
+  build?: BuildInfo | null;
 }
 
 /** A legal document as a menu item: a route for the built-in ones, an anchor for the rest. */
@@ -48,13 +50,19 @@ function initialOf(email: string): string {
  * is otherwise entirely self-hosted, and an avatar is not worth announcing a stable hash of
  * the user's email to a third party on every page load.
  */
-export function AccountMenu({ email, onSignOut, withAddress = false }: AccountMenuProps) {
+export function AccountMenu({
+  email,
+  onSignOut,
+  withAddress = false,
+  build = buildInfo,
+}: AccountMenuProps) {
   const config = useQuery(configQuery());
   const legal = config.data?.legal;
   const instance = config.data
-    ? instanceLine(config.data, buildInfo ? shortCommit(buildInfo) : null)
+    ? instanceLine(config.data, build ? shortCommit(build) : null)
     : null;
   const signOutNeedsConnection = useOffline() && !isHosted();
+  const feedback = build ? feedbackUrl(build) : null;
 
   return (
     <OverflowMenu
@@ -95,6 +103,12 @@ export function AccountMenu({ email, onSignOut, withAddress = false }: AccountMe
             ]
           : []),
         { label: null, separator: true },
+        // Here as well as in Settings › About because this menu is a click from every
+        // view, and "where do I report this?" is asked from the view that broke, not from
+        // Settings. GitHub's chooser rather than one form: the person picks bug or
+        // request there, with each described. About links the two forms directly, the
+        // bug report with the version already filled in.
+        ...(feedback ? [{ label: 'Send feedback', external: feedback, newTab: true }] : []),
         // Findable once signed in, which is the half the sign-in screen's own links cannot
         // cover. They are reference, not something to act on, and they sit above Sign out
         // so the destructive item stays last.
