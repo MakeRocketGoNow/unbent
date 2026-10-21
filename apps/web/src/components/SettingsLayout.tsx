@@ -15,7 +15,7 @@ const TABS = [
   { to: '/settings/offline', label: 'Offline' },
   { to: '/settings/maintenance', label: 'Maintenance' },
   { to: '/settings/security', label: 'Security' },
-  { to: '/settings/connected-apps', label: 'Connected apps' },
+  { to: '/settings/connected-apps', label: 'AI assistants' },
 ] as const;
 
 /**

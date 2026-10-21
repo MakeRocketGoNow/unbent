@@ -184,8 +184,12 @@ const COUNT = ['', '', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven'] as const;
  * tools (MAK-212). The version did not: it is a note an app the person chose to connect
  * writes about our tools, told to leave their notes out of it, which is closer to the
  * connected-app disclosure of the 16th than to Auto-fill sending a note to someone else.
+ *
+ * It moved on 20 October 2026 because the settings tab it names for disconnecting an app
+ * was renamed from Connected apps to AI assistants. Nothing about how information is
+ * handled changed, so the version did not.
  */
-const PRIVACY_EFFECTIVE = '2026-10-19';
+const PRIVACY_EFFECTIVE = '2026-10-20';
 
 export interface LegalDocuments {
   privacy: LegalDocument;
@@ -292,7 +296,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
             'anyone else to build a profile from.',
           'If you connect another app to your account, such as an assistant, it can read and ' +
             'change your notes as you can, for as long as it stays connected. That is your ' +
-            'choice, made when the app asks and undone from Settings, then Connected apps. ' +
+            'choice, made when the app asks and undone from Settings, then AI assistants. ' +
             'What that app does with what it reads is governed by its own policy, not this one.',
         ],
       },

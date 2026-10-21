@@ -7015,6 +7015,12 @@ button.settings-nav-item {
   border-color: var(--accent);
 }
 
+/* A button label that changes word without changing width: every word sits in the same
+   cell, sized by the longest, and only the current one is visible. */
+.copy-label { display: inline-grid; }
+.copy-label > * { grid-area: 1 / 1; text-align: left; }
+.copy-label > [aria-hidden='true'] { visibility: hidden; }
+
 /*
  * The export link, shaped as a button. It stays an <a href download> so the browser
  * streams the archive straight to disk (a fetch would buffer a multi-gigabyte zip inside
