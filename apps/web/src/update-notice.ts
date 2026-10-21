@@ -103,6 +103,18 @@ export function dismissNotice(): void {
   set(false);
 }
 
+/**
+ * The outbox has just kept a write the server refused while this page is behind
+ * (`refusal` in `store/actions.ts`), and holds the queue until a reload. The notice opens
+ * again whatever was dismissed: the reason to dismiss it (this page may keep working) has
+ * just been shown wrong, and with it closed nothing on screen says why nothing syncs.
+ */
+export function heldForReload(): void {
+  if (!behindDeploy()) return;
+  dismissedFor = null;
+  set(true);
+}
+
 /** The notice is being answered by a reload. */
 export function clearNotice(): void {
   set(false);

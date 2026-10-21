@@ -13,7 +13,7 @@ import { isWhole, refusedForGood, type FeedEngine } from './feed.js';
 import { CallUnsettledError, LibraryMovedError, SEND_ONCE } from './client-library.js';
 import { onPlanActive, planAccepted, planHeld, planLapsed, planRefused } from '../plan-refused.js';
 import { onStoreFreed, onStoreFull, storeAccepted, storeFreed, storeFull, storeFullMessage, storeRefused } from '../store-full.js';
-import { behindDeploy } from '../update-notice.js';
+import { behindDeploy, heldForReload } from '../update-notice.js';
 import { outboxLeaderName, outboxName } from './names.js';
 import { OutboxLeader } from './leader.js';
 
@@ -315,7 +315,8 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
    * and sends it as it is, so a reload does not reshape it, and if the new build is
    * refused it too, it ends there.
    * Until then the entry is not sent again (`staleHeld`), since the answer would be the
-   * same. Pausing the whole queue on a raised level was weighed and not done: most bumps
+   * same, and the notice opens again even if it was dismissed (`heldForReload`), since
+   * the whole queue now waits on the reload. Pausing the whole queue on a raised level was weighed and not done: most bumps
    * are not about what the server accepts, and saves held for no reason anyone could see
    * are worse in a notes app than the rare one this keeps. After the reload the levels
    * agree, and a refusal ends its entry as before.
@@ -333,6 +334,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
     if (err instanceof ApiError && refusedForGood(err.status)) {
       if (behindDeploy()) {
         staleHeld = true;
+        heldForReload();
         throw err;
       }
       throw new NonRetriableError(err.message);

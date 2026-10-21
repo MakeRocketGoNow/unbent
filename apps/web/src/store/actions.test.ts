@@ -16,7 +16,7 @@ import { FeedEngine, type Position } from './feed.js';
 import { installMemoryOpfs, type MemoryDirectory } from './test-opfs.js';
 import { planIs, planLapsed, resetPlanRefused } from '../plan-refused.js';
 import { resetStoreFull, storeFull, storeFullMessage } from '../store-full.js';
-import { resetNotice, sawLevel } from '../update-notice.js';
+import { dismissNotice, noticeShown, resetNotice, sawLevel } from '../update-notice.js';
 import { COMPAT_LEVEL } from '@unbent/shared/compat';
 
 /**
@@ -560,6 +560,18 @@ describe('a replayed write', () => {
       vi.mocked(api.updateNote).mockResolvedValueOnce({ ...base, title: 'typed before the reload', updatedAt: 101 });
       expect(await fake.replayOne()).toBe('done');
       expect(fake.queue).toHaveLength(0);
+    });
+
+    /* Dismissed before the refusal, the notice would leave a held queue with nothing saying why. */
+    it('opens the notice again when a refusal holds the queue', async () => {
+      const { fake } = library([row('n1')]);
+      await actions.trashNotes(['n1']);
+      await tick();
+      sawLevel(COMPAT_LEVEL + 1);
+      dismissNotice();
+      vi.mocked(api.deleteNotes).mockRejectedValueOnce(new ApiError(400, '400: Bad Request'));
+      expect(await fake.replayOne()).toBe('kept');
+      expect(noticeShown()).toBe(true);
     });
 
     it('still ends a write refused for good when the page is on the deploy\u2019s level', async () => {
