@@ -595,7 +595,8 @@ ending the entry would roll back what they typed: a lapsed plan's (`plan-refused
 a store past its room's (`STORAGE_FULL` with `of: 'notes'`, `store-full.ts`). While
 either waits at the head of the queue the deletes go to the server round it
 (`roundTheQueue`), and the one that ends a refusal (a checkout, a purge) sends the kept
-entry again at once.
+entry again at once. Any 4xx is kept too while the page is behind the deploy, until the
+reload; see [Builds side by side](#builds-side-by-side).
 Only the tab holding the account's leader lock replays (`store/leader.ts`); another tab
 waits in the lock's queue and leads the moment the holder goes, rather than staying a
 follower until it reloads, as the outbox library's own one-shot election left it. A tab that does
@@ -885,10 +886,16 @@ tabs on newer builds. Most deploys change nothing it relies on, and say nothing.
 that does raises `COMPAT_LEVEL` (`packages/shared/src/compat.ts`), and every page on a
 lower level is asked to reload once it deploys: from its next API answer, which states
 the level (`X-Unbent-Compat`), or from the new worker taking charge, whichever comes
-first. Asked, not made: a write the page sends before the person reloads can still be
-refused. Raising the level is the warning, and keeping the old shape working is the
-protection. The notice used to show for every deploy,
-and the people trying the app were asked to reload after every merge for nothing.
+first. Asked, not made, and what the page sends meanwhile is not lost for it: a write
+the server refuses while the page is behind the deploy is kept, not ended, and waits
+for the reload (`refusal` in `store/actions.ts`). The build that replays a queued write
+rebuilds its request, so after the reload a kept save goes out in the new shape. A
+queued `createNote` is the exception, since it stores its body as sent. The queue is not
+paused on a raised level: most bumps are not about what the server takes, and saves
+held for no visible reason are worse than the rare one this keeps. Keeping the old shape
+working is still the first protection; this is the second. The notice used to show for
+every deploy, and the people trying the app were asked to reload after every merge for
+nothing.
 
 The decision is made in the commit that changes the contract, and the contract test
 (`apps/web/src/compat/contract.test.ts`) is what asks for it. It compares the code with

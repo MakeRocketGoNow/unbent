@@ -67,6 +67,15 @@ export function sawLevel(level: number | null, now = Date.now()): void {
   } else if (now - otherAt >= SETTLED_MS) set(false);
 }
 
+/**
+ * Whether this page is behind the deploy that answered it last: a build the server may
+ * refuse. The outbox reads it to keep a write the server refused rather than end it
+ * (`refusal` in `store/actions.ts`), since the build a reload brings may be able to send it.
+ */
+export function behindDeploy(): boolean {
+  return needsReload(COMPAT_LEVEL, seen);
+}
+
 export function noticeShown(): boolean {
   return shown;
 }

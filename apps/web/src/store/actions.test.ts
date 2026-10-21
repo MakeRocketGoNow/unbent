@@ -16,6 +16,8 @@ import { FeedEngine, type Position } from './feed.js';
 import { installMemoryOpfs, type MemoryDirectory } from './test-opfs.js';
 import { planIs, planLapsed, resetPlanRefused } from '../plan-refused.js';
 import { resetStoreFull, storeFull, storeFullMessage } from '../store-full.js';
+import { resetNotice, sawLevel } from '../update-notice.js';
+import { COMPAT_LEVEL } from '@unbent/shared/compat';
 
 /**
  * The rules the outbox holds, against a stand-in for the executor that keeps the real
@@ -529,6 +531,46 @@ describe('a replayed write', () => {
     vi.mocked(api.updateNote).mockResolvedValueOnce({ ...base, title: 'typed as the trial ran out', updatedAt: 101 });
     expect(await fake.replayOne()).toBe('done');
     expect(api.updateNote).toHaveBeenCalledTimes(2);
+  });
+
+  /**
+   * A page behind the deploy (its compatibility level is not the server's, and it has
+   * been asked to reload) keeps what the server refuses rather than ending it: the
+   * refusal may be the server no longer taking this build's shape, and the build a
+   * reload brings rebuilds the request in its own. It is not sent again meanwhile, since
+   * the answer would be the same.
+   */
+  describe('on a page behind the deploy', () => {
+    afterEach(resetNotice);
+
+    it('keeps a refused save, holds it, and sends it once the level agrees', async () => {
+      const { fake, note } = library([row('n1', { title: 'old' })]);
+      const base = note('n1');
+      await actions.saveNote({ noteId: 'n1', value: { ...seedFrom(base), title: 'typed before the reload' }, base });
+      await tick();
+      sawLevel(COMPAT_LEVEL + 1);
+      vi.mocked(api.updateNote).mockRejectedValueOnce(new ApiError(400, '400: Bad Request'));
+      expect(await fake.replayOne()).toBe('kept');
+      expect(fake.queue).toHaveLength(1);
+      // Held: the next replay asks the server nothing.
+      expect(await fake.replayOne()).toBe('kept');
+      expect(api.updateNote).toHaveBeenCalledTimes(1);
+      // The levels agree, as they do in the build a reload brings: it goes again.
+      sawLevel(COMPAT_LEVEL);
+      vi.mocked(api.updateNote).mockResolvedValueOnce({ ...base, title: 'typed before the reload', updatedAt: 101 });
+      expect(await fake.replayOne()).toBe('done');
+      expect(fake.queue).toHaveLength(0);
+    });
+
+    it('still ends a write refused for good when the page is on the deploy\u2019s level', async () => {
+      const { fake } = library([row('n1')]);
+      await actions.trashNotes(['n1']);
+      await tick();
+      sawLevel(COMPAT_LEVEL);
+      vi.mocked(api.deleteNotes).mockRejectedValueOnce(new ApiError(400, '400: Bad Request'));
+      expect(await fake.replayOne()).toBe('refused');
+      expect(fake.queue).toHaveLength(0);
+    });
   });
 
   /**
