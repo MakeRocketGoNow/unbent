@@ -68,7 +68,9 @@ let otherAt = 0;
  */
 export function sawLevel(level: number | null, now = Date.now()): void {
   if (level === null) return;
+  const wasBehind = behindDeploy();
   seen = level;
+  if (wasBehind && !behindDeploy()) for (const listener of caughtUp) listener();
   if (needsReload(COMPAT_LEVEL, level)) {
     otherAt = now;
     other = level;
@@ -83,6 +85,19 @@ export function sawLevel(level: number | null, now = Date.now()): void {
  */
 export function behindDeploy(): boolean {
   return needsReload(COMPAT_LEVEL, seen);
+}
+
+const caughtUp = new Set<() => void>();
+
+/**
+ * Calls `listener` when the levels agree again after this page was behind: a bump
+ * reverted, or the edge that answered last caught up. The outbox replays at once then
+ * (`connectivityDetector` in `store/actions.ts`), as it does when a lapsed plan is paid
+ * for: a held write waits on the level, not on the executor's growing wait.
+ */
+export function onCaughtUp(listener: () => void): () => void {
+  caughtUp.add(listener);
+  return () => caughtUp.delete(listener);
 }
 
 export function noticeShown(): boolean {

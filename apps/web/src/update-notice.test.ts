@@ -1,6 +1,6 @@
 import { COMPAT_LEVEL } from '@unbent/shared/compat';
-import { afterEach, describe, expect, it } from 'vitest';
-import { SETTLED_MS, clearNotice, dismissNotice, needsReload, noticeShown, resetNotice, sawLevel } from './update-notice.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SETTLED_MS, clearNotice, dismissNotice, needsReload, noticeShown, onCaughtUp, resetNotice, sawLevel } from './update-notice.js';
 
 describe('needsReload', () => {
   it('says so when the deploy in charge has a higher compatibility level than the page', () => {
@@ -68,6 +68,19 @@ describe('the notice', () => {
     sawLevel(COMPAT_LEVEL + 1, 3_000);
     sawLevel(COMPAT_LEVEL, 3_000 + SETTLED_MS - 1);
     expect(noticeShown()).toBe(true);
+  });
+
+  /* The outbox replays on it, so it fires once per return, not on every agreeing answer. */
+  it('says when the levels agree again after the page was behind', () => {
+    const listener = vi.fn();
+    const off = onCaughtUp(listener);
+    sawLevel(COMPAT_LEVEL);
+    expect(listener).not.toHaveBeenCalled();
+    sawLevel(COMPAT_LEVEL + 1);
+    sawLevel(COMPAT_LEVEL);
+    sawLevel(COMPAT_LEVEL);
+    expect(listener).toHaveBeenCalledTimes(1);
+    off();
   });
 
   it('closes when answered by a reload', () => {

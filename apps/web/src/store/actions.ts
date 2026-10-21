@@ -13,7 +13,7 @@ import { isWhole, refusedForGood, type FeedEngine } from './feed.js';
 import { CallUnsettledError, LibraryMovedError, SEND_ONCE } from './client-library.js';
 import { onPlanActive, planAccepted, planHeld, planLapsed, planRefused } from '../plan-refused.js';
 import { onStoreFreed, onStoreFull, storeAccepted, storeFreed, storeFull, storeFullMessage, storeRefused } from '../store-full.js';
-import { behindDeploy, heldForReload } from '../update-notice.js';
+import { behindDeploy, heldForReload, onCaughtUp } from '../update-notice.js';
 import { outboxLeaderName, outboxName } from './names.js';
 import { OutboxLeader } from './leader.js';
 
@@ -1008,9 +1008,10 @@ class BuildHeld extends Error {
 
 /**
  * `connectivity.ts` is the one thing that decides whether the app is offline; the
- * executor follows it. The plan reading as active again, and a delete going through
- * while the store's refusal stands, are the other words to replay now, through the
- * same door: a kept 402 waits on the checkout or on room, not on the network.
+ * executor follows it. The plan reading as active again, a delete going through while
+ * the store's refusal stands, and the levels agreeing again while a write is held behind
+ * the deploy, are the other words to replay now, through the same door: a kept 402
+ * waits on the checkout or on room, and a held write on the level, not on the network.
  */
 function connectivityDetector(): OnlineDetector {
   return {
@@ -1026,10 +1027,15 @@ function connectivityDetector(): OnlineDetector {
       const offFreed = onStoreFreed(() => {
         if (!offlineNow()) cb();
       });
+      // And the levels agreeing again: a write held behind the deploy can go now.
+      const offLevel = onCaughtUp(() => {
+        if (!offlineNow()) cb();
+      });
       return () => {
         offConnectivity();
         offPlan();
         offFreed();
+        offLevel();
       };
     },
     notifyOnline: () => recheck(),
