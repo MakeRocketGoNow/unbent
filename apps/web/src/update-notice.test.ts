@@ -44,6 +44,15 @@ describe('the notice', () => {
     expect(noticeShown()).toBe(true);
   });
 
+  /* Pressed between two answers of a rollout, the dismissal is for the level it was about. */
+  it('stays closed when dismissed just after an answer at the page’s own level', () => {
+    sawLevel(COMPAT_LEVEL + 1, 1_000);
+    sawLevel(COMPAT_LEVEL, 2_000);
+    dismissNotice();
+    sawLevel(COMPAT_LEVEL + 1, 3_000);
+    expect(noticeShown()).toBe(false);
+  });
+
   /* A bump reverted before the person answered: nothing is left to reload for. */
   it('closes once the level has stayed back at the page’s own', () => {
     sawLevel(COMPAT_LEVEL + 1, 1_000);

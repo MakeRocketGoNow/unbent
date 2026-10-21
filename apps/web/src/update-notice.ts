@@ -31,8 +31,14 @@ export function needsReload(page: number, deployed: number | null): boolean {
 }
 
 let shown = false;
-/** The level stated last, which is the one a dismissal is for. */
+/** The level stated last, which is what `behindDeploy` reads. */
 let seen: number | null = null;
+/**
+ * The last level stated that was not the page's own, which is the one a dismissal is
+ * for. Not `seen`: while a deploy reaches the edges the last answer may be at the page's
+ * own level, and a dismissal recorded for that one was undone by the next answer.
+ */
+let other: number | null = null;
 /** The level the person dismissed the notice for, so the next answer does not bring it straight back. */
 let dismissedFor: number | null = null;
 const listeners = new Set<() => void>();
@@ -63,6 +69,7 @@ export function sawLevel(level: number | null, now = Date.now()): void {
   seen = level;
   if (needsReload(COMPAT_LEVEL, level)) {
     otherAt = now;
+    other = level;
     if (level !== dismissedFor) set(true);
   } else if (now - otherAt >= SETTLED_MS) set(false);
 }
@@ -90,7 +97,7 @@ export function subscribeNotice(listener: () => void): () => void {
  * would otherwise open it again at once; a deploy that moves the level again says so.
  */
 export function dismissNotice(): void {
-  dismissedFor = seen;
+  dismissedFor = other;
   set(false);
 }
 
@@ -103,6 +110,7 @@ export function clearNotice(): void {
 export function resetNotice(): void {
   shown = false;
   seen = null;
+  other = null;
   dismissedFor = null;
   otherAt = 0;
 }
