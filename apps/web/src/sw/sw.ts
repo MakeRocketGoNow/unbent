@@ -549,7 +549,8 @@ registerRoute(
  * commit read out of the precached page (the one place the worker can learn it without
  * the build plumbing it through) and the build's compatibility level (`COMPAT_LEVEL`),
  * so a page can tell whether the worker now in charge is a build it cannot run beside,
- * and say that a reload is needed (`UpdateSnackbar`).
+ * and say that a reload is needed (`UpdateSnackbar`). This build's page reads only the
+ * level; the commit is still sent for pages from before levels, which compare it.
  *
  * `RUNNING`: which build the page sending it is running, so a deploy's tidy keeps that
  * build's shell while the page is open (`tidyShellCaches`).
