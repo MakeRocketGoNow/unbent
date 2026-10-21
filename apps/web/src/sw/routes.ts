@@ -69,6 +69,36 @@ export const FILES_CACHE = 'files-v1';
  */
 export const SHELL_CACHE_PREFIX = 'unbent-shell-';
 export const shellCacheName = (build: string) => `${SHELL_CACHE_PREFIX}${build}`;
+/**
+ * Where the worker remembers which build was previous and which builds the open pages
+ * are running. A cache rather than the worker's memory, which goes whenever the browser
+ * stops the worker, and shared by every build's worker, so the one that tidies reads
+ * what the pages told the one before it.
+ */
+export const SHELL_META_CACHE = `${SHELL_CACHE_PREFIX}meta`;
+
+/** The commit a build's `index.html` names (`<meta name="unbent-commit">`), or null. */
+export function commitOf(html: string): string | null {
+  return /<meta name="unbent-commit" content="([^"]+)"/.exec(html)?.[1] ?? null;
+}
+
+/**
+ * The caches a tidy deletes: every shell cache but this build's, the previous build's
+ * and those of builds an open page is still running, and the one cache Workbox used to
+ * keep every build in, from before each build had its own. Everything else (the
+ * runtime caches, the meta cache) is left alone.
+ *
+ * The previous build is kept even with no page recorded as running it: a page loaded in
+ * the moments before a deploy may not have said yet, and a page from before pages said
+ * at all never will.
+ */
+export function staleShellCaches(names: readonly string[], keep: { current: string; previous?: string; running: ReadonlySet<string> }): string[] {
+  return names.filter((name) => {
+    if (name.includes('-precache-')) return true;
+    if (!name.startsWith(SHELL_CACHE_PREFIX) || name === SHELL_META_CACHE) return false;
+    return name !== keep.current && name !== keep.previous && !keep.running.has(name);
+  });
+}
 
 /** A hashed file of a build: what Vite writes under `/assets/`. */
 export function isAsset(url: URL, origin: string): boolean {

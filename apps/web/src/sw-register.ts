@@ -27,9 +27,9 @@ import { buildInfo } from './build-info.js';
  * reload that reset a list someone was three hundred rows into), and together they
  * still moved every other tab onto the new worker without reloading it, with its chunks
  * gone. Two changes in the worker made the rules unnecessary: a page load is answered
- * from the network first, so a reload is always the newest build; and the previous
- * build's shell stays cached, so a page in use keeps working after the new worker takes
- * charge. The worker is told to take charge the moment it has installed, no page is
+ * from the network first, so a reload is always the newest build; and every build an
+ * open page is running keeps its shell cached, so a page in use keeps working after the
+ * new worker takes charge. The worker is told to take charge the moment it has installed, no page is
  * ever reloaded by this file except one whose next chunk is gone
  * (`recoverFromMissingChunks`), and the one thing left to say is that a reload would
  * bring another build (`useUpdateNotice`), which is said only when it is so.
@@ -59,7 +59,11 @@ export function registerServiceWorker(): void {
      started with, and stops listening, so a deploy found on a return to the tab, which
      is the case the notice exists for, was never said.
   */
-  navigator.serviceWorker.addEventListener('controllerchange', () => void sayIfOther());
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    sayRunning();
+    void sayIfOther();
+  });
+  sayRunning();
   /*
      A page already under a worker registers at once and asks for a new one straight
      away. Workbox otherwise waits for the window's `load`, so as not to compete with a
@@ -94,6 +98,17 @@ async function sayIfOther(): Promise<void> {
   if (!controller) return;
   const commit = await within(askBuild(controller), 5_000, null).catch(() => null);
   if (isOtherBuild(PAGE_COMMIT, commit)) setNotice(true);
+}
+
+/**
+ * Tells the worker in charge which build this page runs, so a deploy keeps that build's
+ * chunks while the page is open (`tidyShellCaches` in `sw.ts`). Said to every worker
+ * that takes charge, though one would do (they share the record): it costs a message,
+ * and a page first loaded with no worker has nobody to say it to until one claims it.
+ */
+function sayRunning(): void {
+  const controller = navigator.serviceWorker.controller;
+  if (controller && PAGE_COMMIT) controller.postMessage({ type: 'RUNNING', commit: PAGE_COMMIT });
 }
 
 /** The commit the worker in charge was built from, from the page it holds (`BUILD` in `sw.ts`). */
@@ -216,10 +231,11 @@ function checkForUpdatesOnReturn(worker: Workbox): void {
  * Reloads once when a route's code cannot be loaded because a deploy has removed it.
  *
  * Every build names its chunks by content, and a deploy replaces the whole set. The
- * worker keeps the previous build's chunks for a page still running it, but only the
- * previous build's: a page that outlives two deploys without a reload, or one from
- * before there was a worker, asks for a chunk that no longer exists, and the worker
- * answers the asset layer's `index.html` with the 404 it is. Vite raises
+ * worker keeps a build's chunks while a page says it is running that build, so this is
+ * for the pages it cannot know about: one from before there was a worker, one whose
+ * browser emptied the caches, one whose word never arrived. Such a page asks for a
+ * chunk that no longer exists, and the worker answers the asset layer's `index.html`
+ * with the 404 it is. Vite raises
  * `vite:preloadError` for exactly this; a reload fetches the current build.
  *
  * At most once a minute, so a chunk that is genuinely broken shows its error instead of

@@ -831,10 +831,11 @@ network cut.
 **A deploy's worker takes charge at once, and no page is ever moved onto it.** A page load
 is answered from the network first and from the cached shell only when the network does
 not answer (`sw.ts`), so a reload is always the newest build. Each build's shell is in a
-cache named for the build (`shellCacheName`), and the previous build's cache outlives its
-worker, so a tab still running the previous build keeps finding its chunks after the new
-worker has taken charge; only a tab that outlives two deploys without a reload loses them,
-and `recoverFromMissingChunks` reloads it once when a chunk is gone. The one thing the
+cache named for the build (`shellCacheName`), kept while a page says it is running that
+build (`RUNNING`) and for the previous build regardless, so a tab left open across any
+number of deploys keeps finding its chunks after the new worker has taken charge;
+`recoverFromMissingChunks` reloads a page once when a chunk is gone all the same, for
+the pages the worker never heard from. The one thing the
 page says is that a reload would bring a newer build (`UpdateSnackbar`), and only when the
 worker's commit differs from the page's (`BUILD` in `sw.ts`). The rules this replaced (a
 change of section, five minutes away, nothing touched since the load, at once on dev and

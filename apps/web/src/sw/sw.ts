@@ -2,7 +2,7 @@ import { PrecacheController, PrecacheRoute } from 'workbox-precaching';
 import { registerRoute } from 'workbox-routing';
 import { CacheFirst, NetworkFirst, type StrategyOptions } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
-import { API_CACHE, FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE, SERVED_HEADER, SHELL_CACHE_PREFIX, VIEW_HEADER, classify, isAsset, isShellFallback, servesShell, shellCacheName, shelved, within } from './routes.js';
+import { API_CACHE, FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE, SERVED_HEADER, SHELL_CACHE_PREFIX, SHELL_META_CACHE, VIEW_HEADER, classify, commitOf, isAsset, isShellFallback, servesShell, shellCacheName, shelved, staleShellCaches, within } from './routes.js';
 import { createFilesLedger } from './budget.js';
 import { findFile } from '../store/files.js';
 
@@ -25,10 +25,11 @@ import { findFile } from '../store/files.js';
  *   the network does not answer. So a reload is always the newest build, and the whole
  *   question of *when* to move a page onto a new deploy (a change of section, five
  *   minutes away, nothing touched yet) goes away with the rules that answered it.
- * - Each build's shell is kept in a cache of its own, and the previous build's cache is
- *   kept until the one after it. A tab still running the previous build asks for its
- *   chunks under their old names, and finds them: a new worker taking charge no longer
- *   pulls the code out from under every other tab (see the assets route).
+ * - Each build's shell is kept in a cache of its own, for as long as a tab is running
+ *   that build, and the previous build's until the one after it. A tab still running an
+ *   older build asks for its chunks under their old names, and finds them: a new worker
+ *   taking charge no longer pulls the code out from under every other tab (see the
+ *   assets route).
  * - What the shell is filled with is checked: a chunk that no longer exists is answered
  *   by the Worker with `index.html` and a 200, and a fill that took that for a chunk
  *   stored HTML under a script's name.
@@ -168,31 +169,72 @@ function refillShell(): Promise<void> {
 }
 
 /**
- * The shell caches that are neither this build's nor the one before it, once this worker
- * is in charge, and the one cache Workbox used to keep every build in, from before each
- * build had its own.
+ * Once this worker is in charge, deletes the shell caches no open page needs
+ * (`staleShellCaches`): every build's but this one's, the previous one's, and those of
+ * the builds the open pages are running.
  *
- * The previous build is kept on purpose: a tab still running it keeps finding its chunks
- * (the assets route) until it reloads. A tab that outlives two deploys without a reload
- * loses them, and gets the reload `recoverFromMissingChunks` does for a chunk that is
- * gone. Which build was previous is remembered in a cache of its own, since cache names
- * carry no order. A worker of the same build activating again (the registration removed
- * and made anew) finds its own name remembered as previous and keeps no older build;
- * accepted, since that is not a deploy and no page is running an older build under it.
+ * Each page says which build it is running when it loads (`RUNNING`, below), and the
+ * worker writes that down under the page's client id. Here the records of pages that
+ * have since closed are dropped, and the rest name the builds to keep. So a tab left
+ * open across any number of deploys (an installed app on a phone is resumed, not
+ * reopened, for weeks) keeps finding its chunks, and nothing is kept for tabs that are
+ * gone. It used to keep the previous build alone, and a tab that outlived two deploys
+ * lost its chunks and was reloaded under the person's hands the next time it needed one
+ * (`recoverFromMissingChunks`), which with several merges a day was most tabs left open
+ * overnight. A tidy runs only when a new worker activates, so a build's cache outlives
+ * its last tab until the next deploy; that is the whole cost.
+ *
+ * The previous build is still kept without a record, for a page loaded in the moments
+ * before a deploy and for one from before pages said what they ran. Which build was
+ * previous is remembered too, since cache names carry no order. A worker of the same
+ * build activating again (the registration removed and made anew) finds its own name
+ * remembered as previous; accepted, since that is not a deploy.
+ *
+ * A page records its build by commit and a cache is named for its `index.html`'s
+ * revision, so each kept-or-not cache is matched by the commit its own page names.
  */
-const SHELL_META = `${SHELL_CACHE_PREFIX}meta`;
 const PREVIOUS_KEY = '/previous';
+const RUNNING_PREFIX = '/running/';
 
 async function tidyShellCaches(): Promise<void> {
-  const meta = await caches.open(SHELL_META);
+  const meta = await caches.open(SHELL_META_CACHE);
   const before = await meta.match(PREVIOUS_KEY).then((r) => r?.text()).catch(() => undefined);
   const previous = before && before !== SHELL_CACHE ? before : undefined;
-  for (const name of await caches.keys()) {
-    const ours = name.startsWith(SHELL_CACHE_PREFIX) && name !== SHELL_META;
-    const workbox = name.includes('-precache-');
-    if ((ours && name !== SHELL_CACHE && name !== previous) || workbox) await caches.delete(name);
+  const runningCommits = new Set<string>();
+  for (const request of await meta.keys()) {
+    const path = new URL(request.url).pathname;
+    if (!path.startsWith(RUNNING_PREFIX)) continue;
+    const client = await self.clients.get(decodeURIComponent(path.slice(RUNNING_PREFIX.length)));
+    if (!client) {
+      await meta.delete(request);
+      continue;
+    }
+    const commit = await meta.match(request).then((r) => r?.text()).catch(() => undefined);
+    if (commit) runningCommits.add(commit);
   }
+  const names = await caches.keys();
+  const running = new Set<string>();
+  for (const name of names) {
+    if (!name.startsWith(SHELL_CACHE_PREFIX) || name === SHELL_META_CACHE || name === SHELL_CACHE) continue;
+    const commit = await shellCommit(name);
+    if (commit && runningCommits.has(commit)) running.add(name);
+  }
+  for (const name of staleShellCaches(names, { current: SHELL_CACHE, previous, running })) await caches.delete(name);
   await meta.put(PREVIOUS_KEY, new Response(SHELL_CACHE));
+}
+
+/** The commit a shell cache's own `index.html` names, or null when it holds none. */
+async function shellCommit(name: string): Promise<string | null> {
+  const cache = await caches.open(name);
+  const page = (await cache.keys()).find((request) => new URL(request.url).pathname === '/index.html');
+  const html = page ? await cache.match(page).then((r) => r?.text() ?? '').catch(() => '') : '';
+  return commitOf(html);
+}
+
+/** Writes down that a page is running the build of `commit` (`RUNNING`, below). */
+async function recordRunning(clientId: string, commit: string): Promise<void> {
+  const meta = await caches.open(SHELL_META_CACHE);
+  await meta.put(`${RUNNING_PREFIX}${encodeURIComponent(clientId)}`, new Response(commit));
 }
 
 self.addEventListener('activate', (event) => {
@@ -526,11 +568,18 @@ registerRoute(
  * the build plumbing it through), so a page can tell whether the worker now in charge
  * is a newer build than itself, and say that a reload would bring it (`UpdateSnackbar`).
  *
+ * `RUNNING`: which build the page sending it is running, so a deploy's tidy keeps that
+ * build's shell while the page is open (`tidyShellCaches`).
+ *
  * `FILES_CHANGED`: the page put a file in the files cache itself.
  */
 self.addEventListener('message', (event) => {
-  const type = (event.data as { type?: unknown } | null)?.type;
+  const data = event.data as { type?: unknown; commit?: unknown } | null;
+  const type = data?.type;
   if (type === 'BUILD') event.waitUntil(answerBuild(event.ports[0]));
+  if (type === 'RUNNING' && typeof data?.commit === 'string' && event.source instanceof Client) {
+    event.waitUntil(recordRunning(event.source.id, data.commit).catch(() => {}));
+  }
   if (type === FILES_CHANGED) event.waitUntil(ledger.sweep());
 });
 
@@ -538,6 +587,6 @@ async function answerBuild(port: MessagePort | undefined): Promise<void> {
   if (!port) return;
   const page = await shell.matchPrecache('/index.html').catch(() => undefined);
   const html = (await page?.text().catch(() => '')) ?? '';
-  const commit = /<meta name="unbent-commit" content="([^"]+)"/.exec(html)?.[1] ?? null;
+  const commit = commitOf(html);
   port.postMessage({ type: 'BUILD', commit });
 }
