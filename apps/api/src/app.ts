@@ -22,6 +22,7 @@ import { connectedApps } from './routes/connected-apps.js';
 import { legal } from './routes/legal.js';
 import { previewRelay } from './routes/preview-relay.js';
 import { mcpRoutes } from './routes/mcp.js';
+import { COMPAT_HEADER, COMPAT_LEVEL } from '@unbent/shared/compat';
 import { clientErrors } from './routes/client-errors.js';
 import { changes } from './routes/changes.js';
 import { billing } from './routes/billing.js';
@@ -33,6 +34,18 @@ import { billing } from './routes/billing.js';
 export const app = new Hono<AppEnv>();
 
 app.use('*', logger());
+
+/**
+ * Every answer states this deploy's compatibility level (`COMPAT_LEVEL`), so a page still
+ * running an older build learns it needs a reload from its next request, not only once a
+ * new service worker has installed and taken charge of it. A tab that stays in view never
+ * asks for a new worker, and a phone resumed after weeks replays its queued writes
+ * seconds before one is in. Ahead of everything, health included, since it costs a header.
+ */
+app.use('*', async (c, next) => {
+  await next();
+  c.header(COMPAT_HEADER, String(COMPAT_LEVEL));
+});
 
 /**
  * Health is mounted ahead of the session check, so it never waits on one. It answers

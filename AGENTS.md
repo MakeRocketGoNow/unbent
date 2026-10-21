@@ -837,8 +837,9 @@ number of deploys keeps finding its chunks after the new worker has taken charge
 `recoverFromMissingChunks` reloads a page once when a chunk is gone all the same, for
 the pages the worker never heard from. The one thing the
 page says is that a reload is needed (`UpdateSnackbar`), and only when the worker's
-compatibility level is higher than the page's (`BUILD` in `sw.ts`, `compat/level.ts`):
-an ordinary deploy says nothing. The rules this replaced (a
+compatibility level is higher than the page's (`COMPAT_LEVEL` in
+`@unbent/shared/compat`, stated by the worker and on every API answer): an ordinary
+deploy says nothing. The rules this replaced (a
 change of section, five minutes away, nothing touched since the load, at once on dev and
 previews) each answered a reload that drew the old build or lost someone's place, and
 between them still moved every other tab onto a worker that had deleted their chunks.
@@ -881,8 +882,12 @@ real device before tuning it.
 up.** Every merge deploys, and a page left open (an installed app on a phone is resumed
 for weeks) keeps running its own build against the newest server, the newest worker and
 tabs on newer builds. Most deploys change nothing it relies on, and say nothing. One
-that does raises `COMPAT_LEVEL` (`apps/web/src/compat/level.ts`), and every page on a
-lower level is asked to reload once it deploys. The notice used to show for every deploy,
+that does raises `COMPAT_LEVEL` (`packages/shared/src/compat.ts`), and every page on a
+lower level is asked to reload once it deploys: from its next API answer, which states
+the level (`X-Unbent-Compat`), or from the new worker taking charge, whichever comes
+first. Asked, not made: a write the page sends before the person reloads can still be
+refused. Raising the level is the warning, and keeping the old shape working is the
+protection. The notice used to show for every deploy,
 and the people trying the app were asked to reload after every merge for nothing.
 
 The decision is made in the commit that changes the contract, and the contract test

@@ -3,7 +3,7 @@ import { Workbox, messageSW } from 'workbox-window';
 import { within } from './sw/routes.js';
 import { pageBusy } from './busy.js';
 import { buildInfo } from './build-info.js';
-import { COMPAT_LEVEL } from './compat/level.js';
+import { clearNotice, dismissNotice, noticeShown, sawLevel, subscribeNotice } from './update-notice.js';
 
 /**
  * Installs the service worker that keeps the app openable without a connection (see
@@ -42,13 +42,6 @@ let wb: Workbox | undefined;
 /** The commit this page was built from, which the worker keeps this build's shell for. */
 const PAGE_COMMIT: string | null = buildInfo?.commit ?? null;
 
-let noticeShown = false;
-const noticeListeners = new Set<() => void>();
-function setNotice(shown: boolean): void {
-  if (noticeShown === shown) return;
-  noticeShown = shown;
-  for (const listener of noticeListeners) listener();
-}
 
 export function registerServiceWorker(): void {
   recoverFromMissingChunks();
@@ -85,26 +78,10 @@ export function registerServiceWorker(): void {
   checkForUpdatesOnReturn(worker);
 }
 
-/**
- * Whether the worker now in charge is a build this page cannot run beside: its
- * compatibility level, asked of it, is higher than the page's own (`COMPAT_LEVEL`).
- *
- * Not whether it is another build. That was the rule, and it asked for a reload after
- * every deploy, which nothing about most deploys needs: this page keeps its own shell
- * while it is open, and the next load brings the newest build regardless. A lower level
- * is a rollback past a bump, which the page that is newer than the server cannot fix by
- * reloading either. Unknown is not higher: a worker from before levels answers none, and
- * a word that might be wrong is worse than none.
- */
-export function needsReload(page: number, worker: number | null): boolean {
-  return worker !== null && worker > page;
-}
-
 async function sayIfNeeded(): Promise<void> {
   const controller = navigator.serviceWorker.controller;
   if (!controller) return;
-  const compat = await within(askCompat(controller), 5_000, null).catch(() => null);
-  if (needsReload(COMPAT_LEVEL, compat)) setNotice(true);
+  sawLevel(await within(askCompat(controller), 5_000, null).catch(() => null));
 }
 
 /**
@@ -176,19 +153,14 @@ export function useOfflineReady(): OfflineReady {
 /**
  * Whether to say that a reload is needed, for `UpdateSnackbar`, and the two answers to it.
  *
- * Said once a worker this page cannot run beside is in charge of it (`needsReload`);
- * said once, and left to the person: this file never reloads a page in use. Dismissing it changes nothing but the notice: the next load,
- * whenever it comes, is the newest build.
+ * Said once this page has been told the deploy in charge is one it cannot run beside
+ * (`update-notice.ts`), and left to the person: this file never reloads a page in use.
+ * Dismissing it keeps the page on its own build until its next load, which is the
+ * newest.
  */
 export function useUpdateNotice(): { shown: boolean; reload: () => void; dismiss: () => void } {
-  const shown = useSyncExternalStore(
-    (listener) => {
-      noticeListeners.add(listener);
-      return () => noticeListeners.delete(listener);
-    },
-    () => noticeShown,
-  );
-  return { shown, reload: reloadIntoUpdate, dismiss: () => setNotice(false) };
+  const shown = useSyncExternalStore(subscribeNotice, noticeShown, () => false);
+  return { shown, reload: reloadIntoUpdate, dismiss: dismissNotice };
 }
 
 /**
@@ -198,7 +170,7 @@ export function useUpdateNotice(): { shown: boolean; reload: () => void; dismiss
  * is done.
  */
 function reloadIntoUpdate(): void {
-  setNotice(false);
+  clearNotice();
   const go = () => {
     if (pageBusy()) {
       setTimeout(go, 250);

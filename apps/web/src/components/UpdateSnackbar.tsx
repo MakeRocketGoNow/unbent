@@ -10,7 +10,7 @@ import { Snackbar } from './Snackbar.js';
  * on its own: a reload resets a list someone is three hundred rows into, and every rule
  * that tried to pick a harmless moment for it picked a wrong one for somebody. So this is
  * the word, with the reload one press away. It shows only when the deploy raised the
- * compatibility level (`compat/level.ts`), which is rare: it used to show for every
+ * compatibility level (`COMPAT_LEVEL`), which is rare: it used to show for every
  * deploy, and the people trying the app were asked to reload after every merge for
  * nothing. "Needs", not "is ready": the word is said only when it is true.
  *

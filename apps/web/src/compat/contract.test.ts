@@ -6,7 +6,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, it } from 'vitest';
-import { COMPAT_LEVEL } from './level.js';
+import { COMPAT_LEVEL } from '@unbent/shared/compat';
 import { equal, narrowings } from './schemas.js';
 import { constant, declarations, interfaceParts, normalize, relativeImports, shorthandKeys, signature } from './surfaces.js';
 
@@ -44,7 +44,7 @@ import { constant, declarations, interfaceParts, normalize, relativeImports, sho
 const here = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(here, '../../../..');
 const RECORD = join(here, 'contract.json');
-const LEVEL_FILE = join(here, 'level.ts');
+const LEVEL_FILE = join(ROOT, 'packages/shared/src/compat.ts');
 const MODE = process.env.UNBENT_COMPAT;
 
 interface Area {
@@ -84,7 +84,7 @@ const AREAS: Record<string, Area> = {
     question:
       'Can a page from the previous build keep working under this build’s worker: the messages it sends it, the caches, headers and addresses it relies on, the files the worker keeps for it on the device?',
     files: () =>
-      [...closure('apps/web/src/sw/sw.ts'), 'apps/web/src/sw-register.ts'].filter((path) => path !== 'apps/web/src/compat/level.ts' && !NAMED.has(path)),
+      [...closure('apps/web/src/sw/sw.ts'), 'apps/web/src/sw-register.ts'].filter((path) => !NAMED.has(path)),
   },
   tabs: {
     question:
@@ -279,7 +279,7 @@ it('records what builds share, and asks before anything changes that an open pag
     const level = COMPAT_LEVEL + 1;
     const source = readFileSync(LEVEL_FILE, 'utf8');
     const raised = source.replace(/export const COMPAT_LEVEL = \d+;/, `export const COMPAT_LEVEL = ${level};`);
-    expect(raised, 'level.ts no longer declares COMPAT_LEVEL the way this test raises it').not.toBe(source);
+    expect(raised, 'compat.ts no longer declares COMPAT_LEVEL the way this test raises it').not.toBe(source);
     writeFileSync(LEVEL_FILE, raised);
     write({ ...now, level });
     console.info(`COMPAT_LEVEL is ${level} now. Every page still open on an older build will be asked to reload once this deploys.`);

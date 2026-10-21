@@ -1,27 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { UPDATE_CHECK_INTERVAL, needsReload, offlineReadyState, shouldCheckOnReturn } from './sw-register.js';
+import { UPDATE_CHECK_INTERVAL, offlineReadyState, shouldCheckOnReturn } from './sw-register.js';
 import { holdPage, pageBusy } from './busy.js';
-
-describe('needsReload', () => {
-  it('says so when the worker in charge has a higher compatibility level than the page', () => {
-    expect(needsReload(1, 2)).toBe(true);
-  });
-
-  /* Most deploys: another build, the same level, and nothing to say. */
-  it('says nothing for a build at the page’s own level', () => {
-    expect(needsReload(1, 1)).toBe(false);
-  });
-
-  /* A rollback past a bump: reloading would not make this page fit the server either. */
-  it('says nothing for a lower level', () => {
-    expect(needsReload(2, 1)).toBe(false);
-  });
-
-  /* A word that might be wrong is worse than none: the next load is the newest build regardless. */
-  it('says nothing when the worker is too old to say', () => {
-    expect(needsReload(1, null)).toBe(false);
-  });
-});
 
 describe('shouldCheckOnReturn', () => {
   it('asks for a new worker on a return, at most once a minute', () => {

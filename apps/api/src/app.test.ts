@@ -27,3 +27,21 @@ describe('GET /api/health', () => {
     expect(getSession).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * Every answer states the deploy's compatibility level, which is how a page still open
+ * on an older build learns from its next request that it needs a reload (`COMPAT_HEADER`
+ * in `@unbent/shared/compat`, read by `request()` in the web app).
+ */
+describe('the compatibility header', () => {
+  it('is on every answer, health and errors included', async () => {
+    const { COMPAT_HEADER, COMPAT_LEVEL } = await import('@unbent/shared/compat');
+    const DB = { prepare: () => ({ first: async () => ({ ok: 1 }) }) };
+    const env = { APP_URL: 'https://example.com', DB } as unknown as Env;
+    const health = await app.request('/api/health', {}, env);
+    expect(health.headers.get(COMPAT_HEADER)).toBe(String(COMPAT_LEVEL));
+    getSession.mockResolvedValueOnce(null as never);
+    const missing = await app.request('/api/no-such-route', {}, env);
+    expect(missing.headers.get(COMPAT_HEADER)).toBe(String(COMPAT_LEVEL));
+  });
+});

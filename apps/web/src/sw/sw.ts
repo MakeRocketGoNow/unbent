@@ -5,7 +5,7 @@ import { ExpirationPlugin } from 'workbox-expiration';
 import { API_CACHE, FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE, SERVED_HEADER, SHELL_CACHE_PREFIX, SHELL_META_CACHE, VIEW_HEADER, classify, commitOf, isAsset, isShellFallback, servesShell, shellCacheName, shelved, staleShellCaches, within } from './routes.js';
 import { createFilesLedger } from './budget.js';
 import { findFile } from '../store/files.js';
-import { COMPAT_LEVEL } from '../compat/level.js';
+import { COMPAT_LEVEL } from '@unbent/shared/compat';
 
 /**
  * The service worker: what lets the installed app open with no connection.

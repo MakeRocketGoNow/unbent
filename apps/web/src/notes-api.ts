@@ -33,6 +33,8 @@ import type {
 import { OPERATOR_PAGE_SIZE } from '@unbent/shared';
 import { confirmReachable, offlineNow, recheck } from './connectivity.js';
 import { SERVED_HEADER, fileAddress } from './sw/routes.js';
+import { COMPAT_HEADER } from '@unbent/shared/compat';
+import { sawLevel } from './update-notice.js';
 
 /**
  * Thin fetch wrappers over the notes API. Same-origin, so cookies travel automatically.
@@ -158,7 +160,15 @@ export async function request(input: string, init: RequestInit & { timeout?: num
   // HTTP cache answers them with no network and no mark, and a PDF opened on a plane
   // would have put the app online. The JSON reads are not cacheable and still count.
   else if (served === null && input.startsWith('/') && !fileAddress(new URL(input, 'http://unbent.invalid'))) confirmReachable();
+  // The deploy's level, from an answer the server gave now rather than one kept from
+  // before: a reload is asked for from the first answer after a deploy that needs one.
+  if (served === null) sawLevel(levelOf(res.headers.get(COMPAT_HEADER)));
   return res;
+}
+
+function levelOf(header: string | null): number | null {
+  const level = header === null ? NaN : Number(header);
+  return Number.isInteger(level) ? level : null;
 }
 
 /** How much of an error body is worth repeating; the rest is never the useful part. */
