@@ -1,6 +1,7 @@
 // @vitest-environment node
 import * as shared from '@unbent/shared';
 import { z } from 'zod';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -246,6 +247,17 @@ function compare(was: Contract, now: Contract): Finding[] {
   return findings;
 }
 
+/** `COMPAT_LEVEL` as last committed, or null where git cannot say. */
+function committedLevel(): number | null {
+  try {
+    const source = execFileSync('git', ['show', `HEAD:${relative(ROOT, LEVEL_FILE)}`], { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const level = /export const COMPAT_LEVEL = (\d+);/.exec(source)?.[1];
+    return level === undefined ? null : Number(level);
+  } catch {
+    return null;
+  }
+}
+
 function write(record: Contract): void {
   writeFileSync(RECORD, `${JSON.stringify(record, null, 2)}\n`);
 }
@@ -284,6 +296,15 @@ it('records what builds share, and asks before anything changes that an open pag
   const now = present();
 
   if (MODE === 'bump') {
+    // Raised once per change: a second run before the commit (after a hiccup, say) finds
+    // the level already above the committed one and records it rather than raising it
+    // again. The record cannot say, since the first run rewrote it too.
+    const committed = committedLevel();
+    if (committed !== null && COMPAT_LEVEL > committed) {
+      write(now);
+      console.info(`COMPAT_LEVEL is already raised to ${COMPAT_LEVEL} in this change; recorded it.`);
+      return;
+    }
     const level = COMPAT_LEVEL + 1;
     const source = readFileSync(LEVEL_FILE, 'utf8');
     const raised = source.replace(/export const COMPAT_LEVEL = \d+;/, `export const COMPAT_LEVEL = ${level};`);
