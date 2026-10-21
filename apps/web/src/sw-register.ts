@@ -31,8 +31,8 @@ import { clearNotice, dismissNotice, noticeShown, sawLevel, subscribeNotice } fr
  * gone. Two changes in the worker made the rules unnecessary: a page load is answered
  * from the network first, so a reload is always the newest build; and every build an
  * open page is running keeps its shell cached, so a page in use keeps working after the
- * new worker takes charge. The worker is told to take charge the moment it has installed, no page is
- * ever reloaded by this file except one whose next chunk is gone
+ * new worker takes charge. The worker is told to take charge the moment it has
+ * installed, no page is ever reloaded by this file except one whose next chunk is gone
  * (`recoverFromMissingChunks`), and the one thing left to say is that a reload is
  * needed (`useUpdateNotice`), which is said only when the new build cannot run beside
  * this one (`COMPAT_LEVEL`).
@@ -49,11 +49,11 @@ export function registerServiceWorker(): void {
   const worker = (wb = new Workbox('/sw.js'));
   /*
      A worker took charge of this page: this build's, found during this load, or a newer
-     one. Only one this page cannot run beside is worth a word. The browser's own event, not workbox-window's
-     `controlling`: workbox-window counts an update found more than a minute after
-     registering, or any second one, as somebody else's, keeps pointing at the worker it
-     started with, and stops listening, so a deploy found on a return to the tab, which
-     is the case the notice exists for, was never said.
+     one. Only one this page cannot run beside is worth a word. The browser's own event,
+     not workbox-window's `controlling`: workbox-window counts an update found more than
+     a minute after registering, or any second one, as somebody else's, keeps pointing at
+     the worker it started with, and stops listening, so a deploy found on a return to
+     the tab, which is the case the notice exists for, was never said.
   */
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     sayRunning();
