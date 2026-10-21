@@ -152,7 +152,7 @@ export function FrontPage() {
             <p className="muted">
               And it is yours to switch on. Unbent never sends your notes to a model on its
               own: the one feature that uses AI, Auto-fill, runs only when you press it, and
-              your assistant runs on your own account, not ours. Connected apps shows
+              your assistant runs on your own account, not ours. Settings › AI assistants shows
               everything you have let in, and disconnecting it ends its access that second.{' '}
               <a href={ASSISTANTS_DOC_URL} rel="noopener noreferrer">
                 Connecting an assistant

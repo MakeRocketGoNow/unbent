@@ -106,6 +106,14 @@ function CopySetupPrompt() {
  * Revoking goes through `Confirm` like every destructive action here, naming the app, since
  * "Claude stopped working" is a confusing thing to discover later if the button was hit by
  * accident.
+ *
+ * Called "AI assistants" in the settings tabs, though the route is still `connected-apps`
+ * so older links keep working. "Connected apps" read as account sign-ins or integrations,
+ * and nothing about it said this was where Claude goes. "MCP" was considered and rejected:
+ * it names the protocol, which only people who already know it would look under, while a
+ * person who wants Claude in their notes looks for the word AI. Every client that connects
+ * in practice is an assistant; the intro still says "and other apps" for the one that is
+ * not.
  */
 function ConnectedAppsPage() {
   const [grants, setGrants] = useState<Grant[] | null>(null);
@@ -141,7 +149,7 @@ function ConnectedAppsPage() {
       );
       setGrants(named);
     } catch (err) {
-      setError((err as Error).message || 'Could not load your connected apps.');
+      setError((err as Error).message || 'Could not load your connected assistants.');
       setGrants([]);
     }
   }
@@ -164,13 +172,13 @@ function ConnectedAppsPage() {
         method: 'POST',
       });
       if (!res.ok) {
-        setError('Could not disconnect that app.');
+        setError('Could not disconnect that assistant.');
       } else {
         setConfirming(null);
         await refresh();
       }
     } catch (err) {
-      setError((err as Error).message || 'Could not disconnect that app.');
+      setError((err as Error).message || 'Could not disconnect that assistant.');
     } finally {
       setBusy(false);
     }
@@ -179,16 +187,16 @@ function ConnectedAppsPage() {
   return (
     <section className="panel">
       <div className="panel-head">
-        <h2>Connected apps</h2>
+        <h2>AI assistants</h2>
       </div>
       <p className="muted small">
-        Apps you have allowed to use your notes on your behalf (an AI assistant, for
-        example). Each can read, create and change notes, and move them to the trash, until
-        you disconnect it here.
+        Assistants and other apps you have allowed to use your notes on your behalf. Each
+        can read, create and change notes, and move them to the trash, until you disconnect
+        it here.
       </p>
 
       <section className="settings-section">
-        <h3>Connect an app</h3>
+        <h3>Connect an assistant</h3>
         <p className="muted small">
           Unbent speaks{' '}
           <a href="https://modelcontextprotocol.io" target="_blank" rel="noopener noreferrer">
@@ -209,7 +217,7 @@ function ConnectedAppsPage() {
         </p>
         <p className="muted small">
           Either way, the client will open a browser window to ask for permission. Once
-          approved, it appears above and stays connected until you disconnect it here.
+          approved, it appears below and stays connected until you disconnect it here.
         </p>
       </section>
 
@@ -223,7 +231,7 @@ function ConnectedAppsPage() {
         <ul className="owned-list">
           {grants.map((grant) => (
             <li key={grant.id}>
-              <span>{grant.name ?? 'Unnamed app'}</span>
+              <span>{grant.name ?? 'Unnamed assistant'}</span>
               {grant.grantedAt && (
                 <span className="muted small">
                   connected {new Date(grant.grantedAt).toLocaleDateString()}
@@ -245,8 +253,8 @@ function ConnectedAppsPage() {
 
       {confirming && (
         <Confirm
-          label="Confirm disconnect app"
-          question={<>Disconnect {confirming.name ?? 'this app'}?</>}
+          label="Confirm disconnect assistant"
+          question={<>Disconnect {confirming.name ?? 'this assistant'}?</>}
           detail="It loses access immediately and will have to be connected again to come back. Notes it has already created or changed are not affected."
           busy={busy}
           onCancel={() => setConfirming(null)}

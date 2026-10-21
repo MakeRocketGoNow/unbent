@@ -95,7 +95,7 @@ account. The privacy policy says what is kept and for how long.
 
 **Approving a client gives it standing access to everything.** It can read every note,
 create and change notes, and move them to the trash, from then on and without asking again.
-Settings › Connected apps lists what is connected and disconnects any of it; disconnecting
+Settings › AI assistants lists what is connected and disconnects any of it; disconnecting
 deletes the app's tokens, and the endpoint checks the grant on every call, so access ends
 rather than lingering until a token expires. There is deliberately no tool that deletes
 permanently: the trash is as far as an assistant can go. And what an assistant's edit

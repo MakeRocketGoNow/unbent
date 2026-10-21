@@ -71,7 +71,7 @@ keeps what was deleted.
 
 Unbent is an [MCP](https://modelcontextprotocol.io) server, so Claude, ChatGPT, Cursor or
 anything else that speaks the protocol can work in your notes the moment you connect it.
-Connecting is an ordinary OAuth consent; Settings › Connected apps lists what you have let
+Connecting is an ordinary OAuth consent; Settings › AI assistants lists what you have let
 in and disconnects any of it, and access ends on the next call rather than when a token
 expires. About thirty tools, under the same rules the app has:
 
