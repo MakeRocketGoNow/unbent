@@ -155,14 +155,18 @@ export async function request(input: string, init: RequestInit & { timeout?: num
     clearTimeout(timer);
   }
   const served = res.headers.get(SERVED_HEADER);
-  if (served === 'cache') recheck();
   // A file's bytes never count: the server sends them `immutable`, so the browser's own
   // HTTP cache answers them with no network and no mark, and a PDF opened on a plane
-  // would have put the app online. The JSON reads are not cacheable and still count.
-  else if (served === null && input.startsWith('/') && !fileAddress(new URL(input, 'http://unbent.invalid'))) confirmReachable();
+  // would have put the app online. That copy also keeps the headers of the deploy that
+  // first sent it, its compatibility level among them: read from it, a level a year old
+  // asked a fresh page to reload on every load. The JSON reads are not cacheable and
+  // still count.
+  const fresh = served === null && input.startsWith('/') && !fileAddress(new URL(input, 'http://unbent.invalid'));
+  if (served === 'cache') recheck();
+  else if (fresh) confirmReachable();
   // The deploy's level, from an answer the server gave now rather than one kept from
   // before: a reload is asked for from the first answer after a deploy that needs one.
-  if (served === null) sawLevel(levelOf(res.headers.get(COMPAT_HEADER)));
+  if (fresh) sawLevel(levelOf(res.headers.get(COMPAT_HEADER)));
   return res;
 }
 
