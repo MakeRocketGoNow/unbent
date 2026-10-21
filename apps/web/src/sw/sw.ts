@@ -2,8 +2,9 @@ import { PrecacheController, PrecacheRoute } from 'workbox-precaching';
 import { registerRoute } from 'workbox-routing';
 import { CacheFirst, NetworkFirst, type StrategyOptions } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
-import { API_CACHE, FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE, SERVED_HEADER, SHELL_CACHE_PREFIX, SHELL_META_CACHE, VIEW_HEADER, classify, commitOf, isAsset, isShellFallback, servesShell, shellCacheName, shelved, staleShellCaches, within } from './routes.js';
+import { API_CACHE, FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE, SERVED_HEADER, VIEW_HEADER, classify, commitOf, isAsset, isShellFallback, servesShell, shellCacheName, shelved, within } from './routes.js';
 import { createFilesLedger } from './budget.js';
+import { createShellKeeper } from './tidy.js';
 import { findFile } from '../store/files.js';
 import { COMPAT_LEVEL } from '@unbent/shared/compat';
 
@@ -152,7 +153,11 @@ function unredirected(response: Response): Response {
  * in `waiting` until the last tab closed.
  */
 self.addEventListener('install', (event) => {
-  event.waitUntil(fillShell().then(() => self.skipWaiting()));
+  event.waitUntil(
+    fillShell()
+      .then(() => keeper.installed())
+      .then(() => self.skipWaiting()),
+  );
 });
 
 /**
@@ -192,51 +197,12 @@ function refillShell(): Promise<void> {
  * remembered as previous; accepted, since that is not a deploy.
  *
  * A page records its build by commit and a cache is named for its `index.html`'s
- * revision, so each kept-or-not cache is matched by the commit its own page names.
+ * revision, so each cache is matched by the commit its own page names, written down when
+ * it is installed. The record and the matching are `sw/tidy.ts`, kept cheap there
+ * because the requests of every page this worker claims wait for the tidy to finish.
  */
-const PREVIOUS_KEY = '/previous';
-const RUNNING_PREFIX = '/running/';
-
-async function tidyShellCaches(): Promise<void> {
-  const meta = await caches.open(SHELL_META_CACHE);
-  const before = await meta.match(PREVIOUS_KEY).then((r) => r?.text()).catch(() => undefined);
-  const previous = before && before !== SHELL_CACHE ? before : undefined;
-  const runningCommits = new Set<string>();
-  for (const request of await meta.keys()) {
-    const path = new URL(request.url).pathname;
-    if (!path.startsWith(RUNNING_PREFIX)) continue;
-    const client = await self.clients.get(decodeURIComponent(path.slice(RUNNING_PREFIX.length)));
-    if (!client) {
-      await meta.delete(request);
-      continue;
-    }
-    const commit = await meta.match(request).then((r) => r?.text()).catch(() => undefined);
-    if (commit) runningCommits.add(commit);
-  }
-  const names = await caches.keys();
-  const running = new Set<string>();
-  for (const name of names) {
-    if (!name.startsWith(SHELL_CACHE_PREFIX) || name === SHELL_META_CACHE || name === SHELL_CACHE) continue;
-    const commit = await shellCommit(name);
-    if (commit && runningCommits.has(commit)) running.add(name);
-  }
-  for (const name of staleShellCaches(names, { current: SHELL_CACHE, previous, running })) await caches.delete(name);
-  await meta.put(PREVIOUS_KEY, new Response(SHELL_CACHE));
-}
-
-/** The commit a shell cache's own `index.html` names, or null when it holds none. */
-async function shellCommit(name: string): Promise<string | null> {
-  const cache = await caches.open(name);
-  const page = (await cache.keys()).find((request) => new URL(request.url).pathname === '/index.html');
-  const html = page ? await cache.match(page).then((r) => r?.text() ?? '').catch(() => '') : '';
-  return commitOf(html);
-}
-
-/** Writes down that a page is running the build of `commit` (`RUNNING`, below). */
-async function recordRunning(clientId: string, commit: string): Promise<void> {
-  const meta = await caches.open(SHELL_META_CACHE);
-  await meta.put(`${RUNNING_PREFIX}${encodeURIComponent(clientId)}`, new Response(commit));
-}
+const keeper = createShellKeeper({ caches, clients: self.clients, current: SHELL_CACHE });
+const tidyShellCaches = () => keeper.tidy();
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(tidyShellCaches());
@@ -580,7 +546,7 @@ self.addEventListener('message', (event) => {
   const type = data?.type;
   if (type === 'BUILD') event.waitUntil(answerBuild(event.ports[0]));
   if (type === 'RUNNING' && typeof data?.commit === 'string' && event.source instanceof Client) {
-    event.waitUntil(recordRunning(event.source.id, data.commit).catch(() => {}));
+    event.waitUntil(keeper.running(event.source.id, data.commit).catch(() => {}));
   }
   if (type === FILES_CHANGED) event.waitUntil(ledger.sweep());
 });
