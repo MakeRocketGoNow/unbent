@@ -61,8 +61,10 @@ let otherAt = 0;
 
 /**
  * A level the deploy in charge stated, from its worker or an API answer. Another level
- * opens the notice at once. Back at the page's own for `SETTLED_MS` (a bump reverted
- * before the person answered) it closes, since there is nothing left to reload for.
+ * opens the notice at once. An answer at the page's own level `SETTLED_MS` or more after
+ * the last other one (a bump reverted before the person answered) closes it, since there
+ * is nothing left to reload for. What is measured is the time since the last other level,
+ * not the time spent at this one: no other level in that while is the same thing.
  */
 export function sawLevel(level: number | null, now = Date.now()): void {
   if (level === null) return;

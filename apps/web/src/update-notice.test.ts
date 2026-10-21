@@ -54,7 +54,7 @@ describe('the notice', () => {
   });
 
   /* A bump reverted before the person answered: nothing is left to reload for. */
-  it('closes once the level has stayed back at the page’s own', () => {
+  it('closes on an own-level answer once no other level has come for a while', () => {
     sawLevel(COMPAT_LEVEL + 1, 1_000);
     sawLevel(COMPAT_LEVEL, 1_000 + SETTLED_MS);
     expect(noticeShown()).toBe(false);
