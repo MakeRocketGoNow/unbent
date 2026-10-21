@@ -65,6 +65,20 @@ async function deploy(fake: ReturnType<typeof fakeCaches>, clients: ReturnType<t
 }
 
 describe('createShellKeeper', () => {
+  /* A shell refilled after the caches were cleared has no install to record it; the first tidy that reads its page does. */
+  it('writes down the commit of a shell it had to read, so the next tidy does not read it again', async () => {
+    const fake = fakeCaches();
+    const { clients } = fakeClients('tab-1');
+    const older = await fake.shell('aaaa');
+    const keeper = createShellKeeper({ caches: fake.caches, clients, current: await fake.shell('bbbb') });
+    await keeper.installed();
+    await keeper.running('tab-1', 'aaaa');
+    const meta = await fake.caches.open(SHELL_META_CACHE);
+    const recorded = async () => (await meta.match(`/commit/${encodeURIComponent(older)}`))?.text();
+    await keeper.tidy();
+    expect(await recorded()).toBe('aaaa');
+  });
+
   it('keeps every build an open page runs, across deploys, and lets it go once the page closes', async () => {
     const fake = fakeCaches();
     const { open, clients } = fakeClients('tab-1');

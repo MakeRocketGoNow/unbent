@@ -56,20 +56,28 @@ export function createShellKeeper(opts: { caches: ShellCaches; clients: ShellCli
     return records;
   }
 
-  /** The commit a shell cache was built from: as written down at its install, or read from its page. */
+  /**
+   * The commit a shell cache was built from: as written down, or read from its page and
+   * written down then, so a shell from before the record, or one refilled after the
+   * caches were cleared (which no install records), is read the slow way once and not at
+   * every tidy that keeps it.
+   */
   async function commitOfCache(name: string): Promise<string | null> {
-    const recorded = await text(await (await meta()).match(`${COMMIT_PREFIX}${encodeURIComponent(name)}`));
+    const store = await meta();
+    const key = `${COMMIT_PREFIX}${encodeURIComponent(name)}`;
+    const recorded = await text(await store.match(key));
     if (recorded) return recorded;
     const cache = await caches.open(name);
     const page = (await cache.keys()).find((request) => new URL(request.url).pathname === '/index.html');
-    return commitOf((page && (await text(await cache.match(page)))) ?? '');
+    const commit = commitOf((page && (await text(await cache.match(page)))) ?? '');
+    if (commit) await store.put(key, new Response(commit));
+    return commit;
   }
 
   return {
     /** Writes down this build's commit once its shell is whole. */
     async installed(): Promise<void> {
-      const commit = await commitOfCache(current);
-      if (commit) await (await meta()).put(`${COMMIT_PREFIX}${encodeURIComponent(current)}`, new Response(commit));
+      await commitOfCache(current);
     },
 
     /** Writes down that a page is running the build of `commit`. */
