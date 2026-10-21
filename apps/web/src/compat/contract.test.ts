@@ -170,7 +170,15 @@ function onlyGained(was: string, now: string): boolean {
   if (!was.includes('|') || !now.includes('|')) return false;
   const [wasHead, ...wasMembers] = was.split('|');
   const [nowHead, ...nowMembers] = now.split('|');
-  return wasHead === nowHead && wasMembers.every((member) => nowMembers.includes(member));
+  if (wasHead !== nowHead) return false;
+  // As multisets: two old members alike must both still be there.
+  const left = [...nowMembers];
+  return wasMembers.every((member) => {
+    const at = left.indexOf(member);
+    if (at < 0) return false;
+    left.splice(at, 1);
+    return true;
+  });
 }
 
 function sorted<T>(entries: [string, T][]): Record<string, T> {

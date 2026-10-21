@@ -87,8 +87,16 @@ export function interfaceParts(declaration: string): { head: string; members: st
     if (c === "'" || c === '"' || c === '`') quote = c;
     else if (c === '{' || c === '(' || c === '[') depth++;
     else if (c === '}' || c === ')' || c === ']') depth--;
-    if (depth === 0 && (c === ';' || c === '\n')) end();
-    else current += c;
+    // A newline ends a member only when the member is whole: not after `kind:` or a `|`,
+    // and not before a line that carries a union or an intersection on. Read as a split,
+    // a union written over several lines was a member per branch, and a branch added to
+    // it read as a member gained, which fits without asking.
+    if (depth === 0 && c === ';') end();
+    else if (depth === 0 && c === '\n') {
+      const continues = /[:|&=,]\s*$/.test(current) || /^\s*[|&]/.test(declaration.slice(i + 1));
+      if (continues) current += ' ';
+      else end();
+    } else current += c;
   }
   end();
   return { head: declaration.slice(0, open).trim(), members };

@@ -125,6 +125,12 @@ describe('interfaceParts', () => {
     });
   });
 
+  /* Read as a split, a branch added to the union would be a member gained, which fits without asking. */
+  it('keeps a union written over several lines as one member', () => {
+    const [declaration] = declarations("export interface Field {\n  kind:\n    | 'text'\n    | 'number';\n  name: string;\n}").values();
+    expect(interfaceParts(declaration!)?.members).toEqual(["kind: | 'text' | 'number'", 'name: string']);
+  });
+
   it('is null for a type alias', () => {
     expect(interfaceParts("export type Sort = 'a' | 'b';")).toBeNull();
   });
