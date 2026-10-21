@@ -63,9 +63,9 @@ export const API_CACHE = 'api-v1';
 export const FILES_CACHE = 'files-v1';
 
 /**
- * The caches the app's shell is kept in: one per build, named for the build, so the
- * previous build's survives the next worker taking charge (`sw.ts`). The page never
- * empties these; a deploy tidies them.
+ * The caches the app's shell is kept in: one per build, named for the build, so a
+ * build an open page is running, and the previous one, survive the next worker taking
+ * charge (`sw.ts`, `sw/tidy.ts`). The page never empties these; a deploy tidies them.
  */
 export const SHELL_CACHE_PREFIX = 'unbent-shell-';
 export const shellCacheName = (build: string) => `${SHELL_CACHE_PREFIX}${build}`;

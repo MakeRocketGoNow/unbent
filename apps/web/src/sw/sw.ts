@@ -49,8 +49,9 @@ declare const self: ServiceWorkerGlobalScope;
  * had and the current one does not, in every tab at once, and only the tab that asked
  * for the hand-off was reloaded; the rest ran on with their next route's chunk gone,
  * answered by the Worker with `index.html`, and showed the router's error screen inside
- * a drawn shell. Now the previous build's cache outlives its worker (`tidyShellCaches`),
- * and those tabs keep working until they reload.
+ * a drawn shell. Now the cache of every build an open page runs, and the previous
+ * build's, outlives its worker (`tidyShellCaches`), and those tabs keep working until
+ * they reload.
  *
  * A controller of our own rather than `precacheAndRoute`, only so the install below can
  * be ours; the route and the activate step are Workbox's, unchanged.
@@ -187,8 +188,11 @@ function refillShell(): Promise<void> {
  * gone. It used to keep the previous build alone, and a tab that outlived two deploys
  * lost its chunks and was reloaded under the person's hands the next time it needed one
  * (`recoverFromMissingChunks`), which with several merges a day was most tabs left open
- * overnight. A tidy runs only when a new worker activates, so a build's cache outlives
- * its last tab until the next deploy; that is the whole cost.
+ * overnight. What it costs is room: each kept build is a whole copy of the shell (the
+ * install fetches into its own cache, so chunks two builds share are stored twice, and
+ * pdf.js with its decoders is most of it), so the device holds one per build an open tab
+ * runs, plus the previous one. And a tidy runs only when a new worker activates, so a
+ * build's cache outlives its last tab until the next deploy.
  *
  * The previous build is still kept without a record, for a page loaded in the moments
  * before a deploy and for one from before pages said what they ran. Which build was
