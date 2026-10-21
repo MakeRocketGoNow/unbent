@@ -311,12 +311,17 @@ async function run(BASE, chrome, keepSocket) {
       // The browser wrong about its network (a laptop on a VPN, where Chrome reported no
       // network while every request succeeded) must not keep the app offline: the next
       // answer from the server puts it back, whatever the flag says.
+      //
+      // Only that the banner is gone is checked, not that it showed first. The server is
+      // on this machine and answers the check the event starts within milliseconds, so the
+      // banner can come and go between two looks, and waiting to see it made this fail on
+      // runs where the app did exactly the right thing. That the event takes the app
+      // offline at once is `connectivity.test.ts`'s to say, and it does.
       await ev(`(()=>{Object.defineProperty(navigator,'onLine',{configurable:true,get:()=>false});window.dispatchEvent(new Event('offline'))})()`);
       const banner = () => ev(`!!document.querySelector('.offline-banner:not(.library-status)')`);
-      const up = await until(async () => ((await banner()) === true ? true : null), 3000);
-      const down = up && (await until(async () => ((await banner()) === false ? true : null), 15000));
+      const down = await until(async () => ((await banner()) === false ? true : null), 15000);
       const onLine = await ev('navigator.onLine');
-      report('the app comes back online on the server’s answer while the browser still says offline', !!down, up ? `banner still up, navigator.onLine ${onLine}` : 'the browser’s offline event never showed the banner');
+      report('the app comes back online on the server’s answer while the browser still says offline', !!down, `banner still up, navigator.onLine ${onLine}`);
       await ev(`(()=>{delete navigator.onLine;Object.defineProperty(navigator,'onLine',{configurable:true,get:()=>true})})()`);
     }
 

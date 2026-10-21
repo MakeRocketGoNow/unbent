@@ -13,6 +13,7 @@ import { isWhole, refusedForGood, type FeedEngine } from './feed.js';
 import { CallUnsettledError, LibraryMovedError, SEND_ONCE } from './client-library.js';
 import { onPlanActive, planAccepted, planHeld, planLapsed, planRefused } from '../plan-refused.js';
 import { onStoreFreed, onStoreFull, storeAccepted, storeFreed, storeFull, storeFullMessage, storeRefused } from '../store-full.js';
+import { behindDeploy, heldForReload, onCaughtUp } from '../update-notice.js';
 import { outboxLeaderName, outboxName } from './names.js';
 import { OutboxLeader } from './leader.js';
 
@@ -303,6 +304,23 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
    * lose what was typed, and the answer changes the moment something is deleted. The
    * sentence goes to the strip (`storeRefused`), and the deletes go round the kept
    * entry as a lapsed plan's do.
+   *
+   * And any 4xx is kept while this page is behind the deploy (`behindDeploy`): a build
+   * that cannot run beside the server's, which has already asked the person to reload
+   * (`UpdateSnackbar`). The refusal may be the server no longer taking the shape this
+   * build sends, and ending the entry would lose what was typed for a reason a reload
+   * fixes: an entry stores what was done (a save its draft, a move its notes and
+   * notebook) and the build that replays it writes the request, so a kept save goes out
+   * in the new build's shape. `createNote` is the exception: it stores its request body
+   * and sends it as it is, so a reload does not reshape it, and if the new build is
+   * refused it too, it ends there.
+   * Until then the entry is not sent again (`staleHeld`), since the answer would be the
+   * same, and the notice opens again even if it was dismissed (`heldForReload`), since
+   * the whole queue now waits on the reload. Pausing the whole queue on a raised level
+   * was weighed and not done: most bumps are not about what the server accepts, and
+   * saves held for no reason anyone could see are worse in a notes app than the rare
+   * one this keeps. After the reload the levels agree, and a refusal ends its entry as
+   * before.
    */
   const refusal = (err: unknown): never => {
     if (isOfflineError(err)) throw err;
@@ -315,10 +333,17 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
       throw err;
     }
     if (err instanceof ApiError && refusedForGood(err.status)) {
+      if (behindDeploy()) {
+        staleHeld = true;
+        heldForReload();
+        throw err;
+      }
       throw new NonRetriableError(err.message);
     }
     throw err;
   };
+  /** A write was refused while this page was behind the deploy; see `refusal`. */
+  let staleHeld = false;
 
   /**
    * Every entry's attempt, with the keep-or-end decision left to this file alone.
@@ -342,7 +367,11 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
             // be the same 402, so the entry waits without asking (`planHeld`). It is let
             // go the moment the plan reads otherwise; see `connectivityDetector`.
             if (planHeld()) throw new PlanHeld();
+            // Refused while this page is behind the deploy: the answer would be the same
+            // until the reload, whose build sends it again (`refusal`).
+            if (staleHeld && behindDeploy()) throw new BuildHeld();
             const out = await fn(params);
+            staleHeld = false;
             // A write the server took is a plan that is active, and a store with room;
             // see `planLapsed` and `storeFull`.
             planAccepted();
@@ -358,7 +387,7 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
             }
             // The executor records the message and not the cause, so this is the one
             // place a queue stuck on a 429 or a lapsed session says so outside a debugger.
-            if (!(err instanceof PlanHeld)) console.debug('[outbox] kept:', err);
+            if (!(err instanceof PlanHeld || err instanceof BuildHeld)) console.debug('[outbox] kept:', err);
             throw new Error('Not sent yet; it will be tried again', { cause: err });
           }
         },
@@ -970,11 +999,20 @@ class PlanHeld extends Error {
   }
 }
 
+/** A replay held back until a reload, because this build was refused behind the deploy; see `refusal`. */
+class BuildHeld extends Error {
+  constructor() {
+    super('Held until the page is reloaded into the build the server is on');
+    this.name = 'BuildHeld';
+  }
+}
+
 /**
  * `connectivity.ts` is the one thing that decides whether the app is offline; the
- * executor follows it. The plan reading as active again, and a delete going through
- * while the store's refusal stands, are the other words to replay now, through the
- * same door: a kept 402 waits on the checkout or on room, not on the network.
+ * executor follows it. The plan reading as active again, a delete going through while
+ * the store's refusal stands, and the levels agreeing again while a write is held behind
+ * the deploy, are the other words to replay now, through the same door: a kept 402
+ * waits on the checkout or on room, and a held write on the level, not on the network.
  */
 function connectivityDetector(): OnlineDetector {
   return {
@@ -990,10 +1028,15 @@ function connectivityDetector(): OnlineDetector {
       const offFreed = onStoreFreed(() => {
         if (!offlineNow()) cb();
       });
+      // And the levels agreeing again: a write held behind the deploy can go now.
+      const offLevel = onCaughtUp(() => {
+        if (!offlineNow()) cb();
+      });
       return () => {
         offConnectivity();
         offPlan();
         offFreed();
+        offLevel();
       };
     },
     notifyOnline: () => recheck(),

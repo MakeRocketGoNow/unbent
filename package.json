@@ -19,6 +19,8 @@
     "build": "pnpm --filter @unbent/web build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
+    "compat:update": "pnpm --filter @unbent/web compat:update",
+    "compat:bump": "pnpm --filter @unbent/web compat:bump",
     "worktree:setup": "scripts/worktree-setup.sh",
     "migrate:local": "pnpm --filter @unbent/api migrate:local",
     "migrate:remote": "pnpm --filter @unbent/api migrate:remote",

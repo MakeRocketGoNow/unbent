@@ -1,4 +1,6 @@
 import type { FeedNotebook, FeedTag, Note } from '@unbent/shared';
+import { COMPAT_LEVEL } from '@unbent/shared/compat';
+import { behindDeploy } from '../update-notice.js';
 import type { NoteDraft } from '../note-patch.js';
 import type { FeedState } from './feed.js';
 import type { LocalAttachment, LocalNote } from './collections.js';
@@ -187,6 +189,8 @@ export interface ClientHooks {
   onSilent: () => void;
   /** The rows were replaced whole: a holder attached, or attached again. */
   onAttached: () => void;
+  /** The holder runs a build at a lower compatibility level than this tab's; the client asks to take the library over. */
+  onOtherLevel: () => void;
   onReset: () => void;
   onIndexed: () => void;
 }
@@ -431,6 +435,21 @@ export function attachClientLibrary(userId: string, me: string, port: Port, hook
           resolveAttach(lib);
         }
         hooks.onAttached();
+        // A holder on a lower level: the reload the notice asked for happened in this
+        // tab, but the outbox that holds the queue is the holder's, and it replays with
+        // the old build's requests, or holds them behind the deploy (`staleHeld` in
+        // `actions.ts`) until a reload of a tab the person may not be looking at. So this
+        // tab takes the library, as Open here does, and replays the queue in its own build.
+        //
+        // Only the higher level takes it, never "whichever is not behind": the tab taken
+        // from becomes a client of this one, and until its next answer from the server it
+        // may not know it is behind, so it would take the library straight back, and each
+        // hand-off is an open. One order cannot loop. The case it leaves is a bump
+        // reverted, where the holder is the newer side: its own notice says to reload
+        // (`heldForReload`), as before. Not while this tab is itself behind, and not for a
+        // holder that states no level (from before levels), as the notice leaves an
+        // unknown level alone.
+        if (m.level !== undefined && m.level < COMPAT_LEVEL && !behindDeploy()) hooks.onOtherLevel();
         return;
       }
       case 'changes':

@@ -1,22 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { UPDATE_CHECK_INTERVAL, isOtherBuild, offlineReadyState, shouldCheckOnReturn } from './sw-register.js';
+import { UPDATE_CHECK_INTERVAL, offlineReadyState, shouldCheckOnReturn } from './sw-register.js';
 import { holdPage, pageBusy } from './busy.js';
-
-describe('isOtherBuild', () => {
-  it('says so when the worker in charge was built from another commit than the page, older or newer', () => {
-    expect(isOtherBuild('abc1234', 'def5678')).toBe(true);
-  });
-
-  it('says nothing for the page’s own build', () => {
-    expect(isOtherBuild('abc1234', 'abc1234')).toBe(false);
-  });
-
-  /* A word that might be wrong is worse than none: the next load is the newest build regardless. */
-  it('says nothing when either side is unknown', () => {
-    expect(isOtherBuild(null, 'def5678')).toBe(false);
-    expect(isOtherBuild('abc1234', null)).toBe(false);
-  });
-});
 
 describe('shouldCheckOnReturn', () => {
   it('asks for a new worker on a return, at most once a minute', () => {

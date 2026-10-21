@@ -33,6 +33,8 @@ import type {
 import { OPERATOR_PAGE_SIZE } from '@unbent/shared';
 import { confirmReachable, offlineNow, recheck } from './connectivity.js';
 import { SERVED_HEADER, fileAddress } from './sw/routes.js';
+import { COMPAT_HEADER } from '@unbent/shared/compat';
+import { sawLevel } from './update-notice.js';
 
 /**
  * Thin fetch wrappers over the notes API. Same-origin, so cookies travel automatically.
@@ -153,12 +155,25 @@ export async function request(input: string, init: RequestInit & { timeout?: num
     clearTimeout(timer);
   }
   const served = res.headers.get(SERVED_HEADER);
-  if (served === 'cache') recheck();
   // A file's bytes never count: the server sends them `immutable`, so the browser's own
   // HTTP cache answers them with no network and no mark, and a PDF opened on a plane
-  // would have put the app online. The JSON reads are not cacheable and still count.
-  else if (served === null && input.startsWith('/') && !fileAddress(new URL(input, 'http://unbent.invalid'))) confirmReachable();
+  // would have put the app online. That copy also keeps the headers of the deploy that
+  // first sent it, its compatibility level among them: read from it, a level a year old
+  // asked a fresh page to reload on every load. Only a read can come from that cache, so
+  // a write to a file's address (a delete) still counts, and so do the JSON reads, which
+  // are not cacheable.
+  const fresh = served === null && input.startsWith('/') && (write || !fileAddress(new URL(input, 'http://unbent.invalid')));
+  if (served === 'cache') recheck();
+  else if (fresh) confirmReachable();
+  // The deploy's level, from an answer the server gave now rather than one kept from
+  // before: a reload is asked for from the first answer after a deploy that needs one.
+  if (fresh) sawLevel(levelOf(res.headers.get(COMPAT_HEADER)));
   return res;
+}
+
+function levelOf(header: string | null): number | null {
+  const level = header === null ? NaN : Number(header);
+  return Number.isInteger(level) ? level : null;
 }
 
 /** How much of an error body is worth repeating; the rest is never the useful part. */

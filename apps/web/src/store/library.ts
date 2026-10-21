@@ -524,6 +524,9 @@ const clientHooks = (userId: string, isMine: () => boolean, deadline: number) =>
     onSilent: () => {
       if (isMine()) void openFor(userId, true, undefined, inherited).catch(() => {});
     },
+    onOtherLevel: () => {
+      if (isMine()) void openFor(userId, true).catch(() => {});
+    },
   };
 };
 

@@ -6,6 +6,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./compat": "./src/compat.ts",
     "./frontmatter": "./src/frontmatter.ts",
     "./schemas": "./src/schemas.ts",
     "./markdown": "./src/markdown.ts"

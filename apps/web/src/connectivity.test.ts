@@ -9,6 +9,8 @@ import {
   setReachableForTests,
 } from './connectivity.js';
 import { OFFLINE_WRITE_TIMEOUT, OfflineError, request } from './notes-api.js';
+import { COMPAT_HEADER, COMPAT_LEVEL } from '@unbent/shared/compat';
+import { noticeShown, resetNotice } from './update-notice.js';
 
 /**
  * Evidence decides whether the app is offline. The server out of reach (a check with no
@@ -43,6 +45,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   browserSays(true);
   resetConnectivity();
+  resetNotice();
 });
 
 describe('connectivity', () => {
@@ -238,6 +241,24 @@ describe('request', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('bytes', { status: 200 })));
     await request('/api/notes/n1/files/scan.pdf');
     expect(offlineNow()).toBe(true);
+  });
+
+  /* The same copy keeps the level of the deploy that first sent it, which would ask a fresh page to reload on every load. */
+  it('reads the compatibility level from a fresh answer, never from a file the HTTP cache may have kept', async () => {
+    const level = String(COMPAT_LEVEL + 1);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('bytes', { status: 200, headers: { [COMPAT_HEADER]: level } })));
+    await request('/api/notes/n1/files/scan.pdf');
+    expect(noticeShown()).toBe(false);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200, headers: { [COMPAT_HEADER]: level } })));
+    await request('/api/notes');
+    expect(noticeShown()).toBe(true);
+  });
+
+  it('comes back online because a write to a file\u2019s address was answered, which no cache can do', async () => {
+    setReachableForTests(false);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 204 })));
+    await request('/api/notes/n1/files/scan.pdf', { method: 'DELETE' });
+    expect(offlineNow()).toBe(false);
   });
 
   it('does not come back online because another origin answered', async () => {

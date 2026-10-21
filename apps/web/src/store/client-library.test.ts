@@ -1,3 +1,4 @@
+import { COMPAT_LEVEL } from '@unbent/shared/compat';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createCollection, type Collection } from '@tanstack/db';
 import type { FeedNote, FeedNotebook, FeedTag, FeedAttachment } from '@unbent/shared';
@@ -67,9 +68,14 @@ const status = (over: Partial<SyncStatus> = {}): SyncStatus => ({ pending: 0, du
 const keeping = (over: Partial<KeepStatus> = {}): KeepStatus => ({ supported: true, kept: new Set(['nb1']), counted: true, wanted: { files: 2, bytes: 20 }, have: { files: 1, bytes: 10 }, fetching: false, problem: null, ...over });
 
 /** A holder: collections in memory and stand-ins for the engine's state, the outbox and the keeper, each with a way to move. */
-function holder(channel: ReturnType<typeof fakeChannel>, rows: { notes?: FeedNote[]; notebooks?: FeedNotebook[]; tags?: FeedTag[]; attachments?: FeedAttachment[] } = {}, opts: { index?: boolean } = {}) {
+function holder(channel: ReturnType<typeof fakeChannel>, rows: { notes?: FeedNote[]; notebooks?: FeedNotebook[]; tags?: FeedTag[]; attachments?: FeedAttachment[] } = {}, opts: { index?: boolean; level?: number } = {}) {
   const id = crypto.randomUUID();
-  const port: Port = channel.port(id);
+  const own: Port = channel.port(id);
+  // A holder on another build: the level it states in `attached` is the only difference.
+  const port: Port =
+    opts.level === undefined
+      ? own
+      : { ...own, post: (m) => own.post(m.type === 'attached' ? { ...m, level: opts.level } : m) };
   const notes = collection<FeedNote>('notes', rows.notes ?? []);
   const notebooks = collection<FeedNotebook>('notebooks', rows.notebooks ?? []);
   const tags = collection<FeedTag>('tags', rows.tags ?? []);
@@ -129,18 +135,20 @@ function holder(channel: ReturnType<typeof fakeChannel>, rows: { notes?: FeedNot
   };
 }
 
-function hooks(): ClientHooks & { changes: ReadonlySet<string>[]; attached: number; resets: number; indexed: number; silent: number } {
+function hooks(): ClientHooks & { changes: ReadonlySet<string>[]; attached: number; resets: number; indexed: number; silent: number; otherLevel: number } {
   const h = {
     changes: [] as ReadonlySet<string>[],
     attached: 0,
     resets: 0,
     indexed: 0,
     silent: 0,
+    otherLevel: 0,
     onChange: (roots: ReadonlySet<string>) => void h.changes.push(roots),
     onAttached: () => void (h.attached += 1),
     onReset: () => void (h.resets += 1),
     onIndexed: () => void (h.indexed += 1),
     onSilent: () => void (h.silent += 1),
+    onOtherLevel: () => void (h.otherLevel += 1),
   };
   return h;
 }
@@ -193,6 +201,25 @@ describe('a client of the holding tab', () => {
     // The rows are the holder's by value, as the browser would clone them, not by reference.
     expect(lib.notes.get('n1')).not.toBe(h.notes.get('n1'));
     expect(lib.notes.get('n1')).toEqual(h.notes.get('n1'));
+  });
+
+  /*
+   * The tab reloaded into the deploy's build attaches to a holder still on the old one,
+   * whose outbox holds the queue: it takes the library, so its reload is the one that
+   * sends what waited. Only from a lower level, so the tab taken from does not take it back.
+   */
+  it('asks to take the library from a holder on a lower level, and not from one on its own or a higher', async () => {
+    const older = hooks();
+    holder(channel, {}, { level: COMPAT_LEVEL - 1 });
+    await client(older);
+    expect(older.otherLevel).toBe(1);
+    for (const level of [COMPAT_LEVEL, COMPAT_LEVEL + 1, undefined]) {
+      channel = fakeChannel();
+      const hk = hooks();
+      holder(channel, {}, level === undefined ? {} : { level });
+      await client(hk);
+      expect(hk.otherLevel).toBe(0);
+    }
   });
 
   it('sends a large collection in chunks, a task apart, and the client holds all of it', async () => {

@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.sw.json",
     "sourcemaps": "scripts/sourcemaps.sh",
-    "test": "vitest run"
+    "test": "vitest run",
+    "compat:update": "UNBENT_COMPAT=update vitest run src/compat/contract.test.ts",
+    "compat:bump": "UNBENT_COMPAT=bump vitest run src/compat/contract.test.ts"
   },
   "dependencies": {
     "@better-auth/oauth-provider": "^1.7.10",

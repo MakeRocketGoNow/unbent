@@ -3,10 +3,12 @@ import { Workbox, messageSW } from 'workbox-window';
 import { within } from './sw/routes.js';
 import { pageBusy } from './busy.js';
 import { buildInfo } from './build-info.js';
+import { clearNotice, dismissNotice, noticeShown, sawLevel, subscribeNotice } from './update-notice.js';
 
 /**
  * Installs the service worker that keeps the app openable without a connection (see
- * `sw/sw.ts` for what it holds) and says when a newer build than this page is in charge.
+ * `sw/sw.ts` for what it holds) and says when a build this page cannot run beside is in
+ * charge.
  *
  * Only in a production build. Vite's development server serves source modules under
  * names that change with every edit, and a worker caching those would serve yesterday's
@@ -27,25 +29,18 @@ import { buildInfo } from './build-info.js';
  * reload that reset a list someone was three hundred rows into), and together they
  * still moved every other tab onto the new worker without reloading it, with its chunks
  * gone. Two changes in the worker made the rules unnecessary: a page load is answered
- * from the network first, so a reload is always the newest build; and the previous
- * build's shell stays cached, so a page in use keeps working after the new worker takes
- * charge. The worker is told to take charge the moment it has installed, no page is
- * ever reloaded by this file except one whose next chunk is gone
- * (`recoverFromMissingChunks`), and the one thing left to say is that a reload would
- * bring another build (`useUpdateNotice`), which is said only when it is so.
+ * from the network first, so a reload is always the newest build; and every build an
+ * open page is running keeps its shell cached, so a page in use keeps working after the
+ * new worker takes charge. The worker is told to take charge the moment it has
+ * installed, no page is ever reloaded by this file except one whose next chunk is gone
+ * (`recoverFromMissingChunks`), and the one thing left to say is that a reload is
+ * needed (`useUpdateNotice`), which is said only when the new build cannot run beside
+ * this one (`COMPAT_LEVEL`).
  */
 let wb: Workbox | undefined;
 
-/** The commit this page was built from, for telling whether the worker in charge is newer. */
+/** The commit this page was built from, which the worker keeps this build's shell for. */
 const PAGE_COMMIT: string | null = buildInfo?.commit ?? null;
-
-let noticeShown = false;
-const noticeListeners = new Set<() => void>();
-function setNotice(shown: boolean): void {
-  if (noticeShown === shown) return;
-  noticeShown = shown;
-  for (const listener of noticeListeners) listener();
-}
 
 export function registerServiceWorker(): void {
   recoverFromMissingChunks();
@@ -53,13 +48,29 @@ export function registerServiceWorker(): void {
   const worker = (wb = new Workbox('/sw.js'));
   /*
      A worker took charge of this page: this build's, found during this load, or a newer
-     one. Only another build is worth a word. The browser's own event, not workbox-window's
-     `controlling`: workbox-window counts an update found more than a minute after
-     registering, or any second one, as somebody else's, keeps pointing at the worker it
-     started with, and stops listening, so a deploy found on a return to the tab, which
-     is the case the notice exists for, was never said.
+     one. Only one this page cannot run beside is worth a word. The browser's own event,
+     not workbox-window's `controlling`: workbox-window counts an update found more than
+     a minute after registering, or any second one, as somebody else's, keeps pointing at
+     the worker it started with, and stops listening, so a deploy found on a return to
+     the tab, which is the case the notice exists for, was never said.
   */
-  navigator.serviceWorker.addEventListener('controllerchange', () => void sayIfOther());
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    sayRunning();
+    void sayIfNeeded();
+  });
+  sayRunning();
+  /*
+     A page restored from the back/forward cache was not one of the worker's clients
+     while it was away (`clients.matchAll` leaves it out), so a tidy meanwhile dropped its
+     record, and the next deploy would delete the shell it still runs: the reload under
+     the person's hands that keeping shells exists to stop. It says so again, and asks
+     the level, since a worker may have taken charge while it was away.
+  */
+  window.addEventListener('pageshow', (event) => {
+    if (!event.persisted) return;
+    sayRunning();
+    void sayIfNeeded();
+  });
   /*
      A page already under a worker registers at once and asks for a new one straight
      away. Workbox otherwise waits for the window's `load`, so as not to compete with a
@@ -78,27 +89,29 @@ export function registerServiceWorker(): void {
   checkForUpdatesOnReturn(worker);
 }
 
-/**
- * Whether the worker now in charge is another build than this page, which a reload would
- * bring (newer, almost always; after a rollback, older) and still what a reload brings: the worker's commit, asked of it, against the page's own. A page whose load
- * found and installed this build's own worker hears `controllerchange` too, and has nothing
- * to be told. Unknown on either side is not another: a word that might be wrong is worse than
- * none, and the next load brings the newest build regardless.
- */
-export function isOtherBuild(page: string | null, worker: string | null): boolean {
-  return page !== null && worker !== null && page !== worker;
-}
-
-async function sayIfOther(): Promise<void> {
+async function sayIfNeeded(): Promise<void> {
   const controller = navigator.serviceWorker.controller;
   if (!controller) return;
-  const commit = await within(askBuild(controller), 5_000, null).catch(() => null);
-  if (isOtherBuild(PAGE_COMMIT, commit)) setNotice(true);
+  sawLevel(await within(askCompat(controller), 5_000, null).catch(() => null));
 }
 
-/** The commit the worker in charge was built from, from the page it holds (`BUILD` in `sw.ts`). */
-function askBuild(controller: ServiceWorker): Promise<string | null> {
-  return messageSW(controller, { type: 'BUILD' }).then((answer: unknown) => (answer as { commit?: string | null } | null)?.commit ?? null);
+/**
+ * Tells the worker in charge which build this page runs, so a deploy keeps that build's
+ * chunks while the page is open (`tidyShellCaches` in `sw.ts`). Said to every worker
+ * that takes charge, though one would do (they share the record): it costs a message,
+ * and a page first loaded with no worker has nobody to say it to until one claims it.
+ */
+function sayRunning(): void {
+  const controller = navigator.serviceWorker.controller;
+  if (controller && PAGE_COMMIT) controller.postMessage({ type: 'RUNNING', commit: PAGE_COMMIT });
+}
+
+/** The compatibility level of the worker in charge (`BUILD` in `sw.ts`), or null from one too old to say. */
+function askCompat(controller: ServiceWorker): Promise<number | null> {
+  return messageSW(controller, { type: 'BUILD' }).then((answer: unknown) => {
+    const compat = (answer as { compat?: unknown } | null)?.compat;
+    return typeof compat === 'number' ? compat : null;
+  });
 }
 
 export type OfflineReady = 'ready' | 'installing' | 'unavailable';
@@ -149,23 +162,16 @@ export function useOfflineReady(): OfflineReady {
 }
 
 /**
- * Whether to say that a reload would bring a newer build, for `UpdateSnackbar`, and the
- * two answers to it.
+ * Whether to say that a reload is needed, for `UpdateSnackbar`, and the two answers to it.
  *
- * Said once a newer build's worker is in charge of this page, which is the moment this
- * page stopped being the newest; said once, and left to the person: this file never
- * reloads a page in use. Dismissing it changes nothing but the notice: the next load,
- * whenever it comes, is the newest build.
+ * Said once this page has been told the deploy in charge is one it cannot run beside
+ * (`update-notice.ts`), and left to the person: this file never reloads a page in use.
+ * Dismissing it keeps the page on its own build until its next load, which is the
+ * newest.
  */
 export function useUpdateNotice(): { shown: boolean; reload: () => void; dismiss: () => void } {
-  const shown = useSyncExternalStore(
-    (listener) => {
-      noticeListeners.add(listener);
-      return () => noticeListeners.delete(listener);
-    },
-    () => noticeShown,
-  );
-  return { shown, reload: reloadIntoUpdate, dismiss: () => setNotice(false) };
+  const shown = useSyncExternalStore(subscribeNotice, noticeShown, () => false);
+  return { shown, reload: reloadIntoUpdate, dismiss: dismissNotice };
 }
 
 /**
@@ -175,7 +181,7 @@ export function useUpdateNotice(): { shown: boolean; reload: () => void; dismiss
  * is done.
  */
 function reloadIntoUpdate(): void {
-  setNotice(false);
+  clearNotice();
   const go = () => {
     if (pageBusy()) {
       setTimeout(go, 250);
@@ -216,10 +222,11 @@ function checkForUpdatesOnReturn(worker: Workbox): void {
  * Reloads once when a route's code cannot be loaded because a deploy has removed it.
  *
  * Every build names its chunks by content, and a deploy replaces the whole set. The
- * worker keeps the previous build's chunks for a page still running it, but only the
- * previous build's: a page that outlives two deploys without a reload, or one from
- * before there was a worker, asks for a chunk that no longer exists, and the worker
- * answers the asset layer's `index.html` with the 404 it is. Vite raises
+ * worker keeps a build's chunks while a page says it is running that build, so this is
+ * for the pages it cannot know about: one from before there was a worker, one whose
+ * browser emptied the caches, one whose word never arrived. Such a page asks for a
+ * chunk that no longer exists, and the worker answers the asset layer's `index.html`
+ * with the 404 it is. Vite raises
  * `vite:preloadError` for exactly this; a reload fetches the current build.
  *
  * At most once a minute, so a chunk that is genuinely broken shows its error instead of

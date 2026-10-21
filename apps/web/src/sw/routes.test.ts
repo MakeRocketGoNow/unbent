@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { WORKER_PAGES, WORKER_PREFIXES, classify, fileAddress, isAsset, isShellFallback, servesShell, shelved, within, type RequestFacts } from './routes.js';
+import { SHELL_META_CACHE, WORKER_PAGES, WORKER_PREFIXES, classify, commitOf, fileAddress, isAsset, isShellFallback, servesShell, shellCacheName, shelved, staleShellCaches, within, type RequestFacts } from './routes.js';
 
 const at = (path: string) => new URL(path, 'https://unbent.example');
 
@@ -192,6 +192,35 @@ describe('isAsset', () => {
     expect(isAsset(new URL('https://unbent.app/assets/notes-abc123.js'), 'https://unbent.app')).toBe(true);
     expect(isAsset(new URL('https://unbent.app/icons/icon-192.png'), 'https://unbent.app')).toBe(false);
     expect(isAsset(new URL('https://cdn.example.com/assets/x.js'), 'https://unbent.app')).toBe(false);
+  });
+});
+
+describe('staleShellCaches', () => {
+  const current = shellCacheName('c');
+  const previous = shellCacheName('b');
+  const older = shellCacheName('a');
+  const oldest = shellCacheName('0');
+
+  it('keeps this build, the previous one and every build an open page runs', () => {
+    const names = [current, previous, older, oldest];
+    expect(staleShellCaches(names, { current, previous, running: new Set([older]) })).toEqual([oldest]);
+  });
+
+  /* A tab that outlives several deploys keeps its chunks for as long as it is open. */
+  it('keeps a build any number of deploys back while a page runs it', () => {
+    expect(staleShellCaches([current, oldest], { current, running: new Set([oldest]) })).toEqual([]);
+  });
+
+  it('deletes Workbox’s one cache and leaves the meta and runtime caches alone', () => {
+    const names = [current, SHELL_META_CACHE, 'api-v1', 'files-v1', 'workbox-precache-v2-https://unbent.app/'];
+    expect(staleShellCaches(names, { current, running: new Set() })).toEqual(['workbox-precache-v2-https://unbent.app/']);
+  });
+});
+
+describe('commitOf', () => {
+  it('reads the commit a build’s page names', () => {
+    expect(commitOf('<head><meta name="unbent-commit" content="abc1234" /></head>')).toBe('abc1234');
+    expect(commitOf('<head></head>')).toBeNull();
   });
 });
 

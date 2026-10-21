@@ -595,7 +595,8 @@ ending the entry would roll back what they typed: a lapsed plan's (`plan-refused
 a store past its room's (`STORAGE_FULL` with `of: 'notes'`, `store-full.ts`). While
 either waits at the head of the queue the deletes go to the server round it
 (`roundTheQueue`), and the one that ends a refusal (a checkout, a purge) sends the kept
-entry again at once.
+entry again at once. Any 4xx is kept too while the page is behind the deploy, until the
+reload; see [Builds side by side](#builds-side-by-side).
 Only the tab holding the account's leader lock replays (`store/leader.ts`); another tab
 waits in the lock's queue and leads the moment the holder goes, rather than staying a
 follower until it reloads, as the outbox library's own one-shot election left it. A tab that does
@@ -831,12 +832,15 @@ network cut.
 **A deploy's worker takes charge at once, and no page is ever moved onto it.** A page load
 is answered from the network first and from the cached shell only when the network does
 not answer (`sw.ts`), so a reload is always the newest build. Each build's shell is in a
-cache named for the build (`shellCacheName`), and the previous build's cache outlives its
-worker, so a tab still running the previous build keeps finding its chunks after the new
-worker has taken charge; only a tab that outlives two deploys without a reload loses them,
-and `recoverFromMissingChunks` reloads it once when a chunk is gone. The one thing the
-page says is that a reload would bring a newer build (`UpdateSnackbar`), and only when the
-worker's commit differs from the page's (`BUILD` in `sw.ts`). The rules this replaced (a
+cache named for the build (`shellCacheName`), kept while a page says it is running that
+build (`RUNNING`) and for the previous build regardless, so a tab left open across any
+number of deploys keeps finding its chunks after the new worker has taken charge;
+`recoverFromMissingChunks` reloads a page once when a chunk is gone all the same, for
+the pages the worker never heard from. The one thing the
+page says is that a reload is needed (`UpdateSnackbar`), and only when the worker's
+compatibility level is not the page's own (`COMPAT_LEVEL` in
+`@unbent/shared/compat`, stated by the worker and on every API answer): an ordinary
+deploy says nothing. The rules this replaced (a
 change of section, five minutes away, nothing touched since the load, at once on dev and
 previews) each answered a reload that drew the old build or lost someone's place, and
 between them still moved every other tab onto a worker that had deleted their chunks.
@@ -872,6 +876,74 @@ points at a local instance: airplane mode alone does not cut the adb tunnel. The
 worker applied rows at about 25 a second on the emulator (1,500 notes in 70 s) against well
 under a second on a desktop, so an archive takes minutes to settle on a phone; measure on a
 real device before tuning it.
+
+## Builds side by side
+
+**A page stays on the build it loaded, and is asked to reload only when it cannot keep
+up.** Every merge deploys, and a page left open (an installed app on a phone is resumed
+for weeks) keeps running its own build against the newest server, the newest worker and
+tabs on newer builds. Most deploys change nothing it relies on, and say nothing. One
+that does raises `COMPAT_LEVEL` (`packages/shared/src/compat.ts`), and every page on a
+lower level is asked to reload once it deploys: from its next API answer, which states
+the level (`X-Unbent-Compat`), or from the new worker taking charge, whichever comes
+first. Asked, not made, and what the page sends meanwhile is not lost for it: a write
+the server refuses while the page is behind the deploy is kept, not ended, and waits
+for the reload (`refusal` in `store/actions.ts`). The build that replays a queued write
+rebuilds its request, so after the reload a kept save goes out in the new shape. A
+queued `createNote` is the exception, since it stores its body as sent. The outbox is
+the holding tab's, which may not be the tab that reloads: a client on a higher level
+than its holder takes the library over (`onOtherLevel` in `client-library.ts`), so the
+reload in front of the person is the one that sends the queue. The queue is not
+paused on a raised level: most bumps are not about what the server takes, and saves
+held for no visible reason are worse than the rare one this keeps. Keeping the old shape
+working is still the first protection; this is the second. The notice used to show for
+every deploy, and the people trying the app were asked to reload after every merge for
+nothing.
+
+The decision is made in the commit that changes the contract, and the contract test
+(`apps/web/src/compat/contract.test.ts`) is what asks for it. It compares the code with
+`contract.json`, the record of what the level was last decided for:
+
+- **Request schemas** (every zod schema `@unbent/shared` exports) are compared as JSON
+  Schema. One that accepts at least what it did, and gained no value or type, fits, and
+  a local run of the test records it on its own; commit `contract.json` with the change.
+  A value or a type it gained (a new field type, an option, a value that can be null now)
+  asks, because the server stores what it accepts and answers it to old pages too. One
+  that accepts less
+  (a field required now, a lower limit, a value or a type no longer accepted) refuses
+  an old page's request, and an old outbox's replay, with a 400 that loses the write;
+  it cannot be recorded without raising the level. Prefer making it fit: keep accepting
+  the old shape beside the new one.
+- **What the builds share with no schema** is fingerprinted by area, with comments and
+  spacing taken out, and a change asks that area's question: the worker and every module
+  it imports (found by following its imports, so a new one joins on its own); the tabs'
+  channels and locks, and the actions a client forwards to the holder (`forwardable`, and
+  each one's signature); what is kept on the device (the collections, the feed's
+  position, the outbox's metadata, the search index); and the types the API answers with,
+  in `@unbent/shared` and the page's own in `notes-api.ts` (an interface that only gained
+  fields fits). Busy files are read for their declarations only, so a change to a body
+  does not ask.
+
+When it asks, answer it: `pnpm compat:update` when a page from the previous build still
+works with the change, `pnpm compat:bump` when it does not. Never record a change you
+have not judged, and say which it was, and why, in the commit. A bump costs everyone one
+reload; a wrong "fits" costs the person on the old page a write or a broken screen.
+
+What the test cannot see is yours to catch, and `pnpm compat:bump` is for it too:
+
+- **A refinement** (`refine`, `superRefine`) on a request schema: zod writes none of them
+  into JSON Schema, so a tightened one passes.
+- **A body a route defines for itself** in `apps/api/src/routes/` rather than in
+  `@unbent/shared`: notebook rename and edit, tag edit, the storage add-on, client error
+  reports, and two queries. A new body a page sends goes in `@unbent/shared`, where it is
+  checked.
+- **An answer changed on the server alone**: a route's response that no type in the
+  answers area mirrors, or one whose mirror in `notes-api.ts` was not changed with it.
+- **What a page reads that is not a type**: a header, an error `code` the page switches
+  on, an address the page builds. And a meaning that changed under the same shape.
+- **What the device keeps that no listed declaration names**: an outbox entry's
+  `mutationFnName` (a renamed one is never replayed), the list of notebooks kept
+  offline, a `localStorage` key.
 
 ## The local database is disposable, but ask
 

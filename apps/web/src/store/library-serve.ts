@@ -1,3 +1,4 @@
+import { COMPAT_LEVEL } from '@unbent/shared/compat';
 import { OfflineError } from '../notes-api.js';
 import { forwardable, type Outbox } from './actions.js';
 import type { Collection } from '@tanstack/db';
@@ -126,7 +127,7 @@ export function serveLibrary(port: Port, lib: Serving, holder: string): Server {
       }
     }
     if (superseded()) return;
-    port.post({ type: 'attached', holder, client, send, state: lib.state(), status: lib.outbox.status(), keep: lib.keeper.status() });
+    port.post({ type: 'attached', holder, client, send, state: lib.state(), status: lib.outbox.status(), keep: lib.keeper.status(), level: COMPAT_LEVEL });
   };
 
   const onMessage = (message: Message) => {
