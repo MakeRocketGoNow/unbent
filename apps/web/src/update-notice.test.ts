@@ -1,6 +1,6 @@
 import { COMPAT_LEVEL } from '@unbent/shared/compat';
 import { afterEach, describe, expect, it } from 'vitest';
-import { clearNotice, dismissNotice, needsReload, noticeShown, resetNotice, sawLevel } from './update-notice.js';
+import { SETTLED_MS, clearNotice, dismissNotice, needsReload, noticeShown, resetNotice, sawLevel } from './update-notice.js';
 
 describe('needsReload', () => {
   it('says so when the deploy in charge has a higher compatibility level than the page', () => {
@@ -45,10 +45,20 @@ describe('the notice', () => {
   });
 
   /* A bump reverted before the person answered: nothing is left to reload for. */
-  it('closes when the level comes back to the page’s own', () => {
-    sawLevel(COMPAT_LEVEL + 1);
-    sawLevel(COMPAT_LEVEL);
+  it('closes once the level has stayed back at the page’s own', () => {
+    sawLevel(COMPAT_LEVEL + 1, 1_000);
+    sawLevel(COMPAT_LEVEL, 1_000 + SETTLED_MS);
     expect(noticeShown()).toBe(false);
+  });
+
+  /* A deploy reaching the edges answers with both versions in turn for a few seconds. */
+  it('does not blink while answers alternate between levels', () => {
+    sawLevel(COMPAT_LEVEL + 1, 1_000);
+    sawLevel(COMPAT_LEVEL, 2_000);
+    expect(noticeShown()).toBe(true);
+    sawLevel(COMPAT_LEVEL + 1, 3_000);
+    sawLevel(COMPAT_LEVEL, 3_000 + SETTLED_MS - 1);
+    expect(noticeShown()).toBe(true);
   });
 
   it('closes when answered by a reload', () => {
