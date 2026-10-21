@@ -875,6 +875,49 @@ worker applied rows at about 25 a second on the emulator (1,500 notes in 70 s) a
 under a second on a desktop, so an archive takes minutes to settle on a phone; measure on a
 real device before tuning it.
 
+## Builds side by side
+
+**A page stays on the build it loaded, and is asked to reload only when it cannot keep
+up.** Every merge deploys, and a page left open (an installed app on a phone is resumed
+for weeks) keeps running its own build against the newest server, the newest worker and
+tabs on newer builds. Most deploys change nothing it relies on, and say nothing. One
+that does raises `COMPAT_LEVEL` (`apps/web/src/compat/level.ts`), and every page on a
+lower level is asked to reload once it deploys. The notice used to show for every deploy,
+and the people trying the app were asked to reload after every merge for nothing.
+
+The decision is made in the commit that changes the contract, and the contract test
+(`apps/web/src/compat/contract.test.ts`) is what asks for it. It compares the code with
+`contract.json`, the record of what the level was last decided for:
+
+- **Request schemas** (every zod schema `@unbent/shared` exports) are compared as JSON
+  Schema. One that accepts at least what it did fits, and a local run of the test
+  records it on its own; commit `contract.json` with the change. One that accepts less
+  (a field required now, a lower limit, a value or a type no longer accepted) refuses
+  an old page's request, and an old outbox's replay, with a 400 that loses the write;
+  it cannot be recorded without raising the level. Prefer making it fit: keep accepting
+  the old shape beside the new one.
+- **What the builds share with no schema** is fingerprinted by area, with comments and
+  spacing taken out, and a change asks that area's question: the worker and every module
+  it imports (found by following its imports, so a new one joins on its own), the tabs'
+  channel and locks, what is kept on the device, and the types the API answers with (an
+  interface that only gained fields fits).
+
+When it asks, answer it: `pnpm compat:update` when a page from the previous build still
+works with the change, `pnpm compat:bump` when it does not. Never record a change you
+have not judged, and say which it was, and why, in the commit. A bump costs everyone one
+reload; a wrong "fits" costs the person on the old page a write or a broken screen.
+
+What the test cannot see is yours to catch, and `pnpm compat:bump` is for it too:
+
+- **A refinement** (`refine`, `superRefine`) on a request schema: zod writes none of them
+  into JSON Schema, so a tightened one passes.
+- **A body a route defines for itself** in `apps/api/src/routes/` rather than in
+  `@unbent/shared`: notebook rename and edit, tag edit, the storage add-on, client error
+  reports, and two queries. A new body a page sends goes in `@unbent/shared`, where it is
+  checked.
+- **What a page reads that is not a type**: a header, an error `code` the page switches
+  on, an address the page builds. And a meaning that changed under the same shape.
+
 ## The local database is disposable, but ask
 
 Wiping local notes during development is fine and has been offered explicitly. **Ask first

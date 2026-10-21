@@ -1,0 +1,1567 @@
+{
+  "level": 1,
+  "requests": {
+    "attachmentTextsSchema": {
+      "type": "object",
+      "properties": {
+        "ids": {
+          "minItems": 1,
+          "maxItems": 50,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        }
+      },
+      "required": [
+        "ids"
+      ]
+    },
+    "copyAttachmentsSchema": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "filenames": {
+          "minItems": 1,
+          "maxItems": 200,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 768
+          }
+        },
+        "move": {
+          "default": false,
+          "type": "boolean"
+        },
+        "link": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "from",
+        "filenames"
+      ]
+    },
+    "createFieldSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "text",
+            "number",
+            "date",
+            "checkbox",
+            "url",
+            "email",
+            "phone",
+            "select",
+            "multiselect"
+          ]
+        },
+        "options": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "optionColors": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9
+          }
+        },
+        "scale": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "max": {
+                  "type": "integer",
+                  "minimum": 2,
+                  "maximum": 10
+                },
+                "step": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "const": 1
+                    },
+                    {
+                      "type": "number",
+                      "const": 0.5
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "max",
+                "step"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "currency": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ]
+    },
+    "createNoteSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "title": {
+          "default": "",
+          "type": "string",
+          "maxLength": 500
+        },
+        "body": {
+          "default": "",
+          "type": "string",
+          "maxLength": 1800000
+        },
+        "tags": {
+          "default": [],
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "notebook": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fields": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 1000
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "currencySchema": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "cursorSchema": {
+      "type": "string"
+    },
+    "dateOnlySchema": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "duplicateNoteSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        }
+      }
+    },
+    "exportPageQuerySchema": {
+      "type": "object",
+      "properties": {
+        "tag": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              }
+            }
+          ]
+        },
+        "notebook": {
+          "type": "string"
+        },
+        "field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        },
+        "from": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "to": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "sort": {
+          "default": "created",
+          "type": "string",
+          "enum": [
+            "updated",
+            "created",
+            "title"
+          ]
+        },
+        "cursor": {
+          "type": "string"
+        },
+        "limit": {
+          "default": 50,
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "exportQuerySchema": {
+      "type": "object",
+      "properties": {
+        "tag": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              }
+            }
+          ]
+        },
+        "notebook": {
+          "type": "string"
+        },
+        "field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        },
+        "from": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "to": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "sort": {
+          "default": "created",
+          "type": "string",
+          "enum": [
+            "updated",
+            "created",
+            "title"
+          ]
+        }
+      }
+    },
+    "feedQuerySchema": {
+      "type": "object",
+      "properties": {
+        "since": {
+          "default": 0,
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "limit": {
+          "default": 200,
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500
+        },
+        "epoch": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "fetchWebImageSchema": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        }
+      },
+      "required": [
+        "url"
+      ]
+    },
+    "fieldFilterSchema": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "fieldNameSchema": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "fieldOptionsSchema": {
+      "maxItems": 100,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100
+      }
+    },
+    "fieldScaleSchema": {
+      "type": "object",
+      "properties": {
+        "max": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 10
+        },
+        "step": {
+          "anyOf": [
+            {
+              "type": "number",
+              "const": 1
+            },
+            {
+              "type": "number",
+              "const": 0.5
+            }
+          ]
+        }
+      },
+      "required": [
+        "max",
+        "step"
+      ]
+    },
+    "fieldTypeSchema": {
+      "type": "string",
+      "enum": [
+        "text",
+        "number",
+        "date",
+        "checkbox",
+        "url",
+        "email",
+        "phone",
+        "select",
+        "multiselect"
+      ]
+    },
+    "fieldValueInputSchema": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 1000
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        }
+      ]
+    },
+    "filenameSchema": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 768
+    },
+    "importEnmlSchema": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "default": "",
+          "type": "string",
+          "maxLength": 500
+        },
+        "enml": {
+          "default": "",
+          "type": "string",
+          "maxLength": 8388608
+        },
+        "tags": {
+          "default": [],
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "notebook": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "createdAt": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "updatedAt": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "sourceEnex": {
+          "type": "string",
+          "maxLength": 255
+        },
+        "sourceUrl": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "resources": {
+          "default": [],
+          "maxItems": 200,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "md5": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{32}$"
+              },
+              "filename": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255
+              },
+              "mime": {
+                "type": "string",
+                "maxLength": 255
+              }
+            },
+            "required": [
+              "md5",
+              "filename",
+              "mime"
+            ]
+          }
+        }
+      },
+      "required": [
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "importNoteSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "title": {
+          "default": "",
+          "type": "string",
+          "maxLength": 500
+        },
+        "body": {
+          "default": "",
+          "type": "string",
+          "maxLength": 1800000
+        },
+        "tags": {
+          "default": [],
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "notebook": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "createdAt": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "updatedAt": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "contentHash": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "sourceEnex": {
+          "type": "string",
+          "maxLength": 255
+        },
+        "sourceUrl": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "fields": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "maxItems": 100,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 1000
+                }
+              }
+            ]
+          }
+        }
+      },
+      "required": [
+        "createdAt",
+        "updatedAt",
+        "contentHash"
+      ]
+    },
+    "listNotesQuerySchema": {
+      "type": "object",
+      "properties": {
+        "cursor": {
+          "type": "string"
+        },
+        "limit": {
+          "default": 50,
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "tag": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              }
+            }
+          ]
+        },
+        "notebook": {
+          "type": "string"
+        },
+        "field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        },
+        "sort": {
+          "default": "created",
+          "type": "string",
+          "enum": [
+            "updated",
+            "created",
+            "title"
+          ]
+        },
+        "order": {
+          "default": "desc",
+          "type": "string",
+          "enum": [
+            "asc",
+            "desc"
+          ]
+        },
+        "sortField": {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        "from": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "to": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "trashed": {
+          "type": "string"
+        },
+        "exact": {
+          "type": "string"
+        }
+      }
+    },
+    "noteBatchSchema": {
+      "type": "object",
+      "properties": {
+        "ids": {
+          "minItems": 1,
+          "maxItems": 500,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        }
+      },
+      "required": [
+        "ids"
+      ]
+    },
+    "noteFieldsPatchSchema": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "format": "uuid",
+        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+      },
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "maxItems": 100,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 1000
+                }
+              }
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "noteIdSchema": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "noteOrderSchema": {
+      "default": "desc",
+      "type": "string",
+      "enum": [
+        "asc",
+        "desc"
+      ]
+    },
+    "noteSortSchema": {
+      "default": "created",
+      "type": "string",
+      "enum": [
+        "updated",
+        "created",
+        "title"
+      ]
+    },
+    "notebookDefinitionSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "emoji": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 32
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "purpose": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 500
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fields": {
+          "maxItems": 50,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "text",
+                  "number",
+                  "date",
+                  "checkbox",
+                  "url",
+                  "email",
+                  "phone",
+                  "select",
+                  "multiselect"
+                ]
+              },
+              "options": {
+                "maxItems": 100,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                }
+              },
+              "colors": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "additionalProperties": {
+                  "type": [
+                    "string",
+                    "number"
+                  ]
+                }
+              },
+              "scale": {
+                "type": "object",
+                "properties": {
+                  "max": {
+                    "type": "integer",
+                    "minimum": 2,
+                    "maximum": 10
+                  },
+                  "step": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "const": 1
+                      },
+                      {
+                        "type": "number",
+                        "const": 0.5
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "max",
+                  "step"
+                ]
+              },
+              "currency": {
+                "type": "string",
+                "pattern": "^[A-Z]{3}$"
+              }
+            },
+            "required": [
+              "name",
+              "type"
+            ]
+          }
+        }
+      },
+      "required": [
+        "name"
+      ]
+    },
+    "notebookEmojiSchema": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 32
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "notebookNameSchema": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "notebookPurposeSchema": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 500
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "optionColorsSchema": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9
+      }
+    },
+    "optionEditSchema": {
+      "type": "object",
+      "properties": {
+        "rename": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "from": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "to": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              }
+            },
+            "required": [
+              "from",
+              "to"
+            ]
+          }
+        },
+        "remove": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "add": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "position": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "end",
+                "start",
+                "alpha"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "after": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                }
+              },
+              "required": [
+                "after"
+              ]
+            }
+          ]
+        },
+        "sort": {
+          "type": "string",
+          "const": "alpha"
+        },
+        "pinFirst": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "pinLast": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "merge": {
+          "type": "boolean"
+        },
+        "replace": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        }
+      }
+    },
+    "optionPositionSchema": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "end",
+            "start",
+            "alpha"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "after": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          },
+          "required": [
+            "after"
+          ]
+        }
+      ]
+    },
+    "reorderFieldsSchema": {
+      "type": "object",
+      "properties": {
+        "ids": {
+          "minItems": 1,
+          "maxItems": 50,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        }
+      },
+      "required": [
+        "ids"
+      ]
+    },
+    "restoreRevisionSchema": {
+      "type": "object",
+      "properties": {
+        "ifUpdatedAt": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "searchQuerySchema": {
+      "type": "object",
+      "properties": {
+        "q": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "limit": {
+          "default": 50,
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "tag": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              }
+            }
+          ]
+        },
+        "notebook": {
+          "type": "string"
+        },
+        "field": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        },
+        "from": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "to": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        },
+        "rows": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "q"
+      ]
+    },
+    "snapshotQuerySchema": {
+      "type": "object",
+      "properties": {
+        "cursor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "limit": {
+          "default": 200,
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500
+        }
+      }
+    },
+    "tagColorSchema": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9
+    },
+    "tagFilterSchema": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        }
+      ]
+    },
+    "tagNameSchema": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "updateFieldSchema": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "text",
+            "number",
+            "date",
+            "checkbox",
+            "url",
+            "email",
+            "phone",
+            "select",
+            "multiselect"
+          ]
+        },
+        "options": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "optionColors": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9
+          }
+        },
+        "scale": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "max": {
+                  "type": "integer",
+                  "minimum": 2,
+                  "maximum": 10
+                },
+                "step": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "const": 1
+                    },
+                    {
+                      "type": "number",
+                      "const": 0.5
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "max",
+                "step"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "currency": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Z]{3}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "updateNoteSchema": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "body": {
+          "type": "string",
+          "maxLength": 1800000
+        },
+        "tags": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "notebook": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fields": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 1000
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "ifUpdatedAt": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "updateNotesSchema": {
+      "type": "object",
+      "properties": {
+        "ids": {
+          "minItems": 1,
+          "maxItems": 500,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "notebook": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "addTags": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "removeTags": {
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        }
+      },
+      "required": [
+        "ids"
+      ]
+    }
+  },
+  "shared": {
+    "answers": {
+      "packages/shared/src/feed.ts › FeedAttachment": "fdd9a3e47f201087|12a269bece|33985d838d|b843c5048c|bbe764efbb",
+      "packages/shared/src/feed.ts › FeedEntity": "3fa6c2fa07ca737f",
+      "packages/shared/src/feed.ts › FeedNote": "9cba840bb027375b|02d49f2a3f|b8e102fdcc",
+      "packages/shared/src/feed.ts › FeedNotebook": "8d2a188b7e2fd94a|99bbdd805c",
+      "packages/shared/src/feed.ts › FeedPage": "7b34f8c167ee7815|2f4963387f|410c0b765a|489ae4153b|4f39a0190a|646a2147cc|7339036209|b14b5a675b|b1c4053354|e1ae277a39|f7220206b7",
+      "packages/shared/src/feed.ts › FeedReset": "74d8ed1b35b325d0|2f4963387f|489ae4153b|5e8e2d4ee9",
+      "packages/shared/src/feed.ts › FeedTag": "d27a0467c8cb943d|278a324bd5|3fe91fb414|b843c5048c",
+      "packages/shared/src/feed.ts › FeedTombstone": "5143c3f9db185702|8b4576ed8b|b843c5048c",
+      "packages/shared/src/feed.ts › SnapshotPage": "6816667cc59d9bbb|2f4963387f|489ae4153b|4d3203cd6c|4f39a0190a|831389839a|afdadeae26|dd56ef8b75",
+      "packages/shared/src/fields.ts › ConversionPlan": "7ed61445bbba578e|07c142382d|099ffbf628|6161c5410e",
+      "packages/shared/src/fields.ts › CreateFieldInput": "43251eb2c573216f",
+      "packages/shared/src/fields.ts › EncodedFieldValue": "2fae6e02cbe97900|099beb361a|fefc3aab89",
+      "packages/shared/src/fields.ts › FieldDef": "6e6f86474267c688|2cf492a036|306b09e367|3fe91fb414|453ce034aa|62c2b0307c|69ec55d8a4|ae28463b52|b843c5048c|ba2dcd747c|d9d88b2b04",
+      "packages/shared/src/fields.ts › FieldFilter": "088f6970545f0012|1c1c71926b|26189fe9e9|959f89d90e",
+      "packages/shared/src/fields.ts › FieldFilterOp": "85d7ef8e61f3f165",
+      "packages/shared/src/fields.ts › FieldScale": "bb733a5a1def162f|28d516ad0b|b88a57c1b5",
+      "packages/shared/src/fields.ts › FieldType": "fc44c0f846f69b6d",
+      "packages/shared/src/fields.ts › FieldValue": "34c694d1cd61916a",
+      "packages/shared/src/fields.ts › NoteFieldValue": "3f9e4ef3763006a0|1c1c71926b|3fe91fb414|453ce034aa|69ec55d8a4|89437ff59d|b1df7daf82|ba2186fa84|f67aff11af",
+      "packages/shared/src/fields.ts › NoteFieldsPatch": "45c388f4d324821f",
+      "packages/shared/src/fields.ts › RatingStep": "6ba9e1f9eda20d2d",
+      "packages/shared/src/fields.ts › UpdateFieldInput": "d25f123152ddfa5b",
+      "packages/shared/src/plan.ts › AccountPlan": "a09590552f9e53b2|28a1635b92|2b2e768c60|946818ab68|99afab4ff8|bc746780c3|be5b74c8c5|dcac7a9c69|fa407a537c",
+      "packages/shared/src/plan.ts › BillingConfig": "cd77120f83acad19|3200e1699f|b27557472b",
+      "packages/shared/src/plan.ts › PlanSource": "b574fae31e3f6712",
+      "packages/shared/src/plan.ts › PlanState": "c0b18497eb78933a",
+      "packages/shared/src/schemas.ts › AppConfig": "3240b34429212939|33b05c364b|4297c0093e|4e5c9e67bb|5e101fa39a|8295cd56d4|9a8a7858f3|9c2b2c3516|9d9a0890b0|b627c14bc9|c5f694d33a|d10a72a173|d540b1135f|d93bc21dd2|edb1f6de4f|f012f636b9",
+      "packages/shared/src/schemas.ts › AttachmentInfo": "20be170377a36c52|08756509e8|659d780d8a|e5d874c2a9",
+      "packages/shared/src/schemas.ts › AttachmentTexts": "30f98a978cb1c40a|af9c9c55d7|d80fc1cbfe",
+      "packages/shared/src/schemas.ts › AuthProvider": "3f515100bbaba9c2",
+      "packages/shared/src/schemas.ts › AutofillSuggestion": "b076982f94208da6|1f50c12073|285633a55c|64b2a62639|8a30fdbc14|8f95f548e1|de5604a9e5",
+      "packages/shared/src/schemas.ts › AutofillUsage": "b44fbf625b2f8cc1|15b1975a7d|354cfa2710|cb90dfbcfa|cef716aa47|d48ae02086|ff86109a5a",
+      "packages/shared/src/schemas.ts › CreateNoteInput": "74ead43e7ff1c3c2",
+      "packages/shared/src/schemas.ts › FieldDef": "eeb129de12992dfc",
+      "packages/shared/src/schemas.ts › FieldValue": "ea6fecde1bd176fc",
+      "packages/shared/src/schemas.ts › ImportEnmlInput": "22c22956fd7159ba",
+      "packages/shared/src/schemas.ts › ImportNoteInput": "e213c35d4a16c1bd",
+      "packages/shared/src/schemas.ts › InstanceKind": "c314ad8ca11d2bb9",
+      "packages/shared/src/schemas.ts › ListNotesQuery": "d3ba91a1ca7dc908",
+      "packages/shared/src/schemas.ts › LlmJob": "81b416cc90cff400",
+      "packages/shared/src/schemas.ts › LlmJobUsage": "e14620ac21fa1c04|55e3d20473|a00d85601b",
+      "packages/shared/src/schemas.ts › LlmTokens": "c4c2f3bde27868af|3a54770e5a|817933c01c|90c67617d0|9ce060046a|9d0175ad58",
+      "packages/shared/src/schemas.ts › LocalMethod": "d6e23b8c699b6fc9",
+      "packages/shared/src/schemas.ts › Note": "e3ee69a4115f6414|53077eb0a2",
+      "packages/shared/src/schemas.ts › NoteFieldValue": "3147c09c8e2880c7",
+      "packages/shared/src/schemas.ts › NoteRevision": "43f1bca73a9d440f|0917f689e0|53077eb0a2|b4c76d4147|f9afda55de",
+      "packages/shared/src/schemas.ts › NoteRevisionCause": "c06055249269b7d7",
+      "packages/shared/src/schemas.ts › NoteRevisionChange": "d3c8360c67b5d700",
+      "packages/shared/src/schemas.ts › NoteRevisionProps": "46c8d7125c213576|46973ef1d9|dbebde862e|e09bf8b2af",
+      "packages/shared/src/schemas.ts › NoteRevisionSummary": "38d993e4bad68f87|12a269bece|7cbd8dd1ac|7e77a8f597|c30b8efd91|e12d677d5b|e5d874c2a9",
+      "packages/shared/src/schemas.ts › NoteSort": "510d5121be12f9e4",
+      "packages/shared/src/schemas.ts › NoteSummary": "f3695d76e135e5d2|12a269bece|3c92b63cfd|40cbb74a67|5f02d8f8c1|75c4f7cfb7|b843c5048c|ca759a2eb1|d1111dc529|e12d677d5b|ee6cd693c1|f032efd0d6",
+      "packages/shared/src/schemas.ts › NotebookSummary": "de7948f0d5d7c2a0|08aa6a5334|0b837098fe|3fe91fb414|8469de4780|b843c5048c|da0da803f0",
+      "packages/shared/src/schemas.ts › RestoredNote": "fdd52871aab1f6fa|68adef40d3|8d47a0da1e|970e8101c6",
+      "packages/shared/src/schemas.ts › RevisionSkip": "9b152bede9207137|0c0093e0c5|3fe91fb414|b843c5048c|e276e8f284",
+      "packages/shared/src/schemas.ts › SearchQuery": "205299e4cfa3119e",
+      "packages/shared/src/schemas.ts › SearchResult": "0becaa1d9ce8837b|40cbb74a67|685549e7a4|7113eded1e|b843c5048c|d493190d6e|e12d677d5b|fd80fca5b1",
+      "packages/shared/src/schemas.ts › SearchResultRow": "16a3164c2901abb4|b50a690977",
+      "packages/shared/src/schemas.ts › StaleNote": "83f3c6e1f1bda5f2|82e17a4292",
+      "packages/shared/src/schemas.ts › UpdateNoteInput": "0586379998463762",
+      "packages/shared/src/schemas.ts › UpdateNotesInput": "aa2d4ac6b74e8499"
+    },
+    "device": {
+      "apps/web/src/store/collections.ts": "845bbffa791ea2ce",
+      "apps/web/src/store/db.ts": "1112b85c56db26a7",
+      "apps/web/src/store/search-index.ts": "09c5d550df865b7d"
+    },
+    "tabs": {
+      "apps/web/src/store/leader.ts": "07dbf9a0dd2b95d4",
+      "apps/web/src/store/library-channel.ts": "f9225637bed498c1",
+      "apps/web/src/store/library-lock.ts": "556ffd6d09b70bc7",
+      "apps/web/src/store/locks.ts": "eeb36647ea9525a7",
+      "apps/web/src/store/names.ts": "1058b118c0b6b786"
+    },
+    "worker": {
+      "apps/web/src/store/files.ts": "a2ccb0a59753100b",
+      "apps/web/src/store/names.ts": "1058b118c0b6b786",
+      "apps/web/src/sw-register.ts": "69313571a1eaf13d",
+      "apps/web/src/sw/budget.ts": "ce67bb2a4500d8dc",
+      "apps/web/src/sw/routes.ts": "85e16f8ddefe5ebe",
+      "apps/web/src/sw/sw.ts": "bf91cbf6e26b99ff"
+    }
+  }
+}
