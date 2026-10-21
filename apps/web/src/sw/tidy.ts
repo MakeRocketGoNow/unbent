@@ -1,4 +1,4 @@
-import { SHELL_CACHE_PREFIX, SHELL_META_CACHE, commitOf, staleShellCaches } from './routes.js';
+import { SHELL_META_CACHE, commitOf, isShellCache, staleShellCaches } from './routes.js';
 
 /**
  * Which builds' shells the worker keeps, and the record that decides it: the deploy's
@@ -91,7 +91,7 @@ export function createShellKeeper(opts: { caches: ShellCaches; clients: ShellCli
       const names = await caches.keys();
       const running = new Set<string>();
       for (const name of names) {
-        if (!name.startsWith(SHELL_CACHE_PREFIX) || name === SHELL_META_CACHE || name === current) continue;
+        if (!isShellCache(name) || name === current) continue;
         const commit = await commitOfCache(name);
         if (commit && commits.has(commit)) running.add(name);
       }

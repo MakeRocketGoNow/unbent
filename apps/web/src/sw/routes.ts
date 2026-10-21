@@ -77,6 +77,9 @@ export const shellCacheName = (build: string) => `${SHELL_CACHE_PREFIX}${build}`
  */
 export const SHELL_META_CACHE = `${SHELL_CACHE_PREFIX}meta`;
 
+/** A build's shell cache: under the shell prefix, and not the meta cache, whose records are not chunks to look up or delete. */
+export const isShellCache = (name: string) => name.startsWith(SHELL_CACHE_PREFIX) && name !== SHELL_META_CACHE;
+
 /** The commit a build's `index.html` names (`<meta name="unbent-commit">`), or null. */
 export function commitOf(html: string): string | null {
   return /<meta name="unbent-commit" content="([^"]+)"/.exec(html)?.[1] ?? null;
@@ -95,7 +98,7 @@ export function commitOf(html: string): string | null {
 export function staleShellCaches(names: readonly string[], keep: { current: string; previous?: string; running: ReadonlySet<string> }): string[] {
   return names.filter((name) => {
     if (name.includes('-precache-')) return true;
-    if (!name.startsWith(SHELL_CACHE_PREFIX) || name === SHELL_META_CACHE) return false;
+    if (!isShellCache(name)) return false;
     return name !== keep.current && name !== keep.previous && !keep.running.has(name);
   });
 }

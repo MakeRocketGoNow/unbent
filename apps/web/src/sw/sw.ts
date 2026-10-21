@@ -2,7 +2,7 @@ import { PrecacheController, PrecacheRoute } from 'workbox-precaching';
 import { registerRoute } from 'workbox-routing';
 import { CacheFirst, NetworkFirst, type StrategyOptions } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
-import { API_CACHE, FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE, SERVED_HEADER, SHELL_CACHE_PREFIX, SHELL_META_CACHE, VIEW_HEADER, classify, commitOf, isAsset, isShellFallback, servesShell, shellCacheName, shelved, within } from './routes.js';
+import { API_CACHE, FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE, SERVED_HEADER, VIEW_HEADER, classify, commitOf, isAsset, isShellCache, isShellFallback, servesShell, shellCacheName, shelved, within } from './routes.js';
 import { createFilesLedger } from './budget.js';
 import { createShellKeeper } from './tidy.js';
 import { findFile } from '../store/files.js';
@@ -328,7 +328,7 @@ registerRoute(
   ({ request, url }) => isAsset(url, self.location.origin) && request.mode !== 'navigate',
   async ({ request, url }) => {
     for (const name of await caches.keys()) {
-      if (!name.startsWith(SHELL_CACHE_PREFIX) || name === SHELL_META_CACHE) continue;
+      if (!isShellCache(name)) continue;
       const kept = await (await caches.open(name)).match(request, { ignoreSearch: true });
       if (kept) return kept;
     }
