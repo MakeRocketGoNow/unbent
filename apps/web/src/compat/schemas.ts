@@ -11,6 +11,13 @@
  * the write. This tells the two apart, so the contract test (`contract.test.ts`) can let
  * the first through and stop the second.
  *
+ * Accepting more is not always safe either, and that is the other half. A request body is
+ * also what the server stores and answers back to every reader, old pages included: a
+ * field type, an option, a value that can be null now is sent to a page built before it
+ * existed. So a value or a type a schema gained is `unsure` too (`gains`), and only what
+ * cannot reach a reader (a longer limit, a new optional field, which an old page ignores)
+ * fits without asking.
+ *
  * Deliberately conservative, and deliberately small. It reads the keywords zod writes
  * and nothing else; any other difference is `unsure`, which asks a person rather than
  * guessing. A property a schema no longer names is `unsure` too, not safe: zod strips an
@@ -30,7 +37,14 @@ export interface Narrowing {
   /** Where in the schema, from its root: `.tags[]`, `.fields{key}`. Empty for the root. */
   path: string;
   severity: Severity;
+  /**
+   * What kind of difference: the values or the types accepted, a bound, the object's
+   * shape, or a keyword this does not read. `gains` reads the first two backwards.
+   */
+  kind: 'values' | 'types' | 'bounds' | 'shape' | 'other';
   what: string;
+  /** For `values` and `types`: what was lost, in words, for `gains` to say was gained. */
+  detail?: string;
 }
 
 type Obj = Record<string, unknown>;
@@ -48,9 +62,29 @@ const UNDERSTOOD = new Set([
   'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf',
 ]);
 
-/** Every way `next` accepts less than `prev` did; empty when it accepts at least as much. */
+/**
+ * Every way `next` accepts less than `prev` did, and every value or type it accepts that
+ * `prev` did not (`gains`); empty when it accepts at least as much and nothing a reader
+ * could be surprised by.
+ */
 export function narrowings(next: Schema, prev: Schema): Narrowing[] {
-  return compare(next, prev, '', { next, prev, seen: new Set() });
+  return [...compare(next, prev, '', { next, prev, seen: new Set() }), ...gains(next, prev)];
+}
+
+/**
+ * The values and types `next` accepts that `prev` did not, as `unsure`: what `prev`
+ * lacks of `next`'s, read with the two swapped. Bounds and shape are left out, since a
+ * longer string or a field an old page does not know reaches it harmlessly.
+ */
+function gains(next: Schema, prev: Schema): Narrowing[] {
+  return compare(prev, next, '', { next: prev, prev: next, seen: new Set() })
+    .filter((n) => n.kind === 'values' || n.kind === 'types')
+    .map((n) => ({
+      path: n.path,
+      severity: 'unsure' as const,
+      kind: n.kind,
+      what: `accepts ${n.detail ?? 'more'} now: once stored, the server answers it to pages from before, which may not know it`,
+    }));
 }
 
 interface Roots {
@@ -65,14 +99,14 @@ function compare(nextIn: Schema, prevIn: Schema, path: string, roots: Roots): Na
   const prev = resolve(prevIn, roots.prev);
   if (equal(strip(next), strip(prev))) return [];
   if (prev === false || acceptsAnything(next)) return [];
-  if (next === false) return [{ path, severity: 'breaks', what: 'accepts nothing now' }];
-  if (acceptsAnything(prev)) return [{ path, severity: 'breaks', what: 'accepted anything, and is limited now' }];
+  if (next === false) return [{ path, severity: 'breaks', kind: 'types', what: 'accepts nothing now', detail: 'anything' }];
+  if (acceptsAnything(prev)) return [{ path, severity: 'breaks', kind: 'types', what: 'accepted anything, and is limited now', detail: 'anything' }];
   const n = next as Obj;
   const p = prev as Obj;
 
   const pair = `${identity(n)}|${identity(p)}`;
   if (roots.seen.has(pair)) return [];
-  if (path.length > 2000) return [{ path, severity: 'unsure', what: 'is nested deeper than this check reads' }];
+  if (path.length > 2000) return [{ path, severity: 'unsure', kind: 'other', what: 'is nested deeper than this check reads' }];
   roots.seen.add(pair);
 
   // Every shape the old schema accepted must still be accepted, so a union in the old one
@@ -92,56 +126,57 @@ function compare(nextIn: Schema, prevIn: Schema, path: string, roots: Roots): Na
   }
 
   const out: Narrowing[] = [];
-  const say = (severity: Severity, what: string, at = path) => out.push({ path: at, severity, what });
+  const say = (severity: Severity, kind: Narrowing['kind'], what: string, at = path, detail?: string) =>
+    out.push({ path: at, severity, kind, what, ...(detail ? { detail } : {}) });
 
   for (const key of new Set([...Object.keys(n), ...Object.keys(p)])) {
     if (ANNOTATIONS.has(key) || UNDERSTOOD.has(key)) continue;
-    if (!equal(n[key], p[key])) say('unsure', `\`${key}\` changed, which this check does not read`);
+    if (!equal(n[key], p[key])) say('unsure', 'other', `\`${key}\` changed, which this check does not read`);
   }
   for (const key of ['allOf', 'not', 'prefixItems'] as const) {
-    if (!equal(n[key], p[key])) say('unsure', `\`${key}\` changed, which this check does not read`);
+    if (!equal(n[key], p[key])) say('unsure', 'other', `\`${key}\` changed, which this check does not read`);
   }
 
   const prevValues = valuesOf(p);
   const nextValues = valuesOf(n);
   if (nextValues) {
-    if (!prevValues) say('breaks', `only ${list(nextValues)} now`);
+    if (!prevValues) say('breaks', 'values', `only ${list(nextValues)} now`, path, 'any value');
     else {
       const lost = prevValues.filter((value) => !nextValues.some((v) => equal(v, value)));
-      if (lost.length > 0) say('breaks', `no longer accepts ${list(lost)}`);
+      if (lost.length > 0) say('breaks', 'values', `no longer accepts ${list(lost)}`, path, list(lost));
     }
   }
 
   const prevTypes = typesOf(p, prevValues);
   const nextTypes = typesOf(n, nextValues);
   if (nextTypes) {
-    if (!prevTypes) say('breaks', `has to be ${nextTypes.join(' or ')} now`);
+    if (!prevTypes) say('breaks', 'types', `has to be ${nextTypes.join(' or ')} now`, path, 'any type');
     else {
       const lost = prevTypes.filter((t) => !nextTypes.includes(t) && !(t === 'integer' && nextTypes.includes('number')));
-      if (lost.length > 0) say('breaks', `no longer accepts ${lost.join(' or ')}`);
+      if (lost.length > 0) say('breaks', 'types', `no longer accepts ${lost.join(' or ')}`, path, lost.join(' or '));
     }
   }
 
   for (const key of ['minLength', 'minItems', 'minProperties'] as const) {
     const [was, now] = [num(p[key]), num(n[key])];
-    if (now !== undefined && (was === undefined || now > was)) say('breaks', `${key} ${was ?? 'none'} → ${now}`);
+    if (now !== undefined && (was === undefined || now > was)) say('breaks', 'bounds', `${key} ${was ?? 'none'} → ${now}`);
   }
   for (const key of ['maxLength', 'maxItems', 'maxProperties'] as const) {
     const [was, now] = [num(p[key]), num(n[key])];
-    if (now !== undefined && (was === undefined || now < was)) say('breaks', `${key} ${was ?? 'none'} → ${now}`);
+    if (now !== undefined && (was === undefined || now < was)) say('breaks', 'bounds', `${key} ${was ?? 'none'} → ${now}`);
   }
   const [lowWas, lowNow] = [bound(p, 'minimum', 'exclusiveMinimum'), bound(n, 'minimum', 'exclusiveMinimum')];
   if (lowNow && (!lowWas || lowNow.v > lowWas.v || (lowNow.v === lowWas.v && lowNow.ex && !lowWas.ex))) {
-    say('breaks', `lowest value ${lowWas ? show(lowWas) : 'none'} → ${show(lowNow)}`);
+    say('breaks', 'bounds', `lowest value ${lowWas ? show(lowWas) : 'none'} → ${show(lowNow)}`);
   }
   const [highWas, highNow] = [bound(p, 'maximum', 'exclusiveMaximum'), bound(n, 'maximum', 'exclusiveMaximum')];
   if (highNow && (!highWas || highNow.v < highWas.v || (highNow.v === highWas.v && highNow.ex && !highWas.ex))) {
-    say('breaks', `highest value ${highWas ? show(highWas) : 'none'} → ${show(highNow)}`);
+    say('breaks', 'bounds', `highest value ${highWas ? show(highWas) : 'none'} → ${show(highNow)}`);
   }
-  if (n.format !== undefined && n.format !== p.format) say('breaks', `has to be a ${String(n.format)} now`);
-  if (n.pattern !== undefined && n.pattern !== p.pattern) say('unsure', 'its pattern changed, and whether the new one accepts every old value is not read here');
-  if (n.multipleOf !== undefined && n.multipleOf !== p.multipleOf) say('unsure', `multipleOf ${String(p.multipleOf ?? 'none')} → ${String(n.multipleOf)}`);
-  if (n.uniqueItems === true && p.uniqueItems !== true) say('breaks', 'refuses repeated items now');
+  if (n.format !== undefined && n.format !== p.format) say('breaks', 'bounds', `has to be a ${String(n.format)} now`);
+  if (n.pattern !== undefined && n.pattern !== p.pattern) say('unsure', 'bounds', 'its pattern changed, and whether the new one accepts every old value is not read here');
+  if (n.multipleOf !== undefined && n.multipleOf !== p.multipleOf) say('unsure', 'bounds', `multipleOf ${String(p.multipleOf ?? 'none')} → ${String(n.multipleOf)}`);
+  if (n.uniqueItems === true && p.uniqueItems !== true) say('breaks', 'bounds', 'refuses repeated items now');
 
   if (n.items !== undefined || p.items !== undefined) {
     out.push(...compare(schemaOr(n.items), schemaOr(p.items), `${path}[]`, roots));
@@ -151,15 +186,15 @@ function compare(nextIn: Schema, prevIn: Schema, path: string, roots: Roots): Na
   const prevProps = (isObj(p.properties) ? p.properties : {}) as Record<string, Schema>;
   const prevRequired = new Set(Array.isArray(p.required) ? (p.required as string[]) : []);
   for (const key of Array.isArray(n.required) ? (n.required as string[]) : []) {
-    if (!prevRequired.has(key)) say('breaks', 'is required now', `${path}.${key}`);
+    if (!prevRequired.has(key)) say('breaks', 'shape', 'is required now', `${path}.${key}`);
   }
   const extra = n.additionalProperties;
   for (const [key, was] of Object.entries(prevProps)) {
     const at = `${path}.${key}`;
     if (key in nextProps) out.push(...compare(nextProps[key]!, was, at, roots));
-    else if (extra === false) say('breaks', 'is refused now', at);
+    else if (extra === false) say('breaks', 'shape', 'is refused now', at);
     else if (isObj(extra) || typeof extra === 'boolean') out.push(...compare(extra, was, at, roots));
-    else say('unsure', 'is no longer read: a page from before still sends it, and what it sends is dropped', at);
+    else say('unsure', 'shape', 'is no longer read: a page from before still sends it, and what it sends is dropped', at);
   }
   // A record: the old schema took any key, so the new one must take every value it did.
   if (isObj(p.additionalProperties)) {

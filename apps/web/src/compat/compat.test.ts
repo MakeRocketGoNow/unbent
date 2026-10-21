@@ -12,13 +12,20 @@ const kinds = (prev: z.ZodType, next: z.ZodType) => between(prev, next).map((n) 
 describe('narrowings', () => {
   const note = z.object({ title: z.string().max(500), tags: z.array(z.string().min(1).max(100)).max(100).optional() });
 
-  it('finds nothing when the schema accepts at least what it did', () => {
+  /* A longer limit or a new optional field reaches an old page harmlessly: it ignores what it does not know. */
+  it('finds nothing when the schema accepts at least what it did and gained no value or type', () => {
     expect(between(note, note)).toEqual([]);
     expect(between(note, note.extend({ pinned: z.boolean().optional() }))).toEqual([]);
     expect(between(note, z.object({ title: z.string().max(1000), tags: z.array(z.string().max(200)).optional() }))).toEqual([]);
-    expect(between(z.enum(['a', 'b']), z.enum(['a', 'b', 'c']))).toEqual([]);
-    expect(between(z.string(), z.string().nullable())).toEqual([]);
-    expect(between(z.number().int(), z.number())).toEqual([]);
+  });
+
+  /* What a body may carry is what the server stores and answers back to every page, old ones included. */
+  it('is unsure of a value or a type it gained', () => {
+    expect(kinds(z.enum(['a', 'b']), z.enum(['a', 'b', 'c']))).toEqual(['unsure ']);
+    expect(between(z.enum(['a', 'b']), z.enum(['a', 'b', 'c']))[0]?.what).toMatch(/^accepts "c" now/);
+    expect(kinds(z.string(), z.string().nullable())).toEqual(['unsure ']);
+    expect(kinds(note, note.extend({ title: z.string().max(500).nullable() }))).toEqual(['unsure .title']);
+    expect(kinds(z.enum(['a']), z.string())).toEqual(['unsure ']);
   });
 
   /* An old page omits a field it never knew about, and is refused. */
@@ -46,7 +53,8 @@ describe('narrowings', () => {
 
   it('reads records and nested unions', () => {
     const fields = z.record(z.uuid(), z.union([z.string().max(1000), z.number(), z.null()]));
-    expect(between(fields, z.record(z.uuid(), z.union([z.string().max(1000), z.number(), z.boolean(), z.null()])))).toEqual([]);
+    expect(kinds(fields, z.record(z.uuid(), z.union([z.string().max(1000), z.number(), z.boolean(), z.null()])))).toEqual(['unsure {key}']);
+    expect(between(fields, z.record(z.uuid(), z.union([z.string().max(2000), z.number(), z.null()])))).toEqual([]);
     expect(kinds(fields, z.record(z.uuid(), z.union([z.string().max(1000), z.null()])))).toEqual(['breaks {key}']);
   });
 

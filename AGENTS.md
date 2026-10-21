@@ -890,8 +890,11 @@ The decision is made in the commit that changes the contract, and the contract t
 `contract.json`, the record of what the level was last decided for:
 
 - **Request schemas** (every zod schema `@unbent/shared` exports) are compared as JSON
-  Schema. One that accepts at least what it did fits, and a local run of the test
-  records it on its own; commit `contract.json` with the change. One that accepts less
+  Schema. One that accepts at least what it did, and gained no value or type, fits, and
+  a local run of the test records it on its own; commit `contract.json` with the change.
+  A value or a type it gained (a new field type, an option, a value that can be null now)
+  asks, because the server stores what it accepts and answers it to old pages too. One
+  that accepts less
   (a field required now, a lower limit, a value or a type no longer accepted) refuses
   an old page's request, and an old outbox's replay, with a 400 that loses the write;
   it cannot be recorded without raising the level. Prefer making it fit: keep accepting
