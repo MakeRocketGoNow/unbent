@@ -23,8 +23,9 @@ import { declarations, interfaceParts, normalize, relativeImports } from './surf
  * from the code:
  *
  * - **A request schema** in `@unbent/shared` (every exported zod schema, as JSON
- *   Schema). Read structurally (`schemas.ts`): one that accepts at least what it did is
- *   recorded on its own by a local run, and one that accepts less cannot be recorded
+ *   Schema). Read structurally (`schemas.ts`): one that accepts at least what it did, and
+ *   gained no value or type an old page could be sent back, is recorded on its own by a
+ *   local run; one that gained one asks; and one that accepts less cannot be recorded
  *   without raising the level.
  * - **Something the builds share that has no schema**: the service worker and the files
  *   it shares with the page, the protocol between tabs and the locks they take, what is
