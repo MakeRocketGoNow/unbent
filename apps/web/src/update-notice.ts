@@ -43,11 +43,16 @@ function set(next: boolean): void {
   for (const listener of listeners) listener();
 }
 
-/** A level the deploy in charge stated, from its worker or an API answer. */
+/**
+ * A level the deploy in charge stated, from its worker or an API answer. Back at the
+ * page's own (a bump reverted before the person answered) the notice closes, since there
+ * is nothing left to reload for.
+ */
 export function sawLevel(level: number | null): void {
   if (level === null) return;
   seen = level;
-  if (needsReload(COMPAT_LEVEL, level) && level !== dismissedFor) set(true);
+  if (!needsReload(COMPAT_LEVEL, level)) set(false);
+  else if (level !== dismissedFor) set(true);
 }
 
 export function noticeShown(): boolean {

@@ -44,6 +44,13 @@ describe('the notice', () => {
     expect(noticeShown()).toBe(true);
   });
 
+  /* A bump reverted before the person answered: nothing is left to reload for. */
+  it('closes when the level comes back to the page’s own', () => {
+    sawLevel(COMPAT_LEVEL + 1);
+    sawLevel(COMPAT_LEVEL);
+    expect(noticeShown()).toBe(false);
+  });
+
   it('closes when answered by a reload', () => {
     sawLevel(COMPAT_LEVEL + 1);
     clearNotice();
