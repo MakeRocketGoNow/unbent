@@ -13,21 +13,25 @@ import { COMPAT_LEVEL } from '@unbent/shared/compat';
  */
 
 /**
- * Whether a level the deploy in charge stated is one this page cannot run beside: higher
- * than the page's own (`COMPAT_LEVEL`).
+ * Whether a level the deploy in charge stated is one this page cannot run beside: any
+ * level but the page's own (`COMPAT_LEVEL`).
+ *
+ * Lower as well as higher. A lower one is a bump that was reverted after this page
+ * loaded it, and the page is then the newer side, which a reload fixes as surely: a page
+ * load is answered from the network first, so it brings the build the server is on.
  *
  * Not whether it is another build. That was the rule, and it asked for a reload after
  * every deploy, which nothing about most deploys needs: this page keeps its own shell
  * while it is open, and the next load brings the newest build regardless. Unknown is not
- * higher: a worker or a server from before levels states none, and a word that might be
+ * another: a worker or a server from before levels states none, and a word that might be
  * wrong is worse than none.
  */
 export function needsReload(page: number, deployed: number | null): boolean {
-  return deployed !== null && deployed > page;
+  return deployed !== null && deployed !== page;
 }
 
 let shown = false;
-/** The highest level stated so far, which is the one a dismissal is for. */
+/** The level stated last, which is the one a dismissal is for. */
 let seen: number | null = null;
 /** The level the person dismissed the notice for, so the next answer does not bring it straight back. */
 let dismissedFor: number | null = null;
@@ -42,7 +46,7 @@ function set(next: boolean): void {
 /** A level the deploy in charge stated, from its worker or an API answer. */
 export function sawLevel(level: number | null): void {
   if (level === null) return;
-  if (seen === null || level > seen) seen = level;
+  seen = level;
   if (needsReload(COMPAT_LEVEL, level) && level !== dismissedFor) set(true);
 }
 
@@ -57,7 +61,7 @@ export function subscribeNotice(listener: () => void): () => void {
 
 /**
  * The person closed the notice. It stays closed for this level, since every request
- * would otherwise open it again at once; a deploy that raises the level again says so.
+ * would otherwise open it again at once; a deploy that moves the level again says so.
  */
 export function dismissNotice(): void {
   dismissedFor = seen;

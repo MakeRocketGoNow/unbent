@@ -837,7 +837,7 @@ number of deploys keeps finding its chunks after the new worker has taken charge
 `recoverFromMissingChunks` reloads a page once when a chunk is gone all the same, for
 the pages the worker never heard from. The one thing the
 page says is that a reload is needed (`UpdateSnackbar`), and only when the worker's
-compatibility level is higher than the page's (`COMPAT_LEVEL` in
+compatibility level is not the page's own (`COMPAT_LEVEL` in
 `@unbent/shared/compat`, stated by the worker and on every API answer): an ordinary
 deploy says nothing. The rules this replaced (a
 change of section, five minutes away, nothing touched since the load, at once on dev and

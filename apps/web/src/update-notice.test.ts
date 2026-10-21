@@ -12,6 +12,11 @@ describe('needsReload', () => {
     expect(needsReload(1, 1)).toBe(false);
   });
 
+  /* A bump reverted after this page loaded it: the page is the newer side, and a reload brings the server's build. */
+  it('says so for a lower level too', () => {
+    expect(needsReload(2, 1)).toBe(true);
+  });
+
   /* A word that might be wrong is worse than none: the next load is the newest build regardless. */
   it('says nothing when the deploy is too old to say', () => {
     expect(needsReload(1, null)).toBe(false);
