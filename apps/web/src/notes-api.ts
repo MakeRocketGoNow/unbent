@@ -159,9 +159,10 @@ export async function request(input: string, init: RequestInit & { timeout?: num
   // HTTP cache answers them with no network and no mark, and a PDF opened on a plane
   // would have put the app online. That copy also keeps the headers of the deploy that
   // first sent it, its compatibility level among them: read from it, a level a year old
-  // asked a fresh page to reload on every load. The JSON reads are not cacheable and
-  // still count.
-  const fresh = served === null && input.startsWith('/') && !fileAddress(new URL(input, 'http://unbent.invalid'));
+  // asked a fresh page to reload on every load. Only a read can come from that cache, so
+  // a write to a file's address (a delete) still counts, and so do the JSON reads, which
+  // are not cacheable.
+  const fresh = served === null && input.startsWith('/') && (write || !fileAddress(new URL(input, 'http://unbent.invalid')));
   if (served === 'cache') recheck();
   else if (fresh) confirmReachable();
   // The deploy's level, from an answer the server gave now rather than one kept from

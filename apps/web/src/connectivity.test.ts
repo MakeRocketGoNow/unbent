@@ -45,6 +45,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   browserSays(true);
   resetConnectivity();
+  resetNotice();
 });
 
 describe('connectivity', () => {
@@ -251,7 +252,13 @@ describe('request', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200, headers: { [COMPAT_HEADER]: level } })));
     await request('/api/notes');
     expect(noticeShown()).toBe(true);
-    resetNotice();
+  });
+
+  it('comes back online because a write to a file\u2019s address was answered, which no cache can do', async () => {
+    setReachableForTests(false);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 204 })));
+    await request('/api/notes/n1/files/scan.pdf', { method: 'DELETE' });
+    expect(offlineNow()).toBe(false);
   });
 
   it('does not come back online because another origin answered', async () => {
