@@ -3,10 +3,12 @@ import { Workbox, messageSW } from 'workbox-window';
 import { within } from './sw/routes.js';
 import { pageBusy } from './busy.js';
 import { buildInfo } from './build-info.js';
+import { COMPAT_LEVEL } from './compat/level.js';
 
 /**
  * Installs the service worker that keeps the app openable without a connection (see
- * `sw/sw.ts` for what it holds) and says when a newer build than this page is in charge.
+ * `sw/sw.ts` for what it holds) and says when a build this page cannot run beside is in
+ * charge.
  *
  * Only in a production build. Vite's development server serves source modules under
  * names that change with every edit, and a worker caching those would serve yesterday's
@@ -31,12 +33,13 @@ import { buildInfo } from './build-info.js';
  * open page is running keeps its shell cached, so a page in use keeps working after the
  * new worker takes charge. The worker is told to take charge the moment it has installed, no page is
  * ever reloaded by this file except one whose next chunk is gone
- * (`recoverFromMissingChunks`), and the one thing left to say is that a reload would
- * bring another build (`useUpdateNotice`), which is said only when it is so.
+ * (`recoverFromMissingChunks`), and the one thing left to say is that a reload is
+ * needed (`useUpdateNotice`), which is said only when the new build cannot run beside
+ * this one (`COMPAT_LEVEL`).
  */
 let wb: Workbox | undefined;
 
-/** The commit this page was built from, for telling whether the worker in charge is newer. */
+/** The commit this page was built from, which the worker keeps this build's shell for. */
 const PAGE_COMMIT: string | null = buildInfo?.commit ?? null;
 
 let noticeShown = false;
@@ -53,7 +56,7 @@ export function registerServiceWorker(): void {
   const worker = (wb = new Workbox('/sw.js'));
   /*
      A worker took charge of this page: this build's, found during this load, or a newer
-     one. Only another build is worth a word. The browser's own event, not workbox-window's
+     one. Only one this page cannot run beside is worth a word. The browser's own event, not workbox-window's
      `controlling`: workbox-window counts an update found more than a minute after
      registering, or any second one, as somebody else's, keeps pointing at the worker it
      started with, and stops listening, so a deploy found on a return to the tab, which
@@ -61,7 +64,7 @@ export function registerServiceWorker(): void {
   */
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     sayRunning();
-    void sayIfOther();
+    void sayIfNeeded();
   });
   sayRunning();
   /*
@@ -83,21 +86,25 @@ export function registerServiceWorker(): void {
 }
 
 /**
- * Whether the worker now in charge is another build than this page, which a reload would
- * bring (newer, almost always; after a rollback, older) and still what a reload brings: the worker's commit, asked of it, against the page's own. A page whose load
- * found and installed this build's own worker hears `controllerchange` too, and has nothing
- * to be told. Unknown on either side is not another: a word that might be wrong is worse than
- * none, and the next load brings the newest build regardless.
+ * Whether the worker now in charge is a build this page cannot run beside: its
+ * compatibility level, asked of it, is higher than the page's own (`COMPAT_LEVEL`).
+ *
+ * Not whether it is another build. That was the rule, and it asked for a reload after
+ * every deploy, which nothing about most deploys needs: this page keeps its own shell
+ * while it is open, and the next load brings the newest build regardless. A lower level
+ * is a rollback past a bump, which the page that is newer than the server cannot fix by
+ * reloading either. Unknown is not higher: a worker from before levels answers none, and
+ * a word that might be wrong is worse than none.
  */
-export function isOtherBuild(page: string | null, worker: string | null): boolean {
-  return page !== null && worker !== null && page !== worker;
+export function needsReload(page: number, worker: number | null): boolean {
+  return worker !== null && worker > page;
 }
 
-async function sayIfOther(): Promise<void> {
+async function sayIfNeeded(): Promise<void> {
   const controller = navigator.serviceWorker.controller;
   if (!controller) return;
-  const commit = await within(askBuild(controller), 5_000, null).catch(() => null);
-  if (isOtherBuild(PAGE_COMMIT, commit)) setNotice(true);
+  const compat = await within(askCompat(controller), 5_000, null).catch(() => null);
+  if (needsReload(COMPAT_LEVEL, compat)) setNotice(true);
 }
 
 /**
@@ -111,9 +118,12 @@ function sayRunning(): void {
   if (controller && PAGE_COMMIT) controller.postMessage({ type: 'RUNNING', commit: PAGE_COMMIT });
 }
 
-/** The commit the worker in charge was built from, from the page it holds (`BUILD` in `sw.ts`). */
-function askBuild(controller: ServiceWorker): Promise<string | null> {
-  return messageSW(controller, { type: 'BUILD' }).then((answer: unknown) => (answer as { commit?: string | null } | null)?.commit ?? null);
+/** The compatibility level of the worker in charge (`BUILD` in `sw.ts`), or null from one too old to say. */
+function askCompat(controller: ServiceWorker): Promise<number | null> {
+  return messageSW(controller, { type: 'BUILD' }).then((answer: unknown) => {
+    const compat = (answer as { compat?: unknown } | null)?.compat;
+    return typeof compat === 'number' ? compat : null;
+  });
 }
 
 export type OfflineReady = 'ready' | 'installing' | 'unavailable';
@@ -164,12 +174,10 @@ export function useOfflineReady(): OfflineReady {
 }
 
 /**
- * Whether to say that a reload would bring a newer build, for `UpdateSnackbar`, and the
- * two answers to it.
+ * Whether to say that a reload is needed, for `UpdateSnackbar`, and the two answers to it.
  *
- * Said once a newer build's worker is in charge of this page, which is the moment this
- * page stopped being the newest; said once, and left to the person: this file never
- * reloads a page in use. Dismissing it changes nothing but the notice: the next load,
+ * Said once a worker this page cannot run beside is in charge of it (`needsReload`);
+ * said once, and left to the person: this file never reloads a page in use. Dismissing it changes nothing but the notice: the next load,
  * whenever it comes, is the newest build.
  */
 export function useUpdateNotice(): { shown: boolean; reload: () => void; dismiss: () => void } {

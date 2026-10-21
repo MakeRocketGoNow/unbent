@@ -5,6 +5,7 @@ import { ExpirationPlugin } from 'workbox-expiration';
 import { API_CACHE, FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE, SERVED_HEADER, SHELL_CACHE_PREFIX, SHELL_META_CACHE, VIEW_HEADER, classify, commitOf, isAsset, isShellFallback, servesShell, shellCacheName, shelved, staleShellCaches, within } from './routes.js';
 import { createFilesLedger } from './budget.js';
 import { findFile } from '../store/files.js';
+import { COMPAT_LEVEL } from '../compat/level.js';
 
 /**
  * The service worker: what lets the installed app open with no connection.
@@ -565,8 +566,9 @@ registerRoute(
  *
  * `BUILD`: which deploy this worker is. Answered on the port the page sent, with the
  * commit read out of the precached page (the one place the worker can learn it without
- * the build plumbing it through), so a page can tell whether the worker now in charge
- * is a newer build than itself, and say that a reload would bring it (`UpdateSnackbar`).
+ * the build plumbing it through) and the build's compatibility level (`COMPAT_LEVEL`),
+ * so a page can tell whether the worker now in charge is a build it cannot run beside,
+ * and say that a reload is needed (`UpdateSnackbar`).
  *
  * `RUNNING`: which build the page sending it is running, so a deploy's tidy keeps that
  * build's shell while the page is open (`tidyShellCaches`).
@@ -588,5 +590,5 @@ async function answerBuild(port: MessagePort | undefined): Promise<void> {
   const page = await shell.matchPrecache('/index.html').catch(() => undefined);
   const html = (await page?.text().catch(() => '')) ?? '';
   const commit = commitOf(html);
-  port.postMessage({ type: 'BUILD', commit });
+  port.postMessage({ type: 'BUILD', commit, compat: COMPAT_LEVEL });
 }

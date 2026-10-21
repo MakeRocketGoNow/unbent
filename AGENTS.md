@@ -836,8 +836,9 @@ build (`RUNNING`) and for the previous build regardless, so a tab left open acro
 number of deploys keeps finding its chunks after the new worker has taken charge;
 `recoverFromMissingChunks` reloads a page once when a chunk is gone all the same, for
 the pages the worker never heard from. The one thing the
-page says is that a reload would bring a newer build (`UpdateSnackbar`), and only when the
-worker's commit differs from the page's (`BUILD` in `sw.ts`). The rules this replaced (a
+page says is that a reload is needed (`UpdateSnackbar`), and only when the worker's
+compatibility level is higher than the page's (`BUILD` in `sw.ts`, `compat/level.ts`):
+an ordinary deploy says nothing. The rules this replaced (a
 change of section, five minutes away, nothing touched since the load, at once on dev and
 previews) each answered a reload that drew the old build or lost someone's place, and
 between them still moved every other tab onto a worker that had deleted their chunks.
