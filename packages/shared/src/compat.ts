@@ -19,9 +19,8 @@
  *
  * Raised only by `pnpm compat:bump`, never by hand, because the contract test
  * (`apps/web/src/compat/contract.test.ts`) records the level beside the shapes it was
- * decided for. That test
- * is what asks the question: it fails on a change to what two builds share, and says
- * which kind it is. See "Builds side by side" in AGENTS.md.
+ * decided for. That test is what asks the question: it fails on a change to what two
+ * builds share, and says which kind it is. See "Builds side by side" in AGENTS.md.
  */
 export const COMPAT_LEVEL = 1;
 
