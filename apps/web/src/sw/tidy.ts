@@ -70,7 +70,9 @@ export function createShellKeeper(opts: { caches: ShellCaches; clients: ShellCli
     const cache = await caches.open(name);
     const page = (await cache.keys()).find((request) => new URL(request.url).pathname === '/index.html');
     const commit = commitOf((page && (await text(await cache.match(page)))) ?? '');
-    if (commit) await store.put(key, new Response(commit));
+    // Only saves the next tidy a read: a refused write (a device near full) must not stop
+    // this tidy before it deletes the shells that would free the room.
+    if (commit) await store.put(key, new Response(commit)).catch(() => {});
     return commit;
   }
 
