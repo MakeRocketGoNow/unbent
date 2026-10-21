@@ -2,8 +2,9 @@ import { createFileRoute } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { Button } from '../components/Button.js';
 import { Confirm } from '../components/Confirm.js';
-import { CopyIcon } from '../components/icons.js';
+import { CopiedIcon, CopyIcon } from '../components/icons.js';
 import { oauth2 } from '../auth-client.js';
+import { mcpSetupPrompt } from '../mcp-setup-prompt.js';
 import { request } from '../notes-api.js';
 
 export const Route = createFileRoute('/settings/connected-apps')({
@@ -52,6 +53,45 @@ function McpUrl() {
         {copied ? '✓' : <CopyIcon />}
       </button>
     </span>
+  );
+}
+
+/**
+ * Copies `mcpSetupPrompt` for this instance, for a person whose assistant is a coding
+ * agent that can edit its own config.
+ *
+ * A labelled button rather than a second icon beside the URL: two copy glyphs side by
+ * side would leave the person guessing which copies what. The label holds its width while
+ * it reads "Copied" (both words share one grid cell and only one is visible), so the
+ * confirmation does not shift what sits beside it. The live region says it for a screen
+ * reader, which does not reliably announce a button's own label changing.
+ */
+function CopySetupPrompt() {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(mcpSetupPrompt(`${window.location.origin}/api/mcp`));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // As in `McpUrl`: the URL is on screen to copy by hand.
+    }
+  }
+
+  return (
+    <>
+      <Button onClick={() => void copy()}>
+        {copied ? <CopiedIcon /> : <CopyIcon />}
+        <span className="copy-label">
+          <span aria-hidden={copied}>Copy setup prompt</span>
+          <span aria-hidden={!copied}>Copied</span>
+        </span>
+      </Button>
+      <span className="visually-hidden" role="status">
+        {copied ? 'Setup prompt copied' : ''}
+      </span>
+    </>
   );
 }
 
@@ -161,8 +201,15 @@ function ConnectedAppsPage() {
           <McpUrl />
         </p>
         <p className="muted small">
-          The client will open a browser window to ask for permission. Once approved, it
-          appears above and stays connected until you disconnect it here.
+          Using a coding agent like Claude Code, Codex or Cursor? Paste it this prompt and
+          it adds the server itself.
+        </p>
+        <p>
+          <CopySetupPrompt />
+        </p>
+        <p className="muted small">
+          Either way, the client will open a browser window to ask for permission. Once
+          approved, it appears above and stays connected until you disconnect it here.
         </p>
       </section>
 

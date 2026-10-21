@@ -579,6 +579,15 @@ export function CopyIcon() {
 }
 
 /**
+ * A tick at `CopyIcon`'s size, which takes its place for a moment after a copy, so the
+ * swap changes the glyph and not the button's shape. `CheckIcon` is drawn for a 44px
+ * header control and would grow a text-sized button.
+ */
+export function CopiedIcon() {
+  return <Check size="1em" strokeWidth={2} aria-hidden="true" focusable="false" />;
+}
+
+/**
  * A tray with an arrow into it, for a link that saves a file.
  *
  * On the notebook list, beside the pencil, where a word would have been a third verb on
