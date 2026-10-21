@@ -890,7 +890,10 @@ first. Asked, not made, and what the page sends meanwhile is not lost for it: a 
 the server refuses while the page is behind the deploy is kept, not ended, and waits
 for the reload (`refusal` in `store/actions.ts`). The build that replays a queued write
 rebuilds its request, so after the reload a kept save goes out in the new shape. A
-queued `createNote` is the exception, since it stores its body as sent. The queue is not
+queued `createNote` is the exception, since it stores its body as sent. The outbox is
+the holding tab's, which may not be the tab that reloads: a client on a higher level
+than its holder takes the library over (`onOtherLevel` in `client-library.ts`), so the
+reload in front of the person is the one that sends the queue. The queue is not
 paused on a raised level: most bumps are not about what the server takes, and saves
 held for no visible reason are worse than the rare one this keeps. Keeping the old shape
 working is still the first protection; this is the second. The notice used to show for
