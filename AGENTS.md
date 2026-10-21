@@ -901,9 +901,13 @@ The decision is made in the commit that changes the contract, and the contract t
   the old shape beside the new one.
 - **What the builds share with no schema** is fingerprinted by area, with comments and
   spacing taken out, and a change asks that area's question: the worker and every module
-  it imports (found by following its imports, so a new one joins on its own), the tabs'
-  channel and locks, what is kept on the device, and the types the API answers with (an
-  interface that only gained fields fits).
+  it imports (found by following its imports, so a new one joins on its own); the tabs'
+  channels and locks, and the actions a client forwards to the holder (`forwardable`, and
+  each one's signature); what is kept on the device (the collections, the feed's
+  position, the outbox's metadata, the search index); and the types the API answers with,
+  in `@unbent/shared` and the page's own in `notes-api.ts` (an interface that only gained
+  fields fits). Busy files are read for their declarations only, so a change to a body
+  does not ask.
 
 When it asks, answer it: `pnpm compat:update` when a page from the previous build still
 works with the change, `pnpm compat:bump` when it does not. Never record a change you
@@ -918,8 +922,13 @@ What the test cannot see is yours to catch, and `pnpm compat:bump` is for it too
   `@unbent/shared`: notebook rename and edit, tag edit, the storage add-on, client error
   reports, and two queries. A new body a page sends goes in `@unbent/shared`, where it is
   checked.
+- **An answer changed on the server alone**: a route's response that no type in the
+  answers area mirrors, or one whose mirror in `notes-api.ts` was not changed with it.
 - **What a page reads that is not a type**: a header, an error `code` the page switches
   on, an address the page builds. And a meaning that changed under the same shape.
+- **What the device keeps that no listed declaration names**: an outbox entry's
+  `mutationFnName` (a renamed one is never replayed), the list of notebooks kept
+  offline, a `localStorage` key.
 
 ## The local database is disposable, but ask
 

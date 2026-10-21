@@ -2,7 +2,7 @@
 import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 import { narrowings } from './schemas.js';
-import { declarations, interfaceParts, normalize, relativeImports } from './surfaces.js';
+import { constant, declarations, interfaceParts, normalize, relativeImports, shorthandKeys, signature } from './surfaces.js';
 
 /** What `contract.test.ts` compares: a zod schema as JSON Schema, from the sender's side. */
 const json = (schema: z.ZodType) => z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' }) as Record<string, unknown>;
@@ -127,6 +127,40 @@ describe('interfaceParts', () => {
 
   it('is null for a type alias', () => {
     expect(interfaceParts("export type Sort = 'a' | 'b';")).toBeNull();
+  });
+});
+
+describe('constant and shorthandKeys', () => {
+  it('reads a list of names declared as a const', () => {
+    const source = '/** The calls. */\nexport const forwardable = {\n  saveNote,\n  createNote,\n};\nconst other = 1;';
+    const list = constant(source, 'forwardable');
+    expect(list).toBe('export const forwardable = {\nsaveNote,\ncreateNote,\n};');
+    expect(shorthandKeys(list!)).toEqual(['saveNote', 'createNote']);
+    expect(constant(source, 'missing')).toBeNull();
+  });
+});
+
+describe('signature', () => {
+  it('reads a function to the brace its body opens with', () => {
+    const source = [
+      '/** Saves. */',
+      'export async function saveNote(input: Save, opts: { quiet: boolean } = { quiet: false }): Promise<{ id: string } | Note> {',
+      '  return api.save(input);',
+      '}',
+      'export function plain<T>(',
+      '  value: T,',
+      '): (x: T) => void {',
+      '  return () => {};',
+      '}',
+    ].join('\n');
+    expect(signature(source, 'saveNote')).toBe('export async function saveNote(input: Save, opts: { quiet: boolean } = { quiet: false }): Promise<{ id: string } | Note>');
+    expect(signature(source, 'plain')).toBe('export function plain<T>(\nvalue: T,\n): (x: T) => void');
+    expect(signature(source, 'missing')).toBeNull();
+  });
+
+  /* The body is no other build's business, and changes far more often than the signature. */
+  it('is the same when only the body changes', () => {
+    expect(signature('function a(x: string): void {\n  one();\n}', 'a')).toBe(signature('function a(x: string): void {\n  two();\n}', 'a'));
   });
 });
 

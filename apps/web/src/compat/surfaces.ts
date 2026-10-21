@@ -115,6 +115,64 @@ function declarationEnd(text: string, from: number, isInterface: boolean): numbe
   return text.length;
 }
 
+/**
+ * A `const` declared in the source, to its `;`, as normalized text, or null. For a list
+ * that two builds must agree on without being a type (`forwardable`, the actions a client
+ * tab asks the holder to run by name).
+ */
+export function constant(source: string, name: string): string | null {
+  const text = normalize(source);
+  const match = new RegExp(`^(?:export\\s+)?const\\s+${name}\\b`, 'm').exec(text);
+  return match ? text.slice(match.index, declarationEnd(text, match.index, false)) : null;
+}
+
+/** The names in an object literal written in shorthand, `{ a, b, c }`. */
+export function shorthandKeys(literal: string): string[] {
+  const open = literal.indexOf('{');
+  const close = literal.lastIndexOf('}');
+  if (open < 0 || close < open) return [];
+  return literal
+    .slice(open + 1, close)
+    .split(',')
+    .map((key) => key.trim())
+    .filter((key) => /^[A-Za-z_$][\w$]*$/.test(key));
+}
+
+/**
+ * A function's signature as normalized text: its name, parameters and return type, up
+ * to the brace its body opens with; null when the source declares no such function.
+ * What a caller in another build relies on, without the body, which changes far more
+ * often and is no other build's business.
+ */
+export function signature(source: string, name: string): string | null {
+  const text = normalize(source);
+  const match = new RegExp(`^(?:export\\s+)?(?:async\\s+)?function\\s+${name}\\b`, 'm').exec(text);
+  if (!match) return null;
+  let parens = 0;
+  let angles = 0;
+  let opened = false;
+  let quote: string | null = null;
+  for (let i = match.index; i < text.length; i++) {
+    const c = text[i]!;
+    if (quote) {
+      if (c === '\\') i++;
+      else if (c === quote) quote = null;
+      continue;
+    }
+    if (c === "'" || c === '"' || c === '`') quote = c;
+    else if (c === '(') {
+      parens++;
+      opened = true;
+    } else if (c === ')') parens--;
+    else if (c === '<') angles++;
+    else if (c === '>' && text[i - 1] !== '=') angles--;
+    else if (c === '{' && opened && parens === 0 && angles === 0 && !/:\s*$/.test(text.slice(match.index, i))) {
+      return text.slice(match.index, i).trim();
+    }
+  }
+  return null;
+}
+
 /** The relative modules a source file imports, as written (`./routes.js`). */
 export function relativeImports(source: string): string[] {
   const specifiers = new Set<string>();

@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { expect, it } from 'vitest';
 import { COMPAT_LEVEL } from './level.js';
 import { equal, narrowings } from './schemas.js';
-import { declarations, interfaceParts, normalize, relativeImports } from './surfaces.js';
+import { constant, declarations, interfaceParts, normalize, relativeImports, shorthandKeys, signature } from './surfaces.js';
 
 /**
  * The question every change to what two builds share has to answer: can a page still
@@ -57,36 +57,64 @@ interface Area {
    * that only gained members fits without asking.
    */
   declarationsOf?: string[];
+  /**
+   * A list of actions another build calls by name (a `const` of shorthand names) and the
+   * file their functions are in: the list is printed, and each function's signature.
+   */
+  calls?: { path: string; list: string };
+  /** A declaration new here fits: true where an old build cannot be sent what it does not know of. */
+  newFits?: boolean;
 }
+
+/** Files the areas name outright; the worker's own list leaves these to them, so nothing is asked twice. */
+const NAMED = new Set<string>();
 
 /**
  * The areas, each with the question a change in it asks. A file joins an area by being
  * listed, except the worker's, which is every module the worker imports: so a module the
  * worker starts sharing with the page is in it without anyone remembering to add it.
  * The level itself is left out, being what the answer changes.
+ *
+ * Whole files where most of the file is the contract, and only the declarations, or a
+ * list and its signatures, where the contract is a small part of a busy file (`actions.ts`,
+ * `wipe.ts`, `keep.ts`, `feed.ts`), which would otherwise ask on nearly every change.
  */
 const AREAS: Record<string, Area> = {
   worker: {
     question:
       'Can a page from the previous build keep working under this build’s worker: the messages it sends it, the caches, headers and addresses it relies on, the files the worker keeps for it on the device?',
-    files: () => [...closure('apps/web/src/sw/sw.ts'), 'apps/web/src/sw-register.ts'].filter((path) => path !== 'apps/web/src/compat/level.ts'),
+    files: () =>
+      [...closure('apps/web/src/sw/sw.ts'), 'apps/web/src/sw-register.ts'].filter((path) => path !== 'apps/web/src/compat/level.ts' && !NAMED.has(path)),
   },
   tabs: {
     question:
-      'Can a tab on the previous build and a tab on this one still work together: the messages on the library channel, and the locks that say which tab holds the library and replays the outbox?',
+      'Can a tab on the previous build and a tab on this one still work together: the messages on the library channel, the wipe’s and the keeper’s, the actions a client asks the holder to run and their arguments, and the locks that say which tab holds the library and replays the outbox?',
     files: () => ['apps/web/src/store/library-channel.ts', 'apps/web/src/store/library-lock.ts', 'apps/web/src/store/leader.ts', 'apps/web/src/store/locks.ts', 'apps/web/src/store/names.ts'],
+    declarationsOf: ['apps/web/src/store/wipe.ts', 'apps/web/src/store/keep.ts'],
+    calls: { path: 'apps/web/src/store/actions.ts', list: 'forwardable' },
   },
   device: {
     question:
-      'Can a tab on the previous build open what this build keeps on the device (the library’s collections and its SQLite file, the search index), and can this build open what that one wrote?',
+      'Can a tab on the previous build open what this build keeps on the device (the library’s collections and its SQLite file, the feed’s position, the outbox’s entries, the search index), and can this build open what that one wrote?',
     files: () => ['apps/web/src/store/collections.ts', 'apps/web/src/store/db.ts', 'apps/web/src/store/search-index.ts'],
+    declarationsOf: ['apps/web/src/store/feed.ts', 'apps/web/src/store/actions.ts'],
   },
   answers: {
     question:
       'Does a page from the previous build still read what the API answers now? A field removed or renamed, one that can be null or missing now, a new value in a union the page switches on.',
-    declarationsOf: ['packages/shared/src/schemas.ts', 'packages/shared/src/feed.ts', 'packages/shared/src/fields.ts', 'packages/shared/src/plan.ts'],
+    declarationsOf: [
+      'packages/shared/src/schemas.ts',
+      'packages/shared/src/feed.ts',
+      'packages/shared/src/fields.ts',
+      'packages/shared/src/plan.ts',
+      'packages/shared/src/export-format.ts',
+      'packages/shared/src/operator.ts',
+      'apps/web/src/notes-api.ts',
+    ],
+    newFits: true,
   },
 };
+for (const [name, area] of Object.entries(AREAS)) if (name !== 'worker') for (const path of area.files?.() ?? []) NAMED.add(path);
 
 interface Contract {
   level: number;
@@ -163,6 +191,17 @@ function present(): Contract {
     for (const path of area.declarationsOf ?? []) {
       for (const [declared, text] of declarations(readFileSync(join(ROOT, path), 'utf8'))) prints.push([`${path} › ${declared}`, interfacePrint(text)]);
     }
+    if (area.calls) {
+      const source = readFileSync(join(ROOT, area.calls.path), 'utf8');
+      const list = constant(source, area.calls.list);
+      expect(list, `${area.calls.path} no longer declares ${area.calls.list}`).not.toBeNull();
+      prints.push([`${area.calls.path} › ${area.calls.list}`, hash(list!)]);
+      for (const name of shorthandKeys(list!)) {
+        const declared = signature(source, name);
+        expect(declared, `${area.calls.path} has no function ${name} for ${area.calls.list} to name`).not.toBeNull();
+        prints.push([`${area.calls.path} › ${name}()`, hash(declared!)]);
+      }
+    }
     areas.push([name, sorted(prints)]);
   }
   return { level: COMPAT_LEVEL, requests: sorted(requests), shared: sorted(areas) };
@@ -190,7 +229,7 @@ function compare(was: Contract, now: Contract): Finding[] {
     const changed = [...new Set([...Object.keys(before), ...Object.keys(prints)])].filter((key) => before[key] !== prints[key]);
     for (const key of changed) {
       const where = `${area}: ${key}`;
-      if (AREAS[area]?.declarationsOf && !(key in before)) findings.push({ kind: 'fits', where, what: 'is new' });
+      if (AREAS[area]?.newFits && !(key in before)) findings.push({ kind: 'fits', where, what: 'is new' });
       else if (key in before && key in prints && onlyGained(before[key]!, prints[key]!)) findings.push({ kind: 'fits', where, what: 'only gained fields' });
       else findings.push({ kind: 'unsure', where, what: !(key in before) ? 'is new here' : !(key in prints) ? 'is gone' : 'changed' });
     }
