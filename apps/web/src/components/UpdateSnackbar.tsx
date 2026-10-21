@@ -23,7 +23,8 @@ import { Snackbar } from './Snackbar.js';
  * It stays until it is answered, and has no timer: a notice that cleared itself would put
  * back exactly the doubt it exists to remove. Dismissing it keeps this page on its own
  * build, which the server may refuse, until its next load; it stays dismissed for this
- * compatibility level (`dismissNotice`), across any deploys at it. Rendered once in the shell, beside the other snackbars.
+ * compatibility level (`dismissNotice`), across any deploys at it. Rendered once in the
+ * shell, beside the other snackbars.
  */
 export function UpdateSnackbar() {
   const { shown, reload, dismiss } = useUpdateNotice();

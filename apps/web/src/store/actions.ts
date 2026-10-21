@@ -316,10 +316,11 @@ export function createOutbox(userId: string, lib: Omit<WritableLibrary, 'outbox'
    * refused it too, it ends there.
    * Until then the entry is not sent again (`staleHeld`), since the answer would be the
    * same, and the notice opens again even if it was dismissed (`heldForReload`), since
-   * the whole queue now waits on the reload. Pausing the whole queue on a raised level was weighed and not done: most bumps
-   * are not about what the server accepts, and saves held for no reason anyone could see
-   * are worse in a notes app than the rare one this keeps. After the reload the levels
-   * agree, and a refusal ends its entry as before.
+   * the whole queue now waits on the reload. Pausing the whole queue on a raised level
+   * was weighed and not done: most bumps are not about what the server accepts, and
+   * saves held for no reason anyone could see are worse in a notes app than the rare
+   * one this keeps. After the reload the levels agree, and a refusal ends its entry as
+   * before.
    */
   const refusal = (err: unknown): never => {
     if (isOfflineError(err)) throw err;
