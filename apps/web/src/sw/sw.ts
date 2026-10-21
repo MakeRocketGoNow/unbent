@@ -156,7 +156,10 @@ function unredirected(response: Response): Response {
 self.addEventListener('install', (event) => {
   event.waitUntil(
     fillShell()
-      .then(() => keeper.installed())
+      // The commit record only saves the tidy a read (`installed`), and the tidy reads the
+      // page when it is missing: a refused write (a device near full) must not stop this
+      // worker installing, which is what a rejection in `waitUntil` here does.
+      .then(() => keeper.installed().catch(() => {}))
       .then(() => self.skipWaiting()),
   );
 });
