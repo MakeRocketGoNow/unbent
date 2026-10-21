@@ -1,5 +1,6 @@
 import { Hono, type ErrorHandler } from 'hono';
 import { logger } from 'hono/logger';
+import { COMPAT_HEADER, COMPAT_LEVEL } from '@unbent/shared/compat';
 import type { AppEnv } from './types.js';
 import { StoreUnavailable } from './lib/store-client.js';
 import { StorageFull, storageFullBody } from './lib/quota.js';
@@ -22,7 +23,6 @@ import { connectedApps } from './routes/connected-apps.js';
 import { legal } from './routes/legal.js';
 import { previewRelay } from './routes/preview-relay.js';
 import { mcpRoutes } from './routes/mcp.js';
-import { COMPAT_HEADER, COMPAT_LEVEL } from '@unbent/shared/compat';
 import { clientErrors } from './routes/client-errors.js';
 import { changes } from './routes/changes.js';
 import { billing } from './routes/billing.js';
