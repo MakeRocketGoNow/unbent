@@ -2,7 +2,7 @@ import { PrecacheController, PrecacheRoute } from 'workbox-precaching';
 import { registerRoute } from 'workbox-routing';
 import { CacheFirst, NetworkFirst, type StrategyOptions } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
-import { API_CACHE, FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE, SERVED_HEADER, VIEW_HEADER, classify, commitOf, isAsset, isShellFallback, servesShell, shellCacheName, shelved, within } from './routes.js';
+import { API_CACHE, FILES_CACHE, FILES_CHANGED, MAX_KEPT_FILE, SERVED_HEADER, SHELL_CACHE_PREFIX, SHELL_META_CACHE, VIEW_HEADER, classify, commitOf, isAsset, isShellFallback, servesShell, shellCacheName, shelved, within } from './routes.js';
 import { createFilesLedger } from './budget.js';
 import { createShellKeeper } from './tidy.js';
 import { findFile } from '../store/files.js';
@@ -311,12 +311,20 @@ registerRoute(new PrecacheRoute(shell));
  * missing module and the page reloads itself (`recoverFromMissingChunks`), rather than
  * failing as HTML where a script was expected, which it does too, but later and less
  * clearly. The precache route, registered before this, answers this build's own assets.
+ *
+ * Only the shell caches are looked in. `caches.match` walks every cache, the files cache
+ * of up to five hundred entries among them, and with `ignoreSearch` it cannot take a key
+ * straight; with a shell kept for each build an open tab runs, every chunk an old tab
+ * asked for paid for that walk.
  */
 registerRoute(
   ({ request, url }) => isAsset(url, self.location.origin) && request.mode !== 'navigate',
   async ({ request, url }) => {
-    const kept = await caches.match(request, { ignoreSearch: true });
-    if (kept) return kept;
+    for (const name of await caches.keys()) {
+      if (!name.startsWith(SHELL_CACHE_PREFIX) || name === SHELL_META_CACHE) continue;
+      const kept = await (await caches.open(name)).match(request, { ignoreSearch: true });
+      if (kept) return kept;
+    }
     const response = await fetch(request);
     if (response.ok && isShellFallback(url, response.headers.get('Content-Type'))) {
       return new Response(null, { status: 404, statusText: 'Not Found' });

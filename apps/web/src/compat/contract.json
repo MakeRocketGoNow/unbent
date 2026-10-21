@@ -1647,7 +1647,7 @@
       "apps/web/src/sw-register.ts": "d689e2eb48e370a7",
       "apps/web/src/sw/budget.ts": "ce67bb2a4500d8dc",
       "apps/web/src/sw/routes.ts": "85e16f8ddefe5ebe",
-      "apps/web/src/sw/sw.ts": "950e00a2e8ac781b",
+      "apps/web/src/sw/sw.ts": "20ac3c38af0173b5",
       "apps/web/src/sw/tidy.ts": "4ae46256f6680dba"
     }
   }
