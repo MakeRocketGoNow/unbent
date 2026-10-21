@@ -1636,7 +1636,7 @@
       "apps/web/src/store/keep.ts › Totals": "e6f2ac955bf77ebf",
       "apps/web/src/store/keep.ts › WantedFile": "0928d2a75c863a19|659d780d8a|bbe764efbb|e5d874c2a9",
       "apps/web/src/store/leader.ts": "07dbf9a0dd2b95d4",
-      "apps/web/src/store/library-channel.ts": "f9225637bed498c1",
+      "apps/web/src/store/library-channel.ts": "ad88261a3111a7f0",
       "apps/web/src/store/library-lock.ts": "556ffd6d09b70bc7",
       "apps/web/src/store/locks.ts": "eeb36647ea9525a7",
       "apps/web/src/store/names.ts": "1058b118c0b6b786",
@@ -1644,11 +1644,11 @@
     },
     "worker": {
       "apps/web/src/store/files.ts": "a2ccb0a59753100b",
-      "apps/web/src/sw-register.ts": "d689e2eb48e370a7",
+      "apps/web/src/sw-register.ts": "9b9ebc1a468dbabb",
       "apps/web/src/sw/budget.ts": "ce67bb2a4500d8dc",
-      "apps/web/src/sw/routes.ts": "85e16f8ddefe5ebe",
-      "apps/web/src/sw/sw.ts": "20ac3c38af0173b5",
-      "apps/web/src/sw/tidy.ts": "4ae46256f6680dba"
+      "apps/web/src/sw/routes.ts": "d65ba0a525883893",
+      "apps/web/src/sw/sw.ts": "acef88a125fcb548",
+      "apps/web/src/sw/tidy.ts": "9684f23a41e19c15"
     }
   }
 }
