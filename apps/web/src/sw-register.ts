@@ -42,7 +42,6 @@ let wb: Workbox | undefined;
 /** The commit this page was built from, which the worker keeps this build's shell for. */
 const PAGE_COMMIT: string | null = buildInfo?.commit ?? null;
 
-
 export function registerServiceWorker(): void {
   recoverFromMissingChunks();
   if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
@@ -60,6 +59,18 @@ export function registerServiceWorker(): void {
     void sayIfNeeded();
   });
   sayRunning();
+  /*
+     A page restored from the back/forward cache was not one of the worker's clients
+     while it was away (`clients.matchAll` leaves it out), so a tidy meanwhile dropped its
+     record, and the next deploy would delete the shell it still runs: the reload under
+     the person's hands that keeping shells exists to stop. It says so again, and asks
+     the level, since a worker may have taken charge while it was away.
+  */
+  window.addEventListener('pageshow', (event) => {
+    if (!event.persisted) return;
+    sayRunning();
+    void sayIfNeeded();
+  });
   /*
      A page already under a worker registers at once and asks for a new one straight
      away. Workbox otherwise waits for the window's `load`, so as not to compete with a
