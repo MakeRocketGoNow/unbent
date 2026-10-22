@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
 import type { AccountPlan } from '@unbent/shared';
@@ -178,6 +178,23 @@ describe('Plan', () => {
     expect(bodies).toEqual(['{"storage":1}']);
     // Still "Opening checkout…": the page is on its way out, and a second press would be a second session.
     expect(screen.getByRole('button', { name: 'Opening checkout…' })).toBeTruthy();
+  });
+
+  /** The browser's Back from Stripe's page can bring this page back from its cache, busy state and all. */
+  it('offers Subscribe again when the page is restored from the back/forward cache', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => (url === '/api/billing/checkout' ? Response.json({ url: 'https://checkout.stripe.com/c/pay/cs_1' }) : Response.json({}, { status: 404 }))),
+    );
+    const leave = vi.spyOn(leavePage, 'to').mockImplementation(() => {});
+    harness({});
+    fireEvent.click(await screen.findByRole('button', { name: 'Subscribe for $60 a year' }));
+    await waitFor(() => expect(leave).toHaveBeenCalled());
+    expect(screen.getByRole('button', { name: 'Opening checkout…' })).toBeTruthy();
+    const restored = new Event('pageshow') as PageTransitionEvent;
+    Object.defineProperty(restored, 'persisted', { value: true });
+    act(() => void window.dispatchEvent(restored));
+    expect(screen.getByRole('button', { name: 'Subscribe for $60 a year' })).toBeTruthy();
   });
 
   it('says the checkout could not be opened when the server refuses, and offers the button again', async () => {

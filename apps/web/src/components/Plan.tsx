@@ -118,6 +118,18 @@ export function Plan() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [billing, checkout]);
 
+  // `subscribe` leaves the button busy as the browser leaves for Stripe. The browser's
+  // own Back can restore this page from its back/forward cache with that state intact,
+  // and the button would stay disabled until a reload; Stripe's back link is a fresh
+  // load and needs none of this.
+  useEffect(() => {
+    const onShow = (e: PageTransitionEvent) => {
+      if (e.persisted) setBusy(null);
+    };
+    window.addEventListener('pageshow', onShow);
+    return () => window.removeEventListener('pageshow', onShow);
+  }, []);
+
   if (!billing) {
     return (
       <div className="panel">
