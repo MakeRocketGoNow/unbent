@@ -262,6 +262,11 @@ describe('refundEffectOf', () => {
     expect(refundEffectOf(stripe, event('charge.refunded', refund({ refunded: false, amount_refunded: 1296 })), paid, withStorage)).toBe('remove-storage');
     // More than the add-on's lines is a refund of the plan, which cannot be told from one of both.
     expect(refundEffectOf(stripe, event('charge.refunded', refund({ refunded: false, amount_refunded: 2593 })), paid, withStorage)).toBe('cancel');
+    // An invoice that billed only storage (an add-on bought mid-year) is the add-on's
+    // to refund whole; the plan it did not bill is kept.
+    const ofAddOnOnly = invoice({}, [{ price: 'price_storage', amount: 1200, tax: 96 }]);
+    expect(refundEffectOf(stripe, event('charge.refunded', refund({ amount: 1296, amount_refunded: 1296 })), paid, ofAddOnOnly)).toBe('remove-storage');
+    expect(refundEffectOf(stripe, event('charge.dispute.created', { ...dispute, amount: 1296 }), paid, ofAddOnOnly)).toBe('cancel');
     // A partial refund on a subscription with no add-on can only be the plan's.
     expect(refundEffectOf(stripe, event('charge.refunded', refund({ refunded: false, amount_refunded: 100 })), paid, invoice())).toBe('cancel');
   });

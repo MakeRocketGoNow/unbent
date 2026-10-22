@@ -1,5 +1,5 @@
 import { BASE_STORAGE_GB, STORAGE_ADDON_GB } from '@unbent/shared';
-import { periodEndOf, type StripeCharge, type StripeConfig, type StripeDispute, type StripeInvoice, type StripeSubscription } from './stripe.js';
+import { periodEndOf, type StripeCharge, type StripeConfig, type StripeDispute, type StripeInvoice, type StripeInvoiceLine, type StripeSubscription } from './stripe.js';
 import type { PlanPatch, PlanRow } from './plan.js';
 
 /**
@@ -177,8 +177,8 @@ export function planPatchFor(stripe: StripeConfig, event: StripeEvent, row: Plan
  * active and renews at the period's end. So the webhook ends it, with the same call
  * account deletion makes.
  *
- * `cancel` is a refund of the plan: the whole charge, or more than the add-on's lines
- * came to. The subscription is cancelled at once and the account turns read-only from
+ * `cancel` is a refund of the plan: the whole charge of an invoice that billed the
+ * plan, or more than the add-on's lines came to. The subscription is cancelled at once and the account turns read-only from
  * the refund, not from the period's end: the period was given back. `remove-storage`
  * is a refund of no more than the add-on's lines, with tax, on a subscription that has
  * the add-on: the person keeps the plan they paid for and the add-on comes off the
@@ -224,8 +224,13 @@ export function refundEffectOf(stripe: StripeConfig, event: StripeEvent, row: Pl
   if (invoice === null || invoiceSubscriptionOf(invoice) !== row.subscriptionId) return null;
   if (event.type === 'charge.dispute.created') return 'cancel';
   const charge = event.data.object as StripeCharge;
+  const isAddOn = (l: StripeInvoiceLine) => l.pricing?.price_details?.price === stripe.storagePriceId;
+  const addOn = invoice.lines.data.filter(isAddOn);
+  // An invoice that billed nothing but storage (the proration `/billing/storage` invoices
+  // at once) is the add-on's to refund, all of it included: reading its whole-charge
+  // refund as the plan's would end a year the person paid for and was not refunded.
+  if (addOn.length > 0 && invoice.lines.data.every((l) => isAddOn(l) || l.amount === 0)) return canceled ? null : 'remove-storage';
   if (charge.refunded || charge.amount_refunded >= charge.amount) return 'cancel';
-  const addOn = invoice.lines.data.filter((l) => l.pricing?.price_details?.price === stripe.storagePriceId);
   if (addOn.length === 0) return 'cancel';
   const addOnTotal = addOn.reduce((sum, l) => sum + l.amount + (l.taxes ?? []).reduce((t, tax) => t + tax.amount, 0), 0);
   if (charge.amount_refunded <= addOnTotal) return canceled ? null : 'remove-storage';
