@@ -335,6 +335,9 @@ export async function newestSubscription(stripe: StripeConfig, customerId: strin
   return page.data.reduce((newest, s) => (s.created > newest.created ? s : newest));
 }
 
+/** Statuses Stripe will never charge again: a subscription in one is over, and nothing to cancel. */
+export const ENDED_SUBSCRIPTION: ReadonlySet<string> = new Set(['canceled', 'incomplete_expired']);
+
 /** The subscription's end of the period paid for: its items' latest, in unix seconds, or null for none. */
 export function periodEndOf(sub: StripeSubscription): number | null {
   const ends = sub.items.data.map((i) => i.current_period_end).filter((n) => typeof n === 'number');

@@ -14,13 +14,14 @@ import {
 } from '../lib/billing-events.js';
 import { accountPlanOf, planFor, planRowByCustomer, planStateOf, updatePlan, updatePlanStatement } from '../lib/plan.js';
 import {
+  ENDED_SUBSCRIPTION,
   StripeError,
   billingOn,
   createCheckoutSession,
-  expireOpenCheckouts,
   createCustomer,
   createPortalSession,
   ensureSubscriptionCanceled,
+  expireOpenCheckouts,
   getCharge,
   getInvoice,
   getSubscription,
@@ -163,6 +164,16 @@ export const billing = new Hono<AppEnv>()
     }
     try {
       const customerId = row.customerId ?? (await createCustomer(stripe, c.get('user')!.email, userId)).id;
+      // The row hears of a paid checkout's subscription only by webhook, so in that lag a
+      // second tab still showing Subscribe, or Back from Stripe's success page, would
+      // pass the row's check above. Stripe is asked too, for a customer that has one; a
+      // paid session is complete rather than open, so expiring sessions does not catch it.
+      if (row.customerId) {
+        const newest = await newestSubscription(stripe, row.customerId);
+        if (newest && !ENDED_SUBSCRIPTION.has(newest.status)) {
+          return c.json({ error: 'This account already has a subscription. Manage it from the portal.' }, 409);
+        }
+      }
       if (customerId !== row.customerId) await updatePlan(c.env.DB, userId, { customerId }, now);
       // Asked even of a customer made a moment ago: a second tab's press gets the same one.
       await expireOpenCheckouts(stripe, customerId);

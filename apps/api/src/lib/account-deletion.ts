@@ -1,7 +1,7 @@
 import type { Env } from '../types.js';
 import { deleteUserBlobs } from './blobs.js';
 import { tombstoneDirectoryRow } from './directory.js';
-import { ensureSubscriptionCanceled, expireOpenCheckouts, newestSubscription, stripeOf, type StripeEnv } from './stripe.js';
+import { ENDED_SUBSCRIPTION, ensureSubscriptionCanceled, expireOpenCheckouts, newestSubscription, stripeOf, type StripeEnv } from './stripe.js';
 import { planRow, updatePlan } from './plan.js';
 import { storeFor } from './store-client.js';
 
@@ -62,9 +62,6 @@ export async function clearAccount(env: DeletionEnv, userId: string): Promise<vo
   }
 }
 
-/** Statuses Stripe will never charge again: nothing to cancel. */
-const ENDED: ReadonlySet<string> = new Set(['canceled', 'incomplete_expired']);
-
 /**
  * Ends the account's Stripe subscription before anything of the account goes (MAK-108):
  * a subscription left behind would charge a card for a store that no longer exists, and
@@ -101,7 +98,7 @@ async function cancelSubscription(env: DeletionEnv, userId: string): Promise<voi
   try {
     if (!subscriptionId) {
       const newest = await newestSubscription(stripe, row.customerId);
-      if (newest && !ENDED.has(newest.status)) subscriptionId = newest.id;
+      if (newest && !ENDED_SUBSCRIPTION.has(newest.status)) subscriptionId = newest.id;
     }
     if (!subscriptionId) return;
     await ensureSubscriptionCanceled(stripe, subscriptionId);
