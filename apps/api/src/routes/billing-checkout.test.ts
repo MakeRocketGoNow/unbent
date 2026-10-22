@@ -71,6 +71,14 @@ describe('starting a checkout', () => {
     expect(calls).toEqual(['GET /v1/subscriptions']);
   });
 
+  it('refuses while an older subscription is live behind a newer one that has ended', async () => {
+    stripeStandIn([
+      { id: 'sub_dup', status: 'active', created: 1 },
+      { id: 'sub_new', status: 'canceled', created: 2 },
+    ]);
+    expect(await press()).toBe(409);
+  });
+
   it('opens one for a customer whose subscriptions have all ended', async () => {
     const calls = stripeStandIn([{ id: 'sub_old', status: 'canceled', created: 1 }]);
     expect(await press()).toBe(200);

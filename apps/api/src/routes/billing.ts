@@ -30,6 +30,7 @@ import {
   newestSubscription,
   setSubscriptionStorage,
   stripeOf,
+  subscriptionsOf,
   verifyWebhookSignature,
   webhookSourceOf,
   type StripeCharge,
@@ -169,9 +170,11 @@ export const billing = new Hono<AppEnv>()
       // second tab still showing Subscribe, or Back from Stripe's success page, would
       // pass the row's check above. Stripe is asked too, for a customer that has one; a
       // paid session is complete rather than open, so expiring sessions does not catch it.
+      // Every subscription, not the newest: an older one still live behind a newer one
+      // that has ended is a subscription all the same.
       if (row.customerId) {
-        const newest = await newestSubscription(stripe, row.customerId);
-        if (newest && !ENDED_SUBSCRIPTION.has(newest.status)) {
+        const subs = await subscriptionsOf(stripe, row.customerId);
+        if (subs.some((sub) => !ENDED_SUBSCRIPTION.has(sub.status))) {
           return c.json({ error: 'This account already has a subscription. Manage it from the portal.' }, 409);
         }
       }
