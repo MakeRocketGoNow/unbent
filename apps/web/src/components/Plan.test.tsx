@@ -17,11 +17,20 @@ const NOW = Date.now();
  * The page's states and the one control each offers (MAK-108). Seeded rather than
  * fetched, as Maintenance's test is: the config says the instance sells a plan, and the
  * plan is whatever the case needs.
+ *
+ * Seeded as the server answers it: the figures a case gives with the plan go to the
+ * usage read, since the light read carries none, and `usage` is for a case that needs
+ * that read to say something else as well. A case with no figures leaves the usage read
+ * unanswered, as it is while the store is still being asked.
  */
-function harness(plan: Partial<AccountPlan>, billing = true, entry = '/settings/plan') {
+function harness(plan: Partial<AccountPlan>, billing = true, entry = '/settings/plan', usage?: Partial<AccountPlan>) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   client.setQueryData(keys.config(), { providers: ['password'], ...(billing ? { billing: { environment: 'test' } } : {}) });
-  client.setQueryData(keys.plan(), { state: 'trial', until: NOW + 10 * DAY, source: null, storageGb: 10, usedBytes: 0, subscription: null, ...plan, readOnlyAt: plan.readOnlyAt ?? plan.until ?? NOW + 10 * DAY });
+  const { usedBytes, storeBytes, ...light } = plan;
+  const seeded = (p: Partial<AccountPlan>) => ({ state: 'trial', until: NOW + 10 * DAY, source: null, storageGb: 10, subscription: null, ...p, readOnlyAt: p.readOnlyAt ?? p.until ?? NOW + 10 * DAY });
+  client.setQueryData(keys.plan(), seeded(light));
+  const figures = usage ?? (usedBytes !== undefined || storeBytes !== undefined ? { ...light, usedBytes, storeBytes } : undefined);
+  if (figures) client.setQueryData(keys.planUsage(), seeded(figures));
   const rootRoute = createRootRoute({ component: () => <Plan /> });
   const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory({ initialEntries: [entry] }) });
   const rendered = render(
@@ -86,12 +95,12 @@ describe('Plan', () => {
     harness({ state: 'active', source: 'stripe', until: NOW + 300 * DAY, storageGb: 10, usedBytes: 2 * 1024 ** 3, storeBytes: 1500 * MB, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
     const full = await screen.findByText(/Notes, their history and the text read from files:/);
     expect(full.querySelector('.bad')?.textContent).toBe('1.46 GB of 1.50 GB used.');
-    // While the store has not answered (the harness never answers the usage read), the
-    // line holds its place with no figure, so the buttons under it do not move when
-    // the figure arrives.
+    // While the store has not answered (a case with no figures leaves the usage read
+    // unanswered), the line holds its place with no figure, so the buttons under it do
+    // not move when the figure arrives.
     cleanup();
-    harness({ state: 'active', source: 'stripe', until: NOW + 300 * DAY, storageGb: 10, usedBytes: 2 * 1024 ** 3, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
-    expect(await screen.findByText('Files: 2.00 GB of 10 GB used.')).toBeTruthy();
+    harness({ state: 'active', source: 'stripe', until: NOW + 300 * DAY, storageGb: 10, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
+    expect(await screen.findByText('Reading what is held, of 10 GB…')).toBeTruthy();
     expect(screen.getByText(/Notes, their history/).textContent).toBe('Notes, their history and the text read from files: reading…');
   });
 
@@ -289,6 +298,41 @@ describe('Plan', () => {
     harness({ state: 'inactive', until: NOW - DAY, source: 'stripe', subscription: { status: 'canceled', cancelsAt: null, pastDue: false } }, true, '/settings/plan?checkout=complete');
     expect(await screen.findByRole('heading', { name: 'Subscribed' }, { timeout: 4000 })).toBeTruthy();
     expect(refreshes).toHaveLength(2);
+  });
+
+  /**
+   * The read-back's answer is the plan from that moment: a refetch after it that fails
+   * keeps the cache's last answer, and without the read-back written there that answer
+   * was the trial. A whole plan here, since it lands in the cache as it is.
+   */
+  it('keeps the subscription the read-back found when the refetch after it fails', async () => {
+    const active = { state: 'active', until: NOW + 365 * DAY, readOnlyAt: NOW + 366 * DAY, source: 'stripe', storageGb: 10, subscription: { status: 'active', cancelsAt: null, pastDue: false } };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => (url === '/api/billing/refresh' ? Response.json(active) : Response.json({ error: 'down' }, { status: 503 }))),
+    );
+    harness({}, true, '/settings/plan?checkout=complete');
+    expect(await screen.findByText('You’re subscribed. Thank you.')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Subscribed' })).toBeTruthy();
+  });
+
+  /**
+   * The first live checkout came back to "Free trial" with the figures beside it: the
+   * usage read's refetch had failed and kept its old answer, and it stood in for the
+   * whole plan. The state is the light read's; the usage read lends the figures only.
+   */
+  it('draws the plan from the light read, and only the figures from the usage read', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'down' }, { status: 503 })));
+    harness(
+      { state: 'active', source: 'stripe', until: NOW + 300 * DAY, storageGb: 35, subscription: { status: 'active', cancelsAt: null, pastDue: false } },
+      true,
+      '/settings/plan',
+      { state: 'trial', until: NOW + 10 * DAY, storageGb: 10, usedBytes: 3 * 1024 ** 3, storeBytes: 200 * 1024 ** 2 },
+    );
+    expect(await screen.findByRole('heading', { name: 'Subscribed' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Free trial' })).toBeNull();
+    expect(screen.getByText('Files: 3.00 GB of 35 GB used.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Manage subscription' })).toBeTruthy();
   });
 
   it('is nothing where the instance sells no plan', () => {

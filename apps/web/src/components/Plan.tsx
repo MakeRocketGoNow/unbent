@@ -74,10 +74,21 @@ export const leavePage = { to: (url: string) => window.location.assign(url) };
 export function Plan() {
   const { billing, plan: standing, unavailable } = usePlan();
   // This page alone asks the store what the account holds; the banner and the editor
-  // read the plan without it. The two answers are the same row, so the one with the
-  // figure stands in for the other here once it has arrived.
+  // read the plan without it. The two answers are the same row, but only the figures are
+  // taken from the heavier one: the plan's state is the light read's, which every page
+  // shares and which a change to the plan refetches with the same key. The usage read
+  // used to stand in for the whole plan once it had arrived, and a refetch of it that
+  // failed or was cut short keeps its last answer (the query library leaves `data` in
+  // place under an error), so the first live checkout came back to a page saying "Free
+  // trial" with the figures beside it, over a row that had just gone active, until a
+  // reload (2026-10-22). The figures are the account's bytes, which no plan change
+  // alters, so an older pair under a newer state is still true.
   const usage = useQuery(planUsageQuery(standing !== undefined));
-  const plan = usage.data ?? standing;
+  const plan: AccountPlan | undefined = standing && {
+    ...standing,
+    usedBytes: usage.data?.usedBytes,
+    storeBytes: usage.data?.storeBytes,
+  };
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState<'checkout' | 'settling' | 'portal' | 'storage' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -202,6 +213,20 @@ export function Plan() {
   }
 
   /**
+   * The plan read back from Stripe (`refreshPlan`), kept as the plan from this moment.
+   * The answer is the row as the server has just written it, and the refetch that
+   * follows may fail or be cut short, which leaves what was there: the trial after a
+   * checkout, "renews" after a cancellation in the portal, the old size after a storage
+   * change. An answer that changed nothing is the row as it stands, so keeping it is
+   * harmless. A read that fails leaves the cache alone.
+   */
+  async function readBack(): Promise<AccountPlan | undefined> {
+    const read = await api.refreshPlan().catch(() => undefined);
+    if (read) queryClient.setQueryData(keys.plan(), read);
+    return read;
+  }
+
+  /**
    * The plan read back from Stripe until it names a subscription, a few times over a
    * few seconds. Stripe sends the person back the moment the payment is confirmed, and
    * its subscription and invoice events follow a moment after, so the first read can
@@ -216,7 +241,7 @@ export function Plan() {
    */
   async function settleCheckout(): Promise<boolean> {
     for (let attempt = 0; attempt < CHECKOUT_SETTLE_TRIES; attempt++) {
-      const read = await api.refreshPlan().catch(() => undefined);
+      const read = await readBack();
       if (read?.subscription && read.subscription.status !== 'canceled') return true;
       await new Promise((r) => setTimeout(r, CHECKOUT_SETTLE_WAIT_MS));
     }
@@ -245,7 +270,7 @@ export function Plan() {
       const onReturn = () => {
         if (document.visibilityState !== 'visible') return;
         document.removeEventListener('visibilitychange', onReturn);
-        void api.refreshPlan().catch(() => undefined).then(refresh);
+        void readBack().then(refresh);
       };
       document.addEventListener('visibilitychange', onReturn);
     } catch (err) {
@@ -261,7 +286,7 @@ export function Plan() {
     setStorageError(null);
     try {
       await api.setStorage(next);
-      await api.refreshPlan().catch(() => undefined);
+      await readBack();
       await refresh();
       setNotice(next > unitsOf(plan!) ? `Added ${STORAGE_ADDON_GB} GB.` : `Removed ${STORAGE_ADDON_GB} GB.`);
       // Closed once the change has landed, so the confirm's own "Adding…" is what waits.
