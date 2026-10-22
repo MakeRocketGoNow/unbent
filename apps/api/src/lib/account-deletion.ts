@@ -1,7 +1,7 @@
 import type { Env } from '../types.js';
 import { deleteUserBlobs } from './blobs.js';
 import { tombstoneDirectoryRow } from './directory.js';
-import { ensureSubscriptionCanceled, expireOpenCheckouts, stripeOf, type StripeEnv } from './stripe.js';
+import { ensureSubscriptionCanceled, expireOpenCheckouts, newestSubscription, stripeOf, type StripeEnv } from './stripe.js';
 import { planRow, updatePlan } from './plan.js';
 import { storeFor } from './store-client.js';
 
@@ -62,6 +62,9 @@ export async function clearAccount(env: DeletionEnv, userId: string): Promise<vo
   }
 }
 
+/** Statuses Stripe will never charge again: nothing to cancel. */
+const ENDED: ReadonlySet<string> = new Set(['canceled', 'incomplete_expired']);
+
 /**
  * Ends the account's Stripe subscription before anything of the account goes (MAK-108):
  * a subscription left behind would charge a card for a store that no longer exists, and
@@ -70,8 +73,7 @@ export async function clearAccount(env: DeletionEnv, userId: string): Promise<vo
  * deletion that silently left a paid subscription running would be worse than one that
  * says to try again, and the row is still there to try again from. The plan row itself
  * goes with the user row's cascade. Nothing to do where billing is off, or for an
- * account that never opened a checkout; only the checkouts for one whose subscription
- * is already canceled.
+ * account that never opened a checkout.
  *
  * The row is marked canceled as soon as Stripe agrees, so a deletion that then fails at
  * the files or the store is retried without asking Stripe to cancel again. And a cancel
@@ -92,14 +94,22 @@ async function cancelSubscription(env: DeletionEnv, userId: string): Promise<voi
     console.error(`Stripe checkouts for ${userId} could not be expired; account deletion abandoned:`, err);
     throw err;
   }
-  if (!row.subscriptionId || row.subscriptionStatus === 'canceled') return;
+  // The row's subscription, while it is live; otherwise Stripe is asked. A checkout paid
+  // a moment ago, or a lapsed subscriber's new one, reaches the row only by webhook, and
+  // a deletion inside that lag would leave it renewing with no account to find it from.
+  let subscriptionId = row.subscriptionId && row.subscriptionStatus !== 'canceled' ? row.subscriptionId : null;
   try {
-    await ensureSubscriptionCanceled(stripe, row.subscriptionId);
+    if (!subscriptionId) {
+      const newest = await newestSubscription(stripe, row.customerId);
+      if (newest && !ENDED.has(newest.status)) subscriptionId = newest.id;
+    }
+    if (!subscriptionId) return;
+    await ensureSubscriptionCanceled(stripe, subscriptionId);
   } catch (err) {
-    console.error(`Stripe subscription ${row.subscriptionId} for ${userId} could not be cancelled; account deletion abandoned:`, err);
+    console.error(`Stripe subscription ${subscriptionId ?? '(not found)'} for ${userId} could not be cancelled; account deletion abandoned:`, err);
     throw err;
   }
-  await updatePlan(env.DB, userId, { subscriptionStatus: 'canceled', cancelsAt: null });
+  await updatePlan(env.DB, userId, { subscriptionId, subscriptionStatus: 'canceled', cancelsAt: null });
 }
 
 /**
