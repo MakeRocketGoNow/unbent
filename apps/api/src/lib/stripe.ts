@@ -206,7 +206,9 @@ export interface StripeCustomer {
  * the last one written and a checkout made for the other is paid for under a customer
  * the webhook finds no account for. The window and not the account alone because Stripe
  * replays a key's first answer for a day, a passing 500 included, and that would refuse
- * every press for the day.
+ * every press for the day. The windows are fixed, not sliding, so two presses either
+ * side of an edge still make two customers. Accepted: it needs both tabs pressed within
+ * a moment of each other and of the edge, and for both checkouts then to be paid.
  */
 export async function createCustomer(stripe: StripeConfig, email: string, userId: string, now = Date.now()): Promise<StripeCustomer> {
   const key = `customer-${userId}-${Math.floor(now / CUSTOMER_KEY_WINDOW_MS)}`;
