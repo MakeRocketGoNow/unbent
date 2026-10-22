@@ -1163,8 +1163,9 @@ Rules that hold it together, each with a test:
 
 ## The plan, and what a lapsed account may do
 
-An instance with the five `PADDLE_*` settings sells a plan (MAK-108; "Selling the plan" in
-`docs/billing.md`), and every account on it is on its trial, paid for, comped, or lapsed. A
+An instance with the four `STRIPE_*` settings sells a plan (MAK-108; "Selling the plan" in
+`docs/billing.md`; Stripe Managed Payments is the merchant of record, Paddle was until
+2026-10-22), and every account on it is on its trial, paid for, comped, or lapsed. A
 lapsed account is **read-only**: every write is refused with a 402 except a delete, and
 reads, search, export and an assistant's reads keep working. Three things hold that:
 
@@ -1179,7 +1180,7 @@ reads, search, export and an assistant's reads keep working. Three things hold t
   (`mcp/plan-gate.ts`), keyed on each tool's `readOnlyHint`.
 - **What the account is, is derived.** `planStateOf` works the row out against the
   clock; nothing flips rows on a timer. A comp is set from the operator's page, never
-  with a Paddle discount (a 100% discount there still asks for a card) and while it
+  with a Stripe coupon (a 100% coupon there still asks for a card) and while it
   runs the webhook changes nothing on its row (`planPatchFor`), since a former
   subscriber who is comped still has the customer id the webhook finds rows by.
 - **Bytes are checked where they come in.** Every path that stores or copies a file
