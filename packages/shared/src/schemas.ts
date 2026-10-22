@@ -281,7 +281,7 @@ export interface AppConfig {
    * than the agreement step, which it reads as one that asks for none.
    *
    * `sellsPlan` is set when the built-in terms carry the sections on payment, renewal and
-   * refunds, and the policy names Paddle: billing on, or a front page stating the price.
+   * refunds, and the policy names Stripe: billing on, or a front page stating the price.
    * The server decides (`sellsPlanOf`) and the web app only reads it, so the documents it
    * renders and the sentence the server sends about a change to them cannot disagree.
    * Absent where the instance sells none, and on an operator's own documents.
@@ -379,11 +379,10 @@ export interface AppConfig {
    */
   backups?: boolean;
   /**
-   * This instance sells a plan through Paddle (MAK-108): the client-side token the Plan
-   * page initialises Paddle.js with, and which of Paddle's environments it belongs to.
-   * Present exactly where the Worker has the Paddle secrets, and the Plan tab, the trial
-   * banner and the 402 on a lapsed account all exist on the strength of it. Absent, the
-   * instance has nothing to sell and every account is active for good: every
+   * This instance sells a plan through Stripe (MAK-108): present exactly where the Worker
+   * has the Stripe secrets, and the Plan tab, the trial banner and the 402 on a lapsed
+   * account all exist on the strength of it, with whether the money is real beside it.
+   * Absent, the instance has nothing to sell and every account is active for good: every
    * self-hosted copy. See `BillingConfig`.
    */
   billing?: BillingConfig;

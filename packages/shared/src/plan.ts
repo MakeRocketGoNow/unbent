@@ -4,11 +4,12 @@
  * The numbers are unbent.app's offer (MAK-47): one plan, billed yearly, a fortnight free
  * first, and storage sold in blocks on top. They are here rather than in the API because
  * the front page quotes them before anyone has signed in and the Plan page quotes them
- * again beside the buttons, and two copies of a price drift. Paddle holds the prices that
- * are charged; these are what the pages say, and the two have to be changed together.
+ * again beside the buttons, and two copies of a price drift. Stripe's catalog holds the
+ * prices that are charged; these are what the pages say, and the two have to be changed
+ * together.
  *
- * A self-hosted instance never reads them: billing exists only where the Paddle secrets
- * are set (`PADDLE_API_KEY` and the rest), and without them every account is `active`
+ * A self-hosted instance never reads them: billing exists only where the Stripe secrets
+ * are set (`STRIPE_SECRET_KEY` and the rest), and without them every account is `active`
  * with no end, nothing is refused and no Plan page is drawn.
  */
 
@@ -27,7 +28,7 @@ export const STORAGE_ADDON_GB = 25;
  * Raising this, or the storage price below, owes every subscriber an email at least 30
  * days before the renewal it applies to: the terms promise it ("Plans and payment" in the
  * web app's `legal/documents.ts`). Nothing sends that mail: it is written by hand, or built
- * first. Changing the price in Paddle's catalog without it breaks the terms.
+ * first. Changing the price in Stripe's catalog without it breaks the terms.
  */
 export const PLAN_PRICE_USD = 60;
 
@@ -79,8 +80,8 @@ export const STORAGE_FULL_CODE = 'STORAGE_FULL';
  */
 export type PlanState = 'trial' | 'active' | 'inactive';
 
-/** Who said the account is paid for: Paddle, or an operator who comped it. */
-export type PlanSource = 'paddle' | 'comp';
+/** Who said the account is paid for: Stripe, or an operator who comped it. */
+export type PlanSource = 'stripe' | 'comp';
 
 /**
  * The account's plan as `GET /api/me/plan` answers it: what the row says, worked out
@@ -99,7 +100,7 @@ export interface AccountPlan {
    * When the account turns read-only unless something changes first, which a client
    * locks on rather than `until`: the same instant for a trial or a comp, and for a
    * renewing subscription its end plus the server's renewal grace: the period's end is
-   * when Paddle bills, and the webhook carrying the next period lands after it. Null
+   * when Stripe bills, and the webhook carrying the next period lands after it. Null
    * for a plan with no end; for an `inactive` account, when it became so.
    */
   readOnlyAt: number | null;
@@ -117,20 +118,21 @@ export interface AccountPlan {
   storeBytes?: number;
   /**
    * The subscription's own state, for the sentence under the plan name: `cancelsAt` is a
-   * cancellation already asked for and still ahead, and `pastDue` a renewal Paddle could
+   * cancellation already asked for and still ahead, and `pastDue` a renewal Stripe could
    * not collect and is retrying. Null for a trial or a comp, which have none.
    */
   subscription: { status: string; cancelsAt: number | null; pastDue: boolean } | null;
 }
 
 /**
- * How Paddle is reached from the page, in `/api/config`: the client-side token Paddle.js
- * initialises with, and which of Paddle's two environments it is a token for. Present only
- * where billing is on; the Plan tab is drawn on the strength of this alone.
+ * That this instance sells a plan, in `/api/config`, and whether the money is real:
+ * `test` is a Stripe sandbox, where the checkout takes a test card and moves nothing.
+ * Present only where billing is on; the Plan tab is drawn on the strength of this alone.
+ * Nothing of Stripe's runs in the page (the checkout is Stripe's own page, reached by
+ * redirect), so there is no token here, where Paddle's overlay once needed one.
  */
 export interface BillingConfig {
-  environment: 'sandbox' | 'live';
-  clientToken: string;
+  environment: 'test' | 'live';
 }
 
 /** The bytes an account on `storageGb` may hold. */

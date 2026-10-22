@@ -111,7 +111,7 @@ describe('LegalPage', () => {
 
   /*
    * The payment terms follow `legal.sellsPlan`, which the server sets for billing or a
-   * front page. The front-page-only case is the one Paddle's review reads before billing
+   * front page. The front-page-only case is the one a merchant of record's review reads before billing
    * is on, so it is the one pinned.
    */
   it('publishes the refund policy only where the server says it sells a plan', async () => {

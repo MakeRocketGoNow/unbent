@@ -60,7 +60,7 @@ describe('shellFor', () => {
   });
 
   /**
-   * The pricing address Paddle's review follows is the front page in its own shell, and
+   * The pricing address a merchant of record's review follows is the front page in its own shell, and
    * ungated: the reviewer has no session, and gated it would be a sign-in screen where
    * they expected prices.
    */

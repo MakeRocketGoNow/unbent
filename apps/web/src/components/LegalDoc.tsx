@@ -15,11 +15,12 @@ import type { LegalDocument } from '../legal/documents.js';
  * measured column width; `.legal` adds only what a standalone document needs on top.
  */
 export function LegalDoc({ doc }: { doc: LegalDocument }) {
-  // `/terms#refunds` is the address handed to Paddle's review (`LegalSection.id`), and on a
-  // fresh tab it missed: `LegalPage` draws nothing until `/api/config` has answered, so the
-  // one scroll the browser and the router make for a fragment, at load, found no element
-  // with that id. Scrolled again here, once the document is in the DOM. Guarded because
-  // jsdom has no `scrollIntoView`, as `Confirm` guards it.
+  // `/terms#refunds` is the address handed to the merchant of record's review
+  // (`LegalSection.id`), and on a fresh tab it missed: `LegalPage` draws nothing until
+  // `/api/config` has answered, so the one scroll the browser and the router make for a
+  // fragment, at load, found no element with that id. Scrolled again here, once the
+  // document is in the DOM. Guarded because jsdom has no `scrollIntoView`, as `Confirm`
+  // guards it.
   //
   // Keyed on the title, not `doc`: `LegalPage` builds the documents on every render, so
   // `doc` is a new object each time, and on it the effect would pull a reader who had

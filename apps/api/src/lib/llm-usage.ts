@@ -1,7 +1,7 @@
 import { usageCents, type LlmJob, type LlmTokens } from '@unbent/shared';
 import type { PressLimits, UsageEntry } from '../store/llm-usage.js';
 import { LlmError, type LanguageModel, type LlmUsage, type Metered } from './llm.js';
-import { billingOn, type PaddleEnv } from './paddle.js';
+import { billingOn, type StripeEnv } from './stripe.js';
 import { planFor, planStateOf, type PlanRow } from './plan.js';
 
 /**
@@ -10,7 +10,7 @@ import { planFor, planStateOf, type PlanRow } from './plan.js';
  * cost it. The store's half (the table, the check and the count) is store/llm-usage.ts.
  */
 
-export interface UsageEnv extends PaddleEnv {
+export interface UsageEnv extends StripeEnv {
   /**
    * The most Auto-fill presses one account may make in a UTC day; a press past it is
    * answered 429. Unset, every instance until a number is chosen with the plans' pricing
@@ -26,7 +26,7 @@ export interface UsageEnv extends PaddleEnv {
    * A per-account cap alone does nothing against throwaway accounts: a trial is free and
    * asks for no card, and email sign-in accepts any address, so the ordinary cap bounds
    * one account's day and nothing bounds how many accounts a day someone makes. The
-   * ordinary number is sized for a person with an archive to file and a Paddle customer
+   * ordinary number is sized for a person with an archive to file and a Stripe customer
    * record behind them; this one is sized for what a fortnight's free account may spend
    * before it is a customer, so a hundred of them made in a loop cost a hundred times
    * this number and not a hundred times the paying one. Where billing is off there is no

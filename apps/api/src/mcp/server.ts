@@ -1,7 +1,7 @@
 import { McpServer, createMcpHandler } from '@modelcontextprotocol/server';
 import { appLinks } from '../lib/app-links.js';
 import { canUseLlm } from '../lib/llm.js';
-import { billingOn } from '../lib/paddle.js';
+import { billingOn } from '../lib/stripe.js';
 import { planFor, planStateOf, type PlanRow } from '../lib/plan.js';
 import { quotaOf, storeLimitOf } from '../lib/quota.js';
 import { reposFor } from '../lib/repos.js';

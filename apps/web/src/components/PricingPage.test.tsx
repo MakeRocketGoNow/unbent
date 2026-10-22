@@ -16,7 +16,7 @@ vi.mock('../auth-client.js', () => ({ useSession: () => useSession() }));
 const { PricingPage } = await import('./PricingPage.js');
 
 /**
- * The page Paddle's review reads and a signed-in person may open: it states both prices,
+ * The page a merchant of record's review reads and a signed-in person may open: it states both prices,
  * and the way out matches who is reading. The config is seeded, as `LegalPage.test` seeds
  * it, since the footer reads it and jsdom has no server.
  */

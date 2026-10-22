@@ -3,7 +3,7 @@ import { cors } from 'hono/cors';
 import { MAX_ATTACHMENT_BYTES, PLAN_INACTIVE_CODE, PLAN_INACTIVE_MESSAGE } from '@unbent/shared';
 import { appLinks } from '../lib/app-links.js';
 import { chooseContentType } from '../lib/fetch-attachment.js';
-import { billingOn } from '../lib/paddle.js';
+import { billingOn } from '../lib/stripe.js';
 import { planFor, planStateOf } from '../lib/plan.js';
 import { reposFor } from '../lib/repos.js';
 import { StorageFull, quotaOf, storageFullBody, storeLimitOf } from '../lib/quota.js';

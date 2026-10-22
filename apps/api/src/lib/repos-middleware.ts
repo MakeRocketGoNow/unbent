@@ -1,5 +1,5 @@
 import { createMiddleware } from 'hono/factory';
-import { billingOn } from './paddle.js';
+import { billingOn } from './stripe.js';
 import { storeLimitFor, storeLimitOf } from './quota.js';
 import { reposFor } from './repos.js';
 import type { AppEnv } from '../types.js';

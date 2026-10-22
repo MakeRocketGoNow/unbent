@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import {
   BASE_STORAGE_GB,
   MAX_STORAGE_UNITS,
@@ -14,7 +15,6 @@ import * as api from '../notes-api.js';
 import { errorText } from '../notes-api.js';
 import { isHosted } from '../app-bridge.js';
 import { formatBytes } from '../format-bytes.js';
-import { openCheckout } from '../paddle.js';
 import { keys, planUsageQuery } from '../queries.js';
 import { usePlan } from '../use-plan.js';
 import { Button } from './Button.js';
@@ -39,20 +39,23 @@ const dollars = (n: number) => `$${n}`;
 /** The share of a bound at which the meter turns the full colour: near enough that the next large file or import may be refused. */
 const FULL_SHARE = 0.95;
 
-/** How often, and how many times, the plan is read back from Paddle after a checkout; see `settleCheckout`. */
+/** How often, and how many times, the plan is read back from Stripe after a checkout; see `settleCheckout`. */
 const CHECKOUT_SETTLE_WAIT_MS = 1500;
 const CHECKOUT_SETTLE_TRIES = 6;
 
+/** Where the browser is sent for the checkout and the portal. A seam for the tests, which cannot leave the page. */
+export const leavePage = { to: (url: string) => window.location.assign(url) };
+
 /**
  * The account's plan (MAK-108): where it stands, what it holds, and the three things
- * that change it: subscribing, managing the subscription in Paddle's portal, and buying
+ * that change it: subscribing, managing the subscription in Stripe's portal, and buying
  * more storage. Drawn only where the instance sells a plan (`config.billing`).
  *
  * One state at a time, in a sentence: a trial and when it ends, a subscription and when
  * it renews or cancels, a comp, or read-only and what that still allows. Subscribe is
  * the one `primary` on the page and appears only where it is the thing to do; a
  * subscribed account gets the portal instead, since cancelling and changing the card are
- * Paddle's forms, not this app's.
+ * Stripe's forms, not this app's.
  *
  * Inside the Android and iOS apps the buttons are not drawn at all. Both stores forbid
  * selling a subscription in an app through anything but their own billing, and a button
@@ -60,11 +63,13 @@ const CHECKOUT_SETTLE_TRIES = 6;
  * where to go instead, and nothing else changes: the plan is the account's, not the
  * device's.
  *
- * The checkout is Paddle's overlay, on a transaction the server made, so the page never
- * learns a price id and the account's Paddle customer exists before the overlay opens.
- * When the overlay reports the payment, the plan is read back from Paddle at once rather
- * than waiting on the webhook: the page should say "Subscribed" when the overlay closes,
- * not a few seconds later.
+ * The checkout is Stripe's own page, reached by redirect from a session the server made,
+ * so the page never learns a price id and the account's Stripe customer exists before
+ * the person leaves. A redirect rather than an overlay because Managed Payments'
+ * checkout is the seller of record's page, with its terms in the footer and nothing of
+ * Stripe's running on ours. Stripe sends the person back here with `?checkout=complete`
+ * once paid, and the plan is then read back from Stripe at once rather than waiting on
+ * the webhook: the page should say "Subscribed" on arrival, not a few seconds later.
  */
 export function Plan() {
   const { billing, plan: standing, unavailable } = usePlan();
@@ -74,7 +79,7 @@ export function Plan() {
   const usage = useQuery(planUsageQuery(standing !== undefined));
   const plan = usage.data ?? standing;
   const queryClient = useQueryClient();
-  const [busy, setBusy] = useState<'checkout' | 'portal' | 'storage' | null>(null);
+  const [busy, setBusy] = useState<'checkout' | 'settling' | 'portal' | 'storage' | null>(null);
   const [error, setError] = useState<string | null>(null);
   // The storage row's own, drawn under it: a refusal there answered under the
   // subscription's heading, a section above, read as about the wrong control.
@@ -83,6 +88,47 @@ export function Plan() {
   const [units, setUnits] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
   const hosted = isHosted();
+  const navigate = useNavigate();
+  // `checkout=complete` is what Stripe sends the person back with once a checkout is
+  // paid: the server puts it on the success address it hands Stripe (`planPageUrl` in
+  // routes/billing.ts), and the route validates it (`settings.plan.tsx`). Read loosely,
+  // since the page is also drawn under a bare root in its tests.
+  const { checkout } = useSearch({ strict: false }) as { checkout?: string };
+  const settled = useRef(false);
+
+  // Back from a paid checkout: read the plan until it names the subscription, then say
+  // so, and take the query off the address (through the router, which owns it) so a
+  // reload or a bookmark does not read the plan back again. Once per page, however the
+  // queries refetch. The thanks waits for the subscription itself: the address is all
+  // the evidence there is otherwise, and it can be typed, so one that finds nothing
+  // only says the plan will follow.
+  useEffect(() => {
+    if (settled.current || !billing || checkout !== 'complete') return;
+    settled.current = true;
+    void navigate({ to: '/settings/plan', search: {}, replace: true });
+    setBusy('settling');
+    void settleCheckout()
+      .then(async (found) => {
+        await queryClient.invalidateQueries({ queryKey: keys.plan() });
+        setNotice(found ? 'You’re subscribed. Thank you.' : 'Your plan will update once Stripe confirms the payment.');
+      })
+      .finally(() => setBusy(null));
+    // `settleCheckout`, `navigate` and the query client are stable for the page's life;
+    // the effect is about the address, read once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [billing, checkout]);
+
+  // `subscribe` leaves the button busy as the browser leaves for Stripe. The browser's
+  // own Back can restore this page from its back/forward cache with that state intact,
+  // and the button would stay disabled until a reload; Stripe's back link is a fresh
+  // load and needs none of this.
+  useEffect(() => {
+    const onShow = (e: PageTransitionEvent) => {
+      if (e.persisted) setBusy(null);
+    };
+    window.addEventListener('pageshow', onShow);
+    return () => window.removeEventListener('pageshow', onShow);
+  }, []);
 
   if (!billing) {
     return (
@@ -120,13 +166,13 @@ export function Plan() {
   // is over makes way for a new checkout. One still in its paid period, cancelling or
   // not, is managed in the portal; and a past-due one past its paid period is read-only
   // until the card is updated, which is the portal's form too: a new checkout would be
-  // a second subscription beside the one Paddle is still trying to collect.
+  // a second subscription beside the one Stripe is still trying to collect.
   const subscribed = plan.subscription !== null && !(plan.subscription.status === 'canceled' && plan.state === 'inactive');
   // A comp still running is asked for nothing; one that has ended is a lapsed account
   // like any other, and the checkout is its way back: the operator's "end" and a dated
   // comp running out both leave `source` as it was, so the source alone cannot say.
   const canSubscribe = !hosted && !subscribed && !(plan.source === 'comp' && plan.state !== 'inactive');
-  // Storage is changed on a subscription Paddle will bill; a canceled one is refused.
+  // Storage is changed on a subscription Stripe will bill; a canceled one is refused.
   const canChangeStorage = subscribed && plan.subscription?.status !== 'canceled';
   const chosenUnits = units ?? unitsOf(plan);
   const refresh = () => queryClient.invalidateQueries({ queryKey: keys.plan() });
@@ -139,42 +185,42 @@ export function Plan() {
   const overSmaller = plan.usedBytes === undefined || plan.usedBytes > smaller;
   const storeOverSmaller = plan.storeBytes !== undefined && plan.storeBytes > storeLimitBytes(smaller);
 
+  /**
+   * To Stripe's checkout page. The button stays busy until the browser has left, since
+   * a redirect takes a moment and a second press would make a second session.
+   */
   async function subscribe() {
     setBusy('checkout');
     setError(null);
     try {
-      const { transactionId, customerId } = await api.startCheckout(chosenUnits);
-      const outcome = await openCheckout(billing!, transactionId, customerId);
-      if (outcome === 'completed') {
-        await settleCheckout();
-        await refresh();
-        setNotice('You’re subscribed. Thank you.');
-      }
+      const { url } = await api.startCheckout(chosenUnits);
+      leavePage.to(url);
     } catch (err) {
       setError(errorText(err) || 'The checkout could not be opened.');
-    } finally {
       setBusy(null);
     }
   }
 
   /**
-   * The plan read back from Paddle until it names a subscription, a few times over a
-   * few seconds. The overlay reports the payment the moment the transaction completes,
-   * and Paddle makes the subscription from it a moment after, so the first read can
+   * The plan read back from Stripe until it names a subscription, a few times over a
+   * few seconds. Stripe sends the person back the moment the payment is confirmed, and
+   * its subscription and invoice events follow a moment after, so the first read can
    * find the customer with no subscription yet and the page would say "Subscribed" over
    * a banner that still said read-only, until a focus or a reload. Bounded: a read that
    * keeps finding nothing is the webhook's to settle, and the page shows what it has.
    *
    * Not any subscription: a lapsed subscriber coming back still has the old, canceled
-   * one on the row, and the first read finds that one as newest until Paddle has made
-   * the new one. Settled means a subscription that is not canceled.
+   * one on the row, and the first read finds that one as newest until Stripe has made
+   * the new one. Settled means a subscription that is not canceled, and the answer is
+   * whether one was found.
    */
-  async function settleCheckout() {
+  async function settleCheckout(): Promise<boolean> {
     for (let attempt = 0; attempt < CHECKOUT_SETTLE_TRIES; attempt++) {
       const read = await api.refreshPlan().catch(() => undefined);
-      if (read?.subscription && read.subscription.status !== 'canceled') return;
+      if (read?.subscription && read.subscription.status !== 'canceled') return true;
       await new Promise((r) => setTimeout(r, CHECKOUT_SETTLE_WAIT_MS));
     }
+    return false;
   }
 
   /**
@@ -184,8 +230,8 @@ export function Plan() {
    * refused even that is sent there in this tab instead.
    *
    * What was done there is read back when this tab is next looked at: a cancellation or
-   * a new card is Paddle's news, and the webhook may or may not have landed by then, so
-   * the subscription is read from Paddle rather than the row (`refreshPlan`). Once, on
+   * a new card is Stripe's news, and the webhook may or may not have landed by then, so
+   * the subscription is read from Stripe rather than the row (`refreshPlan`). Once, on
    * the first return, since the listener is removed as it fires.
    */
   async function openPortal(which: 'overview' | 'payment') {
@@ -193,10 +239,9 @@ export function Plan() {
     setError(null);
     const tab = window.open('', '_blank');
     try {
-      const links = await api.portalLinks();
-      const url = (which === 'payment' && links.payment) || links.overview;
+      const { url } = await api.portalLink(which);
       if (tab) tab.location.href = url;
-      else window.location.href = url;
+      else leavePage.to(url);
       const onReturn = () => {
         if (document.visibilityState !== 'visible') return;
         document.removeEventListener('visibilitychange', onReturn);
@@ -263,7 +308,7 @@ export function Plan() {
             </label>
             <div className="backfill-row">
               <Button variant="primary" disabled={busy !== null} onClick={() => void subscribe()}>
-                {busy === 'checkout' ? 'Opening checkout…' : `Subscribe for ${dollars(PLAN_PRICE_USD + chosenUnits * STORAGE_ADDON_PRICE_USD)} a year`}
+                {busy === 'checkout' ? 'Opening checkout…' : busy === 'settling' ? 'Confirming your subscription…' : `Subscribe for ${dollars(PLAN_PRICE_USD + chosenUnits * STORAGE_ADDON_PRICE_USD)} a year`}
               </Button>
             </div>
           </>
@@ -278,7 +323,7 @@ export function Plan() {
                 Update payment method
               </Button>
             )}
-            <span className="muted small">Invoices, the card, and cancelling, in Paddle’s portal.</span>
+            <span className="muted small">Invoices, the card, and cancelling, in Stripe’s billing portal.</span>
           </div>
         )}
         {error && <p className="bad small">{error}</p>}
@@ -353,7 +398,7 @@ export function Plan() {
 export function describePlan(plan: AccountPlan, voice: 'owner' | 'operator' = 'owner'): { title: string; sentence: string } {
   const sub = plan.subscription;
   const own = voice === 'owner';
-  // Before the read-only case: a renewal Paddle could not collect leaves the account
+  // Before the read-only case: a renewal Stripe could not collect leaves the account
   // read-only past its paid period, and the way back is the card, not a new checkout.
   if (sub?.pastDue) {
     const lapsed = plan.state === 'inactive';
@@ -361,11 +406,11 @@ export function describePlan(plan: AccountPlan, voice: 'owner' | 'operator' = 'o
       title: 'Payment failed',
       sentence: own
         ? lapsed
-          ? 'The last renewal could not be collected, so the account is read-only. Update the card to edit again; Paddle will try again once it is.'
-          : `The last renewal could not be collected. Paddle will try again; update the card to keep the plan${plan.until ? ` past ${formatDay(plan.until)}` : ''}.`
+          ? 'The last renewal could not be collected, so the account is read-only. Update the card to edit again; Stripe will try again once it is.'
+          : `The last renewal could not be collected. Stripe will try again; update the card to keep the plan${plan.until ? ` past ${formatDay(plan.until)}` : ''}.`
         : lapsed
           ? 'The last renewal could not be collected, and the account is read-only until the card is updated.'
-          : `The last renewal could not be collected. Paddle is retrying; the plan lapses${plan.until ? ` past ${formatDay(plan.until)}` : ''} unless the card is updated.`,
+          : `The last renewal could not be collected. Stripe is retrying; the plan lapses${plan.until ? ` past ${formatDay(plan.until)}` : ''} unless the card is updated.`,
     };
   }
   if (plan.state === 'inactive') {

@@ -17,15 +17,16 @@ export const PRICING_META = {
  * unbent.app's pricing page, `/pricing`: the offer and nothing else.
  *
  * The front page states the price too, in a section a third of the way down a page that
- * is mostly about what Unbent is. Paddle's website review asks for a pricing page by
- * address and reads what is there; a page that is only the prices leaves it nothing to
- * find, and reads the same way to a person who followed a link that said "pricing". The
- * offer itself is `Pricing`, shared with the front page, so the two cannot disagree.
+ * is mostly about what Unbent is. A merchant of record's review asks for a pricing page
+ * by address and reads what is there (Paddle's did; Stripe's reads the same); a page that
+ * is only the prices leaves it nothing to find, and reads the same way to a person who
+ * followed a link that said "pricing". The offer itself is `Pricing`, shared with the
+ * front page, so the two cannot disagree.
  *
  * Shown to signed-in people as well as signed-out ones, unlike the front page: a person
  * who asked for this page gets it. Only the way out changes with the session: a trial to
- * start, or the notes they already have. Prices are before tax because Paddle adds the
- * buyer's own at checkout (`tax_mode: location` on the catalog), and a page that stated a
+ * start, or the notes they already have. Prices are before tax because Stripe adds the
+ * buyer's own at checkout (the prices are `tax_behavior: exclusive`), and a page that stated a
  * price with no tax, to a buyer in a country that adds twenty percent, would be the
  * surprise the review exists to prevent.
  */

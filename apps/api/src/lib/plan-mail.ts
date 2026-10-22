@@ -1,6 +1,6 @@
 import { INACTIVE_KEPT_DAYS, type PlanSource, type PlanState } from '@unbent/shared';
 import { EmailRejected, canSendEmail, sendEmail, type EmailEnv } from './email.js';
-import { billingOn, type PaddleEnv } from './paddle.js';
+import { billingOn, type StripeEnv } from './stripe.js';
 import { LAPSE_DUE_SQL, RENEWAL_GRACE_MS, updatePlanStatement } from './plan.js';
 
 /**
@@ -41,7 +41,7 @@ interface DueRow {
   plan: PlanState;
   plan_until: number;
   source: PlanSource | null;
-  paddle_status: string | null;
+  billing_status: string | null;
   email: string;
 }
 
@@ -56,7 +56,7 @@ export function lapseMessage(kind: LapseKind, planUrl: string): { subject: strin
     case 'past_due':
       return {
         subject: 'Your Unbent renewal could not be collected',
-        text: `Your Unbent subscription's renewal could not be collected, so the account is now read-only.\n\n${still}\n\nUpdate the card from ${planUrl} and Paddle will try again; nothing else is needed. An account that stays read-only for ${Math.round(INACTIVE_KEPT_DAYS / 365)} year may be deleted, after a reminder to export it first.`,
+        text: `Your Unbent subscription's renewal could not be collected, so the account is now read-only.\n\n${still}\n\nUpdate the card from ${planUrl} and Stripe will try again; nothing else is needed. An account that stays read-only for ${Math.round(INACTIVE_KEPT_DAYS / 365)} year may be deleted, after a reminder to export it first.`,
       };
     case 'trial':
       return {
@@ -76,11 +76,12 @@ export function lapseMessage(kind: LapseKind, planUrl: string): { subject: strin
   }
 }
 
-export function lapseKind(row: { plan: PlanState; source: PlanSource | null; paddle_status?: string | null }): LapseKind {
+export function lapseKind(row: { plan: PlanState; source: PlanSource | null; billing_status?: string | null }): LapseKind {
   if (row.plan === 'trial') return 'trial';
   if (row.source === 'comp') return 'comp';
-  // A renewal Paddle is still trying to collect: the card is the way back, not a checkout.
-  return row.paddle_status === 'past_due' ? 'past_due' : 'subscription';
+  // A renewal Stripe is still trying to collect, or gave up on without cancelling
+  // (`unpaid`): the card is the way back, not a checkout.
+  return row.billing_status === 'past_due' || row.billing_status === 'unpaid' ? 'past_due' : 'subscription';
 }
 
 /**
@@ -96,7 +97,7 @@ export function lapseKind(row: { plan: PlanState; source: PlanSource | null; pad
  * every slot on every run and no later account would ever be told.
  */
 export async function notifyLapsedPlans(
-  env: PaddleEnv & EmailEnv & { DB: D1Database; APP_URL?: string | undefined },
+  env: StripeEnv & EmailEnv & { DB: D1Database; APP_URL?: string | undefined },
   now = Date.now(),
   limit = LAPSE_MAIL_PER_RUN,
 ): Promise<{ told: number; subrequests: number }> {

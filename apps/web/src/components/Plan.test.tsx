@@ -1,16 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
 import type { AccountPlan } from '@unbent/shared';
 import { keys } from '../queries.js';
 
 vi.mock('../app-bridge.js', () => ({ isHosted: vi.fn(() => false) }));
-vi.mock('../paddle.js', () => ({ openCheckout: vi.fn() }));
 import { isHosted } from '../app-bridge.js';
-import { openCheckout } from '../paddle.js';
 
-const { Plan } = await import('./Plan.js');
+const { Plan, leavePage } = await import('./Plan.js');
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = Date.now();
@@ -20,24 +18,26 @@ const NOW = Date.now();
  * fetched, as Maintenance's test is: the config says the instance sells a plan, and the
  * plan is whatever the case needs.
  */
-function harness(plan: Partial<AccountPlan>, billing = true) {
+function harness(plan: Partial<AccountPlan>, billing = true, entry = '/settings/plan') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  client.setQueryData(keys.config(), { providers: ['password'], ...(billing ? { billing: { environment: 'sandbox', clientToken: 'test_x' } } : {}) });
+  client.setQueryData(keys.config(), { providers: ['password'], ...(billing ? { billing: { environment: 'test' } } : {}) });
   client.setQueryData(keys.plan(), { state: 'trial', until: NOW + 10 * DAY, source: null, storageGb: 10, usedBytes: 0, subscription: null, ...plan, readOnlyAt: plan.readOnlyAt ?? plan.until ?? NOW + 10 * DAY });
   const rootRoute = createRootRoute({ component: () => <Plan /> });
-  const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory({ initialEntries: ['/settings/plan'] }) });
-  return render(
+  const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory({ initialEntries: [entry] }) });
+  const rendered = render(
     <QueryClientProvider client={client}>
       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
       <RouterProvider router={router as any} />
     </QueryClientProvider>,
   );
+  return { ...rendered, router };
 }
 
 afterEach(() => {
   cleanup();
   vi.mocked(isHosted).mockReturnValue(false);
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe('Plan', () => {
@@ -59,7 +59,7 @@ describe('Plan', () => {
   });
 
   it('sends a subscribed account to the portal, and sells it storage by the block', async () => {
-    harness({ state: 'active', source: 'paddle', until: NOW + 300 * DAY, storageGb: 35, usedBytes: 3 * 1024 ** 3, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
+    harness({ state: 'active', source: 'stripe', until: NOW + 300 * DAY, storageGb: 35, usedBytes: 3 * 1024 ** 3, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
     expect(await screen.findByRole('heading', { name: 'Subscribed' })).toBeTruthy();
     expect(screen.getByText(/Renews on/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /^Subscribe/ })).toBeNull();
@@ -77,20 +77,20 @@ describe('Plan', () => {
    */
   it('shows how much room the notes take against the store limit, beside the files', async () => {
     const MB = 1024 ** 2;
-    harness({ state: 'active', source: 'paddle', until: NOW + 300 * DAY, storageGb: 10, usedBytes: 2 * 1024 ** 3, storeBytes: 180 * MB, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
+    harness({ state: 'active', source: 'stripe', until: NOW + 300 * DAY, storageGb: 10, usedBytes: 2 * 1024 ** 3, storeBytes: 180 * MB, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
     expect(await screen.findByText('Files: 2.00 GB of 10 GB used.')).toBeTruthy();
     const store = screen.getByText(/Notes, their history and the text read from files:/);
     expect(store.textContent).toBe('Notes, their history and the text read from files: 180.0 MB of 1.50 GB used.');
     expect(store.querySelector('.bad')).toBeNull();
     cleanup();
-    harness({ state: 'active', source: 'paddle', until: NOW + 300 * DAY, storageGb: 10, usedBytes: 2 * 1024 ** 3, storeBytes: 1500 * MB, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
+    harness({ state: 'active', source: 'stripe', until: NOW + 300 * DAY, storageGb: 10, usedBytes: 2 * 1024 ** 3, storeBytes: 1500 * MB, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
     const full = await screen.findByText(/Notes, their history and the text read from files:/);
     expect(full.querySelector('.bad')?.textContent).toBe('1.46 GB of 1.50 GB used.');
     // While the store has not answered (the harness never answers the usage read), the
     // line holds its place with no figure, so the buttons under it do not move when
     // the figure arrives.
     cleanup();
-    harness({ state: 'active', source: 'paddle', until: NOW + 300 * DAY, storageGb: 10, usedBytes: 2 * 1024 ** 3, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
+    harness({ state: 'active', source: 'stripe', until: NOW + 300 * DAY, storageGb: 10, usedBytes: 2 * 1024 ** 3, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
     expect(await screen.findByText('Files: 2.00 GB of 10 GB used.')).toBeTruthy();
     expect(screen.getByText(/Notes, their history/).textContent).toBe('Notes, their history and the text read from files: reading…');
   });
@@ -102,30 +102,30 @@ describe('Plan', () => {
    */
   it('refuses to remove a block while the notes would be over the smaller store limit', async () => {
     const GB = 1024 ** 3;
-    harness({ state: 'active', source: 'paddle', until: NOW + 300 * DAY, storageGb: 35, usedBytes: 2 * GB, storeBytes: 3 * GB, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
+    harness({ state: 'active', source: 'stripe', until: NOW + 300 * DAY, storageGb: 35, usedBytes: 2 * GB, storeBytes: 3 * GB, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
     const remove = await screen.findByRole('button', { name: 'Remove 25 GB' });
     expect(remove.hasAttribute('disabled')).toBe(true);
     expect(remove.getAttribute('aria-description')).toBe('The notes take more than the 1.50 GB of room they would have; delete some notes or clear their history, and empty the trash, first');
     // Under the smaller limit, the block can go.
     cleanup();
-    harness({ state: 'active', source: 'paddle', until: NOW + 300 * DAY, storageGb: 35, usedBytes: 2 * GB, storeBytes: GB, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
+    harness({ state: 'active', source: 'stripe', until: NOW + 300 * DAY, storageGb: 35, usedBytes: 2 * GB, storeBytes: GB, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
     const ok = await screen.findByRole('button', { name: 'Remove 25 GB' });
     expect(ok.hasAttribute('disabled')).toBe(false);
     expect(ok.getAttribute('aria-description')).toBeNull();
   });
 
   it('names a cancellation ahead and a failed payment, with the card form for the latter', async () => {
-    harness({ state: 'active', source: 'paddle', until: NOW + 30 * DAY, subscription: { status: 'active', cancelsAt: NOW + 30 * DAY, pastDue: false } });
+    harness({ state: 'active', source: 'stripe', until: NOW + 30 * DAY, subscription: { status: 'active', cancelsAt: NOW + 30 * DAY, pastDue: false } });
     expect(await screen.findByRole('heading', { name: 'Cancelling' })).toBeTruthy();
     cleanup();
-    harness({ state: 'active', source: 'paddle', until: NOW + 3 * DAY, subscription: { status: 'past_due', cancelsAt: null, pastDue: true } });
+    harness({ state: 'active', source: 'stripe', until: NOW + 3 * DAY, subscription: { status: 'past_due', cancelsAt: null, pastDue: true } });
     expect(await screen.findByRole('heading', { name: 'Payment failed' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Update payment method' })).toBeTruthy();
   });
 
   /** Past its paid period, a past-due account is read-only, and the card is the way back, never a second checkout. */
   it('sends a past-due account past its paid period to the card form, not to a checkout', async () => {
-    harness({ state: 'inactive', source: 'paddle', until: NOW - DAY, subscription: { status: 'past_due', cancelsAt: null, pastDue: true } });
+    harness({ state: 'inactive', source: 'stripe', until: NOW - DAY, subscription: { status: 'past_due', cancelsAt: null, pastDue: true } });
     expect(await screen.findByRole('heading', { name: 'Payment failed' })).toBeTruthy();
     expect(screen.getByText(/read-only. Update the card/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /^Subscribe/ })).toBeNull();
@@ -133,7 +133,7 @@ describe('Plan', () => {
     expect(screen.getByRole('button', { name: 'Manage subscription' })).toBeTruthy();
     // And a canceled subscription whose period is over is offered the checkout, with no storage to change.
     cleanup();
-    harness({ state: 'inactive', source: 'paddle', until: NOW - DAY, subscription: { status: 'canceled', cancelsAt: null, pastDue: false } });
+    harness({ state: 'inactive', source: 'stripe', until: NOW - DAY, subscription: { status: 'canceled', cancelsAt: null, pastDue: false } });
     expect(await screen.findByRole('button', { name: /^Subscribe/ })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Add 25 GB' })).toBeNull();
   });
@@ -159,35 +159,107 @@ describe('Plan', () => {
     expect(screen.getByText(/Subscriptions are managed on the web/)).toBeTruthy();
   });
 
-  it('opens the checkout on the server\'s transaction and re-reads the plan when it completes', async () => {
+  it('sends the browser to Stripe\'s checkout for the storage chosen, and stays busy until it has left', async () => {
+    const bodies: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === '/api/billing/checkout') {
+          bodies.push(String(init?.body));
+          return Response.json({ url: 'https://checkout.stripe.com/c/pay/cs_test_1' });
+        }
+        return Response.json({}, { status: 404 });
+      }),
+    );
+    const leave = vi.spyOn(leavePage, 'to').mockImplementation(() => {});
+    harness({});
+    fireEvent.change(await screen.findByRole('combobox'), { target: { value: '1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Subscribe for $72 a year' }));
+    await waitFor(() => expect(leave).toHaveBeenCalledWith('https://checkout.stripe.com/c/pay/cs_test_1'));
+    expect(bodies).toEqual(['{"storage":1}']);
+    // Still "Opening checkout…": the page is on its way out, and a second press would be a second session.
+    expect(screen.getByRole('button', { name: 'Opening checkout…' })).toBeTruthy();
+  });
+
+  /** The browser's Back from Stripe's page can bring this page back from its cache, busy state and all. */
+  it('offers Subscribe again when the page is restored from the back/forward cache', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => (url === '/api/billing/checkout' ? Response.json({ url: 'https://checkout.stripe.com/c/pay/cs_1' }) : Response.json({}, { status: 404 }))),
+    );
+    const leave = vi.spyOn(leavePage, 'to').mockImplementation(() => {});
+    harness({});
+    fireEvent.click(await screen.findByRole('button', { name: 'Subscribe for $60 a year' }));
+    await waitFor(() => expect(leave).toHaveBeenCalled());
+    expect(screen.getByRole('button', { name: 'Opening checkout…' })).toBeTruthy();
+    const restored = new Event('pageshow') as PageTransitionEvent;
+    Object.defineProperty(restored, 'persisted', { value: true });
+    act(() => void window.dispatchEvent(restored));
+    expect(screen.getByRole('button', { name: 'Subscribe for $60 a year' })).toBeTruthy();
+  });
+
+  it('says the checkout could not be opened when the server refuses, and offers the button again', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'Stripe could not start the checkout right now. Try again shortly.' }, { status: 502 })));
+    const leave = vi.spyOn(leavePage, 'to').mockImplementation(() => {});
+    harness({});
+    fireEvent.click(await screen.findByRole('button', { name: 'Subscribe for $60 a year' }));
+    expect(await screen.findByText('Stripe could not start the checkout right now. Try again shortly.')).toBeTruthy();
+    expect(leave).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Subscribe for $60 a year' })).toBeTruthy();
+  });
+
+  /** Stripe sends the person back with `?checkout=complete`; the page reads the plan back until it names the subscription. */
+  it('re-reads the plan on return from a paid checkout, and takes the query off the address', async () => {
     const calls: string[] = [];
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string, init?: RequestInit) => {
         calls.push(`${init?.method ?? 'GET'} ${url}`);
-        if (url === '/api/billing/checkout') return Response.json({ transactionId: 'txn_1', customerId: 'ctm_1' });
         // The first read is a moment too early for the subscription; the second has it.
         if (url === '/api/billing/refresh') return Response.json(calls.filter((c) => c.endsWith('/refresh')).length > 1 ? { state: 'active', subscription: { status: 'active', cancelsAt: null, pastDue: false } } : { state: 'trial', subscription: null });
-        if (url === '/api/me/plan') return Response.json({ state: 'active', until: NOW + 365 * DAY, readOnlyAt: NOW + 366 * DAY, source: 'paddle', storageGb: 35, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
+        if (url === '/api/me/plan') return Response.json({ state: 'active', until: NOW + 365 * DAY, readOnlyAt: NOW + 366 * DAY, source: 'stripe', storageGb: 35, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
         return Response.json({}, { status: 404 });
       }),
     );
-    vi.mocked(openCheckout).mockResolvedValue('completed');
-    harness({});
-    fireEvent.change(await screen.findByRole('combobox'), { target: { value: '1' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Subscribe for $72 a year' }));
+    const { router } = harness({}, true, '/settings/plan?checkout=complete');
+    // The wait says what it is waiting for, not that a checkout is opening.
+    expect(await screen.findByRole('button', { name: 'Confirming your subscription…' })).toBeTruthy();
+    // Off the address at once, so a reload or a bookmark does not read the plan back again.
+    const { search } = router.state.location;
+    expect(search).toEqual({});
     // The second read comes after `settleCheckout`'s wait, past the finder's default second.
     expect(await screen.findByRole('heading', { name: 'Subscribed' }, { timeout: 4000 })).toBeTruthy();
-    expect(calls).toContain('POST /api/billing/checkout');
     expect(calls.filter((c) => c === 'POST /api/billing/refresh')).toHaveLength(2);
-    expect(vi.mocked(openCheckout)).toHaveBeenCalledWith({ environment: 'sandbox', clientToken: 'test_x' }, 'txn_1', 'ctm_1');
     expect(screen.getByText('You’re subscribed. Thank you.')).toBeTruthy();
+  });
+
+  /** The address can be typed or bookmarked, so it alone is no reason to say thank you. */
+  it('does not thank anyone for a subscription the read-back never found', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url === '/api/billing/refresh') return Response.json({ state: 'trial', subscription: null });
+        if (url === '/api/me/plan') return Response.json({ state: 'trial', until: NOW + 10 * DAY, readOnlyAt: NOW + 10 * DAY, source: null, storageGb: 10, subscription: null });
+        return Response.json({}, { status: 404 });
+      }),
+    );
+    try {
+      harness({}, true, '/settings/plan?checkout=complete');
+      await screen.findByRole('button', { name: 'Confirming your subscription…' });
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(await screen.findByText('Your plan will update once Stripe confirms the payment.')).toBeTruthy();
+      expect(screen.queryByText('You’re subscribed. Thank you.')).toBeNull();
+      expect(screen.getByRole('button', { name: 'Subscribe for $60 a year' })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('says so, with a way to try again, when the plan cannot be read', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'down' }, { status: 503 })));
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    client.setQueryData(keys.config(), { providers: ['password'], billing: { environment: 'sandbox', clientToken: 'test_x' } });
+    client.setQueryData(keys.config(), { providers: ['password'], billing: { environment: 'test' } });
     const rootRoute = createRootRoute({ component: () => <Plan /> });
     const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory({ initialEntries: ['/settings/plan'] }) });
     render(
@@ -206,18 +278,15 @@ describe('Plan', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) => {
-        if (url === '/api/billing/checkout') return Response.json({ transactionId: 'txn_2' });
         if (url === '/api/billing/refresh') {
           refreshes.push(1);
           return Response.json(refreshes.length > 1 ? { state: 'active', subscription: { status: 'active', cancelsAt: null, pastDue: false } } : { state: 'inactive', subscription: { status: 'canceled', cancelsAt: null, pastDue: false } });
         }
-        if (url === '/api/me/plan') return Response.json({ state: 'active', until: NOW + 365 * DAY, readOnlyAt: NOW + 366 * DAY, source: 'paddle', storageGb: 10, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
+        if (url === '/api/me/plan') return Response.json({ state: 'active', until: NOW + 365 * DAY, readOnlyAt: NOW + 366 * DAY, source: 'stripe', storageGb: 10, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
         return Response.json({}, { status: 404 });
       }),
     );
-    vi.mocked(openCheckout).mockResolvedValue('completed');
-    harness({ state: 'inactive', until: NOW - DAY, source: 'paddle', subscription: { status: 'canceled', cancelsAt: null, pastDue: false } });
-    fireEvent.click(await screen.findByRole('button', { name: 'Subscribe for $60 a year' }));
+    harness({ state: 'inactive', until: NOW - DAY, source: 'stripe', subscription: { status: 'canceled', cancelsAt: null, pastDue: false } }, true, '/settings/plan?checkout=complete');
     expect(await screen.findByRole('heading', { name: 'Subscribed' }, { timeout: 4000 })).toBeTruthy();
     expect(refreshes).toHaveLength(2);
   });

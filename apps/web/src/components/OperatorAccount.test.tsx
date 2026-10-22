@@ -600,7 +600,7 @@ describe('OperatorAccount: delete account', () => {
   });
 
   it('restates the export promise on an account whose plan has lapsed, and on no other', () => {
-    harness(undefined, undefined, { ...account, plan: { state: 'inactive', until: now - 40 * 86_400_000, readOnlyAt: now - 40 * 86_400_000, source: 'paddle', storageGb: 10, subscription: null } });
+    harness(undefined, undefined, { ...account, plan: { state: 'inactive', until: now - 40 * 86_400_000, readOnlyAt: now - 40 * 86_400_000, source: 'stripe', storageGb: 10, subscription: null } });
     fireEvent.click(screen.getByRole('button', { name: 'Delete account' }));
     const text = screen.getByRole('group', { name: 'Confirm delete account' }).textContent ?? '';
     expect(text).toContain('The plan lapsed');
@@ -716,7 +716,7 @@ describe('OperatorAccount: the plan', () => {
     expect(await within(section).findByText('Comped.')).toBeTruthy();
   });
 
-  it('ends a comp behind a confirm, and refuses to comp over a Paddle subscription', async () => {
+  it('ends a comp behind a confirm, and refuses to comp over a Stripe subscription', async () => {
     sellsPlan = true;
     harness(undefined, undefined, { ...account, plan: { state: 'active', until: null, readOnlyAt: null, source: 'comp', storageGb: 10, subscription: null } });
     const section = (await screen.findByRole('heading', { name: 'Plan' })).closest('section')!;
@@ -727,9 +727,9 @@ describe('OperatorAccount: the plan', () => {
     fireEvent.click(within(confirm).getByRole('button', { name: 'End comp' }));
     await waitFor(() => expect(api.compAccount).toHaveBeenCalledWith('u1', { action: 'end' }));
     cleanup();
-    harness(undefined, undefined, { ...account, plan: { state: 'active', until: now + 300 * 86_400_000, readOnlyAt: now + 301 * 86_400_000, source: 'paddle', storageGb: 10, subscription: { status: 'active', cancelsAt: null, pastDue: false } } });
+    harness(undefined, undefined, { ...account, plan: { state: 'active', until: now + 300 * 86_400_000, readOnlyAt: now + 301 * 86_400_000, source: 'stripe', storageGb: 10, subscription: { status: 'active', cancelsAt: null, pastDue: false } } });
     const paid = (await screen.findByRole('heading', { name: 'Plan' })).closest('section')!;
-    expect(paid.textContent).toContain('Paid through Paddle');
+    expect(paid.textContent).toContain('Paid through Stripe');
     expect(within(paid).queryByRole('button')).toBeNull();
   });
 });

@@ -1063,8 +1063,8 @@ function Resync({ userId, email }: { userId: string; email: string }) {
 
 /**
  * The account's plan, and the comp (MAK-108): the one way an account is paid for without
- * Paddle: the owner, a gifted friend, someone whose trial ran out mid-import. An end
- * date or none, and the storage to give it; a comp of an account that has a Paddle
+ * Stripe: the owner, a gifted friend, someone whose trial ran out mid-import. An end
+ * date or none, and the storage to give it; a comp of an account that has a Stripe
  * subscription is refused by the route, and the sentence says so. Ending a comp makes
  * the account read-only at once, which is a confirm: it is someone else's account.
  *
@@ -1109,7 +1109,7 @@ function PlanSection({ userId, email, plan }: { userId: string; email: string; p
         {plan && <span className="muted"> {plan.storageGb} GB of storage.</span>}
       </p>
       {subscribed ? (
-        <p className="muted small">Paid through Paddle. To comp this account instead, cancel the subscription in Paddle first.</p>
+        <p className="muted small">Paid through Stripe. To comp this account instead, cancel the subscription in Stripe first.</p>
       ) : (
         <div className="operator-row">
           <label>

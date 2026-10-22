@@ -108,7 +108,7 @@ describe('/', () => {
   });
 
   /**
-   * The pricing address Paddle's review follows: the front page at its prices, under its
+   * The pricing address a merchant of record's review follows: the front page at its prices, under its
    * own address, and shown to anyone. Only the instance rule carries over from the bare
    * root, so a fork advertises nothing here either.
    */

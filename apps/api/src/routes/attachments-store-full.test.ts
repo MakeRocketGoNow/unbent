@@ -12,12 +12,11 @@ import { attachments } from './attachments.js';
  * bound on file text exists for (found in review).
  */
 
-const paddle = {
-  PADDLE_API_KEY: 'pdl_sdbx_apikey_x',
-  PADDLE_WEBHOOK_SECRET: 's',
-  PADDLE_CLIENT_TOKEN: 't',
-  PADDLE_PLAN_PRICE_ID: 'p',
-  PADDLE_STORAGE_PRICE_ID: 'q',
+const stripe = {
+  STRIPE_SECRET_KEY: 'sk_test_x',
+  STRIPE_WEBHOOK_SECRET: 's',
+  STRIPE_PLAN_PRICE_ID: 'p',
+  STRIPE_STORAGE_PRICE_ID: 'q',
 };
 
 /** D1 with one plan row on the base storage, and a store that refuses text past any limit it is given. */
@@ -26,8 +25,8 @@ function fakeEnv({ billing }: { billing: boolean }) {
   const limits: Array<number | null | undefined> = [];
   const row = {
     user_id: 'u1', plan: 'trial', plan_until: Date.now() + 86_400_000, storage_gb: 10, source: null,
-    paddle_customer_id: null, paddle_subscription_id: null, paddle_status: null, paddle_cancels_at: null,
-    paddle_event_at: null, lapse_notified_at: null, created_at: 1, updated_at: 1,
+    billing_customer_id: null, billing_subscription_id: null, billing_status: null, billing_cancels_at: null,
+    billing_event_at: null, lapse_notified_at: null, created_at: 1, updated_at: 1,
   };
   const DB = {
     prepare: (sql: string) => ({
@@ -48,7 +47,7 @@ function fakeEnv({ billing }: { billing: boolean }) {
       }
     },
   };
-  const env = { ...(billing ? paddle : {}), DB, USER_STORE: { idFromName: (name: string) => name, get: () => store } };
+  const env = { ...(billing ? stripe : {}), DB, USER_STORE: { idFromName: (name: string) => name, get: () => store } };
   return { env: env as unknown as AppEnv['Bindings'], reads, limits };
 }
 

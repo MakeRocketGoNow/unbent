@@ -6,12 +6,13 @@
  * challenge runs in an iframe on challenges.cloudflare.com, which is the point of it, and
  * what it concludes comes back as a token the server checks (`captcha` in
  * `apps/api/src/auth.ts`). A third party on the page all the same, so it is fetched only
- * when a screen draws the widget and only where `/api/config` carries a site key, the
- * way Paddle.js is fetched on the Subscribe press (`paddle.ts`): an instance that has not
- * set the pair never loads it, and nothing about it is in the build.
+ * when a screen draws the widget and only where `/api/config` carries a site key: an
+ * instance that has not set the pair never loads it, and nothing about it is in the
+ * build. It is the one script loaded by tag now; Paddle's overlay was the other, and
+ * Stripe's checkout is a page of its own, reached by redirect, that loads nothing here.
  *
- * Not the npm wrapper, for the reason `paddle.ts` gives: a package around a script tag is
- * one more thing to hold back (DEPENDENCIES.md), and the surface used here is three calls.
+ * Not the npm wrapper: a package around a script tag is one more thing to hold back
+ * (DEPENDENCIES.md), and the surface used here is three calls.
  *
  * `?render=explicit` keeps the script from scanning the page for a widget to draw by
  * itself; the component renders into the element it owns and removes it on unmount.

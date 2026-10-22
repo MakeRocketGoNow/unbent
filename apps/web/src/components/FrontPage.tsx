@@ -56,7 +56,7 @@ const FILES_README_URL = `${SOURCE_URL}#your-notes-are-files`;
  * when checkout exists (MAK-108) the trial is where it would branch.
  *
  * The prices are the shared constants (`packages/shared/src/plan.ts`), which the Plan page
- * quotes too and which Paddle's catalog is kept in step with (MAK-108): one place to change
+ * quotes too and which Stripe's catalog is kept in step with (MAK-108): one place to change
  * a number, and this page and the checkout agree.
  *
  * The screenshots are of the demo library `pnpm seed:demo` loads, never of anyone's real
@@ -321,9 +321,9 @@ export function FrontShell({ children }: { children: ReactNode }) {
 /**
  * The plan, its price and what happens when it lapses: the one statement of the offer,
  * which the front page draws under its Pricing heading and the pricing page draws as the
- * page. Paddle's review reads the pricing page and a visitor reads the front page, and
- * the two must say the same thing; the numbers are the shared constants, so they also
- * agree with the Plan page and the checkout.
+ * page. The merchant of record's review reads the pricing page and a visitor reads the
+ * front page, and the two must say the same thing; the numbers are the shared constants,
+ * so they also agree with the Plan page and the checkout.
  */
 export function Pricing() {
   return (

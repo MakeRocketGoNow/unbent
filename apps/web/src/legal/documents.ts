@@ -54,11 +54,12 @@ export interface LegalSection {
   /**
    * The section's anchor, for a link that has to land on it rather than on the document.
    *
-   * Only the refund policy has one, so that `/terms#refunds` can be handed to Paddle's
-   * website review or put in a reply to someone asking. It is a section of the terms
-   * rather than a page of its own because a refund is a term of the sale. Deliberately not
-   * linked from the footer: a Refunds link beside Terms reads as an invitation to leave,
-   * and the review accepts terms that contain the policy.
+   * Only the refund policy has one, so that `/terms#refunds` can be handed to a merchant
+   * of record's review (Paddle's asked for it by address; Stripe's reads the same) or put
+   * in a reply to someone asking. It is a section of the terms rather than a page of its
+   * own because a refund is a term of the sale. Deliberately not linked from the footer: a
+   * Refunds link beside Terms reads as an invitation to leave, and a review accepts terms
+   * that contain the policy.
    */
   id?: string;
 }
@@ -95,16 +96,17 @@ export interface LegalOptions {
   backups: boolean;
   /**
    * Whether this instance sells a plan: it has billing on (`AppConfig.billing`, where the
-   * Paddle secrets are set, MAK-108), or it shows the front page (`AppConfig.frontPage`),
+   * Stripe secrets are set, MAK-108), or it shows the front page (`AppConfig.frontPage`),
    * which states the price.
    *
    * The front page counts on its own because a price on offer is a sale the terms have to
-   * cover, whether or not checkout works yet, and because Paddle's website review reads
-   * the terms for a refund policy before it will issue the live keys that turn billing on.
-   * Billing alone left unbent.app unable to pass the review that billing waits on.
+   * cover, whether or not checkout works yet, and because a merchant of record's review
+   * reads the terms for a refund policy before it issues the live keys that turn billing
+   * on (Paddle's did, and Stripe's Managed Payments review reads the same). Billing alone
+   * left unbent.app unable to pass the review that billing waits on.
    *
    * The terms say what is charged, how it renews, how to cancel and the refund policy, and
-   * the policy names Paddle, only where there is a sale. A self-hosted instance charges
+   * the policy names Stripe, only where there is a sale. A self-hosted instance charges
    * nothing, and terms describing a price and a payment processor it never uses would be a
    * promise about a sale that cannot happen.
    */
@@ -138,11 +140,11 @@ const READ_AT_A_PRESS =
   ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'][OWN_FILES_TO_READ] ??
   String(OWN_FILES_TO_READ);
 
-const EFFECTIVE = '2026-10-16';
+const EFFECTIVE = '2026-10-22';
 
 /**
  * How many "other kinds of service" the policy lists, as the word the sentence needs. Two
- * always (sign-in, email); error tracking, the backups' GitHub job, Paddle, and Auto-fill's
+ * always (sign-in, email); error tracking, the backups' GitHub job, Stripe, and Auto-fill's
  * TypeSafe and Anthropic each add one.
  */
 const COUNT = ['', '', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven'] as const;
@@ -161,16 +163,17 @@ const COUNT = ['', '', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven'] as const;
  * and these dates move for every change. `documents.test.ts` checks neither is older.
  *
  * Both moved again on 14 October 2026, when the terms gained the plan, its renewal and
- * the refund policy, and the policy Paddle (MAK-108). `LEGAL_VERSION` moved with them
- * only where the instance sells a plan: those sections are drawn only there
- * (`LegalOptions.sellsPlan`), and an instance that sells none stays on the version before
- * (`LEGAL_CHANGES` in `@unbent/shared`). The dates are one pair for every instance all the same, so on
- * such an instance the date above the unchanged text moves and the version does not:
- * the documents' rule that the dates move for every change and the version only for one
- * worth asking about, seen from the other side.
+ * the refund policy, and the policy named the merchant of record, Paddle at the time
+ * (MAK-108). `LEGAL_VERSION` moved with them only where the instance sells a plan: those
+ * sections are drawn only there (`LegalOptions.sellsPlan`), and an instance that sells
+ * none stays on the version before (`LEGAL_CHANGES` in `@unbent/shared`). The dates are
+ * one pair for every instance all the same, so on such an instance the date above the
+ * unchanged text moves and the version does not: the documents' rule that the dates move
+ * for every change and the version only for one worth asking about, seen from the other
+ * side.
  *
  * The policy's moved again on 16 October 2026, for two disclosures of what was already so:
- * that Paddle's checkout sets cookies of its own once Subscribe is pressed, and that an
+ * that the checkout sets cookies of its own once Subscribe is pressed, and that an
  * app connected to the account reads and writes notes as its owner does. Neither changed
  * how information is handled, so `LEGAL_VERSION` stayed; the terms' date moved the same
  * day for the venue clause, which is not a reason to ask anyone again either.
@@ -188,8 +191,14 @@ const COUNT = ['', '', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven'] as const;
  * It moved on 20 October 2026 because the settings tab it names for disconnecting an app
  * was renamed from Connected apps to AI assistants. Nothing about how information is
  * handled changed, so the version did not.
+ *
+ * Both moved on 22 October 2026, when the merchant of record changed from Paddle to
+ * Stripe before any sale (docs/billing.md says why). The version moved with them, where
+ * the instance sells a plan: a different company receives the name, address and card at
+ * checkout and holds the record of the purchase, which is how information is handled,
+ * and the policy people had agreed to named the other one.
  */
-const PRIVACY_EFFECTIVE = '2026-10-20';
+const PRIVACY_EFFECTIVE = '2026-10-22';
 
 export interface LegalDocuments {
   privacy: LegalDocument;
@@ -267,9 +276,9 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
           ...(opts.sellsPlan
             ? [
                 'Your plan — whether the account is on a trial or a plan, when that ends, how much ' +
-                  'storage it includes, and the identifiers Paddle gives your customer record and ' +
+                  'storage it includes, and the identifiers Stripe gives your customer record and ' +
                   'subscription, so that the two can be matched. Your card and billing address go ' +
-                  'to Paddle and never reach us.',
+                  'to Stripe and never reach us.',
               ]
             : []),
           'Nothing else. We do not collect your location, your contacts, your device identifiers, ' +
@@ -335,12 +344,13 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
             : []),
           ...(opts.sellsPlan
             ? [
-                'Paddle, which sells the plan as merchant of record. When you start a checkout we ' +
-                  'give it your account’s email address and an identifier for the account, so the ' +
-                  'purchase can be matched to it; it then collects your name, billing address and ' +
-                  'payment details, under its own privacy policy, and tells us only whether the ' +
-                  'account is paid for, until when, and how much storage it includes. It never ' +
-                  'sees your notes.',
+                'Stripe, which sells the plan as merchant of record through its Managed Payments ' +
+                  'service, under its Link name. When you start a checkout we give it your ' +
+                  'account’s email address and an identifier for the account, so the purchase can ' +
+                  'be matched to it; it then collects your name, billing address and payment ' +
+                  'details on its own page, under its own privacy policy, and tells us only ' +
+                  'whether the account is paid for, until when, and how much storage it ' +
+                  'includes. It never sees your notes.',
               ]
             : []),
           ...(opts.autofill
@@ -373,9 +383,9 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
             'advertising, analytics or tracking cookies, and no other company sets a cookie ' +
             'or stores anything on your device through Unbent' +
             (opts.sellsPlan
-              ? ', with one exception: when you press Subscribe, the checkout that opens is ' +
-                'Paddle’s own page inside ours, and it sets cookies of its own, under its own ' +
-                'policy, for the purchase. Nothing of Paddle’s loads until that press.'
+              ? ', with one exception: when you press Subscribe, you are taken to Stripe’s own ' +
+                'checkout page, which sets cookies of its own, under its own policy, for the ' +
+                'purchase. Nothing of Stripe’s loads on our pages.'
               : '.'),
           'Because all of it is needed to give you the service you asked for, none of it needs ' +
             'your consent, and there is no cookie banner to dismiss. Clearing this site’s data ' +
@@ -445,7 +455,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
           ...(opts.sellsPlan
             ? [
                 `An account whose trial or plan has ended is kept, read-only, for ${KEPT}, ` +
-                  `and may then be deleted, after we have emailed you to export it first. Paddle ` +
+                  `and may then be deleted, after we have emailed you to export it first. Stripe ` +
                   `keeps its own record of what you bought for as long as tax law requires.`,
               ]
             : []),
@@ -786,8 +796,9 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
 /**
  * The terms' two sections about money, for an instance that sells a plan.
  *
- * What Paddle's website review reads for: that there is a price, that Paddle is the
- * merchant of record, that the plan renews and how to stop it, and a refund policy.
+ * What a merchant of record's review reads for (Paddle's did, by address; Stripe's
+ * Managed Payments reads the same): that there is a price, that Stripe is the merchant of
+ * record, that the plan renews and how to stop it, and a refund policy.
  *
  * No numbers: not the price, the storage or the trial's length. The front page and the
  * checkout state those, and terms that quoted `plan.ts`'s constants would be rewritten by a
@@ -799,7 +810,7 @@ export function legalDocuments(operator: Operator, opts: LegalOptions): LegalDoc
  * cancelling keeps the year already paid for (`planStateOf` reads a canceled subscription
  * as active until its period ends); a lapsed account reads, searches, exports and
  * deletes (`requireActivePlan`); and a refunded plan is cancelled at once rather than
- * left renewing, which Paddle itself would do (`refundEffectOf` in the API's billing
+ * left renewing, which Stripe itself would do (`refundEffectOf` in the API's billing
  * events, acted on by the webhook with `ensureSubscriptionCanceled`, the call account
  * deletion makes). Deleting an account a year after it lapsed is a right reserved, not
  * a job: "may", by decision (`INACTIVE_KEPT_DAYS`).
@@ -814,9 +825,10 @@ function payment(operator: Operator): LegalSection[] {
           'price, and what a plan includes, are the ones shown on our pricing page and at ' +
           'checkout when you subscribe. Prices are in US dollars, and sales tax or VAT is ' +
           'added where it applies.',
-        'Our order process is conducted by our online reseller Paddle.com. Paddle is the ' +
-          'merchant of record for every order: it takes the payment, issues the receipt and ' +
-          'handles tax, and its own buyer terms apply to the purchase alongside these.',
+        'Our order process is conducted by Stripe, through its Managed Payments service. Stripe is the ' +
+          'merchant of record for every order, under its Link name: it takes the payment, issues ' +
+          'the receipt and handles tax, and its own buyer terms apply to the purchase alongside ' +
+          'these.',
         'A plan renews automatically each year, and is charged again at the price then current, ' +
           'until you cancel it. If the price is going to change we will email you at least 30 ' +
           'days before the renewal it applies to.',
@@ -837,7 +849,7 @@ function payment(operator: Operator): LegalSection[] {
         `If Unbent is not for you, ask for a refund within ${REFUND_DAYS} days of any charge (` +
           `the first year or a renewal, the plan or added storage) and you will get the whole ` +
           `of that charge back. No reason is needed. Write to ${operator.email} from the ` +
-          `address the account used, or ask Paddle directly with the link in your receipt.`,
+          `address the account used, or ask Stripe directly through the support link in your receipt.`,
         'A refunded plan is cancelled, so it does not renew. After ' +
           `${REFUND_DAYS} days a charge is not refunded, though cancelling still stops the ` +
           'next one. Where the law where you live gives you a longer right to cancel or to a ' +

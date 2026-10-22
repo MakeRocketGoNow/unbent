@@ -12,7 +12,7 @@ import { signInCodeEmail } from './lib/sign-in-code-email.js';
 import { deleteKeys } from './lib/blobs.js';
 import { ensureDirectoryRow } from './lib/directory.js';
 import { ensurePlanRow } from './lib/plan.js';
-import { billingOn } from './lib/paddle.js';
+import { billingOn } from './lib/stripe.js';
 import { SESSION_CACHE_SECONDS, clearAccount, tombstoneAccount } from './lib/account-deletion.js';
 
 /**

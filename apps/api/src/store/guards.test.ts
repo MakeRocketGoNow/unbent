@@ -105,7 +105,7 @@ describe('the per-account store', () => {
    * frozen table. The routes that may still name `env.DB` are the ones whose data stays in
    * D1: the health check, the upload-grant claim, connected apps, the agreement to the
    * terms, which is a column on Better Auth's `user` row, the plan, which is the account's
-   * standing with Paddle and not its notes (MAK-108), and admin.ts, whose one use is
+   * standing with Stripe and not its notes (MAK-108), and admin.ts, whose one use is
    * the test-fixture purge, which lists the throwaway accounts by their `user` rows. A new
    * route that needs the database is either a control-plane route, added here
    * with a reason, or a mistake.

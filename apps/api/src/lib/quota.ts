@@ -1,6 +1,6 @@
 import { GB, STORAGE_FULL_CODE, storageQuotaBytes, storeLimitBytes } from '@unbent/shared';
 import type { AttachmentsRepo } from './attachments-repo.js';
-import { billingOn, type PaddleEnv } from './paddle.js';
+import { billingOn, type StripeEnv } from './stripe.js';
 import { planFor, type PlanRow } from './plan.js';
 
 /**
@@ -73,25 +73,25 @@ export function roomOf(bytes: number): string {
  */
 
 /** The account's store limit in bytes, or null for none: billing off. */
-export function storeLimitOf(env: PaddleEnv, plan: PlanRow | undefined): number | null {
+export function storeLimitOf(env: StripeEnv, plan: PlanRow | undefined): number | null {
   const quota = quotaOf(env, plan);
   return quota === null ? null : storeLimitBytes(quota);
 }
 
 /** The same, read from the database, for a caller without the row on its context. */
-export async function storeLimitFor(env: PaddleEnv, db: D1Database, userId: string): Promise<number | null> {
+export async function storeLimitFor(env: StripeEnv, db: D1Database, userId: string): Promise<number | null> {
   const quota = await quotaFor(env, db, userId);
   return quota === null ? null : storeLimitBytes(quota);
 }
 
 /** The account's quota in bytes, or null for none: billing off. */
-export function quotaOf(env: PaddleEnv, plan: PlanRow | undefined): number | null {
+export function quotaOf(env: StripeEnv, plan: PlanRow | undefined): number | null {
   if (!billingOn(env) || !plan) return null;
   return storageQuotaBytes(plan.storageGb);
 }
 
 /** The same, read from the database, for a caller without the row on its context. */
-export async function quotaFor(env: PaddleEnv, db: D1Database, userId: string): Promise<number | null> {
+export async function quotaFor(env: StripeEnv, db: D1Database, userId: string): Promise<number | null> {
   if (!billingOn(env)) return null;
   return storageQuotaBytes((await planFor(db, userId)).storageGb);
 }

@@ -5,13 +5,22 @@
 unbent.app sells one plan, $60 a year, with 10 GB of attachments and 25 GB more for $12 a
 year: about a third of Evernote's cheapest plan with no cap on notes, in the range of Bear
 and Obsidian Sync, and well above the few dollars a year an account costs to serve, since
-the price is positioning rather than cost recovery (the comparison is in MAK-47). Paddle is
-the merchant of record: it takes the payment, handles VAT and sales tax, and tells the
-Worker what happened over a webhook. Nothing about it exists on an instance that has not
-set the five `PADDLE_*` settings (every account is active for good there, and no Plan tab
-is drawn) so a fork never has to think about it.
-The numbers the pages quote are in `packages/shared/src/plan.ts`; the prices Paddle charges
+the price is positioning rather than cost recovery (the comparison is in MAK-47). Stripe
+is the merchant of record, through Managed Payments: it takes the payment as the seller
+(the buyer sees "Sold through Link" and a `LINK.COM*` descriptor), works out, withholds
+and remits VAT and sales tax, handles disputes and transaction-level support, and tells
+the Worker what happened over a webhook. Nothing about it exists on an instance that has
+not set the four `STRIPE_*` settings (every account is active for good there, and no Plan
+tab is drawn) so a fork never has to think about it.
+The numbers the pages quote are in `packages/shared/src/plan.ts`; the prices Stripe charges
 are in its catalog, and the two are changed together.
+
+Paddle was the merchant of record first, and the plan was built and verified against its
+sandbox. Its seller verification then asked the LLC for a government document naming its
+owner, which Minnesota does not issue, and the review went nowhere; the switch to Stripe
+was made on 2026-10-22, before any sale. Only the provider seam moved (`lib/stripe.ts`,
+the billing routes, the Plan page's checkout); the plan, the row and the rules below are
+as they were, and the row's provider columns are named `billing_*` for that reason.
 
 Every account starts with a fortnight's trial, no card asked for, counted from its first
 request after billing is on, so an account that existed before the keys went on gets its
@@ -25,10 +34,10 @@ not a job): nothing deletes on a timer, by decision, since deleting a paperless 
 because someone missed a year of mail would be holding it hostage after all, and a
 read-only account costs almost nothing to keep (MAK-47, and `INACTIVE_KEPT_DAYS`).
 
-Comps do not go through Paddle. A 100% discount there still asks for a card and charges it
-when the discount ends, so an account that should not pay (the owner, a gifted friend) is
-comped from the operator's page, with an end date or none, and Paddle never hears of it.
-Paddle discount codes are for marketing.
+Comps do not go through Stripe. A 100% coupon there still asks for a card and charges it
+when the coupon ends, so an account that should not pay (the owner, a gifted friend) is
+comped from the operator's page, with an end date or none, and Stripe never hears of it.
+Stripe's coupons and promotion codes are for marketing.
 
 Storage is enforced where bytes come in: an upload, a copy, a fetched picture or a
 duplicate past the plan's quota is a 402 that names the numbers, and the Plan page shows
@@ -97,8 +106,10 @@ reminder, not a check. The order is:
 1. Write to every current subscriber with the new price and the date it starts, at least
    30 days before the first renewal it would apply to. A subscriber who cancels before
    then keeps the year already paid for at the old price.
-2. After the 30 days, change the price in Paddle's catalog: a new price on the product,
-   with the old one archived, so renewals move and nothing already in flight does.
+2. After the 30 days, change the price in Stripe's catalog: a new price on the product,
+   with the old one archived, and the existing subscriptions moved to it (Stripe does not
+   move them by itself), so renewals move and nothing already in flight does. Then the
+   new price id goes in `STRIPE_PLAN_PRICE_ID` or `STRIPE_STORAGE_PRICE_ID`.
 3. Change `PLAN_PRICE_USD` or `STORAGE_ADDON_PRICE_USD` in `packages/shared/src/plan.ts`
    and the pinned number in its test in the same commit, and deploy. The front page and
    the Plan page quote the constants; the terms deliberately do not, and their effective
@@ -109,76 +120,87 @@ year and may then be deleted, after an email asking its owner to export it. Noth
 deletes on a timer and nothing sends that mail either. The operator's delete confirm says
 so on an account whose plan has lapsed, which is the moment it matters.
 
-### Setting up Paddle
+### Setting up Stripe
 
-Sandbox and live are two separate Paddle accounts, with separate logins, keys, prices and
-webhook secrets: [sandbox-vendors.paddle.com](https://sandbox-vendors.paddle.com) is for
-building against, and needs no approval; [vendors.paddle.com](https://vendors.paddle.com)
-is the real one, and its verification (the website review, the business and the
-identity checks) takes days, so start it early. Everything below is done in both, the
-sandbox first.
+A Stripe account has a live mode and sandboxes, each with its own keys, catalog, portal
+configuration and webhook endpoints; a sandbox needs no verification and is what to build
+against. unbent.app's is the "Unbent" account under MakeRocketGoNow LLC, and its sandbox
+is "Unbent sandbox". Managed Payments is switched on for the account at
+[dashboard.stripe.com/settings/managed-payments](https://dashboard.stripe.com/settings/managed-payments),
+behind an eligibility review (business type, location, dispute history) that the live
+account passes once; a sandbox accepts `managed_payments[enabled]` without it (checked on
+2026-10-22). Everything below is done in both, the sandbox first; Stripe's own MCP or CLI
+does the catalog and the portal configuration, the dashboard the rest.
 
-1. **Catalog → Products.** Two products: the plan, with one price of $60 a year, and
-   the storage add-on, with one price of $12 a year and quantity turned on. The tax
-   category is Software as a Service, which is what the app is and which both the
-   sandbox and the live account accepted without asking for approval (2026-10-16).
-   Copy both price ids, `pri_…`.
-2. **Developer tools → Authentication.** An API key with `customer`, `transaction` and
-   `subscription` read and write and `customer_portal_session` write, which is shown
-   once; and a client-side token, which is public and ships in the page.
-3. **Checkout → Checkout configuration.** A default payment link (the homepage is fine,
-   and `https://localhost/` in the sandbox) and the payment methods to offer. The
-   checkout itself is Paddle's overlay on the Plan page, so no page of yours needs it.
-4. **Developer tools → Notifications.** A destination of type webhook at
-   `https://<host>/api/billing/webhook`, with the subscription events
-   (`subscription.created`, `activated`, `trialing`, `updated`, `past_due`, `paused`,
-   `resumed`, `canceled`), `transaction.completed`, and the adjustment events
-   (`adjustment.created`, `adjustment.updated`). Its secret, `pdl_ntfset_…`, is
-   what every delivery is signed with. The Worker answers inside Paddle's five seconds
-   and applies each event once, in any order, so a retry or a late delivery changes
-   nothing. The adjustment events are how a refund reaches the Worker: Paddle leaves a
-   refunded subscription renewing, and the terms say it does not, so an approved refund
-   of the plan cancels the subscription at once and a refund of only the storage add-on
-   takes the add-on off. A destination made before those two were listed has to be
-   edited to send them, or a refund is money back and nothing else. A delivery is
-   accepted only from an address Paddle publishes at `/ips` (the live API's or the
-   sandbox's, by the key), which the Worker reads and keeps for an hour rather than
-   writing down, so nothing needs allowlisting by hand: any other sender gets a 403
-   before its signature is read.
-5. **The five settings** on the Worker, as secrets: `PADDLE_API_KEY`,
-   `PADDLE_WEBHOOK_SECRET`, `PADDLE_CLIENT_TOKEN`, `PADDLE_PLAN_PRICE_ID` and
-   `PADDLE_STORAGE_PRICE_ID`. Which environment they belong to is read off the key:
-   `pdl_sdbx_` is the sandbox, `pdl_live_` is live. In `.dev.vars` locally; as the
-   `DEV_PADDLE_*` GitHub secrets for the dev instance, which the deploy carries over with
-   the sandbox's values; and on production by hand, `pnpm exec wrangler secret put` from
-   `apps/api` for each, with the live account's. `APP_URL` must be set too, since the
-   mail that says a plan has ended names it. That mail goes out from the hourly sweep
-   through the same provider and allowance as the sign-in codes, so it is capped at two
-   an hour (`LAPSE_MAIL_PER_RUN`): on Resend's free tier of a hundred a day, a cluster of
-   trials ending together (every account that existed when billing went on starts its
-   fortnight at its first visit) must not crowd the codes out. On a paid mail tier the
-   cap can go up (MAK-220).
+1. **Product catalog.** Two products: the plan, with one price of $60 a year, and the
+   storage add-on, with one price of $12 a year (the quantity is the subscription item's).
+   Every product sold under Managed Payments needs a tax code it accepts; both are
+   `txcd_10103000`, software as a service for personal use, and their prices are
+   `tax_behavior: exclusive`, so the tax is added at checkout for the buyer's own place and
+   the pages state prices before tax. Copy both price ids, `price_…`. In the sandbox:
+   `prod_VUL0CdGjXfKrHC` / `price_1UTMKJEBtmDnkvwOTwklZHMT` and
+   `prod_VUL0zF9Ug4kV46` / `price_1UTMKKEBtmDnkvwOrgnNd4x8`.
+2. **API key.** A restricted key from the API keys page, with Customers, Checkout
+   Sessions, Subscriptions and the customer portal to write and Invoices and Charges to
+   read; shown once. A secret key does too, and is what a sandbox gets. Which environment
+   the Worker talks to is read off the key (`sk_test_`/`rk_test_` against `sk_live_`/
+   `rk_live_`).
+3. **Customer portal.** One configuration, the account's default: invoice history, the
+   card, cancelling at the period's end with a reason asked for, and the business name
+   and address editable; not changing the plan, which the app does itself. The portal's
+   terms and privacy links are `/terms` and `/privacy`. The checkout itself is Stripe's
+   hosted page, reached by redirect, so no page of yours needs anything: the Worker makes
+   a Checkout Session with Managed Payments on and the browser is sent to its address.
+   The sandbox's is `bpc_1UTMKqEBtmDnkvwOgDlmgHUI`.
+4. **Webhook.** An endpoint in Workbench at `https://<host>/api/billing/webhook` on API
+   version `2025-03-31.basil` or later (the Worker pins its own calls to that version), for
+   `customer.subscription.created`, `updated`, `deleted`, `paused` and `resumed`,
+   `invoice.paid`, `charge.refunded` and `charge.dispute.created`. Its signing secret,
+   `whsec_…`, is what every delivery is signed with. The Worker answers at once and applies
+   each event once, in any order, so a retry (Stripe retries for three days) or a late
+   delivery changes nothing. The refund events are how a refund reaches the Worker: a
+   refund in Stripe leaves the subscription renewing, and the terms say it does not, so a
+   refund of the plan cancels the subscription at once and a refund of only the storage
+   add-on takes the add-on off; the same for a refund Stripe itself gives a buyer, which
+   Managed Payments allows within sixty days. A delivery is accepted only from an address
+   Stripe publishes at
+   [stripe.com/files/ips/ips_webhooks.json](https://stripe.com/files/ips/ips_webhooks.json),
+   which the Worker reads and keeps for an hour rather than writing down, so nothing needs
+   allowlisting by hand: any other sender gets a 403 before its signature is read.
+5. **The four settings** on the Worker, as secrets: `STRIPE_SECRET_KEY`,
+   `STRIPE_WEBHOOK_SECRET`, `STRIPE_PLAN_PRICE_ID` and `STRIPE_STORAGE_PRICE_ID`. In
+   `.dev.vars` locally; as the `DEV_STRIPE_*` GitHub secrets for the dev instance, which
+   the deploy carries over with a sandbox's values; and on production by hand,
+   `pnpm exec wrangler secret put` from `apps/api` for each, with the live account's, the
+   webhook secret last, since the fourth is what turns billing on. `APP_URL` must be set
+   too: the checkout and the portal come back to it, and the mail that says a plan has
+   ended names it. That mail goes out from the hourly sweep through the same provider and
+   allowance as the sign-in codes, so it is capped at two an hour (`LAPSE_MAIL_PER_RUN`):
+   on Resend's free tier of a hundred a day, a cluster of trials ending together (every
+   account that existed when billing went on starts its fortnight at its first visit) must
+   not crowd the codes out. On a paid mail tier the cap can go up (MAK-220).
 
-Locally, Paddle cannot reach a webhook on `localhost`; a tunnel (`cloudflared tunnel
---url http://localhost:<API_PORT>`) gives it an address for a session, or the sandbox's
-simulator sends a sample event to one. The live suite proves the rest with a signed body
-of its own (`apps/api/test/plan.test.ts`), given the dev server's secret and price ids as
-`PADDLE_WEBHOOK_SECRET`, `PADDLE_PLAN_PRICE_ID` and `PADDLE_STORAGE_PRICE_ID`, the same
-lines as `.dev.vars`. Test cards are in Paddle's sandbox docs; `4242 4242 4242 4242` with
-any future date succeeds.
+Locally, Stripe cannot reach a webhook on `localhost`; the Stripe CLI forwards the
+sandbox's events to one (`stripe listen --forward-to http://localhost:<API_PORT>/api/billing/webhook`,
+after `stripe login`), and the `whsec_…` it prints is the local `STRIPE_WEBHOOK_SECRET`
+for as long as it runs. Without it the refresh route is how a local checkout reaches the
+row, which the Plan page calls on its own. The live suite proves the rest with a signed
+body of its own (`apps/api/test/plan.test.ts`), given the dev server's secret and price
+ids as `STRIPE_WEBHOOK_SECRET`, `STRIPE_PLAN_PRICE_ID` and `STRIPE_STORAGE_PRICE_ID`, the
+same lines as `.dev.vars`. Test cards are in Stripe's testing docs; `4242 4242 4242 4242`
+with any future date succeeds, and a Link account made at a sandbox checkout signs in
+with the code `000000`.
 
-Going live is the same five settings from the live account, after its verification. The
-website review wants the pricing public, and terms, a privacy policy and a refund policy
-naming Paddle as the merchant of record. Its form refuses a bare domain for the pricing
-page, so the addresses to give it are `/pricing` (the offer on a page of its own, drawn
-from the same block as the front page's Pricing section), `/terms`, `/privacy` and
-`/terms#refunds`. The built-in documents say all of it wherever
-the instance sells a plan: billing on, or `FRONT_PAGE=1`, since the front page states the
-price and the review comes before the live keys that turn billing on. They are the terms'
-"Plans and payment" and "Refunds", and Paddle among the policy's services. The refund
-policy is at `/terms#refunds`, under the Terms link in the front page's footer rather than
-a link of its own. Everything an account is told (the trial's end, a lapse, the mail) is
-the same in both environments.
+Going live is the same four settings from the live account, after Managed Payments is
+activated on it. The checkout page carries Stripe's own terms as the seller; the
+business's are linked from Checkout settings and the portal configuration, and the
+built-in documents say the rest wherever the instance sells a plan: billing on, or
+`FRONT_PAGE=1`, since the front page states the price. They are the terms' "Plans and
+payment" and "Refunds", and Stripe among the policy's services. The refund policy is at
+`/terms#refunds`, under the Terms link in the front page's footer rather than a link of
+its own, and `/pricing` is the offer on a page of its own, drawn from the same block as
+the front page's Pricing section. Everything an account is told (the trial's end, a lapse,
+the mail) is the same in both environments.
 
 ## Deleting an account
 

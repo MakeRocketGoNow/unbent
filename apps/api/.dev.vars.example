@@ -287,7 +287,7 @@ ALLOWED_EMAILS=
 # model cost is still counted (src/lib/llm-usage.ts). Set a small number to try the refusal.
 # AUTOFILL_DAILY_CAP=
 #
-# The same ceiling for an account on its trial, where the PADDLE_* settings below are set.
+# The same ceiling for an account on its trial, where the STRIPE_* settings below are set.
 # Unset, a trial gets AUTOFILL_DAILY_CAP. A trial is free and needs no card, so this is the
 # number that bounds what a throwaway account can spend; set it smaller than the one above.
 # AUTOFILL_TRIAL_DAILY_CAP=
@@ -295,7 +295,7 @@ ALLOWED_EMAILS=
 # The most one account's Auto-fill may cost in a calendar year, in cents, worked out from
 # the tokens the counter records at the prices in packages/shared/src/llm-prices.ts; past
 # it a press is refused until 1 January. Unset enforces nothing. The trial's, where the
-# PADDLE_* settings are set, falls back to the first. unbent.app sets 5000 and 300.
+# STRIPE_* settings are set, falls back to the first. unbent.app sets 5000 and 300.
 # AUTOFILL_YEARLY_CENTS=
 # AUTOFILL_TRIAL_YEARLY_CENTS=
 
@@ -304,31 +304,32 @@ ALLOWED_EMAILS=
 # it to bring that up to date without a release.
 # ATTACHMENT_FETCH_USER_AGENT=
 
-# Paddle, which sells the plan (MAK-108). All five or none: with all set, this instance has
-# a plan to sell (every account starts a fortnight's trial, a lapsed one is refused writes
-# with a 402 and the Settings page gets a Plan tab) and with any missing, nothing about
-# billing exists and every account is active for good. A fork leaves them unset.
+# Stripe, which sells the plan as merchant of record through Managed Payments (MAK-108).
+# All four or none: with all set, this instance has a plan to sell (every account starts a
+# fortnight's trial, a lapsed one is refused writes with a 402 and the Settings page gets a
+# Plan tab) and with any missing, nothing about billing exists and every account is active
+# for good. A fork leaves them unset.
 #
-# Which environment they belong to is read off the API key: pdl_sdbx_ is the sandbox,
-# pdl_live_ the live account. The sandbox is a separate Paddle account with its own
-# dashboard, keys, prices and webhook secret (https://sandbox-vendors.paddle.com), and is
-# what goes here; the live values go on the Worker as secrets.
+# Which environment they belong to is read off the key: sk_test_ or rk_test_ is a sandbox,
+# sk_live_ or rk_live_ the live account. A sandbox has its own keys, prices, portal
+# configuration and webhook secrets, and is what goes here; the live values go on the
+# Worker as secrets. docs/billing.md has the setup in order.
 #
-#   API key:       Paddle > Developer tools > Authentication > API keys (customer,
-#                  transaction and subscription read and write, customer_portal_session write)
-#   Client token:  the Client-side tokens tab beside it; public, ships in the page
-#   Prices:        Paddle > Catalog > Products: the plan at $60 a year, and the storage
-#                  add-on at $12 a year with quantity on
-#   Webhook:       Paddle > Developer tools > Notifications > New destination, pointed at
-#                  https://<host>/api/billing/webhook; its secret is pdl_ntfset_…
-# PADDLE_API_KEY=
-# PADDLE_WEBHOOK_SECRET=
-# PADDLE_CLIENT_TOKEN=
-# PADDLE_PLAN_PRICE_ID=
-# PADDLE_STORAGE_PRICE_ID=
+#   Secret key:    the sandbox's API keys page; a restricted key with Customers, Checkout
+#                  Sessions, Subscriptions and the customer portal to write, and Invoices
+#                  and Charges to read, is enough
+#   Prices:        the product catalog: the plan at $60 a year, and the storage add-on at
+#                  $12 a year, both on a tax code Managed Payments accepts (SaaS)
+#   Webhook:       locally, what `stripe listen --forward-to http://localhost:<API_PORT>/api/billing/webhook`
+#                  prints; on an instance, the endpoint made in Workbench > Webhooks, its
+#                  signing secret is whsec_…
+# STRIPE_SECRET_KEY=
+# STRIPE_WEBHOOK_SECRET=
+# STRIPE_PLAN_PRICE_ID=
+# STRIPE_STORAGE_PRICE_ID=
 #
 # Where those requests go instead, for a stand-in server during development. Leave unset.
-# PADDLE_API_URL=
+# STRIPE_API_URL=
 
 # PostHog, for grouping the browser errors that /api/client-errors otherwise only logs.
 #
