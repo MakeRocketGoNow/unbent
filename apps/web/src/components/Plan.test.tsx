@@ -225,7 +225,8 @@ describe('Plan', () => {
     // The wait says what it is waiting for, not that a checkout is opening.
     expect(await screen.findByRole('button', { name: 'Confirming your subscription…' })).toBeTruthy();
     // Off the address at once, so a reload or a bookmark does not read the plan back again.
-    expect(router.state.location.search).toEqual({});
+    const { search } = router.state.location;
+    expect(search).toEqual({});
     // The second read comes after `settleCheckout`'s wait, past the finder's default second.
     expect(await screen.findByRole('heading', { name: 'Subscribed' }, { timeout: 4000 })).toBeTruthy();
     expect(calls.filter((c) => c === 'POST /api/billing/refresh')).toHaveLength(2);
