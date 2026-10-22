@@ -203,7 +203,7 @@ describe('the webhook', () => {
     // A refund with nothing refunded on it is accepted and changes nothing. (A refund of
     // the plan reads the charge's invoice from Stripe and asks it to cancel the
     // subscription, which the sandbox refuses for ids it does not hold, so that case is
-    // the unit test's.)
+    // `src/routes/billing-webhook.test.ts`'s, against a stand-in Stripe.)
     const charge = { id: 'ch_first', amount: 6000, amount_refunded: 0, refunded: false, payment_intent: 'pi_first', customer: customer2 };
     expect(await (await deliver(envelope(`evt_${customer2}_r`, 'charge.refunded', '2026-10-13T00:00:00Z', charge))).json()).toEqual({ applied: false, reason: 'not followed' });
     plan = (await (await call('GET', '/api/me/plan')).json()) as typeof plan;
