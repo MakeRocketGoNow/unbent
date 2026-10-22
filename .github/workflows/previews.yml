@@ -85,17 +85,16 @@ jobs:
       DEV_TYPESAFE_API_KEY: ${{ secrets.DEV_TYPESAFE_API_KEY }}
       # The vision model's key, for reading images; the same reasoning, the same shape.
       DEV_ANTHROPIC_API_KEY: ${{ secrets.DEV_ANTHROPIC_API_KEY }}
-      # Paddle on the dev instance (MAK-108): the sandbox account's values, never the live
+      # Stripe on the dev instance (MAK-108): the sandbox's values, never the live
       # account's, so a checkout on dev.unbent.app takes a test card and moves no money.
-      # All five or none, which is the Worker's own rule for them (`paddleOf`): with all
-      # five, every account on dev starts a fortnight's trial and a lapsed one is refused
+      # All four or none, which is the Worker's own rule for them (`stripeOf`): with all
+      # four, every account on dev starts a fortnight's trial and a lapsed one is refused
       # writes, which is the thing to try there before it is true on unbent.app. Only the
       # dev instance: the previews share dev's accounts and would need a webhook each.
-      DEV_PADDLE_API_KEY: ${{ secrets.DEV_PADDLE_API_KEY }}
-      DEV_PADDLE_WEBHOOK_SECRET: ${{ secrets.DEV_PADDLE_WEBHOOK_SECRET }}
-      DEV_PADDLE_CLIENT_TOKEN: ${{ secrets.DEV_PADDLE_CLIENT_TOKEN }}
-      DEV_PADDLE_PLAN_PRICE_ID: ${{ secrets.DEV_PADDLE_PLAN_PRICE_ID }}
-      DEV_PADDLE_STORAGE_PRICE_ID: ${{ secrets.DEV_PADDLE_STORAGE_PRICE_ID }}
+      DEV_STRIPE_SECRET_KEY: ${{ secrets.DEV_STRIPE_SECRET_KEY }}
+      DEV_STRIPE_WEBHOOK_SECRET: ${{ secrets.DEV_STRIPE_WEBHOOK_SECRET }}
+      DEV_STRIPE_PLAN_PRICE_ID: ${{ secrets.DEV_STRIPE_PLAN_PRICE_ID }}
+      DEV_STRIPE_STORAGE_PRICE_ID: ${{ secrets.DEV_STRIPE_STORAGE_PRICE_ID }}
       # Optional; the same document production serves, so the Android app's passkeys work
       # against the dev instance and previews too.
       ANDROID_ASSET_LINKS: ${{ secrets.ANDROID_ASSET_LINKS }}
@@ -195,14 +194,14 @@ jobs:
           if [ -n "$DEV_ANTHROPIC_API_KEY" ]; then
             printf 'ANTHROPIC_API_KEY=%s\n' "$DEV_ANTHROPIC_API_KEY" >> "$RUNNER_TEMP/dev-secrets.env"
           fi
-          # Paddle, all five or none: a partial set is a checkout that fails when pressed,
+          # Stripe, all four or none: a partial set is a checkout that fails when pressed,
           # and the Worker treats one as none anyway. Unset, the dev instance sells no
           # plan and every account on it is active for good.
-          if [ -n "$DEV_PADDLE_API_KEY" ] && [ -n "$DEV_PADDLE_WEBHOOK_SECRET" ] && [ -n "$DEV_PADDLE_CLIENT_TOKEN" ] \
-            && [ -n "$DEV_PADDLE_PLAN_PRICE_ID" ] && [ -n "$DEV_PADDLE_STORAGE_PRICE_ID" ]; then
-            printf 'PADDLE_API_KEY=%s\nPADDLE_WEBHOOK_SECRET=%s\nPADDLE_CLIENT_TOKEN=%s\nPADDLE_PLAN_PRICE_ID=%s\nPADDLE_STORAGE_PRICE_ID=%s\n' \
-              "$DEV_PADDLE_API_KEY" "$DEV_PADDLE_WEBHOOK_SECRET" "$DEV_PADDLE_CLIENT_TOKEN" \
-              "$DEV_PADDLE_PLAN_PRICE_ID" "$DEV_PADDLE_STORAGE_PRICE_ID" >> "$RUNNER_TEMP/dev-secrets.env"
+          if [ -n "$DEV_STRIPE_SECRET_KEY" ] && [ -n "$DEV_STRIPE_WEBHOOK_SECRET" ] \
+            && [ -n "$DEV_STRIPE_PLAN_PRICE_ID" ] && [ -n "$DEV_STRIPE_STORAGE_PRICE_ID" ]; then
+            printf 'STRIPE_SECRET_KEY=%s\nSTRIPE_WEBHOOK_SECRET=%s\nSTRIPE_PLAN_PRICE_ID=%s\nSTRIPE_STORAGE_PRICE_ID=%s\n' \
+              "$DEV_STRIPE_SECRET_KEY" "$DEV_STRIPE_WEBHOOK_SECRET" \
+              "$DEV_STRIPE_PLAN_PRICE_ID" "$DEV_STRIPE_STORAGE_PRICE_ID" >> "$RUNNER_TEMP/dev-secrets.env"
           fi
           if [ -n "$DEV_SWEEP_TOKEN" ]; then
             printf 'SWEEP_TOKEN=%s\n' "$DEV_SWEEP_TOKEN" >> "$RUNNER_TEMP/dev-secrets.env"
