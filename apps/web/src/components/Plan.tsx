@@ -79,7 +79,7 @@ export function Plan() {
   const usage = useQuery(planUsageQuery(standing !== undefined));
   const plan = usage.data ?? standing;
   const queryClient = useQueryClient();
-  const [busy, setBusy] = useState<'checkout' | 'portal' | 'storage' | null>(null);
+  const [busy, setBusy] = useState<'checkout' | 'settling' | 'portal' | 'storage' | null>(null);
   const [error, setError] = useState<string | null>(null);
   // The storage row's own, drawn under it: a refusal there answered under the
   // subscription's heading, a section above, read as about the wrong control.
@@ -99,15 +99,19 @@ export function Plan() {
   // Back from a paid checkout: read the plan until it names the subscription, then say
   // so, and take the query off the address (through the router, which owns it) so a
   // reload or a bookmark does not read the plan back again. Once per page, however the
-  // queries refetch.
+  // queries refetch. The thanks waits for the subscription itself: the address is all
+  // the evidence there is otherwise, and it can be typed, so one that finds nothing
+  // only says the plan will follow.
   useEffect(() => {
     if (settled.current || !billing || checkout !== 'complete') return;
     settled.current = true;
     void navigate({ to: '/settings/plan', search: {}, replace: true });
-    setBusy('checkout');
+    setBusy('settling');
     void settleCheckout()
-      .then(() => queryClient.invalidateQueries({ queryKey: keys.plan() }))
-      .then(() => setNotice('You’re subscribed. Thank you.'))
+      .then(async (found) => {
+        await queryClient.invalidateQueries({ queryKey: keys.plan() });
+        setNotice(found ? 'You’re subscribed. Thank you.' : 'Your plan will update once Stripe confirms the payment.');
+      })
       .finally(() => setBusy(null));
     // `settleCheckout`, `navigate` and the query client are stable for the page's life;
     // the effect is about the address, read once.
@@ -195,14 +199,16 @@ export function Plan() {
    *
    * Not any subscription: a lapsed subscriber coming back still has the old, canceled
    * one on the row, and the first read finds that one as newest until Stripe has made
-   * the new one. Settled means a subscription that is not canceled.
+   * the new one. Settled means a subscription that is not canceled, and the answer is
+   * whether one was found.
    */
-  async function settleCheckout() {
+  async function settleCheckout(): Promise<boolean> {
     for (let attempt = 0; attempt < CHECKOUT_SETTLE_TRIES; attempt++) {
       const read = await api.refreshPlan().catch(() => undefined);
-      if (read?.subscription && read.subscription.status !== 'canceled') return;
+      if (read?.subscription && read.subscription.status !== 'canceled') return true;
       await new Promise((r) => setTimeout(r, CHECKOUT_SETTLE_WAIT_MS));
     }
+    return false;
   }
 
   /**
@@ -290,7 +296,7 @@ export function Plan() {
             </label>
             <div className="backfill-row">
               <Button variant="primary" disabled={busy !== null} onClick={() => void subscribe()}>
-                {busy === 'checkout' ? 'Opening checkout…' : `Subscribe for ${dollars(PLAN_PRICE_USD + chosenUnits * STORAGE_ADDON_PRICE_USD)} a year`}
+                {busy === 'checkout' ? 'Opening checkout…' : busy === 'settling' ? 'Confirming your subscription…' : `Subscribe for ${dollars(PLAN_PRICE_USD + chosenUnits * STORAGE_ADDON_PRICE_USD)} a year`}
               </Button>
             </div>
           </>

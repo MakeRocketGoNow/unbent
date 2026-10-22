@@ -204,10 +204,35 @@ describe('Plan', () => {
       }),
     );
     harness({}, true, '/settings/plan?checkout=complete');
+    // The wait says what it is waiting for, not that a checkout is opening.
+    expect(await screen.findByRole('button', { name: 'Confirming your subscription…' })).toBeTruthy();
     // The second read comes after `settleCheckout`'s wait, past the finder's default second.
     expect(await screen.findByRole('heading', { name: 'Subscribed' }, { timeout: 4000 })).toBeTruthy();
     expect(calls.filter((c) => c === 'POST /api/billing/refresh')).toHaveLength(2);
     expect(screen.getByText('You’re subscribed. Thank you.')).toBeTruthy();
+  });
+
+  /** The address can be typed or bookmarked, so it alone is no reason to say thank you. */
+  it('does not thank anyone for a subscription the read-back never found', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        if (url === '/api/billing/refresh') return Response.json({ state: 'trial', subscription: null });
+        if (url === '/api/me/plan') return Response.json({ state: 'trial', until: NOW + 10 * DAY, readOnlyAt: NOW + 10 * DAY, source: null, storageGb: 10, subscription: null });
+        return Response.json({}, { status: 404 });
+      }),
+    );
+    try {
+      harness({}, true, '/settings/plan?checkout=complete');
+      await screen.findByRole('button', { name: 'Confirming your subscription…' });
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(await screen.findByText('Your plan will update once Stripe confirms the payment.')).toBeTruthy();
+      expect(screen.queryByText('You’re subscribed. Thank you.')).toBeNull();
+      expect(screen.getByRole('button', { name: 'Subscribe for $60 a year' })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('says so, with a way to try again, when the plan cannot be read', async () => {
