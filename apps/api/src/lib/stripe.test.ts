@@ -191,8 +191,14 @@ describe('the Stripe calls', () => {
 
   it('makes one customer per account however many presses ask for it', async () => {
     answer([[200, { id: 'cus_1' }]]);
-    await createCustomer(stripe, 'jo@example.com', 'u1');
-    expect(new Headers(calls[0]!.init.headers).get('Idempotency-Key')).toBe('customer-u1');
+    await createCustomer(stripe, 'jo@example.com', 'u1', NOW);
+    await createCustomer(stripe, 'jo@example.com', 'u1', NOW + 60_000);
+    await createCustomer(stripe, 'jo@example.com', 'u1', NOW + 10 * 60_000);
+    const keys = calls.map((c) => new Headers(c.init.headers).get('Idempotency-Key'));
+    // Two presses a minute apart share a key; a press after a failure's window does not replay it.
+    expect(keys[0]).toMatch(/^customer-u1-\d+$/);
+    expect(keys[1]).toBe(keys[0]);
+    expect(keys[2]).not.toBe(keys[0]);
   });
 
   it("expires the customer's open checkouts, and takes one already closed as done", async () => {

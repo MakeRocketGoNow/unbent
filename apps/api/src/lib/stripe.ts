@@ -199,14 +199,19 @@ export interface StripeCustomer {
  * event can find it). `metadata.user_id` is this account's id, so Stripe's side names
  * ours; the join the webhook uses is the customer id on the row. Stripe lets two
  * customers share an address, so there is no "already exists" to catch. The call is
- * keyed on the account (Stripe keeps a key for a day), so two presses that both read a
- * row with no customer, from two tabs, get the same customer back: otherwise the row
- * keeps the last one written and a checkout made for the other is paid for under a
- * customer the webhook finds no account for.
+ * keyed on the account and a ten-minute window, so two presses that both read a row
+ * with no customer, from two tabs, get the same customer back: otherwise the row keeps
+ * the last one written and a checkout made for the other is paid for under a customer
+ * the webhook finds no account for. The window and not the account alone because Stripe
+ * replays a key's first answer for a day, a passing 500 included, and that would refuse
+ * every press for the day.
  */
-export async function createCustomer(stripe: StripeConfig, email: string, userId: string): Promise<StripeCustomer> {
-  return stripeCall<StripeCustomer>(stripe, 'POST', '/v1/customers', { email, metadata: { user_id: userId } }, `customer-${userId}`);
+export async function createCustomer(stripe: StripeConfig, email: string, userId: string, now = Date.now()): Promise<StripeCustomer> {
+  const key = `customer-${userId}-${Math.floor(now / CUSTOMER_KEY_WINDOW_MS)}`;
+  return stripeCall<StripeCustomer>(stripe, 'POST', '/v1/customers', { email, metadata: { user_id: userId } }, key);
 }
+
+const CUSTOMER_KEY_WINDOW_MS = 10 * 60 * 1000;
 
 export interface StripeCheckoutSession {
   id: string;
