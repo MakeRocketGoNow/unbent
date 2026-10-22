@@ -82,13 +82,12 @@ export function Plan() {
   // place under an error), so the first live checkout came back to a page saying "Free
   // trial" with the figures beside it, over a row that had just gone active, until a
   // reload (2026-10-22). The figures are the account's bytes, which no plan change
-  // alters, so an older pair under a newer state is still true. The light read carries
-  // none, so its own are only what a test seeded.
+  // alters, so an older pair under a newer state is still true.
   const usage = useQuery(planUsageQuery(standing !== undefined));
   const plan: AccountPlan | undefined = standing && {
     ...standing,
-    usedBytes: usage.data?.usedBytes ?? standing.usedBytes,
-    storeBytes: usage.data?.storeBytes ?? standing.storeBytes,
+    usedBytes: usage.data?.usedBytes,
+    storeBytes: usage.data?.storeBytes,
   };
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState<'checkout' | 'settling' | 'portal' | 'storage' | null>(null);

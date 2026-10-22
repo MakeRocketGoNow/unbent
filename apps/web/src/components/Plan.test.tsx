@@ -17,12 +17,20 @@ const NOW = Date.now();
  * The page's states and the one control each offers (MAK-108). Seeded rather than
  * fetched, as Maintenance's test is: the config says the instance sells a plan, and the
  * plan is whatever the case needs.
+ *
+ * Seeded as the server answers it: the figures a case gives with the plan go to the
+ * usage read, since the light read carries none, and `usage` is for a case that needs
+ * that read to say something else as well. A case with no figures leaves the usage read
+ * unanswered, as it is while the store is still being asked.
  */
 function harness(plan: Partial<AccountPlan>, billing = true, entry = '/settings/plan', usage?: Partial<AccountPlan>) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   client.setQueryData(keys.config(), { providers: ['password'], ...(billing ? { billing: { environment: 'test' } } : {}) });
-  client.setQueryData(keys.plan(), { state: 'trial', until: NOW + 10 * DAY, source: null, storageGb: 10, usedBytes: 0, subscription: null, ...plan, readOnlyAt: plan.readOnlyAt ?? plan.until ?? NOW + 10 * DAY });
-  if (usage) client.setQueryData(keys.planUsage(), { state: 'trial', until: NOW + 10 * DAY, source: null, storageGb: 10, subscription: null, ...usage, readOnlyAt: usage.readOnlyAt ?? usage.until ?? NOW + 10 * DAY });
+  const { usedBytes, storeBytes, ...light } = plan;
+  const seeded = (p: Partial<AccountPlan>) => ({ state: 'trial', until: NOW + 10 * DAY, source: null, storageGb: 10, subscription: null, ...p, readOnlyAt: p.readOnlyAt ?? p.until ?? NOW + 10 * DAY });
+  client.setQueryData(keys.plan(), seeded(light));
+  const figures = usage ?? (usedBytes !== undefined || storeBytes !== undefined ? { ...light, usedBytes, storeBytes } : undefined);
+  if (figures) client.setQueryData(keys.planUsage(), seeded(figures));
   const rootRoute = createRootRoute({ component: () => <Plan /> });
   const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory({ initialEntries: [entry] }) });
   const rendered = render(
@@ -87,12 +95,12 @@ describe('Plan', () => {
     harness({ state: 'active', source: 'stripe', until: NOW + 300 * DAY, storageGb: 10, usedBytes: 2 * 1024 ** 3, storeBytes: 1500 * MB, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
     const full = await screen.findByText(/Notes, their history and the text read from files:/);
     expect(full.querySelector('.bad')?.textContent).toBe('1.46 GB of 1.50 GB used.');
-    // While the store has not answered (the harness never answers the usage read), the
-    // line holds its place with no figure, so the buttons under it do not move when
-    // the figure arrives.
+    // While the store has not answered (a case with no figures leaves the usage read
+    // unanswered), the line holds its place with no figure, so the buttons under it do
+    // not move when the figure arrives.
     cleanup();
-    harness({ state: 'active', source: 'stripe', until: NOW + 300 * DAY, storageGb: 10, usedBytes: 2 * 1024 ** 3, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
-    expect(await screen.findByText('Files: 2.00 GB of 10 GB used.')).toBeTruthy();
+    harness({ state: 'active', source: 'stripe', until: NOW + 300 * DAY, storageGb: 10, subscription: { status: 'active', cancelsAt: null, pastDue: false } });
+    expect(await screen.findByText('Reading what is held, of 10 GB…')).toBeTruthy();
     expect(screen.getByText(/Notes, their history/).textContent).toBe('Notes, their history and the text read from files: reading…');
   });
 
