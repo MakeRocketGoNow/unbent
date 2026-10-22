@@ -9,6 +9,7 @@ import {
   planPatchFor,
   refundEffectOf,
   refundPatchFor,
+  storageKeptAfter,
   type RefundEffect,
   type StripeEvent,
 } from '../lib/billing-events.js';
@@ -408,20 +409,26 @@ export const billing = new Hono<AppEnv>()
     let effect: RefundEffect | null = null;
     if (REFUND_EVENTS.has(type)) {
       effect = refundEffectOf(stripe, stripeEvent, row);
+      let invoice: StripeInvoice | null = null;
+      let keptUnits = 0;
       try {
         if (effect === 'needs-invoice') {
-          effect = refundEffectOf(stripe, stripeEvent, row, await invoiceOfCharge(stripe, charge?.payment_intent ?? null));
+          invoice = await invoiceOfCharge(stripe, charge?.payment_intent ?? null);
+          effect = refundEffectOf(stripe, stripeEvent, row, invoice);
         }
         if (effect === 'cancel') await ensureSubscriptionCanceled(stripe, row.subscriptionId!);
         if (effect === 'remove-storage') {
-          await setSubscriptionStorage(stripe, await getSubscription(stripe, row.subscriptionId!), 0, 'no-charge');
+          const sub = await getSubscription(stripe, row.subscriptionId!);
+          const current = sub.items.data.find((i) => i.price.id === stripe.storagePriceId)?.quantity ?? 0;
+          keptUnits = storageKeptAfter(stripe, invoice, current);
+          await setSubscriptionStorage(stripe, sub, keptUnits, 'no-charge');
         }
       } catch (err) {
         return stripeRefused(err, `act on the refund ${id}`, row.userId);
       }
       if (effect === 'cancel' || effect === 'remove-storage') {
         console.log(`[billing] ${type} ${id} for user=${row.userId}: refund, ${effect === 'cancel' ? 'subscription cancelled' : 'storage add-on removed'}`);
-        patch = refundPatchFor(effect, stripeEvent);
+        patch = refundPatchFor(effect, stripeEvent, keptUnits);
       }
     }
     const record = c.env.DB.prepare(`INSERT OR IGNORE INTO billing_event (event_id, event_type, occurred_at, received_at) VALUES (?1, ?2, ?3, ?4)`).bind(

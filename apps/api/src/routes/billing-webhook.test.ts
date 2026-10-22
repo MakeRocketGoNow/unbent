@@ -41,13 +41,13 @@ const { billing } = await import('./billing.js');
 const SECRET = 'whsec_test';
 
 /** An invoice of the subscription, billing `lines`. */
-function invoice(lines: Array<{ price: string; amount: number }>) {
+function invoice(lines: Array<{ price: string; amount: number; quantity?: number }>) {
   return {
     id: 'in_1',
     customer: 'cus_1',
     status: 'paid',
     parent: { type: 'subscription_details', subscription_details: { subscription: 'sub_1' } },
-    lines: { data: lines.map((l, i) => ({ id: `il_${i}`, amount: l.amount, quantity: 1, pricing: { price_details: { price: l.price } }, taxes: [], period: { start: 0, end: 0 } })), has_more: false },
+    lines: { data: lines.map((l, i) => ({ id: `il_${i}`, amount: l.amount, quantity: l.quantity ?? 1, pricing: { price_details: { price: l.price } }, taxes: [], period: { start: 0, end: 0 } })), has_more: false },
   };
 }
 const PLAN_AND_STORAGE = invoice([
@@ -67,12 +67,13 @@ const SUBSCRIPTION = {
 };
 
 /** Stripe answering by method and path; `refuse` names a call to answer 500 instead. */
-function stripeStandIn(inv: ReturnType<typeof invoice>, refuse?: string) {
+function stripeStandIn(inv: ReturnType<typeof invoice>, refuse?: string, sent: string[] = []) {
   const calls: string[] = [];
   vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
     const { pathname } = new URL(url);
     const call = `${init.method} ${pathname}`;
     calls.push(call);
+    if (init.body) sent.push(decodeURIComponent(String(init.body)));
     if (call === refuse) return Response.json({ error: { type: 'api_error', message: 'Something went wrong.' } }, { status: 500 });
     if (call === 'GET /v1/charges/ch_1') return Response.json({ id: 'ch_1', amount: 8400, amount_refunded: 0, refunded: false, payment_intent: 'pi_1', customer: 'cus_1' });
     if (call === 'GET /v1/invoice_payments') return Response.json({ data: [{ invoice: 'in_1' }], has_more: false });
@@ -162,6 +163,25 @@ describe('the webhook on a refund', () => {
     expect((await deliver(refund(2400), d)).body).toEqual({ applied: true });
     expect(calls.slice(-2)).toEqual(['GET /v1/subscriptions/sub_1', 'POST /v1/subscriptions/sub_1']);
     expect(calls).not.toContain('DELETE /v1/subscriptions/sub_1');
+  });
+
+  /** A storage block bought mid-year is invoiced on its own; refunding it takes that block off and keeps the two before it. */
+  it('takes off only the block a refunded storage invoice added', async () => {
+    const thirdBlock = invoice([
+      { price: 'price_storage', amount: 3600, quantity: 3 },
+      { price: 'price_storage', amount: -2400, quantity: 2 },
+    ]);
+    const sent: string[] = [];
+    stripeStandIn(thirdBlock, undefined, sent);
+    // The subscription as Stripe has it after the purchase: three blocks.
+    const three = { ...SUBSCRIPTION, items: { data: [{ ...SUBSCRIPTION.items.data[0]!, quantity: 3 }], has_more: false } };
+    const fetchWithThree = globalThis.fetch;
+    vi.stubGlobal('fetch', async (url: string, init: RequestInit) =>
+      init.method === 'GET' && new URL(url).pathname === '/v1/subscriptions/sub_1' ? Response.json(three) : fetchWithThree(url, init),
+    );
+    const d = db();
+    expect((await deliver({ ...refund(1200), object: { ...refund(1200).object, amount: 1200, refunded: true } }, d)).body).toEqual({ applied: true });
+    expect(sent.at(-1)).toContain('items[0][quantity]=2');
   });
 
   /** Recorded only once Stripe has agreed: an event written down here would never be delivered again, and the subscription would renew. */

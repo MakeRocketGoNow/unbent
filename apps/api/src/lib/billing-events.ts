@@ -186,7 +186,8 @@ export function planPatchFor(stripe: StripeConfig, event: StripeEvent, row: Plan
  * with `no-charge`). All of it, not some units of it: a refund names an amount, never
  * a line or a quantity, so a partial amount cannot say which of three units it meant,
  * and a refund that cannot be told apart from the plan's is cancelled rather than left
- * renewing. `needs-invoice` is a refund whose invoice has not been read yet; the caller
+ * renewing. A storage-only invoice is the exception, since it names the units it added
+ * (`storageKeptAfter`). `needs-invoice` is a refund whose invoice has not been read yet; the caller
  * finds the invoice through the charge's payment intent (`invoicesOfPayment`) and asks
  * again with it, since the charge itself names no subscription on this API version.
  *
@@ -224,17 +225,48 @@ export function refundEffectOf(stripe: StripeConfig, event: StripeEvent, row: Pl
   if (invoice === null || invoiceSubscriptionOf(invoice) !== row.subscriptionId) return null;
   if (event.type === 'charge.dispute.created') return 'cancel';
   const charge = event.data.object as StripeCharge;
-  const isAddOn = (l: StripeInvoiceLine) => l.pricing?.price_details?.price === stripe.storagePriceId;
-  const addOn = invoice.lines.data.filter(isAddOn);
+  const addOn = invoice.lines.data.filter((l) => isAddOnLine(stripe, l));
   // An invoice that billed nothing but storage (the proration `/billing/storage` invoices
   // at once) is the add-on's to refund, all of it included: reading its whole-charge
   // refund as the plan's would end a year the person paid for and was not refunded.
-  if (addOn.length > 0 && invoice.lines.data.every((l) => isAddOn(l) || l.amount === 0)) return canceled ? null : 'remove-storage';
+  // `storageKeptAfter` then takes off only the units that invoice added.
+  if (storageOnly(stripe, invoice)) return canceled ? null : 'remove-storage';
   if (charge.refunded || charge.amount_refunded >= charge.amount) return 'cancel';
   if (addOn.length === 0) return 'cancel';
   const addOnTotal = addOn.reduce((sum, l) => sum + l.amount + (l.taxes ?? []).reduce((t, tax) => t + tax.amount, 0), 0);
   if (charge.amount_refunded <= addOnTotal) return canceled ? null : 'remove-storage';
   return 'cancel';
+}
+
+const isAddOnLine = (stripe: StripeConfig, l: StripeInvoiceLine) => l.pricing?.price_details?.price === stripe.storagePriceId;
+
+/** An invoice whose every billed line is the add-on's: a storage change, invoiced on its own. */
+function storageOnly(stripe: StripeConfig, invoice: StripeInvoice): boolean {
+  const addOn = invoice.lines.data.filter((l) => isAddOnLine(stripe, l));
+  return addOn.length > 0 && invoice.lines.data.every((l) => isAddOnLine(stripe, l) || l.amount === 0);
+}
+
+/**
+ * The add-on units to leave on a subscription that has `current` of them, once the
+ * refund of `invoice` has gone through. Zero for a refund of the add-on on the year's
+ * invoice: an amount cannot say which of the units it meant (`refundEffectOf`). A
+ * storage-only invoice can: its proration has a line charging the new quantity and,
+ * past the first block, one crediting the old, so it names the units it added, and only
+ * those come off. The units bought before it were paid for on the year's invoice, which
+ * was not refunded, and taking them too could leave the quota under what the account
+ * holds. Absolute rather than a subtraction from whatever is there, so a redelivery
+ * finds the units already gone and takes nothing more: while the subscription still has
+ * the quantity the invoice charged for (or more, bought later), the added units come
+ * off; below it, they already have.
+ */
+export function storageKeptAfter(stripe: StripeConfig, invoice: StripeInvoice | null, current: number): number {
+  if (!invoice || !storageOnly(stripe, invoice)) return 0;
+  const lines = invoice.lines.data.filter((l) => isAddOnLine(stripe, l));
+  const charged = Math.max(0, ...lines.filter((l) => l.amount > 0).map((l) => l.quantity ?? 0));
+  const credited = Math.max(0, ...lines.filter((l) => l.amount < 0).map((l) => l.quantity ?? 0));
+  const added = charged - credited;
+  if (added <= 0) return 0;
+  return current >= charged ? current - added : current;
 }
 
 /**
@@ -248,12 +280,12 @@ export function refundEffectOf(stripe: StripeConfig, event: StripeEvent, row: Pl
  * the webhook still writes this patch in that case, without rolling the stamp back,
  * because a canceled snapshot on its own keeps the year's end. The storage goes back
  * to the base for the same reason, ahead of the `customer.subscription.updated` that
- * will say the same.
+ * will say the same; to the units `storageKeptAfter` left, for a storage-only invoice.
  */
-export function refundPatchFor(effect: Exclude<RefundEffect, 'needs-invoice'>, event: StripeEvent): PlanPatch {
+export function refundPatchFor(effect: Exclude<RefundEffect, 'needs-invoice'>, event: StripeEvent, keptUnits = 0): PlanPatch {
   const at = event.created * 1000;
   if (effect === 'cancel') {
     return { plan: 'active', source: 'stripe', planUntil: at, subscriptionStatus: 'canceled', cancelsAt: null, eventAt: eventStamp(event.created) };
   }
-  return { storageGb: BASE_STORAGE_GB, eventAt: eventStamp(event.created) };
+  return { storageGb: BASE_STORAGE_GB + STORAGE_ADDON_GB * keptUnits, eventAt: eventStamp(event.created) };
 }

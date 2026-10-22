@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HANDLED_EVENTS, eventStamp, planPatchFor, refundEffectOf, refundPatchFor, storageGbOf, type StripeEvent } from './billing-events.js';
+import { HANDLED_EVENTS, eventStamp, planPatchFor, refundEffectOf, refundPatchFor, storageGbOf, storageKeptAfter, type StripeEvent } from './billing-events.js';
 import type { StripeCharge, StripeConfig, StripeDispute, StripeInvoice, StripeSubscription } from './stripe.js';
 import type { PlanRow } from './plan.js';
 
@@ -343,11 +343,47 @@ describe('refundEffectOf', () => {
       eventAt: eventStamp(T1),
     });
     expect(refundPatchFor('remove-storage', event('charge.refunded', refund(), T1))).toEqual({ storageGb: 10, eventAt: eventStamp(T1) });
+    expect(refundPatchFor('remove-storage', event('charge.refunded', refund(), T1), 2)).toEqual({ storageGb: 60, eventAt: eventStamp(T1) });
   });
 
   it('is among the events the endpoint is asked for', () => {
     expect(HANDLED_EVENTS).toContain('charge.refunded');
     expect(HANDLED_EVENTS).toContain('charge.dispute.created');
     expect(HANDLED_EVENTS).toContain('invoice.paid');
+  });
+});
+
+/**
+ * A storage-only invoice names the units it added (its proration charges the new
+ * quantity and credits the old), so its refund takes off those and leaves the ones the
+ * year's invoice paid for.
+ */
+describe('storageKeptAfter', () => {
+  function proration(lines: Array<{ amount: number; quantity: number }>): StripeInvoice {
+    const inv = invoice({}, []);
+    inv.lines.data = lines.map((l, i) => ({ id: `il_${i}`, amount: l.amount, quantity: l.quantity, pricing: { price_details: { price: 'price_storage' } }, taxes: [], period: { start: 0, end: 0 } }));
+    return inv;
+  }
+  // Two units held, a third bought: three charged, two credited.
+  const third = proration([
+    { amount: 3600, quantity: 3 },
+    { amount: -2400, quantity: 2 },
+  ]);
+
+  it('takes off only the units the refunded invoice added', () => {
+    expect(storageKeptAfter(stripe, third, 3)).toBe(2);
+    // The first block has no credit line.
+    expect(storageKeptAfter(stripe, proration([{ amount: 1200, quantity: 1 }]), 1)).toBe(0);
+    // A unit bought since stays too.
+    expect(storageKeptAfter(stripe, third, 4)).toBe(3);
+  });
+
+  it('takes nothing more on a redelivery, once the units are gone', () => {
+    expect(storageKeptAfter(stripe, third, 2)).toBe(2);
+  });
+
+  it("takes every unit for a refund of the add-on on the year's invoice, which cannot say which it meant", () => {
+    expect(storageKeptAfter(stripe, invoice({}, [{ price: 'price_plan', amount: 6000, tax: 0 }, { price: 'price_storage', amount: 2400, tax: 0 }]), 2)).toBe(0);
+    expect(storageKeptAfter(stripe, null, 2)).toBe(0);
   });
 });
