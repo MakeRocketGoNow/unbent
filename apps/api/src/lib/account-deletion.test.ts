@@ -103,6 +103,17 @@ describe('deleteAccount', () => {
       expect(steps).toContain('user u1');
     });
 
+    it('cancels every live subscription the customer holds, not only the newest', async () => {
+      const calls = stripeAnswers([
+        { id: 'sub_a', status: 'active', created: 1 },
+        { id: 'sub_b', status: 'active', created: 2 },
+        { id: 'sub_old', status: 'canceled', created: 0 },
+      ]);
+      const { env } = fakeEnv(undefined, row);
+      await deleteAccount(env, 'u1');
+      expect(calls.filter((c) => c.startsWith('DELETE'))).toEqual(['DELETE /v1/subscriptions/sub_a', 'DELETE /v1/subscriptions/sub_b']);
+    });
+
     it('cancels nothing for a former subscriber whose newest subscription has ended', async () => {
       const calls = stripeAnswers([{ id: 'sub_old', status: 'canceled', created: 1 }]);
       const { env, steps } = fakeEnv(undefined, { ...row, billing_subscription_id: 'sub_old', billing_status: 'canceled' });

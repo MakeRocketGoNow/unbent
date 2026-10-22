@@ -1,7 +1,7 @@
 import type { Env } from '../types.js';
 import { deleteUserBlobs } from './blobs.js';
 import { tombstoneDirectoryRow } from './directory.js';
-import { ENDED_SUBSCRIPTION, ensureSubscriptionCanceled, expireOpenCheckouts, newestSubscription, stripeOf, type StripeEnv } from './stripe.js';
+import { ENDED_SUBSCRIPTION, ensureSubscriptionCanceled, expireOpenCheckouts, stripeOf, subscriptionsOf, type StripeEnv } from './stripe.js';
 import { planRow, updatePlan } from './plan.js';
 import { storeFor } from './store-client.js';
 
@@ -91,22 +91,28 @@ async function cancelSubscription(env: DeletionEnv, userId: string): Promise<voi
     console.error(`Stripe checkouts for ${userId} could not be expired; account deletion abandoned:`, err);
     throw err;
   }
-  // The row's subscription, while it is live; otherwise Stripe is asked. A checkout paid
-  // a moment ago, or a lapsed subscriber's new one, reaches the row only by webhook, and
-  // a deletion inside that lag would leave it renewing with no account to find it from.
-  let subscriptionId = row.subscriptionId && row.subscriptionStatus !== 'canceled' ? row.subscriptionId : null;
+  // Every live subscription the customer has, not only the row's: a checkout paid a
+  // moment ago, or a lapsed subscriber's new one, reaches the row only by webhook, and a
+  // customer can hold two (a second checkout before the first one's webhook landed, or
+  // from the days a session stayed open for a day). Any one left would renew with no
+  // account to find it from. The row's own is cancelled even if the list missed it.
+  const live = new Set<string>();
+  if (row.subscriptionId && row.subscriptionStatus !== 'canceled') live.add(row.subscriptionId);
+  let current: string | undefined;
   try {
-    if (!subscriptionId) {
-      const newest = await newestSubscription(stripe, row.customerId);
-      if (newest && !ENDED_SUBSCRIPTION.has(newest.status)) subscriptionId = newest.id;
+    for (const sub of await subscriptionsOf(stripe, row.customerId)) {
+      if (!ENDED_SUBSCRIPTION.has(sub.status)) live.add(sub.id);
     }
-    if (!subscriptionId) return;
-    await ensureSubscriptionCanceled(stripe, subscriptionId);
+    for (const id of live) {
+      current = id;
+      await ensureSubscriptionCanceled(stripe, id);
+    }
   } catch (err) {
-    console.error(`Stripe subscription ${subscriptionId ?? '(not found)'} for ${userId} could not be cancelled; account deletion abandoned:`, err);
+    console.error(`Stripe subscription ${current ?? '(listing)'} for ${userId} could not be cancelled; account deletion abandoned:`, err);
     throw err;
   }
-  await updatePlan(env.DB, userId, { subscriptionId, subscriptionStatus: 'canceled', cancelsAt: null });
+  if (live.size === 0) return;
+  await updatePlan(env.DB, userId, { subscriptionId: row.subscriptionId ?? [...live][0], subscriptionStatus: 'canceled', cancelsAt: null });
 }
 
 /**

@@ -326,13 +326,19 @@ export async function getSubscription(stripe: StripeConfig, subscriptionId: stri
  * list canceled ones.
  */
 export async function newestSubscription(stripe: StripeConfig, customerId: string): Promise<StripeSubscription | null> {
+  const all = await subscriptionsOf(stripe, customerId);
+  if (all.length === 0) return null;
+  return all.reduce((newest, s) => (s.created > newest.created ? s : newest));
+}
+
+/** Every subscription the customer has, whatever its status: one page, since an account has a handful at most. */
+export async function subscriptionsOf(stripe: StripeConfig, customerId: string): Promise<StripeSubscription[]> {
   const page = await stripeCall<StripeList<StripeSubscription>>(
     stripe,
     'GET',
     `/v1/subscriptions?customer=${encodeURIComponent(customerId)}&status=all&limit=100`,
   );
-  if (page.data.length === 0) return null;
-  return page.data.reduce((newest, s) => (s.created > newest.created ? s : newest));
+  return page.data;
 }
 
 /** Statuses Stripe will never charge again: a subscription in one is over, and nothing to cancel. */
