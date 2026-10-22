@@ -6,11 +6,10 @@
  * challenge runs in an iframe on challenges.cloudflare.com, which is the point of it, and
  * what it concludes comes back as a token the server checks (`captcha` in
  * `apps/api/src/auth.ts`). A third party on the page all the same, so it is fetched only
- * when a screen draws the widget and only where `/api/config` carries a site key, the
- * way the error tracker is loaded only where it is configured (`posthog.ts`): an
+ * when a screen draws the widget and only where `/api/config` carries a site key: an
  * instance that has not set the pair never loads it, and nothing about it is in the
- * build. (The checkout used to be the other such script, Paddle's overlay; Stripe's
- * checkout is a page of its own, reached by redirect, and loads nothing here.)
+ * build. It is the one script loaded by tag now; Paddle's overlay was the other, and
+ * Stripe's checkout is a page of its own, reached by redirect, that loads nothing here.
  *
  * Not the npm wrapper: a package around a script tag is one more thing to hold back
  * (DEPENDENCIES.md), and the surface used here is three calls.
