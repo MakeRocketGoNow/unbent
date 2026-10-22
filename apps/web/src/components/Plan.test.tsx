@@ -293,6 +293,22 @@ describe('Plan', () => {
   });
 
   /**
+   * The read-back's answer is the plan from that moment: a refetch after it that fails
+   * keeps the cache's last answer, and without the read-back written there that answer
+   * was the trial. A whole plan here, since it lands in the cache as it is.
+   */
+  it('keeps the subscription the read-back found when the refetch after it fails', async () => {
+    const active = { state: 'active', until: NOW + 365 * DAY, readOnlyAt: NOW + 366 * DAY, source: 'stripe', storageGb: 10, subscription: { status: 'active', cancelsAt: null, pastDue: false } };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => (url === '/api/billing/refresh' ? Response.json(active) : Response.json({ error: 'down' }, { status: 503 }))),
+    );
+    harness({}, true, '/settings/plan?checkout=complete');
+    expect(await screen.findByText('You’re subscribed. Thank you.')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Subscribed' })).toBeTruthy();
+  });
+
+  /**
    * The first live checkout came back to "Free trial" with the figures beside it: the
    * usage read's refetch had failed and kept its old answer, and it stood in for the
    * whole plan. The state is the light read's; the usage read lends the figures only.
