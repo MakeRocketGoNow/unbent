@@ -74,10 +74,22 @@ export const leavePage = { to: (url: string) => window.location.assign(url) };
 export function Plan() {
   const { billing, plan: standing, unavailable } = usePlan();
   // This page alone asks the store what the account holds; the banner and the editor
-  // read the plan without it. The two answers are the same row, so the one with the
-  // figure stands in for the other here once it has arrived.
+  // read the plan without it. The two answers are the same row, but only the figures are
+  // taken from the heavier one: the plan's state is the light read's, which every page
+  // shares and which a change to the plan refetches with the same key. The usage read
+  // used to stand in for the whole plan once it had arrived, and a refetch of it that
+  // failed or was cut short keeps its last answer (the query library leaves `data` in
+  // place under an error), so the first live checkout came back to a page saying "Free
+  // trial" with the figures beside it, over a row that had just gone active, until a
+  // reload (2026-10-22). The figures are the account's bytes, which no plan change
+  // alters, so an older pair under a newer state is still true. The light read carries
+  // none, so its own are only what a test seeded.
   const usage = useQuery(planUsageQuery(standing !== undefined));
-  const plan = usage.data ?? standing;
+  const plan: AccountPlan | undefined = standing && {
+    ...standing,
+    usedBytes: usage.data?.usedBytes ?? standing.usedBytes,
+    storeBytes: usage.data?.storeBytes ?? standing.storeBytes,
+  };
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState<'checkout' | 'settling' | 'portal' | 'storage' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -217,7 +229,13 @@ export function Plan() {
   async function settleCheckout(): Promise<boolean> {
     for (let attempt = 0; attempt < CHECKOUT_SETTLE_TRIES; attempt++) {
       const read = await api.refreshPlan().catch(() => undefined);
-      if (read?.subscription && read.subscription.status !== 'canceled') return true;
+      if (read?.subscription && read.subscription.status !== 'canceled') {
+        // The answer is the row as the server has just written it, so it is the plan
+        // from this moment, whatever the refetch that follows does: a refetch that fails
+        // or is cut short leaves what was there, and what was there was the trial.
+        queryClient.setQueryData(keys.plan(), read);
+        return true;
+      }
       await new Promise((r) => setTimeout(r, CHECKOUT_SETTLE_WAIT_MS));
     }
     return false;

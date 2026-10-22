@@ -18,10 +18,11 @@ const NOW = Date.now();
  * fetched, as Maintenance's test is: the config says the instance sells a plan, and the
  * plan is whatever the case needs.
  */
-function harness(plan: Partial<AccountPlan>, billing = true, entry = '/settings/plan') {
+function harness(plan: Partial<AccountPlan>, billing = true, entry = '/settings/plan', usage?: Partial<AccountPlan>) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   client.setQueryData(keys.config(), { providers: ['password'], ...(billing ? { billing: { environment: 'test' } } : {}) });
   client.setQueryData(keys.plan(), { state: 'trial', until: NOW + 10 * DAY, source: null, storageGb: 10, usedBytes: 0, subscription: null, ...plan, readOnlyAt: plan.readOnlyAt ?? plan.until ?? NOW + 10 * DAY });
+  if (usage) client.setQueryData(keys.planUsage(), { state: 'trial', until: NOW + 10 * DAY, source: null, storageGb: 10, subscription: null, ...usage, readOnlyAt: usage.readOnlyAt ?? usage.until ?? NOW + 10 * DAY });
   const rootRoute = createRootRoute({ component: () => <Plan /> });
   const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory({ initialEntries: [entry] }) });
   const rendered = render(
@@ -289,6 +290,25 @@ describe('Plan', () => {
     harness({ state: 'inactive', until: NOW - DAY, source: 'stripe', subscription: { status: 'canceled', cancelsAt: null, pastDue: false } }, true, '/settings/plan?checkout=complete');
     expect(await screen.findByRole('heading', { name: 'Subscribed' }, { timeout: 4000 })).toBeTruthy();
     expect(refreshes).toHaveLength(2);
+  });
+
+  /**
+   * The first live checkout came back to "Free trial" with the figures beside it: the
+   * usage read's refetch had failed and kept its old answer, and it stood in for the
+   * whole plan. The state is the light read's; the usage read lends the figures only.
+   */
+  it('draws the plan from the light read, and only the figures from the usage read', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'down' }, { status: 503 })));
+    harness(
+      { state: 'active', source: 'stripe', until: NOW + 300 * DAY, storageGb: 35, subscription: { status: 'active', cancelsAt: null, pastDue: false } },
+      true,
+      '/settings/plan',
+      { state: 'trial', until: NOW + 10 * DAY, storageGb: 10, usedBytes: 3 * 1024 ** 3, storeBytes: 200 * 1024 ** 2 },
+    );
+    expect(await screen.findByRole('heading', { name: 'Subscribed' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Free trial' })).toBeNull();
+    expect(screen.getByText('Files: 3.00 GB of 35 GB used.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Manage subscription' })).toBeTruthy();
   });
 
   it('is nothing where the instance sells no plan', () => {
