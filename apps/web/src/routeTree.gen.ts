@@ -25,6 +25,7 @@ import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as SupportRouteImport } from './routes/support'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as TrashRouteImport } from './routes/trash'
 import { Route as TurnstileRouteImport } from './routes/turnstile'
@@ -127,6 +128,11 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SupportRoute = SupportRouteImport.update({
+  id: '/support',
+  path: '/support',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TermsRoute = TermsRouteImport.update({
@@ -263,6 +269,7 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRouteWithChildren
+  '/support': typeof SupportRoute
   '/terms': typeof TermsRoute
   '/trash': typeof TrashRouteWithChildren
   '/turnstile': typeof TurnstileRoute
@@ -302,6 +309,7 @@ export interface FileRoutesByTo {
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
+  '/support': typeof SupportRoute
   '/terms': typeof TermsRoute
   '/turnstile': typeof TurnstileRoute
   '/why': typeof WhyRoute
@@ -343,6 +351,7 @@ export interface FileRoutesById {
   '/privacy': typeof PrivacyRoute
   '/reset-password': typeof ResetPasswordRoute
   '/settings': typeof SettingsRouteWithChildren
+  '/support': typeof SupportRoute
   '/terms': typeof TermsRoute
   '/trash': typeof TrashRouteWithChildren
   '/turnstile': typeof TurnstileRoute
@@ -386,6 +395,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/reset-password'
     | '/settings'
+    | '/support'
     | '/terms'
     | '/trash'
     | '/turnstile'
@@ -425,6 +435,7 @@ export interface FileRouteTypes {
     | '/pricing'
     | '/privacy'
     | '/reset-password'
+    | '/support'
     | '/terms'
     | '/turnstile'
     | '/why'
@@ -465,6 +476,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/reset-password'
     | '/settings'
+    | '/support'
     | '/terms'
     | '/trash'
     | '/turnstile'
@@ -507,6 +519,7 @@ export interface RootRouteChildren {
   PrivacyRoute: typeof PrivacyRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SettingsRoute: typeof SettingsRouteWithChildren
+  SupportRoute: typeof SupportRoute
   TermsRoute: typeof TermsRoute
   TrashRoute: typeof TrashRouteWithChildren
   TurnstileRoute: typeof TurnstileRoute
@@ -626,6 +639,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/support': {
+      id: '/support'
+      path: '/support'
+      fullPath: '/support'
+      preLoaderRoute: typeof SupportRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/terms': {
@@ -871,6 +891,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyRoute: PrivacyRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SettingsRoute: SettingsRouteWithChildren,
+  SupportRoute: SupportRoute,
   TermsRoute: TermsRoute,
   TrashRoute: TrashRouteWithChildren,
   TurnstileRoute: TurnstileRoute,

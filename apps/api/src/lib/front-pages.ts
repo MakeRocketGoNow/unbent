@@ -34,7 +34,7 @@ export const WHY_PATH = '/why';
 const WHY_FILE = '/why.html';
 
 /** The pages under the front page's shell, in the order the sitemap lists them. */
-export const FRONT_ROUTES = ['/', WHY_PATH, '/pricing'] as const;
+export const FRONT_ROUTES = ['/', WHY_PATH, '/pricing', '/support'] as const;
 
 /** The app behind the sign-in, which a crawler has no business in even when it follows a link there. */
 const PRIVATE_PREFIXES = ['/api/', '/notes', '/trash', '/settings', '/import', '/login', '/connect', '/consent', '/device', '/embed/'];

@@ -103,6 +103,15 @@ export const PRICING = '/pricing';
 export const WHY = '/why';
 
 /**
+ * Support, `/support`: how to reach a person, and where receipts, refunds, sign-in,
+ * export and deletion are handled. The pricing page's rules again: public, shown to a
+ * signed-in person who asks for it, and only on an instance with a front page. Stripe's
+ * receipts and the dashboard's public details carry this address as the business's
+ * support link, so the reader may have no session, or no account any more.
+ */
+export const SUPPORT = '/support';
+
+/**
  * The pages that render without a session, listed rather than inferred.
  *
  * Two kinds, and both are here because gating them broke something specific. The sign-in
@@ -137,7 +146,7 @@ export function shellFor(pathname: string): Shell {
   // and which never means a different page.
   const path = pathname.length > 1 ? pathname.replace(/\/$/, '') : pathname;
   if (path === TURNSTILE) return 'embed';
-  if (path === FRONT || path === PRICING || path === WHY) return 'front';
+  if (path === FRONT || path === PRICING || path === WHY || path === SUPPORT) return 'front';
   if (PUBLIC.has(path)) return 'plain';
   return 'app';
 }

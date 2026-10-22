@@ -192,7 +192,11 @@ with any future date succeeds, and a Link account made at a sandbox checkout sig
 with the code `000000`.
 
 Going live is the same four settings from the live account, after Managed Payments is
-activated on it. The checkout page carries Stripe's own terms as the seller; the
+activated on it. The account's public details (Settings, Business, Public details) carry
+a support address and a support website, which Stripe prints on receipts and renewal
+mails and reads for a Managed Payments escalation: the website is `/support`, the page
+that says where receipts, refunds, cancelling, sign-in, export and deletion are handled
+and how to reach a person, and the address is the operator's. The checkout page carries Stripe's own terms as the seller; the
 business's are linked from Checkout settings and the portal configuration, and the
 built-in documents say the rest wherever the instance sells a plan: billing on, or
 `FRONT_PAGE=1`, since the front page states the price. They are the terms' "Plans and

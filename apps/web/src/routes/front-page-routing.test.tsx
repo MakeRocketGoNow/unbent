@@ -18,6 +18,7 @@ vi.mock('../notes-api.js', () => ({ getConfig: () => getConfig() }));
 const { Route } = await import('./index.js');
 const { Route: PricingRoute } = await import('./pricing.js');
 const { Route: WhyRoute } = await import('./why.js');
+const { Route: SupportRoute } = await import('./support.js');
 
 /**
  * Where the bare root sends people, which is the whole of what decides whether a fork
@@ -50,6 +51,13 @@ function harness(at = '/') {
     beforeLoad: WhyRoute.options.beforeLoad as any,
     component: () => <p>Why Unbent exists</p>,
   });
+  const support = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/support',
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    beforeLoad: SupportRoute.options.beforeLoad as any,
+    component: () => <p>Support</p>,
+  });
   const login = createRoute({
     getParentRoute: () => rootRoute,
     path: '/login',
@@ -61,7 +69,7 @@ function harness(at = '/') {
     component: () => <p>Your notes</p>,
   });
   const router = createRouter({
-    routeTree: rootRoute.addChildren([front, pricing, why, login, notes]),
+    routeTree: rootRoute.addChildren([front, pricing, why, support, login, notes]),
     history: createMemoryHistory({ initialEntries: [at] }),
     context: { queryClient: new QueryClient({ defaultOptions: { queries: { retry: false } } }) },
   });
@@ -152,6 +160,26 @@ describe('/', () => {
     ensureSession.mockResolvedValue(null);
     getConfig.mockResolvedValue({ providers: ['password'] });
     harness('/why');
+    expect(await screen.findByText('Sign in')).toBeTruthy();
+  });
+
+  /** The support page too: the link in a receipt may be followed with no session, or no account. */
+  it('shows /support to anyone on the public instance, and sends it to sign in elsewhere', async () => {
+    getConfig.mockResolvedValue({ providers: [], frontPage: true });
+    ensureSession.mockResolvedValue(null);
+    const router = harness('/support');
+    expect(await screen.findByText('Support')).toBeTruthy();
+    expect(router.state.location.pathname).toBe('/support');
+    cleanup();
+
+    ensureSession.mockResolvedValue({ user: { id: 'u1' } });
+    harness('/support');
+    expect(await screen.findByText('Support')).toBeTruthy();
+    cleanup();
+
+    ensureSession.mockResolvedValue(null);
+    getConfig.mockResolvedValue({ providers: ['password'] });
+    harness('/support');
     expect(await screen.findByText('Sign in')).toBeTruthy();
   });
 });
