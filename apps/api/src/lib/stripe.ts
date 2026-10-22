@@ -142,8 +142,10 @@ export function formEncode(body: Record<string, unknown>): string {
  * One call. A refusal carries `error.type`, `error.code` and `error.message`, which the
  * thrown error keeps for the few callers that branch on a code. The version header pins
  * the API's shape against the one this was written to, rather than to whatever the
- * account's default becomes. A call that does not answer in `STRIPE_TIMEOUT_MS` throws
- * as the fetch does, which every caller answers as Stripe being out of reach.
+ * account's default becomes. A call that does not answer in `STRIPE_TIMEOUT_MS`, or
+ * cannot reach Stripe at all, throws a `StripeError` with status 0, so every caller
+ * answers it as it answers a refusal: Stripe out of reach, try again shortly, and for a
+ * cancel a read-back of the subscription before giving up.
  */
 export async function stripeCall<T>(
   stripe: StripeConfig,
@@ -152,17 +154,22 @@ export async function stripeCall<T>(
   body?: Record<string, unknown>,
   idempotencyKey?: string,
 ): Promise<T> {
-  const res = await fetch(`${stripe.apiUrl}${path}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${stripe.secretKey}`,
-      'Stripe-Version': STRIPE_API_VERSION,
-      ...(body !== undefined ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}),
-      ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
-    },
-    ...(body !== undefined ? { body: formEncode(body) } : {}),
-    signal: AbortSignal.timeout(STRIPE_TIMEOUT_MS),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${stripe.apiUrl}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${stripe.secretKey}`,
+        'Stripe-Version': STRIPE_API_VERSION,
+        ...(body !== undefined ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}),
+        ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+      },
+      ...(body !== undefined ? { body: formEncode(body) } : {}),
+      signal: AbortSignal.timeout(STRIPE_TIMEOUT_MS),
+    });
+  } catch (err) {
+    throw new StripeError(0, 'unreachable', (err as Error).message);
+  }
   const text = await res.text();
   let json: T & { error?: { type?: string; code?: string; message?: string } };
   try {

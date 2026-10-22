@@ -148,6 +148,12 @@ describe('the Stripe calls', () => {
     expect(() => {
       throw new StripeError(500, null, 'x');
     }).toThrow('Stripe answered 500: x');
+
+    // No answer at all is out of reach, as a refusal is, not a bare error.
+    vi.stubGlobal('fetch', async () => {
+      throw new DOMException('The operation timed out.', 'TimeoutError');
+    });
+    await expect(stripeCall(stripe, 'GET', '/v1/x')).rejects.toMatchObject({ name: 'StripeError', status: 0, code: 'unreachable' });
   });
 
   it('opens a checkout with Managed Payments on, the plan and the add-ons, and the account named twice', async () => {
