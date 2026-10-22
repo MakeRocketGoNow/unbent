@@ -1,3 +1,5 @@
+import type { BillingConfig } from '@unbent/shared';
+
 /**
  * Stripe, the merchant of record for unbent.app's plan through Managed Payments: the
  * configuration that turns billing on, and the handful of calls the Worker makes to it.
@@ -92,7 +94,7 @@ export function billingOn(env: StripeEnv): boolean {
  * page, reached by redirect), so there is no token to hand it; the Plan tab is drawn on
  * this object's presence alone.
  */
-export function billingOf(env: StripeEnv): { environment: StripeConfig['environment'] } | undefined {
+export function billingOf(env: StripeEnv): BillingConfig | undefined {
   const stripe = stripeOf(env);
   return stripe ? { environment: stripe.environment } : undefined;
 }

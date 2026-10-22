@@ -532,8 +532,8 @@ export async function getPlan(opts: { usage?: boolean } = {}): Promise<AccountPl
   return json<AccountPlan>(await request(opts.usage ? '/api/me/plan?usage=1' : '/api/me/plan'));
 }
 
-/** A checkout for `storage` add-ons beside the plan: the transaction Paddle.js opens, and whose it is in Paddle. */
-export async function startCheckout(storage: number): Promise<{ transactionId: string; customerId: string }> {
+/** A checkout for `storage` add-ons beside the plan: the address of Stripe's hosted page, which the browser is sent to. */
+export async function startCheckout(storage: number): Promise<{ url: string }> {
   return json(await request('/api/billing/checkout', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ storage }) }));
 }
 
@@ -542,9 +542,9 @@ export async function setStorage(storage: number): Promise<void> {
   await json(await request('/api/billing/storage', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ storage }) }));
 }
 
-/** Fresh links into Paddle's portal: made per press, never kept. */
-export async function portalLinks(): Promise<{ overview: string; cancel: string | null; payment: string | null }> {
-  return json(await request('/api/billing/portal'));
+/** A fresh link into Stripe's customer portal, on its overview or on the card form: made per press, never kept. */
+export async function portalLink(flow: 'overview' | 'payment'): Promise<{ url: string }> {
+  return json(await request(flow === 'payment' ? '/api/billing/portal?flow=payment' : '/api/billing/portal'));
 }
 
 /** The operator's comp of someone's account, or the end of one; answers the plan as it now stands. */
@@ -557,7 +557,7 @@ export async function compAccount(
   );
 }
 
-/** The plan read back from Paddle and applied, for the moment after a checkout, before the webhook lands. */
+/** The plan read back from Stripe and applied, for the moment after a checkout, before the webhook lands. */
 export async function refreshPlan(): Promise<AccountPlan> {
   return json<AccountPlan>(await request('/api/billing/refresh', { method: 'POST' }));
 }

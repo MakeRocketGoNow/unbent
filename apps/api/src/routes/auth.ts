@@ -6,7 +6,7 @@ import { whoAmI } from '../lib/session.js';
 import { refuseGrantsWithoutAgreement } from './legal.js';
 import { previewRelayOrigin } from '../lib/preview-relay.js';
 import { canAutofill } from '../lib/jev.js';
-import { billingOf } from '../lib/paddle.js';
+import { billingOf } from '../lib/stripe.js';
 import { registerClient } from '../lib/oauth-registration.js';
 import type { AppEnv, Env } from '../types.js';
 
@@ -55,8 +55,8 @@ export const authRoutes = new Hono<AppEnv>()
    * deletion page describe the daily dumps only where they are made (MAK-171, part 7).
    *
    * `billing` is the same convention for the plan (MAK-108): present where the Worker has
-   * the Paddle secrets, and the Plan tab and the trial banner are drawn on its presence
-   * alone. It carries the client-side token, which is public by design (see `billingOf`).
+   * the Stripe secrets, and the Plan tab and the trial banner are drawn on its presence
+   * alone. It says whether the money is real and nothing more (see `billingOf`).
    *
    * `turnstile` carries the site key where the instance has put Turnstile in front of the
    * sign-in code endpoint (MAK-243): the sign-in screen draws the widget from it and sends

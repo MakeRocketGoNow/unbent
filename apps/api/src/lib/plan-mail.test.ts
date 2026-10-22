@@ -2,12 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { LAPSE_MAIL_PER_RUN, lapseKind, lapseMessage, notifyLapsedPlans } from './plan-mail.js';
 import { RENEWAL_GRACE_MS } from './plan.js';
 
-const paddle = {
-  PADDLE_API_KEY: 'pdl_sdbx_apikey_x',
-  PADDLE_WEBHOOK_SECRET: 's',
-  PADDLE_CLIENT_TOKEN: 't',
-  PADDLE_PLAN_PRICE_ID: 'p',
-  PADDLE_STORAGE_PRICE_ID: 'q',
+const stripe = {
+  STRIPE_SECRET_KEY: 'sk_test_x',
+  STRIPE_WEBHOOK_SECRET: 's',
+  STRIPE_PLAN_PRICE_ID: 'p',
+  STRIPE_STORAGE_PRICE_ID: 'q',
   RESEND_API_KEY: 'k',
   EMAIL_FROM: 'Unbent <noreply@example.com>',
   APP_URL: 'https://notes.example.com/',
@@ -51,15 +50,15 @@ describe('the lapse mail', () => {
 
   it('tells a trial from a subscription from a comp by the row', () => {
     expect(lapseKind({ plan: 'trial', source: null })).toBe('trial');
-    expect(lapseKind({ plan: 'active', source: 'paddle' })).toBe('subscription');
-    expect(lapseKind({ plan: 'active', source: 'paddle', paddle_status: 'past_due' })).toBe('past_due');
+    expect(lapseKind({ plan: 'active', source: 'stripe' })).toBe('subscription');
+    expect(lapseKind({ plan: 'active', source: 'stripe', billing_status: 'past_due' })).toBe('past_due');
     expect(lapseKind({ plan: 'active', source: 'comp' })).toBe('comp');
   });
 
   it('sends nothing where billing or mail is off, and reads nothing', async () => {
     const { db, ran } = fakeDb([{ user_id: 'u', plan: 'trial', plan_until: 1, source: null, email: 'a@example.com' }]);
-    expect(await notifyLapsedPlans({ ...paddle, RESEND_API_KEY: undefined, DB: db }, 10)).toEqual({ told: 0, subrequests: 0 });
-    expect(await notifyLapsedPlans({ ...paddle, PADDLE_API_KEY: undefined, DB: db }, 10)).toEqual({ told: 0, subrequests: 0 });
+    expect(await notifyLapsedPlans({ ...stripe, RESEND_API_KEY: undefined, DB: db }, 10)).toEqual({ told: 0, subrequests: 0 });
+    expect(await notifyLapsedPlans({ ...stripe, STRIPE_SECRET_KEY: undefined, DB: db }, 10)).toEqual({ told: 0, subrequests: 0 });
     expect(ran).toEqual([]);
   });
 
@@ -78,12 +77,12 @@ describe('the lapse mail', () => {
     );
     const { db, ran } = fakeDb([
       { user_id: 'u1', plan: 'trial', plan_until: 1, source: null, email: 'one@example.com' },
-      { user_id: 'u2', plan: 'active', plan_until: 1, source: 'paddle', email: 'bad@example.com' },
+      { user_id: 'u2', plan: 'active', plan_until: 1, source: 'stripe', email: 'bad@example.com' },
       { user_id: 'u3', plan: 'active', plan_until: 1, source: 'comp', email: 'down@example.com' },
-      { user_id: 'u4', plan: 'active', plan_until: 1, source: 'paddle', email: 'slow@example.com' },
+      { user_id: 'u4', plan: 'active', plan_until: 1, source: 'stripe', email: 'slow@example.com' },
     ]);
     // One told; the query, four sends and two marks spent.
-    expect(await notifyLapsedPlans({ ...paddle, DB: db }, 10)).toEqual({ told: 1, subrequests: 7 });
+    expect(await notifyLapsedPlans({ ...stripe, DB: db }, 10)).toEqual({ told: 1, subrequests: 7 });
     expect(sent).toEqual(['one@example.com', 'bad@example.com', 'down@example.com', 'slow@example.com']);
     // The due query with now, the limit and the renewal grace's cutoff, then a mark for
     // the one that went and the one refused for good; the provider's outage and its rate

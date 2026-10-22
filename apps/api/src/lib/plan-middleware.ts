@@ -1,6 +1,6 @@
 import { PLAN_INACTIVE_CODE, PLAN_INACTIVE_MESSAGE } from '@unbent/shared';
 import { createMiddleware } from 'hono/factory';
-import { billingOn } from './paddle.js';
+import { billingOn } from './stripe.js';
 import { planFor, planStateOf } from './plan.js';
 import type { AppEnv } from '../types.js';
 

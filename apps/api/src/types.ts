@@ -346,20 +346,19 @@ export interface Env {
   /** The same for an account on its trial; unset, a trial gets `AUTOFILL_YEARLY_CENTS`. */
   AUTOFILL_TRIAL_YEARLY_CENTS?: string;
   /**
-   * Paddle, which sells the plan (MAK-108). All five or none: with all of them set the
+   * Stripe, which sells the plan (MAK-108). All four or none: with all of them set the
    * instance has a plan to sell, every account is on its trial, paid or lapsed, and a
    * lapsed one is refused writes; with any missing, nothing here is read and every
-   * account is active for good. Each is described on `PaddleEnv` in lib/paddle.ts, which
-   * is where they are read. Secrets, apart from the client token, which ships in the
-   * page anyway; `.dev.vars` locally, with the sandbox's values.
+   * account is active for good. Each is described on `StripeEnv` in lib/stripe.ts, which
+   * is where they are read. Secrets, all of them; `.dev.vars` locally, with the
+   * sandbox's values.
    */
-  PADDLE_API_KEY?: string;
-  PADDLE_WEBHOOK_SECRET?: string;
-  PADDLE_CLIENT_TOKEN?: string;
-  PADDLE_PLAN_PRICE_ID?: string;
-  PADDLE_STORAGE_PRICE_ID?: string;
-  /** Where the Paddle calls go instead, for a stand-in during development. */
-  PADDLE_API_URL?: string;
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
+  STRIPE_PLAN_PRICE_ID?: string;
+  STRIPE_STORAGE_PRICE_ID?: string;
+  /** Where the Stripe calls go instead, for a stand-in during development. */
+  STRIPE_API_URL?: string;
 }
 
 export interface SessionUser {

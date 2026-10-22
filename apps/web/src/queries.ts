@@ -451,7 +451,7 @@ export const configQuery = () =>
  * (MAK-108). A minute's staleness is right for it: a plan changes a few times a year,
  * and the moments it does (a checkout, a portal visit) invalidate it by hand. And it is
  * read again on focus, which the app turns off by default: a tab left open while the
- * plan changed on another device, or in Paddle's portal, should notice on the way back.
+ * plan changed on another device, or in Stripe's portal, should notice on the way back.
  * Only where the instance sells one: the caller passes `config.billing` as `enabled`,
  * since the route answers 404 everywhere else.
  */

@@ -1,11 +1,11 @@
 import type { Env } from '../types.js';
 import { deleteUserBlobs } from './blobs.js';
 import { tombstoneDirectoryRow } from './directory.js';
-import { ensureSubscriptionCanceled, paddleOf, type PaddleEnv } from './paddle.js';
+import { ensureSubscriptionCanceled, stripeOf, type StripeEnv } from './stripe.js';
 import { planRow, updatePlan } from './plan.js';
 import { storeFor } from './store-client.js';
 
-type DeletionEnv = Pick<Env, 'BLOBS' | 'DB' | 'USER_STORE' | 'STORE_JURISDICTION'> & PaddleEnv;
+type DeletionEnv = Pick<Env, 'BLOBS' | 'DB' | 'USER_STORE' | 'STORE_JURISDICTION'> & StripeEnv;
 
 /**
  * How long a browser keeps passing `requireAuth` on its signed session cookie without
@@ -63,7 +63,7 @@ export async function clearAccount(env: DeletionEnv, userId: string): Promise<vo
 }
 
 /**
- * Ends the account's Paddle subscription before anything of the account goes (MAK-108):
+ * Ends the account's Stripe subscription before anything of the account goes (MAK-108):
  * a subscription left behind would charge a card for a store that no longer exists, and
  * once the `user` row is gone, nothing here can find it. At once, with no refund for the
  * period's remainder, as the terms say. First, and a refusal stops the deletion: a
@@ -72,24 +72,24 @@ export async function clearAccount(env: DeletionEnv, userId: string): Promise<vo
  * goes with the user row's cascade. Nothing to do where billing is off, or for an
  * account that never subscribed, or whose subscription is already canceled.
  *
- * The row is marked canceled as soon as Paddle agrees, so a deletion that then fails at
- * the files or the store is retried without asking Paddle to cancel again. And a cancel
- * Paddle refuses because the subscription is already canceled (the webhook for the
+ * The row is marked canceled as soon as Stripe agrees, so a deletion that then fails at
+ * the files or the store is retried without asking Stripe to cancel again. And a cancel
+ * Stripe refuses because the subscription is already canceled (the webhook for the
  * first try's cancel not yet landed) is not a reason to keep the account, which is
  * what `ensureSubscriptionCanceled` reads a refusal for before passing it on.
  */
 async function cancelSubscription(env: DeletionEnv, userId: string): Promise<void> {
-  const paddle = paddleOf(env);
-  if (!paddle) return;
+  const stripe = stripeOf(env);
+  if (!stripe) return;
   const row = await planRow(env.DB, userId);
-  if (!row?.paddleSubscriptionId || row.paddleStatus === 'canceled') return;
+  if (!row?.subscriptionId || row.subscriptionStatus === 'canceled') return;
   try {
-    await ensureSubscriptionCanceled(paddle, row.paddleSubscriptionId);
+    await ensureSubscriptionCanceled(stripe, row.subscriptionId);
   } catch (err) {
-    console.error(`Paddle subscription ${row.paddleSubscriptionId} for ${userId} could not be cancelled; account deletion abandoned:`, err);
+    console.error(`Stripe subscription ${row.subscriptionId} for ${userId} could not be cancelled; account deletion abandoned:`, err);
     throw err;
   }
-  await updatePlan(env.DB, userId, { paddleStatus: 'canceled', paddleCancelsAt: null });
+  await updatePlan(env.DB, userId, { subscriptionStatus: 'canceled', cancelsAt: null });
 }
 
 /**

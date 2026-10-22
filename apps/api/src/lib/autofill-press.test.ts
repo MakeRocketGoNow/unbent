@@ -248,19 +248,18 @@ describe('the cap', () => {
   });
 
   describe('by plan', () => {
-    const paddle = {
-      PADDLE_API_KEY: 'pdl_sdbx_apikey_x',
-      PADDLE_WEBHOOK_SECRET: 's',
-      PADDLE_CLIENT_TOKEN: 't',
-      PADDLE_PLAN_PRICE_ID: 'p',
-      PADDLE_STORAGE_PRICE_ID: 'q',
+    const stripe = {
+      STRIPE_SECRET_KEY: 'sk_test_x',
+      STRIPE_WEBHOOK_SECRET: 's',
+      STRIPE_PLAN_PRICE_ID: 'p',
+      STRIPE_STORAGE_PRICE_ID: 'q',
     };
     const now = Date.UTC(2026, 9, 16, 12, 0);
     const day = 24 * 60 * 60 * 1000;
-    const trial = { plan: 'trial', planUntil: now + 10 * day, source: null, paddleStatus: null, paddleCancelsAt: null } as PlanRow;
-    const paying = { plan: 'active', planUntil: now + 300 * day, source: 'paddle', paddleStatus: 'active', paddleCancelsAt: null } as PlanRow;
-    const comped = { plan: 'active', planUntil: null, source: 'comp', paddleStatus: null, paddleCancelsAt: null } as PlanRow;
-    const both = { ...paddle, AUTOFILL_DAILY_CAP: '1000', AUTOFILL_TRIAL_DAILY_CAP: '100' };
+    const trial = { plan: 'trial', planUntil: now + 10 * day, source: null, subscriptionStatus: null, cancelsAt: null } as PlanRow;
+    const paying = { plan: 'active', planUntil: now + 300 * day, source: 'stripe', subscriptionStatus: 'active', cancelsAt: null } as PlanRow;
+    const comped = { plan: 'active', planUntil: null, source: 'comp', subscriptionStatus: null, cancelsAt: null } as PlanRow;
+    const both = { ...stripe, AUTOFILL_DAILY_CAP: '1000', AUTOFILL_TRIAL_DAILY_CAP: '100' };
 
     it('gives a trial the trial cap and everyone else the ordinary one', () => {
       expect(capFor(both, trial, now)).toBe(100);
@@ -278,12 +277,12 @@ describe('the cap', () => {
 
     it('falls back to the ordinary cap where the trial cap is unset or mistyped', () => {
       const quiet = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      expect(capFor({ ...paddle, AUTOFILL_DAILY_CAP: '1000' }, trial, now)).toBe(1000);
-      expect(capFor({ ...paddle, AUTOFILL_DAILY_CAP: '1000', AUTOFILL_TRIAL_DAILY_CAP: 'lots' }, trial, now)).toBe(1000);
-      expect(capFor({ ...paddle, AUTOFILL_DAILY_CAP: '1000', AUTOFILL_TRIAL_DAILY_CAP: '0' }, trial, now)).toBe(1000);
+      expect(capFor({ ...stripe, AUTOFILL_DAILY_CAP: '1000' }, trial, now)).toBe(1000);
+      expect(capFor({ ...stripe, AUTOFILL_DAILY_CAP: '1000', AUTOFILL_TRIAL_DAILY_CAP: 'lots' }, trial, now)).toBe(1000);
+      expect(capFor({ ...stripe, AUTOFILL_DAILY_CAP: '1000', AUTOFILL_TRIAL_DAILY_CAP: '0' }, trial, now)).toBe(1000);
       // A trial cap on its own caps the trial and nobody else.
-      expect(capFor({ ...paddle, AUTOFILL_TRIAL_DAILY_CAP: '100' }, trial, now)).toBe(100);
-      expect(capFor({ ...paddle, AUTOFILL_TRIAL_DAILY_CAP: '100' }, paying, now)).toBeNull();
+      expect(capFor({ ...stripe, AUTOFILL_TRIAL_DAILY_CAP: '100' }, trial, now)).toBe(100);
+      expect(capFor({ ...stripe, AUTOFILL_TRIAL_DAILY_CAP: '100' }, paying, now)).toBeNull();
       quiet.mockRestore();
     });
 
@@ -300,13 +299,13 @@ describe('the cap', () => {
 
     it('chooses the year’s spend cap the same way, with the same fallback', () => {
       const quiet = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      const cents = { ...paddle, AUTOFILL_YEARLY_CENTS: '5000', AUTOFILL_TRIAL_YEARLY_CENTS: '300' };
+      const cents = { ...stripe, AUTOFILL_YEARLY_CENTS: '5000', AUTOFILL_TRIAL_YEARLY_CENTS: '300' };
       expect(yearlyCentsFor(cents, trial, now)).toBe(300);
       expect(yearlyCentsFor(cents, paying, now)).toBe(5000);
       expect(yearlyCentsFor(cents, comped, now)).toBe(5000);
-      expect(yearlyCentsFor({ ...paddle, AUTOFILL_YEARLY_CENTS: '5000' }, trial, now)).toBe(5000);
-      expect(yearlyCentsFor({ ...paddle, AUTOFILL_YEARLY_CENTS: '5000', AUTOFILL_TRIAL_YEARLY_CENTS: 'three' }, trial, now)).toBe(5000);
-      expect(yearlyCentsFor({ ...paddle }, trial, now)).toBeNull();
+      expect(yearlyCentsFor({ ...stripe, AUTOFILL_YEARLY_CENTS: '5000' }, trial, now)).toBe(5000);
+      expect(yearlyCentsFor({ ...stripe, AUTOFILL_YEARLY_CENTS: '5000', AUTOFILL_TRIAL_YEARLY_CENTS: 'three' }, trial, now)).toBe(5000);
+      expect(yearlyCentsFor({ ...stripe }, trial, now)).toBeNull();
       // Billing off: the ordinary number for everyone, and the trial's never read.
       expect(yearlyCentsFor({ AUTOFILL_YEARLY_CENTS: '5000', AUTOFILL_TRIAL_YEARLY_CENTS: '300' }, trial, now)).toBe(5000);
       // Both limits at once, as the press is handed them.
@@ -318,25 +317,24 @@ describe('the cap', () => {
   });
 
   it('speaks as the trial only for a number that is the trial’s own', () => {
-    const paddle = {
-      PADDLE_API_KEY: 'pdl_sdbx_apikey_x',
-      PADDLE_WEBHOOK_SECRET: 's',
-      PADDLE_CLIENT_TOKEN: 't',
-      PADDLE_PLAN_PRICE_ID: 'p',
-      PADDLE_STORAGE_PRICE_ID: 'q',
+    const stripe = {
+      STRIPE_SECRET_KEY: 'sk_test_x',
+      STRIPE_WEBHOOK_SECRET: 's',
+      STRIPE_PLAN_PRICE_ID: 'p',
+      STRIPE_STORAGE_PRICE_ID: 'q',
     };
     const now = Date.UTC(2026, 9, 16, 12, 0);
-    const trial = { plan: 'trial', planUntil: now + 86_400_000, source: null, paddleStatus: null, paddleCancelsAt: null } as PlanRow;
-    const paying = { plan: 'active', planUntil: null, source: 'comp', paddleStatus: null, paddleCancelsAt: null } as PlanRow;
-    const all = { ...paddle, AUTOFILL_DAILY_CAP: '500', AUTOFILL_TRIAL_DAILY_CAP: '50', AUTOFILL_YEARLY_CENTS: '5000', AUTOFILL_TRIAL_YEARLY_CENTS: '300' };
+    const trial = { plan: 'trial', planUntil: now + 86_400_000, source: null, subscriptionStatus: null, cancelsAt: null } as PlanRow;
+    const paying = { plan: 'active', planUntil: null, source: 'comp', subscriptionStatus: null, cancelsAt: null } as PlanRow;
+    const all = { ...stripe, AUTOFILL_DAILY_CAP: '500', AUTOFILL_TRIAL_DAILY_CAP: '50', AUTOFILL_YEARLY_CENTS: '5000', AUTOFILL_TRIAL_YEARLY_CENTS: '300' };
     expect(trialSentences(all, trial, now)).toEqual({ day: true, year: true });
     expect(trialSentences(all, paying, now)).toEqual({ day: false, year: false });
     // Only the ordinary settings: the trial is on them too, and is told what everyone is.
-    expect(trialSentences({ ...paddle, AUTOFILL_DAILY_CAP: '500', AUTOFILL_YEARLY_CENTS: '5000' }, trial, now)).toEqual({ day: false, year: false });
+    expect(trialSentences({ ...stripe, AUTOFILL_DAILY_CAP: '500', AUTOFILL_YEARLY_CENTS: '5000' }, trial, now)).toEqual({ day: false, year: false });
     // A trial cap alone is the trial's own, whatever a paying account gets.
-    expect(trialSentences({ ...paddle, AUTOFILL_TRIAL_DAILY_CAP: '50', AUTOFILL_TRIAL_YEARLY_CENTS: '300' }, trial, now)).toEqual({ day: true, year: true });
+    expect(trialSentences({ ...stripe, AUTOFILL_TRIAL_DAILY_CAP: '50', AUTOFILL_TRIAL_YEARLY_CENTS: '300' }, trial, now)).toEqual({ day: true, year: true });
     // A trial year no smaller than the paying one: a subscription does not come with more.
-    expect(trialSentences({ ...paddle, AUTOFILL_YEARLY_CENTS: '300', AUTOFILL_TRIAL_YEARLY_CENTS: '300' }, trial, now)).toEqual({ day: false, year: false });
+    expect(trialSentences({ ...stripe, AUTOFILL_YEARLY_CENTS: '300', AUTOFILL_TRIAL_YEARLY_CENTS: '300' }, trial, now)).toEqual({ day: false, year: false });
     // Billing off: never the trial's.
     expect(trialSentences({ AUTOFILL_TRIAL_DAILY_CAP: '50', AUTOFILL_TRIAL_YEARLY_CENTS: '300' }, trial, now)).toEqual({ day: false, year: false });
   });

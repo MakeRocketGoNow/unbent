@@ -3,7 +3,7 @@ import { createMiddleware } from 'hono/factory';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { accountPlanOf, planFor, planRow, updatePlan } from '../lib/plan.js';
-import { billingOn } from '../lib/paddle.js';
+import { billingOn } from '../lib/stripe.js';
 import { requireAuth } from '../lib/session.js';
 import { withRepos } from '../lib/repos-middleware.js';
 import { deleteKeys } from '../lib/blobs.js';
@@ -42,8 +42,8 @@ const sweepByToken = createMiddleware<AppEnv>(async (c, next) => {
 const testPlanBody = z.object({
   plan: z.enum(['trial', 'active', 'inactive']),
   until: z.number().int().nullable(),
-  /** A Paddle customer id to put on the row, so the suite can send the webhook an event that finds it. */
-  paddleCustomerId: z.string().max(64).optional(),
+  /** A Stripe customer id to put on the row, so the suite can send the webhook an event that finds it. */
+  customerId: z.string().max(64).optional(),
 });
 
 /** The comp: `comp` with an end (epoch ms, or null for none) and the storage in GB, or `end`. */
@@ -239,11 +239,11 @@ export const admin = new Hono<AppEnv>()
     await updatePlan(c.env.DB, userId, {
       plan: parsed.data.plan,
       planUntil: parsed.data.until,
-      // A customer id starts a new Paddle story for the row: what an earlier case's events
+      // A customer id starts a new Stripe story for the row: what an earlier case's events
       // left on it (the subscription, its status, the stamp the guard orders by) would
       // otherwise refuse the next case's first event as older.
-      ...(parsed.data.paddleCustomerId !== undefined
-        ? { paddleCustomerId: parsed.data.paddleCustomerId, paddleSubscriptionId: null, paddleStatus: null, paddleCancelsAt: null, paddleEventAt: null, source: null }
+      ...(parsed.data.customerId !== undefined
+        ? { customerId: parsed.data.customerId, subscriptionId: null, subscriptionStatus: null, cancelsAt: null, eventAt: null, source: null }
         : {}),
     });
     return c.json({ ok: true });
@@ -883,14 +883,14 @@ export const admin = new Hono<AppEnv>()
 
   /**
    * Comps an account, or ends a comp (MAK-108): the one way an account is paid for
-   * without Paddle. A comp is `source = 'comp'`, `plan = 'active'`, an end or null for
-   * none, and the storage the operator gives it; Paddle discount codes are for
-   * marketing, since a 100% discount there still asks for a card and charges it when
-   * the discount ends. Ending one sets the row inactive now, which is what a lapsed
-   * trial becomes, and subscribing from there is the normal checkout.
+   * without Stripe. A comp is `source = 'comp'`, `plan = 'active'`, an end or null for
+   * none, and the storage the operator gives it; Stripe's coupons are for marketing,
+   * since a 100% coupon there still asks for a card and charges it when the coupon
+   * ends. Ending one sets the row inactive now, which is what a lapsed trial becomes,
+   * and subscribing from there is the normal checkout.
    *
-   * Refused on an account with a live Paddle subscription: two sources of truth for one
-   * row, and the next webhook would write over the comp. The operator cancels in Paddle
+   * Refused on an account with a live Stripe subscription: two sources of truth for one
+   * row, and the next webhook would write over the comp. The operator cancels in Stripe
    * first. Logged with both ids, as every operator write to someone's account is.
    */
   .post('/admin/accounts/:id/plan', requireAuth, zValidator('json', compBody), async (c) => {
@@ -900,8 +900,8 @@ export const admin = new Hono<AppEnv>()
     const body = c.req.valid('json');
     const now = Date.now();
     const row = await planFor(c.env.DB, target, now);
-    if (row.source === 'paddle' && row.paddleStatus && row.paddleStatus !== 'canceled') {
-      return c.json({ error: 'This account has a Paddle subscription. Cancel it in Paddle before comping the account.' }, 409);
+    if (row.source === 'stripe' && row.subscriptionStatus && row.subscriptionStatus !== 'canceled') {
+      return c.json({ error: 'This account has a Stripe subscription. Cancel it in Stripe before comping the account.' }, 409);
     }
     if (body.action === 'end') {
       await updatePlan(c.env.DB, target, { plan: 'inactive', planUntil: now }, now);

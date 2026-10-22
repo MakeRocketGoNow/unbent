@@ -4,12 +4,11 @@ import type { AttachmentsRepo } from './attachments-repo.js';
 import { StorageFull, assertRoom, quotaOf, storageFullMessage, storeFullMessage, storeLimitOf } from './quota.js';
 import type { PlanRow } from './plan.js';
 
-const paddle = {
-  PADDLE_API_KEY: 'pdl_sdbx_apikey_x',
-  PADDLE_WEBHOOK_SECRET: 's',
-  PADDLE_CLIENT_TOKEN: 't',
-  PADDLE_PLAN_PRICE_ID: 'p',
-  PADDLE_STORAGE_PRICE_ID: 'q',
+const stripe = {
+  STRIPE_SECRET_KEY: 'sk_test_x',
+  STRIPE_WEBHOOK_SECRET: 's',
+  STRIPE_PLAN_PRICE_ID: 'p',
+  STRIPE_STORAGE_PRICE_ID: 'q',
 };
 
 const repo = (used: number) => ({ storageUsed: async () => used }) as unknown as AttachmentsRepo;
@@ -18,8 +17,8 @@ describe('the storage quota', () => {
   it('is none where billing is off, and the plan\'s gigabytes where it is on', () => {
     const row = { storageGb: 35 } as PlanRow;
     expect(quotaOf({}, row)).toBeNull();
-    expect(quotaOf(paddle, undefined)).toBeNull();
-    expect(quotaOf(paddle, row)).toBe(35 * GB);
+    expect(quotaOf(stripe, undefined)).toBeNull();
+    expect(quotaOf(stripe, row)).toBe(35 * GB);
   });
 
   it('lets a file in that fits exactly, and refuses one byte more', async () => {
@@ -47,8 +46,8 @@ describe('the storage quota', () => {
     expect(storeLimitBytes(35 * GB)).toBe(STORE_FLOOR_BYTES + 3.5 * GB);
     const row = { storageGb: 10 } as PlanRow;
     expect(storeLimitOf({}, row)).toBeNull();
-    expect(storeLimitOf(paddle, undefined)).toBeNull();
-    expect(storeLimitOf(paddle, row)).toBe(STORE_FLOOR_BYTES + GB);
+    expect(storeLimitOf(stripe, undefined)).toBeNull();
+    expect(storeLimitOf(stripe, row)).toBe(STORE_FLOOR_BYTES + GB);
   });
 
   it('says the notes are what to delete when it is the store that is full', () => {

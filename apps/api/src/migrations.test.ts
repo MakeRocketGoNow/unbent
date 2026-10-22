@@ -198,12 +198,12 @@ describe.skipIf(!sqlite3)('the directory\'s query plans', () => {
     expect(p).toContain('SEARCH p USING INDEX idx_account_plan_lapse_due (plan_until>? AND plan_until<?)');
     expect(p).toContain('SEARCH u USING INDEX sqlite_autoindex_user_1 (id=?)');
     expect(p).not.toContain('TEMP B-TREE');
-    expect(plan(`SELECT * FROM account_plan WHERE paddle_customer_id = 'ctm_x'`)).toContain('idx_account_plan_customer');
+    expect(plan(`SELECT * FROM account_plan WHERE billing_customer_id = 'cus_x'`)).toContain('idx_account_plan_customer');
   });
 
   /**
    * The statement's filter on real rows, since `plan-mail.test.ts` fakes the database:
-   * a trial's `source` and `paddle_status` are NULL, and a `NOT (… = …)` over them is
+   * a trial's `source` and `billing_status` are NULL, and a `NOT (… = …)` over them is
    * NULL, which once held every trial's mail back for the renewal grace.
    */
   it('find a lapsed trial and comp at once, and a renewing subscription only once its grace is up', () => {
@@ -214,12 +214,12 @@ describe.skipIf(!sqlite3)('the directory\'s query plans', () => {
         ('trial', 'T', 't@example.com', 0, 'n', 'n'), ('comp', 'C', 'c@example.com', 0, 'n', 'n'),
         ('renewing', 'R', 'r@example.com', 0, 'n', 'n'), ('long-gone', 'L', 'l@example.com', 0, 'n', 'n'),
         ('cancelling', 'X', 'x@example.com', 0, 'n', 'n');
-      INSERT INTO account_plan (user_id, plan, plan_until, storage_gb, source, paddle_status, paddle_cancels_at, created_at, updated_at) VALUES
+      INSERT INTO account_plan (user_id, plan, plan_until, storage_gb, source, billing_status, billing_cancels_at, created_at, updated_at) VALUES
         ('trial', 'trial', ${now - 3_600_000}, 10, NULL, NULL, NULL, 1, 1),
         ('comp', 'active', ${now - 3_500_000}, 10, 'comp', NULL, NULL, 1, 1),
-        ('renewing', 'active', ${now - 3_400_000}, 10, 'paddle', 'active', NULL, 1, 1),
-        ('long-gone', 'active', ${now - 2 * DAY}, 10, 'paddle', 'active', NULL, 1, 1),
-        ('cancelling', 'active', ${now - 3_300_000}, 10, 'paddle', 'active', ${now - 3_300_000}, 1, 1);
+        ('renewing', 'active', ${now - 3_400_000}, 10, 'stripe', 'active', NULL, 1, 1),
+        ('long-gone', 'active', ${now - 2 * DAY}, 10, 'stripe', 'active', NULL, 1, 1),
+        ('cancelling', 'active', ${now - 3_300_000}, 10, 'stripe', 'active', ${now - 3_300_000}, 1, 1);
     `);
     const due = query(LAPSE_DUE_SQL.replace('?1', String(now)).replace('?2', '10').replace('?3', String(now - DAY)))
       .split('\n')
@@ -231,7 +231,7 @@ describe.skipIf(!sqlite3)('the directory\'s query plans', () => {
   /**
    * The webhook's plan write on real rows, since `plan.test.ts` only reads the text. A
    * refund cancel writes without `notBefore`: it must end the period on a row that the
-   * cancel's own `subscription.canceled` already stamped later, keep that later stamp,
+   * cancel's own `customer.subscription.deleted` already stamped later, keep that later stamp,
    * advance an earlier one, and leave a row that has moved to another subscription alone.
    * Bound inline, as the CLI takes no parameters.
    */
@@ -249,15 +249,15 @@ describe.skipIf(!sqlite3)('the directory\'s query plans', () => {
     query(`
       INSERT INTO user (id, name, email, emailVerified, createdAt, updatedAt) VALUES
         ('raced', 'R', 'r@example.com', 0, 'n', 'n'), ('first', 'F', 'f@example.com', 0, 'n', 'n'), ('moved', 'M', 'm@example.com', 0, 'n', 'n');
-      INSERT INTO account_plan (user_id, plan, plan_until, source, paddle_subscription_id, paddle_status, paddle_event_at, created_at, updated_at) VALUES
-        ('raced', 'active', ${yearEnd}, 'paddle', 'sub_1', 'canceled', '${later}', 1, 1),
-        ('first', 'active', ${yearEnd}, 'paddle', 'sub_1', 'active', '${earlier}', 1, 1),
-        ('moved', 'active', ${yearEnd}, 'paddle', 'sub_2', 'active', '${earlier}', 1, 1);
+      INSERT INTO account_plan (user_id, plan, plan_until, source, billing_subscription_id, billing_status, billing_event_at, created_at, updated_at) VALUES
+        ('raced', 'active', ${yearEnd}, 'stripe', 'sub_1', 'canceled', '${later}', 1, 1),
+        ('first', 'active', ${yearEnd}, 'stripe', 'sub_1', 'active', '${earlier}', 1, 1),
+        ('moved', 'active', ${yearEnd}, 'stripe', 'sub_2', 'active', '${earlier}', 1, 1);
     `);
-    const patch = { plan: 'active' as const, source: 'paddle' as const, planUntil: refundAt, paddleStatus: 'canceled', paddleCancelsAt: null, paddleEventAt: refundStamp };
+    const patch = { plan: 'active' as const, source: 'stripe' as const, planUntil: refundAt, subscriptionStatus: 'canceled', cancelsAt: null, eventAt: refundStamp };
     const refundCancel = (user: string) =>
       query(`${inline(planUpdateSql(user, patch, 5, { onlyIfSubscription: 'sub_1', advanceStamp: true }))}; SELECT changes();`);
-    const row = (user: string) => query(`SELECT plan_until, paddle_status, paddle_event_at FROM account_plan WHERE user_id = '${user}'`);
+    const row = (user: string) => query(`SELECT plan_until, billing_status, billing_event_at FROM account_plan WHERE user_id = '${user}'`);
 
     expect(refundCancel('raced')).toBe('1');
     expect(row('raced')).toBe(`${refundAt}|canceled|${later}`);
@@ -266,7 +266,7 @@ describe.skipIf(!sqlite3)('the directory\'s query plans', () => {
     expect(refundCancel('moved')).toBe('0');
     expect(row('moved')).toBe(`${yearEnd}|active|${earlier}`);
     // Any other event still yields to a newer stamp on the row.
-    expect(query(`${inline(planUpdateSql('raced', { planUntil: yearEnd, paddleEventAt: refundStamp }, 6, { notBefore: refundStamp }))}; SELECT changes();`)).toBe('0');
+    expect(query(`${inline(planUpdateSql('raced', { planUntil: yearEnd, eventAt: refundStamp }, 6, { notBefore: refundStamp }))}; SELECT changes();`)).toBe('0');
     query(`DELETE FROM account_plan; DELETE FROM user;`);
   });
 

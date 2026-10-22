@@ -2,7 +2,7 @@ import { legalVersionFor, type AppConfig } from '@unbent/shared';
 import { canAutofill } from './jev.js';
 import { canUseLlm } from './llm.js';
 import type { Env } from '../types.js';
-import { billingOn, type PaddleEnv } from './paddle.js';
+import { billingOn, type StripeEnv } from './stripe.js';
 
 /**
  * What this instance says about itself, beyond how to sign in to it.
@@ -89,13 +89,14 @@ export function legalLinksOf(env: Env): AppConfig['legal'] | undefined {
 
 /**
  * Whether this instance sells a plan, which is what decides whether the built-in terms
- * carry the sections on payment, renewal and refunds, and the policy names Paddle.
+ * carry the sections on payment, renewal and refunds, and the policy names Stripe.
  *
  * Billing on, or a front page stating the price. The front page counts on its own because
  * a price on offer is a sale the terms have to cover whether or not checkout works yet, and
- * because Paddle's website review reads the terms for a refund policy before it issues the
- * live keys that turn billing on. Billing alone left unbent.app unable to pass the review
- * that billing waits on.
+ * because a merchant of record's review reads the terms for a refund policy before it
+ * issues the live keys that turn billing on (Paddle's did; Stripe's Managed Payments
+ * reads the same). Billing alone left unbent.app unable to pass the review that billing
+ * waits on.
  *
  * Said here once and sent in `/api/config` (`legal.sellsPlan`), so the web app reads the
  * answer rather than working it out again from `billing` and `frontPage`: the sentence on
@@ -103,7 +104,7 @@ export function legalLinksOf(env: Env): AppConfig['legal'] | undefined {
  * part the first time one of them learned a new case. `undefined` rather than `false` when
  * off, so the field is dropped and an older instance reads the same as one that sells none.
  */
-export function sellsPlanOf(env: Pick<Env, 'FRONT_PAGE'> & PaddleEnv): true | undefined {
+export function sellsPlanOf(env: Pick<Env, 'FRONT_PAGE'> & StripeEnv): true | undefined {
   return billingOn(env) || frontPageOf(env) || undefined;
 }
 
@@ -136,7 +137,7 @@ const OWN_DOCUMENTS_VERSION = '1';
  * documents, and an operator who wants one can say it in their own.
  */
 export function legalVersionOf(
-  env: Pick<Env, 'LEGAL_VERSION' | 'FRONT_PAGE' | 'TYPESAFE_API_KEY'> & PaddleEnv,
+  env: Pick<Env, 'LEGAL_VERSION' | 'FRONT_PAGE' | 'TYPESAFE_API_KEY'> & StripeEnv,
   documents: 'built-in' | 'own',
 ): { version: string; change?: string } {
   if (documents === 'own') return { version: env.LEGAL_VERSION?.trim() || OWN_DOCUMENTS_VERSION };

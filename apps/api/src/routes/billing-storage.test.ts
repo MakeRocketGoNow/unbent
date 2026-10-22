@@ -6,7 +6,7 @@ import { StoreUnavailable } from '../lib/store-client.js';
 import type { AppEnv } from '../types.js';
 
 /**
- * The refusals `POST /billing/storage` makes before Paddle hears of a change: less
+ * The refusals `POST /billing/storage` makes before Stripe hears of a change: less
  * storage than the account's files take, and, since the store's limit follows the quota
  * (MAK-234), less than its store would be allowed. Both from one read of the store
  * (`usage`), and both before the subscription is touched, so a press on the Plan page
@@ -22,21 +22,22 @@ vi.mock('../lib/plan.js', async (importOriginal) => ({
     plan: 'active',
     planUntil: Date.now() + 86_400_000,
     storageGb: 35,
-    source: 'paddle',
-    paddleCustomerId: 'ctm_1',
-    paddleSubscriptionId: 'sub_1',
-    paddleStatus: 'active',
-    paddleCancelsAt: null,
-    paddleEventAt: null,
+    source: 'stripe',
+    customerId: 'cus_1',
+    subscriptionId: 'sub_1',
+    subscriptionStatus: 'active',
+    cancelsAt: null,
+    eventAt: null,
     lapseNotifiedAt: null,
     createdAt: 0,
     updatedAt: 0,
   }),
 }));
 
-/** Paddle is not reached: the change it would be asked for is answered as made. */
-vi.mock('../lib/paddle.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../lib/paddle.js')>()),
+/** Stripe is not reached: the subscription is read as it stands, and the change it would be asked for is answered as made. */
+vi.mock('../lib/stripe.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/stripe.js')>()),
+  getSubscription: async () => ({ id: 'sub_1', status: 'active', items: { data: [], has_more: false } }),
   setSubscriptionStorage: async () => ({ status: 'active' }),
 }));
 
@@ -54,11 +55,10 @@ function env(held: { attachmentBytes: number; databaseSize: number } | Error) {
     },
   };
   return {
-    PADDLE_API_KEY: 'pdl_sdbx_apikey_test',
-    PADDLE_WEBHOOK_SECRET: 'pdl_ntfset_test',
-    PADDLE_CLIENT_TOKEN: 'test_token',
-    PADDLE_PLAN_PRICE_ID: 'pri_plan',
-    PADDLE_STORAGE_PRICE_ID: 'pri_storage',
+    STRIPE_SECRET_KEY: 'sk_test_x',
+    STRIPE_WEBHOOK_SECRET: 'whsec_test',
+    STRIPE_PLAN_PRICE_ID: 'price_plan',
+    STRIPE_STORAGE_PRICE_ID: 'price_storage',
     USER_STORE: { idFromName: (name: string) => name, get: () => store },
   } as unknown as AppEnv['Bindings'];
 }
@@ -94,7 +94,7 @@ describe('removing a storage block', () => {
     );
   });
 
-  it('goes on to Paddle once both fit', async () => {
+  it('goes on to Stripe once both fit', async () => {
     const res = await remove(env({ attachmentBytes: 2 * GB, databaseSize: GB }));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ status: 'active', storageGb: 10 });

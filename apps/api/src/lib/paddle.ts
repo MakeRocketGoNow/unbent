@@ -1,5 +1,3 @@
-import type { BillingConfig } from '@unbent/shared';
-
 /**
  * Paddle, the merchant of record for unbent.app's plan (MAK-108, decided in MAK-47): the
  * configuration that turns billing on, and the handful of calls the Worker makes to it.
@@ -81,7 +79,7 @@ export function billingOn(env: PaddleEnv): boolean {
 }
 
 /** What `/api/config` says about billing: the page's half of the configuration, or nothing. */
-export function billingOf(env: PaddleEnv): BillingConfig | undefined {
+export function billingOf(env: PaddleEnv): { environment: 'sandbox' | 'live'; clientToken: string } | undefined {
   const paddle = paddleOf(env);
   return paddle ? { environment: paddle.environment, clientToken: paddle.clientToken } : undefined;
 }
