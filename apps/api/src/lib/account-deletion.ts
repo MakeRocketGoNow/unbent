@@ -1,7 +1,7 @@
 import type { Env } from '../types.js';
 import { deleteUserBlobs } from './blobs.js';
 import { tombstoneDirectoryRow } from './directory.js';
-import { ensureSubscriptionCanceled, stripeOf, type StripeEnv } from './stripe.js';
+import { ensureSubscriptionCanceled, expireOpenCheckouts, stripeOf, type StripeEnv } from './stripe.js';
 import { planRow, updatePlan } from './plan.js';
 import { storeFor } from './store-client.js';
 
@@ -70,7 +70,8 @@ export async function clearAccount(env: DeletionEnv, userId: string): Promise<vo
  * deletion that silently left a paid subscription running would be worse than one that
  * says to try again, and the row is still there to try again from. The plan row itself
  * goes with the user row's cascade. Nothing to do where billing is off, or for an
- * account that never subscribed, or whose subscription is already canceled.
+ * account that never opened a checkout; only the checkouts for one whose subscription
+ * is already canceled.
  *
  * The row is marked canceled as soon as Stripe agrees, so a deletion that then fails at
  * the files or the store is retried without asking Stripe to cancel again. And a cancel
@@ -82,7 +83,16 @@ async function cancelSubscription(env: DeletionEnv, userId: string): Promise<voi
   const stripe = stripeOf(env);
   if (!stripe) return;
   const row = await planRow(env.DB, userId);
-  if (!row?.subscriptionId || row.subscriptionStatus === 'canceled') return;
+  if (!row?.customerId) return;
+  // A checkout still open would be paid for after the account is gone, and the
+  // subscription it made found by nothing (`expireOpenCheckouts`).
+  try {
+    await expireOpenCheckouts(stripe, row.customerId);
+  } catch (err) {
+    console.error(`Stripe checkouts for ${userId} could not be expired; account deletion abandoned:`, err);
+    throw err;
+  }
+  if (!row.subscriptionId || row.subscriptionStatus === 'canceled') return;
   try {
     await ensureSubscriptionCanceled(stripe, row.subscriptionId);
   } catch (err) {

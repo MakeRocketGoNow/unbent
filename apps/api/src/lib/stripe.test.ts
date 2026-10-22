@@ -5,8 +5,11 @@ import {
   STRIPE_IPS_TTL_MS,
   StripeError,
   WEBHOOK_TOLERANCE_SECONDS,
+  CHECKOUT_LIFETIME_S,
   billingOf,
   createCheckoutSession,
+  createCustomer,
+  expireOpenCheckouts,
   forgetStripeIps,
   formEncode,
   inCidrs,
@@ -171,9 +174,38 @@ describe('the Stripe calls', () => {
     for (const key of ['automatic_tax[enabled]', 'tax_id_collection[enabled]', 'payment_method_types[0]', 'customer_update[address]']) {
       expect(sent.has(key), key).toBe(false);
     }
+    // Payable for an hour, not Stripe's default day.
+    const expires = Number(sent.get('expires_at'));
+    expect(expires - Math.floor(Date.now() / 1000)).toBeGreaterThan(CHECKOUT_LIFETIME_S - 5);
+    expect(expires - Math.floor(Date.now() / 1000)).toBeLessThanOrEqual(CHECKOUT_LIFETIME_S);
     answer([[200, { id: 'cs_2', url: 'x' }]]);
     await createCheckoutSession(stripe, { customerId: 'cus_1', userId: 'u1', storage: 0, successUrl: 'a', cancelUrl: 'b' });
     expect(new URLSearchParams(calls[0]!.init.body as string).has('line_items[1][price]')).toBe(false);
+  });
+
+  it('makes one customer per account however many presses ask for it', async () => {
+    answer([[200, { id: 'cus_1' }]]);
+    await createCustomer(stripe, 'jo@example.com', 'u1');
+    expect(new Headers(calls[0]!.init.headers).get('Idempotency-Key')).toBe('customer-u1');
+  });
+
+  it("expires the customer's open checkouts, and takes one already closed as done", async () => {
+    answer([
+      [200, { data: [{ id: 'cs_1' }, { id: 'cs_2' }], has_more: false }],
+      [200, { id: 'cs_1', status: 'expired' }],
+      [400, { error: { type: 'invalid_request_error', message: 'Only open sessions can be expired.' } }],
+    ]);
+    await expireOpenCheckouts(stripe, 'cus_1');
+    expect(calls.map((c) => `${c.init.method} ${c.url}`)).toEqual([
+      'GET https://api.stripe.com/v1/checkout/sessions?customer=cus_1&status=open&limit=100',
+      'POST https://api.stripe.com/v1/checkout/sessions/cs_1/expire',
+      'POST https://api.stripe.com/v1/checkout/sessions/cs_2/expire',
+    ]);
+    answer([
+      [200, { data: [{ id: 'cs_1' }], has_more: false }],
+      [500, { error: { type: 'api_error', message: 'Something went wrong.' } }],
+    ]);
+    await expect(expireOpenCheckouts(stripe, 'cus_1')).rejects.toMatchObject({ status: 500 });
   });
 
   it('finds a customer\'s newest subscription whatever its status, and none for a customer without one', async () => {

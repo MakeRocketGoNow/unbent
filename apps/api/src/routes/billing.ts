@@ -17,6 +17,7 @@ import {
   StripeError,
   billingOn,
   createCheckoutSession,
+  expireOpenCheckouts,
   createCustomer,
   createPortalSession,
   ensureSubscriptionCanceled,
@@ -163,6 +164,8 @@ export const billing = new Hono<AppEnv>()
     try {
       const customerId = row.customerId ?? (await createCustomer(stripe, c.get('user')!.email, userId)).id;
       if (customerId !== row.customerId) await updatePlan(c.env.DB, userId, { customerId }, now);
+      // Asked even of a customer made a moment ago: a second tab's press gets the same one.
+      await expireOpenCheckouts(stripe, customerId);
       const session = await createCheckoutSession(stripe, {
         customerId,
         userId,

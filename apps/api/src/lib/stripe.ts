@@ -150,6 +150,7 @@ export async function stripeCall<T>(
   method: 'GET' | 'POST' | 'DELETE',
   path: string,
   body?: Record<string, unknown>,
+  idempotencyKey?: string,
 ): Promise<T> {
   const res = await fetch(`${stripe.apiUrl}${path}`, {
     method,
@@ -157,6 +158,7 @@ export async function stripeCall<T>(
       Authorization: `Bearer ${stripe.secretKey}`,
       'Stripe-Version': STRIPE_API_VERSION,
       ...(body !== undefined ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}),
+      ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
     },
     ...(body !== undefined ? { body: formEncode(body) } : {}),
     signal: AbortSignal.timeout(STRIPE_TIMEOUT_MS),
@@ -189,12 +191,14 @@ export interface StripeCustomer {
  * plan row from then on (the row holds the id before the checkout opens, so the first
  * event can find it). `metadata.user_id` is this account's id, so Stripe's side names
  * ours; the join the webhook uses is the customer id on the row. Stripe lets two
- * customers share an address, so there is no "already exists" to catch; a second
- * customer for the same account can only come from a row write that was lost, and is
- * harmless.
+ * customers share an address, so there is no "already exists" to catch. The call is
+ * keyed on the account (Stripe keeps a key for a day), so two presses that both read a
+ * row with no customer, from two tabs, get the same customer back: otherwise the row
+ * keeps the last one written and a checkout made for the other is paid for under a
+ * customer the webhook finds no account for.
  */
 export async function createCustomer(stripe: StripeConfig, email: string, userId: string): Promise<StripeCustomer> {
-  return stripeCall<StripeCustomer>(stripe, 'POST', '/v1/customers', { email, metadata: { user_id: userId } });
+  return stripeCall<StripeCustomer>(stripe, 'POST', '/v1/customers', { email, metadata: { user_id: userId } }, `customer-${userId}`);
 }
 
 export interface StripeCheckoutSession {
@@ -216,6 +220,12 @@ export interface StripeCheckoutSession {
  * page never learns a price id. `client_reference_id` and the subscription's metadata
  * carry the account's id too, so a subscription read on its own still says whose it is.
  *
+ * A session is payable for an hour, not Stripe's default day: unlike the overlay it
+ * replaced, it outlives the page that opened it, and one paid after what allowed it has
+ * changed (a second session, a deleted account) is a subscription the row never holds.
+ * The route also expires the customer's earlier sessions before making one
+ * (`expireOpenCheckouts`), and so does account deletion.
+ *
  * Nothing about tax, payment methods or the customer's address is passed: Managed
  * Payments refuses `automatic_tax`, `tax_id_collection`, `payment_method_types` and
  * `customer_update`, since those are the seller's decisions and Stripe is the seller.
@@ -236,7 +246,34 @@ export async function createCheckoutSession(
     cancel_url: opts.cancelUrl,
     subscription_data: { metadata: { user_id: opts.userId } },
     metadata: { user_id: opts.userId },
+    expires_at: Math.floor(Date.now() / 1000) + CHECKOUT_LIFETIME_S,
   });
+}
+
+/** How long a checkout stays payable. Stripe takes thirty minutes to a day; an hour is time to find a card. */
+export const CHECKOUT_LIFETIME_S = 60 * 60;
+
+/**
+ * Ends every checkout of the customer's that could still be paid, so no more than one
+ * ever can: before a new one is made (a person who went Back from Stripe's page and
+ * pressed again has two otherwise, and paying both is two subscriptions, the second
+ * kept off the row by `theRows` and renewing every year), and before an account is
+ * deleted. A session that completed or expired between the list and the expire is
+ * refused with a 400 and is already what this wants; anything else is thrown.
+ */
+export async function expireOpenCheckouts(stripe: StripeConfig, customerId: string): Promise<void> {
+  const page = await stripeCall<StripeList<StripeCheckoutSession>>(
+    stripe,
+    'GET',
+    `/v1/checkout/sessions?customer=${encodeURIComponent(customerId)}&status=open&limit=100`,
+  );
+  for (const session of page.data) {
+    try {
+      await stripeCall(stripe, 'POST', `/v1/checkout/sessions/${encodeURIComponent(session.id)}/expire`, {});
+    } catch (err) {
+      if (!(err instanceof StripeError && err.status === 400)) throw err;
+    }
+  }
 }
 
 export interface StripeSubscriptionItem {
