@@ -178,8 +178,9 @@ export function planPatchFor(stripe: StripeConfig, event: StripeEvent, row: Plan
  * account deletion makes.
  *
  * `cancel` is a refund of the plan: the whole charge of an invoice that billed the
- * plan, or more than the add-on's lines came to. The subscription is cancelled at once and the account turns read-only from
- * the refund, not from the period's end: the period was given back. `remove-storage`
+ * plan, or more than the add-on's lines came to. The subscription is cancelled at once
+ * and the account turns read-only from the refund, not from the period's end: the
+ * period was given back. `remove-storage`
  * is a refund of no more than the add-on's lines, with tax, on a subscription that has
  * the add-on: the person keeps the plan they paid for and the add-on comes off the
  * subscription, with nothing billed and nothing credited (`setSubscriptionStorage`
