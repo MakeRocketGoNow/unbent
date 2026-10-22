@@ -321,9 +321,9 @@ export function FrontShell({ children }: { children: ReactNode }) {
 /**
  * The plan, its price and what happens when it lapses: the one statement of the offer,
  * which the front page draws under its Pricing heading and the pricing page draws as the
- * page. The merchant of record's review reads the pricing page and a visitor reads the front page, and
- * the two must say the same thing; the numbers are the shared constants, so they also
- * agree with the Plan page and the checkout.
+ * page. The merchant of record's review reads the pricing page and a visitor reads the
+ * front page, and the two must say the same thing; the numbers are the shared constants,
+ * so they also agree with the Plan page and the checkout.
  */
 export function Pricing() {
   return (

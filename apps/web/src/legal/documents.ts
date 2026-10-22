@@ -163,13 +163,14 @@ const COUNT = ['', '', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven'] as const;
  * and these dates move for every change. `documents.test.ts` checks neither is older.
  *
  * Both moved again on 14 October 2026, when the terms gained the plan, its renewal and
- * the refund policy, and the policy the merchant of record, then Paddle (MAK-108). `LEGAL_VERSION` moved with them
- * only where the instance sells a plan: those sections are drawn only there
- * (`LegalOptions.sellsPlan`), and an instance that sells none stays on the version before
- * (`LEGAL_CHANGES` in `@unbent/shared`). The dates are one pair for every instance all the same, so on
- * such an instance the date above the unchanged text moves and the version does not:
- * the documents' rule that the dates move for every change and the version only for one
- * worth asking about, seen from the other side.
+ * the refund policy, and the policy named the merchant of record, Paddle at the time
+ * (MAK-108). `LEGAL_VERSION` moved with them only where the instance sells a plan: those
+ * sections are drawn only there (`LegalOptions.sellsPlan`), and an instance that sells
+ * none stays on the version before (`LEGAL_CHANGES` in `@unbent/shared`). The dates are
+ * one pair for every instance all the same, so on such an instance the date above the
+ * unchanged text moves and the version does not: the documents' rule that the dates move
+ * for every change and the version only for one worth asking about, seen from the other
+ * side.
  *
  * The policy's moved again on 16 October 2026, for two disclosures of what was already so:
  * that the checkout sets cookies of its own once Subscribe is pressed, and that an

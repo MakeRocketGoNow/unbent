@@ -20,8 +20,8 @@ export const PRICING_META = {
  * is mostly about what Unbent is. A merchant of record's review asks for a pricing page
  * by address and reads what is there (Paddle's did; Stripe's reads the same); a page that
  * is only the prices leaves it nothing to find, and reads the same way to a person who
- * followed a link that said "pricing". The
- * offer itself is `Pricing`, shared with the front page, so the two cannot disagree.
+ * followed a link that said "pricing". The offer itself is `Pricing`, shared with the
+ * front page, so the two cannot disagree.
  *
  * Shown to signed-in people as well as signed-out ones, unlike the front page: a person
  * who asked for this page gets it. Only the way out changes with the session: a trial to
