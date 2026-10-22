@@ -214,6 +214,20 @@ export function Plan() {
   }
 
   /**
+   * The plan read back from Stripe (`refreshPlan`), kept as the plan from this moment.
+   * The answer is the row as the server has just written it, and the refetch that
+   * follows may fail or be cut short, which leaves what was there: the trial after a
+   * checkout, "renews" after a cancellation in the portal, the old size after a storage
+   * change. An answer that changed nothing is the row as it stands, so keeping it is
+   * harmless. A read that fails leaves the cache alone.
+   */
+  async function readBack(): Promise<AccountPlan | undefined> {
+    const read = await api.refreshPlan().catch(() => undefined);
+    if (read) queryClient.setQueryData(keys.plan(), read);
+    return read;
+  }
+
+  /**
    * The plan read back from Stripe until it names a subscription, a few times over a
    * few seconds. Stripe sends the person back the moment the payment is confirmed, and
    * its subscription and invoice events follow a moment after, so the first read can
@@ -228,14 +242,8 @@ export function Plan() {
    */
   async function settleCheckout(): Promise<boolean> {
     for (let attempt = 0; attempt < CHECKOUT_SETTLE_TRIES; attempt++) {
-      const read = await api.refreshPlan().catch(() => undefined);
-      if (read?.subscription && read.subscription.status !== 'canceled') {
-        // The answer is the row as the server has just written it, so it is the plan
-        // from this moment, whatever the refetch that follows does: a refetch that fails
-        // or is cut short leaves what was there, and what was there was the trial.
-        queryClient.setQueryData(keys.plan(), read);
-        return true;
-      }
+      const read = await readBack();
+      if (read?.subscription && read.subscription.status !== 'canceled') return true;
       await new Promise((r) => setTimeout(r, CHECKOUT_SETTLE_WAIT_MS));
     }
     return false;
@@ -263,7 +271,7 @@ export function Plan() {
       const onReturn = () => {
         if (document.visibilityState !== 'visible') return;
         document.removeEventListener('visibilitychange', onReturn);
-        void api.refreshPlan().catch(() => undefined).then(refresh);
+        void readBack().then(refresh);
       };
       document.addEventListener('visibilitychange', onReturn);
     } catch (err) {
@@ -279,7 +287,7 @@ export function Plan() {
     setStorageError(null);
     try {
       await api.setStorage(next);
-      await api.refreshPlan().catch(() => undefined);
+      await readBack();
       await refresh();
       setNotice(next > unitsOf(plan!) ? `Added ${STORAGE_ADDON_GB} GB.` : `Removed ${STORAGE_ADDON_GB} GB.`);
       // Closed once the change has landed, so the confirm's own "Adding…" is what waits.
