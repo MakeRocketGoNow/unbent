@@ -324,11 +324,31 @@ describe('where a webhook may come from', () => {
   it('keeps an old list when Stripe cannot be read, and says unknown with none', async () => {
     publish(503);
     expect(await webhookSourceOf('3.18.12.63', false, NOW)).toBe('unknown');
+    forgetStripeIps();
 
     publish(LIST, 503);
     expect(await webhookSourceOf('3.18.12.63', false, NOW)).toBe('allowed');
     expect(await webhookSourceOf('3.18.12.63', false, NOW + STRIPE_IPS_TTL_MS)).toBe('allowed');
     expect(urls).toHaveLength(2);
+  });
+
+  it('waits before asking again after a failure, rather than on every request', async () => {
+    publish(503);
+    expect(await webhookSourceOf('3.18.12.63', false, NOW)).toBe('unknown');
+    expect(await webhookSourceOf('3.18.12.63', false, NOW + 1000)).toBe('unknown');
+    expect(urls).toHaveLength(1);
+    forgetStripeIps();
+
+    publish(LIST, 503, LIST);
+    expect(await webhookSourceOf('3.18.12.63', false, NOW)).toBe('allowed');
+    const stale = NOW + STRIPE_IPS_TTL_MS;
+    expect(await webhookSourceOf('3.18.12.63', false, stale)).toBe('allowed');
+    // Neither a delivery nor a stranger's knock asks again inside the wait.
+    expect(await webhookSourceOf('3.18.12.63', false, stale + 1000)).toBe('allowed');
+    expect(await webhookSourceOf('198.51.100.7', false, stale + 1000)).toBe('refused');
+    expect(urls).toHaveLength(2);
+    expect(await webhookSourceOf('3.18.12.63', false, stale + STRIPE_IPS_RECHECK_MS)).toBe('allowed');
+    expect(urls).toHaveLength(3);
   });
 
   it('lets loopback through only where the test switch is on', async () => {

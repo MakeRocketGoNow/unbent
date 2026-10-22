@@ -554,10 +554,13 @@ export const STRIPE_IPS_RECHECK_MS = 5 * 60 * 1000;
 export const STRIPE_WEBHOOK_IPS_URL = 'https://stripe.com/files/ips/ips_webhooks.json';
 
 let ipsCache: { cidrs: string[]; at: number } | null = null;
+/** When the last fetch failed: a failure waits `STRIPE_IPS_RECHECK_MS` before the next try, as a stranger's knock does. */
+let ipsFailedAt = Number.NEGATIVE_INFINITY;
 
 /** For the tests: forget what has been fetched. */
 export function forgetStripeIps(): void {
   ipsCache = null;
+  ipsFailedAt = Number.NEGATIVE_INFINITY;
 }
 
 /**
@@ -570,11 +573,14 @@ export function forgetStripeIps(): void {
  * Kept in the isolate for `STRIPE_IPS_TTL_MS`. A fetch that fails keeps the list it had,
  * however old, since Stripe's addresses change far less often than a CDN has a bad
  * minute; with nothing kept it answers null, and the webhook is refused as unavailable
- * so Stripe delivers it again.
+ * so Stripe delivers it again. A failure is not tried again for `STRIPE_IPS_RECHECK_MS`:
+ * while stripe.com is slow, every delivery and every stranger's request would otherwise
+ * wait out its own `STRIPE_TIMEOUT_MS` before the old list answered.
  */
 export async function stripeWebhookCidrs(now = Date.now(), refresh = false): Promise<string[] | null> {
   const kept = ipsCache;
   if (kept && now - kept.at < (refresh ? STRIPE_IPS_RECHECK_MS : STRIPE_IPS_TTL_MS)) return kept.cidrs;
+  if (now - ipsFailedAt < STRIPE_IPS_RECHECK_MS) return kept?.cidrs ?? null;
   try {
     const res = await fetch(STRIPE_WEBHOOK_IPS_URL, { signal: AbortSignal.timeout(STRIPE_TIMEOUT_MS) });
     if (!res.ok) throw new Error(`answered ${res.status}`);
@@ -586,6 +592,7 @@ export async function stripeWebhookCidrs(now = Date.now(), refresh = false): Pro
     return cidrs;
   } catch (err) {
     console.warn(`[billing] Stripe's webhook addresses could not be read:`, (err as Error).message);
+    ipsFailedAt = now;
     return kept?.cidrs ?? null;
   }
 }
