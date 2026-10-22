@@ -24,12 +24,13 @@ function harness(plan: Partial<AccountPlan>, billing = true, entry = '/settings/
   client.setQueryData(keys.plan(), { state: 'trial', until: NOW + 10 * DAY, source: null, storageGb: 10, usedBytes: 0, subscription: null, ...plan, readOnlyAt: plan.readOnlyAt ?? plan.until ?? NOW + 10 * DAY });
   const rootRoute = createRootRoute({ component: () => <Plan /> });
   const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory({ initialEntries: [entry] }) });
-  return render(
+  const rendered = render(
     <QueryClientProvider client={client}>
       {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
       <RouterProvider router={router as any} />
     </QueryClientProvider>,
   );
+  return { ...rendered, router };
 }
 
 afterEach(() => {
@@ -220,9 +221,11 @@ describe('Plan', () => {
         return Response.json({}, { status: 404 });
       }),
     );
-    harness({}, true, '/settings/plan?checkout=complete');
+    const { router } = harness({}, true, '/settings/plan?checkout=complete');
     // The wait says what it is waiting for, not that a checkout is opening.
     expect(await screen.findByRole('button', { name: 'Confirming your subscription…' })).toBeTruthy();
+    // Off the address at once, so a reload or a bookmark does not read the plan back again.
+    expect(router.state.location.search).toEqual({});
     // The second read comes after `settleCheckout`'s wait, past the finder's default second.
     expect(await screen.findByRole('heading', { name: 'Subscribed' }, { timeout: 4000 })).toBeTruthy();
     expect(calls.filter((c) => c === 'POST /api/billing/refresh')).toHaveLength(2);
