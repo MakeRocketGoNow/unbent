@@ -31,7 +31,7 @@ import type { PageMeta } from './page-meta.js';
  *
  * What the page is rendered with is the least the shell needs: a config that says there
  * is a front page, and nothing of the operator (`legal`, `operator`), which the build
- * cannot know. The footer's Privacy, Terms and Contact links are therefore missing from
+ * cannot know. The footer's Privacy and Terms links are therefore missing from
  * the static copy and arrive when the app runs. No session either, so the way out is the
  * trial, which is what a visitor who has never signed in should read.
  */

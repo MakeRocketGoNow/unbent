@@ -3,7 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { configQuery } from '../queries.js';
 import { useSession } from '../auth-client.js';
-import { HOME, LOGIN, WHY } from '../auth-gate.js';
+import { HOME, LOGIN, SUPPORT, WHY } from '../auth-gate.js';
 import { EnexHelp, NotionHelp } from './ImportHelp.js';
 import { LegalLink } from './LegalLink.js';
 import { ProviderIcon } from './provider-icons.js';
@@ -260,7 +260,7 @@ export function FrontPage() {
 
 /**
  * The header and footer of the public pages, around their content: the front page, the
- * pricing page (`PricingPage`) and the story (`WhyPage`). One component so they cannot
+ * pricing page (`PricingPage`), the story (`WhyPage`) and support (`SupportPage`). One component so they cannot
  * drift apart, and so each is recognisably the same site.
  *
  * The header's one link is the way back for people who already have an account, drawn as
@@ -303,7 +303,10 @@ export function FrontShell({ children }: { children: ReactNode }) {
           <Link to={WHY}>Why Unbent</Link>
           {legal && <LegalLink href={legal.privacy}>Privacy</LegalLink>}
           {legal && <LegalLink href={legal.terms}>Terms</LegalLink>}
-          {operator && <a href={`mailto:${operator.email}`}>Contact</a>}
+          {/* A page rather than the mailto: it was, which opened a mail client on anyone
+              who only wanted to know how to cancel, and which Stripe's public details
+              would not take as a support address. The page carries the address too. */}
+          <Link to={SUPPORT}>Support</Link>
           {/* The mark says where the link goes before the word does: the one footer
               link that leaves for another site. The sign-in screen's copy of it, so
               there is one GitHub mark in the app. */}

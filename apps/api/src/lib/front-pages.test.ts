@@ -81,6 +81,7 @@ describe('serveFrontPage', () => {
     expect(xml).toContain('<loc>https://unbent.example/</loc>');
     expect(xml).toContain('<loc>https://unbent.example/why</loc>');
     expect(xml).toContain('<loc>https://unbent.example/pricing</loc>');
+    expect(xml).toContain('<loc>https://unbent.example/support</loc>');
     expect(xml).not.toContain('/notes');
   });
 
