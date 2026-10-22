@@ -155,6 +155,7 @@ export async function stripeCall<T>(
   idempotencyKey?: string,
 ): Promise<T> {
   let res: Response;
+  let text: string;
   try {
     res = await fetch(`${stripe.apiUrl}${path}`, {
       method,
@@ -167,10 +168,11 @@ export async function stripeCall<T>(
       ...(body !== undefined ? { body: formEncode(body) } : {}),
       signal: AbortSignal.timeout(STRIPE_TIMEOUT_MS),
     });
+    // Inside the same bound: the timeout aborts a body that stalls after the headers too.
+    text = await res.text();
   } catch (err) {
     throw new StripeError(0, 'unreachable', (err as Error).message);
   }
-  const text = await res.text();
   let json: T & { error?: { type?: string; code?: string; message?: string } };
   try {
     json = JSON.parse(text) as typeof json;
