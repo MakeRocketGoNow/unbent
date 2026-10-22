@@ -16,7 +16,7 @@ import { PLAN_PRICE_USD, STORAGE_ADDON_PRICE_USD } from './plan.js';
 describe('the plan’s prices', () => {
   const promise =
     'The terms promise subscribers an email at least 30 days before a price change takes effect at their renewal, ' +
-    'and nothing sends it. Send the mail, wait the 30 days, change Paddle’s catalog, then change the constant and ' +
+    'and nothing sends it. Send the mail, wait the 30 days, change Stripe’s catalog, then change the constant and ' +
     'this number together. See "Changing the price" in docs/billing.md.';
 
   it('stay what the subscribers were told, until they are told otherwise', () => {

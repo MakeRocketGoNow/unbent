@@ -85,7 +85,8 @@ export const FRONT = '/';
 /**
  * The front page's pricing section, as an address of its own.
  *
- * Paddle's website review asks for a pricing page and refuses a bare domain. `/pricing`
+ * A merchant of record's review asks for a pricing page and refuses a bare domain
+ * (Paddle's did, and Stripe's reads the same). `/pricing`
  * is a page of only the offer (`routes/pricing.tsx`), in the front page's shell and
  * ungated for the same reason the front page is: the reviewer following it has no
  * session. Unlike the bare root it is not a doorway: someone signed in who asks for the

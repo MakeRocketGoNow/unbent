@@ -155,18 +155,20 @@ describe('legalVersionOf', () => {
    * asked again. Where it applies, the version moves and the sentence says what is new.
    */
   it('moves an instance only for the changes whose text it publishes', () => {
-    const sale = LEGAL_CHANGES.find((c) => c.onlyWhere === 'sellsPlan')!;
-    const autofill = LEGAL_CHANGES.find((c) => c.onlyWhere === 'autofill')!;
+    // The newest of each kind: the sale's text changed twice (the plan, then its seller).
+    const sale = LEGAL_CHANGES.filter((c) => c.onlyWhere === 'sellsPlan').at(-1)!;
+    const autofill = LEGAL_CHANGES.filter((c) => c.onlyWhere === 'autofill').at(-1)!;
     expect(legalVersionOf(env(STRIPE), 'built-in')).toEqual({ version: sale.version, change: sale.text });
     expect(legalVersionOf(env(JEV), 'built-in')).toEqual({ version: autofill.version, change: autofill.text });
-    expect(legalVersionOf(env({ ...STRIPE, ...JEV }), 'built-in')).toEqual({ version: LEGAL_VERSION, change: autofill.text });
+    // An instance publishing both is asked for the newest of all, which is the sale's.
+    expect(legalVersionOf(env({ ...STRIPE, ...JEV }), 'built-in')).toEqual({ version: LEGAL_VERSION, change: sale.text });
   });
 
   /* The front page states a price, so its instance publishes the payment terms before
      the merchant of record has issued the keys that turn billing on, which its review
      requires. */
   it('counts the front page as a sale, with or without billing', () => {
-    const sale = LEGAL_CHANGES.find((c) => c.onlyWhere === 'sellsPlan')!;
+    const sale = LEGAL_CHANGES.filter((c) => c.onlyWhere === 'sellsPlan').at(-1)!;
     expect(legalVersionOf(env({ FRONT_PAGE: '1' }), 'built-in').change).toBe(sale.text);
     expect(legalVersionOf(env({ FRONT_PAGE: '1', ...STRIPE }), 'built-in').change).toBe(sale.text);
   });

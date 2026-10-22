@@ -22,9 +22,11 @@
 /**
  * How long after a charge it can be refunded in full, for any reason.
  *
- * Fourteen days because that is the floor Paddle's review accepts, and the right to cancel
- * that a consumer in Europe or the UK has anyway. It covers a renewal as much as a first
- * charge: a renewal is the charge someone is most likely to have forgotten was coming.
+ * Fourteen days because that was the floor Paddle's review accepted, and the right to
+ * cancel that a consumer in Europe or the UK has anyway, which Stripe's Managed Payments
+ * applies for itself where the law requires. The window stayed when the merchant of
+ * record changed. It covers a renewal as much as a first charge: a renewal is the charge
+ * someone is most likely to have forgotten was coming.
  *
  * Here beside the version because the terms ("Refunds" in the web app's
  * `legal/documents.ts`) and a sentence in `LEGAL_CHANGES` both state it, and the sentence
@@ -37,7 +39,7 @@ export const LEGAL_BASE_VERSION = '2026-10-09';
 
 /** What an instance's built-in documents contain beyond what every instance publishes. */
 export interface LegalPublishes {
-  /** The terms' sections on payment, renewal and refunds, and Paddle in the policy (MAK-108). */
+  /** The terms' sections on payment, renewal and refunds, and Stripe in the policy (MAK-108). */
   sellsPlan: boolean;
   /** What Auto-fill sends, and to whom, in the policy (MAK-230). */
   autofill: boolean;
@@ -85,6 +87,13 @@ export const LEGAL_CHANGES: readonly LegalChange[] = [
       'The privacy policy now says what Auto-fill sends when you press it, to which outside ' +
       'services, and what they keep.',
     onlyWhere: 'autofill',
+  },
+  {
+    version: '2026-10-22',
+    text:
+      'The plan is now sold through Stripe rather than Paddle: the terms and the privacy ' +
+      'policy name Stripe as the merchant of record, and say what it receives at checkout.',
+    onlyWhere: 'sellsPlan',
   },
 ];
 

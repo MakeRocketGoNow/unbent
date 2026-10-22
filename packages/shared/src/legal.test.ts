@@ -33,8 +33,11 @@ describe('legalVersionFor', () => {
       if (!change.onlyWhere) continue;
       const without = legalVersionFor({ ...BOTH, [change.onlyWhere]: false });
       expect(without.version).not.toBe(change.version);
+      // A condition's text can change more than once (the sale's did, when the merchant
+      // of record changed); an instance publishing only it is asked for the newest.
+      const newestOfKind = LEGAL_CHANGES.filter((c) => c.onlyWhere === change.onlyWhere).at(-1)!;
       const only = legalVersionFor({ ...NEITHER, [change.onlyWhere]: true });
-      expect(only).toEqual({ version: change.version, change: change.text });
+      expect(only).toEqual({ version: newestOfKind.version, change: newestOfKind.text });
     }
   });
 });

@@ -215,16 +215,17 @@ describe('legalDocuments and Auto-fill', () => {
 
 /**
  * The plan, its renewal and the refund policy (MAK-108) are in the terms exactly where the
- * instance sells one, and Paddle is in the policy exactly then. What Paddle's website review
- * reads for is pinned by phrase (the price, Paddle as merchant of record, how to cancel,
- * the refund window) and the refund section keeps the anchor that is handed to the review.
+ * instance sells one, and Stripe is in the policy exactly then. What a merchant of record's
+ * review reads for is pinned by phrase (the price, Stripe as merchant of record, how to
+ * cancel, the refund window) and the refund section keeps the anchor that is handed to it.
  */
 describe('legalDocuments and billing', () => {
   const without = legalDocuments(OPERATOR, { errorTracking: false, backups: false, sellsPlan: false, autofill: false, llm: false });
   const with_ = legalDocuments(OPERATOR, { errorTracking: false, backups: false, sellsPlan: true, autofill: false, llm: false });
 
-  it('says nothing about a price, a refund or Paddle on an instance that sells nothing', () => {
+  it('says nothing about a price, a refund or Stripe on an instance that sells nothing', () => {
     for (const doc of [without.terms, without.privacy, without.deletion]) {
+      expect(text(doc)).not.toContain('Stripe');
       expect(text(doc)).not.toContain('Paddle');
       expect(text(doc)).not.toContain('refund');
       expect(text(doc)).not.toContain('$');
@@ -234,7 +235,8 @@ describe('legalDocuments and billing', () => {
   it('states the merchant of record, renewal and how to cancel', () => {
     const body = text(with_.terms);
     expect(body).toContain('free trial, with no card asked for');
-    expect(body).toContain('Paddle is the merchant of record');
+    expect(body).toContain('Stripe is the merchant of record');
+    expect(body).not.toContain('Paddle');
     expect(body).toContain('renews automatically');
     expect(body).toContain('Manage subscription');
     expect(body).toContain('becomes read-only');
@@ -261,9 +263,10 @@ describe('legalDocuments and billing', () => {
     expect(text(without.terms)).not.toContain('cancels your plan');
   });
 
-  it('names Paddle among the services, and counts it', () => {
+  it('names Stripe among the services, and counts it', () => {
     const body = text(with_.privacy);
-    expect(body).toContain('Paddle, which sells the plan as merchant of record');
+    expect(body).toContain('Stripe, which sells the plan as merchant of record');
+    expect(body).not.toContain('Paddle');
     expect(body).toContain('Three other kinds of service');
     expect(
       text(legalDocuments(OPERATOR, { errorTracking: true, backups: true, sellsPlan: true, autofill: false, llm: false }).privacy),

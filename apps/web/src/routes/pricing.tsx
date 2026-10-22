@@ -5,7 +5,7 @@ import { configQuery } from '../queries.js';
 import { PricingPage } from '../components/PricingPage.js';
 
 /**
- * The pricing page Paddle's review asks for: the offer, on a page of its own.
+ * The pricing page a merchant of record's review asks for: the offer, on a page of its own.
  *
  * It began as a redirect to the front page's pricing section, and that was wrong twice
  * over: the bare root sends anyone signed in to their notes, so a signed-in person who
