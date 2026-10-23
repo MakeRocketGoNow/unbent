@@ -10780,9 +10780,10 @@ button.settings-nav-item {
 
 .front-story .compare-sources li + li { margin-top: 0.25rem; }
 
-.compare-index {
+/* As specific as the story's own list rule, which would otherwise indent this one. */
+.front-story .compare-index {
   list-style: none;
-  padding: 0 !important;
+  padding: 0;
 }
 
 .compare-index li {
