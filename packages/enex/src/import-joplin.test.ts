@@ -317,6 +317,28 @@ describe('importJoplin', () => {
     expect(new Set(notes.map((n) => n.notebook))).toEqual(new Set(['From Joplin']));
   });
 
+  it('keeps a deep notebook\'s own name when its path is too long, so siblings stay apart', async () => {
+    const { client, notes } = fakeClient();
+    const parent = 'A notebook with a long name that goes on for a while, about many things and then some more';
+    const archive = jex({
+      folders: [
+        { id: ID.household, title: parent },
+        { id: ID.receipts, title: 'Receipts 2024', parent: ID.household },
+        { id: ID.kitchen, title: 'Receipts 2025', parent: ID.household },
+      ],
+      notes: [
+        { id: ID.kettle, title: 'One', parent: ID.receipts, body: '' },
+        { id: ID.soup, title: 'Two', parent: ID.kitchen, body: '' },
+      ],
+    });
+    await importJoplin({ name: 'x.jex', blob: archive }, client);
+    const [one, two] = [byTitle(notes, 'One').notebook!, byTitle(notes, 'Two').notebook!];
+    expect(one.endsWith('… / Receipts 2024')).toBe(true);
+    expect(two.endsWith('… / Receipts 2025')).toBe(true);
+    expect(one.length).toBe(100);
+    expect(one.startsWith('A notebook with a long name')).toBe(true);
+  });
+
   it('refuses an export with no notes in it', async () => {
     const { client } = fakeClient();
     const empty = { name: 'x.jex', blob: jex({ folders: [{ id: ID.kitchen, title: 'Kitchen' }], notes: [] }) };

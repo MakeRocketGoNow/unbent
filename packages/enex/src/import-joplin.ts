@@ -111,6 +111,30 @@ function resourceName(id: string, props: Record<string, string>): string {
   return ext && !base.toLowerCase().endsWith(`.${ext}`) ? truncate(base, `.${ext}`) : truncate(base, '');
 }
 
+/** `s` cut to `n` code units without splitting a surrogate pair. */
+function cut(s: string, n: number): string {
+  if (s.length <= n) return s;
+  const head = s.slice(0, n);
+  return (/[\uD800-\uDBFF]$/.test(head) ? head.slice(0, -1) : head).trimEnd();
+}
+
+/**
+ * A nested notebook's name: its parents' path, then its own title, within the length a
+ * notebook name may be. When the whole does not fit, the parents are shortened (and
+ * marked with an ellipsis), never the notebook's own title: cutting from the end lost
+ * the name that tells two siblings apart, so `… / Receipts 2024` and `… / Receipts 2025`
+ * under a long parent became one notebook, which is what naming by the path is for.
+ */
+function notebookPath(parent: string | undefined, title: string): string {
+  if (!parent) return cut(title, MAX_TAG_LENGTH);
+  const whole = `${parent} / ${title}`;
+  if (whole.length <= MAX_TAG_LENGTH) return whole;
+  // What the parents may keep, after the separator and the ellipsis.
+  const room = MAX_TAG_LENGTH - title.length - ' / '.length - 1;
+  if (room < 8) return cut(title, MAX_TAG_LENGTH);
+  return `${cut(parent, room)}… / ${title}`;
+}
+
 async function readModel(window: BlobWindow, entries: TarEntry[], signal: AbortSignal): Promise<Model> {
   const folders = new Map<string, { title: string; parent: string }>();
   const tagNames = new Map<string, string>();
@@ -175,7 +199,7 @@ async function readModel(window: BlobWindow, entries: TarEntry[], signal: AbortS
     seen.add(id);
     const parent = folder.parent ? pathOf(folder.parent, seen) : undefined;
     const title = folder.title.trim() || 'Untitled';
-    const path = (parent ? `${parent} / ${title}` : title).slice(0, MAX_TAG_LENGTH).trim();
+    const path = notebookPath(parent, title);
     notebooks.set(id, path);
     return path;
   };
