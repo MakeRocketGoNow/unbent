@@ -172,11 +172,13 @@ export const billing = new Hono<AppEnv>()
       // The row hears of a paid checkout's subscription only by webhook, so in that lag a
       // second tab still showing Subscribe, or Back from Stripe's success page, would
       // pass the row's check above. Stripe is asked too; a paid session is complete rather
-      // than open, so expiring sessions does not catch it. Asked of `customerId`, not
-      // `row.customerId`: the first checkout creates the customer in this request, and a
-      // twin press (two tabs, no customer on the row yet) shares that customer through
-      // `createCustomer`'s key. Guarding on the row skipped the list for both, and the
-      // second session stayed payable beside the first. Every subscription, not the
+      // than open, so expiring sessions does not catch it. Asked of `customerId` and
+      // always, not only when the row named one: Stripe can hold the account's customer
+      // before this request's row does. A press that read the row before another press
+      // wrote the customer to it shares that customer through `createCustomer`'s key, and
+      // the other's subscription counts all the same. That window is narrow (a press
+      // writes its customer before it opens a session), which is why the list is never
+      // worth skipping to save a call on the first Subscribe. Every subscription, not the
       // newest: an older one still live behind a newer one that has ended is a
       // subscription all the same. After expiring sessions, so a payment that completed
       // while those were being closed is still seen.
