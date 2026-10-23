@@ -31,9 +31,11 @@ export const WORKER_PREFIXES = ['/api/', '/.well-known/', '/ingest/', '/manifest
  * addresses completed (`apps/api/src/lib/front-pages.ts`). Also in `run_worker_first`,
  * and deliberately not above: the Worker's answer is the same page the shell draws, so
  * the shell is the right answer when the network does not give one, and a page load
- * here takes the navigation route like any other.
+ * here takes the navigation route like any other. The front page, pricing and support
+ * are the shell itself, passed through the Worker only so the card picture in its head is
+ * a whole address, which makes the same answer truer still.
  */
-export const WORKER_PAGES = ['/why'];
+export const WORKER_PAGES = ['/why', '/', '/pricing', '/support'];
 
 /**
  * Whether a page load at this address should be answered with the app itself.

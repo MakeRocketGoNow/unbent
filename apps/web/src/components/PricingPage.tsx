@@ -2,7 +2,7 @@ import { Link } from '@tanstack/react-router';
 import { TRIAL_DAYS } from '@unbent/shared';
 import { useSession } from '../auth-client.js';
 import { HOME, LOGIN } from '../auth-gate.js';
-import { usePageMeta } from '../page-meta.js';
+import { CARD_IMAGE, usePageMeta } from '../page-meta.js';
 import { FrontShell, Pricing } from './FrontPage.js';
 
 /** What the tab and a link's card say this page is. Prices stay out of it, so a change to them cannot leave a card wrong. */
@@ -10,7 +10,7 @@ export const PRICING_META = {
   title: 'Pricing · Unbent',
   description:
     'One plan, billed yearly, with a free trial that needs no card. If you stop paying, nothing is held hostage: every note still opens, searches and exports.',
-  image: '/front/desktop-light.webp',
+  image: CARD_IMAGE,
 };
 
 /**

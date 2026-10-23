@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { REFUND_DAYS } from '@unbent/shared';
 import { HOW_TO_DELETE } from '../auth-gate.js';
 import { REFUNDS_ID } from '../legal/documents.js';
-import { usePageMeta, type PageMeta } from '../page-meta.js';
+import { CARD_IMAGE, usePageMeta, type PageMeta } from '../page-meta.js';
 import { configQuery } from '../queries.js';
 import { FrontShell, SOURCE_URL } from './FrontPage.js';
 
@@ -13,7 +13,7 @@ export const SUPPORT_META: PageMeta = {
   title: 'Support · Unbent',
   description:
     'How to reach a person at Unbent, and where receipts, refunds, cancelling, sign-in, export and account deletion are handled.',
-  image: '/front/desktop-light.webp',
+  image: CARD_IMAGE,
 };
 
 /** Where a bug or a feature request is filed: GitHub's chooser between the two forms. */
