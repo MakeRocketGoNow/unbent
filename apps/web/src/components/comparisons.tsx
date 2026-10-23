@@ -405,22 +405,23 @@ export const COMPARISONS: readonly Comparison[] = [
     meta: {
       title: 'Unbent vs Joplin',
       description:
-        'Unbent is a hosted archive with fields and nothing to set up; Joplin is an open-source app you sync yourself. How they compare on searching scans, fields, encryption, offline and export.',
+        'Joplin is a free, open-source notes app you sync yourself, with end-to-end encryption. Unbent is a hosted archive that reads your scans as they arrive. Which to choose, where they differ, and what each does better.',
       image: CARD_IMAGE,
     },
-    summary: 'For someone weighing an open-source app they sync themselves against a hosted archive with fields and nothing to set up.',
-    lead: 'Unbent is a hosted archive for paperwork: scans and files you find by what they say, sort by their fields, and reach from any browser, with nothing to set up. Joplin is an open-source notes app you sync yourself, with end-to-end encryption.',
+    summary: 'For someone weighing a free, encrypted notes app they sync themselves against a hosted archive that reads their paperwork for them.',
+    lead: 'Unbent and Joplin are different kinds of app. Unbent is a hosted archive for paperwork: scans and files, read as they arrive, found by what they say and sorted by their fields, with nothing to set up. Joplin is a free, open-source notes app you sync yourself, with end-to-end encryption. If what you keep is mostly writing, use Joplin: it is good, and free. This page is about the paper.',
     checked: CHECKED,
     chooseUnbent: [
-      'You want nothing to set up: no sync target, no server, no plugins to choose.',
-      'Your notes are mostly scans and files, and you sort them by date, total or sender.',
-      'You want a scan filed for you: its title, notebook and fields filled in.',
-      'You want your notes in any browser, and your AI assistant to work in them over the web.',
+      'What you keep is mostly paper: scans, receipts, bills and manuals you need to find again by what they say.',
+      'You want a scan read the moment it arrives, from a phone as much as a desktop, and filed on a press: title, notebook and fields.',
+      'You want fields on your notes (a date, a total, who it was from) and a table to sort them by.',
+      'You want nothing to set up and nothing to run (no sync target, no server, no master password), and your AI assistant working in it over the web.',
     ],
     chooseThem: [
       'You want end-to-end encryption, so no server can read your notes.',
-      'You want it open source, and are happy to run your own sync.',
-      'You want native desktop apps, Linux included, and a plugin for everything.',
+      'You want it free, and will run your own sync: Dropbox, OneDrive, Nextcloud, or a server of yours.',
+      'What you keep is mostly writing, and the files in it are the exception.',
+      'You want native desktop apps, Linux included, to-do notes with alarms, a web clipper, and a plugin for the rest.',
     ],
     whyTheyDiffer: (
       <>
@@ -488,34 +489,38 @@ export const COMPARISONS: readonly Comparison[] = [
     ],
     weDoBetter: [
       {
-        title: 'Fields you can sort by',
-        body: 'A receipts notebook can carry a date, a total and a shop on every note, shown as a table and filtered by any of them. Joplin has notebooks and tags, and leaves the rest to plugins.',
-      },
-      {
-        title: 'Nothing to set up, nothing to lose',
-        body: 'Sign in and it is there, on every device. No sync target to choose and look after, and no master password that loses everything if it is forgotten.',
-      },
-      {
-        title: 'Any browser, any device',
-        body: 'The whole app in a browser, on a phone too, and offline there as well. Joplin’s web app is a beta that keeps its notes in that one browser.',
-      },
-      {
-        title: 'Assistants over the web',
-        body: 'Claude, ChatGPT and others connect with a sign-in and work in your notes from anywhere, with every edit kept in the note’s history. Joplin’s MCP server is a desktop beta that only that computer can reach.',
+        title: 'Reading paper as it arrives',
+        body: 'Every PDF is read on the server the moment it is added, from any device, and a photo on a press, so a receipt scanned on a phone is searchable from that phone straight away. Joplin reads PDFs and images too, but only in its desktop app: nothing is searchable until a desktop has synced it and run over it.',
       },
       {
         title: 'Filing a scan for you',
         body: 'Press Auto-fill and Unbent reads the scan and fills in its title, its notebook and its fields, from the date to the total.',
       },
+      {
+        title: 'Fields you can sort by',
+        body: 'A receipts notebook can carry a date, a total and a shop on every note, shown as a table and filtered by any of them. Joplin has notebooks and tags, and leaves the rest to plugins.',
+      },
+      {
+        title: 'Any browser, nothing to run',
+        body: 'Sign in and it is there, on every device, in a browser or installed from one, offline too. No sync target to choose and look after, and no master password that loses everything if it is forgotten. Joplin’s web app is a beta that keeps its notes in that one browser.',
+      },
+      {
+        title: 'Assistants over the web',
+        body: 'Claude, ChatGPT and others connect with a sign-in and work in your notes from anywhere, with every edit kept in the note’s history. Joplin’s MCP server is a desktop beta that only that computer can reach.',
+      },
     ],
     theyDoBetter: [
       {
         title: 'Privacy',
-        body: 'With end-to-end encryption on, the place your notes sync to holds only ciphertext, and each device decrypts and searches its own copy. Unbent’s server can read your notes, which is what lets it search a whole archive without every device downloading it first.',
+        body: 'With end-to-end encryption on, the place your notes sync to holds only ciphertext, and each device decrypts and searches its own copy. Unbent’s server can read your notes, which is what lets it read your paperwork and search a whole archive without every device downloading it first.',
       },
       {
-        title: 'Open source, plugins and native apps',
-        body: 'An AGPL codebase, a large plugin library, and desktop apps for Windows, Mac and Linux. Unbent is source-available, not open source, and has no plugins.',
+        title: 'Price',
+        body: `Free, with a sync target you already have: Dropbox, OneDrive, Nextcloud, WebDAV or S3. Joplin Cloud, for nothing to run, starts at €28.69 a year. Unbent is $${PLAN_PRICE_USD} a year.`,
+      },
+      {
+        title: 'Being a notes app',
+        body: 'Native apps for Windows, Mac and Linux, to-do notes with alarms, a web clipper, a Markdown editor with a plugin for most things, and an AGPL codebase you can read and change. Unbent is source-available, not open source, has no plugins, and does notes, files, fields and search for one person.',
       },
     ],
     switching: {
@@ -536,6 +541,8 @@ export const COMPARISONS: readonly Comparison[] = [
       { label: 'Joplin: end-to-end encryption', href: 'https://joplinapp.org/help/apps/sync/e2ee' },
       { label: 'Joplin: import and export', href: 'https://joplinapp.org/help/apps/import_export' },
       { label: 'Joplin: the web app', href: 'https://joplinapp.org/help/apps/web' },
+      { label: 'Joplin: the web clipper', href: 'https://joplinapp.org/help/apps/clipper' },
+      { label: 'Joplin: alarms on to-dos', href: 'https://joplinapp.org/help/apps/notifications' },
       { label: 'Joplin: version 3.7', href: 'https://joplinapp.org/news/20260831-release-3-7/' },
       { label: 'Joplin: AI and MCP', href: 'https://joplinapp.org/help/apps/ai_mcp/' },
       { label: 'Joplin: licence', href: 'https://github.com/laurent22/joplin/blob/dev/LICENSE' },
