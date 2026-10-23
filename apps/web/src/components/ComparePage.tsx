@@ -12,12 +12,13 @@ import { COMPARE_META, COMPARISONS, comparison, type Comparison } from './compar
  *
  * Written for someone already weighing the two, who knows the other app better than we
  * do and will stop trusting a table the moment it is one-sided. So every page has the same
- * six parts in the same order: who should pick which (both halves), the facts side by
+ * seven parts in the same order: who should pick which (both halves), why the two differ
+ * (the choice under the facts, named once so the table can be facts), the facts side by
  * side, what Unbent does better, what the other app does better (the part a vendor's
  * comparison usually leaves out), how to move, and when the facts were checked, with
  * their sources. The
  * content is data (`comparisons.tsx`) and this is the one layout, so a price that changes
- * is a line to edit and the three pages cannot drift into three designs.
+ * is a line to edit and the pages cannot drift into as many designs.
  *
  * Not linked from the front page, deliberately: the front page sells Unbent on its own
  * terms and does not name anyone else. These are for a search ("Evernote alternative",
@@ -60,6 +61,16 @@ export function ComparePage({ comparison: c }: { comparison: Comparison }) {
               </ul>
             </div>
           </div>
+        </section>
+
+        <section>
+          <h2>Why they differ</h2>
+          {/* The choice underneath the table, usually a rule the other app holds and we do
+              not, or the other way round. Said once, here, in prose: the cells below can
+              then be facts, and a reader who has decided from the short version can leave
+              knowing why. Most of these pages are not two apps for one job but two jobs,
+              and this is where that is said. */}
+          {c.whyTheyDiffer}
         </section>
 
         <section>
@@ -147,10 +158,15 @@ export function CompareIndexPage() {
     <FrontShell>
       <section className="front-hero front-width">
         <h1>How Unbent compares</h1>
+        {/* The category first, because most of what follows turns on it: the apps people
+            weigh Unbent against are mostly notes apps that take files, and the honest
+            comparison is about which job someone has, not which app has more. */}
         <p className="front-lead front-story-lead">
-          Unbent is for an archive: notes, receipts and scans you find by what they say, kept
-          as files you can take with you. Here is how it stands beside the apps people
-          usually weigh it against, including what each of them does better.
+          Unbent is an archive for paper: scans, receipts and bills, read as they arrive,
+          found by what they say, and kept as files you can take with you. Most of the apps
+          it is weighed against are notes apps that also take files, and one is a document
+          system you run yourself, so the question is usually which job you have. Here is
+          how it stands beside each, including what each of them does better.
         </p>
       </section>
       <article className="front-story compare front-width">

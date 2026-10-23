@@ -41,7 +41,7 @@ describe('ComparePage', () => {
   });
 
   /**
-   * The six parts in their order on every page: both sides' strengths, under headings of
+   * The seven parts in their order on every page: both sides' strengths, under headings of
    * the same weight, and the one a vendor's comparison leaves out is there too.
    */
   it.each(PAGES)('draws the %s comparison whole, with the trial as the one filled control', async (slug, page) => {
@@ -51,6 +51,7 @@ describe('ComparePage', () => {
     expect(document.title).toBe(c.meta.title);
     expect(getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       'The short version',
+      'Why they differ',
       'Side by side',
       'What Unbent does better',
       `What ${c.name} does better`,
@@ -97,6 +98,7 @@ describe('comparisons', () => {
     expect(c.weDoBetter.length).toBeGreaterThan(0);
     expect(c.theyDoBetter.length).toBeGreaterThan(0);
     expect(c.chooseThem.length).toBeGreaterThan(0);
+    expect(c.whyTheyDiffer).toBeTruthy();
     expect(c.sources.length).toBeGreaterThan(0);
     for (const source of c.sources) expect(source.href).toMatch(/^https:\/\//);
     // The house rule for anything new: no em-dashes in copy.

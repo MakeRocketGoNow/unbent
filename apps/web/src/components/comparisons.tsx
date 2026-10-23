@@ -13,6 +13,14 @@ import { CARD_IMAGE, type PageMeta } from '../page-meta.js';
  *   where they say it, a dated report where they do not (Evernote's site names no
  *   prices). `checked` says when. Re-check them all and move `checked` together; a page with
  *   one fresh fact and four stale ones still says it was checked.
+ * - **Say which kind of app each is, and send the other job away.** Most of these are
+ *   notes apps that take files; Unbent is an archive of paper that holds notes. A page
+ *   that went feature by feature was a fight on the other app's ground (price, plugins,
+ *   encryption, the editor) that Unbent does not need to win, so the reader with a
+ *   notebook of writing is told in the lead to use the other app, and the other app's
+ *   strengths on its own ground go in `theyDoBetter` without a "but". `whyTheyDiffer`
+ *   names the choice under the facts once (a rule the other app holds and we do not, or
+ *   two different jobs), so the cells can stay facts.
  * - **Say what we do not do** as plainly as what we do: no end-to-end encryption, no
  *   apps in the stores yet, pictures read only when someone asks. A reader who knows the
  *   other app finds the gap anyway, and then trusts nothing else on the page.
@@ -47,6 +55,8 @@ export interface Comparison {
   checked: string;
   chooseUnbent: ReactNode[];
   chooseThem: ReactNode[];
+  /** The choice under the facts, said once between the short version and the table. */
+  whyTheyDiffer: ReactNode;
   rows: { topic: string; unbent: ReactNode; them: ReactNode }[];
   weDoBetter: { title: string; body: ReactNode }[];
   theyDoBetter: { title: string; body: ReactNode }[];
@@ -149,6 +159,24 @@ export const COMPARISONS: readonly Comparison[] = [
       'You share notebooks with other people.',
       'Your archive is large and the price is not the problem.',
     ],
+    whyTheyDiffer: (
+      <>
+        <p>
+          Evernote and Unbent do the same job, and Evernote did it first: paper goes in, is
+          read, and is found again by what it said. Evernote still reads more without being
+          asked (a photo, a page of handwriting). The difference is what the archive is made
+          of, and what happens when you want to leave.
+        </p>
+        <p>
+          Evernote keeps notes in its own format, exports them from its desktop app a
+          notebook at a time, and has changed its owner and roughly doubled its price within
+          a year. Unbent was built by someone who left it with 13,000 notes, around one
+          rule: the archive is yours. Every note is a Markdown file kept as you typed it,
+          the export is plain folders from any browser, and an account that stops paying
+          turns read-only rather than locked.
+        </p>
+      </>
+    ),
     rows: [
       {
         topic: 'Price',
@@ -267,6 +295,17 @@ export const COMPARISONS: readonly Comparison[] = [
       'You build wikis, project plans or published sites.',
       'Your notes are mostly writing, not files.',
     ],
+    whyTheyDiffer: (
+      <p>
+        Notion is a workspace that stores files; Unbent is an archive that reads them. In
+        Notion a PDF is an attachment on a page: found by its name, opened to know what it
+        says, and kept under 5 MB on the free plan. In Unbent the file is the point: the text
+        of every PDF is read as it arrives and searched from every device, a photo of a
+        receipt is read on a press, and the note&apos;s fields hold what the paper said.
+        Notion&apos;s databases do more than Unbent&apos;s notebooks in every other way, so
+        the question is not which is better but which of the two jobs you have.
+      </p>
+    ),
     rows: [
       {
         topic: 'Price',
@@ -383,6 +422,26 @@ export const COMPARISONS: readonly Comparison[] = [
       'You want it open source, and are happy to run your own sync.',
       'You want native desktop apps, Linux included, and a plugin for everything.',
     ],
+    whyTheyDiffer: (
+      <>
+        <p>
+          Joplin&apos;s rule is that no server ever reads your notes: with end-to-end
+          encryption on, the place they sync to holds only ciphertext, and each device
+          decrypts its own copy. It is a good rule, and everything the paperless job needs is
+          on the other side of it. Reading a scan the moment it arrives, filing it from what
+          it says, and searching an archive from a phone that has never downloaded it all
+          need something to read the paper, and that something has to be a server. Joplin
+          does what it can on the desktop (its OCR runs there, and the text syncs out to the
+          phone); Unbent made the other choice.
+        </p>
+        <p>
+          So the server reads your paperwork, and in return leaving is kept trivial: every
+          note is a plain file, the export is plain folders from any browser at any time, and
+          an account that stops paying turns read-only rather than locked. Which rule you
+          want decides this page, and nothing in the table below changes it.
+        </p>
+      </>
+    ),
     rows: [
       {
         topic: 'Price',
