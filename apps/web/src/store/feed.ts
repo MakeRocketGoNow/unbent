@@ -164,6 +164,15 @@ export class FeedEngine {
   private controls: Partial<FeedControls> = {};
   private running: Promise<void> | null = null;
   private again = false;
+  /**
+   * The stored cursor stands beside rows of an older `COPY_FORMAT`. The copy is emptied
+   * only once the feed has answered, as a `reset` is, never on the read of the cursor:
+   * emptied offline, the library stays empty until a connection returns, and the app
+   * opens with no connection and works. Kept until the emptying has happened, since the
+   * cursor in `state` is followed as it is from the second pull on, and a page applied
+   * from it would stamp the new format on the old rows.
+   */
+  private staleCopy = false;
   private stopped = false;
   private readonly stopping = new AbortController();
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -319,13 +328,9 @@ export class FeedEngine {
   private async once(): Promise<void> {
     if (!this.state.cursor) {
       const stored = await this.watched('reading the cursor', this.options.readCursor());
-      if (stored?.format !== undefined && stored.format < COPY_FORMAT) {
-        this.state.phase = 'reset';
-        this.changed();
-        await this.truncateAll();
-        await this.snapshot(null);
-        return;
-      }
+      // A walk under way is not stale: its rows went into empty collections, and a key
+      // survives only where a row the feed sent later was written over one already held.
+      if (stored?.format !== undefined && stored.format < COPY_FORMAT && !stored.resume) this.staleCopy = true;
       if (!stored || stored.resume) {
         await this.snapshot(stored);
         return;
@@ -339,10 +344,11 @@ export class FeedEngine {
         `/api/changes?since=${c.seq}&epoch=${encodeURIComponent(c.epoch)}&limit=${limit}`,
         this.stopping.signal,
       );
-      if (page.reset) {
+      if (page.reset || this.staleCopy) {
         this.state.phase = 'reset';
         this.changed();
         await this.truncateAll();
+        this.staleCopy = false;
         await this.snapshot(null);
         return;
       }
