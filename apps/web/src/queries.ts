@@ -78,8 +78,9 @@ async function library(): Promise<Library | null> {
  * a reload beside a frozen tab was a white page until the tab was closed or the twenty
  * seconds ran out; most people closed the tab first. Two seconds is a cold open on a
  * desktop with room to spare. A phone's cold open can take longer, and then reads the
- * server for its first screen, which is what the app did before the copy existed and
- * costs one list's rows.
+ * server for its first screen, which is what the app did before the copy existed: the
+ * list's page, the sidebar's tags, notebooks and counts, and the open note with its
+ * files and fields, each a request and its rows read.
  */
 const LIBRARY_READ_WAIT_MS = 2000;
 
