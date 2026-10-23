@@ -1,7 +1,7 @@
 # @unbent/migrate
 
-`unbent-migrate`: import Evernote `.enex` files, or Unbent's own exports, into Unbent from
-the command line.
+`unbent-migrate`: import Evernote `.enex` files, Joplin `.jex` files, or Unbent's own
+exports, into Unbent from the command line.
 
 The in-app importer handles a single file well. This is for the case a browser is bad at:
 a whole account's worth of exports, run unattended, resumed after an interruption, without

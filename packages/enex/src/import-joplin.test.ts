@@ -311,6 +311,12 @@ describe('importJoplin', () => {
     expect(notes).toHaveLength(0);
   });
 
+  it('files every note under one notebook when told to', async () => {
+    const { client, notes } = fakeClient();
+    await importJoplin(sample(), client, { notebookTag: 'From Joplin' });
+    expect(new Set(notes.map((n) => n.notebook))).toEqual(new Set(['From Joplin']));
+  });
+
   it('refuses an export with no notes in it', async () => {
     const { client } = fakeClient();
     const empty = { name: 'x.jex', blob: jex({ folders: [{ id: ID.kitchen, title: 'Kitchen' }], notes: [] }) };

@@ -388,7 +388,8 @@ async function importNote(ref: NoteRef, model: Model, ctx: NoteContext): Promise
   const title = (ref.title.trim() || 'Untitled').slice(0, MAX_TITLE_LENGTH);
   const created = joplinTime(props.user_created_time) ?? joplinTime(props.created_time);
   const updated = joplinTime(props.user_updated_time) ?? joplinTime(props.updated_time);
-  const notebook = model.notebooks.get((props.parent_id ?? '').toLowerCase());
+  // `notebookTag` files every note under one notebook, as it does for an Unbent export.
+  const notebook = options.notebookTag ?? model.notebooks.get((props.parent_id ?? '').toLowerCase());
   const id = ctx.noteIds.get(ref.id);
 
   const result = await client.createNote({
