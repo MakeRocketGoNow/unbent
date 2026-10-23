@@ -359,6 +359,31 @@ export function count(s: Snapshot, filter: ListFilter, l = lookups(s)): number {
   return n;
 }
 
+/**
+ * What each of the named fields adds up to over the rows, for the table's totals.
+ *
+ * A field no row holds a value for is left out rather than answered as 0, so a column of
+ * blanks gets a blank total, not a "$0.00" that reads as a fact about the notes. A value
+ * that is not a finite number (a stored string a conversion could not parse) is skipped,
+ * as the cell draws it as text. Takes list rows or library rows: both carry `fields` with
+ * the id and the value, which is all a sum needs.
+ */
+export function fieldSums(
+  rows: Iterable<{ fields?: ReadonlyArray<{ fieldId: string; value: unknown }> | null | undefined }>,
+  fieldIds: ReadonlySet<string>,
+): Map<string, number> {
+  const sums = new Map<string, number>();
+  if (fieldIds.size === 0) return sums;
+  for (const row of rows) {
+    for (const f of row.fields ?? []) {
+      if (!fieldIds.has(f.fieldId)) continue;
+      const n = typeof f.value === 'number' ? f.value : typeof f.value === 'string' && f.value.trim() !== '' ? Number(f.value) : NaN;
+      if (Number.isFinite(n)) sums.set(f.fieldId, (sums.get(f.fieldId) ?? 0) + n);
+    }
+  }
+  return sums;
+}
+
 /** `GET /tags`: tags with a live note, most-used first then by name, each with its colour. */
 export function tagSummaries(s: Snapshot): Array<{ id: string; name: string; count: number; color: number | null }> {
   const counts = new Map<string, number>();
