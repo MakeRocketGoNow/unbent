@@ -112,6 +112,20 @@ export const WHY = '/why';
 export const SUPPORT = '/support';
 
 /**
+ * The comparisons, `/compare` and a page under it for each app someone is likely to be
+ * leaving or weighing. The story's rules: public, shown to a signed-in person who asks,
+ * and only on an instance with a front page. Listed by address rather than matched by
+ * prefix, so a mistyped one is the app's not-found and not an empty front page.
+ */
+export const COMPARE = '/compare';
+export const COMPARE_PATHS: ReadonlySet<string> = new Set([
+  COMPARE,
+  '/compare/evernote',
+  '/compare/notion',
+  '/compare/joplin',
+]);
+
+/**
  * The pages that render without a session, listed rather than inferred.
  *
  * Two kinds, and both are here because gating them broke something specific. The sign-in
@@ -146,7 +160,7 @@ export function shellFor(pathname: string): Shell {
   // and which never means a different page.
   const path = pathname.length > 1 ? pathname.replace(/\/$/, '') : pathname;
   if (path === TURNSTILE) return 'embed';
-  if (path === FRONT || path === PRICING || path === WHY || path === SUPPORT) return 'front';
+  if (path === FRONT || path === PRICING || path === WHY || path === SUPPORT || COMPARE_PATHS.has(path)) return 'front';
   if (PUBLIC.has(path)) return 'plain';
   return 'app';
 }

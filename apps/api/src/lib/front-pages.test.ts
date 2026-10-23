@@ -27,7 +27,9 @@ const assets = (files: Record<string, string>) =>
     },
   }) as unknown as Fetcher;
 
-const built = assets({ '/why.html': WHY_HTML });
+const COMPARE_HTML = WHY_HTML.replace(/Why Unbent exists/g, 'Unbent and Joplin').replace(/"\/why"/g, '"/compare/joplin"');
+
+const built = assets({ '/why.html': WHY_HTML, '/compare-joplin.html': COMPARE_HTML });
 
 const get = (path: string, env: Parameters<typeof serveFrontPage>[1]) =>
   serveFrontPage(new Request(`https://notes.example.com${path}`), env);
@@ -42,6 +44,15 @@ describe('serveFrontPage', () => {
     expect(html).toContain('<link rel="canonical" href="https://unbent.example/why" />');
     expect(html).toContain('<meta property="og:url" content="https://unbent.example/why" />');
     expect(html).toContain('<meta property="og:image" content="https://unbent.example/front/desktop-light.webp" />');
+  });
+
+  /** The comparisons are written out the same way, each to a flat file of its own. */
+  it('hands over a comparison’s static copy, and the shell on an instance with no front page', async () => {
+    const html = await (await get('/compare/joplin', { ASSETS: built, FRONT_PAGE: '1', APP_URL: 'https://unbent.example' }))!.text();
+    expect(html).toContain('<title>Unbent and Joplin</title>');
+    expect(html).toContain('<link rel="canonical" href="https://unbent.example/compare/joplin" />');
+    const fork = await get('/compare/joplin', { ASSETS: built, APP_URL: 'https://notes.example.com' });
+    expect(await fork!.text()).toBe(SHELL.replace('"/front/', '"https://notes.example.com/front/'));
   });
 
   it('completes the addresses from the request when no APP_URL is set', async () => {
@@ -79,6 +90,7 @@ describe('serveFrontPage', () => {
     expect(get('/notes', { ASSETS: built, FRONT_PAGE: '1', APP_URL: '' })).toBeNull();
     expect(get('/why.html', { ASSETS: built, FRONT_PAGE: '1', APP_URL: '' })).toBeNull();
     expect(get('/pricing/', { ASSETS: built, FRONT_PAGE: '1', APP_URL: '' })).toBeNull();
+    expect(get('/compare/onenote', { ASSETS: built, FRONT_PAGE: '1', APP_URL: '' })).toBeNull();
     expect(
       serveFrontPage(new Request('https://notes.example.com/why', { method: 'POST' }), { ASSETS: built, FRONT_PAGE: '1', APP_URL: '' }),
     ).toBeNull();
@@ -98,6 +110,7 @@ describe('serveFrontPage', () => {
     expect(xml).toContain('<loc>https://unbent.example/why</loc>');
     expect(xml).toContain('<loc>https://unbent.example/pricing</loc>');
     expect(xml).toContain('<loc>https://unbent.example/support</loc>');
+    for (const app of ['', '/evernote', '/notion', '/joplin']) expect(xml).toContain(`<loc>https://unbent.example/compare${app}</loc>`);
     expect(xml).not.toContain('/notes');
   });
 

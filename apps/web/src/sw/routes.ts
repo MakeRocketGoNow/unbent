@@ -35,7 +35,7 @@ export const WORKER_PREFIXES = ['/api/', '/.well-known/', '/ingest/', '/manifest
  * are the shell itself, passed through the Worker only so the card picture in its head is
  * a whole address, which makes the same answer truer still.
  */
-export const WORKER_PAGES = ['/why', '/', '/pricing', '/support'];
+export const WORKER_PAGES = ['/why', '/compare', '/compare/evernote', '/compare/notion', '/compare/joplin', '/', '/pricing', '/support'];
 
 /**
  * Whether a page load at this address should be answered with the app itself.

@@ -10716,6 +10716,89 @@ button.settings-nav-item {
 
 .front-story .front-cta { margin-top: 3.5rem; }
 
+/* The comparisons (`ComparePage.tsx`): the story's column and rhythm, widened for a table
+   of three columns, which at the story's 40rem left each app's column too narrow for a
+   sentence. Still a reading width, not the front page's band. */
+.compare { max-width: 48rem; }
+
+.compare h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+}
+
+/* Who should pick which: two cards of the same weight, side by side, the pricing card's
+   shape. Neither is filled or tinted, since a colour on one would be the page taking a
+   side in the very place it promises not to. */
+.compare-verdict {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.compare-verdict > div {
+  padding: 1.1rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+}
+
+.compare-verdict ul { margin: 0; }
+
+.compare-verdict li + li { margin-top: 0.4rem; }
+
+/* The facts: the story's ruled rows, with the topic as each row's heading and the two
+   apps' columns the same width, so neither reads as the main one. Text at the page's own
+   size would make a row of three sentences a wall, so a step smaller. */
+.front-story .compare-table {
+  table-layout: fixed;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.front-story .compare-table th,
+.front-story .compare-table td {
+  padding: 0.6rem 1rem 0.6rem 0;
+  vertical-align: top;
+  white-space: normal;
+}
+
+.front-story .compare-table thead th { font-weight: 600; }
+
+.front-story .compare-table thead td,
+.front-story .compare-table tbody th { width: 26%; }
+
+.front-story .compare-table td:nth-child(2),
+.front-story .compare-table td:last-child { width: 37%; }
+
+/* When the facts were checked, and where from: the page's small print, set as such. */
+.compare-checked p { font-size: 0.9rem; }
+
+.compare-sources {
+  font-size: 0.9rem;
+  columns: 2;
+  column-gap: 2rem;
+}
+
+.front-story .compare-sources li + li { margin-top: 0.25rem; }
+
+.compare-index {
+  list-style: none;
+  padding: 0 !important;
+}
+
+.compare-index li {
+  padding: 1rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.front-story .compare-index li + li { margin-top: 0; }
+
+.compare-index a {
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.front-story .compare-index p { margin-top: 0.25rem; }
+
 /* The pricing page (`PricingPage.tsx`): the offer under the hero's heading, then the way
    out. The grid's own top margin is sized to sit under a section's h2; under the hero's
    lead it gets the hero's distance instead, and the way out is centred beneath it as the
@@ -10811,6 +10894,43 @@ button.settings-nav-item {
 
   /* The date above its event: a phone has no room for two columns of prose. */
   .front-story-record > div { grid-template-columns: minmax(0, 1fr); gap: 0.15rem 0; }
+
+  .compare-verdict { grid-template-columns: minmax(0, 1fr); }
+
+  /* Each row of the facts stacks: the topic, then each app's cell under its own name,
+     since three columns of sentences do not fit a phone. The header row says the names
+     once at the top, which the stacked cells now say themselves. */
+  .front-story .compare-table,
+  .front-story .compare-table tbody,
+  .front-story .compare-table tr,
+  .front-story .compare-table th,
+  .front-story .compare-table td { display: block; }
+
+  /* As specific as the desktop's column widths, which would otherwise hold each stacked
+     cell to a third of the phone. */
+  .front-story .compare-table tbody th,
+  .front-story .compare-table td:nth-child(n) { width: auto; }
+
+  .front-story .compare-table thead { display: none; }
+
+  .front-story .compare-table tr {
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .front-story .compare-table th,
+  .front-story .compare-table td { padding: 0; border-bottom: 0; }
+
+  .front-story .compare-table tbody th { margin-bottom: 0.35rem; font-weight: 600; }
+
+  .front-story .compare-table td + td { margin-top: 0.4rem; }
+
+  .front-story .compare-table td::before {
+    content: attr(data-label) ": ";
+    font-weight: 500;
+  }
+
+  .compare-sources { columns: 1; }
 }
 
 /* ---------------------------------------------------------------------------------

@@ -31,6 +31,14 @@ describe('shellFor', () => {
     expect(shellFor('/')).toBe('front');
   });
 
+  /** The comparisons are read by someone with no account yet, and only the listed ones are pages. */
+  it('gives the comparisons the front page’s shell, and nothing else under their prefix', () => {
+    expect(shellFor('/compare')).toBe('front');
+    expect(shellFor('/compare/evernote')).toBe('front');
+    expect(shellFor('/compare/joplin/')).toBe('front');
+    expect(shellFor('/compare/onenote')).toBe('app');
+  });
+
   it('lets the sign-in and reset pages render without a session', () => {
     expect(shellFor('/login')).toBe('plain');
     expect(shellFor('/reset-password')).toBe('plain');
