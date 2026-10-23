@@ -12,7 +12,8 @@ const WHY_HTML = `<!doctype html><html><head>
 <meta property="og:image" content="/front/desktop-light.webp" />
 </head><body><div id="root"><h1>Why Unbent exists</h1></div></body></html>`;
 
-const SHELL = '<!doctype html><html><head><title>Unbent</title></head><body><div id="root"></div></body></html>';
+const SHELL =
+  '<!doctype html><html><head><title>Unbent</title><meta property="og:image" content="/front/card.png" /></head><body><div id="root"></div></body></html>';
 
 /** The `ASSETS` binding: the story's file, and the shell for everything else, as the SPA fallback answers. */
 const assets = (files: Record<string, string>) =>
@@ -51,18 +52,33 @@ describe('serveFrontPage', () => {
   /** A fork deployed unchanged tells nobody's story but its own: the shell, which the router sends to sign-in. */
   it('serves the shell for /why on an instance with no front page', async () => {
     const response = await get('/why', { ASSETS: built, APP_URL: 'https://notes.example.com' });
-    expect(await response!.text()).toBe(SHELL);
+    expect(await response!.text()).toBe(SHELL.replace('"/front/', '"https://notes.example.com/front/'));
   });
 
   /** A `dist` built without the copy still draws the page: the app fills it in. */
   it('serves the shell when the build wrote no copy', async () => {
     const response = await get('/why', { ASSETS: assets({}), FRONT_PAGE: '1', APP_URL: 'https://notes.example.com' });
-    expect(await response!.text()).toBe(SHELL);
+    expect(await response!.text()).toBe(SHELL.replace('"/front/', '"https://notes.example.com/front/'));
+  });
+
+  /** A link to the front page is unfurled from the shell, and a card's picture must be a whole address. */
+  it('completes the shell’s addresses for the front routes that are the shell, with a front page or not', async () => {
+    for (const path of ['/', '/pricing', '/support']) {
+      for (const env of [
+        { ASSETS: built, FRONT_PAGE: '1', APP_URL: 'https://unbent.example' },
+        { ASSETS: built, APP_URL: 'https://unbent.example' },
+      ]) {
+        const response = await get(path, env);
+        expect(response?.headers.get('Content-Type')).toBe('text/html; charset=utf-8');
+        expect(await response!.text()).toContain('<meta property="og:image" content="https://unbent.example/front/card.png" />');
+      }
+    }
   });
 
   it('answers nothing for every other path, and for a write', () => {
     expect(get('/notes', { ASSETS: built, FRONT_PAGE: '1', APP_URL: '' })).toBeNull();
     expect(get('/why.html', { ASSETS: built, FRONT_PAGE: '1', APP_URL: '' })).toBeNull();
+    expect(get('/pricing/', { ASSETS: built, FRONT_PAGE: '1', APP_URL: '' })).toBeNull();
     expect(
       serveFrontPage(new Request('https://notes.example.com/why', { method: 'POST' }), { ASSETS: built, FRONT_PAGE: '1', APP_URL: '' }),
     ).toBeNull();

@@ -140,8 +140,12 @@ run_worker_first = [
   # The story's static copy, which the build writes as why.html and the Worker hands over
   # with its addresses completed, only on an instance with a front page; and what a
   # crawler may read here, which an instance with no front page answers with nothing.
-  # See src/lib/front-pages.ts.
+  # See src/lib/front-pages.ts. The front page, pricing and support are the shell, passed
+  # through only so the link-preview picture in its head is a whole address.
   "/why",
+  "/",
+  "/pricing",
+  "/support",
   "/robots.txt",
   "/sitemap.xml",
 ]
@@ -209,6 +213,9 @@ run_worker_first = [
   "/ingest/*",
   "/manifest.webmanifest",
   "/why",
+  "/",
+  "/pricing",
+  "/support",
   "/robots.txt",
   "/sitemap.xml",
 ]
@@ -332,6 +339,9 @@ run_worker_first = [
   "/ingest/*",
   "/manifest.webmanifest",
   "/why",
+  "/",
+  "/pricing",
+  "/support",
   "/robots.txt",
   "/sitemap.xml",
 ]
@@ -420,6 +430,9 @@ run_worker_first = [
   "/ingest/*",
   "/manifest.webmanifest",
   "/why",
+  "/",
+  "/pricing",
+  "/support",
   "/robots.txt",
   "/sitemap.xml",
 ]

@@ -4,7 +4,8 @@ import type { RawEnv } from '../types.js';
 
 /**
  * The pages for people who are not signed in, as a crawler and a link preview see them
- * (MAK-240): the story's static copy, `robots.txt` and the sitemap.
+ * (MAK-240): the story's static copy, the front page's shell, `robots.txt` and the
+ * sitemap.
  *
  * Every other path is the web app's shell, which the `ASSETS` binding serves for any
  * address without a file, and which says "Unbent" and the front page's sentence whatever
@@ -36,6 +37,16 @@ const WHY_FILE = '/why.html';
 /** The pages under the front page's shell, in the order the sitemap lists them. */
 export const FRONT_ROUTES = ['/', WHY_PATH, '/pricing', '/support'] as const;
 
+/**
+ * The front routes with no static copy of their own, which are the shell itself. They pass
+ * through here only so the card's picture in the shell's head is a whole address: left to
+ * the asset layer, a link to the front page unfurled in Slack with no picture, because
+ * the shell names it as `/front/…` and a card is drawn by something that resolves nothing.
+ * The rest of the app's routes stay with the asset layer: they are behind the sign-in,
+ * and a card for one of them has nothing to show anyway.
+ */
+const SHELL_ROUTES: ReadonlySet<string> = new Set(['/', '/pricing', '/support']);
+
 /** The app behind the sign-in, which a crawler has no business in even when it follows a link there. */
 const PRIVATE_PREFIXES = ['/api/', '/notes', '/trash', '/settings', '/import', '/login', '/connect', '/consent', '/device', '/embed/'];
 
@@ -43,7 +54,7 @@ const PRIVATE_PREFIXES = ['/api/', '/notes', '/trash', '/settings', '/import', '
 type FrontEnv = Pick<RawEnv, 'ASSETS' | 'FRONT_PAGE' | 'INSTANCE_LABEL' | 'APP_URL'>;
 
 /**
- * Answers the three paths above, or `null` for every other request so the entry point
+ * Answers the paths above, or `null` for every other request so the entry point
  * passes it on. `APP_URL` is the origin the addresses are completed with when it is set,
  * since that is the one address the operator chose; failing that, the one the request
  * arrived on, which on Workers is one that routes here and so is also theirs.
@@ -58,7 +69,19 @@ export function serveFrontPage(request: Request, env: FrontEnv): Promise<Respons
     return indexable ? text(sitemapXml(origin), 'application/xml') : new Response('Not found', { status: 404 });
   }
   if (url.pathname === WHY_PATH) return serveWhy(request, env, origin);
+  if (SHELL_ROUTES.has(url.pathname)) return serveShell(request, env, origin);
   return null;
+}
+
+/**
+ * The shell, with the addresses in its head completed. On every instance, with a front
+ * page or not: the shell is the same file either way, and a whole address is right on
+ * both. Asked for as a plain GET, for the reason `serveWhy` gives.
+ */
+async function serveShell(request: Request, env: FrontEnv, origin: string): Promise<Response> {
+  const asset = await env.ASSETS.fetch(new Request(new URL('/', request.url)));
+  if (!asset.ok) return asset;
+  return html(completeAddresses(await asset.text(), origin));
 }
 
 /**
@@ -72,13 +95,17 @@ export function serveFrontPage(request: Request, env: FrontEnv): Promise<Respons
  * `/index.html` with a redirect to `/`.
  */
 async function serveWhy(request: Request, env: FrontEnv, origin: string): Promise<Response> {
-  const shell = () => env.ASSETS.fetch(new Request(new URL('/', request.url)));
+  const shell = () => serveShell(request, env, origin);
   if (!frontPageOf(env)) return shell();
   // A plain GET, not the browser's conditional one: the file's ETag describes the file,
   // not this answer with its addresses completed.
   const asset = await env.ASSETS.fetch(new Request(new URL(WHY_FILE, request.url)));
   if (!asset.ok) return shell();
-  return new Response(completeAddresses(await asset.text(), origin), {
+  return html(completeAddresses(await asset.text(), origin));
+}
+
+function html(body: string): Response {
+  return new Response(body, {
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
       // The shell's own rule: a page load is always the newest build.
