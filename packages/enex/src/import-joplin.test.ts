@@ -1,4 +1,7 @@
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { importJoplin, joplinIdToNoteId, rewriteJoplinLinks } from './import-joplin.js';
 import type { ImportClient } from './import-run.js';
@@ -81,6 +84,31 @@ describe('listTar', () => {
     // Cut halfway through the second entry's bytes, as an interrupted copy would.
     const cut = archive.subarray(0, 512 * 3 + 1000);
     await expect(listTar(new BlobWindow(new Blob([cut as BlobPart])))).rejects.toThrow(/cut short/);
+  });
+
+  it('reads an archive packed by the system tar, not only by the test writer', async () => {
+    let hasTar = true;
+    try {
+      execFileSync('tar', ['--version'], { stdio: 'ignore' });
+    } catch {
+      hasTar = false;
+    }
+    if (!hasTar) return;
+    const dir = mkdtempSync(join(tmpdir(), 'jex-'));
+    try {
+      const files = jexFiles(sampleJex(PDF));
+      for (const [path, bytes] of files) {
+        mkdirSync(dirname(join(dir, 'src', path)), { recursive: true });
+        writeFileSync(join(dir, 'src', path), bytes);
+      }
+      execFileSync('tar', ['-cf', join(dir, 'out.jex'), '-C', join(dir, 'src'), ...files.map(([p]) => p)]);
+      const { client, notes } = fakeClient();
+      const progress = await importJoplin({ name: 'out.jex', blob: new Blob([readFileSync(join(dir, 'out.jex'))]) }, client);
+      expect(progress).toMatchObject({ created: 4, filesUploaded: 4 });
+      expect(byTitle(notes, 'Kettle receipt').notebook).toBe('Household / Receipts');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('refuses a file that is not a tar archive', async () => {
@@ -337,6 +365,24 @@ describe('importJoplin', () => {
     expect(two.endsWith('… / Receipts 2025')).toBe(true);
     expect(one.length).toBe(100);
     expect(one.startsWith('A notebook with a long name')).toBe(true);
+  });
+
+  it('carries a picture in an HTML note through the converter to a file link', async () => {
+    const { client, notes, files } = fakeClient();
+    const archive = jex({
+      folders: [{ id: ID.kitchen, title: 'Kitchen' }],
+      notes: [{
+        id: ID.clip, title: 'Clip', parent: ID.kitchen, html: true,
+        body: `<p>The pot:</p><img src=":/${ID.photo}" alt="pot" width="300"><p><a href=":/${ID.receiptPdf}">receipt</a></p>`,
+      }],
+      resources: [
+        { id: ID.photo, title: 'pot.png', mime: 'image/png', ext: 'png', bytes: PNG },
+        { id: ID.receiptPdf, title: 'receipt.pdf', mime: 'application/pdf', ext: 'pdf', bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46]) },
+      ],
+    });
+    await importJoplin({ name: 'x.jex', blob: archive }, client);
+    expect(notes[0]!.body).toBe('The pot:\n\n![pot](files/pot.png)\n\n[receipt](files/receipt.pdf)');
+    expect(files.map((f) => f.filename)).toEqual(['pot.png', 'receipt.pdf']);
   });
 
   it('refuses an export with no notes in it', async () => {
