@@ -96,8 +96,8 @@ export interface RewriteContext {
 const LINK_RE = /(!?)\[([^\]\n]*)\]\(((?:[^()\s]|\([^()\s]*\))+)\)/g;
 const NOTION_URL_RE = /^https?:\/\/(?:www\.)?notion\.(?:so|site)\/(?:[^/?#]*?-)?([0-9a-f]{32})(?:[?#].*)?$/i;
 
-/** A `files/` destination in the spelling the app's own writer uses for that name. */
-function fileDestination(name: string): string {
+/** A `files/` destination in the spelling the app's own writer uses for that name. Shared with the Joplin importer. */
+export function fileDestination(name: string): string {
   return /[\s()]/.test(name) ? `<files/${name}>` : `files/${name}`;
 }
 
