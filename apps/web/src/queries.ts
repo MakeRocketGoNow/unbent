@@ -172,7 +172,8 @@ export function installLibraryQueries(queryClient: QueryClient): () => void {
     void queryClient.invalidateQueries({ predicate: ({ queryKey }) => roots.has(String(queryKey[0])) });
   };
   const stopLibrary = onLibraryChange(refetch);
-  rereadAll = () => refetch(LIBRARY_ROOTS);
+  const reread = () => refetch(LIBRARY_ROOTS);
+  rereadAll = reread;
   const stopDirect = onDirectWrite(() => refetch(LIBRARY_ROOTS));
   /*
    * A reset is more than a change. The rows it brings can be older than a cached
@@ -203,7 +204,7 @@ export function installLibraryQueries(queryClient: QueryClient): () => void {
   });
   return () => {
     stopLibrary();
-    rereadAll = null;
+    if (rereadAll === reread) rereadAll = null;
     stopDirect();
     stopReset();
     stopIndexed();
