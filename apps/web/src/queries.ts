@@ -225,10 +225,10 @@ export const keys = {
    * Under `trash` for the trash and `notes` for the rest, so the invalidations those roots
    * already get on every trash, restore, move and save reach these too.
    */
-  /** Under `notes`, so every write that can move a value reaches it, as the list's own key does. */
-  fieldTotals: (filter: NoteFilter, fieldIds: readonly string[]) => ['notes', 'field-totals', filter, fieldIds] as const,
   exactCount: (filter: ExactCountFilter) =>
     filter.trashed ? (['trash', 'exact-count'] as const) : (['notes', 'exact-count', filter] as const),
+  /** Under `notes`, so every write that can move a value reaches it, as the list's own key does. */
+  fieldTotals: (filter: NoteFilter, fieldIds: readonly string[]) => ['notes', 'field-totals', filter, fieldIds] as const,
   search: (q: string, filter: NoteFilter = {}, rows = false) => ['search', q, filter, { rows }] as const,
   config: () => ['config'] as const,
   /** The account's plan (MAK-108), its own root: nothing a note write does changes it. */
