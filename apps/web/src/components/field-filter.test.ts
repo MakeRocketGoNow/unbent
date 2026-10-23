@@ -44,6 +44,7 @@ describe('fieldFilterLabel', () => {
 
   it('says what `ne` leaves out', () => {
     expect(fieldFilterLabel('cat:ne:Food', DEFS)).toBe('Category: not Food');
+    expect(fieldFilterLabel('paid:ne:false', DEFS)).toBe('Reimbursed: not false');
   });
 
   it('still names a filter whose field it cannot find', () => {
