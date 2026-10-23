@@ -1,0 +1,49 @@
+<!doctype html>
+<!--
+  The link-preview card, `apps/web/public/front/card.png`: what Slack, iMessage and the rest
+  draw when someone pastes a link to the site. Drawn here rather than in an editor so it
+  can be drawn again when the screenshot or the front page's words change. From the repo's
+  root:
+
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless \
+      --hide-scrollbars --force-device-scale-factor=1 --window-size=1200,630 \
+      --screenshot=apps/web/public/front/card.png "file://$PWD/scripts/og-card.html"
+
+  1200 by 630 because that is the shape every unfurler crops to (about 1.91 to 1); the
+  full screenshot at 16:10 lost its sides. The words are the front page's headline, at a
+  size that still reads in a card a few hundred pixels wide, and the screenshot is the
+  demo library's, like every picture of the app in this repository.
+-->
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; }
+  body {
+    background: #fbfaf8;
+    color: #1c1a17;
+    font-family: "Avenir Next", Avenir, system-ui, sans-serif;
+    position: relative;
+  }
+  .words { position: absolute; left: 72px; top: 76px; width: 430px; }
+  .brand { display: flex; align-items: center; gap: 16px; font-size: 34px; font-weight: 600; color: #2f6f4f; }
+  .brand img { width: 52px; height: 52px; border-radius: 12px; }
+  h1 { margin: 52px 0 0; font-size: 48px; line-height: 1.15; font-weight: 600; letter-spacing: -0.01em; }
+  h1 span { display: block; white-space: nowrap; }
+  .url { position: absolute; left: 72px; bottom: 64px; font-size: 26px; color: #6b655e; }
+  .shot {
+    position: absolute; left: 590px; top: 72px; width: 900px;
+    border-radius: 14px; border: 1px solid #e4e0da;
+    box-shadow: 0 24px 60px rgba(28, 26, 23, 0.16);
+  }
+</style>
+</head>
+<body>
+  <div class="words">
+    <div class="brand"><img src="../apps/web/public/icons/icon-192.png" alt="" />Unbent</div>
+    <h1><span>Keep everything.</span><span>Find anything.</span><span>Take it all with you.</span></h1>
+  </div>
+  <div class="url">unbent.app</div>
+  <img class="shot" src="../apps/web/public/front/desktop-light.webp" alt="" />
+</body>
+</html>

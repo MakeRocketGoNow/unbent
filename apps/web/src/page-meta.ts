@@ -37,11 +37,20 @@ export interface PageMeta {
 
 export const SITE_NAME = 'Unbent';
 
+/**
+ * The picture every public page's card is drawn with: 1200 by 630, the shape unfurlers
+ * crop to, drawn from `scripts/og-card.html`. The full-app screenshot was used before
+ * and lost its sides to the crop. A PNG, not WebP like the front page's own pictures,
+ * because not every unfurler draws WebP; the service worker's precache leaves it out
+ * (`vite.config.ts`), as nobody using the app needs it.
+ */
+export const CARD_IMAGE = '/front/card.png';
+
 /** The front page's, and the whole app's until a page says otherwise; `index.html` carries the same. */
 export const DEFAULT_META: PageMeta = {
   title: SITE_NAME,
   description: 'Notes, receipts and scans you can search, and take with you whenever you like.',
-  image: '/front/desktop-light.webp',
+  image: CARD_IMAGE,
 };
 
 /** `PR 222 · Unbent`. Not doubled if the title already carries it. */

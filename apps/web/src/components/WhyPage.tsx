@@ -3,7 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { PLAN_PRICE_USD, TRIAL_DAYS } from '@unbent/shared';
 import { useSession } from '../auth-client.js';
 import { HOME, LOGIN } from '../auth-gate.js';
-import { usePageMeta, type PageMeta } from '../page-meta.js';
+import { CARD_IMAGE, usePageMeta, type PageMeta } from '../page-meta.js';
 import { FrontShell, SOURCE_URL } from './FrontPage.js';
 
 /**
@@ -14,7 +14,7 @@ export const WHY_META: PageMeta = {
   title: 'Why Unbent exists',
   description:
     '15 years of Evernote renewals, 13,000 scanned notes, and the notice that doubled the price again: the story behind an Evernote alternative that keeps your notes in Markdown you can take with you.',
-  image: '/front/desktop-light.webp',
+  image: CARD_IMAGE,
 };
 
 /**
