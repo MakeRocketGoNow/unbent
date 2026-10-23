@@ -1,4 +1,4 @@
-import { foldNoCase, toFtsQuery, type SearchResult, type SearchResultRow } from '@unbent/shared';
+import { foldNoCase, SEARCH_DEFAULT_LIMIT, toFtsQuery, type SearchResult, type SearchResultRow } from '@unbent/shared';
 import { lookups as buildLookups, matches, tagNames, toSummary, type ListFilter, type LocalNote, type Lookups, type Snapshot } from './derive.js';
 import type { LocalAttachment } from './collections.js';
 import { SHED, type Entry, type Kind, type SearchReader } from './search-index.js';
@@ -130,7 +130,7 @@ export const BUILT = 'built';
 
 export async function searchLocal(opts: LocalSearchOptions): Promise<LocalSearch> {
   const { index, snapshot } = opts;
-  const limit = opts.limit ?? 50;
+  const limit = opts.limit ?? SEARCH_DEFAULT_LIMIT;
   const l = opts.lookups ?? buildLookups(snapshot);
   const filter: ListFilter = { ...opts.filter, trashed: false };
   /*

@@ -729,9 +729,16 @@ export const listNotesQuerySchema = z.object({
  * would silently drop the moment the user typed, which is the opposite of what selecting
  * a notebook implies.
  */
+/**
+ * How many matches a search answers with when it is not told: the server's and the
+ * device's alike. The table's totals label a search that reached it ("Total of top 50"),
+ * so it is one constant rather than a 50 in each engine.
+ */
+export const SEARCH_DEFAULT_LIMIT = 50;
+
 export const searchQuerySchema = z.object({
   q: z.string().min(1).max(500),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
+  limit: z.coerce.number().int().min(1).max(100).default(SEARCH_DEFAULT_LIMIT),
   tag: tagFilterSchema,
   notebook: z.string().optional(),
   field: fieldFilterSchema,

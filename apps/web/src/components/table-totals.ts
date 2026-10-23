@@ -1,9 +1,6 @@
-import type { NoteSummary } from '@unbent/shared';
+import { SEARCH_DEFAULT_LIMIT, type NoteSummary } from '@unbent/shared';
 import { fieldSums } from '../store/derive.js';
 import type { TableTotals } from './NoteTable.js';
-
-/** How many matches a search answers with: the search route's default `limit`, which the page never overrides. */
-const SEARCH_LIMIT = 50;
 
 /**
  * The table's footer: what its number columns add up to, and over which rows.
@@ -17,9 +14,9 @@ const SEARCH_LIMIT = 50;
  * are totalled once they are all of them. In both cases there is no footer until the sum
  * is whole, rather than one that is short.
  *
- * A search's matches are the best fifty by relevance (the search route's default limit),
- * so they are totalled as they stand and the label says so when the cap was reached:
- * fewer than fifty is every match, and plainly "Total".
+ * A search's matches are the best fifty by relevance (`SEARCH_DEFAULT_LIMIT`, which the
+ * page never overrides), so they are totalled as they stand and the label says so when
+ * the cap was reached: fewer than fifty is every match, and plainly "Total".
  */
 export function tableTotalsFor(opts: {
   /** The columns `totalable` allows, by field id; none means no footer. */
@@ -37,7 +34,7 @@ export function tableTotalsFor(opts: {
   const { ids, searchRows, whole, libraryWhole, loaded, hasNextPage } = opts;
   if (ids.size === 0) return undefined;
   if (searchRows) {
-    return { label: searchRows.length >= SEARCH_LIMIT ? `Total of top ${SEARCH_LIMIT}` : 'Total', sums: fieldSums(searchRows, ids) };
+    return { label: searchRows.length >= SEARCH_DEFAULT_LIMIT ? `Total of top ${SEARCH_DEFAULT_LIMIT}` : 'Total', sums: fieldSums(searchRows, ids) };
   }
   if (whole && libraryWhole) return { label: 'Total', sums: new Map(Object.entries(whole)) };
   if (whole === null && !hasNextPage) return { label: 'Total', sums: fieldSums(loaded, ids) };
