@@ -240,7 +240,8 @@ export interface StripeCheckoutSession {
  * replaced, it outlives the page that opened it, and one paid after what allowed it has
  * changed (a second session, a deleted account) is a subscription the row never holds.
  * The route also expires the customer's earlier sessions before making one
- * (`expireOpenCheckouts`), and so does account deletion.
+ * (`expireOpenCheckouts`), the webhook does once a subscription is made, and so does
+ * account deletion.
  *
  * Nothing about tax, payment methods or the customer's address is passed: Managed
  * Payments refuses `automatic_tax`, `tax_id_collection`, `payment_method_types` and
@@ -273,7 +274,8 @@ export const CHECKOUT_LIFETIME_S = 60 * 60;
  * Ends every checkout of the customer's that could still be paid, so no more than one
  * ever can: before a new one is made (a person who went Back from Stripe's page and
  * pressed again has two otherwise, and paying both is two subscriptions, the second
- * kept off the row by `theRows` and renewing every year), and before an account is
+ * kept off the row by `theRows` and renewing every year), once one has been paid (two
+ * presses at the same moment each find none to end), and before an account is
  * deleted. A session that completed or expired between the list and the expire is
  * refused with a 400 and is already what this wants; anything else is thrown.
  */

@@ -4,11 +4,19 @@ import type { PlanRow } from '../lib/plan.js';
 import type { AppEnv } from '../types.js';
 
 /**
- * `POST /billing/checkout` for an account whose row has a customer and no subscription:
- * the lag between a paid checkout and its webhook, where the row alone would let a second
- * checkout through. Stripe is a stand-in answering by path; D1 is never reached, since
- * the row is the mocked `planFor`'s and the customer already on it.
+ * `POST /billing/checkout` for an account with no subscription on its row: the lag
+ * between a paid checkout and its webhook, where the row alone would let a second
+ * checkout through, with the customer already on the row and on the first Subscribe,
+ * where this request makes it. Stripe is a stand-in answering by path; D1 is never
+ * reached, since the row is the mocked `planFor`'s and `updatePlan` is a spy.
+ *
+ * The row's customer is hoisted beside the mock so both cases share one harness: a
+ * second file with its own copy of the row and the stand-in was the alternative, and
+ * two copies drift.
  */
+const row = vi.hoisted(() => ({ customerId: 'cus_1' as string | null }));
+const updatePlan = vi.hoisted(() => vi.fn(async () => {}));
+
 vi.mock('../lib/plan.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/plan.js')>()),
   planFor: async (): Promise<PlanRow> => ({
@@ -17,7 +25,7 @@ vi.mock('../lib/plan.js', async (importOriginal) => ({
     planUntil: Date.now() + 10 * 86_400_000,
     storageGb: 10,
     source: null,
-    customerId: 'cus_1',
+    customerId: row.customerId,
     subscriptionId: null,
     subscriptionStatus: null,
     cancelsAt: null,
@@ -26,6 +34,7 @@ vi.mock('../lib/plan.js', async (importOriginal) => ({
     createdAt: 0,
     updatedAt: 0,
   }),
+  updatePlan,
 }));
 
 const { billing } = await import('./billing.js');
@@ -35,6 +44,7 @@ function stripeStandIn(subscriptions: Array<{ id: string; status: string; create
   vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
     const { pathname } = new URL(url);
     calls.push(`${init.method} ${pathname}`);
+    if (pathname === '/v1/customers') return Response.json({ id: 'cus_1' });
     if (pathname === '/v1/subscriptions') return Response.json({ data: subscriptions, has_more: false });
     if (pathname === '/v1/checkout/sessions' && init.method === 'GET') return Response.json({ data: [], has_more: false });
     if (pathname === '/v1/checkout/sessions') return Response.json({ id: 'cs_1', url: 'https://checkout.stripe.com/c/pay/cs_1' });
@@ -62,13 +72,19 @@ async function press() {
   return res.status;
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  updatePlan.mockClear();
+  row.customerId = 'cus_1';
+});
 
 describe('starting a checkout', () => {
   it('refuses a second one while the first checkout’s subscription has not reached the row', async () => {
     const calls = stripeStandIn([{ id: 'sub_new', status: 'active', created: 2 }]);
     expect(await press()).toBe(409);
-    expect(calls).toEqual(['GET /v1/subscriptions']);
+    // Open sessions first, then the live-subscription check: a payment that completed
+    // while those were being closed still refuses, and no new session is made.
+    expect(calls).toEqual(['GET /v1/checkout/sessions', 'GET /v1/subscriptions']);
   });
 
   it('refuses while an older subscription is live behind a newer one that has ended', async () => {
@@ -82,6 +98,33 @@ describe('starting a checkout', () => {
   it('opens one for a customer whose subscriptions have all ended', async () => {
     const calls = stripeStandIn([{ id: 'sub_old', status: 'canceled', created: 1 }]);
     expect(await press()).toBe(200);
-    expect(calls).toEqual(['GET /v1/subscriptions', 'GET /v1/checkout/sessions', 'POST /v1/checkout/sessions']);
+    expect(calls).toEqual(['GET /v1/checkout/sessions', 'GET /v1/subscriptions', 'POST /v1/checkout/sessions']);
+    expect(updatePlan).not.toHaveBeenCalled();
+  });
+});
+
+describe('starting the first checkout', () => {
+  // A twin press that read the row before this one's customer was written to it
+  // shares that customer (`createCustomer`'s key), so the list is asked of the id
+  // just made, not the row's.
+  it('refuses once Stripe already has a live subscription for the customer just made', async () => {
+    row.customerId = null;
+    const calls = stripeStandIn([{ id: 'sub_paid', status: 'active', created: 1 }]);
+    expect(await press()).toBe(409);
+    expect(calls).toEqual(['POST /v1/customers', 'GET /v1/checkout/sessions', 'GET /v1/subscriptions']);
+  });
+
+  it('opens one when the customer just made has no subscription yet, and keeps it on the row', async () => {
+    row.customerId = null;
+    const calls = stripeStandIn([]);
+    expect(await press()).toBe(200);
+    expect(calls).toEqual([
+      'POST /v1/customers',
+      'GET /v1/checkout/sessions',
+      'GET /v1/subscriptions',
+      'POST /v1/checkout/sessions',
+    ]);
+    // The other half of the guard: a later press finds the customer on the row.
+    expect(updatePlan).toHaveBeenCalledWith(undefined, 'u1', { customerId: 'cus_1' }, expect.any(Number));
   });
 });

@@ -166,21 +166,26 @@ export const billing = new Hono<AppEnv>()
     }
     try {
       const customerId = row.customerId ?? (await createCustomer(stripe, c.get('user')!.email, userId)).id;
-      // The row hears of a paid checkout's subscription only by webhook, so in that lag a
-      // second tab still showing Subscribe, or Back from Stripe's success page, would
-      // pass the row's check above. Stripe is asked too, for a customer that has one; a
-      // paid session is complete rather than open, so expiring sessions does not catch it.
-      // Every subscription, not the newest: an older one still live behind a newer one
-      // that has ended is a subscription all the same.
-      if (row.customerId) {
-        const subs = await subscriptionsOf(stripe, row.customerId);
-        if (subs.some((sub) => !ENDED_SUBSCRIPTION.has(sub.status))) {
-          return c.json({ error: 'This account already has a subscription. Manage it from the portal.' }, 409);
-        }
-      }
       if (customerId !== row.customerId) await updatePlan(c.env.DB, userId, { customerId }, now);
       // Asked even of a customer made a moment ago: a second tab's press gets the same one.
       await expireOpenCheckouts(stripe, customerId);
+      // The row hears of a paid checkout's subscription only by webhook, so in that lag a
+      // second tab still showing Subscribe, or Back from Stripe's success page, would
+      // pass the row's check above. Stripe is asked too; a paid session is complete rather
+      // than open, so expiring sessions does not catch it. Asked of `customerId` and
+      // always, not only when the row named one: Stripe can hold the account's customer
+      // before this request's row does. A press that read the row before another press
+      // wrote the customer to it shares that customer through `createCustomer`'s key, and
+      // the other's subscription counts all the same. That window is narrow (a press
+      // writes its customer before it opens a session), which is why the list is never
+      // worth skipping to save a call on the first Subscribe. Every subscription, not the
+      // newest: an older one still live behind a newer one that has ended is a
+      // subscription all the same. After expiring sessions, so a payment that completed
+      // while those were being closed is still seen.
+      const subs = await subscriptionsOf(stripe, customerId);
+      if (subs.some((sub) => !ENDED_SUBSCRIPTION.has(sub.status))) {
+        return c.json({ error: 'This account already has a subscription. Manage it from the portal.' }, 409);
+      }
       const session = await createCheckoutSession(stripe, {
         customerId,
         userId,
@@ -337,8 +342,9 @@ export const billing = new Hono<AppEnv>()
    * both write the same thing and a late one writes nothing. A refund cancel is the
    * exception below.
    *
-   * A refund is the one event that acts on Stripe rather than only on the row
-   * (`refundEffectOf`): the subscription is cancelled, or its add-on removed, before
+   * A refund is one of two events that act on Stripe rather than only on the row
+   * (`refundEffectOf`; the other is a new subscription, which ends the customer's
+   * other open checkouts, below): the subscription is cancelled, or its add-on removed, before
    * anything is recorded, so a call Stripe refuses or does not answer is a 502 and the
    * event is delivered again: the row does not yet hold the refund's end, and the retry
    * asks again, even when a cancel that went through unanswered has since made the row
@@ -405,6 +411,23 @@ export const billing = new Hono<AppEnv>()
     if (!row) {
       console.log(`[billing] ${type} ${id} names no account (customer ${customerId ?? 'none'})`);
       return c.json({ applied: false, reason: 'no account' });
+    }
+    // A subscription made is a checkout paid, so any other checkout of the customer's
+    // that is still open is a second subscription waiting to happen. The route expires
+    // open sessions before it makes one, but two presses at the same moment each find
+    // none and each make one, and nothing then ends the loser: paying it in the other
+    // tab would be a subscription `theRows` keeps off the row, renewing every year.
+    // Ended here, on `customer.subscription.created` rather than
+    // `checkout.session.completed`, because the endpoint already receives it and a new
+    // event type would be a change to every instance's endpoint. Before anything is
+    // recorded, as for a refund, so a refused call is a 502 and the event is delivered
+    // again; the row still hears of the checkout meanwhile from its `invoice.paid`.
+    if (type === 'customer.subscription.created') {
+      try {
+        await expireOpenCheckouts(stripe, customerId!);
+      } catch (err) {
+        return stripeRefused(err, `end the other checkouts after ${id}`, row.userId);
+      }
     }
     const now = Date.now();
     const stripeEvent: StripeEvent = { id, type, created, data: data as unknown as StripeEvent['data'] };
