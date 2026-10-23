@@ -166,21 +166,24 @@ export const billing = new Hono<AppEnv>()
     }
     try {
       const customerId = row.customerId ?? (await createCustomer(stripe, c.get('user')!.email, userId)).id;
-      // The row hears of a paid checkout's subscription only by webhook, so in that lag a
-      // second tab still showing Subscribe, or Back from Stripe's success page, would
-      // pass the row's check above. Stripe is asked too, for a customer that has one; a
-      // paid session is complete rather than open, so expiring sessions does not catch it.
-      // Every subscription, not the newest: an older one still live behind a newer one
-      // that has ended is a subscription all the same.
-      if (row.customerId) {
-        const subs = await subscriptionsOf(stripe, row.customerId);
-        if (subs.some((sub) => !ENDED_SUBSCRIPTION.has(sub.status))) {
-          return c.json({ error: 'This account already has a subscription. Manage it from the portal.' }, 409);
-        }
-      }
       if (customerId !== row.customerId) await updatePlan(c.env.DB, userId, { customerId }, now);
       // Asked even of a customer made a moment ago: a second tab's press gets the same one.
       await expireOpenCheckouts(stripe, customerId);
+      // The row hears of a paid checkout's subscription only by webhook, so in that lag a
+      // second tab still showing Subscribe, or Back from Stripe's success page, would
+      // pass the row's check above. Stripe is asked too; a paid session is complete rather
+      // than open, so expiring sessions does not catch it. Asked of `customerId`, not
+      // `row.customerId`: the first checkout creates the customer in this request, and a
+      // twin press (two tabs, no customer on the row yet) shares that customer through
+      // `createCustomer`'s key. Guarding on the row skipped the list for both, and the
+      // second session stayed payable beside the first. Every subscription, not the
+      // newest: an older one still live behind a newer one that has ended is a
+      // subscription all the same. After expiring sessions, so a payment that completed
+      // while those were being closed is still seen.
+      const subs = await subscriptionsOf(stripe, customerId);
+      if (subs.some((sub) => !ENDED_SUBSCRIPTION.has(sub.status))) {
+        return c.json({ error: 'This account already has a subscription. Manage it from the portal.' }, 409);
+      }
       const session = await createCheckoutSession(stripe, {
         customerId,
         userId,

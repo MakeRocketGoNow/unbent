@@ -68,7 +68,9 @@ describe('starting a checkout', () => {
   it('refuses a second one while the first checkout’s subscription has not reached the row', async () => {
     const calls = stripeStandIn([{ id: 'sub_new', status: 'active', created: 2 }]);
     expect(await press()).toBe(409);
-    expect(calls).toEqual(['GET /v1/subscriptions']);
+    // Open sessions first, then the live-subscription check: a payment that completed
+    // while those were being closed still refuses, and no new session is made.
+    expect(calls).toEqual(['GET /v1/checkout/sessions', 'GET /v1/subscriptions']);
   });
 
   it('refuses while an older subscription is live behind a newer one that has ended', async () => {
@@ -82,6 +84,6 @@ describe('starting a checkout', () => {
   it('opens one for a customer whose subscriptions have all ended', async () => {
     const calls = stripeStandIn([{ id: 'sub_old', status: 'canceled', created: 1 }]);
     expect(await press()).toBe(200);
-    expect(calls).toEqual(['GET /v1/subscriptions', 'GET /v1/checkout/sessions', 'POST /v1/checkout/sessions']);
+    expect(calls).toEqual(['GET /v1/checkout/sessions', 'GET /v1/subscriptions', 'POST /v1/checkout/sessions']);
   });
 });
