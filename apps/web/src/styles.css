@@ -1738,6 +1738,34 @@ button.link {
 
 .note-table.selectable th:nth-child(2) { z-index: 3; }
 
+/*
+   The totals row: see `NoteTable`. Pinned to the bottom as the heading row is to the top,
+   with the same weight as the headings so it reads as the table's furniture rather than
+   one more note. Its rule is a shadow on its top edge, not a border: the last row's
+   border is already there when the footer follows it, and when the footer is pinned over
+   scrolling rows a border would scroll away with them. The pinned name cell sits over
+   both axes, so it takes the heading's corner z-index.
+*/
+.note-table tfoot td {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  border-bottom: 0;
+  box-shadow: inset 0 1px 0 var(--border);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.note-table tfoot td:first-child,
+.note-table.selectable tfoot td:nth-child(2) { z-index: 3; }
+/* The label is drawn as the headings are, not as a note's name: at the names' size and
+   colour the footer read as one more note, and the eye stopped on it to find out which.
+   Muted, it is the table's frame; the sums beside it stay at full strength, since they
+   are the answer the notebook is often opened for. */
+.note-table tfoot .note-table-total-label {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
 .note-table-check input {
   margin: 0;
   vertical-align: middle;

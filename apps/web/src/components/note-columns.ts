@@ -45,3 +45,12 @@ export function noteColumns(defs: readonly FieldDef[]): NoteColumn[] {
     { id: 'created', kind: 'created', label: 'Created', sortTarget: { kind: 'note', sort: 'created' }, align: 'start' },
   ];
 }
+
+/**
+ * Whether a column gets a total in the table's footer: a number field that is a plain
+ * number or an amount. Not a rating: the sum of a column of stars is a number nobody can
+ * read anything from, and an average, which would mean something, is a different line.
+ */
+export function totalable(col: NoteColumn): col is NoteColumn & { def: FieldDef } {
+  return col.kind === 'field' && col.def?.type === 'number' && !col.def.scale;
+}

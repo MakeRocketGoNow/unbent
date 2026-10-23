@@ -7,6 +7,7 @@ import * as actions from '../store/actions.js';
 import { isOfflineError } from '../notes-api.js';
 import {
   notesQuery,
+  fieldTotalsQuery,
   tagsQuery,
   notebooksQuery,
   notebookFieldsQuery,
@@ -53,7 +54,8 @@ import { NoteListHead } from './NoteListHead.js';
 import { NotesSort } from './NotesSort.js';
 import { NotesViewToggle } from './NotesViewToggle.js';
 import { NoteTable } from './NoteTable.js';
-import { noteColumns } from './note-columns.js';
+import { noteColumns, totalable } from './note-columns.js';
+import { tableTotalsFor } from './table-totals.js';
 import { nextColumnSort, type SortTarget } from './sort-options.js';
 import { forgetSortField, hasRememberedSort, rememberSort, rememberedSort } from '../notebook-sort.js';
 import { patchNoteFields, patchNotePages } from './note-table-edit.js';
@@ -648,6 +650,19 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    */
   const chooseView = (next: 'list' | 'table') => void navigate(withView(next, false));
   const columns = noteColumns(fieldDefs.data ?? []);
+  const totalIds = columns.filter(totalable).map((c) => c.id);
+  const fieldTotals = useQuery({ ...fieldTotalsQuery(filter, totalIds, ordering), enabled: tableMode && totalIds.length > 0 });
+  // Which rows the footer sums, and what it calls them; see `tableTotalsFor`.
+  const tableTotals = tableMode
+    ? tableTotalsFor({
+        ids: new Set(totalIds),
+        searchRows: tableRows,
+        whole: fieldTotals.data,
+        libraryWhole,
+        loaded: notes,
+        hasNextPage: list.hasNextPage,
+      })
+    : undefined;
   /** A column header was clicked: write the order it asks for. */
   const sortBy = (target: SortTarget) => {
     rememberSort(notebook, nextColumnSort(target, { sort, order, sortField }));
@@ -1293,6 +1308,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
             tableRef={tableRef}
             empty={searching ? searchEmpty : emptyMessage}
             onEdit={onEditCell}
+            totals={tableTotals}
             selection={{
               has: selection.has,
               active: selection.active,

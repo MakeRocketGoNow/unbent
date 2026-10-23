@@ -8,7 +8,7 @@ import type { AttachmentInfo, BackupsStatus, OperatorOrder, FieldDef, Note, Note
 import * as api from './notes-api.js';
 import { ApiError, OfflineError } from './notes-api.js';
 import { offlineNow } from './connectivity.js';
-import { count, list, lookups, notebookFields, notebookFiles, notebookList, summaries, tagSummaries, toAttachmentInfo, toNote, type LocalAttachmentInfo, type Lookups, type Snapshot } from './store/derive.js';
+import { count, fieldSums, list, lookups, notebookFields, notebookFiles, notebookList, summaries, tagSummaries, toAttachmentInfo, toNote, type LocalAttachmentInfo, type Lookups, type Snapshot } from './store/derive.js';
 import type { LocalNote } from './store/collections.js';
 import { currentLibrary, onLibraryChange, onLibraryReset, onSearchIndexed, type ReadableLibrary as Library } from './store/library.js';
 import { LIBRARY_ROOTS } from './store/library-roots.js';
@@ -227,6 +227,8 @@ export const keys = {
    */
   exactCount: (filter: ExactCountFilter) =>
     filter.trashed ? (['trash', 'exact-count'] as const) : (['notes', 'exact-count', filter] as const),
+  /** Under `notes`, so every write that can move a value reaches it, as the list's own key does. */
+  fieldTotals: (filter: NoteFilter, fieldIds: readonly string[]) => ['notes', 'field-totals', filter, fieldIds] as const,
   search: (q: string, filter: NoteFilter = {}, rows = false) => ['search', q, filter, { rows }] as const,
   config: () => ['config'] as const,
   /** The account's plan (MAK-108), its own root: nothing a note write does changes it. */
@@ -290,6 +292,32 @@ function pageOf(lib: Library, filter: NoteFilter & { trashed?: boolean }, orderi
   const end = from + items.length;
   return { items, cursor: end < rows.length ? String(end) : null, total: from === 0 ? rows.length : null };
 }
+
+/**
+ * What each named field adds up to over every note the filter matches, for the table's
+ * totals: the whole list, not the pages loaded so far, since a total of the first fifty
+ * rows under a heading that says "Total" would be wrong the moment there is a second page.
+ *
+ * From the library, as the list is, so it costs a pass over rows already in memory (the
+ * same filtered list a page is cut from, cached per version; see `ordering`). `null` on a device with no
+ * library: the server keeps no sums and the list is paged there, so the table totals the
+ * rows it has only once it has them all (see `NotesLayout`).
+ */
+export const fieldTotalsQuery = (filter: NoteFilter, fieldIds: readonly string[], ordering: NoteOrdering = {}) =>
+  queryOptions({
+    queryKey: keys.fieldTotals(filter, fieldIds),
+    queryFn: async (): Promise<Record<string, number> | null> => {
+      const lib = await library();
+      if (!lib) return null;
+      // The list's own ordering, only so this reads the rows its pages are cut from, which
+      // `rowsOf` keeps per version and per spelling: with `{}` a sorted table filtered the
+      // notebook twice on every change. A sum does not depend on order, so the ordering
+      // stays out of the key and a re-sort does not ask again for the same answer.
+      return Object.fromEntries(fieldSums(rowsOf(lib, filter, ordering), new Set(fieldIds)));
+    },
+    enabled: fieldIds.length > 0,
+    placeholderData: keepPreviousData,
+  });
 
 /** Trashed notes. Deliberately unfiltered: see the trash view in Notes. */
 export const trashQuery = () =>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { FeedAttachment, FeedNote, FeedNotebook, FeedTag } from '@unbent/shared';
-import { count, list, lookups, notebookFields, notebookFiles, notebookList, sameNotebookName, summaries, tagSummaries, toNote, toSummary, type Snapshot } from './derive.js';
+import { count, fieldSums, list, lookups, notebookFields, notebookFiles, notebookList, sameNotebookName, summaries, tagSummaries, toNote, toSummary, type Snapshot } from './derive.js';
 
 const nb = (id: string, name: string, fieldDefs: FeedNotebook['fieldDefs'] = []): FeedNotebook => ({ id, name, purpose: null, emoji: null, fieldDefs });
 const tag = (id: string, name: string, color: number | null = null): FeedTag => ({ id, name, color });
@@ -141,5 +141,17 @@ describe('derive', () => {
     expect(notebookFiles(s, 'nowhere')).toEqual({ files: 0, bytes: 0 });
     const trashed: Snapshot = { ...s, notes: [...s.notes].map((n) => (n.id === 'c' ? { ...n, deletedAt: 5 } : n)) };
     expect(notebookFiles(trashed, 'nb2')).toEqual({ files: 0, bytes: 0 });
+  });
+
+  it('sums the named fields over the rows, leaving out a field nobody holds and a value that is not a number', () => {
+    const rows = [
+      { fields: [{ fieldId: 'amount', value: 12.5 }, { fieldId: 'kind', value: ['a'] }] },
+      { fields: [{ fieldId: 'amount', value: '3' }] },
+      { fields: [{ fieldId: 'amount', value: 'n/a' }] },
+      { fields: null },
+      {},
+    ];
+    expect(fieldSums(rows, new Set(['amount', 'kind', 'rating']))).toEqual(new Map([['amount', 15.5]]));
+    expect(fieldSums(rows, new Set())).toEqual(new Map());
   });
 });

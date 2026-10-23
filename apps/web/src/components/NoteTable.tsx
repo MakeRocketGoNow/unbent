@@ -2,7 +2,7 @@ import type { KeyboardEvent, ReactNode, RefObject } from 'react';
 import { Link } from '@tanstack/react-router';
 import type { FieldDef, FieldValue, NoteSummary } from '@unbent/shared';
 import { FieldCellInput } from './FieldCellInput.js';
-import type { NoteColumn } from './note-columns.js';
+import { totalable, type NoteColumn } from './note-columns.js';
 import { columnSortState, type SortSearch, type SortTarget } from './sort-options.js';
 import { formatFieldValue } from './format-field.js';
 import { formatWhen } from './format-when.js';
@@ -54,6 +54,18 @@ interface NoteTableProps {
    * header. Absent, the table has no such column.
    */
   selection?: TableSelection | undefined;
+  /**
+   * The footer's sums, by field id, and what its first cell calls them. Absent, or with no
+   * sum for any column on screen, the table has no footer. A column only gets one when
+   * `totalable` says it can; see `NotesLayout` for which rows a sum is over.
+   */
+  totals?: TableTotals | undefined;
+}
+
+export interface TableTotals {
+  /** "Total", or what the rows are when they are not the whole list ("Total of top 50"). */
+  label: string;
+  sums: ReadonlyMap<string, number>;
 }
 
 export interface TableSelection {
@@ -110,7 +122,9 @@ export function NoteTable({
   empty,
   onEdit,
   selection,
+  totals,
 }: NoteTableProps) {
+  const footed = totals && notes.length > 0 && columns.some((c) => totalable(c) && totals.sums.has(c.id));
   const span = columns.length + (selection ? 1 : 0);
   const autoLoad = useAutoLoad({
     enabled: hasNextPage && !isFetchingNextPage,
@@ -249,6 +263,30 @@ export function NoteTable({
             </tr>
           )}
         </tbody>
+
+        {/*
+            The sums, under the rows. A `<tfoot>` pinned to the bottom of the scroller, as
+            the heading row is to its top, so a long notebook's total stays in view while
+            its rows scroll; when the rows are fewer than the room, it simply follows the
+            last of them. Over every matching note rather than the loaded pages (see
+            `totals`), which is why it can sit below a Load more without lying.
+        */}
+        {footed && (
+          <tfoot>
+            <tr>
+              {selection && <td className="note-table-check" />}
+              {columns.map((col) => (
+                <td key={col.id} data-align={col.align} className={col.kind === 'name' ? 'note-table-total-label' : undefined}>
+                  {col.kind === 'name'
+                    ? totals.label
+                    : totalable(col) && totals.sums.has(col.id)
+                      ? formatFieldValue('number', totals.sums.get(col.id)!, null, col.def.currency)
+                      : null}
+                </td>
+              ))}
+            </tr>
+          </tfoot>
+        )}
       </table>
     </div>
   );

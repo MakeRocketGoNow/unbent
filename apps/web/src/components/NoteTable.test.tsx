@@ -20,6 +20,8 @@ import { noteColumns } from './note-columns.js';
  */
 const cost: FieldDef = { id: 'f-cost', notebookId: 'nb', name: 'Cost', type: 'number', options: [], scale: null, currency: null, position: 0 };
 const packed: FieldDef = { id: 'f-packed', notebookId: 'nb', name: 'Packed', type: 'checkbox', options: [], scale: null, currency: null, position: 1 };
+const fare: FieldDef = { id: 'f-fare', notebookId: 'nb', name: 'Fare', type: 'number', options: [], scale: null, currency: 'USD', position: 3 };
+const stars: FieldDef = { id: 'f-stars', notebookId: 'nb', name: 'Stars', type: 'number', options: [], scale: { max: 5, step: 1 }, currency: null, position: 4 };
 const status: FieldDef = { id: 'f-status', notebookId: 'nb', name: 'Status', type: 'select', options: ['Booked', 'Done'], scale: null, currency: null, position: 2 };
 
 const note = (id: string, title: string, fields: NoteSummary['fields']): NoteSummary => ({
@@ -217,5 +219,48 @@ describe('the selection column', () => {
     fireEvent.click(cells[2]!, { shiftKey: true });
     expect(sel.onPick).toHaveBeenLastCalledWith('n1', { range: true });
     expect(history.location.pathname).toBe('/notes');
+  });
+
+  describe('totals', () => {
+    const footer = (container: HTMLElement) =>
+      [...container.querySelectorAll('tfoot td')].map((c) => c.textContent);
+
+    it('draws a footer under the number columns, formatted as their cells are, and nothing under a rating', async () => {
+      const { findByRole, container } = harness({
+        columns: noteColumns([cost, fare, stars]),
+        totals: { label: 'Total', sums: new Map([['f-cost', 2400.5], ['f-fare', 2110.58], ['f-stars', 9]]) },
+      });
+      await findByRole('table');
+      // Name, Cost, Fare, Stars, Tags, Updated, Created.
+      expect(footer(container)).toEqual(['Total', '2,400.5', '$2,110.58', '', '', '', '']);
+    });
+
+    it('says what the rows are when they are not the whole list', async () => {
+      const { findByRole, container } = harness({
+        ranked: true,
+        totals: { label: 'Total of top 50', sums: new Map([['f-cost', 1]]) },
+      });
+      await findByRole('table');
+      expect(footer(container)[0]).toBe('Total of top 50');
+    });
+
+    it('keeps the selection column empty, so the label stays under the names', async () => {
+      const { findByRole, container } = harness({
+        totals: { label: 'Total', sums: new Map([['f-cost', 1]]) },
+        selection: { has: () => false, active: false, all: false, onPick: () => {}, onSelectAll: () => {}, onClear: () => {} },
+      });
+      await findByRole('table');
+      expect(footer(container).slice(0, 3)).toEqual(['', 'Total', '1']);
+    });
+
+    it('draws no footer with nothing to total or no rows', async () => {
+      const blank = harness({ totals: { label: 'Total', sums: new Map() } });
+      await blank.findByRole('table');
+      expect(blank.container.querySelector('tfoot')).toBeNull();
+      cleanup();
+      const empty = harness({ notes: [], totals: { label: 'Total', sums: new Map([['f-cost', 1]]) } });
+      await empty.findByRole('table');
+      expect(empty.container.querySelector('tfoot')).toBeNull();
+    });
   });
 });
