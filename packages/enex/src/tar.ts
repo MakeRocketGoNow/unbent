@@ -105,14 +105,16 @@ function checksumOk(header: Uint8Array): boolean {
  *
  * Throws when the first block is not a tar header, which is what a file renamed to
  * `.jex` that is not one looks like, so the run says so rather than importing nothing.
+ * Stops where it is when `signal` aborts: on an archive of small scans the walk reads
+ * most of the file, and Stop has to reach it.
  */
-export async function listTar(window: BlobWindow): Promise<TarEntry[]> {
+export async function listTar(window: BlobWindow, signal?: AbortSignal): Promise<TarEntry[]> {
   const entries: TarEntry[] = [];
   const total = window.blob.size;
   let pos = 0;
   let longName: string | undefined;
 
-  while (pos + BLOCK <= total) {
+  while (pos + BLOCK <= total && !signal?.aborted) {
     const header = await window.read(pos, BLOCK);
     // Two zero blocks end the archive; one is enough to know nothing follows.
     if (header.every((b) => b === 0)) break;

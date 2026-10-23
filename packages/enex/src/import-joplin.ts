@@ -109,7 +109,7 @@ function resourceName(id: string, props: Record<string, string>): string {
   return ext && !base.toLowerCase().endsWith(`.${ext}`) ? truncate(base, `.${ext}`) : truncate(base, '');
 }
 
-async function readModel(window: BlobWindow, entries: TarEntry[]): Promise<Model> {
+async function readModel(window: BlobWindow, entries: TarEntry[], signal: AbortSignal): Promise<Model> {
   const folders = new Map<string, { title: string; parent: string }>();
   const tagNames = new Map<string, string>();
   const noteTags: Array<{ note: string; tag: string }> = [];
@@ -119,6 +119,7 @@ async function readModel(window: BlobWindow, entries: TarEntry[]): Promise<Model
   const unreadable: Model['unreadable'] = [];
 
   for (const entry of entries) {
+    if (signal.aborted) break;
     const parts = entry.name.split('/');
     const base = parts[parts.length - 1]!;
     if (parts[parts.length - 2] === 'resources') {
@@ -254,9 +255,17 @@ export async function importJoplin(
   const window = new BlobWindow(file.blob);
 
   try {
-    const model = await readModel(window, await listTar(window));
+    /*
+       Every item is read before the first note, since a note's notebook, tags and files
+       are items of their own. On an archive-sized export that is many seconds on a phone,
+       so the running state says what it is doing, and Stop is heard here as well as
+       between notes: `halt` is the caller's signal or the breaker's.
+    */
+    progress.currentTitle = 'Reading the export…';
+    options.onProgress?.({ ...progress });
+    const model = await readModel(window, await listTar(window, run.halt.signal), run.halt.signal);
     for (const { path, reason } of model.unreadable) run.problem(path, reason);
-    if (model.notes.length === 0) {
+    if (model.notes.length === 0 && !run.halt.signal.aborted) {
       throw new Error('This Joplin export holds no notes.');
     }
     progress.notesTotal = model.notes.length;

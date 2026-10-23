@@ -255,6 +255,22 @@ describe('importJoplin', () => {
     expect(failures).toEqual([{ title: `${'f'.repeat(32)}.md`, reason: expect.stringMatching(/Not a Joplin item/) }]);
   });
 
+  it('stops while the export is still being read, and says it is reading it', async () => {
+    const { client, notes } = fakeClient();
+    const controller = new AbortController();
+    const seen: string[] = [];
+    const progress = await importJoplin(sample(), client, {
+      signal: controller.signal,
+      onProgress: (p) => {
+        seen.push(p.currentTitle);
+        controller.abort();
+      },
+    });
+    expect(seen).toEqual(['Reading the export…']);
+    expect(progress.created).toBe(0);
+    expect(notes).toHaveLength(0);
+  });
+
   it('refuses an export with no notes in it', async () => {
     const { client } = fakeClient();
     const empty = { name: 'x.jex', blob: jex({ folders: [{ id: ID.kitchen, title: 'Kitchen' }], notes: [] }) };
