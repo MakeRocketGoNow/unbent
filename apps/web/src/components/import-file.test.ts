@@ -20,6 +20,13 @@ describe('describeImportFile', () => {
     expect(describeImportFile('Export-3332a9d4.zip', 'notion').text).toContain('Choose what to bring in');
   });
 
+  it('says a Joplin export keeps its own notebooks', () => {
+    expect(describeImportFile('JEX Export 2026-10-23.jex')).toEqual({
+      format: 'jex',
+      text: expect.stringContaining('Joplin export. Each note keeps its notebook'),
+    });
+  });
+
   it('knows a bare markdown file is one note', () => {
     expect(describeImportFile('meeting-notes-a1b2c3d4.md').format).toBe('markdown');
   });
@@ -27,7 +34,7 @@ describe('describeImportFile', () => {
   it('refuses anything else and says what it wanted', () => {
     const d = describeImportFile('notes.txt');
     expect(d.format).toBeNull();
-    expect(d.text).toContain('.enex, .zip or .md');
+    expect(d.text).toContain('.enex, .jex, .zip or .md');
     expect(d.text).toContain('PDFs and images');
   });
 });

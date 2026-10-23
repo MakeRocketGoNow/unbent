@@ -1,5 +1,5 @@
 /**
- * How to get notes out of Evernote and Notion, for the two places that need to say it: the
+ * How to get notes out of Evernote, Notion and Joplin, for the two places that need to say it: the
  * Import panel, where the file is picked, and the front page, where someone decides whether
  * leaving is worth the trouble.
  *
@@ -76,6 +76,31 @@ export function NotionHelp() {
         <p>
           <strong>One database or page.</strong> Open it, then ··· → Export, with the same
           choices. The zip imports the same way; it just holds less.
+        </p>
+      </div>
+    </details>
+  );
+}
+
+/*
+ * Joplin's desktop app writes the JEX, Joplin's own lossless backup; its other exports
+ * drop the ids and rename the attachments (see `importJoplin` for why JEX is the one
+ * taken). The Markdown option sits beside it in the same menu, so the help names the
+ * right one rather than leaving a coin toss.
+ */
+export function JoplinHelp() {
+  return (
+    <details className="enex-help">
+      <summary className="small">How do I export from Joplin?</summary>
+      <div className="small">
+        <p>
+          <strong>Everything.</strong> In Joplin desktop, File → Export all → JEX - Joplin Export
+          File. Choose JEX rather than one of the Markdown options: it is the one that keeps
+          every note&apos;s notebook, tags, dates and attachments.
+        </p>
+        <p>
+          <strong>One notebook.</strong> Right-click it in the sidebar, then Export → JEX. A
+          notebook inside another keeps the path, as in “Household / Receipts”.
         </p>
       </div>
     </details>

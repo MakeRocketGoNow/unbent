@@ -11,7 +11,7 @@ import {
   useImportRun,
 } from '../import-run.js';
 import { Button } from './Button.js';
-import { EnexHelp, NotionHelp } from './ImportHelp.js';
+import { EnexHelp, JoplinHelp, NotionHelp } from './ImportHelp.js';
 import { describeImportFile } from './import-file.js';
 import { importPercent } from './import-progress.js';
 import { formatBytes } from '../format-bytes.js';
@@ -207,7 +207,7 @@ export function Import() {
       {status === 'idle' && (
         <>
           <p className="muted small">
-            Bring notes in from Evernote, from Notion, or from another Unbent. Notes that are
+            Bring notes in from Evernote, Notion or Joplin, or from another Unbent. Notes that are
             already here are skipped, so an interrupted run is safe to repeat and a backup can
             be restored over what you have.
           </p>
@@ -230,6 +230,11 @@ export function Import() {
               fields.
             </li>
             <li>
+              <code>.jex</code>: a Joplin export. Each note keeps its notebook, tags, dates and
+              attachments; a notebook inside another is named for both, as in Household /
+              Receipts.
+            </li>
+            <li>
               <code>.pdf</code> or an image, any number of them: one note per file, named after
               it, with the file attached. The same as dropping files on the note list.
             </li>
@@ -246,6 +251,7 @@ export function Import() {
 
           <EnexHelp />
           <NotionHelp />
+          <JoplinHelp />
 
           {/* An import is nothing but writes, every one of which the server refuses
               while the plan has ended (MAK-108): the picker is faded with the reason
@@ -255,7 +261,7 @@ export function Import() {
             key={pickerKey}
             type="file"
             multiple
-            accept=".enex,.zip,.md,.pdf,application/xml,text/xml,application/zip,text/markdown,application/pdf,image/*"
+            accept=".enex,.jex,.zip,.md,.pdf,application/xml,text/xml,application/zip,text/markdown,application/pdf,image/*"
             disabled={planInactive}
             onChange={(e) => pick([...(e.target.files ?? [])])}
           />
