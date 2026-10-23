@@ -30,6 +30,7 @@ vi.mock('./notes-api.js', async (importOriginal) => ({
 
 const { installLibraryQueries, keys, noteQuery, search } = await import('./queries.js');
 const api = await import('./notes-api.js');
+const { installTestLibrary } = await import('./store/test-library.js');
 
 describe('a read while the library is still opening', () => {
   const client = new QueryClient();
@@ -46,7 +47,7 @@ describe('a read while the library is still opening', () => {
     state.offline = false;
   });
 
-  it('asks the server after a short wait, and is asked again once the open lands', async () => {
+  it('asks the server after a short wait, and the copy again once its first pull settles', async () => {
     let land!: (lib: unknown) => void;
     state.open = new Promise((resolve) => (land = resolve));
 
@@ -56,9 +57,23 @@ describe('a read while the library is still opening', () => {
     await vi.advanceTimersByTimeAsync(1);
     await expect(read).resolves.toEqual({ id: 'n1', title: 'from the server' });
 
-    land({});
+    // Restored from the device and not pulled yet: it may not hold a note made elsewhere
+    // since, so the server's answer stays until the pull has settled.
+    const lib = installTestLibrary();
+    lib.state().phase = 'starting';
+    land(lib);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.getQueryState(keys.note('n1'))?.isInvalidated).toBe(false);
+
+    lib.settle();
     await vi.advanceTimersByTimeAsync(0);
     expect(client.getQueryState(keys.note('n1'))?.isInvalidated).toBe(true);
+
+    // And the next read is the copy's: a whole copy without the note says so itself.
+    state.open = Promise.resolve(lib);
+    await expect(client.fetchQuery(noteQuery('n1'))).rejects.toMatchObject({ status: 404 });
+    expect(api.getNote).toHaveBeenCalledTimes(1);
+    lib.uninstall();
   });
 
   it('waits for the open in a search the server could not answer', async () => {

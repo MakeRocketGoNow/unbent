@@ -14,7 +14,7 @@ import { currentLibrary, onLibraryChange, onLibraryReset, onSearchIndexed, type 
 import { LIBRARY_ROOTS } from './store/library-roots.js';
 import { onDirectWrite } from './store/actions.js';
 import { searchLocal, type LocalCoverage } from './store/search-local.js';
-import { isWhole } from './store/feed.js';
+import { isWhole, type FeedState } from './store/feed.js';
 
 /**
  * Query definitions, colocated with their keys.
@@ -98,6 +98,11 @@ function openWithin(open: Promise<Library>, ms: number): Promise<Library | null>
  * so that the reads which gave up on one open are asked again once, when it lands.
  * Nothing else would ask: a holder's open fires no change of its own, and the server's
  * answers would stay on screen until the feed next moved.
+ *
+ * Once its first pull has settled, not the moment it opens. A copy restored from the
+ * device is as old as this device's last pull, and a note made elsewhere since is not in
+ * it: read again then, a note the server had just drawn became "not found" under the
+ * person's cursor (`notHeld`) until the pull brought it.
  */
 let rereadAll: (() => void) | null = null;
 const awaitedOpens = new WeakSet<Promise<Library>>();
@@ -106,7 +111,18 @@ function rereadWhenOpen(open: Promise<Library>): void {
   if (awaitedOpens.has(open)) return;
   awaitedOpens.add(open);
   open.then(
-    () => rereadAll?.(),
+    (lib) => {
+      const feed = lib as Library & { subscribe?: (listener: (state: FeedState) => void) => () => void };
+      if (lib.state().phase !== 'starting' || !feed.subscribe) {
+        rereadAll?.();
+        return;
+      }
+      const stop = feed.subscribe((state) => {
+        if (state.phase === 'starting') return;
+        stop();
+        rereadAll?.();
+      });
+    },
     () => {},
   );
 }
