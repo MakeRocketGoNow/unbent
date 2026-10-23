@@ -333,7 +333,7 @@ async function fedLibrary(notes: LocalNote[]) {
           handles.begin();
           for (const r of seed) handles.write({ type: 'insert', value: r });
           handles.commit();
-          return engine.register(entity, feedControls<T>(handles) as never);
+          return engine.register(entity, feedControls<T>(handles, keyOf) as never);
         },
       },
     });

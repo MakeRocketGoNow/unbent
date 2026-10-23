@@ -67,7 +67,7 @@ export function createCollections(store: LocalStore, engine: FeedEngine): Collec
         initialRender: { strategy: 'network-first', networkTimeoutMs: 0 },
         sync: {
           rowUpdateMode: 'full',
-          sync: (handles) => engine.register(entity, feedControls<T>(handles) as never),
+          sync: (handles) => engine.register(entity, feedControls<T>(handles, keyOf) as never),
         },
       }),
     );
@@ -92,7 +92,7 @@ export function createCollections(store: LocalStore, engine: FeedEngine): Collec
 
 /** What TanStack DB hands a collection's sync function, as far as the engine needs it. */
 export interface SyncHandles<T extends object> {
-  collection: { has: (key: string) => boolean; values: () => Iterable<T> };
+  collection: { has: (key: string) => boolean; get: (key: string) => T | undefined; values: () => Iterable<T> };
   begin: (options?: { immediate?: boolean }) => void;
   write: (message: { type: 'insert' | 'update'; value: T } | { type: 'delete'; key: string }) => void;
   commit: () => unknown;
@@ -131,12 +131,30 @@ export interface SyncHandles<T extends object> {
  * good, since the feed never names it again (seen on 2026-10-08). Read through the
  * collection's state manager, as `syncedRow` in `actions.ts` reads it; the version is
  * pinned (`pins.test.ts`), and without the field the view is the fallback.
+ *
+ * A row the feed writes over one already held names every key the held row had, as
+ * `undefined` where the new row has none (`whole`). The persistence layer stores every
+ * sync write as an update and merges it into the row in the file (`Object.assign`), so
+ * `rowUpdateMode: 'full'` holds for the rows in memory and not for the file: a key the
+ * server stopped sending stayed on disk and came back on the next load. A restored note
+ * reloaded into the trash, for good, since the feed had moved past its restore (seen on
+ * 2026-10-23). An `undefined` is dropped when the row is written as JSON, so the stored
+ * row is the server's again. The rows in memory are what the file held when it was
+ * loaded, plus what was written since, so their keys are the file's keys.
  */
-export function feedControls<T extends object>({ collection, begin, write, commit, truncate, markReady }: SyncHandles<T>): Controls<T> {
-  const synced = () => (collection as unknown as { _state?: { syncedData?: { has: (key: string) => boolean; values: () => Iterable<T> } } })._state?.syncedData ?? collection;
+export function feedControls<T extends object>({ collection, begin, write, commit, truncate, markReady }: SyncHandles<T>, keyOf: (row: T) => string): Controls<T> {
+  type Rows = { has: (key: string) => boolean; get: (key: string) => T | undefined; values: () => Iterable<T> };
+  const synced = (): Rows => (collection as unknown as { _state?: { syncedData?: Rows } })._state?.syncedData ?? collection;
+  const whole = (value: T): T => {
+    const held = synced().get(keyOf(value));
+    if (!held) return value;
+    const out = { ...value } as Record<string, unknown>;
+    for (const k of Object.keys(held)) if (!(k in out)) out[k] = undefined;
+    return out as T;
+  };
   return {
     begin: () => begin({ immediate: true }),
-    write: (m) => write(m.type === 'delete' ? { type: 'delete', key: m.key } : { type: m.type, value: m.value }),
+    write: (m) => write(m.type === 'delete' ? { type: 'delete', key: m.key } : { type: m.type, value: whole(m.value) }),
     commit: () => commit(),
     truncate,
     markReady,
