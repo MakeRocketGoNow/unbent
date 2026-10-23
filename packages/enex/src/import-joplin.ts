@@ -245,10 +245,11 @@ export type JoplinLinkTarget = { kind: 'file'; name: string } | { kind: 'note'; 
  * A body with Joplin's `:/<id>` links pointed at what they mean here: an attachment's
  * `files/` link, or the imported note's address. The `<img>` Joplin writes for a resized
  * picture becomes a plain markdown image, since the editor here does not draw raw HTML and
- * a picture shown at its own size beats a tag shown as text. A markdown link this cannot
- * resolve (to a note left out of the export, or an attachment whose bytes are missing) is
- * reduced to its text: `:/<id>` opens nothing here, and a link that goes nowhere should
- * not look like one. The run's failure list names a missing attachment.
+ * a picture shown at its own size beats a tag shown as text. A link or picture this
+ * cannot resolve (to a note left out of the export, or an attachment whose bytes are
+ * missing) is reduced to its text, or its alt text, or nothing: `:/<id>` opens nothing
+ * here, a link that goes nowhere should not look like one, and a raw `<img>` tag would
+ * show as markup. The run's failure list names a missing attachment.
  */
 export function rewriteJoplinLinks(body: string, resolve: (id: string) => JoplinLinkTarget | null): string {
   const dest = (target: JoplinLinkTarget, anchor = '') =>
@@ -257,19 +258,20 @@ export function rewriteJoplinLinks(body: string, resolve: (id: string) => Joplin
   return body
     .replace(MD_LINK_RE, (whole, bang: string, text: string, id: string, anchor: string | undefined) => {
       const target = resolve(id.toLowerCase());
-      if (!target) return text.trim() === '' ? whole : text;
+      if (!target) return text;
       return `${target.kind === 'file' ? bang : ''}[${text}](${dest(target, anchor)})`;
     })
     .replace(IMG_RE, (whole, _q: string, id: string) => {
       const target = resolve(id.toLowerCase());
-      if (!target || target.kind !== 'file') return whole;
-      const alt = /\balt\s*=\s*(["'])(.*?)\1/i.exec(whole)?.[2] ?? target.name;
-      return `![${alt}](${dest(target)})`;
+      const alt = /\balt\s*=\s*(["'])(.*?)\1/i.exec(whole)?.[2];
+      if (!target || target.kind !== 'file') return alt ?? '';
+      return `![${alt ?? target.name}](${dest(target)})`;
     })
     .replace(ANCHOR_RE, (whole, _q: string, id: string, anchor: string | undefined, text: string) => {
       const target = resolve(id.toLowerCase());
-      if (!target) return whole;
-      return `[${text.replace(/<[^>]*>/g, '').trim() || (target.kind === 'file' ? target.name : 'link')}](${dest(target, anchor)})`;
+      const label = text.replace(/<[^>]*>/g, '').trim();
+      if (!target) return label;
+      return `[${label || (target.kind === 'file' ? target.name : 'link')}](${dest(target, anchor)})`;
     });
 }
 

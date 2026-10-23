@@ -163,6 +163,11 @@ describe('rewriteJoplinLinks', () => {
     expect(rewriteJoplinLinks(body, resolve)).toBe('![Scan (1).pdf](<files/Scan (1).pdf>) [See](/notes/n)');
   });
 
+  it('reduces a picture or link it cannot resolve to its words, not markup', () => {
+    const gone = 'c'.repeat(32);
+    expect(rewriteJoplinLinks(`<img src=":/${gone}" alt="pot"> <img src=":/${gone}"> <a href=":/${gone}"><b>here</b></a> ![](:/${gone})`, resolve)).toBe('pot  here ');
+  });
+
   it('drops the bang when an image link turns out to be a note', () => {
     expect(rewriteJoplinLinks(`![n](:/${'b'.repeat(32)})`, resolve)).toBe('[n](/notes/n)');
   });
