@@ -119,11 +119,15 @@ export async function listTar(window: BlobWindow, signal?: AbortSignal): Promise
   const total = window.blob.size;
   let pos = 0;
   let longName: string | undefined;
+  let ended = false;
 
   while (pos + BLOCK <= total && !signal?.aborted) {
     const header = await window.read(pos, BLOCK);
     // Two zero blocks end the archive; one is enough to know nothing follows.
-    if (header.every((b) => b === 0)) break;
+    if (header.every((b) => b === 0)) {
+      ended = true;
+      break;
+    }
     if (!checksumOk(header)) {
       if (pos === 0) throw new Error('This is not a Joplin export: the file is not a tar archive.');
       throw new Error(`The export is damaged at byte ${pos.toLocaleString()}.`);
@@ -158,5 +162,12 @@ export async function listTar(window: BlobWindow, signal?: AbortSignal): Promise
     entries.push({ name: name.replace(/\\/g, '/').replace(/^(\.\/)+/, ''), offset: dataAt, size: length });
   }
 
+  // No end marker: the copy stopped between two files, or inside a header. node-tar, GNU
+  // tar and bsdtar all end with zero blocks, so their absence is a cut, and saying so here
+  // is what points the person at the copy. Otherwise the run would read as whole, with
+  // the attachments past the cut (`resources/` comes last) "missing from the export".
+  if (!ended && !signal?.aborted && entries.length > 0) {
+    throw new Error('The export is cut short: the file ends partway through it. Copy the .jex again and import it.');
+  }
   return entries;
 }

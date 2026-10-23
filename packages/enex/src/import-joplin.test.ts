@@ -111,6 +111,13 @@ describe('listTar', () => {
     }
   });
 
+  it('refuses an archive cut between two entries, where no end marker follows', async () => {
+    const archive = tar([['a.md', new TextEncoder().encode('hello')], ['resources/b.pdf', new Uint8Array(3000)]]);
+    for (const at of [512 * 2, 512 * 2 + 100]) {
+      await expect(listTar(new BlobWindow(new Blob([archive.subarray(0, at) as BlobPart])))).rejects.toThrow(/cut short/);
+    }
+  });
+
   it('refuses a file that is not a tar archive', async () => {
     const blob = new Blob([new Uint8Array(2048).fill(7) as BlobPart]);
     await expect(listTar(new BlobWindow(blob))).rejects.toThrow(/not a tar archive/);
