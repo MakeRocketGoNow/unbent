@@ -55,7 +55,7 @@ import { NotesSort } from './NotesSort.js';
 import { NotesViewToggle } from './NotesViewToggle.js';
 import { NoteTable } from './NoteTable.js';
 import { noteColumns, totalable } from './note-columns.js';
-import type { TableTotals } from './NoteTable.js';
+import { tableTotalsFor } from './table-totals.js';
 import { nextColumnSort, type SortTarget } from './sort-options.js';
 import { forgetSortField, hasRememberedSort, rememberSort, rememberedSort } from '../notebook-sort.js';
 import { patchNoteFields, patchNotePages } from './note-table-edit.js';
@@ -80,14 +80,11 @@ import { TagsSheet } from './TagsSheet.js';
 import { editOpenNoteFiling } from '../open-note-fields.js';
 import { useAppSession } from '../useAppSession.js';
 import { useLibraryArriving, useLibraryWhole } from '../store/use-feed-state.js';
-import { fieldSums, sameNotebookName } from '../store/derive.js';
+import { sameNotebookName } from '../store/derive.js';
 import { ListRowsContext, showsWholeAccount, useLibraryTotal } from '../useLibraryTotal.js';
 import { useSignOut } from '../useSignOut.js';
 import { useListMotion } from '../list-motion.js';
 import { useTagColors } from './use-tag-colors.js';
-
-/** How many matches a search answers with: the search route's default `limit`, which the page never overrides. */
-const SEARCH_LIMIT = 50;
 
 /** Sidebar plus the routed workspace. Filters come from the URL; nothing here is mirrored into state. */
 export function NotesLayout({ children }: { children: React.ReactNode }) {
@@ -655,33 +652,17 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const columns = noteColumns(fieldDefs.data ?? []);
   const totalIds = columns.filter(totalable).map((c) => c.id);
   const fieldTotals = useQuery({ ...fieldTotalsQuery(filter, totalIds, ordering), enabled: tableMode && totalIds.length > 0 });
-  /*
-   * The table's footer: what its number columns add up to, and over which rows.
-   *
-   * The notebook's own list is totalled over every note the filters match, from the
-   * library (`fieldTotalsQuery`), not over the pages loaded, which would make "Total"
-   * the sum of the first fifty. Not while the library's first copy (or a copy after a
-   * reset) is still arriving, either: the sum would be of the rows landed so far, and
-   * would climb as the pages came in under a heading that says it is the whole. On a
-   * device with no library the server keeps no sums, so the loaded rows are totalled
-   * once they are all of them. In both cases there is no footer until the sum is whole,
-   * rather than one that is short.
-   *
-   * A search's matches are the best fifty by relevance (the search route's default
-   * limit), so they are totalled as they stand and the label says so when the cap was
-   * reached: fewer than fifty is every match, and plainly "Total".
-   */
-  const tableTotals = ((): TableTotals | undefined => {
-    if (!tableMode || totalIds.length === 0) return undefined;
-    const ids = new Set(totalIds);
-    if (tableRows) {
-      return { label: tableRows.length >= SEARCH_LIMIT ? `Total of top ${SEARCH_LIMIT}` : 'Total', sums: fieldSums(tableRows, ids) };
-    }
-    const whole = fieldTotals.data;
-    if (whole && libraryWhole) return { label: 'Total', sums: new Map(Object.entries(whole)) };
-    if (whole === null && !list.hasNextPage) return { label: 'Total', sums: fieldSums(notes, ids) };
-    return undefined;
-  })();
+  // Which rows the footer sums, and what it calls them; see `tableTotalsFor`.
+  const tableTotals = tableMode
+    ? tableTotalsFor({
+        ids: new Set(totalIds),
+        searchRows: tableRows,
+        whole: fieldTotals.data,
+        libraryWhole,
+        loaded: notes,
+        hasNextPage: list.hasNextPage,
+      })
+    : undefined;
   /** A column header was clicked: write the order it asks for. */
   const sortBy = (target: SortTarget) => {
     rememberSort(notebook, nextColumnSort(target, { sort, order, sortField }));
