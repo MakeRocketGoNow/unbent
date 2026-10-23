@@ -79,3 +79,12 @@ export function withSourceLink(body: string, sourceUrl?: string): string {
   if (body.includes(sourceUrl)) return body; // clipper often already included it
   return `<${sourceUrl}>\n\n${body}`.trim();
 }
+
+/**
+ * A `files/` destination in the spelling the app's own writer uses for that name: in angle
+ * brackets when it holds a space or a parenthesis, which would otherwise end it. Shared by
+ * the importers that write their own links (Notion's and Joplin's).
+ */
+export function fileDestination(name: string): string {
+  return /[\s()]/.test(name) ? `<files/${name}>` : `files/${name}`;
+}

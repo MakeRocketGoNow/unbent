@@ -12,9 +12,8 @@ import {
   type ImportProgress,
 } from './import-run.js';
 import { JoplinType, joplinTime, parseJoplinItem } from './joplin-item.js';
-import { contentHash, withSourceLink } from './note-body.js';
+import { contentHash, fileDestination, withSourceLink } from './note-body.js';
 import { nextAvailableFilename, sanitizeLabel, truncate } from './parse.js';
-import { fileDestination } from './notion-page.js';
 import { BlobWindow, listTar, type TarEntry } from './tar.js';
 
 /**
