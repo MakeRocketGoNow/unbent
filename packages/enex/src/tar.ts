@@ -9,10 +9,10 @@
  *
  * No library: the format is a page of code, and the two on npm that read tar both want a
  * Node stream, which a Web Worker does not have. This one never holds more than one
- * window of the file in memory. Headers are read through that window, so the many small
- * items of a JEX (every note, tag and notebook is its own file) cost one read per
- * megabyte rather than one per item, and a large attachment is jumped over without being
- * read at all until it is uploaded.
+ * window of the file in memory. Headers and items are read through that window, so the
+ * many small items of a JEX (every note, tag and notebook is its own file) cost one read
+ * per megabyte rather than one per item. Attachments never go through it: each is read on
+ * its own when it is uploaded, and jumped over until then.
  */
 
 export interface TarEntry {
@@ -51,9 +51,15 @@ export class BlobWindow {
     return new TextDecoder().decode(await this.read(entry.offset, entry.size));
   }
 
-  /** A copy, since the window's bytes are reused by the next read. */
+  /**
+   * A file's own bytes, read on their own rather than through the window. An attachment
+   * is read once, so the window gains it nothing, and loading it as the window would move
+   * the window off the items: `resources/` sits after them, so the next note's read would
+   * start a fresh megabyte, two per note across an archive. It also saves copying a large
+   * scan out of a window that would have held it whole.
+   */
   async bytesOf(entry: TarEntry): Promise<Uint8Array> {
-    return (await this.read(entry.offset, entry.size)).slice();
+    return new Uint8Array(await this.blob.slice(entry.offset, entry.offset + entry.size).arrayBuffer());
   }
 }
 
