@@ -53,6 +53,10 @@ export interface Position extends Cursor {
  * rows that are wrong cannot be told from the rest. This is a cursor's number rather
  * than the collections' `schemaVersion`, because a schema bump resets only a collection
  * that syncs: the cursor's own collection refuses it, and the library never opened.
+ *
+ * A raise costs every device of every account a whole copy from empty on its first pull
+ * with a connection after the deploy: minutes of "Copying your notes" on a phone with an
+ * archive, with the keeper and the search index standing down until it is whole.
  */
 export const COPY_FORMAT = 2;
 
