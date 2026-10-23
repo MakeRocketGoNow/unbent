@@ -660,9 +660,12 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
    *
    * The notebook's own list is totalled over every note the filters match, from the
    * library (`fieldTotalsQuery`), not over the pages loaded, which would make "Total"
-   * the sum of the first fifty. On a device with no library the server keeps no sums,
-   * so the loaded rows are totalled once they are all of them, and there is no footer
-   * before that rather than one that is short.
+   * the sum of the first fifty. Not while the library's first copy (or a copy after a
+   * reset) is still arriving, either: the sum would be of the rows landed so far, and
+   * would climb as the pages came in under a heading that says it is the whole. On a
+   * device with no library the server keeps no sums, so the loaded rows are totalled
+   * once they are all of them. In both cases there is no footer until the sum is whole,
+   * rather than one that is short.
    *
    * A search's matches are the best fifty by relevance (the search route's default
    * limit), so they are totalled as they stand and the label says so when the cap was
@@ -675,7 +678,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
       return { label: tableRows.length >= SEARCH_LIMIT ? `Total of top ${SEARCH_LIMIT}` : 'Total', sums: fieldSums(tableRows, ids) };
     }
     const whole = fieldTotals.data;
-    if (whole) return { label: 'Total', sums: new Map(Object.entries(whole)) };
+    if (whole && libraryWhole) return { label: 'Total', sums: new Map(Object.entries(whole)) };
     if (whole === null && !list.hasNextPage) return { label: 'Total', sums: fieldSums(notes, ids) };
     return undefined;
   })();
