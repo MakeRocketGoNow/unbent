@@ -253,6 +253,8 @@ describe('notes: listing and counting', () => {
     expect(await stub.count({ fields: [{ fieldId: amount.id, op: 'gte', value: '8' }] })).toBe(1);
     expect(await stub.count({ fields: [{ fieldId: amount.id, op: 'eq', value: '4' }] })).toBe(1);
     expect(await stub.count({ fields: [{ fieldId: amount.id, op: 'empty' }] })).toBe(9);
+    // `ne` takes in the notes with no value: the two that hold another and the nine with none.
+    expect(await stub.count({ fields: [{ fieldId: amount.id, op: 'ne', value: '4' }] })).toBe(11);
     // `created_at` is 1000..1011 (ms epoch), all inside 1970-01-01.
     expect(await stub.count({ from: '1970-01-01', to: '1970-01-01', sort: 'created' })).toBe(12);
     expect(await stub.count({ from: '1970-01-02', sort: 'created' })).toBe(0);

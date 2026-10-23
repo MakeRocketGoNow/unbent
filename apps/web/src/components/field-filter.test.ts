@@ -39,6 +39,12 @@ describe('fieldFilterLabel', () => {
   it('reads a checkbox as a statement', () => {
     expect(fieldFilterLabel('paid:eq:true', DEFS)).toBe('Reimbursed');
     expect(fieldFilterLabel('paid:eq:false', DEFS)).toBe('Not reimbursed');
+    expect(fieldFilterLabel('paid:ne:true', DEFS)).toBe('Not reimbursed');
+  });
+
+  it('says what `ne` leaves out', () => {
+    expect(fieldFilterLabel('cat:ne:Food', DEFS)).toBe('Category: not Food');
+    expect(fieldFilterLabel('paid:ne:false', DEFS)).toBe('Reimbursed: not false');
   });
 
   it('still names a filter whose field it cannot find', () => {

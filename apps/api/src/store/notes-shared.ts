@@ -671,11 +671,15 @@ export function filterConditions(
       case 'empty':
         conditions.push(`NOT EXISTS (${held})`);
         break;
-      case 'eq': {
+      case 'eq':
+      case 'ne': {
+        // `ne` is the same question answered no, so a note with no value matches it:
+        // an unticked box and one never touched are the same thing to the person asking.
         binds.push(f.value ?? '');
         const v = `?${binds.length}`;
         conditions.push(
-          `EXISTS (${held} AND (nf3.value_text = ${v} OR CASE WHEN json_valid(nf3.value_text)` +
+          `${f.op === 'ne' ? 'NOT ' : ''}EXISTS (${held}` +
+            ` AND (nf3.value_text = ${v} OR CASE WHEN json_valid(nf3.value_text)` +
             ` THEN json_type(nf3.value_text) = 'array'` +
             ` AND EXISTS (SELECT 1 FROM json_each(nf3.value_text) WHERE json_each.value = ${v})` +
             ` ELSE 0 END))`,

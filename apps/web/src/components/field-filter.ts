@@ -39,5 +39,10 @@ export function fieldFilterLabel(raw: string, defs: FieldDef[]): string {
     case 'eq':
       if (def?.type === 'checkbox') return f.value === 'true' ? name : `Not ${name.toLowerCase()}`;
       return `${name}: ${f.value}`;
+    case 'ne':
+      // Only "not ticked" reads as a statement. `ne:false` also takes in the boxes never
+      // touched, so naming it as `eq:true` is ("Reimbursed") would claim a narrower list.
+      if (def?.type === 'checkbox' && f.value === 'true') return `Not ${name.toLowerCase()}`;
+      return `${name}: not ${f.value}`;
   }
 }
