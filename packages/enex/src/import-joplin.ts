@@ -71,11 +71,12 @@ interface Model {
   tags: Map<string, string[]>;
   resources: Map<string, Resource>;
   /**
-   * Items that could not be read, by their path in the archive. Reported rather than
-   * thrown: one damaged or hand-edited item ending the run would leave every other note
-   * out, and on every retry, since the file would fail the same way each time.
+   * Items that could not be read, by their title or else their path in the archive.
+   * Reported rather than thrown: one damaged or hand-edited item ending the run would
+   * leave every other note out, and on every retry, since the file would fail the same
+   * way each time.
    */
-  unreadable: Array<{ path: string; reason: string }>;
+  unreadable: Array<{ name: string; reason: string }>;
 }
 
 /** Joplin's id as a note id here: the same 32 digits, dashed as a UUID is. */
@@ -154,11 +155,14 @@ async function readModel(window: BlobWindow, entries: TarEntry[], signal: AbortS
     }
     if (!ITEM_RE.test(base)) continue;
 
+    const text = await window.text(entry);
     let item: ReturnType<typeof parseJoplinItem>;
     try {
-      item = parseJoplinItem(await window.text(entry));
+      item = parseJoplinItem(text);
     } catch (err) {
-      unreadable.push({ path: entry.name, reason: (err as Error).message });
+      // Named by its first line, which is the item's title in Joplin's form and so a name
+      // the person can find in Joplin; the archive path only when there is none.
+      unreadable.push({ name: text.split('\n', 1)[0]?.trim() || entry.name, reason: (err as Error).message });
       continue;
     }
     const { props } = item;
@@ -319,7 +323,7 @@ export async function importJoplin(
     progress.currentTitle = 'Reading the export…';
     options.onProgress?.({ ...progress });
     const model = await readModel(window, await listTar(window, run.halt.signal), run.halt.signal);
-    for (const { path, reason } of model.unreadable) run.problem(path, reason);
+    for (const { name, reason } of model.unreadable) run.problem(name, reason);
     if (model.notes.length === 0 && !run.halt.signal.aborted) {
       throw new Error('This Joplin export holds no notes.');
     }

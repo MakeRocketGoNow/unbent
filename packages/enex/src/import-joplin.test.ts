@@ -338,7 +338,7 @@ describe('importJoplin', () => {
     const progress = await importJoplin({ name: 'x.jex', blob: new Blob([tar(files) as BlobPart]) }, client, { onFailure: (f) => failures.push(f) });
     expect(progress.created).toBe(1);
     expect(notes.map((n) => n.title)).toEqual(['Soup']);
-    expect(failures).toEqual([{ title: `${'f'.repeat(32)}.md`, reason: expect.stringMatching(/Not a Joplin item/) }]);
+    expect(failures).toEqual([{ title: 'Damaged', reason: expect.stringMatching(/Not a Joplin item/) }]);
   });
 
   it('stops while the export is still being read, and says it is reading it', async () => {
