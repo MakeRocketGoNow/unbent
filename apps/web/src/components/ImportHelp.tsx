@@ -99,8 +99,7 @@ export function JoplinHelp() {
           every note&apos;s notebook, tags, dates and attachments.
         </p>
         <p>
-          <strong>One notebook.</strong> Right-click it in the sidebar, then Export → JEX. A
-          notebook inside another keeps the path, as in “Household / Receipts”.
+          <strong>One notebook.</strong> Right-click it in the sidebar, then Export → JEX.
         </p>
       </div>
     </details>

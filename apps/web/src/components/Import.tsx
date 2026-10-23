@@ -231,8 +231,8 @@ export function Import() {
             </li>
             <li>
               <code>.jex</code>: a Joplin export. Each note keeps its notebook, tags, dates and
-              attachments; a notebook inside another is named for both, as in Household /
-              Receipts.
+              attachments; a notebook inside another is named for its whole path, as in
+              Household / Receipts.
             </li>
             <li>
               <code>.pdf</code> or an image, any number of them: one note per file, named after
