@@ -10767,9 +10767,9 @@ button.settings-nav-item {
   margin-top: 1.75rem;
 }
 
-/* Four cards two by two, for the section whose cards are a workflow in order: three
-   across would leave the fourth step alone on a row. On a phone it is one column like
-   the rest. */
+/* Four cards two by two, for a section that has four (a workflow in order, the apps to
+   bring notes from): three across would leave the fourth alone on a row. On a phone it
+   is one column like the rest. */
 .front-grid-pairs {
   grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
 }
