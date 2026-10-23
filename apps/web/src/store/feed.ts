@@ -39,7 +39,22 @@ export interface Cursor {
 export interface Position extends Cursor {
   resume?: string | null;
   total?: number | null;
+  /** The `COPY_FORMAT` the rows beside it were written in, as the cursor store read it; the store stamps the current one on every write. */
+  format?: number;
 }
+
+/**
+ * What the rows a cursor stands beside were written by. A stored position from an older
+ * format is a copy that cannot be trusted, and the next pull empties the collections and
+ * walks again, as for a `reset`, once per device.
+ *
+ * 2: before `feedControls` named the keys a row dropped, the persistence layer kept them
+ * in the file, so a restored note could load from disk still trashed (2026-10-23). The
+ * rows that are wrong cannot be told from the rest. This is a cursor's number rather
+ * than the collections' `schemaVersion`, because a schema bump resets only a collection
+ * that syncs: the cursor's own collection refuses it, and the library never opened.
+ */
+export const COPY_FORMAT = 2;
 
 /** What a collection's sync function gives the engine, plus whether it holds a key. */
 export interface Controls<T extends object> {
@@ -304,6 +319,13 @@ export class FeedEngine {
   private async once(): Promise<void> {
     if (!this.state.cursor) {
       const stored = await this.watched('reading the cursor', this.options.readCursor());
+      if (stored?.format !== undefined && stored.format < COPY_FORMAT) {
+        this.state.phase = 'reset';
+        this.changed();
+        await this.truncateAll();
+        await this.snapshot(null);
+        return;
+      }
       if (!stored || stored.resume) {
         await this.snapshot(stored);
         return;

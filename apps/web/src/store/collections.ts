@@ -1,7 +1,7 @@
 import { createCollection, type Collection } from '@tanstack/db';
 import { persistedCollectionOptions } from '@tanstack/browser-db-sqlite-persistence';
 import type { FeedAttachment, FeedEntity, FeedNote, FeedNotebook, FeedTag } from '@unbent/shared';
-import { FeedEngine, type Controls, type FeedOptions, type Position } from './feed.js';
+import { COPY_FORMAT, FeedEngine, type Controls, type FeedOptions, type Position } from './feed.js';
 import type { LocalStore } from './db.js';
 
 /**
@@ -169,7 +169,8 @@ export function cursorStore(syncState: Collection<SyncState, string>): Pick<Feed
     readCursor: async () => {
       await syncState.preload();
       const row = syncState.get('cursor');
-      return row ? { seq: row.seq, epoch: row.epoch, resume: row.resume ?? null, total: row.total ?? null } : null;
+      // A cursor stored before positions carried a format is the first format's.
+      return row ? { seq: row.seq, epoch: row.epoch, resume: row.resume ?? null, total: row.total ?? null, format: row.format ?? 1 } : null;
     },
     writeCursor: async (position) => {
       const tx = position
@@ -179,8 +180,9 @@ export function cursorStore(syncState: Collection<SyncState, string>): Pick<Feed
               draft.epoch = position.epoch;
               draft.resume = position.resume ?? null;
               draft.total = position.total ?? null;
+              draft.format = position.format ?? COPY_FORMAT;
             })
-          : syncState.insert({ id: 'cursor', seq: position.seq, epoch: position.epoch, resume: position.resume ?? null, total: position.total ?? null })
+          : syncState.insert({ id: 'cursor', seq: position.seq, epoch: position.epoch, resume: position.resume ?? null, total: position.total ?? null, format: position.format ?? COPY_FORMAT })
         : syncState.has('cursor')
           ? syncState.delete('cursor')
           : null;
