@@ -69,6 +69,12 @@ interface Model {
   /** Note id to its tag names. */
   tags: Map<string, string[]>;
   resources: Map<string, Resource>;
+  /**
+   * Items that could not be read, by their path in the archive. Reported rather than
+   * thrown: one damaged or hand-edited item ending the run would leave every other note
+   * out, and on every retry, since the file would fail the same way each time.
+   */
+  unreadable: Array<{ path: string; reason: string }>;
 }
 
 /** Joplin's id as a note id here: the same 32 digits, dashed as a UUID is. */
@@ -110,6 +116,7 @@ async function readModel(window: BlobWindow, entries: TarEntry[]): Promise<Model
   const records = new Map<string, Record<string, string>>();
   const blobs = new Map<string, TarEntry>();
   const notes: NoteRef[] = [];
+  const unreadable: Model['unreadable'] = [];
 
   for (const entry of entries) {
     const parts = entry.name.split('/');
@@ -121,7 +128,13 @@ async function readModel(window: BlobWindow, entries: TarEntry[]): Promise<Model
     }
     if (!ITEM_RE.test(base)) continue;
 
-    const item = parseJoplinItem(await window.text(entry));
+    let item: ReturnType<typeof parseJoplinItem>;
+    try {
+      item = parseJoplinItem(await window.text(entry));
+    } catch (err) {
+      unreadable.push({ path: entry.name, reason: (err as Error).message });
+      continue;
+    }
     const { props } = item;
     const id = (props.id ?? '').toLowerCase();
     if (!id) continue;
@@ -180,7 +193,7 @@ async function readModel(window: BlobWindow, entries: TarEntry[]): Promise<Model
     resources.set(id, { id, name: resourceName(id, props), mime: props.mime || undefined, entry: blobs.get(id) });
   }
 
-  return { notes, notebooks, tags, resources };
+  return { notes, notebooks, tags, resources, unreadable };
 }
 
 /** A markdown link or image whose destination is a Joplin item: `[text](:/<id>)`, maybe with an anchor or a title. */
@@ -242,6 +255,7 @@ export async function importJoplin(
 
   try {
     const model = await readModel(window, await listTar(window));
+    for (const { path, reason } of model.unreadable) run.problem(path, reason);
     if (model.notes.length === 0) {
       throw new Error('This Joplin export holds no notes.');
     }

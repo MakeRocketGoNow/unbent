@@ -244,6 +244,17 @@ describe('importJoplin', () => {
     expect(names[2]).toBe(`${ID.pasted}.png`);
   });
 
+  it('reports an item it cannot read and imports the rest', async () => {
+    const { client, notes } = fakeClient();
+    const failures: Array<{ title: string; reason: string }> = [];
+    const files = jexFiles({ folders: [{ id: ID.kitchen, title: 'Kitchen' }], notes: [{ id: ID.soup, title: 'Soup', parent: ID.kitchen, body: 'Hot.' }] });
+    files.push([`${'f'.repeat(32)}.md`, new TextEncoder().encode('Damaged\n\nthis line is not a property')]);
+    const progress = await importJoplin({ name: 'x.jex', blob: new Blob([tar(files) as BlobPart]) }, client, { onFailure: (f) => failures.push(f) });
+    expect(progress.created).toBe(1);
+    expect(notes.map((n) => n.title)).toEqual(['Soup']);
+    expect(failures).toEqual([{ title: `${'f'.repeat(32)}.md`, reason: expect.stringMatching(/Not a Joplin item/) }]);
+  });
+
   it('refuses an export with no notes in it', async () => {
     const { client } = fakeClient();
     const empty = { name: 'x.jex', blob: jex({ folders: [{ id: ID.kitchen, title: 'Kitchen' }], notes: [] }) };
