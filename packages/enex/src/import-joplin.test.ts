@@ -223,6 +223,27 @@ describe('importJoplin', () => {
     );
   });
 
+  it('names attachments the way the upload accepts them', async () => {
+    const { client, files } = fakeClient();
+    const long = 'A very long title that someone pasted in '.repeat(30);
+    const note = { id: ID.soup, title: 'Odd names', parent: ID.kitchen, body: `[a](:/${ID.photo}) [b](:/${ID.photoAgain}) [c](:/${ID.pasted})` };
+    const archive = jex({
+      folders: [{ id: ID.kitchen, title: 'Kitchen' }],
+      notes: [note],
+      resources: [
+        { id: ID.photo, title: '.env', mime: 'text/plain', ext: '', bytes: new Uint8Array([1]) },
+        { id: ID.photoAgain, title: long, mime: 'image/png', ext: 'png', bytes: PNG },
+        { id: ID.pasted, title: '...', mime: 'image/png', ext: 'png', bytes: PNG },
+      ],
+    });
+    await importJoplin({ name: 'x.jex', blob: archive }, client);
+    const names = files.map((f) => f.filename);
+    expect(names[0]).toBe('env');
+    expect(names[1]!.length).toBe(768);
+    expect(names[1]!.endsWith('.png')).toBe(true);
+    expect(names[2]).toBe(`${ID.pasted}.png`);
+  });
+
   it('refuses an export with no notes in it', async () => {
     const { client } = fakeClient();
     const empty = { name: 'x.jex', blob: jex({ folders: [{ id: ID.kitchen, title: 'Kitchen' }], notes: [] }) };

@@ -91,8 +91,11 @@ export function resourceFilename(declared: string, md5: string, mime: string): s
   return truncate(name, `.${ext}`);
 }
 
-/** Strips what a filename may not carry, leaving the label as legible as it started. */
-function sanitizeLabel(declared: string): string {
+/**
+ * Strips what a filename may not carry, leaving the label as legible as it started. Shared
+ * with the Joplin importer, whose attachment titles are labels of the same kind.
+ */
+export function sanitizeLabel(declared: string): string {
   return declared
     .replace(/[/\\]/g, '-')
     // Control characters survive neither an R2 key nor a filesystem.
@@ -113,7 +116,7 @@ function sanitizeLabel(declared: string): string {
  * surrogate pair leaves a lone surrogate, which is not a well-formed string and would be
  * written into the R2 key as a replacement character.
  */
-function truncate(name: string, ext: string): string {
+export function truncate(name: string, ext: string): string {
   if (name.length + ext.length <= MAX_FILENAME_LENGTH) return `${name}${ext}`;
   let stem = name.slice(0, MAX_FILENAME_LENGTH - ext.length);
   // Slicing between the halves of a pair leaves a high surrogate at the end; drop it.
@@ -156,7 +159,8 @@ export function uniqueResourceFilenames(resources: EnexResource[]): EnexResource
   });
 }
 
-function nextAvailableFilename(desired: string, taken: Set<string>): string {
+/** `name.ext`, else `name-2.ext`, `name-3.ext` and on: the first not in `taken`. */
+export function nextAvailableFilename(desired: string, taken: Set<string>): string {
   if (!taken.has(desired)) return desired;
   const [stem, ext] = splitExt(desired);
   for (let n = 2; n < Number.MAX_SAFE_INTEGER; n += 1) {

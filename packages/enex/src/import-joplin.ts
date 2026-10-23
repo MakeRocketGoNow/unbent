@@ -13,6 +13,7 @@ import {
 } from './import-run.js';
 import { JoplinType, joplinTime, parseJoplinItem } from './joplin-item.js';
 import { contentHash, withSourceLink } from './note-body.js';
+import { nextAvailableFilename, sanitizeLabel, truncate } from './parse.js';
 import { fileDestination } from './notion-page.js';
 import { BlobWindow, listTar, type TarEntry } from './tar.js';
 
@@ -87,15 +88,19 @@ export function joplinIdToNoteId(id: string): string | undefined {
  * one pasted from the clipboard has none, and one made by an older client may have no
  * title at all. The extension Joplin stored is added when the title lacks it, so the
  * stored type and the preview both have something to go on.
+ *
+ * Cleaned by the ENEX importer's rules, since a title is the same kind of label an
+ * Evernote `<file-name>` is: separators and control characters out, a leading dot
+ * dropped (`filenameSchema` reserves it, so `.env` would be refused), and a long title
+ * cut to the limit with its extension kept. A name the upload refuses costs the note
+ * every attachment after it, on every run. A title with no letter or digit left is
+ * named for the resource's id instead.
  */
 function resourceName(id: string, props: Record<string, string>): string {
   const ext = (props.file_extension ?? '').replace(/[^0-9a-z]/gi, '').toLowerCase();
-  const base = (props.title || props.filename || id)
-    .replace(/[/\\]/g, '-')
-    // Control characters cannot be in a header, and the name travels in one.
-    .replace(/[\u0000-\u001f\u007f]/g, '')
-    .trim() || id;
-  return ext && !base.toLowerCase().endsWith(`.${ext}`) ? `${base}.${ext}` : base;
+  const label = sanitizeLabel(props.title || props.filename || '');
+  const base = /[\p{L}\p{N}]/u.test(label) ? label : id;
+  return ext && !base.toLowerCase().endsWith(`.${ext}`) ? truncate(base, `.${ext}`) : truncate(base, '');
 }
 
 async function readModel(window: BlobWindow, entries: TarEntry[]): Promise<Model> {
@@ -226,17 +231,6 @@ function linkedIds(body: string): string[] {
   return [...ids];
 }
 
-/** `scan.pdf`, then `scan-2.pdf`: two attachments of one note cannot share a name. */
-function unique(name: string, taken: Set<string>): string {
-  if (!taken.has(name)) return name;
-  const dot = name.lastIndexOf('.');
-  const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ''];
-  for (let n = 2; ; n += 1) {
-    const next = `${stem}-${n}${ext}`;
-    if (!taken.has(next)) return next;
-  }
-}
-
 export async function importJoplin(
   file: ArchiveSource,
   client: ImportClient,
@@ -311,7 +305,8 @@ async function importNote(ref: NoteRef, model: Model, ctx: NoteContext): Promise
       run.problem(ref.title || 'Untitled', `Attachment "${resource.name}" is missing from the export.`);
       continue;
     }
-    const name = unique(resource.name, taken);
+    // `scan.pdf`, then `scan-2.pdf`: two attachments of one note cannot share a name.
+    const name = nextAvailableFilename(resource.name, taken);
     taken.add(name);
     named.set(id, name);
     files.push({ name, resource: resource as Resource & { entry: TarEntry } });
