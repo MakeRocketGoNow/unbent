@@ -19,6 +19,9 @@ with each note's own notebook, tags, dates, fields, files and id, exactly as Set
 Import takes it in the browser. Nothing is read into memory whole: the zip is opened as a
 lazily read `Blob` and each entry pulled by byte range.
 
+A Joplin export (`.jex`, from File → Export all → JEX) arrives the same way, each note in
+its own Joplin notebook with its tags, dates, attachments and id.
+
 The first command asks which instance to use and remembers the answer, so nothing after it
 needs a URL. There is deliberately no default: a guessed instance means a forgotten flag can
 send a migration to a server you did not choose, and that failure is silent, because
@@ -56,7 +59,7 @@ same command again.
 | `--no-text` | Skip PDF text extraction: faster, but scans stay title-only |
 
 By default an `.enex` file's name becomes its notes' notebook, so `Recipes.enex` lands in a
-notebook called `Recipes`; an Unbent export's notes each name their own.
+notebook called `Recipes`; a Joplin or Unbent export's notes each name their own.
 
 ## Getting the .enex files
 
