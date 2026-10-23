@@ -6710,9 +6710,21 @@ select.note-field-input[data-filled]:hover:not(:disabled) {
   font-weight: 600;
 }
 
-.snackbar-action:hover,
-.snackbar-close:hover {
+/* Scoped under `.snackbar` and carrying `:not(:disabled)` so it outranks
+   `.btn-quiet:hover:not(:disabled)`, which also sets the ink: as a bare `:hover` rule it
+   lost, and a hovered Reload went `--fg` on `--fg`, a black blank in the light theme. The
+   ink is restated for the same reason. */
+.snackbar .snackbar-action:hover:not(:disabled),
+.snackbar .snackbar-close:hover:not(:disabled) {
   background: color-mix(in srgb, var(--bg) 18%, transparent);
+}
+
+.snackbar .snackbar-action:hover:not(:disabled) {
+  color: color-mix(in srgb, var(--accent) 55%, var(--bg));
+}
+
+.snackbar .snackbar-close:hover:not(:disabled) {
+  color: var(--bg);
 }
 
 /*
