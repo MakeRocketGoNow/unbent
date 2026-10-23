@@ -124,6 +124,14 @@ export async function listTar(window: BlobWindow): Promise<TarEntry[]> {
     const length = size(header);
     const type = String.fromCharCode(header[156] || 0x30);
     const dataAt = pos + BLOCK;
+    // An entry whose bytes run past the end is a copy cut short. `blob.slice` would hand
+    // back what is there without a word, and that would be uploaded as the whole file; a
+    // later import of the complete export would then find the name stored and skip it,
+    // so the broken copy would stay. Refusing the archive is the only safe answer. Joplin
+    // writes `resources/` after the items, so the entry cut is almost always a file.
+    if (dataAt + length > total) {
+      throw new Error('The export is cut short: the file ends partway through it. Copy the .jex again and import it.');
+    }
     pos = dataAt + Math.ceil(length / BLOCK) * BLOCK;
 
     if (type === 'x' || type === 'L') {

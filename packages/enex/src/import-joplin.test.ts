@@ -76,6 +76,13 @@ describe('listTar', () => {
     expect(entries.map((e) => e.name)).toEqual([long]);
   });
 
+  it('refuses an archive cut short inside an entry, rather than reading what is left of it', async () => {
+    const archive = tar([['a.md', new TextEncoder().encode('hello')], ['resources/b.pdf', new Uint8Array(3000)]]);
+    // Cut halfway through the second entry's bytes, as an interrupted copy would.
+    const cut = archive.subarray(0, 512 * 3 + 1000);
+    await expect(listTar(new BlobWindow(new Blob([cut as BlobPart])))).rejects.toThrow(/cut short/);
+  });
+
   it('refuses a file that is not a tar archive', async () => {
     const blob = new Blob([new Uint8Array(2048).fill(7) as BlobPart]);
     await expect(listTar(new BlobWindow(blob))).rejects.toThrow(/not a tar archive/);
