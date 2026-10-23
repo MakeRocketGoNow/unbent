@@ -581,7 +581,10 @@ are the reads that still go to the server, and search while
 there is a connection (see the search index, below); a new read of notes, notebooks, tags or
 files belongs in `derive.ts` with a case in its test, never in a request. A device whose
 browser has no file system to keep the copy in (`PersistenceUnavailableError`) falls back to
-the requests, which is the app as it was: nothing offline, nothing kept.
+the requests, which is the app as it was: nothing offline, nothing kept. So does a read made
+online while the library is still opening, after two seconds (`LIBRARY_READ_WAIT_MS` in
+`queries.ts`), and it is asked again once the open lands: an open can wait on another tab,
+and a page must never wait with it. Offline a read waits for the open.
 
 **Every note write goes through `store/actions.ts`,** never `api.x` from a component: the
 change lands on the local copy at once and goes to the server from a durable outbox

@@ -44,18 +44,68 @@ import { isWhole } from './store/feed.js';
  * refusing it in a private window, or a test. Every query below then asks the server
  * for what it would have derived, as the app did before the copy existed; nothing is
  * kept on the device, and nothing works offline, which is what such a browser had.
+ *
+ * Also null, for now, when there is a connection and the library is still opening after
+ * `LIBRARY_READ_WAIT_MS`: the read goes to the server, and once the open lands every
+ * library query is asked again and reads the copy (`rereadWhenOpen`). Offline the read
+ * waits for the open, since the server is no answer then.
  */
 async function library(): Promise<Library | null> {
   const open = currentLibrary();
   if (!open) return null;
-  let lib: Library;
+  let lib: Library | null;
   try {
-    lib = await open;
+    lib = offlineNow() ? await open : await openWithin(open, LIBRARY_READ_WAIT_MS);
   } catch {
+    return null;
+  }
+  if (!lib) {
+    rereadWhenOpen(open);
     return null;
   }
   await Promise.all([lib.notes.preload(), lib.notebooks.preload(), lib.tags.preload(), lib.attachments.preload()]);
   return lib;
+}
+
+/**
+ * How long a read waits for the library to open before asking the server instead.
+ *
+ * A warm open is milliseconds, so this is never felt on its own. What it is for is an
+ * open that waits on another tab: a tab the browser has frozen (Chrome's Memory Saver, a
+ * background tab on a phone) keeps the store's file locked in its worker and answers
+ * nothing, and the open waits out `LIBRARY_OPEN_TIMEOUT_MS` before the library gives up.
+ * Every read used to wait the same twenty seconds, and the note route's loader is one, so
+ * a reload beside a frozen tab was a white page until the tab was closed or the twenty
+ * seconds ran out; most people closed the tab first. Two seconds is a cold open on a
+ * desktop with room to spare. A phone's cold open can take longer, and then reads the
+ * server for its first screen, which is what the app did before the copy existed and
+ * costs one list's rows.
+ */
+const LIBRARY_READ_WAIT_MS = 2000;
+
+/** The open, or null if it has not landed within `ms`; a refused open still throws. */
+function openWithin(open: Promise<Library>, ms: number): Promise<Library | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), ms)));
+  return Promise.race([open, late]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * What `installLibraryQueries` asks again with, and the opens already being waited for,
+ * so that the reads which gave up on one open are asked again once, when it lands.
+ * Nothing else would ask: a holder's open fires no change of its own, and the server's
+ * answers would stay on screen until the feed next moved.
+ */
+let rereadAll: (() => void) | null = null;
+const awaitedOpens = new WeakSet<Promise<Library>>();
+
+function rereadWhenOpen(open: Promise<Library>): void {
+  if (awaitedOpens.has(open)) return;
+  awaitedOpens.add(open);
+  open.then(
+    () => rereadAll?.(),
+    () => {},
+  );
 }
 
 /**
@@ -121,6 +171,7 @@ export function installLibraryQueries(queryClient: QueryClient): () => void {
     void queryClient.invalidateQueries({ predicate: ({ queryKey }) => roots.has(String(queryKey[0])) });
   };
   const stopLibrary = onLibraryChange(refetch);
+  rereadAll = () => refetch(LIBRARY_ROOTS);
   const stopDirect = onDirectWrite(() => refetch(LIBRARY_ROOTS));
   /*
    * A reset is more than a change. The rows it brings can be older than a cached
@@ -151,6 +202,7 @@ export function installLibraryQueries(queryClient: QueryClient): () => void {
   });
   return () => {
     stopLibrary();
+    rereadAll = null;
     stopDirect();
     stopReset();
     stopIndexed();
