@@ -187,8 +187,9 @@ export function WhyPage() {
               page names no one else, so this is where a reader weighing the others goes
               next, and where a crawler finds them besides the sitemap. */}
           <p>
-            How Unbent stands beside Evernote, Notion and Joplin today, including what each
-            of them does better, is <Link to={COMPARE}>How Unbent compares</Link>.
+            How Unbent stands beside Evernote, Notion, Joplin and Paperless-ngx today,
+            including what each of them does better, is{' '}
+            <Link to={COMPARE}>How Unbent compares</Link>.
           </p>
         </Chapter>
 

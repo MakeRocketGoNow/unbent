@@ -8,7 +8,8 @@ import { keys } from '../queries.js';
 const useSession = vi.fn();
 vi.mock('../auth-client.js', () => ({ useSession: () => useSession() }));
 
-const { CompareIndexPage, JoplinComparison, EvernoteComparison, NotionComparison } = await import('./ComparePage.js');
+const { CompareIndexPage, JoplinComparison, EvernoteComparison, NotionComparison, PaperlessNgxComparison } =
+  await import('./ComparePage.js');
 const { COMPARE_META, COMPARISONS, comparison } = await import('./comparisons.js');
 
 /** The config seeded as `WhyPage.test` seeds it: the footer reads it and jsdom has no server. */
@@ -32,6 +33,7 @@ const PAGES = [
   ['evernote', EvernoteComparison],
   ['notion', NotionComparison],
   ['joplin', JoplinComparison],
+  ['paperless-ngx', PaperlessNgxComparison],
 ] as const;
 
 describe('ComparePage', () => {
@@ -74,7 +76,7 @@ describe('ComparePage', () => {
     const { findByRole } = harness(NotionComparison, '/compare/notion');
     const more = (await findByRole('heading', { name: 'More comparisons' })).parentElement!;
     const hrefs = [...more.querySelectorAll('a')].map((a) => a.getAttribute('href'));
-    expect(hrefs).toEqual(['/compare/evernote', '/compare/joplin', '/why']);
+    expect(hrefs).toEqual(['/compare/evernote', '/compare/joplin', '/compare/paperless-ngx', '/why']);
   });
 
   it('gives someone signed in their notes as the way out, and no trial', async () => {

@@ -10,7 +10,13 @@ import {
 } from '@tanstack/react-router';
 import { keys } from './queries.js';
 import { WhyPage, WHY_META } from './components/WhyPage.js';
-import { CompareIndexPage, EvernoteComparison, JoplinComparison, NotionComparison } from './components/ComparePage.js';
+import {
+  CompareIndexPage,
+  EvernoteComparison,
+  JoplinComparison,
+  NotionComparison,
+  PaperlessNgxComparison,
+} from './components/ComparePage.js';
 import { COMPARE_META, comparison } from './components/comparisons.js';
 import type { PageMeta } from './page-meta.js';
 
@@ -55,6 +61,11 @@ export const PAGES: Record<string, PrerenderedPage> = {
   '/compare/evernote': { component: EvernoteComparison, meta: comparison('evernote').meta, file: 'compare-evernote.html' },
   '/compare/notion': { component: NotionComparison, meta: comparison('notion').meta, file: 'compare-notion.html' },
   '/compare/joplin': { component: JoplinComparison, meta: comparison('joplin').meta, file: 'compare-joplin.html' },
+  '/compare/paperless-ngx': {
+    component: PaperlessNgxComparison,
+    meta: comparison('paperless-ngx').meta,
+    file: 'compare-paperless-ngx.html',
+  },
 };
 
 /** The page at `path`, as HTML for the inside of `#root`. */

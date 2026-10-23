@@ -45,6 +45,7 @@ export const PRERENDERED: Readonly<Record<string, string>> = {
   '/compare/evernote': '/compare-evernote.html',
   '/compare/notion': '/compare-notion.html',
   '/compare/joplin': '/compare-joplin.html',
+  '/compare/paperless-ngx': '/compare-paperless-ngx.html',
 };
 
 /** The pages under the front page's shell, in the order the sitemap lists them. */

@@ -7,8 +7,8 @@ import { FrontShell } from './FrontPage.js';
 import { COMPARE_META, COMPARISONS, comparison, type Comparison } from './comparisons.js';
 
 /**
- * Unbent beside another notes app, one page each: `/compare/evernote`, `/compare/notion`,
- * `/compare/joplin`, and `/compare` listing them.
+ * Unbent beside another app, one page each: `/compare/evernote`, `/compare/notion`,
+ * `/compare/joplin`, `/compare/paperless-ngx`, and `/compare` listing them.
  *
  * Written for someone already weighing the two, who knows the other app better than we
  * do and will stop trusting a table the moment it is one-sided. So every page has the same
@@ -234,3 +234,4 @@ function TrialCta() {
 export const EvernoteComparison = () => <ComparePage comparison={comparison('evernote')} />;
 export const NotionComparison = () => <ComparePage comparison={comparison('notion')} />;
 export const JoplinComparison = () => <ComparePage comparison={comparison('joplin')} />;
+export const PaperlessNgxComparison = () => <ComparePage comparison={comparison('paperless-ngx')} />;

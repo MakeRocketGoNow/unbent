@@ -110,7 +110,9 @@ describe('serveFrontPage', () => {
     expect(xml).toContain('<loc>https://unbent.example/why</loc>');
     expect(xml).toContain('<loc>https://unbent.example/pricing</loc>');
     expect(xml).toContain('<loc>https://unbent.example/support</loc>');
-    for (const app of ['', '/evernote', '/notion', '/joplin']) expect(xml).toContain(`<loc>https://unbent.example/compare${app}</loc>`);
+    for (const app of ['', '/evernote', '/notion', '/joplin', '/paperless-ngx']) {
+      expect(xml).toContain(`<loc>https://unbent.example/compare${app}</loc>`);
+    }
     expect(xml).not.toContain('/notes');
   });
 

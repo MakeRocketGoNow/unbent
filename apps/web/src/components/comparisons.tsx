@@ -44,8 +44,8 @@ import { CARD_IMAGE, type PageMeta } from '../page-meta.js';
  * like with like. A row whose answer is "the same" is left out rather than padded.
  */
 export interface Comparison {
-  slug: 'evernote' | 'notion' | 'joplin';
-  path: '/compare/evernote' | '/compare/notion' | '/compare/joplin';
+  slug: 'evernote' | 'notion' | 'joplin' | 'paperless-ngx';
+  path: '/compare/evernote' | '/compare/notion' | '/compare/joplin' | '/compare/paperless-ngx';
   name: string;
   meta: PageMeta;
   /** The line on `/compare`. */
@@ -67,7 +67,7 @@ export interface Comparison {
 export const COMPARE_META: PageMeta = {
   title: 'How Unbent compares',
   description:
-    'Unbent beside Evernote, Notion and Joplin: price, searching scans and PDFs, structured fields, offline, export, and what each does better than the other.',
+    'Unbent beside Evernote, Notion, Joplin and Paperless-ngx: price, searching scans and PDFs, structured fields, offline, export, and what each does better than the other.',
   image: CARD_IMAGE,
 };
 
@@ -546,6 +546,159 @@ export const COMPARISONS: readonly Comparison[] = [
       { label: 'Joplin: version 3.7', href: 'https://joplinapp.org/news/20260831-release-3-7/' },
       { label: 'Joplin: AI and MCP', href: 'https://joplinapp.org/help/apps/ai_mcp/' },
       { label: 'Joplin: licence', href: 'https://github.com/laurent22/joplin/blob/dev/LICENSE' },
+    ],
+  },
+  {
+    slug: 'paperless-ngx',
+    path: '/compare/paperless-ngx',
+    name: 'Paperless-ngx',
+    meta: {
+      title: 'Unbent vs Paperless-ngx',
+      description:
+        'Paperless-ngx is a free document system you run yourself; Unbent is a hosted archive with notes beside the documents. How they compare on reading scans, fields, phones and offline, export, AI, and what each does better.',
+      image: CARD_IMAGE,
+    },
+    summary: 'For someone who could run a free document system on a machine of their own, and wants to know what a hosted one with notes adds.',
+    lead: 'Paperless-ngx and Unbent do the same job: paper goes in, is read, and is found again by what it says. Paperless-ngx is free, open source and run by you, on a machine of yours that stays on. Unbent is hosted, works on a phone and offline, and keeps notes beside the documents. If you already run a server and want nobody else to hold your paperwork, run Paperless-ngx. This page is for deciding whether to run one at all.',
+    checked: CHECKED,
+    chooseUnbent: [
+      'You want it hosted: nothing to install, update, back up or keep switched on.',
+      'You keep notes with the paperwork, in Markdown, and not only the documents themselves.',
+      'You want it on a phone, in any browser, and working offline.',
+      'You want an AI assistant working in it over the web, with every edit it makes kept in history.',
+    ],
+    chooseThem: [
+      'You want to run it yourself, free, on hardware you own, with nobody else holding your documents.',
+      'A scanner, a watched folder or a mailbox feeds your archive, and you want rules to run as documents arrive.',
+      'Several people use the archive, with permissions and share links.',
+      'You keep documents, not notes.',
+    ],
+    whyTheyDiffer: (
+      <>
+        <p>
+          Both read every page that arrives and find it again by what it said; Paperless-ngx
+          has done it for longer and does more of the organising, with correspondents and
+          document types across the whole archive and a pipeline that runs rules as documents
+          come in. The difference is where it runs, and what else is there.
+        </p>
+        <p>
+          Paperless-ngx is software you host: a Docker Compose stack with a database and a
+          broker beside it, on a machine that stays on, reached over your network, with your
+          documents on your own disk and nobody else&apos;s. Unbent is a service: the same
+          reading, on a server we run, from any browser and a phone that works offline, with
+          Markdown notes and typed fields beside the files, and an export of plain folders so
+          that leaving is as easy as it is with a folder of your own. Whether running a
+          server is a cost or a feature to you decides this page.
+        </p>
+      </>
+    ),
+    rows: [
+      {
+        topic: 'Price',
+        unbent: US.price,
+        them: 'Free (GPL-3.0). You run it: Docker Compose with a database and a Redis-compatible broker beside it, on a computer or NAS that stays on. Hosts that run it for you are listed on its wiki, at their own prices.',
+      },
+      {
+        topic: 'Searching inside files',
+        unbent: US.search,
+        them: 'Every document is read on arrival (Tesseract, in over a hundred languages; Office files and email through Tika), and search ranks and highlights matches and finds similar documents. PDFs and images, printed text.',
+      },
+      {
+        topic: 'Fields and tables',
+        unbent: US.fields,
+        them: 'Custom fields of nine types (text, date, money, select, a link to another document and more), plus tags, correspondents, document types and storage paths across the whole archive, and saved views that filter the list by any of them.',
+      },
+      {
+        topic: 'Offline',
+        unbent: US.offline,
+        them: 'None: it is a web page served by your own machine, reached over your network or a VPN.',
+      },
+      {
+        topic: 'Encryption',
+        unbent: US.encryption,
+        them: 'Plain files on your own disk, behind whatever HTTPS you set up. Nobody else holds them.',
+      },
+      {
+        topic: 'Export',
+        unbent: US.export,
+        them: 'The exporter writes every original, its PDF/A copy and a manifest of its tags and fields to a folder or zip, from the command line, and the importer reads it back into an empty install of the same version. The files on disk are readable as they are.',
+      },
+      {
+        topic: 'Apps',
+        unbent: US.apps,
+        them: 'A web app that works in a phone’s browser. Phone apps are third-party, listed on its wiki. Nothing to install on a device, and no desktop app.',
+      },
+      {
+        topic: 'AI and assistants',
+        unbent: US.ai,
+        them: 'A classifier trained on your own documents suggests tags, correspondent and type for each new one. Opt-in and off by default, a model of your choosing (OpenAI-compatible or Ollama) suggests titles and dates too and answers questions about documents. A REST API with tokens; no MCP server of its own.',
+      },
+      { topic: 'Sharing', unbent: US.sharing, them: 'Several users with permissions per document, and public share links that can expire.' },
+      { topic: 'Source', unbent: US.source, them: 'Open source (GPL-3.0), on your own machine.' },
+    ],
+    weDoBetter: [
+      {
+        title: 'Nothing to run',
+        body: 'Sign in and it is there. No Docker, no database to back up, no updates to apply, no machine that has to stay on, and nothing that stops working while you are away from home.',
+      },
+      {
+        title: 'Notes beside the documents',
+        body: 'A receipt in Unbent is a note: Markdown you can write in, with the scan attached and the date and total in its fields. Paperless-ngx keeps documents, with a note on each; the writing happens somewhere else.',
+      },
+      {
+        title: 'Notebooks that work like a spreadsheet',
+        body: 'A notebook’s fields are its columns: receipts as a table with a total at the bottom, warranties sorted by when they run out. Paperless-ngx filters a list by a field; it does not add one up.',
+      },
+      {
+        title: 'A phone that works, offline too',
+        body: 'Any browser on any phone, installable, with your notes, notebooks and tags kept on the device and the files of the notebooks you choose. Paperless-ngx is a page on your server and has to reach it.',
+      },
+      {
+        title: 'Assistants over the web',
+        body: 'Claude, ChatGPT and others connect with a sign-in and work in your notes from anywhere, with every edit kept in the note’s history and marked as theirs. Paperless-ngx has a REST API, and wiring an assistant to it is yours to do.',
+      },
+    ],
+    theyDoBetter: [
+      {
+        title: 'Your hardware, nobody else’s',
+        body: `Free, open source, and every document on a disk you own, behind a door you lock. Unbent is a service: a server we run reads your paperwork, and it costs $${PLAN_PRICE_USD} a year.`,
+      },
+      {
+        title: 'A pipeline',
+        body: 'A watched folder a scanner drops into, mailboxes it fetches attachments from on rules, workflows that tag, file, rename and notify as documents arrive, and a PDF/A copy of everything for the long run. Unbent takes files dropped on it, opened with it from a scanner, or sent by an assistant, and files them on a press.',
+      },
+      {
+        title: 'Organising the whole archive',
+        body: 'Correspondents and document types across every document, nested tags, storage paths that name folders on disk, saved views, and several people with permissions per document and share links. Unbent’s fields belong to a notebook, and an account is one person’s.',
+      },
+    ],
+    switching: {
+      title: 'Moving between them',
+      body: (
+        <>
+          <p>
+            Unbent does not read Paperless-ngx&apos;s export, and does not need to: the export
+            is your original files. Run the exporter, drop the originals on Unbent&apos;s note
+            list, and each becomes a note with its file attached and its text read; Auto-fill
+            fills in the date, total and sender on a press, and an assistant can do it across
+            a notebook. Tags, correspondents and custom fields do not come across.
+          </p>
+          <p>
+            The other way is as easy, on purpose: Unbent&apos;s export is a folder per note
+            with its files beside it, and Paperless-ngx&apos;s consume folder takes files as
+            they are.
+          </p>
+        </>
+      ),
+    },
+    sources: [
+      { label: 'Paperless-ngx: what it is', href: 'https://docs.paperless-ngx.com/' },
+      { label: 'Paperless-ngx: usage (fields, workflows, mail, sharing)', href: 'https://docs.paperless-ngx.com/usage/' },
+      { label: 'Paperless-ngx: setup', href: 'https://docs.paperless-ngx.com/setup/' },
+      { label: 'Paperless-ngx: the exporter', href: 'https://docs.paperless-ngx.com/administration/' },
+      { label: 'Paperless-ngx: the API', href: 'https://docs.paperless-ngx.com/api/' },
+      { label: 'Paperless-ngx: source and licence', href: 'https://github.com/paperless-ngx/paperless-ngx' },
+      { label: 'Paperless-ngx: phone apps and hosts', href: 'https://github.com/paperless-ngx/paperless-ngx/wiki/Related-Projects' },
     ],
   },
 ];

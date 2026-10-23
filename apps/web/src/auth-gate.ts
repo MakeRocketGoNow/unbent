@@ -123,6 +123,7 @@ export const COMPARE_PATHS: ReadonlySet<string> = new Set([
   '/compare/evernote',
   '/compare/notion',
   '/compare/joplin',
+  '/compare/paperless-ngx',
 ]);
 
 /**
