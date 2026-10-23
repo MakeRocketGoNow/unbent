@@ -259,6 +259,19 @@ describe('importJoplin', () => {
     expect(failures.filter((f) => f.title === 'Kettle receipt')).toHaveLength(1);
   });
 
+  it('reports an attachment exported still encrypted rather than uploading its ciphertext', async () => {
+    const { client, files } = fakeClient();
+    const failures: Array<{ title: string; reason: string }> = [];
+    const archive = jex({
+      folders: [{ id: ID.kitchen, title: 'Kitchen' }],
+      notes: [{ id: ID.soup, title: 'Soup', parent: ID.kitchen, body: `![](:/${ID.photo})` }],
+      resources: [{ id: ID.photo, title: 'pot.png', mime: 'image/png', ext: 'png', bytes: PNG, blobEncrypted: true }],
+    });
+    await importJoplin({ name: 'x.jex', blob: archive }, client, { onFailure: (f) => failures.push(f) });
+    expect(files).toEqual([]);
+    expect(failures).toEqual([{ title: 'Soup', reason: expect.stringMatching(/"pot.png" is still encrypted/) }]);
+  });
+
   it('reports an item it cannot read and imports the rest', async () => {
     const { client, notes } = fakeClient();
     const failures: Array<{ title: string; reason: string }> = [];

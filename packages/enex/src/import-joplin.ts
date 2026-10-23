@@ -58,8 +58,10 @@ interface Resource {
   /** The name it is uploaded under, before any de-duplication within a note. */
   name: string;
   mime: string | undefined;
-  /** Missing when the export holds the record but not the bytes. */
+  /** Missing when the export holds the record but not the bytes, or the bytes are still encrypted. */
   entry: TarEntry | undefined;
+  /** Joplin exported the record or its bytes still encrypted, so there is nothing to read. */
+  encrypted: boolean;
 }
 
 interface Model {
@@ -191,7 +193,17 @@ async function readModel(window: BlobWindow, entries: TarEntry[], signal: AbortS
 
   const resources = new Map<string, Resource>();
   for (const [id, props] of records) {
-    resources.set(id, { id, name: resourceName(id, props), mime: props.mime || undefined, entry: blobs.get(id) });
+    // An attachment Joplin had not decrypted when it exported is ciphertext: its record has
+    // no real name or type, or its bytes are encrypted. Uploading it would store gibberish
+    // under a plausible name, so it is treated as missing and said to be encrypted.
+    const encrypted = props.encryption_applied === '1' || props.encryption_blob_encrypted === '1';
+    resources.set(id, {
+      id,
+      name: resourceName(id, props),
+      mime: props.mime || undefined,
+      entry: encrypted ? undefined : blobs.get(id),
+      encrypted,
+    });
   }
 
   return { notes, notebooks, tags, resources, unreadable };
@@ -334,7 +346,11 @@ async function importNote(ref: NoteRef, model: Model, ctx: NoteContext): Promise
     const resource = model.resources.get(id);
     if (!resource) continue;
     if (!resource.entry) {
-      problems.push(`Attachment "${resource.name}" is missing from the export.`);
+      problems.push(
+        resource.encrypted
+          ? `Attachment "${resource.name}" is still encrypted in the export. Unlock it in Joplin and export again.`
+          : `Attachment "${resource.name}" is missing from the export.`,
+      );
       continue;
     }
     // `scan.pdf`, then `scan-2.pdf`: two attachments of one note cannot share a name.

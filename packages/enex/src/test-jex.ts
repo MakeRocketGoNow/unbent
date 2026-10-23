@@ -84,6 +84,8 @@ export interface JexResource {
   ext: string;
   /** Omit to leave the record in the export without its bytes. */
   bytes?: Uint8Array;
+  /** The bytes are still Joplin's ciphertext: `encryption_blob_encrypted: 1`. */
+  blobEncrypted?: boolean;
 }
 
 export interface JexContent {
@@ -130,6 +132,7 @@ export function jexFiles(content: JexContent): Array<[string, Uint8Array]> {
     add(`${r.id}.md`, serialize(4, RESOURCE_FIELDS, {
       id: r.id, mime: r.mime, filename: '', created_time: T0, updated_time: T0, user_created_time: T0,
       user_updated_time: T0, file_extension: r.ext, size: r.bytes?.length ?? 0, blob_updated_time: T0,
+      encryption_blob_encrypted: r.blobEncrypted ? 1 : 0,
     }, r.title));
     if (r.bytes) files.push([`resources/${r.id}${r.ext ? `.${r.ext}` : ''}`, r.bytes]);
   }
