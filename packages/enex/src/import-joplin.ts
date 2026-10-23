@@ -250,6 +250,18 @@ export function rewriteJoplinLinks(body: string, resolve: (id: string) => Joplin
     });
 }
 
+/**
+ * The ids a body shows as pictures: `![…](:/<id>)` or `<img src=":/<id>">`. A note is
+ * never one, so an id here that is no resource in the export is a picture whose record
+ * Joplin left out (it leaves `:/<id>` behind when a resource is deleted).
+ */
+function pictureIds(body: string): Set<string> {
+  const ids = new Set<string>();
+  for (const m of body.matchAll(/!\[[^\]\n]*\]\(\s*<?:\/([0-9a-f]{32})/gi)) ids.add(m[1]!.toLowerCase());
+  for (const m of body.matchAll(IMG_RE)) ids.add(m[2]!.toLowerCase());
+  return ids;
+}
+
 /** The ids of the items a body links to, in order of first appearance. */
 function linkedIds(body: string): string[] {
   const ids = new Set<string>();
@@ -342,9 +354,13 @@ async function importNote(ref: NoteRef, model: Model, ctx: NoteContext): Promise
   const files: Array<{ name: string; resource: Resource & { entry: TarEntry } }> = [];
   const named = new Map<string, string>();
   const taken = new Set<string>();
+  const pictures = pictureIds(source);
   for (const id of linkedIds(source)) {
     const resource = model.resources.get(id);
-    if (!resource) continue;
+    if (!resource) {
+      if (pictures.has(id) && !ctx.noteIds.has(id)) problems.push('A picture is missing from the export.');
+      continue;
+    }
     if (!resource.entry) {
       problems.push(
         resource.encrypted

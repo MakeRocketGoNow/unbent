@@ -272,6 +272,18 @@ describe('importJoplin', () => {
     expect(failures).toEqual([{ title: 'Soup', reason: expect.stringMatching(/"pot.png" is still encrypted/) }]);
   });
 
+  it('reports a picture whose record is not in the export, but not a link to a note left out', async () => {
+    const { client } = fakeClient();
+    const failures: Array<{ title: string; reason: string }> = [];
+    const gone = 'f'.repeat(32);
+    const archive = jex({
+      folders: [{ id: ID.kitchen, title: 'Kitchen' }],
+      notes: [{ id: ID.soup, title: 'Soup', parent: ID.kitchen, body: `![pot](:/${gone})\n\nSee [elsewhere](:/${'e'.repeat(32)}).` }],
+    });
+    await importJoplin({ name: 'x.jex', blob: archive }, client, { onFailure: (f) => failures.push(f) });
+    expect(failures).toEqual([{ title: 'Soup', reason: 'A picture is missing from the export.' }]);
+  });
+
   it('reports an item it cannot read and imports the rest', async () => {
     const { client, notes } = fakeClient();
     const failures: Array<{ title: string; reason: string }> = [];
