@@ -68,8 +68,11 @@ of all this is in `AGENTS.md` under "Sample notes, and shooting the app".
 ## The graphics
 
 `icon.svg` and `feature.svg` are the sources, rendered with `rsvg-convert`. The icon is a
-pixel-faithful reproduction of the launcher icon: same white "U" path and same `#2F6B4F`
-green as `res/drawable/ic_launcher_{foreground,background}.xml`. Re-render after any change:
+pixel-faithful reproduction of the launcher icon as a launcher shows it: same white "U" path
+and same `#2F6B4F` green as `res/drawable/ic_launcher_{foreground,background}.xml`, on the
+whole square, where the launcher foreground scales the path by 72/108 because a launcher
+shows only the middle of an adaptive icon. The web app's icons are renders of this file.
+Re-render after any change:
 
 ```sh
 rsvg-convert -w 512 -h 512 icon.svg -o icon-512.png
