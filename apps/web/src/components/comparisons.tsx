@@ -21,6 +21,10 @@ import { CARD_IMAGE, type PageMeta } from '../page-meta.js';
  *   strengths were left to table cells while the other app's had a heading and prose,
  *   and a reader came away thinking the other app was the choice. Each list is about
  *   what the reader cares about, not a consolation ("great community!").
+ * - **Name a trade for what it actually costs.** Not being end-to-end encrypted does not
+ *   make searching inside files possible (Joplin searches inside its own, on the device);
+ *   it makes searching a whole archive possible without every device holding it. A cell
+ *   that said the first taught the reader something false about encryption.
  * - **Say each of our gaps once,** in the row or the point it belongs to, and nowhere
  *   else. The table's cells once each ended in a caveat, and a column of apologies read
  *   as worse than the facts in it.
@@ -82,13 +86,13 @@ const US = {
   offline: (
     <>
       In any browser, phone included: your notes, notebooks and tags are kept on the
-      device, and the files of the notebooks you choose.
+      device and searchable there, with the files of the notebooks you choose.
     </>
   ),
   encryption: (
     <>
-      Encrypted in transit and at rest. Not end-to-end, which is what lets the server
-      search inside your files.
+      Encrypted in transit and at rest. Not end-to-end: the server reads your notes, so it
+      can search all of them without every device downloading them first.
     </>
   ),
   export: (
@@ -448,7 +452,7 @@ export const COMPARISONS: readonly Comparison[] = [
     theyDoBetter: [
       {
         title: 'Privacy',
-        body: 'With end-to-end encryption on, the place your notes sync to holds only ciphertext. Unbent’s server can read your notes; that is how it searches inside your files.',
+        body: 'With end-to-end encryption on, the place your notes sync to holds only ciphertext, and each device decrypts and searches its own copy. Unbent’s server can read your notes, which is what lets it search a whole archive without every device downloading it first.',
       },
       {
         title: 'Open source, plugins and native apps',
