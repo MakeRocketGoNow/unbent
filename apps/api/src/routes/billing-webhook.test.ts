@@ -5,7 +5,8 @@ import { signWebhook } from '../lib/stripe.js';
 import type { AppEnv } from '../types.js';
 
 /**
- * The webhook's half of a refund: the one place the Worker acts on Stripe from an event.
+ * The webhook's half of a refund, and the other open checkouts a new subscription ends:
+ * the places the Worker acts on Stripe from an event. For a refund,
  * `billing-events.test.ts` decides the effect from an invoice it is handed; this is the
  * route that finds that invoice (a dispute's charge for its customer, the charge's
  * payment intent, its invoice payments, the invoice), makes the call the effect asks
@@ -81,6 +82,8 @@ function stripeStandIn(inv: ReturnType<typeof invoice>, refuse?: string, sent: s
     if (call === 'GET /v1/subscriptions/sub_1') return Response.json(SUBSCRIPTION);
     if (call === 'DELETE /v1/subscriptions/sub_1') return Response.json({ ...SUBSCRIPTION, status: 'canceled' });
     if (call === 'POST /v1/subscriptions/sub_1') return Response.json({ ...SUBSCRIPTION, items: { data: [], has_more: false } });
+    if (call === 'GET /v1/checkout/sessions') return Response.json({ data: [{ id: 'cs_twin', url: null }], has_more: false });
+    if (call === 'POST /v1/checkout/sessions/cs_twin/expire') return Response.json({ id: 'cs_twin', url: null });
     return Response.json({ error: { message: `no stand-in for ${call}` } }, { status: 404 });
   });
   return calls;
@@ -190,6 +193,35 @@ describe('the webhook on a refund', () => {
     const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
     const d = db();
     const res = await deliver(refund(8400), d);
+    quiet.mockRestore();
+    expect(res.status).toBe(502);
+    expect(d.written).toEqual([]);
+  });
+});
+
+describe('the webhook on a new subscription', () => {
+  /** Two presses at the same moment each open a session; once one is paid, the other must not stay payable. */
+  it("ends the customer's other open checkouts before applying the subscription", async () => {
+    const calls = stripeStandIn(PLAN_AND_STORAGE);
+    const d = db();
+    const res = await deliver({ type: 'customer.subscription.created', object: SUBSCRIPTION }, d);
+    expect(res).toEqual({ status: 200, body: { applied: true } });
+    expect(calls).toEqual(['GET /v1/checkout/sessions', 'POST /v1/checkout/sessions/cs_twin/expire']);
+    expect(d.written).toEqual(['INSERT OR IGNORE', 'UPDATE account_plan SET']);
+  });
+
+  it('leaves open checkouts alone on any other subscription event', async () => {
+    const calls = stripeStandIn(PLAN_AND_STORAGE);
+    await deliver({ type: 'customer.subscription.updated', object: SUBSCRIPTION }, db());
+    expect(calls).toEqual([]);
+  });
+
+  /** Recorded only once the sessions are ended: an event written down here would never be delivered again, and the twin would stay payable. */
+  it('answers 502 and records nothing when Stripe refuses the list, so the event is delivered again', async () => {
+    stripeStandIn(PLAN_AND_STORAGE, 'GET /v1/checkout/sessions');
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const d = db();
+    const res = await deliver({ type: 'customer.subscription.created', object: SUBSCRIPTION }, d);
     quiet.mockRestore();
     expect(res.status).toBe(502);
     expect(d.written).toEqual([]);

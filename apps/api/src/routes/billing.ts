@@ -342,8 +342,9 @@ export const billing = new Hono<AppEnv>()
    * both write the same thing and a late one writes nothing. A refund cancel is the
    * exception below.
    *
-   * A refund is the one event that acts on Stripe rather than only on the row
-   * (`refundEffectOf`): the subscription is cancelled, or its add-on removed, before
+   * A refund is one of two events that act on Stripe rather than only on the row
+   * (`refundEffectOf`; the other is a new subscription, which ends the customer's
+   * other open checkouts, below): the subscription is cancelled, or its add-on removed, before
    * anything is recorded, so a call Stripe refuses or does not answer is a 502 and the
    * event is delivered again: the row does not yet hold the refund's end, and the retry
    * asks again, even when a cancel that went through unanswered has since made the row
@@ -410,6 +411,23 @@ export const billing = new Hono<AppEnv>()
     if (!row) {
       console.log(`[billing] ${type} ${id} names no account (customer ${customerId ?? 'none'})`);
       return c.json({ applied: false, reason: 'no account' });
+    }
+    // A subscription made is a checkout paid, so any other checkout of the customer's
+    // that is still open is a second subscription waiting to happen. The route expires
+    // open sessions before it makes one, but two presses at the same moment each find
+    // none and each make one, and nothing then ends the loser: paying it in the other
+    // tab would be a subscription `theRows` keeps off the row, renewing every year.
+    // Ended here, on `customer.subscription.created` rather than
+    // `checkout.session.completed`, because the endpoint already receives it and a new
+    // event type would be a change to every instance's endpoint. Before anything is
+    // recorded, as for a refund, so a refused call is a 502 and the event is delivered
+    // again; the row still hears of the checkout meanwhile from its `invoice.paid`.
+    if (type === 'customer.subscription.created') {
+      try {
+        await expireOpenCheckouts(stripe, customerId!);
+      } catch (err) {
+        return stripeRefused(err, `end the other checkouts after ${id}`, row.userId);
+      }
     }
     const now = Date.now();
     const stripeEvent: StripeEvent = { id, type, created, data: data as unknown as StripeEvent['data'] };
