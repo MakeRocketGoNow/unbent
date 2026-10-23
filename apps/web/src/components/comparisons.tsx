@@ -315,11 +315,11 @@ export const COMPARISONS: readonly Comparison[] = [
     meta: {
       title: 'Unbent vs Joplin',
       description:
-        'Joplin is free and open source; Unbent is a paid, hosted archive. How they compare on searching scans, fields, encryption, offline and export, and what Joplin does better.',
+        'Joplin is open source and end-to-end encrypted; Unbent is a hosted archive. How they compare on searching scans, fields, encryption, offline and export, and what Joplin does better.',
       image: CARD_IMAGE,
     },
-    summary: 'For someone weighing a free, open-source app they run themselves against a hosted one. Joplin wins on price and privacy.',
-    lead: 'Joplin is free, open source and end-to-end encrypted, and you bring the place it syncs to. Unbent is a paid, hosted service built around one job: an archive of paperwork you find by what it says and sort by its fields.',
+    summary: 'For someone weighing an open-source app they run themselves against a hosted one. Joplin wins on privacy.',
+    lead: 'Joplin is open source and end-to-end encrypted, and you bring the place it syncs to. Unbent is a hosted service built around one job: an archive of paperwork you find by what it says and sort by its fields.',
     checked: CHECKED,
     chooseUnbent: [
       'You want nothing to set up: no sync target, no server, no plugins to choose.',
@@ -329,9 +329,8 @@ export const COMPARISONS: readonly Comparison[] = [
     ],
     chooseThem: [
       'You want end-to-end encryption, so no server can read your notes.',
-      'You want it free, or open source, or both.',
+      'You want it open source, and are happy to run your own sync.',
       'You want native desktop apps, Linux included, and a plugin for everything.',
-      'You are happy to run your own sync.',
     ],
     rows: [
       {
@@ -381,10 +380,6 @@ export const COMPARISONS: readonly Comparison[] = [
       {
         title: 'Privacy',
         body: 'With end-to-end encryption on, the place your notes sync to holds only ciphertext. Unbent’s server can read your notes; that is how it searches inside your files, and it is a real trade.',
-      },
-      {
-        title: 'Price',
-        body: 'Free, with your own storage, or a few euros a month for Joplin Cloud. Unbent has no free plan.',
       },
       {
         title: 'Open source and extensible',
