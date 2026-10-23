@@ -172,4 +172,5 @@ Older commits carry the text of an earlier license from before the repository wa
 Nothing was ever distributed under it, and it grants no rights; [LICENSE.md](LICENSE.md)
 says so at the top.
 
-Contributions are accepted under the same terms; see [CONTRIBUTING.md](CONTRIBUTING.md).
+Bug reports and ideas are welcome as issues; outside pull requests are not being accepted
+for now. See [CONTRIBUTING.md](CONTRIBUTING.md).
