@@ -28,9 +28,9 @@ import {
  * UI with no progress and no way to cancel. The worker also owns the fetch calls, so
  * uploads do not compete with rendering.
  *
- * Four formats arrive here (Evernote's ENEX, this app's own export, Notion's and Joplin's), and
- * they share everything past the reader: the same client below, the same progress, the
- * same events. A zip is one of the last two, and only its entries say which, so a picked
+ * Four formats arrive here (Evernote's ENEX, Joplin's JEX, this app's own export and
+ * Notion's), and they share everything past the reader: the same client below, the same
+ * progress, the same events. A zip is one of the last two, and only its entries say which, so a picked
  * zip is described first: the panel learns whether it is Notion's and, if so, what it
  * holds, before Start is pressed.
  *
