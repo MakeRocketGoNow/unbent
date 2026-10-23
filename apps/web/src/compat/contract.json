@@ -1,5 +1,5 @@
 {
-  "level": 2,
+  "level": 3,
   "requests": {
     "attachmentTextsSchema": {
       "type": "object",
@@ -1596,14 +1596,14 @@
       "apps/web/src/store/actions.ts › Upload": "f3e15b057c8f6aea",
       "apps/web/src/store/actions.ts › UploadNotice": "4a392e7eb00d2609|32259a5774|b843c5048c|f893f168f6",
       "apps/web/src/store/actions.ts › WritableLibrary": "f22611b1dcd067de|121cac71eb|ba8fb3dbd6|f88dcecf8f",
-      "apps/web/src/store/collections.ts": "845bbffa791ea2ce",
+      "apps/web/src/store/collections.ts": "b1df5c6700cad844",
       "apps/web/src/store/db.ts": "1112b85c56db26a7",
       "apps/web/src/store/feed.ts › Controls": "725c257ecea20698|037e5ed408|0b3b13f373|41028453ef|4390ae536f|88615d9f00|8a9bfce6cf|cec404ef6b",
       "apps/web/src/store/feed.ts › Cursor": "afbb0c20f1b402de|2f4963387f|489ae4153b",
       "apps/web/src/store/feed.ts › FeedControls": "ac84a65c5bbd7add|073711cc47|116d6ce349|76e08bd55e|c9da943531",
       "apps/web/src/store/feed.ts › FeedOptions": "91d774330e3fd59d|0dbcdec68c|2265ead387|2cceef60c4|51281137de|54024d50c1|58ddfad18c|7d65bb6c0c|93f1a0f949|c6798ed649|e659517e93",
       "apps/web/src/store/feed.ts › FeedState": "1ee472de90e0466d|1735534a42|39dcf42a2d|3c5c771861|d3859aa432|d3d1b76809|db17a42f65|ddd7d305b0",
-      "apps/web/src/store/feed.ts › Position": "c2f9db6cb5e5287b|8f0f8166cd|f046fd63c5",
+      "apps/web/src/store/feed.ts › Position": "c2f9db6cb5e5287b|8f0f8166cd|c63a6b8f8f|f046fd63c5",
       "apps/web/src/store/feed.ts › StallStep": "71d4a4b9aa062e2a",
       "apps/web/src/store/search-index.ts": "09c5d550df865b7d"
     },

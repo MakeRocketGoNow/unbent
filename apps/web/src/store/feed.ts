@@ -39,7 +39,26 @@ export interface Cursor {
 export interface Position extends Cursor {
   resume?: string | null;
   total?: number | null;
+  /** The `COPY_FORMAT` the rows beside it were written in, as the cursor store read it; the store stamps the current one on every write. */
+  format?: number;
 }
+
+/**
+ * What the rows a cursor stands beside were written by. A stored position from an older
+ * format is a copy that cannot be trusted, and the next pull empties the collections and
+ * walks again, as for a `reset`, once per device.
+ *
+ * 2: before `feedControls` named the keys a row dropped, the persistence layer kept them
+ * in the file, so a restored note could load from disk still trashed (2026-10-23). The
+ * rows that are wrong cannot be told from the rest. This is a cursor's number rather
+ * than the collections' `schemaVersion`, because a schema bump resets only a collection
+ * that syncs: the cursor's own collection refuses it, and the library never opened.
+ *
+ * A raise costs every device of every account a whole copy from empty on its first pull
+ * with a connection after the deploy: minutes of "Copying your notes" on a phone with an
+ * archive, with the keeper and the search index standing down until it is whole.
+ */
+export const COPY_FORMAT = 2;
 
 /** What a collection's sync function gives the engine, plus whether it holds a key. */
 export interface Controls<T extends object> {
@@ -149,6 +168,15 @@ export class FeedEngine {
   private controls: Partial<FeedControls> = {};
   private running: Promise<void> | null = null;
   private again = false;
+  /**
+   * The stored cursor stands beside rows of an older `COPY_FORMAT`. The copy is emptied
+   * only once the feed has answered, as a `reset` is, never on the read of the cursor:
+   * emptied offline, the library stays empty until a connection returns, and the app
+   * opens with no connection and works. Kept until the emptying has happened, since the
+   * cursor in `state` is followed as it is from the second pull on, and a page applied
+   * from it would stamp the new format on the old rows.
+   */
+  private staleCopy = false;
   private stopped = false;
   private readonly stopping = new AbortController();
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -304,6 +332,9 @@ export class FeedEngine {
   private async once(): Promise<void> {
     if (!this.state.cursor) {
       const stored = await this.watched('reading the cursor', this.options.readCursor());
+      // A walk under way is not stale: its rows went into empty collections, and a key
+      // survives only where a row the feed sent later was written over one already held.
+      if (stored?.format !== undefined && stored.format < COPY_FORMAT && !stored.resume) this.staleCopy = true;
       if (!stored || stored.resume) {
         await this.snapshot(stored);
         return;
@@ -317,10 +348,11 @@ export class FeedEngine {
         `/api/changes?since=${c.seq}&epoch=${encodeURIComponent(c.epoch)}&limit=${limit}`,
         this.stopping.signal,
       );
-      if (page.reset) {
+      if (page.reset || this.staleCopy) {
         this.state.phase = 'reset';
         this.changed();
         await this.truncateAll();
+        this.staleCopy = false;
         await this.snapshot(null);
         return;
       }

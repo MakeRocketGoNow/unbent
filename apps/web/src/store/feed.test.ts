@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FeedAttachment, FeedNote, FeedNotebook, FeedPage, FeedReset, FeedTag, SnapshotPage } from '@unbent/shared';
-import { FeedEngine, FeedStallError, isWhole, type Controls, type Position } from './feed.js';
+import { COPY_FORMAT, FeedEngine, FeedStallError, isWhole, type Controls, type Position } from './feed.js';
 
 /**
  * The feed's reader against a fake server and fake collections: what a page does to the
@@ -270,6 +270,60 @@ describe('FeedEngine', () => {
     const cleared = h.seq.indexOf('cursor null');
     expect(cleared).toBeGreaterThan(-1);
     expect(h.seq.slice(0, cleared).filter((e) => e.endsWith('committed'))).toHaveLength(4);
+  });
+
+  it('a cursor stored beside rows of an older format empties every collection and walks again once the feed answers', async () => {
+    const h = harness({
+      '/api/changes?since=10&epoch=e1&limit=2': feedPage({ next: 11, notes: [note('b')] }),
+      '/api/changes/snapshot?limit=2': snapshotFirst([note('a')], null, 50),
+    });
+    h.setCursor({ seq: 10, epoch: 'e1', format: COPY_FORMAT - 1 });
+    h.c.note.rows.set('a', note('a', { deletedAt: 5 }));
+    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    await h.engine.settled();
+    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) expect(h.c[k].log.slice(0, 3)).toEqual(['begin', 'truncate', 'commit']);
+    // The feed's page is not applied: it is only the sign that the server can be reached.
+    expect(h.requests).toEqual(['/api/changes?since=10&epoch=e1&limit=2', '/api/changes/snapshot?limit=2']);
+    expect([...h.c.note.rows.keys()]).toEqual(['a']);
+    expect(h.c.note.rows.get('a')?.deletedAt).toBeUndefined();
+  });
+
+  it('opened offline with an older format, the copy is kept and emptied on the first pull that reaches the server', async () => {
+    const h = harness({
+      '/api/changes?since=10&epoch=e1&limit=2': [new Error("You're offline."), feedPage({ next: 10 })],
+      '/api/changes/snapshot?limit=2': snapshotFirst([note('a')], null, 50),
+    });
+    h.setCursor({ seq: 10, epoch: 'e1', format: COPY_FORMAT - 1 });
+    h.c.note.rows.set('a', note('a', { deletedAt: 5 }));
+    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    await h.engine.settled();
+    expect(h.c.note.log).not.toContain('truncate');
+    expect(h.c.note.rows.get('a')?.deletedAt).toBe(5);
+    expect(h.cursor()).toEqual({ seq: 10, epoch: 'e1', format: COPY_FORMAT - 1 });
+
+    // The cursor is held in the engine from here on; the copy is still emptied once.
+    await h.engine.pull();
+    expect(h.c.note.log.filter((e) => e === 'truncate')).toHaveLength(1);
+    expect(h.c.note.rows.get('a')?.deletedAt).toBeUndefined();
+  });
+
+  it('a walk under way from an older format is resumed, not emptied', async () => {
+    const h = harness({ '/api/changes/snapshot?limit=2&cursor=b': { seq: 12, epoch: 'e1', notes: [note('c')], next: null } satisfies SnapshotPage });
+    h.setCursor({ seq: 10, epoch: 'e1', resume: 'b', total: 3, format: COPY_FORMAT - 1 });
+    h.c.note.rows.set('a', note('a'));
+    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    await h.engine.settled();
+    expect(h.c.note.log).not.toContain('truncate');
+    expect([...h.c.note.rows.keys()]).toEqual(['a', 'c']);
+  });
+
+  it('a cursor of the current format is followed as it is', async () => {
+    const h = harness({ '/api/changes?since=10&epoch=e1&limit=2': feedPage({ next: 10 }) });
+    h.setCursor({ seq: 10, epoch: 'e1', format: COPY_FORMAT });
+    for (const k of ['note', 'notebook', 'tag', 'attachment'] as const) h.engine.register(k, h.c[k] as never);
+    await h.engine.settled();
+    expect(h.requests).toEqual(['/api/changes?since=10&epoch=e1&limit=2']);
+    expect(h.c.note.log).not.toContain('truncate');
   });
 
   it('a note row replaces the note\'s files, and a note tombstone takes them', async () => {

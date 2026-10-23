@@ -22,7 +22,7 @@
  * decided for. That test is what asks the question: it fails on a change to what two
  * builds share, and says which kind it is. See "Builds side by side" in AGENTS.md.
  */
-export const COMPAT_LEVEL = 2;
+export const COMPAT_LEVEL = 3;
 
 /** The header every API answer states `COMPAT_LEVEL` in. */
 export const COMPAT_HEADER = 'X-Unbent-Compat';
