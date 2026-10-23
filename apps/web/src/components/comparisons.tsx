@@ -336,7 +336,7 @@ export const COMPARISONS: readonly Comparison[] = [
       {
         topic: 'Price',
         unbent: US.price,
-        them: 'Free, syncing through Dropbox, OneDrive, Nextcloud, WebDAV or S3. Joplin Cloud from €2.99 a month (2 GB, 10 MB a note) or €5.99 (30 GB).',
+        them: 'Free, syncing through Dropbox, OneDrive, Nextcloud, WebDAV or S3. Joplin Cloud is €28.69 a year (2 GB, 10 MB a note) or €57.48 (30 GB).',
       },
       {
         topic: 'Searching inside files',
