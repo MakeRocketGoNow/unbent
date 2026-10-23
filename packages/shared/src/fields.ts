@@ -473,10 +473,10 @@ export function encodeFieldValue(
  * `eq` compares the stored text: a select's option, a checkbox's `true`/`false`, a date
  * as written. `ne` is its complement, and a note with no value at all matches it: "not
  * reimbursed" means the box is unticked, and nobody thinks of a box never touched as
- * different from one ticked and unticked again. `gte`/`lte` compare the numeric shadow that migration 0014 keeps for every
- * number and date, so a range never has to parse text in SQL. `set`/`empty` ask whether
- * the note holds a value at all, which for a record-like notebook ("coupons with no
- * expiry") is the question asked most.
+ * different from one ticked and unticked again. `gte`/`lte` compare the numeric shadow
+ * that migration 0014 keeps for every number and date, so a range never has to parse text
+ * in SQL. `set`/`empty` ask whether the note holds a value at all, which for a
+ * record-like notebook ("coupons with no expiry") is the question asked most.
  *
  * Text "contains" is deliberately not here: search already covers field values, and a
  * substring filter would be a second, worse search box.
