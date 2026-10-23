@@ -299,17 +299,21 @@ function pageOf(lib: Library, filter: NoteFilter & { trashed?: boolean }, orderi
  * rows under a heading that says "Total" would be wrong the moment there is a second page.
  *
  * From the library, as the list is, so it costs a pass over rows already in memory (the
- * same filtered list a page is cut from, cached per version). `null` on a device with no
+ * same filtered list a page is cut from, cached per version; see `ordering`). `null` on a device with no
  * library: the server keeps no sums and the list is paged there, so the table totals the
  * rows it has only once it has them all (see `NotesLayout`).
  */
-export const fieldTotalsQuery = (filter: NoteFilter, fieldIds: readonly string[]) =>
+export const fieldTotalsQuery = (filter: NoteFilter, fieldIds: readonly string[], ordering: NoteOrdering = {}) =>
   queryOptions({
     queryKey: keys.fieldTotals(filter, fieldIds),
     queryFn: async (): Promise<Record<string, number> | null> => {
       const lib = await library();
       if (!lib) return null;
-      return Object.fromEntries(fieldSums(rowsOf(lib, filter, {}), new Set(fieldIds)));
+      // The list's own ordering, only so this reads the rows its pages are cut from, which
+      // `rowsOf` keeps per version and per spelling: with `{}` a sorted table filtered the
+      // notebook twice on every change. A sum does not depend on order, so the ordering
+      // stays out of the key and a re-sort does not ask again for the same answer.
+      return Object.fromEntries(fieldSums(rowsOf(lib, filter, ordering), new Set(fieldIds)));
     },
     enabled: fieldIds.length > 0,
     placeholderData: keepPreviousData,

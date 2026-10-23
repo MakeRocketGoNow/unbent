@@ -654,7 +654,7 @@ export function NotesLayout({ children }: { children: React.ReactNode }) {
   const chooseView = (next: 'list' | 'table') => void navigate(withView(next, false));
   const columns = noteColumns(fieldDefs.data ?? []);
   const totalIds = columns.filter(totalable).map((c) => c.id);
-  const fieldTotals = useQuery({ ...fieldTotalsQuery(filter, totalIds), enabled: tableMode && totalIds.length > 0 });
+  const fieldTotals = useQuery({ ...fieldTotalsQuery(filter, totalIds, ordering), enabled: tableMode && totalIds.length > 0 });
   /*
    * The table's footer: what its number columns add up to, and over which rows.
    *
